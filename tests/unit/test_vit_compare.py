@@ -9,7 +9,7 @@ import pytest
 import torch
 import torch.nn.functional as F
 from PIL import Image
-from transformers import ViTFeatureExtractor, ViTForImageClassification
+from transformers import ViTImageProcessor, ViTForImageClassification
 
 from transformer_lens import HookedVisualEncoder
 
@@ -56,7 +56,7 @@ def tl_model():
 
 @pytest.fixture(scope="module")
 def feature_extractor():
-    return ViTFeatureExtractor.from_pretrained(HF_CHECKPOINT)
+    return ViTImageProcessor.from_pretrained(HF_CHECKPOINT)
 
 
 @pytest.fixture(scope="module")
