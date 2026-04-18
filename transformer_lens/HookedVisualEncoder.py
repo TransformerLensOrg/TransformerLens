@@ -74,7 +74,7 @@ class HookedVisualEncoder(HookedRootModule):
         assert self.cfg.n_devices == 1, "Multiple devices not supported for HookedVisualEncoder"
         
 
-        self.blocks = nn.ModuleList([TransformerBlock(self.cfg) for _ in range(self.cfg.n_layers)])
+        self.blocks = nn.ModuleList([TransformerBlock(self.cfg, block_index) for block_index in range(self.cfg.n_layers)])
         self.layernorm = LayerNorm(self.cfg)
         self.classifier = ClassifierHead(1000, self.cfg)
 
