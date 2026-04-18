@@ -77,7 +77,7 @@ class HookedVisualEncoder(HookedRootModule):
 
         self.blocks = nn.ModuleList([TransformerBlock(self.cfg) for _ in range(self.cfg.n_layers)])
         self.layernorm = LayerNorm(self.cfg)
-        self.classifier = ClassifierHead(self.cfg)
+        self.classifier = ClassifierHead(1000, self.cfg)
 
         if move_to_device:
             if self.cfg.device is None:
@@ -109,7 +109,7 @@ class HookedVisualEncoder(HookedRootModule):
         return resid
 
     def _expected_hw(self) -> tuple[int, int]:
-        image_size = self.cfg.image_size
+        image_size = 224
         if isinstance(image_size, int):
             return image_size, image_size
         if len(image_size) == 2:
