@@ -1512,8 +1512,6 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "act_fn": hf_config.hidden_act,
             "attention_dir": "bidirectional",
     
-            # classification head
-            "num_labels": 1000,
             "d_vocab": -1,
         }
     elif official_model_name.startswith("allenai/OLMo-1B") and official_model_name.endswith("hf"):
