@@ -9,11 +9,11 @@ from transformer_lens.hook_points import HookPoint
 
 
 class ClassifierHead(nn.Module):
-    def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
+    def __init__(self, num_labels: int, cfg: Union[Dict, HookedTransformerConfig]):
         super().__init__()
         self.cfg = HookedTransformerConfig.unwrap(cfg)
 
-        self.num_labels = self.cfg.num_labels
+        self.num_labels = num_labels
 
         if self.num_labels > 0:
             self.W: Float[torch.Tensor, "d_model num_labels"] = nn.Parameter(
