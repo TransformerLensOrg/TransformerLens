@@ -1507,11 +1507,6 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "n_layers": hf_config.num_hidden_layers,
             "normalization_type": "LN",
     
-            # ViT sequence length = num_patches + CLS
-            "image_size": hf_config.image_size,
-            "patch_size": hf_config.patch_size,
-            "num_channels": hf_config.num_channels,
-    
             # normalization / activation
             "eps": hf_config.layer_norm_eps,
             "act_fn": hf_config.hidden_act,
