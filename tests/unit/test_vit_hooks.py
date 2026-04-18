@@ -62,7 +62,7 @@ class TestViTHookCache:
         with torch.no_grad():
             _, cache = tl_model.run_with_cache(sample_inputs)
 
-        hook_name = "blocks.0.hook_v_input"
+        hook_name = "blocks.0.hook_attn_out"
 
         if hook_name not in cache:
             pytest.skip(
@@ -80,7 +80,7 @@ class TestViTHookCache:
         with torch.no_grad():
             _, cache = tl_model.run_with_cache(sample_inputs)
 
-        hook_name = "blocks.0.hook_v_input"
+        hook_name = "blocks.0.hook_attn_out"
         if hook_name not in cache:
             pytest.skip(f"{hook_name} not found in cache.")
 
@@ -98,7 +98,7 @@ class TestViTHeadAblation:
         Replaces one head's value-stream input with a counterfactual value
         and checks that the final logits change.
         """
-        hook_name = "blocks.0.hook_v_input"
+        hook_name = "blocks.0.hook_attn_out"
         head_to_edit = 0
         source_head = 1  # counterfactual source
 
@@ -147,7 +147,7 @@ class TestViTHeadAblation:
         """
         Stronger ablation test: zero out one head and ensure logits change.
         """
-        hook_name = "blocks.0.hook_v_input"
+        hook_name = "blocks.0.hook_attn_out"
         head_to_zero = 0
 
         with torch.no_grad():
@@ -188,7 +188,7 @@ class TestViTHeadAblation:
         Optional sanity check: the intervention should usually change either
         the top-1 class or at least the distribution.
         """
-        hook_name = "blocks.0.hook_v_input"
+        hook_name = "blocks.0.hook_attn_out"
 
         with torch.no_grad():
             baseline_logits = _get_output_tensor(tl_model(sample_inputs))
