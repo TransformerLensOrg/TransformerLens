@@ -11,7 +11,7 @@ from typing import Any, Dict, Optional, Union, overload
 import einops
 import torch
 
-import transformer_lens.utils as utils
+import transformer_lens.utilities as utils
 from transformer_lens.config.TransformerLensConfig import TransformerLensConfig
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter

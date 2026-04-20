@@ -336,7 +336,7 @@ class HookedTransformerConfig(TransformerLensConfig):
         if self.device is None:
             self.device = str(get_device())
         else:
-            from transformer_lens.utils import warn_if_mps
+            from transformer_lens.utilities import warn_if_mps
 
             warn_if_mps(self.device)
 

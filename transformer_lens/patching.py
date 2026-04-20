@@ -60,7 +60,7 @@ from jaxtyping import Float, Int
 from tqdm.auto import tqdm
 from typing_extensions import Literal
 
-import transformer_lens.utils as utils
+import transformer_lens.utilities as utils
 from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.HookedTransformer import HookedTransformer
 

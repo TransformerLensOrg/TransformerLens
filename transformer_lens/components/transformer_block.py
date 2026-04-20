@@ -24,7 +24,7 @@ from transformer_lens.components.mlps.can_be_used_as_mlp import CanBeUsedAsMLP
 from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.factories.mlp_factory import MLPFactory
 from transformer_lens.hook_points import HookPoint
-from transformer_lens.utils import repeat_along_head_dimension
+from transformer_lens.utilities import repeat_along_head_dimension
 
 
 # Transformer Block

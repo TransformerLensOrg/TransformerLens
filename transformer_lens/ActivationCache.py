@@ -23,8 +23,8 @@ import torch
 from jaxtyping import Float, Int
 from typing_extensions import Literal
 
-import transformer_lens.utils as utils
-from transformer_lens.utils import Slice, SliceInput, warn_if_mps
+import transformer_lens.utilities as utils
+from transformer_lens.utilities import Slice, SliceInput, warn_if_mps
 
 
 class ActivationCache:
