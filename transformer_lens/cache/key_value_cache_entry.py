@@ -27,12 +27,18 @@ class TransformerLensKeyValueCacheEntry:
         batch_size: int = 1,
     ):
         n_heads = cfg.n_key_value_heads if cfg.n_key_value_heads is not None else cfg.n_heads
+        # Use cfg.dtype so the cache matches the model's dtype. Using
+        # torch.get_default_dtype() (which is float32 unless the caller has
+        # set it) caused the subsequent torch.cat([past_keys, new_keys]) to
+        # promote the result to float32 when the model runs in float16 or
+        # bfloat16, which in turn broke the attention-score matmul with
+        # "expected scalar type Half but found Float".
         return cls(
             past_keys=torch.empty(
-                (batch_size, 0, n_heads, cfg.d_head), device=device, dtype=torch.get_default_dtype()
+                (batch_size, 0, n_heads, cfg.d_head), device=device, dtype=cfg.dtype
             ),
             past_values=torch.empty(
-                (batch_size, 0, n_heads, cfg.d_head), device=device, dtype=torch.get_default_dtype()
+                (batch_size, 0, n_heads, cfg.d_head), device=device, dtype=cfg.dtype
             ),
         )
 
