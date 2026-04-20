@@ -10,7 +10,7 @@ GPT-OSS has a unique MoE architecture:
 import einops
 import torch
 
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 
 
 def convert_gpt_oss_weights(gpt_oss, cfg: HookedTransformerConfig):

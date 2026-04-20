@@ -1,8 +1,14 @@
+import jaxtyping
 import pytest
 import torch
-from beartype.roar import BeartypeCallHintParamViolation
 
 from transformer_lens import HookedTransformer, SVDInterpreter
+
+# Get TypeCheckError from jaxtyping module (it may be re-exported from typeguard)
+TypeCheckError = getattr(jaxtyping, "TypeCheckError", None)
+if TypeCheckError is None:
+    # Fallback to typeguard
+    from typeguard import TypeCheckError
 
 MODEL = "solu-2l"
 VECTOR_TYPES = ["OV", "w_in", "w_out"]
@@ -125,8 +131,14 @@ def test_svd_interpreter_returns_different_answers_for_different_models(second_m
 
 def test_svd_interpreter_fails_on_invalid_vector_type(model):
     svd_interpreter = SVDInterpreter(model)
-    with pytest.raises(BeartypeCallHintParamViolation) as e:
+    # Type checking can be done by jaxtyping (TypeCheckError) or beartype (BeartypeCallHintParamViolation)
+    # Catch by checking the exception type name since jaxtyping may wrap typeguard's exception
+    with pytest.raises(Exception) as exc_info:
         svd_interpreter.get_singular_vectors("test", layer_index=0, num_vectors=4, head_index=0)
+    # Verify it's a type checking error (from jaxtyping, typeguard, or beartype)
+    exc_name = type(exc_info.value).__name__
+    assert "TypeCheckError" in exc_name or "Beartype" in exc_name
+    assert "type-check" in str(exc_info.value).lower() or "vector_type" in str(exc_info.value)
 
 
 def test_svd_interpreter_fails_on_not_passing_required_head_index(model):

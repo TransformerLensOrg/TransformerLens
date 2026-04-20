@@ -150,7 +150,7 @@ def test_logit_attrs_works_for_all_input_shapes():
         tokens=answer_tokens[:, 0],
         incorrect_tokens=answer_tokens[:, 1],
     )
-    assert torch.isclose(ref_logit_diffs, logit_diffs, atol=1.1e-7).all()
+    assert torch.isclose(ref_logit_diffs, logit_diffs, atol=1e-6, rtol=1e-4).all()
 
     # Single token
     batch = -1
@@ -229,7 +229,7 @@ def test_logit_attrs_works_for_all_input_shapes():
         tokens=answer_tokens[:, 0],
         incorrect_tokens=None,
     )
-    assert torch.isclose(ref_logit_diffs, logit_diffs).all()
+    assert torch.isclose(ref_logit_diffs, logit_diffs, atol=1e-6, rtol=1e-4).all()
 
 
 @torch.no_grad

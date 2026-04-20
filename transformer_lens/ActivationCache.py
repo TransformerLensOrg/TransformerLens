@@ -120,6 +120,8 @@ class ActivationCache:
         self.has_embed = "hook_embed" in self.cache_dict
         self.has_pos_embed = "hook_pos_embed" in self.cache_dict
 
+        # Note: model reference prevents garbage collection. Set cache.model = None if unneeded.
+
     def remove_batch_dim(self) -> ActivationCache:
         """Remove the Batch Dimension (if a single batch item).
 
@@ -127,12 +129,16 @@ class ActivationCache:
             The ActivationCache with the batch dimension removed.
         """
         if self.has_batch_dim:
+            # Skip tensors without a batch dimension
+            has_batch_1 = any(v.size(0) == 1 for v in self.cache_dict.values())
             for key in self.cache_dict:
-                assert (
-                    self.cache_dict[key].size(0) == 1
-                ), f"Cannot remove batch dimension from cache with batch size > 1, \
-                    for key {key} with shape {self.cache_dict[key].shape}"
-                self.cache_dict[key] = self.cache_dict[key][0]
+                if self.cache_dict[key].size(0) == 1:
+                    self.cache_dict[key] = self.cache_dict[key][0]
+                else:
+                    assert has_batch_1, (
+                        f"Cannot remove batch dimension from cache with batch size > 1, "
+                        f"for key {key} with shape {self.cache_dict[key].shape}"
+                    )
             self.has_batch_dim = False
         else:
             logging.warning("Tried removing batch dimension after already having removed it.")
@@ -699,9 +705,18 @@ class ActivationCache:
         Intended use is to enable use_attn_results when running and caching the model, but this can
         be useful if you forget.
         """
-        if "blocks.0.attn.hook_result" in self.cache_dict:
-            logging.warning("Tried to compute head results when they were already cached")
-            return
+        # Return if valid 4D results exist; replace stale 3D Bridge entries if needed
+        first_key = "blocks.0.attn.hook_result"
+        if first_key in self.cache_dict:
+            val = self.cache_dict[first_key]
+            if isinstance(val, torch.Tensor) and val.ndim >= 4:
+                logging.warning("Tried to compute head results when they were already cached")
+                return
+            # Remove stale 3D entries before recomputing
+            for layer in range(self.model.cfg.n_layers):
+                key = f"blocks.{layer}.attn.hook_result"
+                if key in self.cache_dict:
+                    del self.cache_dict[key]
         for layer in range(self.model.cfg.n_layers):
             # Note that we haven't enabled set item on this object so we need to edit the underlying
             # cache_dict directly.
@@ -756,11 +771,8 @@ class ActivationCache:
             # Default to the residual stream immediately pre unembed
             layer = self.model.cfg.n_layers
 
-        if "blocks.0.attn.hook_result" not in self.cache_dict:
-            print(
-                "Tried to stack head results when they weren't cached. Computing head results now"
-            )
-            self.compute_head_results()
+        # Idempotent; cleans up stale Bridge entries
+        self.compute_head_results()
 
         components: Any = []
         labels = []

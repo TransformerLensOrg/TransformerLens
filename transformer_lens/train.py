@@ -15,7 +15,7 @@ from tqdm.auto import tqdm
 
 from transformer_lens import utils
 from transformer_lens.HookedTransformer import HookedTransformer
-from transformer_lens.utils import is_library_available
+from transformer_lens.utilities.library_utils import is_library_available
 
 
 @dataclass
@@ -89,7 +89,7 @@ def train(
         wandb.init(project=config.wandb_project_name, config=vars(config))
 
     if config.device is None:
-        config.device = utils.get_device()
+        config.device = str(utils.get_device())
 
     optimizer: Optimizer
     if config.optimizer_name in ["Adam", "AdamW"]:

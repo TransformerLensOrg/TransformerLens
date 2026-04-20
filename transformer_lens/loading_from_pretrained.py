@@ -1,21 +1,22 @@
-from __future__ import annotations
-
 """Loading Pretrained Models Utilities.
 
 This module contains functions for loading pretrained models from the Hugging Face Hub.
 """
+
+from __future__ import annotations
 
 import dataclasses
 import logging
 import os
 import re
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any
 
 import torch
 from huggingface_hub import HfApi
 from transformers import (
     AutoConfig,
+    AutoModel,
     AutoModelForCausalLM,
     BertForPreTraining,
     HubertModel,
@@ -24,7 +25,7 @@ from transformers import (
 )
 
 import transformer_lens.utils as utils
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.pretrained.weight_conversions import (
     convert_apertus_weights,
     convert_bert_weights,
@@ -42,6 +43,10 @@ from transformer_lens.pretrained.weight_conversions import (
     convert_neel_solu_old_weights,
     convert_neo_weights,
     convert_neox_weights,
+    convert_olmo2_weights,
+    convert_olmo3_weights,
+    convert_olmo_weights,
+    convert_olmoe_weights,
     convert_opt_weights,
     convert_phi3_weights,
     convert_phi_weights,
@@ -50,727 +55,8 @@ from transformer_lens.pretrained.weight_conversions import (
     convert_qwen_weights,
     convert_t5_weights,
 )
-
-logger = logging.getLogger(__name__)
-
-
-OFFICIAL_MODEL_NAMES = [
-    "gpt2",
-    "gpt2-medium",
-    "gpt2-large",
-    "gpt2-xl",
-    "distilgpt2",
-    "facebook/opt-125m",
-    "facebook/opt-1.3b",
-    "facebook/opt-2.7b",
-    "facebook/opt-6.7b",
-    "facebook/opt-13b",
-    "facebook/opt-30b",
-    "facebook/opt-66b",
-    "facebook/hubert-base-ls960",
-    "facebook/wav2vec2-base",
-    "facebook/wav2vec2-large",
-    "EleutherAI/gpt-neo-125M",
-    "EleutherAI/gpt-neo-1.3B",
-    "EleutherAI/gpt-neo-2.7B",
-    "EleutherAI/gpt-j-6B",
-    "EleutherAI/gpt-neox-20b",
-    "stanford-crfm/alias-gpt2-small-x21",
-    "stanford-crfm/battlestar-gpt2-small-x49",
-    "stanford-crfm/caprica-gpt2-small-x81",
-    "stanford-crfm/darkmatter-gpt2-small-x343",
-    "stanford-crfm/expanse-gpt2-small-x777",
-    "stanford-crfm/arwen-gpt2-medium-x21",
-    "stanford-crfm/beren-gpt2-medium-x49",
-    "stanford-crfm/celebrimbor-gpt2-medium-x81",
-    "stanford-crfm/durin-gpt2-medium-x343",
-    "stanford-crfm/eowyn-gpt2-medium-x777",
-    "EleutherAI/pythia-14m",
-    "EleutherAI/pythia-31m",
-    "EleutherAI/pythia-70m",
-    "EleutherAI/pythia-160m",
-    "EleutherAI/pythia-410m",
-    "EleutherAI/pythia-1b",
-    "EleutherAI/pythia-1.4b",
-    "EleutherAI/pythia-2.8b",
-    "EleutherAI/pythia-6.9b",
-    "EleutherAI/pythia-12b",
-    "EleutherAI/pythia-70m-deduped",
-    "EleutherAI/pythia-160m-deduped",
-    "EleutherAI/pythia-410m-deduped",
-    "EleutherAI/pythia-1b-deduped",
-    "EleutherAI/pythia-1.4b-deduped",
-    "EleutherAI/pythia-2.8b-deduped",
-    "EleutherAI/pythia-6.9b-deduped",
-    "EleutherAI/pythia-12b-deduped",
-    "EleutherAI/pythia-70m-v0",
-    "EleutherAI/pythia-160m-v0",
-    "EleutherAI/pythia-410m-v0",
-    "EleutherAI/pythia-1b-v0",
-    "EleutherAI/pythia-1.4b-v0",
-    "EleutherAI/pythia-2.8b-v0",
-    "EleutherAI/pythia-6.9b-v0",
-    "EleutherAI/pythia-12b-v0",
-    "EleutherAI/pythia-70m-deduped-v0",
-    "EleutherAI/pythia-160m-deduped-v0",
-    "EleutherAI/pythia-410m-deduped-v0",
-    "EleutherAI/pythia-1b-deduped-v0",
-    "EleutherAI/pythia-1.4b-deduped-v0",
-    "EleutherAI/pythia-2.8b-deduped-v0",
-    "EleutherAI/pythia-6.9b-deduped-v0",
-    "EleutherAI/pythia-12b-deduped-v0",
-    "EleutherAI/pythia-160m-seed1",
-    "EleutherAI/pythia-160m-seed2",
-    "EleutherAI/pythia-160m-seed3",
-    "NeelNanda/SoLU_1L_v9_old",
-    "NeelNanda/SoLU_2L_v10_old",
-    "NeelNanda/SoLU_4L_v11_old",
-    "NeelNanda/SoLU_6L_v13_old",
-    "NeelNanda/SoLU_8L_v21_old",
-    "NeelNanda/SoLU_10L_v22_old",
-    "NeelNanda/SoLU_12L_v23_old",
-    "NeelNanda/SoLU_1L512W_C4_Code",
-    "NeelNanda/SoLU_2L512W_C4_Code",
-    "NeelNanda/SoLU_3L512W_C4_Code",
-    "NeelNanda/SoLU_4L512W_C4_Code",
-    "NeelNanda/SoLU_6L768W_C4_Code",
-    "NeelNanda/SoLU_8L1024W_C4_Code",
-    "NeelNanda/SoLU_10L1280W_C4_Code",
-    "NeelNanda/SoLU_12L1536W_C4_Code",
-    "NeelNanda/GELU_1L512W_C4_Code",
-    "NeelNanda/GELU_2L512W_C4_Code",
-    "NeelNanda/GELU_3L512W_C4_Code",
-    "NeelNanda/GELU_4L512W_C4_Code",
-    "NeelNanda/Attn_Only_1L512W_C4_Code",
-    "NeelNanda/Attn_Only_2L512W_C4_Code",
-    "NeelNanda/Attn_Only_3L512W_C4_Code",
-    "NeelNanda/Attn_Only_4L512W_C4_Code",
-    "NeelNanda/Attn-Only-2L512W-Shortformer-6B-big-lr",
-    "NeelNanda/SoLU_1L512W_Wiki_Finetune",
-    "NeelNanda/SoLU_4L512W_Wiki_Finetune",
-    "ArthurConmy/redwood_attn_2l",
-    "llama-7b-hf",
-    "llama-13b-hf",
-    "llama-30b-hf",
-    "llama-65b-hf",
-    "meta-llama/Llama-2-7b-hf",
-    "meta-llama/Llama-2-7b-chat-hf",
-    "meta-llama/Llama-2-13b-hf",
-    "meta-llama/Llama-2-13b-chat-hf",
-    "meta-llama/Llama-2-70b-chat-hf",
-    "codellama/CodeLlama-7b-hf",
-    "codellama/CodeLlama-7b-Python-hf",
-    "codellama/CodeLlama-7b-Instruct-hf",
-    "meta-llama/Meta-Llama-3-8B",
-    "meta-llama/Meta-Llama-3-8B-Instruct",
-    "meta-llama/Meta-Llama-3-70B",
-    "meta-llama/Meta-Llama-3-70B-Instruct",
-    "meta-llama/Llama-3.1-70B",
-    "meta-llama/Llama-3.1-8B",
-    "meta-llama/Llama-3.1-8B-Instruct",
-    "meta-llama/Llama-3.1-70B-Instruct",
-    "meta-llama/Llama-3.2-1B",
-    "meta-llama/Llama-3.2-3B",
-    "meta-llama/Llama-3.2-1B-Instruct",
-    "meta-llama/Llama-3.2-3B-Instruct",
-    "meta-llama/Llama-3.3-70B-Instruct",
-    "Baidicoot/Othello-GPT-Transformer-Lens",
-    "google-bert/bert-base-cased",
-    "google-bert/bert-base-uncased",
-    "google-bert/bert-large-cased",
-    "google-bert/bert-large-uncased",
-    "roneneldan/TinyStories-1M",
-    "roneneldan/TinyStories-3M",
-    "roneneldan/TinyStories-8M",
-    "roneneldan/TinyStories-28M",
-    "roneneldan/TinyStories-33M",
-    "roneneldan/TinyStories-Instruct-1M",
-    "roneneldan/TinyStories-Instruct-3M",
-    "roneneldan/TinyStories-Instruct-8M",
-    "roneneldan/TinyStories-Instruct-28M",
-    "roneneldan/TinyStories-Instruct-33M",
-    "roneneldan/TinyStories-1Layer-21M",
-    "roneneldan/TinyStories-2Layers-33M",
-    "roneneldan/TinyStories-Instuct-1Layer-21M",
-    "roneneldan/TinyStories-Instruct-2Layers-33M",
-    "stabilityai/stablelm-base-alpha-3b",
-    "stabilityai/stablelm-base-alpha-7b",
-    "stabilityai/stablelm-tuned-alpha-3b",
-    "stabilityai/stablelm-tuned-alpha-7b",
-    "mistralai/Mistral-7B-v0.1",
-    "mistralai/Mistral-7B-Instruct-v0.1",
-    "mistralai/Mistral-Small-24B-Base-2501",
-    "mistralai/Mistral-Nemo-Base-2407",
-    "mistralai/Mixtral-8x7B-v0.1",
-    "mistralai/Mixtral-8x7B-Instruct-v0.1",
-    "openai/gpt-oss-20b",
-    "bigscience/bloom-560m",
-    "bigscience/bloom-1b1",
-    "bigscience/bloom-1b7",
-    "bigscience/bloom-3b",
-    "bigscience/bloom-7b1",
-    "bigcode/santacoder",
-    "Qwen/Qwen-1_8B",
-    "Qwen/Qwen-7B",
-    "Qwen/Qwen-14B",
-    "Qwen/Qwen-1_8B-Chat",
-    "Qwen/Qwen-7B-Chat",
-    "Qwen/Qwen-14B-Chat",
-    "Qwen/Qwen1.5-0.5B",
-    "Qwen/Qwen1.5-0.5B-Chat",
-    "Qwen/Qwen1.5-1.8B",
-    "Qwen/Qwen1.5-1.8B-Chat",
-    "Qwen/Qwen1.5-4B",
-    "Qwen/Qwen1.5-4B-Chat",
-    "Qwen/Qwen1.5-7B",
-    "Qwen/Qwen1.5-7B-Chat",
-    "Qwen/Qwen1.5-14B",
-    "Qwen/Qwen1.5-14B-Chat",
-    "Qwen/Qwen2-0.5B",
-    "Qwen/Qwen2-0.5B-Instruct",
-    "Qwen/Qwen2-1.5B",
-    "Qwen/Qwen2-1.5B-Instruct",
-    "Qwen/Qwen2-7B",
-    "Qwen/Qwen2-7B-Instruct",
-    "Qwen/Qwen2.5-0.5B",
-    "Qwen/Qwen2.5-0.5B-Instruct",
-    "Qwen/Qwen2.5-1.5B",
-    "Qwen/Qwen2.5-1.5B-Instruct",
-    "Qwen/Qwen2.5-3B",
-    "Qwen/Qwen2.5-3B-Instruct",
-    "Qwen/Qwen2.5-7B",
-    "Qwen/Qwen2.5-7B-Instruct",
-    "Qwen/Qwen2.5-14B",
-    "Qwen/Qwen2.5-14B-Instruct",
-    "Qwen/Qwen2.5-32B",
-    "Qwen/Qwen2.5-32B-Instruct",
-    "Qwen/Qwen2.5-72B",
-    "Qwen/Qwen2.5-72B-Instruct",
-    "Qwen/QwQ-32B-Preview",
-    "Qwen/Qwen3-0.6B",
-    "Qwen/Qwen3-0.6B-Base",
-    "Qwen/Qwen3-1.7B",
-    "Qwen/Qwen3-4B",
-    "Qwen/Qwen3-8B",
-    "Qwen/Qwen3-14B",
-    "microsoft/phi-1",
-    "microsoft/phi-1_5",
-    "microsoft/phi-2",
-    "microsoft/Phi-3-mini-4k-instruct",
-    "microsoft/phi-4",
-    "swiss-ai/Apertus-8B-2509",
-    "swiss-ai/Apertus-8B-Instruct-2509",
-    "google/gemma-2b",
-    "google/gemma-7b",
-    "google/gemma-2b-it",
-    "google/gemma-7b-it",
-    "google/gemma-2-2b",
-    "google/gemma-2-2b-it",
-    "google/gemma-2-9b",
-    "google/gemma-2-9b-it",
-    "google/gemma-2-27b",
-    "google/gemma-2-27b-it",
-    "google/gemma-3-270m",
-    "google/gemma-3-270m-it",
-    "google/gemma-3-1b-pt",
-    "google/gemma-3-1b-it",
-    "google/gemma-3-4b-pt",
-    "google/gemma-3-4b-it",
-    "google/gemma-3-12b-pt",
-    "google/gemma-3-12b-it",
-    "google/gemma-3-27b-pt",
-    "google/gemma-3-27b-it",
-    "google/medgemma-4b-pt",
-    "google/medgemma-4b-it",
-    "google/medgemma-27b-it",
-    "google/medgemma-27b-text-it",
-    "01-ai/Yi-6B",
-    "01-ai/Yi-34B",
-    "01-ai/Yi-6B-Chat",
-    "01-ai/Yi-34B-Chat",
-    "google-t5/t5-small",
-    "google-t5/t5-base",
-    "google-t5/t5-large",
-    "ai-forever/mGPT",
-]
-"""Official model names for models on HuggingFace."""
-
-# Model Aliases:
-MODEL_ALIASES = {
-    "NeelNanda/SoLU_1L_v9_old": ["solu-1l-pile", "solu-1l-old"],
-    "NeelNanda/SoLU_2L_v10_old": ["solu-2l-pile", "solu-2l-old"],
-    "NeelNanda/SoLU_4L_v11_old": ["solu-4l-pile", "solu-4l-old"],
-    "NeelNanda/SoLU_6L_v13_old": ["solu-6l-pile", "solu-6l-old"],
-    "NeelNanda/SoLU_8L_v21_old": ["solu-8l-pile", "solu-8l-old"],
-    "NeelNanda/SoLU_10L_v22_old": ["solu-10l-pile", "solu-10l-old"],
-    "NeelNanda/SoLU_12L_v23_old": ["solu-12l-pile", "solu-12l-old"],
-    "NeelNanda/SoLU_1L512W_C4_Code": ["solu-1l", "solu-1l-new", "solu-1l-c4-code"],
-    "NeelNanda/SoLU_2L512W_C4_Code": ["solu-2l", "solu-2l-new", "solu-2l-c4-code"],
-    "NeelNanda/SoLU_3L512W_C4_Code": ["solu-3l", "solu-3l-new", "solu-3l-c4-code"],
-    "NeelNanda/SoLU_4L512W_C4_Code": ["solu-4l", "solu-4l-new", "solu-4l-c4-code"],
-    "NeelNanda/GELU_1L512W_C4_Code": ["gelu-1l", "gelu-1l-new", "gelu-1l-c4-code"],
-    "NeelNanda/GELU_2L512W_C4_Code": ["gelu-2l", "gelu-2l-new", "gelu-2l-c4-code"],
-    "NeelNanda/GELU_3L512W_C4_Code": ["gelu-3l", "gelu-3l-new", "gelu-3l-c4-code"],
-    "NeelNanda/GELU_4L512W_C4_Code": ["gelu-4l", "gelu-4l-new", "gelu-4l-c4-code"],
-    "NeelNanda/Attn_Only_1L512W_C4_Code": [
-        "attn-only-1l",
-        "attn-only-1l-new",
-        "attn-only-1l-c4-code",
-    ],
-    "NeelNanda/Attn_Only_2L512W_C4_Code": [
-        "attn-only-2l",
-        "attn-only-2l-new",
-        "attn-only-2l-c4-code",
-    ],
-    "NeelNanda/Attn_Only_3L512W_C4_Code": [
-        "attn-only-3l",
-        "attn-only-3l-new",
-        "attn-only-3l-c4-code",
-    ],
-    "NeelNanda/Attn_Only_4L512W_C4_Code": [
-        "attn-only-4l",
-        "attn-only-4l-new",
-        "attn-only-4l-c4-code",
-    ],
-    "NeelNanda/SoLU_6L768W_C4_Code": ["solu-6l", "solu-6l-new", "solu-6l-c4-code"],
-    "NeelNanda/SoLU_8L1024W_C4_Code": ["solu-8l", "solu-8l-new", "solu-8l-c4-code"],
-    "NeelNanda/SoLU_10L1280W_C4_Code": ["solu-10l", "solu-10l-new", "solu-10l-c4-code"],
-    "NeelNanda/SoLU_12L1536W_C4_Code": ["solu-12l", "solu-12l-new", "solu-12l-c4-code"],
-    "NeelNanda/Attn-Only-2L512W-Shortformer-6B-big-lr": [
-        "attn-only-2l-demo",
-        "attn-only-2l-shortformer-6b-big-lr",
-        "attn-only-2l-induction-demo",
-        "attn-only-demo",
-    ],
-    "NeelNanda/SoLU_1L512W_Wiki_Finetune": [
-        "solu-1l-wiki",
-        "solu-1l-wiki-finetune",
-        "solu-1l-finetune",
-    ],
-    "NeelNanda/SoLU_4L512W_Wiki_Finetune": [
-        "solu-4l-wiki",
-        "solu-4l-wiki-finetune",
-        "solu-4l-finetune",
-    ],
-    "EleutherAI/pythia-14m": [
-        "pythia-14m",
-    ],
-    "EleutherAI/pythia-31m": [
-        "pythia-31m",
-    ],
-    "EleutherAI/pythia-70m": [
-        "pythia-70m",
-        "pythia",
-        "EleutherAI/pythia-19m",
-        "pythia-19m",  # EleutherAI renamed this model
-    ],
-    "EleutherAI/pythia-160m": [
-        "pythia-160m",
-        "EleutherAI/pythia-125m",
-        "pythia-125m",  # EleutherAI renamed this model"
-    ],
-    "EleutherAI/pythia-410m": [
-        "pythia-410m",
-        "EleutherAI/pythia-350m",
-        "pythia-350m",  # EleutherAI renamed this model
-    ],
-    "EleutherAI/pythia-1b": [
-        "pythia-1b",
-        "EleutherAI/pythia-800m",
-        "pythia-800m",  # EleutherAI renamed this model
-    ],
-    "EleutherAI/pythia-1.4b": [
-        "pythia-1.4b",
-        "EleutherAI/pythia-1.3b",
-        "pythia-1.3b",  # EleutherAI renamed this model
-    ],
-    "EleutherAI/pythia-2.8b": [
-        "pythia-2.8b",
-        "EleutherAI/pythia-2.7b",
-        "pythia-2.7b",  # EleutherAI renamed this model
-    ],
-    "EleutherAI/pythia-6.9b": [
-        "pythia-6.9b",
-        "EleutherAI/pythia-6.7b",
-        "pythia-6.7b",  # EleutherAI renamed this model
-    ],
-    "EleutherAI/pythia-12b": [
-        "pythia-12b",
-        "EleutherAI/pythia-13b",
-        "pythia-13b",  # EleutherAI renamed this model
-    ],
-    "EleutherAI/pythia-70m-deduped": [
-        "pythia-70m-deduped",
-        "EleutherAI/pythia-19m-deduped",  # EleutherAI renamed this model
-        "pythia-19m-deduped",
-    ],
-    "EleutherAI/pythia-160m-deduped": [
-        "pythia-160m-deduped",
-        "EleutherAI/pythia-125m-deduped",  # EleutherAI renamed this model
-        "pythia-125m-deduped",
-    ],
-    "EleutherAI/pythia-410m-deduped": [
-        "pythia-410m-deduped",
-        "EleutherAI/pythia-350m-deduped",  # EleutherAI renamed this model
-        "pythia-350m-deduped",
-    ],
-    "EleutherAI/pythia-1b-deduped": [
-        "pythia-1b-deduped",
-        "EleutherAI/pythia-800m-deduped",  # EleutherAI renamed this model
-        "pythia-800m-deduped",
-    ],
-    "EleutherAI/pythia-1.4b-deduped": [
-        "pythia-1.4b-deduped",
-        "EleutherAI/pythia-1.3b-deduped",  # EleutherAI renamed this model
-        "pythia-1.3b-deduped",
-    ],
-    "EleutherAI/pythia-2.8b-deduped": [
-        "pythia-2.8b-deduped",
-        "EleutherAI/pythia-2.7b-deduped",  # EleutherAI renamed this model
-        "pythia-2.7b-deduped",
-    ],
-    "EleutherAI/pythia-6.9b-deduped": [
-        "pythia-6.9b-deduped",
-        "EleutherAI/pythia-6.7b-deduped",  # EleutherAI renamed this model
-        "pythia-6.7b-deduped",
-    ],
-    "EleutherAI/pythia-12b-deduped": [
-        "pythia-12b-deduped",
-        "EleutherAI/pythia-13b-deduped",  # EleutherAI renamed this model
-        "pythia-13b-deduped",
-    ],
-    "EleutherAI/pythia-70m-v0": [
-        "pythia-70m-v0",
-        "pythia-v0",
-        "EleutherAI/pythia-19m-v0",
-        "pythia-19m-v0",  # EleutherAI renamed this model
-    ],
-    "EleutherAI/pythia-160m-v0": [
-        "pythia-160m-v0",
-        "EleutherAI/pythia-125m-v0",
-        "pythia-125m-v0",  # EleutherAI renamed this model"
-    ],
-    "EleutherAI/pythia-410m-v0": [
-        "pythia-410m-v0",
-        "EleutherAI/pythia-350m-v0",
-        "pythia-350m-v0",  # EleutherAI renamed this model
-    ],
-    "EleutherAI/pythia-1b-v0": [
-        "pythia-1b-v0",
-        "EleutherAI/pythia-800m-v0",
-        "pythia-800m-v0",  # EleutherAI renamed this model
-    ],
-    "EleutherAI/pythia-1.4b-v0": [
-        "pythia-1.4b-v0",
-        "EleutherAI/pythia-1.3b-v0",
-        "pythia-1.3b-v0",  # EleutherAI renamed this model
-    ],
-    "EleutherAI/pythia-2.8b-v0": [
-        "pythia-2.8b-v0",
-        "EleutherAI/pythia-2.7b-v0",
-        "pythia-2.7b-v0",  # EleutherAI renamed this model
-    ],
-    "EleutherAI/pythia-6.9b-v0": [
-        "pythia-6.9b-v0",
-        "EleutherAI/pythia-6.7b-v0",
-        "pythia-6.7b-v0",  # EleutherAI renamed this model
-    ],
-    "EleutherAI/pythia-12b-v0": [
-        "pythia-12b-v0",
-        "EleutherAI/pythia-13b-v0",
-        "pythia-13b-v0",  # EleutherAI renamed this model
-    ],
-    "EleutherAI/pythia-70m-deduped-v0": [
-        "pythia-70m-deduped-v0",
-        "EleutherAI/pythia-19m-deduped-v0",  # EleutherAI renamed this model
-        "pythia-19m-deduped-v0",
-    ],
-    "EleutherAI/pythia-160m-deduped-v0": [
-        "pythia-160m-deduped-v0",
-        "EleutherAI/pythia-125m-deduped-v0",  # EleutherAI renamed this model
-        "pythia-125m-deduped-v0",
-    ],
-    "EleutherAI/pythia-410m-deduped-v0": [
-        "pythia-410m-deduped-v0",
-        "EleutherAI/pythia-350m-deduped-v0",  # EleutherAI renamed this model
-        "pythia-350m-deduped-v0",
-    ],
-    "EleutherAI/pythia-1b-deduped-v0": [
-        "pythia-1b-deduped-v0",
-        "EleutherAI/pythia-800m-deduped-v0",  # EleutherAI renamed this model
-        "pythia-800m-deduped-v0",
-    ],
-    "EleutherAI/pythia-1.4b-deduped-v0": [
-        "pythia-1.4b-deduped-v0",
-        "EleutherAI/pythia-1.3b-deduped-v0",  # EleutherAI renamed this model
-        "pythia-1.3b-deduped-v0",
-    ],
-    "EleutherAI/pythia-2.8b-deduped-v0": [
-        "pythia-2.8b-deduped-v0",
-        "EleutherAI/pythia-2.7b-deduped-v0",  # EleutherAI renamed this model
-        "pythia-2.7b-deduped-v0",
-    ],
-    "EleutherAI/pythia-6.9b-deduped-v0": [
-        "pythia-6.9b-deduped-v0",
-        "EleutherAI/pythia-6.7b-deduped-v0",  # EleutherAI renamed this model
-        "pythia-6.7b-deduped-v0",
-    ],
-    "EleutherAI/pythia-12b-deduped-v0": [
-        "pythia-12b-deduped-v0",
-        "EleutherAI/pythia-13b-deduped-v0",  # EleutherAI renamed this model
-        "pythia-13b-deduped-v0",
-    ],
-    "EleutherAI/pythia-160m-seed1": [
-        "pythia-160m-seed1",
-        "EleutherAI/pythia-125m-seed1",
-        "pythia-125m-seed1",  # EleutherAI renamed this model"
-    ],
-    "EleutherAI/pythia-160m-seed2": [
-        "pythia-160m-seed2",
-        "EleutherAI/pythia-125m-seed2",
-        "pythia-125m-seed2",  # EleutherAI renamed this model"
-    ],
-    "EleutherAI/pythia-160m-seed3": [
-        "pythia-160m-seed3",
-        "EleutherAI/pythia-125m-seed3",
-        "pythia-125m-seed3",  # EleutherAI renamed this model"
-    ],
-    "gpt2": ["gpt2-small"],
-    "distilgpt2": ["distillgpt2", "distill-gpt2", "distil-gpt2", "gpt2-xs"],
-    "facebook/opt-125m": ["opt-125m", "opt-small", "opt"],
-    "facebook/opt-1.3b": ["opt-1.3b", "opt-medium"],
-    "facebook/opt-2.7b": ["opt-2.7b", "opt-large"],
-    "facebook/opt-6.7b": ["opt-6.7b", "opt-xl"],
-    "facebook/opt-13b": ["opt-13b", "opt-xxl"],
-    "facebook/opt-30b": ["opt-30b", "opt-xxxl"],
-    "facebook/opt-66b": ["opt-66b", "opt-xxxxl"],
-    "EleutherAI/gpt-neo-125M": ["gpt-neo-125M", "gpt-neo-small", "neo-small", "neo"],
-    "EleutherAI/gpt-neo-1.3B": ["gpt-neo-1.3B", "gpt-neo-medium", "neo-medium"],
-    "EleutherAI/gpt-neo-2.7B": ["gpt-neo-2.7B", "gpt-neo-large", "neo-large"],
-    "EleutherAI/gpt-j-6B": ["gpt-j-6B", "gpt-j", "gptj"],
-    "EleutherAI/gpt-neox-20b": ["gpt-neox-20b", "gpt-neox", "neox"],
-    "stanford-crfm/alias-gpt2-small-x21": [
-        "stanford-gpt2-small-a",
-        "alias-gpt2-small-x21",
-        "gpt2-mistral-small-a",
-        "gpt2-stanford-small-a",
-    ],
-    "stanford-crfm/battlestar-gpt2-small-x49": [
-        "stanford-gpt2-small-b",
-        "battlestar-gpt2-small-x49",
-        "gpt2-mistral-small-b",
-        "gpt2-mistral-small-b",
-    ],
-    "stanford-crfm/caprica-gpt2-small-x81": [
-        "stanford-gpt2-small-c",
-        "caprica-gpt2-small-x81",
-        "gpt2-mistral-small-c",
-        "gpt2-stanford-small-c",
-    ],
-    "stanford-crfm/darkmatter-gpt2-small-x343": [
-        "stanford-gpt2-small-d",
-        "darkmatter-gpt2-small-x343",
-        "gpt2-mistral-small-d",
-        "gpt2-mistral-small-d",
-    ],
-    "stanford-crfm/expanse-gpt2-small-x777": [
-        "stanford-gpt2-small-e",
-        "expanse-gpt2-small-x777",
-        "gpt2-mistral-small-e",
-        "gpt2-mistral-small-e",
-    ],
-    "stanford-crfm/arwen-gpt2-medium-x21": [
-        "stanford-gpt2-medium-a",
-        "arwen-gpt2-medium-x21",
-        "gpt2-medium-small-a",
-        "gpt2-stanford-medium-a",
-    ],
-    "stanford-crfm/beren-gpt2-medium-x49": [
-        "stanford-gpt2-medium-b",
-        "beren-gpt2-medium-x49",
-        "gpt2-medium-small-b",
-        "gpt2-stanford-medium-b",
-    ],
-    "stanford-crfm/celebrimbor-gpt2-medium-x81": [
-        "stanford-gpt2-medium-c",
-        "celebrimbor-gpt2-medium-x81",
-        "gpt2-medium-small-c",
-        "gpt2-medium-small-c",
-    ],
-    "stanford-crfm/durin-gpt2-medium-x343": [
-        "stanford-gpt2-medium-d",
-        "durin-gpt2-medium-x343",
-        "gpt2-medium-small-d",
-        "gpt2-stanford-medium-d",
-    ],
-    "stanford-crfm/eowyn-gpt2-medium-x777": [
-        "stanford-gpt2-medium-e",
-        "eowyn-gpt2-medium-x777",
-        "gpt2-medium-small-e",
-        "gpt2-stanford-medium-e",
-    ],
-    "ArthurConmy/redwood_attn_2l": ["redwood_attn_2l"],
-    "llama-7b-hf": ["llama-7b"],
-    "llama-13b-hf": ["llama-13b"],
-    "llama-30b-hf": ["llama-30b"],
-    "llama-65b-hf": ["llama-65b"],
-    "meta-llama/Llama-2-7b-hf": ["Llama-2-7b", "meta-llama/Llama-2-7b-hf"],
-    "meta-llama/Llama-2-7b-chat-hf": [
-        "Llama-2-7b-chat",
-        "meta-llama/Llama-2-7b-chat-hf",
-    ],
-    "meta-llama/Llama-2-13b-hf": ["Llama-2-13b", "meta-llama/Llama-2-13b-hf"],
-    "meta-llama/Llama-2-13b-chat-hf": [
-        "Llama-2-13b-chat",
-        "meta-llama/Llama-2-13b-chat-hf",
-    ],
-    "meta-llama/Llama-2-70b-chat-hf": ["Llama-2-70b-chat", "meta-llama-2-70b-chat-hf"],
-    "codellama/CodeLlama-7b-hf": ["CodeLlamallama-2-7b", "codellama/CodeLlama-7b-hf"],
-    "codellama/CodeLlama-7b-Python-hf": [
-        "CodeLlama-7b-python",
-        "codellama/CodeLlama-7b-Python-hf",
-    ],
-    "codellama/CodeLlama-7b-Instruct-hf": [
-        "CodeLlama-7b-instruct",
-        "codellama/CodeLlama-7b-Instruct-hf",
-    ],
-    "Baidicoot/Othello-GPT-Transformer-Lens": ["othello-gpt"],
-    "google-bert/bert-base-cased": ["bert-base-cased"],
-    "google-bert/bert-base-uncased": ["bert-base-uncased"],
-    "google-bert/bert-large-cased": ["bert-large-cased"],
-    "google-bert/bert-large-uncased": ["bert-large-uncased"],
-    "facebook/hubert-base-ls960": ["facebook/hubert-base-ls960", "hubert-base-ls960"],
-    "facebook/wav2vec2-base": ["facebook/wav2vec2-base", "wav2vec2-base", "w2v2-base"],
-    "facebook/wav2vec2-large": ["facebook/wav2vec2-large", "wav2vec2-large", "w2v2-large"],
-    "roneneldan/TinyStories-1M": ["tiny-stories-1M"],
-    "roneneldan/TinyStories-3M": ["tiny-stories-3M"],
-    "roneneldan/TinyStories-8M": ["tiny-stories-8M"],
-    "roneneldan/TinyStories-28M": ["tiny-stories-28M"],
-    "roneneldan/TinyStories-33M": ["tiny-stories-33M"],
-    "roneneldan/TinyStories-Instruct-1M": ["tiny-stories-instruct-1M"],
-    "roneneldan/TinyStories-Instruct-3M": ["tiny-stories-instruct-3M"],
-    "roneneldan/TinyStories-Instruct-8M": ["tiny-stories-instruct-8M"],
-    "roneneldan/TinyStories-Instruct-28M": ["tiny-stories-instruct-28M"],
-    "roneneldan/TinyStories-Instruct-33M": ["tiny-stories-instruct-33M"],
-    "roneneldan/TinyStories-1Layer-21M": ["tiny-stories-1L-21M"],
-    "roneneldan/TinyStories-2Layers-33M": ["tiny-stories-2L-33M"],
-    "roneneldan/TinyStories-Instuct-1Layer-21M": ["tiny-stories-instruct-1L-21M"],
-    "roneneldan/TinyStories-Instruct-2Layers-33M": ["tiny-stories-instruct-2L-33M"],
-    "stabilityai/stablelm-base-alpha-3b": [
-        "stablelm-base-alpha-3b",
-        "stablelm-base-3b",
-    ],
-    "stabilityai/stablelm-base-alpha-7b": [
-        "stablelm-base-alpha-7b",
-        "stablelm-base-7b",
-    ],
-    "stabilityai/stablelm-tuned-alpha-3b": [
-        "stablelm-tuned-alpha-3b",
-        "stablelm-tuned-3b",
-    ],
-    "stabilityai/stablelm-tuned-alpha-7b": [
-        "stablelm-tuned-alpha-7b",
-        "stablelm-tuned-7b",
-    ],
-    "mistralai/Mistral-7B-v0.1": ["mistral-7b"],
-    "mistralai/Mistral-7B-Instruct-v0.1": ["mistral-7b-instruct"],
-    "mistralai/Mistral-Nemo-Base-2407": ["mistral-nemo-base-2407"],
-    "mistralai/Mixtral-8x7B-v0.1": ["mixtral", "mixtral-8x7b"],
-    "mistralai/Mixtral-8x7B-Instruct-v0.1": [
-        "mixtral-instruct",
-        "mixtral-8x7b-instruct",
-    ],
-    "openai/gpt-oss-20b": ["gpt-oss-20b", "gpt-oss"],
-    "bigscience/bloom-560m": ["bloom-560m"],
-    "bigscience/bloom-1b1": ["bloom-1b1"],
-    "bigscience/bloom-1b7": ["bloom-1b7"],
-    "bigscience/bloom-3b": ["bloom-3b"],
-    "bigscience/bloom-7b1": ["bloom-7b1"],
-    "bigcode/santacoder": ["santacoder"],
-    "Qwen/Qwen-1_8B": ["qwen-1.8b"],
-    "Qwen/Qwen-7B": ["qwen-7b"],
-    "Qwen/Qwen-14B": ["qwen-14b"],
-    "Qwen/Qwen-1_8B-Chat": ["qwen-1.8b-chat"],
-    "Qwen/Qwen-7B-Chat": ["qwen-7b-chat"],
-    "Qwen/Qwen-14B-Chat": ["qwen-14b-chat"],
-    "Qwen/Qwen1.5-0.5B": ["qwen1.5-0.5b"],
-    "Qwen/Qwen1.5-0.5B-Chat": ["qwen1.5-0.5b-chat"],
-    "Qwen/Qwen1.5-1.8B": ["qwen1.5-1.8b"],
-    "Qwen/Qwen1.5-1.8B-Chat": ["qwen1.5-1.8b-chat"],
-    "Qwen/Qwen1.5-4B": ["qwen1.5-4b"],
-    "Qwen/Qwen1.5-4B-Chat": ["qwen1.5-4b-chat"],
-    "Qwen/Qwen1.5-7B": ["qwen1.5-7b"],
-    "Qwen/Qwen1.5-7B-Chat": ["qwen1.5-7b-chat"],
-    "Qwen/Qwen1.5-14B": ["qwen1.5-14b"],
-    "Qwen/Qwen1.5-14B-Chat": ["qwen1.5-14b-chat"],
-    "Qwen/Qwen2-0.5B": ["qwen2-0.5b"],
-    "Qwen/Qwen2-0.5B-Instruct": ["qwen2-0.5b-instruct"],
-    "Qwen/Qwen2-1.5B": ["qwen2-1.5b"],
-    "Qwen/Qwen2-1.5B-Instruct": ["qwen2-1.5b-instruct"],
-    "Qwen/Qwen2-7B": ["qwen2-7b"],
-    "Qwen/Qwen2-7B-Instruct": ["qwen2-7b-instruct"],
-    "Qwen/Qwen2.5-0.5B": ["qwen2.5-0.5b"],
-    "Qwen/Qwen2.5-0.5B-Instruct": ["qwen2.5-0.5b-instruct"],
-    "Qwen/Qwen2.5-1.5B": ["qwen2.5-1.5b"],
-    "Qwen/Qwen2.5-1.5B-Instruct": ["qwen2.5-1.5b-instruct"],
-    "Qwen/Qwen2.5-3B": ["qwen2.5-3b"],
-    "Qwen/Qwen2.5-3B-Instruct": ["qwen2.5-3b-instruct"],
-    "Qwen/Qwen2.5-7B": ["qwen2.5-7b"],
-    "Qwen/Qwen2.5-7B-Instruct": ["qwen2.5-7b-instruct"],
-    "Qwen/Qwen2.5-14B": ["qwen2.5-14b"],
-    "Qwen/Qwen2.5-14B-Instruct": ["qwen2.5-14b-instruct"],
-    "Qwen/Qwen2.5-32B": ["qwen2.5-32b"],
-    "Qwen/Qwen2.5-32B-Instruct": ["qwen2.5-32b-instruct"],
-    "Qwen/Qwen2.5-72B": ["qwen2.5-72b"],
-    "Qwen/Qwen2.5-72B-Instruct": ["qwen2.5-72b-instruct"],
-    "Qwen/QwQ-32B-Preview": ["qwen-32b-preview"],
-    "Qwen/Qwen3-0.6B": ["qwen3-0.6b"],
-    "Qwen/Qwen3-0.6B-Base": ["qwen3-0.6b-base"],
-    "Qwen/Qwen3-1.7B": ["qwen3-1.7b"],
-    "Qwen/Qwen3-4B": ["qwen3-4b"],
-    "Qwen/Qwen3-8B": ["qwen3-8b"],
-    "Qwen/Qwen3-14B": ["qwen3-14b"],
-    "microsoft/phi-1": ["phi-1"],
-    "microsoft/phi-1_5": ["phi-1_5"],
-    "microsoft/phi-2": ["phi-2"],
-    "microsoft/Phi-3-mini-4k-instruct": ["phi-3"],
-    "microsoft/phi-4": ["phi-4"],
-    "swiss-ai/Apertus-8B-2509": ["apertus-8b", "apertus"],
-    "swiss-ai/Apertus-8B-Instruct-2509": ["apertus-8b-instruct", "apertus-instruct"],
-    "google/gemma-2b": ["gemma-2b"],
-    "google/gemma-7b": ["gemma-7b"],
-    "google/gemma-2b-it": ["gemma-2b-it"],
-    "google/gemma-7b-it": ["gemma-7b-it"],
-    "google/gemma-2-2b": ["gemma-2-2b"],
-    "google/gemma-2-2b-it": ["gemma-2-2b-it"],
-    "google/gemma-2-9b": ["gemma-2-9b"],
-    "google/gemma-2-9b-it": ["gemma-2-9b-it"],
-    "google/gemma-2-27b": ["gemma-2-27b"],
-    "google/gemma-2-27b-it": ["gemma-2-27b-it"],
-    "google/gemma-3-270m": ["gemma-3-270m"],
-    "google/gemma-3-270m-it": ["gemma-3-270m-it"],
-    "google/gemma-3-1b-pt": ["gemma-3-1b-pt"],
-    "google/gemma-3-1b-it": ["gemma-3-1b-it"],
-    "google/gemma-3-4b-pt": ["gemma-3-4b-pt"],
-    "google/gemma-3-4b-it": ["gemma-3-4b-it"],
-    "google/gemma-3-12b-pt": ["gemma-3-12b-pt"],
-    "google/gemma-3-12b-it": ["gemma-3-12b-it"],
-    "google/gemma-3-27b-pt": ["gemma-3-27b-pt"],
-    "google/gemma-3-27b-it": ["gemma-3-27b-it"],
-    "google/medgemma-4b-pt": ["medgemma-4b-pt"],
-    "google/medgemma-4b-it": ["medgemma-4b-it"],
-    "google/medgemma-27b-it": ["medgemma-27b-it"],
-    "google/medgemma-27b-text-it": ["medgemma-27b-text-it"],
-    "01-ai/Yi-6B": ["yi-6b", "Yi-6B"],
-    "01-ai/Yi-34B": ["yi-34b", "Yi-34B"],
-    "01-ai/Yi-6B-Chat": ["yi-6b-chat", "Yi-6B-Chat"],
-    "01-ai/Yi-34B-Chat": ["yi-34b-chat", "Yi-34B-Chat"],
-    "google-t5/t5-small": ["t5-small"],
-    "google-t5/t5-base": ["t5-base"],
-    "google-t5/t5-large": ["t5-large"],
-    "ai-forever/mGPT": ["mGPT"],
-}
-"""Model aliases for models on HuggingFace."""
+from transformer_lens.supported_models import MODEL_ALIASES, OFFICIAL_MODEL_NAMES
+from transformer_lens.utilities.hf_utils import get_rotary_pct_from_config
 
 NON_HF_HOSTED_MODEL_NAMES = [
     "llama-7b-hf",
@@ -780,24 +66,36 @@ NON_HF_HOSTED_MODEL_NAMES = [
 ]
 """Official model names for models not hosted on HuggingFace."""
 
-# Sets a default model alias, by convention the first one in the model alias table, else the official name if it has no aliases
-DEFAULT_MODEL_ALIASES = [
-    MODEL_ALIASES[name][0] if name in MODEL_ALIASES else name for name in OFFICIAL_MODEL_NAMES
-]
-
 NEED_REMOTE_CODE_MODELS = (
     "bigcode/santacoder",
     "Qwen/Qwen-",
     "Qwen/Qwen3-",
     "microsoft/phi-2",
-    "microsoft/Phi-3-mini-4k-instruct",
     "microsoft/phi-4",
+    "apple/OpenELM",
     "openai/gpt-oss-",
     "swiss-ai/Apertus-",
 )
 
 
-def make_model_alias_map():
+def _get_rope_theta(hf_config: Any, default: float = 10000.0) -> float | int:
+    """Extract rope_theta from a HuggingFace config, handling both old and new formats.
+
+    In transformers v5+, rope_theta moved from a top-level attribute to
+    hf_config.rope_parameters['rope_theta'].
+    """
+    # Try direct attribute first (transformers < 5.0)
+    rope_theta = getattr(hf_config, "rope_theta", None)
+    if rope_theta is not None:
+        return rope_theta
+    # Try rope_parameters dict (transformers >= 5.0)
+    rope_params = getattr(hf_config, "rope_parameters", None)
+    if rope_params is not None and isinstance(rope_params, dict):
+        return rope_params.get("rope_theta", default)
+    return default
+
+
+def make_model_alias_map() -> dict[str, str]:
     """
     Converts OFFICIAL_MODEL_NAMES (the list of actual model names on
     HuggingFace) and MODEL_ALIASES (a dictionary mapping official model names to
@@ -812,12 +110,12 @@ def make_model_alias_map():
     return model_alias_map
 
 
-def get_official_model_name(model_name: str):
+def get_official_model_name(model_name: str) -> str:
     """
     Returns the official model name for a given model name (or alias).
     """
     model_alias_map = make_model_alias_map()
-    official_model_name = model_alias_map.get(model_name.lower(), None)
+    official_model_name = model_alias_map.get(model_name.lower())
     if official_model_name is None:
         raise ValueError(
             f"{model_name} not found. Valid official model names (excl aliases): {OFFICIAL_MODEL_NAMES}"
@@ -825,7 +123,7 @@ def get_official_model_name(model_name: str):
     return official_model_name
 
 
-def convert_hf_model_config(model_name: str, **kwargs: Any):
+def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
     """
     Returns the model config for a HuggingFace model, converted to a dictionary
     in the HookedTransformerConfig format.
@@ -853,7 +151,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any):
         else:
             # 4B, 12B, 27B and medgemma are multimodal
             architecture = "Gemma3ForConditionalGeneration"
-    elif "gemma-2" in official_model_name.lower():
+    elif "gemma-2-" in official_model_name.lower():
         architecture = "Gemma2ForCausalLM"
     elif "gemma" in official_model_name.lower():
         architecture = "GemmaForCausalLM"
@@ -1236,8 +534,9 @@ def convert_hf_model_config(model_name: str, **kwargs: Any):
             "positional_embedding_type": "rotary",
             "rotary_adjacent_pairs": False,
             "normalization_type": "LN",
+            "default_prepend_bos": False,
         }
-        rotary_pct = hf_config.rotary_pct
+        rotary_pct = get_rotary_pct_from_config(hf_config)
         cfg_dict["rotary_dim"] = round(rotary_pct * cfg_dict["d_head"])
     elif architecture == "HubertModel":
         # Basic transformer configuration
@@ -1319,7 +618,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any):
             "window_size": hf_config.sliding_window,  # None if no sliding window was used
             "attn_types": ["local"] * hf_config.num_hidden_layers if use_local_attn else None,
             "eps": hf_config.rms_norm_eps,
-            "rotary_base": hf_config.rope_theta,
+            "rotary_base": _get_rope_theta(hf_config),
             "n_key_value_heads": hf_config.num_key_value_heads,
             "use_local_attn": use_local_attn,
             "normalization_type": "RMS",
@@ -1339,7 +638,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any):
             "act_fn": hf_config.hidden_act,
             "normalization_type": "RMS",
             "positional_embedding_type": "rotary",
-            "rotary_base": hf_config.rope_theta,
+            "rotary_base": _get_rope_theta(hf_config),
             "window_size": hf_config.sliding_window,  # This is None, as no sliding window was used
             "attn_types": ["global"] * 32,
             "eps": hf_config.rms_norm_eps,
@@ -1363,7 +662,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any):
             "act_fn": hf_config.hidden_act,
             "normalization_type": "RMS",
             "positional_embedding_type": "rotary",
-            "rotary_base": hf_config.rope_theta,
+            "rotary_base": _get_rope_theta(hf_config),
             "eps": hf_config.rms_norm_eps,
             "n_key_value_heads": hf_config.num_key_value_heads,
             "gated_mlp": True,
@@ -1474,7 +773,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any):
             "initializer_range": hf_config.initializer_range,
             "normalization_type": "RMS",
             "positional_embedding_type": "rotary",
-            "rotary_base": int(hf_config.rope_theta),
+            "rotary_base": int(_get_rope_theta(hf_config)),
             "rotary_adjacent_pairs": False,
             "rotary_dim": hf_config.hidden_size // hf_config.num_attention_heads,
             "tokenizer_prepends_bos": True,
@@ -1485,13 +784,11 @@ def convert_hf_model_config(model_name: str, **kwargs: Any):
     elif architecture == "Qwen3ForCausalLM":
         cfg_dict = {
             "d_model": hf_config.hidden_size,
-            "d_head": (
-                hf_config.head_dim
-                if hasattr(hf_config, "head_dim")
-                and hf_config.head_dim is not None
-                and hf_config.head_dim > 0
-                else hf_config.hidden_size // hf_config.num_attention_heads
-            ),
+            "d_head": hf_config.head_dim
+            if hasattr(hf_config, "head_dim")
+            and hf_config.head_dim is not None
+            and hf_config.head_dim > 0
+            else hf_config.hidden_size // hf_config.num_attention_heads,
             "n_heads": hf_config.num_attention_heads,
             "n_key_value_heads": (
                 hf_config.num_key_value_heads
@@ -1508,13 +805,11 @@ def convert_hf_model_config(model_name: str, **kwargs: Any):
             "initializer_range": hf_config.initializer_range,
             "normalization_type": "RMS",
             "positional_embedding_type": "rotary",
-            "rotary_base": int(hf_config.rope_theta),
+            "rotary_base": int(_get_rope_theta(hf_config)),
             "rotary_adjacent_pairs": False,
-            "rotary_dim": (
-                hf_config.head_dim
-                if hasattr(hf_config, "head_dim") and hf_config.head_dim > 0
-                else hf_config.hidden_size // hf_config.num_attention_heads
-            ),
+            "rotary_dim": hf_config.head_dim
+            if hasattr(hf_config, "head_dim") and hf_config.head_dim > 0
+            else hf_config.hidden_size // hf_config.num_attention_heads,
             "tokenizer_prepends_bos": True,
             "final_rms": True,
             "gated_mlp": True,
@@ -1538,9 +833,10 @@ def convert_hf_model_config(model_name: str, **kwargs: Any):
             "normalization_type": "LN",
             "positional_embedding_type": "rotary",
             "trust_remote_code": True,
-            "rotary_base": hf_config.rope_theta,
+            "rotary_base": _get_rope_theta(hf_config),
             "use_attn_scale": True,
             "parallel_attn_mlp": True,
+            "default_prepend_bos": False,
         }
         partial_rotary_factor = hf_config.partial_rotary_factor
         cfg_dict["rotary_dim"] = round(partial_rotary_factor * cfg_dict["d_head"])
@@ -1564,8 +860,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any):
             "initializer_range": hf_config.initializer_range,
             "normalization_type": "RMS",
             "positional_embedding_type": "rotary",
-            "trust_remote_code": True,
-            "rotary_base": hf_config.rope_theta,
+            "rotary_base": _get_rope_theta(hf_config),
             "use_attn_scale": True,
             "gated_mlp": True,
             "parallel_attn_mlp": False,
@@ -1590,7 +885,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any):
             "normalization_type": "RMS",
             "positional_embedding_type": "rotary",
             "rotary_dim": d_head,
-            "rotary_base": getattr(hf_config, "rope_theta", None),
+            "rotary_base": _get_rope_theta(hf_config),
             "gated_mlp": False,
             "final_rms": True,
             "use_qk_norm": getattr(hf_config, "qk_norm", False),
@@ -1610,6 +905,132 @@ def convert_hf_model_config(model_name: str, **kwargs: Any):
             cfg_dict["NTK_by_parts_high_freq_factor"] = rope_scaling.get("high_freq_factor", 4.0)
             cfg_dict["NTK_by_parts_factor"] = rope_scaling.get("factor", 1.0)
 
+    elif official_model_name.startswith("google/gemma-2b"):
+        # Architecture for Gemma 2b and Gemma 2b Instruct models
+        cfg_dict = {
+            "d_model": 2048,
+            "d_head": 256,
+            "n_heads": 8,
+            "d_mlp": 16384,
+            "n_layers": 18,
+            "n_ctx": 8192,
+            "eps": 1e-06,
+            "d_vocab": 256000,
+            "act_fn": "gelu",
+            "initializer_range": 0.02,
+            "normalization_type": "RMS",
+            "rotary_base": 10000,
+            "rotary_dim": 256,
+            "positional_embedding_type": "rotary",
+            "use_attn_scale": True,
+            "n_key_value_heads": 1,
+            "gated_mlp": True,
+            "final_rms": True,
+        }
+    elif official_model_name.startswith("google/gemma-7b"):
+        # Architecture for Gemma 7b and Gemma 7b Instruct models
+        cfg_dict = {
+            "d_model": 3072,
+            "d_head": 256,
+            "n_heads": 16,
+            "d_mlp": 24576,
+            "n_layers": 28,
+            "n_ctx": 8192,
+            "eps": 1e-06,
+            "d_vocab": 256000,
+            "act_fn": "gelu",
+            "initializer_range": 0.02,
+            "normalization_type": "RMS",
+            "rotary_base": 10000.0,
+            "rotary_dim": 256,
+            "positional_embedding_type": "rotary",
+            "use_attn_scale": True,
+            "n_key_value_heads": 16,
+            "gated_mlp": True,
+            "final_rms": True,
+        }
+    elif official_model_name.startswith("google/gemma-2-2b"):
+        # Architecture for Gemma-2 2b and Gemma-2 2b Instruct models
+        cfg_dict = {
+            "d_model": 2304,
+            "d_head": 256,
+            "n_heads": 8,
+            "d_mlp": 9216,
+            "n_layers": 26,
+            "n_ctx": 8192,
+            "eps": 1e-06,
+            "d_vocab": 256000,
+            "act_fn": "gelu_pytorch_tanh",
+            "initializer_range": 0.02,
+            "normalization_type": "RMS",
+            "rotary_base": 10000.0,
+            "positional_embedding_type": "rotary",
+            "use_attn_scale": True,
+            "n_key_value_heads": 4,
+            "window_size": 4096,
+            "use_local_attn": True,
+            "attn_types": ["global", "local"] * 21,  # Alternate global and local attn
+            "attn_scores_soft_cap": 50.0,
+            "output_logits_soft_cap": 30.0,
+            "gated_mlp": True,
+            "final_rms": True,
+            "use_normalization_before_and_after": True,
+        }
+    elif official_model_name.startswith("google/gemma-2-9b"):
+        # Architecture for Gemma-2 9b and Gemma-2 9b Instruct models
+        cfg_dict = {
+            "d_model": 3584,
+            "d_head": 256,
+            "n_heads": 16,
+            "d_mlp": 14336,
+            "n_layers": 42,
+            "n_ctx": 8192,
+            "eps": 1e-06,
+            "d_vocab": 256000,
+            "act_fn": "gelu_pytorch_tanh",
+            "initializer_range": 0.02,
+            "normalization_type": "RMS",
+            "rotary_base": 10000.0,
+            "positional_embedding_type": "rotary",
+            "use_attn_scale": True,
+            "n_key_value_heads": 8,
+            "window_size": 4096,
+            "use_local_attn": True,
+            "attn_types": ["global", "local"] * 21,  # Alternate global and local attn
+            "attn_scores_soft_cap": 50.0,
+            "output_logits_soft_cap": 30.0,
+            "gated_mlp": True,
+            "final_rms": True,
+            "use_normalization_before_and_after": True,
+        }
+    elif official_model_name.startswith("google/gemma-2-27b"):
+        # Architecture for Gemma-2 27b and Gemma-2 27b Instruct models
+        cfg_dict = {
+            "d_model": 4608,
+            "d_head": 128,
+            "n_heads": 32,
+            "d_mlp": 36864,
+            "n_layers": 46,
+            "n_ctx": 8192,
+            "eps": 1e-06,
+            "d_vocab": 256000,
+            "act_fn": "gelu_pytorch_tanh",
+            "initializer_range": 0.02,
+            "normalization_type": "RMS",
+            "rotary_base": 10000.0,
+            "positional_embedding_type": "rotary",
+            "use_attn_scale": True,
+            "attn_scale": 12.0,
+            "n_key_value_heads": 16,
+            "window_size": 4096,
+            "use_local_attn": True,
+            "attn_types": ["global", "local"] * 23,  # Alternate global and local attn
+            "attn_scores_soft_cap": 50.0,
+            "output_logits_soft_cap": 30.0,
+            "gated_mlp": True,
+            "final_rms": True,
+            "use_normalization_before_and_after": True,
+        }
     elif official_model_name.startswith("google/gemma-3-270m"):
         # Architecture for Gemma-3 270m and Gemma-3 270m Instruct models
         cfg_dict = {
@@ -1728,6 +1149,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any):
             "normalization_type": "RMS",
             "rotary_base": 1000000,  # Global attention layers
             "rotary_base_local": 10000,  # Local attention layers (per Gemma 3 paper)
+            "rotary_scaling_factor": 8.0,  # Linear RoPE scaling for global layers
             "positional_embedding_type": "rotary",
             "use_attn_scale": True,
             "n_key_value_heads": 4,
@@ -1790,6 +1212,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any):
             "normalization_type": "RMS",
             "rotary_base": 1000000,  # Global attention layers
             "rotary_base_local": 10000,  # Local attention layers (per Gemma 3 paper)
+            "rotary_scaling_factor": 8.0,  # Linear RoPE scaling for global layers
             "positional_embedding_type": "rotary",
             "use_attn_scale": True,
             "n_key_value_heads": 8,
@@ -1871,6 +1294,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any):
             "normalization_type": "RMS",
             "rotary_base": 1000000,  # Global attention layers
             "rotary_base_local": 10000,  # Local attention layers (per Gemma 3 paper)
+            "rotary_scaling_factor": 8.0,  # Linear RoPE scaling for global layers
             "positional_embedding_type": "rotary",
             "use_attn_scale": True,
             "n_key_value_heads": 16,
@@ -1956,7 +1380,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any):
             "n_ctx": 8192,
             "eps": 1e-06,
             "d_vocab": 256000,
-            "act_fn": "gelu_new",
+            "act_fn": "gelu",
             "initializer_range": 0.02,
             "normalization_type": "RMS",
             "rotary_base": 10000,
@@ -1978,7 +1402,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any):
             "n_ctx": 8192,
             "eps": 1e-06,
             "d_vocab": 256000,
-            "act_fn": "gelu_new",
+            "act_fn": "gelu",
             "initializer_range": 0.02,
             "normalization_type": "RMS",
             "rotary_base": 10000.0,
@@ -2009,7 +1433,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any):
             "n_key_value_heads": 4,
             "window_size": 4096,
             "use_local_attn": True,
-            "attn_types": ["global", "local"] * 21,  # Alternate global and local attn
+            "attn_types": ["global", "local"] * 13,  # Alternate global and local attn
             "attn_scores_soft_cap": 50.0,
             "output_logits_soft_cap": 30.0,
             "gated_mlp": True,
@@ -2071,6 +1495,138 @@ def convert_hf_model_config(model_name: str, **kwargs: Any):
             "final_rms": True,
             "use_normalization_before_and_after": True,
         }
+    elif official_model_name.startswith("allenai/OLMo-1B") and official_model_name.endswith("hf"):
+        cfg_dict = {
+            "d_model": 2048,
+            "d_head": 128,
+            "n_heads": 16,
+            "d_mlp": 8192,
+            "n_layers": 16,
+            "n_ctx": 2048,
+            "eps": 1e-05,
+            "d_vocab": 50304,
+            "act_fn": "silu",
+            "initializer_range": 0.02,
+            "normalization_type": "LN",
+            "rotary_base": 10000.0,
+            "attn_types": ["global"] * 16,
+            "positional_embedding_type": "rotary",
+            "gated_mlp": True,
+        }
+    elif official_model_name.startswith("allenai/OLMo-7B") and official_model_name.endswith("hf"):
+        cfg_dict = {
+            "d_model": 4096,
+            "d_head": 128,
+            "n_heads": 32,
+            "d_mlp": 11008,
+            "n_layers": 32,
+            "n_ctx": 2048,
+            "eps": 1e-05,
+            "d_vocab": 50304,
+            "act_fn": "silu",
+            "initializer_range": 0.02,
+            "normalization_type": "LN",
+            "rotary_base": 10000.0,
+            "attn_types": ["global"] * 32,
+            "positional_embedding_type": "rotary",
+            "gated_mlp": True,
+        }
+    elif official_model_name.startswith("allenai/OLMo-2-0425-1B"):
+        cfg_dict = {
+            "d_model": 2048,
+            "d_head": 128,
+            "n_heads": 16,
+            "d_mlp": 8192,
+            "n_layers": 16,
+            "n_ctx": 4096,
+            "eps": 1e-06,
+            "d_vocab": 100352,
+            "act_fn": "silu",
+            "initializer_range": 0.02,
+            "normalization_type": "RMS",
+            "rotary_base": 500000.0,
+            "attn_types": ["global"] * 16,
+            "positional_embedding_type": "rotary",
+            "gated_mlp": True,
+        }
+    elif official_model_name.startswith("allenai/OLMo-2-1124-7B"):
+        cfg_dict = {
+            "d_model": 4096,
+            "d_head": 128,
+            "n_heads": 32,
+            "d_mlp": 11008,
+            "n_layers": 32,
+            "n_ctx": 4096,
+            "eps": 1e-06,
+            "d_vocab": 100352,
+            "act_fn": "silu",
+            "initializer_range": 0.02,
+            "normalization_type": "RMS",
+            "rotary_base": 500000.0,
+            "attn_types": ["global"] * 32,
+            "positional_embedding_type": "rotary",
+            "gated_mlp": True,
+        }
+    elif architecture == "Olmo3ForCausalLM":
+        cfg_dict = {
+            "d_model": hf_config.hidden_size,
+            "d_head": hf_config.hidden_size // hf_config.num_attention_heads,
+            "n_heads": hf_config.num_attention_heads,
+            "n_key_value_heads": hf_config.num_key_value_heads,
+            "d_mlp": hf_config.intermediate_size,
+            "n_layers": hf_config.num_hidden_layers,
+            "n_ctx": hf_config.max_position_embeddings,
+            "eps": hf_config.rms_norm_eps,
+            "d_vocab": hf_config.vocab_size,
+            "act_fn": hf_config.hidden_act,
+            "initializer_range": hf_config.initializer_range,
+            "normalization_type": "RMS",
+            "positional_embedding_type": "rotary",
+            "rotary_base": _get_rope_theta(hf_config, default=500000.0),
+            "gated_mlp": True,
+            "tie_word_embeddings": hf_config.tie_word_embeddings,
+        }
+        # OLMo 3 uses YARN RoPE scaling
+        rope_scaling = getattr(hf_config, "rope_scaling", None)
+        if rope_scaling and rope_scaling.get("rope_type") == "yarn":
+            cfg_dict["use_yarn_rope"] = True
+            cfg_dict["yarn_factor"] = rope_scaling.get("factor", 8.0)
+            cfg_dict["yarn_attention_factor"] = rope_scaling.get("attention_factor", 1.0)
+            cfg_dict["yarn_beta_fast"] = rope_scaling.get("beta_fast", 32.0)
+            cfg_dict["yarn_beta_slow"] = rope_scaling.get("beta_slow", 1.0)
+            cfg_dict["yarn_original_max_position_embeddings"] = rope_scaling.get(
+                "original_max_position_embeddings", 4096
+            )
+        layer_types = getattr(hf_config, "layer_types", None)
+        if layer_types:
+            cfg_dict["attn_types"] = [
+                "local" if t == "sliding_attention" else "global" for t in layer_types
+            ]
+        else:
+            cfg_dict["attn_types"] = ["global"] * hf_config.num_hidden_layers
+    elif architecture == "OlmoeForCausalLM":
+        cfg_dict = {
+            "d_model": hf_config.hidden_size,
+            "d_head": hf_config.hidden_size // hf_config.num_attention_heads,
+            "n_heads": hf_config.num_attention_heads,
+            "d_mlp": hf_config.intermediate_size,
+            "n_layers": hf_config.num_hidden_layers,
+            "n_ctx": hf_config.max_position_embeddings,
+            "eps": hf_config.rms_norm_eps,
+            "d_vocab": hf_config.vocab_size,
+            "act_fn": hf_config.hidden_act,
+            "num_experts": hf_config.num_experts,
+            "experts_per_token": hf_config.num_experts_per_tok,
+            "norm_topk_prob": hf_config.norm_topk_prob,
+            "n_key_value_heads": hf_config.num_key_value_heads,
+            "rotary_base": _get_rope_theta(hf_config),
+            "tie_word_embeddings": hf_config.tie_word_embeddings,
+            "initializer_range": hf_config.initializer_range,
+            "positional_embedding_type": "rotary",
+            "rotary_dim": hf_config.hidden_size // hf_config.num_attention_heads,
+            "gated_mlp": True,
+            "normalization_type": "RMS",
+        }
     elif architecture == "T5ForConditionalGeneration":
         cfg_dict = {
             "d_model": hf_config.d_model,
@@ -2079,7 +1635,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any):
             "d_mlp": hf_config.d_ff,
             "d_vocab": hf_config.vocab_size,
             "n_layers": hf_config.num_layers,
-            "n_ctx": hf_config.max_length,
+            "n_ctx": getattr(hf_config, "max_length", None) or hf_config.n_positions,
             "eps": hf_config.layer_norm_epsilon,
             "act_fn": hf_config.feed_forward_proj,
             "positional_embedding_type": "relative_positional_bias",
@@ -2107,7 +1663,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any):
     return cfg_dict
 
 
-def convert_neel_model_config(official_model_name: str, **kwargs: Any):
+def convert_neel_model_config(official_model_name: str, **kwargs: Any) -> dict[str, Any]:
     """
     Loads the config for a model trained by me (NeelNanda), converted to a dictionary
     in the HookedTransformerConfig format.
@@ -2148,18 +1704,18 @@ def convert_neel_model_config(official_model_name: str, **kwargs: Any):
 
 def get_pretrained_model_config(
     model_name: str,
-    hf_cfg: Optional[dict] = None,
-    checkpoint_index: Optional[int] = None,
-    checkpoint_value: Optional[int] = None,
+    hf_cfg: dict[str, Any] | None = None,
+    checkpoint_index: int | None = None,
+    checkpoint_value: int | None = None,
     fold_ln: bool = False,
-    device: Optional[Union[str, torch.device]] = None,
+    device: str | torch.device | None = None,
     n_devices: int = 1,
-    default_prepend_bos: Optional[bool] = None,
+    default_prepend_bos: bool | None = None,
     dtype: torch.dtype = torch.float32,
-    first_n_layers: Optional[int] = None,
-    n_ctx: Optional[int] = None,
+    first_n_layers: int | None = None,
+    n_ctx: int | None = None,
     **kwargs: Any,
-):
+) -> HookedTransformerConfig:
     """Returns the pretrained model config as an HookedTransformerConfig object.
 
     There are two types of pretrained models: HuggingFace models (where
@@ -2196,11 +1752,6 @@ def get_pretrained_model_config(
             so this empirically seems to give better results. Note that you can also locally override the default behavior
             by passing in prepend_bos=True/False when you call a method that processes the input string.
         dtype (torch.dtype, optional): The dtype to load the TransformerLens model in.
-        first_n_layers (int, optional): If specified, only load the first n layers of the model.
-        n_ctx (int, optional): Override the model's default context length. Useful for extending
-            context beyond the default safe value (e.g., using 16K or 32K for Gemma 3 models that
-            default to 8K for memory efficiency). Be aware that larger context lengths require
-            significantly more RAM.
         kwargs: Other optional arguments passed to HuggingFace's from_pretrained.
             Also given to other HuggingFace functions when compatible.
 
@@ -2239,6 +1790,15 @@ def get_pretrained_model_config(
     ):
         logging.warning(
             "You tried to specify fold_ln=True for a shortformer model, but this can't be done! Setting fold_ln=False instead."
+        )
+        fold_ln = False
+
+    # OLMo 2 uses post-norm (norm after attention/MLP, not before), so folding
+    # the norm weights into adjacent linear layers is not mathematically valid.
+    if cfg_dict.get("original_architecture") == "Olmo2ForCausalLM" and fold_ln:
+        logging.warning(
+            "fold_ln=True is incompatible with OLMo 2's post-norm architecture. "
+            "Setting fold_ln=False."
         )
         fold_ln = False
 
@@ -2288,7 +1848,10 @@ def get_pretrained_model_config(
         cfg_dict["load_in_4bit"] = hf_cfg.get("quantization_config", {}).get("load_in_4bit", False)
         cfg_dict["d_vocab"] = hf_cfg.get("vocab_size", cfg_dict["d_vocab"])
         if cfg_dict["original_architecture"] == "Qwen2ForCausalLM":
-            cfg_dict["rotary_base"] = hf_cfg.get("rope_theta", cfg_dict["rotary_base"])
+            rope_params = hf_cfg.get("rope_parameters", {}) or {}
+            cfg_dict["rotary_base"] = hf_cfg.get(
+                "rope_theta", rope_params.get("rope_theta", cfg_dict["rotary_base"])
+            )
     if first_n_layers is not None:
         cfg_dict["n_layers"] = first_n_layers
 
@@ -2307,11 +1870,13 @@ def get_pretrained_model_config(
     return cfg
 
 
-def get_num_params_of_pretrained(model_name: str):
+def get_num_params_of_pretrained(model_name: str) -> int:
     """
     Returns the number of parameters of a pretrained model, used to filter to only run code for sufficiently small models.
     """
     cfg = get_pretrained_model_config(model_name)
+    if cfg.n_params is None:
+        raise ValueError(f"n_params not calculated for model {model_name}")
     return cfg.n_params
 
 
@@ -2333,7 +1898,7 @@ PYTHIA_CHECKPOINTS = [0, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512] + list(
 PYTHIA_V0_CHECKPOINTS = list(range(1000, 143000 + 1, 1000))
 
 
-def get_checkpoint_labels(model_name: str, **kwargs: Any):
+def get_checkpoint_labels(model_name: str, **kwargs: Any) -> tuple[list[int], str]:
     """Returns the checkpoint labels for a given model, and the label_type
     (step or token). Raises an error for models that are not checkpointed."""
     official_model_name = get_official_model_name(model_name)
@@ -2371,7 +1936,7 @@ def get_checkpoint_labels(model_name: str, **kwargs: Any):
 def get_pretrained_state_dict(
     official_model_name: str,
     cfg: HookedTransformerConfig,
-    hf_model: Optional[Any] = None,
+    hf_model: Any | None = None,
     dtype: torch.dtype = torch.float32,
     **kwargs: Any,
 ) -> dict[str, torch.Tensor]:
@@ -2389,11 +1954,6 @@ def get_pretrained_state_dict(
     if "torch_dtype" in kwargs:
         dtype = kwargs["torch_dtype"]
         del kwargs["torch_dtype"]
-    if "hf_token" in kwargs:
-        del kwargs["hf_token"]
-    if "n_ctx" in kwargs:
-        # n_ctx is handled in get_pretrained_model_config, don't pass to HuggingFace
-        del kwargs["n_ctx"]
     if Path(official_model_name).exists():
         official_model_name = str(Path(official_model_name).resolve())
         logging.info(f"Loading model from local path {official_model_name}")
@@ -2439,7 +1999,7 @@ def get_pretrained_state_dict(
                 hf_model = AutoModelForCausalLM.from_pretrained(
                     official_model_name,
                     revision=f"checkpoint-{cfg.checkpoint_value}",
-                    torch_dtype=dtype,
+                    dtype=dtype,
                     token=huggingface_token if len(huggingface_token) > 0 else None,
                     **kwargs,
                 )
@@ -2447,7 +2007,7 @@ def get_pretrained_state_dict(
                 hf_model = AutoModelForCausalLM.from_pretrained(
                     official_model_name,
                     revision=f"step{cfg.checkpoint_value}",
-                    torch_dtype=dtype,
+                    dtype=dtype,
                     token=huggingface_token,
                     **kwargs,
                 )
@@ -2460,53 +2020,69 @@ def get_pretrained_state_dict(
             elif "hubert" in official_model_name:
                 hf_model = HubertModel.from_pretrained(
                     official_model_name,
-                    torch_dtype=dtype,
+                    dtype=dtype,
                     token=huggingface_token if len(huggingface_token) > 0 else None,
                     **kwargs,
                 )
             elif "wav2vec2" in official_model_name:
                 hf_model = Wav2Vec2Model.from_pretrained(
                     official_model_name,
-                    torch_dtype=dtype,
+                    dtype=dtype,
                     token=huggingface_token if len(huggingface_token) > 0 else None,
                     **kwargs,
                 )
             elif "bert" in official_model_name:
                 hf_model = BertForPreTraining.from_pretrained(
                     official_model_name,
-                    torch_dtype=dtype,
+                    dtype=dtype,
                     token=huggingface_token if len(huggingface_token) > 0 else None,
                     **kwargs,
                 )
             elif "t5" in official_model_name:
                 hf_model = T5ForConditionalGeneration.from_pretrained(
                     official_model_name,
-                    torch_dtype=dtype,
+                    dtype=dtype,
                     token=huggingface_token if len(huggingface_token) > 0 else None,
                     **kwargs,
                 )
             elif cfg.original_architecture == "Gemma3ForConditionalGeneration":
                 # Multimodal Gemma 3 models - use AutoModel
-                from transformers import AutoModel
-
                 hf_model = AutoModel.from_pretrained(
                     official_model_name,
-                    torch_dtype=dtype,
+                    dtype=dtype,
                     token=huggingface_token if len(huggingface_token) > 0 else None,
                     **kwargs,
                 )
             else:
-                hf_model = AutoModelForCausalLM.from_pretrained(
-                    official_model_name,
-                    torch_dtype=dtype,
-                    token=huggingface_token if len(huggingface_token) > 0 else None,
-                    **kwargs,
-                )
+                # Older models may lack pad_token_id (required in newer transformers)
+                try:
+                    hf_model = AutoModelForCausalLM.from_pretrained(
+                        official_model_name,
+                        dtype=dtype,
+                        token=huggingface_token if len(huggingface_token) > 0 else None,
+                        **kwargs,
+                    )
+                except AttributeError as e:
+                    if "pad_token_id" in str(e):
+                        hf_config = AutoConfig.from_pretrained(
+                            official_model_name,
+                            token=huggingface_token if len(huggingface_token) > 0 else None,
+                        )
+                        hf_config.pad_token_id = getattr(hf_config, "pad_token_id", None)
+                        hf_model = AutoModelForCausalLM.from_pretrained(
+                            official_model_name,
+                            config=hf_config,
+                            dtype=dtype,
+                            token=huggingface_token if len(huggingface_token) > 0 else None,
+                            **kwargs,
+                        )
+                    else:
+                        raise
 
             # Load model weights, and fold in layer norm weights
-
-        for param in hf_model.parameters():
-            param.requires_grad = False
+            if hf_model is not None:
+                for param in hf_model.parameters():
+                    param.requires_grad = False
 
         if cfg.original_architecture == "GPT2LMHeadModel":
             state_dict = convert_gpt2_weights(hf_model, cfg)
@@ -2562,8 +2138,15 @@ def get_pretrained_state_dict(
         elif cfg.original_architecture == "Gemma3ForCausalLM":
             state_dict = convert_gemma_weights(hf_model, cfg)
         elif cfg.original_architecture == "Gemma3ForConditionalGeneration":
-            # Multimodal model - extract text-only weights
             state_dict = convert_gemma_weights(hf_model, cfg)
+        elif cfg.original_architecture == "OlmoForCausalLM":
+            state_dict = convert_olmo_weights(hf_model, cfg)
+        elif cfg.original_architecture == "Olmo2ForCausalLM":
+            state_dict = convert_olmo2_weights(hf_model, cfg)
+        elif cfg.original_architecture == "OlmoeForCausalLM":
+            state_dict = convert_olmoe_weights(hf_model, cfg)
+        elif cfg.original_architecture == "Olmo3ForCausalLM":
+            state_dict = convert_olmo3_weights(hf_model, cfg)
         else:
             raise ValueError(
                 f"Loading weights from the architecture is not currently supported: {cfg.original_architecture}, generated from model name {cfg.model_name}. Feel free to open an issue on GitHub to request this feature."
@@ -2572,13 +2155,16 @@ def get_pretrained_state_dict(
         return state_dict
 
 
-def fill_missing_keys(model: torch.nn.Module, state_dict: dict[str, torch.Tensor]):
+def fill_missing_keys(
+    model: torch.nn.Module, state_dict: dict[str, torch.Tensor]
+) -> dict[str, torch.Tensor]:
     """Takes in a state dict from a pretrained model, and fills in any missing keys with the default initialization.
 
     This function is assumed to be run before weights are initialized.
 
     Args:
-        state_dict (dict): State dict from a pretrained model
+        model: The model to fill missing keys for
+        state_dict: State dict from a pretrained model
 
     Returns:
         dict: State dict with missing keys filled in
@@ -2618,6 +2204,7 @@ class Config:
 
 # Returns the configuration parameters of the model as a basic Config dataclass
 def get_basic_config(model_name: str, **kwargs: Any) -> Config:
+    """Returns the configuration parameters of the model as a basic Config dataclass."""
     return Config(
         **{
             k: v

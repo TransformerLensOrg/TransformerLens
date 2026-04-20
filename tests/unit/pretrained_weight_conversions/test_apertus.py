@@ -4,7 +4,7 @@ from unittest import mock
 
 import torch
 
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.pretrained.weight_conversions.apertus import (
     convert_apertus_weights,
 )

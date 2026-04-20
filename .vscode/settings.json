@@ -33,7 +33,7 @@
     "notebook.formatOnSave.enabled": true,
     "pylint.importStrategy": "fromEnvironment",
     "python.testing.pytestArgs": [
-        "transformer_lens",
+        "tests"
     ],
     "python.testing.pytestEnabled": true,
     "rewrap.autoWrap.enabled": true,

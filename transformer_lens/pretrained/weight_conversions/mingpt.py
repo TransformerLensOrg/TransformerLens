@@ -1,6 +1,6 @@
 import einops
 
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 
 
 def convert_mingpt_weights(old_state_dict, cfg: HookedTransformerConfig):
