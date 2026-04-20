@@ -28,7 +28,7 @@ import numpy as np
 import torch
 from torch import nn
 
-from transformer_lens import utils
+from transformer_lens import utilities as utils
 from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookPoint

@@ -41,7 +41,7 @@ from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 from typing_extensions import Literal
 
 import transformer_lens.loading_from_pretrained as loading
-import transformer_lens.utils as utils
+import transformer_lens.utilities as utils
 from transformer_lens.ActivationCache import ActivationCache
 
 # Activation cache for run_with_cache; KV cache for generation
@@ -63,17 +63,15 @@ from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookedRootModule, HookPoint
 from transformer_lens.loading_from_pretrained import NON_HF_HOSTED_MODEL_NAMES
 from transformer_lens.utilities import (
+    USE_DEFAULT_VALUE,
     get_best_available_device,
     get_device_for_block_index,
-)
-from transformer_lens.utilities.devices import move_to_and_update_config
-from transformer_lens.utils import (
-    USE_DEFAULT_VALUE,
     init_kaiming_normal_,
     init_kaiming_uniform_,
     init_xavier_normal_,
     init_xavier_uniform_,
 )
+from transformer_lens.utilities.devices import move_to_and_update_config
 from transformer_lens.weight_processing import ProcessWeights
 
 SingleLoss = Float[torch.Tensor, ""]  # Type alias for a single element tensor
