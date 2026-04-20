@@ -4,8 +4,8 @@ from transformers.utils import is_bitsandbytes_available
 from transformer_lens.components.mlps.gated_mlp import GatedMLP
 from transformer_lens.components.mlps.gated_mlp_4bit import GatedMLP4Bit
 from transformer_lens.components.mlps.mlp import MLP
+from transformer_lens.config import HookedTransformerConfig
 from transformer_lens.factories.mlp_factory import MLPFactory
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 
 def test_create_mlp_basic():
@@ -58,20 +58,22 @@ def test_create_mlp_gated_4bit():
 
 
 def test_create_moe():
-    if is_bitsandbytes_available():
-        config = HookedTransformerConfig.unwrap(
-            {
-                "n_layers": 12,
-                "n_ctx": 1024,
-                "d_head": 64,
-                "d_model": 128,
-                "act_fn": "solu",
-                "gated_mlp": True,
-                "num_experts": 32,
-            }
-        )
-        mlp = MLPFactory.create_mlp(config)
-        assert isinstance(mlp, GatedMLP4Bit)
+    from transformer_lens.components.mlps.moe import MoE
+
+    config = HookedTransformerConfig.unwrap(
+        {
+            "n_layers": 12,
+            "n_ctx": 1024,
+            "d_head": 64,
+            "d_model": 128,
+            "act_fn": "solu",
+            "gated_mlp": True,
+            "num_experts": 32,
+            "experts_per_token": 2,
+        }
+    )
+    mlp = MLPFactory.create_mlp(config)
+    assert isinstance(mlp, MoE), f"Expected MoE, got {type(mlp)}"
 
 
 def test_create_gpt_oss_moe():

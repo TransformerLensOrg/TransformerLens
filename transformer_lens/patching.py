@@ -60,7 +60,7 @@ from jaxtyping import Float, Int
 from tqdm.auto import tqdm
 from typing_extensions import Literal
 
-import transformer_lens.utils as utils
+import transformer_lens.utilities as utils
 from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.HookedTransformer import HookedTransformer
 
@@ -70,7 +70,6 @@ AxisNames = Literal["layer", "pos", "head_index", "head", "src_pos", "dest_pos"]
 
 
 # %%
-from typing import Sequence
 
 
 def make_df_from_ranges(
@@ -203,6 +202,8 @@ def generic_activation_patch(
 
     # A generic patching hook - for each index, it applies the patch_setter appropriately to patch the activation
     def patching_hook(corrupted_activation, hook, index, clean_activation):
+        if corrupted_activation.requires_grad:
+            corrupted_activation = corrupted_activation.clone()
         return patch_setter(corrupted_activation, index, clean_activation)
 
     # Iterate over every list of indices, and make the appropriate patch!

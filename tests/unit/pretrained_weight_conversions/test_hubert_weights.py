@@ -5,7 +5,7 @@ from unittest import mock
 import pytest
 import torch
 
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.pretrained.weight_conversions.hubert import convert_hubert_weights
 
 

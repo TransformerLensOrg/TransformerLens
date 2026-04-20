@@ -3,7 +3,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from transformer_lens.utils import ACTIVATION_FN_DICT, XIELU, xielu
+from transformer_lens.utilities.activation_functions import (
+    SUPPORTED_ACTIVATIONS,
+    XIELU,
+    xielu,
+)
 
 
 class TestXIELUClass:
@@ -97,5 +101,5 @@ class TestXIELUFunction:
         torch.testing.assert_close(xielu(x), expected)
 
     def test_registered_in_activation_dict(self):
-        assert "xielu" in ACTIVATION_FN_DICT
-        assert ACTIVATION_FN_DICT["xielu"] is xielu
+        assert "xielu" in SUPPORTED_ACTIVATIONS
+        assert SUPPORTED_ACTIVATIONS["xielu"] is xielu
