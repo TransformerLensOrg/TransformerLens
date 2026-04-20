@@ -1661,10 +1661,12 @@ class HookedTransformer(HookedRootModule):
                 logging.warning(
                     "You are using MoE, so the layer norm weights can't be folded! Skipping"
                 )
+                fold_ln = False
             elif self.cfg.normalization_type not in ["LN", "LNPre", "RMS", "RMSPre"]:
                 logging.warning(
                     "You are not using LayerNorm or RMSNorm, so the layer norm weights can't be folded! Skipping"
                 )
+                fold_ln = False
             else:
                 ln_keys_present = any(
                     k.endswith((".ln1.w", ".ln2.w", "ln_final.w")) for k in state_dict
@@ -1675,6 +1677,7 @@ class HookedTransformer(HookedRootModule):
                         "The model may have been saved with already-folded LayerNorms. "
                         "Skipping fold."
                     )
+                    fold_ln = False
                 else:
                     if self.cfg.normalization_type == "LN":
                         self.cfg.normalization_type = "LNPre"
@@ -1693,14 +1696,8 @@ class HookedTransformer(HookedRootModule):
                             if self.cfg.is_layer_norm_activation():
                                 layer.mlp.ln = RMSNormPre(self.cfg)
 
-                    if self.cfg.normalization_type in ["LNPre"]:
-                        state_dict = self.fold_layer_norm(state_dict)
-                    elif self.cfg.normalization_type in ["RMSPre"]:
-                        state_dict = self.fold_layer_norm(
-                            state_dict, fold_biases=False, center_weights=False
-                        )
-
         # Use the centralized ProcessWeights class for all weight processing
+        # (fold_ln is passed through — if we skipped above, it's now False)
         state_dict = ProcessWeights.process_weights(
             state_dict,
             self.cfg,
