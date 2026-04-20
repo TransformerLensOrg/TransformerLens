@@ -557,17 +557,17 @@ and updating their configurations.</p>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="transformer_lens.utilities.devices.get_device">
-<span class="sig-prename descclassname"><span class="pre">transformer_lens.utilities.devices.</span></span><span class="sig-name descname"><span class="pre">get_device</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">device</span></span></span><a class="headerlink" href="#transformer_lens.utilities.devices.get_device" title="Link to this definition">¶</a></dt>
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utilities.devices.</span></span><span class="sig-name descname"><span class="pre">get_device</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="headerlink" href="#transformer_lens.utilities.devices.get_device" title="Link to this definition">¶</a></dt>
 <dd><p>Get the best available device, with MPS safety checks.</p>
 <p>MPS is only auto-selected when the environment variable
 <code class="docutils literal notranslate"><span class="pre">TRANSFORMERLENS_ALLOW_MPS=1</span></code> is set <strong>and</strong> the installed PyTorch
 version meets or exceeds <code class="docutils literal notranslate"><span class="pre">_MPS_MIN_SAFE_TORCH_VERSION</span></code>.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Returns<span class="colon">:</span></dt>
-<dd class="field-odd"><p>The best available device (cuda, mps, or cpu)</p>
+<dd class="field-odd"><p>The best available device name (cuda, mps, or cpu)</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p>torch.device</p>
+<dd class="field-even"><p>str</p>
 </dd>
 </dl>
 </dd></dl>
@@ -592,7 +592,7 @@ version meets or exceeds <code class="docutils literal notranslate"><span class=
 
 <dl class="py function">
 <dt class="sig sig-object py" id="transformer_lens.utilities.devices.warn_if_mps">
-<span class="sig-prename descclassname"><span class="pre">transformer_lens.utilities.devices.</span></span><span class="sig-name descname"><span class="pre">warn_if_mps</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">device</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.utilities.devices.warn_if_mps" title="Link to this definition">¶</a></dt>
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utilities.devices.</span></span><span class="sig-name descname"><span class="pre">warn_if_mps</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">device</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#transformer_lens.utilities.devices.warn_if_mps" title="Link to this definition">¶</a></dt>
 <dd><p>Emit a one-time warning if device is MPS and TRANSFORMERLENS_ALLOW_MPS is not set.</p>
 <p>Automatically suppressed when the installed PyTorch version meets or exceeds
 _MPS_MIN_SAFE_TORCH_VERSION (currently unset — no version is considered safe yet).</p>

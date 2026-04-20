@@ -67,7 +67,7 @@
             <a id="nextFileLink" class="nav" href="z_b2114f845e0399b7_exploratory_utils_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-04-17 18:55 +0000
+            created at 2026-04-20 20:29 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -119,7 +119,7 @@
     <p class="pln"><span class="n"><a id="t35" href="#t35">35</a></span><span class="t"><span class="com"># ---------------------------------------------------------------------------</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t36" href="#t36">36</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t37" href="#t37">37</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t38" href="#t38">38</a></span><span class="t"><span class="key">def</span> <span class="nam">get_device</span><span class="op">(</span><span class="op">)</span> <span class="op">-></span> <span class="nam">torch</span><span class="op">.</span><span class="nam">device</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t38" href="#t38">38</a></span><span class="t"><span class="key">def</span> <span class="nam">get_device</span><span class="op">(</span><span class="op">)</span> <span class="op">-></span> <span class="nam">str</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t39" href="#t39">39</a></span><span class="t">    <span class="str">"""Get the best available device, with MPS safety checks.</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t40" href="#t40">40</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t41" href="#t41">41</a></span><span class="t"><span class="str">    MPS is only auto-selected when the environment variable</span>&nbsp;</span><span class="r"></span></p>
@@ -127,17 +127,17 @@
     <p class="pln"><span class="n"><a id="t43" href="#t43">43</a></span><span class="t"><span class="str">    version meets or exceeds ``_MPS_MIN_SAFE_TORCH_VERSION``.</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t44" href="#t44">44</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t45" href="#t45">45</a></span><span class="t"><span class="str">    Returns:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t46" href="#t46">46</a></span><span class="t"><span class="str">        torch.device: The best available device (cuda, mps, or cpu)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t46" href="#t46">46</a></span><span class="t"><span class="str">        str: The best available device name (cuda, mps, or cpu)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t47" href="#t47">47</a></span><span class="t"><span class="str">    """</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t48" href="#t48">48</a></span><span class="t">    <span class="key">if</span> <span class="nam">torch</span><span class="op">.</span><span class="nam">cuda</span><span class="op">.</span><span class="nam">is_available</span><span class="op">(</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t49" href="#t49">49</a></span><span class="t">        <span class="key">return</span> <span class="nam">torch</span><span class="op">.</span><span class="nam">device</span><span class="op">(</span><span class="str">"cuda"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t49" href="#t49">49</a></span><span class="t">        <span class="key">return</span> <span class="str">"cuda"</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t50" href="#t50">50</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t51" href="#t51">51</a></span><span class="t">    <span class="key">if</span> <span class="nam">torch</span><span class="op">.</span><span class="nam">backends</span><span class="op">.</span><span class="nam">mps</span><span class="op">.</span><span class="nam">is_available</span><span class="op">(</span><span class="op">)</span> <span class="key">and</span> <span class="nam">torch</span><span class="op">.</span><span class="nam">backends</span><span class="op">.</span><span class="nam">mps</span><span class="op">.</span><span class="nam">is_built</span><span class="op">(</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t52" href="#t52">52</a></span><span class="t">        <span class="nam">major_version</span> <span class="op">=</span> <span class="nam">int</span><span class="op">(</span><span class="nam">torch</span><span class="op">.</span><span class="nam">__version__</span><span class="op">.</span><span class="nam">split</span><span class="op">(</span><span class="str">"."</span><span class="op">)</span><span class="op">[</span><span class="num">0</span><span class="op">]</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t53" href="#t53">53</a></span><span class="t">        <span class="key">if</span> <span class="nam">major_version</span> <span class="op">>=</span> <span class="num">2</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t54" href="#t54">54</a></span><span class="t">            <span class="com"># Only auto-select MPS when explicitly opted-in via env var</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t55" href="#t55">55</a></span><span class="t">            <span class="key">if</span> <span class="nam">os</span><span class="op">.</span><span class="nam">environ</span><span class="op">.</span><span class="nam">get</span><span class="op">(</span><span class="str">"TRANSFORMERLENS_ALLOW_MPS"</span><span class="op">,</span> <span class="str">""</span><span class="op">)</span> <span class="op">==</span> <span class="str">"1"</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t56" href="#t56">56</a></span><span class="t">                <span class="key">return</span> <span class="nam">torch</span><span class="op">.</span><span class="nam">device</span><span class="op">(</span><span class="str">"mps"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t56" href="#t56">56</a></span><span class="t">                <span class="key">return</span> <span class="str">"mps"</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t57" href="#t57">57</a></span><span class="t">            <span class="nam">logging</span><span class="op">.</span><span class="nam">info</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t58" href="#t58">58</a></span><span class="t">                <span class="str">"MPS device available but not auto-selected due to known correctness issues "</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t59" href="#t59">59</a></span><span class="t">                <span class="str">"(PyTorch %s). Set TRANSFORMERLENS_ALLOW_MPS=1 to override. See: "</span>&nbsp;</span><span class="r"></span></p>
@@ -145,10 +145,10 @@
     <p class="run run2"><span class="n"><a id="t61" href="#t61">61</a></span><span class="t">                <span class="nam">torch</span><span class="op">.</span><span class="nam">__version__</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t62" href="#t62">62</a></span><span class="t">            <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t63" href="#t63">63</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t64" href="#t64">64</a></span><span class="t">    <span class="key">return</span> <span class="nam">torch</span><span class="op">.</span><span class="nam">device</span><span class="op">(</span><span class="str">"cpu"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t64" href="#t64">64</a></span><span class="t">    <span class="key">return</span> <span class="str">"cpu"</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t65" href="#t65">65</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t66" href="#t66">66</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t67" href="#t67">67</a></span><span class="t"><span class="key">def</span> <span class="nam">warn_if_mps</span><span class="op">(</span><span class="nam">device</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t67" href="#t67">67</a></span><span class="t"><span class="key">def</span> <span class="nam">warn_if_mps</span><span class="op">(</span><span class="nam">device</span><span class="op">:</span> <span class="nam">Union</span><span class="op">[</span><span class="nam">str</span><span class="op">,</span> <span class="nam">torch</span><span class="op">.</span><span class="nam">device</span><span class="op">]</span><span class="op">)</span> <span class="op">-></span> <span class="key">None</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t68" href="#t68">68</a></span><span class="t">    <span class="str">"""Emit a one-time warning if device is MPS and TRANSFORMERLENS_ALLOW_MPS is not set.</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t69" href="#t69">69</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t70" href="#t70">70</a></span><span class="t"><span class="str">    Automatically suppressed when the installed PyTorch version meets or exceeds</span>&nbsp;</span><span class="r"></span></p>
@@ -213,7 +213,7 @@
     <p class="pln"><span class="n"><a id="t129" href="#t129">129</a></span><span class="t"><span class="str">    Returns:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t130" href="#t130">130</a></span><span class="t"><span class="str">        The model after the operation</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t131" href="#t131">131</a></span><span class="t"><span class="str">    """</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t132" href="#t132">132</a></span><span class="t">    <span class="key">from</span> <span class="nam">transformer_lens</span><span class="op">.</span><span class="nam">utils</span> <span class="key">import</span> <span class="nam">warn_if_mps</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t132" href="#t132">132</a></span><span class="t">    <span class="key">from</span> <span class="nam">transformer_lens</span><span class="op">.</span><span class="nam">utilities</span> <span class="key">import</span> <span class="nam">warn_if_mps</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t133" href="#t133">133</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t134" href="#t134">134</a></span><span class="t">    <span class="key">if</span> <span class="nam">isinstance</span><span class="op">(</span><span class="nam">device_or_dtype</span><span class="op">,</span> <span class="nam">torch</span><span class="op">.</span><span class="nam">device</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t135" href="#t135">135</a></span><span class="t">        <span class="nam">warn_if_mps</span><span class="op">(</span><span class="nam">device_or_dtype</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
@@ -247,7 +247,7 @@
             <a class="nav" href="z_b2114f845e0399b7_exploratory_utils_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-04-17 18:55 +0000
+            created at 2026-04-20 20:29 +0000
         </p>
     </div>
 </footer>

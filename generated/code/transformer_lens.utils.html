@@ -800,17 +800,17 @@ considered as real pad tokens that should not be attended.</p>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="transformer_lens.utils.get_device">
-<span class="sig-prename descclassname"><span class="pre">transformer_lens.utils.</span></span><span class="sig-name descname"><span class="pre">get_device</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">device</span></span></span><a class="headerlink" href="#transformer_lens.utils.get_device" title="Link to this definition">¶</a></dt>
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utils.</span></span><span class="sig-name descname"><span class="pre">get_device</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="headerlink" href="#transformer_lens.utils.get_device" title="Link to this definition">¶</a></dt>
 <dd><p>Get the best available device, with MPS safety checks.</p>
 <p>MPS is only auto-selected when the environment variable
 <code class="docutils literal notranslate"><span class="pre">TRANSFORMERLENS_ALLOW_MPS=1</span></code> is set <strong>and</strong> the installed PyTorch
 version meets or exceeds <code class="docutils literal notranslate"><span class="pre">_MPS_MIN_SAFE_TORCH_VERSION</span></code>.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Returns<span class="colon">:</span></dt>
-<dd class="field-odd"><p>The best available device (cuda, mps, or cpu)</p>
+<dd class="field-odd"><p>The best available device name (cuda, mps, or cpu)</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p>torch.device</p>
+<dd class="field-even"><p>str</p>
 </dd>
 </dl>
 </dd></dl>
@@ -1068,14 +1068,14 @@ as well as the top k tokens. Works for multi-token prompts and multi-token answe
 <p>Warning:</p>
 <p>This will print the results (it does not return them).</p>
 <p>Examples:</p>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">transformer_lens</span><span class="w"> </span><span class="kn">import</span> <span class="n">HookedTransformer</span><span class="p">,</span> <span class="n">utils</span>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">transformer_lens</span><span class="w"> </span><span class="kn">import</span> <span class="n">HookedTransformer</span><span class="p">,</span> <span class="n">utilities</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">HookedTransformer</span><span class="o">.</span><span class="n">from_pretrained</span><span class="p">(</span><span class="s2">&quot;tiny-stories-1M&quot;</span><span class="p">)</span>
 <span class="go">Loaded pretrained model tiny-stories-1M into HookedTransformer</span>
 </pre></div>
 </div>
 <div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">prompt</span> <span class="o">=</span> <span class="s2">&quot;Why did the elephant cross the&quot;</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">answer</span> <span class="o">=</span> <span class="s2">&quot;road&quot;</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">utils</span><span class="o">.</span><span class="n">test_prompt</span><span class="p">(</span><span class="n">prompt</span><span class="p">,</span> <span class="n">answer</span><span class="p">,</span> <span class="n">model</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">utilities</span><span class="o">.</span><span class="n">test_prompt</span><span class="p">(</span><span class="n">prompt</span><span class="p">,</span> <span class="n">answer</span><span class="p">,</span> <span class="n">model</span><span class="p">)</span>
 <span class="go">Tokenized prompt: [&#39;&lt;|endoftext|&gt;&#39;, &#39;Why&#39;, &#39; did&#39;, &#39; the&#39;, &#39; elephant&#39;, &#39; cross&#39;, &#39; the&#39;]</span>
 <span class="go">Tokenized answer: [&#39; road&#39;]</span>
 <span class="go">Performance on answer token:</span>
@@ -1159,7 +1159,7 @@ to use the BOS token as a resting place for attention heads (i.e. a way for them
 
 <dl class="py function">
 <dt class="sig sig-object py" id="transformer_lens.utils.warn_if_mps">
-<span class="sig-prename descclassname"><span class="pre">transformer_lens.utils.</span></span><span class="sig-name descname"><span class="pre">warn_if_mps</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">device</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.utils.warn_if_mps" title="Link to this definition">¶</a></dt>
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utils.</span></span><span class="sig-name descname"><span class="pre">warn_if_mps</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">device</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#transformer_lens.utils.warn_if_mps" title="Link to this definition">¶</a></dt>
 <dd><p>Emit a one-time warning if device is MPS and TRANSFORMERLENS_ALLOW_MPS is not set.</p>
 <p>Automatically suppressed when the installed PyTorch version meets or exceeds
 _MPS_MIN_SAFE_TORCH_VERSION (currently unset — no version is considered safe yet).</p>
