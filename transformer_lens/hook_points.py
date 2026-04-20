@@ -32,7 +32,7 @@ from torch import Tensor
 from transformer_lens.conversion_utils.conversion_steps.base_tensor_conversion import (
     BaseTensorConversion,
 )
-from transformer_lens.utils import Slice, SliceInput, warn_if_mps
+from transformer_lens.utilities import Slice, SliceInput, warn_if_mps
 
 
 @dataclass

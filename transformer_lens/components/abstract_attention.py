@@ -18,8 +18,8 @@ from transformer_lens.components.rms_norm import RMSNorm
 from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookPoint
+from transformer_lens.utilities import get_offset_position_ids
 from transformer_lens.utilities.attention import complex_attn_linear, simple_attn_linear
-from transformer_lens.utils import get_offset_position_ids
 
 if is_bitsandbytes_available():
     import bitsandbytes as bnb

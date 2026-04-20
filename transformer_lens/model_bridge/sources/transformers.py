@@ -26,7 +26,7 @@ from transformer_lens.factories.architecture_adapter_factory import (
 )
 from transformer_lens.model_bridge.bridge import TransformerBridge
 from transformer_lens.supported_models import MODEL_ALIASES
-from transformer_lens.utils import get_device, get_tokenizer_with_bos
+from transformer_lens.utilities import get_device, get_tokenizer_with_bos
 
 # Suppress transformers warnings that go to stderr
 # This prevents notebook tests from failing due to unexpected stderr output

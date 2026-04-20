@@ -14,8 +14,8 @@ import tqdm.auto as tqdm
 from datasets import load_dataset
 from torch.utils.data import DataLoader, Dataset
 
-from transformer_lens import utils
-from transformer_lens.utils import warn_if_mps
+from transformer_lens import utilities as utils
+from transformer_lens.utilities import warn_if_mps
 
 
 # %%
