@@ -4,7 +4,7 @@ from unittest import mock
 
 import torch
 
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.pretrained.weight_conversions.apertus import (
     convert_apertus_weights,
 )
@@ -27,6 +27,7 @@ def make_cfg(use_qk_norm=True, n_key_value_heads=4):
         use_qk_norm=use_qk_norm,
         n_key_value_heads=n_key_value_heads,
         dtype=torch.float32,
+        device="cpu",
     )
 
 
@@ -183,7 +184,7 @@ class TestApertusWeightConversion:
             "blocks.0.mlp.b_out",
             "unembed.b_U",
         ]:
-            assert sd[key].device.type == cfg.device.type, f"{key} on wrong device"
+            assert sd[key].device.type == cfg.device, f"{key} on wrong device"
 
     def test_unembed_shapes(self):
         cfg = make_cfg()

@@ -1,6 +1,6 @@
 import einops
 
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 
 
 def convert_bloom_weights(bloom, cfg: HookedTransformerConfig):

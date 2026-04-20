@@ -10,7 +10,7 @@ import torch.nn as nn
 from jaxtyping import Float
 
 from transformer_lens.components import LayerNorm
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 
 
 class BertMLMHead(nn.Module):

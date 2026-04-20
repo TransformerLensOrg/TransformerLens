@@ -474,7 +474,7 @@ class TestTokenizeAndConcatenate:
         clean_pairs = set(zip(clean_tokens[:-1], clean_tokens[1:]))
 
         # Every consecutive pair in our output must exist in the clean pairs
-        output_tokens = result["tokens"].numpy().flatten()
+        output_tokens = np.array(result["tokens"]).flatten()
         for i in range(len(output_tokens) - 1):
             pair = (output_tokens[i], output_tokens[i + 1])
             assert pair in clean_pairs, (
