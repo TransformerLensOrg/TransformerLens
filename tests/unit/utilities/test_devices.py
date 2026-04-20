@@ -43,7 +43,7 @@ def test_get_device_cuda_available():
     with patch("torch.cuda.is_available", return_value=True):
         with patch("torch.backends.mps.is_available", return_value=False):
             device = get_device()
-            assert device == torch.device("cuda")
+            assert device == "cuda"
 
 
 @patch.dict("os.environ", {"TRANSFORMERLENS_ALLOW_MPS": "1"})
@@ -54,7 +54,7 @@ def test_get_device_mps_available():
             with patch("torch.backends.mps.is_built", return_value=True):
                 with patch("torch.__version__", "2.0.0"):
                     device = get_device()
-                    assert device == torch.device("mps")
+                    assert device == "mps"
 
 
 def test_get_device_mps_pytorch_1x():
@@ -64,7 +64,7 @@ def test_get_device_mps_pytorch_1x():
             with patch("torch.backends.mps.is_built", return_value=True):
                 with patch("torch.__version__", "1.13.0"):
                     device = get_device()
-                    assert device == torch.device("cpu")
+                    assert device == "cpu"
 
 
 def test_get_device_cpu_fallback():
@@ -72,7 +72,7 @@ def test_get_device_cpu_fallback():
     with patch("torch.cuda.is_available", return_value=False):
         with patch("torch.backends.mps.is_available", return_value=False):
             device = get_device()
-            assert device == torch.device("cpu")
+            assert device == "cpu"
 
 
 def test_model_with_cfg_protocol():
@@ -178,7 +178,7 @@ def test_get_device_returns_cpu_when_mps_available(mock_built, mock_avail, mock_
 
     os.environ.pop("TRANSFORMERLENS_ALLOW_MPS", None)
     result = get_device()
-    assert result == torch.device("cpu")
+    assert result == "cpu"
 
 
 @patch.dict("os.environ", {"TRANSFORMERLENS_ALLOW_MPS": "1"})
@@ -188,7 +188,7 @@ def test_get_device_returns_cpu_when_mps_available(mock_built, mock_avail, mock_
 def test_get_device_returns_mps_when_env_var_set(mock_built, mock_avail, mock_cuda):
     """get_device() should return MPS when TRANSFORMERLENS_ALLOW_MPS=1 is set."""
     result = get_device()
-    assert result == torch.device("mps")
+    assert result == "mps"
 
 
 @patch.dict("os.environ", {}, clear=False)

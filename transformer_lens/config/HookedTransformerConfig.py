@@ -334,7 +334,7 @@ class HookedTransformerConfig(TransformerLensConfig):
             self.n_params += self.n_layers * mlp_params_per_layer
 
         if self.device is None:
-            self.device = str(get_device())
+            self.device = get_device()
         else:
             from transformer_lens.utilities import warn_if_mps
 

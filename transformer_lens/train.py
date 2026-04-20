@@ -5,7 +5,7 @@ modeling tasks.
 """
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Union
 
 import torch
 import torch.optim as optim
@@ -50,7 +50,7 @@ class HookedTransformerTrainConfig:
     max_grad_norm: Optional[float] = None
     weight_decay: Optional[float] = None
     optimizer_name: str = "Adam"
-    device: Optional[str] = None
+    device: Optional[Union[str, torch.device]] = None
     warmup_steps: int = 0
     save_every: Optional[int] = None
     save_dir: Optional[str] = None
@@ -89,7 +89,7 @@ def train(
         wandb.init(project=config.wandb_project_name, config=vars(config))
 
     if config.device is None:
-        config.device = str(utils.get_device())
+        config.device = utils.get_device()
 
     optimizer: Optimizer
     if config.optimizer_name in ["Adam", "AdamW"]:
