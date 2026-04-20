@@ -24,7 +24,7 @@ from transformers import (
     Wav2Vec2Model,
 )
 
-import transformer_lens.utils as utils
+import transformer_lens.utilities as utils
 from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.pretrained.weight_conversions import (
     convert_apertus_weights,
