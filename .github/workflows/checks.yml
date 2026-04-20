@@ -221,6 +221,8 @@ jobs:
     name: Notebook Checks
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      HAS_HF_TOKEN: ${{ secrets.HF_TOKEN != '' }}
     strategy:
       fail-fast: false
       matrix:
@@ -234,7 +236,7 @@ jobs:
           - "Head_Detector_Demo"
           # - "Interactive_Neuroscope"
           - "LLaMA"
-          - "LLaMA2_GPU_Quantized"  # Requires quantization libs + too slow for CI timeout
+          - "LLaMA2_GPU_Quantized"
           - "Main_Demo"
           # - "No_Position_Experiment"
           - "Othello_GPT"
@@ -242,6 +244,12 @@ jobs:
           - "Santa_Coder"
           # - "stable_lm"
           - "T5"
+        requires_hf_token: [false]
+        include:
+          - notebook: "LLaMA"
+            requires_hf_token: true
+          - notebook: "LLaMA2_GPU_Quantized"
+            requires_hf_token: true
     steps:
       - uses: actions/checkout@v3
       - name: Add swap space
@@ -278,10 +286,13 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
       - name: Check Notebook Output Consistency
-        # Note: currently only checks notebooks we have specifically setup for this
+        if: ${{ !matrix.requires_hf_token || env.HAS_HF_TOKEN == 'true' }}
         run: pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/${{ matrix.notebook }}.ipynb
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      - name: Skip (HF_TOKEN not available)
+        if: ${{ matrix.requires_hf_token && env.HAS_HF_TOKEN != 'true' }}
+        run: echo "Skipping ${{ matrix.notebook }} — requires HF_TOKEN for gated model access"
 
 
   build-docs:
