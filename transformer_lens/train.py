@@ -13,7 +13,7 @@ from torch.optim import Optimizer
 from torch.utils.data import DataLoader, Dataset
 from tqdm.auto import tqdm
 
-from transformer_lens import utils
+from transformer_lens import utilities as utils
 from transformer_lens.HookedTransformer import HookedTransformer
 from transformer_lens.utilities.library_utils import is_library_available
 
