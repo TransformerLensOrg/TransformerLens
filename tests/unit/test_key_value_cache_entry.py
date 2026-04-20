@@ -17,7 +17,9 @@ the downstream attention-score matmul).
 
 import torch
 
-from transformer_lens.cache.key_value_cache_entry import TransformerLensKeyValueCacheEntry
+from transformer_lens.cache.key_value_cache_entry import (
+    TransformerLensKeyValueCacheEntry,
+)
 from transformer_lens.config.TransformerLensConfig import TransformerLensConfig
 
 
