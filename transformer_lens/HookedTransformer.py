@@ -1935,9 +1935,9 @@ class HookedTransformer(HookedRootModule):
                 the BOS token to the input (applicable when input is a string). Defaults to None,
                 implying usage of self.cfg.default_prepend_bos (default is True unless specified
                 otherwise). Pass True or False to override the default.
-            padding_side (Union[Literal["left", "right"], None], optional): Specifies which side to 
-                pad when tokenizing multiple strings of different lengths. Defaults to left for 
-                correct generation behavior. If None uses self.tokenizer.padding_side. 
+            padding_side (Union[Literal["left", "right"], None], optional): Specifies which side to
+                pad when tokenizing multiple strings of different lengths. Defaults to left for
+                correct generation behavior. If None uses self.tokenizer.padding_side.
             return_type (Optional[str]): The type of the output to return - a string or a list of strings ('str'),
                 a tensor of tokens ('tokens'), a tensor of output embeddings ('embeds') or whatever the format of the
                 input was ('input').
