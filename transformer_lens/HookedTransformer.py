@@ -2062,14 +2062,16 @@ class HookedTransformer(HookedRootModule):
             for index in tqdm.tqdm(range(max_new_tokens), disable=not verbose):
                 pos_offset = self.get_pos_offset(past_kv_cache, batch_size)
 
-                if len(sampled_tokens_list) > 0:
-                    sampled_tokens = torch.cat(sampled_tokens_list, dim=1)
-                    tokens = torch.cat((input_tokens, sampled_tokens), dim=1)
-                else:
-                    tokens = input_tokens
-                attention_mask = utils.get_attention_mask(
-                    self.tokenizer, tokens, False if prepend_bos is None else prepend_bos
-                ).to(device)
+                attention_mask: Optional[torch.Tensor] = None
+                if input_tokens is not None:
+                    if len(sampled_tokens_list) > 0:
+                        sampled_tokens = torch.cat(sampled_tokens_list, dim=1)
+                        tokens = torch.cat((input_tokens, sampled_tokens), dim=1)
+                    else:
+                        tokens = input_tokens
+                    attention_mask = utils.get_attention_mask(
+                        self.tokenizer, tokens, False if prepend_bos is None else prepend_bos
+                    ).to(device)
                 residual, shortformer_pos_embed = self.get_residual(
                     embeds,
                     pos_offset,
