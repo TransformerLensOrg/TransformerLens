@@ -2306,9 +2306,9 @@ class TransformerBridge(nn.Module):
             prepend_bos: Accepted for API compatibility but not applied during generation.
                 The HF model expects tokens in its native format (tokenizer defaults).
                 Overriding BOS can silently degrade generation quality.
-            padding_side: Accepted for API compatibility but not applied during generation.
-                The generation loop always extends tokens to the right, so overriding
-                initial padding_side creates inconsistent token layout.
+            padding_side: Which side to pad when tokenizing multiple strings of different
+                lengths. For batched list inputs, left-padding is forced internally for
+                correct generation behavior. Defaults to None (tokenizer default).
             return_type: The type of output to return - 'input', 'str', or 'tokens'
             verbose: Not used in Bridge (kept for API compatibility)
             output_logits: If True, return a ModelOutput with sequences and logits tuple
@@ -2320,10 +2320,9 @@ class TransformerBridge(nn.Module):
             Generated sequence as string, list of strings, or tensor depending on input type and return_type.
             If output_logits=True, returns a ModelOutput-like object with 'sequences' and 'logits' attributes.
         """
-        # prepend_bos and padding_side are intentionally not applied during generation.
+        # prepend_bos is intentionally not applied during generation.
         # The HF model expects tokens in its native format. Overriding BOS can silently
-        # degrade quality, and overriding padding_side conflicts with the generation loop
-        # which always extends tokens to the right.
+        # degrade quality.
         if prepend_bos is not None:
             import warnings
 
@@ -2334,27 +2333,28 @@ class TransformerBridge(nn.Module):
                 "resulting tensor to generate().",
                 stacklevel=2,
             )
-        if padding_side is not None:
-            import warnings
-
-            warnings.warn(
-                "padding_side is ignored during TransformerBridge.generate(). "
-                "The generation loop extends tokens to the right regardless of initial "
-                "padding. To control padding, tokenize with to_tokens(padding_side=...) "
-                "and pass the resulting tensor to generate().",
-                stacklevel=2,
-            )
+        # padding_side is handled internally: for batched list inputs, left-padding
+        # is forced to ensure correct generation. See _is_batched_list logic below.
 
         # Stateful dispatch is decided after input parsing so we can fall back
         # to hf_generate() for input types the stateful loop doesn't handle.
         is_stateful_model = getattr(self.cfg, "is_stateful", False)
+
+        _is_batched_list = isinstance(input, list) and len(input) > 1
 
         _generate_from_embeds = False
         if isinstance(input, str):
             input_tokens = self.to_tokens(input, move_to_device=True, truncate=False)
             input_type = "str"
         elif isinstance(input, list):
+            # Force left-padding for batched generation so real tokens are
+            # flush-right and logits[:, -1, :] is always the last real token.
+            if _is_batched_list:
+                _orig_padding_side = self.tokenizer.padding_side
+                self.tokenizer.padding_side = "left"
             input_tokens = self.to_tokens(input, move_to_device=True, truncate=False)
+            if _is_batched_list:
+                self.tokenizer.padding_side = _orig_padding_side
             input_type = "list"
         elif isinstance(input, torch.Tensor) and input.is_floating_point():
             # inputs_embeds: pre-computed embeddings (e.g., from multimodal models)
@@ -2501,7 +2501,7 @@ class TransformerBridge(nn.Module):
                 mamba_cache=mamba_cache,
                 mamba_conv_kernel=mamba_conv_kernel,
                 is_encoder_decoder=is_encoder_decoder,
-                _is_batched_list=False,
+                _is_batched_list=_is_batched_list,
                 _generate_from_embeds=_generate_from_embeds,
                 encoder_input=encoder_input if is_encoder_decoder else None,
                 decoder_tokens=decoder_tokens if is_encoder_decoder else None,
