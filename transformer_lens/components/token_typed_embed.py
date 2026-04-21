@@ -2,13 +2,14 @@
 
 This module contains all the component :class:`TokenTypeEmbed`.
 """
+
 from typing import Dict, Union
 
 import torch
 import torch.nn as nn
 from jaxtyping import Int
 
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 
 
 class TokenTypeEmbed(nn.Module):

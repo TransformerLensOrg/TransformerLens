@@ -5,7 +5,7 @@ import torch.nn as nn
 from transformers.utils import is_bitsandbytes_available
 
 from transformer_lens.components import Attention
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.config import HookedTransformerConfig
 from transformer_lens.utilities.attention import complex_attn_linear
 
 if is_bitsandbytes_available():
@@ -80,6 +80,25 @@ def test_attention_load_in_4bit():
     assert torch.all(attn.b_V == 0)
 
 
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required for half/bfloat16 tests")
+@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
+def test_attention_forward_half_precisions(dtype):
+    # Construct a small attention block
+    cfg = HookedTransformerConfig(
+        d_model=64, d_head=16, n_heads=4, n_layers=1, n_ctx=8, dtype=dtype
+    )
+    attn = Attention(cfg)
+    # Random inputs in the matching dtype
+    batch = 1
+    seq = 4
+    x = torch.rand((batch, seq, cfg.d_model), dtype=dtype).to("cuda")
+    # Run forward through attention (q,k,v = x)
+    out = attn(x, x, x)
+    # Should not raise and return a tensor on cuda with same dtype as cfg or compatible
+    assert isinstance(out, torch.Tensor)
+    assert out.device.type == "cuda"
+
+
 def test_attention_config_dict():
     cfg = {
         "n_layers": 12,
@@ -128,3 +147,45 @@ def test_remove_einsum_from_complex_attn_linear():
 
     # Check if the results are the same
     assert torch.allclose(result_new, result_old, atol=1e-4)
+
+
+@pytest.mark.skipif(
+    not torch.backends.mps.is_available() or torch.__version__ != "2.8.0",
+    reason="Issue with F.linear issue exclusive to mps and PyTorch 2.8\n"
+    "https://github.com/pytorch/pytorch/issues/161640",
+)
+def test_cpu_mps_outputs_match():
+    torch.manual_seed(0)
+
+    cfg = {
+        "n_layers": 1,
+        "d_model": 48,
+        "n_ctx": 256,
+        "d_head": 16,
+        "n_heads": 3,
+        "load_in_4bit": False,
+        "dtype": torch.float32,
+        "act_fn": "relu",
+    }
+
+    def init_weights(attn_layer: nn.Module):
+        nn.init.normal_(attn_layer.W_Q, mean=0.0, std=0.02)
+        nn.init.normal_(attn_layer.W_K, mean=0.0, std=0.02)
+        nn.init.normal_(attn_layer.W_V, mean=0.0, std=0.02)
+        nn.init.normal_(attn_layer.W_O, mean=0.0, std=0.02)
+        return attn_layer
+
+    attn_cpu = Attention(cfg)
+    attn_cpu = init_weights(attn_cpu)
+
+    attn_mps = Attention(cfg).to("mps")
+    attn_mps.load_state_dict(attn_cpu.state_dict(), strict=True)
+
+    batch = 1
+    input_cpu = torch.randn(batch, cfg["n_ctx"], cfg["d_model"])
+    input_mps = input_cpu.to("mps")
+
+    cpu_output = attn_cpu(input_cpu, input_cpu, input_cpu)
+    mps_output = attn_mps(input_mps, input_mps, input_mps)
+
+    assert torch.allclose(cpu_output, mps_output.cpu())

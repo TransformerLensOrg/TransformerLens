@@ -13,7 +13,7 @@ from typing_extensions import Literal, get_args
 
 from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.HookedTransformer import HookedTransformer
-from transformer_lens.utils import is_lower_triangular, is_square
+from transformer_lens.utilities import is_lower_triangular, is_square
 
 HeadName = Literal["previous_token_head", "duplicate_token_head", "induction_head"]
 HEAD_NAMES = cast(List[HeadName], get_args(HeadName))

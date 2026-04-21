@@ -2,7 +2,7 @@ import pytest
 import torch
 
 from transformer_lens import HookedTransformer, utils
-from transformer_lens.past_key_value_caching import HookedTransformerKeyValueCache
+from transformer_lens.cache.key_value_cache import TransformerLensKeyValueCache
 
 
 class TestLeftPadding:
@@ -104,7 +104,7 @@ class TestLeftPadding:
         tokens = model.to_tokens(prompts, prepend_bos=prepend_bos)
         tokens_2 = model.to_tokens(prompts, prepend_bos=False)
 
-        past_kv_cache = HookedTransformerKeyValueCache.init_cache(
+        past_kv_cache = TransformerLensKeyValueCache.init_cache(
             model.cfg, model.cfg.device, tokens.shape[0]
         )
 

@@ -6,11 +6,11 @@ import torch.nn.functional as F
 from jaxtyping import Float
 
 from transformer_lens.components.mlps.can_be_used_as_mlp import CanBeUsedAsMLP
+from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.factories.activation_function_factory import (
     ActivationFunctionFactory,
 )
 from transformer_lens.hook_points import HookPoint
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 
 class MoEGatedMLP(nn.Module):
@@ -88,7 +88,8 @@ class MoE(CanBeUsedAsMLP):
         # both are [batch, pos, experts_per_token]
         weights = self.hook_expert_weights(F.softmax(gate_logits, dim=1, dtype=torch.float))
         weights, expert_indices = torch.topk(weights, self.experts_per_token, dim=-1)
-        weights /= weights.sum(dim=-1, keepdim=True)
+        if self.cfg.norm_topk_prob:
+            weights /= weights.sum(dim=-1, keepdim=True)
         expert_indices = self.hook_expert_indices(expert_indices)
         weights = weights.to(x.dtype)
 

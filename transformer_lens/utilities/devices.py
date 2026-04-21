@@ -1,168 +1,156 @@
-"""Devices.
+"""Device utilities.
 
-Utilities to get the correct device, and assist in distributing model layers across multiple
-devices.
+Utilities for device detection (with MPS safety), moving models to devices,
+and updating their configurations.
 """
 
 from __future__ import annotations
 
-from typing import Optional, Union
+import logging
+import os
+import warnings
+from typing import Any, Protocol, Union, runtime_checkable
 
 import torch
 from torch import nn
 
-import transformer_lens
+# ---------------------------------------------------------------------------
+# MPS safety state
+# ---------------------------------------------------------------------------
 
-AvailableDeviceMemory = list[tuple[int, int]]
-"""
-This type is passed around between different CUDA memory operations.
-The first entry of each tuple will be the device index.
-The second entry will be how much memory is currently available.
-"""
+_mps_warned = False
 
-
-def calculate_available_device_cuda_memory(i: int) -> int:
-    """Calculates how much memory is available at this moment for the device at the indicated index
-
-    Args:
-        i (int): The index we are looking at
-
-    Returns:
-        int: How memory is available
-    """
-    total = torch.cuda.get_device_properties(i).total_memory
-    allocated = torch.cuda.memory_allocated(i)
-    return total - allocated
+# MPS silent correctness issues are known in PyTorch <= 2.7.
+# Bump this when a PyTorch release ships verified MPS fixes.
+_MPS_MIN_SAFE_TORCH_VERSION: tuple[int, ...] | None = None
 
 
-def determine_available_memory_for_available_devices(max_devices: int) -> AvailableDeviceMemory:
-    """Gets all available CUDA devices with their current memory calculated
-
-    Returns:
-        AvailableDeviceMemory: The list of all available devices with memory precalculated
-    """
-    devices = []
-    for i in range(max_devices):
-        devices.append((i, calculate_available_device_cuda_memory(i)))
-
-    return devices
+def _torch_version_tuple() -> tuple[int, ...]:
+    """Parse torch.__version__ into a comparable tuple, ignoring pre-release suffixes."""
+    return tuple(int(x) for x in torch.__version__.split("+")[0].split(".")[:2])
 
 
-def sort_devices_based_on_available_memory(devices: AvailableDeviceMemory) -> AvailableDeviceMemory:
-    """Sorts all available devices with devices with the most available memory returned first
+# ---------------------------------------------------------------------------
+# Device helpers
+# ---------------------------------------------------------------------------
 
-    Args:
-        devices (AvailableDeviceMemory): All available devices with memory calculated
+
+def get_device() -> torch.device:
+    """Get the best available device, with MPS safety checks.
+
+    MPS is only auto-selected when the environment variable
+    ``TRANSFORMERLENS_ALLOW_MPS=1`` is set **and** the installed PyTorch
+    version meets or exceeds ``_MPS_MIN_SAFE_TORCH_VERSION``.
 
     Returns:
-        AvailableDeviceMemory: The same list of passed through devices sorted with devices with most
-        available memory first
+        torch.device: The best available device (cuda, mps, or cpu)
     """
-    return sorted(devices, key=lambda x: x[1], reverse=True)
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+
+    if torch.backends.mps.is_available() and torch.backends.mps.is_built():
+        major_version = int(torch.__version__.split(".")[0])
+        if major_version >= 2:
+            # Only auto-select MPS when explicitly opted-in via env var
+            if os.environ.get("TRANSFORMERLENS_ALLOW_MPS", "") == "1":
+                return torch.device("mps")
+            logging.info(
+                "MPS device available but not auto-selected due to known correctness issues "
+                "(PyTorch %s). Set TRANSFORMERLENS_ALLOW_MPS=1 to override. See: "
+                "https://github.com/TransformerLensOrg/TransformerLens/issues/1178",
+                torch.__version__,
+            )
+
+    return torch.device("cpu")
 
 
-def get_best_available_cuda_device(max_devices: Optional[int] = None) -> torch.device:
-    """Gets whichever cuda device has the most available amount of memory for use
+def warn_if_mps(device):
+    """Emit a one-time warning if device is MPS and TRANSFORMERLENS_ALLOW_MPS is not set.
 
-    Raises:
-        EnvironmentError: If there are no available devices, this will error out
-
-    Returns:
-        torch.device: The specific device that should be used
+    Automatically suppressed when the installed PyTorch version meets or exceeds
+    _MPS_MIN_SAFE_TORCH_VERSION (currently unset — no version is considered safe yet).
     """
-    max_devices = max_devices if max_devices is not None else torch.cuda.device_count()
-    devices = determine_available_memory_for_available_devices(max_devices)
-
-    if len(devices) <= 0:
-        raise EnvironmentError(
-            "TransformerLens has been configured to use CUDA, but no available devices are present"
-        )
-
-    sorted_devices = sort_devices_based_on_available_memory(devices=devices)
-
-    return torch.device("cuda", sorted_devices[0][0])
-
-
-def get_best_available_device(cfg: "transformer_lens.HookedTransformerConfig") -> torch.device:
-    """Gets the best available device to be used based on the passed in arguments
-
-    Args:
-        device (Union[torch.device, str]): Either the existing torch device or the string identifier
-
-    Returns:
-        torch.device: The best available device
-    """
-    assert cfg.device is not None
-    device = torch.device(cfg.device)
-
-    if device.type == "cuda" and cfg.n_devices > 1:
-        return get_best_available_cuda_device(cfg.n_devices)
-    else:
-        return device
+    global _mps_warned
+    if _mps_warned:
+        return
+    if isinstance(device, torch.device):
+        device = device.type
+    if isinstance(device, str) and device == "mps":
+        if (
+            _MPS_MIN_SAFE_TORCH_VERSION is not None
+            and _torch_version_tuple() >= _MPS_MIN_SAFE_TORCH_VERSION
+        ):
+            return
+        if os.environ.get("TRANSFORMERLENS_ALLOW_MPS", "") != "1":
+            _mps_warned = True
+            warnings.warn(
+                "MPS backend may produce silently incorrect results (PyTorch "
+                f"{torch.__version__}). "
+                "Set TRANSFORMERLENS_ALLOW_MPS=1 to suppress this warning. "
+                "See: https://github.com/TransformerLensOrg/TransformerLens/issues/1178",
+                UserWarning,
+                stacklevel=2,
+            )
 
 
-def get_device_for_block_index(
-    index: int,
-    cfg: "transformer_lens.HookedTransformerConfig",
-    device: Optional[Union[torch.device, str]] = None,
-):
-    """
-    Determine the device for a given layer index based on the model configuration.
-
-    This function assists in distributing model layers across multiple devices. The distribution
-    is based on the configuration's number of layers (cfg.n_layers) and devices (cfg.n_devices).
+# ---------------------------------------------------------------------------
+# Model protocol & move helper
+# ---------------------------------------------------------------------------
 
 
-    Args:
-        index (int): Model layer index.
-        cfg (HookedTransformerConfig): Model and device configuration.
-        device (Optional[Union[torch.device, str]], optional): Initial device used for determining the target device.
-            If not provided, the function uses the device specified in the configuration (cfg.device).
+@runtime_checkable
+class ModelWithCfg(Protocol):
+    """Protocol for models that have a config attribute and can be moved to devices."""
 
-    Returns:
-        torch.device: The device for the specified layer index.
+    cfg: Any
 
-    Deprecated:
-        This function did not take into account a few factors for multi-GPU support. You should now
-        use get_best_available_device in order to properly run models on multiple devices.
-        This will be removed in 3.0
-    """
-    assert cfg.device is not None
-    layers_per_device = cfg.n_layers // cfg.n_devices
-    if device is None:
-        device = cfg.device
-    device = torch.device(device)
-    if device.type == "cpu":
-        return device
-    device_index = (device.index or 0) + (index // layers_per_device)
-    return torch.device(device.type, device_index)
+    def state_dict(self) -> dict[str, torch.Tensor]:
+        """Return the model's state dictionary."""
+        ...
+
+    def to(self, device_or_dtype: Union[torch.device, str, torch.dtype]) -> Any:
+        """Move the model to a device or change its dtype."""
+        ...
 
 
 def move_to_and_update_config(
-    model: Union[
-        "transformer_lens.HookedTransformer",
-        "transformer_lens.HookedEncoder",
-        "transformer_lens.HookedEncoderDecoder",
-    ],
+    model: ModelWithCfg,
     device_or_dtype: Union[torch.device, str, torch.dtype],
-    print_details=True,
-):
+    print_details: bool = True,
+) -> Any:
     """
     Wrapper around `to` that also updates `model.cfg`.
+
+    Args:
+        model: The model to move/update
+        device_or_dtype: Device or dtype to move/change to
+        print_details: Whether to print details about the operation
+
+    Returns:
+        The model after the operation
     """
+    from transformer_lens.utilities import warn_if_mps
+
     if isinstance(device_or_dtype, torch.device):
+        warn_if_mps(device_or_dtype)
         model.cfg.device = device_or_dtype.type
         if print_details:
             print("Moving model to device: ", model.cfg.device)
     elif isinstance(device_or_dtype, str):
+        warn_if_mps(device_or_dtype)
         model.cfg.device = device_or_dtype
         if print_details:
             print("Moving model to device: ", model.cfg.device)
     elif isinstance(device_or_dtype, torch.dtype):
-        model.cfg.dtype = device_or_dtype
+        # Update dtype in config if it exists
+        if hasattr(model.cfg, "dtype"):
+            model.cfg.dtype = device_or_dtype
         if print_details:
             print("Changing model dtype to", device_or_dtype)
         # change state_dict dtypes
         for k, v in model.state_dict().items():
             model.state_dict()[k] = v.to(device_or_dtype)
-    return nn.Module.to(model, device_or_dtype)
+
+    # Call the base nn.Module.to() method to avoid recursion with custom to() methods
+    # Use the unbound method approach to avoid calling the overridden to() method
+    return nn.Module.to(model, device_or_dtype)  # type: ignore

@@ -3,6 +3,9 @@
 {%- for option in options %}
    :{{ option }}:
 {%- endfor %}
+{%- if modname == "transformer_lens" %}
+   :exclude-members: ActivationCache
+{%- endif %}
 {%- endmacro %}
 
 {%- macro toctree(docnames) -%}
@@ -47,4 +50,17 @@ Subpackages
 -----------
 
 {{ toctree(subpackages) }}
+{% endif %}
+
+{%- if not modulefirst and not is_namespace %}
+Module contents
+---------------
+
+.. automodule:: {{ pkgname }}
+{%- for option in automodule_options %}
+   :{{ option }}:
+{%- endfor %}
+{%- if pkgname == "transformer_lens" %}
+   :exclude-members: ActivationCache, FactoredMatrix, HookedEncoder, HookedEncoderDecoder, HookedTransformer, SVDInterpreter, BertNextSentencePrediction, HookedTransformerConfig, EasyTransformerConfig
+{%- endif %}
 {% endif %}

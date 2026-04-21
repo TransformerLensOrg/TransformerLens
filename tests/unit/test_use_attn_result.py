@@ -1,7 +1,7 @@
 import torch
 
 from transformer_lens import HookedTransformer
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.config import HookedTransformerConfig
 
 
 def test_atten_result_normal_attn_correct():
@@ -24,7 +24,6 @@ def test_atten_result_normal_attn_correct():
     )
 
     model = HookedTransformer(cfg)
-    assert model.cfg.use_split_qkv_input is False
 
     x = torch.arange(1, 9).unsqueeze(0)
     normal_output = model(x)
@@ -60,7 +59,6 @@ def test_atten_result_grouped_query_attn_correct():
     )
 
     model = HookedTransformer(cfg)
-    assert model.cfg.use_split_qkv_input is False
 
     x = torch.arange(1, 9).unsqueeze(0)
     normal_output = model(x)
