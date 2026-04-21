@@ -2,7 +2,7 @@
 Tests that config passed around TransformerLens can be unwrapped into an actual configuration object
 """
 
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.config import HookedTransformerConfig
 
 
 def test_hooked_transformer_config_object():
