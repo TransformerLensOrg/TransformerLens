@@ -2299,10 +2299,10 @@ class HookedTransformer(HookedRootModule):
 
             assert isinstance(tokens, torch.Tensor)
             batch_size, ctx_length = tokens.shape
-            device = devices.get_device_for_block_index(0, self.cfg)
+            device = get_device_for_block_index(0, self.cfg)
             tokens = tokens.to(device)
             if use_past_kv_cache:
-                past_kv_cache = HookedTransformerKeyValueCache.init_cache(
+                past_kv_cache = TransformerLensKeyValueCache.init_cache(
                     self.cfg, self.cfg.device, batch_size
                 )
             else:
@@ -2382,10 +2382,10 @@ class HookedTransformer(HookedRootModule):
                         temperature=temperature,
                         freq_penalty=freq_penalty,
                         tokens=tokens,
-                    ).to(devices.get_device_for_block_index(0, self.cfg))
+                    ).to(get_device_for_block_index(0, self.cfg))
                 else:
                     sampled_tokens = final_logits.argmax(-1).to(
-                        devices.get_device_for_block_index(0, self.cfg)
+                        get_device_for_block_index(0, self.cfg)
                     )
 
                 if stop_at_eos:
