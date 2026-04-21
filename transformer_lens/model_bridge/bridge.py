@@ -27,6 +27,7 @@ from typing import (
 import einops
 import numpy as np
 import torch
+import tqdm
 from torch import nn
 
 from transformer_lens import utilities as utils
@@ -2117,7 +2118,7 @@ class TransformerBridge(nn.Module):
         """
         _hf_kv_cache = None
 
-        for gen_step_idx in range(max_new_tokens):
+        for gen_step_idx in tqdm.tqdm(range(max_new_tokens), disable=not verbose):
             with torch.no_grad():
                 if is_encoder_decoder:
                     logits = self(
@@ -2620,6 +2621,13 @@ class TransformerBridge(nn.Module):
             max_tokens_per_yield tokens between yields. First yield includes
             the input tokens; subsequent yields contain only new tokens.
         """
+        if prepend_bos is not None:
+            warnings.warn(
+                "prepend_bos is ignored during TransformerBridge.generate_stream(). "
+                "The HF model expects tokens with the tokenizer's default BOS handling.",
+                stacklevel=2,
+            )
+
         # --- Input parsing (mirrors generate()) ---
         _is_batched_list = isinstance(input, list) and len(input) > 1
 
@@ -2630,9 +2638,11 @@ class TransformerBridge(nn.Module):
             if _is_batched_list:
                 _orig_ps = self.tokenizer.padding_side
                 self.tokenizer.padding_side = "left"
-            input_tokens = self.to_tokens(input, move_to_device=True, truncate=False)
-            if _is_batched_list:
-                self.tokenizer.padding_side = _orig_ps
+            try:
+                input_tokens = self.to_tokens(input, move_to_device=True, truncate=False)
+            finally:
+                if _is_batched_list:
+                    self.tokenizer.padding_side = _orig_ps
             input_type = "list"
         else:
             input_tokens = input.to(self.cfg.device)
@@ -2672,8 +2682,18 @@ class TransformerBridge(nn.Module):
         current_tokens = input_tokens.clone()
 
         # --- Streaming loop ---
+        # All yields are token tensors [batch, seq_len]. Each yield contains
+        # only the newly generated tokens since the previous yield (the first
+        # yield additionally prepends the input tokens for context).
         accumulated_tokens: Optional[torch.Tensor] = None
         tokens_since_last_yield = 0
+
+        def _maybe_decode(
+            tokens: torch.Tensor,
+        ) -> Union[torch.Tensor, str]:
+            if return_type == "str":
+                return self.tokenizer.decode(tokens[0], skip_special_tokens=True)
+            return tokens
 
         try:
             for step_idx, (sampled_tokens, _, all_finished) in enumerate(
@@ -2720,18 +2740,18 @@ class TransformerBridge(nn.Module):
                     tokens_since_last_yield += 1
 
                 if tokens_since_last_yield >= max_tokens_per_yield:
-                    yield accumulated_tokens
+                    yield _maybe_decode(accumulated_tokens)
                     tokens_since_last_yield = 0
                     accumulated_tokens = None
 
                 if all_finished:
                     if accumulated_tokens is not None:
-                        yield accumulated_tokens
+                        yield _maybe_decode(accumulated_tokens)
                     break
 
             # Yield remainder after loop completes without break
             if accumulated_tokens is not None:
-                yield accumulated_tokens
+                yield _maybe_decode(accumulated_tokens)
         finally:
             self._capture_hf_cache = False
             if hasattr(self, "_last_hf_cache"):

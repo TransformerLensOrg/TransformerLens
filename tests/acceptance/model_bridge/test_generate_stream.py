@@ -6,11 +6,11 @@ import torch
 def test_stream_matches_generate(gpt2_bridge):
     """Concatenated stream output should match generate() for the same prompt."""
     prompt = "The future of AI"
-    expected = gpt2_bridge.generate(
-        prompt, max_new_tokens=10, do_sample=False, verbose=False
-    )
+    # Get generate() output as string
+    expected_text = gpt2_bridge.generate(prompt, max_new_tokens=10, do_sample=False, verbose=False)
+    assert isinstance(expected_text, str)
 
-    # Collect all streamed chunks
+    # Stream as tokens so we can concatenate and compare
     chunks = list(
         gpt2_bridge.generate_stream(
             prompt,
@@ -18,40 +18,20 @@ def test_stream_matches_generate(gpt2_bridge):
             max_tokens_per_yield=3,
             do_sample=False,
             verbose=False,
+            return_type="tokens",
         )
     )
     assert len(chunks) >= 1
 
-    # Reconstruct: first chunk has input+tokens, subsequent have only new tokens
-    full_tokens = torch.cat(chunks, dim=-1) if len(chunks) > 1 else chunks[0]
-    # The first chunk includes input tokens, so just take the last chunk's end
-    # Actually, each chunk is independent — first has input+new, rest have only new
-    # So concatenating all gives input + all new tokens (with input repeated).
-    # Instead, compare decoded strings.
-    expected_text = gpt2_bridge.to_string(expected[0] if isinstance(expected, torch.Tensor) else gpt2_bridge.to_tokens(expected)[0])
-
-    # Decode last chunk which should have the most recent window of tokens
-    # Better: decode all chunks and concatenate
-    stream_texts = []
-    for i, chunk in enumerate(chunks):
-        if i == 0:
-            stream_texts.append(gpt2_bridge.to_string(chunk[0]))
-        else:
-            stream_texts.append(gpt2_bridge.to_string(chunk[0]))
-
-    # The first chunk has input+initial tokens, subsequent have only new tokens.
-    # The simplest comparison: the final full output should match.
-    # Reconstruct by taking the first chunk and appending decoded new tokens.
-    # Actually easier: just compare using the full token sequence.
-    # First chunk = input + first N tokens, subsequent = next tokens only.
+    # First chunk = input + first tokens, subsequent = new tokens only.
     all_tokens = chunks[0]
     for chunk in chunks[1:]:
         all_tokens = torch.cat([all_tokens, chunk], dim=-1)
 
-    streamed_text = gpt2_bridge.to_string(all_tokens[0])
-    assert expected_text == streamed_text, (
-        f"Stream output mismatch:\n  generate: {expected_text!r}\n  stream: {streamed_text!r}"
-    )
+    streamed_text = gpt2_bridge.tokenizer.decode(all_tokens[0], skip_special_tokens=True)
+    assert (
+        expected_text == streamed_text
+    ), f"Stream output mismatch:\n  generate: {expected_text!r}\n  stream: {streamed_text!r}"
 
 
 def test_stream_yields_progressively(gpt2_bridge):
@@ -63,6 +43,7 @@ def test_stream_yields_progressively(gpt2_bridge):
             max_tokens_per_yield=3,
             do_sample=False,
             verbose=False,
+            return_type="tokens",
         )
     )
     assert len(chunks) > 1, f"Expected multiple yields, got {len(chunks)}"
@@ -72,7 +53,11 @@ def test_stream_single_prompt(gpt2_bridge):
     """Basic single-string streaming should produce output."""
     results = list(
         gpt2_bridge.generate_stream(
-            "Test", max_new_tokens=5, do_sample=False, verbose=False
+            "Test",
+            max_new_tokens=5,
+            do_sample=False,
+            verbose=False,
+            return_type="tokens",
         )
     )
     assert len(results) >= 1
@@ -90,9 +75,23 @@ def test_stream_stops_at_eos(gpt2_bridge):
             stop_at_eos=True,
             do_sample=False,
             verbose=False,
+            return_type="tokens",
         )
     )
-    # Count total generated tokens (first chunk has input, rest are new)
     total_tokens = sum(r.shape[1] for r in results)
-    # Should have stopped well before 200 new tokens for a short prompt
     assert total_tokens < 210
+
+
+def test_stream_returns_strings(gpt2_bridge):
+    """With return_type='str', yields should be strings."""
+    results = list(
+        gpt2_bridge.generate_stream(
+            "Hello",
+            max_new_tokens=5,
+            do_sample=False,
+            verbose=False,
+            return_type="str",
+        )
+    )
+    assert len(results) >= 1
+    assert all(isinstance(r, str) for r in results)
