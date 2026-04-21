@@ -2121,9 +2121,9 @@ class TransformerBridge(nn.Module):
             prepend_bos: Accepted for API compatibility but not applied during generation.
                 The HF model expects tokens in its native format (tokenizer defaults).
                 Overriding BOS can silently degrade generation quality.
-            padding_side: Accepted for API compatibility but not applied during generation.
-                The generation loop always extends tokens to the right, so overriding
-                initial padding_side creates inconsistent token layout.
+            padding_side: Which side to pad when tokenizing multiple strings of different
+                lengths. For batched list inputs, left-padding is forced internally for
+                correct generation behavior. Defaults to None (tokenizer default).
             return_type: The type of output to return - 'input', 'str', or 'tokens'
             verbose: Not used in Bridge (kept for API compatibility)
             output_logits: If True, return a ModelOutput with sequences and logits tuple
@@ -2135,10 +2135,9 @@ class TransformerBridge(nn.Module):
             Generated sequence as string, list of strings, or tensor depending on input type and return_type.
             If output_logits=True, returns a ModelOutput-like object with 'sequences' and 'logits' attributes.
         """
-        # prepend_bos and padding_side are intentionally not applied during generation.
+        # prepend_bos is intentionally not applied during generation.
         # The HF model expects tokens in its native format. Overriding BOS can silently
-        # degrade quality, and overriding padding_side conflicts with the generation loop
-        # which always extends tokens to the right.
+        # degrade quality.
         if prepend_bos is not None:
             import warnings
 
@@ -2149,27 +2148,28 @@ class TransformerBridge(nn.Module):
                 "resulting tensor to generate().",
                 stacklevel=2,
             )
-        if padding_side is not None:
-            import warnings
-
-            warnings.warn(
-                "padding_side is ignored during TransformerBridge.generate(). "
-                "The generation loop extends tokens to the right regardless of initial "
-                "padding. To control padding, tokenize with to_tokens(padding_side=...) "
-                "and pass the resulting tensor to generate().",
-                stacklevel=2,
-            )
+        # padding_side is handled internally: for batched list inputs, left-padding
+        # is forced to ensure correct generation. See _is_batched_list logic below.
 
         # Stateful dispatch is decided after input parsing so we can fall back
         # to hf_generate() for input types the stateful loop doesn't handle.
         is_stateful_model = getattr(self.cfg, "is_stateful", False)
+
+        _is_batched_list = isinstance(input, list) and len(input) > 1
 
         _generate_from_embeds = False
         if isinstance(input, str):
             input_tokens = self.to_tokens(input, move_to_device=True, truncate=False)
             input_type = "str"
         elif isinstance(input, list):
+            # Force left-padding for batched generation so real tokens are
+            # flush-right and logits[:, -1, :] is always the last real token.
+            if _is_batched_list:
+                _orig_padding_side = self.tokenizer.padding_side
+                self.tokenizer.padding_side = "left"
             input_tokens = self.to_tokens(input, move_to_device=True, truncate=False)
+            if _is_batched_list:
+                self.tokenizer.padding_side = _orig_padding_side
             input_type = "list"
         elif isinstance(input, torch.Tensor) and input.is_floating_point():
             # inputs_embeds: pre-computed embeddings (e.g., from multimodal models)
@@ -2307,6 +2307,30 @@ class TransformerBridge(nn.Module):
                         )
                     else:
                         forward_kwargs: Dict[str, Any] = {}
+                        # Compute attention mask and position_ids for batched
+                        # inputs with padding. HF models default to all-ones
+                        # when no mask is given, which ignores padding tokens.
+                        if (
+                            _is_batched_list
+                            and self.tokenizer is not None
+                            and self.tokenizer.pad_token_id is not None
+                        ):
+                            # Temp-swap to "left" so get_attention_mask scans
+                            # for leading pads (matching the left-padded tokens).
+                            _prev_side = self.tokenizer.padding_side
+                            self.tokenizer.padding_side = "left"
+                            attn_mask = utils.get_attention_mask(
+                                self.tokenizer,
+                                current_tokens,
+                                prepend_bos=getattr(self.cfg, "default_prepend_bos", True),
+                            ).to(self.cfg.device)
+                            self.tokenizer.padding_side = _prev_side
+                            forward_kwargs["attention_mask"] = attn_mask
+                            # Adjust position_ids for left-padding so pad
+                            # tokens don't consume real position embeddings.
+                            position_ids = attn_mask.long().cumsum(-1) - 1
+                            position_ids.masked_fill_(attn_mask == 0, 1)
+                            forward_kwargs["position_ids"] = position_ids
                         # Pass multimodal inputs only on the first step — the vision
                         # encoder processes the image once, embedding it into the
                         # token sequence.  This includes pixel_values plus any extra
@@ -2346,6 +2370,10 @@ class TransformerBridge(nn.Module):
                                     [input_seq_pos], device=self.cfg.device
                                 )
                                 forward_kwargs["cache_position"] = cache_position
+                                if "position_ids" in forward_kwargs:
+                                    forward_kwargs["position_ids"] = forward_kwargs["position_ids"][
+                                        :, -1:
+                                    ]
                                 logits = self(
                                     current_tokens[:, -1:],
                                     return_type="logits",
@@ -2356,6 +2384,10 @@ class TransformerBridge(nn.Module):
                             if _hf_kv_cache is not None:
                                 # Cached step: pass only the last token + cache
                                 forward_kwargs["past_key_values"] = _hf_kv_cache
+                                if "position_ids" in forward_kwargs:
+                                    forward_kwargs["position_ids"] = forward_kwargs["position_ids"][
+                                        :, -1:
+                                    ]
                                 logits = self(
                                     current_tokens[:, -1:],
                                     return_type="logits",
