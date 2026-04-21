@@ -1887,7 +1887,7 @@ class HookedTransformer(HookedRootModule):
         freq_penalty: float = 0.0,
         use_past_kv_cache: bool = True,
         prepend_bos: Optional[bool] = USE_DEFAULT_VALUE,
-        padding_side: Optional[Literal["left", "right"]] = "left",
+        padding_side: Optional[Literal["left", "right"]] = USE_DEFAULT_VALUE,
         return_type: Optional[str] = "input",
         verbose: bool = True,
         **generation_kwargs,
@@ -1935,9 +1935,10 @@ class HookedTransformer(HookedRootModule):
                 the BOS token to the input (applicable when input is a string). Defaults to None,
                 implying usage of self.cfg.default_prepend_bos (default is True unless specified
                 otherwise). Pass True or False to override the default.
-            padding_side (Union[Literal["left", "right"], None], optional): Specifies which side to
-                pad when tokenizing multiple strings of different lengths. Defaults to left for
-                correct generation behavior. If None uses self.tokenizer.padding_side.
+            padding_side (Union[Literal["left", "right"], None], optional): Overrides
+                self.tokenizer.padding_side. Specifies which side to pad when tokenizing
+                multiple strings of different lengths. For batched list inputs, left-padding
+                is forced internally for correct generation behavior.
             return_type (Optional[str]): The type of the output to return - a string or a list of strings ('str'),
                 a tensor of tokens ('tokens'), a tensor of output embeddings ('embeds') or whatever the format of the
                 input was ('input').
@@ -1974,13 +1975,25 @@ class HookedTransformer(HookedRootModule):
                 else:
                     return_type = "embeds"
 
+            # initial_attention_mask is always computed so that single-prompt and
+            # batched generation go through the same masked code path, producing
+            # consistent results for the same prompt regardless of batching.
+            initial_attention_mask: Optional[torch.Tensor] = None
+            _is_batched_list = isinstance(input, list) and len(input) > 1
+
             if isinstance(input, (str, list)):
                 input_type = "str"
-                # If text, convert to tokens (batch_size=1)
                 assert (
                     self.tokenizer is not None
                 ), "Must provide a tokenizer if passing a string to the model"
-                input = self.to_tokens(input, prepend_bos=prepend_bos, padding_side=padding_side)
+                if _is_batched_list:
+                    # Force left-padding for batched generation so real tokens
+                    # are flush-right and logits[:, -1, :] is always correct.
+                    input = self.to_tokens(input, prepend_bos=prepend_bos, padding_side="left")
+                else:
+                    input = self.to_tokens(
+                        input, prepend_bos=prepend_bos, padding_side=padding_side
+                    )
             elif input.ndim == 2:
                 input_type = "tokens"
             else:
@@ -1988,6 +2001,27 @@ class HookedTransformer(HookedRootModule):
 
             input_tokens = input if input_type in ["str", "tokens"] else None
             batch_size, ctx_length = input.shape[0], input.shape[1]
+
+            # Compute initial attention mask. For batched inputs with padding,
+            # this correctly masks pad tokens. For single/unpadded inputs, this
+            # is all-ones which matches the no-mask code path but ensures both
+            # go through the same PosEmbed/attention logic for consistency.
+            if input_tokens is not None and self.tokenizer is not None:
+                _prepend_bos = (
+                    self.cfg.default_prepend_bos
+                    if prepend_bos is USE_DEFAULT_VALUE
+                    else (False if prepend_bos is None else prepend_bos)
+                )
+                # Temporarily set padding_side="left" so get_attention_mask
+                # scans for leading pads (matching the left-padded tokens).
+                _orig_padding_side = self.tokenizer.padding_side
+                if _is_batched_list:
+                    self.tokenizer.padding_side = "left"
+                initial_attention_mask = utils.get_attention_mask(
+                    self.tokenizer, input_tokens, _prepend_bos
+                )
+                if _is_batched_list:
+                    self.tokenizer.padding_side = _orig_padding_side
             device = get_device_for_block_index(0, self.cfg)
             input = input.to(device)
             if use_past_kv_cache:
@@ -2062,16 +2096,20 @@ class HookedTransformer(HookedRootModule):
             for index in tqdm.tqdm(range(max_new_tokens), disable=not verbose):
                 pos_offset = self.get_pos_offset(past_kv_cache, batch_size)
 
+                # Extend the initial attention mask with 1s for generated tokens.
                 attention_mask: Optional[torch.Tensor] = None
-                if input_tokens is not None:
-                    if len(sampled_tokens_list) > 0:
-                        sampled_tokens = torch.cat(sampled_tokens_list, dim=1)
-                        tokens = torch.cat((input_tokens, sampled_tokens), dim=1)
+                if initial_attention_mask is not None:
+                    n_new = len(sampled_tokens_list)
+                    if n_new > 0:
+                        ones = torch.ones(
+                            batch_size,
+                            n_new,
+                            dtype=initial_attention_mask.dtype,
+                            device=device,
+                        )
+                        attention_mask = torch.cat([initial_attention_mask.to(device), ones], dim=1)
                     else:
-                        tokens = input_tokens
-                    attention_mask = utils.get_attention_mask(
-                        self.tokenizer, tokens, False if prepend_bos is None else prepend_bos
-                    ).to(device)
+                        attention_mask = initial_attention_mask.to(device)
                 residual, shortformer_pos_embed = self.get_residual(
                     embeds,
                     pos_offset,
