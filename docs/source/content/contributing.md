@@ -1,5 +1,9 @@
 # Contributing
 
+```{warning}
+`HookedTransformer` is deprecated as of TransformerLens 3.0 and will be removed in the next major version. New code should use [`TransformerBridge`](migrating_to_v3.md) instead. Existing `HookedTransformer` code continues to work through the 3.x branch via a compatibility layer. See the [migration guide](migrating_to_v3.md) for conversion recipes.
+```
+
 ## Setup
 
 ### DevContainer
@@ -11,13 +15,23 @@ with [GitHub Codespaces](https://github.com/features/codespaces).
 
 ### Manual Setup
 
-This project uses [Poetry](https://python-poetry.org/docs/#installation) for package management.
-Install as follows (this will also setup your virtual environment):
+As of TransformerLens 3.0, this project uses [UV](https://docs.astral.sh/uv/getting-started/installation/) for package and environment management (it previously used Poetry). Install UV first, then run:
 
 ```bash
-poetry config virtualenvs.in-project true
-poetry install --with dev,docs,jupyter
+# resolves and installs dependencies into .venv
+uv sync
+# activate the virtual environment
+source .venv/bin/activate
 ```
+
+Dependency groups are defined in `pyproject.toml` under `[dependency-groups]`. The project sets `default-groups = ["dev", "docs", "jupyter"]`, so `uv sync` installs all three out of the box — you do not need to pass `--group` flags for the standard contributor setup.
+
+- Standard contributor setup (recommended default): `uv sync`
+- Include the optional `quantization` group (bitsandbytes, optimum-quanto): `uv sync --all-groups`
+
+You can also add individual groups with `uv sync --group <name>`, or install without optional groups using `uv sync --no-default-groups`.
+
+Requires Python 3.10 or higher.
 
 ## Testing
 
@@ -52,8 +66,10 @@ in the docstring, and this will then automatically generate the API docs when me
 They will also be automatically checked with [pytest](https://docs.pytest.org/) (via
 [doctest](https://docs.python.org/3/library/doctest.html)).
 
-If you want to view your documentation changes, run `poetry run docs-hot-reload`. This will give you
+If you want to view your documentation changes, run `uv run docs-hot-reload`. This will give you
 hot-reloading docs (they change in real time as you edit docstrings).
+
+For documentation generation to work, install with `uv sync --group docs`.
 
 ### Docstring Style Guide
 

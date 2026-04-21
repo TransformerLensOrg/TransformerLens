@@ -1,0 +1,13 @@
+/* Shrink subheadings (h2-h4) within article content; leave page title (h1) untouched. */
+article.bd-article h2,
+.content h2 {
+    font-size: 1.5rem;
+}
+article.bd-article h3,
+.content h3 {
+    font-size: 1.2rem;
+}
+article.bd-article h4,
+.content h4 {
+    font-size: 1.05rem;
+}

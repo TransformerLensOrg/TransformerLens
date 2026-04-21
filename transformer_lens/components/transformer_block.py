@@ -9,6 +9,9 @@ import torch
 import torch.nn as nn
 from jaxtyping import Float, Int
 
+from transformer_lens.cache.key_value_cache_entry import (
+    TransformerLensKeyValueCacheEntry,
+)
 from transformer_lens.components import (
     Attention,
     GroupedQueryAttention,
@@ -18,11 +21,10 @@ from transformer_lens.components import (
     RMSNormPre,
 )
 from transformer_lens.components.mlps.can_be_used_as_mlp import CanBeUsedAsMLP
+from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.factories.mlp_factory import MLPFactory
 from transformer_lens.hook_points import HookPoint
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
-from transformer_lens.past_key_value_caching import HookedTransformerKeyValueCacheEntry
-from transformer_lens.utils import repeat_along_head_dimension
+from transformer_lens.utilities import repeat_along_head_dimension
 
 
 # Transformer Block
@@ -102,14 +104,14 @@ class TransformerBlock(nn.Module):
         self,
         resid_pre: Float[torch.Tensor, "batch pos d_model"],
         shortformer_pos_embed: Optional[Float[torch.Tensor, "batch pos d_model"]] = None,
-        past_kv_cache_entry: Optional[HookedTransformerKeyValueCacheEntry] = None,
+        past_kv_cache_entry: Optional[TransformerLensKeyValueCacheEntry] = None,
         attention_mask: Optional[Int[torch.Tensor, "batch offset_pos"]] = None,
     ) -> Float[torch.Tensor, "batch pos d_model"]:
         """A single Transformer block.
 
         Args:
             resid_pre (torch.Tensor): The residual stream - shape [batch, pos, d_model]
-            cache (HookedTransformerKeyValueCache): A cache of previous keys and values, used only when generating text. Defaults to None.
+            cache (TransformerLensKeyValueCache): A cache of previous keys and values, used only when generating text. Defaults to None.
             shortformer_pos_embed (torch.Tensor, optional): Only used for positional_embeddings_type == "shortformer". The positional embeddings. See HookedTransformerConfig for details. Defaults to None.
             attention_mask (torch.Tensor, optional): The attention mask for padded tokens. Defaults to None.
 
@@ -153,33 +155,53 @@ class TransformerBlock(nn.Module):
             key_input = attn_in
             value_input = attn_in
 
-        attn_out = (
-            # hook the residual stream states that are used to calculate the
-            # queries, keys and values, independently.
-            # Then take the layer norm of these inputs, and pass these to the attention module.
-            self.attn(
-                query_input=self.ln1(query_input)
-                + (0.0 if shortformer_pos_embed is None else shortformer_pos_embed),
-                key_input=self.ln1(key_input)
-                + (0.0 if shortformer_pos_embed is None else shortformer_pos_embed),
-                value_input=self.ln1(value_input),
+        if self.cfg.original_architecture in ("Olmo2ForCausalLM", "Olmo3ForCausalLM"):
+            attn_out = self.attn(
+                query_input=query_input,
+                key_input=key_input,
+                value_input=value_input,
                 past_kv_cache_entry=past_kv_cache_entry,
                 attention_mask=attention_mask,
             )
-        )  # [batch, pos, d_model]
+        else:
+            attn_out = (
+                # hook the residual stream states that are used to calculate the
+                # queries, keys and values, independently.
+                # Then take the layer norm of these inputs, and pass these to the attention module.
+                self.attn(
+                    query_input=self.ln1(query_input)
+                    + (0.0 if shortformer_pos_embed is None else shortformer_pos_embed),
+                    key_input=self.ln1(key_input)
+                    + (0.0 if shortformer_pos_embed is None else shortformer_pos_embed),
+                    value_input=self.ln1(value_input),
+                    past_kv_cache_entry=past_kv_cache_entry,
+                    attention_mask=attention_mask,
+                )
+            )  # [batch, pos, d_model]
         if self.cfg.use_normalization_before_and_after:
             # If we use LayerNorm both before and after, then apply the second LN after the layer
             # and before the hook. We do it before the hook so hook_attn_out captures "that which
             # is added to the residual stream"
             attn_out = self.ln1_post(attn_out)
         attn_out = self.hook_attn_out(attn_out)
+
+        if self.cfg.original_architecture in ("Olmo2ForCausalLM", "Olmo3ForCausalLM"):
+            attn_out = self.ln1(attn_out)
+
+        if resid_pre.device != attn_out.device:
+            resid_pre = resid_pre.to(attn_out.device)
+
         if not self.cfg.attn_only and not self.cfg.parallel_attn_mlp:
             resid_mid = self.hook_resid_mid(resid_pre + attn_out)  # [batch, pos, d_model]
             mlp_in = (
                 resid_mid if not self.cfg.use_hook_mlp_in else self.hook_mlp_in(resid_mid.clone())
             )
-            normalized_resid_mid = self.ln2(mlp_in)
-            mlp_out = self.apply_mlp(normalized_resid_mid)
+            if self.cfg.original_architecture in ("Olmo2ForCausalLM", "Olmo3ForCausalLM"):
+                mlp_out = self.apply_mlp(mlp_in)
+                mlp_out = self.ln2(mlp_out)
+            else:
+                normalized_resid_mid = self.ln2(mlp_in)
+                mlp_out = self.apply_mlp(normalized_resid_mid)
             resid_post = self.hook_resid_post(resid_mid + mlp_out)  # [batch, pos, d_model]
         elif self.cfg.parallel_attn_mlp:
             # Dumb thing done by GPT-J, both MLP and Attn read from resid_pre and write to resid_post, no resid_mid used.

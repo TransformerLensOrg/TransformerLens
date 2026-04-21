@@ -1,32 +1,38 @@
+from __future__ import annotations
+
 """Hook Points.
 
 Helpers to access activations in models.
 """
 
 import logging
+from collections.abc import Callable, Iterable, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import partial
 from typing import (
     Any,
     Callable,
-    Dict,
     Iterable,
-    List,
     Literal,
     Optional,
     Protocol,
     Sequence,
-    Tuple,
     Union,
+    cast,
     runtime_checkable,
 )
 
 import torch
 import torch.nn as nn
 import torch.utils.hooks as hooks
+from torch import Tensor
 
-from transformer_lens.utils import Slice, SliceInput
+# Import BaseTensorConversion from the new location
+from transformer_lens.conversion_utils.conversion_steps.base_tensor_conversion import (
+    BaseTensorConversion,
+)
+from transformer_lens.utilities import Slice, SliceInput, warn_if_mps
 
 
 @dataclass
@@ -47,18 +53,93 @@ class LensHandle:
 NamesFilter = Optional[Union[Callable[[str], bool], Sequence[str], str]]
 
 
+class _ScaledGradientTensor:
+    """Wrapper around gradient tensors that applies backward_scale to sum operations.
+
+    This works around a PyTorch bug/behavior where multiplying gradient tensors
+    element-wise in backward hooks gives incorrect sums.
+    """
+
+    def __init__(self, tensor: Tensor, scale: float):
+        self._tensor = tensor
+        self._scale = scale
+
+    def sum(self, *args, **kwargs):
+        """Override sum to apply scaling to the result, not the tensor."""
+        result = self._tensor.sum(*args, **kwargs)
+        if isinstance(result, Tensor) and result.numel() == 1:
+            # Scalar result - apply scale
+            return result * self._scale
+        return result
+
+    def __getattr__(self, name):
+        """Delegate all other attributes to the wrapped tensor."""
+        return getattr(self._tensor, name)
+
+    def __repr__(self):
+        return f"ScaledGradientTensor({self._tensor}, scale={self._scale})"
+
+
 @runtime_checkable
 class _HookFunctionProtocol(Protocol):
     """Protocol for hook functions."""
 
-    def __call__(self, tensor: torch.Tensor, *, hook: "HookPoint") -> Union[Any, None]:
+    def __call__(self, tensor: Tensor, *, hook: "HookPoint") -> Union[Any, None]:
         ...
 
 
 HookFunction = _HookFunctionProtocol  # Callable[..., _HookFunctionProtocol]
 
 DeviceType = Optional[torch.device]
-_grad_t = Union[Tuple[torch.Tensor, ...], torch.Tensor]
+_grad_t = Union[tuple[Tensor, ...], Tensor]
+
+
+class _AliasedHookPoint:
+    """
+    A lightweight wrapper that represents a HookPoint with an aliased name.
+
+    This is used when a hook is registered with multiple names (e.g., in compatibility mode
+    where both canonical and legacy names should trigger the hook). Instead of modifying
+    the original HookPoint's name, we create this wrapper that delegates to the original
+    HookPoint but presents a different name to the user's hook function.
+    """
+
+    def __init__(self, alias_name: str, target: "HookPoint"):
+        """
+        Create an aliased view of a HookPoint.
+
+        Args:
+            alias_name: The name to present to the hook function
+            target: The original HookPoint to delegate to
+        """
+        self._alias_name = alias_name
+        self._target = target
+
+    @property
+    def name(self) -> Optional[str]:
+        """Return the alias name."""
+        return self._alias_name
+
+    @property
+    def ctx(self) -> dict:
+        """Delegate to the target's context."""
+        return self._target.ctx
+
+    @property
+    def hook_conversion(self):
+        """Delegate to the target's hook conversion."""
+        return self._target.hook_conversion
+
+    def layer(self) -> int:
+        """
+        Extract layer index from the alias name.
+
+        Returns the layer index for hook names like 'blocks.0.attn.hook_pattern' -> 0
+        """
+        if self._alias_name is None:
+            raise ValueError("Name cannot be None")
+        split_name = self._alias_name.split(".")
+        return int(split_name[1])
 
 
 class HookPoint(nn.Module):
@@ -71,13 +152,20 @@ class HookPoint(nn.Module):
 
     def __init__(self):
         super().__init__()
-        self.fwd_hooks: List[LensHandle] = []
-        self.bwd_hooks: List[LensHandle] = []
+        self.fwd_hooks: list[LensHandle] = []
+        self.bwd_hooks: list[LensHandle] = []
         self.ctx = {}
 
         # A variable giving the hook's name (from the perspective of the root
         # module) - this is set by the root module at setup.
-        self.name: Union[str, None] = None
+        self.name: Optional[str] = None
+
+        # Hook conversion for input and output transformations
+        self.hook_conversion: Optional[BaseTensorConversion] = None
+
+        # Backward gradient scale factor (for compatibility between architectures)
+        # This scales the SUM of gradients, not element-wise (to avoid PyTorch bugs)
+        self.backward_scale: float = 1.0
 
     def add_perma_hook(self, hook: HookFunction, dir: Literal["fwd", "bwd"] = "fwd") -> None:
         self.add_hook(hook, dir=dir, is_permanent=True)
@@ -89,12 +177,16 @@ class HookPoint(nn.Module):
         is_permanent: bool = False,
         level: Optional[int] = None,
         prepend: bool = False,
+        alias_names: Optional[list[str]] = None,
     ) -> None:
         """
         Hook format is fn(activation, hook_name)
         Change it into PyTorch hook format (this includes input and output,
         which are the same for a HookPoint)
         If prepend is True, add this hook before all other hooks
+        If alias_names is provided, the hook will be called once for each alias name,
+        receiving a temporary HookPoint-like object with that name instead of self
+        (useful for compatibility mode aliases)
         """
 
         def full_hook(
@@ -106,7 +198,46 @@ class HookPoint(nn.Module):
                 dir == "bwd"
             ):  # For a backwards hook, module_output is a tuple of (grad,) - I don't know why.
                 module_output = module_output[0]
-            return hook(module_output, hook=self)
+
+                # Apply backward scaling if needed (wrap tensor to scale sum operations)
+                if self.backward_scale != 1.0:
+                    module_output = _ScaledGradientTensor(module_output, self.backward_scale)
+
+            # Apply input conversion if hook_conversion exists
+            if self.hook_conversion is not None:
+                module_output = self.hook_conversion.convert(module_output)
+
+            # Apply the hook for each name (or just once with canonical name)
+            if alias_names is not None:
+                # Call the hook once for each alias name
+                # Create a simple wrapper that acts like a HookPoint but with a different name
+                hook_result = None
+                for alias_name in alias_names:
+                    # Create a view of this HookPoint with the alias name
+                    hook_with_alias = _AliasedHookPoint(alias_name, self)
+                    # Apply the hook
+                    hook_result = hook(module_output, hook=hook_with_alias)  # type: ignore[arg-type]
+
+                    # If the hook modified the output, use that for subsequent calls
+                    if hook_result is not None:
+                        module_output = hook_result
+            else:
+                # Call the hook once with the canonical name (self)
+                hook_result = hook(module_output, hook=self)
+
+            # Apply output reversion if hook_conversion exists and hook returned a value
+            if hook_result is not None and self.hook_conversion is not None:
+                hook_result = self.hook_conversion.revert(hook_result)
+
+            # For backward hooks, PyTorch expects the return to be a tuple of (grad,)
+            if dir == "bwd" and hook_result is not None:
+                return (
+                    hook_result
+                    if isinstance(hook_result, tuple) and len(hook_result) == 1
+                    else (hook_result,)
+                )
+
+            return hook_result
 
         # annotate the `full_hook` with the string representation of the `hook` function
         if isinstance(hook, partial):
@@ -117,12 +248,27 @@ class HookPoint(nn.Module):
             full_hook.__name__ = hook.__repr__()
 
         if dir == "fwd":
-            pt_handle = self.register_forward_hook(full_hook)
-            _internal_hooks = self._forward_hooks
+            pt_handle = self.register_forward_hook(full_hook, prepend=prepend)
             visible_hooks = self.fwd_hooks
         elif dir == "bwd":
-            pt_handle = self.register_full_backward_hook(full_hook)
-            _internal_hooks = self._backward_hooks
+            # Wrap full_hook's bare Tensor return in tuple for PyTorch's backward API
+            def _bwd_hook_wrapper(
+                module: torch.nn.Module,
+                grad_input: Any,
+                grad_output: Any,
+            ):
+                result = full_hook(module, grad_input, grad_output)
+                if result is None:
+                    return None
+                if isinstance(result, tuple):
+                    return result
+                return (result,)
+
+            if isinstance(hook, partial):
+                _bwd_hook_wrapper.__name__ = f"partial({hook.func.__repr__()},...)"
+            else:
+                _bwd_hook_wrapper.__name__ = hook.__repr__()
+            pt_handle = self.register_full_backward_hook(_bwd_hook_wrapper, prepend=prepend)
             visible_hooks = self.bwd_hooks
         else:
             raise ValueError(f"Invalid direction {dir}")
@@ -131,11 +277,48 @@ class HookPoint(nn.Module):
 
         if prepend:
             # we could just pass this as an argument in PyTorch 2.0, but for now we manually do this...
-            _internal_hooks.move_to_end(handle.hook.id, last=False)  # type: ignore # TODO: this type error could signify a bug
             visible_hooks.insert(0, handle)
 
         else:
             visible_hooks.append(handle)
+
+    def has_hooks(
+        self,
+        dir: Literal["fwd", "bwd", "both"] = "both",
+        including_permanent: bool = True,
+        level: Optional[int] = None,
+    ) -> bool:
+        """Check if this HookPoint has any active hooks.
+
+        Args:
+            dir: Direction of hooks to check ("fwd", "bwd", or "both")
+            including_permanent: Whether to include permanent hooks in the check
+            level: Only check hooks at this context level (None for all levels)
+
+        Returns:
+            True if any matching hooks are found, False otherwise
+        """
+
+        def _has_hooks_in_direction(handles: list[LensHandle]) -> bool:
+            for handle in handles:
+                # Check if this hook matches our criteria
+                if not including_permanent and handle.is_permanent:
+                    continue
+                if level is not None and handle.context_level != level:
+                    continue
+                return True
+            return False
+
+        if dir == "fwd":
+            return _has_hooks_in_direction(self.fwd_hooks)
+        elif dir == "bwd":
+            return _has_hooks_in_direction(self.bwd_hooks)
+        elif dir == "both":
+            return _has_hooks_in_direction(self.fwd_hooks) or _has_hooks_in_direction(
+                self.bwd_hooks
+            )
+        else:
+            raise ValueError(f"Invalid direction {dir}")
 
     def remove_hooks(
         self,
@@ -143,7 +326,7 @@ class HookPoint(nn.Module):
         including_permanent: bool = False,
         level: Optional[int] = None,
     ) -> None:
-        def _remove_hooks(handles: List[LensHandle]) -> List[LensHandle]:
+        def _remove_hooks(handles: list[LensHandle]) -> list[LensHandle]:
             output_handles = []
             for handle in handles:
                 if including_permanent:
@@ -165,7 +348,21 @@ class HookPoint(nn.Module):
         del self.ctx
         self.ctx = {}
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def enable_reshape(
+        self,
+        hook_conversion: Optional[BaseTensorConversion] = None,
+    ) -> None:
+        """
+        Enable reshape functionality for this hook point using a BaseTensorConversion.
+
+        Args:
+            hook_conversion: BaseTensorConversion instance to handle input/output transformations.
+                           The convert() method will be used for input transformation,
+                           and the revert() method will be used for output transformation.
+        """
+        self.hook_conversion = hook_conversion
+
+    def forward(self, x: Tensor) -> Tensor:
         return x
 
     def layer(self):
@@ -200,8 +397,8 @@ class HookedRootModule(nn.Module):
     """
 
     name: Optional[str]
-    mod_dict: Dict[str, nn.Module]
-    hook_dict: Dict[str, HookPoint]
+    mod_dict: dict[str, nn.Module]
+    hook_dict: dict[str, HookPoint]
 
     def __init__(self, *args: Any):
         super().__init__()
@@ -235,7 +432,7 @@ class HookedRootModule(nn.Module):
         self,
         direction: Literal["fwd", "bwd", "both"] = "both",
         including_permanent: bool = False,
-        level: Union[int, None] = None,
+        level: Optional[int] = None,
     ):
         for hp in self.hook_points():
             hp.remove_hooks(direction, including_permanent=including_permanent, level=level)
@@ -249,7 +446,7 @@ class HookedRootModule(nn.Module):
         clear_contexts: bool = True,
         direction: Literal["fwd", "bwd", "both"] = "both",
         including_permanent: bool = False,
-        level: Union[int, None] = None,
+        level: Optional[int] = None,
     ):
         if clear_contexts:
             self.clear_contexts()
@@ -263,7 +460,7 @@ class HookedRootModule(nn.Module):
         hook: HookFunction,
         dir: Literal["fwd", "bwd"] = "fwd",
         is_permanent: bool = False,
-        level: Union[int, None] = None,
+        level: Optional[int] = None,
         prepend: bool = False,
     ) -> None:
         """Runs checks on the hook, and then adds it to the hook point"""
@@ -296,7 +493,7 @@ class HookedRootModule(nn.Module):
         hook: HookFunction,
         dir: Literal["fwd", "bwd"] = "fwd",
         is_permanent: bool = False,
-        level: Union[int, None] = None,
+        level: Optional[int] = None,
         prepend: bool = False,
     ) -> None:
         if isinstance(name, str):
@@ -343,11 +540,19 @@ class HookedRootModule(nn.Module):
             hook (Callable): The hook to add
             dir (Literal[&quot;fwd&quot;, &quot;bwd&quot;]): The direction for the hook
         """
-        self.mod_dict[name].add_hook(hook, dir=dir, level=self.context_level)
+        hook_point_module = self.mod_dict[name]
+        if not hasattr(hook_point_module, "add_hook"):
+            raise TypeError(f"Expected a module with add_hook, got {type(hook_point_module)}")
+        if isinstance(hook_point_module, torch.Tensor):
+            raise TypeError(
+                "Module set as Tensor for some reason!"
+            )  # mypy seems to think these could be tensors after a torch update no idea why, or if this is possible
+        module_with_hook = cast(HookPoint, hook_point_module)
+        module_with_hook.add_hook(hook, dir=dir, level=self.context_level)
 
     def _enable_hooks_for_points(
         self,
-        hook_points: Iterable[Tuple[str, HookPoint]],
+        hook_points: Iterable[tuple[str, HookPoint]],
         enabled: Callable,
         hook: Callable,
         dir: Literal["fwd", "bwd"],
@@ -382,8 +587,8 @@ class HookedRootModule(nn.Module):
     @contextmanager
     def hooks(
         self,
-        fwd_hooks: List[Tuple[Union[str, Callable], Callable]] = [],
-        bwd_hooks: List[Tuple[Union[str, Callable], Callable]] = [],
+        fwd_hooks: list[tuple[Union[str, Callable], Callable]] = [],
+        bwd_hooks: list[tuple[Union[str, Callable], Callable]] = [],
         reset_hooks_end: bool = True,
         clear_contexts: bool = False,
     ):
@@ -422,8 +627,8 @@ class HookedRootModule(nn.Module):
     def run_with_hooks(
         self,
         *model_args: Any,  # TODO: unsure about whether or not this Any typing is correct or not; may need to be replaced with something more specific?
-        fwd_hooks: List[Tuple[Union[str, Callable], Callable]] = [],
-        bwd_hooks: List[Tuple[Union[str, Callable], Callable]] = [],
+        fwd_hooks: list[tuple[Union[str, Callable], Callable]] = [],
+        bwd_hooks: list[tuple[Union[str, Callable], Callable]] = [],
         reset_hooks_end: bool = True,
         clear_contexts: bool = False,
         **model_kwargs: Any,
@@ -478,6 +683,8 @@ class HookedRootModule(nn.Module):
         Returns:
             cache (dict): The cache where activations will be stored.
         """
+        if device is not None:
+            warn_if_mps(device)
         if cache is None:
             cache = {}
 
@@ -494,7 +701,7 @@ class HookedRootModule(nn.Module):
 
         self.is_caching = True
 
-        def save_hook(tensor: torch.Tensor, hook: HookPoint, is_backward: bool):
+        def save_hook(tensor: Tensor, hook: HookPoint, is_backward: bool):
             assert hook.name is not None
             hook_name = hook.name
             if is_backward:
@@ -582,8 +789,8 @@ class HookedRootModule(nn.Module):
         device: DeviceType = None,
         remove_batch_dim: bool = False,
         cache: Optional[dict] = None,
-        pos_slice: Union[Slice, SliceInput] = None,
-    ) -> Tuple[dict, list, list]:
+        pos_slice: Optional[Union[Slice, SliceInput]] = None,
+    ) -> tuple[dict, list, list]:
         """Creates hooks to cache activations. Note: It does not add the hooks to the model.
 
         Args:
@@ -598,6 +805,8 @@ class HookedRootModule(nn.Module):
             fwd_hooks (list): The forward hooks.
             bwd_hooks (list): The backward hooks. Empty if incl_bwd is False.
         """
+        if device is not None:
+            warn_if_mps(device)
         if cache is None:
             cache = {}
 
@@ -619,7 +828,7 @@ class HookedRootModule(nn.Module):
 
         self.is_caching = True
 
-        def save_hook(tensor: torch.Tensor, hook: HookPoint, is_backward: bool = False):
+        def save_hook(tensor: Tensor, hook: HookPoint, is_backward: bool = False):
             # for attention heads the pos dimension is the third from last
             if hook.name is None:
                 raise RuntimeError("Hook should have been provided a name")

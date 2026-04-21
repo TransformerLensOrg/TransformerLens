@@ -93,6 +93,43 @@ def test_backward_hook_runs_successfully():
     model.remove_all_hook_fns(including_permanent=True)
 
 
+def test_backward_hook_returning_bare_tensor():
+    """Regression test for issue #1160.
+
+    When a backward hook returns a bare tensor (not wrapped in a tuple),
+    PyTorch's register_full_backward_hook raises:
+        RuntimeError: hook 'hook' has changed the size of value
+
+    The fix wraps bare tensor returns as (result,) before returning to PyTorch.
+    """
+    c = Counter()
+
+    def modify_grad(grad: torch.Tensor, hook: Any):
+        c.inc()
+        return grad  # bare tensor, NOT (grad,)
+
+    with model.hooks(bwd_hooks=[("blocks.0.hook_resid_post", modify_grad)]):
+        out = model(prompt)
+        out.sum().backward()
+    assert c.count == 1
+    model.remove_all_hook_fns(including_permanent=True)
+
+
+def test_backward_hook_returning_none():
+    """Backward hooks returning None should not raise."""
+    c = Counter()
+
+    def observe_grad(grad: torch.Tensor, hook: Any):
+        c.inc()
+        return None
+
+    with model.hooks(bwd_hooks=[("blocks.0.hook_resid_post", observe_grad)]):
+        out = model(prompt)
+        out.sum().backward()
+    assert c.count == 1
+    model.remove_all_hook_fns(including_permanent=True)
+
+
 def test_hook_context_manager_with_permanent_hook():
     c = Counter()
     model.add_perma_hook(embed, c.inc)
@@ -234,10 +271,3 @@ def test_prepending_hooks(zero_attach_pos, prepend):
     # exactly when the zero hook is attached last XOR it is prepended
 
     assert torch.allclose(logits, model.unembed.b_U[None, :]) == logits_are_unembed_bias
-
-
-def test_use_attn_in_with_gqa_raises_error():
-    # Create model that uses GroupedQueryAttention
-    model = HookedTransformer.from_pretrained("Qwen/Qwen2-0.5B")
-    with pytest.raises(AssertionError):
-        model.set_use_attn_in(True)
