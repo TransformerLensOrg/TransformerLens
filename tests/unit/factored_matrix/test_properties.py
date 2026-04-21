@@ -32,6 +32,19 @@ def factored_matrices_leading_ones(random_matrices_leading_ones):
     return [FactoredMatrix(a, b) for a, b in random_matrices_leading_ones]
 
 
+@pytest.fixture(scope="module")
+def random_matrices_bf16():
+    return [
+        (randn(3, 2).to(torch.bfloat16), randn(2, 3).to(torch.bfloat16)),
+        (randn(10, 4).to(torch.bfloat16), randn(4, 10).to(torch.bfloat16)),
+    ]
+
+
+@pytest.fixture(scope="module")
+def factored_matrices_bf16(random_matrices_bf16):
+    return [FactoredMatrix(a, b) for a, b in random_matrices_bf16]
+
+
 class TestFactoredMatrixProperties:
     def test_AB_property(self, factored_matrices, random_matrices):
         for i, factored_matrix in enumerate(factored_matrices):
@@ -79,18 +92,6 @@ class TestFactoredMatrixProperties:
             assert torch.allclose(U.mT @ U, torch.eye(U.shape[-1]), atol=1e-5)
             assert torch.allclose(Vh.mT @ Vh, torch.eye(Vh.shape[-1]), atol=1e-5)
 
-    @pytest.mark.skip(
-        """
-        Jaxtyping throws a TypeError when this test is run.
-        TypeError: type of the return value must be jaxtyping.Float[Tensor, '*leading_dims mdim']; got torch.Tensor instead
-
-        I'm not sure why. The error is not very informative. When debugging the shape was equal to mdim, and *leading_dims should
-        match zero or more leading dims according to the [docs](https://github.com/google/jaxtyping/blob/main/API.md).
-
-        Sort of related to https://github.com/TransformerLensOrg/TransformerLens/issues/190 because jaxtyping
-        is only enabled at test time and not runtime.
-        """
-    )
     def test_eigenvalues_property(self, factored_matrices):
         for factored_matrix in factored_matrices:
             if factored_matrix.ldim == factored_matrix.rdim:
@@ -159,3 +160,21 @@ class TestFactoredMatrixProperties:
                 assert isinstance(result, FactoredMatrix)
                 assert torch.allclose(result.A, unsqueezed_A)
                 assert torch.allclose(result.B, unsqueezed_B)
+
+    def test_eigenvalues_bfloat16_support(self, factored_matrices_bf16):
+        """
+        Test that eigenvalues calculation does nott crash for bfloat16 matrices.
+        """
+        for factored_matrix in factored_matrices_bf16:
+            if factored_matrix.ldim == factored_matrix.rdim:
+                eigenvalues = factored_matrix.eigenvalues
+
+                assert eigenvalues.dtype == torch.complex64
+
+                expected_eigenvalues = torch.linalg.eig(
+                    factored_matrix.BA.to(torch.float32)
+                ).eigenvalues
+
+                assert torch.allclose(
+                    torch.abs(eigenvalues), torch.abs(expected_eigenvalues), atol=1e-2, rtol=1e-2
+                )

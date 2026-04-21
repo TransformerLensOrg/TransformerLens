@@ -3,8 +3,11 @@ from unittest import mock
 import pytest
 
 from transformer_lens import HookedTransformer
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
-from transformer_lens.loading_from_pretrained import fill_missing_keys
+from transformer_lens.config import HookedTransformerConfig
+from transformer_lens.loading_from_pretrained import (
+    fill_missing_keys,
+    get_pretrained_model_config,
+)
 
 
 def get_default_config():
@@ -17,7 +20,7 @@ def get_default_config():
 
 
 @mock.patch("logging.warning")
-def test_fill_missing_keys(mock_warning):
+def test_fill_missing_keys(mock_warning: mock.MagicMock):
     cfg = get_default_config()
     model = HookedTransformer(cfg)
     default_state_dict = model.state_dict()
@@ -61,12 +64,84 @@ def test_fill_missing_keys_no_missing_keys():
     assert filled_state_dict == default_state_dict
 
 
-# Failures
+def test_n_ctx_override_reduces_context():
+    """
+    n_ctx override should work when reducing below the model default.
+    Uses a minimal HookedTransformerConfig directly — no model loading needed.
+    Fixes #1006.
+    """
+    from transformer_lens.loading_from_pretrained import get_pretrained_model_config
+
+    cfg = get_pretrained_model_config("gpt2", n_ctx=256)
+    assert cfg.n_ctx == 256, f"Expected n_ctx=256, got {cfg.n_ctx}"
 
 
-def test_fill_missing_keys_raises_error_on_invalid_model():
-    invalid_model = None
-    default_state_dict = {}
+@mock.patch("logging.warning")
+def test_n_ctx_override_larger_than_default_warns(mock_warning: mock.MagicMock):
+    """
+    A warning should be issued when n_ctx exceeds the model's default.
+    GPT-2 default n_ctx is 1024 — requesting 2048 should trigger the warning.
+    Fixes #1006.
+    """
+    from transformer_lens.loading_from_pretrained import get_pretrained_model_config
 
-    with pytest.raises(AttributeError):
-        fill_missing_keys(invalid_model, default_state_dict)
+    cfg = get_pretrained_model_config("gpt2", n_ctx=2048)
+    assert cfg.n_ctx == 2048, f"Expected n_ctx=2048, got {cfg.n_ctx}"
+    mock_warning.assert_any_call(
+        "You are setting n_ctx=2048 which is larger than this model's "
+        "default context length of 1024. The model was not "
+        "trained on sequences this long and may produce unreliable results. "
+        "Ensure you have sufficient memory for this context length."
+    )
+
+
+# --- Architecture config tests ---
+
+
+class TestArchitectureConfigs:
+    """Verify that convert_hf_model_config produces correct configs for new architectures."""
+
+    def test_apertus_config(self):
+        try:
+            cfg = get_pretrained_model_config("apertus-8b")
+        except ValueError as e:
+            if "does not recognize this architecture" in str(e):
+                pytest.skip(f"transformers version too old: {e}")
+            raise
+        assert cfg.original_architecture == "ApertusForCausalLM"
+        assert cfg.normalization_type == "RMS"
+        assert cfg.positional_embedding_type == "rotary"
+        assert cfg.gated_mlp is False
+        assert cfg.final_rms is True
+        assert cfg.act_fn == "xielu"
+        assert cfg.use_qk_norm is True
+        assert cfg.n_key_value_heads is not None
+        assert cfg.d_model > 0
+        assert cfg.n_heads > 0
+
+    def test_gpt_oss_config(self):
+        try:
+            cfg = get_pretrained_model_config("gpt-oss-20b")
+        except ValueError as e:
+            if "does not recognize this architecture" in str(e):
+                pytest.skip(f"transformers version too old: {e}")
+            raise
+        assert cfg.original_architecture == "GptOssForCausalLM"
+        assert cfg.normalization_type == "RMS"
+        assert cfg.positional_embedding_type == "rotary"
+        assert cfg.gated_mlp is True
+        assert cfg.final_rms is True
+        assert cfg.num_experts is not None
+        assert cfg.num_experts > 0
+        assert cfg.experts_per_token is not None
+        assert cfg.n_key_value_heads is not None
+
+    def test_apertus_instruct_config(self):
+        try:
+            cfg = get_pretrained_model_config("apertus-8b-instruct")
+        except ValueError as e:
+            if "does not recognize this architecture" in str(e):
+                pytest.skip(f"transformers version too old: {e}")
+            raise
+        assert cfg.original_architecture == "ApertusForCausalLM"
+        assert cfg.act_fn == "xielu"

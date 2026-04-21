@@ -1,0 +1,136 @@
+"""Normalization bridge component implementation."""
+from typing import Any, Dict, Optional, cast
+
+import torch
+
+from transformer_lens.hook_points import HookPoint
+from transformer_lens.model_bridge.generalized_components.base import (
+    GeneralizedComponent,
+)
+
+
+class NormalizationBridge(GeneralizedComponent):
+    """Normalization bridge that wraps transformer normalization layers but implements the calculation from scratch.
+
+    This component provides standardized input/output hooks.
+    """
+
+    property_aliases = {"w": "weight", "b": "bias"}
+
+    def __init__(
+        self,
+        name: str,
+        config: Any,
+        submodules: Optional[Dict[str, GeneralizedComponent]] = {},
+        use_native_layernorm_autograd: bool = False,
+    ):
+        """Initialize the normalization bridge.
+
+        Args:
+            name: The name of this component
+            config: Optional configuration
+            submodules: Dictionary of GeneralizedComponent submodules to register
+            use_native_layernorm_autograd: If True, use HuggingFace's native LayerNorm
+                                          autograd for exact gradient matching. If False,
+                                          use custom implementation. Defaults to False.
+        """
+        super().__init__(name, config, submodules=submodules)
+        self.hook_normalized = HookPoint()
+        self.hook_scale = HookPoint()
+        self.use_native_layernorm_autograd = use_native_layernorm_autograd
+
+    def forward(self, hidden_states: torch.Tensor, **kwargs: Any) -> torch.Tensor:
+        """Forward pass through the normalization bridge.
+
+        Args:
+            hidden_states: Input hidden states
+            **kwargs: Additional arguments to pass to the original component
+
+        Returns:
+            Normalized output
+        """
+        if self.original_component is None:
+            raise RuntimeError(
+                f"Original component not set for {self.name}. Call set_original_component() first."
+            )
+        assert self.config is not None
+        hidden_states = self.hook_in(hidden_states)
+        self._last_input_before_norm = hidden_states
+        if self.use_native_layernorm_autograd:
+            result = self._hf_autograd_forward_with_hooks(hidden_states)
+        elif hasattr(self.config, "layer_norm_folding") and self.config.layer_norm_folding:
+            result = self._hf_autograd_forward_with_hooks(hidden_states)
+        else:
+            uses_rms_norm = getattr(self.config, "uses_rms_norm", False)
+            # Upcast to float32 for normalization precision (matches HT's RMSNorm behavior)
+            input_dtype = hidden_states.dtype
+            if input_dtype not in (torch.float32, torch.float64):
+                hidden_states = hidden_states.float()
+            if not uses_rms_norm:
+                hidden_states = hidden_states - hidden_states.mean(-1, keepdim=True)
+            scale = self.hook_scale(
+                (
+                    hidden_states.pow(2).mean(-1, keepdim=True) + getattr(self.config, "eps", 1e-05)
+                ).sqrt()
+            )
+            hidden_states = self.hook_normalized(hidden_states / scale)
+            # Apply weight/bias in float32 before casting back (matches HF precision).
+            if uses_rms_norm:
+                hidden_states = hidden_states * self.weight
+            else:
+                hidden_states = hidden_states * self.weight
+                if (
+                    hasattr(self.original_component, "bias")
+                    and self.original_component.bias is not None
+                ):
+                    hidden_states = hidden_states + cast(torch.Tensor, self.original_component.bias)
+            result = hidden_states.to(input_dtype)
+        output = self.hook_out(result)
+        return output
+
+    def _hf_autograd_forward_with_hooks(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass that preserves HF's autograd while firing intermediate hooks.
+
+        This method calls HF's LayerNorm for the final result (to preserve exact gradients),
+        but also computes intermediate values to fire hook_scale and hook_normalized.
+
+        Args:
+            x: Input tensor
+
+        Returns:
+            Normalized output tensor from HF's LayerNorm
+        """
+        if self.original_component is None:
+            raise RuntimeError(f"Original component not set for {self.name}")
+        with torch.no_grad():
+            # Upcast to float32 for hook precision (matches HT's RMSNorm/LayerNorm behavior)
+            x_float = x.float() if x.dtype not in (torch.float32, torch.float64) else x
+            if not getattr(self.config, "uses_rms_norm", False):
+                x_centered = x_float - x_float.mean(-1, keepdim=True)
+            else:
+                x_centered = x_float
+            eps_tensor = getattr(self.original_component, "eps", None)
+            if eps_tensor is None:
+                eps_tensor = getattr(self.original_component, "variance_epsilon", None)
+            if eps_tensor is None:
+                eps_value: float | torch.Tensor = getattr(self.config, "eps", 1e-05)
+            else:
+                eps_value = eps_tensor
+            variance = x_centered.pow(2).mean(-1, keepdim=True)
+            if isinstance(eps_value, torch.Tensor):
+                inv_rms = torch.rsqrt(variance + eps_value)
+                scale = (variance + eps_value).sqrt()
+            else:
+                inv_rms = torch.rsqrt(variance + float(eps_value))
+                scale = (variance + float(eps_value)).sqrt()
+            # Use rsqrt for x_normalized to match HF's actual computation path
+            # (LlamaRMSNorm uses x * rsqrt(variance + eps)). Keep scale as sqrt
+            # for hook_scale (denominator convention used by HookedTransformer).
+            x_normalized = x_centered * inv_rms
+        _ = self.hook_scale(scale)
+        _ = self.hook_normalized(x_normalized)
+        input_dtype = x.dtype
+        result = self.original_component(x)
+        if result.dtype != input_dtype:
+            result = result.to(input_dtype)
+        return result

@@ -1,21 +1,23 @@
 """Can Be Used as MLP component.
 
 This module serves as the base for everything within TransformerLens that can be used like an MLP.
-This does not necessarily mean that every component extending this class will be an MLP, but 
+This does not necessarily mean that every component extending this class will be an MLP, but
 everything extending this class can be used interchangeably for an MLP.
 """
+
 from typing import Dict, Optional, Union
 
 import torch
 import torch.nn as nn
 from jaxtyping import Float
 
-from transformer_lens.components import LayerNorm, LayerNormPre
+from transformer_lens.components.layer_norm import LayerNorm
+from transformer_lens.components.layer_norm_pre import LayerNormPre
+from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.factories.activation_function_factory import (
     ActivationFunctionFactory,
 )
 from transformer_lens.hook_points import HookPoint
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.utilities.activation_functions import ActivationFunction
 
 

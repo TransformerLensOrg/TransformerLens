@@ -51,6 +51,7 @@ napoleon_custom_sections = [
 html_theme = "furo"
 html_title = "TransformerLens Documentation"
 html_static_path = ["_static"]
+html_css_files = ["custom.css"]
 html_logo = "_static/transformer_lens_logo.png"
 html_favicon = "favicon.ico"
 
@@ -107,6 +108,7 @@ functions_to_ignore = [
 # https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html#confval-autodoc_default_options
 autodoc_default_options = {
     "exclude-members": ", ".join(functions_to_ignore),
+    "special-members": "__getitem__, __len__, __iter__",
 }
 
 
@@ -129,7 +131,17 @@ def run_apidoc(_app: Optional[Any] = None):
     generated_path.mkdir(parents=True, exist_ok=True)
     output_path.mkdir(parents=True, exist_ok=True)
 
-    # Arguments for sphinx-apidoc
+    # Exclude modules with dedicated pages
+    excluded_modules = [
+        "ActivationCache.py",
+        "FactoredMatrix.py",
+        "HookedEncoder.py",
+        "HookedEncoderDecoder.py",
+        "HookedTransformer.py",
+        "SVDInterpreter.py",
+        "BertNextSentencePrediction.py",
+        "config/HookedTransformerConfig.py",
+    ]
     args = [
         "--force",  # Overwrite existing files
         "--separate",  # Put documentation for each module on its own page.
@@ -137,15 +149,33 @@ def run_apidoc(_app: Optional[Any] = None):
         "-o",
         str(output_path),
         str(package_path),
-    ]
+    ] + [str(package_path / module) for module in excluded_modules]
 
     # Call sphinx-apidoc
     apidoc.main(args)
 
+    # Add exclude-members for modules with separate docs
+    package_excludes = {
+        "transformer_lens.rst": "ActivationCache, FactoredMatrix, HookedEncoder, HookedEncoderDecoder, HookedTransformer, SVDInterpreter, BertNextSentencePrediction, HookedTransformerConfig, EasyTransformerConfig",
+        "transformer_lens.config.rst": "HookedTransformerConfig, TransformerBridgeConfig, TransformerLensConfig",
+        "transformer_lens.conversion_utils.rst": "HookConversionSet",
+    }
+
+    for filename, excluded_members in package_excludes.items():
+        rst_file = output_path / filename
+        if rst_file.exists():
+            content = rst_file.read_text()
+            # Patch automodule directive
+            package_name = filename.replace(".rst", "")
+            old_directive = f".. automodule:: {package_name}\n   :members:\n   :undoc-members:\n   :show-inheritance:"
+            new_directive = f"{old_directive}\n   :exclude-members: {excluded_members}"
+            content = content.replace(old_directive, new_directive)
+            rst_file.write_text(content)
+
 
 # -- Sphinx Notebook Demo Config ---------------------------------------------
 
-nbsphinx_execute = "always"  # Always re-run so Plotly charts are created correctly.
+nbsphinx_execute = "never"  # Don't execute notebooks during build (avoids device/memory issues).
 
 # -- Sphinx Setup Overrides --------------------------------------------------
 
