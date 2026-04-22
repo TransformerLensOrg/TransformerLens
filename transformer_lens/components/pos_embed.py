@@ -2,6 +2,7 @@
 
 This module contains all the component :class:`PosEmbed`.
 """
+
 from typing import Dict, Optional, Union
 
 import einops
@@ -9,8 +10,8 @@ import torch
 import torch.nn as nn
 from jaxtyping import Float, Int
 
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
-from transformer_lens.utils import get_offset_position_ids
+from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.utilities import get_offset_position_ids
 
 
 # Positional Embeddings
@@ -27,7 +28,7 @@ class PosEmbed(nn.Module):
         tokens: Int[torch.Tensor, "batch pos"],
         past_kv_pos_offset: int = 0,
         attention_mask: Optional[Int[torch.Tensor, "batch offset_pos"]] = None,
-    ) -> Float[torch.Tensor, "batch pos d_model"]:
+    ) -> Float[torch.Tensor, "batch new_pos d_model"]:
         """
         Forward pass for positional embeddings.
 

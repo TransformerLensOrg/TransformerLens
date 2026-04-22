@@ -2,8 +2,8 @@
 
 import pytest
 
-from docs.make_docs import get_config, get_property
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from docs.make_docs import get_config, get_model_info, get_property
+from transformer_lens.config import HookedTransformerConfig
 
 
 def test_get_config():
@@ -41,6 +41,13 @@ def test_get_property():
     d_mlp = get_property("d_mlp", "attn-only-1l")
     assert d_mlp == 2048
 
+    n_key_value_heads = get_property("n_key_value_heads", "attn-only-1l")
+    assert n_key_value_heads is None
+
     # Test an unknown property
     with pytest.raises(KeyError):
         get_property("unknown_property", "attn-only-1l")
+
+
+def test_get_model_info():
+    get_model_info("attn-only-1l")

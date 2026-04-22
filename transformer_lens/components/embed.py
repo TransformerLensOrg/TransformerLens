@@ -1,7 +1,8 @@
 """Hooked Transformer Embed Component.
 
-This module contains all the component :class:`BertMLMHead`.
+This module contains all the component :class:`Embed`.
 """
+
 from typing import Dict, Union
 
 import torch
@@ -9,7 +10,7 @@ import torch.nn as nn
 from jaxtyping import Float, Int
 
 from transformer_lens.components import LayerNorm
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 
 
 # Embed & Unembed

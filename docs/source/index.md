@@ -18,6 +18,8 @@ I used to work for the [Anthropic interpretability team](https://transformer-cir
 
 The core features were heavily inspired by the interface to [Anthropic's excellent Garcon tool](https://transformer-circuits.pub/2021/garcon/index.html). Credit to Nelson Elhage and Chris Olah for building Garcon and showing me the value of good infrastructure for enabling exploratory research!
 
+**The best place to start is the [Main Demo](generated/demos/Main_Demo)**, which walks through loading a model, inspecting activations, and using hooks to edit and patch the model as it runs. It's also worth taking a look at a helpful diagram of [all weight matrices and activation tensors with TransformerLens notation](_static/TransformerLens_Diagram.svg) courtesy of [Austin Kozlowski](https://github.com/akozlo).
+
 ```{toctree}
 :hidden:
 :caption: Introduction
@@ -29,16 +31,26 @@ content/gallery
 
 ```{toctree}
 :hidden:
+:caption: News
+
+content/news/release-3.0
+content/news/release-2.0
+```
+
+```{toctree}
+:hidden:
 :caption: Documentation
 
 generated/code/modules
-generated/model_properties_table.md
+content/model_tables
+content/model_structure
 ```
 
 ```{toctree}
 :hidden:
 :caption: Resources
 
+content/migrating_to_v3
 content/tutorials
 content/citation
 content/contributing

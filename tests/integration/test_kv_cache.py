@@ -2,7 +2,7 @@ import pytest
 import torch as t
 
 from transformer_lens import HookedTransformer
-from transformer_lens.past_key_value_caching import HookedTransformerKeyValueCache
+from transformer_lens.cache.key_value_cache import TransformerLensKeyValueCache
 
 
 # Pythia models seem to have some kind of numerical stability issue.
@@ -30,7 +30,7 @@ def test_single_new_token(pretrained):
     no_cache_logits = model(full_prompt_tokens)
     assert full_prompt_tokens.shape[-1] == pre_prompt_tokens_len + 1
 
-    past_kv_cache = HookedTransformerKeyValueCache.init_cache(
+    past_kv_cache = TransformerLensKeyValueCache.init_cache(
         model.cfg, model.cfg.device, pre_prompt_tokens.shape[0]
     )
     model(
@@ -57,7 +57,7 @@ def test_multiple_new_tokens(pretrained):
     assert full_prompt_tokens.shape[-1] == pre_prompt_tokens_len + new_tokens_len
     no_cache_logits = model(full_prompt_tokens)
 
-    past_kv_cache = HookedTransformerKeyValueCache.init_cache(
+    past_kv_cache = TransformerLensKeyValueCache.init_cache(
         model.cfg, model.cfg.device, pre_prompt_tokens.shape[0]
     )
     model(
@@ -119,7 +119,7 @@ def test_multi_token_batch(pretrained, pre_padding, post_padding):
             padding_side=post_padding,
         )
 
-    past_kv_cache = HookedTransformerKeyValueCache.init_cache(
+    past_kv_cache = TransformerLensKeyValueCache.init_cache(
         model.cfg, model.cfg.device, batch_pre_prompt_tokens.shape[0]
     )
     model(batch_pre_prompt_tokens, past_kv_cache=past_kv_cache, padding_side=pre_padding)
@@ -147,13 +147,13 @@ def test_freeze_cache(pretrained):
     pre_prompt_tokens = model.to_tokens(pre_prompt)
     post_prompt_1 = " I'm headed to the church to play bingo."
     new_tokens_1 = model.to_tokens(post_prompt_1, prepend_bos=False)
-    past_kv_cache_1 = HookedTransformerKeyValueCache.init_cache(
+    past_kv_cache_1 = TransformerLensKeyValueCache.init_cache(
         model.cfg, model.cfg.device, pre_prompt_tokens.shape[0]
     )
 
     post_prompt_2 = " shine your light on me, Miss Liberty"
     new_tokens_2 = model.to_tokens(post_prompt_2, prepend_bos=False)
-    past_kv_cache_2 = HookedTransformerKeyValueCache.init_cache(
+    past_kv_cache_2 = TransformerLensKeyValueCache.init_cache(
         model.cfg, model.cfg.device, pre_prompt_tokens.shape[0]
     )
 
@@ -213,6 +213,28 @@ def test_freeze_cache(pretrained):
     assert not t.allclose(with_cache_logits_1, with_cache_2_logits_1, atol=atol)
 
 
+def test_kv_cache_with_custom_attention_mask(pretrained):
+    model, atol = pretrained
+    prompt_pre = "An apple"
+    prompt_post = " a day keeps junk the"
+    prompt_whole = "An apple a day keeps the"
+    tokens_pre = model.to_tokens(prompt_pre)
+    tokens_post = model.to_tokens(prompt_post, prepend_bos=False)
+    tokens_whole = model.to_tokens(prompt_whole)
+    correct_logits = model(tokens_whole)
+
+    past_kv_cache = TransformerLensKeyValueCache.init_cache(
+        model.cfg, model.cfg.device, tokens_pre.shape[0]
+    )
+    model(tokens_pre, past_kv_cache=past_kv_cache)
+    exp_logits = model(
+        tokens_post,
+        attention_mask=t.tensor([[1, 1, 1, 0, 1]], device=model.cfg.device),
+        past_kv_cache=past_kv_cache,
+    )
+    assert t.allclose(correct_logits[:, -1], exp_logits[:, -1], atol=atol)
+
+
 def test_kv_cache_and_start_at_layer(pretrained):
     model, atol = pretrained
     pre_prompt = "I went to Staten Island,"
@@ -224,7 +246,7 @@ def test_kv_cache_and_start_at_layer(pretrained):
     no_cache_logits = model(full_prompt_tokens)
     assert full_prompt_tokens.shape[-1] == pre_prompt_tokens_len + 1
 
-    past_kv_cache = HookedTransformerKeyValueCache.init_cache(
+    past_kv_cache = TransformerLensKeyValueCache.init_cache(
         model.cfg, model.cfg.device, pre_prompt_tokens.shape[0]
     )
     model(

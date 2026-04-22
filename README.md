@@ -10,16 +10,10 @@ CD](https://github.com/TransformerLensOrg/TransformerLens/actions/workflows/chec
 [![Docs
 CD](https://github.com/TransformerLensOrg/TransformerLens/actions/workflows/pages/pages-build-deployment/badge.svg)](https://github.com/TransformerLensOrg/TransformerLens/actions/workflows/pages/pages-build-deployment)
 
-A Library for Mechanistic Interpretability of Generative Language Models.
+A Library for Mechanistic Interpretability of Generative Language Models. Maintained by [Bryce Meyer](https://github.com/bryce13950) and created by [Neel Nanda](https://neelnanda.io/about)
 
 [![Read the Docs
 Here](https://img.shields.io/badge/-Read%20the%20Docs%20Here-blue?style=for-the-badge&logo=Read-the-Docs&logoColor=white&link=https://TransformerLensOrg.github.io/TransformerLens/)](https://TransformerLensOrg.github.io/TransformerLens/)
-
-| :exclamation:  HookedSAETransformer Removed   |
-|-----------------------------------------------|
-
-Hooked SAE has been removed from TransformerLens 2.0. The functionality is being moved to
-[SAELens](http://github.com/jbloomAus/SAELens).
 
 This is a library for doing [mechanistic
 interpretability](https://distill.pub/2020/circuits/zoom-in/) of GPT-2 Style language models. The
@@ -38,22 +32,30 @@ functions to edit, remove or replace these activations as the model runs.
 pip install transformer_lens
 ```
 
+#### Python 3.8 or 3.9
+
+```shell
+pip install 'transformer_lens~=2.0'
+```
+
 ### Use
 
 ```python
-import transformer_lens
+from transformer_lens.model_bridge import TransformerBridge
 
 # Load a model (eg GPT-2 Small)
-model = transformer_lens.HookedTransformer.from_pretrained("gpt2-small")
+bridge = TransformerBridge.boot_transformers("gpt2", device="cpu")
 
 # Run the model and get logits and activations
-logits, activations = model.run_with_cache("Hello World")
+logits, activations = bridge.run_with_cache("Hello World")
 ```
+
+`TransformerBridge` is the recommended 3.0 path and supports 50+ architectures. The legacy `HookedTransformer.from_pretrained` API is still available through a compatibility layer but is deprecated - see the [Migrating to TransformerLens 3](https://TransformerLensOrg.github.io/TransformerLens/content/migrating_to_v3.html) guide for conversion recipes.
 
 ## Key Tutorials
 
 * [Introduction to the Library and Mech
-  Interp](https://arena-ch1-transformers.streamlit.app/[1.2]_Intro_to_Mech_Interp)
+  Interp](https://learn.arena.education/chapter1_transformer_interp/02_intro_mech_interp/)
 * [Demo of Main TransformerLens Features](https://neelnanda.io/transformer-lens-demo)
 
 ## Gallery
@@ -108,20 +110,20 @@ you would like to help, please try working on one! The standard answer to "why h
 yet" is just that there aren't enough people! Key resources:
 
 * [A Guide to Getting Started in Mechanistic Interpretability](https://neelnanda.io/getting-started)
-* [ARENA Mechanistic Interpretability Tutorials](https://arena-ch1-transformers.streamlit.app/) from
+* [ARENA Mechanistic Interpretability Tutorials](https://learn.arena.education/chapter1_transformer_interp/) from
   Callum McDougall. A comprehensive practical introduction to mech interp, written in
   TransformerLens - full of snippets to copy and they come with exercises and solutions! Notable
   tutorials:
   * [Coding GPT-2 from
-    scratch](https://arena-ch1-transformers.streamlit.app/[1.1]_Transformer_from_Scratch), with
+    scratch](https://learn.arena.education/chapter1_transformer_interp/01_transformers/), with
     accompanying video tutorial from me ([1](https://neelnanda.io/transformer-tutorial)
     [2](https://neelnanda.io/transformer-tutorial-2)) - a good introduction to transformers
   * [Introduction to Mech Interp and
-    TransformerLens](https://arena-ch1-transformers.streamlit.app/[1.2]_Intro_to_Mech_Interp): An
+    TransformerLens](https://learn.arena.education/chapter1_transformer_interp/02_intro_mech_interp/): An
     introduction to TransformerLens and mech interp via studying induction heads. Covers the
     foundational concepts of the library
   * [Indirect Object
-    Identification](https://arena-ch1-transformers.streamlit.app/[1.3]_Indirect_Object_Identification):
+    Identification](https://learn.arena.education/chapter1_transformer_interp/21_ioi/):
     a replication of interpretability in the wild, that covers standard techniques in mech interp
     such as [direct logit
     attribution](https://dynalist.io/d/n2ZWtnoYHrU1s4vnFSAQ519J#z=disz2gTx-jooAcR0a5r8e7LZ),
@@ -147,16 +149,49 @@ If you have issues, questions, feature requests or bug reports, please search th
 it's already been answered, and if not please raise an issue!
 
 You're also welcome to join the open source mech interp community on
-[Slack](https://join.slack.com/t/opensourcemechanistic/shared_invite/zt-1qosyh8g3-9bF3gamhLNJiqCL_QqLFrA).
+[Slack](https://join.slack.com/t/opensourcemechanistic/shared_invite/zt-2n26nfoh1-TzMHrzyW6HiOsmCESxXtyw).
 Please use issues for concrete discussions about the package, and Slack for higher bandwidth
 discussions about eg supporting important new use cases, or if you want to make substantial
 contributions to the library and want a maintainer's opinion. We'd also love for you to come and
 share your projects on the Slack!
 
+| :exclamation:  HookedSAETransformer Removed   |
+|-----------------------------------------------|
+
+Hooked SAE has been removed from TransformerLens in version 2.0. The functionality is being moved to
+[SAELens](http://github.com/jbloomAus/SAELens). For more information on this release, please see the
+accompanying
+[announcement](https://transformerlensorg.github.io/TransformerLens/content/news/release-2.0.html)
+for details on what's new, and the future of TransformerLens.
+
+## Mamba / SSM support (experimental)
+
+TransformerLens includes bridge adapters for Mamba-1 (`state-spaces/mamba-*-hf`)
+and Mamba-2 (`AntonV/mamba2-130m-hf`, `state-spaces/mamba2-*`, etc.). The adapters
+cover:
+
+* Forward pass (bit-for-bit HF equivalent)
+* Hook-based introspection of projection activations (`in_proj`, `conv1d`, `x_proj`,
+  `dt_proj`, `out_proj` for Mamba-1; `in_proj`, `conv1d`, `inner_norm`, `out_proj` for
+  Mamba-2)
+* Stateful generation with cache-aware decode steps
+* The `compute_effective_attention` utility (in
+  `transformer_lens.model_bridge.supported_architectures.mamba2`) that materializes
+  Mamba-2's SSD-derived attention matrix for comparison with transformer attention
+  patterns
+
+Verification lives in the integration tests at
+`tests/integration/model_bridge/test_mamba_adapter.py` and
+`tests/integration/model_bridge/test_mamba2_adapter.py` (81 tests total). The
+`verify_models` benchmark suite does not currently cover SSM architectures — the
+benchmark has transformer-shaped assumptions (hook path patterns, layer norm
+folding, block submodule dispatch) that would need a dedicated refactor. SSM
+benchmark coverage will be revisited if hybrid architectures like Jamba or
+Falcon-H1 become priority or a user explicitly requests it.
+
 ## Credits
 
-This library was created by **[Neel Nanda](https://neelnanda.io)** and is maintained by **Joseph
-Bloom**.
+This library was created by **[Neel Nanda](https://neelnanda.io)** and is maintained by **[Bryce Meyer](https://github.com/bryce13950)**.
 
 The core features of TransformerLens were heavily inspired by the interface to [Anthropic's
 excellent Garcon tool](https://transformer-circuits.pub/2021/garcon/index.html). Credit to Nelson

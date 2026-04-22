@@ -4,25 +4,28 @@ Module for getting the singular vectors of the OV, w_in, and w_out matrices of a
 :class:`transformer_lens.HookedTransformer`.
 """
 
-from typing import Optional, Union
+from typing import Any, Optional, Union
 
-import fancy_einsum as einsum
 import torch
 from typeguard import typechecked
 from typing_extensions import Literal
 
 from transformer_lens.FactoredMatrix import FactoredMatrix
-from transformer_lens.HookedTransformer import HookedTransformer
 
 OUTPUT_EMBEDDING = "unembed.W_U"
 VECTOR_TYPES = ["OV", "w_in", "w_out"]
 
 
 class SVDInterpreter:
-    def __init__(self, model: HookedTransformer):
+    def __init__(self, model: Any):
         self.model = model
         self.cfg = model.cfg
-        self.params = {name: param for name, param in model.named_parameters()}
+        # Use tl_parameters() for TransformerBridge (returns TL-style dict)
+        # Fall back to named_parameters() for HookedTransformer
+        if hasattr(model, "tl_parameters"):
+            self.params = model.tl_parameters()
+        else:
+            self.params = {name: param for name, param in model.named_parameters()}
 
     @typechecked
     def get_singular_vectors(
@@ -148,7 +151,7 @@ class SVDInterpreter:
 
         if f"blocks.{layer_index}.ln2.w" in self.params:  # If fold_ln == False
             ln_2 = self.params[f"blocks.{layer_index}.ln2.w"]
-            return einsum.einsum("out in, in -> out in", w_in, ln_2)
+            return w_in * ln_2
 
         return w_in
 
