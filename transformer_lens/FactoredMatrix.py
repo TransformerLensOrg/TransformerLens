@@ -7,12 +7,45 @@ eigenvalues, norm and SVD.
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import List, Tuple, Union, overload
+from typing import Any, List, Protocol, Tuple, Union, cast, overload, runtime_checkable
 
 import torch
 from jaxtyping import Complex, Float
 
 import transformer_lens.utilities.tensors as tensor_utils
+
+
+@runtime_checkable
+class TensorLike(Protocol):
+    """Minimal tensor protocol that FactoredMatrix accepts in place of torch.Tensor.
+
+    Allows duck-typed inputs (e.g. jaxtyping wrappers, custom array types) that
+    aren't torch.Tensor subclasses but support the operations FactoredMatrix uses
+    when constructing, multiplying, and broadcasting its A and B factors.
+    """
+
+    @property
+    def ndim(self) -> int:
+        ...
+
+    @property
+    def shape(self) -> Any:
+        ...
+
+    def size(self, dim: int) -> int:
+        ...
+
+    def unsqueeze(self, dim: int) -> Any:
+        ...
+
+    def squeeze(self, dim: int) -> Any:
+        ...
+
+    def broadcast_to(self, shape: Any) -> Any:
+        ...
+
+    def __matmul__(self, other: Any) -> Any:
+        ...
 
 
 class FactoredMatrix:
@@ -22,11 +55,21 @@ class FactoredMatrix:
 
     def __init__(
         self,
-        A: Float[torch.Tensor, "... ldim mdim"],
-        B: Float[torch.Tensor, "... mdim rdim"],
+        A: Union[Float[torch.Tensor, "... ldim mdim"], TensorLike],
+        B: Union[Float[torch.Tensor, "... mdim rdim"], TensorLike],
     ):
-        self.A = A
-        self.B = B
+        """Construct a FactoredMatrix from factors A and B.
+
+        A and B may be torch.Tensor or TensorLike duck types. TensorLike inputs
+        are only fully supported by matmul-family operations (``@``, ``AB``,
+        ``BA``); operations like ``svd()``, ``norm()``, ``transpose()``,
+        ``__getitem__``, and eigenvalue methods require both factors to be
+        actual torch.Tensor and will raise AttributeError on TensorLike inputs.
+        """
+        # Cast to Tensor for type-checker purposes. At runtime A and B may be
+        # TensorLike duck types; the class methods trust the protocol.
+        self.A: torch.Tensor = cast(torch.Tensor, A)
+        self.B: torch.Tensor = cast(torch.Tensor, B)
         assert self.A.size(-1) == self.B.size(
             -2
         ), f"Factored matrix must match on inner dimension, shapes were a: {self.A.shape}, b:{self.B.shape}"
@@ -74,8 +117,9 @@ class FactoredMatrix:
             Float[torch.Tensor, "... rdim new_rdim"],
             Float[torch.Tensor, "rdim"],
             "FactoredMatrix",
+            TensorLike,
         ],
-    ) -> Union["FactoredMatrix", Float[torch.Tensor, "... ldim"]]:
+    ) -> Union["FactoredMatrix", Float[torch.Tensor, "... ldim"], TensorLike]:
         if isinstance(other, FactoredMatrix):
             return (self @ other.A) @ other.B
         else:
@@ -88,7 +132,9 @@ class FactoredMatrix:
                     other.size(-2) == self.rdim
                 ), f"Right matrix must match on inner dimension, shapes were self: {self.shape}, other:{other.shape}"
                 if self.rdim > self.mdim:
-                    return FactoredMatrix(self.A, self.B @ other)
+                    # other is Tensor or TensorLike; runtime delegates to
+                    # the appropriate __matmul__/__rmatmul__ overload.
+                    return FactoredMatrix(self.A, self.B @ cast(torch.Tensor, other))
                 else:
                     return FactoredMatrix(self.AB, other)
 
@@ -115,8 +161,9 @@ class FactoredMatrix:
             Float[torch.Tensor, "... new_rdim ldim"],
             Float[torch.Tensor, "ldim"],
             "FactoredMatrix",
+            TensorLike,
         ],
-    ) -> Union["FactoredMatrix", Float[torch.Tensor, "... rdim"]]:
+    ) -> Union["FactoredMatrix", Float[torch.Tensor, "... rdim"], TensorLike]:
         if isinstance(other, FactoredMatrix):
             return other.A @ (other.B @ self)
         else:
@@ -148,8 +195,11 @@ class FactoredMatrix:
         return self * scalar
 
     @property
-    def AB(self) -> Float[torch.Tensor, "*leading_dims ldim rdim"]:
-        """The product matrix - expensive to compute, and can consume a lot of GPU memory"""
+    def AB(self) -> Union[Float[torch.Tensor, "*leading_dims ldim rdim"], TensorLike]:
+        """The product matrix - expensive to compute, and can consume a lot of GPU memory.
+
+        Returns a TensorLike when A or B is a non-Tensor TensorLike duck type.
+        """
         return self.A @ self.B
 
     @property
