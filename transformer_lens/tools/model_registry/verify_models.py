@@ -60,6 +60,7 @@ logger = logging.getLogger(__name__)
 # Architectures added via the TransformerBridge system that need trust_remote_code=True.
 # These are not in the legacy NEED_REMOTE_CODE_MODELS tuple (loading_from_pretrained.py).
 _BRIDGE_REMOTE_CODE_PREFIXES: tuple[str, ...] = (
+    "baichuan-inc/",  # BaichuanForCausalLM — ships own modeling_baichuan.py
     "internlm/",  # InternLM2ForCausalLM — ships own modeling_internlm2.py
 )
 
