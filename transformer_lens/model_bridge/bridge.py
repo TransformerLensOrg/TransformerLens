@@ -1534,6 +1534,16 @@ class TransformerBridge(nn.Module):
             else:
                 kwargs.pop("one_zero_attention_mask")
 
+        # Detect batched list input that will need padding. For this case we force
+        # left-padding internally and auto-compute attention_mask + position_ids
+        # (unless the caller passed them explicitly) so pad tokens don't contaminate
+        # attention or position embeddings.
+        _is_batched_list = (
+            isinstance(input, list)
+            and len(input) > 1
+            and not getattr(self.cfg, "is_audio_model", False)
+        )
+
         try:
             if isinstance(input, (str, list)):
                 if getattr(self.cfg, "is_audio_model", False):
@@ -1541,9 +1551,20 @@ class TransformerBridge(nn.Module):
                         "Audio models require tensor input (raw waveform), not text. "
                         "Pass a torch.Tensor or use the input_values parameter."
                     )
-                input_ids = self.to_tokens(
-                    input, prepend_bos=prepend_bos, padding_side=padding_side
-                )
+                if _is_batched_list and padding_side is None:
+                    # Force left-padding so real tokens are flush-right.
+                    _orig_padding_side = self.tokenizer.padding_side
+                    self.tokenizer.padding_side = "left"
+                    try:
+                        input_ids = self.to_tokens(
+                            input, prepend_bos=prepend_bos, padding_side=padding_side
+                        )
+                    finally:
+                        self.tokenizer.padding_side = _orig_padding_side
+                else:
+                    input_ids = self.to_tokens(
+                        input, prepend_bos=prepend_bos, padding_side=padding_side
+                    )
             else:
                 input_ids = input
 
@@ -1552,6 +1573,30 @@ class TransformerBridge(nn.Module):
             _is_inputs_embeds = (
                 isinstance(input_ids, torch.Tensor) and input_ids.is_floating_point()
             )
+
+            # Auto-compute attention_mask + position_ids for batched list input
+            # when the caller didn't supply them. Matches HF generation convention.
+            if (
+                _is_batched_list
+                and attention_mask is None
+                and self.tokenizer is not None
+                and self.tokenizer.pad_token_id is not None
+                and not _is_inputs_embeds
+            ):
+                _prev_side = self.tokenizer.padding_side
+                self.tokenizer.padding_side = "left"
+                try:
+                    attention_mask = utils.get_attention_mask(
+                        self.tokenizer,
+                        input_ids,
+                        prepend_bos=getattr(self.cfg, "default_prepend_bos", True),
+                    ).to(self.cfg.device)
+                finally:
+                    self.tokenizer.padding_side = _prev_side
+                if "position_ids" not in kwargs:
+                    position_ids = attention_mask.long().cumsum(-1) - 1
+                    position_ids.masked_fill_(attention_mask == 0, 1)
+                    kwargs["position_ids"] = position_ids
 
             if attention_mask is not None:
                 kwargs["attention_mask"] = attention_mask
