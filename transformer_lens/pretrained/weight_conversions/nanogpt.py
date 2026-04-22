@@ -92,6 +92,10 @@ def convert_nanogpt_weights(old_state_dict, cfg: HookedTransformerConfig):
                 f"{layer_key}.attn.c_proj.bias"
             ]
         else:
+            if cfg.d_mlp is None:
+                raise ValueError(
+                    "cfg.d_mlp must be set to convert nanoGPT weights for the no-bias case."
+                )
             new_state_dict[f"blocks.{layer}.mlp.b_out"] = torch.zeros(cfg.d_model, dtype=cfg.dtype)
             new_state_dict[f"blocks.{layer}.mlp.b_in"] = torch.zeros(cfg.d_mlp, dtype=cfg.dtype)
             new_state_dict[f"blocks.{layer}.attn.b_Q"] = torch.zeros(
