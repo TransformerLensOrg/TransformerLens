@@ -1567,6 +1567,15 @@ class TransformerBridge(nn.Module):
                     )
             else:
                 input_ids = input
+                # Promote 1D integer token tensors to 2D [batch=1, seq] to match
+                # HookedTransformer's contract. Float tensors (inputs_embeds,
+                # audio waveforms) are passed through unchanged.
+                if (
+                    isinstance(input_ids, torch.Tensor)
+                    and input_ids.ndim == 1
+                    and not input_ids.is_floating_point()
+                ):
+                    input_ids = input_ids.unsqueeze(0)
 
             # Detect inputs_embeds: if the tensor is floating point, it's pre-computed
             # embeddings (e.g., from multimodal models) rather than token IDs.
