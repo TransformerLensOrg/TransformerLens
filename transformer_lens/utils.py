@@ -1122,7 +1122,7 @@ def get_cumsum_along_dim(tensor, dim, reverse=False):
 
 
 def get_attention_mask(
-    tokenizer: transformers.PreTrainedTokenizerBase,
+    tokenizer: Optional[transformers.PreTrainedTokenizerBase],
     tokens: torch.Tensor,
     prepend_bos: bool,
 ) -> torch.Tensor:

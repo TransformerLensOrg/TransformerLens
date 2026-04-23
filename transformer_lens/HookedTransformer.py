@@ -2217,7 +2217,6 @@ class HookedTransformer(HookedRootModule):
 
             stop_tokens: List[int] = []
             eos_token_for_padding = 0
-            assert self.tokenizer is not None
             if stop_at_eos:
                 tokenizer_has_eos_token = (
                     self.tokenizer is not None and self.tokenizer.eos_token_id is not None
