@@ -286,6 +286,7 @@ def boot(
     trust_remote_code: bool = False,
     model_class: Any | None = None,
     hf_model: Any | None = None,
+    n_ctx: int | None = None,
 ) -> TransformerBridge:
     """Boot a model from HuggingFace.
 
@@ -302,6 +303,11 @@ def boot(
         hf_model: Optional pre-loaded HuggingFace model to use instead of loading one. Useful for
             models loaded with custom configurations (e.g., quantization via BitsAndBytesConfig).
             When provided, load_weights is ignored.
+        n_ctx: Optional context length override. The bridge normally uses the model's documented
+            max context from the HF config. Setting this writes to whichever HF field the model
+            uses (n_positions / max_position_embeddings / etc.), so callers don't need to know
+            the field name. If larger than the model's default, a warning is emitted — quality
+            may degrade past the trained length for rotary models.
 
     Returns:
         The bridge to the loaded model.
@@ -323,6 +329,54 @@ def boot(
         trust_remote_code=trust_remote_code,
         token=_hf_token,
     )
+    _n_ctx_field: str | None = None
+    if n_ctx is not None:
+        # Validation (#2): reject non-positive values before doing anything else.
+        if n_ctx <= 0:
+            raise ValueError(f"n_ctx must be a positive integer, got n_ctx={n_ctx}.")
+        # Resolve n_ctx to whichever HF config field this model uses. Mirrors
+        # the order in map_default_transformer_lens_config so the TL config
+        # derivation picks up the override.
+        for _field in (
+            "n_positions",
+            "max_position_embeddings",
+            "max_context_length",
+            "max_length",
+            "seq_length",
+        ):
+            if hasattr(hf_config, _field):
+                _n_ctx_field = _field
+                break
+        if _n_ctx_field is None:
+            raise ValueError(
+                f"Cannot apply n_ctx={n_ctx}: no recognized context-length field on "
+                f"HF config for {model_name}. Use hf_config_overrides instead."
+            )
+        _default_n_ctx = getattr(hf_config, _n_ctx_field)
+        if _default_n_ctx is not None and n_ctx > _default_n_ctx:
+            logging.warning(
+                "Setting n_ctx=%d which is larger than the model's default "
+                "context length of %d. The model was not trained on sequences "
+                "this long and may produce unreliable results (especially for "
+                "rotary models without RoPE scaling).",
+                n_ctx,
+                _default_n_ctx,
+            )
+        # Conflict detection (#4): warn if the caller also set the same field
+        # via hf_config_overrides — explicit n_ctx wins but users should know.
+        if hf_config_overrides and _n_ctx_field in hf_config_overrides:
+            _conflicting_value = hf_config_overrides[_n_ctx_field]
+            if _conflicting_value != n_ctx:
+                logging.warning(
+                    "Both n_ctx=%d and hf_config_overrides['%s']=%s were provided. "
+                    "The explicit n_ctx takes precedence.",
+                    n_ctx,
+                    _n_ctx_field,
+                    _conflicting_value,
+                )
+        # Explicit n_ctx wins over hf_config_overrides for the resolved field.
+        hf_config_overrides = dict(hf_config_overrides or {})
+        hf_config_overrides[_n_ctx_field] = n_ctx
     if hf_config_overrides:
         hf_config.__dict__.update(hf_config_overrides)
     tl_config = map_default_transformer_lens_config(hf_config)
@@ -409,13 +463,46 @@ def boot(
         with contextlib.redirect_stdout(None):
             hf_model = model_class.from_config(hf_config, **from_config_kwargs)
     else:
-        hf_model = model_class.from_pretrained(model_name, **model_kwargs)
+        try:
+            hf_model = model_class.from_pretrained(model_name, **model_kwargs)
+        except RuntimeError as e:
+            # #5: HF refuses to load when positional-weight shapes don't match.
+            # If the user requested an n_ctx that conflicts with the saved weights
+            # (common for learned-pos-embed models like GPT-2), re-raise with a
+            # clearer message pointing them at the likely cause.
+            if n_ctx is not None and "ignore_mismatched_sizes" in str(e):
+                raise RuntimeError(
+                    f"Failed to load {model_name} with n_ctx={n_ctx}: the pretrained "
+                    f"weights' positional-embedding shape does not match the requested "
+                    f"context length. This affects models with learned positional "
+                    f"embeddings (e.g. GPT-2, OPT). Options: (1) use the model's "
+                    f"default n_ctx, (2) pass load_weights=False if you only need "
+                    f"config inspection, or (3) choose a rotary-embedding model "
+                    f"(e.g. Llama, Mistral) which supports n_ctx changes without "
+                    f"weight mismatch."
+                ) from e
+            raise
         if device is not None:
             hf_model = hf_model.to(device)
         # Cast params to dtype; preserve float32 buffers (e.g., RotaryEmbedding.inv_freq)
         for param in hf_model.parameters():
             if param.is_floating_point() and param.dtype != dtype:
                 param.data = param.data.to(dtype=dtype)
+    # #7: Verify the n_ctx override actually took effect on the loaded model.
+    # If HF's config class silently dropped or normalized the value, warn so
+    # the user doesn't get misled into thinking longer sequences are supported.
+    if n_ctx is not None and _n_ctx_field is not None and hf_model is not None:
+        _actual = getattr(hf_model.config, _n_ctx_field, None)
+        if _actual != n_ctx:
+            logging.warning(
+                "n_ctx=%d was requested but hf_model.config.%s=%s after load. "
+                "The override may not have taken effect; the model may not "
+                "accept sequences longer than %s.",
+                n_ctx,
+                _n_ctx_field,
+                _actual,
+                _actual,
+            )
     adapter.prepare_model(hf_model)
     tokenizer = tokenizer
     default_padding_side = getattr(adapter.cfg, "default_padding_side", None)
