@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-04-15T16:28:06.314994",
+  "last_updated": "2026-04-21T20:10:35.469418",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -11728,6 +11728,126 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Full verification completed with issues, low text quality",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "baichuan-inc/Baichuan2-7B-Chat",
+      "architecture_id": "BaichuanForCausalLM",
+      "verified_date": "2026-04-21",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: This modeling file requires the following packages that were not found in your environment: bitsandbytes",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "baichuan-inc/Baichuan2-7B-Base",
+      "architecture_id": "BaichuanForCausalLM",
+      "verified_date": "2026-04-21",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: This modeling file requires the following packages that were not found in your environment: bitsandbytes",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "baichuan-inc/Baichuan-7B",
+      "architecture_id": "BaiChuanForCausalLM",
+      "verified_date": "2026-04-21",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: forward_pass_logits) \u2014 Tensors differ: max_diff=74.608353, mean_rel=1.619285",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "baichuan-inc/Baichuan-7B",
+      "architecture_id": "BaiChuanForCausalLM",
+      "verified_date": "2026-04-21",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: forward_pass_logits) \u2014 Tensors differ: max_diff=78.619270, mean_rel=1.866265",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "baichuan-inc/Baichuan-7B",
+      "architecture_id": "BaiChuanForCausalLM",
+      "verified_date": "2026-04-21",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: forward_pass_logits) \u2014 Tensors differ: max_diff=nan, mean_rel=nan",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "baichuan-inc/Baichuan-7B",
+      "architecture_id": "BaiChuanForCausalLM",
+      "verified_date": "2026-04-21",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: forward_pass_logits) \u2014 Tensors differ: max_diff=33.073044, mean_rel=0.316714",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "baichuan-inc/Baichuan-7B",
+      "architecture_id": "BaiChuanForCausalLM",
+      "verified_date": "2026-04-21",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: forward_pass_logits) \u2014 Tensors differ: max_diff=33.073044, mean_rel=0.316714",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "baichuan-inc/Baichuan-7B",
+      "architecture_id": "BaiChuanForCausalLM",
+      "verified_date": "2026-04-21",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P2=69.2% < 75.0% (failed: generation, generation_with_kv_cache, multiple_generation \u2014 Generation failed: 'NoneType' object is not subscriptable",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "baichuan-inc/Baichuan-7B",
+      "architecture_id": "BaiChuanForCausalLM",
+      "verified_date": "2026-04-21",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "baichuan-inc/Baichuan2-7B-Base",
+      "architecture_id": "BaichuanForCausalLM",
+      "verified_date": "2026-04-21",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: forward_pass); P2=7.7% < 75.0% (failed: generation, gene \u2014 Forward pass failed: Cannot copy out of meta tensor; no data!",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "baichuan-inc/Baichuan2-7B-Base",
+      "architecture_id": "BaichuanForCausalLM",
+      "verified_date": "2026-04-21",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "baichuan-inc/Baichuan-7B",
+      "architecture_id": "BaiChuanForCausalLM",
+      "verified_date": "2026-04-21",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
       "invalidated": false,
       "invalidation_reason": null
     }

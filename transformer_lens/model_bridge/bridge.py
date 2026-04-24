@@ -169,6 +169,7 @@ class TransformerBridge(nn.Module):
         trust_remote_code: bool = False,
         model_class: Optional[type] = None,
         hf_model: Optional[Any] = None,
+        n_ctx: Optional[int] = None,
     ) -> "TransformerBridge":
         """Boot a model from HuggingFace (alias for sources.transformers.boot).
 
@@ -185,6 +186,9 @@ class TransformerBridge(nn.Module):
             hf_model: Optional pre-loaded HuggingFace model to use instead of loading one. Useful
                 for models loaded with custom configurations (e.g., quantization via
                 BitsAndBytesConfig). When provided, load_weights is ignored.
+            n_ctx: Optional context length override. Writes to the appropriate HF config field
+                for this model automatically (callers don't need to know the field name).
+                Warns if larger than the model's default context length.
 
         Returns:
             The bridge to the loaded model.
@@ -201,6 +205,7 @@ class TransformerBridge(nn.Module):
             trust_remote_code=trust_remote_code,
             model_class=model_class,
             hf_model=hf_model,
+            n_ctx=n_ctx,
         )
 
     @property
@@ -1536,6 +1541,16 @@ class TransformerBridge(nn.Module):
             else:
                 kwargs.pop("one_zero_attention_mask")
 
+        # Detect batched list input that will need padding. For this case we force
+        # left-padding internally and auto-compute attention_mask + position_ids
+        # (unless the caller passed them explicitly) so pad tokens don't contaminate
+        # attention or position embeddings.
+        _is_batched_list = (
+            isinstance(input, list)
+            and len(input) > 1
+            and not getattr(self.cfg, "is_audio_model", False)
+        )
+
         try:
             if isinstance(input, (str, list)):
                 if getattr(self.cfg, "is_audio_model", False):
@@ -1543,17 +1558,61 @@ class TransformerBridge(nn.Module):
                         "Audio models require tensor input (raw waveform), not text. "
                         "Pass a torch.Tensor or use the input_values parameter."
                     )
-                input_ids = self.to_tokens(
-                    input, prepend_bos=prepend_bos, padding_side=padding_side
-                )
+                if _is_batched_list and padding_side is None:
+                    # Force left-padding so real tokens are flush-right.
+                    _orig_padding_side = self.tokenizer.padding_side
+                    self.tokenizer.padding_side = "left"
+                    try:
+                        input_ids = self.to_tokens(
+                            input, prepend_bos=prepend_bos, padding_side=padding_side
+                        )
+                    finally:
+                        self.tokenizer.padding_side = _orig_padding_side
+                else:
+                    input_ids = self.to_tokens(
+                        input, prepend_bos=prepend_bos, padding_side=padding_side
+                    )
             else:
                 input_ids = input
+                # Promote 1D integer token tensors to 2D [batch=1, seq] to match
+                # HookedTransformer's contract. Float tensors (inputs_embeds,
+                # audio waveforms) are passed through unchanged.
+                if (
+                    isinstance(input_ids, torch.Tensor)
+                    and input_ids.ndim == 1
+                    and not input_ids.is_floating_point()
+                ):
+                    input_ids = input_ids.unsqueeze(0)
 
             # Detect inputs_embeds: if the tensor is floating point, it's pre-computed
             # embeddings (e.g., from multimodal models) rather than token IDs.
             _is_inputs_embeds = (
                 isinstance(input_ids, torch.Tensor) and input_ids.is_floating_point()
             )
+
+            # Auto-compute attention_mask + position_ids for batched list input
+            # when the caller didn't supply them. Matches HF generation convention.
+            if (
+                _is_batched_list
+                and attention_mask is None
+                and self.tokenizer is not None
+                and self.tokenizer.pad_token_id is not None
+                and not _is_inputs_embeds
+            ):
+                _prev_side = self.tokenizer.padding_side
+                self.tokenizer.padding_side = "left"
+                try:
+                    attention_mask = utils.get_attention_mask(
+                        self.tokenizer,
+                        input_ids,
+                        prepend_bos=getattr(self.cfg, "default_prepend_bos", True),
+                    ).to(self.cfg.device)
+                finally:
+                    self.tokenizer.padding_side = _prev_side
+                if "position_ids" not in kwargs:
+                    position_ids = attention_mask.long().cumsum(-1) - 1
+                    position_ids.masked_fill_(attention_mask == 0, 1)
+                    kwargs["position_ids"] = position_ids
 
             if attention_mask is not None:
                 kwargs["attention_mask"] = attention_mask
