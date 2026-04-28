@@ -17,7 +17,7 @@ from transformer_lens.model_bridge import TransformerBridge
 bridge = TransformerBridge.boot_transformers("gpt2", device="cpu")
 ```
 
-You can then call the familiar APIs: `to_tokens`, `to_string`, `generate`, `run_with_hooks`, `run_with_cache`.
+You can then call the familiar APIs: `to_tokens`, `to_string`, `generate`, `generate_stream`, `run_with_hooks`, `run_with_cache`.
 
 ## Top-Level Components
 

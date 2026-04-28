@@ -173,6 +173,11 @@ class TransformerBridge(nn.Module):
     ) -> "TransformerBridge":
         """Boot a model from HuggingFace (alias for sources.transformers.boot).
 
+        Returns raw HF weights by default — logits/activations match HF, *not*
+        legacy ``HookedTransformer`` (which folds LayerNorm + centers weights).
+        Call ``enable_compatibility_mode()`` on the result for HookedTransformer-
+        equivalent numerics. Generation, argmax, and CE loss are unaffected.
+
         Args:
             model_name: The name of the model to load.
             hf_config_overrides: Optional overrides applied to the HuggingFace config before model load.
@@ -617,10 +622,12 @@ class TransformerBridge(nn.Module):
         fold_value_biases: bool = True,
         refactor_factored_attn_matrices: bool = False,
     ) -> None:
-        """Enable compatibility mode for the bridge.
+        """Apply HookedTransformer-equivalent weight processing and legacy hook compatibility.
 
-        This sets up the bridge to work with legacy TransformerLens components/hooks.
-        It will also disable warnings about the usage of legacy components/hooks if specified.
+        Defaults match HookedTransformer's load-time processing (fold_ln + weight
+        centering) — required for analyses that reason in HookedTransformer's
+        post-processed coordinate system: logit lens, direct logit attribution,
+        residual-stream norms. Also enables legacy hook/component name aliases.
 
         Args:
             disable_warnings: Whether to disable warnings about legacy components/hooks
