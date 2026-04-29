@@ -274,11 +274,16 @@ class GeneralizedComponent(nn.Module):
             raise RuntimeError(
                 f"Original component not set for {self.name}. Call set_original_component() first."
             )
+        # Skip non-fp params: quantized weights (bnb uint8/int8, GPTQ/AWQ int32,
+        # HQQ, torchao) are stored in integer dtypes and dequantized internally
+        # during matmul. The compute dtype must come from a fp parameter; casting
+        # fp inputs to an integer storage dtype destroys precision.
         target_dtype = None
-        try:
-            target_dtype = next(original_component.parameters()).dtype
-        except StopIteration:
-            pass
+        for p in original_component.parameters():
+            if not p.dtype.is_floating_point:
+                continue
+            target_dtype = p.dtype
+            break
         input_arg_names = [
             "input",
             "hidden_states",

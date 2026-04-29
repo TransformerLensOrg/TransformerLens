@@ -622,11 +622,16 @@ class AttentionBridge(GeneralizedComponent):
             raise RuntimeError(
                 f"Original component not set for {self.name}. Call set_original_component() first."
             )
+        # Skip non-fp params: quantized weights (bnb uint8/int8, GPTQ/AWQ int32,
+        # HQQ, torchao) are stored in integer dtypes and dequantized internally
+        # during matmul. The compute dtype must come from a fp parameter; casting
+        # fp inputs to an integer storage dtype destroys precision.
         target_dtype = None
-        try:
-            target_dtype = next(self.original_component.parameters()).dtype
-        except StopIteration:
-            pass
+        for p in self.original_component.parameters():
+            if not p.dtype.is_floating_point:
+                continue
+            target_dtype = p.dtype
+            break
         if "query_input" in kwargs:
             hooked = self.hook_in(kwargs["query_input"])
             if (
