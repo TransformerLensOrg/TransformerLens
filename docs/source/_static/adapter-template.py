@@ -59,10 +59,10 @@ class ModelNameArchitectureAdapter(ArchitectureAdapter):
         self.cfg.positional_embedding_type = "rotary"
 
         # TODO: Set these flags
-        self.cfg.final_rms = True       # True if final layer norm is RMSNorm
-        self.cfg.gated_mlp = True       # True if MLP has gate projection (SwiGLU)
-        self.cfg.attn_only = False      # True only for attention-only models (rare)
-        self.cfg.uses_rms_norm = True   # Should match normalization_type
+        self.cfg.final_rms = True  # True if final layer norm is RMSNorm
+        self.cfg.gated_mlp = True  # True if MLP has gate projection (SwiGLU)
+        self.cfg.attn_only = False  # True only for attention-only models (rare)
+        self.cfg.uses_rms_norm = True  # Should match normalization_type
 
         # TODO: Set the epsilon attribute name used by this model's normalization
         # Check the HF model's norm layer to find the correct attribute name
@@ -96,10 +96,8 @@ class ModelNameArchitectureAdapter(ArchitectureAdapter):
         self.component_mapping = {
             # Token embedding
             "embed": EmbeddingBridge(name="model.embed_tokens"),
-
             # Rotary position embeddings (remove if model uses standard pos embeddings)
             "rotary_emb": RotaryEmbeddingBridge(name="model.rotary_emb"),
-
             # Transformer blocks
             "blocks": BlockBridge(
                 name="model.layers",  # TODO: HF path to the layer list
@@ -119,7 +117,7 @@ class ModelNameArchitectureAdapter(ArchitectureAdapter):
                         name="self_attn",  # TODO: HF name within block
                         config=self.cfg,
                         submodules={
-                            "q": LinearBridge(name="q_proj"),   # TODO: HF projection names
+                            "q": LinearBridge(name="q_proj"),  # TODO: HF projection names
                             "k": LinearBridge(name="k_proj"),
                             "v": LinearBridge(name="v_proj"),
                             "o": LinearBridge(name="o_proj"),
@@ -139,10 +137,8 @@ class ModelNameArchitectureAdapter(ArchitectureAdapter):
                     ),
                 },
             ),
-
             # Final layer norm
             "ln_final": RMSNormalizationBridge(name="model.norm", config=self.cfg),
-
             # Output head (unembedding)
             "unembed": UnembeddingBridge(name="lm_head", config=self.cfg),
         }
