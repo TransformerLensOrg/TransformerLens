@@ -742,9 +742,9 @@ def test_AttentionBridge_preserves_fp_input_when_first_param_is_quantized():
     )
 
     attn_bridge = bridge.blocks[0].attn  # type: ignore[attr-defined]
-    assert type(attn_bridge).__name__ == "AttentionBridge", (
-        f"Expected plain AttentionBridge, got {type(attn_bridge).__name__}"
-    )
+    assert (
+        type(attn_bridge).__name__ == "AttentionBridge"
+    ), f"Expected plain AttentionBridge, got {type(attn_bridge).__name__}"
     assert isinstance(attn_bridge, AttentionBridge)
 
     original = attn_bridge.original_component
@@ -755,9 +755,9 @@ def test_AttentionBridge_preserves_fp_input_when_first_param_is_quantized():
     original.q_proj.weight = torch.nn.Parameter(
         torch.zeros(fp_weight.shape, dtype=torch.uint8), requires_grad=False
     )
-    assert next(original.parameters()).dtype == torch.uint8, (
-        "Test setup: first param should be uint8 to trigger the bug condition"
-    )
+    assert (
+        next(original.parameters()).dtype == torch.uint8
+    ), "Test setup: first param should be uint8 to trigger the bug condition"
 
     # Capture what dtype reaches the original component's forward.
     received_dtype: list = []
@@ -770,9 +770,7 @@ def test_AttentionBridge_preserves_fp_input_when_first_param_is_quantized():
             received_dtype.append(args[0].dtype)
         # Don't actually run forward — fake-quantized weight would error.
         # Return a shape-compatible dummy. HF Mistral attention returns a tuple.
-        bsz, seq, d_model = (
-            kwargs.get("hidden_states", args[0] if args else None)
-        ).shape
+        bsz, seq, d_model = (kwargs.get("hidden_states", args[0] if args else None)).shape
         n_heads = bridge.cfg.n_heads  # type: ignore[attr-defined]
         return (
             torch.zeros(bsz, seq, d_model, dtype=torch.float32),
