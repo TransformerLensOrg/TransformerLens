@@ -158,3 +158,24 @@ must be repeated (i.e. `\\`). You can write LaTeX inline, or in "display mode".
 - Numbered items - `1. Item`
 - Quotes - indent one level
 - External links = ``` `Link text <https://domain.invalid/>` ```
+
+## Creating Architecture Adapters
+
+If a HuggingFace model is not yet supported by `TransformerBridge`, you can add support by writing an Architecture Adapter. An adapter is a Python class that tells the bridge how a particular HF model maps to TransformerLens's canonical component names (`embed`, `blocks`, `attn.q`, etc.). Once registered, `TransformerBridge.boot_transformers("<your-model>")` will load the model end-to-end with full hook support.
+
+The work is mostly bookkeeping: identify each component on the HF side (embeddings, attention, MLP, normalization), point a Bridge instance at the corresponding HF module path, and supply tensor-reshape rules where the weight layout differs from TransformerLens conventions. Most of the per-architecture decisions are already encoded in the existing adapters under `transformer_lens/model_bridge/supported_architectures/`, which are good starting points to copy from.
+
+Two guides walk through the process:
+
+- [Architecture Adapter Creation Guide](adapter_development/adapter-creation-guide.md) — start here. A step-by-step workflow for taking an HF model from unsupported to tested, registered adapter.
+- [HuggingFace Model Analysis Guide](adapter_development/hf-model-analysis-guide.md) — a reference for reading an HF model's `config.json` and source files to extract the attributes you'll set on `self.cfg`.
+
+Adapters live in `transformer_lens/model_bridge/supported_architectures/<model_name>.py` and are registered in two places: `supported_architectures/__init__.py` and `factories/architecture_adapter_factory.py`. Both steps are covered in the creation guide. If you want a starter file, copy [adapter-template.py](../_static/adapter-template.py) into `supported_architectures/` and rename it.
+
+```{toctree}
+:hidden:
+:maxdepth: 1
+
+adapter_development/adapter-creation-guide
+adapter_development/hf-model-analysis-guide
+```
