@@ -483,6 +483,61 @@ class TestTokenizeAndConcatenate:
                 f"This indicates a word was split across chunk boundaries."
             )
 
+    def test_no_split_tokens_in_no_whitespace_text(self):
+        """No-whitespace multi-doc input — the prior whitespace-lookahead fix
+        fell through to character cuts here. streaming=True keeps all docs in
+        one tokenize_function call so EOS markers actually exist to split on.
+        """
+        from datasets import Dataset
+        from transformers import AutoTokenizer
+
+        tokenizer = AutoTokenizer.from_pretrained("gpt2")
+
+        docs = ["a" * 200 + "MilitaryVehicleEngine" * 100] * 10
+        dataset = Dataset.from_dict({"text": docs})
+
+        result = utils.tokenize_and_concatenate(
+            dataset,
+            tokenizer,
+            streaming=True,
+            max_length=128,
+            add_bos_token=False,
+        )
+
+        full_text = tokenizer.eos_token.join(docs)
+        clean_tokens = tokenizer(full_text, return_tensors="np")["input_ids"].flatten()
+        clean_pairs = set(zip(clean_tokens[:-1], clean_tokens[1:]))
+
+        output_tokens = np.concatenate([np.array(row["tokens"]) for row in result])
+        for i in range(len(output_tokens) - 1):
+            pair = (int(output_tokens[i]), int(output_tokens[i + 1]))
+            assert pair in clean_pairs, (
+                f"Token pair {pair} appears in tokenize_and_concatenate output "
+                f"but never occurs in natural tokenization. The chunker must "
+                f"have cut a token in half."
+            )
+
+    def test_single_document_batch_does_not_crash(self):
+        """Single-doc batch has no EOS to split on — fallback to one chunk should be correct."""
+        from datasets import Dataset
+        from transformers import AutoTokenizer
+
+        tokenizer = AutoTokenizer.from_pretrained("gpt2")
+        dataset = Dataset.from_dict({"text": ["abcdefghij" * 200]})
+
+        result = utils.tokenize_and_concatenate(
+            dataset,
+            tokenizer,
+            streaming=True,
+            max_length=64,
+            add_bos_token=False,
+        )
+
+        clean = tokenizer("abcdefghij" * 200, return_tensors="np")["input_ids"].flatten()
+        output = np.concatenate([np.array(row["tokens"]) for row in result])
+        n = len(output)
+        assert (output == clean[:n]).all()
+
 
 def test_tokenize_and_concatenate_no_spurious_sequence_length_warning():
     """Test that tokenize_and_concatenate does not emit the HF 'sequence length longer than maximum' warning."""
