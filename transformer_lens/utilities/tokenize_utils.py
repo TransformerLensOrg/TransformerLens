@@ -67,24 +67,30 @@ def tokenize_and_concatenate(
         text = examples[column_name]
         # Concatenate it all into an enormous string, separated by eos_tokens
         assert tokenizer.eos_token is not None, "Tokenizer must have an EOS token."
-        full_text = tokenizer.eos_token.join(text)
+        eos = tokenizer.eos_token
+        full_text = eos.join(text)
 
         # Handle the case when full_text is empty
         if not full_text.strip():
             return {"tokens": np.array([], dtype=np.int64)}
 
-        # Split at whitespace boundaries to avoid mid-word tokens (#1133)
+        # Split at EOS boundaries — BPE merges don't cross EOS, so per-chunk
+        # tokenization concatenates to the same tokens as the joined string
+        # (#1133). No-EOS inputs fall through to one chunk: slower but correct.
         num_chunks = 20
-        chunk_length = (len(full_text) - 1) // num_chunks + 1
-        chunks = []
+        target_chunk_size = (len(full_text) - 1) // num_chunks + 1
+        chunks: list[str] = []
         start = 0
-        lookahead = chunk_length // 10
-        for i in range(num_chunks):
-            end = min(start + chunk_length, len(full_text))
-            # Advance to whitespace; bounded lookahead for pathological inputs
-            boundary = min(end + lookahead, len(full_text))
-            while end < boundary and not full_text[end].isspace():
-                end += 1
+        while start < len(full_text):
+            target_end = start + target_chunk_size
+            if target_end >= len(full_text):
+                chunks.append(full_text[start:])
+                break
+            eos_pos = full_text.find(eos, target_end)
+            if eos_pos == -1:
+                chunks.append(full_text[start:])
+                break
+            end = eos_pos + len(eos)
             chunks.append(full_text[start:end])
             start = end
         # Tokenize in parallel with NumPy (HF map rejects tensors)
