@@ -286,10 +286,12 @@ def boot(
     trust_remote_code: bool = False,
     model_class: Any | None = None,
     hf_model: Any | None = None,
+    n_ctx: int | None = None,
+    # Experimental – Have not been fully tested on multi-gpu devices
+    # Use at your own risk, report any issues here: https://github.com/TransformerLensOrg/TransformerLens/issues
     device_map: str | dict[str, str | int] | None = None,
     n_devices: int | None = None,
     max_memory: dict[str | int, str] | None = None,
-    n_ctx: int | None = None,
 ) -> TransformerBridge:
     """Boot a model from HuggingFace.
 
