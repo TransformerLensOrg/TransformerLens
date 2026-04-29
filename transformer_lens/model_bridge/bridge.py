@@ -169,6 +169,9 @@ class TransformerBridge(nn.Module):
         trust_remote_code: bool = False,
         model_class: Optional[type] = None,
         hf_model: Optional[Any] = None,
+        device_map: Optional[Union[str, Dict[str, Union[str, int]]]] = None,
+        n_devices: Optional[int] = None,
+        max_memory: Optional[Dict[Union[str, int], str]] = None,
         n_ctx: Optional[int] = None,
     ) -> "TransformerBridge":
         """Boot a model from HuggingFace (alias for sources.transformers.boot).
@@ -181,7 +184,8 @@ class TransformerBridge(nn.Module):
         Args:
             model_name: The name of the model to load.
             hf_config_overrides: Optional overrides applied to the HuggingFace config before model load.
-            device: The device to use. If None, will be determined automatically.
+            device: The device to use. If None, will be determined automatically. Mutually exclusive
+                with ``device_map``.
             dtype: The dtype to use for the model.
             tokenizer: Optional pre-initialized tokenizer to use; if not provided one will be created.
             load_weights: If False, load model without weights (on meta device) for config inspection only.
@@ -190,7 +194,17 @@ class TransformerBridge(nn.Module):
                 auto-detected class (e.g., BertForNextSentencePrediction).
             hf_model: Optional pre-loaded HuggingFace model to use instead of loading one. Useful
                 for models loaded with custom configurations (e.g., quantization via
-                BitsAndBytesConfig). When provided, load_weights is ignored.
+                BitsAndBytesConfig). When provided, load_weights is ignored. If the pre-loaded
+                model was built with a ``device_map``, ``cfg.device`` and ``cfg.n_devices`` are
+                derived from its ``hf_device_map`` automatically.
+            device_map: HuggingFace-style device map for multi-GPU inference. Pass ``"auto"``,
+                ``"balanced"``, ``"sequential"``, or an explicit ``{submodule_path: device}`` dict.
+                Mutually exclusive with ``device``.
+            n_devices: Convenience shortcut: split the model across this many CUDA devices.
+                Translated to a ``max_memory`` dict over devices 0..n_devices-1 and passed as
+                ``device_map`` to HF. Requires CUDA with at least this many visible devices.
+            max_memory: Optional per-device memory budget, passed through to HF's dispatcher.
+                Only used when ``device_map`` or ``n_devices`` is in effect.
             n_ctx: Optional context length override. Writes to the appropriate HF config field
                 for this model automatically (callers don't need to know the field name).
                 Warns if larger than the model's default context length.
@@ -210,6 +224,9 @@ class TransformerBridge(nn.Module):
             trust_remote_code=trust_remote_code,
             model_class=model_class,
             hf_model=hf_model,
+            device_map=device_map,
+            n_devices=n_devices,
+            max_memory=max_memory,
             n_ctx=n_ctx,
         )
 
@@ -1109,6 +1126,12 @@ class TransformerBridge(nn.Module):
             if reshape_fn is not None:
                 w = reshape_fn(w)
             weights.append(w)
+        # Under a device_map split, per-block tensors live on different devices.
+        # torch.stack requires a common device; gather onto cfg.device (the embedding /
+        # input device — a natural "home" for cross-layer reductions).
+        if getattr(self.cfg, "n_devices", 1) > 1 and weights and self.cfg.device is not None:
+            target_device = torch.device(self.cfg.device)
+            weights = [w.to(target_device) for w in weights]
         return torch.stack(weights, dim=0)
 
     def _reshape_qkv(self, w: torch.Tensor) -> torch.Tensor:
@@ -1314,17 +1337,17 @@ class TransformerBridge(nn.Module):
             block = self.blocks[i]
             b_O = self._get_block_variant_bias(block)
             if b_O is not None:
-                accumulated = accumulated + b_O
+                accumulated = accumulated + b_O.to(accumulated.device)
             if include_mlp_biases and "mlp" in block._modules:
                 b_out = getattr(block.mlp, "b_out", None)
                 if b_out is not None:
-                    accumulated = accumulated + b_out
+                    accumulated = accumulated + b_out.to(accumulated.device)
         if mlp_input:
             assert layer < self.cfg.n_layers, "Cannot include attn_bias from beyond the final layer"
             block = self.blocks[layer]
             b_O = self._get_block_variant_bias(block)
             if b_O is not None:
-                accumulated = accumulated + b_O
+                accumulated = accumulated + b_O.to(accumulated.device)
         return accumulated
 
     def all_composition_scores(self, mode: str) -> CompositionScores:
@@ -1348,6 +1371,10 @@ class TransformerBridge(nn.Module):
                 if reshape_fn is not None:
                     w = reshape_fn(w)
                 weights.append(w)
+            # See _stack_block_params: gather per-block tensors onto cfg.device when split.
+            if getattr(self.cfg, "n_devices", 1) > 1 and weights and self.cfg.device is not None:
+                target_device = torch.device(self.cfg.device)
+                weights = [w.to(target_device) for w in weights]
             return torch.stack(weights, dim=0)
 
         W_V = _stack("attn.W_V", self._reshape_qkv)
@@ -1954,12 +1981,24 @@ class TransformerBridge(nn.Module):
                     hooks.append((hook_dict[block_hook_name], block_hook_name))
         filtered_kwargs = kwargs.copy()
         if cache_device is not None:
-            self.original_model = self.original_model.to(cache_device)
-            if processed_args and isinstance(processed_args[0], torch.Tensor):
-                processed_args = [processed_args[0].to(cache_device)] + list(processed_args[1:])
-            for key, value in filtered_kwargs.items():
-                if isinstance(value, torch.Tensor):
-                    filtered_kwargs[key] = value.to(cache_device)
+            if getattr(self.cfg, "n_devices", 1) > 1:
+                # Moving a dispatched model to a single device collapses accelerate's
+                # split and breaks its routing hooks. The cache will stay spread across
+                # the per-layer devices; callers can .to(cache_device) on cache entries
+                # after the fact if they need a single-device cache.
+                warnings.warn(
+                    f"run_with_cache(device={cache_device!r}) ignored: model is dispatched "
+                    f"across {self.cfg.n_devices} devices via device_map. Cached activations "
+                    "will remain on their per-layer devices.",
+                    stacklevel=2,
+                )
+            else:
+                self.original_model = self.original_model.to(cache_device)
+                if processed_args and isinstance(processed_args[0], torch.Tensor):
+                    processed_args = [processed_args[0].to(cache_device)] + list(processed_args[1:])
+                for key, value in filtered_kwargs.items():
+                    if isinstance(value, torch.Tensor):
+                        filtered_kwargs[key] = value.to(cache_device)
         try:
             if "output_attentions" not in filtered_kwargs:
                 filtered_kwargs["output_attentions"] = True
@@ -3070,12 +3109,30 @@ class TransformerBridge(nn.Module):
         if "dtype" in kwargs:
             target_dtype = kwargs["dtype"]
 
+        # Moving a multi-device (device_map-dispatched) model to a single device would
+        # collapse the split and break accelerate's hook routing. Warn and drop the
+        # device move; still honor dtype changes.
+        if target_device is not None and getattr(self.cfg, "n_devices", 1) > 1:
+            warnings.warn(
+                f"TransformerBridge.to({target_device!r}) ignored: model is dispatched "
+                f"across {self.cfg.n_devices} devices via device_map. Reload with "
+                "device=... (and no device_map/n_devices) to move to a single device.",
+                stacklevel=2,
+            )
+            target_device = None
+
         if target_device is not None:
             move_to_and_update_config(self, target_device, print_details)
         if target_dtype is not None:
             move_to_and_update_config(self, target_dtype, print_details)
 
-        # Move the original model with all original args/kwargs (with print_details removed)
+        # Move the original model with all original args/kwargs (with print_details removed).
+        # When we've nulled target_device for multi-GPU safety, strip device args so the
+        # underlying module isn't moved either.
+        if target_device is None and (len(args) > 0 or "device" in kwargs):
+            kwargs.pop("device", None)
+            # Filter positional args: drop devices/strings, keep dtypes.
+            args = tuple(a for a in args if not isinstance(a, (torch.device, str)))
         self.original_model = self.original_model.to(*args, **kwargs)
         return self
 
