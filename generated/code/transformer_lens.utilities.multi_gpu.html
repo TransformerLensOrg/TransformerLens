@@ -311,6 +311,7 @@
 </li>
 <li class="toctree-l4 has-children"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.html">transformer_lens.model_bridge.supported_architectures package</a><input class="toctree-checkbox" id="toctree-checkbox-15" name="toctree-checkbox-15" role="switch" type="checkbox"/><label for="toctree-checkbox-15"><div class="visually-hidden">Toggle navigation of transformer_lens.model_bridge.supported_architectures package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.apertus.html">transformer_lens.model_bridge.supported_architectures.apertus module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.baichuan.html">transformer_lens.model_bridge.supported_architectures.baichuan module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.bert.html">transformer_lens.model_bridge.supported_architectures.bert module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.bloom.html">transformer_lens.model_bridge.supported_architectures.bloom module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.codegen.html">transformer_lens.model_bridge.supported_architectures.codegen module</a></li>
@@ -479,7 +480,11 @@
 <li class="toctree-l1"><a class="reference internal" href="../../content/migrating_to_v3.html">Migrating to TransformerLens 3</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/tutorials.html">Tutorials</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/citation.html">Citation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../content/contributing.html">Contributing</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../content/contributing.html">Contributing</a><input class="toctree-checkbox" id="toctree-checkbox-22" name="toctree-checkbox-22" role="switch" type="checkbox"/><label for="toctree-checkbox-22"><div class="visually-hidden">Toggle navigation of Contributing</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../content/adapter_development/adapter-creation-guide.html">Architecture Adapter Creation Guide</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../content/adapter_development/hf-model-analysis-guide.html">HuggingFace Model Analysis Guide</a></li>
+</ul>
+</li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html">Transformer Lens Main Demo Notebook</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html#Setup">Setup</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html#Introduction">Introduction</a></li>
@@ -489,7 +494,11 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Development</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../../content/contributing.html">Contributing</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../content/contributing.html">Contributing</a><input class="toctree-checkbox" id="toctree-checkbox-23" name="toctree-checkbox-23" role="switch" type="checkbox"/><label for="toctree-checkbox-23"><div class="visually-hidden">Toggle navigation of Contributing</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../content/adapter_development/adapter-creation-guide.html">Architecture Adapter Creation Guide</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../content/adapter_development/hf-model-analysis-guide.html">HuggingFace Model Analysis Guide</a></li>
+</ul>
+</li>
 <li class="toctree-l1"><a class="reference external" href="https://transformerlensorg.github.io/TransformerLens/_static/coverage/">Code Coverage</a></li>
 <li class="toctree-l1"><a class="reference external" href="https://github.com/TransformerLensOrg/TransformerLens">Github</a></li>
 </ul>
@@ -557,6 +566,13 @@ The second entry will be how much memory is currently available.</p>
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.utilities.multi_gpu.count_unique_devices">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utilities.multi_gpu.</span></span><span class="sig-name descname"><span class="pre">count_unique_devices</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">hf_model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">int</span></span></span><a class="headerlink" href="#transformer_lens.utilities.multi_gpu.count_unique_devices" title="Link to this definition">¶</a></dt>
+<dd><p>Count the number of unique devices across a dispatched HF model’s <code class="docutils literal notranslate"><span class="pre">hf_device_map</span></code>.</p>
+<p>Returns 1 if the model has no <code class="docutils literal notranslate"><span class="pre">hf_device_map</span></code> (single-device load).</p>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="transformer_lens.utilities.multi_gpu.determine_available_memory_for_available_devices">
 <span class="sig-prename descclassname"><span class="pre">transformer_lens.utilities.multi_gpu.</span></span><span class="sig-name descname"><span class="pre">determine_available_memory_for_available_devices</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">max_devices</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.utilities.multi_gpu.determine_available_memory_for_available_devices" title="Link to this definition">¶</a></dt>
 <dd><p>Gets all available CUDA devices with their current memory calculated</p>
@@ -568,6 +584,19 @@ The second entry will be how much memory is currently available.</p>
 <dd class="field-even"><p>AvailableDeviceMemory</p>
 </dd>
 </dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.utilities.multi_gpu.find_embedding_device">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utilities.multi_gpu.</span></span><span class="sig-name descname"><span class="pre">find_embedding_device</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">hf_model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">device</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></span><a class="headerlink" href="#transformer_lens.utilities.multi_gpu.find_embedding_device" title="Link to this definition">¶</a></dt>
+<dd><p>Return the device that input tokens should be placed on for a dispatched HF model.</p>
+<p>When a model is loaded with <code class="docutils literal notranslate"><span class="pre">device_map</span></code>, accelerate populates <code class="docutils literal notranslate"><span class="pre">hf_device_map</span></code>
+and inserts pre/post-forward hooks that route activations. Input tensors must land on
+the device of whichever module first <em>consumes</em> them — the input embedding. Returns
+<code class="docutils literal notranslate"><span class="pre">None</span></code> for single-device models (no <code class="docutils literal notranslate"><span class="pre">hf_device_map</span></code> set).</p>
+<p>Resolves via <code class="docutils literal notranslate"><span class="pre">hf_model.get_input_embeddings()</span></code> rather than dict insertion order to
+cover encoder-decoder / multimodal / audio architectures where the first entry in
+<code class="docutils literal notranslate"><span class="pre">hf_device_map</span></code> is not the text-token embedding (e.g. the vision tower on LLaVA).</p>
 </dd></dl>
 
 <dl class="py function">
@@ -630,6 +659,24 @@ If not provided, the function uses the device specified in the configuration (cf
 <dt>Deprecated:</dt><dd><p>This function did not take into account a few factors for multi-GPU support. You should now
 use get_best_available_device in order to properly run models on multiple devices.
 This will be removed in 3.0</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.utilities.multi_gpu.resolve_device_map">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utilities.multi_gpu.</span></span><span class="sig-name descname"><span class="pre">resolve_device_map</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">n_devices</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device_map</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">device</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_memory</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.utilities.multi_gpu.resolve_device_map" title="Link to this definition">¶</a></dt>
+<dd><p>Resolve <code class="docutils literal notranslate"><span class="pre">n_devices</span></code> / <code class="docutils literal notranslate"><span class="pre">device_map</span></code> / <code class="docutils literal notranslate"><span class="pre">device</span></code> into HF <code class="docutils literal notranslate"><span class="pre">from_pretrained</span></code> kwargs.</p>
+<p>Returns <code class="docutils literal notranslate"><span class="pre">(device_map,</span> <span class="pre">max_memory)</span></code> tuple ready to pass into <code class="docutils literal notranslate"><span class="pre">model_kwargs</span></code>.</p>
+<dl class="simple">
+<dt>Semantics:</dt><dd><ul class="simple">
+<li><p>Explicit <code class="docutils literal notranslate"><span class="pre">device_map</span></code> wins; it’s validated and passed through unchanged (user-
+provided <code class="docutils literal notranslate"><span class="pre">max_memory</span></code> is passed through too).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">n_devices=None</span></code> or <code class="docutils literal notranslate"><span class="pre">1</span></code>: returns <code class="docutils literal notranslate"><span class="pre">(None,</span> <span class="pre">None)</span></code> — single-device path.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">n_devices</span> <span class="pre">&gt;</span> <span class="pre">1</span></code>: returns <code class="docutils literal notranslate"><span class="pre">(&quot;balanced&quot;,</span> <span class="pre">{0:</span> <span class="pre">&quot;auto&quot;,</span> <span class="pre">...,</span> <span class="pre">n-1:</span> <span class="pre">&quot;auto&quot;})</span></code>.
+<code class="docutils literal notranslate"><span class="pre">&quot;balanced&quot;</span></code> is accelerate’s string directive for balanced layer dispatch;
+the <code class="docutils literal notranslate"><span class="pre">max_memory</span></code> dict caps visibility to exactly <code class="docutils literal notranslate"><span class="pre">n_devices</span></code> GPUs.</p></li>
+</ul>
 </dd>
 </dl>
 </dd></dl>
@@ -712,10 +759,13 @@ available memory first</p>
 <li><a class="reference internal" href="#">transformer_lens.utilities.multi_gpu module</a><ul>
 <li><a class="reference internal" href="#transformer_lens.utilities.multi_gpu.AvailableDeviceMemory"><code class="docutils literal notranslate"><span class="pre">AvailableDeviceMemory</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utilities.multi_gpu.calculate_available_device_cuda_memory"><code class="docutils literal notranslate"><span class="pre">calculate_available_device_cuda_memory()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.utilities.multi_gpu.count_unique_devices"><code class="docutils literal notranslate"><span class="pre">count_unique_devices()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utilities.multi_gpu.determine_available_memory_for_available_devices"><code class="docutils literal notranslate"><span class="pre">determine_available_memory_for_available_devices()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.utilities.multi_gpu.find_embedding_device"><code class="docutils literal notranslate"><span class="pre">find_embedding_device()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utilities.multi_gpu.get_best_available_cuda_device"><code class="docutils literal notranslate"><span class="pre">get_best_available_cuda_device()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utilities.multi_gpu.get_best_available_device"><code class="docutils literal notranslate"><span class="pre">get_best_available_device()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utilities.multi_gpu.get_device_for_block_index"><code class="docutils literal notranslate"><span class="pre">get_device_for_block_index()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.utilities.multi_gpu.resolve_device_map"><code class="docutils literal notranslate"><span class="pre">resolve_device_map()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utilities.multi_gpu.sort_devices_based_on_available_memory"><code class="docutils literal notranslate"><span class="pre">sort_devices_based_on_available_memory()</span></code></a></li>
 </ul>
 </li>

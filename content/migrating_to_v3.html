@@ -311,6 +311,7 @@
 </li>
 <li class="toctree-l4 has-children"><a class="reference internal" href="../generated/code/transformer_lens.model_bridge.supported_architectures.html">transformer_lens.model_bridge.supported_architectures package</a><input class="toctree-checkbox" id="toctree-checkbox-15" name="toctree-checkbox-15" role="switch" type="checkbox"/><label for="toctree-checkbox-15"><div class="visually-hidden">Toggle navigation of transformer_lens.model_bridge.supported_architectures package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.model_bridge.supported_architectures.apertus.html">transformer_lens.model_bridge.supported_architectures.apertus module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.model_bridge.supported_architectures.baichuan.html">transformer_lens.model_bridge.supported_architectures.baichuan module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.model_bridge.supported_architectures.bert.html">transformer_lens.model_bridge.supported_architectures.bert module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.model_bridge.supported_architectures.bloom.html">transformer_lens.model_bridge.supported_architectures.bloom module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.model_bridge.supported_architectures.codegen.html">transformer_lens.model_bridge.supported_architectures.codegen module</a></li>
@@ -479,7 +480,11 @@
 <li class="toctree-l1 current current-page"><a class="current reference internal" href="#">Migrating to TransformerLens 3</a></li>
 <li class="toctree-l1"><a class="reference internal" href="tutorials.html">Tutorials</a></li>
 <li class="toctree-l1"><a class="reference internal" href="citation.html">Citation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="contributing.html">Contributing</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="contributing.html">Contributing</a><input class="toctree-checkbox" id="toctree-checkbox-22" name="toctree-checkbox-22" role="switch" type="checkbox"/><label for="toctree-checkbox-22"><div class="visually-hidden">Toggle navigation of Contributing</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="adapter_development/adapter-creation-guide.html">Architecture Adapter Creation Guide</a></li>
+<li class="toctree-l2"><a class="reference internal" href="adapter_development/hf-model-analysis-guide.html">HuggingFace Model Analysis Guide</a></li>
+</ul>
+</li>
 <li class="toctree-l1"><a class="reference internal" href="../generated/demos/Main_Demo.html">Transformer Lens Main Demo Notebook</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../generated/demos/Main_Demo.html#Setup">Setup</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../generated/demos/Main_Demo.html#Introduction">Introduction</a></li>
@@ -489,7 +494,11 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Development</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="contributing.html">Contributing</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="contributing.html">Contributing</a><input class="toctree-checkbox" id="toctree-checkbox-23" name="toctree-checkbox-23" role="switch" type="checkbox"/><label for="toctree-checkbox-23"><div class="visually-hidden">Toggle navigation of Contributing</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="adapter_development/adapter-creation-guide.html">Architecture Adapter Creation Guide</a></li>
+<li class="toctree-l2"><a class="reference internal" href="adapter_development/hf-model-analysis-guide.html">HuggingFace Model Analysis Guide</a></li>
+</ul>
+</li>
 <li class="toctree-l1"><a class="reference external" href="https://transformerlensorg.github.io/TransformerLens/_static/coverage/">Code Coverage</a></li>
 <li class="toctree-l1"><a class="reference external" href="https://github.com/TransformerLensOrg/TransformerLens">Github</a></li>
 </ul>
@@ -559,7 +568,7 @@
 </section>
 <section id="parameters-that-were-removed">
 <h3>Parameters that were removed<a class="headerlink" href="#parameters-that-were-removed" title="Link to this heading">¶</a></h3>
-<p><code class="docutils literal notranslate"><span class="pre">n_devices</span></code>, <code class="docutils literal notranslate"><span class="pre">move_to_device</span></code>, <code class="docutils literal notranslate"><span class="pre">first_n_layers</span></code>, and <code class="docutils literal notranslate"><span class="pre">n_ctx</span></code> are not part of <code class="docutils literal notranslate"><span class="pre">boot_transformers</span></code>. If you relied on any of these, file an issue describing your use case — the right pattern for multi-GPU loads under the bridge is still being worked out.</p>
+<p><code class="docutils literal notranslate"><span class="pre">n_devices</span></code>, <code class="docutils literal notranslate"><span class="pre">move_to_device</span></code>, and <code class="docutils literal notranslate"><span class="pre">first_n_layers</span></code> are not part of <code class="docutils literal notranslate"><span class="pre">boot_transformers</span></code>. If you relied on any of these, file an issue describing your use case — the right pattern for multi-GPU loads under the bridge is still being worked out.</p>
 </section>
 <section id="parameters-that-are-new">
 <h3>Parameters that are new<a class="headerlink" href="#parameters-that-are-new" title="Link to this heading">¶</a></h3>
@@ -567,6 +576,7 @@
 <li><p><code class="docutils literal notranslate"><span class="pre">load_weights:</span> <span class="pre">bool</span> <span class="pre">=</span> <span class="pre">True</span></code> — set to <code class="docutils literal notranslate"><span class="pre">False</span></code> to construct the bridge with just the config (useful for shape-checking without paying the weight-load cost).</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">trust_remote_code:</span> <span class="pre">bool</span> <span class="pre">=</span> <span class="pre">False</span></code> — pass through to HuggingFace for models that ship custom modeling code.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">hf_config_overrides:</span> <span class="pre">dict</span> <span class="pre">|</span> <span class="pre">None</span> <span class="pre">=</span> <span class="pre">None</span></code> — override specific fields of the HF config before the model is constructed.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">n_ctx:</span> <span class="pre">int</span> <span class="pre">|</span> <span class="pre">None</span> <span class="pre">=</span> <span class="pre">None</span></code> — override the model’s context length. The bridge writes to whichever HF config field this architecture uses (<code class="docutils literal notranslate"><span class="pre">n_positions</span></code> / <code class="docutils literal notranslate"><span class="pre">max_position_embeddings</span></code> / etc.) so callers don’t need to know the field name. Warns if larger than the model’s default.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">hf_model</span></code> / <code class="docutils literal notranslate"><span class="pre">model_class</span></code> — advanced: pass in a pre-loaded HF model or a specific model class.</p></li>
 </ul>
 </section>
@@ -594,6 +604,42 @@
 </pre></div>
 </div>
 <p>If you want no processing at all — the bridge’s native default — you can skip <code class="docutils literal notranslate"><span class="pre">enable_compatibility_mode</span></code> entirely, or call it with <code class="docutils literal notranslate"><span class="pre">no_processing=True</span></code> if you still want the hook/component compatibility layer without the weight transforms.</p>
+<section id="will-my-numbers-match-hookedtransformer">
+<h3>Will my numbers match HookedTransformer?<a class="headerlink" href="#will-my-numbers-match-hookedtransformer" title="Link to this heading">¶</a></h3>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Computing</p></th>
+<th class="head"><p>Without <code class="docutils literal notranslate"><span class="pre">enable_compatibility_mode</span></code></p></th>
+<th class="head"><p>With it</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Generated text, CE loss, argmax / top-k</p></td>
+<td><p>Identical</p></td>
+<td><p>Identical</p></td>
+</tr>
+<tr class="row-odd"><td><p>Raw logits</p></td>
+<td><p>Differ by per-row constant</p></td>
+<td><p>Match</p></td>
+</tr>
+<tr class="row-even"><td><p>Logit lens, direct logit attribution</p></td>
+<td><p>Differ</p></td>
+<td><p>Match</p></td>
+</tr>
+<tr class="row-odd"><td><p>KL divergence vs another model</p></td>
+<td><p>Differ</p></td>
+<td><p>Match</p></td>
+</tr>
+<tr class="row-even"><td><p>Residual-stream norms, cached <code class="docutils literal notranslate"><span class="pre">hook_resid_*</span></code></p></td>
+<td><p>Differ (grows with depth)</p></td>
+<td><p>Match</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>Bottom-half analyses → call <code class="docutils literal notranslate"><span class="pre">enable_compatibility_mode()</span></code> after booting.</p>
+</section>
 </section>
 <section id="hook-names">
 <h2>Hook names<a class="headerlink" href="#hook-names" title="Link to this heading">¶</a></h2>
@@ -611,13 +657,21 @@
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">to_tokens</span></code>, <code class="docutils literal notranslate"><span class="pre">to_string</span></code></p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">generate</span></code></p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">run_with_hooks</span></code></p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">run_with_cache</span></code></p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">__call__</span></code> / <code class="docutils literal notranslate"><span class="pre">forward</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">run_with_hooks</span></code>, <code class="docutils literal notranslate"><span class="pre">run_with_cache</span></code> — including batched-list inputs (parity fixed in 3.x)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">__call__</span></code> / <code class="docutils literal notranslate"><span class="pre">forward</span></code> — accepts both 1D <code class="docutils literal notranslate"><span class="pre">[seq]</span></code> and 2D <code class="docutils literal notranslate"><span class="pre">[batch,</span> <span class="pre">seq]</span></code> token tensors</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">cfg.*</span></code> — the bridge exposes a <code class="docutils literal notranslate"><span class="pre">.cfg</span></code> with the same fields (<code class="docutils literal notranslate"><span class="pre">n_layers</span></code>, <code class="docutils literal notranslate"><span class="pre">n_heads</span></code>, <code class="docutils literal notranslate"><span class="pre">d_model</span></code>, <code class="docutils literal notranslate"><span class="pre">d_vocab</span></code>, <code class="docutils literal notranslate"><span class="pre">n_ctx</span></code>, …)</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">W_Q</span></code>, <code class="docutils literal notranslate"><span class="pre">W_K</span></code>, <code class="docutils literal notranslate"><span class="pre">W_V</span></code>, <code class="docutils literal notranslate"><span class="pre">W_O</span></code>, <code class="docutils literal notranslate"><span class="pre">b_Q</span></code>, <code class="docutils literal notranslate"><span class="pre">b_K</span></code>, <code class="docutils literal notranslate"><span class="pre">b_V</span></code>, <code class="docutils literal notranslate"><span class="pre">b_O</span></code> — attention weights are exposed with the same <code class="docutils literal notranslate"><span class="pre">[n_heads,</span> <span class="pre">d_model,</span> <span class="pre">d_head]</span></code> shape conventions</p></li>
 </ul>
 <p>If your code only touches these APIs, the migration is genuinely just the loading call and (optionally) <code class="docutils literal notranslate"><span class="pre">enable_compatibility_mode</span></code>.</p>
+<section id="new-in-3-x-streaming-generation">
+<h3>New in 3.x: streaming generation<a class="headerlink" href="#new-in-3-x-streaming-generation" title="Link to this heading">¶</a></h3>
+<p>Both <code class="docutils literal notranslate"><span class="pre">HookedTransformer</span></code> and <code class="docutils literal notranslate"><span class="pre">TransformerBridge</span></code> now expose <code class="docutils literal notranslate"><span class="pre">generate_stream</span></code>, which yields tokens progressively instead of returning the full completion at once:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">for</span> <span class="n">chunk</span> <span class="ow">in</span> <span class="n">bridge</span><span class="o">.</span><span class="n">generate_stream</span><span class="p">(</span><span class="s2">&quot;The quick brown fox&quot;</span><span class="p">,</span> <span class="n">max_new_tokens</span><span class="o">=</span><span class="mi">50</span><span class="p">):</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">chunk</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="n">flush</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Same sampling kwargs as <code class="docutils literal notranslate"><span class="pre">generate</span></code> (<code class="docutils literal notranslate"><span class="pre">temperature</span></code>, <code class="docutils literal notranslate"><span class="pre">top_k</span></code>, <code class="docutils literal notranslate"><span class="pre">top_p</span></code>, <code class="docutils literal notranslate"><span class="pre">do_sample</span></code>, etc.).</p>
+</section>
 </section>
 <section id="model-name-aliases-are-deprecated">
 <h2>Model name aliases are deprecated<a class="headerlink" href="#model-name-aliases-are-deprecated" title="Link to this heading">¶</a></h2>
@@ -734,9 +788,15 @@
 <li><a class="reference internal" href="#parameters-that-are-new">Parameters that are new</a></li>
 </ul>
 </li>
-<li><a class="reference internal" href="#weight-processing-is-now-opt-in">Weight processing is now opt-in</a></li>
+<li><a class="reference internal" href="#weight-processing-is-now-opt-in">Weight processing is now opt-in</a><ul>
+<li><a class="reference internal" href="#will-my-numbers-match-hookedtransformer">Will my numbers match HookedTransformer?</a></li>
+</ul>
+</li>
 <li><a class="reference internal" href="#hook-names">Hook names</a></li>
-<li><a class="reference internal" href="#apis-that-are-unchanged">APIs that are unchanged</a></li>
+<li><a class="reference internal" href="#apis-that-are-unchanged">APIs that are unchanged</a><ul>
+<li><a class="reference internal" href="#new-in-3-x-streaming-generation">New in 3.x: streaming generation</a></li>
+</ul>
+</li>
 <li><a class="reference internal" href="#model-name-aliases-are-deprecated">Model name aliases are deprecated</a></li>
 <li><a class="reference internal" href="#full-before-and-after-example">Full before-and-after example</a></li>
 <li><a class="reference internal" href="#when-to-stay-on-hookedtransformer">When to stay on HookedTransformer</a></li>

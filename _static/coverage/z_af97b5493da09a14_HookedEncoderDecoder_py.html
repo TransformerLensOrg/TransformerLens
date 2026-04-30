@@ -67,7 +67,7 @@
             <a id="nextFileLink" class="nav" href="z_af97b5493da09a14_HookedTransformer_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-04-20 20:29 +0000
+            created at 2026-04-30 01:33 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -568,13 +568,13 @@
     <p class="pln"><span class="n"><a id="t484" href="#t484">484</a></span><span class="t">        <span class="key">else</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t485" href="#t485">485</a></span><span class="t">            <span class="key">return</span> <span class="nam">decoder_input</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t486" href="#t486">486</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="exc show_exc"><span class="n"><a id="t487" href="#t487">487</a></span><span class="t">    <span class="op">@</span><span class="nam">overload</span>&nbsp;</span><span class="r"></span></p>
+    <p class="exc show_exc"><span class="n"><a id="t487" href="#t487">487</a></span><span class="t">    <span class="op">@</span><span class="nam">overload</span>  <span class="com"># type: ignore[overload-overlap]</span>&nbsp;</span><span class="r"></span></p>
     <p class="exc show_exc"><span class="n"><a id="t488" href="#t488">488</a></span><span class="t">    <span class="key">def</span> <span class="nam">run_with_cache</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
     <p class="exc show_exc"><span class="n"><a id="t489" href="#t489">489</a></span><span class="t">        <span class="nam">self</span><span class="op">,</span> <span class="op">*</span><span class="nam">model_args</span><span class="op">:</span> <span class="nam">Any</span><span class="op">,</span> <span class="nam">return_cache_object</span><span class="op">:</span> <span class="nam">Literal</span><span class="op">[</span><span class="key">True</span><span class="op">]</span> <span class="op">=</span> <span class="key">True</span><span class="op">,</span> <span class="op">**</span><span class="nam">kwargs</span><span class="op">:</span> <span class="nam">Any</span>&nbsp;</span><span class="r"></span></p>
     <p class="exc show_exc"><span class="n"><a id="t490" href="#t490">490</a></span><span class="t">    <span class="op">)</span> <span class="op">-></span> <span class="nam">Tuple</span><span class="op">[</span><span class="nam">Float</span><span class="op">[</span><span class="nam">torch</span><span class="op">.</span><span class="nam">Tensor</span><span class="op">,</span> <span class="str">"batch pos d_vocab"</span><span class="op">]</span><span class="op">,</span> <span class="nam">ActivationCache</span><span class="op">]</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="exc show_exc"><span class="n"><a id="t491" href="#t491">491</a></span><span class="t">        <span class="op">...</span>&nbsp;</span><span class="r"></span></p>
     <p class="exc show_exc"><span class="n"><a id="t492" href="#t492">492</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="exc show_exc"><span class="n"><a id="t493" href="#t493">493</a></span><span class="t">    <span class="op">@</span><span class="nam">overload</span>&nbsp;</span><span class="r"></span></p>
+    <p class="exc show_exc"><span class="n"><a id="t493" href="#t493">493</a></span><span class="t">    <span class="op">@</span><span class="nam">overload</span>  <span class="com"># type: ignore[overload-overlap]</span>&nbsp;</span><span class="r"></span></p>
     <p class="exc show_exc"><span class="n"><a id="t494" href="#t494">494</a></span><span class="t">    <span class="key">def</span> <span class="nam">run_with_cache</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
     <p class="exc show_exc"><span class="n"><a id="t495" href="#t495">495</a></span><span class="t">        <span class="nam">self</span><span class="op">,</span> <span class="op">*</span><span class="nam">model_args</span><span class="op">:</span> <span class="nam">Any</span><span class="op">,</span> <span class="nam">return_cache_object</span><span class="op">:</span> <span class="nam">Literal</span><span class="op">[</span><span class="key">False</span><span class="op">]</span> <span class="op">=</span> <span class="key">False</span><span class="op">,</span> <span class="op">**</span><span class="nam">kwargs</span><span class="op">:</span> <span class="nam">Any</span>&nbsp;</span><span class="r"></span></p>
     <p class="exc show_exc"><span class="n"><a id="t496" href="#t496">496</a></span><span class="t">    <span class="op">)</span> <span class="op">-></span> <span class="nam">Tuple</span><span class="op">[</span><span class="nam">Float</span><span class="op">[</span><span class="nam">torch</span><span class="op">.</span><span class="nam">Tensor</span><span class="op">,</span> <span class="str">"batch pos d_vocab"</span><span class="op">]</span><span class="op">,</span> <span class="nam">Dict</span><span class="op">[</span><span class="nam">str</span><span class="op">,</span> <span class="nam">torch</span><span class="op">.</span><span class="nam">Tensor</span><span class="op">]</span><span class="op">]</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
@@ -862,7 +862,7 @@
             <a class="nav" href="z_af97b5493da09a14_HookedTransformer_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-04-20 20:29 +0000
+            created at 2026-04-30 01:33 +0000
         </p>
     </div>
 </footer>

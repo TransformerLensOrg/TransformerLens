@@ -67,7 +67,7 @@
             <a id="nextFileLink" class="nav" href="z_6cbae598d3634c4f_TransformerBridgeConfig_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-04-20 20:29 +0000
+            created at 2026-04-30 01:33 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -290,7 +290,7 @@
     <p class="pln"><span class="n"><a id="t206" href="#t206">206</a></span><span class="t"><span class="str">            YARN extension. Defaults to 4096.</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t207" href="#t207">207</a></span><span class="t"><span class="str">        use_qk_norm (bool): Whether to apply RMSNorm to the query and key projections before</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t208" href="#t208">208</a></span><span class="t"><span class="str">            computing attention scores. Used by Gemma 3 models. Defaults to False.</span>&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t209" href="#t209">209</a></span><span class="t"><span class="str">        rotary_base_local (int, *optional*): The base for rotary positional embeddings in local</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t209" href="#t209">209</a></span><span class="t"><span class="str">        rotary_base_local (float, *optional*): The base for rotary positional embeddings in local</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t210" href="#t210">210</a></span><span class="t"><span class="str">            attention layers. Used by models with hybrid local/global attention (e.g., Gemma 3)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t211" href="#t211">211</a></span><span class="t"><span class="str">            which use different RoPE bases for local (10k) and global (1M) attention. Defaults</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t212" href="#t212">212</a></span><span class="t"><span class="str">            to None, which means the standard rotary_base is used for all layers.</span>&nbsp;</span><span class="r"></span></p>
@@ -334,9 +334,9 @@
     <p class="run"><span class="n"><a id="t250" href="#t250">250</a></span><span class="t">    <span class="nam">dtype</span><span class="op">:</span> <span class="nam">torch</span><span class="op">.</span><span class="nam">dtype</span> <span class="op">=</span> <span class="nam">torch</span><span class="op">.</span><span class="nam">float32</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t251" href="#t251">251</a></span><span class="t">    <span class="nam">tokenizer_prepends_bos</span><span class="op">:</span> <span class="nam">Optional</span><span class="op">[</span><span class="nam">bool</span><span class="op">]</span> <span class="op">=</span> <span class="key">None</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t252" href="#t252">252</a></span><span class="t">    <span class="nam">post_embedding_ln</span><span class="op">:</span> <span class="nam">bool</span> <span class="op">=</span> <span class="key">False</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t253" href="#t253">253</a></span><span class="t">    <span class="nam">rotary_base</span><span class="op">:</span> <span class="nam">int</span> <span class="op">=</span> <span class="num">10000</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t253" href="#t253">253</a></span><span class="t">    <span class="nam">rotary_base</span><span class="op">:</span> <span class="nam">Union</span><span class="op">[</span><span class="nam">float</span><span class="op">,</span> <span class="nam">int</span><span class="op">]</span> <span class="op">=</span> <span class="num">10000</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t254" href="#t254">254</a></span><span class="t">    <span class="nam">rotary_base_local</span><span class="op">:</span> <span class="nam">Optional</span><span class="op">[</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t255" href="#t255">255</a></span><span class="t">        <span class="nam">int</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t255" href="#t255">255</a></span><span class="t">        <span class="nam">Union</span><span class="op">[</span><span class="nam">float</span><span class="op">,</span> <span class="nam">int</span><span class="op">]</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t256" href="#t256">256</a></span><span class="t">    <span class="op">]</span> <span class="op">=</span> <span class="key">None</span>  <span class="com"># For models with different RoPE bases per attention type (e.g., Gemma 3)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t257" href="#t257">257</a></span><span class="t">    <span class="nam">rotary_scaling_factor</span><span class="op">:</span> <span class="nam">float</span> <span class="op">=</span> <span class="op">(</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t258" href="#t258">258</a></span><span class="t">        <span class="num">1.0</span>  <span class="com"># Linear RoPE scaling factor for global attention (e.g., 8.0 for Gemma 3 4B)</span>&nbsp;</span><span class="r"></span></p>
@@ -480,7 +480,7 @@
             <a class="nav" href="z_6cbae598d3634c4f_TransformerBridgeConfig_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-04-20 20:29 +0000
+            created at 2026-04-30 01:33 +0000
         </p>
     </div>
 </footer>

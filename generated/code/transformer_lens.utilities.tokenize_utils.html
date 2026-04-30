@@ -311,6 +311,7 @@
 </li>
 <li class="toctree-l4 has-children"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.html">transformer_lens.model_bridge.supported_architectures package</a><input class="toctree-checkbox" id="toctree-checkbox-15" name="toctree-checkbox-15" role="switch" type="checkbox"/><label for="toctree-checkbox-15"><div class="visually-hidden">Toggle navigation of transformer_lens.model_bridge.supported_architectures package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.apertus.html">transformer_lens.model_bridge.supported_architectures.apertus module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.baichuan.html">transformer_lens.model_bridge.supported_architectures.baichuan module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.bert.html">transformer_lens.model_bridge.supported_architectures.bert module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.bloom.html">transformer_lens.model_bridge.supported_architectures.bloom module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.codegen.html">transformer_lens.model_bridge.supported_architectures.codegen module</a></li>
@@ -479,7 +480,11 @@
 <li class="toctree-l1"><a class="reference internal" href="../../content/migrating_to_v3.html">Migrating to TransformerLens 3</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/tutorials.html">Tutorials</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/citation.html">Citation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../content/contributing.html">Contributing</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../content/contributing.html">Contributing</a><input class="toctree-checkbox" id="toctree-checkbox-22" name="toctree-checkbox-22" role="switch" type="checkbox"/><label for="toctree-checkbox-22"><div class="visually-hidden">Toggle navigation of Contributing</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../content/adapter_development/adapter-creation-guide.html">Architecture Adapter Creation Guide</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../content/adapter_development/hf-model-analysis-guide.html">HuggingFace Model Analysis Guide</a></li>
+</ul>
+</li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html">Transformer Lens Main Demo Notebook</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html#Setup">Setup</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html#Introduction">Introduction</a></li>
@@ -489,7 +494,11 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Development</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../../content/contributing.html">Contributing</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../content/contributing.html">Contributing</a><input class="toctree-checkbox" id="toctree-checkbox-23" name="toctree-checkbox-23" role="switch" type="checkbox"/><label for="toctree-checkbox-23"><div class="visually-hidden">Toggle navigation of Contributing</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../content/adapter_development/adapter-creation-guide.html">Architecture Adapter Creation Guide</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../content/adapter_development/hf-model-analysis-guide.html">HuggingFace Model Analysis Guide</a></li>
+</ul>
+</li>
 <li class="toctree-l1"><a class="reference external" href="https://transformerlensorg.github.io/TransformerLens/_static/coverage/">Code Coverage</a></li>
 <li class="toctree-l1"><a class="reference external" href="https://github.com/TransformerLensOrg/TransformerLens">Github</a></li>
 </ul>
@@ -624,21 +633,23 @@ The last dimension of <cite>tokens</cite> must be the sequence length.</p>
 <dl class="py function">
 <dt class="sig sig-object py" id="transformer_lens.utilities.tokenize_utils.tokenize_and_concatenate">
 <span class="sig-prename descclassname"><span class="pre">transformer_lens.utilities.tokenize_utils.</span></span><span class="sig-name descname"><span class="pre">tokenize_and_concatenate</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dataset</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dataset</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tokenizer</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">PreTrainedTokenizerBase</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">streaming</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_length</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1024</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">column_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'text'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">add_bos_token</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_proc</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">10</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Dataset</span></span></span><a class="headerlink" href="#transformer_lens.utilities.tokenize_utils.tokenize_and_concatenate" title="Link to this definition">¶</a></dt>
-<dd><p>Helper function to tokenizer and concatenate a dataset of text. This converts the text to tokens, concatenates them (separated by EOS tokens) and then reshapes them into a 2D array of shape (____, sequence_length), dropping the last batch. Tokenizers are much faster if parallelised, so we chop the string into 20, feed it into the tokenizer, in parallel with padding, then remove padding at the end.</p>
-<p>This tokenization is useful for training language models, as it allows us to efficiently train on a large corpus of text of varying lengths (without, eg, a lot of truncation or padding). Further, for models with absolute positional encodings, this avoids privileging early tokens (eg, news articles often begin with CNN, and models may learn to use early positional encodings to predict these)</p>
+<dd><p>Tokenize each document, join with token-level EOS between docs, and reshape into <code class="docutils literal notranslate"><span class="pre">(batch,</span> <span class="pre">sequence_length)</span></code> rows.</p>
+<p>Useful for training language models on a large text corpus without per-doc
+truncation or padding. Absolute-position-embedding models also benefit by
+avoiding early-token bias (e.g. news articles starting with “CNN”).</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>dataset</strong> (<em>Dataset</em>) – The dataset to tokenize, assumed to be a HuggingFace text dataset.</p></li>
-<li><p><strong>tokenizer</strong> (<em>PreTrainedTokenizerBase</em>) – The tokenizer. Assumed to have a bos_token_id and an eos_token_id.</p></li>
-<li><p><strong>streaming</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether the dataset is being streamed. If True, avoids using parallelism. Defaults to False.</p></li>
+<li><p><strong>tokenizer</strong> (<em>PreTrainedTokenizerBase</em>) – The tokenizer. Must have <code class="docutils literal notranslate"><span class="pre">bos_token_id</span></code> and <code class="docutils literal notranslate"><span class="pre">eos_token_id</span></code>.</p></li>
+<li><p><strong>streaming</strong> (<em>bool</em><em>, </em><em>optional</em>) – If True, avoids parallelism. Defaults to False.</p></li>
 <li><p><strong>max_length</strong> (<em>int</em><em>, </em><em>optional</em>) – The length of the context window of the sequence. Defaults to 1024.</p></li>
 <li><p><strong>column_name</strong> (<em>str</em><em>, </em><em>optional</em>) – The name of the text column in the dataset. Defaults to ‘text’.</p></li>
-<li><p><strong>add_bos_token</strong> (<em>bool</em><em>, </em><em>optional</em>) – . Defaults to True.</p></li>
+<li><p><strong>add_bos_token</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to prepend <code class="docutils literal notranslate"><span class="pre">bos_token_id</span></code> to each output row. Defaults to True.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Returns the tokenized dataset, as a dataset of tensors, with a single column called “tokens”</p>
+<dd class="field-even"><p>Tokenized dataset of tensors with a single column <code class="docutils literal notranslate"><span class="pre">&quot;tokens&quot;</span></code>.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p>Dataset</p>

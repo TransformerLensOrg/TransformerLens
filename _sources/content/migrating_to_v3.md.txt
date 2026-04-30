@@ -36,13 +36,14 @@ Weight-processing flags (`fold_ln`, `center_writing_weights`, `center_unembed`, 
 
 ### Parameters that were removed
 
-`n_devices`, `move_to_device`, `first_n_layers`, and `n_ctx` are not part of `boot_transformers`. If you relied on any of these, file an issue describing your use case — the right pattern for multi-GPU loads under the bridge is still being worked out.
+`n_devices`, `move_to_device`, and `first_n_layers` are not part of `boot_transformers`. If you relied on any of these, file an issue describing your use case — the right pattern for multi-GPU loads under the bridge is still being worked out.
 
 ### Parameters that are new
 
 - `load_weights: bool = True` — set to `False` to construct the bridge with just the config (useful for shape-checking without paying the weight-load cost).
 - `trust_remote_code: bool = False` — pass through to HuggingFace for models that ship custom modeling code.
 - `hf_config_overrides: dict | None = None` — override specific fields of the HF config before the model is constructed.
+- `n_ctx: int | None = None` — override the model's context length. The bridge writes to whichever HF config field this architecture uses (`n_positions` / `max_position_embeddings` / etc.) so callers don't need to know the field name. Warns if larger than the model's default.
 - `hf_model` / `model_class` — advanced: pass in a pre-loaded HF model or a specific model class.
 
 ## Weight processing is now opt-in
@@ -74,6 +75,18 @@ bridge.enable_compatibility_mode(
 
 If you want no processing at all — the bridge's native default — you can skip `enable_compatibility_mode` entirely, or call it with `no_processing=True` if you still want the hook/component compatibility layer without the weight transforms.
 
+### Will my numbers match HookedTransformer?
+
+| Computing | Without `enable_compatibility_mode` | With it |
+| --- | --- | --- |
+| Generated text, CE loss, argmax / top-k | Identical | Identical |
+| Raw logits | Differ by per-row constant | Match |
+| Logit lens, direct logit attribution | Differ | Match |
+| KL divergence vs another model | Differ | Match |
+| Residual-stream norms, cached `hook_resid_*` | Differ (grows with depth) | Match |
+
+Bottom-half analyses → call `enable_compatibility_mode()` after booting.
+
 ## Hook names
 
 The canonical hook names on the bridge use a uniform `hook_in` / `hook_out` convention. The old TransformerLens names are preserved through an alias layer, so existing code keeps working without changes:
@@ -92,13 +105,23 @@ These work identically on `TransformerBridge` and need no migration:
 
 - `to_tokens`, `to_string`
 - `generate`
-- `run_with_hooks`
-- `run_with_cache`
-- `__call__` / `forward`
+- `run_with_hooks`, `run_with_cache` — including batched-list inputs (parity fixed in 3.x)
+- `__call__` / `forward` — accepts both 1D `[seq]` and 2D `[batch, seq]` token tensors
 - `cfg.*` — the bridge exposes a `.cfg` with the same fields (`n_layers`, `n_heads`, `d_model`, `d_vocab`, `n_ctx`, ...)
 - `W_Q`, `W_K`, `W_V`, `W_O`, `b_Q`, `b_K`, `b_V`, `b_O` — attention weights are exposed with the same `[n_heads, d_model, d_head]` shape conventions
 
 If your code only touches these APIs, the migration is genuinely just the loading call and (optionally) `enable_compatibility_mode`.
+
+### New in 3.x: streaming generation
+
+Both `HookedTransformer` and `TransformerBridge` now expose `generate_stream`, which yields tokens progressively instead of returning the full completion at once:
+
+```python
+for chunk in bridge.generate_stream("The quick brown fox", max_new_tokens=50):
+    print(chunk, end="", flush=True)
+```
+
+Same sampling kwargs as `generate` (`temperature`, `top_k`, `top_p`, `do_sample`, etc.).
 
 ## Model name aliases are deprecated
 

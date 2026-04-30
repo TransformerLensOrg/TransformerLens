@@ -8,6 +8,7 @@ Submodules
    :maxdepth: 4
 
    transformer_lens.model_bridge.supported_architectures.apertus
+   transformer_lens.model_bridge.supported_architectures.baichuan
    transformer_lens.model_bridge.supported_architectures.bert
    transformer_lens.model_bridge.supported_architectures.bloom
    transformer_lens.model_bridge.supported_architectures.codegen

@@ -309,6 +309,7 @@
 </li>
 <li class="toctree-l4 has-children"><a class="reference internal" href="generated/code/transformer_lens.model_bridge.supported_architectures.html">transformer_lens.model_bridge.supported_architectures package</a><input class="toctree-checkbox" id="toctree-checkbox-15" name="toctree-checkbox-15" role="switch" type="checkbox"/><label for="toctree-checkbox-15"><div class="visually-hidden">Toggle navigation of transformer_lens.model_bridge.supported_architectures package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
 <li class="toctree-l5"><a class="reference internal" href="generated/code/transformer_lens.model_bridge.supported_architectures.apertus.html">transformer_lens.model_bridge.supported_architectures.apertus module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="generated/code/transformer_lens.model_bridge.supported_architectures.baichuan.html">transformer_lens.model_bridge.supported_architectures.baichuan module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="generated/code/transformer_lens.model_bridge.supported_architectures.bert.html">transformer_lens.model_bridge.supported_architectures.bert module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="generated/code/transformer_lens.model_bridge.supported_architectures.bloom.html">transformer_lens.model_bridge.supported_architectures.bloom module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="generated/code/transformer_lens.model_bridge.supported_architectures.codegen.html">transformer_lens.model_bridge.supported_architectures.codegen module</a></li>
@@ -477,7 +478,11 @@
 <li class="toctree-l1"><a class="reference internal" href="content/migrating_to_v3.html">Migrating to TransformerLens 3</a></li>
 <li class="toctree-l1"><a class="reference internal" href="content/tutorials.html">Tutorials</a></li>
 <li class="toctree-l1"><a class="reference internal" href="content/citation.html">Citation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="content/contributing.html">Contributing</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="content/contributing.html">Contributing</a><input class="toctree-checkbox" id="toctree-checkbox-22" name="toctree-checkbox-22" role="switch" type="checkbox"/><label for="toctree-checkbox-22"><div class="visually-hidden">Toggle navigation of Contributing</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="content/adapter_development/adapter-creation-guide.html">Architecture Adapter Creation Guide</a></li>
+<li class="toctree-l2"><a class="reference internal" href="content/adapter_development/hf-model-analysis-guide.html">HuggingFace Model Analysis Guide</a></li>
+</ul>
+</li>
 <li class="toctree-l1"><a class="reference internal" href="generated/demos/Main_Demo.html">Transformer Lens Main Demo Notebook</a></li>
 <li class="toctree-l1"><a class="reference internal" href="generated/demos/Main_Demo.html#Setup">Setup</a></li>
 <li class="toctree-l1"><a class="reference internal" href="generated/demos/Main_Demo.html#Introduction">Introduction</a></li>
@@ -487,7 +492,11 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Development</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="content/contributing.html">Contributing</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="content/contributing.html">Contributing</a><input class="toctree-checkbox" id="toctree-checkbox-23" name="toctree-checkbox-23" role="switch" type="checkbox"/><label for="toctree-checkbox-23"><div class="visually-hidden">Toggle navigation of Contributing</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="content/adapter_development/adapter-creation-guide.html">Architecture Adapter Creation Guide</a></li>
+<li class="toctree-l2"><a class="reference internal" href="content/adapter_development/hf-model-analysis-guide.html">HuggingFace Model Analysis Guide</a></li>
+</ul>
+</li>
 <li class="toctree-l1"><a class="reference external" href="https://transformerlensorg.github.io/TransformerLens/_static/coverage/">Code Coverage</a></li>
 <li class="toctree-l1"><a class="reference external" href="https://github.com/TransformerLensOrg/TransformerLens">Github</a></li>
 </ul>
@@ -1258,6 +1267,12 @@
           <li><a href="generated/code/transformer_lens.model_bridge.html#transformer_lens.model_bridge.TransformerBridge.b_V">(transformer_lens.model_bridge.TransformerBridge property)</a>
 </li>
         </ul></li>
+        <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.html#transformer_lens.model_bridge.supported_architectures.BaichuanArchitectureAdapter">BaichuanArchitectureAdapter (class in transformer_lens.model_bridge.supported_architectures)</a>
+
+        <ul>
+          <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.baichuan.html#transformer_lens.model_bridge.supported_architectures.baichuan.BaichuanArchitectureAdapter">(class in transformer_lens.model_bridge.supported_architectures.baichuan)</a>
+</li>
+        </ul></li>
         <li><a href="generated/code/transformer_lens.conversion_utils.conversion_steps.html#transformer_lens.conversion_utils.conversion_steps.BaseTensorConversion">BaseTensorConversion (class in transformer_lens.conversion_utils.conversion_steps)</a>
 
         <ul>
@@ -1872,6 +1887,8 @@
           <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.conv_pos_embed.html#transformer_lens.model_bridge.generalized_components.conv_pos_embed.ConvPosEmbedBridge">(class in transformer_lens.model_bridge.generalized_components.conv_pos_embed)</a>
 </li>
         </ul></li>
+        <li><a href="generated/code/transformer_lens.utilities.multi_gpu.html#transformer_lens.utilities.multi_gpu.count_unique_devices">count_unique_devices() (in module transformer_lens.utilities.multi_gpu)</a>
+</li>
         <li><a href="generated/code/transformer_lens.HookedAudioEncoder.html#transformer_lens.HookedAudioEncoder.HookedAudioEncoder.cpu">cpu() (transformer_lens.HookedAudioEncoder.HookedAudioEncoder method)</a>
 
         <ul>
@@ -2228,6 +2245,8 @@
           <li><a href="generated/code/transformer_lens.conversion_utils.conversion_steps.html#transformer_lens.conversion_utils.conversion_steps.TernaryTensorConversion.find_context_field">(transformer_lens.conversion_utils.conversion_steps.TernaryTensorConversion method)</a>
 </li>
         </ul></li>
+        <li><a href="generated/code/transformer_lens.utilities.multi_gpu.html#transformer_lens.utilities.multi_gpu.find_embedding_device">find_embedding_device() (in module transformer_lens.utilities.multi_gpu)</a>
+</li>
         <li><a href="generated/code/transformer_lens.conversion_utils.helpers.html#transformer_lens.conversion_utils.helpers.find_property">find_property() (in module transformer_lens.conversion_utils.helpers)</a>
 
         <ul>
@@ -2640,6 +2659,12 @@
           <li><a href="generated/code/transformer_lens.lit.html#transformer_lens.lit.InductionDataset.generate_simple">(transformer_lens.lit.InductionDataset class method)</a>
 </li>
         </ul></li>
+        <li><a href="generated/code/transformer_lens.model_bridge.bridge.html#transformer_lens.model_bridge.bridge.TransformerBridge.generate_stream">generate_stream() (transformer_lens.model_bridge.bridge.TransformerBridge method)</a>
+
+        <ul>
+          <li><a href="generated/code/transformer_lens.model_bridge.html#transformer_lens.model_bridge.TransformerBridge.generate_stream">(transformer_lens.model_bridge.TransformerBridge method)</a>
+</li>
+        </ul></li>
         <li><a href="generated/code/transformer_lens.tools.model_registry.html#id12">generated_at (transformer_lens.tools.model_registry.ArchitectureGapsReport attribute)</a>, <a href="generated/code/transformer_lens.tools.model_registry.html#transformer_lens.tools.model_registry.ArchitectureGapsReport.generated_at">[1]</a>
 
         <ul>
@@ -2794,10 +2819,10 @@
           <li><a href="generated/code/transformer_lens.utils.html#transformer_lens.utils.get_device">(in module transformer_lens.utils)</a>
 </li>
         </ul></li>
-        <li><a href="generated/code/transformer_lens.utilities.multi_gpu.html#transformer_lens.utilities.multi_gpu.get_device_for_block_index">get_device_for_block_index() (in module transformer_lens.utilities.multi_gpu)</a>
-</li>
     </ul></td>
     <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="generated/code/transformer_lens.utilities.multi_gpu.html#transformer_lens.utilities.multi_gpu.get_device_for_block_index">get_device_for_block_index() (in module transformer_lens.utilities.multi_gpu)</a>
+</li>
         <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.rotary_embedding.html#transformer_lens.model_bridge.generalized_components.rotary_embedding.RotaryEmbeddingBridge.get_dummy_inputs">get_dummy_inputs() (transformer_lens.model_bridge.generalized_components.rotary_embedding.RotaryEmbeddingBridge method)</a>
 
         <ul>
@@ -4184,6 +4209,8 @@
 </li>
           <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.apertus.html#module-transformer_lens.model_bridge.supported_architectures.apertus">transformer_lens.model_bridge.supported_architectures.apertus</a>
 </li>
+          <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.baichuan.html#module-transformer_lens.model_bridge.supported_architectures.baichuan">transformer_lens.model_bridge.supported_architectures.baichuan</a>
+</li>
           <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.bert.html#module-transformer_lens.model_bridge.supported_architectures.bert">transformer_lens.model_bridge.supported_architectures.bert</a>
 </li>
           <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.bloom.html#module-transformer_lens.model_bridge.supported_architectures.bloom">transformer_lens.model_bridge.supported_architectures.bloom</a>
@@ -4854,6 +4881,10 @@
 </li>
           <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.html#transformer_lens.model_bridge.supported_architectures.ApertusArchitectureAdapter.prepare_loading">(transformer_lens.model_bridge.supported_architectures.ApertusArchitectureAdapter method)</a>
 </li>
+          <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.baichuan.html#transformer_lens.model_bridge.supported_architectures.baichuan.BaichuanArchitectureAdapter.prepare_loading">(transformer_lens.model_bridge.supported_architectures.baichuan.BaichuanArchitectureAdapter method)</a>
+</li>
+          <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.html#transformer_lens.model_bridge.supported_architectures.BaichuanArchitectureAdapter.prepare_loading">(transformer_lens.model_bridge.supported_architectures.BaichuanArchitectureAdapter method)</a>
+</li>
           <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.hubert.html#transformer_lens.model_bridge.supported_architectures.hubert.HubertArchitectureAdapter.prepare_loading">(transformer_lens.model_bridge.supported_architectures.hubert.HubertArchitectureAdapter method)</a>
 </li>
           <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.html#transformer_lens.model_bridge.supported_architectures.HubertArchitectureAdapter.prepare_loading">(transformer_lens.model_bridge.supported_architectures.HubertArchitectureAdapter method)</a>
@@ -4879,6 +4910,10 @@
 
         <ul>
           <li><a href="generated/code/transformer_lens.model_bridge.html#transformer_lens.model_bridge.ArchitectureAdapter.prepare_model">(transformer_lens.model_bridge.ArchitectureAdapter method)</a>
+</li>
+          <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.baichuan.html#transformer_lens.model_bridge.supported_architectures.baichuan.BaichuanArchitectureAdapter.prepare_model">(transformer_lens.model_bridge.supported_architectures.baichuan.BaichuanArchitectureAdapter method)</a>
+</li>
+          <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.html#transformer_lens.model_bridge.supported_architectures.BaichuanArchitectureAdapter.prepare_model">(transformer_lens.model_bridge.supported_architectures.BaichuanArchitectureAdapter method)</a>
 </li>
           <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.bert.html#transformer_lens.model_bridge.supported_architectures.bert.BertArchitectureAdapter.prepare_model">(transformer_lens.model_bridge.supported_architectures.bert.BertArchitectureAdapter method)</a>
 </li>
@@ -4929,6 +4964,10 @@
 
         <ul>
           <li><a href="generated/code/transformer_lens.model_bridge.html#transformer_lens.model_bridge.ArchitectureAdapter.preprocess_weights">(transformer_lens.model_bridge.ArchitectureAdapter method)</a>
+</li>
+          <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.baichuan.html#transformer_lens.model_bridge.supported_architectures.baichuan.BaichuanArchitectureAdapter.preprocess_weights">(transformer_lens.model_bridge.supported_architectures.baichuan.BaichuanArchitectureAdapter method)</a>
+</li>
+          <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.html#transformer_lens.model_bridge.supported_architectures.BaichuanArchitectureAdapter.preprocess_weights">(transformer_lens.model_bridge.supported_architectures.BaichuanArchitectureAdapter method)</a>
 </li>
           <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.cohere.html#transformer_lens.model_bridge.supported_architectures.cohere.CohereArchitectureAdapter.preprocess_weights">(transformer_lens.model_bridge.supported_architectures.cohere.CohereArchitectureAdapter method)</a>
 </li>
@@ -5301,6 +5340,8 @@
 </li>
         <li><a href="generated/code/transformer_lens.utilities.aliases.html#transformer_lens.utilities.aliases.resolve_alias">resolve_alias() (in module transformer_lens.utilities.aliases)</a>
 </li>
+        <li><a href="generated/code/transformer_lens.utilities.multi_gpu.html#transformer_lens.utilities.multi_gpu.resolve_device_map">resolve_device_map() (in module transformer_lens.utilities.multi_gpu)</a>
+</li>
         <li><a href="generated/code/transformer_lens.conversion_utils.conversion_steps.arithmetic_tensor_conversion.html#transformer_lens.conversion_utils.conversion_steps.arithmetic_tensor_conversion.ArithmeticTensorConversion.revert">revert() (transformer_lens.conversion_utils.conversion_steps.arithmetic_tensor_conversion.ArithmeticTensorConversion method)</a>
 
         <ul>
@@ -5573,6 +5614,10 @@
           <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.apertus.html#transformer_lens.model_bridge.supported_architectures.apertus.ApertusArchitectureAdapter.setup_component_testing">(transformer_lens.model_bridge.supported_architectures.apertus.ApertusArchitectureAdapter method)</a>
 </li>
           <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.html#transformer_lens.model_bridge.supported_architectures.ApertusArchitectureAdapter.setup_component_testing">(transformer_lens.model_bridge.supported_architectures.ApertusArchitectureAdapter method)</a>
+</li>
+          <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.baichuan.html#transformer_lens.model_bridge.supported_architectures.baichuan.BaichuanArchitectureAdapter.setup_component_testing">(transformer_lens.model_bridge.supported_architectures.baichuan.BaichuanArchitectureAdapter method)</a>
+</li>
+          <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.html#transformer_lens.model_bridge.supported_architectures.BaichuanArchitectureAdapter.setup_component_testing">(transformer_lens.model_bridge.supported_architectures.BaichuanArchitectureAdapter method)</a>
 </li>
           <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.cohere.html#transformer_lens.model_bridge.supported_architectures.cohere.CohereArchitectureAdapter.setup_component_testing">(transformer_lens.model_bridge.supported_architectures.cohere.CohereArchitectureAdapter method)</a>
 </li>
@@ -6942,8 +6987,6 @@
           <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.conv_pos_embed.html#module-transformer_lens.model_bridge.generalized_components.conv_pos_embed">module</a>
 </li>
         </ul></li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li>
     transformer_lens.model_bridge.generalized_components.depthwise_conv1d
 
@@ -6951,6 +6994,8 @@
           <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.depthwise_conv1d.html#module-transformer_lens.model_bridge.generalized_components.depthwise_conv1d">module</a>
 </li>
         </ul></li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li>
     transformer_lens.model_bridge.generalized_components.embedding
 
@@ -7166,6 +7211,13 @@
 
         <ul>
           <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.apertus.html#module-transformer_lens.model_bridge.supported_architectures.apertus">module</a>
+</li>
+        </ul></li>
+        <li>
+    transformer_lens.model_bridge.supported_architectures.baichuan
+
+        <ul>
+          <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.baichuan.html#module-transformer_lens.model_bridge.supported_architectures.baichuan">module</a>
 </li>
         </ul></li>
         <li>
