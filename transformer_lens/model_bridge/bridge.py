@@ -6,6 +6,7 @@ a consistent interface for accessing their weights and performing operations.
 import logging
 import re
 import warnings
+from collections.abc import Generator
 from contextlib import contextmanager
 from functools import lru_cache
 from typing import (
@@ -26,6 +27,7 @@ from typing import (
 import einops
 import numpy as np
 import torch
+import tqdm
 from torch import nn
 
 from transformer_lens import utilities as utils
@@ -167,13 +169,23 @@ class TransformerBridge(nn.Module):
         trust_remote_code: bool = False,
         model_class: Optional[type] = None,
         hf_model: Optional[Any] = None,
+        device_map: Optional[Union[str, Dict[str, Union[str, int]]]] = None,
+        n_devices: Optional[int] = None,
+        max_memory: Optional[Dict[Union[str, int], str]] = None,
+        n_ctx: Optional[int] = None,
     ) -> "TransformerBridge":
         """Boot a model from HuggingFace (alias for sources.transformers.boot).
+
+        Returns raw HF weights by default — logits/activations match HF, *not*
+        legacy ``HookedTransformer`` (which folds LayerNorm + centers weights).
+        Call ``enable_compatibility_mode()`` on the result for HookedTransformer-
+        equivalent numerics. Generation, argmax, and CE loss are unaffected.
 
         Args:
             model_name: The name of the model to load.
             hf_config_overrides: Optional overrides applied to the HuggingFace config before model load.
-            device: The device to use. If None, will be determined automatically.
+            device: The device to use. If None, will be determined automatically. Mutually exclusive
+                with ``device_map``.
             dtype: The dtype to use for the model.
             tokenizer: Optional pre-initialized tokenizer to use; if not provided one will be created.
             load_weights: If False, load model without weights (on meta device) for config inspection only.
@@ -182,7 +194,20 @@ class TransformerBridge(nn.Module):
                 auto-detected class (e.g., BertForNextSentencePrediction).
             hf_model: Optional pre-loaded HuggingFace model to use instead of loading one. Useful
                 for models loaded with custom configurations (e.g., quantization via
-                BitsAndBytesConfig). When provided, load_weights is ignored.
+                BitsAndBytesConfig). When provided, load_weights is ignored. If the pre-loaded
+                model was built with a ``device_map``, ``cfg.device`` and ``cfg.n_devices`` are
+                derived from its ``hf_device_map`` automatically.
+            device_map: HuggingFace-style device map for multi-GPU inference. Pass ``"auto"``,
+                ``"balanced"``, ``"sequential"``, or an explicit ``{submodule_path: device}`` dict.
+                Mutually exclusive with ``device``.
+            n_devices: Convenience shortcut: split the model across this many CUDA devices.
+                Translated to a ``max_memory`` dict over devices 0..n_devices-1 and passed as
+                ``device_map`` to HF. Requires CUDA with at least this many visible devices.
+            max_memory: Optional per-device memory budget, passed through to HF's dispatcher.
+                Only used when ``device_map`` or ``n_devices`` is in effect.
+            n_ctx: Optional context length override. Writes to the appropriate HF config field
+                for this model automatically (callers don't need to know the field name).
+                Warns if larger than the model's default context length.
 
         Returns:
             The bridge to the loaded model.
@@ -199,6 +224,10 @@ class TransformerBridge(nn.Module):
             trust_remote_code=trust_remote_code,
             model_class=model_class,
             hf_model=hf_model,
+            device_map=device_map,
+            n_devices=n_devices,
+            max_memory=max_memory,
+            n_ctx=n_ctx,
         )
 
     @property
@@ -610,10 +639,12 @@ class TransformerBridge(nn.Module):
         fold_value_biases: bool = True,
         refactor_factored_attn_matrices: bool = False,
     ) -> None:
-        """Enable compatibility mode for the bridge.
+        """Apply HookedTransformer-equivalent weight processing and legacy hook compatibility.
 
-        This sets up the bridge to work with legacy TransformerLens components/hooks.
-        It will also disable warnings about the usage of legacy components/hooks if specified.
+        Defaults match HookedTransformer's load-time processing (fold_ln + weight
+        centering) — required for analyses that reason in HookedTransformer's
+        post-processed coordinate system: logit lens, direct logit attribution,
+        residual-stream norms. Also enables legacy hook/component name aliases.
 
         Args:
             disable_warnings: Whether to disable warnings about legacy components/hooks
@@ -1095,6 +1126,12 @@ class TransformerBridge(nn.Module):
             if reshape_fn is not None:
                 w = reshape_fn(w)
             weights.append(w)
+        # Under a device_map split, per-block tensors live on different devices.
+        # torch.stack requires a common device; gather onto cfg.device (the embedding /
+        # input device — a natural "home" for cross-layer reductions).
+        if getattr(self.cfg, "n_devices", 1) > 1 and weights and self.cfg.device is not None:
+            target_device = torch.device(self.cfg.device)
+            weights = [w.to(target_device) for w in weights]
         return torch.stack(weights, dim=0)
 
     def _reshape_qkv(self, w: torch.Tensor) -> torch.Tensor:
@@ -1300,17 +1337,17 @@ class TransformerBridge(nn.Module):
             block = self.blocks[i]
             b_O = self._get_block_variant_bias(block)
             if b_O is not None:
-                accumulated = accumulated + b_O
+                accumulated = accumulated + b_O.to(accumulated.device)
             if include_mlp_biases and "mlp" in block._modules:
                 b_out = getattr(block.mlp, "b_out", None)
                 if b_out is not None:
-                    accumulated = accumulated + b_out
+                    accumulated = accumulated + b_out.to(accumulated.device)
         if mlp_input:
             assert layer < self.cfg.n_layers, "Cannot include attn_bias from beyond the final layer"
             block = self.blocks[layer]
             b_O = self._get_block_variant_bias(block)
             if b_O is not None:
-                accumulated = accumulated + b_O
+                accumulated = accumulated + b_O.to(accumulated.device)
         return accumulated
 
     def all_composition_scores(self, mode: str) -> CompositionScores:
@@ -1334,6 +1371,10 @@ class TransformerBridge(nn.Module):
                 if reshape_fn is not None:
                     w = reshape_fn(w)
                 weights.append(w)
+            # See _stack_block_params: gather per-block tensors onto cfg.device when split.
+            if getattr(self.cfg, "n_devices", 1) > 1 and weights and self.cfg.device is not None:
+                target_device = torch.device(self.cfg.device)
+                weights = [w.to(target_device) for w in weights]
             return torch.stack(weights, dim=0)
 
         W_V = _stack("attn.W_V", self._reshape_qkv)
@@ -1534,6 +1575,16 @@ class TransformerBridge(nn.Module):
             else:
                 kwargs.pop("one_zero_attention_mask")
 
+        # Detect batched list input that will need padding. For this case we force
+        # left-padding internally and auto-compute attention_mask + position_ids
+        # (unless the caller passed them explicitly) so pad tokens don't contaminate
+        # attention or position embeddings.
+        _is_batched_list = (
+            isinstance(input, list)
+            and len(input) > 1
+            and not getattr(self.cfg, "is_audio_model", False)
+        )
+
         try:
             if isinstance(input, (str, list)):
                 if getattr(self.cfg, "is_audio_model", False):
@@ -1541,17 +1592,61 @@ class TransformerBridge(nn.Module):
                         "Audio models require tensor input (raw waveform), not text. "
                         "Pass a torch.Tensor or use the input_values parameter."
                     )
-                input_ids = self.to_tokens(
-                    input, prepend_bos=prepend_bos, padding_side=padding_side
-                )
+                if _is_batched_list and padding_side is None:
+                    # Force left-padding so real tokens are flush-right.
+                    _orig_padding_side = self.tokenizer.padding_side
+                    self.tokenizer.padding_side = "left"
+                    try:
+                        input_ids = self.to_tokens(
+                            input, prepend_bos=prepend_bos, padding_side=padding_side
+                        )
+                    finally:
+                        self.tokenizer.padding_side = _orig_padding_side
+                else:
+                    input_ids = self.to_tokens(
+                        input, prepend_bos=prepend_bos, padding_side=padding_side
+                    )
             else:
                 input_ids = input
+                # Promote 1D integer token tensors to 2D [batch=1, seq] to match
+                # HookedTransformer's contract. Float tensors (inputs_embeds,
+                # audio waveforms) are passed through unchanged.
+                if (
+                    isinstance(input_ids, torch.Tensor)
+                    and input_ids.ndim == 1
+                    and not input_ids.is_floating_point()
+                ):
+                    input_ids = input_ids.unsqueeze(0)
 
             # Detect inputs_embeds: if the tensor is floating point, it's pre-computed
             # embeddings (e.g., from multimodal models) rather than token IDs.
             _is_inputs_embeds = (
                 isinstance(input_ids, torch.Tensor) and input_ids.is_floating_point()
             )
+
+            # Auto-compute attention_mask + position_ids for batched list input
+            # when the caller didn't supply them. Matches HF generation convention.
+            if (
+                _is_batched_list
+                and attention_mask is None
+                and self.tokenizer is not None
+                and self.tokenizer.pad_token_id is not None
+                and not _is_inputs_embeds
+            ):
+                _prev_side = self.tokenizer.padding_side
+                self.tokenizer.padding_side = "left"
+                try:
+                    attention_mask = utils.get_attention_mask(
+                        self.tokenizer,
+                        input_ids,
+                        prepend_bos=getattr(self.cfg, "default_prepend_bos", True),
+                    ).to(self.cfg.device)
+                finally:
+                    self.tokenizer.padding_side = _prev_side
+                if "position_ids" not in kwargs:
+                    position_ids = attention_mask.long().cumsum(-1) - 1
+                    position_ids.masked_fill_(attention_mask == 0, 1)
+                    kwargs["position_ids"] = position_ids
 
             if attention_mask is not None:
                 kwargs["attention_mask"] = attention_mask
@@ -1886,12 +1981,24 @@ class TransformerBridge(nn.Module):
                     hooks.append((hook_dict[block_hook_name], block_hook_name))
         filtered_kwargs = kwargs.copy()
         if cache_device is not None:
-            self.original_model = self.original_model.to(cache_device)
-            if processed_args and isinstance(processed_args[0], torch.Tensor):
-                processed_args = [processed_args[0].to(cache_device)] + list(processed_args[1:])
-            for key, value in filtered_kwargs.items():
-                if isinstance(value, torch.Tensor):
-                    filtered_kwargs[key] = value.to(cache_device)
+            if getattr(self.cfg, "n_devices", 1) > 1:
+                # Moving a dispatched model to a single device collapses accelerate's
+                # split and breaks its routing hooks. The cache will stay spread across
+                # the per-layer devices; callers can .to(cache_device) on cache entries
+                # after the fact if they need a single-device cache.
+                warnings.warn(
+                    f"run_with_cache(device={cache_device!r}) ignored: model is dispatched "
+                    f"across {self.cfg.n_devices} devices via device_map. Cached activations "
+                    "will remain on their per-layer devices.",
+                    stacklevel=2,
+                )
+            else:
+                self.original_model = self.original_model.to(cache_device)
+                if processed_args and isinstance(processed_args[0], torch.Tensor):
+                    processed_args = [processed_args[0].to(cache_device)] + list(processed_args[1:])
+                for key, value in filtered_kwargs.items():
+                    if isinstance(value, torch.Tensor):
+                        filtered_kwargs[key] = value.to(cache_device)
         try:
             if "output_attentions" not in filtered_kwargs:
                 filtered_kwargs["output_attentions"] = True
@@ -2077,6 +2184,190 @@ class TransformerBridge(nn.Module):
                 for hook_point, name in added_hooks:
                     hook_point.remove_hooks()
 
+    def _generate_tokens(
+        self,
+        current_tokens: torch.Tensor,
+        input_tokens: torch.Tensor,
+        batch_size: int,
+        *,
+        max_new_tokens: int,
+        do_sample: bool,
+        top_k: Optional[int],
+        top_p: Optional[float],
+        temperature: float,
+        freq_penalty: float,
+        repetition_penalty: float,
+        stop_at_eos: bool,
+        stop_tokens: List[int],
+        eos_token_for_padding: int,
+        finished_sequences: torch.Tensor,
+        use_past_kv_cache: bool,
+        use_stateful_cache: bool,
+        mamba_cache: Any,
+        mamba_conv_kernel: int,
+        is_encoder_decoder: bool,
+        _is_batched_list: bool,
+        _generate_from_embeds: bool,
+        encoder_input: Optional[torch.Tensor],
+        decoder_tokens: Optional[torch.Tensor],
+        generated_token_ids: Optional[List[torch.Tensor]],
+        pixel_values: Optional[torch.Tensor],
+        multimodal_kwargs: Dict[str, Any],
+        verbose: bool,
+    ) -> Generator[Tuple[torch.Tensor, torch.Tensor, bool], None, None]:
+        """Core generation loop. Yields (sampled_tokens, final_logits, all_finished) per step.
+
+        Owns the forward pass, sampling, EOS handling, token accumulation, and
+        KV cache management. Callers are responsible for try/finally cleanup of
+        ``_capture_hf_cache``.
+        """
+        _hf_kv_cache = None
+
+        for gen_step_idx in tqdm.tqdm(range(max_new_tokens), disable=not verbose):
+            with torch.no_grad():
+                if is_encoder_decoder:
+                    logits = self(
+                        encoder_input,
+                        return_type="logits",
+                        decoder_input=decoder_tokens,
+                    )
+                else:
+                    forward_kwargs: Dict[str, Any] = {}
+                    # Compute attention mask and position_ids for batched
+                    # inputs with padding.
+                    if (
+                        _is_batched_list
+                        and self.tokenizer is not None
+                        and self.tokenizer.pad_token_id is not None
+                    ):
+                        _prev_side = self.tokenizer.padding_side
+                        self.tokenizer.padding_side = "left"
+                        attn_mask = utils.get_attention_mask(
+                            self.tokenizer,
+                            current_tokens,
+                            prepend_bos=getattr(self.cfg, "default_prepend_bos", True),
+                        ).to(self.cfg.device)
+                        self.tokenizer.padding_side = _prev_side
+                        forward_kwargs["attention_mask"] = attn_mask
+                        position_ids = attn_mask.long().cumsum(-1) - 1
+                        position_ids.masked_fill_(attn_mask == 0, 1)
+                        forward_kwargs["position_ids"] = position_ids
+                    if gen_step_idx == 0:
+                        if pixel_values is not None:
+                            forward_kwargs["pixel_values"] = pixel_values
+                        if multimodal_kwargs:
+                            forward_kwargs.update(multimodal_kwargs)
+                    if use_stateful_cache:
+                        forward_kwargs["cache_params"] = mamba_cache
+                        forward_kwargs["use_cache"] = True
+                        if gen_step_idx == 0:
+                            cache_position = torch.arange(
+                                0, mamba_conv_kernel, device=self.cfg.device
+                            )
+                            forward_kwargs["cache_position"] = cache_position
+                            logits = self(
+                                current_tokens,
+                                return_type="logits",
+                                **forward_kwargs,
+                            )
+                        else:
+                            input_seq_pos = input_tokens.shape[1] + gen_step_idx - 1
+                            cache_position = torch.tensor([input_seq_pos], device=self.cfg.device)
+                            forward_kwargs["cache_position"] = cache_position
+                            if "position_ids" in forward_kwargs:
+                                forward_kwargs["position_ids"] = forward_kwargs["position_ids"][
+                                    :, -1:
+                                ]
+                            logits = self(
+                                current_tokens[:, -1:],
+                                return_type="logits",
+                                **forward_kwargs,
+                            )
+                    elif use_past_kv_cache:
+                        forward_kwargs["use_cache"] = True
+                        if _hf_kv_cache is not None:
+                            forward_kwargs["past_key_values"] = _hf_kv_cache
+                            if "position_ids" in forward_kwargs:
+                                forward_kwargs["position_ids"] = forward_kwargs["position_ids"][
+                                    :, -1:
+                                ]
+                            logits = self(
+                                current_tokens[:, -1:],
+                                return_type="logits",
+                                **forward_kwargs,
+                            )
+                        else:
+                            logits = self(
+                                current_tokens,
+                                return_type="logits",
+                                **forward_kwargs,
+                            )
+                    else:
+                        logits = self(current_tokens, return_type="logits", **forward_kwargs)
+                    if use_past_kv_cache and hasattr(self, "_last_hf_cache"):
+                        _hf_kv_cache = self._last_hf_cache or _hf_kv_cache
+                        del self._last_hf_cache
+                final_logits = logits[:, -1, :]
+
+                # Sample next token
+                penalty_tokens = (
+                    torch.stack(generated_token_ids, dim=1)
+                    if _generate_from_embeds and generated_token_ids
+                    else None
+                )
+                if do_sample:
+                    sampled_tokens = utils.sample_logits(
+                        final_logits,
+                        top_k=top_k,
+                        top_p=top_p,
+                        temperature=temperature,
+                        freq_penalty=freq_penalty,
+                        repetition_penalty=repetition_penalty,
+                        tokens=penalty_tokens
+                        if _generate_from_embeds
+                        else (decoder_tokens if is_encoder_decoder else current_tokens),
+                    ).to(self.cfg.device)
+                else:
+                    sampled_tokens = utils.sample_logits(
+                        final_logits,
+                        temperature=0.0,
+                        repetition_penalty=repetition_penalty,
+                        tokens=penalty_tokens
+                        if _generate_from_embeds
+                        else (decoder_tokens if is_encoder_decoder else current_tokens),
+                    ).to(self.cfg.device)
+
+                # Handle EOS
+                if stop_at_eos:
+                    sampled_tokens[finished_sequences] = eos_token_for_padding
+                    finished_sequences.logical_or_(
+                        torch.isin(
+                            sampled_tokens.to(self.cfg.device),
+                            torch.tensor(stop_tokens).to(self.cfg.device),
+                        )
+                    )
+
+                # Update token sequences
+                if is_encoder_decoder:
+                    assert decoder_tokens is not None
+                    decoder_tokens = torch.cat([decoder_tokens, sampled_tokens.unsqueeze(1)], dim=1)
+                elif _generate_from_embeds:
+                    assert generated_token_ids is not None
+                    generated_token_ids.append(sampled_tokens)
+                    embed_fn = self.original_model.get_input_embeddings()  # type: ignore[operator]
+                    assert embed_fn is not None
+                    new_embed = embed_fn(sampled_tokens.unsqueeze(1)).to(current_tokens.dtype)
+                    current_tokens = torch.cat([current_tokens, new_embed], dim=1)
+                else:
+                    current_tokens = torch.cat([current_tokens, sampled_tokens.unsqueeze(1)], dim=1)
+
+                all_finished = bool(stop_at_eos and finished_sequences.all().item())
+
+            yield sampled_tokens, final_logits, all_finished
+
+            if all_finished:
+                return
+
     def generate(
         self,
         input: Union[str, List[str], torch.Tensor] = "",
@@ -2121,9 +2412,9 @@ class TransformerBridge(nn.Module):
             prepend_bos: Accepted for API compatibility but not applied during generation.
                 The HF model expects tokens in its native format (tokenizer defaults).
                 Overriding BOS can silently degrade generation quality.
-            padding_side: Accepted for API compatibility but not applied during generation.
-                The generation loop always extends tokens to the right, so overriding
-                initial padding_side creates inconsistent token layout.
+            padding_side: Which side to pad when tokenizing multiple strings of different
+                lengths. For batched list inputs, left-padding is forced internally for
+                correct generation behavior. Defaults to None (tokenizer default).
             return_type: The type of output to return - 'input', 'str', or 'tokens'
             verbose: Not used in Bridge (kept for API compatibility)
             output_logits: If True, return a ModelOutput with sequences and logits tuple
@@ -2135,10 +2426,9 @@ class TransformerBridge(nn.Module):
             Generated sequence as string, list of strings, or tensor depending on input type and return_type.
             If output_logits=True, returns a ModelOutput-like object with 'sequences' and 'logits' attributes.
         """
-        # prepend_bos and padding_side are intentionally not applied during generation.
+        # prepend_bos is intentionally not applied during generation.
         # The HF model expects tokens in its native format. Overriding BOS can silently
-        # degrade quality, and overriding padding_side conflicts with the generation loop
-        # which always extends tokens to the right.
+        # degrade quality.
         if prepend_bos is not None:
             import warnings
 
@@ -2149,27 +2439,28 @@ class TransformerBridge(nn.Module):
                 "resulting tensor to generate().",
                 stacklevel=2,
             )
-        if padding_side is not None:
-            import warnings
-
-            warnings.warn(
-                "padding_side is ignored during TransformerBridge.generate(). "
-                "The generation loop extends tokens to the right regardless of initial "
-                "padding. To control padding, tokenize with to_tokens(padding_side=...) "
-                "and pass the resulting tensor to generate().",
-                stacklevel=2,
-            )
+        # padding_side is handled internally: for batched list inputs, left-padding
+        # is forced to ensure correct generation. See _is_batched_list logic below.
 
         # Stateful dispatch is decided after input parsing so we can fall back
         # to hf_generate() for input types the stateful loop doesn't handle.
         is_stateful_model = getattr(self.cfg, "is_stateful", False)
+
+        _is_batched_list = isinstance(input, list) and len(input) > 1
 
         _generate_from_embeds = False
         if isinstance(input, str):
             input_tokens = self.to_tokens(input, move_to_device=True, truncate=False)
             input_type = "str"
         elif isinstance(input, list):
+            # Force left-padding for batched generation so real tokens are
+            # flush-right and logits[:, -1, :] is always the last real token.
+            if _is_batched_list:
+                _orig_padding_side = self.tokenizer.padding_side
+                self.tokenizer.padding_side = "left"
             input_tokens = self.to_tokens(input, move_to_device=True, truncate=False)
+            if _is_batched_list:
+                self.tokenizer.padding_side = _orig_padding_side
             input_type = "list"
         elif isinstance(input, torch.Tensor) and input.is_floating_point():
             # inputs_embeds: pre-computed embeddings (e.g., from multimodal models)
@@ -2296,156 +2587,41 @@ class TransformerBridge(nn.Module):
             )
 
         try:
-            for gen_step_idx in range(max_new_tokens):
-                # Get logits for next token
-                with torch.no_grad():
-                    if is_encoder_decoder:
-                        logits = self(
-                            encoder_input,
-                            return_type="logits",
-                            decoder_input=decoder_tokens,
-                        )
-                    else:
-                        forward_kwargs: Dict[str, Any] = {}
-                        # Pass multimodal inputs only on the first step — the vision
-                        # encoder processes the image once, embedding it into the
-                        # token sequence.  This includes pixel_values plus any extra
-                        # processor outputs (e.g. image_sizes for LlavaNext).
-                        if gen_step_idx == 0:
-                            if pixel_values is not None:
-                                forward_kwargs["pixel_values"] = pixel_values
-                            if multimodal_kwargs:
-                                forward_kwargs.update(multimodal_kwargs)
-                        if use_stateful_cache:
-                            # Prefill sends arange(conv_kernel) (which both
-                            # Mamba-1's length check and Mamba-2's value check
-                            # accept as "not decode"). Decode sends the input
-                            # token's actual sequence position — a fixed value
-                            # above conv_kernel-1 silently picks the wrong
-                            # slot for short prompts (see
-                            # test_greedy_matches_hf_across_prompt_lengths).
-                            # conv1d hooks fire only on prefill; HF bypasses
-                            # the conv1d module on decode (see DepthwiseConv1DBridge).
-                            forward_kwargs["cache_params"] = mamba_cache
-                            forward_kwargs["use_cache"] = True
-                            if gen_step_idx == 0:
-                                cache_position = torch.arange(
-                                    0, mamba_conv_kernel, device=self.cfg.device
-                                )
-                                forward_kwargs["cache_position"] = cache_position
-                                logits = self(
-                                    current_tokens,
-                                    return_type="logits",
-                                    **forward_kwargs,
-                                )
-                            else:
-                                # Token generated at step N-1 lives at
-                                # sequence position prompt_len + gen_step_idx - 1
-                                input_seq_pos = input_tokens.shape[1] + gen_step_idx - 1
-                                cache_position = torch.tensor(
-                                    [input_seq_pos], device=self.cfg.device
-                                )
-                                forward_kwargs["cache_position"] = cache_position
-                                logits = self(
-                                    current_tokens[:, -1:],
-                                    return_type="logits",
-                                    **forward_kwargs,
-                                )
-                        elif use_past_kv_cache:
-                            forward_kwargs["use_cache"] = True
-                            if _hf_kv_cache is not None:
-                                # Cached step: pass only the last token + cache
-                                forward_kwargs["past_key_values"] = _hf_kv_cache
-                                logits = self(
-                                    current_tokens[:, -1:],
-                                    return_type="logits",
-                                    **forward_kwargs,
-                                )
-                            else:
-                                # Step 0: full sequence, cache gets populated
-                                logits = self(
-                                    current_tokens,
-                                    return_type="logits",
-                                    **forward_kwargs,
-                                )
-                        else:
-                            # No cache: full sequence every step
-                            logits = self(current_tokens, return_type="logits", **forward_kwargs)
-                        # Capture HF cache from forward() for next step.
-                        if use_past_kv_cache and hasattr(self, "_last_hf_cache"):
-                            _hf_kv_cache = self._last_hf_cache or _hf_kv_cache
-                            del self._last_hf_cache
-                    final_logits = logits[:, -1, :]
-
-                    # Collect logits if requested
-                    if logits_seq_list is not None:
-                        logits_seq_list.append(final_logits.clone())
-
-                    # Sample next token
-                    # For inputs_embeds, we can't pass the embeddings to freq/rep penalty,
-                    # so use the generated_token_ids for penalty tracking
-                    penalty_tokens = (
-                        torch.stack(generated_token_ids, dim=1)
-                        if _generate_from_embeds and generated_token_ids
-                        else None
-                    )
-                    if do_sample:
-                        sampled_tokens = utils.sample_logits(
-                            final_logits,
-                            top_k=top_k,
-                            top_p=top_p,
-                            temperature=temperature,
-                            freq_penalty=freq_penalty,
-                            repetition_penalty=repetition_penalty,
-                            tokens=penalty_tokens
-                            if _generate_from_embeds
-                            else (decoder_tokens if is_encoder_decoder else current_tokens),
-                        ).to(self.cfg.device)
-                    else:
-                        sampled_tokens = utils.sample_logits(
-                            final_logits,
-                            temperature=0.0,
-                            repetition_penalty=repetition_penalty,
-                            tokens=penalty_tokens
-                            if _generate_from_embeds
-                            else (decoder_tokens if is_encoder_decoder else current_tokens),
-                        ).to(self.cfg.device)
-
-                    sampled_tokens_list.append(sampled_tokens.unsqueeze(1))
-
-                    # Handle EOS tokens for finished sequences
-                    if stop_at_eos:
-                        sampled_tokens[finished_sequences] = eos_token_for_padding
-                        finished_sequences.logical_or_(
-                            torch.isin(
-                                sampled_tokens.to(self.cfg.device),
-                                torch.tensor(stop_tokens).to(self.cfg.device),
-                            )
-                        )
-
-                    # Append sampled token to current sequence
-                    if is_encoder_decoder:
-                        decoder_tokens = torch.cat(
-                            [decoder_tokens, sampled_tokens.unsqueeze(1)], dim=1
-                        )
-                    elif _generate_from_embeds:
-                        # For inputs_embeds: get the embedding of the new token and append
-                        generated_token_ids.append(sampled_tokens)
-                        embed_fn = self.original_model.get_input_embeddings()  # type: ignore[operator]
-                        assert embed_fn is not None
-                        new_embed = embed_fn(sampled_tokens.unsqueeze(1)).to(current_tokens.dtype)
-                        current_tokens = torch.cat([current_tokens, new_embed], dim=1)
-                    else:
-                        current_tokens = torch.cat(
-                            [current_tokens, sampled_tokens.unsqueeze(1)], dim=1
-                        )
-
-                    # Early stopping if all sequences finished
-                    if stop_at_eos and finished_sequences.all():
-                        break
+            for sampled_tokens, final_logits, all_finished in self._generate_tokens(
+                current_tokens,
+                input_tokens,
+                batch_size,
+                max_new_tokens=max_new_tokens,
+                do_sample=do_sample,
+                top_k=top_k,
+                top_p=top_p,
+                temperature=temperature,
+                freq_penalty=freq_penalty,
+                repetition_penalty=repetition_penalty,
+                stop_at_eos=stop_at_eos,
+                stop_tokens=stop_tokens,
+                eos_token_for_padding=eos_token_for_padding,
+                finished_sequences=finished_sequences,
+                use_past_kv_cache=use_past_kv_cache,
+                use_stateful_cache=use_stateful_cache,
+                mamba_cache=mamba_cache,
+                mamba_conv_kernel=mamba_conv_kernel,
+                is_encoder_decoder=is_encoder_decoder,
+                _is_batched_list=_is_batched_list,
+                _generate_from_embeds=_generate_from_embeds,
+                encoder_input=encoder_input if is_encoder_decoder else None,
+                decoder_tokens=decoder_tokens if is_encoder_decoder else None,
+                generated_token_ids=generated_token_ids if _generate_from_embeds else None,
+                pixel_values=pixel_values,
+                multimodal_kwargs=multimodal_kwargs if multimodal_kwargs else {},
+                verbose=verbose,
+            ):
+                sampled_tokens_list.append(sampled_tokens.unsqueeze(1))
+                if logits_seq_list is not None:
+                    logits_seq_list.append(final_logits.clone())
+                if all_finished:
+                    break
         finally:
-            # Clean up generate-only state even if an exception occurs,
-            # so _capture_hf_cache doesn't leak into subsequent forward() calls.
             self._capture_hf_cache = False
             if hasattr(self, "_last_hf_cache"):
                 del self._last_hf_cache
@@ -2453,7 +2629,8 @@ class TransformerBridge(nn.Module):
         # Concatenate all sampled tokens
         sampled_tokens = torch.cat(sampled_tokens_list, dim=1)
         if is_encoder_decoder:
-            output_tokens = decoder_tokens
+            # Reconstruct full decoder sequence: start token + generated tokens
+            output_tokens = torch.cat([decoder_tokens[:, :1], sampled_tokens], dim=1)
         elif _generate_from_embeds:
             # For inputs_embeds, we only have the generated token IDs (no input token IDs)
             output_tokens = sampled_tokens
@@ -2499,6 +2676,191 @@ class TransformerBridge(nn.Module):
                 return decoded_texts[0] if len(decoded_texts) == 1 else decoded_texts
         else:  # return_type == "tokens"
             return output_tokens
+
+    @torch.no_grad()
+    def generate_stream(
+        self,
+        input: Union[str, List[str], torch.Tensor] = "",
+        max_new_tokens: int = 10,
+        max_tokens_per_yield: int = 25,
+        stop_at_eos: bool = True,
+        eos_token_id: Optional[int] = None,
+        do_sample: bool = True,
+        top_k: Optional[int] = None,
+        top_p: Optional[float] = None,
+        temperature: float = 1.0,
+        freq_penalty: float = 0.0,
+        repetition_penalty: float = 1.0,
+        use_past_kv_cache: bool = True,
+        prepend_bos: Optional[bool] = None,
+        padding_side: Optional[str] = None,
+        return_type: Optional[str] = "input",
+        verbose: bool = True,
+    ) -> Generator[Union[torch.Tensor, str], None, None]:
+        """Stream tokens from the model as they are generated.
+
+        Yields batches of tokens progressively during generation rather than
+        waiting for the entire sequence. Uses the same core loop as generate().
+
+        Args:
+            input: Text string, list of strings, or tensor of tokens.
+            max_new_tokens: Maximum number of tokens to generate.
+            max_tokens_per_yield: Yield accumulated tokens every this many steps.
+            stop_at_eos: If True, stop when eos_token is produced.
+            eos_token_id: Token ID(s) for end of sentence. Defaults to tokenizer's.
+            do_sample: If True, sample; otherwise greedy.
+            top_k: Top-k sampling. None means no filtering.
+            top_p: Nucleus sampling threshold.
+            temperature: Sampling temperature.
+            freq_penalty: Frequency penalty for previous tokens.
+            repetition_penalty: HF-style repetition penalty (>1.0 discourages repeats).
+            use_past_kv_cache: Use KV caching for faster generation.
+            prepend_bos: Not applied (API compatibility). See generate() docstring.
+            padding_side: Which side to pad for batched list inputs. Left-padding
+                is forced internally for batched generation.
+            return_type: 'input' (match input type), 'str', or 'tokens'.
+            verbose: Show progress bar.
+
+        Yields:
+            Token tensors [batch, seq_len] or strings, accumulated up to
+            max_tokens_per_yield tokens between yields. First yield includes
+            the input tokens; subsequent yields contain only new tokens.
+        """
+        if prepend_bos is not None:
+            warnings.warn(
+                "prepend_bos is ignored during TransformerBridge.generate_stream(). "
+                "The HF model expects tokens with the tokenizer's default BOS handling.",
+                stacklevel=2,
+            )
+
+        # --- Input parsing (mirrors generate()) ---
+        _is_batched_list = isinstance(input, list) and len(input) > 1
+
+        if isinstance(input, str):
+            input_tokens = self.to_tokens(input, move_to_device=True, truncate=False)
+            input_type = "str"
+        elif isinstance(input, list):
+            if _is_batched_list:
+                _orig_ps = self.tokenizer.padding_side
+                self.tokenizer.padding_side = "left"
+            try:
+                input_tokens = self.to_tokens(input, move_to_device=True, truncate=False)
+            finally:
+                if _is_batched_list:
+                    self.tokenizer.padding_side = _orig_ps
+            input_type = "list"
+        else:
+            input_tokens = input.to(self.cfg.device)
+            input_type = "tokens"
+
+        if return_type == "input":
+            return_type = "str" if input_type in ["str", "list"] else "tokens"
+
+        batch_size = input_tokens.shape[0]
+
+        # --- EOS setup ---
+        stop_tokens: List[int] = []
+        eos_token_for_padding = 0
+        if stop_at_eos:
+            if eos_token_id is None:
+                assert (
+                    self.tokenizer.eos_token_id is not None
+                ), "Must pass eos_token_id if stop_at_eos is True and tokenizer has no eos_token_id"
+                eos_token_id = self.tokenizer.eos_token_id
+            if isinstance(eos_token_id, int):
+                stop_tokens = [eos_token_id]
+                eos_token_for_padding = eos_token_id
+            else:
+                stop_tokens = list(eos_token_id)
+                eos_token_for_padding = (
+                    self.tokenizer.eos_token_id
+                    if self.tokenizer.eos_token_id is not None
+                    else eos_token_id[0]
+                )
+
+        finished_sequences = torch.zeros(batch_size, dtype=torch.bool, device=self.cfg.device)
+
+        # --- Cache setup ---
+        if use_past_kv_cache:
+            self._capture_hf_cache = True
+
+        current_tokens = input_tokens.clone()
+
+        # --- Streaming loop ---
+        # All yields are token tensors [batch, seq_len]. Each yield contains
+        # only the newly generated tokens since the previous yield (the first
+        # yield additionally prepends the input tokens for context).
+        accumulated_tokens: Optional[torch.Tensor] = None
+        tokens_since_last_yield = 0
+
+        def _maybe_decode(
+            tokens: torch.Tensor,
+        ) -> Union[torch.Tensor, str]:
+            if return_type == "str":
+                return self.tokenizer.decode(tokens[0], skip_special_tokens=True)
+            return tokens
+
+        try:
+            for step_idx, (sampled_tokens, _, all_finished) in enumerate(
+                self._generate_tokens(
+                    current_tokens,
+                    input_tokens,
+                    batch_size,
+                    max_new_tokens=max_new_tokens,
+                    do_sample=do_sample,
+                    top_k=top_k,
+                    top_p=top_p,
+                    temperature=temperature,
+                    freq_penalty=freq_penalty,
+                    repetition_penalty=repetition_penalty,
+                    stop_at_eos=stop_at_eos,
+                    stop_tokens=stop_tokens,
+                    eos_token_for_padding=eos_token_for_padding,
+                    finished_sequences=finished_sequences,
+                    use_past_kv_cache=use_past_kv_cache,
+                    use_stateful_cache=False,
+                    mamba_cache=None,
+                    mamba_conv_kernel=0,
+                    is_encoder_decoder=False,
+                    _is_batched_list=_is_batched_list,
+                    _generate_from_embeds=False,
+                    encoder_input=None,
+                    decoder_tokens=None,
+                    generated_token_ids=None,
+                    pixel_values=None,
+                    multimodal_kwargs={},
+                    verbose=verbose,
+                )
+            ):
+                new_tokens = sampled_tokens.unsqueeze(-1)
+
+                if step_idx == 0:
+                    accumulated_tokens = torch.cat([input_tokens, new_tokens], dim=-1)
+                    tokens_since_last_yield = accumulated_tokens.shape[1]
+                else:
+                    if accumulated_tokens is None:
+                        accumulated_tokens = new_tokens
+                    else:
+                        accumulated_tokens = torch.cat([accumulated_tokens, new_tokens], dim=-1)
+                    tokens_since_last_yield += 1
+
+                if tokens_since_last_yield >= max_tokens_per_yield:
+                    yield _maybe_decode(accumulated_tokens)
+                    tokens_since_last_yield = 0
+                    accumulated_tokens = None
+
+                if all_finished:
+                    if accumulated_tokens is not None:
+                        yield _maybe_decode(accumulated_tokens)
+                    break
+
+            # Yield remainder after loop completes without break
+            if accumulated_tokens is not None:
+                yield _maybe_decode(accumulated_tokens)
+        finally:
+            self._capture_hf_cache = False
+            if hasattr(self, "_last_hf_cache"):
+                del self._last_hf_cache
 
     def hf_generate(
         self,
@@ -2747,12 +3109,30 @@ class TransformerBridge(nn.Module):
         if "dtype" in kwargs:
             target_dtype = kwargs["dtype"]
 
+        # Moving a multi-device (device_map-dispatched) model to a single device would
+        # collapse the split and break accelerate's hook routing. Warn and drop the
+        # device move; still honor dtype changes.
+        if target_device is not None and getattr(self.cfg, "n_devices", 1) > 1:
+            warnings.warn(
+                f"TransformerBridge.to({target_device!r}) ignored: model is dispatched "
+                f"across {self.cfg.n_devices} devices via device_map. Reload with "
+                "device=... (and no device_map/n_devices) to move to a single device.",
+                stacklevel=2,
+            )
+            target_device = None
+
         if target_device is not None:
             move_to_and_update_config(self, target_device, print_details)
         if target_dtype is not None:
             move_to_and_update_config(self, target_dtype, print_details)
 
-        # Move the original model with all original args/kwargs (with print_details removed)
+        # Move the original model with all original args/kwargs (with print_details removed).
+        # When we've nulled target_device for multi-GPU safety, strip device args so the
+        # underlying module isn't moved either.
+        if target_device is None and (len(args) > 0 or "device" in kwargs):
+            kwargs.pop("device", None)
+            # Filter positional args: drop devices/strings, keep dtypes.
+            args = tuple(a for a in args if not isinstance(a, (torch.device, str)))
         self.original_model = self.original_model.to(*args, **kwargs)
         return self
 

@@ -6,9 +6,9 @@
     "min_downloads": 500,
     "scan_duration_seconds": 4.9
   },
-  "total_architectures": 48,
-  "total_models": 9056,
-  "total_verified": 709,
+  "total_architectures": 50,
+  "total_models": 9068,
+  "total_verified": 711,
   "models": [
     {
       "architecture_id": "Qwen3NextForCausalLM",
@@ -125193,6 +125193,210 @@
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "BaichuanForCausalLM",
+      "model_id": "baichuan-inc/Baichuan2-7B-Chat",
+      "status": 3,
+      "verified_date": "2026-04-21",
+      "metadata": {
+        "downloads": 89081,
+        "total_params": null
+      },
+      "note": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: This modeling file requires the following packages that were not found in your environment: bitsandbytes",
+      "phase1_score": 0.0,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "BaichuanForCausalLM",
+      "model_id": "baichuan-inc/Baichuan2-13B-Chat",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 7963,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "BaichuanForCausalLM",
+      "model_id": "baichuan-inc/Baichuan-13B-Chat",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 6570,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "BaichuanForCausalLM",
+      "model_id": "baichuan-inc/Baichuan2-7B-Base",
+      "status": 1,
+      "verified_date": "2026-04-21",
+      "metadata": {
+        "downloads": 2007,
+        "total_params": null
+      },
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 94.6,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "BaichuanForCausalLM",
+      "model_id": "sakuraumi/Sakura-13B-Galgame",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 1800,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "BaichuanForCausalLM",
+      "model_id": "zxbsmk/NSFW_13B_sft",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 1786,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "BaichuanForCausalLM",
+      "model_id": "baichuan-inc/Baichuan2-13B-Base",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 1773,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "BaichuanForCausalLM",
+      "model_id": "Wuyanzzh/NSFW_13B_sft",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 1486,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "BaichuanForCausalLM",
+      "model_id": "baichuan-inc/Baichuan-13B-Base",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 1295,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "BaichuanForCausalLM",
+      "model_id": "FreedomIntelligence/HuatuoGPT2-7B",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 1252,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "BaichuanForCausalLM",
+      "model_id": "DuJinHua/AiMed2",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 951,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "BaiChuanForCausalLM",
+      "model_id": "baichuan-inc/Baichuan-7B",
+      "status": 1,
+      "verified_date": "2026-04-21",
+      "metadata": {
+        "downloads": 50000,
+        "total_params": null
+      },
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 92.0,
       "phase7_score": null,
       "phase8_score": null
     }

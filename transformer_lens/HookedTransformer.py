@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Generator
 from typing import (
     Any,
     Dict,
@@ -1656,8 +1657,48 @@ class HookedTransformer(HookedRootModule):
             )
 
         state_dict = self.fill_missing_keys(state_dict)
+        if fold_ln:
+            if self.cfg.num_experts and self.cfg.num_experts > 1:
+                logging.warning(
+                    "You are using MoE, so the layer norm weights can't be folded! Skipping"
+                )
+                fold_ln = False
+            elif self.cfg.normalization_type not in ["LN", "LNPre", "RMS", "RMSPre"]:
+                logging.warning(
+                    "You are not using LayerNorm or RMSNorm, so the layer norm weights can't be folded! Skipping"
+                )
+                fold_ln = False
+            else:
+                ln_keys_present = any(
+                    k.endswith((".ln1.w", ".ln2.w", "ln_final.w")) for k in state_dict
+                )
+                if not ln_keys_present:
+                    logging.warning(
+                        "fold_ln=True but no LayerNorm weights found in state_dict. "
+                        "The model may have been saved with already-folded LayerNorms. "
+                        "Skipping fold."
+                    )
+                    fold_ln = False
+                else:
+                    if self.cfg.normalization_type == "LN":
+                        self.cfg.normalization_type = "LNPre"
+                        self.ln_final = LayerNormPre(self.cfg)
+                        for layer in self.blocks:
+                            layer.ln1 = LayerNormPre(self.cfg)
+                            layer.ln2 = LayerNormPre(self.cfg)
+                            if self.cfg.is_layer_norm_activation():
+                                layer.mlp.ln = LayerNormPre(self.cfg)
+                    elif self.cfg.normalization_type == "RMS":
+                        self.cfg.normalization_type = "RMSPre"
+                        self.ln_final = RMSNormPre(self.cfg)
+                        for layer in self.blocks:
+                            layer.ln1 = RMSNormPre(self.cfg)
+                            layer.ln2 = RMSNormPre(self.cfg)
+                            if self.cfg.is_layer_norm_activation():
+                                layer.mlp.ln = RMSNormPre(self.cfg)
 
         # Use the centralized ProcessWeights class for all weight processing
+        # (fold_ln is passed through — if we skipped above, it's now False)
         state_dict = ProcessWeights.process_weights(
             state_dict,
             self.cfg,
@@ -1677,6 +1718,9 @@ class HookedTransformer(HookedRootModule):
             for key in state_dict_keys:
                 self.load_state_dict({key: state_dict[key]}, strict=False)
                 del state_dict[key]
+
+        if fold_ln:
+            self.setup()
 
     def fill_missing_keys(self, state_dict):
         return loading.fill_missing_keys(self, state_dict)
@@ -1817,31 +1861,6 @@ class HookedTransformer(HookedRootModule):
         version of the same model.
         """
         state_dict = self.state_dict()
-        if fold_ln and self.cfg.num_experts and self.cfg.num_experts > 1:
-            # If we're using MoE, we don't fold the layer norm weights, so we don't need to do any preprocessing
-            # A warning is already issued in `load_and_process_state_dict`
-            pass
-        elif fold_ln and self.cfg.normalization_type == "LN":
-            # If we're folding the LN into the weights, we need to replace all the layernorm layers
-            # with LayerNormPres, which do not have learnable parameters. This is somewhat hacky,
-            # but it's the easiest way to do it.
-            self.cfg.normalization_type = "LNPre"
-            self.ln_final = LayerNormPre(self.cfg)
-            for layer in self._get_blocks():
-                layer.ln1 = LayerNormPre(self.cfg)
-                layer.ln2 = LayerNormPre(self.cfg)
-                if self.cfg.is_layer_norm_activation():
-                    layer.mlp.ln = LayerNormPre(self.cfg)
-        elif fold_ln and self.cfg.normalization_type == "RMS":
-            # We do the same for RMSNorm if used
-            self.cfg.normalization_type = "RMSPre"
-            self.ln_final = RMSNormPre(self.cfg)
-            for layer in self._get_blocks():
-                layer.ln1 = RMSNormPre(self.cfg)
-                layer.ln2 = RMSNormPre(self.cfg)
-                if self.cfg.is_layer_norm_activation():
-                    layer.mlp.ln = RMSNormPre(self.cfg)
-
         self.load_and_process_state_dict(
             state_dict,
             fold_ln=fold_ln,
@@ -1918,8 +1937,9 @@ class HookedTransformer(HookedRootModule):
                 implying usage of self.cfg.default_prepend_bos (default is True unless specified
                 otherwise). Pass True or False to override the default.
             padding_side (Union[Literal["left", "right"], None], optional): Overrides
-                self.tokenizer.padding_side. Specifies which side to pad when tokenizing multiple
-                strings of different lengths.
+                self.tokenizer.padding_side. Specifies which side to pad when tokenizing
+                multiple strings of different lengths. For batched list inputs, left-padding
+                is forced internally for correct generation behavior.
             return_type (Optional[str]): The type of the output to return - a string or a list of strings ('str'),
                 a tensor of tokens ('tokens'), a tensor of output embeddings ('embeds') or whatever the format of the
                 input was ('input').
@@ -1956,13 +1976,25 @@ class HookedTransformer(HookedRootModule):
                 else:
                     return_type = "embeds"
 
+            # initial_attention_mask is always computed so that single-prompt and
+            # batched generation go through the same masked code path, producing
+            # consistent results for the same prompt regardless of batching.
+            initial_attention_mask: Optional[torch.Tensor] = None
+            _is_batched_list = isinstance(input, list) and len(input) > 1
+
             if isinstance(input, (str, list)):
                 input_type = "str"
-                # If text, convert to tokens (batch_size=1)
                 assert (
                     self.tokenizer is not None
                 ), "Must provide a tokenizer if passing a string to the model"
-                input = self.to_tokens(input, prepend_bos=prepend_bos, padding_side=padding_side)
+                if _is_batched_list:
+                    # Force left-padding for batched generation so real tokens
+                    # are flush-right and logits[:, -1, :] is always correct.
+                    input = self.to_tokens(input, prepend_bos=prepend_bos, padding_side="left")
+                else:
+                    input = self.to_tokens(
+                        input, prepend_bos=prepend_bos, padding_side=padding_side
+                    )
             elif input.ndim == 2:
                 input_type = "tokens"
             else:
@@ -1970,6 +2002,27 @@ class HookedTransformer(HookedRootModule):
 
             input_tokens = input if input_type in ["str", "tokens"] else None
             batch_size, ctx_length = input.shape[0], input.shape[1]
+
+            # Compute initial attention mask. For batched inputs with padding,
+            # this correctly masks pad tokens. For single/unpadded inputs, this
+            # is all-ones which matches the no-mask code path but ensures both
+            # go through the same PosEmbed/attention logic for consistency.
+            if input_tokens is not None and self.tokenizer is not None:
+                _prepend_bos = (
+                    self.cfg.default_prepend_bos
+                    if prepend_bos is USE_DEFAULT_VALUE
+                    else (False if prepend_bos is None else prepend_bos)
+                )
+                # Temporarily set padding_side="left" so get_attention_mask
+                # scans for leading pads (matching the left-padded tokens).
+                _orig_padding_side = self.tokenizer.padding_side
+                if _is_batched_list:
+                    self.tokenizer.padding_side = "left"
+                initial_attention_mask = utils.get_attention_mask(
+                    self.tokenizer, input_tokens, _prepend_bos
+                )
+                if _is_batched_list:
+                    self.tokenizer.padding_side = _orig_padding_side
             device = get_device_for_block_index(0, self.cfg)
             input = input.to(device)
             if use_past_kv_cache:
@@ -2044,10 +2097,20 @@ class HookedTransformer(HookedRootModule):
             for index in tqdm.tqdm(range(max_new_tokens), disable=not verbose):
                 pos_offset = self.get_pos_offset(past_kv_cache, batch_size)
 
-                tokens = torch.zeros((embeds.size(0), embeds.size(1))).to(torch.int)
-                attention_mask = utils.get_attention_mask(
-                    self.tokenizer, tokens, False if prepend_bos is None else prepend_bos
-                ).to(device)
+                # Extend the initial attention mask with 1s for generated tokens.
+                attention_mask: Optional[torch.Tensor] = None
+                if initial_attention_mask is not None:
+                    n_new = len(sampled_tokens_list)
+                    if n_new > 0:
+                        ones = torch.ones(
+                            batch_size,
+                            n_new,
+                            dtype=initial_attention_mask.dtype,
+                            device=device,
+                        )
+                        attention_mask = torch.cat([initial_attention_mask.to(device), ones], dim=1)
+                    else:
+                        attention_mask = initial_attention_mask.to(device)
                 residual, shortformer_pos_embed = self.get_residual(
                     embeds,
                     pos_offset,
@@ -2071,6 +2134,7 @@ class HookedTransformer(HookedRootModule):
                             past_kv_cache=past_kv_cache,
                             start_at_layer=start_at_layer,
                             shortformer_pos_embed=shortformer_pos_embed,
+                            attention_mask=attention_mask,
                         )
                     else:
                         logits = self.forward(
@@ -2081,6 +2145,7 @@ class HookedTransformer(HookedRootModule):
                             past_kv_cache=past_kv_cache,
                             start_at_layer=start_at_layer,
                             shortformer_pos_embed=shortformer_pos_embed,
+                            attention_mask=attention_mask,
                         )
                 else:
                     # We input the entire sequence, as a [batch, pos] tensor, since we aren't using
@@ -2092,6 +2157,7 @@ class HookedTransformer(HookedRootModule):
                         padding_side=padding_side,
                         start_at_layer=start_at_layer,
                         shortformer_pos_embed=shortformer_pos_embed,
+                        attention_mask=attention_mask,
                     )
                 final_logits = logits[:, -1, :]
 
@@ -2184,6 +2250,232 @@ class HookedTransformer(HookedRootModule):
                     return ModelOutput(sequences=output_tokens, logits=_logits_to_tuple(logits_seq_list))  # type: ignore[arg-type]
             else:
                 return result
+
+    @torch.inference_mode()
+    def generate_stream(
+        self,
+        input: Union[str, Float[torch.Tensor, "batch pos"]] = "",
+        max_new_tokens: int = 10,
+        max_tokens_per_yield: int = 25,
+        stop_at_eos: bool = True,
+        eos_token_id: Optional[int] = None,
+        do_sample: bool = True,
+        top_k: Optional[int] = None,
+        top_p: Optional[float] = None,
+        temperature: float = 1.0,
+        freq_penalty: float = 0.0,
+        use_past_kv_cache: bool = True,
+        prepend_bos: Optional[bool] = USE_DEFAULT_VALUE,
+        padding_side: Optional[Literal["left", "right"]] = USE_DEFAULT_VALUE,
+        return_type: Optional[str] = "input",
+        verbose: bool = True,
+    ) -> Generator[Union[Int[torch.Tensor, "batch"], str], None, None]:
+        """Stream tokens from the Model as they are generated.
+
+        Sample tokens from the model until the model outputs eos_token or max_new_tokens is reached,
+        yielding batches of tokens progressively during generation rather than waiting for the entire
+        sequence to be generated.
+
+        To avoid fiddling with ragged tensors, if we input a batch of text and some sequences finish
+        (by producing an EOT token), we keep running the model on the entire batch, but throw away
+        the output for a finished sequence and just keep adding EOTs to pad.
+
+        This supports entering a single string, but not a list of strings - if the strings don't
+        tokenize to exactly the same length, this gets messy. If that functionality is needed,
+        convert them to a batch of tokens and input that instead.
+
+        Args:
+            input (Union[str, Int[torch.Tensor, "batch pos"])]): Either a batch of tokens ([batch,
+                pos]) or a text string (this will be converted to a batch of tokens with batch size
+                1).
+            max_new_tokens (int): Maximum number of tokens to generate.
+            max_tokens_per_yield (int): Maximum number of tokens to accumulate before yielding.
+                Controls how frequently the function yields tokens during generation.
+            stop_at_eos (bool): If True, stop generating tokens when the model outputs eos_token.
+            eos_token_id (Optional[Union[int, Sequence]]): The token ID to use for end
+                of sentence. If None, use the tokenizer's eos_token_id - required if using
+                stop_at_eos. It's also possible to provide a list of token IDs (not just the
+                eos_token_id), in which case the generation will stop when any of them are output
+                (useful e.g. for stable_lm).
+            do_sample (bool): If True, sample from the model's output distribution. Otherwise, use
+                greedy search (take the max logit each time).
+            top_k (int): Number of tokens to sample from. If None, sample from all tokens.
+            top_p (float): Probability mass to sample from. If 1.0, sample from all tokens. If <1.0,
+                we take the top tokens with cumulative probability >= top_p.
+            temperature (float): Temperature for sampling. Higher values will make the model more
+                random (limit of temp -> 0 is just taking the top token, limit of temp -> inf is
+                sampling from a uniform distribution).
+            freq_penalty (float): Frequency penalty for sampling - how much to penalise previous
+                tokens. Higher values will make the model more random.
+            use_past_kv_cache (bool): If True, create and use cache to speed up generation.
+            prepend_bos (bool, optional): Overrides self.cfg.default_prepend_bos. Whether to prepend
+                the BOS token to the input (applicable when input is a string). Defaults to None,
+                implying usage of self.cfg.default_prepend_bos (default is True unless specified
+                otherwise). Pass True or False to override the default.
+            padding_side (Union[Literal["left", "right"], None], optional): Overrides
+                self.tokenizer.padding_side. Specifies which side to pad when tokenizing multiple
+                strings of different lengths.
+            return_type (Optional[str]): The type of the output to return - either a string (str),
+                a tensor of tokens (tensor) or whatever the format of the input was (input).
+            verbose (bool): If True, show tqdm progress bars for generation.
+
+        Yields:
+            outputs (Union[Int[torch.Tensor, "batch"], str]): Batches of generated tokens, yielded
+                progressively during generation. Each yield contains accumulated tokens since the last
+                yield, up to max_tokens_per_yield.
+        """
+
+        with utils.LocallyOverridenDefaults(
+            self, prepend_bos=prepend_bos, padding_side=padding_side
+        ):
+            if type(input) == str:
+                # If text, convert to tokens (batch_size=1)
+                assert (
+                    self.tokenizer is not None
+                ), "Must provide a tokenizer if passing a string to the model"
+                tokens = self.to_tokens(input, prepend_bos=prepend_bos, padding_side=padding_side)
+            else:
+                assert isinstance(input, torch.Tensor), "Input must be a tensor when not a string"
+                tokens = input
+
+            if return_type == "input":
+                if type(input) == str:
+                    return_type = "str"
+                else:
+                    return_type = "tensor"
+
+            assert isinstance(tokens, torch.Tensor)
+            batch_size, ctx_length = tokens.shape
+            device = get_device_for_block_index(0, self.cfg)
+            tokens = tokens.to(device)
+            if use_past_kv_cache:
+                past_kv_cache = TransformerLensKeyValueCache.init_cache(
+                    self.cfg, self.cfg.device, batch_size
+                )
+            else:
+                past_kv_cache = None
+
+            stop_tokens: List[int] = []
+            eos_token_for_padding = 0
+            assert self.tokenizer is not None
+            if stop_at_eos:
+                tokenizer_has_eos_token = (
+                    self.tokenizer is not None and self.tokenizer.eos_token_id is not None
+                )
+                if eos_token_id is None:
+                    assert (
+                        tokenizer_has_eos_token
+                    ), "Must pass a eos_token_id if stop_at_eos is True and tokenizer is None or has no eos_token_id"
+
+                    eos_token_id = self.tokenizer.eos_token_id
+
+                if isinstance(eos_token_id, int):
+                    stop_tokens = [eos_token_id]
+                    eos_token_for_padding = eos_token_id
+                else:
+                    # eos_token_id is a Sequence (e.g. list or tuple)
+                    stop_tokens = eos_token_id
+                    eos_token_for_padding = (
+                        self.tokenizer.eos_token_id if tokenizer_has_eos_token else eos_token_id[0]
+                    )
+
+            # An array to track which sequences in the batch have finished.
+            finished_sequences = torch.zeros(batch_size, dtype=torch.bool, device=self.cfg.device)
+
+            accumulated_tokens: Optional[torch.Tensor] = None
+            tokens_since_last_yield = 0
+
+            # Currently nothing in HookedTransformer changes with eval, but this is here in case
+            # that changes in the future.
+            self.eval()
+            for index in tqdm.tqdm(range(max_new_tokens), disable=not verbose):
+                # While generating, we keep generating logits, throw away all but the final logits,
+                # and then use those logits to sample from the distribution We keep adding the
+                # sampled tokens to the end of tokens.
+                if use_past_kv_cache:
+                    # We just take the final tokens, as a [batch, 1] tensor
+                    if index > 0:
+                        logits = self.forward(
+                            tokens[:, -1:],
+                            return_type="logits",
+                            prepend_bos=prepend_bos,
+                            padding_side=padding_side,
+                            past_kv_cache=past_kv_cache,
+                        )
+                    else:
+                        logits = self.forward(
+                            tokens,
+                            return_type="logits",
+                            prepend_bos=prepend_bos,
+                            padding_side=padding_side,
+                            past_kv_cache=past_kv_cache,
+                        )
+                else:
+                    # We input the entire sequence, as a [batch, pos] tensor, since we aren't using
+                    # the cache.
+                    logits = self.forward(
+                        tokens,
+                        return_type="logits",
+                        prepend_bos=prepend_bos,
+                        padding_side=padding_side,
+                    )
+                final_logits = logits[:, -1, :]
+
+                if do_sample:
+                    sampled_tokens = utils.sample_logits(
+                        final_logits,
+                        top_k=top_k,
+                        top_p=top_p,
+                        temperature=temperature,
+                        freq_penalty=freq_penalty,
+                        tokens=tokens,
+                    ).to(get_device_for_block_index(0, self.cfg))
+                else:
+                    sampled_tokens = final_logits.argmax(-1).to(
+                        get_device_for_block_index(0, self.cfg)
+                    )
+
+                if stop_at_eos:
+                    # For all unfinished sequences, add on the next token. If a sequence was
+                    # finished, throw away the generated token and add eos_token_for_padding
+                    # instead.
+                    sampled_tokens[finished_sequences] = eos_token_for_padding
+                    finished_sequences.logical_or_(
+                        torch.isin(
+                            sampled_tokens.to(self.cfg.device),
+                            torch.tensor(stop_tokens).to(self.cfg.device),
+                        )
+                    )
+
+                new_tokens = sampled_tokens.unsqueeze(-1)
+
+                # Accumulate tokens until we hit max_tokens_per_yield
+                if index == 0:
+                    accumulated_tokens = torch.cat([tokens, new_tokens], dim=-1)
+                    tokens_since_last_yield = accumulated_tokens.shape[1]
+                else:
+                    if accumulated_tokens is None:
+                        accumulated_tokens = new_tokens
+                    else:
+                        accumulated_tokens = torch.cat([accumulated_tokens, new_tokens], dim=-1)
+                    tokens_since_last_yield += 1
+
+                if tokens_since_last_yield >= max_tokens_per_yield:
+                    yield accumulated_tokens
+                    tokens_since_last_yield = 0
+                    accumulated_tokens = None
+
+                tokens = torch.cat([tokens, new_tokens], dim=-1)
+
+                if stop_at_eos and finished_sequences.all():
+                    # Yield any remaining accumulated tokens before breaking
+                    if accumulated_tokens is not None:
+                        yield accumulated_tokens
+                    break
+
+            # Only yield remaining tokens if we didn't already yield them in the break case
+            if accumulated_tokens is not None and not (stop_at_eos and finished_sequences.all()):
+                yield accumulated_tokens
 
     # Give access to all weights as properties.
     @property

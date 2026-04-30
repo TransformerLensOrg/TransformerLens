@@ -484,13 +484,13 @@ class HookedEncoderDecoder(HookedRootModule):
         else:
             return decoder_input
 
-    @overload
+    @overload  # type: ignore[overload-overlap]
     def run_with_cache(
         self, *model_args: Any, return_cache_object: Literal[True] = True, **kwargs: Any
     ) -> Tuple[Float[torch.Tensor, "batch pos d_vocab"], ActivationCache]:
         ...
 
-    @overload
+    @overload  # type: ignore[overload-overlap]
     def run_with_cache(
         self, *model_args: Any, return_cache_object: Literal[False] = False, **kwargs: Any
     ) -> Tuple[Float[torch.Tensor, "batch pos d_vocab"], Dict[str, torch.Tensor]]:

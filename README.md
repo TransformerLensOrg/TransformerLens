@@ -50,7 +50,7 @@ bridge = TransformerBridge.boot_transformers("gpt2", device="cpu")
 logits, activations = bridge.run_with_cache("Hello World")
 ```
 
-`TransformerBridge` is the recommended 3.0 path and supports 50+ architectures. The legacy `HookedTransformer.from_pretrained` API is still available through a compatibility layer but is deprecated - see the [Migrating to TransformerLens 3](https://TransformerLensOrg.github.io/TransformerLens/content/migrating_to_v3.html) guide for conversion recipes.
+`TransformerBridge` is the recommended 3.0 path and supports 50+ architectures. By default it preserves raw HuggingFace weights – logits and activations match HF, *not* legacy `HookedTransformer` (which folds LayerNorm and centers weights by default). Call `bridge.enable_compatibility_mode()` after booting for HookedTransformer-equivalent numerics. The legacy `HookedTransformer.from_pretrained` API is still available but deprecated — see the [Migrating to TransformerLens 3](https://TransformerLensOrg.github.io/TransformerLens/content/migrating_to_v3.html) guide.
 
 ## Key Tutorials
 

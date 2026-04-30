@@ -27,6 +27,7 @@ def make_cfg(use_qk_norm=True, n_key_value_heads=4):
         use_qk_norm=use_qk_norm,
         n_key_value_heads=n_key_value_heads,
         dtype=torch.float32,
+        device="cpu",
     )
 
 

@@ -286,13 +286,20 @@ def boot(
     trust_remote_code: bool = False,
     model_class: Any | None = None,
     hf_model: Any | None = None,
+    n_ctx: int | None = None,
+    # Experimental – Have not been fully tested on multi-gpu devices
+    # Use at your own risk, report any issues here: https://github.com/TransformerLensOrg/TransformerLens/issues
+    device_map: str | dict[str, str | int] | None = None,
+    n_devices: int | None = None,
+    max_memory: dict[str | int, str] | None = None,
 ) -> TransformerBridge:
     """Boot a model from HuggingFace.
 
     Args:
         model_name: The name of the model to load.
         hf_config_overrides: Optional overrides applied to the HuggingFace config before model load.
-        device: The device to use. If None, will be determined automatically.
+        device: The device to use. If None, will be determined automatically. Mutually exclusive
+            with ``device_map``.
         dtype: The dtype to use for the model.
         tokenizer: Optional pre-initialized tokenizer to use; if not provided one will be created.
         load_weights: If False, load model without weights (on meta device) for config inspection only.
@@ -302,6 +309,17 @@ def boot(
         hf_model: Optional pre-loaded HuggingFace model to use instead of loading one. Useful for
             models loaded with custom configurations (e.g., quantization via BitsAndBytesConfig).
             When provided, load_weights is ignored.
+        device_map: HuggingFace-style device map (``"auto"``, ``"balanced"``, dict, etc.) for
+            multi-GPU inference. Passed straight to ``from_pretrained``. Mutually exclusive
+            with ``device``.
+        n_devices: Convenience: split the model across this many CUDA devices (translated to a
+            ``max_memory`` dict internally). Requires CUDA with at least this many visible devices.
+        max_memory: Optional per-device memory budget for HF's dispatcher.
+        n_ctx: Optional context length override. The bridge normally uses the model's documented
+            max context from the HF config. Setting this writes to whichever HF field the model
+            uses (n_positions / max_position_embeddings / etc.), so callers don't need to know
+            the field name. If larger than the model's default, a warning is emitted — quality
+            may degrade past the trained length for rotary models.
 
     Returns:
         The bridge to the loaded model.
@@ -323,6 +341,54 @@ def boot(
         trust_remote_code=trust_remote_code,
         token=_hf_token,
     )
+    _n_ctx_field: str | None = None
+    if n_ctx is not None:
+        # Validation (#2): reject non-positive values before doing anything else.
+        if n_ctx <= 0:
+            raise ValueError(f"n_ctx must be a positive integer, got n_ctx={n_ctx}.")
+        # Resolve n_ctx to whichever HF config field this model uses. Mirrors
+        # the order in map_default_transformer_lens_config so the TL config
+        # derivation picks up the override.
+        for _field in (
+            "n_positions",
+            "max_position_embeddings",
+            "max_context_length",
+            "max_length",
+            "seq_length",
+        ):
+            if hasattr(hf_config, _field):
+                _n_ctx_field = _field
+                break
+        if _n_ctx_field is None:
+            raise ValueError(
+                f"Cannot apply n_ctx={n_ctx}: no recognized context-length field on "
+                f"HF config for {model_name}. Use hf_config_overrides instead."
+            )
+        _default_n_ctx = getattr(hf_config, _n_ctx_field)
+        if _default_n_ctx is not None and n_ctx > _default_n_ctx:
+            logging.warning(
+                "Setting n_ctx=%d which is larger than the model's default "
+                "context length of %d. The model was not trained on sequences "
+                "this long and may produce unreliable results (especially for "
+                "rotary models without RoPE scaling).",
+                n_ctx,
+                _default_n_ctx,
+            )
+        # Conflict detection (#4): warn if the caller also set the same field
+        # via hf_config_overrides — explicit n_ctx wins but users should know.
+        if hf_config_overrides and _n_ctx_field in hf_config_overrides:
+            _conflicting_value = hf_config_overrides[_n_ctx_field]
+            if _conflicting_value != n_ctx:
+                logging.warning(
+                    "Both n_ctx=%d and hf_config_overrides['%s']=%s were provided. "
+                    "The explicit n_ctx takes precedence.",
+                    n_ctx,
+                    _n_ctx_field,
+                    _conflicting_value,
+                )
+        # Explicit n_ctx wins over hf_config_overrides for the resolved field.
+        hf_config_overrides = dict(hf_config_overrides or {})
+        hf_config_overrides[_n_ctx_field] = n_ctx
     if hf_config_overrides:
         hf_config.__dict__.update(hf_config_overrides)
     tl_config = map_default_transformer_lens_config(hf_config)
@@ -376,9 +442,49 @@ def boot(
     if attn_logit_softcapping is not None:
         bridge_config.attn_scores_soft_cap = float(attn_logit_softcapping)
     adapter = ArchitectureAdapterFactory.select_architecture_adapter(bridge_config)
-    if device is None:
-        device = get_device()
-    adapter.cfg.device = str(device)
+    # Pre-loaded models carry their own weight placement (possibly set by the caller via
+    # device_map). Passing device_map / n_devices / max_memory alongside hf_model= is
+    # ambiguous and would silently be ignored, so fail loudly.
+    if hf_model is not None and (
+        device_map is not None or n_devices is not None or max_memory is not None
+    ):
+        raise ValueError(
+            "device_map / n_devices / max_memory are only supported when the bridge loads "
+            "the HF model itself. When passing hf_model=..., apply device_map via "
+            "AutoModel.from_pretrained before handing the model to the bridge."
+        )
+    # Stateful/SSM (e.g. Mamba) models keep a per-layer recurrent cache that must live on
+    # that layer's device. The bridge currently allocates the stateful cache on a single
+    # cfg.device, so cross-device splits would silently misplace the cache. Block this
+    # combination until a v2 addresses per-layer stateful cache placement.
+    if (n_devices is not None and n_devices > 1) or device_map is not None:
+        if getattr(bridge_config, "is_stateful", False):
+            raise ValueError(
+                "Multi-device splits are not yet supported for stateful (SSM / Mamba) "
+                "architectures: the stateful cache allocation is single-device. "
+                "Load on one device, or wait for v2 support."
+            )
+    # Resolve device_map before defaulting `device` — the two are mutually exclusive, and
+    # the resolver raises on conflict. If n_devices>1 is passed, it's translated into a
+    # device_map + max_memory pair here so downstream code only needs to check the
+    # resolved values.
+    from transformer_lens.utilities.multi_gpu import (
+        count_unique_devices,
+        find_embedding_device,
+        resolve_device_map,
+    )
+
+    resolved_device_map, resolved_max_memory = resolve_device_map(
+        n_devices, device_map, device, max_memory
+    )
+    if resolved_device_map is None:
+        if device is None:
+            device = get_device()
+        adapter.cfg.device = str(device)
+    else:
+        # cfg.device will be set from hf_device_map after the model is loaded.
+        # Provisionally keep it None; find_embedding_device fills it in below.
+        adapter.cfg.device = None
     if model_class is None:
         model_class = get_hf_model_class_for_architecture(architecture)
     # Ensure pad_token_id exists (v5 raises AttributeError if missing)
@@ -393,6 +499,10 @@ def boot(
         model_kwargs["token"] = _hf_token
     if trust_remote_code:
         model_kwargs["trust_remote_code"] = True
+    if resolved_device_map is not None:
+        model_kwargs["device_map"] = resolved_device_map
+    if resolved_max_memory is not None:
+        model_kwargs["max_memory"] = resolved_max_memory
     if hasattr(adapter.cfg, "attn_implementation") and adapter.cfg.attn_implementation is not None:
         model_kwargs["attn_implementation"] = adapter.cfg.attn_implementation
     else:
@@ -409,13 +519,72 @@ def boot(
         with contextlib.redirect_stdout(None):
             hf_model = model_class.from_config(hf_config, **from_config_kwargs)
     else:
-        hf_model = model_class.from_pretrained(model_name, **model_kwargs)
-        if device is not None:
+        try:
+            hf_model = model_class.from_pretrained(model_name, **model_kwargs)
+        except RuntimeError as e:
+            # #5: HF refuses to load when positional-weight shapes don't match.
+            # If the user requested an n_ctx that conflicts with the saved weights
+            # (common for learned-pos-embed models like GPT-2), re-raise with a
+            # clearer message pointing them at the likely cause.
+            if n_ctx is not None and "ignore_mismatched_sizes" in str(e):
+                raise RuntimeError(
+                    f"Failed to load {model_name} with n_ctx={n_ctx}: the pretrained "
+                    f"weights' positional-embedding shape does not match the requested "
+                    f"context length. This affects models with learned positional "
+                    f"embeddings (e.g. GPT-2, OPT). Options: (1) use the model's "
+                    f"default n_ctx, (2) pass load_weights=False if you only need "
+                    f"config inspection, or (3) choose a rotary-embedding model "
+                    f"(e.g. Llama, Mistral) which supports n_ctx changes without "
+                    f"weight mismatch."
+                ) from e
+            raise
+        # Skip explicit .to(device) when accelerate has placed weights via device_map.
+        if resolved_device_map is None and device is not None:
             hf_model = hf_model.to(device)
         # Cast params to dtype; preserve float32 buffers (e.g., RotaryEmbedding.inv_freq)
         for param in hf_model.parameters():
             if param.is_floating_point() and param.dtype != dtype:
                 param.data = param.data.to(dtype=dtype)
+    # Derive cfg.device / cfg.n_devices from hf_device_map when present. This covers:
+    #   - fresh loads with a resolved device_map (set above)
+    #   - pre-loaded hf_model that the caller dispatched themselves (e.g., device_map="auto")
+    hf_device_map_post = getattr(hf_model, "hf_device_map", None)
+    if hf_device_map_post:
+        # Pre-loaded path can still smuggle CPU/disk offload in; validate here too.
+        offload_values = {str(v).lower() for v in hf_device_map_post.values() if isinstance(v, str)}
+        forbidden = offload_values & {"cpu", "disk", "meta"}
+        if forbidden and ((n_devices is not None and n_devices > 1) or device_map is not None):
+            # Fresh-load path: we set the device_map ourselves, so this shouldn't happen —
+            # but if the user asked for n_devices>1 and somehow got CPU offload, surface it.
+            raise ValueError(
+                f"hf_device_map contains unsupported offload targets: {sorted(forbidden)}. "
+                "v1 multi-device support is GPU-only."
+            )
+    embedding_device = find_embedding_device(hf_model)
+    if embedding_device is not None:
+        adapter.cfg.device = str(embedding_device)
+        adapter.cfg.n_devices = count_unique_devices(hf_model)
+    elif adapter.cfg.device is None:
+        # Pre-loaded single-device model with no hf_device_map — fall back to first param.
+        try:
+            adapter.cfg.device = str(next(hf_model.parameters()).device)
+        except StopIteration:
+            adapter.cfg.device = "cpu"
+    # #7: Verify the n_ctx override actually took effect on the loaded model.
+    # If HF's config class silently dropped or normalized the value, warn so
+    # the user doesn't get misled into thinking longer sequences are supported.
+    if n_ctx is not None and _n_ctx_field is not None and hf_model is not None:
+        _actual = getattr(hf_model.config, _n_ctx_field, None)
+        if _actual != n_ctx:
+            logging.warning(
+                "n_ctx=%d was requested but hf_model.config.%s=%s after load. "
+                "The override may not have taken effect; the model may not "
+                "accept sequences longer than %s.",
+                n_ctx,
+                _n_ctx_field,
+                _actual,
+                _actual,
+            )
     adapter.prepare_model(hf_model)
     tokenizer = tokenizer
     default_padding_side = getattr(adapter.cfg, "default_padding_side", None)

@@ -61,3 +61,19 @@ class TestRunWithCacheCompatibility:
             f"TransformerBridge run_with_cache should match manual hooks. "
             f"Max difference: {cache_diff:.6f}"
         )
+
+    def test_run_with_cache_accepts_1d_tensor(self, gpt2_bridge_compat_no_processing):
+        """1D token tensors should be auto-promoted to [1, seq], matching HookedTransformer."""
+        bridge_model = gpt2_bridge_compat_no_processing
+
+        tokens_1d = torch.tensor([1, 2, 3])
+        tokens_2d = tokens_1d.unsqueeze(0)
+
+        logits_1d, cache_1d = bridge_model.run_with_cache(tokens_1d)
+        logits_2d, cache_2d = bridge_model.run_with_cache(tokens_2d)
+
+        assert logits_1d.shape == logits_2d.shape
+        assert torch.allclose(logits_1d, logits_2d, atol=1e-5)
+        assert torch.allclose(
+            cache_1d["blocks.0.hook_mlp_out"], cache_2d["blocks.0.hook_mlp_out"], atol=1e-5
+        )
