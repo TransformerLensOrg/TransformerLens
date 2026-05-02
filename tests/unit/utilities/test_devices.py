@@ -46,6 +46,7 @@ def test_get_device_cuda_available():
             assert isinstance(device, torch.device)
             assert device.type == "cuda"
 
+
 @patch.dict("os.environ", {"TRANSFORMERLENS_ALLOW_MPS": "1"})
 def test_get_device_mps_available():
     """Test get_device when MPS is available, PyTorch version >= 2.0, and env var set."""
@@ -57,6 +58,7 @@ def test_get_device_mps_available():
                     assert isinstance(device, torch.device)
                     assert device.type == "mps"
 
+
 def test_get_device_mps_pytorch_1x():
     """Test get_device when MPS is available but PyTorch version < 2.0."""
     with patch("torch.cuda.is_available", return_value=False):
@@ -67,6 +69,7 @@ def test_get_device_mps_pytorch_1x():
                     assert isinstance(device, torch.device)
                     assert device.type == "cpu"
 
+
 def test_get_device_cpu_fallback():
     """Test get_device falls back to CPU when no GPU available."""
     with patch("torch.cuda.is_available", return_value=False):
@@ -74,6 +77,7 @@ def test_get_device_cpu_fallback():
             device = get_device()
             assert isinstance(device, torch.device)
             assert device.type == "cpu"
+
 
 def test_model_with_cfg_protocol():
     """Test that ModelWithCfg protocol is runtime checkable."""
