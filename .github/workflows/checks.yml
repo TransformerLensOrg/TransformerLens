@@ -6,7 +6,6 @@ on:
       - main
       - dev*
       - refactor*
-      - feat/mps-ci-support
     tags:
       - "v*.*.*"
     paths-ignore:
