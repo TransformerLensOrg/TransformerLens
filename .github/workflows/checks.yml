@@ -105,7 +105,7 @@ jobs:
         run: uv build
 
   mps-checks:
-    name: MPS Checks (Apple Silicon)
+    name: MPS Checks
     runs-on: macos-latest
     # Only run on PRs merging to main or pushes directly to main
     # Temporarily disabled to verify on feature branch
@@ -120,7 +120,7 @@ jobs:
           python-version: "3.11"
           activate-environment: true
           enable-cache: true
-      - name: Cache Models used with MPS Tests
+      - name: MPS Cache Models
         uses: actions/cache@v3
         with:
           path: |
@@ -130,7 +130,7 @@ jobs:
         run: |
           uv lock --check
           uv sync
-      - name: Verify MPS availability
+      - name: MPS Availability Check
         run: |
           uv run python -c "
           import torch
@@ -139,11 +139,11 @@ jobs:
           print(f'MPS built: {torch.backends.mps.is_built()}')
           assert torch.backends.mps.is_available(), 'MPS not available on this runner!'
           "
-      - name: Unit Test (MPS)
+      - name: MPS Unit Tests
         run: >
           uv run pytest tests/unit -v
           --ignore=tests/unit/model_bridge/
-      - name: Integration Test (MPS)
+      - name: MPS Integration Tests
         run: >
           uv run pytest tests/integration -v
           --ignore=tests/integration/model_bridge/
