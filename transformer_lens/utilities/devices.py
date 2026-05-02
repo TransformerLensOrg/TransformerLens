@@ -53,25 +53,25 @@ def _torch_mps_has_known_broken_bug() -> bool:
 # ---------------------------------------------------------------------------
 
 
-def get_device() -> str:
+def get_device() -> torch.device:
     """Get the best available device, with MPS safety checks.
 
     MPS is only auto-selected when the environment variable
     ``TRANSFORMERLENS_ALLOW_MPS=1`` is set **and** the installed PyTorch
-    version meets or exceeds ``_MPS_MIN_SAFE_TORCH_VERSION``.
+    version is 2.0 or higher.
 
     Returns:
-        str: The best available device name (cuda, mps, or cpu)
+        torch.device: The best available device (cuda, mps, or cpu)
     """
     if torch.cuda.is_available():
-        return "cuda"
+        return torch.device("cuda")
 
     if torch.backends.mps.is_available() and torch.backends.mps.is_built():
         major_version = int(torch.__version__.split(".")[0])
         if major_version >= 2:
             # Only auto-select MPS when explicitly opted-in via env var
             if os.environ.get("TRANSFORMERLENS_ALLOW_MPS", "") == "1":
-                return "mps"
+                return torch.device("mps")
             logging.info(
                 "MPS device available but not auto-selected due to known correctness issues "
                 "(PyTorch %s). Set TRANSFORMERLENS_ALLOW_MPS=1 to override. See: "
@@ -79,7 +79,7 @@ def get_device() -> str:
                 torch.__version__,
             )
 
-    return "cpu"
+    return torch.device("cpu")
 
 
 def warn_if_mps(device: Union[str, torch.device]) -> None:

@@ -65,7 +65,8 @@ def test_mps_get_device_returns_mps_with_env_var():
     try:
         os.environ["TRANSFORMERLENS_ALLOW_MPS"] = "1"
         device = get_device()
-        assert device == "mps", f"Expected 'mps', got '{device}'"
+        assert isinstance(device, torch.device)
+        assert device.type == "mps", f"Expected 'mps', got '{device.type}'"
     finally:
         if original:
             os.environ["TRANSFORMERLENS_ALLOW_MPS"] = original
@@ -82,11 +83,8 @@ def test_mps_get_device_falls_back_to_cpu_without_env_var():
         os.environ.pop("TRANSFORMERLENS_ALLOW_MPS", None)
         device = get_device()
         # On a Mac with no CUDA, should return cpu (safe default)
-        assert device in ("cpu", "mps"), f"Unexpected device: {device}"
-        if original == "":  # env var was not set originally
-            assert (
-                device == "cpu"
-            ), "Without TRANSFORMERLENS_ALLOW_MPS=1, get_device() should return 'cpu' not 'mps'"
+        assert isinstance(device, torch.device)
+        assert device.type == "cpu", f"Without TRANSFORMERLENS_ALLOW_MPS=1, get_device() should return 'cpu' not '{device.type}'"
     finally:
         if original:
             os.environ["TRANSFORMERLENS_ALLOW_MPS"] = original
