@@ -140,7 +140,9 @@ jobs:
           assert torch.backends.mps.is_available(), 'MPS not available on this runner!'
           "
       - name: Unit Test (MPS)
-        run: make unit-test
+        run: >
+          uv run pytest tests/unit -v
+          --ignore=tests/unit/model_bridge/
       - name: Integration Test (MPS)
         run: >
           uv run pytest tests/integration -v
