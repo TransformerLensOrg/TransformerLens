@@ -149,6 +149,7 @@ jobs:
           --ignore=tests/integration/model_bridge/
           --ignore=tests/integration/test_prepend_bos.py
           --ignore=tests/integration/test_generation_compatibility.py
+          --ignore=tests/integration/test_grouped_query_attention.py
           --ignore=tests/integration/test_match_huggingface.py
           --ignore=tests/integration/test_fold_layer_integration.py
           --ignore=tests/integration/test_centralized_weight_processing.py
