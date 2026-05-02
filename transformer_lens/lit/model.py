@@ -34,7 +34,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, Iterable, Iterator, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, Iterable, Iterator, List, Optional, Union
 
 import torch
 
@@ -86,7 +86,7 @@ class HookedTransformerLITConfig:
     output_all_layers: bool = DEFAULTS.OUTPUT_ALL_LAYERS
     embedding_layers: Optional[List[int]] = None
     prepend_bos: bool = DEFAULTS.PREPEND_BOS
-    device: Optional[str] = None
+    device: Optional[Union[str, torch.device]] = None
 
 
 def _ensure_lit_available():
