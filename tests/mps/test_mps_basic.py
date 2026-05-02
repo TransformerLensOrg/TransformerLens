@@ -84,9 +84,9 @@ def test_mps_get_device_falls_back_to_cpu_without_env_var():
         # On a Mac with no CUDA, should return cpu (safe default)
         assert device in ("cpu", "mps"), f"Unexpected device: {device}"
         if original == "":  # env var was not set originally
-            assert device == "cpu", (
-                "Without TRANSFORMERLENS_ALLOW_MPS=1, get_device() should return 'cpu' not 'mps'"
-            )
+            assert (
+                device == "cpu"
+            ), "Without TRANSFORMERLENS_ALLOW_MPS=1, get_device() should return 'cpu' not 'mps'"
     finally:
         if original:
             os.environ["TRANSFORMERLENS_ALLOW_MPS"] = original
@@ -94,8 +94,8 @@ def test_mps_get_device_falls_back_to_cpu_without_env_var():
 
 def test_mps_warn_if_mps_emits_warning_without_env_var():
     """warn_if_mps() emits a UserWarning when MPS is used without the env var."""
-    from transformer_lens.utilities import warn_if_mps
     import transformer_lens.utilities.devices as devices_module
+    from transformer_lens.utilities import warn_if_mps
 
     original = os.environ.get("TRANSFORMERLENS_ALLOW_MPS", "")
     original_warned = devices_module._mps_warned
@@ -105,9 +105,9 @@ def test_mps_warn_if_mps_emits_warning_without_env_var():
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
             warn_if_mps("mps")
-        assert any("MPS backend" in str(warning.message) for warning in w), (
-            "Expected MPS warning but got: " + str([str(x.message) for x in w])
-        )
+        assert any(
+            "MPS backend" in str(warning.message) for warning in w
+        ), "Expected MPS warning but got: " + str([str(x.message) for x in w])
     finally:
         if original:
             os.environ["TRANSFORMERLENS_ALLOW_MPS"] = original
