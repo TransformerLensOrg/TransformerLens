@@ -2073,7 +2073,7 @@ class HookedTransformer(HookedRootModule):
                     assert (
                         tokenizer_has_eos_token
                     ), "Must pass a eos_token_id if stop_at_eos is True and tokenizer is None or has no eos_token_id"
-
+                    assert self.tokenizer is not None
                     eos_token_id = self.tokenizer.eos_token_id
 
                 if isinstance(eos_token_id, int):
@@ -2082,9 +2082,11 @@ class HookedTransformer(HookedRootModule):
                 else:
                     # eos_token_id is a Sequence (e.g. list or tuple)
                     stop_tokens = eos_token_id
-                    eos_token_for_padding = (
-                        self.tokenizer.eos_token_id if tokenizer_has_eos_token else eos_token_id[0]
-                    )
+                    if tokenizer_has_eos_token:
+                        assert self.tokenizer is not None
+                        eos_token_for_padding = self.tokenizer.eos_token_id
+                    else:
+                        eos_token_for_padding = eos_token_id[0]
 
             # An array to track which sequences in the batch have finished.
             finished_sequences = torch.zeros(batch_size, dtype=torch.bool, device=self.cfg.device)
@@ -2216,6 +2218,7 @@ class HookedTransformer(HookedRootModule):
                 output_tokens = sampled_tokens
 
             if return_type == "str":
+                assert self.tokenizer is not None
                 decoded_texts: List[str] = [
                     cast(str, self.tokenizer.decode(tokens, skip_special_tokens=True))
                     for tokens in output_tokens
@@ -2364,7 +2367,7 @@ class HookedTransformer(HookedRootModule):
                     assert (
                         tokenizer_has_eos_token
                     ), "Must pass a eos_token_id if stop_at_eos is True and tokenizer is None or has no eos_token_id"
-
+                    assert self.tokenizer is not None
                     eos_token_id = self.tokenizer.eos_token_id
 
                 if isinstance(eos_token_id, int):
@@ -2373,9 +2376,11 @@ class HookedTransformer(HookedRootModule):
                 else:
                     # eos_token_id is a Sequence (e.g. list or tuple)
                     stop_tokens = eos_token_id
-                    eos_token_for_padding = (
-                        self.tokenizer.eos_token_id if tokenizer_has_eos_token else eos_token_id[0]
-                    )
+                    if tokenizer_has_eos_token:
+                        assert self.tokenizer is not None
+                        eos_token_for_padding = self.tokenizer.eos_token_id
+                    else:
+                        eos_token_for_padding = eos_token_id[0]
 
             # An array to track which sequences in the batch have finished.
             finished_sequences = torch.zeros(batch_size, dtype=torch.bool, device=self.cfg.device)

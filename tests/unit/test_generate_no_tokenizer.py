@@ -100,7 +100,9 @@ def test_generate_without_tokenizer_stop_at_eos_requires_eos_id():
 
     tokens = torch.zeros((1, 5), dtype=torch.long)
     try:
-        model.generate(tokens, max_new_tokens=3, stop_at_eos=True, return_type="tokens", verbose=False)
+        model.generate(
+            tokens, max_new_tokens=3, stop_at_eos=True, return_type="tokens", verbose=False
+        )
         raise AssertionError("Should have raised AssertionError")
     except AssertionError as e:
         assert "eos_token_id" in str(e), f"Unexpected error message: {e}"
