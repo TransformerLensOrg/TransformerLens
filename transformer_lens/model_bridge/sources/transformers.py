@@ -335,12 +335,17 @@ def boot(
     from transformer_lens.utilities.hf_utils import get_hf_token
 
     _hf_token = get_hf_token()
-    hf_config = AutoConfig.from_pretrained(
-        model_name,
-        output_attentions=True,
-        trust_remote_code=trust_remote_code,
-        token=_hf_token,
-    )
+    if hf_model is not None:
+        # Reuse the pre-loaded model's config to avoid a Hub call when model_name
+        # is a Hub repo ID, but the model is already loaded locally.
+        hf_config = copy.deepcopy(hf_model.config)
+    else:
+        hf_config = AutoConfig.from_pretrained(
+            model_name,
+            output_attentions=True,
+            trust_remote_code=trust_remote_code,
+            token=_hf_token,
+        )
     _n_ctx_field: str | None = None
     if n_ctx is not None:
         # Validation (#2): reject non-positive values before doing anything else.
