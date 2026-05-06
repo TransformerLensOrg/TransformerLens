@@ -258,9 +258,9 @@ class HookedTransformerConfig(TransformerLensConfig):
     tokenizer_prepends_bos: Optional[bool] = None
     post_embedding_ln: bool = False
     rotary_base: Union[float, int] = 10000
-    rotary_base_local: Optional[Union[float, int]] = (
-        None  # For models with different RoPE bases per attention type (e.g., Gemma 3)
-    )
+    rotary_base_local: Optional[
+        Union[float, int]
+    ] = None  # For models with different RoPE bases per attention type (e.g., Gemma 3)
     rotary_scaling_factor: float = (
         1.0  # Linear RoPE scaling factor for global attention (e.g., 8.0 for Gemma 3 4B)
     )
