@@ -92,7 +92,6 @@
         ]
         markers=[
             "slow: marks tests as slow (deselect with '-m \"not slow\"')",
-            "no_mps: marks test as incompatible with MPS device (deselect with '-m \"not no_mps\"')",
         ]
         pythonpath=["."]
         testpaths=["tests", "transformer_lens"] # Only test these directories
