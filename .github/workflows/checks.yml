@@ -108,8 +108,8 @@ jobs:
     runs-on: macos-latest
     # Only run on PRs merging to main or pushes directly to main
     if: >
-      (github.event_name == 'pull_request' && (github.base_ref == 'main' || startsWith(github.base_ref, 'dev'))) ||
-      (github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/dev')))
+      (github.event_name == 'pull_request' && github.base_ref == 'main') ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main')
     steps:
       - uses: actions/checkout@v4
       - name: Install uv
