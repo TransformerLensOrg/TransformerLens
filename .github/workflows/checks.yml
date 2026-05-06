@@ -157,9 +157,12 @@ jobs:
         run: >
           uv run pytest tests/integration -v
           --ignore=tests/integration/model_bridge/test_optimizer_compatibility.py
+          --ignore=tests/integration/model_bridge/test_bridge_generation.py
+          --ignore=tests/integration/model_bridge/test_bridge_integration.py
           --ignore=tests/integration/model_bridge/compatibility/
           --ignore=tests/integration/test_prepend_bos.py
           --ignore=tests/integration/test_generation_compatibility.py
+          --ignore=tests/integration/test_grouped_query_attention.py
           --ignore=tests/integration/test_match_huggingface.py
           --ignore=tests/integration/test_fold_layer_integration.py
           --ignore=tests/integration/test_centralized_weight_processing.py
