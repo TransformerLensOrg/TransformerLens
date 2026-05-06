@@ -5,8 +5,6 @@ where users asked for a total parameter count (including embeddings/biases),
 since cfg.n_params only counts the "hidden weight" subset.
 """
 
-import torch
-
 from transformer_lens import HookedTransformer
 from transformer_lens.config import HookedTransformerConfig
 
