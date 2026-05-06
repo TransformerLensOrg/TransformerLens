@@ -1426,6 +1426,11 @@ class ProcessWeights:
                         b_O_original_maybe is not None
                     ), f"Attention b_O not found at key {b_O_key}"
                     b_O_original = b_O_original_maybe
+                # Align W_O / b_O to b_V's device.
+                if W_O.device != b_V.device:
+                    W_O = W_O.to(b_V.device)
+                if b_O_original.device != b_V.device:
+                    b_O_original = b_O_original.to(b_V.device)
                 is_split_format = ".attn.v.bias" in b_V_key or ".attn.k.bias" in b_V_key
                 if is_split_format and len(b_V.shape) == 1 and (len(W_O.shape) == 2):
                     n_heads = cfg.n_heads

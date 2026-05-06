@@ -474,6 +474,35 @@ class TestProcessWeights:
             b_v = processed_dict[f"blocks.{l}.attn._b_V"]
             assert torch.allclose(b_v, torch.zeros_like(b_v), atol=1e-6)
 
+    @pytest.mark.skipif(
+        not (torch.cuda.is_available() or torch.backends.mps.is_available()),
+        reason="Cross-device test requires a non-CPU accelerator (CUDA or MPS)",
+    )
+    def test_fold_value_biases_cross_device_state_dict(self, basic_config, basic_state_dict):
+        """fold_value_biases must align tensors when state_dict has mixed devices.
+
+        Regression for #904: an HF model loaded on GPU could end up with state_dict
+        tensors on different devices (b_V on GPU, b_O on CPU because a downstream
+        converter created it without an explicit device=). The b_V * W_O multiply
+        then failed with a cross-device RuntimeError.
+        """
+        accelerator = "cuda" if torch.cuda.is_available() else "mps"
+        cross_device_dict = deep_copy_state_dict(basic_state_dict)
+        for l in range(basic_config.n_layers):
+            cross_device_dict[f"blocks.{l}.attn.b_V"] = cross_device_dict[
+                f"blocks.{l}.attn.b_V"
+            ].to(accelerator)
+            cross_device_dict[f"blocks.{l}.attn.W_V"] = cross_device_dict[
+                f"blocks.{l}.attn.W_V"
+            ].to(accelerator)
+            # W_O and b_O stay on CPU — mirrors the #904 mismatch pattern.
+
+        processed_dict = ProcessWeights.fold_value_biases(cross_device_dict, basic_config)
+
+        for l in range(basic_config.n_layers):
+            b_v = processed_dict[f"blocks.{l}.attn.b_V"]
+            assert torch.allclose(b_v, torch.zeros_like(b_v), atol=1e-6)
+
     def test_refactor_factored_attn_matrices(self, basic_config, basic_state_dict):
         """Test attention matrix refactoring."""
         original_dict = deep_copy_state_dict(basic_state_dict)
