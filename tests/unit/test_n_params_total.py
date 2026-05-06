@@ -9,9 +9,9 @@ from transformer_lens import HookedTransformer
 from transformer_lens.config import HookedTransformerConfig
 
 
-def _make_small_model(attn_only: bool = True, gated_mlp: bool = False) -> HookedTransformer:
+def _make_small_model(attn_only: bool = True) -> HookedTransformer:
     """Build a tiny HookedTransformer for fast unit tests."""
-    cfg = HookedTransformerConfig(
+    kwargs = dict(
         n_layers=2,
         d_model=32,
         d_head=8,
@@ -19,10 +19,11 @@ def _make_small_model(attn_only: bool = True, gated_mlp: bool = False) -> Hooked
         n_ctx=16,
         d_vocab=50,
         attn_only=attn_only,
-        d_mlp=64 if not attn_only else None,
-        act_fn="gelu" if not attn_only else None,
-        gated_mlp=gated_mlp,
     )
+    if not attn_only:
+        kwargs["d_mlp"] = 64
+        kwargs["act_fn"] = "gelu"
+    cfg = HookedTransformerConfig(**kwargs)
     return HookedTransformer(cfg)
 
 
