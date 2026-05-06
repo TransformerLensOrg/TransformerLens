@@ -154,6 +154,11 @@ def get_tokenizer_with_bos(tokenizer: PreTrainedTokenizerBase) -> PreTrainedToke
             token=huggingface_token if len(huggingface_token) > 0 else None,
             **init_kwargs,
         )
+        # Preserve padding_side from the original tokenizer, since AutoTokenizer.from_pretrained
+        # resets it to the HuggingFace default (usually "right"). Without this, callers who
+        # explicitly set tokenizer.padding_side = "left" before passing the tokenizer in would
+        # have that setting silently discarded. See issue #801.
+        tokenizer_with_bos.padding_side = tokenizer.padding_side
 
     return tokenizer_with_bos
 
