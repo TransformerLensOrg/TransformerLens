@@ -106,10 +106,10 @@ jobs:
   mps-checks:
     name: MPS Checks
     runs-on: macos-latest
-    # Only run on PRs merging to main or pushes directly to main
+    # Only run on PRs merging to main/dev or pushes directly to main/dev
     if: >
-      (github.event_name == 'pull_request' && github.base_ref == 'main') ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/main')
+      (github.event_name == 'pull_request' && (github.base_ref == 'main' || github.base_ref == 'dev')) ||
+      (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'))
     steps:
       - uses: actions/checkout@v4
       - name: Install uv
