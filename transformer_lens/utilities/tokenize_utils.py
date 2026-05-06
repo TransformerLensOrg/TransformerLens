@@ -58,9 +58,9 @@ def tokenize_and_concatenate(
     _deprecation_warnings_saved = None
     if hasattr(tokenizer, "deprecation_warnings"):
         _deprecation_warnings_saved = tokenizer.deprecation_warnings.copy()
-        tokenizer.deprecation_warnings["sequence-length-is-longer-than-the-specified-maximum"] = (
-            False
-        )
+        tokenizer.deprecation_warnings[
+            "sequence-length-is-longer-than-the-specified-maximum"
+        ] = False
 
     def tokenize_function(examples: Any) -> dict[str, np.ndarray]:
         # datasets.map() may pass a LazyBatch, not a plain dict; accept dict-like batches
