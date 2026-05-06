@@ -193,7 +193,9 @@ def test_ungroup_grouped_query_attention_flag_produces_same_result():
         query_input, key_input, value_input
     )
 
-    assert torch.allclose(grouped_query_attn_flag_off_output, grouped_query_attn_flag_on_output, atol=1e-4, rtol=1e-4)
+    assert torch.allclose(
+        grouped_query_attn_flag_off_output, grouped_query_attn_flag_on_output, atol=1e-4, rtol=1e-4
+    )
 
 
 def test_ungroup_grouped_query_attention_flag_changes_k_v_hooks_shape():
