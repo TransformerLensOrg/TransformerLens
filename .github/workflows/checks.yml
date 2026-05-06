@@ -137,10 +137,14 @@ jobs:
           print(f'MPS built: {torch.backends.mps.is_built()}')
           assert torch.backends.mps.is_available(), 'MPS not available on this runner!'
           "
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
       - name: MPS Unit Tests
         run: >
           uv run pytest tests/unit -v
           --ignore=tests/unit/model_bridge/
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
       - name: MPS Integration Tests
         run: >
           uv run pytest tests/integration -v
@@ -152,10 +156,13 @@ jobs:
           --ignore=tests/integration/test_fold_layer_integration.py
           --ignore=tests/integration/test_centralized_weight_processing.py
           --ignore=tests/integration/test_create_hooked_encoder.py
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
       - name: MPS Smoke Tests
         run: uv run pytest tests/mps -v
         env:
           TRANSFORMERLENS_ALLOW_MPS: "1"
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
 
   format-check:
     name: Format Check
