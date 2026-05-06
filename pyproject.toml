@@ -90,7 +90,9 @@
             "ignore:distutils Version classes are deprecated:DeprecationWarning",
             "ignore:pkg_resources is deprecated as an API:DeprecationWarning",
         ]
-        markers=["slow: marks tests as slow (deselect with '-m \"not slow\"')"]
+        markers=[
+            "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+        ]
         pythonpath=["."]
         testpaths=["tests", "transformer_lens"] # Only test these directories
 

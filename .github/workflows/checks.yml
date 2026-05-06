@@ -103,6 +103,77 @@ jobs:
       - name: Build check
         run: uv build
 
+  mps-checks:
+    name: MPS Checks
+    runs-on: macos-latest
+    # Only run on PRs merging to main/dev or pushes directly to main/dev
+    if: >
+      (github.event_name == 'pull_request' && (github.base_ref == 'main' || github.base_ref == 'dev')) ||
+      (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'))
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.11"
+          activate-environment: true
+          enable-cache: true
+      - name: MPS Cache Models
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/huggingface/hub/models--roneneldan--TinyStories-1M*
+          key: ${{ runner.os }}-huggingface-models-mps-v1
+      - name: Install dependencies
+        run: |
+          uv lock --check
+          uv sync
+      - name: MPS Availability Check
+        run: |
+          uv run python -c "
+          import torch
+          print(f'PyTorch: {torch.__version__}')
+          print(f'MPS available: {torch.backends.mps.is_available()}')
+          print(f'MPS built: {torch.backends.mps.is_built()}')
+          assert torch.backends.mps.is_available(), 'MPS not available on this runner!'
+          "
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      - name: MPS Unit Tests
+        run: >
+          uv run pytest tests/unit -v
+          --ignore=tests/unit/model_bridge/test_optimizer_compatibility.py
+          --ignore=tests/unit/model_bridge/test_gpt_oss_moe.py
+          --ignore=tests/unit/model_bridge/test_component_inspection.py
+          --ignore=tests/unit/model_bridge/test_key_analysis.py
+          --ignore=tests/unit/model_bridge/test_benchmark_gated_hooks_fire.py
+          --ignore=tests/unit/model_bridge/test_weight_processing_adapter_paths.py
+          --ignore=tests/unit/model_bridge/test_bridge_generate_kv_cache.py
+          --ignore=tests/unit/model_bridge/test_bridge_vs_hooked_transformer_patching.py
+          --ignore=tests/unit/model_bridge/compatibility/
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      - name: MPS Integration Tests
+        run: >
+          uv run pytest tests/integration -v
+          --ignore=tests/integration/model_bridge/test_optimizer_compatibility.py
+          --ignore=tests/integration/model_bridge/test_bridge_generation.py
+          --ignore=tests/integration/model_bridge/test_bridge_integration.py
+          --ignore=tests/integration/model_bridge/compatibility/
+          --ignore=tests/integration/test_prepend_bos.py
+          --ignore=tests/integration/test_generation_compatibility.py
+          --ignore=tests/integration/test_grouped_query_attention.py
+          --ignore=tests/integration/test_match_huggingface.py
+          --ignore=tests/integration/test_fold_layer_integration.py
+          --ignore=tests/integration/test_centralized_weight_processing.py
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      - name: MPS Smoke Tests
+        run: uv run pytest tests/mps -v
+        env:
+          TRANSFORMERLENS_ALLOW_MPS: "1"
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+
   format-check:
     name: Format Check
     runs-on: ubuntu-latest
