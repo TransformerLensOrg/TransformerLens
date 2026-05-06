@@ -142,20 +142,27 @@ jobs:
       - name: MPS Unit Tests
         run: >
           uv run pytest tests/unit -v
-          --ignore=tests/unit/model_bridge/
+          --ignore=tests/unit/model_bridge/test_optimizer_compatibility.py
+          --ignore=tests/unit/model_bridge/test_gpt_oss_moe.py
+          --ignore=tests/unit/model_bridge/test_component_inspection.py
+          --ignore=tests/unit/model_bridge/test_key_analysis.py
+          --ignore=tests/unit/model_bridge/test_benchmark_gated_hooks_fire.py
+          --ignore=tests/unit/model_bridge/test_weight_processing_adapter_paths.py
+          --ignore=tests/unit/model_bridge/test_bridge_generate_kv_cache.py
+          --ignore=tests/unit/model_bridge/test_bridge_vs_hooked_transformer_patching.py
+          --ignore=tests/unit/model_bridge/compatibility/
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
       - name: MPS Integration Tests
         run: >
           uv run pytest tests/integration -v
-          --ignore=tests/integration/model_bridge/
+          --ignore=tests/integration/model_bridge/test_optimizer_compatibility.py
+          --ignore=tests/integration/model_bridge/compatibility/
           --ignore=tests/integration/test_prepend_bos.py
           --ignore=tests/integration/test_generation_compatibility.py
-          --ignore=tests/integration/test_grouped_query_attention.py
           --ignore=tests/integration/test_match_huggingface.py
           --ignore=tests/integration/test_fold_layer_integration.py
           --ignore=tests/integration/test_centralized_weight_processing.py
-          --ignore=tests/integration/test_create_hooked_encoder.py
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
       - name: MPS Smoke Tests
