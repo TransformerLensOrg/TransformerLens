@@ -36,9 +36,9 @@ def test_ioi_dataset_reproducible_with_seed():
     tokenizer = _make_tokenizer()
     ds1 = IOIDataset(tokenizer, num_samples=20, seed=42)
     ds2 = IOIDataset(tokenizer, num_samples=20, seed=42)
-    assert [s["text"] for s in ds1.samples] == [s["text"] for s in ds2.samples], (
-        "IOIDataset with the same seed should be reproducible."
-    )
+    assert [s["text"] for s in ds1.samples] == [
+        s["text"] for s in ds2.samples
+    ], "IOIDataset with the same seed should be reproducible."
 
 
 def test_ioi_dataset_different_seeds_differ():

@@ -328,9 +328,10 @@ class IOIDataset(Dataset):
         >>> model = HookedTransformer.from_pretrained('gpt2-small')
         Loaded pretrained model gpt2-small into HookedTransformer
 
-        >>> # Evaluate like this, printing the logit difference
-        >>> result = ioi_eval(model, num_samples=100)["Logit Difference"]
-        >>> 4.0 < result < 7.0  # Logit difference should be in a reasonable range
+        >>> # Evaluate on a deterministic dataset (seed makes results reproducible)
+        >>> ds = IOIDataset(tokenizer=model.tokenizer, num_samples=100, seed=42)
+        >>> result = ioi_eval(model, dataset=ds)["Logit Difference"]
+        >>> 2.0 < result < 7.0  # Logit difference should be in a reasonable range
         True
 
         >>> # Can use custom dataset
@@ -340,6 +341,7 @@ class IOIDataset(Dataset):
         ...     templates=['[A] met with [B]. [B] gave the [OBJECT] to [A]'],
         ...     names=['Alice', 'Bob', 'Charlie'],
         ...     nouns={'OBJECT': ['ball', 'book']},
+        ...     seed=42,
         ... )
         >>> result_custom = ioi_eval(model, dataset=ds)["Logit Difference"]
         >>> 2.0 < result_custom < 7.0  # Custom dataset logit difference should be positive
