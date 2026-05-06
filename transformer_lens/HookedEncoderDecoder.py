@@ -544,7 +544,7 @@ class HookedEncoderDecoder(HookedRootModule):
         checkpoint_index: Optional[int] = None,
         checkpoint_value: Optional[int] = None,
         hf_model: Optional[Any] = None,
-        device: Optional[Union[str, torch.device]] = None,
+        device: Optional[str] = None,
         tokenizer: Optional[Any] = None,
         move_to_device: bool = True,
         dtype: Optional[torch.dtype] = torch.float32,

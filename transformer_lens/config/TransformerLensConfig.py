@@ -59,7 +59,7 @@ class TransformerLensConfig:
     d_vocab: int = -1
 
     # Device configuration
-    device: Optional[Union[str, torch.device]] = None
+    device: Optional[str] = None
 
     # Attention configuration
     use_attn_result: bool = False

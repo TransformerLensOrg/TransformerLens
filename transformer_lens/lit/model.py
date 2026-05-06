@@ -86,7 +86,7 @@ class HookedTransformerLITConfig:
     output_all_layers: bool = DEFAULTS.OUTPUT_ALL_LAYERS
     embedding_layers: Optional[List[int]] = None
     prepend_bos: bool = DEFAULTS.PREPEND_BOS
-    device: Optional[Union[str, torch.device]] = None
+    device: Optional[str] = None
 
 
 def _ensure_lit_available():
