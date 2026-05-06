@@ -58,9 +58,9 @@ def tokenize_and_concatenate(
     _deprecation_warnings_saved = None
     if hasattr(tokenizer, "deprecation_warnings"):
         _deprecation_warnings_saved = tokenizer.deprecation_warnings.copy()
-        tokenizer.deprecation_warnings[
-            "sequence-length-is-longer-than-the-specified-maximum"
-        ] = False
+        tokenizer.deprecation_warnings["sequence-length-is-longer-than-the-specified-maximum"] = (
+            False
+        )
 
     def tokenize_function(examples: Any) -> dict[str, np.ndarray]:
         # datasets.map() may pass a LazyBatch, not a plain dict; accept dict-like batches
@@ -170,6 +170,11 @@ def get_tokenizer_with_bos(tokenizer: PreTrainedTokenizerBase) -> PreTrainedToke
             token=huggingface_token if len(huggingface_token) > 0 else None,
             **init_kwargs,
         )
+        # Preserve padding_side from the original tokenizer, since AutoTokenizer.from_pretrained
+        # resets it to the HuggingFace default (usually "right"). Without this, callers who
+        # explicitly set tokenizer.padding_side = "left" before passing the tokenizer in would
+        # have that setting silently discarded. See issue #801.
+        tokenizer_with_bos.padding_side = tokenizer.padding_side
 
     return tokenizer_with_bos
 
