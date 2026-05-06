@@ -135,12 +135,19 @@ class HookedTransformerConfig(TransformerLensConfig):
             dimensions of each head are rotated. Defaults to None, if
             positional_embedding_type=="rotary" post-init then sets it to d_head, i.e. "rotate all
             dimensions of the query and key".
-        n_params (int, *optional*): The number of (hidden weight)
-            parameters in the model. This is automatically calculated and not
-            intended to be set by the user. (Non embedding parameters, because
-            the [scaling laws paper](https://arxiv.org/pdf/2001.08361.pdf) found
-            that that was a more meaningful number. Ignoring biases and layer
-            norms, for convenience)
+        n_params (int, *optional*): The number of "hidden weight" parameters
+            in the model, **excluding** embeddings, unembedding, biases, and
+            layer norms. Counts only the attention projections (W_Q, W_K, W_V,
+            W_O) and MLP weights (W_in, W_out, plus W_gate when ``gated_mlp=True``).
+            This matches the convention from the
+            `scaling laws paper <https://arxiv.org/pdf/2001.08361.pdf>`_,
+            which found this to be the most meaningful number for predicting
+            performance. **Note:** this is NOT the same as
+            ``sum(p.numel() for p in model.parameters())`` — that would
+            include embeddings and biases and yield a larger number. Use the
+            ``sum(p.numel() ...)`` form if you want the total parameter count
+            (e.g. for memory-budget calculations). Automatically calculated;
+            not intended to be set by the user.
         use_hook_tokens (bool): Will add a hook point on the token input to
             HookedTransformer.forward, which lets you cache or intervene on the tokens.
             Defaults to False.
@@ -251,9 +258,9 @@ class HookedTransformerConfig(TransformerLensConfig):
     tokenizer_prepends_bos: Optional[bool] = None
     post_embedding_ln: bool = False
     rotary_base: Union[float, int] = 10000
-    rotary_base_local: Optional[
-        Union[float, int]
-    ] = None  # For models with different RoPE bases per attention type (e.g., Gemma 3)
+    rotary_base_local: Optional[Union[float, int]] = (
+        None  # For models with different RoPE bases per attention type (e.g., Gemma 3)
+    )
     rotary_scaling_factor: float = (
         1.0  # Linear RoPE scaling factor for global attention (e.g., 8.0 for Gemma 3 4B)
     )
