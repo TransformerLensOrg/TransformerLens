@@ -499,7 +499,7 @@ hide-toc: true
 ---
 # HookedTransformer Model Properties
 
-also see the [interactive model table](../_static/model_properties_table_interactive.html)
+also see the <a href="../_static/model_properties_table_interactive.html" target="_blank" rel="noopener">interactive model table</a>
 """
 
 
@@ -625,6 +625,16 @@ def get_model_table(
             abridged_table: pd.DataFrame = abridge_model_table(model_table)
             write_model_table(abridged_table, model_table_path, format="csv")
             write_model_table(abridged_table, model_table_path, format="md")
+            # The interactive table HTML (docs/source/_static/...) fetches
+            # `model_properties_table.{jsonl,version}` from its own dir.
+            # Sphinx auto-copies _static/ into the build, so co-locating the
+            # data there is the simplest way to expose it to the browser.
+            import shutil
+
+            for ext in ("jsonl", "version"):
+                src = model_table_path.with_suffix(f".{ext}")
+                if src.exists():
+                    shutil.copy(src, STATIC_DIR / src.name)
     else:
         # read the table from jsonl
         model_table = pd.read_json(model_table_path, orient="records", lines=True)
@@ -842,6 +852,25 @@ for English, and may not be the same for other languages.
 #bt-root .bt-detail-grid dd {
     margin: 0 0 6px 0; font-family: monospace; font-size: 13px;
 }
+#bt-root .bt-detail-section {
+    margin-top: 16px; padding-top: 12px;
+    border-top: 1px solid var(--color-foreground-border, #ddd);
+    font-size: 13px; font-weight: 600;
+    color: var(--color-foreground-primary, #333);
+    letter-spacing: 0.02em;
+}
+#bt-root .bt-detail-section-note {
+    font-size: 11px; font-weight: 400;
+    color: var(--color-foreground-muted, #999); margin-left: 8px;
+}
+#bt-root .bt-detail-suffix {
+    font-size: 11px; font-style: italic;
+    color: var(--color-foreground-muted, #999); margin-left: 4px;
+    font-family: sans-serif;
+}
+#bt-root .bt-detail-grid dd.bt-detail-absent {
+    color: var(--color-foreground-muted, #999); font-style: italic;
+}
 #bt-root .bt-detail-loading { color: var(--color-foreground-muted, #999); font-style: italic; }
 #bt-root .bt-detail-error { color: #dc3545; font-style: italic; }
 #bt-root .bt-pag {
@@ -972,8 +1001,20 @@ for English, and may not be the same for other languages.
         ['Parallel Attn & MLP', '_parallel_attn_mlp'],
         ['Gated MLP',           '_gated_mlp'],
         ['Tie Embeddings',      'tie_word_embeddings'],
-        /* Tokenizer */
-        ['Tokenizer',           '_tokenizer'],
+    ];
+
+    /* Fields extracted from HuggingFace tokenizer_config.json. Same shape as CFG_FIELDS:
+       [label, ...candidate keys]. Keys starting with _ are computed via extractTokenField(). */
+    const TOKENIZER_FIELDS = [
+        ['Class',           'tokenizer_class'],
+        ['Max Length',      'model_max_length'],
+        ['BOS Token',       '_bos_token'],
+        ['EOS Token',       '_eos_token'],
+        ['Pad Token',       '_pad_token'],
+        ['Unk Token',       '_unk_token'],
+        ['Padding Side',    'padding_side'],
+        ['Add BOS Default', 'add_bos_token'],
+        ['Has Chat Template', '_has_chat_template'],
     ];
 
     function fmtParam(n) {
@@ -1049,8 +1090,93 @@ for English, and may not be the same for other languages.
         return null;
     }
 
-    function inferTokenizer(cfg) {
-        return cfg.tokenizer_class || null;
+    function tokenAsString(t) {
+        // tokenizer_config.json stores special tokens as either a plain string or
+        // an AddedToken-like dict {content: "...", lstrip, rstrip, ...}.
+        if (t === null || t === undefined) return null;
+        if (typeof t === 'string') return t;
+        if (typeof t === 'object' && typeof t.content === 'string') return t.content;
+        return null;
+    }
+
+    /* Class-level defaults from the transformers source. tokenizer_config.json
+       only serializes values that override these — so a missing key means
+       "uses the class default", NOT "unset". Lookup table covers the major
+       bridge-supported classes; unlisted classes fall through to base
+       PreTrainedTokenizer defaults. */
+    const TOKENIZER_CLASS_DEFAULTS = {
+        'GPT2Tokenizer':         { add_bos_token: false, padding_side: 'right' },
+        'GPT2TokenizerFast':     { add_bos_token: false, padding_side: 'right' },
+        'LlamaTokenizer':        { add_bos_token: true,  add_eos_token: false, padding_side: 'right' },
+        'LlamaTokenizerFast':    { add_bos_token: true,  add_eos_token: false, padding_side: 'right' },
+        'GemmaTokenizer':        { add_bos_token: true,  add_eos_token: false, padding_side: 'right' },
+        'GemmaTokenizerFast':    { add_bos_token: true,  add_eos_token: false, padding_side: 'right' },
+        'GPTNeoXTokenizerFast':  { add_bos_token: false, padding_side: 'right' },
+        'BloomTokenizerFast':    { add_bos_token: false, padding_side: 'left' },
+        'Qwen2Tokenizer':        { add_bos_token: false, padding_side: 'left' },
+        'Qwen2TokenizerFast':    { add_bos_token: false, padding_side: 'left' },
+        'CodeGenTokenizer':      { add_bos_token: false, padding_side: 'right' },
+        'CodeGenTokenizerFast':  { add_bos_token: false, padding_side: 'right' },
+        'CodeLlamaTokenizer':    { add_bos_token: true,  add_eos_token: false, padding_side: 'right' },
+        'CodeLlamaTokenizerFast':{ add_bos_token: true,  add_eos_token: false, padding_side: 'right' },
+        'XGLMTokenizer':         { add_bos_token: true,  padding_side: 'right' },
+        'XGLMTokenizerFast':     { add_bos_token: true,  padding_side: 'right' },
+        'CohereTokenizerFast':   { add_bos_token: true,  padding_side: 'left' },
+        'BertTokenizer':         { padding_side: 'right' },
+        'BertTokenizerFast':     { padding_side: 'right' },
+        'T5Tokenizer':           { add_eos_token: true,  padding_side: 'right' },
+        'T5TokenizerFast':       { add_eos_token: true,  padding_side: 'right' },
+        'PreTrainedTokenizerFast': { padding_side: 'right' },
+    };
+
+    /* Fallback when tokenizer class isn't in the lookup. Matches HF's base
+       PreTrainedTokenizer defaults. */
+    const TOKENIZER_BASE_DEFAULTS = {
+        add_bos_token: false,
+        add_eos_token: false,
+        padding_side: 'right',
+    };
+
+    function getClassDefault(tok, key) {
+        const cls = tok.tokenizer_class;
+        const classDefaults = (cls && TOKENIZER_CLASS_DEFAULTS[cls]) || {};
+        if (key in classDefaults) return { value: classDefaults[key], fromDefault: true };
+        if (key in TOKENIZER_BASE_DEFAULTS) {
+            return { value: TOKENIZER_BASE_DEFAULTS[key], fromDefault: true, generic: true };
+        }
+        return null;
+    }
+
+    function extractTokenField(tok, keys) {
+        for (const k of keys) {
+            // Special tokens: show "None" (muted) when absent rather than
+            // hiding the row — absence of a pad_token is a real property of
+            // the tokenizer, not a docs gap.
+            if (k === '_bos_token' || k === '_eos_token' ||
+                k === '_pad_token' || k === '_unk_token') {
+                const fieldName = k.slice(1);  // strip leading "_"
+                const v = tokenAsString(tok[fieldName]);
+                return v !== null ? v : { value: 'None', absent: true };
+            }
+            if (k === '_has_chat_template') {
+                return tok.chat_template ? 'Yes' : 'No';
+            }
+            if (tok[k] !== undefined && tok[k] !== null) {
+                // Some tokenizers ship `model_max_length=int(1e30)` as an
+                // "unlimited" sentinel. Show that explicitly rather than the
+                // raw garbage number.
+                if (k === 'model_max_length' && tok[k] > 1e9) {
+                    return { value: 'Unlimited', absent: true };
+                }
+                return tok[k];
+            }
+            // Fall through to class default if the field is omitted from
+            // tokenizer_config.json. HF only serializes overrides, so "missing"
+            // means "class default applies", not "unset".
+            const def = getClassDefault(tok, k);
+            if (def !== null) return def;
+        }
+        return null;
     }
 
     function extractField(cfg, keys) {
@@ -1079,7 +1205,21 @@ for English, and may not be the same for other languages.
         return cfg;
     }
 
-    function renderDetail(cfg) {
+    const tokCache = {};
+    async function fetchTokenizerConfig(modelId) {
+        // Many bridge models share a tokenizer (e.g., the entire Llama family).
+        // Caching dedupes per session. Tokenizer may not exist for every model;
+        // callers handle the rejection.
+        if (tokCache[modelId]) return tokCache[modelId];
+        const url = 'https://huggingface.co/' + modelId + '/resolve/main/tokenizer_config.json';
+        const r = await fetch(url);
+        if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
+        const tok = await r.json();
+        tokCache[modelId] = tok;
+        return tok;
+    }
+
+    function renderConfigFields(cfg) {
         let html = '<dl class="bt-detail-grid">';
         for (const [label, ...keys] of CFG_FIELDS) {
             let val = extractField(cfg, keys);
@@ -1089,6 +1229,51 @@ for English, and may not be the same for other languages.
             html += '<div><dt>' + esc(label) + '</dt><dd>' + esc(String(val)) + '</dd></div>';
         }
         html += '</dl>';
+        return html;
+    }
+
+    function renderTokenizerFields(tok) {
+        let html = '<dl class="bt-detail-grid">';
+        for (const [label, ...keys] of TOKENIZER_FIELDS) {
+            let raw = extractTokenField(tok, keys);
+            if (raw === null || raw === undefined) continue;
+            // raw can be:
+            //   plain value                                  → explicit setting
+            //   {value, fromDefault, generic?}               → class default fallback
+            //   {value, absent: true}                        → "None" / "Unlimited" markers
+            let val, suffix = '', ddClass = '';
+            if (raw && typeof raw === 'object') {
+                val = raw.value;
+                if (raw.absent) {
+                    ddClass = ' class="bt-detail-absent"';
+                } else if (raw.fromDefault) {
+                    suffix = raw.generic
+                        ? ' <span class="bt-detail-suffix">(default)</span>'
+                        : ' <span class="bt-detail-suffix">(class default)</span>';
+                }
+            } else {
+                val = raw;
+            }
+            if (typeof val === 'boolean') val = val ? 'Yes' : 'No';
+            if (typeof val === 'number') val = val.toLocaleString();
+            html += '<div><dt>' + esc(label) + '</dt><dd' + ddClass + '>' + esc(String(val)) + suffix + '</dd></div>';
+        }
+        html += '</dl>';
+        return html;
+    }
+
+    function renderDetail(cfg, tok, tokError) {
+        let html = renderConfigFields(cfg);
+        // Tokenizer subsection: shown only when tokenizer_config.json fetched, or when
+        // the fetch failed for a non-404 reason worth surfacing.
+        if (tok) {
+            html += '<div class="bt-detail-section">Tokenizer</div>';
+            html += renderTokenizerFields(tok);
+        } else if (tokError) {
+            html += '<div class="bt-detail-section">Tokenizer'
+                  + '<span class="bt-detail-section-note">(tokenizer_config.json unavailable)</span>'
+                  + '</div>';
+        }
         return html;
     }
 
@@ -1105,8 +1290,16 @@ for English, and may not be the same for other languages.
         rowEl.after(detailRow);
         rowEl.querySelector('.bt-detail-link').textContent = 'Hide';
         try {
-            const cfg = await fetchDetail(modelId);
-            detailRow.querySelector('.bt-detail').innerHTML = renderDetail(cfg);
+            // Fetch model + tokenizer config in parallel. tokenizer_config.json is
+            // optional (some models ship without it); a missing one shouldn't fail
+            // the whole detail render.
+            const [cfg, tokResult] = await Promise.all([
+                fetchDetail(modelId),
+                fetchTokenizerConfig(modelId).then(t => ({ok: true, tok: t}), e => ({ok: false, error: e})),
+            ]);
+            const tok = tokResult.ok ? tokResult.tok : null;
+            const tokError = tokResult.ok ? null : tokResult.error;
+            detailRow.querySelector('.bt-detail').innerHTML = renderDetail(cfg, tok, tokError);
         } catch(e) {
             detailRow.querySelector('.bt-detail').innerHTML = '<span class="bt-detail-error">Could not load config: ' + esc(String(e.message)) + '</span>';
         }
@@ -1375,6 +1568,12 @@ def docs_hot_reload():
     generate_bridge_models_page()
 
     # Ignore docs/source/generated/: run_apidoc rewrites it on every build, which would otherwise trigger an infinite rebuild loop.
+    # --pre-build re-runs generate_bridge_models_page() before each build so edits to
+    # the BRIDGE_MODELS_PAGE template in this file propagate without needing to restart.
+    pre_build_cmd = (
+        f"{sys.executable} -c 'from docs.make_docs import generate_bridge_models_page;"
+        " generate_bridge_models_page()'"
+    )
     subprocess.run(
         [
             "sphinx-autobuild",
@@ -1382,8 +1581,12 @@ def docs_hot_reload():
             str(PACKAGE_DIR),
             "--watch",
             str(DEMOS_DIR),
+            "--watch",
+            __file__,  # so template edits in BRIDGE_MODELS_PAGE trigger a rebuild
             "--ignore",
             str(GENERATED_DIR / "*"),
+            "--pre-build",
+            pre_build_cmd,
             "--open-browser",
             SOURCE_PATH,
             BUILD_PATH,
