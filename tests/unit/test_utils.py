@@ -538,6 +538,38 @@ class TestTokenizeAndConcatenate:
         n = len(output)
         assert (output == clean[:n]).all()
 
+    def test_iterable_dataset_with_set_format_false(self):
+        """``IterableDataset`` input + ``set_format=False`` returns a usable iterable.
+
+        Regression test for the path requested in #473: ``set_format(type="torch")``
+        is unsupported on iterable datasets, so callers streaming a corpus must be
+        able to opt out of that final step.
+        """
+        from datasets import Dataset
+        from datasets.iterable_dataset import IterableDataset
+        from transformers import AutoTokenizer
+
+        tokenizer = AutoTokenizer.from_pretrained("gpt2")
+        source = Dataset.from_dict({"text": ["hello world"] * 4})
+        iterable = source.to_iterable_dataset()
+        assert isinstance(iterable, IterableDataset)
+
+        result = utils.tokenize_and_concatenate(
+            iterable,
+            tokenizer,
+            streaming=True,
+            max_length=8,
+            add_bos_token=False,
+            set_format=False,
+        )
+
+        # Result is iterable and yields token rows of the requested length.
+        rows = list(result)
+        assert len(rows) > 0
+        for row in rows:
+            assert "tokens" in row
+            assert len(row["tokens"]) == 8
+
 
 def test_tokenize_and_concatenate_no_spurious_sequence_length_warning():
     """Test that tokenize_and_concatenate does not emit the HF 'sequence length longer than maximum' warning."""
