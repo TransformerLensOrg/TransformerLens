@@ -301,6 +301,7 @@ jobs:
           - "Activation_Patching_in_TL_Demo"
           - "ARENA_Content"
           - "BERT"
+          - "Bridge_Evals_Demo"
           - "Exploratory_Analysis_Demo"
           # - "Grokking_Demo"
           - "Head_Detector_Demo"
@@ -342,7 +343,7 @@ jobs:
       - name: Install dependencies
         run: |
           uv lock --check
-          uv sync --group quantization
+          uv sync --group quantization --extra evals
       - name: Install pandoc
         uses: awalsh128/cache-apt-pkgs-action@latest
         with:

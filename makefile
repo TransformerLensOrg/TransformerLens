@@ -40,6 +40,7 @@ docstring-test:
 
 notebook-test:
 	$(RUN) pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/BERT.ipynb $(RERUN_ARGS)
+	$(RUN) pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/Bridge_Evals_Demo.ipynb $(RERUN_ARGS)
 	$(RUN) pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/Exploratory_Analysis_Demo.ipynb $(RERUN_ARGS)
 	$(RUN) pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/Main_Demo.ipynb $(RERUN_ARGS)
 
