@@ -14,9 +14,11 @@ import torch
 def cleanup_memory():
     """Automatically clean up memory after each test."""
     yield
-    # Clear torch cache
+    # Clear torch cache for all accelerators
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
+    if torch.backends.mps.is_available():
+        torch.mps.empty_cache()
     # Force garbage collection for cleanup
     gc.collect()
 
@@ -28,6 +30,8 @@ def cleanup_class_memory():
     # More aggressive cleanup after test classes
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
+    if torch.backends.mps.is_available():
+        torch.mps.empty_cache()
     gc.collect()
 
 
@@ -50,6 +54,8 @@ def pytest_sessionfinish(session, exitstatus):
     """Clean up at the end of test session."""
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
+    if torch.backends.mps.is_available():
+        torch.mps.empty_cache()
     gc.collect()
 
 
