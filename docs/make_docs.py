@@ -630,6 +630,7 @@ def get_model_table(
             # Sphinx auto-copies _static/ into the build, so co-locating the
             # data there is the simplest way to expose it to the browser.
             import shutil
+
             for ext in ("jsonl", "version"):
                 src = model_table_path.with_suffix(f".{ext}")
                 if src.exists():

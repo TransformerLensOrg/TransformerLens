@@ -1102,9 +1102,25 @@ class ActivationCache:
     ]:
         """Get the full Residual Decomposition.
 
-        Returns the full decomposition of the residual stream into embed, pos_embed, each head
-        result, each neuron result, and the accumulated biases. We break down the residual stream
-        that is input into some layer.
+        Decomposes the residual stream that is input into some layer into its
+        constituent components: every attention head result, every neuron (or
+        MLP layer) result, the embeddings, and the accumulated biases.
+
+        The returned tensor stacks components along ``dim=0`` in this order:
+
+        1. Attention head results, layer-by-layer (``L * n_heads`` rows)
+        2. Neuron / MLP results (only if ``cfg.attn_only=False`` and
+           ``layer > 0``; ``L * d_mlp`` rows when ``expand_neurons=True``,
+           else ``L`` rows)
+        3. ``embed`` (1 row, if the model has token embeddings)
+        4. ``pos_embed`` (1 row, if the model has positional embeddings)
+        5. ``bias`` (1 row, the accumulated layer biases)
+
+        ``return_labels=True`` returns a list of strings in the same order, so
+        ``labels[i]`` always names ``stack[i]``. If you need to extract a
+        specific component, slice by label rather than by hard-coded index —
+        the row counts depend on ``layer``, ``expand_neurons``,
+        ``cfg.attn_only``, and whether the model has positional embeddings.
 
         Args:
             layer:
