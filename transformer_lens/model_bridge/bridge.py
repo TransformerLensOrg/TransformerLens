@@ -527,6 +527,21 @@ class TransformerBridge(nn.Module):
         self._add_aliases_to_hooks(hooks)
         return hooks
 
+    @property
+    def n_params_total(self) -> int:
+        """Total number of parameters in the model, including embeddings, biases,
+        and layer norm weights.
+
+        Mirrors :attr:`HookedTransformer.n_params_total`. Use this when you want
+        the actual parameter count for memory budgeting, comparison with
+        HuggingFace's ``model.num_parameters()``, or alignment with reported
+        model sizes in papers (e.g. the Pythia suite).
+
+        Returns:
+            int: ``sum(p.numel() for p in self.parameters())``
+        """
+        return sum(p.numel() for p in self.parameters())
+
     def clear_hook_registry(self) -> None:
         """Clear the hook registry and force re-initialization."""
         self._hook_registry.clear()

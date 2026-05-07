@@ -2480,6 +2480,25 @@ class HookedTransformer(HookedRootModule):
             if accumulated_tokens is not None and not (stop_at_eos and finished_sequences.all()):
                 yield accumulated_tokens
 
+    @property
+    def n_params_total(self) -> int:
+        """Total number of parameters in the model, including embeddings, biases,
+        and layer norm weights.
+
+        This complements ``self.cfg.n_params``, which counts only the "hidden
+        weight" parameters (attention projections + MLP weights, excluding
+        embeddings/biases/layer norms) following the
+        `scaling laws paper <https://arxiv.org/pdf/2001.08361.pdf>`_ convention.
+
+        Use this when you want the actual parameter count for memory budgeting,
+        comparison with HuggingFace's ``model.num_parameters()``, or alignment
+        with reported model sizes in papers (e.g. the Pythia suite).
+
+        Returns:
+            int: ``sum(p.numel() for p in self.parameters())``
+        """
+        return sum(p.numel() for p in self.parameters())
+
     # Give access to all weights as properties.
     @property
     def W_U(self) -> Float[torch.Tensor, "d_model d_vocab"]:
