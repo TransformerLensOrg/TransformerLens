@@ -15,6 +15,7 @@ from typing import Any, Callable, Dict
 
 import torch
 from datasets.arrow_dataset import Dataset
+from datasets.iterable_dataset import IterableDataset
 from datasets.load import load_dataset
 from huggingface_hub import hf_hub_download
 from huggingface_hub.constants import HF_HUB_CACHE
@@ -148,7 +149,7 @@ def clear_huggingface_cache():
             print(f"Warning: Could not fully clear cache: {e}")
 
 
-def keep_single_column(dataset: Dataset, col_name: str):
+def keep_single_column(dataset: Dataset | IterableDataset, col_name: str):
     """
     Acts on a HuggingFace dataset to delete all columns apart from a single column name - useful when we want to tokenize and mix together different strings
     """
