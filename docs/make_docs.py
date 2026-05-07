@@ -499,7 +499,7 @@ hide-toc: true
 ---
 # HookedTransformer Model Properties
 
-also see the [interactive model table](../_static/model_properties_table_interactive.html)
+also see the <a href="../_static/model_properties_table_interactive.html" target="_blank" rel="noopener">interactive model table</a>
 """
 
 
@@ -625,6 +625,15 @@ def get_model_table(
             abridged_table: pd.DataFrame = abridge_model_table(model_table)
             write_model_table(abridged_table, model_table_path, format="csv")
             write_model_table(abridged_table, model_table_path, format="md")
+            # The interactive table HTML (docs/source/_static/...) fetches
+            # `model_properties_table.{jsonl,version}` from its own dir.
+            # Sphinx auto-copies _static/ into the build, so co-locating the
+            # data there is the simplest way to expose it to the browser.
+            import shutil
+            for ext in ("jsonl", "version"):
+                src = model_table_path.with_suffix(f".{ext}")
+                if src.exists():
+                    shutil.copy(src, STATIC_DIR / src.name)
     else:
         # read the table from jsonl
         model_table = pd.read_json(model_table_path, orient="records", lines=True)
