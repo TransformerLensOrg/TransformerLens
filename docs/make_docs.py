@@ -1558,6 +1558,12 @@ def docs_hot_reload():
     generate_bridge_models_page()
 
     # Ignore docs/source/generated/: run_apidoc rewrites it on every build, which would otherwise trigger an infinite rebuild loop.
+    # --pre-build re-runs generate_bridge_models_page() before each build so edits to
+    # the BRIDGE_MODELS_PAGE template in this file propagate without needing to restart.
+    pre_build_cmd = (
+        f"{sys.executable} -c 'from docs.make_docs import generate_bridge_models_page;"
+        " generate_bridge_models_page()'"
+    )
     subprocess.run(
         [
             "sphinx-autobuild",
@@ -1565,8 +1571,12 @@ def docs_hot_reload():
             str(PACKAGE_DIR),
             "--watch",
             str(DEMOS_DIR),
+            "--watch",
+            __file__,  # so template edits in BRIDGE_MODELS_PAGE trigger a rebuild
             "--ignore",
             str(GENERATED_DIR / "*"),
+            "--pre-build",
+            pre_build_cmd,
             "--open-browser",
             SOURCE_PATH,
             BUILD_PATH,
