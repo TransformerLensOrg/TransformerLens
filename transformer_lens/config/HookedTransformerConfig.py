@@ -151,6 +151,12 @@ class HookedTransformerConfig(TransformerLensConfig):
         use_hook_tokens (bool): Will add a hook point on the token input to
             HookedTransformer.forward, which lets you cache or intervene on the tokens.
             Defaults to False.
+        gated_mlp (bool): If True, the MLP layer uses a gated formulation
+            (SwiGLU/GeGLU-style): ``mlp_out = W_out @ (act_fn(W_gate @ x) * (W_in @ x))``,
+            with an extra ``W_gate`` weight matrix alongside ``W_in`` and ``W_out``. Used by
+            LLaMA, Mistral, Gemma, Qwen and similar families. When False (default), the MLP
+            is the plain ``mlp_out = W_out @ act_fn(W_in @ x)`` form. ``loading_from_pretrained``
+            sets this automatically per architecture; only set manually for a custom config.
         default_prepend_bos (bool, optional): Default behavior of whether to prepend the BOS token when the
             methods of HookedTransformer process input text to tokenize (only when input is a string).
             Defaults to True - even for models not explicitly trained with this, heads often use the
