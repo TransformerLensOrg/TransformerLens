@@ -78,7 +78,8 @@ class HookedVisualEncoder(HookedRootModule):
         self.layernorm = LayerNorm(self.cfg)
         if "in21k" not in cfg.official_model_name:
             self.classifier = ClassifierHead(1000, self.cfg)
-            self.distillation_classifier = ClassifierHead(1000, self.cfg)
+            if "deit" in cfg.official_model_name:
+                self.distillation_classifier = ClassifierHead(1000, self.cfg)
 
         if move_to_device:
             if self.cfg.device is None:
