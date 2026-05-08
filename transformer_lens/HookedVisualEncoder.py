@@ -76,7 +76,9 @@ class HookedVisualEncoder(HookedRootModule):
 
         self.blocks = nn.ModuleList([TransformerBlock(self.cfg, block_index) for block_index in range(self.cfg.n_layers)])
         self.layernorm = LayerNorm(self.cfg)
-        self.classifier = ClassifierHead(1000, self.cfg)
+        if "in21k" not in cfg.official_model_name:
+            self.classifier = ClassifierHead(1000, self.cfg)
+            self.distillation_classifier = ClassifierHead(1000, self.cfg)
 
         if move_to_device:
             if self.cfg.device is None:
