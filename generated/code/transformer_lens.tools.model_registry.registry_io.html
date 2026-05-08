@@ -561,11 +561,21 @@ manipulation.</p>
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.tools.model_registry.registry_io.is_hf_loadable_quantized">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.tools.model_registry.registry_io.</span></span><span class="sig-name descname"><span class="pre">is_hf_loadable_quantized</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">bool</span></span></span><a class="headerlink" href="#transformer_lens.tools.model_registry.registry_io.is_hf_loadable_quantized" title="Link to this definition">¶</a></dt>
+<dd><p>True for quantizations loadable by HF transformers + a quant library.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.tools.model_registry.registry_io.is_incompatible_quantized">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.tools.model_registry.registry_io.</span></span><span class="sig-name descname"><span class="pre">is_incompatible_quantized</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">bool</span></span></span><a class="headerlink" href="#transformer_lens.tools.model_registry.registry_io.is_incompatible_quantized" title="Link to this definition">¶</a></dt>
+<dd><p>True for quantization formats the bridge can’t ingest (GGUF, MLX, FP4/FP8).</p>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="transformer_lens.tools.model_registry.registry_io.is_quantized_model">
 <span class="sig-prename descclassname"><span class="pre">transformer_lens.tools.model_registry.registry_io.</span></span><span class="sig-name descname"><span class="pre">is_quantized_model</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">bool</span></span></span><a class="headerlink" href="#transformer_lens.tools.model_registry.registry_io.is_quantized_model" title="Link to this definition">¶</a></dt>
-<dd><p>Check if a model ID indicates a quantized model variant.</p>
-<p>Detects AWQ, GPTQ, GGUF, BitsAndBytes (bnb), FP8, INT4/INT8,
-MLX quantized, and other common quantization suffixes.</p>
+<dd><p>Alias for <code class="docutils literal notranslate"><span class="pre">is_incompatible_quantized</span></code> — kept for back-compat with existing call sites.</p>
 </dd></dl>
 
 <dl class="py function">
@@ -578,6 +588,12 @@ MLX quantized, and other common quantization suffixes.</p>
 <dt class="sig sig-object py" id="transformer_lens.tools.model_registry.registry_io.load_verification_history">
 <span class="sig-prename descclassname"><span class="pre">transformer_lens.tools.model_registry.registry_io.</span></span><span class="sig-name descname"><span class="pre">load_verification_history</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="transformer_lens.tools.model_registry.verification.html#transformer_lens.tools.model_registry.verification.VerificationHistory" title="transformer_lens.tools.model_registry.verification.VerificationHistory"><span class="pre">VerificationHistory</span></a></span></span><a class="headerlink" href="#transformer_lens.tools.model_registry.registry_io.load_verification_history" title="Link to this definition">¶</a></dt>
 <dd><p>Load verification_history.json into a VerificationHistory dataclass.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.tools.model_registry.registry_io.required_quant_library_for_model">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.tools.model_registry.registry_io.</span></span><span class="sig-name descname"><span class="pre">required_quant_library_for_model</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></span><a class="headerlink" href="#transformer_lens.tools.model_registry.registry_io.required_quant_library_for_model" title="Link to this definition">¶</a></dt>
+<dd><p>Return the Python import name needed to load this model, or None if unquantized.</p>
 </dd></dl>
 
 <dl class="py function">
@@ -676,9 +692,12 @@ are updated — status, note, and other scores are preserved.</p>
             <ul>
 <li><a class="reference internal" href="#">transformer_lens.tools.model_registry.registry_io module</a><ul>
 <li><a class="reference internal" href="#transformer_lens.tools.model_registry.registry_io.add_verification_record"><code class="docutils literal notranslate"><span class="pre">add_verification_record()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.model_registry.registry_io.is_hf_loadable_quantized"><code class="docutils literal notranslate"><span class="pre">is_hf_loadable_quantized()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.model_registry.registry_io.is_incompatible_quantized"><code class="docutils literal notranslate"><span class="pre">is_incompatible_quantized()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.model_registry.registry_io.is_quantized_model"><code class="docutils literal notranslate"><span class="pre">is_quantized_model()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.model_registry.registry_io.load_supported_models_raw"><code class="docutils literal notranslate"><span class="pre">load_supported_models_raw()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.model_registry.registry_io.load_verification_history"><code class="docutils literal notranslate"><span class="pre">load_verification_history()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.model_registry.registry_io.required_quant_library_for_model"><code class="docutils literal notranslate"><span class="pre">required_quant_library_for_model()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.model_registry.registry_io.save_supported_models_raw"><code class="docutils literal notranslate"><span class="pre">save_supported_models_raw()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.model_registry.registry_io.save_verification_history"><code class="docutils literal notranslate"><span class="pre">save_verification_history()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.model_registry.registry_io.update_model_status"><code class="docutils literal notranslate"><span class="pre">update_model_status()</span></code></a></li>

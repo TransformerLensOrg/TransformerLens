@@ -570,7 +570,7 @@ and updating their configurations.</p>
 <dd><p>Get the best available device, with MPS safety checks.</p>
 <p>MPS is only auto-selected when the environment variable
 <code class="docutils literal notranslate"><span class="pre">TRANSFORMERLENS_ALLOW_MPS=1</span></code> is set <strong>and</strong> the installed PyTorch
-version meets or exceeds <code class="docutils literal notranslate"><span class="pre">_MPS_MIN_SAFE_TORCH_VERSION</span></code>.</p>
+version is 2.0 or higher.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Returns<span class="colon">:</span></dt>
 <dd class="field-odd"><p>The best available device name (cuda, mps, or cpu)</p>

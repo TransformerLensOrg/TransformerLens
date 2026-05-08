@@ -183,7 +183,7 @@ Implement only the ones you need:
 
 ### Registration
 
-Two files to update:
+Three files to update:
 
 1. `transformer_lens/model_bridge/supported_architectures/__init__.py` — add the import and append to `__all__`.
 2. `transformer_lens/factories/architecture_adapter_factory.py` — add to the import block and to `SUPPORTED_ARCHITECTURES`:
@@ -191,6 +191,22 @@ Two files to update:
    ```python
    "<HFArchitectureClass>": <YourAdapterClass>,
    ```
+
+3. `transformer_lens/tools/model_registry/__init__.py` — add to `HF_SUPPORTED_ARCHITECTURES` (so the scraper categorizes the architecture as supported) and to `CANONICAL_AUTHORS_BY_ARCH` (so the foundation-model org is admitted regardless of download count):
+
+   ```python
+   HF_SUPPORTED_ARCHITECTURES = {
+       ...
+       "<HFArchitectureClass>",
+   }
+
+   CANONICAL_AUTHORS_BY_ARCH = {
+       ...
+       "<HFArchitectureClass>": ["<canonical-org>"],
+   }
+   ```
+
+   The canonical author is the org that originally trains and publishes this model family (e.g., `meta-llama` for Llama, `google` for Gemma, `mistralai` for Mistral). Without this entry, the HF scraper's `min_downloads` threshold can silently drop small canonical variants. For example, a foundation model with only ~20 downloads still belongs in the registry. Multiple canonical orgs are allowed (e.g., Llama is canonical for `meta-llama`, `huggyllama`, `codellama`, and `SimpleStories`).
 
 Forgetting registration is the most common silent failure — the adapter exists but `boot_transformers` can't find it.
 

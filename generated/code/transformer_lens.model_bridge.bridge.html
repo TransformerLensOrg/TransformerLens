@@ -548,6 +548,25 @@ a consistent interface for accessing their weights and performing operations.</p
 <p>This class provides a standardized interface to access components of a transformer
 model, regardless of the underlying architecture. It uses an architecture adapter
 to map between the TransformerLens and HuggingFace model structures.</p>
+<section id="tokenization-notes">
+<h2>Tokenization notes<a class="headerlink" href="#tokenization-notes" title="Link to this heading">¶</a></h2>
+<p><a class="reference internal" href="#transformer_lens.model_bridge.bridge.TransformerBridge.to_tokens" title="transformer_lens.model_bridge.bridge.TransformerBridge.to_tokens"><code class="xref py py-meth docutils literal notranslate"><span class="pre">to_tokens()</span></code></a>, <a class="reference internal" href="#transformer_lens.model_bridge.bridge.TransformerBridge.to_str_tokens" title="transformer_lens.model_bridge.bridge.TransformerBridge.to_str_tokens"><code class="xref py py-meth docutils literal notranslate"><span class="pre">to_str_tokens()</span></code></a>, <a class="reference internal" href="#transformer_lens.model_bridge.bridge.TransformerBridge.get_token_position" title="transformer_lens.model_bridge.bridge.TransformerBridge.get_token_position"><code class="xref py py-meth docutils literal notranslate"><span class="pre">get_token_position()</span></code></a>,
+<a class="reference internal" href="#transformer_lens.model_bridge.bridge.TransformerBridge.forward" title="transformer_lens.model_bridge.bridge.TransformerBridge.forward"><code class="xref py py-meth docutils literal notranslate"><span class="pre">forward()</span></code></a> (string input), and <a class="reference internal" href="#transformer_lens.model_bridge.bridge.TransformerBridge.generate" title="transformer_lens.model_bridge.bridge.TransformerBridge.generate"><code class="xref py py-meth docutils literal notranslate"><span class="pre">generate()</span></code></a> accept <code class="docutils literal notranslate"><span class="pre">prepend_bos</span></code>
+to control BOS prepending. Resolution: explicit arg →
+<code class="docutils literal notranslate"><span class="pre">cfg.default_prepend_bos</span></code> (defaults <code class="docutils literal notranslate"><span class="pre">True</span></code>, even for non-BOS-trained
+models — attention heads tend to use position 0 as a resting state).
+<strong>Pass ``prepend_bos=False`` when tokenizing a fragment of a larger
+prompt</strong> — off-by-one position errors usually trace back here.</p>
+<p>Reconciliation with <code class="docutils literal notranslate"><span class="pre">cfg.tokenizer_prepends_bos</span></code> (tokenizers that add
+BOS automatically) is handled internally — pass the value you want;
+the bridge adds or strips manually as needed. When
+<code class="docutils literal notranslate"><span class="pre">cfg.tokenizer_appends_eos=True</span></code> (OLMo, Apertus, etc.),
+<a class="reference internal" href="#transformer_lens.model_bridge.bridge.TransformerBridge.to_tokens" title="transformer_lens.model_bridge.bridge.TransformerBridge.to_tokens"><code class="xref py py-meth docutils literal notranslate"><span class="pre">to_tokens()</span></code></a> also strips trailing EOS tokens so the model receives
+a continuation rather than a terminated sequence; this path is
+bridge-specific.</p>
+<p>BPE/SentencePiece tokenizers treat <code class="docutils literal notranslate"><span class="pre">&quot;hello&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;</span> <span class="pre">hello&quot;</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">&quot;Hello&quot;</span></code> as distinct tokens. Concatenated prompts may not tokenize
+as the sum of parts — inspect with <a class="reference internal" href="#transformer_lens.model_bridge.bridge.TransformerBridge.to_str_tokens" title="transformer_lens.model_bridge.bridge.TransformerBridge.to_str_tokens"><code class="xref py py-meth docutils literal notranslate"><span class="pre">to_str_tokens()</span></code></a> when in doubt.</p>
 <dl class="py property">
 <dt class="sig sig-object py" id="transformer_lens.model_bridge.bridge.TransformerBridge.OV">
 <em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">OV</span></span><a class="headerlink" href="#transformer_lens.model_bridge.bridge.TransformerBridge.OV" title="Link to this definition">¶</a></dt>
@@ -1030,6 +1049,11 @@ This ensures compatibility across different model architectures.</p>
 <span class="sig-name descname"><span class="pre">get_token_position</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">single_token</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">input</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mode</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'first'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prepend_bos</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">padding_side</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'left'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'right'</span></span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.model_bridge.bridge.TransformerBridge.get_token_position" title="Link to this definition">¶</a></dt>
 <dd><p>Get the position of a single_token in a string or sequence of tokens.</p>
 <p>Raises an error if the token is not present.</p>
+<p>When <code class="docutils literal notranslate"><span class="pre">input</span></code> is a string it’s tokenized internally — see the
+class-level “Tokenization notes” for <code class="docutils literal notranslate"><span class="pre">prepend_bos</span></code> semantics.
+Off-by-one position errors usually mean <code class="docutils literal notranslate"><span class="pre">prepend_bos</span></code> is on
+when it shouldn’t be (or vice versa); pass <code class="docutils literal notranslate"><span class="pre">prepend_bos=False</span></code>
+when <code class="docutils literal notranslate"><span class="pre">input</span></code> is a fragment of a larger prompt.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -1040,10 +1064,10 @@ search in. Can be a string or a rank 1 tensor of tokens or a rank 2 tensor of to
 with a dummy batch dimension.</p></li>
 <li><p><strong>mode</strong> (<em>str</em><em>, </em><em>optional</em>) – If there are multiple matches, which match to return. Supports
 “first” or “last”. Defaults to “first”.</p></li>
-<li><p><strong>prepend_bos</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to prepend the BOS token to the input
-(only applies when input is a string). Defaults to None, using the bridge’s default.</p></li>
-<li><p><strong>padding_side</strong> (<em>Union</em><em>[</em><em>Literal</em><em>[</em><em>&quot;left&quot;</em><em>, </em><em>&quot;right&quot;</em><em>]</em><em>, </em><em>None</em><em>]</em><em>, </em><em>optional</em>) – Specifies which side to pad when tokenizing multiple
-strings of different lengths.</p></li>
+<li><p><strong>prepend_bos</strong> (<em>bool</em><em>, </em><em>optional</em>) – Overrides <code class="docutils literal notranslate"><span class="pre">self.cfg.default_prepend_bos</span></code>. Only
+applies when <code class="docutils literal notranslate"><span class="pre">input</span></code> is a string. Defaults to <code class="docutils literal notranslate"><span class="pre">None</span></code> (use the cfg setting).</p></li>
+<li><p><strong>padding_side</strong> (<em>Union</em><em>[</em><em>Literal</em><em>[</em><em>&quot;left&quot;</em><em>, </em><em>&quot;right&quot;</em><em>]</em><em>, </em><em>None</em><em>]</em><em>, </em><em>optional</em>) – Specifies which
+side to pad when tokenizing multiple strings of different lengths.</p></li>
 </ul>
 </dd>
 </dl>
@@ -1214,6 +1238,25 @@ numerically identical results when logits match.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Returns<span class="colon">:</span></dt>
 <dd class="field-odd"><p>Self for chaining</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="transformer_lens.model_bridge.bridge.TransformerBridge.n_params_total">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">n_params_total</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><a class="headerlink" href="#transformer_lens.model_bridge.bridge.TransformerBridge.n_params_total" title="Link to this definition">¶</a></dt>
+<dd><p>Total number of parameters in the model, including embeddings, biases,
+and layer norm weights.</p>
+<p>Mirrors <code class="xref py py-attr docutils literal notranslate"><span class="pre">HookedTransformer.n_params_total</span></code>. Use this when you want
+the actual parameter count for memory budgeting, comparison with
+HuggingFace’s <code class="docutils literal notranslate"><span class="pre">model.num_parameters()</span></code>, or alignment with reported
+model sizes in papers (e.g. the Pythia suite).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">sum(p.numel()</span> <span class="pre">for</span> <span class="pre">p</span> <span class="pre">in</span> <span class="pre">self.parameters())</span></code></p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>int</p>
 </dd>
 </dl>
 </dd></dl>
@@ -1517,16 +1560,23 @@ among other analysis tools.</p>
 <dt class="sig sig-object py" id="transformer_lens.model_bridge.bridge.TransformerBridge.to_str_tokens">
 <span class="sig-name descname"><span class="pre">to_str_tokens</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">input</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">List</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prepend_bos</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">padding_side</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.model_bridge.bridge.TransformerBridge.to_str_tokens" title="Link to this definition">¶</a></dt>
 <dd><p>Map text or tokens to a list of tokens as strings.</p>
+<p>See the class-level “Tokenization notes” for full <code class="docutils literal notranslate"><span class="pre">prepend_bos</span></code>
+semantics. <strong>Pass ``prepend_bos=False`` whenever you’re tokenizing
+only part of a prompt.</strong> When <code class="docutils literal notranslate"><span class="pre">input</span></code> is already a tensor or
+array, <code class="docutils literal notranslate"><span class="pre">prepend_bos</span></code> and <code class="docutils literal notranslate"><span class="pre">padding_side</span></code> are ignored.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>input</strong> – The input to convert</p></li>
-<li><p><strong>prepend_bos</strong> – Whether to prepend BOS token</p></li>
-<li><p><strong>padding_side</strong> – Which side to pad on</p></li>
+<li><p><strong>input</strong> – A string, list of strings, or tensor/array of token IDs.</p></li>
+<li><p><strong>prepend_bos</strong> – Overrides <code class="docutils literal notranslate"><span class="pre">self.cfg.default_prepend_bos</span></code>. Only
+applies when <code class="docutils literal notranslate"><span class="pre">input</span></code> is a string. Defaults to <code class="docutils literal notranslate"><span class="pre">None</span></code>
+(use the cfg setting).</p></li>
+<li><p><strong>padding_side</strong> – Which side to pad on. Only applies when <code class="docutils literal notranslate"><span class="pre">input</span></code>
+is a string.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>List of token strings</p>
+<dd class="field-even"><p>List of token strings.</p>
 </dd>
 </dl>
 </dd></dl>
@@ -1549,18 +1599,27 @@ among other analysis tools.</p>
 <dt class="sig sig-object py" id="transformer_lens.model_bridge.bridge.TransformerBridge.to_tokens">
 <span class="sig-name descname"><span class="pre">to_tokens</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">input</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prepend_bos</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">padding_side</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">move_to_device</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">truncate</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tensor</span></span></span><a class="headerlink" href="#transformer_lens.model_bridge.bridge.TransformerBridge.to_tokens" title="Link to this definition">¶</a></dt>
 <dd><p>Converts a string to a tensor of tokens.</p>
+<p>See the class-level “Tokenization notes” for full <code class="docutils literal notranslate"><span class="pre">prepend_bos</span></code>
+semantics, the <code class="docutils literal notranslate"><span class="pre">default_prepend_bos</span></code> /
+<code class="docutils literal notranslate"><span class="pre">tokenizer_prepends_bos</span></code> interaction, and the whitespace-
+sensitivity gotcha. <strong>Pass ``prepend_bos=False`` whenever you’re
+tokenizing only part of a prompt.</strong></p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>input</strong> – The input to tokenize</p></li>
-<li><p><strong>prepend_bos</strong> – Whether to prepend the BOS token</p></li>
-<li><p><strong>padding_side</strong> – Which side to pad on</p></li>
-<li><p><strong>move_to_device</strong> – Whether to move to model device</p></li>
-<li><p><strong>truncate</strong> – Whether to truncate to model context length</p></li>
+<li><p><strong>input</strong> – The input to tokenize.</p></li>
+<li><p><strong>prepend_bos</strong> – Overrides <code class="docutils literal notranslate"><span class="pre">self.cfg.default_prepend_bos</span></code>. Defaults
+to <code class="docutils literal notranslate"><span class="pre">None</span></code> (use the cfg setting). Pass <code class="docutils literal notranslate"><span class="pre">True</span></code> or <code class="docutils literal notranslate"><span class="pre">False</span></code>
+to override locally.</p></li>
+<li><p><strong>padding_side</strong> – Which side to pad on when tokenizing multiple
+strings of different lengths. Defaults to the tokenizer’s
+<code class="docutils literal notranslate"><span class="pre">padding_side</span></code>.</p></li>
+<li><p><strong>move_to_device</strong> – Whether to move the result to <code class="docutils literal notranslate"><span class="pre">cfg.device</span></code>.</p></li>
+<li><p><strong>truncate</strong> – Whether to truncate inputs longer than <code class="docutils literal notranslate"><span class="pre">cfg.n_ctx</span></code>.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Token tensor of shape [batch, pos]</p>
+<dd class="field-even"><p>Token tensor of shape <code class="docutils literal notranslate"><span class="pre">[batch,</span> <span class="pre">pos]</span></code>.</p>
 </dd>
 </dl>
 </dd></dl>
@@ -1591,6 +1650,7 @@ plus a trailing d_model dimension.</p>
 <span class="sig-name descname"><span class="pre">training</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><a class="headerlink" href="#transformer_lens.model_bridge.bridge.TransformerBridge.training" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
+</section>
 </dd></dl>
 
 <dl class="py function">
@@ -1725,6 +1785,7 @@ plus a trailing d_model dimension.</p>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.bridge.TransformerBridge.load_state_dict"><code class="docutils literal notranslate"><span class="pre">TransformerBridge.load_state_dict()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.bridge.TransformerBridge.loss_fn"><code class="docutils literal notranslate"><span class="pre">TransformerBridge.loss_fn()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.bridge.TransformerBridge.mps"><code class="docutils literal notranslate"><span class="pre">TransformerBridge.mps()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.model_bridge.bridge.TransformerBridge.n_params_total"><code class="docutils literal notranslate"><span class="pre">TransformerBridge.n_params_total</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.bridge.TransformerBridge.named_parameters"><code class="docutils literal notranslate"><span class="pre">TransformerBridge.named_parameters()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.bridge.TransformerBridge.original_model"><code class="docutils literal notranslate"><span class="pre">TransformerBridge.original_model</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.bridge.TransformerBridge.parameters"><code class="docutils literal notranslate"><span class="pre">TransformerBridge.parameters()</span></code></a></li>

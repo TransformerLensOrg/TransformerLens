@@ -765,13 +765,27 @@
 </section>
 <section id="registration">
 <h3>Registration<a class="headerlink" href="#registration" title="Link to this heading">¶</a></h3>
-<p>Two files to update:</p>
+<p>Three files to update:</p>
 <ol class="arabic">
 <li><p><code class="docutils literal notranslate"><span class="pre">transformer_lens/model_bridge/supported_architectures/__init__.py</span></code> — add the import and append to <code class="docutils literal notranslate"><span class="pre">__all__</span></code>.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">transformer_lens/factories/architecture_adapter_factory.py</span></code> — add to the import block and to <code class="docutils literal notranslate"><span class="pre">SUPPORTED_ARCHITECTURES</span></code>:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="s2">&quot;&lt;HFArchitectureClass&gt;&quot;</span><span class="p">:</span> <span class="o">&lt;</span><span class="n">YourAdapterClass</span><span class="o">&gt;</span><span class="p">,</span>
 </pre></div>
 </div>
+</li>
+<li><p><code class="docutils literal notranslate"><span class="pre">transformer_lens/tools/model_registry/__init__.py</span></code> — add to <code class="docutils literal notranslate"><span class="pre">HF_SUPPORTED_ARCHITECTURES</span></code> (so the scraper categorizes the architecture as supported) and to <code class="docutils literal notranslate"><span class="pre">CANONICAL_AUTHORS_BY_ARCH</span></code> (so the foundation-model org is admitted regardless of download count):</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">HF_SUPPORTED_ARCHITECTURES</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="o">...</span>
+    <span class="s2">&quot;&lt;HFArchitectureClass&gt;&quot;</span><span class="p">,</span>
+<span class="p">}</span>
+
+<span class="n">CANONICAL_AUTHORS_BY_ARCH</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="o">...</span>
+    <span class="s2">&quot;&lt;HFArchitectureClass&gt;&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;&lt;canonical-org&gt;&quot;</span><span class="p">],</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>The canonical author is the org that originally trains and publishes this model family (e.g., <code class="docutils literal notranslate"><span class="pre">meta-llama</span></code> for Llama, <code class="docutils literal notranslate"><span class="pre">google</span></code> for Gemma, <code class="docutils literal notranslate"><span class="pre">mistralai</span></code> for Mistral). Without this entry, the HF scraper’s <code class="docutils literal notranslate"><span class="pre">min_downloads</span></code> threshold can silently drop small canonical variants. For example, a foundation model with only ~20 downloads still belongs in the registry. Multiple canonical orgs are allowed (e.g., Llama is canonical for <code class="docutils literal notranslate"><span class="pre">meta-llama</span></code>, <code class="docutils literal notranslate"><span class="pre">huggyllama</span></code>, <code class="docutils literal notranslate"><span class="pre">codellama</span></code>, and <code class="docutils literal notranslate"><span class="pre">SimpleStories</span></code>).</p>
 </li>
 </ol>
 <p>Forgetting registration is the most common silent failure — the adapter exists but <code class="docutils literal notranslate"><span class="pre">boot_transformers</span></code> can’t find it.</p>
