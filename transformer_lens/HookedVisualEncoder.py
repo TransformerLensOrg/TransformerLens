@@ -16,7 +16,7 @@ import numpy as np
 from PIL import Image
 from einops import repeat
 from jaxtyping import Float, Int
-from transformers import ViTImageProcessor, ViTForImageClassification
+from transformers import AutoImageProcessor, AutoModelForImageClassification
 from transformers.models.auto.tokenization_auto import AutoTokenizer
 from typing_extensions import Literal
 
@@ -276,13 +276,17 @@ class HookedVisualEncoder(HookedRootModule):
 
         model.load_state_dict(state_dict, strict=False)
 
-        model.feature_extractor = ViTImageProcessor.from_pretrained(official_model_name)
+        model.feature_extractor = AutoImageProcessor.from_pretrained(official_model_name)
 
-        vit_model = ViTForImageClassification.from_pretrained(official_model_name)
+        visual_model = AutoModelForImageClassification.from_pretrained(official_model_name)
 
-        vit_model.eval()
-        model.embeddings = vit_model.vit.embeddings
-        del vit_model
+        visual_model.eval()
+        if "vit" in official_model_name:
+            model.embeddings = visual_model.vit.embeddings
+        elif "dit" in official_model_name:
+            model.embeddings = visual_model.deit.embeddings
+        
+        del visual_model
 
         if move_to_device:
             if cfg.device is not None:
