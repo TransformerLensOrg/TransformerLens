@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-05-08T10:21:54.476921",
+  "last_updated": "2026-05-08T10:29:02.664294",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -11924,6 +11924,36 @@
     {
       "model_id": "google-t5/t5-small",
       "architecture_id": "T5ForConditionalGeneration",
+      "verified_date": "2026-05-08",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "SimpleStories/SimpleStories-1.25M",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-05-08",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "SimpleStories/SimpleStories-35M",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-05-08",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "SimpleStories/SimpleStories-V2-1.25M",
+      "architecture_id": "LlamaForCausalLM",
       "verified_date": "2026-05-08",
       "verified_by": "verify_models",
       "transformerlens_version": null,
