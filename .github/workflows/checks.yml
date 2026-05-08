@@ -57,7 +57,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install uv
-        uses: astral-sh/setup-uv@v8
+        uses: astral-sh/setup-uv@v7
         with:
           python-version: ${{ matrix.python-version }}
           activate-environment: true
@@ -114,7 +114,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install uv
-        uses: astral-sh/setup-uv@v8
+        uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.11"
           activate-environment: true
@@ -181,7 +181,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install uv
-        uses: astral-sh/setup-uv@v8
+        uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
           activate-environment: true
@@ -200,7 +200,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install uv
-        uses: astral-sh/setup-uv@v8
+        uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
           activate-environment: true
@@ -219,7 +219,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install uv
-        uses: astral-sh/setup-uv@v8
+        uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
           activate-environment: true
@@ -238,7 +238,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install uv
-        uses: astral-sh/setup-uv@v8
+        uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
           activate-environment: true
@@ -331,7 +331,7 @@ jobs:
           sudo mkswap /swapfile
           sudo swapon /swapfile
       - name: Install uv
-        uses: astral-sh/setup-uv@v8
+        uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.11"
           activate-environment: true
@@ -375,7 +375,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install uv
-        uses: astral-sh/setup-uv@v8
+        uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.11"
           activate-environment: true
