@@ -89,6 +89,7 @@ HF_SUPPORTED_ARCHITECTURES: set[str] = {
     "Qwen3_5ForCausalLM",
     "StableLmForCausalLM",
     "T5ForConditionalGeneration",
+    "MT5ForConditionalGeneration",
     "XGLMForCausalLM",
 }
 
