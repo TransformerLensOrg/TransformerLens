@@ -148,6 +148,46 @@ def _build_model_entry(model_id: str, architecture_id: str) -> dict:
     }
 
 
+def _canonical_author_sweep(
+    api,  # type: ignore[no-untyped-def]
+    supported_models: list[dict],
+    seen_models: set[str],
+) -> int:
+    """Admit canonical-org supported-arch models regardless of downloads. Returns count added."""
+    from . import CANONICAL_AUTHORS_BY_ARCH, HF_SUPPORTED_ARCHITECTURES
+
+    # Same author can be canonical for multiple archs (e.g. google: T5 + MT5 + Gemma).
+    authors_to_archs: dict[str, set[str]] = {}
+    for arch, authors in CANONICAL_AUTHORS_BY_ARCH.items():
+        for author in authors:
+            authors_to_archs.setdefault(author, set()).add(arch)
+
+    added = 0
+    for author, expected_archs in sorted(authors_to_archs.items()):
+        try:
+            models_iter = api.list_models(author=author, expand=["config", "safetensors"])
+        except Exception as exc:  # pragma: no cover — network/transient
+            logger.warning(f"Canonical sweep: list_models(author={author!r}) failed: {exc}")
+            continue
+
+        for model in models_iter:
+            if model.id in seen_models:
+                continue
+            if is_quantized_model(model.id):
+                continue
+            model_arch: Optional[str] = _extract_architecture(model)
+            if model_arch is None or model_arch not in HF_SUPPORTED_ARCHITECTURES:
+                continue
+            # Reject e.g. mistralai's non-Mistral checkpoints.
+            if model_arch not in expected_archs:
+                continue
+            supported_models.append(_build_model_entry(model.id, model_arch))
+            seen_models.add(model.id)
+            added += 1
+            logger.info(f"Canonical sweep added: {model.id} ({model_arch})")
+    return added
+
+
 def scrape_all_models(
     output_dir: Path,
     max_models: Optional[int] = None,
@@ -155,6 +195,7 @@ def scrape_all_models(
     batch_size: int = 1000,
     checkpoint_interval: int = 5000,
     min_downloads: int = 500,
+    canonical_sweep: bool = True,
 ) -> tuple[dict, dict]:
     """Scrape ALL models from HuggingFace and categorize by architecture.
 
@@ -176,6 +217,8 @@ def scrape_all_models(
         batch_size: Log progress every N models
         checkpoint_interval: Save checkpoint every N models
         min_downloads: Minimum download count to include a model (default: 500)
+        canonical_sweep: If True, run the post-scrape pass that admits canonical-org models
+            below the download threshold (default: True).
 
     Returns:
         Tuple of (supported_models_dict, architecture_gaps_dict)
@@ -403,6 +446,12 @@ def scrape_all_models(
         )
         raise
 
+    if canonical_sweep:
+        logger.info("\nRunning canonical-author sweep (bypasses download threshold)...")
+        canonical_added = _canonical_author_sweep(api, supported_models, seen_models)
+        new_supported += canonical_added
+        logger.info(f"Canonical sweep added {canonical_added} models.")
+
     # Build final reports (matching schemas.py exactly)
     elapsed = time.time() - start_time
     logger.info(f"\nScan complete in {elapsed:.1f}s")
@@ -604,6 +653,12 @@ Examples:
         default=500,
         help="Minimum download count to include a model (default: 500)",
     )
+    parser.add_argument(
+        "--no-canonical-sweep",
+        action="store_true",
+        help="Skip the per-author sweep that admits canonical-org models below the "
+        "download threshold (default: sweep is on)",
+    )
 
     args = parser.parse_args()
 
@@ -615,6 +670,7 @@ Examples:
         task=args.task,
         checkpoint_interval=args.checkpoint_interval,
         min_downloads=args.min_downloads,
+        canonical_sweep=not args.no_canonical_sweep,
     )
 
 

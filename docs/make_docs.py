@@ -903,6 +903,7 @@ for English, and may not be the same for other languages.
     <select id="btArch"><option value="">All Architectures</option></select>
     <select id="btPrefix"><option value="">All Organizations</option></select>
     <select id="btStatus"><option value="">All Statuses</option><option value="1">Verified</option><option value="0">Unverified</option><option value="3">Failed</option></select>
+    <label class="bt-canonical-toggle"><input type="checkbox" id="btCanonical"> Canonical only</label>
     <span class="bt-count" id="btCount"></span>
   </div>
   <div class="bt-wrap">
@@ -928,55 +929,8 @@ for English, and may not be the same for other languages.
 (function() {
     const PS = 25, COLS = 9;
     const SM = {0:'Unverified',1:'Verified',2:'Unverified',3:'Failed'};
-    // Canonical org per supported architecture. Pinned to top of the Organizations filter.
-    const OFFICIAL_ORGS = {
-        ApertusForCausalLM: ['swiss-ai'],
-        BloomForCausalLM: ['bigscience'],
-        CodeGenForCausalLM: ['Salesforce'],
-        CohereForCausalLM: ['CohereLabs'],
-        DeepseekV3ForCausalLM: ['deepseek-ai'],
-        FalconForCausalLM: ['tiiuae'],
-        GPT2LMHeadModel: ['openai-community'],
-        GPTBigCodeForCausalLM: ['bigcode'],
-        GPTJForCausalLM: ['EleutherAI'],
-        GPTNeoForCausalLM: ['EleutherAI'],
-        GPTNeoXForCausalLM: ['EleutherAI'],
-        Gemma2ForCausalLM: ['google'],
-        Gemma3ForCausalLM: ['google'],
-        Gemma3ForConditionalGeneration: ['google'],
-        GemmaForCausalLM: ['google'],
-        GptOssForCausalLM: ['openai'],
-        GraniteForCausalLM: ['ibm-granite'],
-        GraniteMoeForCausalLM: ['ibm-granite'],
-        GraniteMoeHybridForCausalLM: ['ibm-granite'],
-        HubertForCTC: ['facebook'],
-        HubertModel: ['facebook'],
-        InternLM2ForCausalLM: ['internlm'],
-        LlamaForCausalLM: ['meta-llama'],
-        LlavaForConditionalGeneration: ['llava-hf'],
-        LlavaNextForConditionalGeneration: ['llava-hf'],
-        LlavaOnevisionForConditionalGeneration: ['llava-hf'],
-        MPTForCausalLM: ['mosaicml'],
-        Mamba2ForCausalLM: ['state-spaces'],
-        MambaForCausalLM: ['state-spaces'],
-        MistralForCausalLM: ['mistralai'],
-        MixtralForCausalLM: ['mistralai'],
-        OPTForCausalLM: ['facebook'],
-        Olmo2ForCausalLM: ['allenai'],
-        Olmo3ForCausalLM: ['allenai'],
-        OlmoForCausalLM: ['allenai'],
-        OlmoeForCausalLM: ['allenai'],
-        OpenELMForCausalLM: ['apple'],
-        Phi3ForCausalLM: ['microsoft'],
-        PhiForCausalLM: ['microsoft'],
-        Qwen2ForCausalLM: ['Qwen'],
-        Qwen3ForCausalLM: ['Qwen'],
-        Qwen3MoeForCausalLM: ['Qwen'],
-        Qwen3NextForCausalLM: ['Qwen'],
-        Qwen3_5ForCausalLM: ['Qwen'],
-        StableLmForCausalLM: ['stabilityai'],
-        XGLMForCausalLM: ['facebook'],
-    };
+    // Interpolated from CANONICAL_AUTHORS_BY_ARCH (Python, registry __init__).
+    const OFFICIAL_ORGS = __OFFICIAL_ORGS_JSON__;
     const cfgCache = {};
     let all=[], filt=[], pg=1, dt=null, sortCol='', sortDir='asc';
 
@@ -1367,6 +1321,7 @@ for English, and may not be the same for other languages.
             if (up.get('arch')) document.getElementById('btArch').value = up.get('arch');
             if (up.get('org')) { populatePrefixFilter(); document.getElementById('btPrefix').value = up.get('org'); }
             if (up.has('status')) document.getElementById('btStatus').value = up.get('status');
+            if (up.get('canonical') === '1') document.getElementById('btCanonical').checked = true;
             if (up.get('sort')) { sortCol = up.get('sort'); sortDir = up.get('dir') || 'asc'; updateSortHeaders(); }
             apply();
         } catch(e) {
@@ -1380,11 +1335,16 @@ for English, and may not be the same for other languages.
         const a = document.getElementById('btArch').value;
         const pf = document.getElementById('btPrefix').value;
         const sv = document.getElementById('btStatus').value;
+        const canonOnly = document.getElementById('btCanonical').checked;
         filt = all.filter(m => {
             if (s && !m.model_id.toLowerCase().includes(s)) return false;
             if (a && m.architecture_id !== a) return false;
             if (pf && getPrefix(m.model_id) !== pf) return false;
             if (sv !== '' && m.status !== +sv) return false;
+            if (canonOnly) {
+                const orgs = OFFICIAL_ORGS[m.architecture_id];
+                if (!orgs || !orgs.includes(getPrefix(m.model_id))) return false;
+            }
             return true;
         });
         sortFilt();
@@ -1434,10 +1394,12 @@ for English, and may not be the same for other languages.
         const a = document.getElementById('btArch').value;
         const pf = document.getElementById('btPrefix').value;
         const sv = document.getElementById('btStatus').value;
+        const canonOnly = document.getElementById('btCanonical').checked;
         if (s) p.set('q', s);
         if (a) p.set('arch', a);
         if (pf) p.set('org', pf);
         if (sv !== '') p.set('status', sv);
+        if (canonOnly) p.set('canonical', '1');
         if (sortCol) { p.set('sort', sortCol); p.set('dir', sortDir); }
         const qs = p.toString();
         history.replaceState(null, '', qs ? '?' + qs : location.pathname);
@@ -1532,6 +1494,7 @@ for English, and may not be the same for other languages.
     document.getElementById('btArch').addEventListener('change', () => { populatePrefixFilter(); apply(); });
     document.getElementById('btPrefix').addEventListener('change', apply);
     document.getElementById('btStatus').addEventListener('change', apply);
+    document.getElementById('btCanonical').addEventListener('change', apply);
     document.querySelectorAll('#bt-root th[data-sort]').forEach(th => {
         th.addEventListener('click', () => {
             const key = th.dataset.sort;
@@ -1548,15 +1511,16 @@ for English, and may not be the same for other languages.
 
 
 def generate_bridge_models_page():
-    """Generate the TransformerBridge models markdown page.
+    """Generate the TransformerBridge models markdown page."""
+    import json as _json
 
-    The page fetches supported_models.json from _static/, which is a symlink
-    to the canonical source at transformer_lens/tools/model_registry/data/.
-    """
+    from transformer_lens.tools.model_registry import CANONICAL_AUTHORS_BY_ARCH
+
     GENERATED_DIR.mkdir(exist_ok=True)
-    (GENERATED_DIR / "transformer_bridge_models.md").write_text(
-        BRIDGE_MODELS_PAGE, encoding="utf-8"
+    rendered = BRIDGE_MODELS_PAGE.replace(
+        "__OFFICIAL_ORGS_JSON__", _json.dumps(CANONICAL_AUTHORS_BY_ARCH, sort_keys=True)
     )
+    (GENERATED_DIR / "transformer_bridge_models.md").write_text(rendered, encoding="utf-8")
 
 
 def docs_hot_reload():
