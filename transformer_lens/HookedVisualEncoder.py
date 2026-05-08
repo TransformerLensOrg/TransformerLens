@@ -167,7 +167,13 @@ class HookedVisualEncoder(HookedRootModule):
         encoder_outputs = self.encoder_output(embedding_output)
         sequence_output = self.layernorm(encoder_outputs)
         cls_token = sequence_output[:, 0, :]
+        
         logits = self.classifier(cls_token)
+        if "deit" in cfg.official_model_name:
+            distillation_logits = self.distillation_classifier(sequence_output[:, 1, :])
+    
+            # during inference, return the average of both classifier predictions
+            logits = (logits + distillation_logits) / 2
 
         if return_type is None:
             return None
