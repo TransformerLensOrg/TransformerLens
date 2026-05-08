@@ -285,6 +285,8 @@ class HookedVisualEncoder(HookedRootModule):
             model.embeddings = visual_model.vit.embeddings
         elif "dit" in official_model_name:
             model.embeddings = visual_model.deit.embeddings
+        elif "in21k" in official_model_name:
+            model.embeddings = visual_model.embeddings
         
         del visual_model
 
