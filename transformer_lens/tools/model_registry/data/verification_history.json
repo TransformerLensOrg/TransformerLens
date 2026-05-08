@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-05-08T10:29:02.664294",
+  "last_updated": "2026-05-08T10:35:57.497430",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -11953,6 +11953,76 @@
     },
     {
       "model_id": "SimpleStories/SimpleStories-V2-1.25M",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-05-08",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "SimpleStories/SimpleStories-5M",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-05-08",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "SimpleStories/SimpleStories-11M",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-05-08",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "SimpleStories/SimpleStories-30M",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-05-08",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "SimpleStories/SimpleStories-V2-5M",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-05-08",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "SimpleStories/SimpleStories-V2-11M",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-05-08",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "SimpleStories/SimpleStories-V2-30M",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-05-08",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "SimpleStories/SimpleStories-V2-35M",
       "architecture_id": "LlamaForCausalLM",
       "verified_date": "2026-05-08",
       "verified_by": "verify_models",
