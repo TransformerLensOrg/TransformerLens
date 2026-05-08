@@ -969,7 +969,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "n_key_value_heads": 4,
             "window_size": 4096,
             "use_local_attn": True,
-            "attn_types": ["global", "local"] * 21,  # Alternate global and local attn
+            "attn_types": ["global", "local"] * 13,  # Alternate global and local attn
             "attn_scores_soft_cap": 50.0,
             "output_logits_soft_cap": 30.0,
             "gated_mlp": True,
@@ -1368,132 +1368,6 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
                 "local",
                 "local",
             ],
-        }
-    elif official_model_name.startswith("google/gemma-2b"):
-        # Architecture for Gemma 2b and Gemma 2b Instruct models
-        cfg_dict = {
-            "d_model": 2048,
-            "d_head": 256,
-            "n_heads": 8,
-            "d_mlp": 16384,
-            "n_layers": 18,
-            "n_ctx": 8192,
-            "eps": 1e-06,
-            "d_vocab": 256000,
-            "act_fn": "gelu",
-            "initializer_range": 0.02,
-            "normalization_type": "RMS",
-            "rotary_base": 10000,
-            "rotary_dim": 256,
-            "positional_embedding_type": "rotary",
-            "use_attn_scale": True,
-            "n_key_value_heads": 1,
-            "gated_mlp": True,
-            "final_rms": True,
-        }
-    elif official_model_name.startswith("google/gemma-7b"):
-        # Architecture for Gemma 7b and Gemma 7b Instruct models
-        cfg_dict = {
-            "d_model": 3072,
-            "d_head": 256,
-            "n_heads": 16,
-            "d_mlp": 24576,
-            "n_layers": 28,
-            "n_ctx": 8192,
-            "eps": 1e-06,
-            "d_vocab": 256000,
-            "act_fn": "gelu",
-            "initializer_range": 0.02,
-            "normalization_type": "RMS",
-            "rotary_base": 10000.0,
-            "rotary_dim": 256,
-            "positional_embedding_type": "rotary",
-            "use_attn_scale": True,
-            "n_key_value_heads": 16,
-            "gated_mlp": True,
-            "final_rms": True,
-        }
-    elif official_model_name.startswith("google/gemma-2-2b"):
-        # Architecture for Gemma-2 2b and Gemma-2 2b Instruct models
-        cfg_dict = {
-            "d_model": 2304,
-            "d_head": 256,
-            "n_heads": 8,
-            "d_mlp": 9216,
-            "n_layers": 26,
-            "n_ctx": 8192,
-            "eps": 1e-06,
-            "d_vocab": 256000,
-            "act_fn": "gelu_pytorch_tanh",
-            "initializer_range": 0.02,
-            "normalization_type": "RMS",
-            "rotary_base": 10000.0,
-            "positional_embedding_type": "rotary",
-            "use_attn_scale": True,
-            "n_key_value_heads": 4,
-            "window_size": 4096,
-            "use_local_attn": True,
-            "attn_types": ["global", "local"] * 13,  # Alternate global and local attn
-            "attn_scores_soft_cap": 50.0,
-            "output_logits_soft_cap": 30.0,
-            "gated_mlp": True,
-            "final_rms": True,
-            "use_normalization_before_and_after": True,
-        }
-    elif official_model_name.startswith("google/gemma-2-9b"):
-        # Architecture for Gemma-2 9b and Gemma-2 9b Instruct models
-        cfg_dict = {
-            "d_model": 3584,
-            "d_head": 256,
-            "n_heads": 16,
-            "d_mlp": 14336,
-            "n_layers": 42,
-            "n_ctx": 8192,
-            "eps": 1e-06,
-            "d_vocab": 256000,
-            "act_fn": "gelu_pytorch_tanh",
-            "initializer_range": 0.02,
-            "normalization_type": "RMS",
-            "rotary_base": 10000.0,
-            "positional_embedding_type": "rotary",
-            "use_attn_scale": True,
-            "n_key_value_heads": 8,
-            "window_size": 4096,
-            "use_local_attn": True,
-            "attn_types": ["global", "local"] * 21,  # Alternate global and local attn
-            "attn_scores_soft_cap": 50.0,
-            "output_logits_soft_cap": 30.0,
-            "gated_mlp": True,
-            "final_rms": True,
-            "use_normalization_before_and_after": True,
-        }
-    elif official_model_name.startswith("google/gemma-2-27b"):
-        # Architecture for Gemma-2 27b and Gemma-2 27b Instruct models
-        cfg_dict = {
-            "d_model": 4608,
-            "d_head": 128,
-            "n_heads": 32,
-            "d_mlp": 36864,
-            "n_layers": 46,
-            "n_ctx": 8192,
-            "eps": 1e-06,
-            "d_vocab": 256000,
-            "act_fn": "gelu_pytorch_tanh",
-            "initializer_range": 0.02,
-            "normalization_type": "RMS",
-            "rotary_base": 10000.0,
-            "positional_embedding_type": "rotary",
-            "use_attn_scale": True,
-            "attn_scale": 12.0,
-            "n_key_value_heads": 16,
-            "window_size": 4096,
-            "use_local_attn": True,
-            "attn_types": ["global", "local"] * 23,  # Alternate global and local attn
-            "attn_scores_soft_cap": 50.0,
-            "output_logits_soft_cap": 30.0,
-            "gated_mlp": True,
-            "final_rms": True,
-            "use_normalization_before_and_after": True,
         }
     elif official_model_name.startswith("allenai/OLMo-1B") and official_model_name.endswith("hf"):
         cfg_dict = {

@@ -25,10 +25,9 @@ STATUS_VERIFIED = 1
 STATUS_SKIPPED = 2
 STATUS_FAILED = 3
 
-# Patterns in model IDs that indicate quantized models.  TransformerLens
-# requires full-precision weights for mechanistic interpretability research,
-# so quantized variants are fundamentally incompatible.
-_QUANTIZED_PATTERNS = [
+# HF-loadable quantization formats. Admitted to the registry; verification gates
+# on `required_quant_library_for_model()` at run time.
+_HF_LOADABLE_QUANT_PATTERNS = [
     "-awq",
     "_awq",
     "-AWQ",
@@ -38,20 +37,54 @@ _QUANTIZED_PATTERNS = [
     "-GPTQ",
     "_GPTQ",
     "GPTQ",
-    "-gguf",
-    "_gguf",
-    "-GGUF",
-    "_GGUF",
     "-bnb-",
     "_bnb_",
     "bnb-4bit",
     "bnb-8bit",
     "-4bit",
     "_4bit",
-    "-5bit",
-    "-6bit",
     "-8bit",
     "_8bit",
+    "-int4",
+    "_int4",
+    "-int8",
+    "_int8",
+    "-w4a16",
+    "-w8a8",
+    "-W4A16",
+    "-W8A8",
+    ".w4a16",
+    ".W4A16",
+    "-hqq",
+    "_hqq",
+    "-HQQ",
+    "_HQQ",
+    "-3bit",
+    "_3bit",
+    "-2bit",
+    "_2bit",
+    "-5bit",
+    "-6bit",
+    "-oQ",
+    "_oQ",
+    "-quantized.",
+    "_Quantized",
+    "-Quantized",
+]
+
+# Formats that need a non-HF loader (GGUF→llama.cpp, MLX→Apple, FP4/FP8→NVIDIA).
+_INCOMPATIBLE_QUANT_PATTERNS = [
+    "-gguf",
+    "_gguf",
+    "-GGUF",
+    "_GGUF",
+    "mlx-community/",
+    "-mlx",
+    "-MLX",
+    "_mlx",
+    "_MLX",
+    ".mlx",
+    ".MLX",
     "-fp8",
     "_fp8",
     "-FP8",
@@ -64,38 +97,43 @@ _QUANTIZED_PATTERNS = [
     "_mxfp4",
     "-MXFP4",
     "_MXFP4",
-    "-int4",
-    "_int4",
-    "-int8",
-    "_int8",
-    "-w4a16",
-    "-w8a8",
-    "-W4A16",
-    "-W8A8",
-    ".w4a16",
-    ".W4A16",
-    "-3bit",
-    "_3bit",
-    "-2bit",
-    "_2bit",
-    "-oQ",
-    "_oQ",
-    "-quantized.",
-    "_Quantized",
-    "-Quantized",
-    "mlx-community/",
-    "-MLX-",
 ]
-QUANTIZED_NOTE = "TransformerLens does not support quantized models at this time"
+
+# Values are Python import names, not PyPI package names. Order matters: explicit
+# format markers must precede generic bit-width markers (HQQ-4bit IDs match both).
+_QUANT_LIBRARY_BY_PATTERN: list[tuple[tuple[str, ...], str]] = [
+    (("-hqq", "_hqq", "-HQQ", "_HQQ"), "hqq"),
+    (("-gptq", "_gptq", "-GPTQ", "_GPTQ", "GPTQ"), "auto_gptq"),
+    (("-awq", "_awq", "-AWQ", "_AWQ"), "awq"),
+    (("-w4a16", "-w8a8", "-W4A16", "-W8A8", ".w4a16", ".W4A16"), "auto_gptq"),
+    (("-bnb-", "_bnb_", "bnb-4bit", "bnb-8bit"), "bitsandbytes"),
+    (("-4bit", "_4bit", "-8bit", "_8bit", "-int4", "_int4", "-int8", "_int8"), "bitsandbytes"),
+]
+
+QUANTIZED_NOTE = "Quantized format not loadable by HF transformers"
+
+
+def is_incompatible_quantized(model_id: str) -> bool:
+    """True for quantization formats the bridge can't ingest (GGUF, MLX, FP4/FP8)."""
+    return any(pat in model_id for pat in _INCOMPATIBLE_QUANT_PATTERNS)
+
+
+def is_hf_loadable_quantized(model_id: str) -> bool:
+    """True for quantizations loadable by HF transformers + a quant library."""
+    return any(pat in model_id for pat in _HF_LOADABLE_QUANT_PATTERNS)
+
+
+def required_quant_library_for_model(model_id: str) -> Optional[str]:
+    """Return the Python import name needed to load this model, or None if unquantized."""
+    for patterns, library in _QUANT_LIBRARY_BY_PATTERN:
+        if any(pat in model_id for pat in patterns):
+            return library
+    return None
 
 
 def is_quantized_model(model_id: str) -> bool:
-    """Check if a model ID indicates a quantized model variant.
-
-    Detects AWQ, GPTQ, GGUF, BitsAndBytes (bnb), FP8, INT4/INT8,
-    MLX quantized, and other common quantization suffixes.
-    """
-    return any(pat in model_id for pat in _QUANTIZED_PATTERNS)
+    """Alias for ``is_incompatible_quantized`` — kept for back-compat with existing call sites."""
+    return is_incompatible_quantized(model_id)
 
 
 def load_supported_models_raw() -> dict:

@@ -58,7 +58,7 @@ def get_device() -> str:
 
     MPS is only auto-selected when the environment variable
     ``TRANSFORMERLENS_ALLOW_MPS=1`` is set **and** the installed PyTorch
-    version meets or exceeds ``_MPS_MIN_SAFE_TORCH_VERSION``.
+    version is 2.0 or higher.
 
     Returns:
         str: The best available device name (cuda, mps, or cpu)

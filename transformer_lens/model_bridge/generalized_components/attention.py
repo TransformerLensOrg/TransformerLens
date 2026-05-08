@@ -58,6 +58,8 @@ class AttentionBridge(GeneralizedComponent):
         requires_position_embeddings: bool = False,
         requires_attention_mask: bool = False,
         attention_mask_4d: bool = False,
+        requires_relative_position_bias: bool = False,
+        is_cross_attention: bool = False,
         optional: bool = False,
     ):
         """Initialize the attention bridge.
@@ -78,6 +80,9 @@ class AttentionBridge(GeneralizedComponent):
                                     (e.g., GPTNeoX/Pythia). Defaults to False.
             attention_mask_4d: If True, generate 4D attention_mask [batch, 1, tgt_len, src_len]
                              instead of 2D [batch, seq_len]. Required for OPT. Defaults to False.
+            requires_relative_position_bias: T5/mT5-style relative attention; supplies a
+                zero ``position_bias`` so HF's forward skips its ``cache_position[-1]`` fallback.
+            is_cross_attention: Encoder-decoder cross-attention; supplies ``key_value_states``.
         """
         if conversion_rule is None:
             conversion_rule = AttentionAutoConversion(config)
@@ -122,6 +127,8 @@ class AttentionBridge(GeneralizedComponent):
         self.requires_position_embeddings = requires_position_embeddings
         self.requires_attention_mask = requires_attention_mask
         self.attention_mask_4d = attention_mask_4d
+        self.requires_relative_position_bias = requires_relative_position_bias
+        self.is_cross_attention = is_cross_attention
         self._layer_idx: Optional[int] = None
 
     def set_original_component(self, original_component: torch.nn.Module) -> None:
@@ -212,6 +219,16 @@ class AttentionBridge(GeneralizedComponent):
             else:
                 # Generate 2D attention mask [batch, seq_len] for most models
                 inputs["attention_mask"] = torch.ones(batch_size, seq_len, device=device)
+        if self.requires_relative_position_bias:
+            # Zero bias short-circuits HF's None-cache_position fallback in T5Attention.
+            n_heads = self.config.n_heads if self.config and hasattr(self.config, "n_heads") else 1
+            inputs["position_bias"] = torch.zeros(
+                1, n_heads, seq_len, seq_len, device=device, dtype=dtype
+            )
+        if self.is_cross_attention:
+            inputs["key_value_states"] = torch.randn(
+                batch_size, seq_len, d_model, device=device, dtype=dtype
+            )
         return inputs
 
     def _setup_qkv_hook_reshaping(self) -> None:

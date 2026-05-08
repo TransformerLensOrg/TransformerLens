@@ -50,8 +50,9 @@ from .registry_io import (
     STATUS_UNVERIFIED,
     STATUS_VERIFIED,
     add_verification_record,
-    is_quantized_model,
+    is_incompatible_quantized,
     load_supported_models_raw,
+    required_quant_library_for_model,
     update_model_status,
 )
 
@@ -773,8 +774,8 @@ def verify_models(
 
         progress.tested.append(model_id)
 
-        # Step 0: Check for quantized models (fundamentally incompatible)
-        if is_quantized_model(model_id):
+        # Step 0: Skip formats with no HF loader path (GGUF / MLX / FP4 / FP8).
+        if is_incompatible_quantized(model_id):
             if not quiet:
                 print(f"  SKIP: {QUANTIZED_NOTE}")
             current_status = _get_current_model_status(model_id, arch)
@@ -785,6 +786,24 @@ def verify_models(
             progress.skipped.append(model_id)
             _save_checkpoint(progress)
             continue
+
+        # Step 0a: skip HF-loadable quantized models when their loader lib is missing.
+        required_lib = required_quant_library_for_model(model_id)
+        if required_lib is not None:
+            import importlib.util
+
+            if importlib.util.find_spec(required_lib) is None:
+                note = f"Skipped: {required_lib} not installed (required to load this quantized format)"
+                if not quiet:
+                    print(f"  SKIP: {note}")
+                current_status = _get_current_model_status(model_id, arch)
+                if current_status != STATUS_VERIFIED:
+                    update_model_status(model_id, arch, STATUS_SKIPPED, note=note)
+                elif not quiet:
+                    print(f"  (preserving existing verified status)")
+                progress.skipped.append(model_id)
+                _save_checkpoint(progress)
+                continue
 
         # Step 0b: Check adapter-level phase applicability. Architectures
         # with applicable_phases=[] (e.g. SSMs) skip verify_models entirely

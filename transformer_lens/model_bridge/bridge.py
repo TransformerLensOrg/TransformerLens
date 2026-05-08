@@ -100,6 +100,29 @@ class TransformerBridge(nn.Module):
     This class provides a standardized interface to access components of a transformer
     model, regardless of the underlying architecture. It uses an architecture adapter
     to map between the TransformerLens and HuggingFace model structures.
+
+    Tokenization notes
+    ------------------
+
+    :meth:`to_tokens`, :meth:`to_str_tokens`, :meth:`get_token_position`,
+    :meth:`forward` (string input), and :meth:`generate` accept ``prepend_bos``
+    to control BOS prepending. Resolution: explicit arg →
+    ``cfg.default_prepend_bos`` (defaults ``True``, even for non-BOS-trained
+    models — attention heads tend to use position 0 as a resting state).
+    **Pass ``prepend_bos=False`` when tokenizing a fragment of a larger
+    prompt** — off-by-one position errors usually trace back here.
+
+    Reconciliation with ``cfg.tokenizer_prepends_bos`` (tokenizers that add
+    BOS automatically) is handled internally — pass the value you want;
+    the bridge adds or strips manually as needed. When
+    ``cfg.tokenizer_appends_eos=True`` (OLMo, Apertus, etc.),
+    :meth:`to_tokens` also strips trailing EOS tokens so the model receives
+    a continuation rather than a terminated sequence; this path is
+    bridge-specific.
+
+    BPE/SentencePiece tokenizers treat ``"hello"``, ``" hello"``, and
+    ``"Hello"`` as distinct tokens. Concatenated prompts may not tokenize
+    as the sum of parts — inspect with :meth:`to_str_tokens` when in doubt.
     """
 
     hook_aliases: Dict[str, Union[str, List[str]]] = {
@@ -527,6 +550,21 @@ class TransformerBridge(nn.Module):
         self._add_aliases_to_hooks(hooks)
         return hooks
 
+    @property
+    def n_params_total(self) -> int:
+        """Total number of parameters in the model, including embeddings, biases,
+        and layer norm weights.
+
+        Mirrors :attr:`HookedTransformer.n_params_total`. Use this when you want
+        the actual parameter count for memory budgeting, comparison with
+        HuggingFace's ``model.num_parameters()``, or alignment with reported
+        model sizes in papers (e.g. the Pythia suite).
+
+        Returns:
+            int: ``sum(p.numel() for p in self.parameters())``
+        """
+        return sum(p.numel() for p in self.parameters())
+
     def clear_hook_registry(self) -> None:
         """Clear the hook registry and force re-initialization."""
         self._hook_registry.clear()
@@ -867,15 +905,25 @@ class TransformerBridge(nn.Module):
     ) -> torch.Tensor:
         """Converts a string to a tensor of tokens.
 
+        See the class-level "Tokenization notes" for full ``prepend_bos``
+        semantics, the ``default_prepend_bos`` /
+        ``tokenizer_prepends_bos`` interaction, and the whitespace-
+        sensitivity gotcha. **Pass ``prepend_bos=False`` whenever you're
+        tokenizing only part of a prompt.**
+
         Args:
-            input: The input to tokenize
-            prepend_bos: Whether to prepend the BOS token
-            padding_side: Which side to pad on
-            move_to_device: Whether to move to model device
-            truncate: Whether to truncate to model context length
+            input: The input to tokenize.
+            prepend_bos: Overrides ``self.cfg.default_prepend_bos``. Defaults
+                to ``None`` (use the cfg setting). Pass ``True`` or ``False``
+                to override locally.
+            padding_side: Which side to pad on when tokenizing multiple
+                strings of different lengths. Defaults to the tokenizer's
+                ``padding_side``.
+            move_to_device: Whether to move the result to ``cfg.device``.
+            truncate: Whether to truncate inputs longer than ``cfg.n_ctx``.
 
         Returns:
-            Token tensor of shape [batch, pos]
+            Token tensor of shape ``[batch, pos]``.
         """
         if prepend_bos is None:
             prepend_bos = getattr(self.cfg, "default_prepend_bos", True)
@@ -935,13 +983,21 @@ class TransformerBridge(nn.Module):
     ) -> Union[List[str], List[List[str]]]:
         """Map text or tokens to a list of tokens as strings.
 
+        See the class-level "Tokenization notes" for full ``prepend_bos``
+        semantics. **Pass ``prepend_bos=False`` whenever you're tokenizing
+        only part of a prompt.** When ``input`` is already a tensor or
+        array, ``prepend_bos`` and ``padding_side`` are ignored.
+
         Args:
-            input: The input to convert
-            prepend_bos: Whether to prepend BOS token
-            padding_side: Which side to pad on
+            input: A string, list of strings, or tensor/array of token IDs.
+            prepend_bos: Overrides ``self.cfg.default_prepend_bos``. Only
+                applies when ``input`` is a string. Defaults to ``None``
+                (use the cfg setting).
+            padding_side: Which side to pad on. Only applies when ``input``
+                is a string.
 
         Returns:
-            List of token strings
+            List of token strings.
         """
         if isinstance(input, list):
             return cast(
@@ -1001,6 +1057,12 @@ class TransformerBridge(nn.Module):
 
         Raises an error if the token is not present.
 
+        When ``input`` is a string it's tokenized internally — see the
+        class-level "Tokenization notes" for ``prepend_bos`` semantics.
+        Off-by-one position errors usually mean ``prepend_bos`` is on
+        when it shouldn't be (or vice versa); pass ``prepend_bos=False``
+        when ``input`` is a fragment of a larger prompt.
+
         Args:
             single_token (Union[str, int]): The token to search for. Can
                 be a token index, or a string (but the string must correspond to a single token).
@@ -1009,10 +1071,10 @@ class TransformerBridge(nn.Module):
                 with a dummy batch dimension.
             mode (str, optional): If there are multiple matches, which match to return. Supports
                 "first" or "last". Defaults to "first".
-            prepend_bos (bool, optional): Whether to prepend the BOS token to the input
-                (only applies when input is a string). Defaults to None, using the bridge's default.
-            padding_side (Union[Literal["left", "right"], None], optional): Specifies which side to pad when tokenizing multiple
-                strings of different lengths.
+            prepend_bos (bool, optional): Overrides ``self.cfg.default_prepend_bos``. Only
+                applies when ``input`` is a string. Defaults to ``None`` (use the cfg setting).
+            padding_side (Union[Literal["left", "right"], None], optional): Specifies which
+                side to pad when tokenizing multiple strings of different lengths.
         """
         if isinstance(input, str):
             tokens = self.to_tokens(input, prepend_bos=prepend_bos, padding_side=padding_side)

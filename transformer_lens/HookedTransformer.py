@@ -113,6 +113,26 @@ class HookedTransformer(HookedRootModule):
 
     Once you've initialized the model, a common next step is to test it can do the task you're
     investigating. This can be done with :func:`transformer_lens.utils.test_prompt`.
+
+    Tokenization notes
+    ------------------
+
+    :meth:`to_tokens`, :meth:`to_str_tokens`, :meth:`get_token_position`,
+    :meth:`forward` (string input), and :meth:`generate` accept ``prepend_bos``
+    to control BOS prepending. Resolution: explicit arg →
+    ``cfg.default_prepend_bos`` (defaults ``True``, even for non-BOS-trained
+    models — attention heads tend to use position 0 as a resting state).
+    **Pass ``prepend_bos=False`` when tokenizing a fragment of a larger
+    prompt** — off-by-one position errors usually trace back here.
+
+    Reconciliation with ``cfg.tokenizer_prepends_bos`` (set by
+    :meth:`set_tokenizer` for tokenizers that add BOS automatically) is
+    handled internally — pass the value you want; the framework adds or
+    strips manually as needed.
+
+    BPE/SentencePiece tokenizers treat ``"hello"``, ``" hello"``, and
+    ``"Hello"`` as distinct tokens. Concatenated prompts may not tokenize
+    as the sum of parts — inspect with :meth:`to_str_tokens` when in doubt.
     """
 
     ln_final: nn.Module
@@ -790,25 +810,17 @@ class HookedTransformer(HookedRootModule):
     ) -> Int[torch.Tensor, "batch pos"]:
         """Converts a string to a tensor of tokens.
 
-        If prepend_bos is True, prepends the BOS token to the input - this is recommended when
-        creating a sequence of tokens to be input to a model.
-
-        Gotcha: prepend_bos prepends a beginning of string token. This is a recommended default when
-        inputting a prompt to the model as the first token is often treated weirdly, but should only
-        be done at the START of the prompt. Make sure to turn it off if you're looking at the
-        tokenization of part of the prompt! (Note: some models eg GPT-2 were not trained with a BOS
-        token, others (OPT and my models) were)
-
-        Gotcha2: Tokenization of a string depends on whether there is a preceding space and whether
-        the first letter is capitalized. It's easy to shoot yourself in the foot here if you're not
-        careful!
+        See the class-level "Tokenization notes" for full ``prepend_bos``
+        semantics, the ``default_prepend_bos`` /
+        ``tokenizer_prepends_bos`` interaction, and the whitespace-
+        sensitivity gotcha. **Pass ``prepend_bos=False`` whenever you're
+        tokenizing only part of a prompt.**
 
         Args:
             input (Union[str, List[str]]): The input to tokenize.
-            prepend_bos (bool, optional): Overrides self.cfg.default_prepend_bos. Whether to prepend
-                the BOS token to the input (only applies when input is a string). Defaults to None,
-                implying usage of self.cfg.default_prepend_bos which is set to True unless specified
-                otherwise. Pass True or False to locally override the default.
+            prepend_bos (bool, optional): Overrides ``self.cfg.default_prepend_bos``.
+                Defaults to ``USE_DEFAULT_VALUE`` (use the cfg setting). Pass ``True``
+                or ``False`` to override locally.
             padding_side (Union[Literal["left", "right"], None], optional): Overrides
                 self.tokenizer.padding_side. Specifies which side to pad when tokenizing
                 multiple strings of different lengths.
@@ -894,28 +906,18 @@ class HookedTransformer(HookedRootModule):
     ) -> Union[List[str], List[List[str]]]:
         """Map text, a list of text or tokens to a list of tokens as strings.
 
-        Gotcha: prepend_bos prepends a beginning of string token. This is a recommended default when
-        inputting a prompt to the model as the first token is often treated weirdly, but should only
-        be done at the START of the prompt. If prepend_bos=None is passed, it implies the usage of
-        self.cfg.default_prepend_bos which is set to True unless specified otherwise. Therefore,
-        make sure to locally turn it off by passing prepend_bos=False if you're looking at the
-        tokenization of part of the prompt! (Note: some models eg GPT-2 were not trained with a BOS
-        token, others (OPT and my models) were)
+        See the class-level "Tokenization notes" for full ``prepend_bos``
+        semantics. **Pass ``prepend_bos=False`` whenever you're tokenizing
+        only part of a prompt.**
 
-        Gotcha2: Tokenization of a string depends on whether there is a preceding space and whether
-        the first letter is capitalized. It's easy to shoot yourself in the foot here if you're not
-        careful!
-
-        Gotcha3: If passing a string that exceeds the model's context length (model.cfg.n_ctx), it
-        will be truncated.
+        String inputs that exceed ``model.cfg.n_ctx`` are truncated.
 
         Args:
             input (Union[str, list, torch.Tensor]): The input - either a string or a tensor of
                 tokens. If tokens, should be a tensor of shape [pos] or [1, pos].
-            prepend_bos (bool, optional): Overrides self.cfg.default_prepend_bos. Whether to prepend
-                the BOS token to the input (only applies when input is a string). Defaults to None,
-                implying usage of self.cfg.default_prepend_bos which is set to True unless specified
-                otherwise. Pass True or False to locally override the default.
+            prepend_bos (bool, optional): Overrides ``self.cfg.default_prepend_bos``. Only
+                applies when ``input`` is a string. Defaults to ``USE_DEFAULT_VALUE``
+                (use the cfg setting). Pass ``True`` or ``False`` to override locally.
             padding_side (Union[Literal["left", "right"], None], optional): Overrides
                 self.tokenizer.padding_side. Specifies which side to pad when tokenizing multiple
                 strings of different lengths.
@@ -1003,12 +1005,11 @@ class HookedTransformer(HookedRootModule):
 
         Raises an error if the token is not present.
 
-        Gotcha: If you're inputting a string, it'll automatically be tokenized. Be careful about the
-        setting for prepend_bos! When a string is input to the model, a BOS (beginning of sequence)
-        token is prepended by default when the string is tokenized because
-        self.cfg.default_prepend_bos is set to True unless specified otherwise. But this should only
-        be done at the START of the input, not when inputting part of the prompt. If you're getting
-        weird off-by-one errors, check carefully for what the setting should be!
+        When ``input`` is a string it's tokenized internally — see the
+        class-level "Tokenization notes" for ``prepend_bos`` semantics.
+        Off-by-one position errors usually mean ``prepend_bos`` is on
+        when it shouldn't be (or vice versa); pass ``prepend_bos=False``
+        when ``input`` is a fragment of a larger prompt.
 
         Args:
             single_token (Union[str, int]): The token to search for. Can
@@ -1018,10 +1019,9 @@ class HookedTransformer(HookedRootModule):
                 with a dummy batch dimension.
             mode (str, optional): If there are multiple matches, which match to return. Supports
                 "first" or "last". Defaults to "first".
-            prepend_bos (bool, optional): Overrides self.cfg.default_prepend_bos. Whether to prepend
-                the BOS token to the input (only applies when input is a string). Defaults to None,
-                implying usage of self.cfg.default_prepend_bos which is set to True unless specified
-                otherwise. Pass True or False to locally override the default.
+            prepend_bos (bool, optional): Overrides ``self.cfg.default_prepend_bos``. Only
+                applies when ``input`` is a string. Defaults to ``USE_DEFAULT_VALUE``
+                (use the cfg setting). Pass ``True`` or ``False`` to override locally.
             padding_side (Union[Literal["left", "right"], None], optional): Overrides
                 self.tokenizer.padding_side. Specifies which side to pad when tokenizing multiple
                 strings of different lengths.
@@ -2065,7 +2065,6 @@ class HookedTransformer(HookedRootModule):
 
             stop_tokens: List[int] = []
             eos_token_for_padding = 0
-            assert self.tokenizer is not None
             if stop_at_eos:
                 tokenizer_has_eos_token = (
                     self.tokenizer is not None and self.tokenizer.eos_token_id is not None
@@ -2074,7 +2073,7 @@ class HookedTransformer(HookedRootModule):
                     assert (
                         tokenizer_has_eos_token
                     ), "Must pass a eos_token_id if stop_at_eos is True and tokenizer is None or has no eos_token_id"
-
+                    assert self.tokenizer is not None
                     eos_token_id = self.tokenizer.eos_token_id
 
                 if isinstance(eos_token_id, int):
@@ -2083,9 +2082,11 @@ class HookedTransformer(HookedRootModule):
                 else:
                     # eos_token_id is a Sequence (e.g. list or tuple)
                     stop_tokens = eos_token_id
-                    eos_token_for_padding = (
-                        self.tokenizer.eos_token_id if tokenizer_has_eos_token else eos_token_id[0]
-                    )
+                    if tokenizer_has_eos_token:
+                        assert self.tokenizer is not None
+                        eos_token_for_padding = self.tokenizer.eos_token_id
+                    else:
+                        eos_token_for_padding = eos_token_id[0]
 
             # An array to track which sequences in the batch have finished.
             finished_sequences = torch.zeros(batch_size, dtype=torch.bool, device=self.cfg.device)
@@ -2217,6 +2218,7 @@ class HookedTransformer(HookedRootModule):
                 output_tokens = sampled_tokens
 
             if return_type == "str":
+                assert self.tokenizer is not None
                 decoded_texts: List[str] = [
                     cast(str, self.tokenizer.decode(tokens, skip_special_tokens=True))
                     for tokens in output_tokens
@@ -2357,7 +2359,6 @@ class HookedTransformer(HookedRootModule):
 
             stop_tokens: List[int] = []
             eos_token_for_padding = 0
-            assert self.tokenizer is not None
             if stop_at_eos:
                 tokenizer_has_eos_token = (
                     self.tokenizer is not None and self.tokenizer.eos_token_id is not None
@@ -2366,7 +2367,7 @@ class HookedTransformer(HookedRootModule):
                     assert (
                         tokenizer_has_eos_token
                     ), "Must pass a eos_token_id if stop_at_eos is True and tokenizer is None or has no eos_token_id"
-
+                    assert self.tokenizer is not None
                     eos_token_id = self.tokenizer.eos_token_id
 
                 if isinstance(eos_token_id, int):
@@ -2375,9 +2376,11 @@ class HookedTransformer(HookedRootModule):
                 else:
                     # eos_token_id is a Sequence (e.g. list or tuple)
                     stop_tokens = eos_token_id
-                    eos_token_for_padding = (
-                        self.tokenizer.eos_token_id if tokenizer_has_eos_token else eos_token_id[0]
-                    )
+                    if tokenizer_has_eos_token:
+                        assert self.tokenizer is not None
+                        eos_token_for_padding = self.tokenizer.eos_token_id
+                    else:
+                        eos_token_for_padding = eos_token_id[0]
 
             # An array to track which sequences in the batch have finished.
             finished_sequences = torch.zeros(batch_size, dtype=torch.bool, device=self.cfg.device)
@@ -2476,6 +2479,25 @@ class HookedTransformer(HookedRootModule):
             # Only yield remaining tokens if we didn't already yield them in the break case
             if accumulated_tokens is not None and not (stop_at_eos and finished_sequences.all()):
                 yield accumulated_tokens
+
+    @property
+    def n_params_total(self) -> int:
+        """Total number of parameters in the model, including embeddings, biases,
+        and layer norm weights.
+
+        This complements ``self.cfg.n_params``, which counts only the "hidden
+        weight" parameters (attention projections + MLP weights, excluding
+        embeddings/biases/layer norms) following the
+        `scaling laws paper <https://arxiv.org/pdf/2001.08361.pdf>`_ convention.
+
+        Use this when you want the actual parameter count for memory budgeting,
+        comparison with HuggingFace's ``model.num_parameters()``, or alignment
+        with reported model sizes in papers (e.g. the Pythia suite).
+
+        Returns:
+            int: ``sum(p.numel() for p in self.parameters())``
+        """
+        return sum(p.numel() for p in self.parameters())
 
     # Give access to all weights as properties.
     @property

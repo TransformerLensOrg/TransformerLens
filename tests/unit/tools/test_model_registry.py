@@ -691,3 +691,92 @@ class TestAliasDrift:
         assert not report.has_drift
         d = report.to_dict()
         assert d["has_drift"] is False
+
+
+class TestQuantizationClassification:
+    """Pattern-based classification of quantized model IDs."""
+
+    # Cross-check (not incompatible, not is_quantized_model) catches list overlap.
+    @pytest.mark.parametrize(
+        "model_id",
+        [
+            "TheBloke/Llama-2-7B-Chat-AWQ",
+            "casperhansen/llama-3-8b-instruct-awq",
+            "TheBloke/Llama-2-7B-Chat-GPTQ",
+            "unsloth/llama-3-8b-bnb-4bit",
+            "RedHatAI/Llama-3.1-8B-Instruct-int8",
+            "neuralmagic/Llama-3-8B-Instruct-w4a16",
+            "mobiuslabsgmbh/Llama-3-8B-instruct-hqq-4bit",
+        ],
+    )
+    def test_hf_loadable_quantized(self, model_id):
+        from transformer_lens.tools.model_registry.registry_io import (
+            is_hf_loadable_quantized,
+            is_incompatible_quantized,
+            is_quantized_model,
+        )
+
+        assert is_hf_loadable_quantized(model_id)
+        assert not is_incompatible_quantized(model_id)
+        assert not is_quantized_model(model_id)
+
+    @pytest.mark.parametrize(
+        "model_id",
+        [
+            "TheBloke/Llama-2-7B-Chat-GGUF",
+            "mlx-community/Mistral-7B-v0.1-mlx",
+            "Qwen/Qwen2-0.5B-Instruct-MLX",  # bare -MLX suffix, no org prefix
+            "Felprot75/Llama-3.1-8B-Lexi-Uncensored-V2-mlx_4bit",  # underscore variant
+            "neuralmagic/Llama-3-8B-Instruct-FP8",
+            "nvidia/Llama-3.3-70B-Instruct-NVFP4",
+        ],
+    )
+    def test_incompatible_quantized(self, model_id):
+        from transformer_lens.tools.model_registry.registry_io import (
+            is_incompatible_quantized,
+            is_quantized_model,
+        )
+
+        assert is_incompatible_quantized(model_id)
+        assert is_quantized_model(model_id)
+
+    # Real model IDs whose substrings could be misread as quant markers — guards against over-broad patterns.
+    @pytest.mark.parametrize(
+        "model_id",
+        [
+            "meta-llama/Llama-3.1-8B-Instruct",
+            "Qwen/Qwen2.5-7B-Instruct",
+            "google/gemma-2-9b-it",
+            "SimpleStories/SimpleStories-30M",
+            "EleutherAI/pythia-2.8b",
+        ],
+    )
+    def test_non_quantized_models_not_misclassified(self, model_id):
+        from transformer_lens.tools.model_registry.registry_io import (
+            is_hf_loadable_quantized,
+            is_incompatible_quantized,
+            required_quant_library_for_model,
+        )
+
+        assert not is_hf_loadable_quantized(model_id)
+        assert not is_incompatible_quantized(model_id)
+        assert required_quant_library_for_model(model_id) is None
+
+    @pytest.mark.parametrize(
+        "model_id, expected_library",
+        [
+            ("unsloth/llama-3-8b-bnb-4bit", "bitsandbytes"),
+            ("RedHatAI/Llama-3.1-8B-Instruct-int8", "bitsandbytes"),
+            ("TheBloke/Llama-2-7B-Chat-GPTQ", "auto_gptq"),
+            ("TheBloke/Llama-2-7B-Chat-AWQ", "awq"),
+            # hqq-4bit matches both -hqq and -4bit; pattern order must resolve to hqq.
+            ("mobiuslabsgmbh/Llama-3-8B-instruct-hqq-4bit", "hqq"),
+            ("neuralmagic/Llama-3-8B-Instruct-w4a16", "auto_gptq"),
+        ],
+    )
+    def test_required_quant_library(self, model_id, expected_library):
+        from transformer_lens.tools.model_registry.registry_io import (
+            required_quant_library_for_model,
+        )
+
+        assert required_quant_library_for_model(model_id) == expected_library

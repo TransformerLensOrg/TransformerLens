@@ -116,6 +116,7 @@ SUPPORTED_ARCHITECTURES = {
     "Qwen3_5ForCausalLM": Qwen3_5ArchitectureAdapter,
     "StableLmForCausalLM": StableLmArchitectureAdapter,
     "T5ForConditionalGeneration": T5ArchitectureAdapter,
+    "MT5ForConditionalGeneration": T5ArchitectureAdapter,
     "XGLMForCausalLM": XGLMArchitectureAdapter,
     "NanoGPTForCausalLM": NanogptArchitectureAdapter,
     "MinGPTForCausalLM": MingptArchitectureAdapter,

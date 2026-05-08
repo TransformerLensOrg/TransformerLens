@@ -13,6 +13,7 @@ import einops
 import numpy as np
 import torch
 from datasets.arrow_dataset import Dataset
+from datasets.iterable_dataset import IterableDataset
 from transformers import AutoTokenizer, PreTrainedTokenizerBase
 
 from transformer_lens.utilities.hf_utils import keep_single_column
@@ -20,14 +21,15 @@ from transformer_lens.utilities.tensors import get_cumsum_along_dim
 
 
 def tokenize_and_concatenate(
-    dataset: Dataset,
+    dataset: Dataset | IterableDataset,
     tokenizer: PreTrainedTokenizerBase,
     streaming: bool = False,
     max_length: int = 1024,
     column_name: str = "text",
     add_bos_token: bool = True,
     num_proc: int = 10,
-) -> Dataset:
+    set_format: bool = True,
+) -> Dataset | IterableDataset:
     """Tokenize each document, join with token-level EOS between docs, and reshape into ``(batch, sequence_length)`` rows.
 
     Useful for training language models on a large text corpus without per-doc
@@ -35,15 +37,21 @@ def tokenize_and_concatenate(
     avoiding early-token bias (e.g. news articles starting with "CNN").
 
     Args:
-        dataset (Dataset): The dataset to tokenize, assumed to be a HuggingFace text dataset.
+        dataset: The dataset to tokenize. Accepts both arrow ``Dataset`` and
+            ``IterableDataset`` (e.g. when loaded with ``streaming=True``).
         tokenizer (PreTrainedTokenizerBase): The tokenizer. Must have ``bos_token_id`` and ``eos_token_id``.
         streaming (bool, optional): If True, avoids parallelism. Defaults to False.
         max_length (int, optional): The length of the context window of the sequence. Defaults to 1024.
         column_name (str, optional): The name of the text column in the dataset. Defaults to 'text'.
         add_bos_token (bool, optional): Whether to prepend ``bos_token_id`` to each output row. Defaults to True.
+        num_proc (int, optional): Number of processes for parallel tokenization. Ignored when ``streaming=True``. Defaults to 10.
+        set_format (bool, optional): If True, calls ``set_format(type="torch")`` on the result. Set False
+            for ``IterableDataset`` (which doesn't support format setting); wrap the output in
+            ``(torch.LongTensor(ex["tokens"]) for ex in tokenized_dataset)`` instead. Defaults to True.
 
     Returns:
-        Dataset: Tokenized dataset of tensors with a single column ``"tokens"``.
+        Tokenized dataset of token sequences in a single column ``"tokens"``. Returns the same dataset
+        type as the input (``Dataset`` or ``IterableDataset``).
     """
     dataset = keep_single_column(dataset, column_name)
     has_pad_token = tokenizer.pad_token is not None
@@ -102,17 +110,20 @@ def tokenize_and_concatenate(
         return {"tokens": tokens}
 
     try:
+        # IterableDataset.map() rejects `num_proc` outright (even None), so we
+        # spread the kwarg conditionally rather than always passing it.
         tokenized_dataset = dataset.map(
             tokenize_function,
             batched=True,
-            num_proc=(num_proc if not streaming else None),
             remove_columns=[column_name],
+            **({"num_proc": num_proc} if not streaming else {}),
         )
     finally:
         if _deprecation_warnings_saved is not None:
             tokenizer.deprecation_warnings.clear()
             tokenizer.deprecation_warnings.update(_deprecation_warnings_saved)
-    tokenized_dataset.set_format(type="torch", columns=["tokens"])
+    if set_format:
+        tokenized_dataset.set_format(type="torch", columns=["tokens"])
     return tokenized_dataset
 
 
@@ -154,6 +165,11 @@ def get_tokenizer_with_bos(tokenizer: PreTrainedTokenizerBase) -> PreTrainedToke
             token=huggingface_token if len(huggingface_token) > 0 else None,
             **init_kwargs,
         )
+        # Preserve padding_side from the original tokenizer, since AutoTokenizer.from_pretrained
+        # resets it to the HuggingFace default (usually "right"). Without this, callers who
+        # explicitly set tokenizer.padding_side = "left" before passing the tokenizer in would
+        # have that setting silently discarded. See issue #801.
+        tokenizer_with_bos.padding_side = tokenizer.padding_side
 
     return tokenizer_with_bos
 

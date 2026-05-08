@@ -135,15 +135,28 @@ class HookedTransformerConfig(TransformerLensConfig):
             dimensions of each head are rotated. Defaults to None, if
             positional_embedding_type=="rotary" post-init then sets it to d_head, i.e. "rotate all
             dimensions of the query and key".
-        n_params (int, *optional*): The number of (hidden weight)
-            parameters in the model. This is automatically calculated and not
-            intended to be set by the user. (Non embedding parameters, because
-            the [scaling laws paper](https://arxiv.org/pdf/2001.08361.pdf) found
-            that that was a more meaningful number. Ignoring biases and layer
-            norms, for convenience)
+        n_params (int, *optional*): The number of "hidden weight" parameters
+            in the model, **excluding** embeddings, unembedding, biases, and
+            layer norms. Counts only the attention projections (W_Q, W_K, W_V,
+            W_O) and MLP weights (W_in, W_out, plus W_gate when ``gated_mlp=True``).
+            This matches the convention from the
+            `scaling laws paper <https://arxiv.org/pdf/2001.08361.pdf>`_,
+            which found this to be the most meaningful number for predicting
+            performance. **Note:** this is NOT the same as
+            ``sum(p.numel() for p in model.parameters())`` — that would
+            include embeddings and biases and yield a larger number. Use the
+            ``sum(p.numel() ...)`` form if you want the total parameter count
+            (e.g. for memory-budget calculations). Automatically calculated;
+            not intended to be set by the user.
         use_hook_tokens (bool): Will add a hook point on the token input to
             HookedTransformer.forward, which lets you cache or intervene on the tokens.
             Defaults to False.
+        gated_mlp (bool): If True, the MLP layer uses a gated formulation
+            (SwiGLU/GeGLU-style): ``mlp_out = W_out @ (act_fn(W_gate @ x) * (W_in @ x))``,
+            with an extra ``W_gate`` weight matrix alongside ``W_in`` and ``W_out``. Used by
+            LLaMA, Mistral, Gemma, Qwen and similar families. When False (default), the MLP
+            is the plain ``mlp_out = W_out @ act_fn(W_in @ x)`` form. ``loading_from_pretrained``
+            sets this automatically per architecture; only set manually for a custom config.
         default_prepend_bos (bool, optional): Default behavior of whether to prepend the BOS token when the
             methods of HookedTransformer process input text to tokenize (only when input is a string).
             Defaults to True - even for models not explicitly trained with this, heads often use the

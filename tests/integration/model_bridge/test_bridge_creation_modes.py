@@ -130,3 +130,78 @@ class TestBridgeCreationModes:
 
         # Should not raise any memory-related errors
         assert True, "Memory cleanup should work correctly"
+
+
+class TestBridgeOfflineWithHfModel:
+    """Bridge must reuse hf_model.config when supplied, not refetch from the Hub (#846)."""
+
+    OFFLINE_MODEL = "trl-internal-testing/tiny-MistralForCausalLM-0.2"
+
+    @pytest.fixture
+    def hf_model(self):
+        from transformers import AutoModelForCausalLM
+
+        return AutoModelForCausalLM.from_pretrained(self.OFFLINE_MODEL).eval()
+
+    @pytest.fixture
+    def tokenizer(self):
+        from transformers import AutoTokenizer
+
+        return AutoTokenizer.from_pretrained(self.OFFLINE_MODEL)
+
+    def test_offline_boot_with_hf_model(self, hf_model, tokenizer):
+        """Bridge boot succeeds when AutoConfig.from_pretrained would fail."""
+        from unittest.mock import patch
+
+        import transformer_lens.model_bridge.sources.transformers as bridge_source
+
+        with patch.object(bridge_source, "AutoConfig") as mock_autoconfig:
+            mock_autoconfig.from_pretrained.side_effect = OSError("Simulated Hub failure")
+
+            bridge = TransformerBridge.boot_transformers(
+                self.OFFLINE_MODEL, hf_model=hf_model, tokenizer=tokenizer
+            )
+
+            test_input = tokenizer("Hello", return_tensors="pt")["input_ids"]
+            with torch.no_grad():
+                logits = bridge(test_input)
+            assert torch.isfinite(logits).all()
+
+    def test_hf_model_config_not_mutated_by_bridge(self, hf_model, tokenizer):
+        """hf_config_overrides / n_ctx / pad_token_id mutations must not leak into hf_model.config.
+
+        Bridge works on a deepcopy so the user's loaded model stays clean. Catches a
+        regression where the deepcopy is dropped in favor of a direct reference.
+        """
+        snapshot = {
+            "max_position_embeddings": getattr(hf_model.config, "max_position_embeddings", None),
+            "pad_token_id": getattr(hf_model.config, "pad_token_id", None),
+            "output_attentions": getattr(hf_model.config, "output_attentions", None),
+        }
+
+        TransformerBridge.boot_transformers(
+            self.OFFLINE_MODEL,
+            hf_model=hf_model,
+            tokenizer=tokenizer,
+            hf_config_overrides={"max_position_embeddings": 999},
+            n_ctx=128,
+        )
+
+        for attr, original_value in snapshot.items():
+            assert (
+                getattr(hf_model.config, attr, None) == original_value
+            ), f"Bridge mutated hf_model.config.{attr}"
+
+    def test_autoconfig_not_called_when_hf_model_provided(self, hf_model, tokenizer):
+        """Patches AutoConfig in the bridge module only — transitive calls from AutoTokenizer
+        (which uses ``transformers.AutoConfig`` directly) aren't intercepted.
+        """
+        from unittest.mock import patch
+
+        import transformer_lens.model_bridge.sources.transformers as bridge_source
+
+        with patch.object(bridge_source, "AutoConfig") as mock_autoconfig:
+            TransformerBridge.boot_transformers(
+                self.OFFLINE_MODEL, hf_model=hf_model, tokenizer=tokenizer
+            )
+            assert not mock_autoconfig.from_pretrained.called
