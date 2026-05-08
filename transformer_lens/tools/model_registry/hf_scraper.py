@@ -248,8 +248,13 @@ def scrape_all_models(
         # count data inline with the listing, avoiding per-model API calls.
         # With ~1000 models per page, a full scan of 200K+ models needs only
         # ~200 paginated requests (well within the 1000 req / 5 min limit).
+        # Use ``filter`` rather than ``pipeline_tag`` so encoder-decoder models
+        # are discoverable: HF assigns T5/mT5 a primary pipeline_tag of
+        # "translation" (or None for mT5) and only lists "text2text-generation"
+        # in the broader tag list. ``filter`` matches against tags, ``pipeline_tag``
+        # only against the canonical primary tag.
         list_kwargs: dict = {
-            "pipeline_tag": task,
+            "filter": task,
             "sort": "downloads",
             "expand": ["config", "safetensors"],
         }

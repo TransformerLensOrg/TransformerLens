@@ -232,6 +232,7 @@ def determine_architecture_from_hf_config(hf_config):
             "openelm": "OpenELMForCausalLM",
             "stablelm": "StableLmForCausalLM",
             "t5": "T5ForConditionalGeneration",
+            "mt5": "MT5ForConditionalGeneration",
         }
         if model_type in model_type_mappings:
             architectures.append(model_type_mappings[model_type])
