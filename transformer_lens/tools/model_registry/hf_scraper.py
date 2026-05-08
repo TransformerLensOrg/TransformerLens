@@ -130,6 +130,30 @@ def _load_existing_models(output_dir: Path) -> tuple[set[str], list[dict]]:
     return existing_ids, existing_models
 
 
+def _load_existing_gaps(output_dir: Path) -> dict[str, dict]:
+    """Load existing per-architecture gap entries keyed by architecture_id.
+
+    Lets a new scrape merge instead of overwrite — without this, the second of two
+    sequential scrapes (e.g. text-generation then text2text-generation) wipes the
+    first run's gap data.
+    """
+    gaps_path = output_dir / "architecture_gaps.json"
+    by_arch: dict[str, dict] = {}
+    if not gaps_path.exists():
+        return by_arch
+    try:
+        data = json.loads(gaps_path.read_text())
+    except (json.JSONDecodeError, OSError) as e:
+        logger.warning(f"Could not load existing gaps: {e}")
+        return by_arch
+    for entry in data.get("gaps", []):
+        if isinstance(entry, dict) and "architecture_id" in entry:
+            by_arch[entry["architecture_id"]] = entry
+    if by_arch:
+        logger.info(f"Loaded {len(by_arch)} existing architecture gaps from {gaps_path}")
+    return by_arch
+
+
 def _build_model_entry(model_id: str, architecture_id: str) -> dict:
     """Build a model entry dict matching the ModelEntry schema."""
     return {
@@ -170,21 +194,28 @@ def _canonical_author_sweep(
             logger.warning(f"Canonical sweep: list_models(author={author!r}) failed: {exc}")
             continue
 
-        for model in models_iter:
-            if model.id in seen_models:
-                continue
-            if is_quantized_model(model.id):
-                continue
-            model_arch: Optional[str] = _extract_architecture(model)
-            if model_arch is None or model_arch not in HF_SUPPORTED_ARCHITECTURES:
-                continue
-            # Reject e.g. mistralai's non-Mistral checkpoints.
-            if model_arch not in expected_archs:
-                continue
-            supported_models.append(_build_model_entry(model.id, model_arch))
-            seen_models.add(model.id)
-            added += 1
-            logger.info(f"Canonical sweep added: {model.id} ({model_arch})")
+        # Iterate paginated results; a single timeout shouldn't lose every prior author.
+        try:
+            for model in models_iter:
+                if model.id in seen_models:
+                    continue
+                if is_quantized_model(model.id):
+                    continue
+                model_arch: Optional[str] = _extract_architecture(model)
+                if model_arch is None or model_arch not in HF_SUPPORTED_ARCHITECTURES:
+                    continue
+                # Reject e.g. mistralai's non-Mistral checkpoints.
+                if model_arch not in expected_archs:
+                    continue
+                supported_models.append(_build_model_entry(model.id, model_arch))
+                seen_models.add(model.id)
+                added += 1
+                logger.info(f"Canonical sweep added: {model.id} ({model_arch})")
+        except Exception as exc:  # pragma: no cover — network/transient
+            logger.warning(
+                f"Canonical sweep: pagination for {author!r} failed mid-iteration: {exc}"
+            )
+            continue
     return added
 
 
@@ -448,9 +479,13 @@ def scrape_all_models(
 
     if canonical_sweep:
         logger.info("\nRunning canonical-author sweep (bypasses download threshold)...")
-        canonical_added = _canonical_author_sweep(api, supported_models, seen_models)
-        new_supported += canonical_added
-        logger.info(f"Canonical sweep added {canonical_added} models.")
+        # Don't lose the main-scan registry on a sweep-time failure.
+        try:
+            canonical_added = _canonical_author_sweep(api, supported_models, seen_models)
+            new_supported += canonical_added
+            logger.info(f"Canonical sweep added {canonical_added} models.")
+        except Exception as exc:
+            logger.warning(f"Canonical sweep aborted: {exc}. Main-scan results preserved.")
 
     # Build final reports (matching schemas.py exactly)
     elapsed = time.time() - start_time
@@ -507,6 +542,47 @@ def scrape_all_models(
         }
         for arch, count in unsupported_arch_counts.items()
     ]
+
+    # Merge with gaps from prior scrapes so a sequential text-generation +
+    # text2text-generation run doesn't lose the first pass's data. For overlapping
+    # architectures, sum counts/downloads, take the smaller min_param_count, and
+    # union sample_models (capped at 10).
+    existing_gaps = _load_existing_gaps(output_dir)
+    if existing_gaps:
+        new_by_arch = {g["architecture_id"]: g for g in gaps}
+        merged: list[dict] = []
+        for arch in set(existing_gaps) | set(new_by_arch):
+            o = existing_gaps.get(arch)
+            n = new_by_arch.get(arch)
+            if o is None and n is not None:
+                merged.append(n)
+                continue
+            if n is None and o is not None:
+                merged.append(o)
+                continue
+            assert o is not None and n is not None
+            # Both present: combine counts/downloads, dedupe samples (cap 10).
+            merged_samples: list[str] = []
+            seen_samples: set[str] = set()
+            for s in o.get("sample_models", []) + n.get("sample_models", []):
+                if s not in seen_samples:
+                    merged_samples.append(s)
+                    seen_samples.add(s)
+                if len(merged_samples) >= 10:
+                    break
+            min_p = [
+                p for p in (o.get("min_param_count"), n.get("min_param_count")) if p is not None
+            ]
+            merged.append(
+                {
+                    "architecture_id": arch,
+                    "total_models": o["total_models"] + n["total_models"],
+                    "total_downloads": o["total_downloads"] + n["total_downloads"],
+                    "min_param_count": min(min_p) if min_p else None,
+                    "sample_models": merged_samples,
+                }
+            )
+        gaps = merged
 
     # Compute relevancy scores and sort by score descending
     compute_scores_for_gaps(gaps)

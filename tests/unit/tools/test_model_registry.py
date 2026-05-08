@@ -725,6 +725,8 @@ class TestQuantizationClassification:
         [
             "TheBloke/Llama-2-7B-Chat-GGUF",
             "mlx-community/Mistral-7B-v0.1-mlx",
+            "Qwen/Qwen2-0.5B-Instruct-MLX",  # bare -MLX suffix, no org prefix
+            "Felprot75/Llama-3.1-8B-Lexi-Uncensored-V2-mlx_4bit",  # underscore variant
             "neuralmagic/Llama-3-8B-Instruct-FP8",
             "nvidia/Llama-3.3-70B-Instruct-NVFP4",
         ],
