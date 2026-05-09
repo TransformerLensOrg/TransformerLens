@@ -166,6 +166,9 @@ class HookedVisualEncoder(HookedRootModule):
         )
         encoder_outputs = self.encoder_output(embedding_output)
         sequence_output = self.layernorm(encoder_outputs)
+        if "in21k" in cfg.official_model_name:
+            return sequence_output
+            
         cls_token = sequence_output[:, 0, :]
         
         logits = self.classifier(cls_token)
