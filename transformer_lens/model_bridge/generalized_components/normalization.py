@@ -23,6 +23,7 @@ class NormalizationBridge(GeneralizedComponent):
         config: Any,
         submodules: Optional[Dict[str, GeneralizedComponent]] = {},
         use_native_layernorm_autograd: bool = False,
+        uses_rms_norm: Optional[bool] = None,
     ):
         """Initialize the normalization bridge.
 
@@ -33,11 +34,32 @@ class NormalizationBridge(GeneralizedComponent):
             use_native_layernorm_autograd: If True, use HuggingFace's native LayerNorm
                                           autograd for exact gradient matching. If False,
                                           use custom implementation. Defaults to False.
+            uses_rms_norm: Force RMSNorm vs LayerNorm; None defers to introspection
+                then ``config.uses_rms_norm``.
         """
         super().__init__(name, config, submodules=submodules)
         self.hook_normalized = HookPoint()
         self.hook_scale = HookPoint()
         self.use_native_layernorm_autograd = use_native_layernorm_autograd
+        self._uses_rms_norm_override = uses_rms_norm
+
+    @property
+    def uses_rms_norm(self) -> bool:
+        """Whether this bridge treats the wrapped module as RMSNorm.
+
+        Override > module introspection > config. Introspection guards against
+        a shared config (RMSNorm LM + LayerNorm vision tower) misclassifying
+        a real ``nn.LayerNorm``.
+        """
+        if self._uses_rms_norm_override is not None:
+            return self._uses_rms_norm_override
+        component = self.original_component
+        if component is not None:
+            if isinstance(component, torch.nn.LayerNorm):
+                return False
+            if "RMSNorm" in type(component).__name__:
+                return True
+        return bool(getattr(self.config, "uses_rms_norm", False))
 
     def forward(self, hidden_states: torch.Tensor, **kwargs: Any) -> torch.Tensor:
         """Forward pass through the normalization bridge.
@@ -61,7 +83,7 @@ class NormalizationBridge(GeneralizedComponent):
         elif hasattr(self.config, "layer_norm_folding") and self.config.layer_norm_folding:
             result = self._hf_autograd_forward_with_hooks(hidden_states)
         else:
-            uses_rms_norm = getattr(self.config, "uses_rms_norm", False)
+            uses_rms_norm = self.uses_rms_norm
             # Upcast to float32 for normalization precision (matches HT's RMSNorm behavior)
             input_dtype = hidden_states.dtype
             if input_dtype not in (torch.float32, torch.float64):
@@ -105,7 +127,7 @@ class NormalizationBridge(GeneralizedComponent):
         with torch.no_grad():
             # Upcast to float32 for hook precision (matches HT's RMSNorm/LayerNorm behavior)
             x_float = x.float() if x.dtype not in (torch.float32, torch.float64) else x
-            if not getattr(self.config, "uses_rms_norm", False):
+            if not self.uses_rms_norm:
                 x_centered = x_float - x_float.mean(-1, keepdim=True)
             else:
                 x_centered = x_float

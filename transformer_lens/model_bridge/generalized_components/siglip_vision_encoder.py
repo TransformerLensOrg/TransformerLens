@@ -117,6 +117,8 @@ class SiglipVisionEncoderBridge(GeneralizedComponent):
         # original_component (a SiglipVisionModel) by setup_submodules().
         # SiglipVisionModel wraps SiglipVisionTransformer as .vision_model,
         # so all paths go through vision_model.*.
+        # post_layernorm is nn.LayerNorm; NormalizationBridge introspects the
+        # wrapped module so the RMSNorm-LM config (Gemma 3, LLaVA) doesn't leak.
         default_submodules = {
             "embeddings": GeneralizedComponent(name="vision_model.embeddings"),
             "encoder_layers": SiglipVisionEncoderLayerBridge(name="vision_model.encoder.layers"),
