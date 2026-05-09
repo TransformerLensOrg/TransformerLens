@@ -69,7 +69,6 @@ jobs:
           activate-environment: true
           enable-cache: true
       - name: Cache Models used with Tests
-        id: cache-hf-models
         uses: actions/cache@v3
         with:
           path: |
@@ -102,9 +101,6 @@ jobs:
         run: uv run python -c "import os; from huggingface_hub import login; login(token=os.environ['HF_TOKEN'])"
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-      - name: Enable HF offline mode on cache hit
-        if: steps.cache-hf-models.outputs.cache-hit == 'true'
-        run: echo "HF_HUB_OFFLINE=1" >> $GITHUB_ENV
       - name: Unit Test
         run: make unit-test
         env:
@@ -254,7 +250,6 @@ jobs:
           activate-environment: true
           enable-cache: true
       - name: Cache Models used with Tests
-        id: cache-hf-models
         uses: actions/cache@v3
         with:
           path: |
@@ -287,9 +282,6 @@ jobs:
         run: uv run python -c "import os; from huggingface_hub import login; login(token=os.environ['HF_TOKEN'])"
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-      - name: Enable HF offline mode on cache hit
-        if: steps.cache-hf-models.outputs.cache-hit == 'true'
-        run: echo "HF_HUB_OFFLINE=1" >> $GITHUB_ENV
       - name: Test Suite with Coverage Report
         run: make coverage-report-test
         env:
