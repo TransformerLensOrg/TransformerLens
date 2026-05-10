@@ -76,9 +76,9 @@ class HookedVisualEncoder(HookedRootModule):
 
         self.blocks = nn.ModuleList([TransformerBlock(self.cfg, block_index) for block_index in range(self.cfg.n_layers)])
         self.layernorm = LayerNorm(self.cfg)
-        if "in21k" not in cfg.official_model_name:
+        if "in21k" not in self.official_model_name:
             self.classifier = ClassifierHead(1000, self.cfg)
-            if "deit" in cfg.official_model_name:
+            if "deit" in self.official_model_name:
                 self.distillation_classifier = ClassifierHead(1000, self.cfg)
 
         if move_to_device:
@@ -285,6 +285,7 @@ class HookedVisualEncoder(HookedRootModule):
         )
 
         model = cls(cfg, move_to_device=False)
+        model.official_model_name = official_model_name
 
         model.load_state_dict(state_dict, strict=False)
 
