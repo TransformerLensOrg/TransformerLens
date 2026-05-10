@@ -290,7 +290,11 @@ class HookedVisualEncoder(HookedRootModule):
 
         model.feature_extractor = AutoImageProcessor.from_pretrained(official_model_name)
 
-        visual_model = AutoModelForImageClassification.from_pretrained(official_model_name)
+        
+        if "in21k" in official_model_name:
+            visual_model = ViTModel.from_pretrained(official_model_name)
+        else:
+            visual_model = AutoModelForImageClassification.from_pretrained(official_model_name)
 
         visual_model.eval()
 
