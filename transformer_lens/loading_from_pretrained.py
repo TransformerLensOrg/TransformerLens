@@ -2061,6 +2061,20 @@ def get_pretrained_state_dict(
                     token=huggingface_token if len(huggingface_token) > 0 else None,
                     **kwargs,
                 )
+            elif cfg.original_architecture == "ViTModel":
+                hf_model = ViTModel.from_pretrained(
+                    official_model_name,
+                    dtype=dtype,
+                    token=huggingface_token if len(huggingface_token) > 0 else None,
+                    **kwargs,
+                )
+            elif cfg.original_architecture == "DeiTForImageClassificationWithTeacher":
+                hf_model = DeiTForImageClassificationWithTeacher.from_pretrained(
+                    official_model_name,
+                    dtype=dtype,
+                    token=huggingface_token if len(huggingface_token) > 0 else None,
+                    **kwargs,
+                )
             elif "bert" in official_model_name:
                 hf_model = BertForPreTraining.from_pretrained(
                     official_model_name,
@@ -2164,6 +2178,8 @@ def get_pretrained_state_dict(
         elif cfg.original_architecture == "Gemma2ForCausalLM":
             state_dict = convert_gemma_weights(hf_model, cfg)
         elif cfg.original_architecture == "ViTForImageClassification":
+            state_dict = convert_vit_weights(hf_model, cfg)
+        elif cfg.original_architecture == "ViTModel":
             state_dict = convert_vit_weights(hf_model, cfg)
         elif cfg.original_architecture == "ApertusForCausalLM":
             state_dict = convert_apertus_weights(hf_model, cfg)
