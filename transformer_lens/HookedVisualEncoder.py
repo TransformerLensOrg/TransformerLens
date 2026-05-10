@@ -293,14 +293,6 @@ class HookedVisualEncoder(HookedRootModule):
         visual_model = AutoModelForImageClassification.from_pretrained(official_model_name)
 
         visual_model.eval()
-        
-        if "vit" in official_model_name:
-            model.embeddings = visual_model.vit.embeddings
-        elif "deit" in official_model_name:
-            model.embeddings = visual_model.deit.embeddings
-        elif "in21k" in official_model_name:
-            model.embeddings = visual_model.embeddings
-
 
         if "distilled" in official_model_name:
             model.embeddings = visual_model.deit.embeddings
