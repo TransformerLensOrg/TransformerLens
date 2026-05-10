@@ -78,7 +78,7 @@ class HookedVisualEncoder(HookedRootModule):
         self.layernorm = LayerNorm(self.cfg)
         if "in21k" not in self.cfg.model_name:
             self.classifier = ClassifierHead(1000, self.cfg)
-            if "deit" in self.cfg.model_name:
+            if "distilled" in self.cfg.model_name:
                 self.distillation_classifier = ClassifierHead(1000, self.cfg)
 
         if move_to_device:
@@ -172,7 +172,7 @@ class HookedVisualEncoder(HookedRootModule):
         cls_token = sequence_output[:, 0, :]
         
         logits = self.classifier(cls_token)
-        if "deit" in self.cfg.model_name:
+        if "distilled" in self.cfg.model_name:
             distillation_logits = self.distillation_classifier(sequence_output[:, 1, :])
     
             # during inference, return the average of both classifier predictions
@@ -293,12 +293,24 @@ class HookedVisualEncoder(HookedRootModule):
         visual_model = AutoModelForImageClassification.from_pretrained(official_model_name)
 
         visual_model.eval()
+        
         if "vit" in official_model_name:
             model.embeddings = visual_model.vit.embeddings
         elif "deit" in official_model_name:
             model.embeddings = visual_model.deit.embeddings
         elif "in21k" in official_model_name:
             model.embeddings = visual_model.embeddings
+
+
+        if "distilled" in official_model_name:
+            model.embeddings = visual_model.deit.embeddings
+        elif "deit" in official_model_name:
+            model.embeddings = visual_model.deit.embeddings
+        elif "in21k" in official_model_name:
+            model.embeddings = visual_model.embeddings
+        elif "vit" in official_model_name:
+            model.embeddings = visual_model.vit.embeddings
+        
         
         del visual_model
 
