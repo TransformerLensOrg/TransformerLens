@@ -119,7 +119,7 @@ OFFICIAL_MODEL_NAMES: list[str] = [
     "facebook/deit-base-patch16-224",
     "facebook/deit-small-distilled-patch16-224",
     "facebook/deit-small-patch16-224",
-    "facebook/deit-tiny-distilled-patch16-224,
+    "facebook/deit-tiny-distilled-patch16-224",
     "facebook/deit-tiny-patch16-224",
     "gpt2",
     "gpt2-large",
