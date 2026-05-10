@@ -15,7 +15,7 @@ import torch.nn.functional as F
 from PIL import Image
 from transformers import (
     AutoImageProcessor,
-    DeiTForImageClassification,
+    ViTForImageClassification,
     DeiTForImageClassificationWithTeacher,
 )
 
@@ -33,7 +33,7 @@ IMAGE_URL = "http://images.cocodataset.org/val2017/000000039769.jpg"
 MODEL_CONFIGS = [
     {
         "checkpoint": "facebook/deit-base-patch16-224",
-        "hf_cls": DeiTForImageClassification,
+        "hf_cls": ViTForImageClassification,
         "name": "deit-base",
     },
     {
