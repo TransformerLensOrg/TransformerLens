@@ -296,11 +296,9 @@ class HookedVisualEncoder(HookedRootModule):
 
         if "distilled" in official_model_name:
             model.embeddings = visual_model.deit.embeddings
-        elif "deit" in official_model_name:
-            model.embeddings = visual_model.deit.embeddings
         elif "in21k" in official_model_name:
             model.embeddings = visual_model.embeddings
-        elif "vit" in official_model_name:
+        else:
             model.embeddings = visual_model.vit.embeddings
         
         
