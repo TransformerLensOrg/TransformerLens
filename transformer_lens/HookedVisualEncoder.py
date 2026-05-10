@@ -185,13 +185,13 @@ class HookedVisualEncoder(HookedRootModule):
     @overload
     def run_with_cache(
         self, *model_args: Any, return_cache_object: Literal[True] = True, **kwargs: Any
-    ) -> Tuple[Float[torch.Tensor, "batch num_labels"], ActivationCache]:
+    ) -> Tuple[Float[torch.Tensor, "batch ..."], ActivationCache]:
         ...
 
     @overload
     def run_with_cache(
         self, *model_args: Any, return_cache_object: Literal[False], **kwargs: Any
-    ) -> Tuple[Float[torch.Tensor, "batch num_labels"], Dict[str, torch.Tensor]]:
+    ) -> Tuple[Float[torch.Tensor, "batch ..."], Dict[str, torch.Tensor]]:
         ...
 
     def run_with_cache(
@@ -201,7 +201,7 @@ class HookedVisualEncoder(HookedRootModule):
         remove_batch_dim: bool = False,
         **kwargs: Any,
     ) -> Tuple[
-        Float[torch.Tensor, "batch num_labels"],
+        Float[torch.Tensor, "batch ..."],
         Union[ActivationCache, Dict[str, torch.Tensor]],
     ]:
         """
