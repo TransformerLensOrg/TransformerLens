@@ -16,7 +16,7 @@ import numpy as np
 from PIL import Image
 from einops import repeat
 from jaxtyping import Float, Int
-from transformers import AutoImageProcessor, AutoModelForImageClassification
+from transformers import AutoImageProcessor, AutoModelForImageClassification, ViTModel
 from transformers.models.auto.tokenization_auto import AutoTokenizer
 from typing_extensions import Literal
 
