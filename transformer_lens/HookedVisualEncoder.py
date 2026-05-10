@@ -76,9 +76,9 @@ class HookedVisualEncoder(HookedRootModule):
 
         self.blocks = nn.ModuleList([TransformerBlock(self.cfg, block_index) for block_index in range(self.cfg.n_layers)])
         self.layernorm = LayerNorm(self.cfg)
-        if "in21k" not in cfg.model_name:
+        if "in21k" not in self.cfg.model_name:
             self.classifier = ClassifierHead(1000, self.cfg)
-            if "deit" in cfg.model_name:
+            if "deit" in self.cfg.model_name:
                 self.distillation_classifier = ClassifierHead(1000, self.cfg)
 
         if move_to_device:
@@ -166,13 +166,13 @@ class HookedVisualEncoder(HookedRootModule):
         )
         encoder_outputs = self.encoder_output(embedding_output)
         sequence_output = self.layernorm(encoder_outputs)
-        if "in21k" in cfg.model_name:
+        if "in21k" in self.cfg.model_name:
             return sequence_output
             
         cls_token = sequence_output[:, 0, :]
         
         logits = self.classifier(cls_token)
-        if "deit" in cfg.model_name:
+        if "deit" in self.cfg.model_name:
             distillation_logits = self.distillation_classifier(sequence_output[:, 1, :])
     
             # during inference, return the average of both classifier predictions
