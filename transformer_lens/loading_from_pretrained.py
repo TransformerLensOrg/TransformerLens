@@ -23,6 +23,8 @@ from transformers import (
     T5ForConditionalGeneration,
     Wav2Vec2Model,
     ViTForImageClassification,
+    ViTModel,
+    DeiTForImageClassificationWithTeacher,
 )
 
 import transformer_lens.utils as utils
