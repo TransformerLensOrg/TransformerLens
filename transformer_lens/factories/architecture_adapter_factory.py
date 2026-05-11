@@ -88,6 +88,7 @@ SUPPORTED_ARCHITECTURES = {
     "Gemma3ForConditionalGeneration": Gemma3MultimodalArchitectureAdapter,
     "Gemma3nForConditionalGeneration": Gemma3nArchitectureAdapter,
     "Gemma4ForCausalLM": Gemma4ArchitectureAdapter,
+    "Gemma4ForConditionalGeneration": Gemma4ArchitectureAdapter,
     "GraniteForCausalLM": GraniteArchitectureAdapter,
     "GraniteMoeForCausalLM": GraniteMoeArchitectureAdapter,
     "GraniteMoeHybridForCausalLM": GraniteMoeHybridArchitectureAdapter,
