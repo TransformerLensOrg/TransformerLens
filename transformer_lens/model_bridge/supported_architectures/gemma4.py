@@ -57,6 +57,8 @@ class Gemma4ArchitectureAdapter(ArchitectureAdapter):
 
         self.cfg.uses_rms_norm = True
         self.cfg.normalization_type = "RMS"
+        self.cfg.final_rms = True
+        self.cfg.eps_attr = "rms_norm_eps"
         # Gemma models use (1.0 + weight) in RMSNorm instead of just weight
         # See: https://github.com/huggingface/transformers/pull/29402
         self.cfg.rmsnorm_uses_offset = True
