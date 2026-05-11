@@ -138,8 +138,18 @@ class TestFactoredMatrixProperties:
     def test_collapse_l(self, factored_matrices):
         for factored_matrix in factored_matrices:
             result = factored_matrix.collapse_l()
-            expected = factored_matrix.S[..., :, None] * utils.transpose(factored_matrix.Vh)
+            expected = factored_matrix.S[..., :, None] * utils.transpose(factored_matrix.V)
             assert torch.allclose(result, expected)
+
+    def test_V_and_Vh_alias_match(self, factored_matrices):
+        import warnings
+
+        for factored_matrix in factored_matrices:
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                vh_value = factored_matrix.Vh
+            assert any(issubclass(w.category, DeprecationWarning) for w in caught)
+            assert torch.equal(vh_value, factored_matrix.V)
 
     def test_collapse_r(self, factored_matrices):
         for factored_matrix in factored_matrices:

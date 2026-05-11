@@ -88,7 +88,7 @@ class SVDInterpreter:
         if vector_type == "OV":
             assert head_index is not None  # keep mypy happy
             matrix = self._get_OV_matrix(layer_index, head_index)
-            V = matrix.Vh.T
+            V = matrix.V.T
 
         elif vector_type == "w_in":
             matrix = self._get_w_in_matrix(layer_index)
