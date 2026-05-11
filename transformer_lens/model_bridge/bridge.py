@@ -925,6 +925,7 @@ class TransformerBridge(nn.Module):
         Returns:
             Token tensor of shape ``[batch, pos]``.
         """
+        assert self.tokenizer is not None, "Cannot use to_tokens without a tokenizer"
         if prepend_bos is None:
             prepend_bos = getattr(self.cfg, "default_prepend_bos", True)
         if padding_side is None:
@@ -2548,10 +2549,14 @@ class TransformerBridge(nn.Module):
         stop_tokens = []
         eos_token_for_padding = 0
         if stop_at_eos:
+            tokenizer_has_eos_token = (
+                self.tokenizer is not None and self.tokenizer.eos_token_id is not None
+            )
             if eos_token_id is None:
                 assert (
-                    self.tokenizer.eos_token_id is not None
-                ), "Must pass eos_token_id if stop_at_eos is True and tokenizer has no eos_token_id"
+                    tokenizer_has_eos_token
+                ), "Must pass eos_token_id if stop_at_eos is True and tokenizer is None or has no eos_token_id"
+                assert self.tokenizer is not None
                 eos_token_id = self.tokenizer.eos_token_id
 
             if isinstance(eos_token_id, int):
@@ -2559,11 +2564,11 @@ class TransformerBridge(nn.Module):
                 eos_token_for_padding = eos_token_id
             else:
                 stop_tokens = list(eos_token_id)
-                eos_token_for_padding = (
-                    self.tokenizer.eos_token_id
-                    if self.tokenizer.eos_token_id is not None
-                    else eos_token_id[0]
-                )
+                if tokenizer_has_eos_token:
+                    assert self.tokenizer is not None
+                    eos_token_for_padding = self.tokenizer.eos_token_id
+                else:
+                    eos_token_for_padding = eos_token_id[0]
 
         # Track which sequences have finished
         finished_sequences = torch.zeros(batch_size, dtype=torch.bool, device=self.cfg.device)
@@ -2728,6 +2733,7 @@ class TransformerBridge(nn.Module):
 
         # Format output
         if return_type == "str":
+            assert self.tokenizer is not None
             if input_type == "str":
                 return self.tokenizer.decode(output_tokens[0], skip_special_tokens=True)
             else:
@@ -2824,21 +2830,25 @@ class TransformerBridge(nn.Module):
         stop_tokens: List[int] = []
         eos_token_for_padding = 0
         if stop_at_eos:
+            tokenizer_has_eos_token = (
+                self.tokenizer is not None and self.tokenizer.eos_token_id is not None
+            )
             if eos_token_id is None:
                 assert (
-                    self.tokenizer.eos_token_id is not None
-                ), "Must pass eos_token_id if stop_at_eos is True and tokenizer has no eos_token_id"
+                    tokenizer_has_eos_token
+                ), "Must pass eos_token_id if stop_at_eos is True and tokenizer is None or has no eos_token_id"
+                assert self.tokenizer is not None
                 eos_token_id = self.tokenizer.eos_token_id
             if isinstance(eos_token_id, int):
                 stop_tokens = [eos_token_id]
                 eos_token_for_padding = eos_token_id
             else:
                 stop_tokens = list(eos_token_id)
-                eos_token_for_padding = (
-                    self.tokenizer.eos_token_id
-                    if self.tokenizer.eos_token_id is not None
-                    else eos_token_id[0]
-                )
+                if tokenizer_has_eos_token:
+                    assert self.tokenizer is not None
+                    eos_token_for_padding = self.tokenizer.eos_token_id
+                else:
+                    eos_token_for_padding = eos_token_id[0]
 
         finished_sequences = torch.zeros(batch_size, dtype=torch.bool, device=self.cfg.device)
 
@@ -2859,6 +2869,7 @@ class TransformerBridge(nn.Module):
             tokens: torch.Tensor,
         ) -> Union[torch.Tensor, str]:
             if return_type == "str":
+                assert self.tokenizer is not None
                 return self.tokenizer.decode(tokens[0], skip_special_tokens=True)
             return tokens
 
