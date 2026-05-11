@@ -786,4 +786,191 @@ def test_get_neuron_results_without_slice():
         pos_slice=None,
     )
 
-    assert torch.isclose(ref_neuron_acts, neuron_acts).all()
+    assert torch.equal(ref_neuron_acts, neuron_acts)
+
+
+@torch.no_grad
+def test_get_neuron_results_project_output_onto_1d():
+    """1D projection: contract W_out with [d_model] vector, drop the d_model dim."""
+    model = load_model("solu-2l")
+    tokens, _ = get_ioi_tokens_and_answer_tokens(model)
+    _, cache = model.run_with_cache(tokens)
+
+    layer = 1
+    direction = torch.randn(model.cfg.d_model, device=model.cfg.device)
+
+    full = cache.get_neuron_results(layer)  # [batch, pos, d_mlp, d_model]
+    expected = full @ direction  # [batch, pos, d_mlp]
+    projected = cache.get_neuron_results(layer, project_output_onto=direction)
+    assert projected.shape == expected.shape
+    assert torch.allclose(projected, expected, atol=1e-5)
+
+
+@torch.no_grad
+def test_get_neuron_results_project_output_onto_2d():
+    """2D projection: contract W_out with [d_model, n_outs], keep n_outs as last dim."""
+    model = load_model("solu-2l")
+    tokens, _ = get_ioi_tokens_and_answer_tokens(model)
+    _, cache = model.run_with_cache(tokens)
+
+    layer = 1
+    n_outs = 3
+    directions = torch.randn(model.cfg.d_model, n_outs, device=model.cfg.device)
+
+    full = cache.get_neuron_results(layer)
+    expected = full @ directions  # [batch, pos, d_mlp, n_outs]
+    projected = cache.get_neuron_results(layer, project_output_onto=directions)
+    assert projected.shape == expected.shape
+    assert torch.allclose(projected, expected, atol=1e-5)
+
+
+@torch.no_grad
+def test_stack_neuron_results_project_output_onto_matches_unprojected():
+    """stack_neuron_results with projection equals unprojected output then @ projection."""
+    model = load_model("solu-2l")
+    tokens, _ = get_ioi_tokens_and_answer_tokens(model)
+    _, cache = model.run_with_cache(tokens)
+
+    direction = torch.randn(model.cfg.d_model, device=model.cfg.device)
+    directions = torch.randn(model.cfg.d_model, 4, device=model.cfg.device)
+
+    layer = model.cfg.n_layers
+    full = cache.stack_neuron_results(layer, pos_slice=-1)
+    # 1D
+    expected_1d = full @ direction
+    projected_1d = cache.stack_neuron_results(layer, pos_slice=-1, project_output_onto=direction)
+    assert projected_1d.shape == expected_1d.shape
+    assert torch.allclose(projected_1d, expected_1d, atol=1e-5)
+    # 2D
+    expected_2d = full @ directions
+    projected_2d = cache.stack_neuron_results(layer, pos_slice=-1, project_output_onto=directions)
+    assert projected_2d.shape == expected_2d.shape
+    assert torch.allclose(projected_2d, expected_2d, atol=1e-5)
+
+
+@torch.no_grad
+def test_stack_neuron_results_project_incl_remainder():
+    """Projection commutes with the incl_remainder branch."""
+    model = load_model("solu-2l")
+    tokens, _ = get_ioi_tokens_and_answer_tokens(model)
+    _, cache = model.run_with_cache(tokens)
+
+    direction = torch.randn(model.cfg.d_model, device=model.cfg.device)
+
+    layer = model.cfg.n_layers
+    full = cache.stack_neuron_results(layer, pos_slice=-1, incl_remainder=True)
+    expected = full @ direction
+    projected = cache.stack_neuron_results(
+        layer, pos_slice=-1, incl_remainder=True, project_output_onto=direction
+    )
+    assert projected.shape == expected.shape
+    assert torch.allclose(projected, expected, atol=1e-5)
+
+
+@torch.no_grad
+def test_get_full_resid_decomposition_project_output_onto_1d():
+    """Full decomposition projection equals unprojected stack @ direction."""
+    model = load_model("solu-2l")
+    tokens, _ = get_ioi_tokens_and_answer_tokens(model)
+    _, cache = model.run_with_cache(tokens)
+
+    direction = torch.randn(model.cfg.d_model, device=model.cfg.device)
+
+    full = cache.get_full_resid_decomposition(layer=-1, pos_slice=-1, expand_neurons=True)
+    expected = full @ direction  # [num_components, batch, ...]
+    projected = cache.get_full_resid_decomposition(
+        layer=-1, pos_slice=-1, expand_neurons=True, project_output_onto=direction
+    )
+    assert projected.shape == expected.shape
+    assert torch.allclose(projected, expected, atol=1e-4)
+
+
+@torch.no_grad
+def test_get_full_resid_decomposition_project_output_onto_2d():
+    """2D projection: last dim is num_outputs, not squeezed."""
+    model = load_model("solu-2l")
+    tokens, _ = get_ioi_tokens_and_answer_tokens(model)
+    _, cache = model.run_with_cache(tokens)
+
+    n_outs = 2
+    directions = torch.randn(model.cfg.d_model, n_outs, device=model.cfg.device)
+
+    full = cache.get_full_resid_decomposition(layer=-1, pos_slice=-1, expand_neurons=True)
+    expected = full @ directions
+    projected = cache.get_full_resid_decomposition(
+        layer=-1, pos_slice=-1, expand_neurons=True, project_output_onto=directions
+    )
+    assert projected.shape == expected.shape
+    assert torch.allclose(projected, expected, atol=1e-4)
+
+
+@torch.no_grad
+def test_get_full_resid_decomposition_project_apply_ln_raises():
+    """apply_ln=True combined with project_output_onto must raise."""
+    model = load_model("solu-2l")
+    tokens, _ = get_ioi_tokens_and_answer_tokens(model)
+    _, cache = model.run_with_cache(tokens)
+
+    direction = torch.randn(model.cfg.d_model, device=model.cfg.device)
+    with pytest.raises(NotImplementedError):
+        cache.get_full_resid_decomposition(
+            layer=-1, pos_slice=-1, apply_ln=True, project_output_onto=direction
+        )
+
+
+@torch.no_grad
+def test_stack_neuron_results_project_apply_ln_raises():
+    model = load_model("solu-2l")
+    tokens, _ = get_ioi_tokens_and_answer_tokens(model)
+    _, cache = model.run_with_cache(tokens)
+
+    direction = torch.randn(model.cfg.d_model, device=model.cfg.device)
+    with pytest.raises(NotImplementedError):
+        cache.stack_neuron_results(
+            layer=-1, pos_slice=-1, apply_ln=True, project_output_onto=direction
+        )
+
+
+@torch.no_grad
+def test_stack_neuron_results_projection_skips_dmodel_materialization():
+    """Projected path's largest tensor must be much smaller than unprojected's, proving the
+    [..., d_mlp, d_model] intermediate is not materialized. Uses TorchDispatchMode to intercept
+    tensor ops; tracemalloc doesn't catch torch CPU allocations."""
+    from torch.utils._python_dispatch import TorchDispatchMode
+
+    class MaxTensorWatcher(TorchDispatchMode):
+        def __init__(self):
+            self.max_numel = 0
+
+        def __torch_dispatch__(self, func, types, args=(), kwargs=None):
+            result = func(*args, **(kwargs or {}))
+            tensors = result if isinstance(result, (list, tuple)) else (result,)
+            for t in tensors:
+                if isinstance(t, torch.Tensor):
+                    self.max_numel = max(self.max_numel, t.numel())
+            return result
+
+    model = load_model("solu-2l")
+    tokens, _ = get_ioi_tokens_and_answer_tokens(model)
+    _, cache = model.run_with_cache(tokens)
+
+    direction = torch.randn(model.cfg.d_model, device=model.cfg.device)
+
+    # Warm-up calls (some kernel selection only happens on first dispatch).
+    _ = cache.stack_neuron_results(layer=-1, pos_slice=-1)
+    _ = cache.stack_neuron_results(layer=-1, pos_slice=-1, project_output_onto=direction)
+
+    with MaxTensorWatcher() as watcher_unproj:
+        _ = cache.stack_neuron_results(layer=-1, pos_slice=-1)
+    with MaxTensorWatcher() as watcher_proj:
+        _ = cache.stack_neuron_results(layer=-1, pos_slice=-1, project_output_onto=direction)
+
+    d_model = model.cfg.d_model
+    ratio = watcher_unproj.max_numel / max(watcher_proj.max_numel, 1)
+    # Expected ratio is ~d_model (~512); we require at least 10x to allow headroom.
+    assert ratio > 10, (
+        f"Memory optimization not detected: max_numel unprojected={watcher_unproj.max_numel:,}, "
+        f"projected={watcher_proj.max_numel:,}, ratio={ratio:.1f}x. Expected projected path's "
+        f"largest tensor to be >>10x smaller than unprojected (the [..., d_mlp, d_model] "
+        f"intermediate has d_model={d_model} as a dim it shouldn't have)."
+    )
