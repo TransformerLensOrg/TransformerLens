@@ -53,6 +53,16 @@ class Gemma4ArchitectureAdapter(ArchitectureAdapter):
         """Initialize the Gemma4 architecture adapter."""
         super().__init__(cfg)
 
+        # Detect model type to set correct HF module paths
+        # Gemma4ForCausalLM (text-only):   model.embed_tokens, model.layers
+        # Gemma4ForConditionalGeneration:  model.language_model.embed_tokens, model.language_model.layers
+        architectures = getattr(cfg, "architectures", [])
+        if "Gemma4ForConditionalGeneration" in architectures:
+            self.text_prefix = "model.language_model"
+        else:
+            self.text_prefix = "model"
+        text = self.text_prefix
+
         self.cfg.gated_mlp = True
 
         self.cfg.uses_rms_norm = True
@@ -168,10 +178,10 @@ class Gemma4ArchitectureAdapter(ArchitectureAdapter):
 
         # Set up component mapping with actual bridge instances
         self.component_mapping = {
-            "embed": EmbeddingBridge(name="model.embed_tokens"),
-            "rotary_emb": RotaryEmbeddingBridge(name="model.rotary_emb"),
+            "embed": EmbeddingBridge(name=f"{text}.embed_tokens"),
+            "rotary_emb": RotaryEmbeddingBridge(name=f"{text}.rotary_emb"),
             "blocks": BlockBridge(
-                name="model.layers",
+                name=f"{text}.layers",
                 submodules={
                     # All Gemma-4 normalizations use simple RMSNorm pass-through
                     "ln1": RMSNormalizationBridge(name="input_layernorm", config=self.cfg),
@@ -208,7 +218,7 @@ class Gemma4ArchitectureAdapter(ArchitectureAdapter):
                     ),
                 },
             ),
-            "ln_final": RMSNormalizationBridge(name="model.norm", config=self.cfg),
+            "ln_final": RMSNormalizationBridge(name=f"{text}.norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head"),
         }
 
@@ -240,13 +250,16 @@ class Gemma4ArchitectureAdapter(ArchitectureAdapter):
             hf_model: The HuggingFace Gemma4 model instance
             bridge_model: The TransformerBridge model (if available)
         """
-        rotary_emb = hf_model.model.rotary_emb
+        text = self.text_prefix
+        rotary_emb = self.get_remote_component(hf_model, f"{text}.rotary_emb")
 
         if hasattr(hf_model, "config") and hasattr(hf_model.config, "_attn_implementation"):
             hf_model.config._attn_implementation = "eager"
 
-        if hasattr(hf_model, "model") and hasattr(hf_model.model, "layers"):
-            for layer in hf_model.model.layers:
+        # Get the layers module using the same prefix
+        text_model = self.get_remote_component(hf_model, text)
+        if hasattr(text_model, "layers"):
+            for layer in text_model.layers:  # type: ignore[union-attr]
                 if hasattr(layer, "self_attn") and hasattr(layer.self_attn, "config"):
                     layer.self_attn.config._attn_implementation = "eager"
 
