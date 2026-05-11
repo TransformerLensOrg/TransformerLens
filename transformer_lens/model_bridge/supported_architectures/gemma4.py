@@ -78,15 +78,15 @@ class Gemma4ArchitectureAdapter(ArchitectureAdapter):
 
         # Gemma4 E-series has Per-Layer Embeddings (PLE)
         if hasattr(cfg, "hidden_size_per_layer_input") and cfg.hidden_size_per_layer_input > 0:
-            self.cfg.hidden_size_per_layer_input = cfg.hidden_size_per_layer_input
+            setattr(self.cfg, "hidden_size_per_layer_input", cfg.hidden_size_per_layer_input)
 
         # Gemma4 E-series has KV sharing (later layers reuse KV from earlier layers)
         if hasattr(cfg, "num_kv_shared_layers") and cfg.num_kv_shared_layers > 0:
-            self.cfg.num_kv_shared_layers = cfg.num_kv_shared_layers
+            setattr(self.cfg, "num_kv_shared_layers", cfg.num_kv_shared_layers)
 
         # Gemma4 has mixed attention: sliding window alternates with full attention
         if hasattr(cfg, "layer_types"):
-            self.cfg.layer_types = cfg.layer_types
+            setattr(self.cfg, "layer_types", cfg.layer_types)
 
         self.weight_processing_conversions = {
             # Note: Gemma4 uses Gemma4TextScaledWordEmbedding which scales
