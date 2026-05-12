@@ -1,10 +1,4 @@
-"""Unit tests for InternLM2ArchitectureAdapter.
-
-Tests cover (one class per phase):
-- Phase A: Config attributes, weight conversion keys/types, split_wqkv numerics,
-           preprocess_weights behaviour
-- Phase D: Factory registration
-"""
+"""Unit tests for InternLM2ArchitectureAdapter: cfg, weight conversions, split_wqkv, preprocess, factory."""
 
 from types import SimpleNamespace
 from typing import Any
@@ -23,17 +17,13 @@ from transformer_lens.model_bridge.generalized_components import (
     EmbeddingBridge,
     GatedMLPBridge,
     JointQKVPositionEmbeddingsAttentionBridge,
+    LinearBridge,
     RMSNormalizationBridge,
     UnembeddingBridge,
 )
 from transformer_lens.model_bridge.supported_architectures.internlm2 import (
     InternLM2ArchitectureAdapter,
 )
-
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
-
 
 def _make_cfg(
     n_heads: int = 8,
@@ -57,12 +47,12 @@ def _make_cfg(
     )
 
 
-@pytest.fixture
+@pytest.fixture(scope="class")
 def cfg() -> TransformerBridgeConfig:
     return _make_cfg()
 
 
-@pytest.fixture
+@pytest.fixture(scope="class")
 def adapter(cfg: TransformerBridgeConfig) -> InternLM2ArchitectureAdapter:
     return InternLM2ArchitectureAdapter(cfg)
 
@@ -89,10 +79,7 @@ def _fill_interleaved(
     d_model: int,
     kv_group_vals: list[tuple[float, float, float]],
 ) -> None:
-    """Fill wqkv weight with per-kv-group constants for layout verification.
-
-    kv_group_vals: list of (q_val, k_val, v_val) per kv-head group.
-    """
+    """Fill wqkv weight with per-kv-group (q,k,v) constants for layout verification."""
     n_kv_groups = n_heads // n_kv_heads
     gs = n_kv_groups + 2
     w = torch.zeros(n_kv_heads, gs, head_dim, d_model)
@@ -103,13 +90,8 @@ def _fill_interleaved(
     wqkv_linear.weight = nn.Parameter(w.reshape((n_heads + 2 * n_kv_heads) * head_dim, d_model))
 
 
-# ---------------------------------------------------------------------------
-# Phase A — Config attribute tests
-# ---------------------------------------------------------------------------
-
-
 class TestInternLM2AdapterConfig:
-    """Adapter must set all required config attributes."""
+    """Adapter sets all required config attributes."""
 
     def test_normalization_type(self, adapter: InternLM2ArchitectureAdapter) -> None:
         assert adapter.cfg.normalization_type == "RMS"
@@ -136,29 +118,24 @@ class TestInternLM2AdapterConfig:
         assert adapter.cfg.n_key_value_heads == 2
 
     def test_supports_fold_ln_false(self, adapter: InternLM2ArchitectureAdapter) -> None:
-        # Must be False: fold_ln silently skips attn when wqkv is fused in bridge state dict.
+        # fold_ln silently skips attn when wqkv is fused in bridge state dict.
         assert adapter.supports_fold_ln is False
 
 
-# ---------------------------------------------------------------------------
-# Phase A — Component mapping structure tests
-# ---------------------------------------------------------------------------
-
-
 class TestInternLM2AdapterComponentMapping:
-    """component_mapping must have correct bridge types and InternLM2-specific names."""
+    """component_mapping has correct bridge types and InternLM2-specific names."""
 
     def test_embed_is_embedding_bridge(self, adapter: InternLM2ArchitectureAdapter) -> None:
         assert adapter.component_mapping is not None
         assert isinstance(adapter.component_mapping["embed"], EmbeddingBridge)
 
     def test_embed_name(self, adapter: InternLM2ArchitectureAdapter) -> None:
-        # InternLM2 uses tok_embeddings, not embed_tokens
+        # InternLM2 uses tok_embeddings, not embed_tokens.
         assert adapter.component_mapping is not None
         assert adapter.component_mapping["embed"].name == "model.tok_embeddings"
 
     def test_no_top_level_rotary_emb(self, adapter: InternLM2ArchitectureAdapter) -> None:
-        # Per-layer rotary injected via setup_component_testing, not top-level mapping
+        # Per-layer rotary, not a top-level component.
         assert adapter.component_mapping is not None
         assert "rotary_emb" not in adapter.component_mapping
 
@@ -185,7 +162,7 @@ class TestInternLM2AdapterComponentMapping:
         assert isinstance(adapter.component_mapping["unembed"], UnembeddingBridge)
 
     def test_unembed_name(self, adapter: InternLM2ArchitectureAdapter) -> None:
-        # InternLM2 uses 'output', not 'lm_head'
+        # InternLM2 uses 'output', not 'lm_head'.
         assert adapter.component_mapping is not None
         assert adapter.component_mapping["unembed"].name == "output"
 
@@ -195,7 +172,7 @@ class TestInternLM2AdapterComponentMapping:
         assert isinstance(blocks.submodules["ln1"], RMSNormalizationBridge)
 
     def test_ln1_name(self, adapter: InternLM2ArchitectureAdapter) -> None:
-        # InternLM2 uses attention_norm, not input_layernorm
+        # InternLM2 uses attention_norm, not input_layernorm.
         assert adapter.component_mapping is not None
         blocks = adapter.component_mapping["blocks"]
         assert blocks.submodules["ln1"].name == "attention_norm"
@@ -206,7 +183,7 @@ class TestInternLM2AdapterComponentMapping:
         assert isinstance(blocks.submodules["ln2"], RMSNormalizationBridge)
 
     def test_ln2_name(self, adapter: InternLM2ArchitectureAdapter) -> None:
-        # InternLM2 uses ffn_norm, not post_attention_layernorm
+        # InternLM2 uses ffn_norm, not post_attention_layernorm.
         assert adapter.component_mapping is not None
         blocks = adapter.component_mapping["blocks"]
         assert blocks.submodules["ln2"].name == "ffn_norm"
@@ -219,7 +196,7 @@ class TestInternLM2AdapterComponentMapping:
         assert isinstance(blocks.submodules["attn"], JointQKVPositionEmbeddingsAttentionBridge)
 
     def test_attn_name(self, adapter: InternLM2ArchitectureAdapter) -> None:
-        # InternLM2 uses 'attention', not 'self_attn'
+        # InternLM2 uses 'attention', not 'self_attn'.
         assert adapter.component_mapping is not None
         blocks = adapter.component_mapping["blocks"]
         assert blocks.submodules["attn"].name == "attention"
@@ -240,37 +217,29 @@ class TestInternLM2AdapterComponentMapping:
         assert isinstance(blocks.submodules["mlp"], GatedMLPBridge)
 
     def test_mlp_name(self, adapter: InternLM2ArchitectureAdapter) -> None:
-        # InternLM2 uses 'feed_forward', not 'mlp'
+        # InternLM2 uses 'feed_forward', not 'mlp'.
         assert adapter.component_mapping is not None
         blocks = adapter.component_mapping["blocks"]
         assert blocks.submodules["mlp"].name == "feed_forward"
 
     def test_mlp_gate_submodule_name(self, adapter: InternLM2ArchitectureAdapter) -> None:
-        # w1 = gate projection
         assert adapter.component_mapping is not None
         blocks = adapter.component_mapping["blocks"]
         assert blocks.submodules["mlp"].submodules["gate"].name == "w1"
 
     def test_mlp_in_submodule_name(self, adapter: InternLM2ArchitectureAdapter) -> None:
-        # w3 = up/in projection
         assert adapter.component_mapping is not None
         blocks = adapter.component_mapping["blocks"]
         assert blocks.submodules["mlp"].submodules["in"].name == "w3"
 
     def test_mlp_out_submodule_name(self, adapter: InternLM2ArchitectureAdapter) -> None:
-        # w2 = down/out projection
         assert adapter.component_mapping is not None
         blocks = adapter.component_mapping["blocks"]
         assert blocks.submodules["mlp"].submodules["out"].name == "w2"
 
 
-# ---------------------------------------------------------------------------
-# Phase A — Weight conversion key and type tests
-# ---------------------------------------------------------------------------
-
-
 class TestInternLM2AdapterWeightConversions:
-    """weight_processing_conversions must have correct keys, types, and rearrange patterns."""
+    """weight_processing_conversions has correct keys, types, and rearrange patterns."""
 
     def test_q_weight_key_present(self, adapter: InternLM2ArchitectureAdapter) -> None:
         assert adapter.weight_processing_conversions is not None
@@ -289,7 +258,6 @@ class TestInternLM2AdapterWeightConversions:
         assert "blocks.{i}.attn.o.weight" in adapter.weight_processing_conversions
 
     def test_exactly_four_conversion_keys(self, adapter: InternLM2ArchitectureAdapter) -> None:
-        # No bias entries for the bias=False shipped config
         assert adapter.weight_processing_conversions is not None
         assert len(adapter.weight_processing_conversions) == 4
 
@@ -349,16 +317,11 @@ class TestInternLM2AdapterWeightConversions:
         assert conv.tensor_conversion.axes_lengths["n"] == adapter.cfg.n_heads
 
     def test_no_source_key_on_q(self, adapter: InternLM2ArchitectureAdapter) -> None:
-        # preprocess_weights writes split keys; no cross-key lookup needed at rearrange time
+        # preprocess_weights writes split keys; no cross-key lookup needed at rearrange time.
         assert adapter.weight_processing_conversions is not None
         conv = adapter.weight_processing_conversions["blocks.{i}.attn.q.weight"]
         assert isinstance(conv, ParamProcessingConversion)
         assert conv.source_key is None
-
-
-# ---------------------------------------------------------------------------
-# Phase A — _split_internlm2_wqkv numerical tests
-# ---------------------------------------------------------------------------
 
 
 class TestInternLM2SplitWqkv:
@@ -384,7 +347,6 @@ class TestInternLM2SplitWqkv:
         assert isinstance(v, nn.Linear)
 
     def test_gqa_shapes(self) -> None:
-        # n_heads=8, n_kv_heads=2, head_dim=4, d_model=32
         adapter = self._adapter(n_heads=8, n_kv_heads=2, d_model=32)
         attn = _make_attn_component(8, 2, 4, 32)
         q, k, v = adapter._split_internlm2_wqkv(attn)
@@ -393,7 +355,7 @@ class TestInternLM2SplitWqkv:
         assert v.weight.shape == (2 * 4, 32)
 
     def test_mha_shapes(self) -> None:
-        # MHA: n_heads == n_kv_heads → gs=3 (standard [Q|K|V])
+        # MHA: n_heads == n_kv_heads → gs=3 (standard [Q|K|V]).
         adapter = self._adapter(n_heads=4, n_kv_heads=4, d_model=32)
         attn = _make_attn_component(4, 4, 8, 32)
         q, k, v = adapter._split_internlm2_wqkv(attn)
@@ -402,11 +364,9 @@ class TestInternLM2SplitWqkv:
         assert v.weight.shape == (4 * 8, 32)
 
     def test_interleaved_layout_correctness(self) -> None:
-        # n_heads=4, n_kv_heads=2, head_dim=4, d_model=16 → gs=4 (2 q-groups + k + v)
         n_heads, n_kv_heads, head_dim, d_model = 4, 2, 4, 16
         adapter = self._adapter(n_heads=n_heads, n_kv_heads=n_kv_heads, d_model=d_model)
         attn = _make_attn_component(n_heads, n_kv_heads, head_dim, d_model)
-        # kv-group 0: Q=1.0, K=2.0, V=3.0; kv-group 1: Q=4.0, K=5.0, V=6.0
         _fill_interleaved(
             attn.wqkv,
             n_heads,
@@ -417,17 +377,13 @@ class TestInternLM2SplitWqkv:
         )
         q, k, v = adapter._split_internlm2_wqkv(attn)
 
-        n_kv_groups = n_heads // n_kv_heads  # 2
-        # Q: rows 0..n_kv_groups*head_dim-1 come from kv-group 0 Q slots (1.0),
-        #    rows n_kv_groups*head_dim..n_heads*head_dim-1 from kv-group 1 Q slots (4.0)
-        assert torch.all(q.weight[: n_kv_groups * head_dim] == 1.0), "Q group-0 rows should be 1.0"
-        assert torch.all(q.weight[n_kv_groups * head_dim :] == 4.0), "Q group-1 rows should be 4.0"
-        # K: row 0..head_dim-1 = kv-group 0 K (2.0), head_dim..2*head_dim-1 = kv-group 1 K (5.0)
-        assert torch.all(k.weight[:head_dim] == 2.0), "K group-0 rows should be 2.0"
-        assert torch.all(k.weight[head_dim:] == 5.0), "K group-1 rows should be 5.0"
-        # V analogous
-        assert torch.all(v.weight[:head_dim] == 3.0), "V group-0 rows should be 3.0"
-        assert torch.all(v.weight[head_dim:] == 6.0), "V group-1 rows should be 6.0"
+        n_kv_groups = n_heads // n_kv_heads
+        assert torch.all(q.weight[: n_kv_groups * head_dim] == 1.0)
+        assert torch.all(q.weight[n_kv_groups * head_dim :] == 4.0)
+        assert torch.all(k.weight[:head_dim] == 2.0)
+        assert torch.all(k.weight[head_dim:] == 5.0)
+        assert torch.all(v.weight[:head_dim] == 3.0)
+        assert torch.all(v.weight[head_dim:] == 6.0)
 
     def test_no_bias(self) -> None:
         adapter = self._adapter()
@@ -450,19 +406,17 @@ class TestInternLM2SplitWqkv:
         assert v.bias.shape == (n_kv_heads * head_dim,)
 
     def test_with_bias_interleaved_values(self) -> None:
-        # Verify bias values follow the same interleaved layout as weights
         n_heads, n_kv_heads, head_dim, d_model = 4, 2, 4, 16
         adapter = self._adapter(n_heads=n_heads, n_kv_heads=n_kv_heads, d_model=d_model)
         attn = _make_attn_component(n_heads, n_kv_heads, head_dim, d_model, has_bias=True)
         n_kv_groups = n_heads // n_kv_heads
         gs = n_kv_groups + 2
-        # Bias: interleaved [q0_vals, q1_vals, k_val, v_val] per kv-head group
         b = torch.zeros((n_heads + 2 * n_kv_heads) * head_dim)
         b_grouped = b.reshape(n_kv_heads, gs, head_dim)
-        b_grouped[0, :n_kv_groups, :] = 1.0  # kv-group 0 Q bias
-        b_grouped[0, n_kv_groups, :] = 2.0  # kv-group 0 K bias
-        b_grouped[0, n_kv_groups + 1, :] = 3.0  # kv-group 0 V bias
-        b_grouped[1, :n_kv_groups, :] = 4.0  # kv-group 1 Q bias
+        b_grouped[0, :n_kv_groups, :] = 1.0
+        b_grouped[0, n_kv_groups, :] = 2.0
+        b_grouped[0, n_kv_groups + 1, :] = 3.0
+        b_grouped[1, :n_kv_groups, :] = 4.0
         b_grouped[1, n_kv_groups, :] = 5.0
         b_grouped[1, n_kv_groups + 1, :] = 6.0
         attn.wqkv.bias = nn.Parameter(b_grouped.reshape(-1))
@@ -486,13 +440,8 @@ class TestInternLM2SplitWqkv:
         assert v(x).shape == (2, 5, n_kv_heads * head_dim)
 
 
-# ---------------------------------------------------------------------------
-# Phase A — preprocess_weights tests
-# ---------------------------------------------------------------------------
-
-
 class TestInternLM2PreprocessWeights:
-    """preprocess_weights must split fused wqkv and fold layer norms."""
+    """preprocess_weights splits fused wqkv and folds layer norms."""
 
     def _make_state_dict_with_fused_qkv(
         self,
@@ -504,7 +453,7 @@ class TestInternLM2PreprocessWeights:
         ln1_scale: float = 1.0,
         qkv_val: float = 1.0,
     ) -> dict[str, torch.Tensor]:
-        """Build a bridge-format state dict with fused qkv.weight for each layer."""
+        """Bridge-format state dict with fused qkv.weight for each layer."""
         n_heads = adapter.cfg.n_heads
         n_kv_groups = n_heads // n_kv_heads
         gs = n_kv_groups + 2
@@ -528,7 +477,7 @@ class TestInternLM2PreprocessWeights:
 
         result = adapter.preprocess_weights(sd)
 
-        assert "blocks.0.attn.qkv.weight" not in result, "fused qkv key must be deleted"
+        assert "blocks.0.attn.qkv.weight" not in result
         assert "blocks.0.attn.q.weight" in result
         assert "blocks.0.attn.k.weight" in result
         assert "blocks.0.attn.v.weight" in result
@@ -546,7 +495,7 @@ class TestInternLM2PreprocessWeights:
         assert result["blocks.0.attn.v.weight"].shape == (2 * 8, 64)
 
     def test_ln1_fold_applied_to_q(self) -> None:
-        """After folding ln1 scale=2.0 into qkv (all 1.0), q/k/v weights should be 2.0."""
+        """ln1 scale=2.0 folded into qkv=1.0 → q/k/v weights become 2.0."""
         adapter = InternLM2ArchitectureAdapter(
             _make_cfg(n_heads=8, n_key_value_heads=2, d_model=64)
         )
@@ -575,7 +524,6 @@ class TestInternLM2PreprocessWeights:
         adapter._fold_ln_requested = True
         n_kv_heads, head_dim, d_model = 2, 8, 64
         sd = self._make_state_dict_with_fused_qkv(adapter, n_kv_heads, head_dim, d_model, 2)
-        # Override ln2 with scale=3.0
         sd["blocks.0.ln2.weight"] = torch.full((d_model,), 3.0)
         result = adapter.preprocess_weights(sd)
         assert torch.all(result["blocks.0.mlp.gate.weight"] == 3.0)
@@ -609,7 +557,6 @@ class TestInternLM2PreprocessWeights:
             adapter, n_kv_heads, head_dim, d_model, 2, ln1_scale=5.0
         )
         result = adapter.preprocess_weights(sd)
-        # Fused key must still be present; no splitting or scaling
         assert "blocks.0.attn.qkv.weight" in result
         assert "blocks.0.attn.q.weight" not in result
 
@@ -618,16 +565,14 @@ class TestInternLM2PreprocessWeights:
         adapter._fold_ln_requested = True
         n_kv_heads, head_dim, d_model = 2, 8, 64
         sd = self._make_state_dict_with_fused_qkv(adapter, n_kv_heads, head_dim, d_model, 1)
-        # Cast to bfloat16
         sd = {k: v.to(torch.bfloat16) for k, v in sd.items()}
         result = adapter.preprocess_weights(sd)
         assert result["blocks.0.attn.q.weight"].dtype == torch.bfloat16
 
     def test_bias_split_when_present(self) -> None:
-        """config.bias=True: fused bias must be split into q/k/v bias keys."""
-        # Use consistent d_model/n_heads so head_dim = d_model // n_heads = 64 // 4 = 16
+        """Fused bias must be split into q/k/v bias keys when config.bias=True."""
         n_heads, n_kv_heads, d_model = 4, 2, 64
-        head_dim = d_model // n_heads  # 16
+        head_dim = d_model // n_heads
         adapter = InternLM2ArchitectureAdapter(
             _make_cfg(n_heads=n_heads, n_key_value_heads=n_kv_heads, d_model=d_model)
         )
@@ -653,7 +598,7 @@ class TestInternLM2PreprocessWeights:
         assert result["blocks.0.attn.v.bias"].shape == (n_kv_heads * head_dim,)
 
     def test_all_layers_processed(self) -> None:
-        """Verify that all n_layers are processed, not just layer 0."""
+        """All n_layers are processed, not just layer 0."""
         adapter = InternLM2ArchitectureAdapter(_make_cfg(n_layers=3))
         adapter._fold_ln_requested = True
         n_kv_heads, head_dim, d_model = 2, 8, 64
@@ -664,13 +609,8 @@ class TestInternLM2PreprocessWeights:
             assert f"blocks.{i}.attn.q.weight" in result
 
 
-# ---------------------------------------------------------------------------
-# Phase D — Factory registration (will pass after Phase D implemented)
-# ---------------------------------------------------------------------------
-
-
 class TestInternLM2FactoryRegistration:
-    """Factory must map InternLM2ForCausalLM to InternLM2ArchitectureAdapter."""
+    """Factory maps InternLM2ForCausalLM to InternLM2ArchitectureAdapter."""
 
     def test_factory_returns_internlm2_adapter(self) -> None:
         from transformer_lens.factories.architecture_adapter_factory import (
@@ -689,3 +629,119 @@ class TestInternLM2FactoryRegistration:
         )
 
         assert "InternLM2ForCausalLM" in SUPPORTED_ARCHITECTURES
+
+    def test_factory_maps_to_correct_class(self) -> None:
+        from transformer_lens.factories.architecture_adapter_factory import (
+            SUPPORTED_ARCHITECTURES,
+        )
+
+        assert SUPPORTED_ARCHITECTURES["InternLM2ForCausalLM"] is InternLM2ArchitectureAdapter
+
+
+class TestInternLM2ComponentMappingPresence:
+    """Component slots exist (deletion guard)."""
+
+    def test_required_top_level_keys(self, adapter: InternLM2ArchitectureAdapter) -> None:
+        # No top-level rotary_emb (per-layer instead).
+        expected = {"embed", "blocks", "ln_final", "unembed"}
+        assert set(adapter.component_mapping.keys()) == expected
+
+    def test_block_has_required_submodules(self, adapter: InternLM2ArchitectureAdapter) -> None:
+        blocks = adapter.component_mapping["blocks"]
+        for name in ("ln1", "ln2", "attn", "mlp"):
+            assert name in blocks.submodules, f"BlockBridge missing submodule '{name}'"
+
+
+class TestInternLM2BlockLinearBridges:
+    """All attn/mlp submodule projections are LinearBridge instances."""
+
+    @pytest.fixture(scope="class")
+    def blocks(self, adapter: InternLM2ArchitectureAdapter) -> BlockBridge:
+        return adapter.component_mapping["blocks"]
+
+    def test_attn_qkv_is_linear_bridge(self, blocks: BlockBridge) -> None:
+        attn = blocks.submodules["attn"]
+        assert isinstance(attn.submodules["qkv"], LinearBridge)
+
+    def test_attn_o_is_linear_bridge(self, blocks: BlockBridge) -> None:
+        attn = blocks.submodules["attn"]
+        assert isinstance(attn.submodules["o"], LinearBridge)
+
+    def test_attn_has_fused_qkv_path(self, blocks: BlockBridge) -> None:
+        # Fused HF projection at name="wqkv"; JointQKV* base adds virtual q/k/v splits on top.
+        attn = blocks.submodules["attn"]
+        assert "qkv" in attn.submodules
+        assert attn.submodules["qkv"].name == "wqkv"
+
+    def test_mlp_gate_is_linear_bridge(self, blocks: BlockBridge) -> None:
+        mlp = blocks.submodules["mlp"]
+        assert isinstance(mlp.submodules["gate"], LinearBridge)
+
+    def test_mlp_in_is_linear_bridge(self, blocks: BlockBridge) -> None:
+        mlp = blocks.submodules["mlp"]
+        assert isinstance(mlp.submodules["in"], LinearBridge)
+
+    def test_mlp_out_is_linear_bridge(self, blocks: BlockBridge) -> None:
+        mlp = blocks.submodules["mlp"]
+        assert isinstance(mlp.submodules["out"], LinearBridge)
+
+
+class TestInternLM2GQASupport:
+    """GQA propagation through weight_processing_conversions."""
+
+    def test_no_gqa_falls_back_to_n_heads(self) -> None:
+        cfg = _make_cfg()
+        cfg.n_key_value_heads = None
+        adapter = InternLM2ArchitectureAdapter(cfg)
+        for slot in ("k", "v"):
+            conv = adapter.weight_processing_conversions[f"blocks.{{i}}.attn.{slot}.weight"]
+            assert conv.tensor_conversion.axes_lengths["n"] == adapter.cfg.n_heads
+
+    def test_gqa_propagates_to_kv_conversions(self) -> None:
+        cfg = _make_cfg(n_heads=8, n_key_value_heads=2)
+        adapter = InternLM2ArchitectureAdapter(cfg)
+        assert adapter.cfg.n_key_value_heads == 2
+        for slot in ("k", "v"):
+            conv = adapter.weight_processing_conversions[f"blocks.{{i}}.attn.{slot}.weight"]
+            assert conv.tensor_conversion.axes_lengths["n"] == 2
+
+    def test_gqa_does_not_change_q_or_o_conversions(self) -> None:
+        cfg = _make_cfg(n_heads=8, n_key_value_heads=2)
+        adapter = InternLM2ArchitectureAdapter(cfg)
+        q_conv = adapter.weight_processing_conversions["blocks.{i}.attn.q.weight"]
+        o_conv = adapter.weight_processing_conversions["blocks.{i}.attn.o.weight"]
+        assert q_conv.tensor_conversion.axes_lengths["n"] == 8
+        assert o_conv.tensor_conversion.axes_lengths["n"] == 8
+
+
+class TestInternLM2ArchitectureGuards:
+    """Guards against drift toward neighbouring adapter patterns."""
+
+    def test_no_norm_offset_conversions(self, adapter: InternLM2ArchitectureAdapter) -> None:
+        # InternLM2 is not Gemma — no +1 norm offset entries.
+        for key in adapter.weight_processing_conversions:
+            assert "ln1" not in key
+            assert "ln2" not in key
+            assert "ln_final" not in key
+
+    def test_no_mlp_weight_conversions(self, adapter: InternLM2ArchitectureAdapter) -> None:
+        for key in adapter.weight_processing_conversions:
+            assert "mlp" not in key
+
+    def test_no_top_level_rotary_emb(self, adapter: InternLM2ArchitectureAdapter) -> None:
+        assert "rotary_emb" not in adapter.component_mapping
+
+    def test_block_uses_block_bridge_not_parallel(
+        self, adapter: InternLM2ArchitectureAdapter
+    ) -> None:
+        # Sequential, not parallel-attn-mlp — guard against borrowing Cohere's pattern.
+        from transformer_lens.model_bridge.generalized_components import ParallelBlockBridge
+
+        blocks = adapter.component_mapping["blocks"]
+        assert not isinstance(blocks, ParallelBlockBridge)
+        assert isinstance(blocks, BlockBridge)
+
+    def test_has_both_ln1_and_ln2(self, adapter: InternLM2ArchitectureAdapter) -> None:
+        blocks = adapter.component_mapping["blocks"]
+        assert "ln1" in blocks.submodules
+        assert "ln2" in blocks.submodules

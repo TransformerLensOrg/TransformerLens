@@ -1,12 +1,4 @@
-"""Unit tests for XGLMArchitectureAdapter.
-
-Tests cover:
-- Config attribute validation (all required attributes set correctly) [Phase A]
-- Weight conversion keys and structure [Phase A]
-- Component mapping structure (correct bridge types and HF module paths) [Phase B]
-- Embedding scale hook compatibility [Phase C]
-- Factory registration (XGLMForCausalLM maps to the right adapter) [Phase D]
-"""
+"""Unit tests for XGLMArchitectureAdapter: cfg, components, weight conversions, hook compat, factory."""
 
 import math
 from types import SimpleNamespace
@@ -15,10 +7,15 @@ import pytest
 import torch
 
 from transformer_lens.config import TransformerBridgeConfig
+from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion
+from transformer_lens.conversion_utils.param_processing_conversion import (
+    ParamProcessingConversion,
+)
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     BlockBridge,
     EmbeddingBridge,
+    LinearBridge,
     NormalizationBridge,
     SymbolicBridge,
     UnembeddingBridge,
@@ -26,11 +23,6 @@ from transformer_lens.model_bridge.generalized_components import (
 from transformer_lens.model_bridge.supported_architectures.xglm import (
     XGLMArchitectureAdapter,
 )
-
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
-
 
 def _make_cfg(
     n_heads: int = 4,
@@ -40,7 +32,7 @@ def _make_cfg(
     d_vocab: int = 1000,
     n_ctx: int = 512,
 ) -> TransformerBridgeConfig:
-    """Return a minimal TransformerBridgeConfig for XGLM adapter tests."""
+    """Minimal TransformerBridgeConfig for XGLM adapter tests."""
     return TransformerBridgeConfig(
         d_model=d_model,
         d_head=d_model // n_heads,
@@ -54,23 +46,18 @@ def _make_cfg(
     )
 
 
-@pytest.fixture
+@pytest.fixture(scope="class")
 def cfg() -> TransformerBridgeConfig:
     return _make_cfg()
 
 
-@pytest.fixture
+@pytest.fixture(scope="class")
 def adapter(cfg: TransformerBridgeConfig) -> XGLMArchitectureAdapter:
     return XGLMArchitectureAdapter(cfg)
 
 
-# ---------------------------------------------------------------------------
-# Phase A: Config attribute tests
-# ---------------------------------------------------------------------------
-
-
 class TestXGLMAdapterConfig:
-    """Adapter must set all required config attributes to the correct values."""
+    """Adapter sets all required config attributes."""
 
     def test_normalization_type_is_ln(self, adapter: XGLMArchitectureAdapter) -> None:
         assert adapter.cfg.normalization_type == "LN"
@@ -91,13 +78,8 @@ class TestXGLMAdapterConfig:
         assert adapter.cfg.uses_rms_norm is False
 
 
-# ---------------------------------------------------------------------------
-# Phase A: Weight processing conversion tests
-# ---------------------------------------------------------------------------
-
-
 class TestXGLMAdapterWeightConversions:
-    """Adapter must define exactly the four standard QKVO weight conversions."""
+    """Adapter defines exactly the four standard QKVO weight conversions."""
 
     def test_q_weight_key_present(self, adapter: XGLMArchitectureAdapter) -> None:
         assert "blocks.{i}.attn.q.weight" in adapter.weight_processing_conversions
@@ -115,13 +97,8 @@ class TestXGLMAdapterWeightConversions:
         assert len(adapter.weight_processing_conversions) == 4
 
 
-# ---------------------------------------------------------------------------
-# Phase B: Component mapping structure tests
-# ---------------------------------------------------------------------------
-
-
 class TestXGLMAdapterComponentMapping:
-    """Component mapping must have the correct bridge types and HF module paths."""
+    """component_mapping has correct bridge types and HF module paths."""
 
     def test_embed_is_embedding_bridge(self, adapter: XGLMArchitectureAdapter) -> None:
         assert isinstance(adapter.component_mapping["embed"], EmbeddingBridge)
@@ -130,7 +107,7 @@ class TestXGLMAdapterComponentMapping:
         assert adapter.component_mapping["embed"].name == "model.embed_tokens"
 
     def test_no_pos_embed_in_mapping(self, adapter: XGLMArchitectureAdapter) -> None:
-        # Sinusoidal embeddings have no weights — no bridge entry expected
+        # Sinusoidal embeddings have no weights — no bridge entry.
         assert "pos_embed" not in adapter.component_mapping
 
     def test_blocks_is_block_bridge(self, adapter: XGLMArchitectureAdapter) -> None:
@@ -188,7 +165,7 @@ class TestXGLMAdapterComponentMapping:
         assert attn.submodules["v"].name == "v_proj"
 
     def test_attn_o_name_is_out_proj(self, adapter: XGLMArchitectureAdapter) -> None:
-        # Critical: XGLM uses out_proj, not o_proj (scaffold error pattern)
+        # XGLM uses out_proj, not o_proj (common scaffold mistake).
         attn = adapter.component_mapping["blocks"].submodules["attn"]
         assert attn.submodules["o"].name == "out_proj"
 
@@ -213,20 +190,15 @@ class TestXGLMAdapterComponentMapping:
         assert mlp.submodules["out"].name == "fc2"
 
 
-# ---------------------------------------------------------------------------
-# Phase C: Embedding scale hook compatibility tests
-# ---------------------------------------------------------------------------
-
-
 def _make_mock_bridge() -> SimpleNamespace:
-    """Return a minimal mock bridge with embed.hook_out for hook-compat tests."""
+    """Minimal mock bridge with embed.hook_out for hook-compat tests."""
     hook_out = SimpleNamespace(hook_conversion=None)
     embed = SimpleNamespace(hook_out=hook_out)
     return SimpleNamespace(embed=embed)
 
 
 class TestXGLMAdapterHookCompatibility:
-    """setup_hook_compatibility must attach a scale conversion to hook_embed."""
+    """setup_hook_compatibility attaches a scale conversion to hook_embed."""
 
     def test_sets_hook_conversion_on_embed_hook_out(self, adapter: XGLMArchitectureAdapter) -> None:
         bridge = _make_mock_bridge()
@@ -234,17 +206,15 @@ class TestXGLMAdapterHookCompatibility:
         assert bridge.embed.hook_out.hook_conversion is not None
 
     def test_scales_by_sqrt_d_model(self, adapter: XGLMArchitectureAdapter) -> None:
-        # d_model=64, sqrt(64)=8 exactly
         bridge = _make_mock_bridge()
         adapter.setup_hook_compatibility(bridge)
         conv = bridge.embed.hook_out.hook_conversion
         x = torch.ones(2, 4, 64)
         result = conv.handle_conversion(x)
-        expected_scale = math.sqrt(64)  # 8.0
+        expected_scale = math.sqrt(64)
         assert torch.allclose(result, x * expected_scale, atol=1e-6)
 
     def test_revert_inverts_scale(self, adapter: XGLMArchitectureAdapter) -> None:
-        # round-trip: revert(handle_conversion(x)) == x; exact for sqrt(64)=8
         bridge = _make_mock_bridge()
         adapter.setup_hook_compatibility(bridge)
         conv = bridge.embed.hook_out.hook_conversion
@@ -252,23 +222,16 @@ class TestXGLMAdapterHookCompatibility:
         assert torch.allclose(conv.revert(conv.handle_conversion(x)), x, atol=1e-6)
 
     def test_no_error_when_embed_missing(self, adapter: XGLMArchitectureAdapter) -> None:
-        # Guard: if bridge lacks embed, setup_hook_compatibility should not raise
-        bridge = SimpleNamespace()  # no embed attribute
-        adapter.setup_hook_compatibility(bridge)  # must not raise
+        bridge = SimpleNamespace()
+        adapter.setup_hook_compatibility(bridge)
 
     def test_no_error_when_hook_out_missing(self, adapter: XGLMArchitectureAdapter) -> None:
-        # Guard: if embed lacks hook_out, no error expected
-        bridge = SimpleNamespace(embed=SimpleNamespace())  # embed but no hook_out
-        adapter.setup_hook_compatibility(bridge)  # must not raise
-
-
-# ---------------------------------------------------------------------------
-# Phase D: Factory registration tests
-# ---------------------------------------------------------------------------
+        bridge = SimpleNamespace(embed=SimpleNamespace())
+        adapter.setup_hook_compatibility(bridge)
 
 
 class TestXGLMFactoryRegistration:
-    """XGLMForCausalLM must be registered in SUPPORTED_ARCHITECTURES and resolve correctly."""
+    """XGLMForCausalLM is registered in SUPPORTED_ARCHITECTURES and resolves correctly."""
 
     def test_factory_returns_xglm_adapter(self) -> None:
         from transformer_lens.factories.architecture_adapter_factory import (
@@ -285,3 +248,168 @@ class TestXGLMFactoryRegistration:
         )
 
         assert "XGLMForCausalLM" in SUPPORTED_ARCHITECTURES
+
+    def test_factory_maps_to_correct_class(self) -> None:
+        from transformer_lens.factories.architecture_adapter_factory import (
+            SUPPORTED_ARCHITECTURES,
+        )
+
+        assert SUPPORTED_ARCHITECTURES["XGLMForCausalLM"] is XGLMArchitectureAdapter
+
+
+class TestXGLMComponentMappingPresence:
+    """Component slots exist (deletion guard)."""
+
+    def test_has_embed(self, adapter: XGLMArchitectureAdapter) -> None:
+        assert "embed" in adapter.component_mapping
+
+    def test_has_blocks(self, adapter: XGLMArchitectureAdapter) -> None:
+        assert "blocks" in adapter.component_mapping
+
+    def test_has_ln_final(self, adapter: XGLMArchitectureAdapter) -> None:
+        assert "ln_final" in adapter.component_mapping
+
+    def test_has_unembed(self, adapter: XGLMArchitectureAdapter) -> None:
+        assert "unembed" in adapter.component_mapping
+
+    def test_all_expected_top_level_keys_present(
+        self, adapter: XGLMArchitectureAdapter
+    ) -> None:
+        # No top-level rotary_emb (sinusoidal) and no pos_embed (non-persistent).
+        expected = {"embed", "blocks", "ln_final", "unembed"}
+        assert set(adapter.component_mapping.keys()) == expected
+
+
+class TestXGLMBlockSubmodules:
+    """Decoder BlockBridge wires XGLM-pattern submodules."""
+
+    @pytest.fixture(scope="class")
+    def blocks(self, adapter: XGLMArchitectureAdapter) -> BlockBridge:
+        return adapter.component_mapping["blocks"]
+
+    def test_block_has_required_submodules(self, blocks: BlockBridge) -> None:
+        for name in ("ln1", "ln2", "attn", "mlp"):
+            assert name in blocks.submodules, f"BlockBridge missing submodule '{name}'"
+
+    def test_ln1_is_normalization_bridge(self, blocks: BlockBridge) -> None:
+        ln1 = blocks.submodules["ln1"]
+        assert isinstance(ln1, NormalizationBridge)
+        assert ln1.name == "self_attn_layer_norm"
+
+    def test_ln2_is_normalization_bridge(self, blocks: BlockBridge) -> None:
+        ln2 = blocks.submodules["ln2"]
+        assert isinstance(ln2, NormalizationBridge)
+        assert ln2.name == "final_layer_norm"
+
+    def test_attn_is_attention_bridge(self, blocks: BlockBridge) -> None:
+        attn = blocks.submodules["attn"]
+        assert isinstance(attn, AttentionBridge)
+        assert attn.name == "self_attn"
+        # 4-D mask, no position embeddings (sinusoidal added pre-block).
+        assert attn.requires_attention_mask is True
+        assert attn.attention_mask_4d is True
+
+    def test_attn_qkvo_submodules_are_linear_bridges(self, blocks: BlockBridge) -> None:
+        attn = blocks.submodules["attn"]
+        for sub_name, expected_path in (
+            ("q", "q_proj"),
+            ("k", "k_proj"),
+            ("v", "v_proj"),
+            ("o", "out_proj"),
+        ):
+            sub = attn.submodules[sub_name]
+            assert isinstance(sub, LinearBridge), f"attn.{sub_name} must be LinearBridge"
+            assert sub.name == expected_path
+
+    def test_mlp_is_symbolic_bridge(self, blocks: BlockBridge) -> None:
+        # fc1/fc2 live directly on the decoder layer — SymbolicBridge holds the TL shape.
+        mlp = blocks.submodules["mlp"]
+        assert isinstance(mlp, SymbolicBridge)
+
+    def test_mlp_submodules_are_linear_bridges(self, blocks: BlockBridge) -> None:
+        mlp = blocks.submodules["mlp"]
+        for sub_name, expected_path in (("in", "fc1"), ("out", "fc2")):
+            sub = mlp.submodules[sub_name]
+            assert isinstance(sub, LinearBridge), f"mlp.{sub_name} must be LinearBridge"
+            assert sub.name == expected_path
+
+    def test_mlp_has_no_gate(self, blocks: BlockBridge) -> None:
+        # Standard 2-layer MLP (fc1 -> gelu -> fc2), NOT gated.
+        mlp = blocks.submodules["mlp"]
+        assert "gate" not in mlp.submodules
+
+
+class TestXGLMComponentTypes:
+    """Component bridge classes — guard against silent type substitution."""
+
+    def test_embed_type(self, adapter: XGLMArchitectureAdapter) -> None:
+        assert isinstance(adapter.component_mapping["embed"], EmbeddingBridge)
+
+    def test_blocks_type(self, adapter: XGLMArchitectureAdapter) -> None:
+        assert isinstance(adapter.component_mapping["blocks"], BlockBridge)
+
+    def test_ln_final_type(self, adapter: XGLMArchitectureAdapter) -> None:
+        # XGLM uses LayerNorm (not RMS).
+        assert isinstance(
+            adapter.component_mapping["ln_final"], NormalizationBridge
+        )
+
+    def test_unembed_type(self, adapter: XGLMArchitectureAdapter) -> None:
+        assert isinstance(adapter.component_mapping["unembed"], UnembeddingBridge)
+
+
+class TestXGLMWeightConversionSemantics:
+    """QKVO conversion entries use the expected types and patterns."""
+
+    def test_q_conversion_type(self, adapter: XGLMArchitectureAdapter) -> None:
+        conv = adapter.weight_processing_conversions["blocks.{i}.attn.q.weight"]
+        assert isinstance(conv, ParamProcessingConversion)
+        assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)
+
+    def test_qkv_split_heads_pattern(self, adapter: XGLMArchitectureAdapter) -> None:
+        for slot in ("q", "k", "v"):
+            conv = adapter.weight_processing_conversions[f"blocks.{{i}}.attn.{slot}.weight"]
+            assert isinstance(conv, ParamProcessingConversion)
+            assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)
+            assert conv.tensor_conversion.pattern == "(n h) m -> n m h"
+
+    def test_o_merge_heads_pattern(self, adapter: XGLMArchitectureAdapter) -> None:
+        conv = adapter.weight_processing_conversions["blocks.{i}.attn.o.weight"]
+        assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)
+        assert conv.tensor_conversion.pattern == "m (n h) -> n h m"
+
+    def test_qkvo_n_axis_equals_n_heads(self, adapter: XGLMArchitectureAdapter) -> None:
+        # MHA: K/V share n_heads with Q/O (no GQA on XGLM).
+        for slot in ("q", "k", "v", "o"):
+            conv = adapter.weight_processing_conversions[f"blocks.{{i}}.attn.{slot}.weight"]
+            assert conv.tensor_conversion.axes_lengths["n"] == adapter.cfg.n_heads
+
+
+class TestXGLMArchitectureGuards:
+    """Guards against drift toward neighbouring adapter patterns."""
+
+    def test_no_gqa_setting(self, adapter: XGLMArchitectureAdapter) -> None:
+        # All published XGLM sizes are MHA.
+        assert getattr(adapter.cfg, "n_key_value_heads", None) is None
+
+    def test_no_norm_offset_conversions(self, adapter: XGLMArchitectureAdapter) -> None:
+        # XGLM is not Gemma — no +1 norm offset entries.
+        for key in adapter.weight_processing_conversions:
+            assert "ln1" not in key
+            assert "ln2" not in key
+            assert "ln_final" not in key
+
+    def test_no_mlp_weight_conversions(self, adapter: XGLMArchitectureAdapter) -> None:
+        for key in adapter.weight_processing_conversions:
+            assert "mlp" not in key
+
+    def test_center_writing_weights_disabled(self, adapter: XGLMArchitectureAdapter) -> None:
+        # Sinusoidal pos_embed has no params → cannot center pos_embed.
+        assert adapter.supports_center_writing_weights is False
+
+    def test_no_rotary_in_blocks(self, adapter: XGLMArchitectureAdapter) -> None:
+        blocks = adapter.component_mapping["blocks"]
+        assert "rotary_emb" not in blocks.submodules
+
+    def test_no_top_level_rotary_emb(self, adapter: XGLMArchitectureAdapter) -> None:
+        assert "rotary_emb" not in adapter.component_mapping

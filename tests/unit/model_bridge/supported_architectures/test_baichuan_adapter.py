@@ -1,13 +1,4 @@
-"""Unit tests for BaichuanArchitectureAdapter.
-
-Tests cover:
-- Config attributes
-- Component mapping structure and HF module names
-- Weight conversion keys/types
-- split_qkv_matrix (W_pack) numerical correctness
-- preprocess_weights (QKV split, fold_ln, NormHead normalization)
-- Factory registration (both v1 and v2 class names)
-"""
+"""Unit tests for BaichuanArchitectureAdapter."""
 
 from types import SimpleNamespace
 from typing import Any
@@ -26,6 +17,7 @@ from transformer_lens.model_bridge.generalized_components import (
     EmbeddingBridge,
     GatedMLPBridge,
     JointQKVPositionEmbeddingsAttentionBridge,
+    LinearBridge,
     RMSNormalizationBridge,
     UnembeddingBridge,
 )
@@ -59,12 +51,12 @@ def _make_cfg(
     )
 
 
-@pytest.fixture
+@pytest.fixture(scope="class")
 def cfg() -> TransformerBridgeConfig:
     return _make_cfg(n_heads=8, d_model=64)
 
 
-@pytest.fixture
+@pytest.fixture(scope="class")
 def adapter(cfg: TransformerBridgeConfig) -> BaichuanArchitectureAdapter:
     return BaichuanArchitectureAdapter(cfg)
 
@@ -230,7 +222,7 @@ class TestBaichuanAdapterWeightConversions:
         assert conv.tensor_conversion.axes_lengths["n"] == adapter.cfg.n_heads
 
     def test_k_rearrange_n_equals_n_heads(self, adapter: BaichuanArchitectureAdapter) -> None:
-        # Baichuan is MHA (no GQA), so K also uses n_heads
+        # Baichuan is MHA (no GQA): K uses n_heads.
         convs = adapter.weight_processing_conversions
         assert convs is not None
         conv = convs["blocks.{i}.attn.k.weight"]
@@ -252,6 +244,150 @@ class TestBaichuanAdapterWeightConversions:
         conv = convs["blocks.{i}.attn.q.weight"]
         assert isinstance(conv, ParamProcessingConversion)
         assert conv.source_key is None
+
+    def test_k_conversion_type(self, adapter: BaichuanArchitectureAdapter) -> None:
+        convs = adapter.weight_processing_conversions
+        assert convs is not None
+        conv = convs["blocks.{i}.attn.k.weight"]
+        assert isinstance(conv, ParamProcessingConversion)
+        assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)
+
+    def test_v_conversion_type(self, adapter: BaichuanArchitectureAdapter) -> None:
+        convs = adapter.weight_processing_conversions
+        assert convs is not None
+        conv = convs["blocks.{i}.attn.v.weight"]
+        assert isinstance(conv, ParamProcessingConversion)
+        assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)
+
+    def test_o_conversion_type(self, adapter: BaichuanArchitectureAdapter) -> None:
+        convs = adapter.weight_processing_conversions
+        assert convs is not None
+        conv = convs["blocks.{i}.attn.o.weight"]
+        assert isinstance(conv, ParamProcessingConversion)
+        assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)
+
+    def test_k_rearrange_pattern(self, adapter: BaichuanArchitectureAdapter) -> None:
+        convs = adapter.weight_processing_conversions
+        assert convs is not None
+        conv = convs["blocks.{i}.attn.k.weight"]
+        assert isinstance(conv, ParamProcessingConversion)
+        assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)
+        assert conv.tensor_conversion.pattern == "(n h) m -> n m h"
+
+    def test_v_rearrange_pattern(self, adapter: BaichuanArchitectureAdapter) -> None:
+        convs = adapter.weight_processing_conversions
+        assert convs is not None
+        conv = convs["blocks.{i}.attn.v.weight"]
+        assert isinstance(conv, ParamProcessingConversion)
+        assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)
+        assert conv.tensor_conversion.pattern == "(n h) m -> n m h"
+
+    def test_v_rearrange_n_equals_n_heads(self, adapter: BaichuanArchitectureAdapter) -> None:
+        # Baichuan is MHA: V uses n_heads.
+        convs = adapter.weight_processing_conversions
+        assert convs is not None
+        conv = convs["blocks.{i}.attn.v.weight"]
+        assert isinstance(conv, ParamProcessingConversion)
+        assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)
+        assert conv.tensor_conversion.axes_lengths["n"] == adapter.cfg.n_heads
+
+    def test_o_rearrange_n_equals_n_heads(self, adapter: BaichuanArchitectureAdapter) -> None:
+        convs = adapter.weight_processing_conversions
+        assert convs is not None
+        conv = convs["blocks.{i}.attn.o.weight"]
+        assert isinstance(conv, ParamProcessingConversion)
+        assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)
+        assert conv.tensor_conversion.axes_lengths["n"] == adapter.cfg.n_heads
+
+
+class TestBaichuanAdapterComponentTypesExtras:
+    """Type-level checks for the joint-QKV attention submodules and block submodules."""
+
+    @pytest.fixture(scope="class")
+    def adapter(self) -> BaichuanArchitectureAdapter:
+        return BaichuanArchitectureAdapter(_make_cfg(n_heads=8, d_model=64))
+
+    def test_attn_qkv_is_linear_bridge(self, adapter: BaichuanArchitectureAdapter) -> None:
+        attn = adapter.component_mapping["blocks"].submodules["attn"]
+        assert isinstance(attn.submodules["qkv"], LinearBridge)
+
+    def test_attn_o_is_linear_bridge(self, adapter: BaichuanArchitectureAdapter) -> None:
+        attn = adapter.component_mapping["blocks"].submodules["attn"]
+        assert isinstance(attn.submodules["o"], LinearBridge)
+
+    def test_attn_has_joint_qkv_and_post_split_q_k_v(
+        self, adapter: BaichuanArchitectureAdapter
+    ) -> None:
+        # JointQKV bridges auto-create placeholder q/k/v alongside the joint qkv slot.
+        attn = adapter.component_mapping["blocks"].submodules["attn"]
+        for name in ("qkv", "o", "q", "k", "v"):
+            assert name in attn.submodules
+        assert attn.submodules["qkv"].name == "W_pack"
+        assert attn.submodules["o"].name == "o_proj"
+
+    def test_mlp_gate_is_linear_bridge(self, adapter: BaichuanArchitectureAdapter) -> None:
+        mlp = adapter.component_mapping["blocks"].submodules["mlp"]
+        assert isinstance(mlp.submodules["gate"], LinearBridge)
+
+    def test_mlp_in_is_linear_bridge(self, adapter: BaichuanArchitectureAdapter) -> None:
+        mlp = adapter.component_mapping["blocks"].submodules["mlp"]
+        assert isinstance(mlp.submodules["in"], LinearBridge)
+
+    def test_mlp_out_is_linear_bridge(self, adapter: BaichuanArchitectureAdapter) -> None:
+        mlp = adapter.component_mapping["blocks"].submodules["mlp"]
+        assert isinstance(mlp.submodules["out"], LinearBridge)
+
+
+class TestBaichuanArchitectureGuards:
+    """What must NOT be there: Baichuan is LLaMA-pattern RoPE, no learned pos, no Gemma offsets."""
+
+    @pytest.fixture(scope="class")
+    def adapter(self) -> BaichuanArchitectureAdapter:
+        return BaichuanArchitectureAdapter(_make_cfg(n_heads=8, d_model=64))
+
+    def test_no_pos_embed_component(self, adapter: BaichuanArchitectureAdapter) -> None:
+        # Rotary architecture: no learned positional embeddings.
+        assert "pos_embed" not in adapter.component_mapping
+
+    def test_no_norm_offset_conversions(self, adapter: BaichuanArchitectureAdapter) -> None:
+        # RMSNorm has no Gemma-style offset.
+        convs = adapter.weight_processing_conversions
+        assert convs is not None
+        for key in convs:
+            assert "ln1.weight" not in key, f"Unexpected ln1 conversion: {key}"
+            assert "ln2.weight" not in key, f"Unexpected ln2 conversion: {key}"
+            assert "ln_final.weight" not in key, f"Unexpected ln_final conversion: {key}"
+
+    def test_only_qkvo_conversion_keys(self, adapter: BaichuanArchitectureAdapter) -> None:
+        convs = adapter.weight_processing_conversions
+        assert convs is not None
+        assert set(convs.keys()) == {
+            "blocks.{i}.attn.q.weight",
+            "blocks.{i}.attn.k.weight",
+            "blocks.{i}.attn.v.weight",
+            "blocks.{i}.attn.o.weight",
+        }
+
+
+class TestBaichuanGQAFallback:
+    """Baichuan uses cfg.n_heads directly for all QKVO; n_key_value_heads on cfg is ignored."""
+
+    def test_kv_conversions_still_use_n_heads_when_n_kv_heads_set(self) -> None:
+        # Baichuan is MHA-only: pin K/V to n_heads regardless of n_key_value_heads,
+        # guarding against a silent switch to the GQA helper that would change K/V layout.
+        cfg = _make_cfg(n_heads=8, d_model=64)
+        cfg.n_key_value_heads = 2  # type: ignore[attr-defined]
+        adapter = BaichuanArchitectureAdapter(cfg)
+        convs = adapter.weight_processing_conversions
+        assert convs is not None
+        k = convs["blocks.{i}.attn.k.weight"]
+        v = convs["blocks.{i}.attn.v.weight"]
+        assert isinstance(k, ParamProcessingConversion)
+        assert isinstance(v, ParamProcessingConversion)
+        assert isinstance(k.tensor_conversion, RearrangeTensorConversion)
+        assert isinstance(v.tensor_conversion, RearrangeTensorConversion)
+        assert k.tensor_conversion.axes_lengths["n"] == adapter.cfg.n_heads
+        assert v.tensor_conversion.axes_lengths["n"] == adapter.cfg.n_heads
 
 
 # ---------------------------------------------------------------------------
@@ -293,7 +429,6 @@ class TestBaichuanSplitWPack:
         d_model = 32
         adapter = self._adapter(n_heads=4, d_model=d_model)
         attn = _make_w_pack_component(d_model)
-        # Fill W_pack: Q=1.0, K=2.0, V=3.0
         w = torch.zeros(3 * d_model, d_model)
         w[:d_model, :] = 1.0
         w[d_model : 2 * d_model, :] = 2.0
@@ -367,12 +502,12 @@ class TestBaichuanPreprocessWeights:
         assert "blocks.0.attn.v.weight" in result
 
     def test_split_shapes(self) -> None:
+        # MHA: Q/K/V each [d_model, d_model].
         d_model = 64
         adapter = BaichuanArchitectureAdapter(_make_cfg(n_heads=8, d_model=d_model))
         adapter._fold_ln_requested = True
         sd = self._make_state_dict(adapter, d_model=d_model)
         result = adapter.preprocess_weights(sd)
-        # Baichuan is MHA: Q, K, V each have shape [d_model, d_model]
         assert result["blocks.0.attn.q.weight"].shape == (d_model, d_model)
         assert result["blocks.0.attn.k.weight"].shape == (d_model, d_model)
         assert result["blocks.0.attn.v.weight"].shape == (d_model, d_model)
@@ -455,7 +590,7 @@ class TestBaichuanPrepareModel:
         return BaichuanArchitectureAdapter(_make_cfg(n_heads=8, d_model=64))
 
     def test_normhead_weights_normalized(self) -> None:
-        """NormHead (has first_flag) should have row-normalized weights after prepare_model."""
+        """NormHead (has first_flag) row-normalizes weights at prepare_model."""
         adapter = self._adapter()
         lm_head = SimpleNamespace(
             weight=nn.Parameter(torch.full((100, 64), 2.0)),
@@ -476,17 +611,16 @@ class TestBaichuanPrepareModel:
         assert torch.equal(lm_head.weight.data, original_w)
 
     def test_no_lm_head_is_noop(self) -> None:
-        """Model without lm_head should not raise."""
         adapter = self._adapter()
         hf_model = SimpleNamespace()
-        adapter.prepare_model(hf_model)  # should not raise
+        adapter.prepare_model(hf_model)
 
     def test_recomputes_rotary_from_scratch_when_inv_freq_is_meta(self) -> None:
         """Baichuan2's inv_freq/cos_cached are plain attrs that land on meta under
         HF v5 meta-init; prepare_model must recompute real values regardless."""
         adapter = self._adapter()
         head_dim = adapter.cfg.d_model // adapter.cfg.n_heads
-        # Meta-device rotary matching v2's plain-attribute shape
+        # Meta-device rotary matching v2's plain-attribute shape.
         rotary = SimpleNamespace(
             inv_freq=torch.empty(head_dim // 2, device="meta"),
             cos_cached=torch.empty(1, 1, 16, head_dim, device="meta"),
@@ -502,7 +636,7 @@ class TestBaichuanPrepareModel:
         assert rotary.cos_cached.device.type == "cpu"
         assert rotary.sin_cached.device.type == "cpu"
         assert rotary.cos_cached.shape == (1, 1, 16, head_dim)
-        # Sanity: cos(0) == 1 and position 0 of each head_dim element equals 1.
+        # cos(0) == 1.
         assert torch.allclose(
             rotary.cos_cached[0, 0, 0, :],
             torch.ones(head_dim),
@@ -569,7 +703,7 @@ class _FakeRotary(nn.Module):
     def __init__(self, head_dim: int, max_seq_len: int) -> None:
         super().__init__()
         self.max_seq_len_cached = max_seq_len
-        # Fill with position-dependent values so tests can verify indexing.
+        # Position-dependent values so tests can verify indexing.
         cos = (
             torch.arange(max_seq_len, dtype=torch.float32)[:, None]
             .expand(max_seq_len, head_dim)
@@ -629,8 +763,7 @@ def _wire_bridge(
     rotary = _FakeRotary(head_dim=head_dim, max_seq_len=32)
     fake_attn = _FakeAttention(rotary, cfg.d_model)
     bridge.set_original_component(fake_attn)
-    # `o` LinearBridge is normally wired by setup_components via component_mapping;
-    # wire it directly for unit tests that construct the bridge standalone.
+    # Wire `o` directly since standalone construction skips setup_components.
     bridge.o.set_original_component(fake_attn.o_proj)
     return bridge, rotary, head_dim
 
@@ -653,7 +786,7 @@ class TestBaichuanAttentionBridgeRotary:
             q, k, v, position_ids=position_ids, use_cache=True
         )
 
-        # rotary_emb called once, with kv_seq_len=seq (no past)
+        # No past: rotary called once with kv_seq_len=seq.
         assert rotary.calls == [seq]
         assert attn_output.shape == (batch, seq, cfg.d_model)
         assert present is not None
@@ -681,7 +814,7 @@ class TestBaichuanAttentionBridgeRotary:
             position_ids=torch.tensor([[0, 1, 2, 3]]),
             use_cache=True,
         )
-        # Caller-supplied embeddings must win; rotary_emb must not be called.
+        # Explicit embeddings win; rotary must not be called.
         assert rotary.calls == []
 
     def test_use_cache_false_returns_none_present(self, cfg: TransformerBridgeConfig) -> None:
@@ -704,7 +837,7 @@ class TestBaichuanAttentionBridgeRotary:
         q = torch.zeros(batch, seq, cfg.d_model)
         k = torch.zeros_like(q)
         v = torch.zeros_like(q)
-        # HF's Model.forward generates position_ids offset by past_len.
+        # HF generates position_ids offset by past_len.
         position_ids = torch.tensor([[past_len, past_len + 1]])
 
         _, _, present = bridge._reconstruct_attention(
@@ -720,7 +853,7 @@ class TestBaichuanAttentionBridgeRotary:
         present_k, present_v = present
         assert present_k.shape == (batch, cfg.n_heads, past_len + seq, head_dim)
         assert present_v.shape == (batch, cfg.n_heads, past_len + seq, head_dim)
-        # First past_len slots must be the provided past, unchanged.
+        # Past slots must be preserved unchanged.
         assert torch.equal(present_k[:, :, :past_len, :], past_k)
         assert torch.equal(present_v[:, :, :past_len, :], past_v)
 
@@ -738,9 +871,7 @@ class TestBaichuanPrepareLoadingBitsandbytes:
     ) -> None:
         import transformer_lens.model_bridge.supported_architectures.baichuan as baichuan_mod
 
-        # Force the preflight path: make find_spec report bitsandbytes missing,
-        # and make get_class_from_dynamic_module surface the transformers-style
-        # "requires the following packages... bitsandbytes" error.
+        # Force preflight: bnb missing + transformers raises its bnb-mentioning error.
         monkeypatch.setattr(baichuan_mod.importlib.util, "find_spec", lambda name: None)
 
         def _raise_bnb(*_a: Any, **_k: Any) -> None:
@@ -766,6 +897,5 @@ class TestBaichuanPrepareLoadingBitsandbytes:
             raise ValueError("some unrelated loader failure")
 
         monkeypatch.setattr(dmu, "get_class_from_dynamic_module", _raise_generic)
-        # Must not raise — the generic failure path is swallowed (remote load
-        # may legitimately fail for offline tests, e.g. no network access).
+        # Generic failures are swallowed (offline/no-network is legit).
         adapter.prepare_loading("baichuan-inc/Baichuan2-7B-Chat", {})
