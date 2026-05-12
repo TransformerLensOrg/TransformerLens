@@ -1157,6 +1157,7 @@ class HookedTransformer(HookedRootModule):
         refactor_factored_attn_matrices: bool = False,
         checkpoint_index: Optional[int] = None,
         checkpoint_value: Optional[int] = None,
+        checkpoint_label: Optional[int] = None,
         hf_model: Optional[PreTrainedModel] = None,
         device: Optional[Union[str, torch.device]] = None,
         n_devices: int = 1,
@@ -1254,6 +1255,8 @@ class HookedTransformer(HookedRootModule):
                 labelled with exactly one of these). E.g. ``1000`` for a checkpoint taken at step
                 1000 or after 1000 tokens. If `checkpoint_index` is also specified, this will be
                 ignored.
+            checkpoint_label: Alias for ``checkpoint_value`` kept for backwards compatibility with
+                older docs and downstream code. Cannot be combined with ``checkpoint_value``.
             hf_model: If you have already loaded in the
                 HuggingFace model, you can pass it in here rather than needing to recreate the
                 object. Defaults to None.
@@ -1311,6 +1314,13 @@ class HookedTransformer(HookedRootModule):
                 3. Global default ("right")
             first_n_layers: If specified, only load the first n layers of the model.
         """
+        if checkpoint_value is not None and checkpoint_label is not None:
+            raise ValueError(
+                "Specify checkpoint_value or checkpoint_label, not both — they are aliases."
+            )
+        elif checkpoint_label is not None:
+            checkpoint_value = checkpoint_label
+
         if model_name.lower().startswith("t5"):
             raise RuntimeError(
                 "Execution stopped: Please use HookedEncoderDecoder to load T5 models instead of HookedTransformer."

@@ -78,19 +78,52 @@ class TestFactoredMatrixProperties:
 
     def test_svd_property(self, factored_matrices):
         for factored_matrix in factored_matrices:
-            U, S, Vh = factored_matrix.svd()
-            assert torch.allclose(factored_matrix.AB, U @ torch.diag_embed(S) @ Vh.T, atol=1e-5)
-            # test that U and Vh are unitary
+            U, S, V = factored_matrix.svd()
+            assert torch.allclose(factored_matrix.AB, U @ torch.diag_embed(S) @ V.T, atol=1e-5)
+            # test that U and V are unitary
             assert torch.allclose(U.T @ U, torch.eye(U.shape[-1]), atol=1e-5)
-            assert torch.allclose(Vh.T @ Vh, torch.eye(Vh.shape[-1]), atol=1e-5)
+            assert torch.allclose(V.T @ V, torch.eye(V.shape[-1]), atol=1e-5)
 
     def test_svd_property_leading_ones(self, factored_matrices_leading_ones):
         for factored_matrix in factored_matrices_leading_ones:
-            U, S, Vh = factored_matrix.svd()
-            assert torch.allclose(factored_matrix.AB, U @ torch.diag_embed(S) @ Vh.mT, atol=1e-5)
-            # test that U and Vh are unitary
+            U, S, V = factored_matrix.svd()
+            assert torch.allclose(factored_matrix.AB, U @ torch.diag_embed(S) @ V.mT, atol=1e-5)
+            # test that U and V are unitary
             assert torch.allclose(U.mT @ U, torch.eye(U.shape[-1]), atol=1e-5)
-            assert torch.allclose(Vh.mT @ Vh, torch.eye(Vh.shape[-1]), atol=1e-5)
+            assert torch.allclose(V.mT @ V, torch.eye(V.shape[-1]), atol=1e-5)
+
+    def test_V_and_Vh_alias_match(self, factored_matrices):
+        import warnings
+
+        for factored_matrix in factored_matrices:
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                vh_value = factored_matrix.Vh
+            assert any(issubclass(w.category, DeprecationWarning) for w in caught)
+            assert torch.equal(vh_value, factored_matrix.V)
+
+    def test_svd_caches_per_instance(self):
+        """svd() should cache its result on the instance — repeated calls return the same tensors."""
+        m = FactoredMatrix(randn(4, 3), randn(3, 4))
+        first_U, first_S, first_V = m.svd()
+        second_U, second_S, second_V = m.svd()
+        assert first_U is second_U
+        assert first_S is second_S
+        assert first_V is second_V
+
+    def test_svd_does_not_prevent_gc(self):
+        """svd's cache must not hold a strong reference that prevents the instance from being GC'd"""
+        import gc
+        import weakref
+
+        m = FactoredMatrix(randn(4, 3), randn(3, 4))
+        _ = m.svd()  # populate the cache
+        ref = weakref.ref(m)
+        del m
+        gc.collect()
+        assert (
+            ref() is None
+        ), "FactoredMatrix instance survived deletion — svd cache is leaking references."
 
     def test_eigenvalues_property(self, factored_matrices):
         for factored_matrix in factored_matrices:
@@ -140,40 +173,6 @@ class TestFactoredMatrixProperties:
             result = factored_matrix.collapse_l()
             expected = factored_matrix.S[..., :, None] * utils.transpose(factored_matrix.V)
             assert torch.allclose(result, expected)
-
-    def test_V_and_Vh_alias_match(self, factored_matrices):
-        import warnings
-
-        for factored_matrix in factored_matrices:
-            with warnings.catch_warnings(record=True) as caught:
-                warnings.simplefilter("always")
-                vh_value = factored_matrix.Vh
-            assert any(issubclass(w.category, DeprecationWarning) for w in caught)
-            assert torch.equal(vh_value, factored_matrix.V)
-
-    def test_svd_caches_per_instance(self):
-        """svd() should cache its result on the instance — repeated calls return the same tensors."""
-        m = FactoredMatrix(randn(4, 3), randn(3, 4))
-        first_U, first_S, first_V = m.svd()
-        second_U, second_S, second_V = m.svd()
-        # Same object identity confirms the cache returns the stored value rather than recomputing.
-        assert first_U is second_U
-        assert first_S is second_S
-        assert first_V is second_V
-
-    def test_svd_does_not_prevent_gc(self):
-        """svd's cache must not hold a strong reference that prevents the instance from being GC'd"""
-        import gc
-        import weakref
-
-        m = FactoredMatrix(randn(4, 3), randn(3, 4))
-        _ = m.svd()  # populate the cache
-        ref = weakref.ref(m)
-        del m
-        gc.collect()
-        assert (
-            ref() is None
-        ), "FactoredMatrix instance survived deletion — svd cache is leaking references."
 
     def test_collapse_r(self, factored_matrices):
         for factored_matrix in factored_matrices:

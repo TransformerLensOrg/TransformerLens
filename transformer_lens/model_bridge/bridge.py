@@ -196,6 +196,9 @@ class TransformerBridge(nn.Module):
         n_devices: Optional[int] = None,
         max_memory: Optional[Dict[Union[str, int], str]] = None,
         n_ctx: Optional[int] = None,
+        revision: Optional[str] = None,
+        checkpoint_index: Optional[int] = None,
+        checkpoint_value: Optional[int] = None,
     ) -> "TransformerBridge":
         """Boot a model from HuggingFace (alias for sources.transformers.boot).
 
@@ -231,6 +234,14 @@ class TransformerBridge(nn.Module):
             n_ctx: Optional context length override. Writes to the appropriate HF config field
                 for this model automatically (callers don't need to know the field name).
                 Warns if larger than the model's default context length.
+            revision: Optional HF revision (branch, tag, or commit). Forwarded to the underlying
+                ``AutoConfig.from_pretrained`` and ``AutoModelForCausalLM.from_pretrained`` calls.
+                Mutually exclusive with ``checkpoint_index`` / ``checkpoint_value``.
+            checkpoint_index: Index into the available training checkpoints for the model family
+                (currently ``EleutherAI/pythia*`` and ``stanford-crfm/*``). Resolved to a revision
+                string via known per-family naming conventions.
+            checkpoint_value: Training step or token count of the desired checkpoint. Alternative
+                to ``checkpoint_index``; must match an entry in the family's checkpoint label list.
 
         Returns:
             The bridge to the loaded model.
@@ -251,6 +262,9 @@ class TransformerBridge(nn.Module):
             n_devices=n_devices,
             max_memory=max_memory,
             n_ctx=n_ctx,
+            revision=revision,
+            checkpoint_index=checkpoint_index,
+            checkpoint_value=checkpoint_value,
         )
 
     @property

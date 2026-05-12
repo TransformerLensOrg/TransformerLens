@@ -222,9 +222,7 @@ class FactoredMatrix:
         Float[torch.Tensor, "*leading_dims mdim"],
         Float[torch.Tensor, "*leading_dims rdim mdim"],
     ]:
-        # cached_property stores the result on the instance, so it's freed with the instance.
-        # Avoids the lru_cache-on-method GC leak where every FactoredMatrix that ever
-        # had .svd() called on it was retained by the function-level cache.
+        # Cache on the instance (frees with it) rather than class-level — fixes the lru_cache leak.
         Ua, Sa, Vha = torch.linalg.svd(self.A, full_matrices=False)
         Ub, Sb, Vhb = torch.linalg.svd(self.B, full_matrices=False)
         Va = tensor_utils.transpose(Vha)
