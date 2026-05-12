@@ -207,6 +207,11 @@ class TransformerBridge(nn.Module):
         Call ``enable_compatibility_mode()`` on the result for HookedTransformer-
         equivalent numerics. Generation, argmax, and CE loss are unaffected.
 
+        Attention implementation is forced to ``"eager"`` so hooks can capture scores
+        and patterns. For an apples-to-apples HF comparison, load the HF model with
+        ``attn_implementation="eager"`` too; comparing against the default ``"sdpa"``
+        shows ~1e-3 fp32 drift from kernel-level op reordering, not a bridge bug.
+
         Args:
             model_name: The name of the model to load.
             hf_config_overrides: Optional overrides applied to the HuggingFace config before model load.
