@@ -33,7 +33,7 @@ from torch import nn
 from transformer_lens import utilities as utils
 from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.FactoredMatrix import FactoredMatrix
-from transformer_lens.hook_points import HookPoint
+from transformer_lens.hook_points import HookIntrospectionMixin, HookPoint
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.component_setup import set_original_components
 from transformer_lens.model_bridge.composition_scores import CompositionScores
@@ -94,7 +94,7 @@ def build_alias_to_canonical_map(hook_dict, prefix=""):
     return aliases
 
 
-class TransformerBridge(nn.Module):
+class TransformerBridge(HookIntrospectionMixin, nn.Module):
     """Bridge between HuggingFace and TransformerLens models.
 
     This class provides a standardized interface to access components of a transformer
