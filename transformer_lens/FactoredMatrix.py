@@ -6,7 +6,7 @@ eigenvalues, norm and SVD.
 
 from __future__ import annotations
 
-from functools import lru_cache
+from functools import cached_property
 from typing import Any, List, Protocol, Tuple, Union, cast, overload, runtime_checkable
 
 import torch
@@ -214,7 +214,26 @@ class FactoredMatrix:
     def T(self) -> FactoredMatrix:
         return FactoredMatrix(self.B.transpose(-2, -1), self.A.transpose(-2, -1))
 
-    @lru_cache(maxsize=None)
+    @cached_property
+    def _svd_cached(
+        self,
+    ) -> Tuple[
+        Float[torch.Tensor, "*leading_dims ldim mdim"],
+        Float[torch.Tensor, "*leading_dims mdim"],
+        Float[torch.Tensor, "*leading_dims rdim mdim"],
+    ]:
+        # cached_property stores the result on the instance, so it's freed with the instance.
+        # Avoids the lru_cache-on-method GC leak where every FactoredMatrix that ever
+        # had .svd() called on it was retained by the function-level cache.
+        Ua, Sa, Vha = torch.linalg.svd(self.A, full_matrices=False)
+        Ub, Sb, Vhb = torch.linalg.svd(self.B, full_matrices=False)
+        Va = tensor_utils.transpose(Vha)
+        Vb = tensor_utils.transpose(Vhb)
+        middle = Sa[..., :, None] * tensor_utils.transpose(Va) @ Ub * Sb[..., None, :]
+        Um, Sm, Vhm = torch.linalg.svd(middle, full_matrices=False)
+        Vm = tensor_utils.transpose(Vhm)
+        return Ua @ Um, Sm, Vb @ Vm
+
     def svd(
         self,
     ) -> Tuple[
@@ -223,19 +242,7 @@ class FactoredMatrix:
         Float[torch.Tensor, "*leading_dims rdim mdim"],
     ]:
         """Singular Value Decomposition: returns ``(U, S, V)`` such that ``U @ S.diag() @ V.transpose(-2, -1) == M``."""
-        # Transpose Vh back to V — the long-standing return convention; downstream
-        # callers transposed the old `.Vh` result, so preserving V keeps them working.
-        Ua, Sa, Vha = torch.linalg.svd(self.A, full_matrices=False)
-        Ub, Sb, Vhb = torch.linalg.svd(self.B, full_matrices=False)
-        Va = tensor_utils.transpose(Vha)
-        Vb = tensor_utils.transpose(Vhb)
-        middle = Sa[..., :, None] * tensor_utils.transpose(Va) @ Ub * Sb[..., None, :]
-        Um, Sm, Vhm = torch.linalg.svd(middle, full_matrices=False)
-        Vm = tensor_utils.transpose(Vhm)
-        U = Ua @ Um
-        V = Vb @ Vm
-        S = Sm
-        return U, S, V
+        return self._svd_cached
 
     @property
     def U(self) -> Float[torch.Tensor, "*leading_dims ldim mdim"]:

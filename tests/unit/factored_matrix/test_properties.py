@@ -151,6 +151,30 @@ class TestFactoredMatrixProperties:
             assert any(issubclass(w.category, DeprecationWarning) for w in caught)
             assert torch.equal(vh_value, factored_matrix.V)
 
+    def test_svd_caches_per_instance(self):
+        """svd() should cache its result on the instance — repeated calls return the same tensors."""
+        m = FactoredMatrix(randn(4, 3), randn(3, 4))
+        first_U, first_S, first_V = m.svd()
+        second_U, second_S, second_V = m.svd()
+        # Same object identity confirms the cache returns the stored value rather than recomputing.
+        assert first_U is second_U
+        assert first_S is second_S
+        assert first_V is second_V
+
+    def test_svd_does_not_prevent_gc(self):
+        """svd's cache must not hold a strong reference that prevents the instance from being GC'd."""
+        import gc
+        import weakref
+
+        m = FactoredMatrix(randn(4, 3), randn(3, 4))
+        _ = m.svd()  # populate the cache
+        ref = weakref.ref(m)
+        del m
+        gc.collect()
+        assert (
+            ref() is None
+        ), "FactoredMatrix instance survived deletion — svd cache is leaking references."
+
     def test_collapse_r(self, factored_matrices):
         for factored_matrix in factored_matrices:
             result = factored_matrix.collapse_r()
