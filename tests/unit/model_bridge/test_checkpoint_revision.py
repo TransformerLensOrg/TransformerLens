@@ -1,6 +1,6 @@
 """Unit tests for the bridge revision/checkpoint API (issue #453)."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -81,46 +81,41 @@ class TestResolveCheckpointToRevision:
         assert "stanford-crfm" in _CHECKPOINT_REVISION_FORMATS
 
 
+class _AbortBoot(Exception):
+    """Raised by the model-load patch to short-circuit ``boot()`` before any real load."""
+
+
 class TestBootRevisionPlumbing:
-    """Verify that ``revision`` and ``checkpoint_*`` reach HF's from_pretrained calls."""
+    """Verify that ``revision`` and ``checkpoint_*`` reach HF's from_pretrained calls.
+
+    Uses pythia-70m's real cached config (avoids MagicMock fragility through the
+    adapter/config-mapping path) and aborts at the model-load step.
+    """
 
     def _patched_boot(self, **boot_kwargs):
-        """Call boot() with all the side-effect HF calls patched out.
-
-        Returns ``(autoconfig_kwargs, model_from_pretrained_kwargs)``.
-        """
         from transformer_lens.model_bridge.sources import transformers as bridge_src
 
         captured: dict = {}
+        real_autoconfig = bridge_src.AutoConfig.from_pretrained
 
-        def fake_autoconfig_from_pretrained(*args, **kwargs):
-            captured["autoconfig_args"] = args
-            captured["autoconfig_kwargs"] = kwargs
-            cfg = MagicMock()
-            cfg.architectures = ["GPT2LMHeadModel"]
-            cfg.n_positions = 1024
-            cfg.pad_token_id = 0
-            cfg.eos_token_id = 0
-            cfg.to_dict = lambda: {"model_type": "gpt2"}
-            cfg.__dict__["pad_token_id"] = 0
-            return cfg
+        def capture_autoconfig(name, **kwargs):
+            captured["autoconfig_kwargs"] = dict(kwargs)
+            # Strip the (possibly fake) revision so the real call hits the CI cache.
+            kwargs.pop("revision", None)
+            return real_autoconfig(name, **kwargs)
 
-        def fake_model_from_pretrained(*args, **kwargs):
-            captured["model_args"] = args
+        def capture_model_load(*args, **kwargs):
             captured["model_kwargs"] = kwargs
             raise _AbortBoot()
 
-        class _AbortBoot(Exception):
-            pass
-
         with patch.object(
-            bridge_src.AutoConfig, "from_pretrained", side_effect=fake_autoconfig_from_pretrained
+            bridge_src.AutoConfig, "from_pretrained", side_effect=capture_autoconfig
         ), patch(
             "transformers.AutoModelForCausalLM.from_pretrained",
-            side_effect=fake_model_from_pretrained,
+            side_effect=capture_model_load,
         ):
-            with pytest.raises(Exception):
-                bridge_src.boot(model_name="EleutherAI/pythia-70m", **boot_kwargs)
+            with pytest.raises(_AbortBoot):
+                bridge_src.boot(model_name="EleutherAI/pythia-70m", device="cpu", **boot_kwargs)
 
         return captured
 
