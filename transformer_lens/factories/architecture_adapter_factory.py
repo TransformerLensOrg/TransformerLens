@@ -1,7 +1,10 @@
 """Architecture adapter factory.
 
-This module provides a factory for creating architecture adapters.
+This module provides a factory for creating architecture adapters, including
+support for external registration and entry-point discovery.
 """
+
+from importlib.metadata import entry_points
 
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
@@ -126,9 +129,57 @@ SUPPORTED_ARCHITECTURES = {
 
 
 class ArchitectureAdapterFactory:
-    """Factory for creating architecture adapters."""
+    """Factory for creating architecture adapters.
+
+    Supports external registration via `register_adapter()` and automatic
+    discovery of adapters from installed packages via entry points.
+    """
 
     _adapters = SUPPORTED_ARCHITECTURES
+    _entry_points_discovered = False
+
+    @classmethod
+    def register_adapter(
+        cls, architecture_name: str, adapter_class: type["ArchitectureAdapter"]
+    ) -> None:
+        """Register a custom architecture adapter at runtime.
+
+        This allows users to add their own architecture adapters without
+        modifying TransformerLens source code.
+
+        Args:
+            architecture_name: The HuggingFace architecture class name
+                (e.g. ``"Qwen3ForCausalLM"``).
+            adapter_class: The adapter class to register.
+
+        Example:
+            >>> from transformer_lens.factories import ArchitectureAdapterFactory
+            >>> ArchitectureAdapterFactory.register_adapter(
+            ...     "MyModelForCausalLM",
+            ...     MyArchitectureAdapter,
+            ... )
+        """
+        cls._adapters[architecture_name] = adapter_class
+
+    @classmethod
+    def discover_entry_points(cls) -> None:
+        """Discover and register architecture adapters from installed packages.
+
+        Packages can declare adapters in their ``pyproject.toml``:
+        ```toml
+        [project.entry-points."transformer_lens.architectures"]
+        "MyModelForCausalLM" = "my_package.adapters:MyArchitectureAdapter"
+        ```
+        """
+        if cls._entry_points_discovered:
+            return
+        try:
+            eps = entry_points(group="transformer_lens.architectures")
+            for ep in eps:
+                cls._adapters[ep.name] = ep.load()
+        except Exception:
+            pass
+        cls._entry_points_discovered = True
 
     @classmethod
     def select_architecture_adapter(cls, cfg: TransformerBridgeConfig) -> ArchitectureAdapter:
@@ -143,11 +194,11 @@ class ArchitectureAdapterFactory:
         Raises:
             ValueError: If no adapter is found for the given config.
         """
+        cls.discover_entry_points()
         if cfg.architecture is not None:
             if cfg.architecture in cls._adapters:
                 return cls._adapters[cfg.architecture](cfg)
             else:
                 raise ValueError(f"Unsupported architecture: {cfg.architecture}")
 
-        # If architecture is None, this is an error since TransformerBridgeConfig should always have it set
         raise ValueError(f"TransformerBridgeConfig must have architecture set, got: {cfg}")
