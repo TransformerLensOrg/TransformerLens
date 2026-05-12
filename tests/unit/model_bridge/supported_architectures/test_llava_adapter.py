@@ -194,18 +194,12 @@ class TestLlavaSiglipVisionVariant:
 
     def test_siglip_selects_siglip_bridge(self):
         adapter = LlavaArchitectureAdapter(_make_llava_cfg(vision_model_type="siglip_vision_model"))
-        assert isinstance(
-            adapter.component_mapping["vision_encoder"], SiglipVisionEncoderBridge
-        )
-        assert not isinstance(
-            adapter.component_mapping["vision_encoder"], CLIPVisionEncoderBridge
-        )
+        assert isinstance(adapter.component_mapping["vision_encoder"], SiglipVisionEncoderBridge)
+        assert not isinstance(adapter.component_mapping["vision_encoder"], CLIPVisionEncoderBridge)
 
     def test_siglip_short_alias_selects_siglip_bridge(self):
         adapter = LlavaArchitectureAdapter(_make_llava_cfg(vision_model_type="siglip"))
-        assert isinstance(
-            adapter.component_mapping["vision_encoder"], SiglipVisionEncoderBridge
-        )
+        assert isinstance(adapter.component_mapping["vision_encoder"], SiglipVisionEncoderBridge)
 
 
 class TestLlavaBlockSubmodules:

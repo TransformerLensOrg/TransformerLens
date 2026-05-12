@@ -25,6 +25,7 @@ from transformer_lens.model_bridge.supported_architectures.internlm2 import (
     InternLM2ArchitectureAdapter,
 )
 
+
 def _make_cfg(
     n_heads: int = 8,
     n_key_value_heads: int = 2,
@@ -735,7 +736,9 @@ class TestInternLM2ArchitectureGuards:
         self, adapter: InternLM2ArchitectureAdapter
     ) -> None:
         # Sequential, not parallel-attn-mlp — guard against borrowing Cohere's pattern.
-        from transformer_lens.model_bridge.generalized_components import ParallelBlockBridge
+        from transformer_lens.model_bridge.generalized_components import (
+            ParallelBlockBridge,
+        )
 
         blocks = adapter.component_mapping["blocks"]
         assert not isinstance(blocks, ParallelBlockBridge)

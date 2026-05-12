@@ -180,12 +180,8 @@ class TestGemma3MultimodalComponentTypes:
 
     def test_vision_encoder_is_siglip_bridge(self, adapter):
         # Gemma3 multimodal hard-wires SigLIP — must NOT be CLIP.
-        assert isinstance(
-            adapter.component_mapping["vision_encoder"], SiglipVisionEncoderBridge
-        )
-        assert not isinstance(
-            adapter.component_mapping["vision_encoder"], CLIPVisionEncoderBridge
-        )
+        assert isinstance(adapter.component_mapping["vision_encoder"], SiglipVisionEncoderBridge)
+        assert not isinstance(adapter.component_mapping["vision_encoder"], CLIPVisionEncoderBridge)
 
     def test_vision_projector_type(self, adapter):
         assert isinstance(adapter.component_mapping["vision_projector"], VisionProjectionBridge)

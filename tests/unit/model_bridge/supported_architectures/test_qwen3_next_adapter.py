@@ -12,6 +12,7 @@ from transformer_lens.factories.architecture_adapter_factory import (
 )
 from transformer_lens.tools.model_registry import HF_SUPPORTED_ARCHITECTURES
 
+
 class TestQwen3NextRegistration:
     """Adapter is registered in all lookup tables."""
 

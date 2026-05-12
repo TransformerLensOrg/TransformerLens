@@ -23,6 +23,7 @@ from transformer_lens.model_bridge.supported_architectures.cohere import (
     CohereArchitectureAdapter,
 )
 
+
 def _make_cfg(
     n_heads: int = 4,
     d_model: int = 64,

@@ -232,9 +232,7 @@ class TestGPTBigCodeWeightConversionSemantics:
     def adapter(self) -> GPTBigCodeArchitectureAdapter:
         return GPTBigCodeArchitectureAdapter(_make_cfg())
 
-    def test_q_conversion_type_and_pattern(
-        self, adapter: GPTBigCodeArchitectureAdapter
-    ) -> None:
+    def test_q_conversion_type_and_pattern(self, adapter: GPTBigCodeArchitectureAdapter) -> None:
         conv = adapter.weight_processing_conversions["blocks.{i}.attn.q.weight"]
         assert isinstance(conv, ParamProcessingConversion)
         assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)
@@ -257,9 +255,7 @@ class TestGPTBigCodeWeightConversionSemantics:
         assert conv.tensor_conversion.pattern == "(n h) m -> n m h"
         assert conv.tensor_conversion.axes_lengths["n"] == 1
 
-    def test_o_conversion_type_and_pattern(
-        self, adapter: GPTBigCodeArchitectureAdapter
-    ) -> None:
+    def test_o_conversion_type_and_pattern(self, adapter: GPTBigCodeArchitectureAdapter) -> None:
         conv = adapter.weight_processing_conversions["blocks.{i}.attn.o.weight"]
         assert isinstance(conv, ParamProcessingConversion)
         assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)

@@ -24,6 +24,7 @@ from transformer_lens.model_bridge.supported_architectures.xglm import (
     XGLMArchitectureAdapter,
 )
 
+
 def _make_cfg(
     n_heads: int = 4,
     d_model: int = 64,
@@ -272,9 +273,7 @@ class TestXGLMComponentMappingPresence:
     def test_has_unembed(self, adapter: XGLMArchitectureAdapter) -> None:
         assert "unembed" in adapter.component_mapping
 
-    def test_all_expected_top_level_keys_present(
-        self, adapter: XGLMArchitectureAdapter
-    ) -> None:
+    def test_all_expected_top_level_keys_present(self, adapter: XGLMArchitectureAdapter) -> None:
         # No top-level rotary_emb (sinusoidal) and no pos_embed (non-persistent).
         expected = {"embed", "blocks", "ln_final", "unembed"}
         assert set(adapter.component_mapping.keys()) == expected
@@ -350,9 +349,7 @@ class TestXGLMComponentTypes:
 
     def test_ln_final_type(self, adapter: XGLMArchitectureAdapter) -> None:
         # XGLM uses LayerNorm (not RMS).
-        assert isinstance(
-            adapter.component_mapping["ln_final"], NormalizationBridge
-        )
+        assert isinstance(adapter.component_mapping["ln_final"], NormalizationBridge)
 
     def test_unembed_type(self, adapter: XGLMArchitectureAdapter) -> None:
         assert isinstance(adapter.component_mapping["unembed"], UnembeddingBridge)

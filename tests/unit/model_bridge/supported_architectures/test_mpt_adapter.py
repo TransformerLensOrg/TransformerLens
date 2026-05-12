@@ -292,7 +292,9 @@ class TestMPTComponentTypes:
         assert not isinstance(ln_final, RMSNormalizationBridge)
 
     def test_unembed_type(self, adapter: MPTArchitectureAdapter) -> None:
-        from transformer_lens.model_bridge.generalized_components import UnembeddingBridge
+        from transformer_lens.model_bridge.generalized_components import (
+            UnembeddingBridge,
+        )
 
         assert isinstance(adapter.component_mapping["unembed"], UnembeddingBridge)
 
@@ -306,7 +308,9 @@ class TestMPTBlockSubmoduleStructure:
     """Each block submodule has the correct bridge type and HF path."""
 
     def test_ln1_is_layernorm_at_norm_1(self, adapter: MPTArchitectureAdapter) -> None:
-        from transformer_lens.model_bridge.generalized_components import NormalizationBridge
+        from transformer_lens.model_bridge.generalized_components import (
+            NormalizationBridge,
+        )
 
         block = adapter.component_mapping["blocks"]
         ln1 = block.submodules["ln1"]
@@ -314,7 +318,9 @@ class TestMPTBlockSubmoduleStructure:
         assert ln1.name == "norm_1"
 
     def test_ln2_is_layernorm_at_norm_2(self, adapter: MPTArchitectureAdapter) -> None:
-        from transformer_lens.model_bridge.generalized_components import NormalizationBridge
+        from transformer_lens.model_bridge.generalized_components import (
+            NormalizationBridge,
+        )
 
         block = adapter.component_mapping["blocks"]
         ln2 = block.submodules["ln2"]
@@ -337,9 +343,7 @@ class TestMPTBlockSubmoduleStructure:
         attn = adapter.component_mapping["blocks"].submodules["attn"]
         assert attn.requires_position_embeddings is False
 
-    def test_attn_does_not_require_attention_mask(
-        self, adapter: MPTArchitectureAdapter
-    ) -> None:
+    def test_attn_does_not_require_attention_mask(self, adapter: MPTArchitectureAdapter) -> None:
         # ALiBi bias slope IS the position-aware signal.
         attn = adapter.component_mapping["blocks"].submodules["attn"]
         assert attn.requires_attention_mask is False
@@ -402,9 +406,7 @@ class TestMPTBlockSubmoduleStructure:
 class TestMPTWeightConversionSemantics:
     """Each weight conversion entry uses the expected class and pattern."""
 
-    def test_qkv_conversion_classes_and_patterns(
-        self, adapter: MPTArchitectureAdapter
-    ) -> None:
+    def test_qkv_conversion_classes_and_patterns(self, adapter: MPTArchitectureAdapter) -> None:
         from transformer_lens.conversion_utils.conversion_steps import (
             RearrangeTensorConversion,
         )
@@ -475,19 +477,13 @@ class TestMPTMQASupport:
 class TestMPTArchitectureGuards:
     """No rotary, no pos_embed (MPT uses ALiBi)."""
 
-    def test_no_rotary_emb_in_component_mapping(
-        self, adapter: MPTArchitectureAdapter
-    ) -> None:
+    def test_no_rotary_emb_in_component_mapping(self, adapter: MPTArchitectureAdapter) -> None:
         assert "rotary_emb" not in adapter.component_mapping
 
-    def test_no_pos_embed_in_component_mapping(
-        self, adapter: MPTArchitectureAdapter
-    ) -> None:
+    def test_no_pos_embed_in_component_mapping(self, adapter: MPTArchitectureAdapter) -> None:
         assert "pos_embed" not in adapter.component_mapping
 
-    def test_no_rotary_emb_in_attn_submodules(
-        self, adapter: MPTArchitectureAdapter
-    ) -> None:
+    def test_no_rotary_emb_in_attn_submodules(self, adapter: MPTArchitectureAdapter) -> None:
         # ALiBi bias is computed inside the attention bridge: no rotary submodule.
         attn = adapter.component_mapping["blocks"].submodules["attn"]
         assert "rotary_emb" not in attn.submodules
