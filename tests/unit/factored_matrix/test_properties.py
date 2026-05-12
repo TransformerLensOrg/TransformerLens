@@ -162,7 +162,7 @@ class TestFactoredMatrixProperties:
         assert first_V is second_V
 
     def test_svd_does_not_prevent_gc(self):
-        """svd's cache must not hold a strong reference that prevents the instance from being GC'd."""
+        """svd's cache must not hold a strong reference that prevents the instance from being GC'd"""
         import gc
         import weakref
 
