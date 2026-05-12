@@ -33,7 +33,7 @@ from torch import nn
 from transformer_lens import utilities as utils
 from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.FactoredMatrix import FactoredMatrix
-from transformer_lens.hook_points import HookPoint
+from transformer_lens.hook_points import HookIntrospectionMixin, HookPoint
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.component_setup import set_original_components
 from transformer_lens.model_bridge.composition_scores import CompositionScores
@@ -94,7 +94,7 @@ def build_alias_to_canonical_map(hook_dict, prefix=""):
     return aliases
 
 
-class TransformerBridge(nn.Module):
+class TransformerBridge(HookIntrospectionMixin, nn.Module):
     """Bridge between HuggingFace and TransformerLens models.
 
     This class provides a standardized interface to access components of a transformer
@@ -196,6 +196,9 @@ class TransformerBridge(nn.Module):
         n_devices: Optional[int] = None,
         max_memory: Optional[Dict[Union[str, int], str]] = None,
         n_ctx: Optional[int] = None,
+        revision: Optional[str] = None,
+        checkpoint_index: Optional[int] = None,
+        checkpoint_value: Optional[int] = None,
     ) -> "TransformerBridge":
         """Boot a model from HuggingFace (alias for sources.transformers.boot).
 
@@ -203,6 +206,11 @@ class TransformerBridge(nn.Module):
         legacy ``HookedTransformer`` (which folds LayerNorm + centers weights).
         Call ``enable_compatibility_mode()`` on the result for HookedTransformer-
         equivalent numerics. Generation, argmax, and CE loss are unaffected.
+
+        Attention implementation is forced to ``"eager"`` so hooks can capture scores
+        and patterns. For an apples-to-apples HF comparison, load the HF model with
+        ``attn_implementation="eager"`` too; comparing against the default ``"sdpa"``
+        shows ~1e-3 fp32 drift from kernel-level op reordering, not a bridge bug.
 
         Args:
             model_name: The name of the model to load.
@@ -231,6 +239,14 @@ class TransformerBridge(nn.Module):
             n_ctx: Optional context length override. Writes to the appropriate HF config field
                 for this model automatically (callers don't need to know the field name).
                 Warns if larger than the model's default context length.
+            revision: Optional HF revision (branch, tag, or commit). Forwarded to the underlying
+                ``AutoConfig.from_pretrained`` and ``AutoModelForCausalLM.from_pretrained`` calls.
+                Mutually exclusive with ``checkpoint_index`` / ``checkpoint_value``.
+            checkpoint_index: Index into the available training checkpoints for the model family
+                (currently ``EleutherAI/pythia*`` and ``stanford-crfm/*``). Resolved to a revision
+                string via known per-family naming conventions.
+            checkpoint_value: Training step or token count of the desired checkpoint. Alternative
+                to ``checkpoint_index``; must match an entry in the family's checkpoint label list.
 
         Returns:
             The bridge to the loaded model.
@@ -251,6 +267,9 @@ class TransformerBridge(nn.Module):
             n_devices=n_devices,
             max_memory=max_memory,
             n_ctx=n_ctx,
+            revision=revision,
+            checkpoint_index=checkpoint_index,
+            checkpoint_value=checkpoint_value,
         )
 
     @property

@@ -48,6 +48,9 @@ class LensHandle:
     context_level: Optional[int] = None
     """Context level associated with the hooks context manager for the given hook."""
 
+    user_hook: Optional[Callable] = None
+    """The original hook callable, before ``add_hook`` wraps it."""
+
 
 # Define type aliases
 NamesFilter = Optional[Union[Callable[[str], bool], Sequence[str], str]]
@@ -167,6 +170,14 @@ class HookPoint(nn.Module):
         # This scales the SUM of gradients, not element-wise (to avoid PyTorch bugs)
         self.backward_scale: float = 1.0
 
+    def __repr__(self) -> str:
+        bits = [f"name={self.name!r}"] if self.name is not None else []
+        if self.fwd_hooks:
+            bits.append(f"{len(self.fwd_hooks)} fwd")
+        if self.bwd_hooks:
+            bits.append(f"{len(self.bwd_hooks)} bwd")
+        return f"HookPoint({', '.join(bits)})" if bits else "HookPoint()"
+
     def add_perma_hook(self, hook: HookFunction, dir: Literal["fwd", "bwd"] = "fwd") -> None:
         self.add_hook(hook, dir=dir, is_permanent=True)
 
@@ -273,7 +284,7 @@ class HookPoint(nn.Module):
         else:
             raise ValueError(f"Invalid direction {dir}")
 
-        handle = LensHandle(pt_handle, is_permanent, level)
+        handle = LensHandle(pt_handle, is_permanent, level, user_hook=hook)
 
         if prepend:
             # we could just pass this as an argument in PyTorch 2.0, but for now we manually do this...
@@ -376,7 +387,55 @@ class HookPoint(nn.Module):
 
 
 # %%
-class HookedRootModule(nn.Module):
+class HookIntrospectionMixin:
+    """``list_hooks()`` mixin for any class exposing a ``hook_dict``.
+
+    Accessed via ``getattr`` so subclasses can provide ``hook_dict`` as either
+    an instance attribute (``HookedRootModule``) or a ``@property`` (``TransformerBridge``).
+    """
+
+    def list_hooks(
+        self,
+        name_filter: NamesFilter = None,
+        dir: Literal["fwd", "bwd", "both"] = "both",
+        including_permanent: bool = True,
+    ) -> dict[str, list[LensHandle]]:
+        """Return attached hooks grouped by HookPoint name; empty HookPoints are omitted.
+
+        Args:
+            name_filter: A hook name, list of names, or predicate. ``None`` matches all.
+            dir: Restrict to forward, backward, or both directions.
+            including_permanent: If False, drop permanent hooks from the result.
+        """
+        if name_filter is None:
+            matches: Callable[[str], bool] = lambda _: True
+        elif callable(name_filter):
+            matches = name_filter
+        elif isinstance(name_filter, str):
+            target = name_filter
+            matches = lambda n: n == target
+        else:
+            allowed = set(name_filter)
+            matches = lambda n: n in allowed
+
+        out: dict[str, list[LensHandle]] = {}
+        hook_dict: dict[str, HookPoint] = getattr(self, "hook_dict")
+        for name, hp in hook_dict.items():
+            if not matches(name):
+                continue
+            handles: list[LensHandle] = []
+            if dir in ("fwd", "both"):
+                handles.extend(hp.fwd_hooks)
+            if dir in ("bwd", "both"):
+                handles.extend(hp.bwd_hooks)
+            if not including_permanent:
+                handles = [h for h in handles if not h.is_permanent]
+            if handles:
+                out[name] = handles
+        return out
+
+
+class HookedRootModule(HookIntrospectionMixin, nn.Module):
     """A class building on nn.Module to interface nicely with HookPoints.
 
     Adds various nice utilities, most notably run_with_hooks to run the model with temporary hooks,
