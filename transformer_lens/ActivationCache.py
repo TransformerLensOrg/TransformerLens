@@ -145,10 +145,7 @@ class ActivationCache:
         has_batch_dim: bool = True,
     ):
         self.cache_dict = cache_dict
-        # Type as HookedTransformer: every `cache.model.X` access in the helper methods
-        # (compute_head_results, get_neuron_results, accumulated_resid, logit_attrs, ...)
-        # requires HT-internal structure (model.blocks[i].attn.W_O, model.tokens_to_residual_directions, etc.).
-        # Bridge users only use cache_dict; the typing label on cache.model is irrelevant for them.
+        # Helper methods require HT-internal structure; bridge users only use cache_dict.
         self.model = cast("HookedTransformer", model)
         self.has_batch_dim = has_batch_dim
         self.has_embed = "hook_embed" in self.cache_dict
@@ -739,19 +736,13 @@ class ActivationCache:
         Intended use is to enable use_attn_results when running and caching the model, but this can
         be useful if you forget.
 
-        TransformerBridge: not supported. This method reaches into HookedTransformer's
-        ``model.blocks[i].attn.W_O`` parameter, which only exists on the HT internal layout —
-        bridges wrap an HF model whose attention weights live under different module paths.
-        Bridge users that want per-head contributions should run with ``use_attn_result=True``
-        on the underlying HT model, or compute head results from the cached ``z`` activation
-        directly (``cache["blocks.{i}.attn.hook_z"] @ self.model.W_O[i]`` equivalent, but
-        derived from HF tensors).
+        TransformerBridge: not supported — accesses HT-only ``model.blocks[i].attn.W_O``.
+        Bridge users: enable ``use_attn_result=True`` on HT, or compute from cached ``z`` and
+        the underlying HF model's W_O.
         """
         from transformer_lens.HookedTransformer import HookedTransformer
 
-        assert isinstance(
-            self.model, HookedTransformer
-        ), "compute_head_results requires HookedTransformer (accesses model.blocks[i].attn.W_O); bridge users should compute from cached `z` and HF attention weights instead"
+        assert isinstance(self.model, HookedTransformer), "requires HookedTransformer"
         # Return if valid 4D results exist; replace stale 3D Bridge entries if needed
         first_key = "blocks.0.attn.hook_result"
         if first_key in self.cache_dict:
@@ -775,7 +766,7 @@ class ActivationCache:
             )
 
             # Element-wise multiplication of z and W_O (with shape [head_index, d_head, d_model])
-            # ModuleList[T] indexing is typed `Tensor | Module` upstream; cast restores T.
+            # nn.ModuleList[T][i] is typed Tensor|Module upstream; cast restores T.
             block = cast("TransformerBlock", self.model.blocks[layer])
             result = z * block.attn.W_O
 
@@ -927,17 +918,12 @@ class ActivationCache:
             Last-dim is ``d_model`` (default), ``num_outputs`` (2D projection), or squeezed
             (1D projection).
 
-        TransformerBridge: not supported. This method reaches into HookedTransformer's
-        ``model.blocks[i].mlp.W_out`` parameter (HT-internal layout). Bridges wrap an HF
-        model whose MLP weights live under different module paths. Bridge users that want
-        per-neuron contributions should access the equivalent HF weights via
-        ``self.model.original_model`` and reproduce the math externally.
+        TransformerBridge: not supported — accesses HT-only ``model.blocks[i].mlp.W_out``.
+        Bridge users: reach into ``self.model.original_model`` for the HF-side weights.
         """
         from transformer_lens.HookedTransformer import HookedTransformer
 
-        assert isinstance(
-            self.model, HookedTransformer
-        ), "get_neuron_results requires HookedTransformer (accesses model.blocks[i].mlp.W_out); bridge users must reach into the wrapped HF model directly"
+        assert isinstance(self.model, HookedTransformer), "requires HookedTransformer"
         if not isinstance(neuron_slice, Slice):
             neuron_slice = Slice(neuron_slice)
         if not isinstance(pos_slice, Slice):
@@ -1004,14 +990,11 @@ class ActivationCache:
         RMS models drop the ``mean(W_out_n) * sum_p`` term (no centering). Always uses the
         ln1 scale (mlp_input=False) since ``stack_neuron_results`` doesn't expose mlp_input.
 
-        TransformerBridge: not supported (called from ``stack_neuron_results``); see
-        ``get_neuron_results`` for the bridge-side caveat.
+        TransformerBridge: not supported (called from ``stack_neuron_results``).
         """
         from transformer_lens.HookedTransformer import HookedTransformer
 
-        assert isinstance(
-            self.model, HookedTransformer
-        ), "_stack_neuron_results_apply_ln_projected requires HookedTransformer"
+        assert isinstance(self.model, HookedTransformer), "requires HookedTransformer"
         scale = self._get_cached_ln_scale(layer, mlp_input=False, pos_slice=pos_slice)
 
         apply_centering = self.model.cfg.normalization_type in ["LN", "LNPre"]
@@ -1019,7 +1002,7 @@ class ActivationCache:
 
         components: list = []
         for l in range(layer):
-            # ModuleList[T] indexing is typed `Tensor | Module` upstream; cast restores T.
+            # nn.ModuleList[T][i] is typed Tensor|Module upstream; cast restores T.
             block = cast("TransformerBlock", self.model.blocks[l])
             W_out_l = block.mlp.W_out  # [d_mlp, d_model]
             W_out_l_sliced = neuron_slice.apply(W_out_l, dim=0)

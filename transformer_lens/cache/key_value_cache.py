@@ -16,7 +16,9 @@ from transformer_lens.utilities.multi_gpu import get_device_for_block_index
 from .key_value_cache_entry import TransformerLensKeyValueCacheEntry
 
 if TYPE_CHECKING:
-    from transformer_lens.config.hooked_transformer_config import HookedTransformerConfig
+    from transformer_lens.config.hooked_transformer_config import (
+        HookedTransformerConfig,
+    )
 
 
 @dataclass
