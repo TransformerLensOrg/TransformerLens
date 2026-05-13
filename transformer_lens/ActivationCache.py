@@ -736,13 +736,9 @@ class ActivationCache:
         Intended use is to enable use_attn_results when running and caching the model, but this can
         be useful if you forget.
 
-        TransformerBridge: not supported — accesses HT-only ``model.blocks[i].attn.W_O``.
-        Bridge users: enable ``use_attn_result=True`` on HT, or compute from cached ``z`` and
-        the underlying HF model's W_O.
+        Works for both HookedTransformer and TransformerBridge — bridge exposes
+        ``blocks[i].attn.W_O`` via its component-mapping compatibility shim.
         """
-        from transformer_lens.HookedTransformer import HookedTransformer
-
-        assert isinstance(self.model, HookedTransformer), "requires HookedTransformer"
         # Return if valid 4D results exist; replace stale 3D Bridge entries if needed
         first_key = "blocks.0.attn.hook_result"
         if first_key in self.cache_dict:
@@ -917,13 +913,7 @@ class ActivationCache:
         Returns:
             Last-dim is ``d_model`` (default), ``num_outputs`` (2D projection), or squeezed
             (1D projection).
-
-        TransformerBridge: not supported — accesses HT-only ``model.blocks[i].mlp.W_out``.
-        Bridge users: reach into ``self.model.original_model`` for the HF-side weights.
         """
-        from transformer_lens.HookedTransformer import HookedTransformer
-
-        assert isinstance(self.model, HookedTransformer), "requires HookedTransformer"
         if not isinstance(neuron_slice, Slice):
             neuron_slice = Slice(neuron_slice)
         if not isinstance(pos_slice, Slice):
@@ -990,11 +980,7 @@ class ActivationCache:
         RMS models drop the ``mean(W_out_n) * sum_p`` term (no centering). Always uses the
         ln1 scale (mlp_input=False) since ``stack_neuron_results`` doesn't expose mlp_input.
 
-        TransformerBridge: not supported (called from ``stack_neuron_results``).
         """
-        from transformer_lens.HookedTransformer import HookedTransformer
-
-        assert isinstance(self.model, HookedTransformer), "requires HookedTransformer"
         scale = self._get_cached_ln_scale(layer, mlp_input=False, pos_slice=pos_slice)
 
         apply_centering = self.model.cfg.normalization_type in ["LN", "LNPre"]
