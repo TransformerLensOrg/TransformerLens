@@ -383,7 +383,7 @@ class HookPoint(nn.Module):
 
 # %%
 class HookIntrospectionMixin:
-    """``list_hooks()`` mixin for any class exposing a ``hook_dict``.
+    """``list_hooks()`` mixins for any class exposing a ``hook_dict``.
 
     Accessed via ``getattr`` so subclasses can provide ``hook_dict`` as either
     an instance attribute (``HookedRootModule``) or a ``@property`` (``TransformerBridge``).
