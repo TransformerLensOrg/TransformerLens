@@ -15,7 +15,17 @@ from __future__ import annotations
 
 import logging
 import warnings
-from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, cast
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    Union,
+    cast,
+)
 
 import einops
 import numpy as np
@@ -25,6 +35,12 @@ from typing_extensions import Literal
 
 import transformer_lens.utilities as utils
 from transformer_lens.utilities import Slice, SliceInput, warn_if_mps
+
+if TYPE_CHECKING:
+    from transformer_lens.HookedTransformer import HookedTransformer
+    from transformer_lens.model_bridge.bridge import TransformerBridge
+
+    CacheableModel = Union["HookedTransformer", "TransformerBridge"]
 
 
 def _normalize_projection_to_2d(
@@ -124,7 +140,19 @@ class ActivationCache:
             Whether the activations have a batch dimension.
     """
 
-    def __init__(self, cache_dict: Dict[str, torch.Tensor], model, has_batch_dim: bool = True):
+    # Class-level annotation gives static checkers (mypy, IDEs) a precise type for
+    # `cache.model` while keeping the constructor parameter unannotated so runtime
+    # type checkers (beartype/jaxtyping) skip the forward-ref lookup that would fail
+    # before HookedTransformer / TransformerBridge are imported.
+    if TYPE_CHECKING:
+        model: "CacheableModel"
+
+    def __init__(
+        self,
+        cache_dict: Dict[str, torch.Tensor],
+        model: Any,
+        has_batch_dim: bool = True,
+    ):
         self.cache_dict = cache_dict
         self.model = model
         self.has_batch_dim = has_batch_dim

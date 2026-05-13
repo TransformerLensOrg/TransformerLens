@@ -5,10 +5,44 @@ This module contains utility functions related to logits
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Optional
 
+import pandas as pd
 import torch
 from jaxtyping import Float, Int
+
+
+def logits_to_df(
+    logits: Float[torch.Tensor, "d_vocab"],
+    tokenizer: Optional[Any] = None,
+    top_k: Optional[int] = None,
+) -> pd.DataFrame:
+    """Convert a 1-D logit vector into a sortable DataFrame for inspection.
+
+    Returns a frame with columns ``token_index``, ``token_string`` (when
+    ``tokenizer`` is given), ``logit``, ``log_prob``, ``probability``, sorted by
+    descending probability. ``top_k`` truncates to the highest-probability rows.
+
+    Args:
+        logits: 1-D tensor of shape [d_vocab]; raw model logits for one position.
+        tokenizer: Optional HF tokenizer used to materialise ``token_string``;
+            when ``None``, the column is omitted.
+        top_k: Optional cap on the number of returned rows.
+    """
+    log_probs = torch.log_softmax(logits.float(), dim=-1)
+    probs = log_probs.exp()
+    order = torch.argsort(probs, descending=True)
+    if top_k is not None:
+        order = order[:top_k]
+
+    indices = order.cpu().tolist()
+    data: dict = {"token_index": indices}
+    if tokenizer is not None:
+        data["token_string"] = [tokenizer.decode([i]) for i in indices]
+    data["logit"] = logits[order].detach().cpu().tolist()
+    data["log_prob"] = log_probs[order].detach().cpu().tolist()
+    data["probability"] = probs[order].detach().cpu().tolist()
+    return pd.DataFrame(data)
 
 
 def _apply_repetition_penalty(

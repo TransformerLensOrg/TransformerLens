@@ -2,11 +2,8 @@
 
 from unittest import mock
 
-from transformer_lens.hook_points import (
-    HookedRootModule,
-    HookIntrospectionMixin,
-    HookPoint,
-)
+from transformer_lens.hook_points import HookIntrospectionMixin, HookPoint
+from transformer_lens.HookedRootModule import HookedRootModule
 
 
 class _ToyModel(HookedRootModule):

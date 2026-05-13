@@ -36,7 +36,8 @@ from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.components import MLP, Embed, GatedMLP, RMSNorm, T5Block, Unembed
 from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.FactoredMatrix import FactoredMatrix
-from transformer_lens.hook_points import HookedRootModule, HookPoint
+from transformer_lens.hook_points import HookPoint
+from transformer_lens.HookedRootModule import HookedRootModule
 from transformer_lens.utilities import sample_logits, warn_if_mps
 from transformer_lens.utilities.multi_gpu import get_device_for_block_index
 

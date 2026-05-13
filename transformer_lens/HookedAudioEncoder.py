@@ -22,7 +22,7 @@ from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.components import MLP, Attention, BertBlock
 from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.FactoredMatrix import FactoredMatrix
-from transformer_lens.hook_points import HookedRootModule
+from transformer_lens.HookedRootModule import HookedRootModule
 from transformer_lens.utilities import devices
 
 T = TypeVar("T", bound="HookedAudioEncoder")
