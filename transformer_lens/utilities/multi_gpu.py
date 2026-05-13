@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Union
 import torch
 
 if TYPE_CHECKING:
-    from transformer_lens.config.HookedTransformerConfig import (
+    from transformer_lens.config.hooked_transformer_config import (
         HookedTransformerConfig as ConfigType,
     )
 else:

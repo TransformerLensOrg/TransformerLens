@@ -17,7 +17,7 @@ import torch
 from transformer_lens.utilities.activation_functions import SUPPORTED_ACTIVATIONS
 from transformer_lens.utilities.devices import get_device
 
-from .TransformerLensConfig import TransformerLensConfig
+from .transformer_lens_config import TransformerLensConfig
 
 
 @dataclass

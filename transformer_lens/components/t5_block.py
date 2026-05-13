@@ -8,7 +8,7 @@ from transformer_lens.cache.key_value_cache_entry import (
     TransformerLensKeyValueCacheEntry,
 )
 from transformer_lens.components import RMSNorm, T5Attention
-from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.config.hooked_transformer_config import HookedTransformerConfig
 from transformer_lens.factories.mlp_factory import MLPFactory
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.utilities import repeat_along_head_dimension

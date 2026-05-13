@@ -7,7 +7,6 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-import pandas as pd
 import torch
 from jaxtyping import Float, Int
 
@@ -16,7 +15,7 @@ def logits_to_df(
     logits: Float[torch.Tensor, "d_vocab"],
     tokenizer: Optional[Any] = None,
     top_k: Optional[int] = None,
-) -> pd.DataFrame:
+) -> Any:  # pandas.DataFrame; left as Any so beartype doesn't resolve a lazy import at runtime.
     """Convert a 1-D logit vector into a sortable DataFrame for inspection.
 
     Returns a frame with columns ``token_index``, ``token_string`` (when
@@ -29,6 +28,10 @@ def logits_to_df(
             when ``None``, the column is omitted.
         top_k: Optional cap on the number of returned rows.
     """
+    # Lazy import — keeps `import transformer_lens` free of pandas's
+    # warnings unless logits_to_df is actually called.
+    import pandas as pd
+
     log_probs = torch.log_softmax(logits.float(), dim=-1)
     probs = log_probs.exp()
     order = torch.argsort(probs, descending=True)

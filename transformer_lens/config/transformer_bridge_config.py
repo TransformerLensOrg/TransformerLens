@@ -4,7 +4,7 @@ from typing import Optional
 
 import torch
 
-from .TransformerLensConfig import TransformerLensConfig
+from .transformer_lens_config import TransformerLensConfig
 
 
 class TransformerBridgeConfig(TransformerLensConfig):

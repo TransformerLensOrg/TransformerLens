@@ -3,7 +3,7 @@ from typing import Any
 import einops
 import torch
 
-from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.config.hooked_transformer_config import HookedTransformerConfig
 
 
 def convert_qwen3_weights(qwen: Any, cfg: HookedTransformerConfig):
