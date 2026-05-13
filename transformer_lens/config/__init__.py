@@ -1,7 +1,7 @@
 """Configuration classes for TransformerLens."""
 
-from .HookedTransformerConfig import HookedTransformerConfig
-from .TransformerBridgeConfig import TransformerBridgeConfig
-from .TransformerLensConfig import TransformerLensConfig
+from .hooked_transformer_config import HookedTransformerConfig
+from .transformer_bridge_config import TransformerBridgeConfig
+from .transformer_lens_config import TransformerLensConfig
 
 __all__ = ["HookedTransformerConfig", "TransformerBridgeConfig", "TransformerLensConfig"]

@@ -7,7 +7,7 @@ from transformer_lens.components.mlps.gpt_oss_moe import (
     GptOssExpert,
     GptOssMoE,
 )
-from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.config.hooked_transformer_config import HookedTransformerConfig
 
 
 def make_moe_cfg():

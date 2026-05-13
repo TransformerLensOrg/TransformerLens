@@ -59,9 +59,10 @@ from transformer_lens.components import (
 )
 from transformer_lens.components.mlps.gated_mlp import GatedMLP
 from transformer_lens.components.mlps.mlp import MLP
-from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.config.hooked_transformer_config import HookedTransformerConfig
 from transformer_lens.FactoredMatrix import FactoredMatrix
-from transformer_lens.hook_points import HookedRootModule, HookPoint
+from transformer_lens.hook_points import HookPoint
+from transformer_lens.HookedRootModule import HookedRootModule
 from transformer_lens.loading_from_pretrained import NON_HF_HOSTED_MODEL_NAMES
 from transformer_lens.utilities import (
     USE_DEFAULT_VALUE,

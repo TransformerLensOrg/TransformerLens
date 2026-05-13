@@ -12,7 +12,7 @@ import einops
 import torch
 
 import transformer_lens.utilities as utils
-from transformer_lens.config.TransformerLensConfig import TransformerLensConfig
+from transformer_lens.config.transformer_lens_config import TransformerLensConfig
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.utilities import filter_dict_by_prefix

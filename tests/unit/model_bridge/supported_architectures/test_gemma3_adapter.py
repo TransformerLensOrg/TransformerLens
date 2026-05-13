@@ -5,7 +5,7 @@ Legacy `get_pretrained_model_config` tests live in test_gemma3_config.py.
 
 import pytest
 
-from transformer_lens.config.TransformerBridgeConfig import TransformerBridgeConfig
+from transformer_lens.config.transformer_bridge_config import TransformerBridgeConfig
 from transformer_lens.conversion_utils.conversion_steps import (
     ArithmeticTensorConversion,
     RearrangeTensorConversion,

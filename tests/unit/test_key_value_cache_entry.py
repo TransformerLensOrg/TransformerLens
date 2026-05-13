@@ -20,7 +20,7 @@ import torch
 from transformer_lens.cache.key_value_cache_entry import (
     TransformerLensKeyValueCacheEntry,
 )
-from transformer_lens.config.TransformerLensConfig import TransformerLensConfig
+from transformer_lens.config.transformer_lens_config import TransformerLensConfig
 
 
 def _make_cfg(dtype: torch.dtype, n_heads: int = 4, d_head: int = 8, n_key_value_heads=None):

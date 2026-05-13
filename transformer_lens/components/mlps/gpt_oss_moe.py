@@ -15,7 +15,7 @@ import torch.nn.functional as F
 from jaxtyping import Float
 
 from transformer_lens.components.mlps.can_be_used_as_mlp import CanBeUsedAsMLP
-from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.config.hooked_transformer_config import HookedTransformerConfig
 from transformer_lens.hook_points import HookPoint
 
 GPT_OSS_ALPHA = 1.702

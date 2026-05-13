@@ -49,7 +49,9 @@ class TestQwen3_5Registration:
 
 def _make_bridge_cfg(**overrides):
     """Minimal TransformerBridgeConfig for Qwen3_5 adapter tests."""
-    from transformer_lens.config.TransformerBridgeConfig import TransformerBridgeConfig
+    from transformer_lens.config.transformer_bridge_config import (
+        TransformerBridgeConfig,
+    )
 
     defaults = dict(
         d_model=1024,
@@ -266,7 +268,7 @@ class TestQwen3_5ConfigAttributes:
         assert adapter.cfg.n_key_value_heads == 2
 
     def test_n_key_value_heads_not_set_when_absent(self):
-        from transformer_lens.config.TransformerBridgeConfig import (
+        from transformer_lens.config.transformer_bridge_config import (
             TransformerBridgeConfig,
         )
         from transformer_lens.model_bridge.supported_architectures.qwen3_5 import (
@@ -583,7 +585,9 @@ def _make_tiny_bridge():
     """Build a Qwen3_5 bridge from a tiny HF model."""
     from unittest.mock import MagicMock
 
-    from transformer_lens.config.TransformerBridgeConfig import TransformerBridgeConfig
+    from transformer_lens.config.transformer_bridge_config import (
+        TransformerBridgeConfig,
+    )
     from transformer_lens.model_bridge import TransformerBridge
     from transformer_lens.model_bridge.supported_architectures.qwen3_5 import (
         Qwen3_5ArchitectureAdapter,

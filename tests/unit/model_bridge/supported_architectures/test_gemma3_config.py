@@ -8,7 +8,7 @@ from unittest import mock
 
 import pytest
 
-from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.config.hooked_transformer_config import HookedTransformerConfig
 from transformer_lens.loading_from_pretrained import get_pretrained_model_config
 from transformer_lens.supported_models import OFFICIAL_MODEL_NAMES
 

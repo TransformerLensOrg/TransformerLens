@@ -39,7 +39,9 @@ class TestQwen3NextRegistration:
 
 def _make_bridge_cfg(**overrides):
     """Minimal TransformerBridgeConfig for Qwen3Next adapter tests."""
-    from transformer_lens.config.TransformerBridgeConfig import TransformerBridgeConfig
+    from transformer_lens.config.transformer_bridge_config import (
+        TransformerBridgeConfig,
+    )
 
     defaults = dict(
         d_model=2048,
@@ -502,7 +504,9 @@ def _make_tiny_bridge():
     """Build a Qwen3Next bridge from a tiny HF model."""
     from unittest.mock import MagicMock
 
-    from transformer_lens.config.TransformerBridgeConfig import TransformerBridgeConfig
+    from transformer_lens.config.transformer_bridge_config import (
+        TransformerBridgeConfig,
+    )
     from transformer_lens.model_bridge import TransformerBridge
     from transformer_lens.model_bridge.supported_architectures.qwen3_next import (
         Qwen3NextArchitectureAdapter,

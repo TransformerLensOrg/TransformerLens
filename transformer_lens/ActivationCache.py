@@ -15,7 +15,17 @@ from __future__ import annotations
 
 import logging
 import warnings
-from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, cast
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    Union,
+    cast,
+)
 
 import einops
 import numpy as np
@@ -25,6 +35,10 @@ from typing_extensions import Literal
 
 import transformer_lens.utilities as utils
 from transformer_lens.utilities import Slice, SliceInput, warn_if_mps
+
+if TYPE_CHECKING:
+    from transformer_lens.components import TransformerBlock
+    from transformer_lens.HookedTransformer import HookedTransformer
 
 
 def _normalize_projection_to_2d(
@@ -124,9 +138,15 @@ class ActivationCache:
             Whether the activations have a batch dimension.
     """
 
-    def __init__(self, cache_dict: Dict[str, torch.Tensor], model, has_batch_dim: bool = True):
+    def __init__(
+        self,
+        cache_dict: Dict[str, torch.Tensor],
+        model: Any,
+        has_batch_dim: bool = True,
+    ):
         self.cache_dict = cache_dict
-        self.model = model
+        # Helper methods require HT-internal structure; bridge users only use cache_dict.
+        self.model = cast("HookedTransformer", model)
         self.has_batch_dim = has_batch_dim
         self.has_embed = "hook_embed" in self.cache_dict
         self.has_pos_embed = "hook_pos_embed" in self.cache_dict
@@ -715,6 +735,9 @@ class ActivationCache:
         residual stream from that head. attn_out for a layer is the sum of head results plus b_O.
         Intended use is to enable use_attn_results when running and caching the model, but this can
         be useful if you forget.
+
+        Works for both HookedTransformer and TransformerBridge — bridge exposes
+        ``blocks[i].attn.W_O`` via its component-mapping compatibility shim.
         """
         # Return if valid 4D results exist; replace stale 3D Bridge entries if needed
         first_key = "blocks.0.attn.hook_result"
@@ -739,7 +762,9 @@ class ActivationCache:
             )
 
             # Element-wise multiplication of z and W_O (with shape [head_index, d_head, d_model])
-            result = z * self.model.blocks[layer].attn.W_O
+            # nn.ModuleList[T][i] is typed Tensor|Module upstream; cast restores T.
+            block = cast("TransformerBlock", self.model.blocks[layer])
+            result = z * block.attn.W_O
 
             # Sum over d_head to get the contribution of each head to the residual stream
             self.cache_dict[f"blocks.{layer}.attn.hook_result"] = result.sum(dim=-2)
@@ -895,7 +920,9 @@ class ActivationCache:
             pos_slice = Slice(pos_slice)
 
         neuron_acts = self[("post", layer, "mlp")]
-        W_out = self.model.blocks[layer].mlp.W_out
+        # ModuleList[T] indexing is typed `Tensor | Module` upstream; cast restores T.
+        block = cast("TransformerBlock", self.model.blocks[layer])
+        W_out = block.mlp.W_out
         if pos_slice is not None:
             # Note - order is important, as Slice.apply *may* collapse a dimension, so this ensures
             # that position dimension is -2 when we apply position slice
@@ -952,6 +979,7 @@ class ActivationCache:
             ``LN_s(a_n * W_out_n) @ p = (a_n / s) * (W_out_n @ p - mean(W_out_n) * sum_p)``
         RMS models drop the ``mean(W_out_n) * sum_p`` term (no centering). Always uses the
         ln1 scale (mlp_input=False) since ``stack_neuron_results`` doesn't expose mlp_input.
+
         """
         scale = self._get_cached_ln_scale(layer, mlp_input=False, pos_slice=pos_slice)
 
@@ -960,7 +988,9 @@ class ActivationCache:
 
         components: list = []
         for l in range(layer):
-            W_out_l = self.model.blocks[l].mlp.W_out  # [d_mlp, d_model]
+            # nn.ModuleList[T][i] is typed Tensor|Module upstream; cast restores T.
+            block = cast("TransformerBlock", self.model.blocks[l])
+            W_out_l = block.mlp.W_out  # [d_mlp, d_model]
             W_out_l_sliced = neuron_slice.apply(W_out_l, dim=0)
             W_proj_l = W_out_l_sliced @ project_2d  # [d_mlp, n_outs]
             if apply_centering:
@@ -1037,8 +1067,10 @@ class ActivationCache:
 
         project_2d, squeeze_projected = _normalize_projection_to_2d(project_output_onto)
 
+        d_mlp = self.model.cfg.d_mlp
+        assert d_mlp is not None, "model.cfg.d_mlp must be set"
         neuron_labels: Union[torch.Tensor, np.ndarray] = neuron_slice.apply(
-            torch.arange(self.model.cfg.d_mlp), dim=0
+            torch.arange(d_mlp), dim=0
         )
         if isinstance(neuron_labels, int):
             neuron_labels = np.array([neuron_labels])

@@ -10,7 +10,7 @@ from transformers import GPT2LMHeadModel
 
 from transformer_lens import HookedTransformer
 from transformer_lens import utilities as utils
-from transformer_lens.config.TransformerBridgeConfig import TransformerBridgeConfig
+from transformer_lens.config.transformer_bridge_config import TransformerBridgeConfig
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.weight_processing import ProcessWeights
 

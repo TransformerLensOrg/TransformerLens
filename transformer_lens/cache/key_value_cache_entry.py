@@ -10,7 +10,7 @@ from typing import Union
 import torch
 from jaxtyping import Float
 
-from transformer_lens.config.TransformerLensConfig import TransformerLensConfig
+from transformer_lens.config.transformer_lens_config import TransformerLensConfig
 
 
 @dataclass

@@ -13,7 +13,7 @@ from jaxtyping import Float
 
 from transformer_lens.components.layer_norm import LayerNorm
 from transformer_lens.components.layer_norm_pre import LayerNormPre
-from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.config.hooked_transformer_config import HookedTransformerConfig
 from transformer_lens.factories.activation_function_factory import (
     ActivationFunctionFactory,
 )
@@ -36,6 +36,11 @@ class CanBeUsedAsMLP(nn.Module):
 
     # The layer norm component if the activation function is a layer norm
     ln: Optional[nn.Module]
+
+    # MLP weight matrices (Parameter on subclasses; declared here so callers like
+    # ActivationCache.get_neuron_results get a typed Tensor instead of nn.Module).
+    W_in: torch.Tensor
+    W_out: torch.Tensor
 
     def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
         """The base init for all MLP like components
