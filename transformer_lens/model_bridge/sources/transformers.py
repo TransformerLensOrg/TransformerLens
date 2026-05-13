@@ -180,6 +180,95 @@ def map_default_transformer_lens_config(hf_config):
     return tl_config
 
 
+# HF config attributes propagated to TransformerBridgeConfig so adapters can read them
+# without re-walking the HF config. Architecture-agnostic; new adapters add their fields
+# here (one place, not two). Consumed by build_bridge_config_from_hf below.
+_HF_PASSTHROUGH_ATTRS: list[str] = [
+    # OPT
+    "is_gated_act",
+    "word_embed_proj_dim",
+    "do_layer_norm_before",
+    # Granite
+    "position_embedding_type",
+    # Falcon
+    "parallel_attn",
+    "multi_query",
+    "new_decoder_architecture",
+    "alibi",
+    "num_ln_in_parallel_attn",
+    # Mamba (SSM config)
+    "state_size",
+    "conv_kernel",
+    "expand",
+    "time_step_rank",
+    "intermediate_size",
+    # Mamba-2 (additional SSM config)
+    "n_groups",
+    "chunk_size",
+    # Multimodal
+    "vision_config",
+]
+
+
+def build_bridge_config_from_hf(
+    hf_config: Any,
+    architecture: str,
+    model_name: str,
+    dtype: torch.dtype,
+) -> "TransformerBridgeConfig":
+    """Translate an HF config object into a TransformerBridgeConfig.
+
+    Single source of truth for the HF→bridge mapping. Used by both
+    :func:`boot` (HF Hub path) and :func:`boot_external` (pre-loaded model
+    path). Any new adapter fields go here, in :data:`_HF_PASSTHROUGH_ATTRS`,
+    or in :func:`map_default_transformer_lens_config` — never in a fork.
+    """
+    tl_config = map_default_transformer_lens_config(hf_config)
+    config_dict = dict(tl_config.__dict__)
+    # Restore TL attribute names that HF remaps via attribute_map
+    if "num_local_experts" in config_dict and "num_experts" not in config_dict:
+        config_dict["num_experts"] = config_dict["num_local_experts"]
+    bridge_config = TransformerBridgeConfig.from_dict(config_dict)
+    bridge_config.architecture = architecture
+    bridge_config.model_name = model_name
+    bridge_config.dtype = dtype
+    for attr in _HF_PASSTHROUGH_ATTRS:
+        val = getattr(hf_config, attr, None)
+        if val is not None:
+            setattr(bridge_config, attr, val)
+    # Gemma2 softcapping: HF names differ from TL names, need explicit mapping
+    final_logit_softcapping = getattr(hf_config, "final_logit_softcapping", None)
+    if final_logit_softcapping is not None:
+        bridge_config.output_logits_soft_cap = float(final_logit_softcapping)
+    attn_logit_softcapping = getattr(hf_config, "attn_logit_softcapping", None)
+    if attn_logit_softcapping is not None:
+        bridge_config.attn_scores_soft_cap = float(attn_logit_softcapping)
+    return bridge_config
+
+
+def detect_tokenizer_bos_eos(tokenizer: Any) -> tuple[bool, bool]:
+    """Probe a tokenizer to learn its BOS/EOS prepend/append behavior.
+
+    Tokenizers from HF differ in whether they auto-prepend BOS or auto-append
+    EOS for a non-empty string. Knowing this is required for the bridge to
+    reconcile ``prepend_bos`` requests with what the tokenizer already does.
+    Empty strings are unreliable here (token aliasing), so the probe uses a
+    one-character input.
+    """
+    encoded_test = tokenizer.encode("a")
+    prepends_bos = (
+        len(encoded_test) > 1
+        and tokenizer.bos_token_id is not None
+        and encoded_test[0] == tokenizer.bos_token_id
+    )
+    appends_eos = (
+        len(encoded_test) > 1
+        and tokenizer.eos_token_id is not None
+        and encoded_test[-1] == tokenizer.eos_token_id
+    )
+    return prepends_bos, appends_eos
+
+
 def determine_architecture_from_hf_config(hf_config):
     """Determine the architecture name from HuggingFace config.
 
@@ -465,56 +554,8 @@ def boot(
         hf_config_overrides[_n_ctx_field] = n_ctx
     if hf_config_overrides:
         hf_config.__dict__.update(hf_config_overrides)
-    tl_config = map_default_transformer_lens_config(hf_config)
     architecture = determine_architecture_from_hf_config(hf_config)
-    config_dict = dict(tl_config.__dict__)
-    # Restore TL attribute names that HF remaps via attribute_map
-    if "num_local_experts" in config_dict and "num_experts" not in config_dict:
-        config_dict["num_experts"] = config_dict["num_local_experts"]
-    bridge_config = TransformerBridgeConfig.from_dict(config_dict)
-    bridge_config.architecture = architecture
-    bridge_config.model_name = model_name
-    bridge_config.dtype = dtype
-    # Propagate HF-specific config attributes that adapters may need.
-    # Any attribute present on the HF config and not None is copied to bridge_config.
-    # This is architecture-agnostic — new architectures don't need changes here.
-    _HF_PASSTHROUGH_ATTRS = [
-        # OPT
-        "is_gated_act",
-        "word_embed_proj_dim",
-        "do_layer_norm_before",
-        # Granite
-        "position_embedding_type",
-        # Falcon
-        "parallel_attn",
-        "multi_query",
-        "new_decoder_architecture",
-        "alibi",
-        "num_ln_in_parallel_attn",
-        # Mamba (SSM config)
-        "state_size",
-        "conv_kernel",
-        "expand",
-        "time_step_rank",
-        "intermediate_size",
-        # Mamba-2 (additional SSM config)
-        "n_groups",
-        "chunk_size",
-        # Multimodal
-        "vision_config",
-    ]
-    for attr in _HF_PASSTHROUGH_ATTRS:
-        val = getattr(hf_config, attr, None)
-        if val is not None:
-            setattr(bridge_config, attr, val)
-
-    # Gemma2 softcapping: HF names differ from TL names, need explicit mapping
-    final_logit_softcapping = getattr(hf_config, "final_logit_softcapping", None)
-    if final_logit_softcapping is not None:
-        bridge_config.output_logits_soft_cap = float(final_logit_softcapping)
-    attn_logit_softcapping = getattr(hf_config, "attn_logit_softcapping", None)
-    if attn_logit_softcapping is not None:
-        bridge_config.attn_scores_soft_cap = float(attn_logit_softcapping)
+    bridge_config = build_bridge_config_from_hf(hf_config, architecture, model_name, dtype)
     adapter = ArchitectureAdapterFactory.select_architecture_adapter(bridge_config)
     # Pre-loaded models carry their own weight placement (possibly set by the caller via
     # device_map). Passing device_map / n_devices / max_memory alongside hf_model= is
@@ -700,17 +741,8 @@ def boot(
             default_padding_side=default_padding_side,
         )
     if tokenizer is not None:
-        # Detect BOS/EOS behavior (use non-empty string; empty is unreliable with token aliasing)
-        encoded_test = tokenizer.encode("a")
-        adapter.cfg.tokenizer_prepends_bos = (
-            len(encoded_test) > 1
-            and tokenizer.bos_token_id is not None
-            and encoded_test[0] == tokenizer.bos_token_id
-        )
-        adapter.cfg.tokenizer_appends_eos = (
-            len(encoded_test) > 1
-            and tokenizer.eos_token_id is not None
-            and encoded_test[-1] == tokenizer.eos_token_id
+        adapter.cfg.tokenizer_prepends_bos, adapter.cfg.tokenizer_appends_eos = (
+            detect_tokenizer_bos_eos(tokenizer)
         )
     bridge = TransformerBridge(hf_model, adapter, tokenizer)
 

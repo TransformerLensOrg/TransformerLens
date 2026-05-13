@@ -32,7 +32,8 @@ from transformer_lens.model_bridge.types import (
     RemotePath,
     TransformerLensPath,
 )
-import transformer_lens.model_bridge.sources.transformers
+import transformer_lens.model_bridge.sources.external  # noqa: F401  side-effect: TransformerBridge.boot_external
+import transformer_lens.model_bridge.sources.transformers  # noqa: F401  side-effect: TransformerBridge.boot_transformers
 
 __all__ = [
     "ArchitectureAdapter",

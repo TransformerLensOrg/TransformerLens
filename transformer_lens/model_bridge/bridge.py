@@ -686,6 +686,139 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         lines.extend(self._format_component_mapping(mapping, indent=1))
         return "\n".join(lines)
 
+    @staticmethod
+    def diagnose_paths(
+        model: nn.Module,
+        architecture: str,
+        hf_config: Optional[Any] = None,
+        tl_config: Optional["object"] = None,
+    ) -> Dict[str, List[str]]:
+        """Pre-flight: which adapter dot-paths actually resolve on ``model``?
+
+        Walks the adapter's expected component tree against ``model.named_modules()``
+        *without constructing the bridge*, so callers can spot tree-shape mismatches
+        (e.g., vLLM's fused ``qkv_proj`` vs HF's separate ``q_proj``/``k_proj``/
+        ``v_proj``) before the opaque ``AttributeError`` they'd otherwise get from
+        :func:`set_original_components`.
+
+        Args:
+            model: The pre-loaded ``nn.Module`` you intend to wrap.
+            architecture: Architecture identifier (same string accepted by
+                :meth:`boot_external`).
+            hf_config: HF config — same translation path :meth:`boot_external` uses.
+                Mutually exclusive with ``tl_config``.
+            tl_config: Pre-built ``TransformerBridgeConfig``. Mutually exclusive with
+                ``hf_config``.
+
+        Returns:
+            ``{"resolved": [...], "missing": [...]}`` — each entry is a
+            ``"tl_name -> remote_path"`` string. A non-empty ``missing`` list
+            tells you the tree shape doesn't match the adapter; the listed
+            paths are what's expected but absent.
+        """
+        from transformer_lens.factories.architecture_adapter_factory import (
+            SUPPORTED_ARCHITECTURES,
+            ArchitectureAdapterFactory,
+        )
+
+        if hf_config is None and tl_config is None:
+            raise ValueError("diagnose_paths needs hf_config or tl_config")
+        if hf_config is not None and tl_config is not None:
+            raise ValueError("diagnose_paths: supply hf_config or tl_config, not both")
+        if architecture not in SUPPORTED_ARCHITECTURES:
+            raise ValueError(f"Unknown architecture {architecture!r}")
+
+        if tl_config is not None:
+            bridge_config = tl_config
+            bridge_config.architecture = architecture  # type: ignore[attr-defined]
+        else:
+            from transformer_lens.model_bridge.sources.transformers import (
+                build_bridge_config_from_hf,
+            )
+
+            bridge_config = build_bridge_config_from_hf(
+                hf_config, architecture, model_name="external", dtype=torch.float32
+            )
+        adapter = ArchitectureAdapterFactory.select_architecture_adapter(bridge_config)
+
+        def _resolve(target: nn.Module, path: str) -> Optional[nn.Module]:
+            cur: Any = target
+            for part in path.split("."):
+                if part == "":
+                    continue
+                if part.isdigit():
+                    try:
+                        cur = cur[int(part)]
+                    except (IndexError, TypeError):
+                        return None
+                else:
+                    cur = getattr(cur, part, None)
+                if cur is None:
+                    return None
+            return cur
+
+        resolved: List[str] = []
+        missing: List[str] = []
+
+        # Joint-projection bridges synthesize virtual sub-components
+        # (e.g. JointQKVAttentionBridge.q/k/v from a fused c_attn). Their
+        # `.name` is a placeholder, not a real model path. Walking into them
+        # would falsely report "missing" for paths that don't exist in any HF
+        # tree by design.
+        from transformer_lens.model_bridge.generalized_components.joint_gate_up_mlp import (
+            JointGateUpMLPBridge,
+        )
+        from transformer_lens.model_bridge.generalized_components.joint_qkv_attention import (
+            JointQKVAttentionBridge,
+        )
+
+        _SYNTHESIZED_HOOKS: Dict[type, set] = {
+            JointQKVAttentionBridge: {"q", "k", "v"},
+            JointGateUpMLPBridge: {"gate", "in"},
+        }
+
+        def _synthesized_keys(parent: Any) -> set:
+            for cls, keys in _SYNTHESIZED_HOOKS.items():
+                if isinstance(parent, cls):
+                    return keys
+            return set()
+
+        def _walk(comp_map: Any, container: nn.Module, tl_prefix: str = "", parent_comp: Any = None) -> None:
+            skip = _synthesized_keys(parent_comp)
+            for tl_key, comp in comp_map.items():
+                if tl_key in skip:
+                    continue
+                tl_full = f"{tl_prefix}.{tl_key}" if tl_prefix else tl_key
+                remote = getattr(comp, "name", None)
+                if remote is None:
+                    submods = getattr(comp, "submodules", {}) or {}
+                    if submods:
+                        _walk(submods, container, tl_full, parent_comp=comp)
+                    continue
+                target = _resolve(container, remote)
+                line = f"{tl_full} -> {remote}"
+                if target is None:
+                    missing.append(line)
+                    continue
+                resolved.append(line)
+                submods = getattr(comp, "submodules", {}) or {}
+                if not submods:
+                    continue
+                if getattr(comp, "is_list_item", False):
+                    # Lists (e.g. blocks): probe instance 0 only — adapters assume
+                    # all entries share a shape, so one resolved instance is the
+                    # informative check.
+                    try:
+                        instance = target[0]  # type: ignore[index]
+                    except (IndexError, TypeError):
+                        continue
+                    _walk(submods, instance, tl_full, parent_comp=comp)
+                else:
+                    _walk(submods, target, tl_full, parent_comp=comp)
+
+        _walk(adapter.get_component_mapping(), model)
+        return {"resolved": resolved, "missing": missing}
+
     def enable_compatibility_mode(
         self,
         disable_warnings: bool = False,
