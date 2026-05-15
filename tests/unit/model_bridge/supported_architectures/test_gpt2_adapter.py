@@ -89,6 +89,14 @@ class TestGPT2AdapterConfig:
         """GPT-2 stores Q, K, V in a single combined c_attn matrix."""
         assert adapter.uses_combined_qkv is True
 
+    def test_default_prepend_bos_is_true(self, adapter: GPT2ArchitectureAdapter) -> None:
+        """GPT-2 prepends a BOS token by default (adapter inherits this)."""
+        assert adapter.cfg.default_prepend_bos is True
+
+    def test_default_cfg_uses_split_attention(self, adapter: GPT2ArchitectureAdapter) -> None:
+        """default_cfg flags that GPT-2's combined QKV must be split."""
+        assert adapter.default_cfg["uses_split_attention"] is True
+
 # ---------------------------------------------------------------------------
 # Component mapping structure tests
 # ---------------------------------------------------------------------------
@@ -150,6 +158,11 @@ class TestGPT2AdapterComponentMapping:
     def test_attn_name(self, adapter: GPT2ArchitectureAdapter) -> None:
         blocks = adapter.component_mapping["blocks"]
         assert blocks.submodules["attn"].name == "attn"
+
+    def test_attn_does_not_require_attention_mask(self, adapter: GPT2ArchitectureAdapter) -> None:
+        """GPT-2 attention applies a causal mask internally, so no external mask is needed."""
+        attn = adapter.component_mapping["blocks"].submodules["attn"]
+        assert attn.requires_attention_mask is False
 
     def test_attn_qkv_is_linear_bridge(self, adapter: GPT2ArchitectureAdapter) -> None:
         """The combined QKV projection is a single LinearBridge wrapping c_attn."""
