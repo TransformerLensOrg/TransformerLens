@@ -31,6 +31,7 @@ from transformer_lens.model_bridge.supported_architectures.gpt2 import (
 # Helpers / fixtures
 # ---------------------------------------------------------------------------
 
+
 def _make_cfg(
     n_heads: int = 4,
     d_model: int = 64,
@@ -52,17 +53,21 @@ def _make_cfg(
         architecture="GPT2LMHeadModel",
     )
 
+
 @pytest.fixture
 def cfg() -> TransformerBridgeConfig:
     return _make_cfg()
+
 
 @pytest.fixture
 def adapter(cfg: TransformerBridgeConfig) -> GPT2ArchitectureAdapter:
     return GPT2ArchitectureAdapter(cfg)
 
+
 # ---------------------------------------------------------------------------
 # Config attribute tests
 # ---------------------------------------------------------------------------
+
 
 class TestGPT2AdapterConfig:
     """Tests that the adapter sets required config attributes correctly."""
@@ -97,9 +102,11 @@ class TestGPT2AdapterConfig:
         """default_cfg flags that GPT-2's combined QKV must be split."""
         assert adapter.default_cfg["uses_split_attention"] is True
 
+
 # ---------------------------------------------------------------------------
 # Component mapping structure tests
 # ---------------------------------------------------------------------------
+
 
 class TestGPT2AdapterComponentMapping:
     """Tests that component_mapping has the correct bridge types and HF module names."""
@@ -139,14 +146,18 @@ class TestGPT2AdapterComponentMapping:
     # -- Block submodules --
 
     def test_blocks_ln1_is_normalization_bridge(self, adapter: GPT2ArchitectureAdapter) -> None:
-        assert isinstance(adapter.component_mapping["blocks"].submodules["ln1"], NormalizationBridge)
+        assert isinstance(
+            adapter.component_mapping["blocks"].submodules["ln1"], NormalizationBridge
+        )
 
     def test_blocks_ln1_name(self, adapter: GPT2ArchitectureAdapter) -> None:
         assert adapter.component_mapping["blocks"].submodules["ln1"].name == "ln_1"
 
     def test_blocks_ln2_is_normalization_bridge(self, adapter: GPT2ArchitectureAdapter) -> None:
         """GPT-2 has a second layer norm before the MLP (no parallel attn/MLP)."""
-        assert isinstance(adapter.component_mapping["blocks"].submodules["ln2"], NormalizationBridge)
+        assert isinstance(
+            adapter.component_mapping["blocks"].submodules["ln2"], NormalizationBridge
+        )
 
     def test_blocks_ln2_name(self, adapter: GPT2ArchitectureAdapter) -> None:
         assert adapter.component_mapping["blocks"].submodules["ln2"].name == "ln_2"
@@ -193,9 +204,11 @@ class TestGPT2AdapterComponentMapping:
         mlp = adapter.component_mapping["blocks"].submodules["mlp"]
         assert mlp.submodules["out"].name == "c_proj"
 
+
 # ---------------------------------------------------------------------------
 # Weight processing conversion tests
 # ---------------------------------------------------------------------------
+
 
 class TestGPT2AdapterWeightConversions:
     """Tests that weight_processing_conversions has exactly the expected keys."""
@@ -219,6 +232,7 @@ class TestGPT2AdapterWeightConversions:
     def test_exactly_eight_conversion_keys(self, adapter: GPT2ArchitectureAdapter) -> None:
         assert len(adapter.weight_processing_conversions) == 8
 
+
 # ---------------------------------------------------------------------------
 # QKVSplitRearrangeConversion — numerical correctness tests
 # ---------------------------------------------------------------------------
@@ -229,16 +243,14 @@ class TestQKVSplitRearrangeConversion:
 
     N_HEADS, D_HEAD, D_MODEL = 4, 16, 64  # D_MODEL = N_HEADS * D_HEAD
 
-    def _make_conv(
-            self, qkv_index: int, n_heads: int = 4
-        ) -> QKVSplitRearrangeConversion:
+    def _make_conv(self, qkv_index: int, n_heads: int = 4) -> QKVSplitRearrangeConversion:
         """Helper: build a QKVSplitRearrangeConversion for weight tensors."""
         return QKVSplitRearrangeConversion(
             qkv_index=qkv_index,
             rearrange_pattern="d_model (n h) -> n d_model h",
             n=n_heads,
         )
-    
+
     @pytest.mark.parametrize(
         "shape, expected",
         [((64, 192), True), ((192, 64), True), ((64, 64), False), ((64, 128), False)],
@@ -264,9 +276,11 @@ class TestQKVSplitRearrangeConversion:
         assert recovered.shape == original.shape
         assert torch.allclose(original, recovered)
 
+
 # ---------------------------------------------------------------------------
 # Factory registration tests
 # ---------------------------------------------------------------------------
+
 
 class TestGPT2FactoryRegistration:
     """Tests that the factory maps GPT2LMHeadModel to the correct adapter."""
@@ -278,12 +292,13 @@ class TestGPT2FactoryRegistration:
 
         cfg = _make_cfg()
         adapter = ArchitectureAdapterFactory.select_architecture_adapter(cfg)
-        assert isinstance(adapter, GPT2ArchitectureAdapter), (
-            f"Expected GPT2ArchitectureAdapter, got {type(adapter).__name__}"
-        )
+        assert isinstance(
+            adapter, GPT2ArchitectureAdapter
+        ), f"Expected GPT2ArchitectureAdapter, got {type(adapter).__name__}"
 
     def test_factory_key_is_registered(self) -> None:
         from transformer_lens.factories.architecture_adapter_factory import (
             SUPPORTED_ARCHITECTURES,
         )
+
         assert SUPPORTED_ARCHITECTURES["GPT2LMHeadModel"] is GPT2ArchitectureAdapter
