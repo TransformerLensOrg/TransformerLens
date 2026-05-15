@@ -189,4 +189,9 @@ def build_bridge_from_module(
             adapter.cfg.tokenizer_appends_eos,
         ) = detect_tokenizer_bos_eos(tokenizer)
 
-    return TransformerBridge(model, adapter, tokenizer)
+    from transformer_lens.model_bridge.sources.transformers_driver import (
+        TransformersDriver,
+    )
+
+    driver = TransformersDriver(model, adapter, tokenizer)
+    return TransformerBridge(model, adapter, tokenizer, driver=driver)

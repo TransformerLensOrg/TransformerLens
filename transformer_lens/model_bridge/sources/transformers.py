@@ -659,7 +659,12 @@ def boot(
             adapter.cfg.tokenizer_prepends_bos,
             adapter.cfg.tokenizer_appends_eos,
         ) = detect_tokenizer_bos_eos(tokenizer)
-    bridge = TransformerBridge(hf_model, adapter, tokenizer)
+    from transformer_lens.model_bridge.sources.transformers_driver import (
+        TransformersDriver,
+    )
+
+    driver = TransformersDriver(hf_model, adapter, tokenizer)
+    bridge = TransformerBridge(hf_model, adapter, tokenizer, driver=driver)
 
     # Load processor for multimodal models (needed for image preprocessing)
     if getattr(adapter.cfg, "is_multimodal", False):
