@@ -1,7 +1,7 @@
 """Unit tests for VLLMDriver — mocks vLLM's LLM so no vllm package install needed.
 
-GPU integration tests (real LLM, real captures) live separately and gate on the
-``vllm`` marker per the cozy-wigderson plan.
+GPU integration tests (real LLM, real captures) live separately as a Colab
+notebook; the compiled-graph path can't be reached from mocked unit tests.
 """
 from __future__ import annotations
 
@@ -113,13 +113,74 @@ class TestVLLMDriverForward:
         assert result.logits is not None and tuple(result.logits.shape) == (1, 3, 16)
 
     def test_forward_rejects_batched_input(self):
-        """v1 is batch_size=1 only. Raises in _normalize_input_ids before any vllm import."""
+        """batch_size=1 only. Raises in _normalize_input_ids before any vllm import."""
         with pytest.raises(NotImplementedError, match="batch_size=1"):
             _driver(captures={}).forward(torch.tensor([[1, 2], [3, 4]]))
 
     def test_forward_rejects_callable_interventions(self):
-        with pytest.raises(NotImplementedError, match="intervention"):
-            _driver(captures={}).forward(torch.tensor([[1]]), intervene={"x": lambda act: act})
+        with pytest.raises(NotImplementedError, match="intervention specs"):
+            _driver(captures={}).forward(torch.tensor([[1]]), intervene={"embed.hook_out": lambda a: a})
+
+    def test_forward_rejects_unsupported_intervention_op(self):
+        with pytest.raises(ValueError, match="Unsupported intervention op"):
+            _driver(captures={}).forward(
+                torch.tensor([[1]]), intervene={"embed.hook_out": {"op": "clamp", "value": 1.0}}
+            )
+
+    def test_forward_rejects_unknown_intervention_hook(self):
+        with pytest.raises(ValueError, match="not in supported_hook_points"):
+            _driver(captures={}).forward(
+                torch.tensor([[1]]), intervene={"blocks.99.hook_unknown": {"op": "suppress"}}
+            )
+
+    def test_forward_rejects_malformed_intervention_spec(self):
+        with pytest.raises(ValueError, match="must be a dict with 'op' key"):
+            _driver(captures={}).forward(
+                torch.tensor([[1]]), intervene={"embed.hook_out": {"no_op_key": True}}
+            )
+
+    def test_forward_rejects_scale_missing_factor(self):
+        with pytest.raises(ValueError, match="op='scale' requires 'factor'"):
+            _driver(captures={}).forward(
+                torch.tensor([[1]]), intervene={"embed.hook_out": {"op": "scale"}}
+            )
+
+    def test_forward_rejects_add_missing_value(self):
+        with pytest.raises(ValueError, match="op='add' requires 'value'"):
+            _driver(captures={}).forward(
+                torch.tensor([[1]]), intervene={"embed.hook_out": {"op": "add"}}
+            )
+
+    def test_forward_rejects_set_missing_value(self):
+        with pytest.raises(ValueError, match="op='set' requires 'value'"):
+            _driver(captures={}).forward(
+                torch.tensor([[1]]), intervene={"embed.hook_out": {"op": "set"}}
+            )
+
+    def test_forward_pushes_interventions_before_generate(self):
+        """The driver pushes spec dicts via collective_rpc('tl_set_interventions', ...)."""
+        pytest.importorskip("vllm")
+        driver = _driver(captures={"embed.hook_out": torch.zeros(3, 4)})
+        driver.forward(
+            torch.tensor([[1, 2, 3]]),
+            intervene={"embed.hook_out": {"op": "suppress"}},
+        )
+        rpc_calls = [c.args for c in driver._llm.collective_rpc.call_args_list]
+        assert any(
+            args[0] == "tl_set_interventions" and args[1] == ({"embed.hook_out": {"op": "suppress"}},)
+            for args in rpc_calls
+        )
+
+    def test_forward_always_pushes_interventions_for_reset(self):
+        """Even with intervene=None, push {} so stale state from prior forwards clears."""
+        pytest.importorskip("vllm")
+        driver = _driver(captures={"embed.hook_out": torch.zeros(3, 4)})
+        driver.forward(torch.tensor([[1, 2, 3]]))
+        rpc_calls = [c.args for c in driver._llm.collective_rpc.call_args_list]
+        assert any(
+            args[0] == "tl_set_interventions" and args[1] == ({},)
+            for args in rpc_calls
+        )
 
     def test_forward_rejects_max_new_tokens_gt_one(self):
         """Decode-step writes overwrite the prefill buffer — silent capture corruption."""

@@ -13,6 +13,8 @@ from transformer_lens.model_bridge.driver_protocol import (
 )
 from transformer_lens.model_bridge.sources._driver_base import DriverBase
 
+from .intervention_specs import SUPPORTED_OPS
+
 
 class VLLMDriver(DriverBase):
     """Driver wrapping a vLLM ``LLM``; captures via ``collective_rpc``."""
@@ -58,13 +60,10 @@ class VLLMDriver(DriverBase):
             raise ValueError("VLLMDriver requires input_ids")
         if int(max_new_tokens) != 1:
             raise NotImplementedError(
-                "VLLMDriver v1 supports max_new_tokens=1 only — decode-step writes "
+                "VLLMDriver supports max_new_tokens=1 only — decode-step writes "
                 "overwrite the prefill buffer; multi-step capture is multi-buffer work."
             )
-        if intervene:
-            raise NotImplementedError(
-                "VLLMDriver intervention support not yet implemented (Phase B chunk 3+)."
-            )
+        intervene_specs = self._validate_interventions(intervene or {})
 
         ids_list = self._normalize_input_ids(input_ids)
         if len(ids_list) > self._max_num_batched_tokens:
@@ -77,13 +76,16 @@ class VLLMDriver(DriverBase):
 
         from vllm import SamplingParams
         from vllm.inputs import TokensPrompt
+        # Push intervention state (possibly empty) before generate — this also
+        # resets stale interventions from prior forwards.
+        self._llm.collective_rpc("tl_set_interventions", args=(intervene_specs,))
         self._llm.generate(
             prompts=[TokensPrompt(prompt_token_ids=ids_list)],
             sampling_params=SamplingParams(max_tokens=int(max_new_tokens), temperature=0.0),
         )
 
         n_tokens = len(ids_list)
-        # collective_rpc returns one result per worker; v1 is single-rank so [0].
+        # collective_rpc returns one result per worker; single-rank, so [0].
         worker_captures = self._llm.collective_rpc("tl_read_captures", args=([n_tokens],))[0]
         # Add batch dim: vLLM hands back (n_tokens, width); bridge expects (1, n_tokens, width).
         captured = {name: t.unsqueeze(0) for name, t in worker_captures.items()}
@@ -108,15 +110,49 @@ class VLLMDriver(DriverBase):
                 )
         self._llm = None
 
+    def _validate_interventions(self, intervene: Mapping[str, Any]) -> dict:
+        """Reject callables, validate spec format and hook names; return a plain dict."""
+        out: dict = {}
+        for hook_name, spec in intervene.items():
+            if callable(spec):
+                raise NotImplementedError(
+                    "VLLMDriver requires intervention specs (dict), not callables. "
+                    "Supported ops: suppress, scale (factor: float), add (value: scalar or width-shaped), "
+                    "set (value: scalar or width-shaped)."
+                )
+            if not isinstance(spec, Mapping) or "op" not in spec:
+                raise ValueError(
+                    f"Intervention spec for {hook_name!r} must be a dict with 'op' key; got {spec!r}"
+                )
+            op = spec["op"]
+            if op not in SUPPORTED_OPS:
+                raise ValueError(
+                    f"Unsupported intervention op {op!r} for {hook_name!r}. "
+                    f"Supported: {sorted(SUPPORTED_OPS)}."
+                )
+            if op == "scale" and "factor" not in spec:
+                raise ValueError(f"Intervention {hook_name!r}: op='scale' requires 'factor' (float).")
+            if op in ("add", "set") and "value" not in spec:
+                raise ValueError(
+                    f"Intervention {hook_name!r}: op={op!r} requires 'value' "
+                    "(scalar or width-shaped tensor/list)."
+                )
+            if hook_name not in self.supported_hook_points:
+                raise ValueError(
+                    f"Cannot intervene on {hook_name!r}: not in supported_hook_points."
+                )
+            out[hook_name] = dict(spec)
+        return out
+
     @staticmethod
     def _normalize_input_ids(input_ids: Any) -> list:
-        """Coerce input_ids to a flat list[int] for ``TokensPrompt``. v1 is batch_size=1."""
+        """Coerce input_ids to a flat list[int] for ``TokensPrompt``; batch_size=1 only."""
         if isinstance(input_ids, torch.Tensor):
             ids_list = input_ids.tolist()
         else:
             ids_list = list(input_ids)
         if ids_list and isinstance(ids_list[0], list):
             if len(ids_list) != 1:
-                raise NotImplementedError("VLLMDriver v1 supports batch_size=1 only.")
+                raise NotImplementedError("VLLMDriver supports batch_size=1 only.")
             ids_list = ids_list[0]
         return ids_list

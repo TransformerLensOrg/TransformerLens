@@ -7,6 +7,18 @@ make it into the compiled FX graph (PyTorch #117758).
 Hook body invariants under ``torch.compile``: in-place writes to a
 pre-allocated GPU tensor; no ``.cpu()`` (illegal during CUDA-graph capture);
 SymInt-indexed slicing only (Python ``.shape`` access forces specialization).
+
+Interventions ride the same hook. Each hook applies an affine transform
+``output = output * scale_buf + bias_buf`` before capturing. Defaults are
+``scale=ones`` / ``bias=zeros`` (identity). The driver swaps buffer contents
+between forwards via ``tl_set_interventions`` — the FX graph references the
+buffers, so swaps take effect on the next dispatch without recompiling.
+
+Memory cost: the affine transform allocates a transient output-shape tensor
+per hook per forward, even in identity mode. Peak forward memory is roughly
+1.5× the prior capture-only design — the caching allocator reuses the slot
+but the peak pressure rises. Branching the hook to skip the affine in
+identity mode would defeat the swap-via-buffer trick and break the FX graph.
 """
 from __future__ import annotations
 
@@ -38,6 +50,11 @@ def register() -> None:
     vLLM calls ``register()`` once per process at entry-points discovery. Idempotent
     so re-imports (notebook restarts, repeated ``boot_vllm`` in the same process)
     don't double-wrap.
+
+    No ``unregister()`` symmetry: the patch stays for process lifetime. Benign
+    because ``patched_load_model`` no-ops when ``_config["capture_specs"]`` is
+    absent — and ``boot_vllm`` clears ``_config`` after each ``LLM(...)``, so
+    any subsequent non-TL ``LLM(...)`` in the same process hits the no-op path.
     """
     global _install_patched, _orig_load_model
     if _install_patched:
@@ -60,30 +77,57 @@ def register() -> None:
         for handle in getattr(self, "_tl_hook_handles", []):
             handle.remove()
         self._tl_buffers = {}
+        self._tl_scale_buffers = {}
+        self._tl_bias_buffers = {}
         self._tl_hook_handles = []
         for canonical_name, (dot_path, width) in specs.items():
             target = self.model_runner.model
             for seg in dot_path.split("."):
                 target = target[int(seg)] if seg.isdigit() else getattr(target, seg)
-            buf = torch.zeros(max_n, width, device=device, dtype=dtype)
-            self._tl_buffers[canonical_name] = buf
-            handle = target.register_forward_hook(_make_capture_hook(buf))
+            capture_buf = torch.zeros(max_n, width, device=device, dtype=dtype)
+            # Affine identity at install. Driver swaps via tl_set_interventions
+            # to enable suppress/scale/add/set ops between forwards.
+            scale_buf = torch.ones(width, device=device, dtype=dtype)
+            bias_buf = torch.zeros(width, device=device, dtype=dtype)
+            self._tl_buffers[canonical_name] = capture_buf
+            self._tl_scale_buffers[canonical_name] = scale_buf
+            self._tl_bias_buffers[canonical_name] = bias_buf
+            handle = target.register_forward_hook(
+                _make_capture_hook(capture_buf, scale_buf, bias_buf)
+            )
             self._tl_hook_handles.append(handle)
 
     Worker.load_model = patched_load_model
     _install_patched = True
 
 
-def _make_capture_hook(buffer: torch.Tensor):
-    """GPU-only, dynamic-shape-safe capture into a pre-allocated buffer."""
+def _make_capture_hook(
+    capture_buf: torch.Tensor,
+    scale_buf: torch.Tensor,
+    bias_buf: torch.Tensor,
+):
+    """GPU-only, dynamic-shape-safe affine + capture into pre-allocated buffers."""
 
     @torch.no_grad()
     def hook(_module, _inputs, output):
-        t = output[0] if isinstance(output, tuple) else output
+        tuple_tail: tuple = ()
+        if isinstance(output, tuple):
+            t = output[0]
+            tuple_tail = output[1:]
+        else:
+            t = output
         if not isinstance(t, torch.Tensor):
-            return
+            return None
+        # Affine transform; default scale=1 / bias=0 means identity. Driver
+        # swaps buffer contents to enable interventions.
+        modified = t * scale_buf + bias_buf
         # SymInt-indexed slice traces under dynamic shapes without specialization.
-        n = t.shape[0]
-        buffer[:n].copy_(t)
+        n = modified.shape[0]
+        capture_buf[:n].copy_(modified)
+        # Preserve the input wrapping — a 1-tuple input must come back as a 1-tuple
+        # (``tuple_tail`` is falsy in that case, so don't gate on it).
+        if isinstance(output, tuple):
+            return (modified,) + tuple_tail
+        return modified
 
     return hook

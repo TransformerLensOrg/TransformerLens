@@ -245,6 +245,10 @@ class BridgeCore:
             f"{type(self).__name__} must implement to_tokens()"
         )
 
+    def close(self) -> None:
+        """Release driver-managed resources. Idempotent — safe to call multiple times."""
+        self._driver.close()
+
     def _input_device(self) -> Any:
         """Driver's expected device for inputs; None for remote / meta / dispatched drivers."""
         if not self._driver.supports("parameters"):

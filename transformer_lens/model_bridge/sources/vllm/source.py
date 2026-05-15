@@ -19,10 +19,10 @@ from transformer_lens.utilities.hf_utils import get_hf_token
 
 from . import plugin
 from .driver import VLLMDriver
-from .internals import extract_hf_config, extract_inner_model, walk_dot_path
+from .internals import extract_hf_config
 from .overlays import get_overlay
 
-# Forced LLM(...) kwargs locked by the v1 plan. Caller override → ValueError.
+# Forced LLM(...) kwargs that the capture-hook design depends on. Caller override → ValueError.
 _LOCKED_KWARGS = {
     "tensor_parallel_size": 1,
     "pipeline_parallel_size": 1,
@@ -46,6 +46,23 @@ def boot_vllm(
     Capture buffers are populated by hooks the plugin installs pre-compile inside
     the worker; they come back via ``collective_rpc`` and replay through the
     bridge's HookPoint tree.
+
+    **Scope vs vllm-lens:** vllm-lens is observation-only. This source extends to
+    observation + spec-vocabulary *mutation* — each capture hook also applies an
+    affine transform ``output = output * scale + bias`` (default identity), so
+    interventions (``suppress`` / ``scale`` / ``add`` / ``set``) propagate to
+    downstream layers. The hook's return value replaces the module output per
+    PyTorch ``register_forward_hook`` semantics. **The mutation path under
+    torch.compile + CUDA graphs is verified end-to-end by**
+    ``demos/vLLM_Bridge_Integration_Test.ipynb``; unit tests cover the dispatch
+    protocol only.
+
+    GPU memory cost: each capture buffer is ``max_num_batched_tokens × width`` at
+    the model's dtype. For Llama-3.2-1B at fp16 with ``max_num_batched_tokens=2048``,
+    the unembed buffer alone is ~525 MB (2048 × 128256 × 2 bytes); residual-stream
+    buffers add ~8 MB per hook. The affine intervention hook also allocates a
+    transient output-shape tensor per forward (even in identity mode), so peak
+    forward memory is ~1.5× the capture buffers' resident size. Plan accordingly.
     """
     _reject_locked_overrides(vllm_kwargs)
 
@@ -67,14 +84,14 @@ def boot_vllm(
     plugin.register()
 
     # The plugin's _config singleton must be visible to the worker, which only
-    # holds with single-process execution. Multi-GPU is a v2 plan. Override
+    # holds with single-process execution. Multi-GPU is unsupported. Override
     # any user setting — silent capture failure otherwise.
     existing_mp = os.environ.get("VLLM_ENABLE_V1_MULTIPROCESSING")
     if existing_mp not in (None, "0"):
         warnings.warn(
             f"VLLM_ENABLE_V1_MULTIPROCESSING={existing_mp!r} overridden to '0' — "
             "boot_vllm needs single-process execution for capture hooks to install. "
-            "Multi-GPU vLLM is a v2 plan.",
+            "Multi-GPU vLLM is unsupported.",
             UserWarning,
             stacklevel=2,
         )
@@ -91,8 +108,13 @@ def boot_vllm(
         **vllm_kwargs,
     )
 
+    # Capture-path validity is enforced inside patched_load_model during
+    # LLM(...) above — any missing dot-path raises AttributeError there. By
+    # the time we reach this line every spec has already been walked successfully.
     hf_config = extract_hf_config(llm)
-    _validate_capture_paths(llm, overlay, hf_config, architecture)
+    # _config has been consumed into per-Worker state; clear so a non-TL
+    # vllm.LLM(...) in the same process doesn't inherit our specs.
+    plugin._config.clear()
     if tokenizer is None:
         tokenizer = AutoTokenizer.from_pretrained(model_name, token=hf_token)
 
@@ -113,30 +135,8 @@ def boot_vllm(
         max_num_batched_tokens=max_num_batched_tokens,
     )
     bridge = RemoteBridge(adapter=adapter, tokenizer=tokenizer, driver=driver)
-    _warn_nonfiring_hooks(model_name, architecture, overlay, hf_config)
+    _log_hook_summary(model_name, architecture, driver)
     return bridge
-
-
-def _validate_capture_paths(llm: Any, overlay: Any, hf_config: Any, architecture: str) -> None:
-    """Walk each capture-spec dot-path against the loaded model. Raise early with
-    a clear message if any are missing — otherwise the failure surfaces deep in
-    the worker's patched_load_model with an opaque AttributeError.
-    """
-    inner = extract_inner_model(llm)
-    specs = overlay.capture_specs(hf_config)
-    missing = []
-    for canonical_name, (dot_path, _width) in specs.items():
-        try:
-            walk_dot_path(inner, dot_path)
-        except (AttributeError, IndexError, KeyError, ValueError):
-            missing.append((canonical_name, dot_path))
-    if missing:
-        details = "\n".join(f"  {name} → {path}" for name, path in missing)
-        raise NotImplementedError(
-            f"{architecture} doesn't match the vLLM decoder-only layout the overlay "
-            f"expects ({len(missing)} dot-path(s) missing):\n{details}\n"
-            "Use boot_transformers() for this architecture, or add a custom overlay."
-        )
 
 
 def _reject_locked_overrides(vllm_kwargs: Dict[str, Any]) -> None:
@@ -144,7 +144,7 @@ def _reject_locked_overrides(vllm_kwargs: Dict[str, Any]) -> None:
         if key in vllm_kwargs and vllm_kwargs[key] != locked:
             raise ValueError(
                 f"boot_vllm forces {key}={locked}; caller passed {key}={vllm_kwargs[key]}. "
-                "Multi-device / continuous batching / vLLM-owned tokenizer are v2 scope."
+                "Multi-device / continuous batching / vLLM-owned tokenizer are unsupported."
             )
 
 
@@ -157,22 +157,21 @@ def _dtype_from_hf_config(hf_config: Any) -> torch.dtype:
     return torch.float16
 
 
-def _warn_nonfiring_hooks(model_name: str, architecture: str, overlay: Any, hf_config: Any) -> None:
-    non_firing = overlay.nonfiring_hooks()
-    if not non_firing:
-        return
-    n_layers = getattr(hf_config, "num_hidden_layers", None)
-    if isinstance(n_layers, int) and n_layers > 0:
-        expanded = [name.replace("{i}", f"0..{n_layers - 1}") for name in non_firing]
-    else:
-        expanded = list(non_firing)
-    logging.getLogger("transformer_lens.vllm").info(
-        "vLLM source on %s (%s): the following hooks will not fire (vLLM fuses these): %s. "
-        "Use boot_transformers() if you need them.",
-        model_name,
-        architecture,
-        ", ".join(expanded),
+def _log_hook_summary(model_name: str, architecture: str, driver: VLLMDriver) -> None:
+    """Log the fireable and non-fireable hook sets so users don't have to grep."""
+    log = logging.getLogger("transformer_lens.vllm")
+    fireable = sorted(driver.supported_hook_points)
+    log.info(
+        "vLLM source on %s (%s) captures %d hook(s): %s",
+        model_name, architecture, len(fireable), ", ".join(fireable),
     )
+    nonfiring = sorted(driver.non_fireable_hook_points)
+    if nonfiring:
+        log.info(
+            "vLLM source on %s (%s) cannot fire %d hook(s) (vLLM fuses these): %s. "
+            "Use boot_transformers() if you need them.",
+            model_name, architecture, len(nonfiring), ", ".join(nonfiring),
+        )
 
 
 __all__ = ["boot_vllm"]

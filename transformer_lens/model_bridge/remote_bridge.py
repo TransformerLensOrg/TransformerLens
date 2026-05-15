@@ -44,6 +44,17 @@ class RemoteBridge(BridgeCore, HookIntrospectionMixin):
         self._hook_registry_initialized = True
         validate_driver(self._driver, after_bridge_construction=True)
 
+    @staticmethod
+    def boot_vllm(*args: Any, **kwargs: Any) -> "RemoteBridge":
+        """Boot a model via vLLM. Returns a RemoteBridge wrapping a VLLMDriver.
+
+        Mirrors ``TransformerBridge.boot_transformers``. Lazy import so
+        ``remote_bridge`` itself stays vLLM-agnostic — only callers of this
+        method need vLLM installed. See :func:`sources.vllm.boot_vllm` for kwargs.
+        """
+        from .sources.vllm import boot_vllm as _boot_vllm
+        return _boot_vllm(*args, **kwargs)
+
     def _scan_existing_hooks(self, module: Any, prefix: str = "") -> None:
         """No-op: registry built from driver declarations in __init__."""
 
