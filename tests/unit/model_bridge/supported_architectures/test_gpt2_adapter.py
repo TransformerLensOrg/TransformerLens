@@ -217,7 +217,7 @@ class TestQKVSplitRearrangeConversion:
     N_HEADS, D_HEAD, D_MODEL = 4, 16, 64  # D_MODEL = N_HEADS * D_HEAD
 
     def _make_conv(
-            self, qkv_index: int, n_heads: int = 4, d_head: int = 16
+            self, qkv_index: int, n_heads: int = 4
         ) -> QKVSplitRearrangeConversion:
         """Helper: build a QKVSplitRearrangeConversion for weight tensors."""
         return QKVSplitRearrangeConversion(
