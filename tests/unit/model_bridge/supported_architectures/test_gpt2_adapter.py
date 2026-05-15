@@ -286,9 +286,4 @@ class TestGPT2FactoryRegistration:
         from transformer_lens.factories.architecture_adapter_factory import (
             SUPPORTED_ARCHITECTURES,
         )
-
-        assert "GPT2LMHeadModel" in SUPPORTED_ARCHITECTURES, (
-            "GPT2LMHeadModel must be registered in SUPPORTED_ARCHITECTURES"
-        )
-
-
+        assert SUPPORTED_ARCHITECTURES["GPT2LMHeadModel"] is GPT2ArchitectureAdapter
