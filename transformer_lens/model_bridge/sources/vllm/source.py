@@ -1,20 +1,26 @@
-"""``boot_vllm`` — construct an LLM, wire its inner module to a TransformerBridge."""
+"""``boot_vllm`` — construct a vLLM LLM, wrap it in a RemoteBridge via VLLMDriver."""
 from __future__ import annotations
 
 import logging
 import os
-from typing import Any, Callable, Dict, Optional
+import warnings
+from typing import Any, Dict, Optional
 
 import torch
 
-from transformer_lens.model_bridge.bridge import TransformerBridge
-from transformer_lens.model_bridge.sources._bridge_builder import (
-    build_bridge_from_module,
+from transformer_lens.factories.architecture_adapter_factory import (
+    ArchitectureAdapterFactory,
 )
+from transformer_lens.model_bridge.remote_bridge import RemoteBridge
+from transformer_lens.model_bridge.sources._hf_format import (
+    map_default_transformer_lens_config,
+)
+from transformer_lens.utilities.hf_utils import get_hf_token
 
 from . import plugin
-from .internals import extract_hf_config, extract_inner_model
-from .overlays import VLLM_OVERLAYS
+from .driver import VLLMDriver
+from .internals import extract_hf_config, extract_inner_model, walk_dot_path
+from .overlays import get_overlay
 
 # Forced LLM(...) kwargs locked by the v1 plan. Caller override → ValueError.
 _LOCKED_KWARGS = {
@@ -33,28 +39,13 @@ def boot_vllm(
     max_model_len: Optional[int] = None,
     max_num_batched_tokens: int = 2048,
     **vllm_kwargs: Any,
-) -> TransformerBridge:
-    """Boot a model via vLLM and wrap its inner ``nn.Module`` in a TransformerBridge.
+) -> RemoteBridge:
+    """Boot a model via vLLM and wrap it in a :class:`RemoteBridge` via :class:`VLLMDriver`.
 
     vLLM drives the forward pass (PagedAttention + ``torch.compile`` + CUDA graphs).
-    The bridge's activation cache is populated from GPU buffers the plugin's
-    pre-compile hooks write into.
-
-    Args:
-        model_name: HF Hub repo id; e.g. ``"meta-llama/Llama-3.2-1B"``.
-        tokenizer: Optional pre-built tokenizer. If ``None``, an HF tokenizer is loaded.
-        dtype: Model dtype; default ``None`` lets vLLM pick (``"auto"``).
-        gpu_memory_utilization: vLLM's fraction of GPU memory. Default 0.5 leaves
-            room for SAEs / probes alongside.
-        max_model_len: vLLM context length cap. ``None`` uses the model default.
-        max_num_batched_tokens: Capture-buffer length. Caps the longest single
-            ``generate`` call supported under capture. Lower → less GPU memory for
-            capture buffers; higher → supports longer prompts.
-        **vllm_kwargs: Passthrough to ``vllm.LLM(...)``. Locked kwargs raise
-            :class:`ValueError` on override.
-
-    Returns:
-        A wired :class:`TransformerBridge`.
+    Capture buffers are populated by hooks the plugin installs pre-compile inside
+    the worker; they come back via ``collective_rpc`` and replay through the
+    bridge's HookPoint tree.
     """
     _reject_locked_overrides(vllm_kwargs)
 
@@ -62,18 +53,12 @@ def boot_vllm(
 
     # Resolve architecture WITHOUT loading weights so we can tell the plugin
     # which dot-paths to hook before LLM(...) constructs the worker.
-    hf_config_preview = AutoConfig.from_pretrained(model_name)
+    hf_token = get_hf_token()
+    hf_config_preview = AutoConfig.from_pretrained(model_name, token=hf_token)
     architecture = hf_config_preview.architectures[0]
-    overlay = VLLM_OVERLAYS.get(architecture)
-    if overlay is None:
-        raise NotImplementedError(
-            f"No vLLM overlay registered for {architecture}. "
-            f"Supported: {sorted(VLLM_OVERLAYS)}."
-        )
+    overlay = get_overlay(architecture)
 
-    # Resolve dtype now so the plugin pre-allocates buffers at the right precision.
     resolved_dtype = dtype or _dtype_from_hf_config(hf_config_preview)
-    plugin.reset()
     plugin.configure(
         capture_specs=overlay.capture_specs(hf_config_preview),
         max_num_batched_tokens=max_num_batched_tokens,
@@ -81,10 +66,19 @@ def boot_vllm(
     )
     plugin.register()
 
-    # In-process engine core. The plugin's _config singleton must be visible to
-    # the worker, which only holds with single-process execution. Multi-process /
-    # multi-GPU is a v2 concern — the plugin would marshal _config differently then.
-    os.environ.setdefault("VLLM_ENABLE_V1_MULTIPROCESSING", "0")
+    # The plugin's _config singleton must be visible to the worker, which only
+    # holds with single-process execution. Multi-GPU is a v2 plan. Override
+    # any user setting — silent capture failure otherwise.
+    existing_mp = os.environ.get("VLLM_ENABLE_V1_MULTIPROCESSING")
+    if existing_mp not in (None, "0"):
+        warnings.warn(
+            f"VLLM_ENABLE_V1_MULTIPROCESSING={existing_mp!r} overridden to '0' — "
+            "boot_vllm needs single-process execution for capture hooks to install. "
+            "Multi-GPU vLLM is a v2 plan.",
+            UserWarning,
+            stacklevel=2,
+        )
+    os.environ["VLLM_ENABLE_V1_MULTIPROCESSING"] = "0"
 
     from vllm import LLM
 
@@ -97,28 +91,52 @@ def boot_vllm(
         **vllm_kwargs,
     )
 
-    inner = extract_inner_model(llm)
     hf_config = extract_hf_config(llm)
+    _validate_capture_paths(llm, overlay, hf_config, architecture)
     if tokenizer is None:
-        tokenizer = AutoTokenizer.from_pretrained(model_name)
+        tokenizer = AutoTokenizer.from_pretrained(model_name, token=hf_token)
 
-    bridge = build_bridge_from_module(
-        model=inner,
-        architecture=architecture,
-        hf_config=hf_config,
+    # Build the adapter (RemoteBridge skips adapter.prepare_model — there's no
+    # local model tree to walk).
+    bridge_config = map_default_transformer_lens_config(hf_config)
+    bridge_config.architecture = architecture
+    bridge_config.model_name = model_name
+    bridge_config.dtype = resolved_dtype
+    adapter = ArchitectureAdapterFactory.select_architecture_adapter(bridge_config)
+
+    driver = VLLMDriver(
+        llm=llm,
+        adapter=adapter,
         tokenizer=tokenizer,
-        dtype=next(inner.parameters()).dtype,
-        device=str(next(inner.parameters()).device),
-        model_name=model_name,
-        post_adapter_hook=overlay.apply,
+        overlay=overlay,
+        hf_config=hf_config,
+        max_num_batched_tokens=max_num_batched_tokens,
     )
-
-    # Lifetime anchor — bypass nn.Module registration so vLLM's parameter trees
-    # aren't double-registered (mirrors original_model at bridge.py:144).
-    bridge.__dict__["_vllm_engine"] = llm
-    bridge._forward_impl = _make_vllm_forward(llm, bridge)
+    bridge = RemoteBridge(adapter=adapter, tokenizer=tokenizer, driver=driver)
     _warn_nonfiring_hooks(model_name, architecture, overlay, hf_config)
     return bridge
+
+
+def _validate_capture_paths(llm: Any, overlay: Any, hf_config: Any, architecture: str) -> None:
+    """Walk each capture-spec dot-path against the loaded model. Raise early with
+    a clear message if any are missing — otherwise the failure surfaces deep in
+    the worker's patched_load_model with an opaque AttributeError.
+    """
+    inner = extract_inner_model(llm)
+    specs = overlay.capture_specs(hf_config)
+    missing = []
+    for canonical_name, (dot_path, _width) in specs.items():
+        try:
+            walk_dot_path(inner, dot_path)
+        except (AttributeError, IndexError, KeyError, ValueError):
+            missing.append((canonical_name, dot_path))
+    if missing:
+        details = "\n".join(f"  {name} → {path}" for name, path in missing)
+        raise NotImplementedError(
+            f"{architecture} doesn't match the vLLM decoder-only layout the overlay "
+            f"expects ({len(missing)} dot-path(s) missing):\n{details}\n"
+            "Use boot_transformers() for this architecture, or add a custom overlay."
+        )
 
 
 def _reject_locked_overrides(vllm_kwargs: Dict[str, Any]) -> None:
@@ -126,7 +144,7 @@ def _reject_locked_overrides(vllm_kwargs: Dict[str, Any]) -> None:
         if key in vllm_kwargs and vllm_kwargs[key] != locked:
             raise ValueError(
                 f"boot_vllm forces {key}={locked}; caller passed {key}={vllm_kwargs[key]}. "
-                f"Multi-device / continuous batching / vLLM-owned tokenizer are v2 scope."
+                "Multi-device / continuous batching / vLLM-owned tokenizer are v2 scope."
             )
 
 
@@ -137,56 +155,6 @@ def _dtype_from_hf_config(hf_config: Any) -> torch.dtype:
     if isinstance(raw, str):
         return getattr(torch, raw, torch.float16)
     return torch.float16
-
-
-def _make_vllm_forward(llm: Any, bridge: TransformerBridge) -> Callable:
-    """Build the closure assigned to ``bridge._forward_impl``.
-
-    Captures vLLM-side activations via collective_rpc, replays them through the
-    bridge's HookPoint registry so ``run_with_cache`` populates correctly, and
-    returns the logits as a tensor.
-    """
-    from vllm import SamplingParams
-    from vllm.inputs import TokensPrompt
-
-    hook_registry = bridge._hook_registry
-
-    def forward(input_ids: Any, **kwargs: Any) -> torch.Tensor:
-        if isinstance(input_ids, torch.Tensor):
-            ids_list = input_ids.tolist()
-        else:
-            ids_list = list(input_ids)
-        if ids_list and isinstance(ids_list[0], list):
-            if len(ids_list) != 1:
-                raise NotImplementedError("boot_vllm v1 supports batch_size=1 only.")
-            ids_list = ids_list[0]
-
-        max_new = int(kwargs.get("max_new_tokens", 1))
-        llm.generate(
-            prompts=[TokensPrompt(prompt_token_ids=ids_list)],
-            sampling_params=SamplingParams(max_tokens=max_new, temperature=0.0),
-        )
-
-        n_tokens = len(ids_list)
-        captures = llm.collective_rpc("tl_read_captures", args=([n_tokens],))[0]
-
-        device = next(bridge.original_model.parameters()).device
-        for canonical_name, tensor in captures.items():
-            hookpoint = hook_registry.get(canonical_name)
-            if hookpoint is None:
-                continue
-            hookpoint(tensor.to(device).unsqueeze(0))
-
-        logits = captures.get("unembed.hook_out")
-        if logits is None:
-            raise RuntimeError(
-                "vLLM source captured no unembed.hook_out; overlay capture_specs "
-                "must include it."
-            )
-        logits = logits.to(device).unsqueeze(0)  # (1, n_tokens, d_vocab)
-        return logits
-
-    return forward
 
 
 def _warn_nonfiring_hooks(model_name: str, architecture: str, overlay: Any, hf_config: Any) -> None:

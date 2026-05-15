@@ -1,13 +1,21 @@
-"""Registry of per-architecture vLLM overlays."""
+"""vLLM overlay registry.
+
+One :class:`DecoderOnlyOverlay` handles every vLLM decoder-only model
+(Llama / Qwen / Mistral / Gemma / Phi3 / Qwen3 / Kimi / GLM / …). It's the
+default for any architecture; per-architecture overlays would only land if a
+model breaks vLLM's conventional decoder-only shape.
+"""
 from __future__ import annotations
 
-from typing import Dict
-
 from .base import AdapterOverlay
-from .llama import LlamaVLLMOverlay
+from .decoder_only import DecoderOnlyOverlay
 
-VLLM_OVERLAYS: Dict[str, AdapterOverlay] = {
-    "LlamaForCausalLM": LlamaVLLMOverlay(),
-}
+DEFAULT_VLLM_OVERLAY: AdapterOverlay = DecoderOnlyOverlay()
 
-__all__ = ["VLLM_OVERLAYS", "AdapterOverlay"]
+
+def get_overlay(architecture: str) -> AdapterOverlay:
+    """Return the overlay for an architecture; falls back to the decoder-only default."""
+    return DEFAULT_VLLM_OVERLAY
+
+
+__all__ = ["AdapterOverlay", "DEFAULT_VLLM_OVERLAY", "DecoderOnlyOverlay", "get_overlay"]
