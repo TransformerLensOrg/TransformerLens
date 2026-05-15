@@ -12,6 +12,10 @@ from transformer_lens.factories.architecture_adapter_factory import (
 )
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.bridge import TransformerBridge
+from transformer_lens.model_bridge.sources._hf_format import (
+    map_default_transformer_lens_config,
+    setup_tokenizer,
+)
 
 # Architecture-agnostic; do not extend per-architecture.
 _HF_PASSTHROUGH_ATTRS = [
@@ -48,11 +52,6 @@ def build_bridge_config_from_hf(
     dtype: torch.dtype,
 ) -> TransformerBridgeConfig:
     """Translate an HF config into a :class:`TransformerBridgeConfig`."""
-    # Deferred import breaks the cycle with transformers.py.
-    from transformer_lens.model_bridge.sources.transformers import (
-        map_default_transformer_lens_config,
-    )
-
     tl_config = map_default_transformer_lens_config(hf_config)
     config_dict = dict(tl_config.__dict__)
     # HF's attribute_map remaps num_experts → num_local_experts; restore the TL name.
@@ -133,9 +132,6 @@ def build_bridge_from_module(
     Returns:
         A :class:`TransformerBridge` wrapping the supplied model.
     """
-    # Deferred import breaks the cycle with transformers.py.
-    from transformer_lens.model_bridge.sources.transformers import setup_tokenizer
-
     if hf_config is None and tl_config is None:
         raise ValueError(
             "build_bridge_from_module requires exactly one of hf_config or "
