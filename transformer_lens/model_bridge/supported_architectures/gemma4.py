@@ -46,7 +46,6 @@ class Gemma4ArchitectureAdapter(ArchitectureAdapter):
     - blocks.{i}.attn.k_proj.weight - Absent on KV-sharing layers
     - blocks.{i}.attn.v_proj.weight - Absent on KV-sharing layers
     - blocks.{i}.attn.k_norm.weight - Absent on KV-sharing layers
-    - blocks.{i}.attn.v_norm.weight - Absent on KV-sharing layers
     """
 
     def __init__(self, cfg: Any) -> None:
@@ -172,10 +171,6 @@ class Gemma4ArchitectureAdapter(ArchitectureAdapter):
                 tensor_conversion=ArithmeticTensorConversion(OperationTypes.ADDITION, 1.0),
             ),
             "blocks.{i}.attn.k_norm.weight": ParamProcessingConversion(
-                tensor_conversion=ArithmeticTensorConversion(OperationTypes.ADDITION, 1.0),
-            ),
-            # Gemma4 adds v_norm (RMSNorm without scale parameter, i.e. with_scale=False)
-            "blocks.{i}.attn.v_norm.weight": ParamProcessingConversion(
                 tensor_conversion=ArithmeticTensorConversion(OperationTypes.ADDITION, 1.0),
             ),
             # MLP weight conversions - transpose from [out, in] to [in, out]

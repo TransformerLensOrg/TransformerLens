@@ -330,7 +330,6 @@ class TestGemma4WeightConversions:
     def test_attn_norm_weight_conversions(self, adapter):
         assert "blocks.{i}.attn.q_norm.weight" in adapter.weight_processing_conversions
         assert "blocks.{i}.attn.k_norm.weight" in adapter.weight_processing_conversions
-        assert "blocks.{i}.attn.v_norm.weight" in adapter.weight_processing_conversions
 
     def test_mlp_weight_conversions(self, adapter):
         assert "blocks.{i}.mlp.gate.weight" in adapter.weight_processing_conversions
