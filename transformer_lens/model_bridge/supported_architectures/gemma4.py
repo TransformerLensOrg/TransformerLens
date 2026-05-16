@@ -192,15 +192,19 @@ class Gemma4ArchitectureAdapter(ArchitectureAdapter):
         }
 
         # Set up component mapping with actual bridge instances
-        # Build attention submodules - v_proj is optional for k_eq_v models
+        # Build attention submodules - k/v projections/norms are optional on KV-sharing layers
+        _k_norm = RMSNormalizationBridge(name="k_norm", config=self.cfg)
+        _k_norm.optional = True
+        _v_norm = RMSNormalizationBridge(name="v_norm", config=self.cfg)
+        _v_norm.optional = True
         attn_submodules: dict[str, Any] = {
             "q": LinearBridge(name="q_proj"),
-            "k": LinearBridge(name="k_proj"),
+            "k": LinearBridge(name="k_proj", optional=True),
             "v": LinearBridge(name="v_proj", optional=True),
             "o": LinearBridge(name="o_proj"),
             "q_norm": RMSNormalizationBridge(name="q_norm", config=self.cfg),
-            "k_norm": RMSNormalizationBridge(name="k_norm", config=self.cfg),
-            "v_norm": RMSNormalizationBridge(name="v_norm", config=self.cfg),
+            "k_norm": _k_norm,
+            "v_norm": _v_norm,
         }
 
         block_submodules: dict[str, Any] = {
