@@ -2,12 +2,12 @@
 
 import pytest
 
+from tests.mocks.architecture_adapter import MockArchitectureAdapter
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.factories.architecture_adapter_factory import (
     SUPPORTED_ARCHITECTURES,
     ArchitectureAdapterFactory,
 )
-from tests.mocks.architecture_adapter import MockArchitectureAdapter
 
 
 def _make_cfg(**overrides) -> TransformerBridgeConfig:

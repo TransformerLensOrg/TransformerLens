@@ -4,6 +4,7 @@ This module provides a factory for creating architecture adapters, including
 support for external registration and entry-point discovery.
 """
 
+import warnings
 from importlib.metadata import entry_points
 
 from transformer_lens.config import TransformerBridgeConfig
@@ -177,8 +178,10 @@ class ArchitectureAdapterFactory:
             eps = entry_points(group="transformer_lens.architectures")
             for ep in eps:
                 cls._adapters[ep.name] = ep.load()
-        except Exception:
-            pass
+        except Exception as e:
+            warnings.warn(
+                f"Failed to discover entry points: {e}. " f"External adapters may not be available."
+            )
         cls._entry_points_discovered = True
 
     @classmethod

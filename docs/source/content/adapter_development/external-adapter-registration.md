@@ -22,6 +22,8 @@ ArchitectureAdapterFactory.register_adapter(
 bridge = TransformerBridge.boot_transformers("my-org/my-model")
 ```
 
+> **Important:** The architecture name you register (e.g. `"MyModelForCausalLM"`) must match the `architectures` field in the model's HuggingFace `config.json`. TransformerLens reads this field to look up the adapter.
+
 ### 2. Entry-point registration (recommended for packages)
 
 Declare your adapter in your package's `pyproject.toml`:
@@ -37,8 +39,8 @@ TransformerLens discovers these automatically on first use. Users just install y
 
 When `boot_transformers()` is called:
 
-1. It reads the model's HuggingFace config to determine the architecture class name (e.g. `"MyModelForCausalLM"`).
-2. `select_architecture_adapter()` checks the registry.
+1. It reads the model's HuggingFace `config.json` to extract the `architectures` field. This field lists the architecture class name (e.g. `"MyModelForCausalLM"`). **This is the name you must use in your registration.**
+2. `select_architecture_adapter()` checks the registry for that architecture name.
 3. On first call, `discover_entry_points()` scans all installed packages for adapters declared via the `transformer_lens.architectures` entry-point group.
 4. The matching adapter class is instantiated and used to build the bridge.
 
