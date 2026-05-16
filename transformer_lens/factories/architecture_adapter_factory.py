@@ -181,8 +181,7 @@ class ArchitectureAdapterFactory:
             eps = entry_points(group="transformer_lens.architectures")
         except Exception as e:
             warnings.warn(
-                f"Failed to discover entry points: {e}. "
-                f"External adapters may not be available."
+                f"Failed to discover entry points: {e}. " f"External adapters may not be available."
             )
         else:
             for ep in eps:
@@ -190,8 +189,7 @@ class ArchitectureAdapterFactory:
                     cls._adapters[ep.name] = ep.load()
                 except Exception as e:
                     warnings.warn(
-                        f"Failed to load entry point '{ep.name}': {e}. "
-                        f"Skipping this adapter."
+                        f"Failed to load entry point '{ep.name}': {e}. " f"Skipping this adapter."
                     )
         cls._entry_points_discovered = True
 
