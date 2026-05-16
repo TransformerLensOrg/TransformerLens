@@ -8,6 +8,35 @@ from transformer_lens.factories.architecture_adapter_factory import (
     SUPPORTED_ARCHITECTURES,
     ArchitectureAdapterFactory,
 )
+from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
+
+
+class OtherMockArchitectureAdapter(ArchitectureAdapter):
+    """A second mock adapter class used to verify overwrite behaviour."""
+
+    def __init__(self, cfg=None):
+        if cfg is None:
+            cfg = TransformerBridgeConfig(
+                d_model=512,
+                d_head=64,
+                n_layers=2,
+                n_ctx=1024,
+                d_vocab=1000,
+                d_mlp=2048,
+                default_prepend_bos=True,
+                architecture="GPT2LMHeadModel",
+            )
+        super().__init__(cfg)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_factory_state():
+    """Save and restore factory state so tests don't leak into each other."""
+    saved_adapters = dict(ArchitectureAdapterFactory._adapters)
+    saved_discovered = ArchitectureAdapterFactory._entry_points_discovered
+    yield
+    ArchitectureAdapterFactory._adapters = saved_adapters
+    ArchitectureAdapterFactory._entry_points_discovered = saved_discovered
 
 
 def _make_cfg(**overrides) -> TransformerBridgeConfig:
@@ -53,9 +82,9 @@ class TestRegisterAdapter:
     def test_register_overwrites_existing(self):
         key = "TestOverwriteForCausalLM"
         ArchitectureAdapterFactory.register_adapter(key, MockArchitectureAdapter)
-        first = ArchitectureAdapterFactory._adapters[key]
-        ArchitectureAdapterFactory.register_adapter(key, MockArchitectureAdapter)
-        assert ArchitectureAdapterFactory._adapters[key] is first
+        assert ArchitectureAdapterFactory._adapters[key] is MockArchitectureAdapter
+        ArchitectureAdapterFactory.register_adapter(key, OtherMockArchitectureAdapter)
+        assert ArchitectureAdapterFactory._adapters[key] is OtherMockArchitectureAdapter
 
     def test_select_returns_registered_adapter(self):
         key = "TestSelectForCausalLM"

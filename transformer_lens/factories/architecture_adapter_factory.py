@@ -136,7 +136,7 @@ class ArchitectureAdapterFactory:
     discovery of adapters from installed packages via entry points.
     """
 
-    _adapters = SUPPORTED_ARCHITECTURES
+    _adapters = dict(SUPPORTED_ARCHITECTURES)
     _entry_points_discovered = False
 
     @classmethod
@@ -179,12 +179,20 @@ class ArchitectureAdapterFactory:
             return
         try:
             eps = entry_points(group="transformer_lens.architectures")
-            for ep in eps:
-                cls._adapters[ep.name] = ep.load()
         except Exception as e:
             warnings.warn(
-                f"Failed to discover entry points: {e}. " f"External adapters may not be available."
+                f"Failed to discover entry points: {e}. "
+                f"External adapters may not be available."
             )
+        else:
+            for ep in eps:
+                try:
+                    cls._adapters[ep.name] = ep.load()
+                except Exception as e:
+                    warnings.warn(
+                        f"Failed to load entry point '{ep.name}': {e}. "
+                        f"Skipping this adapter."
+                    )
         cls._entry_points_discovered = True
 
     @classmethod
