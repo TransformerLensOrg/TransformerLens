@@ -166,14 +166,42 @@ class TestGemma4E2BConfig:
         assert not hasattr(adapter.cfg, "num_kv_shared_layers")
 
 
-class TestGemma4MoEGuard:
-    """Test that MoE variants raise NotImplementedError."""
+class TestGemma4MoESupport:
+    """Test that MoE submodules are added when enable_moe_block=True."""
 
-    def test_moe_raises_not_implemented(self):
-        tc = _make_text_cfg(enable_moe_block=True)
+    def test_moe_block_submodules_exist(self):
+        tc = _make_text_cfg(
+            enable_moe_block=True, num_experts=128, top_k_experts=8, moe_intermediate_size=704
+        )
         cfg = _make_gemma4_cfg(text_config=tc)
-        with pytest.raises(NotImplementedError, match="MoE variants"):
-            Gemma4ArchitectureAdapter(cfg)
+        adapter = Gemma4ArchitectureAdapter(cfg)
+        assert adapter.enable_moe_block is True
+        block = adapter.component_mapping["blocks"]
+        assert "router" in block.submodules
+        assert "experts" in block.submodules
+        assert "ln2_post_moe_1" in block.submodules
+        assert "ln2_pre_moe_2" in block.submodules
+        assert "ln2_post_moe_2" in block.submodules
+
+    def test_moe_block_names(self):
+        tc = _make_text_cfg(
+            enable_moe_block=True, num_experts=128, top_k_experts=8, moe_intermediate_size=704
+        )
+        cfg = _make_gemma4_cfg(text_config=tc)
+        adapter = Gemma4ArchitectureAdapter(cfg)
+        block = adapter.component_mapping["blocks"]
+        assert block.submodules["router"].name == "router"
+        assert block.submodules["experts"].name == "experts"
+        assert block.submodules["ln2_post_moe_1"].name == "post_feedforward_layernorm_1"
+        assert block.submodules["ln2_pre_moe_2"].name == "pre_feedforward_layernorm_2"
+        assert block.submodules["ln2_post_moe_2"].name == "post_feedforward_layernorm_2"
+
+    def test_dense_has_no_moe_submodules(self):
+        cfg = _make_gemma4_cfg()
+        adapter = Gemma4ArchitectureAdapter(cfg)
+        block = adapter.component_mapping["blocks"]
+        assert "router" not in block.submodules
+        assert "experts" not in block.submodules
 
 
 class TestGemma4TextPrefix:

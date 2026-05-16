@@ -20,6 +20,7 @@ from transformer_lens.model_bridge.generalized_components import (
     EmbeddingBridge,
     GatedMLPBridge,
     LinearBridge,
+    MoEBridge,
     RMSNormalizationBridge,
     RotaryEmbeddingBridge,
     UnembeddingBridge,
@@ -46,6 +47,8 @@ class Gemma4ArchitectureAdapter(ArchitectureAdapter):
     - blocks.{i}.attn.k_proj.weight - Absent on KV-sharing layers
     - blocks.{i}.attn.v_proj.weight - Absent on KV-sharing layers
     - blocks.{i}.attn.k_norm.weight - Absent on KV-sharing layers
+    - blocks.{i}.attn.v_proj.weight - Absent when attention_k_eq_v=True (full attention layers)
+    - blocks.{i}.experts.* - Absent on dense layers (only present when enable_moe_block=True)
     """
 
     def __init__(self, cfg: Any) -> None:
@@ -111,11 +114,8 @@ class Gemma4ArchitectureAdapter(ArchitectureAdapter):
         if hasattr(text_cfg, "layer_types"):
             setattr(self.cfg, "layer_types", text_cfg.layer_types)
 
-        # MoE guard: 26B-A4B variant is not yet supported
-        if getattr(text_cfg, "enable_moe_block", False):
-            raise NotImplementedError(
-                "MoE variants of Gemma 4 (e.g. 26B-A4B) are not yet supported by this adapter."
-            )
+        # Gemma4 26B-A4B has MoE: dense MLP + parallel router/experts path
+        self.enable_moe_block = getattr(text_cfg, "enable_moe_block", False)
 
         self.weight_processing_conversions = {
             # Note: Gemma4 uses Gemma4TextScaledWordEmbedding which scales
@@ -192,47 +192,66 @@ class Gemma4ArchitectureAdapter(ArchitectureAdapter):
         }
 
         # Set up component mapping with actual bridge instances
+        # Build attention submodules - v_proj is optional for k_eq_v models
+        attn_submodules: dict[str, Any] = {
+            "q": LinearBridge(name="q_proj"),
+            "k": LinearBridge(name="k_proj"),
+            "v": LinearBridge(name="v_proj", optional=True),
+            "o": LinearBridge(name="o_proj"),
+            "q_norm": RMSNormalizationBridge(name="q_norm", config=self.cfg),
+            "k_norm": RMSNormalizationBridge(name="k_norm", config=self.cfg),
+            "v_norm": RMSNormalizationBridge(name="v_norm", config=self.cfg),
+        }
+
+        block_submodules: dict[str, Any] = {
+            "ln1": RMSNormalizationBridge(name="input_layernorm", config=self.cfg),
+            "ln1_post": RMSNormalizationBridge(name="post_attention_layernorm", config=self.cfg),
+            "ln2": RMSNormalizationBridge(name="pre_feedforward_layernorm", config=self.cfg),
+            "ln2_post": RMSNormalizationBridge(name="post_feedforward_layernorm", config=self.cfg),
+            "attn": PositionEmbeddingsAttentionBridge(
+                name="self_attn",
+                config=self.cfg,
+                submodules=attn_submodules,
+            ),
+            "mlp": GatedMLPBridge(
+                name="mlp",
+                config=self.cfg,
+                submodules={
+                    "gate": LinearBridge(name="gate_proj"),
+                    "in": LinearBridge(name="up_proj"),
+                    "out": LinearBridge(name="down_proj"),
+                },
+            ),
+        }
+
+        # MoE: 26B-A4B has a parallel router/experts path after the standard MLP
+        if self.enable_moe_block:
+            _ln2_post_moe_1 = RMSNormalizationBridge(
+                name="post_feedforward_layernorm_1", config=self.cfg
+            )
+            _ln2_post_moe_1.optional = True
+            _ln2_pre_moe_2 = RMSNormalizationBridge(
+                name="pre_feedforward_layernorm_2", config=self.cfg
+            )
+            _ln2_pre_moe_2.optional = True
+            _ln2_post_moe_2 = RMSNormalizationBridge(
+                name="post_feedforward_layernorm_2", config=self.cfg
+            )
+            _ln2_post_moe_2.optional = True
+            _router = LinearBridge(name="router", config=self.cfg, optional=True)
+            _experts = MoEBridge(name="experts", config=self.cfg)
+            _experts.optional = True
+
+            block_submodules["ln2_post_moe_1"] = _ln2_post_moe_1
+            block_submodules["ln2_pre_moe_2"] = _ln2_pre_moe_2
+            block_submodules["ln2_post_moe_2"] = _ln2_post_moe_2
+            block_submodules["router"] = _router
+            block_submodules["experts"] = _experts
+
         self.component_mapping = {
             "embed": EmbeddingBridge(name=f"{text}.embed_tokens"),
             "rotary_emb": RotaryEmbeddingBridge(name=f"{text}.rotary_emb"),
-            "blocks": BlockBridge(
-                name=f"{text}.layers",
-                submodules={
-                    # All Gemma-4 normalizations use simple RMSNorm pass-through
-                    "ln1": RMSNormalizationBridge(name="input_layernorm", config=self.cfg),
-                    "ln1_post": RMSNormalizationBridge(
-                        name="post_attention_layernorm", config=self.cfg
-                    ),
-                    "ln2": RMSNormalizationBridge(
-                        name="pre_feedforward_layernorm", config=self.cfg
-                    ),
-                    "ln2_post": RMSNormalizationBridge(
-                        name="post_feedforward_layernorm", config=self.cfg
-                    ),
-                    "attn": PositionEmbeddingsAttentionBridge(
-                        name="self_attn",
-                        config=self.cfg,
-                        submodules={
-                            "q": LinearBridge(name="q_proj"),
-                            "k": LinearBridge(name="k_proj"),
-                            "v": LinearBridge(name="v_proj"),
-                            "o": LinearBridge(name="o_proj"),
-                            "q_norm": RMSNormalizationBridge(name="q_norm", config=self.cfg),
-                            "k_norm": RMSNormalizationBridge(name="k_norm", config=self.cfg),
-                            "v_norm": RMSNormalizationBridge(name="v_norm", config=self.cfg),
-                        },
-                    ),
-                    "mlp": GatedMLPBridge(
-                        name="mlp",
-                        config=self.cfg,
-                        submodules={
-                            "gate": LinearBridge(name="gate_proj"),
-                            "in": LinearBridge(name="up_proj"),
-                            "out": LinearBridge(name="down_proj"),
-                        },
-                    ),
-                },
-            ),
+            "blocks": BlockBridge(name=f"{text}.layers", submodules=block_submodules),
             "ln_final": RMSNormalizationBridge(name=f"{text}.norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head"),
         }
