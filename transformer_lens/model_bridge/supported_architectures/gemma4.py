@@ -80,23 +80,43 @@ class Gemma4ArchitectureAdapter(ArchitectureAdapter):
         # SDPA doesn't support output_attentions, which is required for HookedTransformer compatibility
         self.cfg.attn_implementation = "eager"
 
+        # Unwrap text config for multimodal models
+        # Gemma4ForConditionalGeneration nests text settings in text_config
+        # Gemma4ForCausalLM has them flat on the root config
+        text_cfg = getattr(cfg, "text_config", cfg)
+
         # Gemma4 uses logit softcapping and attention softcapping
-        if hasattr(self.cfg, "final_logit_softcapping"):
-            self.cfg.output_logits_soft_cap = self.cfg.final_logit_softcapping
-        if hasattr(self.cfg, "attn_logit_softcapping"):
-            self.cfg.attn_scores_soft_cap = self.cfg.attn_logit_softcapping
+        if (
+            hasattr(text_cfg, "final_logit_softcapping")
+            and text_cfg.final_logit_softcapping is not None
+        ):
+            self.cfg.output_logits_soft_cap = text_cfg.final_logit_softcapping
+        if (
+            hasattr(text_cfg, "attn_logit_softcapping")
+            and text_cfg.attn_logit_softcapping is not None
+        ):
+            self.cfg.attn_scores_soft_cap = text_cfg.attn_logit_softcapping
 
         # Gemma4 E-series has Per-Layer Embeddings (PLE)
-        if hasattr(cfg, "hidden_size_per_layer_input") and cfg.hidden_size_per_layer_input > 0:
-            setattr(self.cfg, "hidden_size_per_layer_input", cfg.hidden_size_per_layer_input)
+        if (
+            hasattr(text_cfg, "hidden_size_per_layer_input")
+            and text_cfg.hidden_size_per_layer_input > 0
+        ):
+            setattr(self.cfg, "hidden_size_per_layer_input", text_cfg.hidden_size_per_layer_input)
 
         # Gemma4 E-series has KV sharing (later layers reuse KV from earlier layers)
-        if hasattr(cfg, "num_kv_shared_layers") and cfg.num_kv_shared_layers > 0:
-            setattr(self.cfg, "num_kv_shared_layers", cfg.num_kv_shared_layers)
+        if hasattr(text_cfg, "num_kv_shared_layers") and text_cfg.num_kv_shared_layers > 0:
+            setattr(self.cfg, "num_kv_shared_layers", text_cfg.num_kv_shared_layers)
 
         # Gemma4 has mixed attention: sliding window alternates with full attention
-        if hasattr(cfg, "layer_types"):
-            setattr(self.cfg, "layer_types", cfg.layer_types)
+        if hasattr(text_cfg, "layer_types"):
+            setattr(self.cfg, "layer_types", text_cfg.layer_types)
+
+        # MoE guard: 26B-A4B variant is not yet supported
+        if getattr(text_cfg, "enable_moe_block", False):
+            raise NotImplementedError(
+                "MoE variants of Gemma 4 (e.g. 26B-A4B) are not yet supported by this adapter."
+            )
 
         self.weight_processing_conversions = {
             # Note: Gemma4 uses Gemma4TextScaledWordEmbedding which scales

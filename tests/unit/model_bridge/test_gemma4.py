@@ -1,5 +1,7 @@
 """Unit tests for Gemma4 architecture adapter registration and configuration."""
 
+from types import SimpleNamespace
+
 import pytest
 
 from transformer_lens.config.TransformerBridgeConfig import TransformerBridgeConfig
@@ -12,8 +14,27 @@ from transformer_lens.model_bridge.supported_architectures.gemma4 import (
 )
 
 
-def _make_gemma4_cfg(**overrides):
+def _make_text_cfg(**kwargs):
+    """Create a text_config SimpleNamespace matching Gemma4TextConfig."""
+    defaults = dict(
+        hidden_size=1536,
+        num_attention_heads=8,
+        num_hidden_layers=35,
+        num_key_value_heads=1,
+        intermediate_size=6144,
+        vocab_size=262144,
+        head_dim=256,
+        max_position_embeddings=131072,
+        rms_norm_eps=1e-6,
+        sliding_window=512,
+    )
+    defaults.update(kwargs)
+    return SimpleNamespace(**defaults)
+
+
+def _make_gemma4_cfg(architectures=None, text_config=None, **overrides):
     """Create a TransformerBridgeConfig for Gemma4 E2B."""
+    arch = architectures or ["Gemma4ForCausalLM"]
     defaults = dict(
         d_model=1536,
         d_head=256,
@@ -23,21 +44,13 @@ def _make_gemma4_cfg(**overrides):
         d_vocab=262144,
         n_key_value_heads=1,
         d_mlp=6144,
-        architecture="Gemma4ForCausalLM",
+        architecture=arch[0],
     )
     defaults.update(overrides)
-    extra_keys = {
-        "architectures",
-        "final_logit_softcapping",
-        "attn_logit_softcapping",
-        "hidden_size_per_layer_input",
-        "num_kv_shared_layers",
-        "layer_types",
-    }
-    extra = {k: defaults.pop(k) for k in extra_keys if k in defaults}
     cfg = TransformerBridgeConfig(**defaults)
-    for k, v in extra.items():
-        setattr(cfg, k, v)
+    setattr(cfg, "architectures", arch)
+    if text_config is not None:
+        setattr(cfg, "text_config", text_config)
     return cfg
 
 
@@ -101,19 +114,21 @@ class TestGemma4Softcapping:
     """Test logit and attention softcapping attribute mapping."""
 
     def test_output_logits_soft_cap(self):
-        cfg = _make_gemma4_cfg(final_logit_softcapping=30.0)
+        tc = _make_text_cfg(final_logit_softcapping=30.0)
+        cfg = _make_gemma4_cfg(text_config=tc)
         adapter = Gemma4ArchitectureAdapter(cfg)
         assert adapter.cfg.output_logits_soft_cap == 30.0
 
     def test_attn_scores_soft_cap(self):
-        cfg = _make_gemma4_cfg(attn_logit_softcapping=50.0)
+        tc = _make_text_cfg(attn_logit_softcapping=50.0)
+        cfg = _make_gemma4_cfg(text_config=tc)
         adapter = Gemma4ArchitectureAdapter(cfg)
         assert adapter.cfg.attn_scores_soft_cap == 50.0
 
     def test_no_softcapping_when_absent(self):
         cfg = _make_gemma4_cfg()
         adapter = Gemma4ArchitectureAdapter(cfg)
-        # defaults are -1.0 (unchanged by adapter when softcapping not in HF config)
+        # defaults are -1.0 (unchanged by adapter when softcapping not in text config)
         assert adapter.cfg.attn_scores_soft_cap == -1.0
         assert adapter.cfg.output_logits_soft_cap == -1.0
 
@@ -122,18 +137,21 @@ class TestGemma4E2BConfig:
     """Test Gemma4 E-series specific config: PLE, KV sharing, layer_types."""
 
     def test_hidden_size_per_layer_input(self):
-        cfg = _make_gemma4_cfg(hidden_size_per_layer_input=256)
+        tc = _make_text_cfg(hidden_size_per_layer_input=256)
+        cfg = _make_gemma4_cfg(text_config=tc)
         adapter = Gemma4ArchitectureAdapter(cfg)
         assert adapter.cfg.hidden_size_per_layer_input == 256
 
     def test_num_kv_shared_layers(self):
-        cfg = _make_gemma4_cfg(num_kv_shared_layers=20)
+        tc = _make_text_cfg(num_kv_shared_layers=20)
+        cfg = _make_gemma4_cfg(text_config=tc)
         adapter = Gemma4ArchitectureAdapter(cfg)
         assert adapter.cfg.num_kv_shared_layers == 20
 
     def test_layer_types(self):
         layer_types = ["sliding_attention"] * 35
-        cfg = _make_gemma4_cfg(layer_types=layer_types)
+        tc = _make_text_cfg(layer_types=layer_types)
+        cfg = _make_gemma4_cfg(text_config=tc)
         adapter = Gemma4ArchitectureAdapter(cfg)
         assert adapter.cfg.layer_types == layer_types
 
@@ -146,6 +164,16 @@ class TestGemma4E2BConfig:
         cfg = _make_gemma4_cfg()
         adapter = Gemma4ArchitectureAdapter(cfg)
         assert not hasattr(adapter.cfg, "num_kv_shared_layers")
+
+
+class TestGemma4MoEGuard:
+    """Test that MoE variants raise NotImplementedError."""
+
+    def test_moe_raises_not_implemented(self):
+        tc = _make_text_cfg(enable_moe_block=True)
+        cfg = _make_gemma4_cfg(text_config=tc)
+        with pytest.raises(NotImplementedError, match="MoE variants"):
+            Gemma4ArchitectureAdapter(cfg)
 
 
 class TestGemma4TextPrefix:
