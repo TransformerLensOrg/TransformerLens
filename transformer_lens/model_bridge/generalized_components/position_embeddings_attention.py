@@ -393,6 +393,14 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
             else:
                 query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
 
+        # Store KV in shared_kv_states for Gemma4 KV-sharing layers
+        if "shared_kv_states" in kwargs:
+            shared_kv_states = kwargs["shared_kv_states"]
+            if shared_kv_states is not None:
+                layer_type = getattr(hf_attn, "layer_type", None)
+                if layer_type is not None:
+                    shared_kv_states[layer_type] = (key_states, value_states)
+
         # Fire hook_rot_q/hook_rot_k (post-rotation)
         if hasattr(self, "hook_rot_q"):
             query_states = self.hook_rot_q(query_states)
