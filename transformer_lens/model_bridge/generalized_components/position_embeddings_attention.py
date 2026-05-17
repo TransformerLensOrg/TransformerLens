@@ -246,6 +246,10 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
         # varies by architecture and isn't captured by nn.Module's type signature.
         hf_attn: Any = self.original_component
 
+        # Gemma4 KV-sharing layers: delegate to original when k/v submodules absent
+        if "k" not in self.submodules or "v" not in self.submodules:
+            return self.original_component(*args, **kwargs)
+
         # Extract hidden_states and kwargs
         if "hidden_states" in kwargs:
             hidden_states = kwargs.pop("hidden_states")
