@@ -56,15 +56,15 @@ class Gemma4ArchitectureAdapter(ArchitectureAdapter):
         super().__init__(cfg)
 
         # Detect model type to set correct HF module paths
-        # AutoModel returns Gemma4Model directly. Paths depend on variant:
-        # Gemma4ForCausalLM (text-only):   embed_tokens, layers, norm (on root)
-        # Gemma4ForConditionalGeneration:  language_model.embed_tokens, language_model.layers, language_model.norm
+        # benchmark uses AutoModelForCausalLM which returns:
+        #   Gemma4ForConditionalGeneration:  model.language_model.embed_tokens, model.language_model.layers
+        #   Gemma4ForCausalLM (text-only):   model.embed_tokens, model.layers
         architectures = getattr(cfg, "architectures", [])
         if "Gemma4ForConditionalGeneration" in architectures:
-            self.text_prefix = "language_model"
+            self.text_prefix = "model.language_model"
         else:
-            self.text_prefix = ""
-        self._dot = f"{self.text_prefix}." if self.text_prefix else ""
+            self.text_prefix = "model"
+        self._dot = f"{self.text_prefix}."
 
         self.cfg.gated_mlp = True
 
@@ -295,7 +295,7 @@ class Gemma4ArchitectureAdapter(ArchitectureAdapter):
             hf_model.config._attn_implementation = "eager"
 
         # Get the layers module using the same prefix
-        text_model = hf_model if not self.text_prefix else self.get_remote_component(hf_model, self.text_prefix)
+        text_model = self.get_remote_component(hf_model, self.text_prefix)
         if hasattr(text_model, "layers"):
             for layer in text_model.layers:  # type: ignore[union-attr]
                 if hasattr(layer, "self_attn") and hasattr(layer.self_attn, "config"):
