@@ -59,8 +59,9 @@ class Gemma4ArchitectureAdapter(ArchitectureAdapter):
         # benchmark uses AutoModelForCausalLM which returns:
         #   Gemma4ForConditionalGeneration:  model.language_model.embed_tokens, model.language_model.layers
         #   Gemma4ForCausalLM (text-only):   model.embed_tokens, model.layers
-        architectures = getattr(cfg, "architectures", [])
-        if "Gemma4ForConditionalGeneration" in architectures:
+        # Check cfg.architecture (set by boot) or cfg.architectures (HF config list)
+        arch = getattr(cfg, "architecture", None) or ""
+        if "Gemma4ForConditionalGeneration" in arch:
             self.text_prefix = "model.language_model"
         else:
             self.text_prefix = "model"
