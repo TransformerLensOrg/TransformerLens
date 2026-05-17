@@ -56,14 +56,15 @@ class Gemma4ArchitectureAdapter(ArchitectureAdapter):
         super().__init__(cfg)
 
         # Detect model type to set correct HF module paths
-        # Gemma4ForCausalLM (text-only):   model.embed_tokens, model.layers
-        # Gemma4ForConditionalGeneration:  model.language_model.embed_tokens, model.language_model.layers
+        # AutoModel returns Gemma4Model directly. Paths depend on variant:
+        # Gemma4ForCausalLM (text-only):   embed_tokens, layers, norm (on root)
+        # Gemma4ForConditionalGeneration:  language_model.embed_tokens, language_model.layers, language_model.norm
         architectures = getattr(cfg, "architectures", [])
         if "Gemma4ForConditionalGeneration" in architectures:
-            self.text_prefix = "model.language_model"
+            self.text_prefix = "language_model"
         else:
-            self.text_prefix = "model"
-        text = self.text_prefix
+            self.text_prefix = ""
+        self._dot = f"{self.text_prefix}." if self.text_prefix else ""
 
         self.cfg.gated_mlp = True
 
@@ -253,10 +254,10 @@ class Gemma4ArchitectureAdapter(ArchitectureAdapter):
             block_submodules["experts"] = _experts
 
         self.component_mapping = {
-            "embed": EmbeddingBridge(name=f"{text}.embed_tokens"),
-            "rotary_emb": RotaryEmbeddingBridge(name=f"{text}.rotary_emb"),
-            "blocks": BlockBridge(name=f"{text}.layers", submodules=block_submodules),
-            "ln_final": RMSNormalizationBridge(name=f"{text}.norm", config=self.cfg),
+            "embed": EmbeddingBridge(name=f"{self._dot}embed_tokens"),
+            "rotary_emb": RotaryEmbeddingBridge(name=f"{self._dot}rotary_emb"),
+            "blocks": BlockBridge(name=f"{self._dot}layers", submodules=block_submodules),
+            "ln_final": RMSNormalizationBridge(name=f"{self._dot}norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head"),
         }
 
@@ -288,14 +289,13 @@ class Gemma4ArchitectureAdapter(ArchitectureAdapter):
             hf_model: The HuggingFace Gemma4 model instance
             bridge_model: The TransformerBridge model (if available)
         """
-        text = self.text_prefix
-        rotary_emb = self.get_remote_component(hf_model, f"{text}.rotary_emb")
+        rotary_emb = self.get_remote_component(hf_model, f"{self._dot}rotary_emb")
 
         if hasattr(hf_model, "config") and hasattr(hf_model.config, "_attn_implementation"):
             hf_model.config._attn_implementation = "eager"
 
         # Get the layers module using the same prefix
-        text_model = self.get_remote_component(hf_model, text)
+        text_model = hf_model if not self.text_prefix else self.get_remote_component(hf_model, self.text_prefix)
         if hasattr(text_model, "layers"):
             for layer in text_model.layers:  # type: ignore[union-attr]
                 if hasattr(layer, "self_attn") and hasattr(layer.self_attn, "config"):

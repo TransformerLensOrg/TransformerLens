@@ -210,12 +210,12 @@ class TestGemma4TextPrefix:
     def test_text_prefix_causal(self):
         cfg = _make_gemma4_cfg(architectures=["Gemma4ForCausalLM"])
         adapter = Gemma4ArchitectureAdapter(cfg)
-        assert adapter.text_prefix == "model"
+        assert adapter.text_prefix == ""
 
     def test_text_prefix_conditional_generation(self):
         cfg = _make_gemma4_cfg(architectures=["Gemma4ForConditionalGeneration"])
         adapter = Gemma4ArchitectureAdapter(cfg)
-        assert adapter.text_prefix == "model.language_model"
+        assert adapter.text_prefix == "language_model"
 
 
 class TestGemma4ComponentMapping:
@@ -242,16 +242,10 @@ class TestGemma4ComponentMapping:
         assert "unembed" in adapter.component_mapping
 
     def test_embed_path_causal(self, adapter):
-        assert adapter.component_mapping["embed"].name == "model.embed_tokens"
-
-    def test_rotary_emb_path_causal(self, adapter):
-        assert adapter.component_mapping["rotary_emb"].name == "model.rotary_emb"
-
-    def test_blocks_path_causal(self, adapter):
-        assert adapter.component_mapping["blocks"].name == "model.layers"
-
-    def test_ln_final_path_causal(self, adapter):
-        assert adapter.component_mapping["ln_final"].name == "model.norm"
+        assert adapter.component_mapping["embed"].name == "embed_tokens"
+        assert adapter.component_mapping["rotary_emb"].name == "rotary_emb"
+        assert adapter.component_mapping["blocks"].name == "layers"
+        assert adapter.component_mapping["ln_final"].name == "norm"
 
     def test_unembed_path(self, adapter):
         assert adapter.component_mapping["unembed"].name == "lm_head"
@@ -322,16 +316,10 @@ class TestGemma4ComponentMappingMultimodal:
         return Gemma4ArchitectureAdapter(cfg)
 
     def test_embed_path_conditional(self, adapter):
-        assert adapter.component_mapping["embed"].name == "model.language_model.embed_tokens"
-
-    def test_rotary_emb_path_conditional(self, adapter):
-        assert adapter.component_mapping["rotary_emb"].name == "model.language_model.rotary_emb"
-
-    def test_blocks_path_conditional(self, adapter):
-        assert adapter.component_mapping["blocks"].name == "model.language_model.layers"
-
-    def test_ln_final_path_conditional(self, adapter):
-        assert adapter.component_mapping["ln_final"].name == "model.language_model.norm"
+        assert adapter.component_mapping["embed"].name == "language_model.embed_tokens"
+        assert adapter.component_mapping["rotary_emb"].name == "language_model.rotary_emb"
+        assert adapter.component_mapping["blocks"].name == "language_model.layers"
+        assert adapter.component_mapping["ln_final"].name == "language_model.norm"
 
 
 class TestGemma4WeightConversions:
