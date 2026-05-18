@@ -119,6 +119,10 @@ def boot_vllm(
         # worker construction and mixes it into the Worker via multiple
         # inheritance (asserts no attribute name collisions — hence the tl_ prefix).
         worker_extension_cls="transformer_lens.model_bridge.sources.vllm.worker_extension.TLWorkerExtension",
+        # Allow full-vocab logprobs so the driver can synthesize real logits for
+        # the generated position (vLLM caps logprobs to this value; default 20 is
+        # too small for mech-interp). One ~512 KB buffer per call; negligible.
+        max_logprobs=hf_config_preview.vocab_size,
         dtype=str(resolved_dtype).replace("torch.", "") if dtype is not None else "auto",
         **_LOCKED_KWARGS,
         **vllm_kwargs,

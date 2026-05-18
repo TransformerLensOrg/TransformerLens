@@ -79,17 +79,15 @@ class VLLMDriver(DriverBase):
         # Push intervention state (possibly empty) before generate — this also
         # resets stale interventions from prior forwards.
         self._llm.collective_rpc("tl_set_interventions", args=(intervene_specs,))
-        # logprobs=d_vocab requests the full distribution at the generated position
-        # so the driver can synthesize logits whose argmax matches vLLM's sampler.
-        # vLLM bypasses lm_head.__call__, so capture-via-hook can't reach the
-        # logits; this is the documented escape hatch.
-        d_vocab = self.bridge_config.d_vocab
+        # Request full-vocab logprobs so the driver can populate position -1 of
+        # the synthesized logits with the real next-token distribution. vLLM's
+        # ``max_logprobs`` was set to d_vocab at boot to make this legal.
         outputs = self._llm.generate(
             prompts=[TokensPrompt(prompt_token_ids=ids_list)],
             sampling_params=SamplingParams(
                 max_tokens=int(max_new_tokens),
                 temperature=0.0,
-                logprobs=d_vocab if return_logits else None,
+                logprobs=self.bridge_config.d_vocab if return_logits else None,
             ),
         )
 
@@ -101,7 +99,7 @@ class VLLMDriver(DriverBase):
 
         logits: torch.Tensor | None = None
         if return_logits:
-            logits = self._synthesize_logits(outputs[0], n_tokens, d_vocab)
+            logits = self._synthesize_logits(outputs[0], n_tokens, self.bridge_config.d_vocab)
 
         return ForwardResult(logits=logits, captured=captured, raw_output=outputs[0])
 
@@ -123,19 +121,24 @@ class VLLMDriver(DriverBase):
     def _synthesize_logits(request_output: Any, n_tokens: int, d_vocab: int) -> torch.Tensor:
         """Build a (1, n_tokens, d_vocab) logits-like tensor from vLLM's sampler output.
 
-        vLLM's lm_head bypass means our hook never fires; instead the sampler hands
-        back top-k logprobs for the generated position. Position -1 (= the input's
-        last token) is the only one whose argmax matches a real model prediction —
-        earlier positions stay at ``-inf`` so any argmax there is meaningless rather
-        than silently misleading. Users needing per-position logits should request
-        ``prompt_logprobs`` via a custom SamplingParams path.
+        vLLM's lm_head bypass means our hook never fires; the sampler returns
+        full-vocab logprobs (we set ``max_logprobs=d_vocab`` at boot to allow this).
+        Position -1 — the input's last token, = next-token prediction — is populated
+        from those logprobs. Earlier positions stay at ``-inf`` so any argmax there
+        is loud rather than silently misleading; populating them would need
+        ``prompt_logprobs`` requested per call (much more expensive).
         """
         logits = torch.full((1, n_tokens, d_vocab), float("-inf"), dtype=torch.float16)
         gen = request_output.outputs[0] if request_output.outputs else None
-        if gen is None or not gen.logprobs:
+        if gen is None:
             return logits
-        for token_id, lp_obj in gen.logprobs[0].items():
-            logits[0, -1, int(token_id)] = float(lp_obj.logprob)
+        # Prefer real logprobs; fall back to the generated token id (one-hot-ish)
+        # if logprobs weren't requested (e.g. return_logits=False elsewhere).
+        if gen.logprobs:
+            for token_id, lp_obj in gen.logprobs[0].items():
+                logits[0, -1, int(token_id)] = float(lp_obj.logprob)
+        elif gen.token_ids:
+            logits[0, -1, int(gen.token_ids[0])] = 0.0
         return logits
 
     def _validate_interventions(self, intervene: Mapping[str, Any]) -> dict:

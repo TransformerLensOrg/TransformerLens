@@ -155,8 +155,9 @@ def test_plugin_config_cleared_after_boot(mocked_boot):
 
 def test_llm_construction_kwargs(mocked_boot):
     """Pin the kwargs boot_vllm passes to vllm.LLM(...). Catches regressions like
-    forgetting worker_extension_cls (collective_rpc methods unreachable) or
-    max_num_batched_tokens (Dynamo symbolic-shape bound mismatch with buffer)."""
+    forgetting worker_extension_cls (collective_rpc methods unreachable),
+    max_num_batched_tokens (Dynamo symbolic-shape bound mismatch with buffer),
+    or max_logprobs (driver synthesizes logits via full-vocab logprobs)."""
     boot_vllm("any-model", max_num_batched_tokens=1024)
     kwargs = mocked_boot["vllm_llm"].call_args.kwargs
     assert kwargs["model"] == "any-model"
@@ -164,6 +165,8 @@ def test_llm_construction_kwargs(mocked_boot):
     assert kwargs["worker_extension_cls"] == (
         "transformer_lens.model_bridge.sources.vllm.worker_extension.TLWorkerExtension"
     )
+    # Sized from the mocked hf_config.vocab_size in mocked_boot fixture.
+    assert kwargs["max_logprobs"] == mocked_boot["hf_config"].vocab_size
     # Locked kwargs that must always reach LLM.
     assert kwargs["tensor_parallel_size"] == 1
     assert kwargs["pipeline_parallel_size"] == 1

@@ -61,25 +61,30 @@ def _adapter() -> ArchitectureAdapter:
     return adapter
 
 
-def _fake_request_output(top_logprobs=None):
+def _fake_request_output(generated_token=None, top_logprobs=None):
     """Build a vLLM RequestOutput-shaped mock for _synthesize_logits."""
     completion = MagicMock()
-    completion.logprobs = [{
-        tid: MagicMock(logprob=lp) for tid, lp in (top_logprobs or {}).items()
-    }] if top_logprobs is not None else []
+    completion.token_ids = [generated_token] if generated_token is not None else []
+    completion.logprobs = (
+        [{tid: MagicMock(logprob=lp) for tid, lp in top_logprobs.items()}]
+        if top_logprobs is not None else []
+    )
     ro = MagicMock()
     ro.outputs = [completion]
     return ro
 
 
-def _driver(*, captures=None, hf_config=None, max_num_batched_tokens=2048, gen_top_logprobs=None) -> VLLMDriver:
-    """Build a VLLMDriver. If ``captures`` is given, llm.collective_rpc returns them.
-    If ``gen_top_logprobs`` is given, llm.generate returns a RequestOutput whose
-    sampler logprobs at the generated position contain ``{token_id: logprob}``."""
+def _driver(*, captures=None, hf_config=None, max_num_batched_tokens=2048,
+            generated_token=None, top_logprobs=None) -> VLLMDriver:
+    """Build a VLLMDriver. ``captures`` populates llm.collective_rpc; ``generated_token``
+    and ``top_logprobs`` populate llm.generate's RequestOutput so _synthesize_logits
+    can be exercised on both code paths (logprobs preferred, token_id fallback)."""
     llm = MagicMock()
     if captures is not None:
         llm.collective_rpc = MagicMock(return_value=[captures])
-    llm.generate = MagicMock(return_value=[_fake_request_output(gen_top_logprobs)])
+    llm.generate = MagicMock(
+        return_value=[_fake_request_output(generated_token, top_logprobs)]
+    )
     return VLLMDriver(
         llm=llm, adapter=_adapter(), tokenizer=None,
         overlay=_overlay(), hf_config=hf_config or _hf_config(),
@@ -114,20 +119,31 @@ class TestVLLMDriverProtocolConformance:
 class TestVLLMDriverForward:
     """forward dispatches via llm.generate and surfaces captures via ForwardResult."""
 
-    def test_forward_surfaces_captures_with_batch_dim(self):
-        """vLLM hands (n_tokens, width); the driver adds the batch dim the bridge expects."""
+    def test_forward_logits_from_sampler_logprobs(self):
+        """vLLM bypasses lm_head; driver synthesizes logits from sampler logprobs.
+        Position -1 must carry the real next-token distribution."""
         pytest.importorskip("vllm")
         result = _driver(
             captures={"embed.hook_out": torch.randn(3, 4)},
-            gen_top_logprobs={7: 2.5, 3: 1.0},
+            top_logprobs={7: 2.5, 3: 1.0, 11: -0.5},
         ).forward(torch.tensor([[1, 2, 3]]))
         assert isinstance(result, ForwardResult)
         assert tuple(result.captured["embed.hook_out"].shape) == (1, 3, 4)
-        # Logits synthesized from sampler logprobs (vLLM bypasses lm_head, so
-        # captures can't reach the output). Position -1 holds the next-token
-        # distribution; argmax should be the token with the highest logprob.
         assert result.logits is not None and tuple(result.logits.shape) == (1, 3, 16)
+        # Argmax = highest-logprob token. Values at non-listed positions are -inf.
         assert int(result.logits[0, -1].argmax().item()) == 7
+        assert float(result.logits[0, -1, 7].item()) == 2.5
+
+    def test_forward_logits_fallback_to_token_id(self):
+        """If logprobs are absent (e.g. return_logits=False elsewhere upstream),
+        _synthesize_logits falls back to the generated token id as a one-hot-ish."""
+        pytest.importorskip("vllm")
+        result = _driver(
+            captures={"embed.hook_out": torch.randn(3, 4)},
+            generated_token=9,
+        ).forward(torch.tensor([[1, 2, 3]]))
+        assert result.logits is not None
+        assert int(result.logits[0, -1].argmax().item()) == 9
 
     def test_forward_rejects_batched_input(self):
         """batch_size=1 only. Raises in _normalize_input_ids before any vllm import."""
