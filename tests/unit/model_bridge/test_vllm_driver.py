@@ -61,11 +61,25 @@ def _adapter() -> ArchitectureAdapter:
     return adapter
 
 
-def _driver(*, captures=None, hf_config=None, max_num_batched_tokens=2048) -> VLLMDriver:
-    """Build a VLLMDriver. If ``captures`` is given, llm.collective_rpc returns them."""
+def _fake_request_output(top_logprobs=None):
+    """Build a vLLM RequestOutput-shaped mock for _synthesize_logits."""
+    completion = MagicMock()
+    completion.logprobs = [{
+        tid: MagicMock(logprob=lp) for tid, lp in (top_logprobs or {}).items()
+    }] if top_logprobs is not None else []
+    ro = MagicMock()
+    ro.outputs = [completion]
+    return ro
+
+
+def _driver(*, captures=None, hf_config=None, max_num_batched_tokens=2048, gen_top_logprobs=None) -> VLLMDriver:
+    """Build a VLLMDriver. If ``captures`` is given, llm.collective_rpc returns them.
+    If ``gen_top_logprobs`` is given, llm.generate returns a RequestOutput whose
+    sampler logprobs at the generated position contain ``{token_id: logprob}``."""
     llm = MagicMock()
     if captures is not None:
         llm.collective_rpc = MagicMock(return_value=[captures])
+    llm.generate = MagicMock(return_value=[_fake_request_output(gen_top_logprobs)])
     return VLLMDriver(
         llm=llm, adapter=_adapter(), tokenizer=None,
         overlay=_overlay(), hf_config=hf_config or _hf_config(),
@@ -103,14 +117,17 @@ class TestVLLMDriverForward:
     def test_forward_surfaces_captures_with_batch_dim(self):
         """vLLM hands (n_tokens, width); the driver adds the batch dim the bridge expects."""
         pytest.importorskip("vllm")
-        result = _driver(captures={
-            "embed.hook_out": torch.randn(3, 4),
-            "unembed.hook_out": torch.randn(3, 16),
-        }).forward(torch.tensor([[1, 2, 3]]))
+        result = _driver(
+            captures={"embed.hook_out": torch.randn(3, 4)},
+            gen_top_logprobs={7: 2.5, 3: 1.0},
+        ).forward(torch.tensor([[1, 2, 3]]))
         assert isinstance(result, ForwardResult)
         assert tuple(result.captured["embed.hook_out"].shape) == (1, 3, 4)
-        assert tuple(result.captured["unembed.hook_out"].shape) == (1, 3, 16)
+        # Logits synthesized from sampler logprobs (vLLM bypasses lm_head, so
+        # captures can't reach the output). Position -1 holds the next-token
+        # distribution; argmax should be the token with the highest logprob.
         assert result.logits is not None and tuple(result.logits.shape) == (1, 3, 16)
+        assert int(result.logits[0, -1].argmax().item()) == 7
 
     def test_forward_rejects_batched_input(self):
         """batch_size=1 only. Raises in _normalize_input_ids before any vllm import."""

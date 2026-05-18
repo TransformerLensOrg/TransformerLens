@@ -79,9 +79,18 @@ class VLLMDriver(DriverBase):
         # Push intervention state (possibly empty) before generate — this also
         # resets stale interventions from prior forwards.
         self._llm.collective_rpc("tl_set_interventions", args=(intervene_specs,))
-        self._llm.generate(
+        # logprobs=d_vocab requests the full distribution at the generated position
+        # so the driver can synthesize logits whose argmax matches vLLM's sampler.
+        # vLLM bypasses lm_head.__call__, so capture-via-hook can't reach the
+        # logits; this is the documented escape hatch.
+        d_vocab = self.bridge_config.d_vocab
+        outputs = self._llm.generate(
             prompts=[TokensPrompt(prompt_token_ids=ids_list)],
-            sampling_params=SamplingParams(max_tokens=int(max_new_tokens), temperature=0.0),
+            sampling_params=SamplingParams(
+                max_tokens=int(max_new_tokens),
+                temperature=0.0,
+                logprobs=d_vocab if return_logits else None,
+            ),
         )
 
         n_tokens = len(ids_list)
@@ -92,9 +101,9 @@ class VLLMDriver(DriverBase):
 
         logits: torch.Tensor | None = None
         if return_logits:
-            logits = captured.get("unembed.hook_out")
+            logits = self._synthesize_logits(outputs[0], n_tokens, d_vocab)
 
-        return ForwardResult(logits=logits, captured=captured, raw_output=None)
+        return ForwardResult(logits=logits, captured=captured, raw_output=outputs[0])
 
     def close(self) -> None:
         # Detach hooks before dropping the LLM so they don't stay registered on
@@ -109,6 +118,25 @@ class VLLMDriver(DriverBase):
                     "tl_remove_hooks failed during close(): %s", e
                 )
         self._llm = None
+
+    @staticmethod
+    def _synthesize_logits(request_output: Any, n_tokens: int, d_vocab: int) -> torch.Tensor:
+        """Build a (1, n_tokens, d_vocab) logits-like tensor from vLLM's sampler output.
+
+        vLLM's lm_head bypass means our hook never fires; instead the sampler hands
+        back top-k logprobs for the generated position. Position -1 (= the input's
+        last token) is the only one whose argmax matches a real model prediction —
+        earlier positions stay at ``-inf`` so any argmax there is meaningless rather
+        than silently misleading. Users needing per-position logits should request
+        ``prompt_logprobs`` via a custom SamplingParams path.
+        """
+        logits = torch.full((1, n_tokens, d_vocab), float("-inf"), dtype=torch.float16)
+        gen = request_output.outputs[0] if request_output.outputs else None
+        if gen is None or not gen.logprobs:
+            return logits
+        for token_id, lp_obj in gen.logprobs[0].items():
+            logits[0, -1, int(token_id)] = float(lp_obj.logprob)
+        return logits
 
     def _validate_interventions(self, intervene: Mapping[str, Any]) -> dict:
         """Reject callables, validate spec format and hook names; return a plain dict."""
