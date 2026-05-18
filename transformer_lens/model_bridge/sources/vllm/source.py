@@ -62,7 +62,13 @@ def boot_vllm(
     the unembed buffer alone is ~525 MB (2048 × 128256 × 2 bytes); residual-stream
     buffers add ~8 MB per hook. The affine intervention hook also allocates a
     transient output-shape tensor per forward (even in identity mode), so peak
-    forward memory is ~1.5× the capture buffers' resident size. Plan accordingly.
+    forward memory is ~1.5× the capture buffers' resident size.
+
+    KV-cache footprint: vLLM reserves KV cache sized for ``max_model_len`` × layers
+    × heads × head_dim. If ``max_model_len`` is left as ``None``, vLLM uses the
+    model's native context (e.g. 131072 for Llama-3.2-1B) — easily 4+ GiB even
+    on a 1B model. Pass an explicit ``max_model_len`` (e.g. ``2048`` for typical
+    mech-interp prompts) to keep the budget on smaller GPUs.
     """
     _reject_locked_overrides(vllm_kwargs)
 
