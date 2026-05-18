@@ -12,8 +12,8 @@ from transformer_lens.factories.architecture_adapter_factory import (
     ArchitectureAdapterFactory,
 )
 from transformer_lens.model_bridge.remote_bridge import RemoteBridge
-from transformer_lens.model_bridge.sources._hf_format import (
-    map_default_transformer_lens_config,
+from transformer_lens.model_bridge.sources._bridge_builder import (
+    build_bridge_config_from_hf,
 )
 from transformer_lens.utilities.hf_utils import get_hf_token
 
@@ -130,11 +130,11 @@ def boot_vllm(
         tokenizer = AutoTokenizer.from_pretrained(model_name, token=hf_token)
 
     # Build the adapter (RemoteBridge skips adapter.prepare_model — there's no
-    # local model tree to walk).
-    bridge_config = map_default_transformer_lens_config(hf_config)
-    bridge_config.architecture = architecture
-    bridge_config.model_name = model_name
-    bridge_config.dtype = resolved_dtype
+    # local model tree to walk). Use the shared HF→TL config builder so
+    # bridge_config is a real TransformerBridgeConfig with all dataclass
+    # defaults (d_vocab_out=-1, etc.) — not a deep-copied HF config with
+    # extra fields, which is missing the TL-only attributes BridgeCore reads.
+    bridge_config = build_bridge_config_from_hf(hf_config, architecture, model_name, resolved_dtype)
     adapter = ArchitectureAdapterFactory.select_architecture_adapter(bridge_config)
 
     driver = VLLMDriver(

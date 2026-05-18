@@ -69,8 +69,8 @@ def mocked_boot(monkeypatch):
         lambda llm: hf_config,
     )
     monkeypatch.setattr(
-        "transformer_lens.model_bridge.sources.vllm.source.map_default_transformer_lens_config",
-        lambda hf: cfg,
+        "transformer_lens.model_bridge.sources.vllm.source.build_bridge_config_from_hf",
+        lambda hf, arch, name, dt: cfg,
     )
     monkeypatch.setattr(
         "transformer_lens.model_bridge.sources.vllm.source"
