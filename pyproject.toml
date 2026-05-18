@@ -36,6 +36,7 @@
         # whenever chardet>=6 is installed. Remove the pin when psf/requests bumps the cap.
         evals=["lm-eval>=0.4", "chardet<6"]
         lit=["lit-nlp>=1.3"]
+        qwen35=["transformers>=5.2.0"]
 
     [project.scripts]
         build-docs="docs.make_docs:build_docs"
