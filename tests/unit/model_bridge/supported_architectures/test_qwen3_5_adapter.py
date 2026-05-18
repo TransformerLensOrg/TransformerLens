@@ -1,14 +1,6 @@
-"""Unit tests for the Qwen3_5 architecture adapter (Phase A+B).
+"""Unit tests for the Qwen3_5 architecture adapter.
 
-Tests cover:
-1. Registration: adapter importable, in SUPPORTED_ARCHITECTURES, in HF_SUPPORTED_ARCHITECTURES
-2. Component mapping: correct bridge hierarchy with only universal submodules (no self_attn),
-   GatedMLPBridge with gate/in/out LinearBridge submodules
-3. Config attributes: all cfg attributes set correctly
-4. Weight conversions: preprocess_weights correctly slices q_proj.weight per-head
-5. Integration: end-to-end tests with a tiny programmatically-constructed model
-
-Note: Qwen3_5 is supported only via TransformerBridge, not HookedTransformer.
+Qwen3_5 is supported only via TransformerBridge, not HookedTransformer.
 """
 
 from types import SimpleNamespace
@@ -38,16 +30,10 @@ def qwen3_5_dependency_available(monkeypatch):
     monkeypatch.setattr(transformers, "Qwen3_5ForCausalLM", object(), raising=False)
 
 
-# ============================================================================
-# Test: Registration
-# ============================================================================
-
-
 class TestQwen3_5Registration:
-    """Verify the adapter is properly registered in all lookup tables."""
+    """Adapter is registered in all lookup tables."""
 
     def test_adapter_importable(self):
-        """Qwen3_5ArchitectureAdapter must be importable."""
         from transformer_lens.model_bridge.supported_architectures import (
             Qwen3_5ArchitectureAdapter,
         )
@@ -55,15 +41,12 @@ class TestQwen3_5Registration:
         assert Qwen3_5ArchitectureAdapter is not None
 
     def test_in_supported_architectures(self):
-        """Qwen3_5ForCausalLM must be in SUPPORTED_ARCHITECTURES."""
         assert "Qwen3_5ForCausalLM" in SUPPORTED_ARCHITECTURES
 
     def test_in_hf_supported_architectures(self):
-        """Qwen3_5ForCausalLM must be in HF_SUPPORTED_ARCHITECTURES."""
         assert "Qwen3_5ForCausalLM" in HF_SUPPORTED_ARCHITECTURES
 
     def test_adapter_class_correct(self):
-        """The adapter class must be Qwen3_5ArchitectureAdapter."""
         from transformer_lens.model_bridge.supported_architectures import (
             Qwen3_5ArchitectureAdapter,
         )
@@ -285,14 +268,11 @@ class TestQwen3_5LoadingGuards:
         assert bridge.hf_model.config is text_config
 
 
-# ============================================================================
-# Helpers: TransformerBridgeConfig for adapter instantiation
-# ============================================================================
-
-
 def _make_bridge_cfg(**overrides):
-    """Create a minimal TransformerBridgeConfig for Qwen3_5 adapter tests."""
-    from transformer_lens.config.TransformerBridgeConfig import TransformerBridgeConfig
+    """Minimal TransformerBridgeConfig for Qwen3_5 adapter tests."""
+    from transformer_lens.config.transformer_bridge_config import (
+        TransformerBridgeConfig,
+    )
 
     defaults = dict(
         d_model=1024,
@@ -308,19 +288,8 @@ def _make_bridge_cfg(**overrides):
     return TransformerBridgeConfig(**defaults)
 
 
-# ============================================================================
-# Test: Component Mapping (Phase A+B)
-# ============================================================================
-
-
 class TestQwen3_5ComponentMapping:
-    """Verify the component_mapping structure for Qwen3_5.
-
-    The key invariant: self_attn is NOT mapped as a block submodule because
-    linear-attention layers lack self_attn. Only universally present submodules
-    (norms, dense MLP) are mapped. Unlike Qwen3Next, the MLP is a GatedMLPBridge
-    with enumerated gate/in/out LinearBridge submodules.
-    """
+    """self_attn is not a block submodule (absent on linear-attn layers); dense GatedMLP only."""
 
     @pytest.fixture
     def adapter(self, qwen3_5_dependency_available):
@@ -331,10 +300,7 @@ class TestQwen3_5ComponentMapping:
         cfg = _make_bridge_cfg()
         return Qwen3_5ArchitectureAdapter(cfg)
 
-    # ---- Top-level keys ----
-
     def test_component_mapping_keys(self, adapter):
-        """component_mapping must have exactly the expected top-level keys."""
         assert set(adapter.component_mapping.keys()) == {
             "embed",
             "rotary_emb",
@@ -343,47 +309,36 @@ class TestQwen3_5ComponentMapping:
             "unembed",
         }
 
-    # ---- HF path names ----
-
     def test_embed_path(self, adapter):
-        """embed maps to model.embed_tokens."""
         assert adapter.component_mapping["embed"].name == "model.embed_tokens"
 
     def test_rotary_emb_path(self, adapter):
-        """rotary_emb maps to model.rotary_emb."""
         assert adapter.component_mapping["rotary_emb"].name == "model.rotary_emb"
 
     def test_blocks_path(self, adapter):
-        """blocks maps to model.layers."""
         assert adapter.component_mapping["blocks"].name == "model.layers"
 
     def test_ln_final_path(self, adapter):
-        """ln_final maps to model.norm."""
         assert adapter.component_mapping["ln_final"].name == "model.norm"
 
     def test_unembed_path(self, adapter):
-        """unembed maps to lm_head."""
         assert adapter.component_mapping["unembed"].name == "lm_head"
 
-    # ---- Block submodules ----
-
     def test_block_submodules_keys(self, adapter):
-        """blocks submodules must contain ln1, ln2, mlp, and optional attn + linear_attn."""
         submodules = adapter.component_mapping["blocks"].submodules
         assert set(submodules.keys()) == {"ln1", "ln2", "mlp", "attn", "linear_attn"}
 
     def test_attn_is_optional(self, adapter):
-        """attn must be marked optional (absent on linear-attention layers)."""
+        """attn is absent on linear-attention layers."""
         submodules = adapter.component_mapping["blocks"].submodules
         assert submodules["attn"].optional is True
 
     def test_linear_attn_is_optional(self, adapter):
-        """linear_attn must be marked optional (absent on full-attention layers)."""
+        """linear_attn is absent on full-attention layers."""
         submodules = adapter.component_mapping["blocks"].submodules
         assert submodules["linear_attn"].optional is True
 
     def test_linear_attn_bridge_type(self, adapter):
-        """linear_attn must be a GatedDeltaNetBridge."""
         from transformer_lens.model_bridge.generalized_components.gated_delta_net import (
             GatedDeltaNetBridge,
         )
@@ -392,51 +347,38 @@ class TestQwen3_5ComponentMapping:
         assert isinstance(submodules["linear_attn"], GatedDeltaNetBridge)
 
     def test_ln1_path(self, adapter):
-        """ln1 maps to input_layernorm."""
         assert adapter.component_mapping["blocks"].submodules["ln1"].name == "input_layernorm"
 
     def test_ln2_path(self, adapter):
-        """ln2 maps to post_attention_layernorm."""
         assert (
             adapter.component_mapping["blocks"].submodules["ln2"].name == "post_attention_layernorm"
         )
 
     def test_mlp_path(self, adapter):
-        """mlp maps to mlp."""
         assert adapter.component_mapping["blocks"].submodules["mlp"].name == "mlp"
 
-    # ---- MLP submodules ----
-
     def test_mlp_submodule_keys(self, adapter):
-        """mlp submodules must be exactly {gate, in, out}."""
         mlp = adapter.component_mapping["blocks"].submodules["mlp"]
         assert set(mlp.submodules.keys()) == {"gate", "in", "out"}
 
     def test_mlp_gate_path(self, adapter):
-        """mlp.gate maps to gate_proj."""
         mlp = adapter.component_mapping["blocks"].submodules["mlp"]
         assert mlp.submodules["gate"].name == "gate_proj"
 
     def test_mlp_in_path(self, adapter):
-        """mlp.in maps to up_proj."""
         mlp = adapter.component_mapping["blocks"].submodules["mlp"]
         assert mlp.submodules["in"].name == "up_proj"
 
     def test_mlp_out_path(self, adapter):
-        """mlp.out maps to down_proj."""
         mlp = adapter.component_mapping["blocks"].submodules["mlp"]
         assert mlp.submodules["out"].name == "down_proj"
 
-    # ---- Bridge types ----
-
     def test_blocks_bridge_type(self, adapter):
-        """blocks uses BlockBridge."""
         from transformer_lens.model_bridge.generalized_components import BlockBridge
 
         assert isinstance(adapter.component_mapping["blocks"], BlockBridge)
 
     def test_rotary_emb_bridge_type(self, adapter):
-        """rotary_emb uses RotaryEmbeddingBridge."""
         from transformer_lens.model_bridge.generalized_components import (
             RotaryEmbeddingBridge,
         )
@@ -444,7 +386,6 @@ class TestQwen3_5ComponentMapping:
         assert isinstance(adapter.component_mapping["rotary_emb"], RotaryEmbeddingBridge)
 
     def test_ln1_bridge_type(self, adapter):
-        """ln1 uses RMSNormalizationBridge."""
         from transformer_lens.model_bridge.generalized_components import (
             RMSNormalizationBridge,
         )
@@ -453,7 +394,6 @@ class TestQwen3_5ComponentMapping:
         assert isinstance(ln1, RMSNormalizationBridge)
 
     def test_ln2_bridge_type(self, adapter):
-        """ln2 uses RMSNormalizationBridge."""
         from transformer_lens.model_bridge.generalized_components import (
             RMSNormalizationBridge,
         )
@@ -462,47 +402,36 @@ class TestQwen3_5ComponentMapping:
         assert isinstance(ln2, RMSNormalizationBridge)
 
     def test_mlp_bridge_type(self, adapter):
-        """mlp uses GatedMLPBridge (dense gated MLP, not MoE)."""
         from transformer_lens.model_bridge.generalized_components import GatedMLPBridge
 
         mlp = adapter.component_mapping["blocks"].submodules["mlp"]
         assert isinstance(mlp, GatedMLPBridge)
 
     def test_mlp_gate_bridge_type(self, adapter):
-        """mlp.gate uses LinearBridge."""
         from transformer_lens.model_bridge.generalized_components import LinearBridge
 
         gate = adapter.component_mapping["blocks"].submodules["mlp"].submodules["gate"]
         assert isinstance(gate, LinearBridge)
 
     def test_mlp_in_bridge_type(self, adapter):
-        """mlp.in uses LinearBridge."""
         from transformer_lens.model_bridge.generalized_components import LinearBridge
 
         up = adapter.component_mapping["blocks"].submodules["mlp"].submodules["in"]
         assert isinstance(up, LinearBridge)
 
     def test_mlp_out_bridge_type(self, adapter):
-        """mlp.out uses LinearBridge."""
         from transformer_lens.model_bridge.generalized_components import LinearBridge
 
         down = adapter.component_mapping["blocks"].submodules["mlp"].submodules["out"]
         assert isinstance(down, LinearBridge)
 
-    # ---- weight_processing_conversions ----
-
     def test_weight_processing_conversions_empty(self, adapter):
-        """weight_processing_conversions is empty (no attention submodules mapped)."""
+        """No attention submodules mapped, so no conversions."""
         assert adapter.weight_processing_conversions == {}
 
 
-# ============================================================================
-# Test: Config Attributes (Phase A+B)
-# ============================================================================
-
-
 class TestQwen3_5ConfigAttributes:
-    """Verify all cfg attributes are set correctly by the adapter."""
+    """cfg attributes set by the adapter."""
 
     @pytest.fixture
     def adapter(self, qwen3_5_dependency_available):
@@ -535,15 +464,14 @@ class TestQwen3_5ConfigAttributes:
         assert adapter.cfg.default_prepend_bos is False
 
     def test_supports_fold_ln_false(self, adapter):
-        """supports_fold_ln must be False: hybrid layers break fold_ln."""
+        """Hybrid layers break fold_ln."""
         assert adapter.supports_fold_ln is False
 
     def test_attn_implementation_eager(self, adapter):
-        """attn_implementation must be 'eager' for output_attentions support."""
+        """Eager attention required for output_attentions support."""
         assert adapter.cfg.attn_implementation == "eager"
 
     def test_n_key_value_heads_set_when_gqa(self, qwen3_5_dependency_available):
-        """n_key_value_heads is set on cfg when the input config has it."""
         from transformer_lens.model_bridge.supported_architectures.qwen3_5 import (
             Qwen3_5ArchitectureAdapter,
         )
@@ -553,15 +481,13 @@ class TestQwen3_5ConfigAttributes:
         assert adapter.cfg.n_key_value_heads == 2
 
     def test_n_key_value_heads_not_set_when_absent(self, qwen3_5_dependency_available):
-        """n_key_value_heads is not set when the config doesn't have it."""
-        from transformer_lens.config.TransformerBridgeConfig import (
+        from transformer_lens.config.transformer_bridge_config import (
             TransformerBridgeConfig,
         )
         from transformer_lens.model_bridge.supported_architectures.qwen3_5 import (
             Qwen3_5ArchitectureAdapter,
         )
 
-        # Config without n_key_value_heads
         cfg = TransformerBridgeConfig(
             d_model=1024,
             d_head=256,
@@ -572,7 +498,7 @@ class TestQwen3_5ConfigAttributes:
             architecture="Qwen3_5ForCausalLM",
         )
         adapter = Qwen3_5ArchitectureAdapter(cfg)
-        # n_key_value_heads should equal n_heads (standard MHA default)
+        # When unset, n_key_value_heads must default to n_heads (standard MHA).
         assert not (
             hasattr(adapter.cfg, "n_key_value_heads")
             and adapter.cfg.n_key_value_heads is not None
@@ -580,22 +506,8 @@ class TestQwen3_5ConfigAttributes:
         )
 
 
-# ============================================================================
-# Test: preprocess_weights (Phase A+B)
-# ============================================================================
-
-
 class TestQwen3_5PreprocessWeights:
-    """Verify preprocess_weights correctly slices q_proj.weight per-head.
-
-    Background: In Qwen3_5, q_proj.weight has shape (n_heads * head_dim * 2, hidden_size)
-    where rows are organized as interleaved per-head pairs:
-      head_0_query (d_head rows), head_0_gate (d_head rows),
-      head_1_query (d_head rows), head_1_gate (d_head rows), ...
-
-    A naive first-half slice would be wrong. The correct approach reshapes by
-    head and takes only the first d_head rows per head (the query half).
-    """
+    """q_proj rows are interleaved per-head (query, gate, query, gate, ...) — naive first-half slice is wrong."""
 
     N_HEADS = 4
     D_HEAD = 8
@@ -611,12 +523,11 @@ class TestQwen3_5PreprocessWeights:
             n_heads=self.N_HEADS,
             d_head=self.D_HEAD,
             d_model=self.HIDDEN_SIZE,
-            n_key_value_heads=self.N_HEADS,  # MHA for simplicity
+            n_key_value_heads=self.N_HEADS,
         )
         return Qwen3_5ArchitectureAdapter(cfg)
 
     def _make_q_proj_weight(self):
-        """Create a q_proj.weight tensor with distinct per-head-row values."""
         import torch
 
         total_rows = self.N_HEADS * self.D_HEAD * 2
@@ -626,7 +537,6 @@ class TestQwen3_5PreprocessWeights:
         return w
 
     def test_q_proj_output_shape(self, adapter):
-        """preprocess_weights reduces q_proj rows from n_heads*d_head*2 to n_heads*d_head."""
         import torch
 
         w = self._make_q_proj_weight()
@@ -636,8 +546,6 @@ class TestQwen3_5PreprocessWeights:
         assert out.shape == (self.N_HEADS * self.D_HEAD, self.HIDDEN_SIZE)
 
     def test_q_proj_selects_query_rows_not_naive_first_half(self, adapter):
-        """For each head i, output rows [i*d_head:(i+1)*d_head] == input rows
-        [i*d_head*2 : i*d_head*2 + d_head] (per-head interleaved layout)."""
         import torch
 
         w = self._make_q_proj_weight()
@@ -656,7 +564,6 @@ class TestQwen3_5PreprocessWeights:
             )
 
     def test_naive_slice_would_be_wrong(self, adapter):
-        """Naive first-half slice gives different (wrong) results for n_heads > 1."""
         import torch
 
         w = self._make_q_proj_weight()
@@ -672,7 +579,6 @@ class TestQwen3_5PreprocessWeights:
             )
 
     def test_non_q_proj_weights_unchanged(self, adapter):
-        """k_proj, v_proj, and down_proj weights are NOT modified by preprocess_weights."""
         import torch
 
         k_proj = torch.randn(self.N_HEADS * self.D_HEAD, self.HIDDEN_SIZE)
@@ -686,7 +592,6 @@ class TestQwen3_5PreprocessWeights:
         assert torch.equal(result["model.layers.0.mlp.down_proj.weight"], down_proj)
 
     def test_multiple_layers_all_processed(self, adapter):
-        """q_proj.weight tensors across multiple layers are all sliced correctly."""
         import torch
 
         w0 = self._make_q_proj_weight()
@@ -701,11 +606,9 @@ class TestQwen3_5PreprocessWeights:
         assert result["model.layers.3.self_attn.q_proj.weight"].shape == expected_shape
 
     def test_empty_state_dict_returns_empty(self, adapter):
-        """preprocess_weights with an empty state dict returns an empty dict."""
         assert adapter.preprocess_weights({}) == {}
 
     def test_state_dict_without_q_proj_unchanged(self, adapter):
-        """A state dict with no q_proj keys is returned unmodified."""
         import torch
 
         state_dict = {"model.embed_tokens.weight": torch.randn(100, self.HIDDEN_SIZE)}
@@ -714,22 +617,152 @@ class TestQwen3_5PreprocessWeights:
         assert set(result.keys()) == original_keys
 
     def test_weight_processing_conversions_is_empty_dict(self, adapter):
-        """weight_processing_conversions is {} — q_proj slicing is in preprocess_weights."""
+        """q_proj slicing happens in preprocess_weights, not as a conversion."""
         assert adapter.weight_processing_conversions == {}
 
 
-# ============================================================================
-# Test: Integration (Phase A+B)
-# ============================================================================
+@pytest.mark.skipif(
+    not _QWEN3_5_AVAILABLE,
+    reason="Qwen3_5TextConfig / Qwen3_5ForCausalLM not available in installed transformers",
+)
+class TestQwen3_5ComponentTypes:
+    """Top-level bridge classes — guards against silent type substitution."""
+
+    @pytest.fixture
+    def adapter(self):
+        from transformer_lens.model_bridge.supported_architectures.qwen3_5 import (
+            Qwen3_5ArchitectureAdapter,
+        )
+
+        return Qwen3_5ArchitectureAdapter(_make_bridge_cfg())
+
+    def test_embed_is_embedding_bridge(self, adapter):
+        from transformer_lens.model_bridge.generalized_components import EmbeddingBridge
+
+        assert isinstance(adapter.component_mapping["embed"], EmbeddingBridge)
+
+    def test_ln_final_is_rms_norm_bridge(self, adapter):
+        from transformer_lens.model_bridge.generalized_components import (
+            RMSNormalizationBridge,
+        )
+
+        assert isinstance(adapter.component_mapping["ln_final"], RMSNormalizationBridge)
+
+    def test_unembed_is_unembedding_bridge(self, adapter):
+        from transformer_lens.model_bridge.generalized_components import (
+            UnembeddingBridge,
+        )
+
+        assert isinstance(adapter.component_mapping["unembed"], UnembeddingBridge)
+
+
+@pytest.mark.skipif(
+    not _QWEN3_5_AVAILABLE,
+    reason="Qwen3_5TextConfig / Qwen3_5ForCausalLM not available in installed transformers",
+)
+class TestQwen3_5AttnSubmodules:
+    """Full-attention layers wire Qwen3-pattern submodules; gated q_proj half is pre-sliced."""
+
+    @pytest.fixture
+    def attn(self):
+        from transformer_lens.model_bridge.supported_architectures.qwen3_5 import (
+            Qwen3_5ArchitectureAdapter,
+        )
+
+        adapter = Qwen3_5ArchitectureAdapter(_make_bridge_cfg())
+        return adapter.component_mapping["blocks"].submodules["attn"]
+
+    def test_attn_is_position_embeddings_attention(self, attn):
+        from transformer_lens.model_bridge.generalized_components.position_embeddings_attention import (
+            PositionEmbeddingsAttentionBridge,
+        )
+
+        assert isinstance(attn, PositionEmbeddingsAttentionBridge)
+
+    def test_attn_path(self, attn):
+        assert attn.name == "self_attn"
+
+    def test_attn_qkvo_submodule_paths(self, attn):
+        from transformer_lens.model_bridge.generalized_components import LinearBridge
+
+        for sub_name, expected_path in (
+            ("q", "q_proj"),
+            ("k", "k_proj"),
+            ("v", "v_proj"),
+            ("o", "o_proj"),
+        ):
+            sub = attn.submodules[sub_name]
+            assert isinstance(sub, LinearBridge)
+            assert sub.name == expected_path
+
+    def test_attn_q_norm_k_norm_present(self, attn):
+        """Qwen3 family uses per-head Q/K RMSNorm."""
+        from transformer_lens.model_bridge.generalized_components import (
+            RMSNormalizationBridge,
+        )
+
+        assert isinstance(attn.submodules["q_norm"], RMSNormalizationBridge)
+        assert isinstance(attn.submodules["k_norm"], RMSNormalizationBridge)
+        assert attn.submodules["q_norm"].name == "q_norm"
+        assert attn.submodules["k_norm"].name == "k_norm"
+
+
+@pytest.mark.skipif(
+    not _QWEN3_5_AVAILABLE,
+    reason="Qwen3_5TextConfig / Qwen3_5ForCausalLM not available in installed transformers",
+)
+class TestQwen3_5HybridSpecifics:
+    """Qwen3.5-specific config invariants."""
+
+    @pytest.fixture
+    def adapter(self):
+        from transformer_lens.model_bridge.supported_architectures.qwen3_5 import (
+            Qwen3_5ArchitectureAdapter,
+        )
+
+        return Qwen3_5ArchitectureAdapter(_make_bridge_cfg())
+
+    def test_gated_q_proj_flag_set(self, adapter):
+        """Flag drives preprocess_weights to slice the gated half of q_proj."""
+        assert getattr(adapter.cfg, "gated_q_proj", False) is True
+
+
+@pytest.mark.skipif(
+    not _QWEN3_5_AVAILABLE,
+    reason="Qwen3_5TextConfig / Qwen3_5ForCausalLM not available in installed transformers",
+)
+class TestQwen3_5ArchitectureGuards:
+    """Guards against drift from Qwen3 conventions."""
+
+    @pytest.fixture
+    def adapter(self):
+        from transformer_lens.model_bridge.supported_architectures.qwen3_5 import (
+            Qwen3_5ArchitectureAdapter,
+        )
+
+        return Qwen3_5ArchitectureAdapter(_make_bridge_cfg())
+
+    def test_no_norm_offset_conversions(self, adapter):
+        """LLaMA-style RMSNorm — no +1 offset like Gemma."""
+        for key in adapter.weight_processing_conversions:
+            assert "ln1" not in key
+            assert "ln2" not in key
+            assert "ln_final" not in key
+
+    def test_mlp_is_gated_not_moe(self, adapter):
+        """Dense GatedMLP, not MoE (Qwen3Next has MoE)."""
+        from transformer_lens.model_bridge.generalized_components import (
+            GatedMLPBridge,
+            MoEBridge,
+        )
+
+        mlp = adapter.component_mapping["blocks"].submodules["mlp"]
+        assert isinstance(mlp, GatedMLPBridge)
+        assert not isinstance(mlp, MoEBridge)
 
 
 def _make_tiny_hf_model():
-    """Create a tiny Qwen3_5ForCausalLM for integration testing.
-
-    8 layers: layers 3 and 7 are full-attention (full_attention_interval=4),
-    layers 0-2 and 4-6 are linear-attention (GatedDeltaNet).
-    Dense gated MLP on all layers.
-    """
+    """Tiny Qwen3_5ForCausalLM: 8 layers, full-attn at 3 and 7 (interval=4), GatedDeltaNet elsewhere."""
     cfg = Qwen3_5TextConfig(
         hidden_size=128,
         num_hidden_layers=8,
@@ -758,10 +791,12 @@ def _make_tiny_hf_model():
 
 
 def _make_tiny_bridge():
-    """Create a Qwen3_5 bridge from a tiny HF model."""
+    """Build a Qwen3_5 bridge from a tiny HF model."""
     from unittest.mock import MagicMock
 
-    from transformer_lens.config.TransformerBridgeConfig import TransformerBridgeConfig
+    from transformer_lens.config.transformer_bridge_config import (
+        TransformerBridgeConfig,
+    )
     from transformer_lens.model_bridge import TransformerBridge
     from transformer_lens.model_bridge.supported_architectures.qwen3_5 import (
         Qwen3_5ArchitectureAdapter,
@@ -788,15 +823,10 @@ def _make_tiny_bridge():
     reason="Qwen3_5TextConfig / Qwen3_5ForCausalLM not available in installed transformers",
 )
 class TestQwen3_5Integration:
-    """End-to-end integration tests using a tiny programmatic Qwen3_5 model.
-
-    The linear attention layers run via the torch fallback path when
-    flash-linear-attention / causal-conv1d are not installed.
-    """
+    """End-to-end tests; linear-attn falls back to torch when flash-linear-attention is absent."""
 
     @pytest.fixture(scope="class")
     def bridge_and_model(self):
-        """Create a tiny bridge + HF model pair, shared across the class."""
         return _make_tiny_bridge()
 
     @pytest.fixture(scope="class")
@@ -810,21 +840,12 @@ class TestQwen3_5Integration:
         return hf
 
     def test_bridge_creation(self, bridge):
-        """TransformerBridge construction from a tiny Qwen3_5 model must succeed."""
         from transformer_lens.model_bridge import TransformerBridge
 
         assert isinstance(bridge, TransformerBridge)
 
     def test_hook_names_present(self, bridge):
-        """Key hook names must be present; blocks.0.attn.* must NOT be present.
-
-        Verified:
-        - blocks.0.hook_resid_pre: linear-attention layer (layer 0)
-        - blocks.3.hook_resid_pre: first full-attention layer (layer 3)
-        - blocks.0.ln1.*: norm present on all layers (universal submodule)
-        - blocks.0.mlp.*: MLP present on all layers (universal submodule)
-        - blocks.0.attn.*: NOT present (self_attn absent on linear-attn layers)
-        """
+        """blocks.0.attn.* must NOT appear — self_attn is absent on linear-attn layers."""
         hook_keys = set(bridge.hook_dict.keys())
 
         assert "blocks.0.hook_resid_pre" in hook_keys, "linear-attn layer must have hook_resid_pre"
@@ -840,7 +861,6 @@ class TestQwen3_5Integration:
         ), "blocks.0.attn hooks must NOT be present (hybrid architecture)"
 
     def test_forward_pass_consistency(self, bridge, hf_model):
-        """Bridge output logits must match HF model output logits within atol=1e-4."""
         import torch
 
         tokens = torch.randint(0, 512, (1, 4))

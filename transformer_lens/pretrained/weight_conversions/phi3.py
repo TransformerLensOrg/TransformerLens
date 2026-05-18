@@ -3,7 +3,7 @@ from typing import cast
 import einops
 import torch
 
-from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.config.hooked_transformer_config import HookedTransformerConfig
 
 
 def convert_phi3_weights(phi, cfg: HookedTransformerConfig):

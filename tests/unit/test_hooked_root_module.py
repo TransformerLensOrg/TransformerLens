@@ -1,6 +1,7 @@
 from unittest.mock import Mock
 
-from transformer_lens.hook_points import HookedRootModule, HookPoint
+from transformer_lens.hook_points import HookPoint
+from transformer_lens.HookedRootModule import HookedRootModule
 
 MODEL_NAME = "solu-2l"
 

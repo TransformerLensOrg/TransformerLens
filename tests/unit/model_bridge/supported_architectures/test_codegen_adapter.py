@@ -1,12 +1,4 @@
-"""Unit tests for CodeGenArchitectureAdapter.
-
-Tests cover:
-- Config attribute validation (all required attributes are set correctly)
-- Component mapping structure (correct bridge types, no ln2)
-- Weight conversion keys and structure
-- split_qkv_matrix correctness (numerical test with known weights)
-- Factory registration (CodeGenForCausalLM maps to the right adapter)
-"""
+"""Unit tests for CodeGenArchitectureAdapter."""
 
 from types import SimpleNamespace
 from typing import Any
@@ -16,12 +8,18 @@ import torch
 import torch.nn as nn
 
 from transformer_lens.config import TransformerBridgeConfig
+from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion
+from transformer_lens.conversion_utils.param_processing_conversion import (
+    ParamProcessingConversion,
+)
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     CodeGenAttentionBridge,
     EmbeddingBridge,
+    LinearBridge,
     MLPBridge,
     NormalizationBridge,
+    ParallelBlockBridge,
     UnembeddingBridge,
 )
 from transformer_lens.model_bridge.supported_architectures.codegen import (
@@ -55,12 +53,12 @@ def _make_cfg(
     )
 
 
-@pytest.fixture
+@pytest.fixture(scope="class")
 def cfg() -> TransformerBridgeConfig:
     return _make_cfg()
 
 
-@pytest.fixture
+@pytest.fixture(scope="class")
 def adapter(cfg: TransformerBridgeConfig) -> CodeGenArchitectureAdapter:
     return CodeGenArchitectureAdapter(cfg)
 
@@ -71,8 +69,6 @@ def adapter(cfg: TransformerBridgeConfig) -> CodeGenArchitectureAdapter:
 
 
 class TestCodeGenAdapterConfig:
-    """Tests that the adapter sets required config attributes correctly."""
-
     def test_normalization_type_is_ln(self, adapter: CodeGenArchitectureAdapter) -> None:
         assert adapter.cfg.normalization_type == "LN"
 
@@ -98,8 +94,6 @@ class TestCodeGenAdapterConfig:
 
 
 class TestCodeGenAdapterComponentMapping:
-    """Tests that component_mapping has the correct bridge types and structure."""
-
     def test_embed_is_embedding_bridge(self, adapter: CodeGenArchitectureAdapter) -> None:
         assert isinstance(adapter.component_mapping["embed"], EmbeddingBridge)
 
@@ -133,9 +127,9 @@ class TestCodeGenAdapterComponentMapping:
         assert blocks.submodules["ln1"].name == "ln_1"
 
     def test_no_ln2_in_blocks(self, adapter: CodeGenArchitectureAdapter) -> None:
-        """CodeGen uses parallel attn+MLP sharing ln_1 — there must be no ln2."""
+        """Parallel attn+MLP shares ln_1; no ln2 exists."""
         blocks = adapter.component_mapping["blocks"]
-        assert "ln2" not in blocks.submodules, "CodeGen parallel block must not have ln2"
+        assert "ln2" not in blocks.submodules
 
     def test_attn_is_codegen_attention_bridge(self, adapter: CodeGenArchitectureAdapter) -> None:
         blocks = adapter.component_mapping["blocks"]
@@ -168,8 +162,6 @@ class TestCodeGenAdapterComponentMapping:
 
 
 class TestCodeGenAdapterWeightConversions:
-    """Tests that weight_processing_conversions has the expected keys."""
-
     def test_q_weight_key_present(self, adapter: CodeGenArchitectureAdapter) -> None:
         assert "blocks.{i}.attn.q.weight" in adapter.weight_processing_conversions
 
@@ -186,26 +178,129 @@ class TestCodeGenAdapterWeightConversions:
         assert len(adapter.weight_processing_conversions) == 4
 
 
+class TestCodeGenAdapterWeightConversionSemantics:
+    """Each Q/K/V/O wraps a RearrangeTensorConversion with the right pattern and n axis."""
+
+    @pytest.fixture(scope="class")
+    def adapter(self) -> CodeGenArchitectureAdapter:
+        return CodeGenArchitectureAdapter(_make_cfg())
+
+    @pytest.mark.parametrize("slot", ["q", "k", "v"])
+    def test_qkv_uses_split_heads_pattern(
+        self, adapter: CodeGenArchitectureAdapter, slot: str
+    ) -> None:
+        conv = adapter.weight_processing_conversions[f"blocks.{{i}}.attn.{slot}.weight"]
+        assert isinstance(conv, ParamProcessingConversion)
+        assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)
+        assert conv.tensor_conversion.pattern == "(n h) m -> n m h"
+        assert conv.tensor_conversion.axes_lengths["n"] == adapter.cfg.n_heads
+
+    def test_o_uses_merge_heads_pattern(self, adapter: CodeGenArchitectureAdapter) -> None:
+        conv = adapter.weight_processing_conversions["blocks.{i}.attn.o.weight"]
+        assert isinstance(conv, ParamProcessingConversion)
+        assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)
+        assert conv.tensor_conversion.pattern == "m (n h) -> n h m"
+        assert conv.tensor_conversion.axes_lengths["n"] == adapter.cfg.n_heads
+
+    def test_n_kv_heads_on_cfg_does_not_change_kv_conversions(self) -> None:
+        # CodeGen is MHA-only: K/V pinned to n_heads regardless of n_key_value_heads.
+        cfg = _make_cfg()
+        cfg.n_key_value_heads = 1  # type: ignore[attr-defined]
+        adapter = CodeGenArchitectureAdapter(cfg)
+        for slot in ("k", "v"):
+            conv = adapter.weight_processing_conversions[f"blocks.{{i}}.attn.{slot}.weight"]
+            assert isinstance(conv, ParamProcessingConversion)
+            assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)
+            assert conv.tensor_conversion.axes_lengths["n"] == adapter.cfg.n_heads
+
+
+class TestCodeGenAdapterComponentTypesExtras:
+    """Bridge-type assertions for joint-QKV, MLP submodules, and parallel block class."""
+
+    @pytest.fixture(scope="class")
+    def adapter(self) -> CodeGenArchitectureAdapter:
+        return CodeGenArchitectureAdapter(_make_cfg())
+
+    def test_blocks_is_parallel_block_bridge(self, adapter: CodeGenArchitectureAdapter) -> None:
+        # Parallel attn+MLP: must use ParallelBlockBridge, not sequential BlockBridge.
+        blocks = adapter.component_mapping["blocks"]
+        assert isinstance(blocks, ParallelBlockBridge)
+
+    def test_attn_qkv_is_linear_bridge(self, adapter: CodeGenArchitectureAdapter) -> None:
+        attn = adapter.component_mapping["blocks"].submodules["attn"]
+        qkv = attn.submodules["qkv"]
+        assert isinstance(qkv, LinearBridge)
+        assert qkv.name == "qkv_proj"
+
+    def test_attn_o_is_linear_bridge(self, adapter: CodeGenArchitectureAdapter) -> None:
+        attn = adapter.component_mapping["blocks"].submodules["attn"]
+        o = attn.submodules["o"]
+        assert isinstance(o, LinearBridge)
+        assert o.name == "out_proj"
+
+    def test_mlp_in_is_linear_bridge(self, adapter: CodeGenArchitectureAdapter) -> None:
+        mlp = adapter.component_mapping["blocks"].submodules["mlp"]
+        assert isinstance(mlp.submodules["in"], LinearBridge)
+
+    def test_mlp_out_is_linear_bridge(self, adapter: CodeGenArchitectureAdapter) -> None:
+        mlp = adapter.component_mapping["blocks"].submodules["mlp"]
+        assert isinstance(mlp.submodules["out"], LinearBridge)
+
+    def test_no_gate_in_mlp(self, adapter: CodeGenArchitectureAdapter) -> None:
+        """Non-gated MLP: no 'gate' submodule."""
+        mlp = adapter.component_mapping["blocks"].submodules["mlp"]
+        assert "gate" not in mlp.submodules
+
+
+class TestCodeGenArchitectureGuards:
+    """RoPE-in-attention (no top-level rotary_emb), no learned pos, no Gemma offsets."""
+
+    @pytest.fixture(scope="class")
+    def adapter(self) -> CodeGenArchitectureAdapter:
+        return CodeGenArchitectureAdapter(_make_cfg())
+
+    def test_no_top_level_rotary_emb(self, adapter: CodeGenArchitectureAdapter) -> None:
+        # Rotary is applied inside attention forward; no standalone HF module to bind.
+        assert "rotary_emb" not in adapter.component_mapping
+
+    def test_no_pos_embed_component(self, adapter: CodeGenArchitectureAdapter) -> None:
+        assert "pos_embed" not in adapter.component_mapping
+
+    def test_no_norm_offset_conversions(self, adapter: CodeGenArchitectureAdapter) -> None:
+        # LN-only: no Gemma-style ln1/ln2 offsets.
+        for key in adapter.weight_processing_conversions:
+            assert "ln1.weight" not in key
+            assert "ln2.weight" not in key
+            assert "ln_final.weight" not in key
+
+    def test_only_qkvo_conversion_keys(self, adapter: CodeGenArchitectureAdapter) -> None:
+        assert set(adapter.weight_processing_conversions.keys()) == {
+            "blocks.{i}.attn.q.weight",
+            "blocks.{i}.attn.k.weight",
+            "blocks.{i}.attn.v.weight",
+            "blocks.{i}.attn.o.weight",
+        }
+
+
 # ---------------------------------------------------------------------------
 # split_qkv_matrix numerical correctness tests
 # ---------------------------------------------------------------------------
 
 
 class TestCodeGenSplitQKVMatrix:
-    """Numerical tests verifying the mp_num=4 QKV split logic."""
+    """Numerical tests for the mp_num=4 QKV split."""
 
     def _make_adapter_with_dmodel(self, d_model: int, n_heads: int) -> CodeGenArchitectureAdapter:
         cfg = _make_cfg(d_model=d_model, n_heads=n_heads)
         return CodeGenArchitectureAdapter(cfg)
 
     def _make_attn_component(self, d_model: int) -> Any:
-        """Create a minimal attn component with a qkv_proj linear."""
+        """Minimal attn with a qkv_proj linear."""
         attn = SimpleNamespace()
         attn.qkv_proj = nn.Linear(d_model, d_model * 3, bias=False)
         return attn
 
     def test_returns_three_linear_modules(self) -> None:
-        """split_qkv_matrix must return exactly three nn.Linear modules."""
         adapter = self._make_adapter_with_dmodel(64, 4)
         attn = self._make_attn_component(64)
         q, k, v = adapter.split_qkv_matrix(attn)
@@ -214,7 +309,6 @@ class TestCodeGenSplitQKVMatrix:
         assert isinstance(v, nn.Linear)
 
     def test_output_shapes_are_correct(self) -> None:
-        """Each of Q, K, V must have weight shape [n_embd, n_embd]."""
         d_model = 64
         adapter = self._make_adapter_with_dmodel(d_model, 4)
         attn = self._make_attn_component(d_model)
@@ -224,7 +318,6 @@ class TestCodeGenSplitQKVMatrix:
         assert v.weight.shape == (d_model, d_model)
 
     def test_no_bias_on_outputs(self) -> None:
-        """The split linears must have no bias, matching qkv_proj."""
         adapter = self._make_adapter_with_dmodel(64, 4)
         attn = self._make_attn_component(64)
         q, k, v = adapter.split_qkv_matrix(attn)
@@ -233,23 +326,16 @@ class TestCodeGenSplitQKVMatrix:
         assert v.bias is None
 
     def test_q_k_v_are_distinct(self) -> None:
-        """With a non-trivial weight, Q, K, V must differ from each other."""
         adapter = self._make_adapter_with_dmodel(64, 4)
         attn = self._make_attn_component(64)
-        # Fill qkv_proj with distinct values per row
         nn.init.normal_(attn.qkv_proj.weight)
         q, k, v = adapter.split_qkv_matrix(attn)
-        # All three must differ
-        assert not torch.allclose(q.weight, k.weight), "Q and K weights must differ"
-        assert not torch.allclose(q.weight, v.weight), "Q and V weights must differ"
-        assert not torch.allclose(k.weight, v.weight), "K and V weights must differ"
+        assert not torch.allclose(q.weight, k.weight)
+        assert not torch.allclose(q.weight, v.weight)
+        assert not torch.allclose(k.weight, v.weight)
 
     def test_known_partition_ordering(self) -> None:
-        """Verify the mp_num=4 partition layout: within each partition [Q_part, V_part, K_part].
-
-        We construct a weight where partition index and slot index are embedded
-        in the values, then verify that Q, K, V extract the correct slices.
-        """
+        """mp_num=4 layout within each partition is [Q_part, V_part, K_part]."""
         mp_num = 4
         d_model = 64
         n_heads = 4
@@ -258,18 +344,12 @@ class TestCodeGenSplitQKVMatrix:
         adapter = self._make_adapter_with_dmodel(d_model, n_heads)
         attn = self._make_attn_component(d_model)
 
-        # Build a structured weight: rows are indexed 0..3*d_model-1.
-        # Reshape as [mp_num=4, 3, local_dim=16, d_model=64], set each slice
-        # to a unique constant so we can track which slot goes where.
+        # Tag each slot with a unique constant to track its destination.
         w = torch.zeros(mp_num, 3, local_dim, d_model)
-        # slot 0 = Q_part → fill with 1.0
-        w[:, 0, :, :] = 1.0
-        # slot 1 = V_part → fill with 2.0
-        w[:, 1, :, :] = 2.0
-        # slot 2 = K_part → fill with 3.0
-        w[:, 2, :, :] = 3.0
+        w[:, 0, :, :] = 1.0  # Q_part
+        w[:, 1, :, :] = 2.0  # V_part
+        w[:, 2, :, :] = 3.0  # K_part
 
-        # Flatten back to [3*d_model, d_model] as qkv_proj expects
         attn.qkv_proj.weight = nn.Parameter(w.reshape(3 * d_model, d_model))
 
         q, k, v = adapter.split_qkv_matrix(attn)
@@ -279,7 +359,6 @@ class TestCodeGenSplitQKVMatrix:
         assert torch.all(v.weight == 2.0), "V should come from slot 1 (V_part)"
 
     def test_forward_output_shape_with_split(self) -> None:
-        """After split, Q/K/V linears should produce correct output shapes."""
         d_model = 64
         adapter = self._make_adapter_with_dmodel(d_model, 4)
         attn = self._make_attn_component(d_model)
@@ -298,31 +377,18 @@ class TestCodeGenSplitQKVMatrix:
 
 
 class TestCodeGenFactoryRegistration:
-    """Tests that the factory maps CodeGenForCausalLM to the correct adapter.
-
-    Note: Phase D (registration) is required for these tests to pass.  They
-    are included here so that registration is verified as part of the Phase D
-    commit rather than needing a separate test file.
-    """
-
     def test_factory_returns_codegen_adapter(self) -> None:
-        """ArchitectureAdapterFactory must return a CodeGenArchitectureAdapter."""
         from transformer_lens.factories.architecture_adapter_factory import (
             ArchitectureAdapterFactory,
         )
 
         cfg = _make_cfg()
         adapter = ArchitectureAdapterFactory.select_architecture_adapter(cfg)
-        assert isinstance(
-            adapter, CodeGenArchitectureAdapter
-        ), f"Expected CodeGenArchitectureAdapter, got {type(adapter).__name__}"
+        assert isinstance(adapter, CodeGenArchitectureAdapter)
 
     def test_factory_key_is_codegen_for_causal_lm(self) -> None:
-        """SUPPORTED_ARCHITECTURES must have a 'CodeGenForCausalLM' key."""
         from transformer_lens.factories.architecture_adapter_factory import (
             SUPPORTED_ARCHITECTURES,
         )
 
-        assert (
-            "CodeGenForCausalLM" in SUPPORTED_ARCHITECTURES
-        ), "CodeGenForCausalLM must be registered in SUPPORTED_ARCHITECTURES"
+        assert "CodeGenForCausalLM" in SUPPORTED_ARCHITECTURES

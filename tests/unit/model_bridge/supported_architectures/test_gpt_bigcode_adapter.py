@@ -1,15 +1,4 @@
-"""Unit tests for GPTBigCodeArchitectureAdapter.
-
-Tests cover:
-- Config attribute validation
-- Component mapping structure (correct bridge types and HF module paths)
-- Weight conversion keys
-- MQAQKVConversionRule (Q and K/V branches, revert, passthrough)
-- _split_qkv_matrix correctness (shapes, bias, no-bias, value correctness)
-- multi_query assertion in _split_qkv_matrix
-- End-to-end hook shapes with a fake MQA attention module (no downloads)
-- Factory registration
-"""
+"""Unit tests for GPTBigCodeArchitectureAdapter."""
 
 from typing import Any
 
@@ -18,6 +7,10 @@ import torch
 import torch.nn as nn
 
 from transformer_lens.config import TransformerBridgeConfig
+from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion
+from transformer_lens.conversion_utils.param_processing_conversion import (
+    ParamProcessingConversion,
+)
 from transformer_lens.factories.architecture_adapter_factory import (
     SUPPORTED_ARCHITECTURES,
     ArchitectureAdapterFactory,
@@ -66,12 +59,12 @@ def _make_cfg(
 
 
 class FakeMQAAttention(nn.Module):
-    """Minimal GPTBigCodeAttention-like module for testing (no downloaded weights)."""
+    """Minimal GPTBigCodeAttention-like module (no downloaded weights)."""
 
     def __init__(self, d_model: int, d_head: int, multi_query: bool = True) -> None:
         super().__init__()
         self.multi_query = multi_query
-        # MQA: c_attn output = embed_dim + 2*head_dim
+        # MQA c_attn out = embed_dim + 2*head_dim; MHA = 3*embed_dim.
         out_features = d_model + 2 * d_head if multi_query else 3 * d_model
         self.c_attn = nn.Linear(d_model, out_features)
         self.c_proj = nn.Linear(d_model, d_model)
@@ -80,12 +73,12 @@ class FakeMQAAttention(nn.Module):
         return self.c_proj(x)
 
 
-@pytest.fixture
+@pytest.fixture(scope="class")
 def cfg() -> TransformerBridgeConfig:
     return _make_cfg()
 
 
-@pytest.fixture
+@pytest.fixture(scope="class")
 def adapter(cfg: TransformerBridgeConfig) -> GPTBigCodeArchitectureAdapter:
     return GPTBigCodeArchitectureAdapter(cfg)
 
@@ -96,8 +89,6 @@ def adapter(cfg: TransformerBridgeConfig) -> GPTBigCodeArchitectureAdapter:
 
 
 class TestGPTBigCodeAdapterConfig:
-    """Verifies all required config attributes are set correctly."""
-
     def test_normalization_type_is_ln(self, adapter: GPTBigCodeArchitectureAdapter) -> None:
         assert adapter.cfg.normalization_type == "LN"
 
@@ -125,8 +116,6 @@ class TestGPTBigCodeAdapterConfig:
 
 
 class TestGPTBigCodeAdapterComponentMapping:
-    """Verifies component_mapping has the correct bridge types and HF paths."""
-
     def test_embed_is_embedding_bridge(self, adapter: GPTBigCodeArchitectureAdapter) -> None:
         assert isinstance(adapter.component_mapping["embed"], EmbeddingBridge)
 
@@ -220,8 +209,6 @@ class TestGPTBigCodeAdapterComponentMapping:
 
 
 class TestGPTBigCodeAdapterWeightConversions:
-    """Verifies weight_processing_conversions has expected keys."""
-
     def test_q_weight_key_present(self, adapter: GPTBigCodeArchitectureAdapter) -> None:
         assert "blocks.{i}.attn.q.weight" in adapter.weight_processing_conversions
 
@@ -238,20 +225,113 @@ class TestGPTBigCodeAdapterWeightConversions:
         assert len(adapter.weight_processing_conversions) == 4
 
 
+class TestGPTBigCodeWeightConversionSemantics:
+    """MQA pins n=1 on K/V; Q/O stay at n_heads."""
+
+    @pytest.fixture(scope="class")
+    def adapter(self) -> GPTBigCodeArchitectureAdapter:
+        return GPTBigCodeArchitectureAdapter(_make_cfg())
+
+    def test_q_conversion_type_and_pattern(self, adapter: GPTBigCodeArchitectureAdapter) -> None:
+        conv = adapter.weight_processing_conversions["blocks.{i}.attn.q.weight"]
+        assert isinstance(conv, ParamProcessingConversion)
+        assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)
+        assert conv.tensor_conversion.pattern == "(n h) m -> n m h"
+
+    def test_q_n_equals_n_heads(self, adapter: GPTBigCodeArchitectureAdapter) -> None:
+        conv = adapter.weight_processing_conversions["blocks.{i}.attn.q.weight"]
+        assert isinstance(conv, ParamProcessingConversion)
+        assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)
+        assert conv.tensor_conversion.axes_lengths["n"] == adapter.cfg.n_heads
+
+    @pytest.mark.parametrize("slot", ["k", "v"])
+    def test_kv_uses_mqa_n_equals_one(
+        self, adapter: GPTBigCodeArchitectureAdapter, slot: str
+    ) -> None:
+        # MQA: K/V have exactly 1 KV head.
+        conv = adapter.weight_processing_conversions[f"blocks.{{i}}.attn.{slot}.weight"]
+        assert isinstance(conv, ParamProcessingConversion)
+        assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)
+        assert conv.tensor_conversion.pattern == "(n h) m -> n m h"
+        assert conv.tensor_conversion.axes_lengths["n"] == 1
+
+    def test_o_conversion_type_and_pattern(self, adapter: GPTBigCodeArchitectureAdapter) -> None:
+        conv = adapter.weight_processing_conversions["blocks.{i}.attn.o.weight"]
+        assert isinstance(conv, ParamProcessingConversion)
+        assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)
+        assert conv.tensor_conversion.pattern == "m (n h) -> n h m"
+        assert conv.tensor_conversion.axes_lengths["n"] == adapter.cfg.n_heads
+
+
+class TestGPTBigCodeCombinedQKVFlags:
+    """Combined-QKV flags the loader depends on."""
+
+    @pytest.fixture(scope="class")
+    def adapter(self) -> GPTBigCodeArchitectureAdapter:
+        return GPTBigCodeArchitectureAdapter(_make_cfg())
+
+    def test_uses_combined_qkv_true(self, adapter: GPTBigCodeArchitectureAdapter) -> None:
+        assert adapter.uses_combined_qkv is True
+
+    def test_split_attention_weights_true(self, adapter: GPTBigCodeArchitectureAdapter) -> None:
+        assert adapter.cfg.split_attention_weights is True
+
+    def test_default_cfg_declares_uses_split_attention(
+        self, adapter: GPTBigCodeArchitectureAdapter
+    ) -> None:
+        # default_cfg records uses_split_attention as descriptor only (base __init__ already ran).
+        assert adapter.default_cfg.get("uses_split_attention") is True
+
+
+class TestGPTBigCodeArchitectureGuards:
+    """Learned-pos LayerNorm arch: no rotary, no Gemma offsets."""
+
+    @pytest.fixture(scope="class")
+    def adapter(self) -> GPTBigCodeArchitectureAdapter:
+        return GPTBigCodeArchitectureAdapter(_make_cfg())
+
+    def test_no_top_level_rotary_emb(self, adapter: GPTBigCodeArchitectureAdapter) -> None:
+        assert "rotary_emb" not in adapter.component_mapping
+
+    def test_has_pos_embed_component(self, adapter: GPTBigCodeArchitectureAdapter) -> None:
+        assert "pos_embed" in adapter.component_mapping
+
+    def test_no_norm_offset_conversions(self, adapter: GPTBigCodeArchitectureAdapter) -> None:
+        for key in adapter.weight_processing_conversions:
+            assert "ln1.weight" not in key
+            assert "ln2.weight" not in key
+            assert "ln_final.weight" not in key
+
+    def test_only_qkvo_conversion_keys(self, adapter: GPTBigCodeArchitectureAdapter) -> None:
+        assert set(adapter.weight_processing_conversions.keys()) == {
+            "blocks.{i}.attn.q.weight",
+            "blocks.{i}.attn.k.weight",
+            "blocks.{i}.attn.v.weight",
+            "blocks.{i}.attn.o.weight",
+        }
+
+    def test_uses_rms_norm_false(self, adapter: GPTBigCodeArchitectureAdapter) -> None:
+        assert adapter.cfg.uses_rms_norm is False
+
+    def test_eps_attr(self, adapter: GPTBigCodeArchitectureAdapter) -> None:
+        # GPT-2 family eps (not RMS variance_epsilon).
+        assert adapter.cfg.eps_attr == "layer_norm_epsilon"
+
+
 # ---------------------------------------------------------------------------
 # MQAQKVConversionRule tests
 # ---------------------------------------------------------------------------
 
 
 class TestMQAQKVConversionRule:
-    """Verifies the branching QKV activation rearrangement for MQA."""
+    """Branching QKV activation rearrangement for MQA."""
 
     N_HEADS = 4
     D_HEAD = 16
     D_MODEL = N_HEADS * D_HEAD  # 64
     BATCH, SEQ = 2, 8
 
-    @pytest.fixture
+    @pytest.fixture(scope="class")
     def rule(self) -> MQAQKVConversionRule:
         return MQAQKVConversionRule(n_heads=self.N_HEADS, d_head=self.D_HEAD)
 
@@ -268,7 +348,7 @@ class TestMQAQKVConversionRule:
         assert out.shape == (self.BATCH, self.SEQ, 1, self.D_HEAD)
 
     def test_4d_input_passes_through_unchanged(self, rule: MQAQKVConversionRule) -> None:
-        """4D input is already in heads format — return as-is."""
+        """4D input is already in heads format; returned as-is."""
         x = torch.randn(self.BATCH, self.SEQ, self.N_HEADS, self.D_HEAD)
         out = rule.handle_conversion(x)
         assert out.shape == x.shape
@@ -307,26 +387,25 @@ class TestMQAQKVConversionRule:
 
 
 class TestGPTBigCodeMQASplitQKVMatrix:
-    """Numerical correctness tests for the MQA asymmetric QKV split."""
+    """Numerical tests for the MQA asymmetric QKV split."""
 
     N_HEADS = 4
     D_MODEL = 64
     D_HEAD = D_MODEL // N_HEADS  # 16
     BATCH, SEQ = 2, 8
 
-    @pytest.fixture
+    @pytest.fixture(scope="class")
     def adapter(self) -> GPTBigCodeArchitectureAdapter:
         cfg = _make_cfg(n_heads=self.N_HEADS, d_model=self.D_MODEL)
         return GPTBigCodeArchitectureAdapter(cfg)
 
-    @pytest.fixture
+    @pytest.fixture(scope="class")
     def fake_attn(self) -> FakeMQAAttention:
         return FakeMQAAttention(self.D_MODEL, self.D_HEAD, multi_query=True)
 
-    @pytest.fixture
+    @pytest.fixture(scope="class")
     def fake_attn_nobias(self) -> FakeMQAAttention:
         attn = FakeMQAAttention(self.D_MODEL, self.D_HEAD, multi_query=True)
-        # Remove bias from c_attn
         attn.c_attn = nn.Linear(self.D_MODEL, self.D_MODEL + 2 * self.D_HEAD, bias=False)
         return attn
 
@@ -388,11 +467,10 @@ class TestGPTBigCodeMQASplitQKVMatrix:
     def test_q_k_v_weights_are_distinct(
         self, adapter: GPTBigCodeArchitectureAdapter, fake_attn: FakeMQAAttention
     ) -> None:
-        """With non-trivial c_attn weight, Q/K/V must differ."""
         nn.init.normal_(fake_attn.c_attn.weight)
         q, k, v = adapter._split_qkv_matrix(fake_attn)
-        # K and V have the same shape [d_head, d_model] so compare directly
-        assert not torch.allclose(k.weight, v.weight), "K and V weights must differ"
+        # K/V share shape [d_head, d_model]; only Q differs in shape, so compare K vs V.
+        assert not torch.allclose(k.weight, v.weight)
 
     def test_q_forward_output_shape(
         self, adapter: GPTBigCodeArchitectureAdapter, fake_attn: FakeMQAAttention
@@ -418,7 +496,7 @@ class TestGPTBigCodeMQASplitQKVMatrix:
     def test_weight_values_match_c_attn_rows(
         self, adapter: GPTBigCodeArchitectureAdapter, fake_attn: FakeMQAAttention
     ) -> None:
-        """Q/K/V weight rows must exactly match the corresponding rows of c_attn.weight."""
+        """Q/K/V rows match the corresponding c_attn.weight rows exactly."""
         nn.init.normal_(fake_attn.c_attn.weight)
         original_weight = fake_attn.c_attn.weight.detach()
         q, k, v = adapter._split_qkv_matrix(fake_attn)
@@ -429,7 +507,7 @@ class TestGPTBigCodeMQASplitQKVMatrix:
     def test_multi_query_false_raises_assertion(
         self, adapter: GPTBigCodeArchitectureAdapter
     ) -> None:
-        """Adapter must raise AssertionError for multi_query=False checkpoints."""
+        """multi_query=False checkpoints must raise (adapter is MQA-only)."""
         mha_attn = FakeMQAAttention(self.D_MODEL, self.D_HEAD, multi_query=False)
         with pytest.raises(AssertionError, match="multi_query=True"):
             adapter._split_qkv_matrix(mha_attn)
@@ -441,11 +519,10 @@ class TestGPTBigCodeMQASplitQKVMatrix:
 
 
 class TestGPTBigCodeHookShapes:
-    """End-to-end forward pass verifying hook_q/hook_k/hook_v shapes.
+    """End-to-end hook_q/hook_k/hook_v shapes via a fake MQA attention.
 
-    Uses a fake MQA attention nn.Module (no model downloads). Registers explicit
-    hooks on hook_out so that hook_conversion (MQAQKVConversionRule) fires and
-    the captured tensors reflect the converted shapes.
+    Explicit hooks on hook_out trigger hook_conversion (MQAQKVConversionRule)
+    so captured tensors reflect the converted shapes.
     """
 
     N_HEADS = 4
@@ -453,14 +530,14 @@ class TestGPTBigCodeHookShapes:
     D_HEAD = D_MODEL // N_HEADS  # 16
     BATCH, SEQ = 2, 8
 
-    @pytest.fixture
+    @pytest.fixture(scope="class")
     def adapter(self) -> GPTBigCodeArchitectureAdapter:
         cfg = _make_cfg(n_heads=self.N_HEADS, d_model=self.D_MODEL)
         return GPTBigCodeArchitectureAdapter(cfg)
 
-    @pytest.fixture
+    @pytest.fixture(scope="class")
     def wired_attn_bridge(self, adapter: GPTBigCodeArchitectureAdapter) -> JointQKVAttentionBridge:
-        """Return attn bridge wired to a fake MQA attention module."""
+        """Attn bridge wired to a fake MQA attention module."""
         fake_attn = FakeMQAAttention(self.D_MODEL, self.D_HEAD, multi_query=True)
         blocks = adapter.component_mapping["blocks"]
         attn_bridge: JointQKVAttentionBridge = blocks.submodules["attn"]  # type: ignore[assignment]
@@ -470,7 +547,7 @@ class TestGPTBigCodeHookShapes:
     def _run_and_capture(
         self, attn_bridge: JointQKVAttentionBridge
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Register hooks on q/k/v hook_out, run forward, return captured tensors."""
+        """Hook q/k/v hook_out, run forward, return captured tensors."""
         captured: dict[str, torch.Tensor] = {}
 
         def _capture(name: str) -> Any:
@@ -518,8 +595,6 @@ class TestGPTBigCodeHookShapes:
 
 
 class TestGPTBigCodeFactoryRegistration:
-    """Verifies the factory maps GPTBigCodeForCausalLM to the correct adapter."""
-
     def test_factory_key_present(self) -> None:
         assert "GPTBigCodeForCausalLM" in SUPPORTED_ARCHITECTURES
 

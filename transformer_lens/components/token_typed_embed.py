@@ -9,7 +9,7 @@ import torch
 import torch.nn as nn
 from jaxtyping import Int
 
-from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.config.hooked_transformer_config import HookedTransformerConfig
 
 
 class TokenTypeEmbed(nn.Module):

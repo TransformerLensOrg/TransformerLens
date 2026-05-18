@@ -15,7 +15,17 @@ from __future__ import annotations
 
 import logging
 import warnings
-from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, cast
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    Union,
+    cast,
+)
 
 import einops
 import numpy as np
@@ -25,6 +35,21 @@ from typing_extensions import Literal
 
 import transformer_lens.utilities as utils
 from transformer_lens.utilities import Slice, SliceInput, warn_if_mps
+
+if TYPE_CHECKING:
+    from transformer_lens.components import TransformerBlock
+    from transformer_lens.HookedTransformer import HookedTransformer
+
+
+def _normalize_projection_to_2d(
+    project: Optional[torch.Tensor],
+) -> Tuple[Optional[torch.Tensor], bool]:
+    """Return ``(project_2d, squeeze_at_end)`` — 1D projections are reshaped to 2D for uniform internal handling and squeezed back at the user-facing return."""
+    if project is None:
+        return None, False
+    if project.ndim == 1:
+        return project.unsqueeze(-1), True
+    return project, False
 
 
 class ActivationCache:
@@ -113,9 +138,15 @@ class ActivationCache:
             Whether the activations have a batch dimension.
     """
 
-    def __init__(self, cache_dict: Dict[str, torch.Tensor], model, has_batch_dim: bool = True):
+    def __init__(
+        self,
+        cache_dict: Dict[str, torch.Tensor],
+        model: Any,
+        has_batch_dim: bool = True,
+    ):
         self.cache_dict = cache_dict
-        self.model = model
+        # Helper methods require HT-internal structure; bridge users only use cache_dict.
+        self.model = cast("HookedTransformer", model)
         self.has_batch_dim = has_batch_dim
         self.has_embed = "hook_embed" in self.cache_dict
         self.has_pos_embed = "hook_pos_embed" in self.cache_dict
@@ -704,6 +735,9 @@ class ActivationCache:
         residual stream from that head. attn_out for a layer is the sum of head results plus b_O.
         Intended use is to enable use_attn_results when running and caching the model, but this can
         be useful if you forget.
+
+        Works for both HookedTransformer and TransformerBridge — bridge exposes
+        ``blocks[i].attn.W_O`` via its component-mapping compatibility shim.
         """
         # Return if valid 4D results exist; replace stale 3D Bridge entries if needed
         first_key = "blocks.0.attn.hook_result"
@@ -728,7 +762,9 @@ class ActivationCache:
             )
 
             # Element-wise multiplication of z and W_O (with shape [head_index, d_head, d_model])
-            result = z * self.model.blocks[layer].attn.W_O
+            # nn.ModuleList[T][i] is typed Tensor|Module upstream; cast restores T.
+            block = cast("TransformerBlock", self.model.blocks[layer])
+            result = z * block.attn.W_O
 
             # Sum over d_head to get the contribution of each head to the residual stream
             self.cache_dict[f"blocks.{layer}.attn.hook_result"] = result.sum(dim=-2)
@@ -854,7 +890,8 @@ class ActivationCache:
         layer: int,
         neuron_slice: Union[Slice, SliceInput] = None,
         pos_slice: Union[Slice, SliceInput] = None,
-    ) -> Float[torch.Tensor, "*batch_and_pos_dims num_neurons d_model"]:
+        project_output_onto: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         """Get Neuron Results.
 
         Get the results of for neurons in a specific layer (i.e, how much each neuron contributes to
@@ -868,9 +905,14 @@ class ActivationCache:
                 Slice of the neuron.
             pos_slice:
                 Slice of the positions.
+            project_output_onto:
+                Optional ``[d_model]`` or ``[d_model, num_outputs]`` projection. Contracted with
+                ``W_out`` *before* the per-neuron expansion so the ``[..., d_mlp, d_model]``
+                intermediate is never materialized.
 
         Returns:
-            Tensor of the results.
+            Last-dim is ``d_model`` (default), ``num_outputs`` (2D projection), or squeezed
+            (1D projection).
         """
         if not isinstance(neuron_slice, Slice):
             neuron_slice = Slice(neuron_slice)
@@ -878,7 +920,9 @@ class ActivationCache:
             pos_slice = Slice(pos_slice)
 
         neuron_acts = self[("post", layer, "mlp")]
-        W_out = self.model.blocks[layer].mlp.W_out
+        # ModuleList[T] indexing is typed `Tensor | Module` upstream; cast restores T.
+        block = cast("TransformerBlock", self.model.blocks[layer])
+        W_out = block.mlp.W_out
         if pos_slice is not None:
             # Note - order is important, as Slice.apply *may* collapse a dimension, so this ensures
             # that position dimension is -2 when we apply position slice
@@ -886,7 +930,89 @@ class ActivationCache:
         if neuron_slice is not None:
             neuron_acts = neuron_slice.apply(neuron_acts, dim=-1)
             W_out = neuron_slice.apply(W_out, dim=0)
-        return neuron_acts[..., None] * W_out
+        if project_output_onto is None:
+            return neuron_acts[..., None] * W_out
+        # W_out: [d_mlp, d_model]; project: [d_model] or [d_model, n_outs]
+        projected = W_out @ project_output_onto
+        if projected.ndim == 1:
+            return neuron_acts * projected
+        return neuron_acts[..., None] * projected
+
+    def _get_cached_ln_scale(
+        self,
+        layer: Optional[int],
+        mlp_input: bool,
+        pos_slice: Slice,
+        batch_slice: Optional[Slice] = None,
+    ) -> torch.Tensor:
+        """Look up the cached LN scale and apply pos/batch slicing. Surfaces a clearer error
+        when the expected hook isn't in the cache (some non-decoder-only architectures expose
+        LN scale at a different path or not at all).
+        """
+        if layer == self.model.cfg.n_layers or layer is None:
+            key = "ln_final.hook_scale"
+        else:
+            key = f"blocks.{layer}.ln{2 if mlp_input else 1}.hook_scale"
+        try:
+            scale = self[key]
+        except KeyError as e:
+            raise KeyError(
+                f"Cached LN scale not found at '{key}'. apply_ln operations require the model "
+                f"to have cached this hook (some non-decoder-only architectures expose LN scale "
+                f"under different module paths)."
+            ) from e
+        scale = pos_slice.apply(scale, dim=-2)
+        if batch_slice is not None and self.has_batch_dim:
+            scale = batch_slice.apply(scale)
+        return scale
+
+    def _stack_neuron_results_apply_ln_projected(
+        self,
+        layer: int,
+        pos_slice: Slice,
+        neuron_slice: Slice,
+        project_2d: torch.Tensor,
+    ) -> torch.Tensor:
+        """LN-applied neuron stack with projection folded in — no d_mlp×d_model intermediate.
+
+        Analytical formula (LN models, cached scale ``s``):
+            ``LN_s(a_n * W_out_n) @ p = (a_n / s) * (W_out_n @ p - mean(W_out_n) * sum_p)``
+        RMS models drop the ``mean(W_out_n) * sum_p`` term (no centering). Always uses the
+        ln1 scale (mlp_input=False) since ``stack_neuron_results`` doesn't expose mlp_input.
+
+        """
+        scale = self._get_cached_ln_scale(layer, mlp_input=False, pos_slice=pos_slice)
+
+        apply_centering = self.model.cfg.normalization_type in ["LN", "LNPre"]
+        sum_p = project_2d.sum(dim=0) if apply_centering else None  # [n_outs]
+
+        components: list = []
+        for l in range(layer):
+            # nn.ModuleList[T][i] is typed Tensor|Module upstream; cast restores T.
+            block = cast("TransformerBlock", self.model.blocks[l])
+            W_out_l = block.mlp.W_out  # [d_mlp, d_model]
+            W_out_l_sliced = neuron_slice.apply(W_out_l, dim=0)
+            W_proj_l = W_out_l_sliced @ project_2d  # [d_mlp, n_outs]
+            if apply_centering:
+                assert sum_p is not None  # set when apply_centering, narrow for mypy
+                W_means_l = W_out_l_sliced.mean(dim=-1)  # [d_mlp]
+                lin_form_l = W_proj_l - W_means_l[:, None] * sum_p[None, :]
+            else:
+                lin_form_l = W_proj_l
+            a_l = self[("post", l, "mlp")]
+            a_l = pos_slice.apply(a_l, dim=-2)
+            a_l = neuron_slice.apply(a_l, dim=-1)
+            # (a_l / s)[..., None] is [..., d_mlp, 1]; broadcast with lin_form_l [d_mlp, n_outs]
+            components.append((a_l / scale)[..., None] * lin_form_l)
+        if not components:
+            empty_src = pos_slice.apply(self["hook_embed"], dim=-2)
+            return torch.zeros(
+                0, *empty_src.shape[:-1], project_2d.shape[-1], device=self.model.cfg.device
+            )
+        stacked = torch.cat(components, dim=-2)
+        return einops.rearrange(
+            stacked, "... concat_neuron_index n_outs -> concat_neuron_index ... n_outs"
+        )
 
     def stack_neuron_results(
         self,
@@ -896,10 +1022,8 @@ class ActivationCache:
         return_labels: bool = False,
         incl_remainder: bool = False,
         apply_ln: bool = False,
-    ) -> Union[
-        Float[torch.Tensor, "num_components *batch_and_pos_dims d_model"],
-        Tuple[Float[torch.Tensor, "num_components *batch_and_pos_dims d_model"], List[str]],
-    ]:
+        project_output_onto: Optional[torch.Tensor] = None,
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, List[str]]]:
         """Stack Neuron Results
 
         Returns a stack of all neuron results (ie residual stream contribution) up to layer L - ie
@@ -908,7 +1032,8 @@ class ActivationCache:
         into attribution by specific neurons.
 
         Note that doing this for all neurons is SUPER expensive on GPU memory and only works for
-        small models or short inputs.
+        small models or short inputs. Pass ``project_output_onto`` to fold the projection into the
+        per-neuron expansion and avoid the ``[..., d_mlp, d_model]`` intermediate.
 
         Args:
             layer:
@@ -924,60 +1049,93 @@ class ActivationCache:
                 Whether to return a final term which is "the rest of the residual stream".
             apply_ln:
                 Whether to apply LayerNorm to the stack.
+            project_output_onto:
+                Optional ``[d_model]`` or ``[d_model, num_outputs]`` tensor. When set, each
+                component's last d_model dim is replaced by the projection (memory-efficient for
+                direction analyses; see ``get_neuron_results``). Combined with ``apply_ln=True``,
+                the projection is folded into the analytical cached-scale LN so the
+                ``[..., d_mlp, d_model]`` intermediate is still never materialized.
         """
-
         if layer is None or layer == -1:
             # Default to the residual stream immediately pre unembed
             layer = self.model.cfg.n_layers
-
-        components: Any = []  # TODO: fix typing properly
-        labels = []
 
         if not isinstance(neuron_slice, Slice):
             neuron_slice = Slice(neuron_slice)
         if not isinstance(pos_slice, Slice):
             pos_slice = Slice(pos_slice)
 
+        project_2d, squeeze_projected = _normalize_projection_to_2d(project_output_onto)
+
+        d_mlp = self.model.cfg.d_mlp
+        assert d_mlp is not None, "model.cfg.d_mlp must be set"
         neuron_labels: Union[torch.Tensor, np.ndarray] = neuron_slice.apply(
-            torch.arange(self.model.cfg.d_mlp), dim=0
+            torch.arange(d_mlp), dim=0
         )
         if isinstance(neuron_labels, int):
             neuron_labels = np.array([neuron_labels])
 
-        for l in range(layer):
-            # Note that this has shape batch x pos x head_index x d_model
-            components.append(
-                self.get_neuron_results(l, pos_slice=pos_slice, neuron_slice=neuron_slice)
+        labels = [f"L{l}N{h}" for l in range(layer) for h in neuron_labels]
+        components: Any
+        ln_folded = apply_ln and project_2d is not None
+        if ln_folded:
+            assert project_2d is not None  # narrow for mypy
+            # Analytical LN+projection — no d_mlp×d_model intermediate.
+            components = self._stack_neuron_results_apply_ln_projected(
+                layer, pos_slice, neuron_slice, project_2d
             )
-            labels.extend([f"L{l}N{h}" for h in neuron_labels])
-        if components:
-            components = torch.cat(components, dim=-2)
-            components = einops.rearrange(
-                components,
-                "... concat_neuron_index d_model -> concat_neuron_index ... d_model",
-            )
-
             if incl_remainder:
-                remainder = pos_slice.apply(
-                    self[("resid_post", layer - 1)], dim=-2
-                ) - components.sum(dim=0)
+                # Linearity of cached-scale LN: remainder is LN_s(resid_post) @ p - sum(neurons).
+                resid_post = pos_slice.apply(self[("resid_post", layer - 1)], dim=-2)
+                resid_post_ln = self.apply_ln_to_stack(
+                    resid_post[None], layer, pos_slice=pos_slice
+                )[0]
+                remainder = resid_post_ln @ project_2d
+                if components.shape[0] > 0:
+                    remainder = remainder - components.sum(dim=0)
                 components = torch.cat([components, remainder[None]], dim=0)
                 labels.append("remainder")
-        elif incl_remainder:
-            components = torch.cat(
-                [pos_slice.apply(self[("resid_post", layer - 1)], dim=-2)[None]], dim=0
-            )
-            labels.append("remainder")
         else:
-            # Returning empty, give it the right shape to stack properly
-            components = torch.zeros(
-                0,
-                *pos_slice.apply(self["hook_embed"], dim=-2).shape,
-                device=self.model.cfg.device,
-            )
+            per_layer: list = []
+            for l in range(layer):
+                per_layer.append(
+                    self.get_neuron_results(
+                        l,
+                        pos_slice=pos_slice,
+                        neuron_slice=neuron_slice,
+                        project_output_onto=project_2d,
+                    )
+                )
+            if per_layer:
+                components = torch.cat(per_layer, dim=-2)
+                components = einops.rearrange(
+                    components,
+                    "... concat_neuron_index d_model -> concat_neuron_index ... d_model",
+                )
+                if incl_remainder:
+                    remainder_full = pos_slice.apply(self[("resid_post", layer - 1)], dim=-2)
+                    if project_2d is not None:
+                        remainder_full = remainder_full @ project_2d
+                    remainder = remainder_full - components.sum(dim=0)
+                    components = torch.cat([components, remainder[None]], dim=0)
+                    labels.append("remainder")
+            elif incl_remainder:
+                remainder_full = pos_slice.apply(self[("resid_post", layer - 1)], dim=-2)
+                if project_2d is not None:
+                    remainder_full = remainder_full @ project_2d
+                components = torch.cat([remainder_full[None]], dim=0)
+                labels.append("remainder")
+            else:
+                empty_shape_src = pos_slice.apply(self["hook_embed"], dim=-2)
+                if project_2d is not None:
+                    empty_shape_src = empty_shape_src @ project_2d
+                components = torch.zeros(0, *empty_shape_src.shape, device=self.model.cfg.device)
 
-        if apply_ln:
-            components = self.apply_ln_to_stack(components, layer, pos_slice=pos_slice)
+            if apply_ln:
+                components = self.apply_ln_to_stack(components, layer, pos_slice=pos_slice)
+
+        if squeeze_projected:
+            components = components.squeeze(-1)
 
         if return_labels:
             return components, labels
@@ -1072,19 +1230,8 @@ class ActivationCache:
         if self.model.cfg.normalization_type in ["LN", "LNPre"]:
             residual_stack = residual_stack - residual_stack.mean(dim=-1, keepdim=True)
 
-        if layer == self.model.cfg.n_layers or layer is None:
-            scale = self["ln_final.hook_scale"]
-        else:
-            hook_name = f"blocks.{layer}.ln{2 if mlp_input else 1}.hook_scale"
-            scale = self[hook_name]
-
-        # The shape of scale is [batch, position, 1] or [position, 1] - final dimension is a dummy
-        # thing to get broadcoasting to work nicely.
-        scale = pos_slice.apply(scale, dim=-2)
-
-        if self.has_batch_dim:
-            # Apply batch slice to the scale
-            scale = batch_slice.apply(scale)
+        # Shape is [batch, position, 1] or [position, 1]; final dim is a dummy for broadcasting.
+        scale = self._get_cached_ln_scale(layer, mlp_input, pos_slice, batch_slice)
 
         return residual_stack / scale
 
@@ -1096,10 +1243,8 @@ class ActivationCache:
         apply_ln: bool = False,
         pos_slice: Union[Slice, SliceInput] = None,
         return_labels: bool = False,
-    ) -> Union[
-        Float[torch.Tensor, "num_components *batch_and_pos_dims d_model"],
-        Tuple[Float[torch.Tensor, "num_components *batch_and_pos_dims d_model"], List[str]],
-    ]:
+        project_output_onto: Optional[torch.Tensor] = None,
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, List[str]]]:
         """Get the full Residual Decomposition.
 
         Decomposes the residual stream that is input into some layer into its
@@ -1139,6 +1284,13 @@ class ActivationCache:
                 Slice of the positions to take.
             return_labels:
                 Whether to return the labels.
+            project_output_onto:
+                Optional ``[d_model]`` or ``[d_model, num_outputs]`` projection. Folded in
+                *before* the per-neuron expansion, so the ``[..., d_mlp, d_model]`` intermediate
+                is never materialized (memory saving applies only with ``expand_neurons=True``).
+                Combined with ``apply_ln=True``, the projection is fused into the analytical
+                cached-scale LN so the same memory benefit holds. Output last-dim is squeezed
+                for a 1D projection; ``num_outputs`` for 2D.
         """
         if layer is None or layer == -1:
             # Default to the residual stream immediately pre unembed
@@ -1147,15 +1299,36 @@ class ActivationCache:
 
         if not isinstance(pos_slice, Slice):
             pos_slice = Slice(pos_slice)
+
+        project_2d, squeeze_projected = _normalize_projection_to_2d(project_output_onto)
+        # When both apply_ln and projection are requested, LN is applied per-component (in
+        # d_model space for the small ones, analytically for neurons) before projection, so the
+        # final apply_ln_to_stack call is skipped — last-dim is already n_outs.
+        ln_folded = apply_ln and project_2d is not None
+
+        def _ln_then_project(stack: torch.Tensor) -> torch.Tensor:
+            stack = self.apply_ln_to_stack(stack, layer, pos_slice=pos_slice, mlp_input=mlp_input)
+            return stack @ project_2d if project_2d is not None else stack
+
         head_stack, head_labels = self.stack_head_results(
             layer + (1 if mlp_input else 0), pos_slice=pos_slice, return_labels=True
         )
+        if ln_folded:
+            head_stack = _ln_then_project(head_stack)
+        elif project_2d is not None:
+            head_stack = head_stack @ project_2d
         labels = head_labels
         components = [head_stack]
         if not self.model.cfg.attn_only and layer > 0:
             if expand_neurons:
+                # Only ask stack_neuron_results to apply LN when we want the fused analytical
+                # path (ln_folded). For the unfolded case the outer apply_ln_to_stack handles it.
                 neuron_stack, neuron_labels = self.stack_neuron_results(
-                    layer, pos_slice=pos_slice, return_labels=True
+                    layer,
+                    pos_slice=pos_slice,
+                    return_labels=True,
+                    apply_ln=ln_folded,
+                    project_output_onto=project_2d,
                 )
                 labels.extend(neuron_labels)
                 components.append(neuron_stack)
@@ -1171,25 +1344,50 @@ class ActivationCache:
                     mode="mlp",
                     return_labels=True,
                 )
+                if ln_folded:
+                    mlp_stack = _ln_then_project(mlp_stack)
+                elif project_2d is not None:
+                    mlp_stack = mlp_stack @ project_2d
                 labels.extend(mlp_labels)
                 components.append(mlp_stack)
 
         if self.has_embed:
+            embed = pos_slice.apply(self["embed"], -2)[None]
+            if ln_folded:
+                embed = _ln_then_project(embed)
+            elif project_2d is not None:
+                embed = embed @ project_2d
             labels.append("embed")
-            components.append(pos_slice.apply(self["embed"], -2)[None])
+            components.append(embed)
         if self.has_pos_embed:
+            pos_embed = pos_slice.apply(self["pos_embed"], -2)[None]
+            if ln_folded:
+                pos_embed = _ln_then_project(pos_embed)
+            elif project_2d is not None:
+                pos_embed = pos_embed @ project_2d
             labels.append("pos_embed")
-            components.append(pos_slice.apply(self["pos_embed"], -2)[None])
+            components.append(pos_embed)
         # If we didn't expand the neurons, the MLP biases are already included in the MLP outputs.
-        bias = self.model.accumulated_bias(layer, mlp_input, include_mlp_biases=expand_neurons)
-        bias = bias.expand((1,) + head_stack.shape[1:])
+        bias_full = self.model.accumulated_bias(layer, mlp_input, include_mlp_biases=expand_neurons)
+        if ln_folded:
+            # Expand bias to per-position d_model shape so LN can center, then project.
+            expand_shape: tuple = (1,) + tuple(head_stack.shape[1:-1]) + (self.model.cfg.d_model,)
+            bias = _ln_then_project(bias_full.expand(expand_shape))
+        else:
+            if project_2d is not None:
+                # Bias is [d_model], so project post-hoc for shape compatibility — no memory win here.
+                bias_full = bias_full @ project_2d
+            bias = bias_full.expand((1,) + head_stack.shape[1:])
         labels.append("bias")
         components.append(bias)
         residual_stack = torch.cat(components, dim=0)
-        if apply_ln:
+        if apply_ln and not ln_folded:
             residual_stack = self.apply_ln_to_stack(
                 residual_stack, layer, pos_slice=pos_slice, mlp_input=mlp_input
             )
+
+        if squeeze_projected:
+            residual_stack = residual_stack.squeeze(-1)
 
         if return_labels:
             return residual_stack, labels
