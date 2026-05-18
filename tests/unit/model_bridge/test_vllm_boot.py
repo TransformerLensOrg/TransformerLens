@@ -151,3 +151,21 @@ def test_plugin_config_cleared_after_boot(mocked_boot):
     """No leak to non-TL vllm.LLM users in the same process."""
     boot_vllm("any-model")
     assert plugin._config == {}
+
+
+def test_llm_construction_kwargs(mocked_boot):
+    """Pin the kwargs boot_vllm passes to vllm.LLM(...). Catches regressions like
+    forgetting worker_extension_cls (collective_rpc methods unreachable) or
+    max_num_batched_tokens (Dynamo symbolic-shape bound mismatch with buffer)."""
+    boot_vllm("any-model", max_num_batched_tokens=1024)
+    kwargs = mocked_boot["vllm_llm"].call_args.kwargs
+    assert kwargs["model"] == "any-model"
+    assert kwargs["max_num_batched_tokens"] == 1024
+    assert kwargs["worker_extension_cls"] == (
+        "transformer_lens.model_bridge.sources.vllm.worker_extension.TLWorkerExtension"
+    )
+    # Locked kwargs that must always reach LLM.
+    assert kwargs["tensor_parallel_size"] == 1
+    assert kwargs["pipeline_parallel_size"] == 1
+    assert kwargs["skip_tokenizer_init"] is True
+    assert kwargs["disable_log_stats"] is True
