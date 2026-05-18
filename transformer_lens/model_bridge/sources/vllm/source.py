@@ -103,6 +103,11 @@ def boot_vllm(
         model=model_name,
         gpu_memory_utilization=gpu_memory_utilization,
         max_model_len=max_model_len,
+        # Critical: vLLM defaults max_num_batched_tokens to 8192 for chunked prefill.
+        # We size our capture buffer to this same value, so vLLM must compile for
+        # the matching dynamic-shape range — otherwise Dynamo's symbolic-shape
+        # hint exceeds the buffer dim and narrow() fails at compile time.
+        max_num_batched_tokens=max_num_batched_tokens,
         dtype=str(resolved_dtype).replace("torch.", "") if dtype is not None else "auto",
         **_LOCKED_KWARGS,
         **vllm_kwargs,
