@@ -121,9 +121,12 @@ def _make_capture_hook(
         # Affine transform; default scale=1 / bias=0 means identity. Driver
         # swaps buffer contents to enable interventions.
         modified = t * scale_buf + bias_buf
-        # SymInt-indexed slice traces under dynamic shapes without specialization.
-        n = modified.shape[0]
-        capture_buf[:n].copy_(modified)
+        # ``narrow`` produces an explicit-shape view ``(n, width)`` that Dynamo
+        # traces correctly under dynamic shapes; the ``[:n]`` getitem form gets
+        # erased under fake-tensor tracing and ``copy_`` then sees the full
+        # buffer as destination, raising "expand s72 -> max_n".
+        n = t.shape[0]
+        capture_buf.narrow(0, 0, n).copy_(modified)
         # Preserve the input wrapping — a 1-tuple input must come back as a 1-tuple
         # (``tuple_tail`` is falsy in that case, so don't gate on it).
         if isinstance(output, tuple):
