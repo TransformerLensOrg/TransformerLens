@@ -114,6 +114,11 @@ def boot_vllm(
         # the matching dynamic-shape range — otherwise Dynamo's symbolic-shape
         # hint exceeds the buffer dim and narrow() fails at compile time.
         max_num_batched_tokens=max_num_batched_tokens,
+        # Register TLWorkerExtension so its tl_* methods are reachable via
+        # collective_rpc. Passed as a dotted path; vLLM imports the class at
+        # worker construction and mixes it into the Worker via multiple
+        # inheritance (asserts no attribute name collisions — hence the tl_ prefix).
+        worker_extension_cls="transformer_lens.model_bridge.sources.vllm.worker_extension.TLWorkerExtension",
         dtype=str(resolved_dtype).replace("torch.", "") if dtype is not None else "auto",
         **_LOCKED_KWARGS,
         **vllm_kwargs,
