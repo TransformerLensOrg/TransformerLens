@@ -154,13 +154,19 @@ class ArchitectureAdapterFactory:
             adapter_class: The adapter class to register.
 
         Example:
+            >>> from transformer_lens.config import TransformerBridgeConfig
             >>> from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
             >>> from transformer_lens.factories.architecture_adapter_factory import ArchitectureAdapterFactory
             >>> class MyAdapter(ArchitectureAdapter):
             ...     def __init__(self, cfg):
             ...         super().__init__(cfg)
             >>> ArchitectureAdapterFactory.register_adapter("MyModelForCausalLM", MyAdapter)
-            >>> "MyModelForCausalLM" in ArchitectureAdapterFactory._adapters
+            >>> cfg = TransformerBridgeConfig(
+            ...     d_model=512, d_head=64, n_layers=6, n_ctx=1024,
+            ...     architecture="MyModelForCausalLM",
+            ... )
+            >>> adapter = ArchitectureAdapterFactory.select_architecture_adapter(cfg)
+            >>> isinstance(adapter, MyAdapter)
             True
         """
         cls._adapters[architecture_name] = adapter_class
