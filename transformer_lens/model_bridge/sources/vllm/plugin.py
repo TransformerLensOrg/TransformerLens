@@ -22,9 +22,16 @@ identity mode would defeat the swap-via-buffer trick and break the FX graph.
 """
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, Tuple
 
 import torch
+
+# Matches dot-paths like "model.layers.0", "model.layers.15" — vLLM's decoder
+# layers, which return the fused-residual (mlp_delta, residual) 2-tuple. Hooks
+# on these need to materialize the sum so the capture matches HF's
+# blocks.{i}.hook_out semantics (full residual stream).
+_DECODER_LAYER_PATH = re.compile(r"^model\.layers\.\d+$")
 
 # Transient signal driver → worker during LLM construction. Per-Worker buffers
 # live on Worker instances so concurrent boot_vllm calls don't collide.
@@ -92,8 +99,12 @@ def register() -> None:
             self._tl_buffers[canonical_name] = capture_buf
             self._tl_scale_buffers[canonical_name] = scale_buf
             self._tl_bias_buffers[canonical_name] = bias_buf
+            # Decoder layers return vLLM's (mlp_delta, residual) tuple; the
+            # hook materializes their sum so the capture semantically matches
+            # HF's full residual stream. Other modules use the default path.
+            materialize = bool(_DECODER_LAYER_PATH.match(dot_path))
             handle = target.register_forward_hook(
-                _make_capture_hook(capture_buf, scale_buf, bias_buf)
+                _make_capture_hook(capture_buf, scale_buf, bias_buf, materialize=materialize)
             )
             self._tl_hook_handles.append(handle)
 
@@ -105,11 +116,34 @@ def _make_capture_hook(
     capture_buf: torch.Tensor,
     scale_buf: torch.Tensor,
     bias_buf: torch.Tensor,
+    *,
+    materialize: bool = False,
 ):
-    """GPU-only, dynamic-shape-safe affine + capture into pre-allocated buffers."""
+    """GPU-only, dynamic-shape-safe affine + capture into pre-allocated buffers.
+
+    When ``materialize=True`` (decoder layers), treat the module's output as
+    vLLM's fused-residual ``(mlp_delta, residual)`` tuple: capture
+    ``mlp_delta + residual`` (the full residual stream, matching HF's
+    blocks.{i}.hook_out semantics) and return ``(modified - residual, residual)``
+    so the next layer's input_layernorm sees the same fused sum. Mutations
+    propagate through both the capture and the downstream graph.
+    """
 
     @torch.no_grad()
     def hook(_module, _inputs, output):
+        if materialize and isinstance(output, tuple) and len(output) == 2:
+            hidden, residual = output
+            if isinstance(hidden, torch.Tensor) and isinstance(residual, torch.Tensor):
+                t = hidden + residual
+                modified = t * scale_buf + bias_buf
+                n = t.shape[0]
+                capture_buf.narrow(0, 0, n).copy_(modified)
+                # ``(modified - residual) + residual`` reconstructs ``modified`` in
+                # the next layer's fused input_layernorm. Identity case is exact;
+                # for interventions, fp16 precision loss is bounded by one ulp at
+                # the residual stream's magnitude — small relative to mutation effect.
+                return (modified - residual, residual)
+
         tuple_tail: tuple = ()
         if isinstance(output, tuple):
             t = output[0]
