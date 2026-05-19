@@ -120,7 +120,10 @@ class TestDiscoverEntryPoints:
         ):
             ArchitectureAdapterFactory.discover_entry_points()
         assert "TestEntryPointForCausalLM" in ArchitectureAdapterFactory._adapters
-        assert ArchitectureAdapterFactory._adapters["TestEntryPointForCausalLM"] is MockArchitectureAdapter
+        assert (
+            ArchitectureAdapterFactory._adapters["TestEntryPointForCausalLM"]
+            is MockArchitectureAdapter
+        )
 
     def test_discover_skips_native_adapter_override(self):
         ArchitectureAdapterFactory._entry_points_discovered = False
