@@ -193,8 +193,9 @@ class ArchitectureAdapterFactory:
             for ep in eps:
                 try:
                     if ep.name in cls._adapters:
+                        dist_name = getattr(ep.dist, "name", "unknown") if ep.dist is not None else "unknown"
                         warnings.warn(
-                            f"Custom architecture adapter {ep.name} provided by {ep.dist.name} "
+                            f"Custom architecture adapter {ep.name} provided by {dist_name} "
                             f"attempted to override a native adapter. If you'd like to use this "
                             f"custom adapter, register it explicitly with register_adapter"
                         )
