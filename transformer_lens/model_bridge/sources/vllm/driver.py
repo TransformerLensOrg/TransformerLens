@@ -106,16 +106,30 @@ class VLLMDriver(DriverBase):
     def close(self) -> None:
         # Detach hooks before dropping the LLM so they don't stay registered on
         # worker modules for the life of the process (long-running notebooks).
+        log = logging.getLogger("transformer_lens.vllm")
         if self._llm is not None:
             try:
                 self._llm.collective_rpc("tl_remove_hooks")
             except Exception as e:
                 # Best-effort: engine may already be torn down or the RPC surface
                 # gone. Log so hook-leak debugging has a thread to pull.
-                logging.getLogger("transformer_lens.vllm").debug(
-                    "tl_remove_hooks failed during close(): %s", e
-                )
+                log.debug("tl_remove_hooks failed during close(): %s", e)
         self._llm = None
+        # vLLM 0.20.2 has no LLM.shutdown() — model weights and KV cache stay
+        # resident until process exit unless we explicitly tear down the
+        # distributed environment vLLM set up at construction. Both calls are
+        # best-effort: they're no-ops if there's no distributed state. After
+        # this, the caller still needs gc.collect() + torch.cuda.empty_cache()
+        # to drop PyTorch's caching allocator entries.
+        try:
+            from vllm.distributed.parallel_state import (
+                destroy_distributed_environment,
+                destroy_model_parallel,
+            )
+            destroy_model_parallel()
+            destroy_distributed_environment()
+        except Exception as e:
+            log.debug("vLLM distributed teardown failed during close(): %s", e)
 
     @staticmethod
     def _synthesize_logits(request_output: Any, n_tokens: int, d_vocab: int) -> torch.Tensor:
