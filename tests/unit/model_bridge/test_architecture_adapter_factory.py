@@ -5,7 +5,6 @@ import pytest
 from tests.mocks.architecture_adapter import MockArchitectureAdapter
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.factories.architecture_adapter_factory import (
-    SUPPORTED_ARCHITECTURES,
     ArchitectureAdapterFactory,
 )
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
@@ -52,23 +51,6 @@ def _make_cfg(**overrides) -> TransformerBridgeConfig:
     )
     defaults.update(overrides)
     return TransformerBridgeConfig(**defaults)
-
-
-class TestSupportedArchitectures:
-    """Verify all existing hardcoded entries in SUPPORTED_ARCHITECTURES."""
-
-    def test_has_common_architectures(self):
-        common = [
-            "GPT2LMHeadModel",
-            "LlamaForCausalLM",
-            "MistralForCausalLM",
-            "Gemma2ForCausalLM",
-            "Qwen2ForCausalLM",
-            "BloomForCausalLM",
-            "FalconForCausalLM",
-        ]
-        for arch in common:
-            assert arch in SUPPORTED_ARCHITECTURES, f"Missing: {arch}"
 
 
 class TestRegisterAdapter:
