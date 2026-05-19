@@ -574,6 +574,10 @@ class ComponentBenchmarker:
                     device=test_input.device,
                     dtype=test_input.dtype,
                 )
+                if "attn" in component_path:
+                    self._add_direct_attention_mask_if_needed(
+                        shared_inputs, hf_component, batch_size, seq_len
+                    )
 
                 # Override position_embeddings with correct values from HF model's rotary_emb
                 # This is needed for models with partial RoPE or non-standard rotary dims
@@ -662,6 +666,37 @@ class ComponentBenchmarker:
                 output_shape=(),
                 error_message=str(e),
             )
+
+    @staticmethod
+    def _add_direct_attention_mask_if_needed(
+        shared_inputs: Dict[str, Any],
+        hf_component: Any,
+        batch_size: int,
+        seq_len: int,
+    ) -> None:
+        """Add a causal mask for direct HF attention calls that need parent context."""
+        if "attention_mask" in shared_inputs:
+            return
+        hidden_states = shared_inputs.get("hidden_states")
+        if not isinstance(hidden_states, torch.Tensor):
+            return
+        if not getattr(hf_component, "is_causal", False):
+            return
+        if getattr(hf_component, "is_cross_attention", False):
+            return
+
+        min_dtype = torch.finfo(hidden_states.dtype).min
+        causal_mask = torch.ones(seq_len, seq_len, device=hidden_states.device, dtype=torch.bool)
+        causal_mask = torch.tril(causal_mask).view(1, 1, seq_len, seq_len)
+        attention_mask = torch.zeros(
+            batch_size,
+            1,
+            seq_len,
+            seq_len,
+            device=hidden_states.device,
+            dtype=hidden_states.dtype,
+        )
+        shared_inputs["attention_mask"] = attention_mask.masked_fill(~causal_mask, min_dtype)
 
     def _run_component(
         self,
