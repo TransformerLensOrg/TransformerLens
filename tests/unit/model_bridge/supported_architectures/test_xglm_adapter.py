@@ -1,7 +1,6 @@
 """Unit tests for XGLMArchitectureAdapter: cfg, components, weight conversions, hook compat, factory."""
 
 import pytest
-import torch
 
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion

@@ -46,9 +46,7 @@ class TestGemma2HookCompatibility:
         assert "setup_hook_compatibility" not in vars(type(adapter))
 
 
-@pytest.mark.skipif(
-    bool(os.getenv("CI")), reason="Network/disk fetch of tiny Gemma2 — skip in CI"
-)
+@pytest.mark.skipif(bool(os.getenv("CI")), reason="Network/disk fetch of tiny Gemma2 — skip in CI")
 def test_gemma2_embed_hook_out_magnitude_matches_sqrt_d_model_scaling():
     """End-to-end regression for the embed double-scale bug.
 

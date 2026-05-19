@@ -64,7 +64,7 @@ def test_attention_load_in_4bit():
     assert attn.cfg.n_ctx == 1024
     assert attn.cfg.d_head == 64
     assert attn.cfg.n_heads == 8
-    assert attn.cfg.load_in_4bit == False
+    assert attn.cfg.load_in_4bit == True
     assert attn.cfg.dtype == torch.float32
     assert attn.cfg.act_fn == "relu"
 
