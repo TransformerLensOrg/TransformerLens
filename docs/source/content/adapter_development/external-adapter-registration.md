@@ -35,6 +35,8 @@ Declare your adapter in your package's `pyproject.toml`:
 
 TransformerLens discovers these automatically on first use. Users just install your package alongside TransformerLens and `boot_transformers()` finds it.
 
+> **Note:** Entry-point discovery will not override adapters that ship with TransformerLens. If your package declares an entry-point that matches a native architecture name, a warning is logged (`"Custom architecture adapter {name} provided by {package} attempted to override a native adapter..."`) and the native adapter is preserved. To use a custom adapter for a built-in architecture, register it explicitly with `register_adapter()` in your startup code instead.
+
 ## How it works
 
 When `boot_transformers()` is called:
