@@ -1,8 +1,5 @@
 """Unit tests for XGLMArchitectureAdapter: cfg, components, weight conversions, hook compat, factory."""
 
-import math
-from types import SimpleNamespace
-
 import pytest
 import torch
 
@@ -191,44 +188,15 @@ class TestXGLMAdapterComponentMapping:
         assert mlp.submodules["out"].name == "fc2"
 
 
-def _make_mock_bridge() -> SimpleNamespace:
-    """Minimal mock bridge with embed.hook_out for hook-compat tests."""
-    hook_out = SimpleNamespace(hook_conversion=None)
-    embed = SimpleNamespace(hook_out=hook_out)
-    return SimpleNamespace(embed=embed)
-
-
 class TestXGLMAdapterHookCompatibility:
-    """setup_hook_compatibility attaches a scale conversion to hook_embed."""
+    """Adapter must not override setup_hook_compatibility — XGLMScaledWordEmbedding
+    scales internally, so any override would double-scale embed.hook_out."""
 
-    def test_sets_hook_conversion_on_embed_hook_out(self, adapter: XGLMArchitectureAdapter) -> None:
-        bridge = _make_mock_bridge()
-        adapter.setup_hook_compatibility(bridge)
-        assert bridge.embed.hook_out.hook_conversion is not None
-
-    def test_scales_by_sqrt_d_model(self, adapter: XGLMArchitectureAdapter) -> None:
-        bridge = _make_mock_bridge()
-        adapter.setup_hook_compatibility(bridge)
-        conv = bridge.embed.hook_out.hook_conversion
-        x = torch.ones(2, 4, 64)
-        result = conv.handle_conversion(x)
-        expected_scale = math.sqrt(64)
-        assert torch.allclose(result, x * expected_scale, atol=1e-6)
-
-    def test_revert_inverts_scale(self, adapter: XGLMArchitectureAdapter) -> None:
-        bridge = _make_mock_bridge()
-        adapter.setup_hook_compatibility(bridge)
-        conv = bridge.embed.hook_out.hook_conversion
-        x = torch.randn(2, 4, 64)
-        assert torch.allclose(conv.revert(conv.handle_conversion(x)), x, atol=1e-6)
-
-    def test_no_error_when_embed_missing(self, adapter: XGLMArchitectureAdapter) -> None:
-        bridge = SimpleNamespace()
-        adapter.setup_hook_compatibility(bridge)
-
-    def test_no_error_when_hook_out_missing(self, adapter: XGLMArchitectureAdapter) -> None:
-        bridge = SimpleNamespace(embed=SimpleNamespace())
-        adapter.setup_hook_compatibility(bridge)
+    def test_adapter_does_not_override_setup_hook_compatibility(
+        self, adapter: XGLMArchitectureAdapter
+    ) -> None:
+        # bridge.py:763 uses hasattr() to decide whether to call the override.
+        assert "setup_hook_compatibility" not in vars(type(adapter))
 
 
 class TestXGLMFactoryRegistration:

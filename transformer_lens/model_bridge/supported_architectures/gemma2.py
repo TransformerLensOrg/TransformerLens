@@ -1,9 +1,6 @@
 """Gemma2 architecture adapter."""
 
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    pass
+from typing import Any
 
 from transformer_lens.conversion_utils.conversion_steps import (
     ArithmeticTensorConversion,
@@ -60,11 +57,12 @@ class Gemma2ArchitectureAdapter(ArchitectureAdapter):
         # by map_default_transformer_lens_config() in sources/transformers.py
 
         self.weight_processing_conversions = {
-            # NOTE: Gemma2 scales embeddings by sqrt(d_model) at RUNTIME in
-            # Gemma2Model.forward(). We must NOT pre-scale embed weights here
-            # because that would cause double-scaling (pre-scale + runtime).
-            # The runtime hook_conversion in setup_hook_compatibility() handles
-            # scaling the hook output so it matches HookedTransformer's behavior.
+            # NOTE: Gemma2 scales embeddings by sqrt(d_model) at RUNTIME inside
+            # Gemma2TextScaledWordEmbedding.forward() (HF transformers >= 5.0).
+            # That layer is what bridge.embed wraps, so embed.hook_out already
+            # captures the scaled value — matching HookedTransformer's hook_embed
+            # (which uses pre-scaled W_E). We must NOT pre-scale weights here and
+            # we must NOT install a runtime hook_conversion that re-scales.
             "blocks.{i}.attn.q.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
             ),
@@ -161,24 +159,6 @@ class Gemma2ArchitectureAdapter(ArchitectureAdapter):
             "ln_final": RMSNormalizationBridge(name="model.norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head", config=self.cfg),
         }
-
-    def setup_hook_compatibility(self, bridge: Any) -> None:
-        """Setup hook compatibility for Gemma2 models.
-
-        Gemma2 scales embeddings by sqrt(d_model). The weights are pre-scaled via
-        preprocess_weights(), but we still need to apply the scaling conversion to
-        the hook output for proper hook functionality (so user modifications are
-        correctly scaled/unscaled).
-
-        Args:
-            bridge: The TransformerBridge instance
-        """
-        # Apply embedding scaling conversion to hook output
-        if hasattr(bridge, "embed") and hasattr(bridge.embed, "hook_out"):
-            scale_factor = self.cfg.d_model**0.5
-            bridge.embed.hook_out.hook_conversion = ArithmeticTensorConversion(
-                OperationTypes.MULTIPLICATION, scale_factor
-            )
 
     def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
         """Set up rotary embedding references and attention implementation for Gemma-2 component testing.
