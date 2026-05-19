@@ -592,8 +592,9 @@ def boot(
         from_config_kwargs = {}
         if trust_remote_code:
             from_config_kwargs["trust_remote_code"] = True
+        prepared_config = model_kwargs.get("config", hf_config)
         with contextlib.redirect_stdout(None):
-            hf_model = model_class.from_config(hf_config, **from_config_kwargs)
+            hf_model = model_class.from_config(prepared_config, **from_config_kwargs)
     else:
         try:
             hf_model = model_class.from_pretrained(model_name, **model_kwargs)

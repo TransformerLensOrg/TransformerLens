@@ -98,10 +98,15 @@ class Mamba2ArchitectureAdapter(ArchitectureAdapter):
         device: Any,
         dtype: torch.dtype,
     ) -> Any:
-        """Build a Mamba2Cache for the stateful generation loop."""
-        from transformers.models.mamba2.modeling_mamba2 import Mamba2Cache
+        """Build a cache for the stateful generation loop."""
+        from transformers.cache_utils import DynamicCache
+        from transformers.models.mamba2 import modeling_mamba2
 
-        return Mamba2Cache(hf_model.config, batch_size, device=device, dtype=dtype)
+        cache_cls = getattr(modeling_mamba2, "Mamba2Cache", None)
+        if cache_cls is not None:
+            return cache_cls(hf_model.config, batch_size, device=device, dtype=dtype)
+
+        return DynamicCache(config=hf_model.config)
 
 
 def compute_effective_attention(

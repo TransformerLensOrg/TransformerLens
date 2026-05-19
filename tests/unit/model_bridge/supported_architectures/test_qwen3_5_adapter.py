@@ -3,6 +3,8 @@
 Qwen3_5 is supported only via TransformerBridge, not HookedTransformer.
 """
 
+from types import SimpleNamespace
+
 import pytest
 
 from transformer_lens.factories.architecture_adapter_factory import (
@@ -19,10 +21,15 @@ except ImportError:
     _QWEN3_5_AVAILABLE = False
 
 
-@pytest.mark.skipif(
-    not _QWEN3_5_AVAILABLE,
-    reason="Qwen3_5TextConfig / Qwen3_5ForCausalLM not available in installed transformers",
-)
+@pytest.fixture
+def qwen3_5_dependency_available(monkeypatch):
+    """Make adapter-only tests independent of the installed Transformers build."""
+    import transformers
+
+    monkeypatch.setattr(transformers, "__version__", "5.10.0")
+    monkeypatch.setattr(transformers, "Qwen3_5ForCausalLM", object(), raising=False)
+
+
 class TestQwen3_5Registration:
     """Adapter is registered in all lookup tables."""
 
@@ -47,6 +54,212 @@ class TestQwen3_5Registration:
         assert SUPPORTED_ARCHITECTURES["Qwen3_5ForCausalLM"] is Qwen3_5ArchitectureAdapter
 
 
+class TestQwen3_5ArchitectureDetection:
+    """Tests that do not require a Transformers build with Qwen3.5 classes."""
+
+    def test_model_type_qwen3_5_routes_to_text_only_architecture(self):
+        from transformer_lens.model_bridge.sources.transformers import (
+            determine_architecture_from_hf_config,
+        )
+
+        cfg = SimpleNamespace(model_type="qwen3_5", architectures=[])
+        assert determine_architecture_from_hf_config(cfg) == "Qwen3_5ForCausalLM"
+
+    def test_model_type_qwen3_5_text_routes_to_text_only_architecture(self):
+        from transformer_lens.model_bridge.sources.transformers import (
+            determine_architecture_from_hf_config,
+        )
+
+        cfg = SimpleNamespace(model_type="qwen3_5_text", architectures=[])
+        assert determine_architecture_from_hf_config(cfg) == "Qwen3_5ForCausalLM"
+
+    def test_full_conditional_generation_architecture_is_not_registered(self):
+        assert "Qwen3_5ForConditionalGeneration" not in SUPPORTED_ARCHITECTURES
+        assert "Qwen3_5ForConditionalGeneration" not in HF_SUPPORTED_ARCHITECTURES
+
+
+class TestQwen3_5DependencyGate:
+    """Verify optional dependency errors are clear and use real version ordering."""
+
+    def test_old_transformers_version_raises_clear_import_error(self, monkeypatch):
+        import transformers
+
+        from transformer_lens.model_bridge.supported_architectures.qwen3_5 import (
+            Qwen3_5ArchitectureAdapter,
+        )
+
+        monkeypatch.setattr(transformers, "__version__", "4.57.3")
+        monkeypatch.setattr(transformers, "Qwen3_5ForCausalLM", object(), raising=False)
+
+        with pytest.raises(ImportError, match=r"requires transformers >= 5\.2\.0"):
+            Qwen3_5ArchitectureAdapter(_make_bridge_cfg())
+
+    def test_missing_qwen3_5_class_raises_clear_import_error(self, monkeypatch):
+        import transformers
+
+        from transformer_lens.model_bridge.supported_architectures.qwen3_5 import (
+            Qwen3_5ArchitectureAdapter,
+        )
+
+        monkeypatch.setattr(transformers, "__version__", "5.2.0")
+        monkeypatch.setattr(
+            Qwen3_5ArchitectureAdapter,
+            "_has_qwen3_5_causal_lm",
+            staticmethod(lambda _transformers_module: False),
+        )
+
+        with pytest.raises(ImportError, match="Qwen3_5ForCausalLM"):
+            Qwen3_5ArchitectureAdapter(_make_bridge_cfg())
+
+    def test_version_comparison_accepts_future_minor_versions(self, qwen3_5_dependency_available):
+        from transformer_lens.model_bridge.supported_architectures.qwen3_5 import (
+            Qwen3_5ArchitectureAdapter,
+        )
+
+        adapter = Qwen3_5ArchitectureAdapter(_make_bridge_cfg())
+        assert isinstance(adapter, Qwen3_5ArchitectureAdapter)
+
+
+class TestQwen3_5LoadingGuards:
+    """Text-only routing and preloaded-model guards."""
+
+    def test_prepare_loading_swaps_top_level_config_for_text_config(
+        self, qwen3_5_dependency_available
+    ):
+        from transformer_lens.model_bridge.supported_architectures.qwen3_5 import (
+            Qwen3_5ArchitectureAdapter,
+        )
+
+        adapter = Qwen3_5ArchitectureAdapter(_make_bridge_cfg())
+        text_config = SimpleNamespace(model_type="qwen3_5_text")
+        full_config = SimpleNamespace(model_type="qwen3_5", text_config=text_config)
+        model_kwargs = {"config": full_config}
+
+        adapter.prepare_loading("Qwen/Qwen3.5-0.8B", model_kwargs)
+
+        assert model_kwargs["config"] is text_config
+
+    def test_prepare_model_accepts_text_only_model(self, qwen3_5_dependency_available):
+        from transformer_lens.model_bridge.supported_architectures.qwen3_5 import (
+            Qwen3_5ArchitectureAdapter,
+        )
+
+        adapter = Qwen3_5ArchitectureAdapter(_make_bridge_cfg())
+        hf_model = SimpleNamespace(config=SimpleNamespace(architectures=["Qwen3_5ForCausalLM"]))
+
+        adapter.prepare_model(hf_model)
+
+    def test_prepare_model_rejects_conditional_generation_model(self, qwen3_5_dependency_available):
+        from transformer_lens.model_bridge.supported_architectures.qwen3_5 import (
+            Qwen3_5ArchitectureAdapter,
+        )
+
+        adapter = Qwen3_5ArchitectureAdapter(_make_bridge_cfg())
+        hf_model = SimpleNamespace(
+            config=SimpleNamespace(architectures=["Qwen3_5ForConditionalGeneration"])
+        )
+
+        with pytest.raises(ValueError, match="text-only"):
+            adapter.prepare_model(hf_model)
+
+    def test_prepare_model_rejects_unswapped_top_level_config(self, qwen3_5_dependency_available):
+        from transformer_lens.model_bridge.supported_architectures.qwen3_5 import (
+            Qwen3_5ArchitectureAdapter,
+        )
+
+        adapter = Qwen3_5ArchitectureAdapter(_make_bridge_cfg())
+        hf_model = SimpleNamespace(
+            config=SimpleNamespace(
+                architectures=["Qwen3_5ForCausalLM"],
+                text_config=SimpleNamespace(model_type="qwen3_5_text"),
+            )
+        )
+
+        with pytest.raises(ValueError, match="text-only"):
+            adapter.prepare_model(hf_model)
+
+    def test_load_weights_false_uses_prepared_text_config(
+        self, monkeypatch, qwen3_5_dependency_available
+    ):
+        from transformer_lens.model_bridge.bridge import TransformerBridge
+        from transformer_lens.model_bridge.sources import transformers as source
+
+        text_config = SimpleNamespace(
+            model_type="qwen3_5_text",
+            architectures=["Qwen3_5ForCausalLM"],
+            hidden_size=128,
+            head_dim=32,
+            num_attention_heads=4,
+            num_key_value_heads=2,
+            num_hidden_layers=2,
+            max_position_embeddings=64,
+            intermediate_size=256,
+            vocab_size=512,
+            hidden_act="silu",
+            rms_norm_eps=1e-6,
+            pad_token_id=0,
+            eos_token_id=1,
+        )
+        full_config = SimpleNamespace(
+            model_type="qwen3_5",
+            architectures=["Qwen3_5ForConditionalGeneration"],
+            text_config=text_config,
+            pad_token_id=0,
+            eos_token_id=1,
+        )
+
+        class DummyModel:
+            def __init__(self, config):
+                self.config = config
+
+            def parameters(self):
+                return iter(())
+
+        class DummyModelClass:
+            seen_config = None
+
+            @classmethod
+            def from_config(cls, config, **kwargs):
+                cls.seen_config = config
+                return DummyModel(config)
+
+        class DummyBridge(TransformerBridge):
+            def __init__(self, hf_model, adapter, tokenizer):
+                self.hf_model = hf_model
+                self.adapter = adapter
+                self.tokenizer = tokenizer
+
+        class DummyTokenizer:
+            bos_token_id = 2
+            eos_token_id = 1
+
+            def encode(self, text):
+                return [10]
+
+        monkeypatch.setattr(
+            source.AutoConfig,
+            "from_pretrained",
+            staticmethod(lambda *args, **kwargs: full_config),
+        )
+        monkeypatch.setattr(
+            source.AutoTokenizer,
+            "from_pretrained",
+            staticmethod(lambda *args, **kwargs: DummyTokenizer()),
+        )
+        monkeypatch.setattr(source, "TransformerBridge", DummyBridge)
+        monkeypatch.setattr(source, "setup_tokenizer", lambda tokenizer, **kwargs: tokenizer)
+
+        bridge = source.boot(
+            "Qwen/Qwen3.5-0.8B",
+            device="cpu",
+            load_weights=False,
+            model_class=DummyModelClass,
+        )
+
+        assert DummyModelClass.seen_config is text_config
+        assert bridge.hf_model.config is text_config
+
+
 def _make_bridge_cfg(**overrides):
     """Minimal TransformerBridgeConfig for Qwen3_5 adapter tests."""
     from transformer_lens.config.transformer_bridge_config import (
@@ -67,15 +280,11 @@ def _make_bridge_cfg(**overrides):
     return TransformerBridgeConfig(**defaults)
 
 
-@pytest.mark.skipif(
-    not _QWEN3_5_AVAILABLE,
-    reason="Qwen3_5TextConfig / Qwen3_5ForCausalLM not available in installed transformers",
-)
 class TestQwen3_5ComponentMapping:
     """self_attn is not a block submodule (absent on linear-attn layers); dense GatedMLP only."""
 
     @pytest.fixture
-    def adapter(self):
+    def adapter(self, qwen3_5_dependency_available):
         from transformer_lens.model_bridge.supported_architectures.qwen3_5 import (
             Qwen3_5ArchitectureAdapter,
         )
@@ -213,15 +422,11 @@ class TestQwen3_5ComponentMapping:
         assert adapter.weight_processing_conversions == {}
 
 
-@pytest.mark.skipif(
-    not _QWEN3_5_AVAILABLE,
-    reason="Qwen3_5TextConfig / Qwen3_5ForCausalLM not available in installed transformers",
-)
 class TestQwen3_5ConfigAttributes:
     """cfg attributes set by the adapter."""
 
     @pytest.fixture
-    def adapter(self):
+    def adapter(self, qwen3_5_dependency_available):
         from transformer_lens.model_bridge.supported_architectures.qwen3_5 import (
             Qwen3_5ArchitectureAdapter,
         )
@@ -258,7 +463,7 @@ class TestQwen3_5ConfigAttributes:
         """Eager attention required for output_attentions support."""
         assert adapter.cfg.attn_implementation == "eager"
 
-    def test_n_key_value_heads_set_when_gqa(self):
+    def test_n_key_value_heads_set_when_gqa(self, qwen3_5_dependency_available):
         from transformer_lens.model_bridge.supported_architectures.qwen3_5 import (
             Qwen3_5ArchitectureAdapter,
         )
@@ -267,7 +472,7 @@ class TestQwen3_5ConfigAttributes:
         adapter = Qwen3_5ArchitectureAdapter(cfg)
         assert adapter.cfg.n_key_value_heads == 2
 
-    def test_n_key_value_heads_not_set_when_absent(self):
+    def test_n_key_value_heads_not_set_when_absent(self, qwen3_5_dependency_available):
         from transformer_lens.config.transformer_bridge_config import (
             TransformerBridgeConfig,
         )
@@ -293,10 +498,6 @@ class TestQwen3_5ConfigAttributes:
         )
 
 
-@pytest.mark.skipif(
-    not _QWEN3_5_AVAILABLE,
-    reason="Qwen3_5TextConfig / Qwen3_5ForCausalLM not available in installed transformers",
-)
 class TestQwen3_5PreprocessWeights:
     """q_proj rows are interleaved per-head (query, gate, query, gate, ...) — naive first-half slice is wrong."""
 
@@ -305,7 +506,7 @@ class TestQwen3_5PreprocessWeights:
     HIDDEN_SIZE = 32
 
     @pytest.fixture
-    def adapter(self):
+    def adapter(self, qwen3_5_dependency_available):
         from transformer_lens.model_bridge.supported_architectures.qwen3_5 import (
             Qwen3_5ArchitectureAdapter,
         )
@@ -667,23 +868,38 @@ class TestQwen3_5Integration:
         ), f"Logit mismatch: max diff = {(hf_logits - bridge_logits).abs().max().item():.6f}"
 
     def test_hook_activation_shapes(self, bridge):
+        """MLP, full-attention, and linear-attention hooks must all fire."""
         import torch
 
-        captured: list[torch.Tensor] = []
+        hook_names = [
+            "blocks.0.mlp.hook_out",
+            "blocks.3.attn.hook_out",
+            "blocks.0.linear_attn.hook_out",
+        ]
+        captured: dict[str, list[torch.Tensor]] = {name: [] for name in hook_names}
 
-        def capture_hook(tensor: torch.Tensor, hook: object) -> torch.Tensor:
-            captured.append(tensor.detach().clone())
-            return tensor
+        def capture_hook(name: str):
+            def _capture(tensor: torch.Tensor, hook: object) -> torch.Tensor:
+                captured[name].append(tensor.detach().clone())
+                return tensor
+
+            return _capture
 
         tokens = torch.randint(0, 512, (1, 4))
         with torch.no_grad():
-            bridge.run_with_hooks(tokens, fwd_hooks=[("blocks.0.mlp.hook_out", capture_hook)])
+            bridge.run_with_hooks(
+                tokens,
+                fwd_hooks=[(name, capture_hook(name)) for name in hook_names],
+            )
 
-        assert len(captured) == 1, "Hook must fire exactly once per forward pass"
-        output = captured[0]
         batch, seq, d_model = 1, 4, 128
-        assert output.shape == (
-            batch,
-            seq,
-            d_model,
-        ), f"Expected MLP output shape ({batch}, {seq}, {d_model}), got {output.shape}"
+        for hook_name, activations in captured.items():
+            assert len(activations) == 1, f"{hook_name} must fire exactly once"
+            assert activations[0].shape == (
+                batch,
+                seq,
+                d_model,
+            ), (
+                f"Expected {hook_name} shape ({batch}, {seq}, {d_model}), "
+                f"got {activations[0].shape}"
+            )
