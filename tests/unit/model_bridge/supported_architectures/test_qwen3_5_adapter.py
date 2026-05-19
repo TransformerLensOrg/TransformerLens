@@ -111,9 +111,7 @@ class TestQwen3_5DependencyGate:
         with pytest.raises(ImportError, match="Qwen3_5ForCausalLM"):
             Qwen3_5ArchitectureAdapter(_make_bridge_cfg())
 
-    def test_version_comparison_accepts_future_minor_versions(
-        self, qwen3_5_dependency_available
-    ):
+    def test_version_comparison_accepts_future_minor_versions(self, qwen3_5_dependency_available):
         from transformer_lens.model_bridge.supported_architectures.qwen3_5 import (
             Qwen3_5ArchitectureAdapter,
         )
@@ -147,15 +145,11 @@ class TestQwen3_5LoadingGuards:
         )
 
         adapter = Qwen3_5ArchitectureAdapter(_make_bridge_cfg())
-        hf_model = SimpleNamespace(
-            config=SimpleNamespace(architectures=["Qwen3_5ForCausalLM"])
-        )
+        hf_model = SimpleNamespace(config=SimpleNamespace(architectures=["Qwen3_5ForCausalLM"]))
 
         adapter.prepare_model(hf_model)
 
-    def test_prepare_model_rejects_conditional_generation_model(
-        self, qwen3_5_dependency_available
-    ):
+    def test_prepare_model_rejects_conditional_generation_model(self, qwen3_5_dependency_available):
         from transformer_lens.model_bridge.supported_architectures.qwen3_5 import (
             Qwen3_5ArchitectureAdapter,
         )
@@ -168,9 +162,7 @@ class TestQwen3_5LoadingGuards:
         with pytest.raises(ValueError, match="text-only"):
             adapter.prepare_model(hf_model)
 
-    def test_prepare_model_rejects_unswapped_top_level_config(
-        self, qwen3_5_dependency_available
-    ):
+    def test_prepare_model_rejects_unswapped_top_level_config(self, qwen3_5_dependency_available):
         from transformer_lens.model_bridge.supported_architectures.qwen3_5 import (
             Qwen3_5ArchitectureAdapter,
         )

@@ -74,7 +74,12 @@ class MambaArchitectureAdapter(ArchitectureAdapter):
         device: Any,
         dtype: torch.dtype,
     ) -> Any:
-        """Build a MambaCache for the stateful generation loop."""
-        from transformers.models.mamba.modeling_mamba import MambaCache
+        """Build a cache for the stateful generation loop."""
+        from transformers.cache_utils import DynamicCache
+        from transformers.models.mamba import modeling_mamba
 
-        return MambaCache(hf_model.config, batch_size, device=device, dtype=dtype)
+        cache_cls = getattr(modeling_mamba, "MambaCache", None)
+        if cache_cls is not None:
+            return cache_cls(hf_model.config, batch_size, device=device, dtype=dtype)
+
+        return DynamicCache(config=hf_model.config)

@@ -7,8 +7,8 @@ optional attention mapping and fold_ln disabled.
 
 from typing import Any
 
-from packaging.version import InvalidVersion, Version
 import torch
+from packaging.version import InvalidVersion, Version
 
 from transformer_lens.model_bridge.supported_architectures.qwen3 import (
     Qwen3ArchitectureAdapter,
