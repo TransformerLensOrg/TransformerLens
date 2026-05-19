@@ -192,6 +192,13 @@ class ArchitectureAdapterFactory:
         else:
             for ep in eps:
                 try:
+                    if ep.name in cls._adapters:
+                        warnings.warn(
+                            f"Custom architecture adapter {ep.name} provided by {ep.dist.name} "
+                            f"attempted to override a native adapter. If you'd like to use this "
+                            f"custom adapter, register it explicitly with register_adapter"
+                        )
+                        continue
                     cls._adapters[ep.name] = ep.load()
                 except Exception as e:
                     warnings.warn(
