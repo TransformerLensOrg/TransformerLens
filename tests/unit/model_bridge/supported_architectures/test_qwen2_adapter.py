@@ -81,9 +81,7 @@ class FakeQwen2Attention(nn.Module):
         super().__init__()
         # PositionEmbeddingsAttentionBridge reads these HF-style attributes during forward.
         self.head_dim = cfg.d_head
-        self.num_key_value_groups = cfg.n_heads // (
-            cfg.n_key_value_heads or cfg.n_heads
-        )
+        self.num_key_value_groups = cfg.n_heads // (cfg.n_key_value_heads or cfg.n_heads)
         self.scaling = cfg.d_head**-0.5
         self.attention_dropout = 0.0
 
@@ -101,9 +99,7 @@ class TestQwen2AdapterConfig:
     def test_normalization_type_is_rms(self, adapter: Qwen2ArchitectureAdapter) -> None:
         assert adapter.cfg.normalization_type == "RMS"
 
-    def test_positional_embedding_type_is_rotary(
-        self, adapter: Qwen2ArchitectureAdapter
-    ) -> None:
+    def test_positional_embedding_type_is_rotary(self, adapter: Qwen2ArchitectureAdapter) -> None:
         assert adapter.cfg.positional_embedding_type == "rotary"
 
     def test_final_rms_is_true(self, adapter: Qwen2ArchitectureAdapter) -> None:
@@ -115,9 +111,7 @@ class TestQwen2AdapterConfig:
     def test_attn_only_is_false(self, adapter: Qwen2ArchitectureAdapter) -> None:
         assert adapter.cfg.attn_only is False
 
-    def test_default_prepend_bos_is_false(
-        self, adapter: Qwen2ArchitectureAdapter
-    ) -> None:
+    def test_default_prepend_bos_is_false(self, adapter: Qwen2ArchitectureAdapter) -> None:
         assert adapter.cfg.default_prepend_bos is False
 
     def test_uses_rms_norm_is_true(self, adapter: Qwen2ArchitectureAdapter) -> None:
@@ -195,14 +189,96 @@ class TestQwen2ComponentMapping:
         assert mlp.submodules["in"].name == "up_proj"
         assert mlp.submodules["out"].name == "down_proj"
 
-    def test_linear_submodule_bridge_types(
-        self, adapter: Qwen2ArchitectureAdapter
-    ) -> None:
+    def test_linear_submodule_bridge_types(self, adapter: Qwen2ArchitectureAdapter) -> None:
         blocks = adapter.component_mapping["blocks"]
         attn = blocks.submodules["attn"]
         mlp = blocks.submodules["mlp"]
         for submodule in [*attn.submodules.values(), *mlp.submodules.values()]:
             assert isinstance(submodule, LinearBridge)
+
+
+class TestQwen2GQAHookShapes:
+    """Verify Qwen2 GQA q/k/v hooks use n_heads for Q and n_kv_heads for K/V."""
+
+    N_HEADS = 4
+    N_KV_HEADS = 2
+    D_MODEL = 64
+    D_HEAD = D_MODEL // N_HEADS
+    BATCH = 2
+    SEQ = 8
+
+    @pytest.fixture
+    def adapter(self) -> Qwen2ArchitectureAdapter:
+        return Qwen2ArchitectureAdapter(
+            _make_cfg(
+                n_heads=self.N_HEADS,
+                n_key_value_heads=self.N_KV_HEADS,
+                d_model=self.D_MODEL,
+            )
+        )
+
+    @pytest.fixture
+    def wired_attn_bridge(
+        self, adapter: Qwen2ArchitectureAdapter
+    ) -> PositionEmbeddingsAttentionBridge:
+        fake_attn = FakeQwen2Attention(adapter.cfg)
+        attn_bridge = adapter.component_mapping["blocks"].submodules["attn"]
+        assert isinstance(attn_bridge, PositionEmbeddingsAttentionBridge)
+        attn_bridge.set_original_component(fake_attn)
+        # A full TransformerBridge build materializes these child bridge modules for us.
+        # This unit test wires them by hand so it can stay download-free.
+        for name, original in {
+            "q": fake_attn.q_proj,
+            "k": fake_attn.k_proj,
+            "v": fake_attn.v_proj,
+            "o": fake_attn.o_proj,
+        }.items():
+            submodule = attn_bridge.submodules[name]
+            submodule.set_original_component(original)
+            attn_bridge.add_module(name, submodule)
+        attn_bridge.setup_hook_compatibility()
+        return attn_bridge
+
+    def _run_and_capture(
+        self, attn_bridge: PositionEmbeddingsAttentionBridge
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        captured: dict[str, torch.Tensor] = {}
+
+        def _capture(name: str) -> Any:
+            def _hook(x: torch.Tensor, hook: Any) -> torch.Tensor:
+                captured[name] = x.detach()
+                return x
+
+            return _hook
+
+        attn_bridge.q.hook_out.add_hook(_capture("q"))
+        attn_bridge.k.hook_out.add_hook(_capture("k"))
+        attn_bridge.v.hook_out.add_hook(_capture("v"))
+
+        hidden = torch.randn(self.BATCH, self.SEQ, self.D_MODEL)
+        # Identity RoPE inputs keep this test focused on hook reshaping, not rotation math.
+        cos = torch.ones(1, self.SEQ, self.D_HEAD)
+        sin = torch.zeros(1, self.SEQ, self.D_HEAD)
+        out = attn_bridge(hidden, position_embeddings=(cos, sin))
+        out_tensor = out[0] if isinstance(out, tuple) else out
+
+        return captured["q"], captured["k"], captured["v"], out_tensor
+
+    def test_hook_q_shape(self, wired_attn_bridge: PositionEmbeddingsAttentionBridge) -> None:
+        q, _, _, _ = self._run_and_capture(wired_attn_bridge)
+        assert q.shape == (self.BATCH, self.SEQ, self.N_HEADS, self.D_HEAD)
+
+    def test_hook_k_shape(self, wired_attn_bridge: PositionEmbeddingsAttentionBridge) -> None:
+        _, k, _, _ = self._run_and_capture(wired_attn_bridge)
+        assert k.shape == (self.BATCH, self.SEQ, self.N_KV_HEADS, self.D_HEAD)
+
+    def test_hook_v_shape(self, wired_attn_bridge: PositionEmbeddingsAttentionBridge) -> None:
+        _, _, v, _ = self._run_and_capture(wired_attn_bridge)
+        assert v.shape == (self.BATCH, self.SEQ, self.N_KV_HEADS, self.D_HEAD)
+
+    def test_attn_output_shape(self, wired_attn_bridge: PositionEmbeddingsAttentionBridge) -> None:
+        _, _, _, out = self._run_and_capture(wired_attn_bridge)
+        assert out.shape == (self.BATCH, self.SEQ, self.D_MODEL)
 
 
 class TestQwen2WeightConversions:
@@ -229,10 +305,7 @@ class TestQwen2WeightConversions:
             conv = adapter.weight_processing_conversions[key]
             assert isinstance(conv, ParamProcessingConversion)
             assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)
-            assert (
-                conv.tensor_conversion.axes_lengths["n"]
-                == adapter.cfg.n_key_value_heads
-            )
+            assert conv.tensor_conversion.axes_lengths["n"] == adapter.cfg.n_key_value_heads
 
     def test_o_uses_n_heads(self, adapter: Qwen2ArchitectureAdapter) -> None:
         conv = adapter.weight_processing_conversions["blocks.{i}.attn.o.weight"]
