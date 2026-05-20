@@ -184,19 +184,6 @@ class Gemma3MultimodalArchitectureAdapter(ArchitectureAdapter):
             "unembed": UnembeddingBridge(name="lm_head"),
         }
 
-    def setup_hook_compatibility(self, bridge: Any) -> None:
-        """Setup hook compatibility for Gemma3 multimodal models.
-
-        Like text-only Gemma 3, the multimodal model uses
-        Gemma3TextScaledWordEmbedding which scales embeddings by sqrt(d_model)
-        internally in its forward() method. No additional hook conversion is
-        needed — adding one would double-scale the embeddings.
-
-        Args:
-            bridge: The TransformerBridge instance
-        """
-        pass
-
     def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
         """Set up rotary embedding references for Gemma-3 multimodal component testing.
 

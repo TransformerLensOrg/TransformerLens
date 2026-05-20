@@ -6404,6 +6404,7 @@ dependencies = [
     { name = "huggingface-hub" },
     { name = "jaxtyping" },
     { name = "numpy", marker = "python_full_version < '3.13'" },
+    { name = "packaging" },
     { name = "pandas" },
     { name = "protobuf" },
     { name = "rich" },
@@ -6424,10 +6425,6 @@ evals = [
 ]
 lit = [
     { name = "lit-nlp" },
-]
-qwen35 = [
-    { name = "packaging" },
-    { name = "transformers" },
 ]
 
 [package.dev-dependencies]
@@ -6489,21 +6486,20 @@ requires-dist = [
     { name = "lm-eval", marker = "extra == 'evals'", specifier = ">=0.4" },
     { name = "numpy", marker = "python_full_version >= '3.10' and python_full_version < '3.12'", specifier = ">=1.24" },
     { name = "numpy", marker = "python_full_version == '3.12.*'", specifier = ">=1.26" },
+    { name = "packaging", specifier = ">=23.0" },
     { name = "pandas", specifier = ">=1.1.5" },
-    { name = "packaging", marker = "extra == 'qwen35'", specifier = ">=23.0" },
     { name = "protobuf", specifier = ">=3.20.0" },
     { name = "rich", specifier = ">=12.6.0" },
     { name = "sentencepiece" },
     { name = "torch", specifier = ">=2.6" },
     { name = "tqdm", specifier = ">=4.64.1" },
-    { name = "transformers", specifier = ">=4.56" },
-    { name = "transformers", marker = "extra == 'qwen35'", specifier = ">=5.2.0" },
+    { name = "transformers", specifier = ">=5.4.0" },
     { name = "transformers-stream-generator", specifier = ">=0.0.5,<0.1" },
     { name = "typeguard", specifier = ">=4.2,<5" },
     { name = "typing-extensions" },
     { name = "wandb", specifier = ">=0.13.5" },
 ]
-provides-extras = ["evals", "lit", "qwen35"]
+provides-extras = ["evals", "lit"]
 
 [package.metadata.requires-dev]
 demo = [

@@ -48,11 +48,12 @@ class Gemma1ArchitectureAdapter(ArchitectureAdapter):
         self.cfg.rmsnorm_uses_offset = True
 
         self.weight_processing_conversions = {
-            # NOTE: Gemma1 scales embeddings by sqrt(d_model) at RUNTIME in
-            # GemmaModel.forward(). We must NOT pre-scale embed weights here
-            # because that would cause double-scaling (pre-scale + runtime).
-            # The runtime hook_conversion in setup_hook_compatibility() handles
-            # scaling the hook output so it matches HookedTransformer's behavior.
+            # NOTE: Gemma1 scales embeddings by sqrt(d_model) at RUNTIME inside
+            # GemmaTextScaledWordEmbedding.forward() (HF transformers >= 5.0).
+            # That layer is what bridge.embed wraps, so embed.hook_out already
+            # captures the scaled value — matching HookedTransformer's hook_embed
+            # (which uses pre-scaled W_E). We must NOT pre-scale weights here and
+            # we must NOT install a runtime hook_conversion that re-scales.
             #
             # Attention weight conversions
             **self._qkvo_weight_conversions(),
@@ -117,40 +118,6 @@ class Gemma1ArchitectureAdapter(ArchitectureAdapter):
             "ln_final": RMSNormalizationBridge(name="model.norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head"),
         }
-
-    def setup_hook_compatibility(self, bridge: Any) -> None:
-        """Setup hook compatibility for Gemma1 models.
-
-        Gemma1 scales embeddings by sqrt(d_model) in its forward pass,
-        but the HuggingFace embed_tokens layer doesn't include this scaling.
-        We need to apply it to hook_embed to match HookedTransformer behavior.
-
-        Args:
-            bridge: The TransformerBridge instance
-        """
-        from transformer_lens.conversion_utils.conversion_steps.base_tensor_conversion import (
-            BaseTensorConversion,
-        )
-
-        class EmbeddingScaleConversion(BaseTensorConversion):
-            """Scale embeddings by sqrt(d_model) for Gemma models."""
-
-            def __init__(self, scale: float):
-                super().__init__()
-                self.scale = scale
-
-            def handle_conversion(self, input_value: Any, *full_context: Any) -> Any:
-                """Scale the embedding output."""
-                return input_value * self.scale
-
-            def revert(self, input_value: Any, *full_context: Any) -> Any:
-                """Unscale the embedding output (for user modifications)."""
-                return input_value / self.scale
-
-        # Apply scaling to embed.hook_out
-        if hasattr(bridge, "embed") and hasattr(bridge.embed, "hook_out"):
-            scale_factor = self.cfg.d_model**0.5
-            bridge.embed.hook_out.hook_conversion = EmbeddingScaleConversion(scale_factor)
 
     def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
         """Set up rotary embedding references for Gemma1 component testing.

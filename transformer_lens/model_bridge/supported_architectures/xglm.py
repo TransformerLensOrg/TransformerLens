@@ -104,32 +104,3 @@ class XGLMArchitectureAdapter(ArchitectureAdapter):
             ),
             "unembed": UnembeddingBridge(name="lm_head"),
         }
-
-    def setup_hook_compatibility(self, bridge: Any) -> None:
-        """Scale hook_embed by sqrt(d_model) to match XGLMScaledWordEmbedding.forward().
-
-        XGLMScaledWordEmbedding multiplies the embedding lookup by embed_scale =
-        sqrt(d_model) at runtime.  Without this override, hook_embed would capture
-        the raw (unscaled) table output, diverging from actual model activations.
-        """
-        from transformer_lens.conversion_utils.conversion_steps.base_tensor_conversion import (
-            BaseTensorConversion,
-        )
-
-        class EmbeddingScaleConversion(BaseTensorConversion):
-            """Scale embeddings by sqrt(d_model) for XGLM models."""
-
-            def __init__(self, scale: float) -> None:
-                super().__init__()
-                self.scale = scale
-
-            def handle_conversion(self, input_value: Any, *full_context: Any) -> Any:
-                return input_value * self.scale
-
-            def revert(self, input_value: Any, *full_context: Any) -> Any:
-                return input_value / self.scale
-
-        if hasattr(bridge, "embed") and hasattr(bridge.embed, "hook_out"):
-            bridge.embed.hook_out.hook_conversion = EmbeddingScaleConversion(
-                self.cfg.d_model**0.5
-            )
