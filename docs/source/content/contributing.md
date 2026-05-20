@@ -178,4 +178,5 @@ Adapters live in `transformer_lens/model_bridge/supported_architectures/<model_n
 
 adapter_development/adapter-creation-guide
 adapter_development/hf-model-analysis-guide
+adapter_development/external-adapter-registration
 ```

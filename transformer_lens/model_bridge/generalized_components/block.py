@@ -132,9 +132,17 @@ class BlockBridge(GeneralizedComponent):
         filtered_kwargs = self._filter_kwargs_for_forward(kwargs, len(args))
 
         output = self.original_component(*args, **filtered_kwargs)
-        return self._apply_output_hook(output)
+        force_tuple_for_bare_tensor = self._is_standalone_hidden_state_call(args, filtered_kwargs)
+        return self._apply_output_hook(
+            output, force_tuple_for_bare_tensor=force_tuple_for_bare_tensor
+        )
 
-    def _apply_output_hook(self, output: Any, wrap_single_element: bool = True) -> Any:
+    def _apply_output_hook(
+        self,
+        output: Any,
+        wrap_single_element: bool = True,
+        force_tuple_for_bare_tensor: bool = False,
+    ) -> Any:
         """Hook the primary tensor in the output and return the result.
 
         Args:
@@ -142,6 +150,10 @@ class BlockBridge(GeneralizedComponent):
             wrap_single_element: If True, single-element tuples stay as tuples after
                 hooking (default, required by most HF models). If False, single-element
                 tuples are unwrapped to a bare tensor (Bloom convention).
+            force_tuple_for_bare_tensor: If True, bare tensor outputs are wrapped into
+                a one-element tuple after hooking. This keeps standalone BlockBridge
+                calls compatible with HF block APIs that expose tuple-like block outputs,
+                while preserving tensor outputs during newer HF parent-model execution.
         """
         if isinstance(output, tuple) and len(output) > 0:
             first = output[0]
@@ -153,7 +165,27 @@ class BlockBridge(GeneralizedComponent):
             return output
         if isinstance(output, torch.Tensor):
             output = self.hook_out(output)
+            if force_tuple_for_bare_tensor and wrap_single_element:
+                return (output,)
+            return output
         return output
+
+    @staticmethod
+    def _is_standalone_hidden_state_call(args: tuple, kwargs: dict) -> bool:
+        """Return True for direct block(hidden_states) style calls.
+
+        Transformers versions differ on whether parent model loops expect block
+        outputs as tuples or tensors. We preserve the original tensor return during
+        full-model execution, but expose tuple-like output for standalone component
+        calls so `output[0]` does not accidentally drop the batch dimension.
+        """
+        if len(args) == 1 and isinstance(args[0], torch.Tensor) and not kwargs:
+            return True
+        return (
+            len(args) == 0
+            and set(kwargs.keys()) == {"hidden_states"}
+            and isinstance(kwargs["hidden_states"], torch.Tensor)
+        )
 
     def _check_stop_at_layer(self, *args: Any, **kwargs: Any) -> None:
         """Check if execution should stop before this block. Raises StopAtLayerException.

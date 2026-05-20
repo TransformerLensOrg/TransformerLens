@@ -14,3 +14,28 @@ There are two main ways to mitigate this:
 
 1. **Skip weight preprocessing.** On the bridge, simply load with `TransformerBridge.boot_transformers(...)` and do not call `enable_compatibility_mode()` - the bridge preserves raw HF weights by default, so no additional flag is needed. On the legacy `HookedTransformer` path, use `HookedTransformer.from_pretrained_no_processing` instead of `HookedTransformer.from_pretrained`.
 2. **Increase the precision of the data type used in the model.**
+
+## Qwen3.5 text-only models
+
+Qwen3.5 support is available only through `TransformerBridge`, not the legacy
+`HookedTransformer.from_pretrained` path. Install a Transformers release that
+includes `Qwen3_5ForCausalLM` before loading these models:
+
+```bash
+pip install "transformers>=5.2.0"
+```
+
+Dense text-only checkpoints can then be loaded with:
+
+```python
+from transformer_lens.model_bridge import TransformerBridge
+
+bridge = TransformerBridge.boot_transformers("Qwen/Qwen3.5-0.8B")
+```
+
+Qwen3.5 uses a hybrid stack. Full-attention layers expose the usual hooks under
+`blocks.N.attn.*`; linear-attention layers expose GatedDeltaNet hooks under
+`blocks.N.linear_attn.*`, including `hook_q_pre_conv`, `hook_k_pre_conv`,
+`hook_v_pre_conv`, `hook_beta`, `hook_log_decay`, `hook_recurrence_out`, and
+`hook_out`. Full multimodal `Qwen3_5ForConditionalGeneration`, image/video
+inputs, and Qwen3.5 MoE checkpoints are not supported by this adapter.
