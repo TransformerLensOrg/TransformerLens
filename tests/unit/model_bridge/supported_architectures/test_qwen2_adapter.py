@@ -5,14 +5,15 @@ Tests cover:
 - Component mapping structure and HF module paths
 - Standard Q/K/V/O weight conversion rules, including GQA K/V head counts
 - Narrow hook-shape coverage for Qwen2-style GQA attention with fake modules
+- setup_component_testing rotary embedding wiring
 - Factory registration
 """
 
-from typing import Any
+from types import SimpleNamespace
 
 import pytest
-import torch
 import torch.nn as nn
+from torch import ones, randn, zeros
 
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.conversion_utils.conversion_steps.rearrange_tensor_conversion import (
@@ -91,6 +92,29 @@ class FakeQwen2Attention(nn.Module):
         self.k_proj = nn.Linear(cfg.d_model, kv_width, bias=False)
         self.v_proj = nn.Linear(cfg.d_model, kv_width, bias=False)
         self.o_proj = nn.Linear(cfg.n_heads * cfg.d_head, cfg.d_model, bias=False)
+
+
+def _fake_hf_model(rotary_emb: object) -> SimpleNamespace:
+    return SimpleNamespace(model=SimpleNamespace(rotary_emb=rotary_emb))
+
+
+class DummyAttention:
+    def __init__(self) -> None:
+        self.rotary_emb = None
+
+    def set_rotary_emb(self, rotary_emb: object) -> None:
+        self.rotary_emb = rotary_emb
+
+
+class DummyBlock:
+    def __init__(self, has_attention: bool = True) -> None:
+        if has_attention:
+            self.attn = DummyAttention()
+
+
+class DummyBridgeModel:
+    def __init__(self, blocks: list[DummyBlock]) -> None:
+        self.blocks = blocks
 
 
 class TestQwen2AdapterConfig:
@@ -239,13 +263,11 @@ class TestQwen2GQAHookShapes:
         attn_bridge.setup_hook_compatibility()
         return attn_bridge
 
-    def _run_and_capture(
-        self, attn_bridge: PositionEmbeddingsAttentionBridge
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        captured: dict[str, torch.Tensor] = {}
+    def _run_and_capture(self, attn_bridge: PositionEmbeddingsAttentionBridge) -> tuple:
+        captured = {}
 
-        def _capture(name: str) -> Any:
-            def _hook(x: torch.Tensor, hook: Any) -> torch.Tensor:
+        def _capture(name: str) -> object:
+            def _hook(x, hook):
                 captured[name] = x.detach()
                 return x
 
@@ -255,10 +277,10 @@ class TestQwen2GQAHookShapes:
         attn_bridge.k.hook_out.add_hook(_capture("k"))
         attn_bridge.v.hook_out.add_hook(_capture("v"))
 
-        hidden = torch.randn(self.BATCH, self.SEQ, self.D_MODEL)
+        hidden = randn(self.BATCH, self.SEQ, self.D_MODEL)
         # Identity RoPE inputs keep this test focused on hook reshaping, not rotation math.
-        cos = torch.ones(1, self.SEQ, self.D_HEAD)
-        sin = torch.zeros(1, self.SEQ, self.D_HEAD)
+        cos = ones(1, self.SEQ, self.D_HEAD)
+        sin = zeros(1, self.SEQ, self.D_HEAD)
         out = attn_bridge(hidden, position_embeddings=(cos, sin))
         out_tensor = out[0] if isinstance(out, tuple) else out
 
@@ -279,6 +301,39 @@ class TestQwen2GQAHookShapes:
     def test_attn_output_shape(self, wired_attn_bridge: PositionEmbeddingsAttentionBridge) -> None:
         _, _, _, out = self._run_and_capture(wired_attn_bridge)
         assert out.shape == (self.BATCH, self.SEQ, self.D_MODEL)
+
+
+class TestQwen2SetupComponentTesting:
+    """setup_component_testing must wire Qwen2's shared rotary embedding into attention bridges."""
+
+    def test_sets_rotary_emb_on_template_attention(self, adapter: Qwen2ArchitectureAdapter) -> None:
+        rotary_emb = object()
+        attn_template = adapter.get_generalized_component("blocks.0.attn")
+        assert isinstance(attn_template, PositionEmbeddingsAttentionBridge)
+        assert attn_template._rotary_emb is None
+
+        adapter.setup_component_testing(_fake_hf_model(rotary_emb))
+
+        assert attn_template._rotary_emb is rotary_emb
+
+    def test_sets_rotary_emb_on_each_bridge_model_attention(
+        self, adapter: Qwen2ArchitectureAdapter
+    ) -> None:
+        rotary_emb = object()
+        bridge_model = DummyBridgeModel([DummyBlock(), DummyBlock(), DummyBlock()])
+
+        adapter.setup_component_testing(_fake_hf_model(rotary_emb), bridge_model=bridge_model)
+
+        for block in bridge_model.blocks:
+            assert block.attn.rotary_emb is rotary_emb
+
+    def test_skips_bridge_blocks_without_attention(self, adapter: Qwen2ArchitectureAdapter) -> None:
+        rotary_emb = object()
+        bridge_model = DummyBridgeModel([DummyBlock(), DummyBlock(has_attention=False)])
+
+        adapter.setup_component_testing(_fake_hf_model(rotary_emb), bridge_model=bridge_model)
+
+        assert bridge_model.blocks[0].attn.rotary_emb is rotary_emb
 
 
 class TestQwen2WeightConversions:
