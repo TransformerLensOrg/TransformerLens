@@ -43,6 +43,13 @@ permissions:
   actions: write
   contents: write
 
+# Cancel in-progress runs on the same PR when a new push arrives.
+# Push-to-main, tag, and workflow_call events are not cancelled so that
+# release and deploy jobs always run to completion.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   compatibility-checks:
     name: Compatibility Checks
