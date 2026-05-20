@@ -6,6 +6,7 @@ Qwen3_5 is supported only via TransformerBridge, not HookedTransformer.
 from types import SimpleNamespace
 
 import pytest
+import torch.nn as nn
 
 from transformer_lens.factories.architecture_adapter_factory import (
     SUPPORTED_ARCHITECTURES,
@@ -183,6 +184,10 @@ class TestQwen3_5LoadingGuards:
     ):
         from transformer_lens.model_bridge.bridge import TransformerBridge
         from transformer_lens.model_bridge.sources import transformers as source
+        # boot() lives in the submodule after the package split; module-level
+        # name lookups for TransformerBridge / setup_tokenizer happen there, not
+        # in the package __init__.
+        from transformer_lens.model_bridge.sources.transformers import source as boot_module
 
         text_config = SimpleNamespace(
             model_type="qwen3_5_text",
@@ -208,12 +213,13 @@ class TestQwen3_5LoadingGuards:
             eos_token_id=1,
         )
 
-        class DummyModel:
+        class DummyModel(nn.Module):
+            # nn.Module subclass: TransformersDriver's beartype-validated init
+            # requires the underlying model to be an nn.Module after the type
+            # split. Plain objects no longer suffice.
             def __init__(self, config):
+                super().__init__()
                 self.config = config
-
-            def parameters(self):
-                return iter(())
 
         class DummyModelClass:
             seen_config = None
@@ -224,7 +230,12 @@ class TestQwen3_5LoadingGuards:
                 return DummyModel(config)
 
         class DummyBridge(TransformerBridge):
-            def __init__(self, hf_model, adapter, tokenizer):
+            # **kwargs absorbs the ``driver=`` kwarg boot() now passes after the
+            # type-split refactor (TransformersDriver gets constructed in boot()
+            # and threaded through to the bridge). nn.Module.__init__() must run
+            # before any nn.Module-valued attribute assignment (e.g. hf_model).
+            def __init__(self, hf_model, adapter, tokenizer, **kwargs):
+                nn.Module.__init__(self)
                 self.hf_model = hf_model
                 self.adapter = adapter
                 self.tokenizer = tokenizer
@@ -246,8 +257,8 @@ class TestQwen3_5LoadingGuards:
             "from_pretrained",
             staticmethod(lambda *args, **kwargs: DummyTokenizer()),
         )
-        monkeypatch.setattr(source, "TransformerBridge", DummyBridge)
-        monkeypatch.setattr(source, "setup_tokenizer", lambda tokenizer, **kwargs: tokenizer)
+        monkeypatch.setattr(boot_module, "TransformerBridge", DummyBridge)
+        monkeypatch.setattr(boot_module, "setup_tokenizer", lambda tokenizer, **kwargs: tokenizer)
 
         bridge = source.boot(
             "Qwen/Qwen3.5-0.8B",

@@ -1,9 +1,11 @@
 """HuggingFace ``transformers`` source for TransformerBridge."""
 from __future__ import annotations
 
-# Re-exported so external code that patches `AutoConfig.from_pretrained` via this
-# module path keeps working after the package split.
-from transformers import AutoConfig
+# Re-exported so external code that patches ``AutoConfig.from_pretrained`` /
+# ``AutoTokenizer.from_pretrained`` via this module path keeps working after the
+# package split. Class-method monkey-patches reach the same class objects that
+# ``source.py`` imports directly, so this re-export keeps tests stable.
+from transformers import AutoConfig, AutoTokenizer
 
 from transformer_lens.model_bridge.bridge import TransformerBridge
 
@@ -32,6 +34,7 @@ setattr(TransformerBridge, "check_model_support", staticmethod(check_model_suppo
 
 __all__ = [
     "AutoConfig",
+    "AutoTokenizer",
     "boot",
     "check_model_support",
     "determine_architecture_from_hf_config",
