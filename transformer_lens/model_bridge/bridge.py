@@ -703,6 +703,14 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         post-processed coordinate system: logit lens, direct logit attribution,
         residual-stream norms. Also enables legacy hook/component name aliases.
 
+        Hook semantic parity (issue #1317): pre-LN hooks (hook_q_input,
+        hook_k_input, hook_v_input, hook_attn_in, hook_mlp_in) fire on the
+        pre-norm residual to match legacy semantics. Requires the architecture
+        adapter to map input_layernorm → ln1 and post_attention_layernorm → ln2.
+        Architectures with non-standard norm topologies (e.g. OLMo2 post-norm)
+        fall back to post-LN placement; cross-run patching on those models will
+        not match legacy.
+
         Args:
             disable_warnings: Whether to disable warnings about legacy components/hooks
             no_processing: Whether to disable ALL pre-processing steps of the model.

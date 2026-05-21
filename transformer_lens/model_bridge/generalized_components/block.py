@@ -10,6 +10,7 @@ from typing import Any, Callable, Dict, Optional
 
 import torch
 
+from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.exceptions import StopAtLayerException
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
@@ -35,11 +36,8 @@ class BlockBridge(GeneralizedComponent):
     """
 
     is_list_item: bool = True
-    # Block-level aliases matching HookedTransformer's hook path. hook_attn_in /
-    # hook_q_input / hook_k_input / hook_v_input forward to four *independent*
-    # HookPoints on the attention bridge (they used to collapse onto the same
-    # upstream tensor; that bug is gone — each hook now backs a distinct
-    # residual fork gated by cfg.use_split_qkv_input / cfg.use_attn_in).
+    # hook_mlp_in is a direct HookPoint on this class (not aliased) so it can
+    # fire pre-ln2; see __init__. The post-ln2 mlp input stays at block.mlp.hook_in.
     hook_aliases = {
         "hook_resid_pre": "hook_in",
         "hook_resid_mid": "ln2.hook_in",
@@ -49,7 +47,6 @@ class BlockBridge(GeneralizedComponent):
         "hook_q_input": "attn.hook_q_input",
         "hook_k_input": "attn.hook_k_input",
         "hook_v_input": "attn.hook_v_input",
-        "hook_mlp_in": "mlp.hook_in",
         "hook_mlp_out": "mlp.hook_out",
     }
 
@@ -105,6 +102,49 @@ class BlockBridge(GeneralizedComponent):
         )
 
         self._original_block_forward: Optional[Callable[..., Any]] = None
+        self._pre_ln_capture_wired: bool = False
+        # Fires pre-ln2 so patches re-flow through ln2 → mlp; see #1317.
+        self.hook_mlp_in = HookPoint()
+
+    def _maybe_wire_pre_ln_capture(self) -> None:
+        """Install ln1/ln2 forward_pre_hooks that feed the bridge's pre-LN hooks (#1317).
+
+        Idempotent. Skips when ln1/ln2 or their HF targets aren't wired.
+        """
+        if self._pre_ln_capture_wired:
+            return
+        from transformer_lens.model_bridge.generalized_components.attention import (
+            AttentionBridge,
+        )
+
+        ln1 = self.submodules.get("ln1") if self.submodules else None
+        attn = self.submodules.get("attn") if self.submodules else None
+        if ln1 is not None and isinstance(attn, AttentionBridge):
+            ln1_hf = getattr(ln1, "original_component", None)
+            if ln1_hf is not None:
+
+                def _capture_pre_ln1(_module: torch.nn.Module, args: tuple) -> None:
+                    if args and isinstance(args[0], torch.Tensor):
+                        attn._captured_pre_ln_residual = args[0]
+
+                ln1_hf.register_forward_pre_hook(_capture_pre_ln1)
+                attn._ln1_module = ln1_hf
+
+        ln2 = self.submodules.get("ln2") if self.submodules else None
+        if ln2 is not None:
+            ln2_hf = getattr(ln2, "original_component", None)
+            if ln2_hf is not None:
+                hook_mlp_in = self.hook_mlp_in
+
+                def _capture_pre_ln2(_module: torch.nn.Module, args: tuple) -> Any:
+                    if args and isinstance(args[0], torch.Tensor):
+                        hooked = hook_mlp_in(args[0])
+                        return (hooked,) + args[1:]
+                    return None
+
+                ln2_hf.register_forward_pre_hook(_capture_pre_ln2)
+
+        self._pre_ln_capture_wired = True
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Forward pass through the block bridge.
@@ -124,6 +164,7 @@ class BlockBridge(GeneralizedComponent):
                 f"Original component not set for {self.name}. Call set_original_component() first."
             )
 
+        self._maybe_wire_pre_ln_capture()
         self._check_stop_at_layer(*args, **kwargs)
         args, kwargs = self._hook_input_hidden_states(args, kwargs)
 

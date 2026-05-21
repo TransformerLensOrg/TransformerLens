@@ -340,16 +340,25 @@ class JointQKVAttentionBridge(AttentionBridge):
         n_kv_heads = int(getattr(cfg, "n_key_value_heads", None) or n_heads)
         d_head = int(getattr(cfg, "d_head", 0) or (int(cfg.d_model) // n_heads))
         use_split = bool(getattr(cfg, "use_split_qkv_input", False))
+        # #1317: fork pre-LN when available so hook patches match legacy.
+        captured = self._captured_pre_ln_residual
+        source = captured if captured is not None else hidden_states
         if use_split:
-            q_in = einops.repeat(hidden_states, "b s d -> b s h d", h=n_heads).contiguous()
-            k_in = einops.repeat(hidden_states, "b s d -> b s h d", h=n_kv_heads).contiguous()
-            v_in = einops.repeat(hidden_states, "b s d -> b s h d", h=n_kv_heads).contiguous()
+            q_in = einops.repeat(source, "b s d -> b s h d", h=n_heads).contiguous()
+            k_in = einops.repeat(source, "b s d -> b s h d", h=n_kv_heads).contiguous()
+            v_in = einops.repeat(source, "b s d -> b s h d", h=n_kv_heads).contiguous()
             q_in = self.hook_q_input(q_in)
             k_in = self.hook_k_input(k_in)
             v_in = self.hook_v_input(v_in)
+            if captured is not None:
+                q_in = self._apply_ln1_per_head(q_in)
+                k_in = self._apply_ln1_per_head(k_in)
+                v_in = self._apply_ln1_per_head(v_in)
         else:
-            attn_in = einops.repeat(hidden_states, "b s d -> b s h d", h=n_heads).contiguous()
+            attn_in = einops.repeat(source, "b s d -> b s h d", h=n_heads).contiguous()
             attn_in = self.hook_attn_in(attn_in)
+            if captured is not None:
+                attn_in = self._apply_ln1_per_head(attn_in)
             q_in = attn_in
             if n_kv_heads != n_heads:
                 k_in = attn_in[..., :n_kv_heads, :].contiguous()

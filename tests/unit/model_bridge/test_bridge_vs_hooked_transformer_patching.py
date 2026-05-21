@@ -1,15 +1,7 @@
-"""Bridge vs HookedTransformer parity test for cross-run Q/K/V patching.
+"""Bridge vs HookedTransformer parity tests for cross-run Q/K/V/attn_in patching.
 
-Deliberate strict-xfail: the bridge forks Q/K/V inputs post-ln1; legacy TL
-forks pre-ln1. Pure ablations (zero, mean) are unaffected by the placement,
-but a cross-run patch — copy a cached residual from run A into run B's
-`hook_q_input` — lands in Q's projection already normed for run A's
-distribution on the bridge, and pre-norm-then-re-normed on legacy. The logits
-diverge.
-
-This test makes the divergence a load-bearing CI signal. When someone ships
-pre-ln1 placement (see docs/rfcs/FOLLOWUP-pre-ln-split-qkv.md), the strict
-xfail forces them to flip this test to passing in the same PR.
+Issue #1317 fix: bridge forks Q/K/V inputs pre-ln1 via BlockBridge's ln1
+forward_pre_hook capture, matching legacy HookedTransformer semantics.
 """
 from __future__ import annotations
 
@@ -22,57 +14,98 @@ from transformer_lens.model_bridge import TransformerBridge
 _MODEL = "EleutherAI/pythia-14m"
 
 
-@pytest.mark.slow
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "Bridge forks Q/K/V inputs post-ln1; legacy HookedTransformer forks "
-        "pre-ln1. Cross-run residual patches land in different coordinate "
-        "systems, so logits diverge. Tracked in "
-        "docs/rfcs/FOLLOWUP-pre-ln-split-qkv.md — flip to passing in the same "
-        "PR that ships pre-ln1 placement."
-    ),
-)
-def test_cross_run_q_input_patch_matches_legacy() -> None:
-    """Copy a cached residual from prompt A into hook_q_input on prompt B; bridge and HT logits should match."""
+def _build_pair() -> tuple[TransformerBridge, HookedTransformer]:
     bridge = TransformerBridge.boot_transformers(_MODEL, device="cpu")
     bridge.enable_compatibility_mode(no_processing=True)
     ht = HookedTransformer.from_pretrained_no_processing(_MODEL, device="cpu")
-    bridge.set_use_split_qkv_input(True)
-    ht.set_use_split_qkv_input(True)
+    return bridge, ht
 
+
+def _baseline_logit_diff(
+    bridge: TransformerBridge, ht: HookedTransformer, prompt: torch.Tensor
+) -> float:
+    # Bridge vs HT differ slightly without any hooks (different LayerNorm impls).
+    with torch.no_grad():
+        return (bridge(prompt) - ht(prompt)).abs().max().item()
+
+
+def _cross_run_patch_parity(
+    bridge: TransformerBridge,
+    ht: HookedTransformer,
+    bridge_hook_path: str,
+    ht_hook_path: str,
+) -> None:
+    """Cache a hook tensor from prompt A, patch into prompt B on both runtimes; logits should match."""
     prompt_a = torch.arange(1, 9).unsqueeze(0)
     prompt_b = torch.arange(10, 18).unsqueeze(0)
 
-    # Cache a residual from run A (pre-ln on HT; the bridge has no pre-ln hook,
-    # so we cache the same conceptual slot — hook_q_input post-ln) and splice
-    # it into run B's hook_q_input at layer 0.
     cache_a_bridge: dict = {}
     cache_a_ht: dict = {}
 
-    def cap_bridge(tensor, hook):
-        cache_a_bridge["q_in"] = tensor.detach().clone()
-        return tensor
+    def _cap(cache: dict) -> "object":
+        def _inner(tensor: torch.Tensor, hook: object) -> torch.Tensor:
+            cache["v"] = tensor.detach().clone()
+            return tensor
 
-    def cap_ht(tensor, hook):
-        cache_a_ht["q_in"] = tensor.detach().clone()
-        return tensor
+        return _inner
 
-    bridge.run_with_hooks(prompt_a, fwd_hooks=[("blocks.0.attn.hook_q_input", cap_bridge)])
-    ht.run_with_hooks(prompt_a, fwd_hooks=[("blocks.0.hook_q_input", cap_ht)])
+    def _patch(cache: dict) -> "object":
+        def _inner(tensor: torch.Tensor, hook: object) -> torch.Tensor:
+            return cache["v"]
 
-    def patch_bridge(tensor, hook):
-        return cache_a_bridge["q_in"]
+        return _inner
 
-    def patch_ht(tensor, hook):
-        return cache_a_ht["q_in"]
+    bridge.run_with_hooks(prompt_a, fwd_hooks=[(bridge_hook_path, _cap(cache_a_bridge))])
+    ht.run_with_hooks(prompt_a, fwd_hooks=[(ht_hook_path, _cap(cache_a_ht))])
+
+    # Captured tensors should agree to within baseline noise — proves the
+    # bridge is reading from the correct coordinate frame, not just that
+    # patches happen to flow correctly.
+    captured_diff = (cache_a_bridge["v"] - cache_a_ht["v"]).abs().max().item()
+    assert captured_diff < 1e-2, (
+        f"Bridge {bridge_hook_path} captures different values than HT "
+        f"{ht_hook_path}: max diff {captured_diff:.3e}"
+    )
 
     bridge_logits = bridge.run_with_hooks(
-        prompt_b, fwd_hooks=[("blocks.0.attn.hook_q_input", patch_bridge)]
+        prompt_b, fwd_hooks=[(bridge_hook_path, _patch(cache_a_bridge))]
     )
-    ht_logits = ht.run_with_hooks(prompt_b, fwd_hooks=[("blocks.0.hook_q_input", patch_ht)])
+    ht_logits = ht.run_with_hooks(prompt_b, fwd_hooks=[(ht_hook_path, _patch(cache_a_ht))])
 
-    assert torch.allclose(bridge_logits, ht_logits, atol=1e-4), (
-        f"Bridge vs HT cross-run patch logits diverge: max "
-        f"{(bridge_logits - ht_logits).abs().max().item():.3e}"
+    baseline = _baseline_logit_diff(bridge, ht, prompt_b)
+    patched = (bridge_logits - ht_logits).abs().max().item()
+    assert patched < 10 * max(baseline, 1e-5), (
+        f"Bridge vs HT cross-run patch logits diverge {patched:.3e}, "
+        f">10x the unhooked baseline {baseline:.3e}"
+    )
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("hook_slot", ["q_input", "k_input", "v_input"])
+@pytest.mark.parametrize("layer", [0, 3])
+def test_split_qkv_cross_run_patch_matches_legacy(hook_slot: str, layer: int) -> None:
+    """Each of Q, K, V at multiple layers — independent hook surfaces, shared fork code path."""
+    bridge, ht = _build_pair()
+    bridge.set_use_split_qkv_input(True)
+    ht.set_use_split_qkv_input(True)
+    _cross_run_patch_parity(
+        bridge,
+        ht,
+        bridge_hook_path=f"blocks.{layer}.attn.hook_{hook_slot}",
+        ht_hook_path=f"blocks.{layer}.hook_{hook_slot}",
+    )
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("layer", [0, 3])
+def test_attn_in_cross_run_patch_matches_legacy(layer: int) -> None:
+    """The shared attn_in fork uses the same captured pre-LN value, separate from split-QKV."""
+    bridge, ht = _build_pair()
+    bridge.set_use_attn_in(True)
+    ht.set_use_attn_in(True)
+    _cross_run_patch_parity(
+        bridge,
+        ht,
+        bridge_hook_path=f"blocks.{layer}.attn.hook_attn_in",
+        ht_hook_path=f"blocks.{layer}.hook_attn_in",
     )

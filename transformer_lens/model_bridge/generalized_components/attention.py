@@ -101,16 +101,15 @@ class AttentionBridge(GeneralizedComponent):
         # by cfg.use_attn_result; the HookPoint exists unconditionally so
         # run_with_cache key lookups never miss.
         self.hook_result = HookPoint()
-        # Independent residual copies feeding Q / K / V (and the shared
-        # `use_attn_in` fork). Fire at [batch, pos, H, d_model] only when
-        # cfg.use_split_qkv_input or cfg.use_attn_in is set. Placement is
-        # post-ln1 — see test_bridge_vs_hooked_transformer_patching.py
-        # (strict xfail) for the semantic divergence from legacy TL's pre-LN
-        # fork and the follow-up work it tracks.
+        # Pre-ln1 fork hooks ([B, S, H, D]) gated by use_split_qkv_input /
+        # use_attn_in; falls back to post-ln1 if BlockBridge can't wire ln1.
+        # See #1317.
         self.hook_attn_in = HookPoint()
         self.hook_q_input = HookPoint()
         self.hook_k_input = HookPoint()
         self.hook_v_input = HookPoint()
+        self._captured_pre_ln_residual: Optional[torch.Tensor] = None
+        self._ln1_module: Optional[torch.nn.Module] = None
         if (
             hasattr(config, "positional_embedding_type")
             and config.positional_embedding_type == "rotary"
@@ -137,6 +136,13 @@ class AttentionBridge(GeneralizedComponent):
         layer_idx_raw = getattr(original_component, "layer_idx", None)
         if layer_idx_raw is not None:
             self._layer_idx = int(layer_idx_raw)
+
+    def _apply_ln1_per_head(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply ln1 to [B, S, H, D] with H folded into the batch. Identity if ln1 unwired."""
+        if self._ln1_module is None:
+            return x
+        b, s, h, d = x.shape
+        return self._ln1_module(x.reshape(b * s * h, d)).reshape(b, s, h, d)
 
     def setup_hook_compatibility(self) -> None:
         """Setup hook compatibility transformations to match HookedTransformer behavior.
@@ -677,6 +683,8 @@ class AttentionBridge(GeneralizedComponent):
                 hooked = hooked.to(dtype=target_dtype)
             args = (hooked,) + args[1:]
         output = self.original_component(*args, **kwargs)
+        # Prevent stale capture from leaking into the next forward.
+        self._captured_pre_ln_residual = None
         if isinstance(output, tuple) and len(output) >= 2:
             # output[0] is attention output
             # output[1] may be attention weights (pattern) or position_bias (T5)
