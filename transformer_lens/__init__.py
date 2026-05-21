@@ -31,6 +31,13 @@ except ImportError:
 
 from .SVDInterpreter import SVDInterpreter
 
+import os as _os  # noqa: E402
+
+if _os.environ.get("TRANSFORMERLENS_HF_RETRY") == "1":
+    from .utilities.hf_utils import enable_hf_retry as _enable_hf_retry  # noqa: E402
+
+    _enable_hf_retry()
+
 __all__ = [
     "HookedTransformerConfig",
     "FactoredMatrix",

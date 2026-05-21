@@ -96,7 +96,7 @@ def test_n_params_total_returns_int():
     assert isinstance(model.n_params_total, int)
 
 
-def test_n_params_total_real_model_gpt2():
+def test_n_params_total_real_model_gpt2(gpt2_hooked_processed):
     """End-to-end sanity check on a real loaded model (GPT-2, cached by CI).
 
     Note: TL's GPT-2 reports more parameters than HuggingFace's because HF ties
@@ -109,7 +109,7 @@ def test_n_params_total_real_model_gpt2():
     iterating ``model.parameters()`` on the loaded model — i.e. the property
     correctly reflects what's actually stored.
     """
-    tl = HookedTransformer.from_pretrained("gpt2", device="cpu")
+    tl = gpt2_hooked_processed
     expected = sum(p.numel() for p in tl.parameters())
     assert tl.n_params_total == expected
     # Sanity: GPT-2 is ~124M-163M params depending on tying; ours falls in this band.
