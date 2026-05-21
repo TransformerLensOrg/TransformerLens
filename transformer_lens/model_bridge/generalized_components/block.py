@@ -6,7 +6,8 @@ from __future__ import annotations
 
 import inspect
 import re
-from typing import Any, Callable, Dict, Optional
+import weakref
+from typing import Any, Callable, Dict, Optional, cast
 
 import torch
 
@@ -103,13 +104,19 @@ class BlockBridge(GeneralizedComponent):
 
         self._original_block_forward: Optional[Callable[..., Any]] = None
         self._pre_ln_capture_wired: bool = False
-        # Fires pre-ln2 so patches re-flow through ln2 → mlp; see #1317.
+        self._pre_ln_capture_handles: list[torch.utils.hooks.RemovableHandle] = []
+        # Fallback for _read_use_hook_mlp_in when block.config is None.
+        self._use_hook_mlp_in: bool = False
+        # Fires pre-ln2 when use_hook_mlp_in is set. See #1317.
         self.hook_mlp_in = HookPoint()
 
     def _maybe_wire_pre_ln_capture(self) -> None:
         """Install ln1/ln2 forward_pre_hooks that feed the bridge's pre-LN hooks (#1317).
 
-        Idempotent. Skips when ln1/ln2 or their HF targets aren't wired.
+        Hooks register on the NormalizationBridge instance, not on
+        ``original_component`` — the manual (non-native-autograd) bridge
+        forward never calls the raw module, so a hook there would silently miss
+        on most adapters. Idempotent.
         """
         if self._pre_ln_capture_wired:
             return
@@ -119,32 +126,53 @@ class BlockBridge(GeneralizedComponent):
 
         ln1 = self.submodules.get("ln1") if self.submodules else None
         attn = self.submodules.get("attn") if self.submodules else None
-        if ln1 is not None and isinstance(attn, AttentionBridge):
-            ln1_hf = getattr(ln1, "original_component", None)
-            if ln1_hf is not None:
+        if (
+            ln1 is not None
+            and isinstance(attn, AttentionBridge)
+            and getattr(attn, "supports_split_qkv_fork", False)
+            and getattr(ln1, "original_component", None) is not None
+        ):
+            attn_ref = cast(AttentionBridge, weakref.proxy(attn))
 
-                def _capture_pre_ln1(_module: torch.nn.Module, args: tuple) -> None:
-                    if args and isinstance(args[0], torch.Tensor):
-                        attn._captured_pre_ln_residual = args[0]
+            def _capture_pre_ln1(_module: torch.nn.Module, args: tuple) -> None:
+                if args and isinstance(args[0], torch.Tensor):
+                    attn_ref._captured_pre_ln_residual = args[0]
 
-                ln1_hf.register_forward_pre_hook(_capture_pre_ln1)
-                attn._ln1_module = ln1_hf
+            handle = ln1.register_forward_pre_hook(_capture_pre_ln1)
+            self._pre_ln_capture_handles.append(handle)
+            attn._ln1_module = ln1.original_component
 
         ln2 = self.submodules.get("ln2") if self.submodules else None
-        if ln2 is not None:
-            ln2_hf = getattr(ln2, "original_component", None)
-            if ln2_hf is not None:
-                hook_mlp_in = self.hook_mlp_in
+        if ln2 is not None and getattr(ln2, "original_component", None) is not None:
+            hook_mlp_in = self.hook_mlp_in
+            block_ref = weakref.proxy(self)
 
-                def _capture_pre_ln2(_module: torch.nn.Module, args: tuple) -> Any:
-                    if args and isinstance(args[0], torch.Tensor):
-                        hooked = hook_mlp_in(args[0])
-                        return (hooked,) + args[1:]
+            def _capture_pre_ln2(_module: torch.nn.Module, args: tuple) -> Any:
+                if not block_ref._read_use_hook_mlp_in():
                     return None
+                if args and isinstance(args[0], torch.Tensor):
+                    hooked = hook_mlp_in(args[0])
+                    return (hooked,) + args[1:]
+                return None
 
-                ln2_hf.register_forward_pre_hook(_capture_pre_ln2)
+            handle = ln2.register_forward_pre_hook(_capture_pre_ln2)
+            self._pre_ln_capture_handles.append(handle)
 
         self._pre_ln_capture_wired = True
+
+    def _teardown_pre_ln_capture(self) -> None:
+        """Remove the ln1/ln2 forward_pre_hooks installed by _maybe_wire_pre_ln_capture."""
+        for handle in self._pre_ln_capture_handles:
+            handle.remove()
+        self._pre_ln_capture_handles.clear()
+        self._pre_ln_capture_wired = False
+
+    def _read_use_hook_mlp_in(self) -> bool:
+        """Prefer ``block.config.use_hook_mlp_in``; fall back to the block-local flag."""
+        cfg = self.config
+        if cfg is not None and hasattr(cfg, "use_hook_mlp_in"):
+            return bool(cfg.use_hook_mlp_in)
+        return self._use_hook_mlp_in
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Forward pass through the block bridge.
@@ -325,8 +353,9 @@ class MLABlockBridge(BlockBridge):
     q_a_proj→q_a_layernorm→q_b_proj, and K/V share a joint kv_a_proj_with_mqa
     entry point. There is no single HookPoint that represents "input that
     becomes Q/K/V", so the block-level ``hook_q_input``/``hook_k_input``/
-    ``hook_v_input`` aliases do not apply. Type-level distinction means a reader
-    of the adapter sees ``MLABlockBridge`` and knows those hooks are absent.
+    ``hook_v_input``/``hook_attn_in`` aliases do not apply. Type-level
+    distinction means a reader of the adapter sees ``MLABlockBridge`` and
+    knows those hooks are absent.
     """
 
     def __init__(
@@ -344,7 +373,7 @@ class MLABlockBridge(BlockBridge):
         )
         if self.hook_aliases is BlockBridge.hook_aliases:
             self.hook_aliases = dict(self.hook_aliases)
-        for alias in ("hook_q_input", "hook_k_input", "hook_v_input"):
+        for alias in ("hook_q_input", "hook_k_input", "hook_v_input", "hook_attn_in"):
             self.hook_aliases.pop(alias, None)
 
 
