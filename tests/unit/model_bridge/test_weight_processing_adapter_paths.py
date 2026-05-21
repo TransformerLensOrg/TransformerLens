@@ -8,7 +8,6 @@ import pytest
 import torch
 from transformers import GPT2LMHeadModel
 
-from transformer_lens import HookedTransformer
 from transformer_lens import utilities as utils
 from transformer_lens.config.transformer_bridge_config import TransformerBridgeConfig
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter

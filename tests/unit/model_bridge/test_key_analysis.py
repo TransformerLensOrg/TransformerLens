@@ -6,7 +6,6 @@ This test helps understand key translation patterns for debugging.
 
 from transformers import GPT2LMHeadModel
 
-from transformer_lens import HookedTransformer
 from transformer_lens.weight_processing import ProcessWeights
 
 

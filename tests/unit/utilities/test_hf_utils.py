@@ -137,9 +137,7 @@ class TestEnableHfRetry:
     def test_session_fixture_wraps_autotokenizer(self) -> None:
         from transformers import AutoTokenizer
 
-        assert getattr(
-            AutoTokenizer.from_pretrained, hf_utils._TL_RETRY_WRAPPED_ATTR, False
-        )
+        assert getattr(AutoTokenizer.from_pretrained, hf_utils._TL_RETRY_WRAPPED_ATTR, False)
 
     def test_idempotent(self) -> None:
         """A second enable_hf_retry call must not re-wrap (or otherwise break) the classes."""

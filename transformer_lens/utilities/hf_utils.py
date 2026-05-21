@@ -81,7 +81,7 @@ def enable_hf_retry() -> None:
             return call_hf_with_retry(_orig, klass, *args, **kwargs)
 
         setattr(_wrapped, _TL_RETRY_WRAPPED_ATTR, True)
-        cls.from_pretrained = classmethod(_wrapped)
+        cls.from_pretrained = classmethod(_wrapped)  # type: ignore[method-assign,assignment]
 
 
 def call_hf_with_retry(
