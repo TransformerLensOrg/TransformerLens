@@ -137,12 +137,12 @@ class KeyTrackingProcessWeights:
         return self.state_dict.copy()
 
 
-def test_key_analysis():
+def test_key_analysis(gpt2_hooked_processed):
     """Analyze what keys ProcessWeights tries to access."""
     print("=== ANALYZING PROCESSWEIGHTS KEY ACCESS ===")
 
     print("\n1. Loading models...")
-    hooked_model = HookedTransformer.from_pretrained("gpt2", device="cpu")
+    hooked_model = gpt2_hooked_processed
     hf_model = GPT2LMHeadModel.from_pretrained("gpt2")
 
     print("\n2. Getting state dicts...")

@@ -64,6 +64,38 @@ def _enable_hf_retry_for_tests():
     yield
 
 
+@pytest.fixture(scope="session")
+def gpt2_tokenizer():
+    """Session-scoped GPT-2 tokenizer (no add_bos_token).
+
+    Shared across the unit, integration, and acceptance test trees to avoid
+    repeated AutoTokenizer.from_pretrained("gpt2") calls — each one triggers
+    a HuggingFace Hub freshness check even when the tokenizer is cached.
+    Tokenizers are immutable for read-only use, so session scope is safe.
+    """
+    from transformers import AutoTokenizer
+
+    return AutoTokenizer.from_pretrained("gpt2")
+
+
+@pytest.fixture(scope="session")
+def gpt2_hooked_processed():
+    """Session-scoped HookedTransformer gpt2 with default weight processing.
+
+    Top-level fixture for unit tests and any other consumer without a closer
+    fixture in scope. Sub-conftests in tests/acceptance/model_bridge/ and
+    tests/integration/model_bridge/ define their own same-named fixture,
+    which shadows this one within those subtrees.
+
+    Safe for read-only use: ``.parameters()``, ``.state_dict()``,
+    ``.to_tokens()``, ``.cfg``. Do NOT mutate (no ``.process_weights_()``,
+    no permanent hooks, no ``.train()``/``.eval()`` that you don't restore).
+    """
+    from transformer_lens import HookedTransformer
+
+    return HookedTransformer.from_pretrained("gpt2", device="cpu")
+
+
 def pytest_sessionfinish(session, exitstatus):
     """Clean up at the end of test session."""
     if torch.cuda.is_available():

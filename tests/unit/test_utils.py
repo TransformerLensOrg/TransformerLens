@@ -538,7 +538,7 @@ class TestTokenizeAndConcatenate:
         n = len(output)
         assert (output == clean[:n]).all()
 
-    def test_iterable_dataset_with_set_format_false(self):
+    def test_iterable_dataset_with_set_format_false(self, gpt2_tokenizer):
         """``IterableDataset`` input + ``set_format=False`` returns a usable iterable.
 
         Regression test for the path requested in #473: ``set_format(type="torch")``
@@ -547,9 +547,8 @@ class TestTokenizeAndConcatenate:
         """
         from datasets import Dataset
         from datasets.iterable_dataset import IterableDataset
-        from transformers import AutoTokenizer
 
-        tokenizer = AutoTokenizer.from_pretrained("gpt2")
+        tokenizer = gpt2_tokenizer
         source = Dataset.from_dict({"text": ["hello world"] * 4})
         iterable = source.to_iterable_dataset()
         assert isinstance(iterable, IterableDataset)
@@ -612,6 +611,12 @@ def test_tokenize_and_concatenate_no_spurious_sequence_length_warning():
 def test_tokenize_and_concatenate_short_sequence_no_invalid_tokens():
     """
     When the tokenizer has no pad token, output should only contain token IDs in the model's vocab.
+
+    Loads a fresh tokenizer rather than using the session-scoped ``gpt2_tokenizer``
+    fixture: this test asserts ``pad_token is None`` at start, but
+    ``utils.tokenize_and_concatenate(..., add_bos_token=True)`` mutates the
+    tokenizer's pad_token in-place, so a shared session fixture would carry
+    state from earlier tests in this file.
     """
     from datasets import Dataset
     from transformers import AutoTokenizer
