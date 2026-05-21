@@ -35,8 +35,36 @@ The bridge currently covers 50+ architectures spanning Llama, Mistral, Qwen, Gem
 
 The bridge is organized around a small set of generalized components wired together by an architecture adapter, which keeps the model code much easier to navigate than the older unified implementation. For a tour of the bridge's canonical hook names, the component layout, and the expected tensor shapes at each hook point, see the [Model Structure](model_structure.md) page. A small alias layer preserves the older TransformerLens hook names (e.g. `blocks.{i}.hook_resid_pre`) so legacy notebooks keep working — but new code should prefer the canonical names.
 
+## Environment Variables
+
+TransformerLens reads a handful of environment variables. None are required for basic use; each enables a specific opt-in behavior.
+
+### `HF_TOKEN`
+
+Your [HuggingFace access token](https://huggingface.co/settings/tokens). Required for gated models (Llama, Mistral/Mixtral, Gemma families, and others) and used to authenticate any HuggingFace API call TransformerLens makes on your behalf. You will need to accept any model-specific agreements on the HuggingFace Hub before TransformerLens can load a gated model; if you skip this step, the error message will link you directly to the agreement page.
+
+```bash
+export HF_TOKEN="hf_..."
+```
+
+### `TRANSFORMERLENS_HF_RETRY`
+
+Set to `"1"` to wrap `transformers.AutoConfig.from_pretrained`, `AutoModel.from_pretrained`, `AutoTokenizer.from_pretrained`, `AutoProcessor.from_pretrained`, and `AutoFeatureExtractor.from_pretrained` with a retry-on-429 helper. When HuggingFace returns HTTP 429 (rate-limited), the call is retried up to three times with exponential backoff, honoring the `Retry-After` response header when present.
+
+Intended primarily for CI environments where parallel workflow runs can trip HF's rate limits. Off by default so production callers see unmodified `transformers` behavior. The wrapping is idempotent and applied globally to the class methods; see [`enable_hf_retry`](https://github.com/TransformerLensOrg/TransformerLens/blob/main/transformer_lens/utilities/hf_utils.py) for the implementation. The TransformerLens test suite enables this automatically via `tests/conftest.py`.
+
+```bash
+export TRANSFORMERLENS_HF_RETRY=1
+```
+
+### `TRANSFORMERLENS_ALLOW_MPS`
+
+Set to `"1"` to opt in to Apple Silicon (MPS) as a target device for model inference. Off by default because not all PyTorch operations used by TransformerLens have stable MPS implementations across PyTorch versions; if you enable this and hit a backend error, the most reliable fallback is to leave the variable unset and let TransformerLens select CPU instead.
+
+```bash
+export TRANSFORMERLENS_ALLOW_MPS=1
+```
+
 ## Huggingface Gated Access
 
-Some of the models available in TransformerLens require gated access to be used. Luckily TransformerLens provides a way to access those models via the configuration of an environmental variable. Simply configure your [HuggingFace access token](https://huggingface.co/settings/tokens) as `HF_TOKEN` in your environment.
-
-You will need to make sure you accept the agreements for any gated models, but once you do, the models will work with TransformerLens without issue. If you attempt to use one of these models before you have accepted any related agreements, the console output will be very helpful and point you to the URL where you need to accept an agreement. The most popular gated families supported by TransformerLens are the Llama, Mistral/Mixtral, and Gemma models.
+For convenience, gated-model access depends only on `HF_TOKEN` above. Once you have set the token and accepted any model-specific agreements on the HuggingFace Hub, gated models load through TransformerLens with no additional configuration. The most popular gated families supported by TransformerLens are the Llama, Mistral/Mixtral, and Gemma models.

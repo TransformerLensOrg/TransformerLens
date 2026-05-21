@@ -50,6 +50,20 @@ def pytest_configure(config):
         torch.cuda.manual_seed_all(42)
 
 
+@pytest.fixture(autouse=True, scope="session")
+def _enable_hf_retry_for_tests():
+    """Wrap HuggingFace Auto*.from_pretrained with retry-on-429 for the entire
+    test session.
+
+    Deferred to fixture (rather than pytest_configure) so jaxtyping's import
+    hook can instrument transformer_lens before we import the helper.
+    """
+    from transformer_lens.utilities.hf_utils import enable_hf_retry
+
+    enable_hf_retry()
+    yield
+
+
 def pytest_sessionfinish(session, exitstatus):
     """Clean up at the end of test session."""
     if torch.cuda.is_available():

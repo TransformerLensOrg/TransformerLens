@@ -8,10 +8,13 @@ from __future__ import annotations
 import errno
 import inspect
 import json
+import logging
 import os
+import random
 import shutil
 import stat
-from typing import Any, Callable, Dict
+import time
+from typing import Any, Callable, Dict, TypeVar
 
 import torch
 from datasets.arrow_dataset import Dataset
@@ -21,6 +24,109 @@ from huggingface_hub import hf_hub_download
 from huggingface_hub.constants import HF_HUB_CACHE
 
 CACHE_DIR = HF_HUB_CACHE
+logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
+
+_HF_RETRY_MAX_ATTEMPTS = 3
+_HF_RETRY_BASE_DELAY_SECONDS = 10.0
+_HF_RETRY_MAX_DELAY_SECONDS = 120.0
+
+
+def _is_hf_rate_limit_error(exc: BaseException) -> bool:
+    """Duck-typed check for HTTP 429 — covers HfHubHTTPError, requests.HTTPError, and subclasses."""
+    response = getattr(exc, "response", None)
+    return response is not None and getattr(response, "status_code", None) == 429
+
+
+def _retry_after_seconds(exc: BaseException) -> float | None:
+    """Parse the Retry-After header from a 429 response, if present and numeric."""
+    response = getattr(exc, "response", None)
+    if response is None:
+        return None
+    headers = getattr(response, "headers", None) or {}
+    raw = headers.get("Retry-After") if hasattr(headers, "get") else None
+    if raw is None:
+        return None
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+_TL_RETRY_WRAPPED_ATTR = "_tl_hf_retry_wrapped"
+
+
+def enable_hf_retry() -> None:
+    """Globally wrap transformers ``Auto*.from_pretrained`` with retry-on-429.
+
+    After calling this, every load through ``AutoConfig.from_pretrained``,
+    ``AutoModel.from_pretrained``, ``AutoTokenizer.from_pretrained``,
+    ``AutoProcessor.from_pretrained``, or ``AutoFeatureExtractor.from_pretrained``
+    will go through :func:`call_hf_with_retry`, retrying on HTTP 429 with
+    exponential backoff (honoring the ``Retry-After`` header when present).
+
+    Intended for CI / test environments that hit HF rate limits during parallel
+    workflow runs. Opt-in via the ``TRANSFORMERLENS_HF_RETRY=1`` environment
+    variable or by calling this function explicitly. Not enabled by default so
+    that production callers see unmodified ``transformers`` behavior.
+
+    Idempotent: safe to call multiple times; subsequent calls are no-ops.
+    """
+    from transformers import (
+        AutoConfig,
+        AutoFeatureExtractor,
+        AutoModel,
+        AutoProcessor,
+        AutoTokenizer,
+    )
+
+    for cls in (AutoConfig, AutoModel, AutoTokenizer, AutoProcessor, AutoFeatureExtractor):
+        original = cls.from_pretrained
+        if getattr(original, _TL_RETRY_WRAPPED_ATTR, False):
+            continue
+        underlying = original.__func__ if hasattr(original, "__func__") else original
+
+        def _wrapped(klass, *args: Any, _orig: Any = underlying, **kwargs: Any) -> Any:
+            return call_hf_with_retry(_orig, klass, *args, **kwargs)
+
+        setattr(_wrapped, _TL_RETRY_WRAPPED_ATTR, True)
+        cls.from_pretrained = classmethod(_wrapped)
+
+
+def call_hf_with_retry(
+    func: Callable[..., T],
+    *args: Any,
+    max_attempts: int = _HF_RETRY_MAX_ATTEMPTS,
+    base_delay: float = _HF_RETRY_BASE_DELAY_SECONDS,
+    **kwargs: Any,
+) -> T:
+    """Call ``func(*args, **kwargs)``, retrying on HTTP 429 from HuggingFace Hub.
+
+    Behavior:
+    - Honors the ``Retry-After`` response header when present.
+    - Otherwise uses exponential backoff with ±20% jitter, capped at
+      ``_HF_RETRY_MAX_DELAY_SECONDS``.
+    - Only retries on 429; all other exceptions propagate immediately.
+    """
+    for attempt in range(max_attempts):
+        try:
+            return func(*args, **kwargs)
+        except Exception as exc:
+            if not _is_hf_rate_limit_error(exc) or attempt == max_attempts - 1:
+                raise
+            wait = _retry_after_seconds(exc)
+            if wait is None:
+                wait = min(base_delay * (2**attempt), _HF_RETRY_MAX_DELAY_SECONDS)
+                wait *= 0.8 + 0.4 * random.random()
+            logger.warning(
+                "HuggingFace Hub rate-limited (HTTP 429); retrying in %.1fs (attempt %d/%d)",
+                wait,
+                attempt + 1,
+                max_attempts,
+            )
+            time.sleep(wait)
+    raise RuntimeError("call_hf_with_retry exited loop without returning or raising")
 
 
 def get_hf_token() -> str | None:
@@ -75,7 +181,8 @@ def download_file_from_hf(
 
     If it's a Torch file without the ".pth" extension, set force_is_torch=True to load it as a Torch object.
     """
-    file_path = hf_hub_download(
+    file_path = call_hf_with_retry(
+        hf_hub_download,
         repo_id=repo_name,
         filename=file_name,
         subfolder=subfolder,

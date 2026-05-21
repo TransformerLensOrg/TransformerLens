@@ -31,6 +31,17 @@ except ImportError:
 
 from .SVDInterpreter import SVDInterpreter
 
+# Opt-in: wrap transformers Auto*.from_pretrained with retry-on-429.
+# Set TRANSFORMERLENS_HF_RETRY=1 in environments that hit HuggingFace rate limits
+# (typically CI). Off by default so normal users see unmodified HF behavior.
+# See transformer_lens.utilities.hf_utils.enable_hf_retry for details.
+import os as _os  # noqa: E402
+
+if _os.environ.get("TRANSFORMERLENS_HF_RETRY") == "1":
+    from .utilities.hf_utils import enable_hf_retry as _enable_hf_retry  # noqa: E402
+
+    _enable_hf_retry()
+
 __all__ = [
     "HookedTransformerConfig",
     "FactoredMatrix",
