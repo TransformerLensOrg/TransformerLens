@@ -455,7 +455,7 @@ MODEL_ALIASES: dict[str, list[str]] = {
     "google/medgemma-4b-pt": ["medgemma-4b-pt"],
     "google/vit-base-patch16-224": ["vit", "vit-b", "ViT-B"],
     "google/vit-large-patch16-224": ["vit-l", "ViT-L"],
-    "google/vit-huge-patch14-224": ["vit-h", "ViT-H"],
+    "google/vit-huge-patch14-224-in21k": ["vit-h", "ViT-H", "vit-huge", "vit-huge-patch14-224", "vit-huge-patch14-224-in21k", "google/vit-huge-patch14-224", "google/vit-huge-patch14-224-in21k"],
     "facebook/deit-base-patch16-224": ["deit", "deit-b", "DeiT-B", "facebook/deit-base-patch16-224", "deit-base-patch16-224", "deit-base", "DeiT-base"],
     "facebook/deit-small-patch16-224": ["deit-s", "DeiT-S", "facebook/deit-small-patch16-224", "deit-small-patch16-224", "deit-small", "DeiT-small"],
     "facebook/deit-tiny-patch16-224": ["deit-t", "DeiT-T", "deit-ti", "DeiT-Ti", "deit-tiny-patch16-224", "deit-tiny", "DeiT-tiny"],
