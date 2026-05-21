@@ -60,18 +60,8 @@ _TL_RETRY_WRAPPED_ATTR = "_tl_hf_retry_wrapped"
 def enable_hf_retry() -> None:
     """Globally wrap transformers ``Auto*.from_pretrained`` with retry-on-429.
 
-    After calling this, every load through ``AutoConfig.from_pretrained``,
-    ``AutoModel.from_pretrained``, ``AutoTokenizer.from_pretrained``,
-    ``AutoProcessor.from_pretrained``, or ``AutoFeatureExtractor.from_pretrained``
-    will go through :func:`call_hf_with_retry`, retrying on HTTP 429 with
-    exponential backoff (honoring the ``Retry-After`` header when present).
-
-    Intended for CI / test environments that hit HF rate limits during parallel
-    workflow runs. Opt-in via the ``TRANSFORMERLENS_HF_RETRY=1`` environment
-    variable or by calling this function explicitly. Not enabled by default so
-    that production callers see unmodified ``transformers`` behavior.
-
-    Idempotent: safe to call multiple times; subsequent calls are no-ops.
+    Opt-in via ``TRANSFORMERLENS_HF_RETRY=1`` or by calling this function.
+    Idempotent. See :func:`call_hf_with_retry`.
     """
     from transformers import (
         AutoConfig,
@@ -101,13 +91,10 @@ def call_hf_with_retry(
     base_delay: float = _HF_RETRY_BASE_DELAY_SECONDS,
     **kwargs: Any,
 ) -> T:
-    """Call ``func(*args, **kwargs)``, retrying on HTTP 429 from HuggingFace Hub.
+    """Retry ``func(*args, **kwargs)`` on HTTP 429, honoring ``Retry-After``.
 
-    Behavior:
-    - Honors the ``Retry-After`` response header when present.
-    - Otherwise uses exponential backoff with ±20% jitter, capped at
-      ``_HF_RETRY_MAX_DELAY_SECONDS``.
-    - Only retries on 429; all other exceptions propagate immediately.
+    Exponential backoff with ±20% jitter, capped at ``_HF_RETRY_MAX_DELAY_SECONDS``.
+    Non-429 exceptions propagate immediately.
     """
     for attempt in range(max_attempts):
         try:

@@ -43,16 +43,12 @@ permissions:
   actions: write
   contents: write
 
-# Cancel in-progress runs on the same PR when a new push arrives.
-# Push-to-main, tag, and workflow_call events are not cancelled so that
-# release and deploy jobs always run to completion.
+# Cancel in-progress PR runs on new push; non-PR events (release, tags) are exempt.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-# Enable retry-on-429 for any code path that loads from HuggingFace.
-# Pytest also enables retry via tests/conftest.py; this env var covers any
-# non-pytest invocations (scripts, notebooks, docs builds, etc.).
+# Retry HF 429s in non-pytest invocations; pytest enables via tests/conftest.py.
 env:
   TRANSFORMERLENS_HF_RETRY: "1"
 

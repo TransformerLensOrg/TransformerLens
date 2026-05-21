@@ -76,12 +76,7 @@ class TestBridgeCreationModes:
         assert torch.equal(ref_tokens, bridge_tokens), "Tokenizers should produce identical results"
 
     def test_bridge_configuration_persistence(self):
-        """Test that bridge configuration persists across the boot → enable_compat transition.
-
-        Intentional fresh boot: the assertion is that enable_compatibility_mode() does
-        not destroy ``cfg`` mid-flight. A session-scoped fixture would already have
-        compat enabled and lose the before/after semantic.
-        """
+        # Fresh boot: tests the boot → enable_compat transition.
         bridge = TransformerBridge.boot_transformers("distilgpt2", device="cpu")
 
         # Test configuration before compatibility mode

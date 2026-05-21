@@ -609,15 +609,9 @@ def test_tokenize_and_concatenate_no_spurious_sequence_length_warning():
 
 
 def test_tokenize_and_concatenate_short_sequence_no_invalid_tokens():
-    """
-    When the tokenizer has no pad token, output should only contain token IDs in the model's vocab.
-
-    Loads a fresh tokenizer rather than using the session-scoped ``gpt2_tokenizer``
-    fixture: this test asserts ``pad_token is None`` at start, but
-    ``utils.tokenize_and_concatenate(..., add_bos_token=True)`` mutates the
-    tokenizer's pad_token in-place, so a shared session fixture would carry
-    state from earlier tests in this file.
-    """
+    """When the tokenizer has no pad token, output should only contain token IDs in the model's vocab."""
+    # Fresh tokenizer (not gpt2_tokenizer fixture): the function mutates pad_token
+    # and we assert pad_token is None at the start.
     from datasets import Dataset
     from transformers import AutoTokenizer
 

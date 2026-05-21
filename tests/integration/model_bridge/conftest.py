@@ -1,13 +1,7 @@
-"""Shared fixtures for model_bridge integration tests.
+"""Session fixtures for model_bridge integration tests.
 
-Session-scoped fixtures avoid redundant model loads across test files.
-All models used here must be in the CI cache (see .github/workflows/checks.yml).
-
-NB: imports of ``transformer_lens`` are deferred into fixture bodies so that
-jaxtyping's pytest_configure import hook can install before the package is
-first imported. Module-level imports here break running these tests in
-isolation (RuntimeError: "jaxtyping cannot check these packages because they
-are already imported").
+transformer_lens imports stay inside fixture bodies — jaxtyping's pytest_configure
+hook must install before the package is first imported.
 """
 
 import pytest
