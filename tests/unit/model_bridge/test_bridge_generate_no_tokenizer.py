@@ -30,42 +30,61 @@ def test_generate_without_tokenizer_stop_at_eos_false_kv_cache(tokenizer_free_br
 
     tokens = _PROMPT_TOKENS.clone()
 
-    # === TEMP DEBUG: localize CI-only NaN; remove after diagnosing ===
+    # === TEMP DEBUG: localize where NaN originates on CI ===
     import sys
 
     def _diag(label: str, t: torch.Tensor) -> None:
         print(
             f"[DIAG] {label}: nan={torch.isnan(t).any().item()} "
-            f"inf={torch.isinf(t).any().item()} "
-            f"shape={tuple(t.shape)} dtype={t.dtype} "
-            f"sample={t.flatten()[:4].tolist()}",
+            f"inf={torch.isinf(t).any().item()} shape={tuple(t.shape)}",
             file=sys.stderr,
             flush=True,
         )
 
     with torch.no_grad():
-        bl = bridge(tokens, return_type="logits")
-    _diag("bridge_fwd_no_cache", bl)
-
-    with torch.no_grad():
-        ho = bridge.original_model(tokens)
-    _diag("hf_fwd_no_cache", ho.logits)
-
-    with torch.no_grad():
-        ho_cache = bridge.original_model(tokens, use_cache=True)
-    _diag("hf_fwd_step0_use_cache", ho_cache.logits)
+        o0 = bridge.original_model(tokens, use_cache=True)
+    _diag("step0_logits", o0.logits)
+    cache = o0.past_key_values
     print(
-        f"[DIAG] cache_type={type(ho_cache.past_key_values).__name__}",
+        f"[DIAG] cache_type={type(cache).__name__} "
+        f"seq_len={cache.get_seq_length() if hasattr(cache, 'get_seq_length') else 'n/a'} "
+        f"layers={len(cache.layers) if hasattr(cache, 'layers') else 'n/a'}",
         file=sys.stderr,
         flush=True,
     )
+    if hasattr(cache, "layers"):
+        for li, layer in enumerate(cache.layers):
+            k = getattr(layer, "keys", None)
+            v = getattr(layer, "values", None)
+            if k is not None and v is not None:
+                print(
+                    f"[DIAG] cache_layer_{li}: K_nan={torch.isnan(k).any().item()} "
+                    f"V_nan={torch.isnan(v).any().item()} K_shape={tuple(k.shape)}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                break  # one layer is enough to spot corruption
 
-    next_id = ho_cache.logits[:, -1, :].argmax(-1, keepdim=True)
+    next_id = o0.logits[:, -1, :].argmax(-1, keepdim=True)
+    attn_mask = torch.ones((1, tokens.shape[1] + 1), dtype=torch.long)
+    pos_ids = torch.tensor([[tokens.shape[1]]], dtype=torch.long)
+
+    # Variant A: bridge-fix kwargs (mask + position_ids + cache)
     with torch.no_grad():
-        ho_step1 = bridge.original_model(
-            next_id, past_key_values=ho_cache.past_key_values, use_cache=True
+        oA = bridge.original_model(
+            next_id,
+            past_key_values=o0.past_key_values,
+            use_cache=True,
+            attention_mask=attn_mask,
+            position_ids=pos_ids,
         )
-    _diag("hf_fwd_step1_with_cache", ho_step1.logits)
+    _diag("step1_with_mask_and_pos", oA.logits)
+
+    # Variant B: no cache — feed full 6-token sequence fresh
+    full_tokens = torch.cat([tokens, next_id], dim=1)
+    with torch.no_grad():
+        oB = bridge.original_model(full_tokens)
+    _diag("step1_full_no_cache", oB.logits)
     # === END TEMP DEBUG ===
 
     output = bridge.generate(

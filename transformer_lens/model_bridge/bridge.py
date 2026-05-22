@@ -2382,10 +2382,30 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                         forward_kwargs["use_cache"] = True
                         if _hf_kv_cache is not None:
                             forward_kwargs["past_key_values"] = _hf_kv_cache
+                            # HF v5 + macOS-arm64 NaNs when these are inferred
+                            # from cache state alone. Mirror HF generate(): pass
+                            # both an (batch, total_len) attention_mask and a
+                            # (batch, 1) position_ids for the new token.
+                            batch_size = current_tokens.shape[0]
+                            total_len = current_tokens.shape[1]
+                            device = current_tokens.device
+                            if "attention_mask" not in forward_kwargs:
+                                forward_kwargs["attention_mask"] = torch.ones(
+                                    (batch_size, total_len),
+                                    dtype=torch.long,
+                                    device=device,
+                                )
                             if "position_ids" in forward_kwargs:
                                 forward_kwargs["position_ids"] = forward_kwargs["position_ids"][
                                     :, -1:
                                 ]
+                            else:
+                                forward_kwargs["position_ids"] = torch.full(
+                                    (batch_size, 1),
+                                    total_len - 1,
+                                    dtype=torch.long,
+                                    device=device,
+                                )
                             logits = self(
                                 current_tokens[:, -1:],
                                 return_type="logits",
