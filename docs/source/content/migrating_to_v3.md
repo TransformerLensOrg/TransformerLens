@@ -87,6 +87,19 @@ If you want no processing at all — the bridge's native default — you can ski
 
 Bottom-half analyses → call `enable_compatibility_mode()` after booting.
 
+## Dependency changes in 3.0
+
+TransformerLens 3.0 raises its minimum supported `transformers` to **5.4.0** (previously 4.56). This is enforced automatically, fresh installs and `pip install -U transformer_lens` will pull in a compatible release with no action on your part.
+
+If your code calls `transformers` directly alongside TransformerLens (e.g. manual `AutoModel.from_pretrained` calls in notebooks, or a downstream library that imports both), the v4 → v5 jump may surface breaking changes outside TransformerLens's surface area. See HuggingFace's Transformers v5 release notes for what changed there.
+
+A few v5-driven internal adjustments worth knowing about:
+
+- **Gemma embedding scaling.** Transformers v5 changed how Gemma applies embedding scaling; `enable_compatibility_mode()` compensates so legacy `HookedTransformer` numerics are preserved.
+- **MPT block unpack arity.** `MptBlock` returns a 2-tuple on v5 vs a 3-tuple on v4; the bridge adapts.
+- **Qwen3.5.** Requires a v5 release exposing `Qwen3_5ForCausalLM`; see [Special Cases](special_cases.md).
+
+
 ## Hook names
 
 The canonical hook names on the bridge use a uniform `hook_in` / `hook_out` convention. The old TransformerLens names are preserved through an alias layer, so existing code keeps working without changes:
