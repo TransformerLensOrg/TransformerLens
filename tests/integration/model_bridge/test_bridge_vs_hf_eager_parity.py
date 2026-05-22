@@ -5,6 +5,7 @@ was an attention-implementation mismatch — bridge always uses eager, default H
 SDPA, which reorders ops in a fused kernel. Bridge vs HF *eager* matches to fp32-noise.
 """
 
+import platform
 from typing import Callable
 
 import pytest
@@ -15,10 +16,9 @@ from transformer_lens.model_bridge import TransformerBridge
 
 MODEL_NAME = "EleutherAI/pythia-70m"
 
-# Op-reorder noise floor for fp32 transformer forward passes. We currently
-# measure 0.0 on this model, but allow a small epsilon so harmless refactors
-# (intermediate allocations, equivalent op reorderings) don't break the test.
-FP32_NOISE_TOL = 1e-5
+# Wider fp32 op-order noise floor on GH Actions macOS-arm64; ~3e-3 at output.
+_MACOS_ARM64 = platform.system() == "Darwin" and platform.machine() == "arm64"
+FP32_NOISE_TOL = 1e-2 if _MACOS_ARM64 else 1e-5
 
 
 @pytest.fixture(scope="module")
