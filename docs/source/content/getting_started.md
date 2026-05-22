@@ -49,7 +49,7 @@ export HF_TOKEN="hf_..."
 
 ### `TRANSFORMERLENS_HF_RETRY`
 
-Set to `"1"` to wrap `transformers.AutoConfig.from_pretrained`, `AutoModel.from_pretrained`, `AutoTokenizer.from_pretrained`, `AutoProcessor.from_pretrained`, and `AutoFeatureExtractor.from_pretrained` with a retry-on-429 helper. When HuggingFace returns HTTP 429 (rate-limited), the call is retried up to three times with exponential backoff, honoring the `Retry-After` response header when present.
+Set to `"1"` to wrap `transformers.AutoConfig.from_pretrained`, `AutoModel.from_pretrained`, `AutoTokenizer.from_pretrained`, `AutoProcessor.from_pretrained`, and `AutoFeatureExtractor.from_pretrained` with a retry-on-429 helper. When HuggingFace returns HTTP 429 (rate-limited), the call is retried up to three times with exponential backoff, honoring numeric `Retry-After` response headers when present (HTTP-date form is not parsed; the retry falls back to exponential backoff in that case).
 
 Intended primarily for CI environments where parallel workflow runs can trip HF's rate limits. Off by default so production callers see unmodified `transformers` behavior. The wrapping is idempotent and applied globally to the class methods; see [`enable_hf_retry`](https://github.com/TransformerLensOrg/TransformerLens/blob/main/transformer_lens/utilities/hf_utils.py) for the implementation. The TransformerLens test suite enables this automatically via `tests/conftest.py`.
 

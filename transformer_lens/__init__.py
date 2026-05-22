@@ -21,6 +21,7 @@ from .HookedEncoder import HookedEncoder
 from .HookedAudioEncoder import HookedAudioEncoder
 from .HookedEncoderDecoder import HookedEncoderDecoder
 from .HookedTransformer import HookedTransformer
+from .HookedRootModule import HookedRootModule
 
 # LIT integration (optional, requires lit-nlp package)
 try:
@@ -46,6 +47,7 @@ __all__ = [
     "SVDInterpreter",
     "HookedEncoder",
     "HookedEncoderDecoder",
+    "HookedRootModule",
     "TransformerLensKeyValueCache",
     "TransformerLensKeyValueCacheEntry",
     "components",
