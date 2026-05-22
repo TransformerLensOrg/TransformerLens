@@ -437,6 +437,7 @@ def __getattr__(name: str):
         import warnings
 
         from transformer_lens.HookedRootModule import HookedRootModule
+
         warnings.warn(
             "Importing HookedRootModule from transformer_lens.hook_points is "
             "deprecated and will be removed in a future release. Import it from "
