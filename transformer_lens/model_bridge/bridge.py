@@ -703,6 +703,14 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         post-processed coordinate system: logit lens, direct logit attribution,
         residual-stream norms. Also enables legacy hook/component name aliases.
 
+        Hook semantic parity (issue #1317): ``hook_q_input``, ``hook_k_input``,
+        ``hook_v_input``, ``hook_attn_in``, and ``hook_mlp_in`` fire on the
+        pre-norm residual. Carve-outs: post-norm architectures (OLMo 2,
+        BERT-style) read the post-attention residual instead, and MLA blocks
+        (DeepSeek V2/V3/R1) do not expose the split-qkv aliases. ``hook_mlp_in``
+        is gated on ``cfg.use_hook_mlp_in``; toggle it via
+        :py:meth:`set_use_hook_mlp_in`.
+
         Args:
             disable_warnings: Whether to disable warnings about legacy components/hooks
             no_processing: Whether to disable ALL pre-processing steps of the model.
@@ -731,6 +739,11 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
 
         apply_fn_to_all_components(self, set_compatibility_mode)
         self.clear_hook_registry()
+        # Drop pre-ln capture handles from any prior call so they don't accumulate.
+        if hasattr(self, "blocks"):
+            for block in self.blocks:
+                if hasattr(block, "_teardown_pre_ln_capture"):
+                    block._teardown_pre_ln_capture()
         try:
             if not no_processing:
                 self.process_weights(
@@ -3432,6 +3445,23 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             self._validate_attention_fork_supported("use_attn_in")
         self.cfg.use_attn_in = use_attn_in
         self._propagate_attention_flag("use_attn_in", use_attn_in)
+
+    def set_use_hook_mlp_in(self, use_hook_mlp_in: bool) -> None:
+        """Toggle the pre-ln2 ``hook_mlp_in`` HookPoint, matching legacy semantics.
+
+        See :py:meth:`HookedTransformer.set_use_hook_mlp_in`.
+        """
+        self.cfg.use_hook_mlp_in = use_hook_mlp_in
+        if not hasattr(self, "blocks"):
+            return
+        for block in self.blocks:
+            block_cfg = getattr(block, "config", None)
+            if block_cfg is not None and block_cfg is not self.cfg:
+                try:
+                    block_cfg.use_hook_mlp_in = use_hook_mlp_in
+                except Exception:
+                    pass
+            block._use_hook_mlp_in = use_hook_mlp_in
 
     def _propagate_attention_flag(self, flag_name: str, value: bool) -> None:
         """Mirror `bridge.cfg.<flag>` onto every block's attention config.

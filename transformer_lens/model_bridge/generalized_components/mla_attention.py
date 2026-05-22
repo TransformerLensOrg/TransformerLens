@@ -63,6 +63,9 @@ class MLAAttentionBridge(PositionEmbeddingHooksMixin, AttentionBridge):
         "hook_z": "o.hook_in",
     }
 
+    # MLA's forward never forks the residual pre-LN; suppress dead HookPoints.
+    supports_split_qkv_fork: bool = False
+
     def __init__(
         self,
         name: str,

@@ -12,7 +12,6 @@ from __future__ import annotations
 import weakref
 from typing import Any, Callable, Dict, Optional
 
-import einops
 import torch
 import transformers.models.gemma2.modeling_gemma2 as gemma2_module
 
@@ -298,16 +297,15 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
             assert self.config is not None  # narrowed by `has_head_count`
             n_heads = int(self.config.n_heads)
             n_kv_heads = int(getattr(self.config, "n_key_value_heads", None) or n_heads)
+            # #1317: fork pre-LN when available so hook patches match legacy.
+            captured = self._captured_pre_ln_residual
+            source = captured if captured is not None else hidden_states
             if use_split_qkv:
-                q_in = einops.repeat(hidden_states, "b s d -> b s h d", h=n_heads).contiguous()
-                k_in = einops.repeat(hidden_states, "b s d -> b s h d", h=n_kv_heads).contiguous()
-                v_in = einops.repeat(hidden_states, "b s d -> b s h d", h=n_kv_heads).contiguous()
-                q_in = self.hook_q_input(q_in)
-                k_in = self.hook_k_input(k_in)
-                v_in = self.hook_v_input(v_in)
+                q_in = self._fork_and_norm_per_head(source, self.hook_q_input, n_heads)
+                k_in = self._fork_and_norm_per_head(source, self.hook_k_input, n_kv_heads)
+                v_in = self._fork_and_norm_per_head(source, self.hook_v_input, n_kv_heads)
             else:
-                attn_in = einops.repeat(hidden_states, "b s d -> b s h d", h=n_heads).contiguous()
-                attn_in = self.hook_attn_in(attn_in)
+                attn_in = self._fork_and_norm_per_head(source, self.hook_attn_in, n_heads)
                 q_in = attn_in
                 if n_kv_heads != n_heads:
                     k_in = attn_in[..., :n_kv_heads, :].contiguous()
