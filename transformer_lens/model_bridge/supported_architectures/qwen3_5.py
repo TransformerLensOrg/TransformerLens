@@ -8,7 +8,6 @@ optional attention mapping and fold_ln disabled.
 from typing import Any
 
 import torch
-from packaging.version import InvalidVersion, Version
 
 from transformer_lens.model_bridge.supported_architectures.qwen3 import (
     Qwen3ArchitectureAdapter,
@@ -23,40 +22,9 @@ class Qwen3_5ArchitectureAdapter(Qwen3ArchitectureAdapter):
     - Gated q_proj (2x wide) sliced by preprocess_weights for weight analysis
     """
 
-    _MIN_TRANSFORMERS_VERSION = Version("5.2.0")
-
     def __init__(self, cfg: Any) -> None:
-        self._validate_transformers_support()
         setattr(cfg, "gated_q_proj", True)
         super().__init__(cfg, hybrid=True)
-
-    @classmethod
-    def _validate_transformers_support(cls) -> None:
-        """Fail clearly when the optional Qwen3.5 Transformers support is unavailable."""
-        import transformers
-
-        try:
-            installed_version = Version(transformers.__version__)
-        except InvalidVersion:
-            installed_version = Version("0")
-
-        if installed_version < cls._MIN_TRANSFORMERS_VERSION:
-            raise ImportError(
-                f"Qwen3.5 requires transformers >= {cls._MIN_TRANSFORMERS_VERSION} "
-                f"(installed: {transformers.__version__}). "
-                f"Upgrade with: pip install 'transformers>={cls._MIN_TRANSFORMERS_VERSION}'"
-            )
-
-        if not cls._has_qwen3_5_causal_lm(transformers):
-            raise ImportError(
-                "Qwen3.5 requires a Transformers build that exposes "
-                "Qwen3_5ForCausalLM. Install the Qwen3.5 optional dependency "
-                f"with: pip install 'transformers>={cls._MIN_TRANSFORMERS_VERSION}'"
-            )
-
-    @staticmethod
-    def _has_qwen3_5_causal_lm(transformers_module: Any) -> bool:
-        return hasattr(transformers_module, "Qwen3_5ForCausalLM")
 
     def prepare_loading(self, model_name: str, model_kwargs: dict) -> None:
         """Swap multimodal Qwen3_5Config for text-only Qwen3_5TextConfig.
