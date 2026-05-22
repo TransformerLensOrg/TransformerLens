@@ -108,6 +108,8 @@ Two semantic differences inside `enable_compatibility_mode()` worth knowing if y
 
 Post-norm architectures (OLMo 2, BERT-style encoders) and MLA blocks (DeepSeek V2/V3/R1) do not participate in the pre-ln1 capture — `MLABlockBridge` does not expose those aliases, and post-norm models would read the post-attention residual instead of the block input.
 
+Additionally, **HookedRootModule** has been moved to its own module. Prefer `from transformer_lens import HookedRootModule`. The legacy `from transformer_lens.hook_points import HookedRootModule` still works in 3.x, but emits a `DeprecationWarning`. This import path will be removed in 4.0.
+
 ## APIs that are unchanged
 
 These work identically on `TransformerBridge` and need no migration:
