@@ -13,7 +13,6 @@ import torch
 
 from transformer_lens.model_bridge import TransformerBridge
 
-# Non-zero IDs to dodge macOS-arm64 KV-cache NaN with all-zero input.
 _PROMPT_TOKENS = torch.tensor([[15496, 11, 314, 1101, 257]], dtype=torch.long)
 
 
@@ -30,6 +29,45 @@ def test_generate_without_tokenizer_stop_at_eos_false_kv_cache(tokenizer_free_br
     assert bridge.tokenizer is None
 
     tokens = _PROMPT_TOKENS.clone()
+
+    # === TEMP DEBUG: localize CI-only NaN; remove after diagnosing ===
+    import sys
+
+    def _diag(label: str, t: torch.Tensor) -> None:
+        print(
+            f"[DIAG] {label}: nan={torch.isnan(t).any().item()} "
+            f"inf={torch.isinf(t).any().item()} "
+            f"shape={tuple(t.shape)} dtype={t.dtype} "
+            f"sample={t.flatten()[:4].tolist()}",
+            file=sys.stderr,
+            flush=True,
+        )
+
+    with torch.no_grad():
+        bl = bridge(tokens, return_type="logits")
+    _diag("bridge_fwd_no_cache", bl)
+
+    with torch.no_grad():
+        ho = bridge.original_model(tokens)
+    _diag("hf_fwd_no_cache", ho.logits)
+
+    with torch.no_grad():
+        ho_cache = bridge.original_model(tokens, use_cache=True)
+    _diag("hf_fwd_step0_use_cache", ho_cache.logits)
+    print(
+        f"[DIAG] cache_type={type(ho_cache.past_key_values).__name__}",
+        file=sys.stderr,
+        flush=True,
+    )
+
+    next_id = ho_cache.logits[:, -1, :].argmax(-1, keepdim=True)
+    with torch.no_grad():
+        ho_step1 = bridge.original_model(
+            next_id, past_key_values=ho_cache.past_key_values, use_cache=True
+        )
+    _diag("hf_fwd_step1_with_cache", ho_step1.logits)
+    # === END TEMP DEBUG ===
+
     output = bridge.generate(
         tokens,
         max_new_tokens=3,
