@@ -13,6 +13,9 @@ import torch
 
 from transformer_lens.model_bridge import TransformerBridge
 
+# Non-zero IDs to dodge macOS-arm64 KV-cache NaN with all-zero input.
+_PROMPT_TOKENS = torch.tensor([[15496, 11, 314, 1101, 257]], dtype=torch.long)
+
 
 @pytest.fixture(scope="module")
 def tokenizer_free_bridge():
@@ -26,7 +29,7 @@ def test_generate_without_tokenizer_stop_at_eos_false_kv_cache(tokenizer_free_br
     bridge = tokenizer_free_bridge
     assert bridge.tokenizer is None
 
-    tokens = torch.zeros((1, 5), dtype=torch.long)
+    tokens = _PROMPT_TOKENS.clone()
     output = bridge.generate(
         tokens,
         max_new_tokens=3,
@@ -43,7 +46,7 @@ def test_generate_without_tokenizer_stop_at_eos_false_no_kv_cache(tokenizer_free
     bridge = tokenizer_free_bridge
     assert bridge.tokenizer is None
 
-    tokens = torch.zeros((1, 5), dtype=torch.long)
+    tokens = _PROMPT_TOKENS.clone()
     output = bridge.generate(
         tokens,
         max_new_tokens=3,
@@ -64,7 +67,7 @@ def test_generate_without_tokenizer_explicit_eos_kv_cache(tokenizer_free_bridge)
     bridge = tokenizer_free_bridge
     assert bridge.tokenizer is None
 
-    tokens = torch.zeros((1, 5), dtype=torch.long)
+    tokens = _PROMPT_TOKENS.clone()
     output = bridge.generate(
         tokens,
         max_new_tokens=3,
@@ -83,7 +86,7 @@ def test_generate_without_tokenizer_explicit_eos_no_kv_cache(tokenizer_free_brid
     bridge = tokenizer_free_bridge
     assert bridge.tokenizer is None
 
-    tokens = torch.zeros((1, 5), dtype=torch.long)
+    tokens = _PROMPT_TOKENS.clone()
     output = bridge.generate(
         tokens,
         max_new_tokens=3,
@@ -102,7 +105,7 @@ def test_generate_without_tokenizer_stop_at_eos_requires_eos_id(tokenizer_free_b
     bridge = tokenizer_free_bridge
     assert bridge.tokenizer is None
 
-    tokens = torch.zeros((1, 5), dtype=torch.long)
+    tokens = _PROMPT_TOKENS.clone()
     with pytest.raises(AssertionError, match="eos_token_id"):
         bridge.generate(
             tokens, max_new_tokens=3, stop_at_eos=True, return_type="tokens", verbose=False
@@ -127,7 +130,7 @@ def test_generate_return_type_str_without_tokenizer_errors(tokenizer_free_bridge
     bridge = tokenizer_free_bridge
     assert bridge.tokenizer is None
 
-    tokens = torch.zeros((1, 5), dtype=torch.long)
+    tokens = _PROMPT_TOKENS.clone()
     with pytest.raises(AssertionError):
         bridge.generate(
             tokens,
@@ -175,7 +178,7 @@ def test_generate_stream_without_tokenizer_stop_at_eos_requires_eos_id(tokenizer
     bridge = tokenizer_free_bridge
     assert bridge.tokenizer is None
 
-    tokens = torch.zeros((1, 5), dtype=torch.long)
+    tokens = _PROMPT_TOKENS.clone()
     with pytest.raises(AssertionError, match="eos_token_id"):
         # Generator is lazy — must consume to trigger the assert.
         list(
