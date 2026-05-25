@@ -2081,7 +2081,7 @@ class TransformerBridge(nn.Module):
             raise e
         finally:
             for hp, _ in hooks:
-                hp.remove_hooks(dir="both")
+                hp.remove_hooks(dir="fwd")
         if self.compatibility_mode == True:
             reverse_aliases = {}
             for old_name, new_name in aliases.items():
