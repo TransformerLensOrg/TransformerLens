@@ -4,7 +4,7 @@ plus small synthetic tensors and a fake attention module, no real checkpoints).
 Covered:
 - Adapter config defaults (RMSNorm, rotary, gated MoE MLP).
 - Weight conversions: QKVO weights plus Q/K/V biases, with GQA-aware head counts.
-- Numerical round-trips: the rearranges actually reshape and revert losslessly.
+- Numerical round-trips: the rearrange conversions actually reshape and revert losslessly.
 - Component-mapping structure, bridge types, and HF module paths.
 - Factory registration and dispatch.
 - GQA forward hook shapes (Q uses n_heads, K/V use n_key_value_heads).
@@ -256,11 +256,11 @@ class TestMixtralWeightConversions:
 
 
 class TestMixtralWeightConversionRoundTrips:
-    """Run the rearranges on synthetic HF-shaped tensors.
+    """Run the rearrange conversions on synthetic HF-shaped tensors.
 
     The pattern/axis assertions above only check metadata. These confirm the
     conversions actually reshape realistic weight and bias tensors into the
-    split-head layout and revert losslessly (a rearrange is a pure permutation,
+    split-head layout and revert losslessly (a rearrange operation is a pure permutation,
     so the round-trip must be exactly equal).
     """
 
