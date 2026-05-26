@@ -135,9 +135,6 @@ from transformer_lens.model_bridge.supported_architectures.phi import (
 from transformer_lens.model_bridge.supported_architectures.phi3 import (
     Phi3ArchitectureAdapter,
 )
-from transformer_lens.model_bridge.supported_architectures.pythia import (
-    PythiaArchitectureAdapter,
-)
 from transformer_lens.model_bridge.supported_architectures.qwen import (
     QwenArchitectureAdapter,
 )
@@ -211,7 +208,6 @@ __all__ = [
     "OptArchitectureAdapter",
     "PhiArchitectureAdapter",
     "Phi3ArchitectureAdapter",
-    "PythiaArchitectureAdapter",
     "QwenArchitectureAdapter",
     "Qwen2ArchitectureAdapter",
     "Qwen3ArchitectureAdapter",
