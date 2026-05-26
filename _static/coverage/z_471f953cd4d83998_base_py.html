@@ -67,7 +67,7 @@
             <a id="nextFileLink" class="nav" href="z_471f953cd4d83998_block_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-05-09 17:38 +0000
+            created at 2026-05-26 14:18 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -272,12 +272,12 @@
     <p class="pln"><span class="n"><a id="t188" href="#t188">188</a></span><span class="t"><span class="str">            hook_name: Name of the hook point to remove. If None, removes all hooks.</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t189" href="#t189">189</a></span><span class="t"><span class="str">        """</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t190" href="#t190">190</a></span><span class="t">        <span class="key">if</span> <span class="nam">hook_name</span> <span class="key">is</span> <span class="key">None</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t191" href="#t191">191</a></span><span class="t">            <span class="nam">self</span><span class="op">.</span><span class="nam">hook_in</span><span class="op">.</span><span class="nam">remove_hooks</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t192" href="#t192">192</a></span><span class="t">            <span class="nam">self</span><span class="op">.</span><span class="nam">hook_out</span><span class="op">.</span><span class="nam">remove_hooks</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t191" href="#t191">191</a></span><span class="t">            <span class="nam">self</span><span class="op">.</span><span class="nam">hook_in</span><span class="op">.</span><span class="nam">remove_hooks</span><span class="op">(</span><span class="nam">dir</span><span class="op">=</span><span class="str">"both"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t192" href="#t192">192</a></span><span class="t">            <span class="nam">self</span><span class="op">.</span><span class="nam">hook_out</span><span class="op">.</span><span class="nam">remove_hooks</span><span class="op">(</span><span class="nam">dir</span><span class="op">=</span><span class="str">"both"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t193" href="#t193">193</a></span><span class="t">        <span class="key">elif</span> <span class="nam">hook_name</span> <span class="op">==</span> <span class="str">"output"</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t194" href="#t194">194</a></span><span class="t">            <span class="nam">self</span><span class="op">.</span><span class="nam">hook_out</span><span class="op">.</span><span class="nam">remove_hooks</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t194" href="#t194">194</a></span><span class="t">            <span class="nam">self</span><span class="op">.</span><span class="nam">hook_out</span><span class="op">.</span><span class="nam">remove_hooks</span><span class="op">(</span><span class="nam">dir</span><span class="op">=</span><span class="str">"both"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t195" href="#t195">195</a></span><span class="t">        <span class="key">elif</span> <span class="nam">hook_name</span> <span class="op">==</span> <span class="str">"input"</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t196" href="#t196">196</a></span><span class="t">            <span class="nam">self</span><span class="op">.</span><span class="nam">hook_in</span><span class="op">.</span><span class="nam">remove_hooks</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t196" href="#t196">196</a></span><span class="t">            <span class="nam">self</span><span class="op">.</span><span class="nam">hook_in</span><span class="op">.</span><span class="nam">remove_hooks</span><span class="op">(</span><span class="nam">dir</span><span class="op">=</span><span class="str">"both"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t197" href="#t197">197</a></span><span class="t">        <span class="key">else</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t198" href="#t198">198</a></span><span class="t">            <span class="key">raise</span> <span class="nam">ValueError</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t199" href="#t199">199</a></span><span class="t">                <span class="fst">f"</span><span class="fst">Hook name '</span><span class="op">{</span><span class="nam">hook_name</span><span class="op">}</span><span class="fst">' not supported. Supported names are 'output' and 'input'.</span><span class="fst">"</span>&nbsp;</span><span class="r"></span></p>
@@ -470,7 +470,7 @@
             <a class="nav" href="z_471f953cd4d83998_block_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-05-09 17:38 +0000
+            created at 2026-05-26 14:18 +0000
         </p>
     </div>
 </footer>
