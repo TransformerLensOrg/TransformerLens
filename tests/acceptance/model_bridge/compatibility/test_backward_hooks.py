@@ -51,3 +51,42 @@ class TestBackwardHookCompatibility:
             f"Gradient sums should be identical but differ by "
             f"{abs(hooked_grad_sum - bridge_grad_sum).item():.6f}"
         )
+
+
+def test_transformer_bridge_hooks_context_cleans_up_backward_hooks(
+    gpt2_hooked_unprocessed, gpt2_bridge_compat_no_processing
+):
+    """Regression test for backward-hook cleanup on context exit."""
+    hooked_model = gpt2_hooked_unprocessed
+    bridge_model = gpt2_bridge_compat_no_processing
+    hooked_hook = hooked_model.blocks[0].hook_resid_post
+    bridge_hook = bridge_model.blocks[0].hook_resid_post
+    test_input = torch.tensor([[1, 2, 3]])
+
+    def noop_backward_hook(grad, hook=None):
+        return None
+
+    hooked_model.zero_grad()
+    with hooked_model.hooks(bwd_hooks=[("blocks.0.hook_resid_post", noop_backward_hook)]):
+        hooked_model(test_input).sum().backward()
+
+    bridge_model.zero_grad()
+    with bridge_model.hooks(bwd_hooks=[("blocks.0.hook_resid_post", noop_backward_hook)]):
+        bridge_model(test_input).sum().backward()
+
+    assert not hooked_hook.has_hooks(dir="bwd", including_permanent=False)
+    assert not bridge_hook.has_hooks(dir="bwd", including_permanent=False)
+
+
+def test_transformer_bridge_reset_hooks_removes_backward_hooks(gpt2_bridge_compat_no_processing):
+    """Regression test for bridge reset_hooks removing backward hooks."""
+    bridge_model = gpt2_bridge_compat_no_processing
+    backward_hook = bridge_model.blocks[0].hook_resid_post
+
+    backward_hook.add_hook(lambda grad, hook=None: None, dir="bwd")
+
+    assert backward_hook.has_hooks(dir="bwd", including_permanent=False)
+
+    bridge_model.reset_hooks()
+
+    assert not backward_hook.has_hooks(dir="bwd", including_permanent=False)

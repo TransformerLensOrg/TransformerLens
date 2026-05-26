@@ -188,12 +188,12 @@ class GeneralizedComponent(nn.Module):
             hook_name: Name of the hook point to remove. If None, removes all hooks.
         """
         if hook_name is None:
-            self.hook_in.remove_hooks()
-            self.hook_out.remove_hooks()
+            self.hook_in.remove_hooks(dir="both")
+            self.hook_out.remove_hooks(dir="both")
         elif hook_name == "output":
-            self.hook_out.remove_hooks()
+            self.hook_out.remove_hooks(dir="both")
         elif hook_name == "input":
-            self.hook_in.remove_hooks()
+            self.hook_in.remove_hooks(dir="both")
         else:
             raise ValueError(
                 f"Hook name '{hook_name}' not supported. Supported names are 'output' and 'input'."

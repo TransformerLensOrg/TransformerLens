@@ -77,3 +77,21 @@ class TestRunWithCacheCompatibility:
         assert torch.allclose(
             cache_1d["blocks.0.hook_mlp_out"], cache_2d["blocks.0.hook_mlp_out"], atol=1e-5
         )
+
+
+def test_transformer_bridge_run_with_cache_preserves_existing_backward_hooks(
+    gpt2_bridge_compat_no_processing,
+):
+    """run_with_cache should not remove unrelated backward hooks on the same HookPoint."""
+    bridge_model = gpt2_bridge_compat_no_processing
+    target_hook = bridge_model.blocks[0].hook_resid_post
+
+    target_hook.add_hook(lambda grad, hook=None: None, dir="bwd")
+
+    assert target_hook.has_hooks(dir="bwd", including_permanent=False)
+
+    bridge_model.run_with_cache(torch.tensor([[1, 2, 3]]), names_filter="blocks.0.hook_resid_post")
+
+    assert target_hook.has_hooks(dir="bwd", including_permanent=False)
+
+    bridge_model.reset_hooks()

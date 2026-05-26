@@ -2081,7 +2081,7 @@ class TransformerBridge(nn.Module):
             raise e
         finally:
             for hp, _ in hooks:
-                hp.remove_hooks()
+                hp.remove_hooks(dir="fwd")
         if self.compatibility_mode == True:
             reverse_aliases = {}
             for old_name, new_name in aliases.items():
@@ -2148,7 +2148,7 @@ class TransformerBridge(nn.Module):
         Returns:
             Model output
         """
-        added_hooks: List[Tuple[HookPoint, str]] = []
+        added_hooks: List[Tuple[HookPoint, Literal["fwd", "bwd"]]] = []
         effective_stop_layer = None
         if stop_at_layer is not None and hasattr(self, "blocks"):
             if stop_at_layer < 0:
@@ -2174,7 +2174,7 @@ class TransformerBridge(nn.Module):
                 hook_point.add_hook(hook_fn, dir=dir, alias_names=alias_names_list)
             else:
                 hook_point.add_hook(hook_fn, dir=dir)
-            added_hooks.append((hook_point, name))
+            added_hooks.append((hook_point, dir))
 
         if stop_at_layer is not None and hasattr(self, "blocks"):
             if stop_at_layer < 0:
@@ -2243,8 +2243,8 @@ class TransformerBridge(nn.Module):
             return output
         finally:
             if reset_hooks_end:
-                for hook_point, name in added_hooks:
-                    hook_point.remove_hooks()
+                for hook_point, direction in added_hooks:
+                    hook_point.remove_hooks(dir=direction)
 
     def _generate_tokens(
         self,
@@ -3306,7 +3306,7 @@ class TransformerBridge(nn.Module):
 
         @contextmanager
         def _hooks_context():
-            added_hooks: List[Tuple[HookPoint, str]] = []
+            added_hooks: List[Tuple[HookPoint, Literal["fwd", "bwd"]]] = []
 
             def add_hook_to_point(
                 hook_point: HookPoint,
@@ -3322,7 +3322,7 @@ class TransformerBridge(nn.Module):
                     hook_point.add_hook(hook_fn, dir=dir, alias_names=alias_names_list)
                 else:
                     hook_point.add_hook(hook_fn, dir=dir)
-                added_hooks.append((hook_point, name))
+                added_hooks.append((hook_point, dir))
 
             def apply_hooks(hooks: List[Tuple[Union[str, Callable], Callable]], is_fwd: bool):
                 direction: Literal["fwd", "bwd"] = "fwd" if is_fwd else "bwd"
@@ -3355,8 +3355,8 @@ class TransformerBridge(nn.Module):
                 yield self
             finally:
                 if reset_hooks_end:
-                    for hook_point, name in added_hooks:
-                        hook_point.remove_hooks()
+                    for hook_point, direction in added_hooks:
+                        hook_point.remove_hooks(dir=direction)
 
         return _hooks_context()
 
