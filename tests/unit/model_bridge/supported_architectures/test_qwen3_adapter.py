@@ -7,7 +7,7 @@ Tests cover:
 - _preprocess_gated_q_proj static helper (gated q_proj slicing)
 - Factory registration
 """
-
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -25,6 +25,9 @@ from transformer_lens.model_bridge.generalized_components import (
     RMSNormalizationBridge,
     RotaryEmbeddingBridge,
     UnembeddingBridge,
+)
+from transformer_lens.model_bridge.generalized_components.gated_delta_net import (
+    GatedDeltaNetBridge,
 )
 from transformer_lens.model_bridge.generalized_components.position_embeddings_attention import (
     PositionEmbeddingsAttentionBridge,
@@ -67,8 +70,8 @@ def adapter(cfg: TransformerBridgeConfig) -> Qwen3ArchitectureAdapter:
 
 
 class TestQwen3AdapterConfig:
-    """
-    Config attribute tests
+    """Adapter config defaults: RMSNorm, rotary, gated MLP, eager attention,
+    default_prepend_bos=False, and GQA propagation via n_key_value_heads.
     """
 
     def test_normalization_type(self, adapter: Qwen3ArchitectureAdapter) -> None:
@@ -101,7 +104,8 @@ class TestQwen3AdapterConfig:
 
 class TestQwen3AdapterComponentMapping:
     """
-    Testcases for component mapping setup
+    Component-mapping structure, bridge types, including the Qwen3-specific per-head q_norm / k_norm and the dense
+    (non-hybrid) shape with no linear_attn submodule.
     """
 
     @staticmethod
@@ -179,9 +183,8 @@ class TestQwen3AdapterComponentMapping:
 
 
 class TestQwen3AdapterWeightConversions:
-    """
-    Weights conversion tests
-    """
+    """QKVO weight conversions with GQA-aware head counts:
+    Q uses n_heads; K and V use n_key_value_heads."""
 
     def test_four_conversion_keys(self, adapter: Qwen3ArchitectureAdapter) -> None:
         convs = adapter.weight_processing_conversions
@@ -236,9 +239,10 @@ class TestQwen3AdapterWeightConversions:
 
 
 class TestPreprocessGatedQProj:
-    """
-    Tests for _preprocess_gated_q_proj
-    """
+    """Numerical correctness of the _preprocess_gated_q_proj static helper
+    on synthetic interleaved [query, gate] rows: asserts query-half slicing,
+    that unrelated state-dict keys are untouched, and that the rewrite
+    applies across all matching layers."""
 
     def test_slices_query_half(self) -> None:
         """Interleaved [query, gate] rows per head must be reduced to query-only."""
@@ -283,8 +287,135 @@ class TestPreprocessGatedQProj:
             )
 
 
+class TestQwen3HybridConstructor:
+    """The hybrid=True constructor branch on the base class. The Qwen3_5 /
+    Qwen3Next subclasses exercise this path transitively; pinning it here
+    surfaces regressions in the base contract:
+      - linear_attn (GatedDeltaNetBridge) submodule appears alongside the
+        full-attention branch
+      - supports_fold_ln flips to False
+      - weight_processing_conversions is cleared
+    """
+
+    @pytest.fixture
+    def hybrid_adapter(self) -> Qwen3ArchitectureAdapter:
+        return Qwen3ArchitectureAdapter(_make_cfg(), hybrid=True)
+
+    def test_supports_fold_ln_disabled(self, hybrid_adapter: Qwen3ArchitectureAdapter) -> None:
+        assert hybrid_adapter.supports_fold_ln is False
+
+    def test_weight_processing_conversions_empty(
+        self, hybrid_adapter: Qwen3ArchitectureAdapter
+    ) -> None:
+        assert hybrid_adapter.weight_processing_conversions == {}
+
+    def test_linear_attn_submodule_present(self, hybrid_adapter: Qwen3ArchitectureAdapter) -> None:
+        mapping = hybrid_adapter.component_mapping
+        assert mapping is not None
+        blocks = mapping["blocks"]
+        assert "linear_attn" in blocks.submodules
+        assert isinstance(blocks.submodules["linear_attn"], GatedDeltaNetBridge)
+        assert blocks.submodules["linear_attn"].name == "linear_attn"
+
+    def test_attn_submodule_still_present(self, hybrid_adapter: Qwen3ArchitectureAdapter) -> None:
+        """Hybrid keeps full attention alongside linear_attn (both optional)."""
+        mapping = hybrid_adapter.component_mapping
+        assert mapping is not None
+        blocks = mapping["blocks"]
+        assert "attn" in blocks.submodules
+        assert isinstance(blocks.submodules["attn"], PositionEmbeddingsAttentionBridge)
+
+    def test_dense_default_has_conversions(self, cfg: TransformerBridgeConfig) -> None:
+        """Sanity contrast: dense (hybrid=False) keeps the QKVO conversions."""
+        dense = Qwen3ArchitectureAdapter(cfg)
+        assert dense.weight_processing_conversions
+        assert len(dense.weight_processing_conversions) == 4
+
+
+class _StubAttnBlock:
+    """Stand-in for a bridge block with an .attn that records set_rotary_emb."""
+
+    def __init__(self) -> None:
+        self.attn = SimpleNamespace(_rotary=None)
+        # set_rotary_emb mimics the PositionEmbeddingBridgeMixin contract.
+        self.attn.set_rotary_emb = lambda r: setattr(self.attn, "_rotary", r)
+        # Mirror nn.Module._modules so the adapter's `"attn" in block._modules` check passes.
+        self._modules = {"attn": self.attn}
+
+
+class TestQwen3SetupComponentTesting:
+    """
+    Setup_component_testing wiring:
+      - forces eager attention on both the top-level HF config and each
+        per-layer self_attn.config
+      - calls set_rotary_emb on each bridge block's attention
+      - tolerates bridge_model=None (no-op for bridge wiring)
+      - swallows get_generalized_component lookup failures on the template
+        (the documented (ValueError, AttributeError, KeyError) net)
+    """
+
+    def _make_fake_attn(self, layer_idx: int) -> SimpleNamespace:
+        """Per-layer self_attn with a mutable .config to assert eager flip."""
+        return SimpleNamespace(config=SimpleNamespace(_attn_implementation="sdpa"))
+
+    def _make_fake_hf_model(self, n_layers: int = 2) -> SimpleNamespace:
+        """Minimal hf_model stub exposing the attributes setup_component_testing walks."""
+        layers = [SimpleNamespace(self_attn=self._make_fake_attn(i)) for i in range(n_layers)]
+        sentinel_rotary = SimpleNamespace(_id="rotary-sentinel")
+        return SimpleNamespace(
+            config=SimpleNamespace(_attn_implementation="sdpa"),
+            model=SimpleNamespace(rotary_emb=sentinel_rotary, layers=layers),
+        )
+
+    def test_flips_top_level_attn_implementation_to_eager(
+        self, adapter: Qwen3ArchitectureAdapter
+    ) -> None:
+        hf = self._make_fake_hf_model()
+        adapter.setup_component_testing(hf)
+        assert hf.config._attn_implementation == "eager"
+
+    def test_flips_per_layer_attn_implementation_to_eager(
+        self, adapter: Qwen3ArchitectureAdapter
+    ) -> None:
+        hf = self._make_fake_hf_model(n_layers=3)
+        adapter.setup_component_testing(hf)
+        for layer in hf.model.layers:
+            assert layer.self_attn.config._attn_implementation == "eager"
+
+    def test_wires_rotary_on_bridge_blocks(self, adapter: Qwen3ArchitectureAdapter) -> None:
+        hf = self._make_fake_hf_model()
+        bridge_blocks = [_StubAttnBlock(), _StubAttnBlock()]
+        bridge_model = SimpleNamespace(blocks=bridge_blocks)
+        adapter.setup_component_testing(hf, bridge_model=bridge_model)
+        for block in bridge_blocks:
+            assert block.attn._rotary is hf.model.rotary_emb
+
+    def test_skips_bridge_wiring_when_bridge_model_none(
+        self, adapter: Qwen3ArchitectureAdapter
+    ) -> None:
+        """No bridge_model → must not raise; eager flips still apply."""
+        hf = self._make_fake_hf_model()
+        adapter.setup_component_testing(hf, bridge_model=None)
+        assert hf.config._attn_implementation == "eager"
+
+    def test_swallows_template_lookup_failure(
+        self, adapter: Qwen3ArchitectureAdapter, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """get_generalized_component may raise; setup_component_testing must
+        not propagate (caught by the (ValueError, AttributeError, KeyError) net)."""
+
+        def _raise(_self: Any, _path: str) -> None:
+            raise KeyError("blocks.0.attn")
+
+        monkeypatch.setattr(Qwen3ArchitectureAdapter, "get_generalized_component", _raise)
+        hf = self._make_fake_hf_model()
+        # Must not raise.
+        adapter.setup_component_testing(hf)
+
+
 class TestQwen3FactoryRegistration:
-    """Factory registeration Tests"""
+    """Factory registration and dispatch via select_architecture_adapter,
+    plus the import-from-__init__ guard."""
 
     def test_factory_key_registered(self) -> None:
         from transformer_lens.factories.architecture_adapter_factory import (

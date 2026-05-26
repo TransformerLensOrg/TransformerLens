@@ -79,8 +79,10 @@ def adapter(cfg: TransformerBridgeConfig) -> LlavaNextArchitectureAdapter:
 
 
 class TestLlavaNextInheritance:
-    """
-    Documentation for subclass relationship
+
+    """Subclass relationship to LlavaArchitectureAdapter. The class body is
+    `pass`; the inherited surface is the contract worth pinning so a future
+    accidental override is caught.
     """
 
     def test_subclass_of_llava(self) -> None:
@@ -91,9 +93,10 @@ class TestLlavaNextInheritance:
 
 
 class TestLlavaNextAdapterConfig:
-    """
-    Config attribute tests
-    """
+    """Multimodal config flags, vision-config propagation
+    (vision_hidden_size, vision_num_layers, vision_num_heads), and
+    language-model config defaults (RMSNorm, rotary, gated MLP, eager
+    attention, GQA via n_key_value_heads)."""
 
     def test_is_multimodal(self, adapter: LlavaNextArchitectureAdapter) -> None:
         assert adapter.cfg.is_multimodal is True
