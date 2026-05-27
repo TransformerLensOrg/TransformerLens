@@ -189,7 +189,7 @@ class TestOlmoeAdapterConfig:
         assert adapter.cfg.positional_embedding_type == "rotary"
 
     def test_final_rms_is_false(self, adapter: OlmoeArchitectureAdapter) -> None:
-        """OLMoE does not apply the final-RMS fold that Qwen-style adapters use."""
+        """OLMoE does not apply a final RMS fold."""
         assert adapter.cfg.final_rms is False
 
     def test_gated_mlp_is_true(self, adapter: OlmoeArchitectureAdapter) -> None:
@@ -310,7 +310,7 @@ class TestOlmoeComponentMapping:
             assert key in blocks.submodules, f"Missing blocks submodule: {key!r}"
 
     def test_attn_has_qkvo_and_qk_norm_submodules(self, adapter: OlmoeArchitectureAdapter) -> None:
-        """OLMoE, like Qwen3, has per-head Q/K normalization in addition to QKVO."""
+        """OLMoE adds Q/K normalization to QKVO, applied over the flattened n_heads * head_dim."""
         attn = _mapping(adapter)["blocks"].submodules["attn"]
         assert set(attn.submodules.keys()) == {"q", "k", "v", "o", "q_norm", "k_norm"}
 
@@ -411,9 +411,9 @@ class TestOlmoeMoEStructure:
 class TestOlmoeGQAHookShapes:
     """Wire a fake attention module into the bridge and verify GQA hook shapes.
 
-    Spec assertions cannot prove the bridge reshapes activations correctly. 
-    Here Q must surface n_heads while K/V surface n_key_value_heads, which is the 
-    whole point of grouped-query attention. The fake carries OLMoE's pre-reshape 
+    Spec assertions cannot prove the bridge reshapes activations correctly.
+    Here Q must surface n_heads while K/V surface n_key_value_heads, which is the
+    whole point of grouped-query attention. The fake carries OLMoE's pre-reshape
     Q/K norms so the bridge takes its Q/K-norm code path.
     """
 
