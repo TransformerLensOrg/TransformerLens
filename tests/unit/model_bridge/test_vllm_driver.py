@@ -243,6 +243,149 @@ class TestVLLMDriverForward:
             _driver(captures={}, max_num_batched_tokens=4).forward(torch.tensor([[1, 2, 3, 4, 5]]))
 
 
+def _batched_request_output(request_id, generated_token=None, top_logprobs=None):
+    """RequestOutput-shaped mock carrying a request_id for the accumulator join."""
+    completion = MagicMock()
+    completion.token_ids = [generated_token] if generated_token is not None else []
+    completion.logprobs = (
+        [{tid: MagicMock(logprob=lp) for tid, lp in top_logprobs.items()}]
+        if top_logprobs is not None
+        else []
+    )
+    ro = MagicMock()
+    ro.request_id = request_id
+    ro.outputs = [completion]
+    return ro
+
+
+def _batched_driver(*, outputs, captures_by_req, hf_config=None) -> VLLMDriver:
+    """Batched-mode VLLMDriver. ``outputs`` is the llm.generate return (in submission
+    order, each carrying .request_id); ``captures_by_req`` is the
+    tl_read_batched_captures payload keyed by req_id."""
+    llm = MagicMock()
+    llm.generate = MagicMock(return_value=outputs)
+    # collective_rpc("tl_read_batched_captures")[0] is the only indexed call; the
+    # reset/set calls ignore the return value.
+    llm.collective_rpc = MagicMock(return_value=[captures_by_req])
+    return VLLMDriver(
+        llm=llm,
+        adapter=_adapter(),
+        tokenizer=None,
+        overlay=_overlay(),
+        hf_config=hf_config or _hf_config(),
+        max_num_batched_tokens=2048,
+        enable_batching=True,
+    )
+
+
+class TestNormalizeInputIdsBatched:
+    """_normalize_input_ids_batched accepts tensors, flat lists, and ragged lists."""
+
+    def test_1d_tensor_is_single_prompt(self):
+        assert VLLMDriver._normalize_input_ids_batched(torch.tensor([1, 2, 3])) == [[1, 2, 3]]
+
+    def test_2d_tensor_is_per_row(self):
+        assert VLLMDriver._normalize_input_ids_batched(torch.tensor([[1, 2], [3, 4]])) == [
+            [1, 2],
+            [3, 4],
+        ]
+
+    def test_flat_list_is_single_prompt(self):
+        assert VLLMDriver._normalize_input_ids_batched([1, 2, 3]) == [[1, 2, 3]]
+
+    def test_ragged_list_of_lists_preserved(self):
+        assert VLLMDriver._normalize_input_ids_batched([[1, 2, 3], [4, 5]]) == [[1, 2, 3], [4, 5]]
+
+
+class TestBatchedForward:
+    """Batched path: req_id join, right-padded assembly, per-row logit synthesis."""
+
+    def test_req_id_join_not_positional(self):
+        """Accumulator keys are out-of-order req_ids; join via outputs[k].request_id."""
+        pytest.importorskip("vllm")
+        outputs = [
+            _batched_request_output("req-A", top_logprobs={7: 2.0}),
+            _batched_request_output("req-B", top_logprobs={3: 2.0}),
+        ]
+        # Captures keyed by req_id, deliberately reverse insertion order.
+        captures_by_req = {
+            "req-B": {"embed.hook_out": torch.full((2, 4), 2.0)},
+            "req-A": {"embed.hook_out": torch.full((3, 4), 1.0)},
+        }
+        result = _batched_driver(outputs=outputs, captures_by_req=captures_by_req).forward(
+            [[1, 2, 3], [4, 5]]
+        )
+        emb = result.captured["embed.hook_out"]
+        assert tuple(emb.shape) == (2, 3, 4)  # (batch, max_seq, width)
+        # Row 0 = req-A (3 real tokens, value 1.0); row 1 = req-B (2 real, value 2.0).
+        assert torch.equal(emb[0, :3], torch.full((3, 4), 1.0))
+        assert torch.equal(emb[1, :2], torch.full((2, 4), 2.0))
+
+    def test_shorter_rows_right_padded_with_zeros(self):
+        pytest.importorskip("vllm")
+        outputs = [
+            _batched_request_output("r0", top_logprobs={1: 1.0}),
+            _batched_request_output("r1", top_logprobs={1: 1.0}),
+        ]
+        captures_by_req = {
+            "r0": {"embed.hook_out": torch.ones(3, 4)},
+            "r1": {"embed.hook_out": torch.ones(1, 4)},
+        }
+        result = _batched_driver(outputs=outputs, captures_by_req=captures_by_req).forward(
+            [[1, 2, 3], [9]]
+        )
+        emb = result.captured["embed.hook_out"]
+        # Row 1 has 1 real token; positions 1,2 are zero pad.
+        assert torch.equal(emb[1, 1:], torch.zeros(2, 4))
+
+    def test_logits_at_per_row_last_token(self):
+        """Next-token logits land at prompt_len-1 per row, never -1 (a pad row)."""
+        pytest.importorskip("vllm")
+        outputs = [
+            _batched_request_output("r0", top_logprobs={7: 5.0}),
+            _batched_request_output("r1", top_logprobs={3: 5.0}),
+        ]
+        captures_by_req = {
+            "r0": {"embed.hook_out": torch.ones(3, 4)},
+            "r1": {"embed.hook_out": torch.ones(1, 4)},
+        }
+        result = _batched_driver(outputs=outputs, captures_by_req=captures_by_req).forward(
+            [[1, 2, 3], [9]]
+        )
+        logits = result.logits
+        assert logits is not None and tuple(logits.shape) == (2, 3, 16)
+        # Row 0 last token at pos 2; row 1 last token at pos 0 (not 2, which is pad).
+        assert int(logits[0, 2].argmax().item()) == 7
+        assert int(logits[1, 0].argmax().item()) == 3
+        assert torch.isinf(logits[1, 2]).all()  # pad position stays -inf
+
+    def test_resets_accumulator_before_generate(self):
+        """tl_reset_accumulators must fire so prior-forward chunks don't leak."""
+        pytest.importorskip("vllm")
+        driver = _batched_driver(
+            outputs=[_batched_request_output("r0", top_logprobs={1: 1.0})],
+            captures_by_req={"r0": {"embed.hook_out": torch.ones(2, 4)}},
+        )
+        driver.forward([[1, 2]])
+        methods = [c.args[0] for c in driver._llm.collective_rpc.call_args_list]
+        assert "tl_reset_accumulators" in methods
+        assert "tl_set_batched_interventions" in methods
+
+    def test_batched_intervention_spec_pushed(self):
+        pytest.importorskip("vllm")
+        driver = _batched_driver(
+            outputs=[_batched_request_output("r0", top_logprobs={1: 1.0})],
+            captures_by_req={"r0": {"embed.hook_out": torch.ones(2, 4)}},
+        )
+        driver.forward([[1, 2]], intervene={"embed.hook_out": {"op": "suppress"}})
+        calls = [c.args for c in driver._llm.collective_rpc.call_args_list]
+        assert any(
+            a[0] == "tl_set_batched_interventions"
+            and a[1] == ({"embed.hook_out": {"op": "suppress"}},)
+            for a in calls
+        )
+
+
 class TestVLLMDriverThroughBridge:
     """End-to-end via RemoteBridge — drivers' captures flow into the HookPoint tree."""
 

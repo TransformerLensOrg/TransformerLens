@@ -22,3 +22,30 @@ def extract_hf_config(llm: Any) -> Any:
             "Could not locate hf_config under llm.llm_engine.model_config. "
             "vLLM may have moved it; update extract_hf_config() to match."
         ) from e
+
+
+def segment_by_request(model_runner: Any) -> Any:
+    """Return ``(query_start_loc_cpu, req_ids)`` for the current forward.
+
+    Per-request token boundaries (``query_start_loc``) live on the per-layer
+    attention metadata in the active forward context, not on a stable engine
+    field, so this is only valid called from *inside* a forward (e.g. a layer
+    hook). ``req_ids`` maps each batch row to a request id and is NOT guaranteed
+    to be submission order — callers must join on it, not on position.
+
+    Returns ``(None, req_ids)`` if no metadata carries ``query_start_loc`` (e.g.
+    hybrid attention backends); the caller falls back to a single-request slice.
+    """
+    from vllm.forward_context import get_forward_context
+
+    req_ids = list(model_runner.input_batch.req_ids)
+    attn_metadata = get_forward_context().attn_metadata
+    if isinstance(attn_metadata, list):  # dual-batch-overlap returns a list of dicts
+        attn_metadata = attn_metadata[0]
+    if attn_metadata is None:
+        return None, req_ids
+    for meta in attn_metadata.values():
+        qsl = getattr(meta, "query_start_loc", None)
+        if qsl is not None:
+            return qsl.detach().cpu(), req_ids
+    return None, req_ids

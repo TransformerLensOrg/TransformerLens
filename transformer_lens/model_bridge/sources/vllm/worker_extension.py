@@ -1,11 +1,18 @@
-"""Worker extension exposed to collective_rpc for capture-buffer reads and
-intervention-buffer writes.
+"""Worker extension exposed to collective_rpc for capture reads and
+intervention writes.
 
 Hook *installation* lives in :mod:`plugin` (must happen pre-compile). This class
-only exposes the post-compile read/write surface. Buffers are per-Worker
-(``self._tl_buffers`` / ``self._tl_scale_buffers`` / ``self._tl_bias_buffers``)
-so concurrent ``boot_vllm`` calls don't collide. All methods prefixed ``tl_``
-to avoid colliding with vLLM ``Worker`` attributes.
+only exposes the read/write surface. State is per-Worker so concurrent
+``boot_vllm`` calls don't collide. All methods prefixed ``tl_`` to avoid
+colliding with vLLM ``Worker`` attributes.
+
+Two capture modes, selected at boot:
+  * Compiled (default): per-hook GPU buffers + affine scale/bias swap. Single
+    prompt. ``tl_read_captures`` / ``tl_set_interventions``.
+  * Batched (``enable_batching=True``, eager): per-(req_id, hook) CPU
+    accumulators filled in the hook via query_start_loc segmentation; arbitrary
+    batch + chunked prefill. ``tl_read_batched_captures`` /
+    ``tl_set_batched_interventions`` / ``tl_reset_accumulators``.
 """
 from __future__ import annotations
 
@@ -23,6 +30,10 @@ class TLWorkerExtension:
     _tl_buffers: Dict[str, torch.Tensor]
     _tl_scale_buffers: Dict[str, torch.Tensor]
     _tl_bias_buffers: Dict[str, torch.Tensor]
+    _tl_fire_counter: torch.Tensor
+    # Batched-mode state (eager).
+    _tl_accum: Dict[tuple, List[torch.Tensor]]
+    _tl_intervention_specs: Dict[str, Dict[str, Any]]
 
     def tl_read_captures(self, prompt_lens: List[int]) -> Dict[str, torch.Tensor]:
         """Slice each capture buffer back to ``sum(prompt_lens)`` rows; CPU copies.
@@ -54,6 +65,39 @@ class TLWorkerExtension:
                 raise KeyError(f"Unknown hook for intervention: {hook_name!r}")
             _apply_intervention(scale_bufs[hook_name], bias_bufs[hook_name], spec)
 
+    def tl_reset_counter(self) -> None:
+        """Zero the shared hook-fire counter before a forward."""
+        counter = getattr(self, "_tl_fire_counter", None)
+        if counter is not None:
+            counter.zero_()
+
+    def tl_read_counter(self) -> int:
+        """Total hook fires since the last reset."""
+        counter = getattr(self, "_tl_fire_counter", None)
+        return int(counter.item()) if counter is not None else 0
+
+    def tl_reset_accumulators(self) -> None:
+        """Clear capture chunks before each generate, else prior chunks leak into the cat."""
+        self._tl_accum = {}
+
+    def tl_read_batched_captures(self) -> Dict[str, Dict[str, torch.Tensor]]:
+        """Cat per-request chunks into ``{req_id: {hook: (seq, width)}}`` (chunks are token-order)."""
+        accum: Dict[tuple, List[torch.Tensor]] = getattr(self, "_tl_accum", {})
+        out: Dict[str, Dict[str, torch.Tensor]] = {}
+        for (req_id, name), chunks in accum.items():
+            out.setdefault(req_id, {})[name] = torch.cat(chunks, dim=0)
+        return out
+
+    def tl_set_batched_interventions(self, specs: Dict[str, Dict[str, Any]]) -> None:
+        """Store the global spec dict the eager hook reads; ``{}`` clears."""
+        for spec in specs.values():
+            op = spec.get("op")
+            if op not in SUPPORTED_OPS:
+                raise ValueError(
+                    f"Unsupported intervention op: {op!r}. Supported: {sorted(SUPPORTED_OPS)}"
+                )
+        self._tl_intervention_specs = dict(specs)
+
     def tl_remove_hooks(self) -> None:
         """Detach all capture hooks and drop buffer references. Idempotent."""
         for handle in getattr(self, "_tl_hook_handles", []):
@@ -62,6 +106,28 @@ class TLWorkerExtension:
         self._tl_buffers = {}
         self._tl_scale_buffers = {}
         self._tl_bias_buffers = {}
+        self._tl_accum = {}
+        self._tl_intervention_specs = {}
+
+
+def _apply_op(t: torch.Tensor, spec: Dict[str, Any]) -> torch.Tensor:
+    """Apply a spec to a tensor in-line (eager path; no GPU buffer to swap)."""
+    op = spec.get("op")
+    if op not in SUPPORTED_OPS:
+        raise ValueError(f"Unsupported intervention op: {op!r}. Supported: {sorted(SUPPORTED_OPS)}")
+    if op == "suppress":
+        return torch.zeros_like(t)
+    if op == "scale":
+        return t * float(spec["factor"])
+    value = torch.as_tensor(spec["value"], device=t.device, dtype=t.dtype)
+    if value.ndim != 0 and value.shape != (t.shape[-1],):
+        raise ValueError(
+            f"Intervention 'value' must be a scalar or shape {(t.shape[-1],)}; "
+            f"got shape {tuple(value.shape)}"
+        )
+    if op == "add":
+        return t + value
+    return torch.zeros_like(t) + value  # set
 
 
 def _apply_intervention(

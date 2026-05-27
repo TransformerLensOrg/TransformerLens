@@ -38,6 +38,7 @@ def boot_vllm(
     gpu_memory_utilization: float = 0.5,
     max_model_len: Optional[int] = None,
     max_num_batched_tokens: int = 2048,
+    enable_batching: bool = False,
     **vllm_kwargs: Any,
 ) -> RemoteBridge:
     """Boot a model via vLLM and wrap it in a :class:`RemoteBridge` via :class:`VLLMDriver`.
@@ -73,6 +74,11 @@ def boot_vllm(
     model's native context (e.g. 131072 for Llama-3.2-1B) — easily 4+ GiB even
     on a 1B model. Pass an explicit ``max_model_len`` (e.g. ``2048`` for typical
     mech-interp prompts) to keep the budget on smaller GPUs.
+
+    ``enable_batching`` switches to the eager batched path (``enforce_eager``,
+    ``batch_size > 1``) — the throughput path for SAE/probe data collection.
+    Default ``False`` keeps the compile-validated single-prompt path. Batched
+    caches are right-padded with zeros to the longest sequence.
     """
     _reject_locked_overrides(vllm_kwargs)
 
@@ -90,6 +96,7 @@ def boot_vllm(
         capture_specs=overlay.capture_specs(hf_config_preview),
         max_num_batched_tokens=max_num_batched_tokens,
         dtype=resolved_dtype,
+        enable_batching=enable_batching,
     )
     plugin.register()
 
@@ -108,6 +115,10 @@ def boot_vllm(
     os.environ["VLLM_ENABLE_V1_MULTIPROCESSING"] = "0"
 
     from vllm import LLM
+
+    # Batched capture reads query_start_loc from the forward context, untraceable
+    # under torch.compile — so the batched path must run eager.
+    eager_kwargs: Dict[str, Any] = {"enforce_eager": True} if enable_batching else {}
 
     llm = LLM(
         model=model_name,
@@ -128,6 +139,7 @@ def boot_vllm(
         # too small for mech-interp). One ~512 KB buffer per call; negligible.
         max_logprobs=hf_config_preview.vocab_size,
         dtype=str(resolved_dtype).replace("torch.", "") if dtype is not None else "auto",
+        **eager_kwargs,
         **_LOCKED_KWARGS,
         **vllm_kwargs,
     )
@@ -157,6 +169,7 @@ def boot_vllm(
         overlay=overlay,
         hf_config=hf_config,
         max_num_batched_tokens=max_num_batched_tokens,
+        enable_batching=enable_batching,
     )
     bridge = RemoteBridge(adapter=adapter, tokenizer=tokenizer, driver=driver)
     _log_hook_summary(model_name, architecture, driver)
