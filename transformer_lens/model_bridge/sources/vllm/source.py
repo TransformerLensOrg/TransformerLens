@@ -57,6 +57,10 @@ def boot_vllm(
     ``demos/vLLM_Bridge_Integration_Test.ipynb``; unit tests cover the dispatch
     protocol only.
 
+    Some captures use vLLM-native conventions that differ from HF/HT; see
+    :mod:`transformer_lens.model_bridge.sources.vllm.overlays.decoder_only` for
+    which hooks diverge and the conversion to apply for HT-equivalent values.
+
     GPU memory cost: each capture buffer is ``max_num_batched_tokens × width`` at
     the model's dtype. For Llama-3.2-1B at fp16 with ``max_num_batched_tokens=2048``,
     the unembed buffer alone is ~525 MB (2048 × 128256 × 2 bytes); residual-stream

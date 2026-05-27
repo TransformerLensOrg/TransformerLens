@@ -9,12 +9,17 @@ Qwen3, Kimi, GLM, and every other model that inherits the standard shape.
 Non-decoder-only architectures (Mamba SSM, T5 encoder-decoder, BERT, MoE
 per-expert) break the convention and would need their own overlays.
 
-Caveat: ``model.layers.{i}`` returns ``(mlp_output, residual)`` separately
-(vLLM's fused-residual pattern) — our hook on the layer captures ``output[0]``
-which is the MLP delta, not the accumulated residual stream. HF's equivalent
-hook captures the post-MLP residual. Per-layer ``blocks.{i}.hook_out`` values
-will therefore diverge between sources; ``attn.hook_out`` and ``mlp.hook_out``
-match across sources.
+Two hooks capture different points than HF/HookedTransformer:
+
+- ``blocks.{i}.hook_out``: vLLM's layer returns ``(mlp_delta, residual)``
+  separately (fused-residual). The plugin's hook materializes the sum so the
+  captured value matches HF's "post-MLP residual stream".
+- ``ln_final.hook_normalized``: vLLM exposes ``x * rsqrt(var+eps) * weight``;
+  HF/HT exposes the pre-weight value. Divide the vLLM capture by
+  ``model.norm.weight`` (or ``1 + weight`` for Gemma) for HT-equivalent output.
+
+Non-decoder-only architectures (Mamba SSM, T5 encoder-decoder, BERT, MoE
+per-expert) break the convention and would need their own overlays.
 """
 from __future__ import annotations
 
