@@ -4,7 +4,10 @@ return_cache makes generate() also return an ActivationCache for the full prompt
 generated sequence, identical to run_with_cache(output) (issue #697). v1 supports
 single-sequence, decoder-only text generation; other paths raise NotImplementedError.
 
-Uses distilgpt2 (CI-cached).
+Uses distilgpt2 (CI-cached). The generating tests pass use_past_kv_cache=False so they stay
+robust on macOS-arm64 CI, where the cached-eager-attention path can NaN (issue #1322).
+return_cache recomputes run_with_cache on the output regardless of the KV-cache mode, so
+this does not change what is being tested.
 """
 
 import warnings
@@ -44,7 +47,12 @@ class TestGenerateReturnCache:
         tokens = bridge.to_tokens("The quick brown")
         with torch.no_grad():
             out, cache = bridge.generate(
-                tokens, max_new_tokens=5, do_sample=False, return_type="tokens", return_cache=True
+                tokens,
+                max_new_tokens=5,
+                do_sample=False,
+                return_type="tokens",
+                return_cache=True,
+                use_past_kv_cache=False,
             )
         assert isinstance(cache, ActivationCache)
         assert out.shape[1] > tokens.shape[1], "Should generate additional tokens"
@@ -54,7 +62,12 @@ class TestGenerateReturnCache:
         tokens = bridge.to_tokens("The quick brown")
         with torch.no_grad():
             out, gen_cache = bridge.generate(
-                tokens, max_new_tokens=5, do_sample=False, return_type="tokens", return_cache=True
+                tokens,
+                max_new_tokens=5,
+                do_sample=False,
+                return_type="tokens",
+                return_cache=True,
+                use_past_kv_cache=False,
             )
             _, ref_cache = bridge.run_with_cache(out)
 
@@ -71,7 +84,12 @@ class TestGenerateReturnCache:
         tokens = bridge.to_tokens("The quick brown")
         with torch.no_grad():
             out, cache = bridge.generate(
-                tokens, max_new_tokens=4, do_sample=False, return_type="tokens", return_cache=True
+                tokens,
+                max_new_tokens=4,
+                do_sample=False,
+                return_type="tokens",
+                return_cache=True,
+                use_past_kv_cache=False,
             )
         assert _PATTERN_HOOK in cache
         pattern = cache[_PATTERN_HOOK]
@@ -85,7 +103,13 @@ class TestGenerateReturnCache:
         """Default return_cache=False returns only the output (no tuple), preserving back-compat."""
         tokens = bridge.to_tokens("The quick brown")
         with torch.no_grad():
-            out = bridge.generate(tokens, max_new_tokens=5, do_sample=False, return_type="tokens")
+            out = bridge.generate(
+                tokens,
+                max_new_tokens=5,
+                do_sample=False,
+                return_type="tokens",
+                use_past_kv_cache=False,
+            )
         assert isinstance(out, torch.Tensor)
 
     def test_with_output_logits(self, bridge):
@@ -93,7 +117,12 @@ class TestGenerateReturnCache:
         tokens = bridge.to_tokens("The quick brown")
         with torch.no_grad():
             out, cache = bridge.generate(
-                tokens, max_new_tokens=4, do_sample=False, output_logits=True, return_cache=True
+                tokens,
+                max_new_tokens=4,
+                do_sample=False,
+                output_logits=True,
+                return_cache=True,
+                use_past_kv_cache=False,
             )
             _, ref_cache = bridge.run_with_cache(out.sequences)
         assert hasattr(out, "sequences") and hasattr(out, "logits")
@@ -112,6 +141,7 @@ class TestGenerateReturnCache:
                 return_type="tokens",
                 return_cache=True,
                 names_filter=wanted,
+                use_past_kv_cache=False,
             )
             _, ref = bridge.run_with_cache(out, names_filter=wanted)
         assert wanted in cache
@@ -132,6 +162,7 @@ class TestGenerateReturnCache:
                     return_type="tokens",
                     return_cache=True,
                     device="cpu",
+                    use_past_kv_cache=False,
                 )
         assert str(cache["blocks.0.hook_resid_post"].device) == "cpu"
         assert not any("move_model" in str(w.message) for w in caught), [
