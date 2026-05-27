@@ -9,6 +9,7 @@ from typing import (
     Any,
     Callable,
     Dict,
+    Iterator,
     List,
     Literal,
     Mapping,
@@ -453,7 +454,7 @@ class BridgeCore:
         """
 
         @contextmanager
-        def _hooks_context() -> Any:
+        def _hooks_context() -> Iterator["BridgeCore"]:
             added_hooks: List[Tuple[HookPoint, str]] = []
 
             def add_hook_to_point(
