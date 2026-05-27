@@ -33,7 +33,7 @@ from torch import nn
 from transformer_lens import utilities as utils
 from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.FactoredMatrix import FactoredMatrix
-from transformer_lens.hook_points import HookPoint
+from transformer_lens.hook_points import HookIntrospectionMixin, HookPoint
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.component_setup import set_original_components
 from transformer_lens.model_bridge.composition_scores import CompositionScores
@@ -94,7 +94,7 @@ def build_alias_to_canonical_map(hook_dict, prefix=""):
     return aliases
 
 
-class TransformerBridge(nn.Module):
+class TransformerBridge(HookIntrospectionMixin, nn.Module):
     """Bridge between HuggingFace and TransformerLens models.
 
     This class provides a standardized interface to access components of a transformer
@@ -196,6 +196,9 @@ class TransformerBridge(nn.Module):
         n_devices: Optional[int] = None,
         max_memory: Optional[Dict[Union[str, int], str]] = None,
         n_ctx: Optional[int] = None,
+        revision: Optional[str] = None,
+        checkpoint_index: Optional[int] = None,
+        checkpoint_value: Optional[int] = None,
     ) -> "TransformerBridge":
         """Boot a model from HuggingFace (alias for sources.transformers.boot).
 
@@ -203,6 +206,11 @@ class TransformerBridge(nn.Module):
         legacy ``HookedTransformer`` (which folds LayerNorm + centers weights).
         Call ``enable_compatibility_mode()`` on the result for HookedTransformer-
         equivalent numerics. Generation, argmax, and CE loss are unaffected.
+
+        Attention implementation is forced to ``"eager"`` so hooks can capture scores
+        and patterns. For an apples-to-apples HF comparison, load the HF model with
+        ``attn_implementation="eager"`` too; comparing against the default ``"sdpa"``
+        shows ~1e-3 fp32 drift from kernel-level op reordering, not a bridge bug.
 
         Args:
             model_name: The name of the model to load.
@@ -231,6 +239,14 @@ class TransformerBridge(nn.Module):
             n_ctx: Optional context length override. Writes to the appropriate HF config field
                 for this model automatically (callers don't need to know the field name).
                 Warns if larger than the model's default context length.
+            revision: Optional HF revision (branch, tag, or commit). Forwarded to the underlying
+                ``AutoConfig.from_pretrained`` and ``AutoModelForCausalLM.from_pretrained`` calls.
+                Mutually exclusive with ``checkpoint_index`` / ``checkpoint_value``.
+            checkpoint_index: Index into the available training checkpoints for the model family
+                (currently ``EleutherAI/pythia*`` and ``stanford-crfm/*``). Resolved to a revision
+                string via known per-family naming conventions.
+            checkpoint_value: Training step or token count of the desired checkpoint. Alternative
+                to ``checkpoint_index``; must match an entry in the family's checkpoint label list.
 
         Returns:
             The bridge to the loaded model.
@@ -251,6 +267,9 @@ class TransformerBridge(nn.Module):
             n_devices=n_devices,
             max_memory=max_memory,
             n_ctx=n_ctx,
+            revision=revision,
+            checkpoint_index=checkpoint_index,
+            checkpoint_value=checkpoint_value,
         )
 
     @property
@@ -684,6 +703,14 @@ class TransformerBridge(nn.Module):
         post-processed coordinate system: logit lens, direct logit attribution,
         residual-stream norms. Also enables legacy hook/component name aliases.
 
+        Hook semantic parity (issue #1317): ``hook_q_input``, ``hook_k_input``,
+        ``hook_v_input``, ``hook_attn_in``, and ``hook_mlp_in`` fire on the
+        pre-norm residual. Carve-outs: post-norm architectures (OLMo 2,
+        BERT-style) read the post-attention residual instead, and MLA blocks
+        (DeepSeek V2/V3/R1) do not expose the split-qkv aliases. ``hook_mlp_in``
+        is gated on ``cfg.use_hook_mlp_in``; toggle it via
+        :py:meth:`set_use_hook_mlp_in`.
+
         Args:
             disable_warnings: Whether to disable warnings about legacy components/hooks
             no_processing: Whether to disable ALL pre-processing steps of the model.
@@ -712,6 +739,11 @@ class TransformerBridge(nn.Module):
 
         apply_fn_to_all_components(self, set_compatibility_mode)
         self.clear_hook_registry()
+        # Drop pre-ln capture handles from any prior call so they don't accumulate.
+        if hasattr(self, "blocks"):
+            for block in self.blocks:
+                if hasattr(block, "_teardown_pre_ln_capture"):
+                    block._teardown_pre_ln_capture()
         try:
             if not no_processing:
                 self.process_weights(
@@ -925,6 +957,7 @@ class TransformerBridge(nn.Module):
         Returns:
             Token tensor of shape ``[batch, pos]``.
         """
+        assert self.tokenizer is not None, "Cannot use to_tokens without a tokenizer"
         if prepend_bos is None:
             prepend_bos = getattr(self.cfg, "default_prepend_bos", True)
         if padding_side is None:
@@ -2349,10 +2382,30 @@ class TransformerBridge(nn.Module):
                         forward_kwargs["use_cache"] = True
                         if _hf_kv_cache is not None:
                             forward_kwargs["past_key_values"] = _hf_kv_cache
+                            # HF v5 + macOS-arm64 NaNs when these are inferred
+                            # from cache state alone. Mirror HF generate(): pass
+                            # both an (batch, total_len) attention_mask and a
+                            # (batch, 1) position_ids for the new token.
+                            batch_size = current_tokens.shape[0]
+                            total_len = current_tokens.shape[1]
+                            device = current_tokens.device
+                            if "attention_mask" not in forward_kwargs:
+                                forward_kwargs["attention_mask"] = torch.ones(
+                                    (batch_size, total_len),
+                                    dtype=torch.long,
+                                    device=device,
+                                )
                             if "position_ids" in forward_kwargs:
                                 forward_kwargs["position_ids"] = forward_kwargs["position_ids"][
                                     :, -1:
                                 ]
+                            else:
+                                forward_kwargs["position_ids"] = torch.full(
+                                    (batch_size, 1),
+                                    total_len - 1,
+                                    dtype=torch.long,
+                                    device=device,
+                                )
                             logits = self(
                                 current_tokens[:, -1:],
                                 return_type="logits",
@@ -2548,10 +2601,14 @@ class TransformerBridge(nn.Module):
         stop_tokens = []
         eos_token_for_padding = 0
         if stop_at_eos:
+            tokenizer_has_eos_token = (
+                self.tokenizer is not None and self.tokenizer.eos_token_id is not None
+            )
             if eos_token_id is None:
                 assert (
-                    self.tokenizer.eos_token_id is not None
-                ), "Must pass eos_token_id if stop_at_eos is True and tokenizer has no eos_token_id"
+                    tokenizer_has_eos_token
+                ), "Must pass eos_token_id if stop_at_eos is True and tokenizer is None or has no eos_token_id"
+                assert self.tokenizer is not None
                 eos_token_id = self.tokenizer.eos_token_id
 
             if isinstance(eos_token_id, int):
@@ -2559,11 +2616,11 @@ class TransformerBridge(nn.Module):
                 eos_token_for_padding = eos_token_id
             else:
                 stop_tokens = list(eos_token_id)
-                eos_token_for_padding = (
-                    self.tokenizer.eos_token_id
-                    if self.tokenizer.eos_token_id is not None
-                    else eos_token_id[0]
-                )
+                if tokenizer_has_eos_token:
+                    assert self.tokenizer is not None
+                    eos_token_for_padding = self.tokenizer.eos_token_id
+                else:
+                    eos_token_for_padding = eos_token_id[0]
 
         # Track which sequences have finished
         finished_sequences = torch.zeros(batch_size, dtype=torch.bool, device=self.cfg.device)
@@ -2728,6 +2785,7 @@ class TransformerBridge(nn.Module):
 
         # Format output
         if return_type == "str":
+            assert self.tokenizer is not None
             if input_type == "str":
                 return self.tokenizer.decode(output_tokens[0], skip_special_tokens=True)
             else:
@@ -2824,21 +2882,25 @@ class TransformerBridge(nn.Module):
         stop_tokens: List[int] = []
         eos_token_for_padding = 0
         if stop_at_eos:
+            tokenizer_has_eos_token = (
+                self.tokenizer is not None and self.tokenizer.eos_token_id is not None
+            )
             if eos_token_id is None:
                 assert (
-                    self.tokenizer.eos_token_id is not None
-                ), "Must pass eos_token_id if stop_at_eos is True and tokenizer has no eos_token_id"
+                    tokenizer_has_eos_token
+                ), "Must pass eos_token_id if stop_at_eos is True and tokenizer is None or has no eos_token_id"
+                assert self.tokenizer is not None
                 eos_token_id = self.tokenizer.eos_token_id
             if isinstance(eos_token_id, int):
                 stop_tokens = [eos_token_id]
                 eos_token_for_padding = eos_token_id
             else:
                 stop_tokens = list(eos_token_id)
-                eos_token_for_padding = (
-                    self.tokenizer.eos_token_id
-                    if self.tokenizer.eos_token_id is not None
-                    else eos_token_id[0]
-                )
+                if tokenizer_has_eos_token:
+                    assert self.tokenizer is not None
+                    eos_token_for_padding = self.tokenizer.eos_token_id
+                else:
+                    eos_token_for_padding = eos_token_id[0]
 
         finished_sequences = torch.zeros(batch_size, dtype=torch.bool, device=self.cfg.device)
 
@@ -2859,6 +2921,7 @@ class TransformerBridge(nn.Module):
             tokens: torch.Tensor,
         ) -> Union[torch.Tensor, str]:
             if return_type == "str":
+                assert self.tokenizer is not None
                 return self.tokenizer.decode(tokens[0], skip_special_tokens=True)
             return tokens
 
@@ -3279,6 +3342,20 @@ class TransformerBridge(nn.Module):
         else:
             raise AttributeError(f"Hook point '{hook_name}' not found on component")
 
+    def add_perma_hook(
+        self,
+        name: Union[str, Callable[[str], bool]],
+        hook_fn,
+        dir="fwd",
+    ) -> None:
+        """Add a permanent hook that survives ``reset_hooks()`` calls.
+
+        Convenience wrapper for ``add_hook(..., is_permanent=True)``. To remove,
+        call ``reset_hooks(including_permanent=True)`` or remove from the
+        underlying ``HookPoint`` directly.
+        """
+        self.add_hook(name, hook_fn, dir=dir, is_permanent=True)
+
     def reset_hooks(self, clear_contexts=True):
         """Remove all hooks from the model."""
 
@@ -3402,6 +3479,23 @@ class TransformerBridge(nn.Module):
             self._validate_attention_fork_supported("use_attn_in")
         self.cfg.use_attn_in = use_attn_in
         self._propagate_attention_flag("use_attn_in", use_attn_in)
+
+    def set_use_hook_mlp_in(self, use_hook_mlp_in: bool) -> None:
+        """Toggle the pre-ln2 ``hook_mlp_in`` HookPoint, matching legacy semantics.
+
+        See :py:meth:`HookedTransformer.set_use_hook_mlp_in`.
+        """
+        self.cfg.use_hook_mlp_in = use_hook_mlp_in
+        if not hasattr(self, "blocks"):
+            return
+        for block in self.blocks:
+            block_cfg = getattr(block, "config", None)
+            if block_cfg is not None and block_cfg is not self.cfg:
+                try:
+                    block_cfg.use_hook_mlp_in = use_hook_mlp_in
+                except Exception:
+                    pass
+            block._use_hook_mlp_in = use_hook_mlp_in
 
     def _propagate_attention_flag(self, flag_name: str, value: bool) -> None:
         """Mirror `bridge.cfg.<flag>` onto every block's attention config.

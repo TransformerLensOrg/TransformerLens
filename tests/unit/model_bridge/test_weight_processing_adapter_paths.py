@@ -8,15 +8,14 @@ import pytest
 import torch
 from transformers import GPT2LMHeadModel
 
-from transformer_lens import HookedTransformer
 from transformer_lens import utilities as utils
-from transformer_lens.config.TransformerBridgeConfig import TransformerBridgeConfig
+from transformer_lens.config.transformer_bridge_config import TransformerBridgeConfig
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.weight_processing import ProcessWeights
 
 
 @pytest.mark.filterwarnings("ignore::pytest.PytestReturnNotNoneWarning")
-def test_processweights_with_adapter():
+def test_processweights_with_adapter(gpt2_hooked_processed):
     """Test ProcessWeights with architecture adapter for path translation."""
     print("=== TESTING PROCESSWEIGHTS WITH ARCHITECTURE ADAPTER ===")
 
@@ -24,7 +23,7 @@ def test_processweights_with_adapter():
     gpt2_text = "Natural language processing tasks, such as question answering, machine translation, reading comprehension, and summarization, are typically approached with supervised learning on taskspecific datasets."
 
     print("\n1. Loading reference HookedTransformer...")
-    hooked_processed = HookedTransformer.from_pretrained("gpt2", device="cpu")
+    hooked_processed = gpt2_hooked_processed
     tokens = hooked_processed.to_tokens(gpt2_text)
 
     print("\n2. Loading raw HuggingFace model...")

@@ -6,7 +6,7 @@ eigenvalues, norm and SVD.
 
 from __future__ import annotations
 
-from functools import lru_cache
+from functools import cached_property
 from typing import Any, List, Protocol, Tuple, Union, cast, overload, runtime_checkable
 
 import torch
@@ -214,7 +214,24 @@ class FactoredMatrix:
     def T(self) -> FactoredMatrix:
         return FactoredMatrix(self.B.transpose(-2, -1), self.A.transpose(-2, -1))
 
-    @lru_cache(maxsize=None)
+    @cached_property
+    def _svd_cached(
+        self,
+    ) -> Tuple[
+        Float[torch.Tensor, "*leading_dims ldim mdim"],
+        Float[torch.Tensor, "*leading_dims mdim"],
+        Float[torch.Tensor, "*leading_dims rdim mdim"],
+    ]:
+        # Cache on the instance (frees with it) rather than class-level — fixes the lru_cache leak.
+        Ua, Sa, Vha = torch.linalg.svd(self.A, full_matrices=False)
+        Ub, Sb, Vhb = torch.linalg.svd(self.B, full_matrices=False)
+        Va = tensor_utils.transpose(Vha)
+        Vb = tensor_utils.transpose(Vhb)
+        middle = Sa[..., :, None] * tensor_utils.transpose(Va) @ Ub * Sb[..., None, :]
+        Um, Sm, Vhm = torch.linalg.svd(middle, full_matrices=False)
+        Vm = tensor_utils.transpose(Vhm)
+        return Ua @ Um, Sm, Vb @ Vm
+
     def svd(
         self,
     ) -> Tuple[
@@ -222,19 +239,8 @@ class FactoredMatrix:
         Float[torch.Tensor, "*leading_dims mdim"],
         Float[torch.Tensor, "*leading_dims rdim mdim"],
     ]:
-        """
-        Efficient algorithm for finding Singular Value Decomposition, a tuple (U, S, Vh) for matrix M st S is a vector and U, Vh are orthogonal matrices, and U @ S.diag() @ Vh.T == M
-
-        (Note that Vh is given as the transpose of the obvious thing)
-        """
-        Ua, Sa, Vha = torch.svd(self.A)
-        Ub, Sb, Vhb = torch.svd(self.B)
-        middle = Sa[..., :, None] * tensor_utils.transpose(Vha) @ Ub * Sb[..., None, :]
-        Um, Sm, Vhm = torch.svd(middle)
-        U = Ua @ Um
-        Vh = Vhb @ Vhm
-        S = Sm
-        return U, S, Vh
+        """Singular Value Decomposition: returns ``(U, S, V)`` such that ``U @ S.diag() @ V.transpose(-2, -1) == M``."""
+        return self._svd_cached
 
     @property
     def U(self) -> Float[torch.Tensor, "*leading_dims ldim mdim"]:
@@ -245,7 +251,22 @@ class FactoredMatrix:
         return self.svd()[1]
 
     @property
+    def V(self) -> Float[torch.Tensor, "*leading_dims rdim mdim"]:
+        """Right singular vectors. ``M == U @ S.diag() @ V.transpose(-2, -1)``."""
+        return self.svd()[2]
+
+    @property
     def Vh(self) -> Float[torch.Tensor, "*leading_dims rdim mdim"]:
+        """Deprecated alias for :attr:`V` — historically misnamed; returns V, not its conjugate transpose."""
+        import warnings
+
+        warnings.warn(
+            "FactoredMatrix.Vh has always returned V (right singular vectors), not Vh. "
+            "Use .V for the canonical name; for the actual Hermitian transpose use "
+            ".V.transpose(-2, -1). The .Vh alias will be removed in a future release.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         return self.svd()[2]
 
     @property
@@ -302,11 +323,11 @@ class FactoredMatrix:
 
     def make_even(self) -> FactoredMatrix:
         """
-        Returns the factored form of (U @ S.sqrt().diag(), S.sqrt().diag() @ Vh) where U, S, Vh are the SVD of the matrix. This is an equivalent factorisation, but more even - each half has half the singular values, and orthogonal rows/cols
+        Returns the factored form of (U @ S.sqrt().diag(), S.sqrt().diag() @ V.T) where U, S, V are the SVD of the matrix. This is an equivalent factorisation, but more even - each half has half the singular values, and orthogonal rows/cols
         """
         return FactoredMatrix(
             self.U * self.S.sqrt()[..., None, :],
-            self.S.sqrt()[..., :, None] * tensor_utils.transpose(self.Vh),
+            self.S.sqrt()[..., :, None] * tensor_utils.transpose(self.V),
         )
 
     def get_corner(self, k=3):
@@ -320,7 +341,7 @@ class FactoredMatrix:
         """
         Collapses the left side of the factorization by removing the orthogonal factor (given by self.U). Returns a (..., mdim, rdim) tensor
         """
-        return self.S[..., :, None] * tensor_utils.transpose(self.Vh)
+        return self.S[..., :, None] * tensor_utils.transpose(self.V)
 
     def collapse_r(self) -> Float[torch.Tensor, "*leading_dims ldim mdim"]:
         """

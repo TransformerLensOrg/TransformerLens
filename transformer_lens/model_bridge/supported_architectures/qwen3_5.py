@@ -22,17 +22,7 @@ class Qwen3_5ArchitectureAdapter(Qwen3ArchitectureAdapter):
     - Gated q_proj (2x wide) sliced by preprocess_weights for weight analysis
     """
 
-    _MIN_TRANSFORMERS_VERSION = "5.2.0"
-
     def __init__(self, cfg: Any) -> None:
-        import transformers
-
-        if transformers.__version__ < self._MIN_TRANSFORMERS_VERSION:
-            raise ImportError(
-                f"Qwen3.5 requires transformers >= {self._MIN_TRANSFORMERS_VERSION} "
-                f"(installed: {transformers.__version__}). "
-                f"Upgrade with: pip install 'transformers>={self._MIN_TRANSFORMERS_VERSION}'"
-            )
         setattr(cfg, "gated_q_proj", True)
         super().__init__(cfg, hybrid=True)
 
@@ -46,6 +36,26 @@ class Qwen3_5ArchitectureAdapter(Qwen3ArchitectureAdapter):
         config = model_kwargs.get("config")
         if config is not None and hasattr(config, "text_config"):
             model_kwargs["config"] = config.text_config
+
+    def prepare_model(self, hf_model: Any) -> None:
+        """Reject full multimodal Qwen3.5 models on this text-only adapter."""
+        config = getattr(hf_model, "config", None)
+        architectures = getattr(config, "architectures", []) or []
+        class_name = type(hf_model).__name__
+
+        is_conditional_generation = (
+            class_name == "Qwen3_5ForConditionalGeneration"
+            or "Qwen3_5ForConditionalGeneration" in architectures
+        )
+        still_has_top_level_multimodal_config = hasattr(config, "text_config")
+        if is_conditional_generation or still_has_top_level_multimodal_config:
+            raise ValueError(
+                "Qwen3.5 support in TransformerLens is text-only. Pass a "
+                "Qwen3_5ForCausalLM / Qwen3_5TextConfig model, or load by model id "
+                "with TransformerBridge.boot_transformers(...) so the text_config is "
+                "selected automatically. Qwen3_5ForConditionalGeneration, image/video "
+                "inputs, and Qwen3.5 MoE are not supported by this adapter."
+            )
 
     def preprocess_weights(self, state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
         """Slice query half from gated q_proj.weight for weight-space analysis.

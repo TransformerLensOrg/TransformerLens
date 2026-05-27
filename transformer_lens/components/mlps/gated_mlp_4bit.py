@@ -11,7 +11,7 @@ from jaxtyping import Float
 from transformers.utils import is_bitsandbytes_available
 
 from transformer_lens.components.mlps.can_be_used_as_mlp import CanBeUsedAsMLP
-from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.config.hooked_transformer_config import HookedTransformerConfig
 from transformer_lens.hook_points import HookPoint
 
 if is_bitsandbytes_available():
@@ -29,6 +29,12 @@ class GatedMLP4Bit(CanBeUsedAsMLP):
 
     In one equation, mlp_out = (Gelu(x @ W_gate) * (x @ W_in) + b_in) @ W_out + b_out
     """
+
+    # Narrow base-class W_in/W_out (declared as torch.Tensor) to bnb's Params4bit
+    # so .quant_state attribute access type-checks.
+    W_in: "Params4bit"
+    W_gate: "Params4bit"
+    W_out: "Params4bit"
 
     def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
         super().__init__(cfg)

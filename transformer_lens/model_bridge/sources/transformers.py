@@ -277,6 +277,55 @@ def get_hf_model_class_for_architecture(architecture: str):
         return AutoModelForCausalLM
 
 
+# Known training-checkpoint revision conventions on HF.
+_CHECKPOINT_REVISION_FORMATS: dict[str, str] = {
+    "EleutherAI/pythia": "step{value}",
+    "stanford-crfm": "checkpoint-{value}",
+}
+
+
+def _resolve_checkpoint_to_revision(
+    model_name: str,
+    checkpoint_index: int | None,
+    checkpoint_value: int | None,
+) -> str:
+    """Convert a checkpoint index/value into an HF revision string, validated against ``get_checkpoint_labels``."""
+    if checkpoint_index is None and checkpoint_value is None:
+        raise ValueError("Must specify either checkpoint_index or checkpoint_value.")
+
+    format_str: str | None = None
+    for prefix, fmt in _CHECKPOINT_REVISION_FORMATS.items():
+        if model_name.startswith(prefix):
+            format_str = fmt
+            break
+    if format_str is None:
+        raise ValueError(
+            f"Model {model_name!r} does not have a known checkpoint revision convention. "
+            f"Pass revision= directly if your model uses HF revisions. Known checkpoint "
+            f"families: {list(_CHECKPOINT_REVISION_FORMATS.keys())}."
+        )
+
+    from transformer_lens.loading_from_pretrained import get_checkpoint_labels
+
+    labels, _ = get_checkpoint_labels(model_name)
+    if checkpoint_value is not None:
+        if checkpoint_value not in labels:
+            raise ValueError(
+                f"checkpoint_value={checkpoint_value} not in available checkpoints for "
+                f"{model_name!r}. {len(labels)} labels available, "
+                f"first/last: {labels[0]}..{labels[-1]}."
+            )
+    else:
+        assert checkpoint_index is not None  # narrowed by initial guard
+        if not 0 <= checkpoint_index < len(labels):
+            raise ValueError(
+                f"checkpoint_index={checkpoint_index} out of range [0, {len(labels)}) "
+                f"for {model_name!r}."
+            )
+        checkpoint_value = labels[checkpoint_index]
+    return format_str.format(value=checkpoint_value)
+
+
 def boot(
     model_name: str,
     hf_config_overrides: dict | None = None,
@@ -288,6 +337,9 @@ def boot(
     model_class: Any | None = None,
     hf_model: Any | None = None,
     n_ctx: int | None = None,
+    revision: str | None = None,
+    checkpoint_index: int | None = None,
+    checkpoint_value: int | None = None,
     # Experimental – Have not been fully tested on multi-gpu devices
     # Use at your own risk, report any issues here: https://github.com/TransformerLensOrg/TransformerLens/issues
     device_map: str | dict[str, str | int] | None = None,
@@ -321,6 +373,15 @@ def boot(
             uses (n_positions / max_position_embeddings / etc.), so callers don't need to know
             the field name. If larger than the model's default, a warning is emitted — quality
             may degrade past the trained length for rotary models.
+        revision: Optional HF revision string (branch, tag, or commit). Forwarded to
+            ``AutoConfig.from_pretrained`` and ``AutoModelForCausalLM.from_pretrained``.
+            Mutually exclusive with ``checkpoint_index`` and ``checkpoint_value``.
+        checkpoint_index: Index into the available training checkpoints for the model family.
+            Convenience over ``revision`` for checkpointed models like EleutherAI/pythia* and
+            stanford-crfm/*. Resolved to a revision string via the known per-family naming
+            conventions (``step{value}`` for Pythia, ``checkpoint-{value}`` for stanford-crfm).
+        checkpoint_value: Training step or token count of the desired checkpoint. Alternative to
+            ``checkpoint_index``; must be one of the labels returned by ``get_checkpoint_labels``.
 
     Returns:
         The bridge to the loaded model.
@@ -332,6 +393,12 @@ def boot(
             )
             model_name = official_name
             break
+    if checkpoint_index is not None or checkpoint_value is not None:
+        if revision is not None:
+            raise ValueError(
+                "Specify either revision= or checkpoint_index/checkpoint_value, not both."
+            )
+        revision = _resolve_checkpoint_to_revision(model_name, checkpoint_index, checkpoint_value)
     # Pass HF token for gated model access (e.g. meta-llama/*)
     from transformer_lens.utilities.hf_utils import get_hf_token
 
@@ -346,6 +413,7 @@ def boot(
             output_attentions=True,
             trust_remote_code=trust_remote_code,
             token=_hf_token,
+            revision=revision,
         )
     _n_ctx_field: str | None = None
     if n_ctx is not None:
@@ -505,6 +573,8 @@ def boot(
         model_kwargs["token"] = _hf_token
     if trust_remote_code:
         model_kwargs["trust_remote_code"] = True
+    if revision is not None:
+        model_kwargs["revision"] = revision
     if resolved_device_map is not None:
         model_kwargs["device_map"] = resolved_device_map
     if resolved_max_memory is not None:
@@ -522,8 +592,9 @@ def boot(
         from_config_kwargs = {}
         if trust_remote_code:
             from_config_kwargs["trust_remote_code"] = True
+        prepared_config = model_kwargs.get("config", hf_config)
         with contextlib.redirect_stdout(None):
-            hf_model = model_class.from_config(hf_config, **from_config_kwargs)
+            hf_model = model_class.from_config(prepared_config, **from_config_kwargs)
     else:
         try:
             hf_model = model_class.from_pretrained(model_name, **model_kwargs)

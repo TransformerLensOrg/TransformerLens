@@ -226,7 +226,9 @@ class TestStackBlockParams:
 
 class TestRefactorFactoredAttnHybrid:
     def test_skips_missing_attn_layers(self):
-        from transformer_lens.config.TransformerLensConfig import TransformerLensConfig
+        from transformer_lens.config.transformer_lens_config import (
+            TransformerLensConfig,
+        )
         from transformer_lens.weight_processing import ProcessWeights
 
         cfg = TransformerLensConfig(
@@ -255,7 +257,9 @@ class TestRefactorFactoredAttnHybrid:
         assert "blocks.3.attn.W_Q" not in result
 
     def test_raises_on_partial_attn_keys(self):
-        from transformer_lens.config.TransformerLensConfig import TransformerLensConfig
+        from transformer_lens.config.transformer_lens_config import (
+            TransformerLensConfig,
+        )
         from transformer_lens.weight_processing import ProcessWeights
 
         cfg = TransformerLensConfig(

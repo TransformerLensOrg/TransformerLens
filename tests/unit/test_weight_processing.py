@@ -11,7 +11,7 @@ import einops
 import pytest
 import torch
 
-from transformer_lens.config.TransformerLensConfig import TransformerLensConfig
+from transformer_lens.config.transformer_lens_config import TransformerLensConfig
 from transformer_lens.weight_processing import ProcessWeights
 
 # from typing import Dict  # Unused import

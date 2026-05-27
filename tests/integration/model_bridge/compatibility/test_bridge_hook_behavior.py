@@ -84,7 +84,6 @@ class TestHookFiring:
         )
         assert fired == {"resid_pre_0", "resid_post_0"}
 
-    @pytest.mark.xfail(reason="add_perma_hook not yet implemented on TransformerBridge")
     def test_perma_hook_persists_across_calls(self, bridge):
         """A permanent hook fires on every forward pass until removed."""
         count = 0

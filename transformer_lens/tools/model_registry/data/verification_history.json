@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-05-08T10:35:57.497430",
+  "last_updated": "2026-05-19T15:11:14.577399",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -12025,6 +12025,116 @@
       "model_id": "SimpleStories/SimpleStories-V2-35M",
       "architecture_id": "LlamaForCausalLM",
       "verified_date": "2026-05-08",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "google/gemma-2b",
+      "architecture_id": "GemmaForCausalLM",
+      "verified_date": "2026-05-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "google/gemma-2b-it",
+      "architecture_id": "GemmaForCausalLM",
+      "verified_date": "2026-05-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "google/gemma-7b",
+      "architecture_id": "GemmaForCausalLM",
+      "verified_date": "2026-05-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P2=93.3% (failed: backward_hooks)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "google/gemma-7b-it",
+      "architecture_id": "GemmaForCausalLM",
+      "verified_date": "2026-05-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P2=93.3% (failed: backward_hooks)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "google/gemma-2-2b",
+      "architecture_id": "Gemma2ForCausalLM",
+      "verified_date": "2026-05-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P3=95.5% (failed: unembed_centering)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "google/gemma-2-2b-it",
+      "architecture_id": "Gemma2ForCausalLM",
+      "verified_date": "2026-05-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P3=95.5% (failed: unembed_centering)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "google/gemma-2-9b",
+      "architecture_id": "Gemma2ForCausalLM",
+      "verified_date": "2026-05-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P3=95.5% (failed: unembed_centering)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "facebook/xglm-564M",
+      "architecture_id": "XGLMForCausalLM",
+      "verified_date": "2026-05-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "hf-tiny-model-private/tiny-random-XGLMForCausalLM",
+      "architecture_id": "XGLMForCausalLM",
+      "verified_date": "2026-05-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "facebook/xglm-1.7B",
+      "architecture_id": "XGLMForCausalLM",
+      "verified_date": "2026-05-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "facebook/xglm-2.9B",
+      "architecture_id": "XGLMForCausalLM",
+      "verified_date": "2026-05-19",
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Full verification completed",

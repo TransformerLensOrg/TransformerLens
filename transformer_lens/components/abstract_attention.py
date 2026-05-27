@@ -15,7 +15,7 @@ from transformer_lens.cache.key_value_cache_entry import (
     TransformerLensKeyValueCacheEntry,
 )
 from transformer_lens.components.rms_norm import RMSNorm
-from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.config.hooked_transformer_config import HookedTransformerConfig
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.utilities import get_offset_position_ids

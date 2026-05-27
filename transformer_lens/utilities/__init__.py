@@ -41,7 +41,7 @@ from .initialization_utils import (
 )
 from .library_utils import is_library_available
 from .lm_utils import lm_accuracy, lm_cross_entropy_loss
-from .logits_utils import sample_logits
+from .logits_utils import logits_to_df, sample_logits
 from .matrix import (
     composition_scores,
     get_matrix_corner,
