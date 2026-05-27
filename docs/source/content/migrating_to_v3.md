@@ -136,6 +136,10 @@ These work identically on `TransformerBridge` and need no migration:
 
 If your code only touches these APIs, the migration is genuinely just the loading call and (optionally) `enable_compatibility_mode`.
 
+### BERT Next Sentence Prediction
+
+`BertNextSentencePrediction` is not ported to `TransformerBridge`. Keep using `HookedEncoder` + `BertNextSentencePrediction` for NSP workflows. The bridge's BERT adapter does load NSP HuggingFace checkpoints (it rewires the unembed to `cls.seq_relationship`), but the high-level NSP API – sentence-pair tokenization, `[CLS]` pooling, "sequential"/"not sequential" decoding — is not exposed. If this is feature is something you'd like added to TransformerBridge, please file an issue.
+
 ### New in 3.x: streaming generation
 
 Both `HookedTransformer` and `TransformerBridge` now expose `generate_stream`, which yields tokens progressively instead of returning the full completion at once:

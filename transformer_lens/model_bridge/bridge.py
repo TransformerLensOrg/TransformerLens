@@ -3342,6 +3342,20 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         else:
             raise AttributeError(f"Hook point '{hook_name}' not found on component")
 
+    def add_perma_hook(
+        self,
+        name: Union[str, Callable[[str], bool]],
+        hook_fn,
+        dir="fwd",
+    ) -> None:
+        """Add a permanent hook that survives ``reset_hooks()`` calls.
+
+        Convenience wrapper for ``add_hook(..., is_permanent=True)``. To remove,
+        call ``reset_hooks(including_permanent=True)`` or remove from the
+        underlying ``HookPoint`` directly.
+        """
+        self.add_hook(name, hook_fn, dir=dir, is_permanent=True)
+
     def reset_hooks(self, clear_contexts=True):
         """Remove all hooks from the model."""
 
