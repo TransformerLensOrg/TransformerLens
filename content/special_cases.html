@@ -219,8 +219,9 @@
 </ul>
 </li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../generated/code/transformer_lens.config.html">transformer_lens.config package</a><input class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" role="switch" type="checkbox"/><label for="toctree-checkbox-6"><div class="visually-hidden">Toggle navigation of transformer_lens.config package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
-<li class="toctree-l4"><a class="reference internal" href="../generated/code/transformer_lens.config.TransformerBridgeConfig.html">transformer_lens.config.TransformerBridgeConfig module</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../generated/code/transformer_lens.config.TransformerLensConfig.html">transformer_lens.config.TransformerLensConfig module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../generated/code/transformer_lens.config.hooked_transformer_config.html">transformer_lens.config.hooked_transformer_config module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../generated/code/transformer_lens.config.transformer_bridge_config.html">transformer_lens.config.transformer_bridge_config module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../generated/code/transformer_lens.config.transformer_lens_config.html">transformer_lens.config.transformer_lens_config module</a></li>
 </ul>
 </li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../generated/code/transformer_lens.conversion_utils.html">transformer_lens.conversion_utils package</a><input class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><div class="visually-hidden">Toggle navigation of transformer_lens.conversion_utils package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
@@ -354,7 +355,6 @@
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.model_bridge.supported_architectures.opt.html">transformer_lens.model_bridge.supported_architectures.opt module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.model_bridge.supported_architectures.phi.html">transformer_lens.model_bridge.supported_architectures.phi module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.model_bridge.supported_architectures.phi3.html">transformer_lens.model_bridge.supported_architectures.phi3 module</a></li>
-<li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.model_bridge.supported_architectures.pythia.html">transformer_lens.model_bridge.supported_architectures.pythia module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.model_bridge.supported_architectures.qwen.html">transformer_lens.model_bridge.supported_architectures.qwen module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.model_bridge.supported_architectures.qwen2.html">transformer_lens.model_bridge.supported_architectures.qwen2 module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.model_bridge.supported_architectures.qwen3.html">transformer_lens.model_bridge.supported_architectures.qwen3 module</a></li>
@@ -455,6 +455,7 @@
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../generated/code/transformer_lens.HookedAudioEncoder.html">transformer_lens.HookedAudioEncoder module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../generated/code/transformer_lens.HookedRootModule.html">transformer_lens.HookedRootModule module</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../generated/code/transformer_lens.evals.html">transformer_lens.evals module</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../generated/code/transformer_lens.head_detector.html">transformer_lens.head_detector module</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../generated/code/transformer_lens.hook_points.html">transformer_lens.hook_points module</a></li>
@@ -483,6 +484,7 @@
 <li class="toctree-l1 has-children"><a class="reference internal" href="contributing.html">Contributing</a><input class="toctree-checkbox" id="toctree-checkbox-22" name="toctree-checkbox-22" role="switch" type="checkbox"/><label for="toctree-checkbox-22"><div class="visually-hidden">Toggle navigation of Contributing</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
 <li class="toctree-l2"><a class="reference internal" href="adapter_development/adapter-creation-guide.html">Architecture Adapter Creation Guide</a></li>
 <li class="toctree-l2"><a class="reference internal" href="adapter_development/hf-model-analysis-guide.html">HuggingFace Model Analysis Guide</a></li>
+<li class="toctree-l2"><a class="reference internal" href="adapter_development/external-adapter-registration.html">External Architecture Adapter Registration</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="../generated/demos/Main_Demo.html">Transformer Lens Main Demo Notebook</a></li>
@@ -497,6 +499,7 @@
 <li class="toctree-l1 has-children"><a class="reference internal" href="contributing.html">Contributing</a><input class="toctree-checkbox" id="toctree-checkbox-23" name="toctree-checkbox-23" role="switch" type="checkbox"/><label for="toctree-checkbox-23"><div class="visually-hidden">Toggle navigation of Contributing</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
 <li class="toctree-l2"><a class="reference internal" href="adapter_development/adapter-creation-guide.html">Architecture Adapter Creation Guide</a></li>
 <li class="toctree-l2"><a class="reference internal" href="adapter_development/hf-model-analysis-guide.html">HuggingFace Model Analysis Guide</a></li>
+<li class="toctree-l2"><a class="reference internal" href="adapter_development/external-adapter-registration.html">External Architecture Adapter Registration</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference external" href="https://transformerlensorg.github.io/TransformerLens/_static/coverage/">Code Coverage</a></li>
@@ -553,6 +556,21 @@ rate of the logits compared to those from the default model was found to be arou
 <li><p><strong>Increase the precision of the data type used in the model.</strong></p></li>
 </ol>
 </section>
+<section id="qwen3-5-text-only-models">
+<h2>Qwen3.5 text-only models<a class="headerlink" href="#qwen3-5-text-only-models" title="Link to this heading">¶</a></h2>
+<p>Qwen3.5 has no <code class="docutils literal notranslate"><span class="pre">HookedTransformer.from_pretrained</span></code> legacy path. Load it through <code class="docutils literal notranslate"><span class="pre">TransformerBridge</span></code>. Dense text-only checkpoints can be loaded with:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">transformer_lens.model_bridge</span><span class="w"> </span><span class="kn">import</span> <span class="n">TransformerBridge</span>
+
+<span class="n">bridge</span> <span class="o">=</span> <span class="n">TransformerBridge</span><span class="o">.</span><span class="n">boot_transformers</span><span class="p">(</span><span class="s2">&quot;Qwen/Qwen3.5-0.8B&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Qwen3.5 uses a hybrid stack. Full-attention layers expose the usual hooks under
+<code class="docutils literal notranslate"><span class="pre">blocks.N.attn.*</span></code>; linear-attention layers expose GatedDeltaNet hooks under
+<code class="docutils literal notranslate"><span class="pre">blocks.N.linear_attn.*</span></code>, including <code class="docutils literal notranslate"><span class="pre">hook_q_pre_conv</span></code>, <code class="docutils literal notranslate"><span class="pre">hook_k_pre_conv</span></code>,
+<code class="docutils literal notranslate"><span class="pre">hook_v_pre_conv</span></code>, <code class="docutils literal notranslate"><span class="pre">hook_beta</span></code>, <code class="docutils literal notranslate"><span class="pre">hook_log_decay</span></code>, <code class="docutils literal notranslate"><span class="pre">hook_recurrence_out</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">hook_out</span></code>. Full multimodal <code class="docutils literal notranslate"><span class="pre">Qwen3_5ForConditionalGeneration</span></code>, image/video
+inputs, and Qwen3.5 MoE checkpoints are not supported by this adapter.</p>
+</section>
 </section>
 
         </article>
@@ -604,6 +622,7 @@ rate of the logits compared to those from the default model was found to be arou
             <ul>
 <li><a class="reference internal" href="#">Special Cases</a><ul>
 <li><a class="reference internal" href="#mixture-of-experts-error-rates">Mixture of Experts error rates</a></li>
+<li><a class="reference internal" href="#qwen3-5-text-only-models">Qwen3.5 text-only models</a></li>
 </ul>
 </li>
 </ul>

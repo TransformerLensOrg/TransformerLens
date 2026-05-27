@@ -219,8 +219,9 @@
 </ul>
 </li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../generated/code/transformer_lens.config.html">transformer_lens.config package</a><input class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" role="switch" type="checkbox"/><label for="toctree-checkbox-6"><div class="visually-hidden">Toggle navigation of transformer_lens.config package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
-<li class="toctree-l4"><a class="reference internal" href="../generated/code/transformer_lens.config.TransformerBridgeConfig.html">transformer_lens.config.TransformerBridgeConfig module</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../generated/code/transformer_lens.config.TransformerLensConfig.html">transformer_lens.config.TransformerLensConfig module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../generated/code/transformer_lens.config.hooked_transformer_config.html">transformer_lens.config.hooked_transformer_config module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../generated/code/transformer_lens.config.transformer_bridge_config.html">transformer_lens.config.transformer_bridge_config module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../generated/code/transformer_lens.config.transformer_lens_config.html">transformer_lens.config.transformer_lens_config module</a></li>
 </ul>
 </li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../generated/code/transformer_lens.conversion_utils.html">transformer_lens.conversion_utils package</a><input class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><div class="visually-hidden">Toggle navigation of transformer_lens.conversion_utils package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
@@ -354,7 +355,6 @@
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.model_bridge.supported_architectures.opt.html">transformer_lens.model_bridge.supported_architectures.opt module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.model_bridge.supported_architectures.phi.html">transformer_lens.model_bridge.supported_architectures.phi module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.model_bridge.supported_architectures.phi3.html">transformer_lens.model_bridge.supported_architectures.phi3 module</a></li>
-<li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.model_bridge.supported_architectures.pythia.html">transformer_lens.model_bridge.supported_architectures.pythia module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.model_bridge.supported_architectures.qwen.html">transformer_lens.model_bridge.supported_architectures.qwen module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.model_bridge.supported_architectures.qwen2.html">transformer_lens.model_bridge.supported_architectures.qwen2 module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.model_bridge.supported_architectures.qwen3.html">transformer_lens.model_bridge.supported_architectures.qwen3 module</a></li>
@@ -455,6 +455,7 @@
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../generated/code/transformer_lens.HookedAudioEncoder.html">transformer_lens.HookedAudioEncoder module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../generated/code/transformer_lens.HookedRootModule.html">transformer_lens.HookedRootModule module</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../generated/code/transformer_lens.evals.html">transformer_lens.evals module</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../generated/code/transformer_lens.head_detector.html">transformer_lens.head_detector module</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../generated/code/transformer_lens.hook_points.html">transformer_lens.hook_points module</a></li>
@@ -483,6 +484,7 @@
 <li class="toctree-l1 has-children"><a class="reference internal" href="contributing.html">Contributing</a><input class="toctree-checkbox" id="toctree-checkbox-22" name="toctree-checkbox-22" role="switch" type="checkbox"/><label for="toctree-checkbox-22"><div class="visually-hidden">Toggle navigation of Contributing</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
 <li class="toctree-l2"><a class="reference internal" href="adapter_development/adapter-creation-guide.html">Architecture Adapter Creation Guide</a></li>
 <li class="toctree-l2"><a class="reference internal" href="adapter_development/hf-model-analysis-guide.html">HuggingFace Model Analysis Guide</a></li>
+<li class="toctree-l2"><a class="reference internal" href="adapter_development/external-adapter-registration.html">External Architecture Adapter Registration</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="../generated/demos/Main_Demo.html">Transformer Lens Main Demo Notebook</a></li>
@@ -497,6 +499,7 @@
 <li class="toctree-l1 has-children"><a class="reference internal" href="contributing.html">Contributing</a><input class="toctree-checkbox" id="toctree-checkbox-23" name="toctree-checkbox-23" role="switch" type="checkbox"/><label for="toctree-checkbox-23"><div class="visually-hidden">Toggle navigation of Contributing</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
 <li class="toctree-l2"><a class="reference internal" href="adapter_development/adapter-creation-guide.html">Architecture Adapter Creation Guide</a></li>
 <li class="toctree-l2"><a class="reference internal" href="adapter_development/hf-model-analysis-guide.html">HuggingFace Model Analysis Guide</a></li>
+<li class="toctree-l2"><a class="reference internal" href="adapter_development/external-adapter-registration.html">External Architecture Adapter Registration</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference external" href="https://transformerlensorg.github.io/TransformerLens/_static/coverage/">Code Coverage</a></li>
@@ -563,10 +566,35 @@
 <h2>Advice for Reading the Code<a class="headerlink" href="#advice-for-reading-the-code" title="Link to this heading">¶</a></h2>
 <p>The bridge is organized around a small set of generalized components wired together by an architecture adapter, which keeps the model code much easier to navigate than the older unified implementation. For a tour of the bridge’s canonical hook names, the component layout, and the expected tensor shapes at each hook point, see the <a class="reference internal" href="model_structure.html"><span class="std std-doc">Model Structure</span></a> page. A small alias layer preserves the older TransformerLens hook names (e.g. <code class="docutils literal notranslate"><span class="pre">blocks.{i}.hook_resid_pre</span></code>) so legacy notebooks keep working — but new code should prefer the canonical names.</p>
 </section>
+<section id="environment-variables">
+<h2>Environment Variables<a class="headerlink" href="#environment-variables" title="Link to this heading">¶</a></h2>
+<p>TransformerLens reads a handful of environment variables. None are required for basic use; each enables a specific opt-in behavior.</p>
+<section id="hf-token">
+<h3><code class="docutils literal notranslate"><span class="pre">HF_TOKEN</span></code><a class="headerlink" href="#hf-token" title="Link to this heading">¶</a></h3>
+<p>Your <a class="reference external" href="https://huggingface.co/settings/tokens">HuggingFace access token</a>. Required for gated models (Llama, Mistral/Mixtral, Gemma families, and others) and used to authenticate any HuggingFace API call TransformerLens makes on your behalf. You will need to accept any model-specific agreements on the HuggingFace Hub before TransformerLens can load a gated model; if you skip this step, the error message will link you directly to the agreement page.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">export</span><span class="w"> </span><span class="nv">HF_TOKEN</span><span class="o">=</span><span class="s2">&quot;hf_...&quot;</span>
+</pre></div>
+</div>
+</section>
+<section id="transformerlens-hf-retry">
+<h3><code class="docutils literal notranslate"><span class="pre">TRANSFORMERLENS_HF_RETRY</span></code><a class="headerlink" href="#transformerlens-hf-retry" title="Link to this heading">¶</a></h3>
+<p>Set to <code class="docutils literal notranslate"><span class="pre">&quot;1&quot;</span></code> to wrap <code class="docutils literal notranslate"><span class="pre">transformers.AutoConfig.from_pretrained</span></code>, <code class="docutils literal notranslate"><span class="pre">AutoModel.from_pretrained</span></code>, <code class="docutils literal notranslate"><span class="pre">AutoTokenizer.from_pretrained</span></code>, <code class="docutils literal notranslate"><span class="pre">AutoProcessor.from_pretrained</span></code>, and <code class="docutils literal notranslate"><span class="pre">AutoFeatureExtractor.from_pretrained</span></code> with a retry-on-429 helper. When HuggingFace returns HTTP 429 (rate-limited), the call is retried up to three times with exponential backoff, honoring numeric <code class="docutils literal notranslate"><span class="pre">Retry-After</span></code> response headers when present (HTTP-date form is not parsed; the retry falls back to exponential backoff in that case).</p>
+<p>Intended primarily for CI environments where parallel workflow runs can trip HF’s rate limits. Off by default so production callers see unmodified <code class="docutils literal notranslate"><span class="pre">transformers</span></code> behavior. The wrapping is idempotent and applied globally to the class methods; see <a class="reference external" href="https://github.com/TransformerLensOrg/TransformerLens/blob/main/transformer_lens/utilities/hf_utils.py"><code class="docutils literal notranslate"><span class="pre">enable_hf_retry</span></code></a> for the implementation. The TransformerLens test suite enables this automatically via <code class="docutils literal notranslate"><span class="pre">tests/conftest.py</span></code>.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">export</span><span class="w"> </span><span class="nv">TRANSFORMERLENS_HF_RETRY</span><span class="o">=</span><span class="m">1</span>
+</pre></div>
+</div>
+</section>
+<section id="transformerlens-allow-mps">
+<h3><code class="docutils literal notranslate"><span class="pre">TRANSFORMERLENS_ALLOW_MPS</span></code><a class="headerlink" href="#transformerlens-allow-mps" title="Link to this heading">¶</a></h3>
+<p>Set to <code class="docutils literal notranslate"><span class="pre">&quot;1&quot;</span></code> to opt in to Apple Silicon (MPS) as a target device for model inference. Off by default because not all PyTorch operations used by TransformerLens have stable MPS implementations across PyTorch versions; if you enable this and hit a backend error, the most reliable fallback is to leave the variable unset and let TransformerLens select CPU instead.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">export</span><span class="w"> </span><span class="nv">TRANSFORMERLENS_ALLOW_MPS</span><span class="o">=</span><span class="m">1</span>
+</pre></div>
+</div>
+</section>
+</section>
 <section id="huggingface-gated-access">
 <h2>Huggingface Gated Access<a class="headerlink" href="#huggingface-gated-access" title="Link to this heading">¶</a></h2>
-<p>Some of the models available in TransformerLens require gated access to be used. Luckily TransformerLens provides a way to access those models via the configuration of an environmental variable. Simply configure your <a class="reference external" href="https://huggingface.co/settings/tokens">HuggingFace access token</a> as <code class="docutils literal notranslate"><span class="pre">HF_TOKEN</span></code> in your environment.</p>
-<p>You will need to make sure you accept the agreements for any gated models, but once you do, the models will work with TransformerLens without issue. If you attempt to use one of these models before you have accepted any related agreements, the console output will be very helpful and point you to the URL where you need to accept an agreement. The most popular gated families supported by TransformerLens are the Llama, Mistral/Mixtral, and Gemma models.</p>
+<p>For convenience, gated-model access depends only on <code class="docutils literal notranslate"><span class="pre">HF_TOKEN</span></code> above. Once you have set the token and accepted any model-specific agreements on the HuggingFace Hub, gated models load through TransformerLens with no additional configuration. The most popular gated families supported by TransformerLens are the Llama, Mistral/Mixtral, and Gemma models.</p>
 </section>
 </section>
 
@@ -629,6 +657,12 @@
 <li><a class="reference internal" href="#installation">Installation</a></li>
 <li><a class="reference internal" href="#loading-a-model">Loading a Model</a></li>
 <li><a class="reference internal" href="#advice-for-reading-the-code">Advice for Reading the Code</a></li>
+<li><a class="reference internal" href="#environment-variables">Environment Variables</a><ul>
+<li><a class="reference internal" href="#hf-token"><code class="docutils literal notranslate"><span class="pre">HF_TOKEN</span></code></a></li>
+<li><a class="reference internal" href="#transformerlens-hf-retry"><code class="docutils literal notranslate"><span class="pre">TRANSFORMERLENS_HF_RETRY</span></code></a></li>
+<li><a class="reference internal" href="#transformerlens-allow-mps"><code class="docutils literal notranslate"><span class="pre">TRANSFORMERLENS_ALLOW_MPS</span></code></a></li>
+</ul>
+</li>
 <li><a class="reference internal" href="#huggingface-gated-access">Huggingface Gated Access</a></li>
 </ul>
 </li>

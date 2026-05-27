@@ -1,7 +1,0 @@
-transformer\_lens.config.TransformerBridgeConfig module
-=======================================================
-
-.. automodule:: transformer_lens.config.TransformerBridgeConfig
-   :members:
-   :undoc-members:
-   :show-inheritance:

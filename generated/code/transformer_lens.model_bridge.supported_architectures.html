@@ -219,8 +219,9 @@
 </ul>
 </li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="transformer_lens.config.html">transformer_lens.config package</a><input class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" role="switch" type="checkbox"/><label for="toctree-checkbox-6"><div class="visually-hidden">Toggle navigation of transformer_lens.config package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
-<li class="toctree-l4"><a class="reference internal" href="transformer_lens.config.TransformerBridgeConfig.html">transformer_lens.config.TransformerBridgeConfig module</a></li>
-<li class="toctree-l4"><a class="reference internal" href="transformer_lens.config.TransformerLensConfig.html">transformer_lens.config.TransformerLensConfig module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.config.hooked_transformer_config.html">transformer_lens.config.hooked_transformer_config module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.config.transformer_bridge_config.html">transformer_lens.config.transformer_bridge_config module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.config.transformer_lens_config.html">transformer_lens.config.transformer_lens_config module</a></li>
 </ul>
 </li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="transformer_lens.conversion_utils.html">transformer_lens.conversion_utils package</a><input class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><div class="visually-hidden">Toggle navigation of transformer_lens.conversion_utils package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
@@ -354,7 +355,6 @@
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.opt.html">transformer_lens.model_bridge.supported_architectures.opt module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.phi.html">transformer_lens.model_bridge.supported_architectures.phi module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.phi3.html">transformer_lens.model_bridge.supported_architectures.phi3 module</a></li>
-<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.pythia.html">transformer_lens.model_bridge.supported_architectures.pythia module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.qwen.html">transformer_lens.model_bridge.supported_architectures.qwen module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.qwen2.html">transformer_lens.model_bridge.supported_architectures.qwen2 module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.qwen3.html">transformer_lens.model_bridge.supported_architectures.qwen3 module</a></li>
@@ -455,6 +455,7 @@
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.HookedAudioEncoder.html">transformer_lens.HookedAudioEncoder module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.HookedRootModule.html">transformer_lens.HookedRootModule module</a></li>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.evals.html">transformer_lens.evals module</a></li>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.head_detector.html">transformer_lens.head_detector module</a></li>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.hook_points.html">transformer_lens.hook_points module</a></li>
@@ -483,6 +484,7 @@
 <li class="toctree-l1 has-children"><a class="reference internal" href="../../content/contributing.html">Contributing</a><input class="toctree-checkbox" id="toctree-checkbox-22" name="toctree-checkbox-22" role="switch" type="checkbox"/><label for="toctree-checkbox-22"><div class="visually-hidden">Toggle navigation of Contributing</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
 <li class="toctree-l2"><a class="reference internal" href="../../content/adapter_development/adapter-creation-guide.html">Architecture Adapter Creation Guide</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../content/adapter_development/hf-model-analysis-guide.html">HuggingFace Model Analysis Guide</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../content/adapter_development/external-adapter-registration.html">External Architecture Adapter Registration</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html">Transformer Lens Main Demo Notebook</a></li>
@@ -497,6 +499,7 @@
 <li class="toctree-l1 has-children"><a class="reference internal" href="../../content/contributing.html">Contributing</a><input class="toctree-checkbox" id="toctree-checkbox-23" name="toctree-checkbox-23" role="switch" type="checkbox"/><label for="toctree-checkbox-23"><div class="visually-hidden">Toggle navigation of Contributing</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
 <li class="toctree-l2"><a class="reference internal" href="../../content/adapter_development/adapter-creation-guide.html">Architecture Adapter Creation Guide</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../content/adapter_development/hf-model-analysis-guide.html">HuggingFace Model Analysis Guide</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../content/adapter_development/external-adapter-registration.html">External Architecture Adapter Registration</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference external" href="https://transformerlensorg.github.io/TransformerLens/_static/coverage/">Code Coverage</a></li>
@@ -612,7 +615,6 @@
 <li class="toctree-l2"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.gemma1.html#transformer_lens.model_bridge.supported_architectures.gemma1.Gemma1ArchitectureAdapter"><code class="docutils literal notranslate"><span class="pre">Gemma1ArchitectureAdapter</span></code></a><ul>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.gemma1.html#transformer_lens.model_bridge.supported_architectures.gemma1.Gemma1ArchitectureAdapter.__init__"><code class="docutils literal notranslate"><span class="pre">Gemma1ArchitectureAdapter.__init__()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.gemma1.html#transformer_lens.model_bridge.supported_architectures.gemma1.Gemma1ArchitectureAdapter.setup_component_testing"><code class="docutils literal notranslate"><span class="pre">Gemma1ArchitectureAdapter.setup_component_testing()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.gemma1.html#transformer_lens.model_bridge.supported_architectures.gemma1.Gemma1ArchitectureAdapter.setup_hook_compatibility"><code class="docutils literal notranslate"><span class="pre">Gemma1ArchitectureAdapter.setup_hook_compatibility()</span></code></a></li>
 </ul>
 </li>
 </ul>
@@ -621,7 +623,6 @@
 <li class="toctree-l2"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.gemma2.html#transformer_lens.model_bridge.supported_architectures.gemma2.Gemma2ArchitectureAdapter"><code class="docutils literal notranslate"><span class="pre">Gemma2ArchitectureAdapter</span></code></a><ul>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.gemma2.html#transformer_lens.model_bridge.supported_architectures.gemma2.Gemma2ArchitectureAdapter.__init__"><code class="docutils literal notranslate"><span class="pre">Gemma2ArchitectureAdapter.__init__()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.gemma2.html#transformer_lens.model_bridge.supported_architectures.gemma2.Gemma2ArchitectureAdapter.setup_component_testing"><code class="docutils literal notranslate"><span class="pre">Gemma2ArchitectureAdapter.setup_component_testing()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.gemma2.html#transformer_lens.model_bridge.supported_architectures.gemma2.Gemma2ArchitectureAdapter.setup_hook_compatibility"><code class="docutils literal notranslate"><span class="pre">Gemma2ArchitectureAdapter.setup_hook_compatibility()</span></code></a></li>
 </ul>
 </li>
 </ul>
@@ -630,7 +631,6 @@
 <li class="toctree-l2"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.gemma3.html#transformer_lens.model_bridge.supported_architectures.gemma3.Gemma3ArchitectureAdapter"><code class="docutils literal notranslate"><span class="pre">Gemma3ArchitectureAdapter</span></code></a><ul>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.gemma3.html#transformer_lens.model_bridge.supported_architectures.gemma3.Gemma3ArchitectureAdapter.__init__"><code class="docutils literal notranslate"><span class="pre">Gemma3ArchitectureAdapter.__init__()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.gemma3.html#transformer_lens.model_bridge.supported_architectures.gemma3.Gemma3ArchitectureAdapter.setup_component_testing"><code class="docutils literal notranslate"><span class="pre">Gemma3ArchitectureAdapter.setup_component_testing()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.gemma3.html#transformer_lens.model_bridge.supported_architectures.gemma3.Gemma3ArchitectureAdapter.setup_hook_compatibility"><code class="docutils literal notranslate"><span class="pre">Gemma3ArchitectureAdapter.setup_hook_compatibility()</span></code></a></li>
 </ul>
 </li>
 </ul>
@@ -639,7 +639,6 @@
 <li class="toctree-l2"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.gemma3_multimodal.html#transformer_lens.model_bridge.supported_architectures.gemma3_multimodal.Gemma3MultimodalArchitectureAdapter"><code class="docutils literal notranslate"><span class="pre">Gemma3MultimodalArchitectureAdapter</span></code></a><ul>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.gemma3_multimodal.html#transformer_lens.model_bridge.supported_architectures.gemma3_multimodal.Gemma3MultimodalArchitectureAdapter.__init__"><code class="docutils literal notranslate"><span class="pre">Gemma3MultimodalArchitectureAdapter.__init__()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.gemma3_multimodal.html#transformer_lens.model_bridge.supported_architectures.gemma3_multimodal.Gemma3MultimodalArchitectureAdapter.setup_component_testing"><code class="docutils literal notranslate"><span class="pre">Gemma3MultimodalArchitectureAdapter.setup_component_testing()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.gemma3_multimodal.html#transformer_lens.model_bridge.supported_architectures.gemma3_multimodal.Gemma3MultimodalArchitectureAdapter.setup_hook_compatibility"><code class="docutils literal notranslate"><span class="pre">Gemma3MultimodalArchitectureAdapter.setup_hook_compatibility()</span></code></a></li>
 </ul>
 </li>
 </ul>
@@ -904,15 +903,6 @@
 </li>
 </ul>
 </li>
-<li class="toctree-l1"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.pythia.html">transformer_lens.model_bridge.supported_architectures.pythia module</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.pythia.html#transformer_lens.model_bridge.supported_architectures.pythia.PythiaArchitectureAdapter"><code class="docutils literal notranslate"><span class="pre">PythiaArchitectureAdapter</span></code></a><ul>
-<li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.pythia.html#transformer_lens.model_bridge.supported_architectures.pythia.PythiaArchitectureAdapter.__init__"><code class="docutils literal notranslate"><span class="pre">PythiaArchitectureAdapter.__init__()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.pythia.html#transformer_lens.model_bridge.supported_architectures.pythia.PythiaArchitectureAdapter.setup_component_testing"><code class="docutils literal notranslate"><span class="pre">PythiaArchitectureAdapter.setup_component_testing()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.pythia.html#transformer_lens.model_bridge.supported_architectures.pythia.PythiaArchitectureAdapter.split_qkv_matrix"><code class="docutils literal notranslate"><span class="pre">PythiaArchitectureAdapter.split_qkv_matrix()</span></code></a></li>
-</ul>
-</li>
-</ul>
-</li>
 <li class="toctree-l1"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.qwen.html">transformer_lens.model_bridge.supported_architectures.qwen module</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.qwen.html#transformer_lens.model_bridge.supported_architectures.qwen.QwenArchitectureAdapter"><code class="docutils literal notranslate"><span class="pre">QwenArchitectureAdapter</span></code></a><ul>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.qwen.html#transformer_lens.model_bridge.supported_architectures.qwen.QwenArchitectureAdapter.__init__"><code class="docutils literal notranslate"><span class="pre">QwenArchitectureAdapter.__init__()</span></code></a></li>
@@ -938,6 +928,7 @@
 <li class="toctree-l1"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.qwen3_5.html">transformer_lens.model_bridge.supported_architectures.qwen3_5 module</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.qwen3_5.html#transformer_lens.model_bridge.supported_architectures.qwen3_5.Qwen3_5ArchitectureAdapter"><code class="docutils literal notranslate"><span class="pre">Qwen3_5ArchitectureAdapter</span></code></a><ul>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.qwen3_5.html#transformer_lens.model_bridge.supported_architectures.qwen3_5.Qwen3_5ArchitectureAdapter.prepare_loading"><code class="docutils literal notranslate"><span class="pre">Qwen3_5ArchitectureAdapter.prepare_loading()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.qwen3_5.html#transformer_lens.model_bridge.supported_architectures.qwen3_5.Qwen3_5ArchitectureAdapter.prepare_model"><code class="docutils literal notranslate"><span class="pre">Qwen3_5ArchitectureAdapter.prepare_model()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.qwen3_5.html#transformer_lens.model_bridge.supported_architectures.qwen3_5.Qwen3_5ArchitectureAdapter.preprocess_weights"><code class="docutils literal notranslate"><span class="pre">Qwen3_5ArchitectureAdapter.preprocess_weights()</span></code></a></li>
 </ul>
 </li>
@@ -977,7 +968,6 @@
 <li class="toctree-l1"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.xglm.html">transformer_lens.model_bridge.supported_architectures.xglm module</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.xglm.html#transformer_lens.model_bridge.supported_architectures.xglm.XGLMArchitectureAdapter"><code class="docutils literal notranslate"><span class="pre">XGLMArchitectureAdapter</span></code></a><ul>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.xglm.html#transformer_lens.model_bridge.supported_architectures.xglm.XGLMArchitectureAdapter.__init__"><code class="docutils literal notranslate"><span class="pre">XGLMArchitectureAdapter.__init__()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.xglm.html#transformer_lens.model_bridge.supported_architectures.xglm.XGLMArchitectureAdapter.setup_hook_compatibility"><code class="docutils literal notranslate"><span class="pre">XGLMArchitectureAdapter.setup_hook_compatibility()</span></code></a></li>
 </ul>
 </li>
 </ul>
@@ -1398,20 +1388,6 @@ on all attention bridge instances for component testing.</p>
 </dl>
 </dd></dl>
 
-<dl class="py method">
-<dt class="sig sig-object py" id="transformer_lens.model_bridge.supported_architectures.Gemma1ArchitectureAdapter.setup_hook_compatibility">
-<span class="sig-name descname"><span class="pre">setup_hook_compatibility</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">bridge</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#transformer_lens.model_bridge.supported_architectures.Gemma1ArchitectureAdapter.setup_hook_compatibility" title="Link to this definition">¶</a></dt>
-<dd><p>Setup hook compatibility for Gemma1 models.</p>
-<p>Gemma1 scales embeddings by sqrt(d_model) in its forward pass,
-but the HuggingFace embed_tokens layer doesn’t include this scaling.
-We need to apply it to hook_embed to match HookedTransformer behavior.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>bridge</strong> – The TransformerBridge instance</p>
-</dd>
-</dl>
-</dd></dl>
-
 </dd></dl>
 
 <dl class="py class">
@@ -1441,21 +1417,6 @@ differences due to different implementations.</p>
 <li><p><strong>hf_model</strong> – The HuggingFace Gemma-2 model instance</p></li>
 <li><p><strong>bridge_model</strong> – The TransformerBridge model (if available, set rotary_emb on actual instances)</p></li>
 </ul>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="transformer_lens.model_bridge.supported_architectures.Gemma2ArchitectureAdapter.setup_hook_compatibility">
-<span class="sig-name descname"><span class="pre">setup_hook_compatibility</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">bridge</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#transformer_lens.model_bridge.supported_architectures.Gemma2ArchitectureAdapter.setup_hook_compatibility" title="Link to this definition">¶</a></dt>
-<dd><p>Setup hook compatibility for Gemma2 models.</p>
-<p>Gemma2 scales embeddings by sqrt(d_model). The weights are pre-scaled via
-preprocess_weights(), but we still need to apply the scaling conversion to
-the hook output for proper hook functionality (so user modifications are
-correctly scaled/unscaled).</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>bridge</strong> – The TransformerBridge instance</p>
 </dd>
 </dl>
 </dd></dl>
@@ -1497,23 +1458,6 @@ This is an acceptable tradeoff given the shared-instance constraint.</p>
 </dl>
 </dd></dl>
 
-<dl class="py method">
-<dt class="sig sig-object py" id="transformer_lens.model_bridge.supported_architectures.Gemma3ArchitectureAdapter.setup_hook_compatibility">
-<span class="sig-name descname"><span class="pre">setup_hook_compatibility</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">bridge</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#transformer_lens.model_bridge.supported_architectures.Gemma3ArchitectureAdapter.setup_hook_compatibility" title="Link to this definition">¶</a></dt>
-<dd><p>Setup hook compatibility for Gemma3 models.</p>
-<p>Unlike Gemma1/Gemma2, Gemma3 uses Gemma3TextScaledWordEmbedding which
-scales embeddings by sqrt(d_model) INSIDE the embedding layer’s forward().
-Therefore we do NOT need a hook_conversion — the embed.hook_out already
-captures the scaled output. Adding a conversion would double-scale.</p>
-<p>(Gemma1/Gemma2 scale in GemmaModel.forward() AFTER the embedding layer,
-so their adapters correctly use EmbeddingScaleConversion to match HT.)</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>bridge</strong> – The TransformerBridge instance</p>
-</dd>
-</dl>
-</dd></dl>
-
 </dd></dl>
 
 <dl class="py class">
@@ -1545,21 +1489,6 @@ The model structure is:
 <li><p><strong>hf_model</strong> – The HuggingFace Gemma-3 multimodal model instance</p></li>
 <li><p><strong>bridge_model</strong> – The TransformerBridge model (if available)</p></li>
 </ul>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="transformer_lens.model_bridge.supported_architectures.Gemma3MultimodalArchitectureAdapter.setup_hook_compatibility">
-<span class="sig-name descname"><span class="pre">setup_hook_compatibility</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">bridge</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#transformer_lens.model_bridge.supported_architectures.Gemma3MultimodalArchitectureAdapter.setup_hook_compatibility" title="Link to this definition">¶</a></dt>
-<dd><p>Setup hook compatibility for Gemma3 multimodal models.</p>
-<p>Like text-only Gemma 3, the multimodal model uses
-Gemma3TextScaledWordEmbedding which scales embeddings by sqrt(d_model)
-internally in its forward() method. No additional hook conversion is
-needed — adding one would double-scale the embeddings.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>bridge</strong> – The TransformerBridge instance</p>
 </dd>
 </dl>
 </dd></dl>
@@ -1855,7 +1784,7 @@ loop with Mamba-1.</p>
 <dl class="py method">
 <dt class="sig sig-object py" id="transformer_lens.model_bridge.supported_architectures.Mamba2ArchitectureAdapter.create_stateful_cache">
 <span class="sig-name descname"><span class="pre">create_stateful_cache</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">hf_model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">batch_size</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dtype</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dtype</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#transformer_lens.model_bridge.supported_architectures.Mamba2ArchitectureAdapter.create_stateful_cache" title="Link to this definition">¶</a></dt>
-<dd><p>Build a Mamba2Cache for the stateful generation loop.</p>
+<dd><p>Build a cache for the stateful generation loop.</p>
 </dd></dl>
 
 </dd></dl>
@@ -1876,7 +1805,7 @@ intermediate_size) are propagated from the HF config via
 <dl class="py method">
 <dt class="sig sig-object py" id="transformer_lens.model_bridge.supported_architectures.MambaArchitectureAdapter.create_stateful_cache">
 <span class="sig-name descname"><span class="pre">create_stateful_cache</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">hf_model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">batch_size</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dtype</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dtype</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#transformer_lens.model_bridge.supported_architectures.MambaArchitectureAdapter.create_stateful_cache" title="Link to this definition">¶</a></dt>
-<dd><p>Build a MambaCache for the stateful generation loop.</p>
+<dd><p>Build a cache for the stateful generation loop.</p>
 </dd></dl>
 
 </dd></dl>
@@ -2440,59 +2369,6 @@ on all attention bridge instances for component testing.</p>
 </dd></dl>
 
 <dl class="py class">
-<dt class="sig sig-object py" id="transformer_lens.model_bridge.supported_architectures.PythiaArchitectureAdapter">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">transformer_lens.model_bridge.supported_architectures.</span></span><span class="sig-name descname"><span class="pre">PythiaArchitectureAdapter</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cfg</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.model_bridge.supported_architectures.PythiaArchitectureAdapter" title="Link to this definition">¶</a></dt>
-<dd><p>Bases: <a class="reference internal" href="transformer_lens.model_bridge.architecture_adapter.html#transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter" title="transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter"><code class="xref py py-class docutils literal notranslate"><span class="pre">ArchitectureAdapter</span></code></a></p>
-<p>Architecture adapter for Pythia models.</p>
-<dl class="py method">
-<dt class="sig sig-object py" id="transformer_lens.model_bridge.supported_architectures.PythiaArchitectureAdapter.__init__">
-<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cfg</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#transformer_lens.model_bridge.supported_architectures.PythiaArchitectureAdapter.__init__" title="Link to this definition">¶</a></dt>
-<dd><p>Initialize the Pythia architecture adapter.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>cfg</strong> – The configuration object.</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="transformer_lens.model_bridge.supported_architectures.PythiaArchitectureAdapter.setup_component_testing">
-<span class="sig-name descname"><span class="pre">setup_component_testing</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">hf_model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bridge_model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#transformer_lens.model_bridge.supported_architectures.PythiaArchitectureAdapter.setup_component_testing" title="Link to this definition">¶</a></dt>
-<dd><p>Set up rotary embedding references for Pythia component testing.</p>
-<p>Pythia uses RoPE (Rotary Position Embeddings) in the GPT-NeoX architecture.
-We need to set the rotary_emb reference on all attention bridge instances
-for component testing.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>hf_model</strong> – The HuggingFace Pythia model instance</p></li>
-<li><p><strong>bridge_model</strong> – The TransformerBridge model (if available, set rotary_emb on actual instances)</p></li>
-</ul>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="transformer_lens.model_bridge.supported_architectures.PythiaArchitectureAdapter.split_qkv_matrix">
-<span class="sig-name descname"><span class="pre">split_qkv_matrix</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">original_attention_component</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">Linear</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Linear</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Linear</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.model_bridge.supported_architectures.PythiaArchitectureAdapter.split_qkv_matrix" title="Link to this definition">¶</a></dt>
-<dd><p>Split the QKV matrix into separate linear transformations.</p>
-<p>GPT-NeoX/Pythia uses an interleaved QKV format where the weights are stored as
-[Q_h0, K_h0, V_h0, Q_h1, K_h1, V_h1, …] - i.e., Q, K, V are interleaved per head.</p>
-<p>The weight shape is [n_heads * 3 * d_head, d_model] and the output is reshaped
-by HuggingFace as [batch, seq, n_heads, 3*d_head] then split on the last dim.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>original_attention_component</strong> – The original attention layer component</p>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Tuple of nn.Linear modules for Q, K, and V transformations</p>
-</dd>
-</dl>
-</dd></dl>
-
-</dd></dl>
-
-<dl class="py class">
 <dt class="sig sig-object py" id="transformer_lens.model_bridge.supported_architectures.Qwen2ArchitectureAdapter">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">transformer_lens.model_bridge.supported_architectures.</span></span><span class="sig-name descname"><span class="pre">Qwen2ArchitectureAdapter</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cfg</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.model_bridge.supported_architectures.Qwen2ArchitectureAdapter" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <a class="reference internal" href="transformer_lens.model_bridge.architecture_adapter.html#transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter" title="transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter"><code class="xref py py-class docutils literal notranslate"><span class="pre">ArchitectureAdapter</span></code></a></p>
@@ -2642,6 +2518,12 @@ text-only Qwen3_5ForCausalLM.</p>
 </dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.model_bridge.supported_architectures.Qwen3_5ArchitectureAdapter.prepare_model">
+<span class="sig-name descname"><span class="pre">prepare_model</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">hf_model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#transformer_lens.model_bridge.supported_architectures.Qwen3_5ArchitectureAdapter.prepare_model" title="Link to this definition">¶</a></dt>
+<dd><p>Reject full multimodal Qwen3.5 models on this text-only adapter.</p>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="transformer_lens.model_bridge.supported_architectures.Qwen3_5ArchitectureAdapter.preprocess_weights">
 <span class="sig-name descname"><span class="pre">preprocess_weights</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state_dict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.model_bridge.supported_architectures.Qwen3_5ArchitectureAdapter.preprocess_weights" title="Link to this definition">¶</a></dt>
 <dd><p>Slice query half from gated q_proj.weight for weight-space analysis.</p>
@@ -2786,15 +2668,6 @@ Embeddings are scaled by sqrt(d_model) at runtime in XGLMScaledWordEmbedding.</p
 <dd><p>Initialize the XGLM architecture adapter.</p>
 </dd></dl>
 
-<dl class="py method">
-<dt class="sig sig-object py" id="transformer_lens.model_bridge.supported_architectures.XGLMArchitectureAdapter.setup_hook_compatibility">
-<span class="sig-name descname"><span class="pre">setup_hook_compatibility</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">bridge</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#transformer_lens.model_bridge.supported_architectures.XGLMArchitectureAdapter.setup_hook_compatibility" title="Link to this definition">¶</a></dt>
-<dd><p>Scale hook_embed by sqrt(d_model) to match XGLMScaledWordEmbedding.forward().</p>
-<p>XGLMScaledWordEmbedding multiplies the embedding lookup by embed_scale =
-sqrt(d_model) at runtime.  Without this override, hook_embed would capture
-the raw (unscaled) table output, diverging from actual model activations.</p>
-</dd></dl>
-
 </section>
 </dd></dl>
 
@@ -2916,25 +2789,21 @@ the raw (unscaled) table output, diverging from actual model activations.</p>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.Gemma1ArchitectureAdapter"><code class="docutils literal notranslate"><span class="pre">Gemma1ArchitectureAdapter</span></code></a><ul>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.Gemma1ArchitectureAdapter.__init__"><code class="docutils literal notranslate"><span class="pre">Gemma1ArchitectureAdapter.__init__()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.Gemma1ArchitectureAdapter.setup_component_testing"><code class="docutils literal notranslate"><span class="pre">Gemma1ArchitectureAdapter.setup_component_testing()</span></code></a></li>
-<li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.Gemma1ArchitectureAdapter.setup_hook_compatibility"><code class="docutils literal notranslate"><span class="pre">Gemma1ArchitectureAdapter.setup_hook_compatibility()</span></code></a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.Gemma2ArchitectureAdapter"><code class="docutils literal notranslate"><span class="pre">Gemma2ArchitectureAdapter</span></code></a><ul>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.Gemma2ArchitectureAdapter.__init__"><code class="docutils literal notranslate"><span class="pre">Gemma2ArchitectureAdapter.__init__()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.Gemma2ArchitectureAdapter.setup_component_testing"><code class="docutils literal notranslate"><span class="pre">Gemma2ArchitectureAdapter.setup_component_testing()</span></code></a></li>
-<li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.Gemma2ArchitectureAdapter.setup_hook_compatibility"><code class="docutils literal notranslate"><span class="pre">Gemma2ArchitectureAdapter.setup_hook_compatibility()</span></code></a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.Gemma3ArchitectureAdapter"><code class="docutils literal notranslate"><span class="pre">Gemma3ArchitectureAdapter</span></code></a><ul>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.Gemma3ArchitectureAdapter.__init__"><code class="docutils literal notranslate"><span class="pre">Gemma3ArchitectureAdapter.__init__()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.Gemma3ArchitectureAdapter.setup_component_testing"><code class="docutils literal notranslate"><span class="pre">Gemma3ArchitectureAdapter.setup_component_testing()</span></code></a></li>
-<li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.Gemma3ArchitectureAdapter.setup_hook_compatibility"><code class="docutils literal notranslate"><span class="pre">Gemma3ArchitectureAdapter.setup_hook_compatibility()</span></code></a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.Gemma3MultimodalArchitectureAdapter"><code class="docutils literal notranslate"><span class="pre">Gemma3MultimodalArchitectureAdapter</span></code></a><ul>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.Gemma3MultimodalArchitectureAdapter.__init__"><code class="docutils literal notranslate"><span class="pre">Gemma3MultimodalArchitectureAdapter.__init__()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.Gemma3MultimodalArchitectureAdapter.setup_component_testing"><code class="docutils literal notranslate"><span class="pre">Gemma3MultimodalArchitectureAdapter.setup_component_testing()</span></code></a></li>
-<li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.Gemma3MultimodalArchitectureAdapter.setup_hook_compatibility"><code class="docutils literal notranslate"><span class="pre">Gemma3MultimodalArchitectureAdapter.setup_hook_compatibility()</span></code></a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.Gpt2LmHeadCustomArchitectureAdapter"><code class="docutils literal notranslate"><span class="pre">Gpt2LmHeadCustomArchitectureAdapter</span></code></a><ul>
@@ -3063,12 +2932,6 @@ the raw (unscaled) table output, diverging from actual model activations.</p>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.PhiArchitectureAdapter.setup_component_testing"><code class="docutils literal notranslate"><span class="pre">PhiArchitectureAdapter.setup_component_testing()</span></code></a></li>
 </ul>
 </li>
-<li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.PythiaArchitectureAdapter"><code class="docutils literal notranslate"><span class="pre">PythiaArchitectureAdapter</span></code></a><ul>
-<li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.PythiaArchitectureAdapter.__init__"><code class="docutils literal notranslate"><span class="pre">PythiaArchitectureAdapter.__init__()</span></code></a></li>
-<li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.PythiaArchitectureAdapter.setup_component_testing"><code class="docutils literal notranslate"><span class="pre">PythiaArchitectureAdapter.setup_component_testing()</span></code></a></li>
-<li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.PythiaArchitectureAdapter.split_qkv_matrix"><code class="docutils literal notranslate"><span class="pre">PythiaArchitectureAdapter.split_qkv_matrix()</span></code></a></li>
-</ul>
-</li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.Qwen2ArchitectureAdapter"><code class="docutils literal notranslate"><span class="pre">Qwen2ArchitectureAdapter</span></code></a><ul>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.Qwen2ArchitectureAdapter.__init__"><code class="docutils literal notranslate"><span class="pre">Qwen2ArchitectureAdapter.__init__()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.Qwen2ArchitectureAdapter.setup_component_testing"><code class="docutils literal notranslate"><span class="pre">Qwen2ArchitectureAdapter.setup_component_testing()</span></code></a></li>
@@ -3089,6 +2952,7 @@ the raw (unscaled) table output, diverging from actual model activations.</p>
 </li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.Qwen3_5ArchitectureAdapter"><code class="docutils literal notranslate"><span class="pre">Qwen3_5ArchitectureAdapter</span></code></a><ul>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.Qwen3_5ArchitectureAdapter.prepare_loading"><code class="docutils literal notranslate"><span class="pre">Qwen3_5ArchitectureAdapter.prepare_loading()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.Qwen3_5ArchitectureAdapter.prepare_model"><code class="docutils literal notranslate"><span class="pre">Qwen3_5ArchitectureAdapter.prepare_model()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.Qwen3_5ArchitectureAdapter.preprocess_weights"><code class="docutils literal notranslate"><span class="pre">Qwen3_5ArchitectureAdapter.preprocess_weights()</span></code></a></li>
 </ul>
 </li>
@@ -3108,7 +2972,6 @@ the raw (unscaled) table output, diverging from actual model activations.</p>
 </li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.XGLMArchitectureAdapter"><code class="docutils literal notranslate"><span class="pre">XGLMArchitectureAdapter</span></code></a><ul>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.XGLMArchitectureAdapter.__init__"><code class="docutils literal notranslate"><span class="pre">XGLMArchitectureAdapter.__init__()</span></code></a></li>
-<li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.XGLMArchitectureAdapter.setup_hook_compatibility"><code class="docutils literal notranslate"><span class="pre">XGLMArchitectureAdapter.setup_hook_compatibility()</span></code></a></li>
 </ul>
 </li>
 </ul>

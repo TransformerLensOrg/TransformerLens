@@ -219,8 +219,9 @@
 </ul>
 </li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../generated/code/transformer_lens.config.html">transformer_lens.config package</a><input class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" role="switch" type="checkbox"/><label for="toctree-checkbox-6"><div class="visually-hidden">Toggle navigation of transformer_lens.config package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
-<li class="toctree-l4"><a class="reference internal" href="../generated/code/transformer_lens.config.TransformerBridgeConfig.html">transformer_lens.config.TransformerBridgeConfig module</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../generated/code/transformer_lens.config.TransformerLensConfig.html">transformer_lens.config.TransformerLensConfig module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../generated/code/transformer_lens.config.hooked_transformer_config.html">transformer_lens.config.hooked_transformer_config module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../generated/code/transformer_lens.config.transformer_bridge_config.html">transformer_lens.config.transformer_bridge_config module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../generated/code/transformer_lens.config.transformer_lens_config.html">transformer_lens.config.transformer_lens_config module</a></li>
 </ul>
 </li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../generated/code/transformer_lens.conversion_utils.html">transformer_lens.conversion_utils package</a><input class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><div class="visually-hidden">Toggle navigation of transformer_lens.conversion_utils package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
@@ -354,7 +355,6 @@
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.model_bridge.supported_architectures.opt.html">transformer_lens.model_bridge.supported_architectures.opt module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.model_bridge.supported_architectures.phi.html">transformer_lens.model_bridge.supported_architectures.phi module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.model_bridge.supported_architectures.phi3.html">transformer_lens.model_bridge.supported_architectures.phi3 module</a></li>
-<li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.model_bridge.supported_architectures.pythia.html">transformer_lens.model_bridge.supported_architectures.pythia module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.model_bridge.supported_architectures.qwen.html">transformer_lens.model_bridge.supported_architectures.qwen module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.model_bridge.supported_architectures.qwen2.html">transformer_lens.model_bridge.supported_architectures.qwen2 module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.model_bridge.supported_architectures.qwen3.html">transformer_lens.model_bridge.supported_architectures.qwen3 module</a></li>
@@ -455,6 +455,7 @@
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../generated/code/transformer_lens.HookedAudioEncoder.html">transformer_lens.HookedAudioEncoder module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../generated/code/transformer_lens.HookedRootModule.html">transformer_lens.HookedRootModule module</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../generated/code/transformer_lens.evals.html">transformer_lens.evals module</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../generated/code/transformer_lens.head_detector.html">transformer_lens.head_detector module</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../generated/code/transformer_lens.hook_points.html">transformer_lens.hook_points module</a></li>
@@ -483,6 +484,7 @@
 <li class="toctree-l1 has-children"><a class="reference internal" href="contributing.html">Contributing</a><input class="toctree-checkbox" id="toctree-checkbox-22" name="toctree-checkbox-22" role="switch" type="checkbox"/><label for="toctree-checkbox-22"><div class="visually-hidden">Toggle navigation of Contributing</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
 <li class="toctree-l2"><a class="reference internal" href="adapter_development/adapter-creation-guide.html">Architecture Adapter Creation Guide</a></li>
 <li class="toctree-l2"><a class="reference internal" href="adapter_development/hf-model-analysis-guide.html">HuggingFace Model Analysis Guide</a></li>
+<li class="toctree-l2"><a class="reference internal" href="adapter_development/external-adapter-registration.html">External Architecture Adapter Registration</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="../generated/demos/Main_Demo.html">Transformer Lens Main Demo Notebook</a></li>
@@ -497,6 +499,7 @@
 <li class="toctree-l1 has-children"><a class="reference internal" href="contributing.html">Contributing</a><input class="toctree-checkbox" id="toctree-checkbox-23" name="toctree-checkbox-23" role="switch" type="checkbox"/><label for="toctree-checkbox-23"><div class="visually-hidden">Toggle navigation of Contributing</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
 <li class="toctree-l2"><a class="reference internal" href="adapter_development/adapter-creation-guide.html">Architecture Adapter Creation Guide</a></li>
 <li class="toctree-l2"><a class="reference internal" href="adapter_development/hf-model-analysis-guide.html">HuggingFace Model Analysis Guide</a></li>
+<li class="toctree-l2"><a class="reference internal" href="adapter_development/external-adapter-registration.html">External Architecture Adapter Registration</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference external" href="https://transformerlensorg.github.io/TransformerLens/_static/coverage/">Code Coverage</a></li>
@@ -553,6 +556,12 @@
 </pre></div>
 </div>
 <p>You can then call the familiar APIs: <code class="docutils literal notranslate"><span class="pre">to_tokens</span></code>, <code class="docutils literal notranslate"><span class="pre">to_string</span></code>, <code class="docutils literal notranslate"><span class="pre">generate</span></code>, <code class="docutils literal notranslate"><span class="pre">generate_stream</span></code>, <code class="docutils literal notranslate"><span class="pre">run_with_hooks</span></code>, <code class="docutils literal notranslate"><span class="pre">run_with_cache</span></code>.</p>
+</section>
+<section id="architecture-diagram">
+<h2>Architecture diagram<a class="headerlink" href="#architecture-diagram" title="Link to this heading">¶</a></h2>
+<p>The diagram below maps weight matrices and activation tensors to their TransformerLens names. Hook points sit on the activation arrows — the canonical hook names in the rest of this document correspond directly to the labeled tensors here.</p>
+<p><img alt="TransformerLens architecture diagram with weight matrices and activation tensors labeled" src="../_images/TransformerLens_Diagram.svg" /></p>
+<p><em>Diagram by <a class="reference external" href="https://github.com/akozlo">Austin Kozlowski</a>. Click for full resolution.</em></p>
 </section>
 <section id="top-level-components">
 <h2>Top-Level Components<a class="headerlink" href="#top-level-components" title="Link to this heading">¶</a></h2>
@@ -818,6 +827,7 @@
             <ul>
 <li><a class="reference internal" href="#">TransformerBridge Model Structure</a><ul>
 <li><a class="reference internal" href="#overview">Overview</a></li>
+<li><a class="reference internal" href="#architecture-diagram">Architecture diagram</a></li>
 <li><a class="reference internal" href="#top-level-components">Top-Level Components</a></li>
 <li><a class="reference internal" href="#canonical-hook-names">Canonical Hook Names</a><ul>
 <li><a class="reference internal" href="#embedding">Embedding</a></li>

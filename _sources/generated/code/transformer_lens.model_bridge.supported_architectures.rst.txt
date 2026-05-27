@@ -51,7 +51,6 @@ Submodules
    transformer_lens.model_bridge.supported_architectures.opt
    transformer_lens.model_bridge.supported_architectures.phi
    transformer_lens.model_bridge.supported_architectures.phi3
-   transformer_lens.model_bridge.supported_architectures.pythia
    transformer_lens.model_bridge.supported_architectures.qwen
    transformer_lens.model_bridge.supported_architectures.qwen2
    transformer_lens.model_bridge.supported_architectures.qwen3

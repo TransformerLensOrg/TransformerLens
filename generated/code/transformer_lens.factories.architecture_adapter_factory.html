@@ -219,8 +219,9 @@
 </ul>
 </li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="transformer_lens.config.html">transformer_lens.config package</a><input class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" role="switch" type="checkbox"/><label for="toctree-checkbox-6"><div class="visually-hidden">Toggle navigation of transformer_lens.config package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
-<li class="toctree-l4"><a class="reference internal" href="transformer_lens.config.TransformerBridgeConfig.html">transformer_lens.config.TransformerBridgeConfig module</a></li>
-<li class="toctree-l4"><a class="reference internal" href="transformer_lens.config.TransformerLensConfig.html">transformer_lens.config.TransformerLensConfig module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.config.hooked_transformer_config.html">transformer_lens.config.hooked_transformer_config module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.config.transformer_bridge_config.html">transformer_lens.config.transformer_bridge_config module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.config.transformer_lens_config.html">transformer_lens.config.transformer_lens_config module</a></li>
 </ul>
 </li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="transformer_lens.conversion_utils.html">transformer_lens.conversion_utils package</a><input class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><div class="visually-hidden">Toggle navigation of transformer_lens.conversion_utils package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
@@ -354,7 +355,6 @@
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.opt.html">transformer_lens.model_bridge.supported_architectures.opt module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.phi.html">transformer_lens.model_bridge.supported_architectures.phi module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.phi3.html">transformer_lens.model_bridge.supported_architectures.phi3 module</a></li>
-<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.pythia.html">transformer_lens.model_bridge.supported_architectures.pythia module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.qwen.html">transformer_lens.model_bridge.supported_architectures.qwen module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.qwen2.html">transformer_lens.model_bridge.supported_architectures.qwen2 module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.qwen3.html">transformer_lens.model_bridge.supported_architectures.qwen3 module</a></li>
@@ -455,6 +455,7 @@
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.HookedAudioEncoder.html">transformer_lens.HookedAudioEncoder module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.HookedRootModule.html">transformer_lens.HookedRootModule module</a></li>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.evals.html">transformer_lens.evals module</a></li>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.head_detector.html">transformer_lens.head_detector module</a></li>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.hook_points.html">transformer_lens.hook_points module</a></li>
@@ -483,6 +484,7 @@
 <li class="toctree-l1 has-children"><a class="reference internal" href="../../content/contributing.html">Contributing</a><input class="toctree-checkbox" id="toctree-checkbox-22" name="toctree-checkbox-22" role="switch" type="checkbox"/><label for="toctree-checkbox-22"><div class="visually-hidden">Toggle navigation of Contributing</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
 <li class="toctree-l2"><a class="reference internal" href="../../content/adapter_development/adapter-creation-guide.html">Architecture Adapter Creation Guide</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../content/adapter_development/hf-model-analysis-guide.html">HuggingFace Model Analysis Guide</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../content/adapter_development/external-adapter-registration.html">External Architecture Adapter Registration</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html">Transformer Lens Main Demo Notebook</a></li>
@@ -497,6 +499,7 @@
 <li class="toctree-l1 has-children"><a class="reference internal" href="../../content/contributing.html">Contributing</a><input class="toctree-checkbox" id="toctree-checkbox-23" name="toctree-checkbox-23" role="switch" type="checkbox"/><label for="toctree-checkbox-23"><div class="visually-hidden">Toggle navigation of Contributing</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
 <li class="toctree-l2"><a class="reference internal" href="../../content/adapter_development/adapter-creation-guide.html">Architecture Adapter Creation Guide</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../content/adapter_development/hf-model-analysis-guide.html">HuggingFace Model Analysis Guide</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../content/adapter_development/external-adapter-registration.html">External Architecture Adapter Registration</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference external" href="https://transformerlensorg.github.io/TransformerLens/_static/coverage/">Code Coverage</a></li>
@@ -538,15 +541,63 @@
           <section id="module-transformer_lens.factories.architecture_adapter_factory">
 <span id="transformer-lens-factories-architecture-adapter-factory-module"></span><h1>transformer_lens.factories.architecture_adapter_factory module<a class="headerlink" href="#module-transformer_lens.factories.architecture_adapter_factory" title="Link to this heading">¶</a></h1>
 <p>Architecture adapter factory.</p>
-<p>This module provides a factory for creating architecture adapters.</p>
+<p>This module provides a factory for creating architecture adapters, including
+support for external registration and entry-point discovery.</p>
 <dl class="py class">
 <dt class="sig sig-object py" id="transformer_lens.factories.architecture_adapter_factory.ArchitectureAdapterFactory">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">transformer_lens.factories.architecture_adapter_factory.</span></span><span class="sig-name descname"><span class="pre">ArchitectureAdapterFactory</span></span><a class="headerlink" href="#transformer_lens.factories.architecture_adapter_factory.ArchitectureAdapterFactory" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
 <p>Factory for creating architecture adapters.</p>
+<p>Supports external registration via <cite>register_adapter()</cite> and automatic
+discovery of adapters from installed packages via entry points.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.factories.architecture_adapter_factory.ArchitectureAdapterFactory.discover_entry_points">
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">discover_entry_points</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#transformer_lens.factories.architecture_adapter_factory.ArchitectureAdapterFactory.discover_entry_points" title="Link to this definition">¶</a></dt>
+<dd><p>Discover and register architecture adapters from installed packages.</p>
+<p>Packages can declare adapters in their <code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code>:
+<code class="docutils literal notranslate"><span class="pre">`toml</span>
+<span class="pre">[project.entry-points.&quot;transformer_lens.architectures&quot;]</span>
+<span class="pre">&quot;MyModelForCausalLM&quot;</span> <span class="pre">=</span> <span class="pre">&quot;my_package.adapters:MyArchitectureAdapter&quot;</span>
+<span class="pre">`</span></code></p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.factories.architecture_adapter_factory.ArchitectureAdapterFactory.register_adapter">
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">register_adapter</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">architecture_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">adapter_class</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">type</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="transformer_lens.model_bridge.architecture_adapter.html#transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter" title="transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter"><span class="pre">ArchitectureAdapter</span></a><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#transformer_lens.factories.architecture_adapter_factory.ArchitectureAdapterFactory.register_adapter" title="Link to this definition">¶</a></dt>
+<dd><p>Register a custom architecture adapter at runtime.</p>
+<p>This allows users to add their own architecture adapters without
+modifying TransformerLens source code.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>architecture_name</strong> – The HuggingFace architecture class name
+(e.g. <code class="docutils literal notranslate"><span class="pre">&quot;Qwen3ForCausalLM&quot;</span></code>).</p></li>
+<li><p><strong>adapter_class</strong> – The adapter class to register.</p></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">transformer_lens.config</span><span class="w"> </span><span class="kn">import</span> <span class="n">TransformerBridgeConfig</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">transformer_lens.model_bridge.architecture_adapter</span><span class="w"> </span><span class="kn">import</span> <span class="n">ArchitectureAdapter</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">transformer_lens.factories.architecture_adapter_factory</span><span class="w"> </span><span class="kn">import</span> <span class="n">ArchitectureAdapterFactory</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">class</span><span class="w"> </span><span class="nc">MyAdapter</span><span class="p">(</span><span class="n">ArchitectureAdapter</span><span class="p">):</span>
+<span class="gp">... </span>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cfg</span><span class="p">):</span>
+<span class="gp">... </span>        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">cfg</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">ArchitectureAdapterFactory</span><span class="o">.</span><span class="n">register_adapter</span><span class="p">(</span><span class="s2">&quot;MyModelForCausalLM&quot;</span><span class="p">,</span> <span class="n">MyAdapter</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">cfg</span> <span class="o">=</span> <span class="n">TransformerBridgeConfig</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="n">d_model</span><span class="o">=</span><span class="mi">512</span><span class="p">,</span> <span class="n">d_head</span><span class="o">=</span><span class="mi">64</span><span class="p">,</span> <span class="n">n_layers</span><span class="o">=</span><span class="mi">6</span><span class="p">,</span> <span class="n">n_ctx</span><span class="o">=</span><span class="mi">1024</span><span class="p">,</span>
+<span class="gp">... </span>    <span class="n">architecture</span><span class="o">=</span><span class="s2">&quot;MyModelForCausalLM&quot;</span><span class="p">,</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">adapter</span> <span class="o">=</span> <span class="n">ArchitectureAdapterFactory</span><span class="o">.</span><span class="n">select_architecture_adapter</span><span class="p">(</span><span class="n">cfg</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">isinstance</span><span class="p">(</span><span class="n">adapter</span><span class="p">,</span> <span class="n">MyAdapter</span><span class="p">)</span>
+<span class="go">True</span>
+</pre></div>
+</div>
+</dd></dl>
+
 <dl class="py method">
 <dt class="sig sig-object py" id="transformer_lens.factories.architecture_adapter_factory.ArchitectureAdapterFactory.select_architecture_adapter">
-<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">select_architecture_adapter</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cfg</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="transformer_lens.config.TransformerBridgeConfig.html#transformer_lens.config.TransformerBridgeConfig.TransformerBridgeConfig" title="transformer_lens.config.TransformerBridgeConfig.TransformerBridgeConfig"><span class="pre">TransformerBridgeConfig</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="transformer_lens.model_bridge.architecture_adapter.html#transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter" title="transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter"><span class="pre">ArchitectureAdapter</span></a></span></span><a class="headerlink" href="#transformer_lens.factories.architecture_adapter_factory.ArchitectureAdapterFactory.select_architecture_adapter" title="Link to this definition">¶</a></dt>
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">select_architecture_adapter</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cfg</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="transformer_lens.config.transformer_bridge_config.html#transformer_lens.config.transformer_bridge_config.TransformerBridgeConfig" title="transformer_lens.config.transformer_bridge_config.TransformerBridgeConfig"><span class="pre">TransformerBridgeConfig</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="transformer_lens.model_bridge.architecture_adapter.html#transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter" title="transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter"><span class="pre">ArchitectureAdapter</span></a></span></span><a class="headerlink" href="#transformer_lens.factories.architecture_adapter_factory.ArchitectureAdapterFactory.select_architecture_adapter" title="Link to this definition">¶</a></dt>
 <dd><p>Select the appropriate architecture adapter for the given config.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -622,6 +673,8 @@
             <ul>
 <li><a class="reference internal" href="#">transformer_lens.factories.architecture_adapter_factory module</a><ul>
 <li><a class="reference internal" href="#transformer_lens.factories.architecture_adapter_factory.ArchitectureAdapterFactory"><code class="docutils literal notranslate"><span class="pre">ArchitectureAdapterFactory</span></code></a><ul>
+<li><a class="reference internal" href="#transformer_lens.factories.architecture_adapter_factory.ArchitectureAdapterFactory.discover_entry_points"><code class="docutils literal notranslate"><span class="pre">ArchitectureAdapterFactory.discover_entry_points()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.factories.architecture_adapter_factory.ArchitectureAdapterFactory.register_adapter"><code class="docutils literal notranslate"><span class="pre">ArchitectureAdapterFactory.register_adapter()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.factories.architecture_adapter_factory.ArchitectureAdapterFactory.select_architecture_adapter"><code class="docutils literal notranslate"><span class="pre">ArchitectureAdapterFactory.select_architecture_adapter()</span></code></a></li>
 </ul>
 </li>

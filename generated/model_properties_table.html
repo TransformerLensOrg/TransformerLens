@@ -219,8 +219,9 @@
 </ul>
 </li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="code/transformer_lens.config.html">transformer_lens.config package</a><input class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" role="switch" type="checkbox"/><label for="toctree-checkbox-6"><div class="visually-hidden">Toggle navigation of transformer_lens.config package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
-<li class="toctree-l4"><a class="reference internal" href="code/transformer_lens.config.TransformerBridgeConfig.html">transformer_lens.config.TransformerBridgeConfig module</a></li>
-<li class="toctree-l4"><a class="reference internal" href="code/transformer_lens.config.TransformerLensConfig.html">transformer_lens.config.TransformerLensConfig module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="code/transformer_lens.config.hooked_transformer_config.html">transformer_lens.config.hooked_transformer_config module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="code/transformer_lens.config.transformer_bridge_config.html">transformer_lens.config.transformer_bridge_config module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="code/transformer_lens.config.transformer_lens_config.html">transformer_lens.config.transformer_lens_config module</a></li>
 </ul>
 </li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="code/transformer_lens.conversion_utils.html">transformer_lens.conversion_utils package</a><input class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><div class="visually-hidden">Toggle navigation of transformer_lens.conversion_utils package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
@@ -354,7 +355,6 @@
 <li class="toctree-l5"><a class="reference internal" href="code/transformer_lens.model_bridge.supported_architectures.opt.html">transformer_lens.model_bridge.supported_architectures.opt module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="code/transformer_lens.model_bridge.supported_architectures.phi.html">transformer_lens.model_bridge.supported_architectures.phi module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="code/transformer_lens.model_bridge.supported_architectures.phi3.html">transformer_lens.model_bridge.supported_architectures.phi3 module</a></li>
-<li class="toctree-l5"><a class="reference internal" href="code/transformer_lens.model_bridge.supported_architectures.pythia.html">transformer_lens.model_bridge.supported_architectures.pythia module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="code/transformer_lens.model_bridge.supported_architectures.qwen.html">transformer_lens.model_bridge.supported_architectures.qwen module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="code/transformer_lens.model_bridge.supported_architectures.qwen2.html">transformer_lens.model_bridge.supported_architectures.qwen2 module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="code/transformer_lens.model_bridge.supported_architectures.qwen3.html">transformer_lens.model_bridge.supported_architectures.qwen3 module</a></li>
@@ -455,6 +455,7 @@
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="code/transformer_lens.HookedAudioEncoder.html">transformer_lens.HookedAudioEncoder module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="code/transformer_lens.HookedRootModule.html">transformer_lens.HookedRootModule module</a></li>
 <li class="toctree-l3"><a class="reference internal" href="code/transformer_lens.evals.html">transformer_lens.evals module</a></li>
 <li class="toctree-l3"><a class="reference internal" href="code/transformer_lens.head_detector.html">transformer_lens.head_detector module</a></li>
 <li class="toctree-l3"><a class="reference internal" href="code/transformer_lens.hook_points.html">transformer_lens.hook_points module</a></li>
@@ -483,6 +484,7 @@
 <li class="toctree-l1 has-children"><a class="reference internal" href="../content/contributing.html">Contributing</a><input class="toctree-checkbox" id="toctree-checkbox-22" name="toctree-checkbox-22" role="switch" type="checkbox"/><label for="toctree-checkbox-22"><div class="visually-hidden">Toggle navigation of Contributing</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
 <li class="toctree-l2"><a class="reference internal" href="../content/adapter_development/adapter-creation-guide.html">Architecture Adapter Creation Guide</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../content/adapter_development/hf-model-analysis-guide.html">HuggingFace Model Analysis Guide</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../content/adapter_development/external-adapter-registration.html">External Architecture Adapter Registration</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="demos/Main_Demo.html">Transformer Lens Main Demo Notebook</a></li>
@@ -497,6 +499,7 @@
 <li class="toctree-l1 has-children"><a class="reference internal" href="../content/contributing.html">Contributing</a><input class="toctree-checkbox" id="toctree-checkbox-23" name="toctree-checkbox-23" role="switch" type="checkbox"/><label for="toctree-checkbox-23"><div class="visually-hidden">Toggle navigation of Contributing</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
 <li class="toctree-l2"><a class="reference internal" href="../content/adapter_development/adapter-creation-guide.html">Architecture Adapter Creation Guide</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../content/adapter_development/hf-model-analysis-guide.html">HuggingFace Model Analysis Guide</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../content/adapter_development/external-adapter-registration.html">External Architecture Adapter Registration</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference external" href="https://transformerlensorg.github.io/TransformerLens/_static/coverage/">Code Coverage</a></li>
@@ -577,7 +580,7 @@
 <td class="text-left"><p>LlamaForCausalLM</p></td>
 <td class="text-left"><p>RMS</p></td>
 <td class="text-left"><p>01-ai/Yi-34B</p></td>
-<td class="text-left"><p>TokenizersBackend</p></td>
+<td class="text-left"><p>LlamaTokenizer</p></td>
 <td class="text-left"><p>64000.0</p></td>
 <td class="text-left"><p>VBBPi7l7j0Xrv93YNq1tizlalWw=</p></td>
 </tr>
@@ -596,7 +599,7 @@
 <td class="text-left"><p>LlamaForCausalLM</p></td>
 <td class="text-left"><p>RMS</p></td>
 <td class="text-left"><p>01-ai/Yi-34B-Chat</p></td>
-<td class="text-left"><p>TokenizersBackend</p></td>
+<td class="text-left"><p>LlamaTokenizer</p></td>
 <td class="text-left"><p>63992.0</p></td>
 <td class="text-left"><p>VGXAFrTzytwGdUlX6AWH0NacncM=</p></td>
 </tr>
@@ -615,7 +618,7 @@
 <td class="text-left"><p>LlamaForCausalLM</p></td>
 <td class="text-left"><p>RMS</p></td>
 <td class="text-left"><p>01-ai/Yi-6B</p></td>
-<td class="text-left"><p>TokenizersBackend</p></td>
+<td class="text-left"><p>LlamaTokenizer</p></td>
 <td class="text-left"><p>63992.0</p></td>
 <td class="text-left"><p>VGXAFrTzytwGdUlX6AWH0NacncM=</p></td>
 </tr>
@@ -634,7 +637,7 @@
 <td class="text-left"><p>LlamaForCausalLM</p></td>
 <td class="text-left"><p>RMS</p></td>
 <td class="text-left"><p>01-ai/Yi-6B-Chat</p></td>
-<td class="text-left"><p>TokenizersBackend</p></td>
+<td class="text-left"><p>LlamaTokenizer</p></td>
 <td class="text-left"><p>63992.0</p></td>
 <td class="text-left"><p>VGXAFrTzytwGdUlX6AWH0NacncM=</p></td>
 </tr>
@@ -691,7 +694,7 @@
 <td class="text-left"><p>Olmo2ForCausalLM</p></td>
 <td class="text-left"><p>RMS</p></td>
 <td class="text-left"><p>allenai/OLMo-2-0425-1B</p></td>
-<td class="text-left"><p>TokenizersBackend</p></td>
+<td class="text-left"><p>GPT2Tokenizer</p></td>
 <td class="text-left"><p>100278.0</p></td>
 <td class="text-left"><p>VuUSAx0rE_5hHVJSa7DTIutKX9s=</p></td>
 </tr>
@@ -710,7 +713,7 @@
 <td class="text-left"><p>Olmo2ForCausalLM</p></td>
 <td class="text-left"><p>RMS</p></td>
 <td class="text-left"><p>allenai/OLMo-2-1124-7B</p></td>
-<td class="text-left"><p>TokenizersBackend</p></td>
+<td class="text-left"><p>GPT2Tokenizer</p></td>
 <td class="text-left"><p>100278.0</p></td>
 <td class="text-left"><p>VuUSAx0rE_5hHVJSa7DTIutKX9s=</p></td>
 </tr>
@@ -729,7 +732,7 @@
 <td class="text-left"><p>Olmo3ForCausalLM</p></td>
 <td class="text-left"><p>RMS</p></td>
 <td class="text-left"><p>allenai/Olmo-3-32B-Think</p></td>
-<td class="text-left"><p>GPT2Tokenizer</p></td>
+<td class="text-left"><p>TokenizersBackend</p></td>
 <td class="text-left"><p>100278.0</p></td>
 <td class="text-left"><p>VuUSAx0rE_5hHVJSa7DTIutKX9s=</p></td>
 </tr>
@@ -748,7 +751,7 @@
 <td class="text-left"><p>Olmo3ForCausalLM</p></td>
 <td class="text-left"><p>RMS</p></td>
 <td class="text-left"><p>allenai/Olmo-3-7B-Instruct</p></td>
-<td class="text-left"><p>GPT2Tokenizer</p></td>
+<td class="text-left"><p>TokenizersBackend</p></td>
 <td class="text-left"><p>100278.0</p></td>
 <td class="text-left"><p>RNowY96fjQ_x29qA8x5WywVkiVk=</p></td>
 </tr>
@@ -767,7 +770,7 @@
 <td class="text-left"><p>Olmo3ForCausalLM</p></td>
 <td class="text-left"><p>RMS</p></td>
 <td class="text-left"><p>allenai/Olmo-3-7B-Think</p></td>
-<td class="text-left"><p>GPT2Tokenizer</p></td>
+<td class="text-left"><p>TokenizersBackend</p></td>
 <td class="text-left"><p>100278.0</p></td>
 <td class="text-left"><p>VuUSAx0rE_5hHVJSa7DTIutKX9s=</p></td>
 </tr>
@@ -786,7 +789,7 @@
 <td class="text-left"><p>Olmo3ForCausalLM</p></td>
 <td class="text-left"><p>RMS</p></td>
 <td class="text-left"><p>allenai/Olmo-3.1-32B-Instruct</p></td>
-<td class="text-left"><p>GPT2Tokenizer</p></td>
+<td class="text-left"><p>TokenizersBackend</p></td>
 <td class="text-left"><p>100278.0</p></td>
 <td class="text-left"><p>RNowY96fjQ_x29qA8x5WywVkiVk=</p></td>
 </tr>
@@ -805,7 +808,7 @@
 <td class="text-left"><p>Olmo3ForCausalLM</p></td>
 <td class="text-left"><p>RMS</p></td>
 <td class="text-left"><p>allenai/Olmo-3.1-32B-Think</p></td>
-<td class="text-left"><p>GPT2Tokenizer</p></td>
+<td class="text-left"><p>TokenizersBackend</p></td>
 <td class="text-left"><p>100278.0</p></td>
 <td class="text-left"><p>VuUSAx0rE_5hHVJSa7DTIutKX9s=</p></td>
 </tr>
@@ -995,9 +998,9 @@
 <td class="text-left"><p>LlamaForCausalLM</p></td>
 <td class="text-left"><p>RMS</p></td>
 <td class="text-left"><p>codellama/CodeLlama-7b-hf</p></td>
-<td class="text-left"><p>TokenizersBackend</p></td>
+<td class="text-left"><p>CodeLlamaTokenizer</p></td>
 <td class="text-left"><p>32016.0</p></td>
-<td class="text-left"><p>Tq7bUWJcm1X5kj9R-2uR1o7lSq8=</p></td>
+<td class="text-left"><p>TKLN0vmDArFwHMvDHh9FaoGA3_k=</p></td>
 </tr>
 <tr class="row-odd"><td class="text-left"><p>CodeLlama-7b-instruct</p></td>
 <td class="text-left"><p></p></td>
@@ -1014,9 +1017,9 @@
 <td class="text-left"><p>LlamaForCausalLM</p></td>
 <td class="text-left"><p>RMS</p></td>
 <td class="text-left"><p>codellama/CodeLlama-7b-Instruct-hf</p></td>
-<td class="text-left"><p>TokenizersBackend</p></td>
+<td class="text-left"><p>CodeLlamaTokenizer</p></td>
 <td class="text-left"><p>32016.0</p></td>
-<td class="text-left"><p>Tq7bUWJcm1X5kj9R-2uR1o7lSq8=</p></td>
+<td class="text-left"><p>TKLN0vmDArFwHMvDHh9FaoGA3_k=</p></td>
 </tr>
 <tr class="row-even"><td class="text-left"><p>CodeLlama-7b-python</p></td>
 <td class="text-left"><p></p></td>
@@ -1033,9 +1036,9 @@
 <td class="text-left"><p>LlamaForCausalLM</p></td>
 <td class="text-left"><p>RMS</p></td>
 <td class="text-left"><p>codellama/CodeLlama-7b-Python-hf</p></td>
-<td class="text-left"><p>TokenizersBackend</p></td>
+<td class="text-left"><p>CodeLlamaTokenizer</p></td>
 <td class="text-left"><p>32000.0</p></td>
-<td class="text-left"><p>e3A7wYziNQPAWcJ15GMAQY8qZqw=</p></td>
+<td class="text-left"><p>demd-4_2c5nH6yyymVgGMcZU9lU=</p></td>
 </tr>
 <tr class="row-odd"><td class="text-left"><p>distillgpt2</p></td>
 <td class="text-left"><p><a class="reference external" href="https://huggingface.co/distilgpt2">distilgpt2</a></p></td>
@@ -2058,10 +2061,10 @@
 <td class="text-left"><p>False</p></td>
 <td class="text-left"><p>BertForMaskedLM</p></td>
 <td class="text-left"><p>LN</p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
+<td class="text-left"><p>google-bert/bert-base-cased</p></td>
+<td class="text-left"><p>BertTokenizer</p></td>
+<td class="text-left"><p>28996.0</p></td>
+<td class="text-left"><p>SSKvHuFYtPbvgwMSLSIhfFE_kF8=</p></td>
 </tr>
 <tr class="row-odd"><td class="text-left"><p>bert-base-uncased</p></td>
 <td class="text-left"><p><a class="reference external" href="https://huggingface.co/google-bert/bert-base-uncased">google-bert/bert-base-uncased</a></p></td>
@@ -2077,10 +2080,10 @@
 <td class="text-left"><p>False</p></td>
 <td class="text-left"><p>BertForMaskedLM</p></td>
 <td class="text-left"><p>LN</p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
+<td class="text-left"><p>google-bert/bert-base-uncased</p></td>
+<td class="text-left"><p>BertTokenizer</p></td>
+<td class="text-left"><p>30522.0</p></td>
+<td class="text-left"><p>G9iEWgpI_JY73i8Lym9gBVhq4BI=</p></td>
 </tr>
 <tr class="row-even"><td class="text-left"><p>bert-large-cased</p></td>
 <td class="text-left"><p><a class="reference external" href="https://huggingface.co/google-bert/bert-large-cased">google-bert/bert-large-cased</a></p></td>
@@ -2096,10 +2099,10 @@
 <td class="text-left"><p>False</p></td>
 <td class="text-left"><p>BertForMaskedLM</p></td>
 <td class="text-left"><p>LN</p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
+<td class="text-left"><p>google-bert/bert-large-cased</p></td>
+<td class="text-left"><p>BertTokenizer</p></td>
+<td class="text-left"><p>28996.0</p></td>
+<td class="text-left"><p>SSKvHuFYtPbvgwMSLSIhfFE_kF8=</p></td>
 </tr>
 <tr class="row-odd"><td class="text-left"><p>bert-large-uncased</p></td>
 <td class="text-left"><p><a class="reference external" href="https://huggingface.co/google-bert/bert-large-uncased">google-bert/bert-large-uncased</a></p></td>
@@ -2115,10 +2118,10 @@
 <td class="text-left"><p>False</p></td>
 <td class="text-left"><p>BertForMaskedLM</p></td>
 <td class="text-left"><p>LN</p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
+<td class="text-left"><p>google-bert/bert-large-uncased</p></td>
+<td class="text-left"><p>BertTokenizer</p></td>
+<td class="text-left"><p>30522.0</p></td>
+<td class="text-left"><p>G9iEWgpI_JY73i8Lym9gBVhq4BI=</p></td>
 </tr>
 <tr class="row-even"><td class="text-left"><p>t5-base</p></td>
 <td class="text-left"><p><a class="reference external" href="https://huggingface.co/google-t5/t5-base">google-t5/t5-base</a></p></td>
@@ -2134,10 +2137,10 @@
 <td class="text-left"><p>False</p></td>
 <td class="text-left"><p>T5ForConditionalGeneration</p></td>
 <td class="text-left"><p>LN</p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
+<td class="text-left"><p>google-t5/t5-base</p></td>
+<td class="text-left"><p>T5Tokenizer</p></td>
+<td class="text-left"><p>32100.0</p></td>
+<td class="text-left"><p>jQeywCyCMVL_vza2wKfpuwjNVys=</p></td>
 </tr>
 <tr class="row-odd"><td class="text-left"><p>t5-large</p></td>
 <td class="text-left"><p><a class="reference external" href="https://huggingface.co/google-t5/t5-large">google-t5/t5-large</a></p></td>
@@ -2153,10 +2156,10 @@
 <td class="text-left"><p>False</p></td>
 <td class="text-left"><p>T5ForConditionalGeneration</p></td>
 <td class="text-left"><p>LN</p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
+<td class="text-left"><p>google-t5/t5-large</p></td>
+<td class="text-left"><p>T5Tokenizer</p></td>
+<td class="text-left"><p>32100.0</p></td>
+<td class="text-left"><p>jQeywCyCMVL_vza2wKfpuwjNVys=</p></td>
 </tr>
 <tr class="row-even"><td class="text-left"><p>t5-small</p></td>
 <td class="text-left"><p><a class="reference external" href="https://huggingface.co/google-t5/t5-small">google-t5/t5-small</a></p></td>
@@ -2172,10 +2175,10 @@
 <td class="text-left"><p>False</p></td>
 <td class="text-left"><p>T5ForConditionalGeneration</p></td>
 <td class="text-left"><p>LN</p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
+<td class="text-left"><p>google-t5/t5-small</p></td>
+<td class="text-left"><p>T5Tokenizer</p></td>
+<td class="text-left"><p>32100.0</p></td>
+<td class="text-left"><p>jQeywCyCMVL_vza2wKfpuwjNVys=</p></td>
 </tr>
 <tr class="row-odd"><td class="text-left"><p>gemma-2-27b</p></td>
 <td class="text-left"><p><a class="reference external" href="https://huggingface.co/google/gemma-2-27b">google/gemma-2-27b</a></p></td>
@@ -2724,7 +2727,7 @@
 <td class="text-left"><p>LlamaForCausalLM</p></td>
 <td class="text-left"><p>RMS</p></td>
 <td class="text-left"><p>huggyllama/llama-13b</p></td>
-<td class="text-left"><p>TokenizersBackend</p></td>
+<td class="text-left"><p>LlamaTokenizer</p></td>
 <td class="text-left"><p>32000.0</p></td>
 <td class="text-left"><p>e3A7wYziNQPAWcJ15GMAQY8qZqw=</p></td>
 </tr>
@@ -2743,7 +2746,7 @@
 <td class="text-left"><p>LlamaForCausalLM</p></td>
 <td class="text-left"><p>RMS</p></td>
 <td class="text-left"><p>huggyllama/llama-30b</p></td>
-<td class="text-left"><p>TokenizersBackend</p></td>
+<td class="text-left"><p>LlamaTokenizer</p></td>
 <td class="text-left"><p>32000.0</p></td>
 <td class="text-left"><p>e3A7wYziNQPAWcJ15GMAQY8qZqw=</p></td>
 </tr>
@@ -2762,7 +2765,7 @@
 <td class="text-left"><p>LlamaForCausalLM</p></td>
 <td class="text-left"><p>RMS</p></td>
 <td class="text-left"><p>huggyllama/llama-65b</p></td>
-<td class="text-left"><p>TokenizersBackend</p></td>
+<td class="text-left"><p>LlamaTokenizer</p></td>
 <td class="text-left"><p>32000.0</p></td>
 <td class="text-left"><p>e3A7wYziNQPAWcJ15GMAQY8qZqw=</p></td>
 </tr>
@@ -2781,7 +2784,7 @@
 <td class="text-left"><p>LlamaForCausalLM</p></td>
 <td class="text-left"><p>RMS</p></td>
 <td class="text-left"><p>huggyllama/llama-7b</p></td>
-<td class="text-left"><p>TokenizersBackend</p></td>
+<td class="text-left"><p>LlamaTokenizer</p></td>
 <td class="text-left"><p>32000.0</p></td>
 <td class="text-left"><p>e3A7wYziNQPAWcJ15GMAQY8qZqw=</p></td>
 </tr>
@@ -2800,7 +2803,7 @@
 <td class="text-left"><p>LlamaForCausalLM</p></td>
 <td class="text-left"><p>RMS</p></td>
 <td class="text-left"><p>meta-llama/Llama-2-13b-chat-hf</p></td>
-<td class="text-left"><p>TokenizersBackend</p></td>
+<td class="text-left"><p>LlamaTokenizer</p></td>
 <td class="text-left"><p>32000.0</p></td>
 <td class="text-left"><p>e3A7wYziNQPAWcJ15GMAQY8qZqw=</p></td>
 </tr>
@@ -2819,7 +2822,7 @@
 <td class="text-left"><p>LlamaForCausalLM</p></td>
 <td class="text-left"><p>RMS</p></td>
 <td class="text-left"><p>meta-llama/Llama-2-13b-hf</p></td>
-<td class="text-left"><p>TokenizersBackend</p></td>
+<td class="text-left"><p>LlamaTokenizer</p></td>
 <td class="text-left"><p>32000.0</p></td>
 <td class="text-left"><p>e3A7wYziNQPAWcJ15GMAQY8qZqw=</p></td>
 </tr>
@@ -2838,7 +2841,7 @@
 <td class="text-left"><p>LlamaForCausalLM</p></td>
 <td class="text-left"><p>RMS</p></td>
 <td class="text-left"><p>meta-llama/Llama-2-70b-chat-hf</p></td>
-<td class="text-left"><p>TokenizersBackend</p></td>
+<td class="text-left"><p>LlamaTokenizer</p></td>
 <td class="text-left"><p>32000.0</p></td>
 <td class="text-left"><p>e3A7wYziNQPAWcJ15GMAQY8qZqw=</p></td>
 </tr>
@@ -2857,7 +2860,7 @@
 <td class="text-left"><p>LlamaForCausalLM</p></td>
 <td class="text-left"><p>RMS</p></td>
 <td class="text-left"><p>meta-llama/Llama-2-7b-chat-hf</p></td>
-<td class="text-left"><p>TokenizersBackend</p></td>
+<td class="text-left"><p>LlamaTokenizer</p></td>
 <td class="text-left"><p>32000.0</p></td>
 <td class="text-left"><p>e3A7wYziNQPAWcJ15GMAQY8qZqw=</p></td>
 </tr>
@@ -2876,7 +2879,7 @@
 <td class="text-left"><p>LlamaForCausalLM</p></td>
 <td class="text-left"><p>RMS</p></td>
 <td class="text-left"><p>meta-llama/Llama-2-7b-hf</p></td>
-<td class="text-left"><p>TokenizersBackend</p></td>
+<td class="text-left"><p>LlamaTokenizer</p></td>
 <td class="text-left"><p>32000.0</p></td>
 <td class="text-left"><p>e3A7wYziNQPAWcJ15GMAQY8qZqw=</p></td>
 </tr>
@@ -3142,7 +3145,7 @@
 <td class="text-left"><p>PhiForCausalLM</p></td>
 <td class="text-left"><p>LN</p></td>
 <td class="text-left"><p>microsoft/phi-1</p></td>
-<td class="text-left"><p>TokenizersBackend</p></td>
+<td class="text-left"><p>CodeGenTokenizer</p></td>
 <td class="text-left"><p>50257.0</p></td>
 <td class="text-left"><p>TYk6J3OrqdU2F7JYiSfFXtd-vB4=</p></td>
 </tr>
@@ -3161,7 +3164,7 @@
 <td class="text-left"><p>PhiForCausalLM</p></td>
 <td class="text-left"><p>LN</p></td>
 <td class="text-left"><p>microsoft/phi-1_5</p></td>
-<td class="text-left"><p>TokenizersBackend</p></td>
+<td class="text-left"><p>CodeGenTokenizer</p></td>
 <td class="text-left"><p>50257.0</p></td>
 <td class="text-left"><p>TYk6J3OrqdU2F7JYiSfFXtd-vB4=</p></td>
 </tr>
@@ -3180,7 +3183,7 @@
 <td class="text-left"><p>PhiForCausalLM</p></td>
 <td class="text-left"><p>LN</p></td>
 <td class="text-left"><p>microsoft/phi-2</p></td>
-<td class="text-left"><p>TokenizersBackend</p></td>
+<td class="text-left"><p>CodeGenTokenizer</p></td>
 <td class="text-left"><p>50257.0</p></td>
 <td class="text-left"><p>TYk6J3OrqdU2F7JYiSfFXtd-vB4=</p></td>
 </tr>
@@ -3958,10 +3961,10 @@
 <td class="text-left"><p>False</p></td>
 <td class="text-left"><p>Qwen2ForCausalLM</p></td>
 <td class="text-left"><p>RMS</p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
+<td class="text-left"><p>Qwen/Qwen1.5-0.5B</p></td>
+<td class="text-left"><p>Qwen2Tokenizer</p></td>
+<td class="text-left"><p>151643.0</p></td>
+<td class="text-left"><p>vakQOjPaHpZ23kxcqX0tTXi2EzQ=</p></td>
 </tr>
 <tr class="row-odd"><td class="text-left"><p>qwen1.5-0.5b-chat</p></td>
 <td class="text-left"><p><a class="reference external" href="https://huggingface.co/Qwen/Qwen1.5-0.5B-Chat">Qwen/Qwen1.5-0.5B-Chat</a></p></td>
@@ -3977,10 +3980,10 @@
 <td class="text-left"><p>False</p></td>
 <td class="text-left"><p>Qwen2ForCausalLM</p></td>
 <td class="text-left"><p>RMS</p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
+<td class="text-left"><p>Qwen/Qwen1.5-0.5B-Chat</p></td>
+<td class="text-left"><p>Qwen2Tokenizer</p></td>
+<td class="text-left"><p>151643.0</p></td>
+<td class="text-left"><p>vakQOjPaHpZ23kxcqX0tTXi2EzQ=</p></td>
 </tr>
 <tr class="row-even"><td class="text-left"><p>qwen1.5-1.8b</p></td>
 <td class="text-left"><p><a class="reference external" href="https://huggingface.co/Qwen/Qwen1.5-1.8B">Qwen/Qwen1.5-1.8B</a></p></td>
@@ -3996,10 +3999,10 @@
 <td class="text-left"><p>False</p></td>
 <td class="text-left"><p>Qwen2ForCausalLM</p></td>
 <td class="text-left"><p>RMS</p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
+<td class="text-left"><p>Qwen/Qwen1.5-1.8B</p></td>
+<td class="text-left"><p>Qwen2Tokenizer</p></td>
+<td class="text-left"><p>151643.0</p></td>
+<td class="text-left"><p>vakQOjPaHpZ23kxcqX0tTXi2EzQ=</p></td>
 </tr>
 <tr class="row-odd"><td class="text-left"><p>qwen1.5-1.8b-chat</p></td>
 <td class="text-left"><p><a class="reference external" href="https://huggingface.co/Qwen/Qwen1.5-1.8B-Chat">Qwen/Qwen1.5-1.8B-Chat</a></p></td>
@@ -4015,10 +4018,10 @@
 <td class="text-left"><p>False</p></td>
 <td class="text-left"><p>Qwen2ForCausalLM</p></td>
 <td class="text-left"><p>RMS</p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
+<td class="text-left"><p>Qwen/Qwen1.5-1.8B-Chat</p></td>
+<td class="text-left"><p>Qwen2Tokenizer</p></td>
+<td class="text-left"><p>151643.0</p></td>
+<td class="text-left"><p>vakQOjPaHpZ23kxcqX0tTXi2EzQ=</p></td>
 </tr>
 <tr class="row-even"><td class="text-left"><p>qwen1.5-14b</p></td>
 <td class="text-left"><p><a class="reference external" href="https://huggingface.co/Qwen/Qwen1.5-14B">Qwen/Qwen1.5-14B</a></p></td>
@@ -4034,10 +4037,10 @@
 <td class="text-left"><p>False</p></td>
 <td class="text-left"><p>Qwen2ForCausalLM</p></td>
 <td class="text-left"><p>RMS</p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
+<td class="text-left"><p>Qwen/Qwen1.5-14B</p></td>
+<td class="text-left"><p>Qwen2Tokenizer</p></td>
+<td class="text-left"><p>151643.0</p></td>
+<td class="text-left"><p>vakQOjPaHpZ23kxcqX0tTXi2EzQ=</p></td>
 </tr>
 <tr class="row-odd"><td class="text-left"><p>qwen1.5-14b-chat</p></td>
 <td class="text-left"><p><a class="reference external" href="https://huggingface.co/Qwen/Qwen1.5-14B-Chat">Qwen/Qwen1.5-14B-Chat</a></p></td>
@@ -4053,10 +4056,10 @@
 <td class="text-left"><p>False</p></td>
 <td class="text-left"><p>Qwen2ForCausalLM</p></td>
 <td class="text-left"><p>RMS</p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
+<td class="text-left"><p>Qwen/Qwen1.5-14B-Chat</p></td>
+<td class="text-left"><p>Qwen2Tokenizer</p></td>
+<td class="text-left"><p>151643.0</p></td>
+<td class="text-left"><p>vakQOjPaHpZ23kxcqX0tTXi2EzQ=</p></td>
 </tr>
 <tr class="row-even"><td class="text-left"><p>qwen1.5-4b</p></td>
 <td class="text-left"><p><a class="reference external" href="https://huggingface.co/Qwen/Qwen1.5-4B">Qwen/Qwen1.5-4B</a></p></td>
@@ -4072,10 +4075,10 @@
 <td class="text-left"><p>False</p></td>
 <td class="text-left"><p>Qwen2ForCausalLM</p></td>
 <td class="text-left"><p>RMS</p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
+<td class="text-left"><p>Qwen/Qwen1.5-4B</p></td>
+<td class="text-left"><p>Qwen2Tokenizer</p></td>
+<td class="text-left"><p>151643.0</p></td>
+<td class="text-left"><p>vakQOjPaHpZ23kxcqX0tTXi2EzQ=</p></td>
 </tr>
 <tr class="row-odd"><td class="text-left"><p>qwen1.5-4b-chat</p></td>
 <td class="text-left"><p><a class="reference external" href="https://huggingface.co/Qwen/Qwen1.5-4B-Chat">Qwen/Qwen1.5-4B-Chat</a></p></td>
@@ -4091,10 +4094,10 @@
 <td class="text-left"><p>False</p></td>
 <td class="text-left"><p>Qwen2ForCausalLM</p></td>
 <td class="text-left"><p>RMS</p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
+<td class="text-left"><p>Qwen/Qwen1.5-4B-Chat</p></td>
+<td class="text-left"><p>Qwen2Tokenizer</p></td>
+<td class="text-left"><p>151643.0</p></td>
+<td class="text-left"><p>vakQOjPaHpZ23kxcqX0tTXi2EzQ=</p></td>
 </tr>
 <tr class="row-even"><td class="text-left"><p>qwen1.5-7b</p></td>
 <td class="text-left"><p><a class="reference external" href="https://huggingface.co/Qwen/Qwen1.5-7B">Qwen/Qwen1.5-7B</a></p></td>
@@ -4110,10 +4113,10 @@
 <td class="text-left"><p>False</p></td>
 <td class="text-left"><p>Qwen2ForCausalLM</p></td>
 <td class="text-left"><p>RMS</p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
+<td class="text-left"><p>Qwen/Qwen1.5-7B</p></td>
+<td class="text-left"><p>Qwen2Tokenizer</p></td>
+<td class="text-left"><p>151643.0</p></td>
+<td class="text-left"><p>vakQOjPaHpZ23kxcqX0tTXi2EzQ=</p></td>
 </tr>
 <tr class="row-odd"><td class="text-left"><p>qwen1.5-7b-chat</p></td>
 <td class="text-left"><p><a class="reference external" href="https://huggingface.co/Qwen/Qwen1.5-7B-Chat">Qwen/Qwen1.5-7B-Chat</a></p></td>
@@ -4129,10 +4132,10 @@
 <td class="text-left"><p>False</p></td>
 <td class="text-left"><p>Qwen2ForCausalLM</p></td>
 <td class="text-left"><p>RMS</p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
+<td class="text-left"><p>Qwen/Qwen1.5-7B-Chat</p></td>
+<td class="text-left"><p>Qwen2Tokenizer</p></td>
+<td class="text-left"><p>151643.0</p></td>
+<td class="text-left"><p>vakQOjPaHpZ23kxcqX0tTXi2EzQ=</p></td>
 </tr>
 <tr class="row-even"><td class="text-left"><p>qwen2-0.5b</p></td>
 <td class="text-left"><p><a class="reference external" href="https://huggingface.co/Qwen/Qwen2-0.5B">Qwen/Qwen2-0.5B</a></p></td>
@@ -4148,10 +4151,10 @@
 <td class="text-left"><p>False</p></td>
 <td class="text-left"><p>Qwen2ForCausalLM</p></td>
 <td class="text-left"><p>RMS</p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
+<td class="text-left"><p>Qwen/Qwen2-0.5B</p></td>
+<td class="text-left"><p>Qwen2Tokenizer</p></td>
+<td class="text-left"><p>151643.0</p></td>
+<td class="text-left"><p>vakQOjPaHpZ23kxcqX0tTXi2EzQ=</p></td>
 </tr>
 <tr class="row-odd"><td class="text-left"><p>qwen2-0.5b-instruct</p></td>
 <td class="text-left"><p><a class="reference external" href="https://huggingface.co/Qwen/Qwen2-0.5B-Instruct">Qwen/Qwen2-0.5B-Instruct</a></p></td>
@@ -4167,10 +4170,10 @@
 <td class="text-left"><p>False</p></td>
 <td class="text-left"><p>Qwen2ForCausalLM</p></td>
 <td class="text-left"><p>RMS</p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
+<td class="text-left"><p>Qwen/Qwen2-0.5B-Instruct</p></td>
+<td class="text-left"><p>Qwen2Tokenizer</p></td>
+<td class="text-left"><p>151643.0</p></td>
+<td class="text-left"><p>vakQOjPaHpZ23kxcqX0tTXi2EzQ=</p></td>
 </tr>
 <tr class="row-even"><td class="text-left"><p>qwen2-1.5b</p></td>
 <td class="text-left"><p><a class="reference external" href="https://huggingface.co/Qwen/Qwen2-1.5B">Qwen/Qwen2-1.5B</a></p></td>
@@ -4186,10 +4189,10 @@
 <td class="text-left"><p>False</p></td>
 <td class="text-left"><p>Qwen2ForCausalLM</p></td>
 <td class="text-left"><p>RMS</p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
+<td class="text-left"><p>Qwen/Qwen2-1.5B</p></td>
+<td class="text-left"><p>Qwen2Tokenizer</p></td>
+<td class="text-left"><p>151643.0</p></td>
+<td class="text-left"><p>vakQOjPaHpZ23kxcqX0tTXi2EzQ=</p></td>
 </tr>
 <tr class="row-odd"><td class="text-left"><p>qwen2-1.5b-instruct</p></td>
 <td class="text-left"><p><a class="reference external" href="https://huggingface.co/Qwen/Qwen2-1.5B-Instruct">Qwen/Qwen2-1.5B-Instruct</a></p></td>
@@ -4205,10 +4208,10 @@
 <td class="text-left"><p>False</p></td>
 <td class="text-left"><p>Qwen2ForCausalLM</p></td>
 <td class="text-left"><p>RMS</p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
+<td class="text-left"><p>Qwen/Qwen2-1.5B-Instruct</p></td>
+<td class="text-left"><p>Qwen2Tokenizer</p></td>
+<td class="text-left"><p>151643.0</p></td>
+<td class="text-left"><p>vakQOjPaHpZ23kxcqX0tTXi2EzQ=</p></td>
 </tr>
 <tr class="row-even"><td class="text-left"><p>qwen2-7b</p></td>
 <td class="text-left"><p><a class="reference external" href="https://huggingface.co/Qwen/Qwen2-7B">Qwen/Qwen2-7B</a></p></td>
@@ -4224,10 +4227,10 @@
 <td class="text-left"><p>False</p></td>
 <td class="text-left"><p>Qwen2ForCausalLM</p></td>
 <td class="text-left"><p>RMS</p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
+<td class="text-left"><p>Qwen/Qwen2-7B</p></td>
+<td class="text-left"><p>Qwen2Tokenizer</p></td>
+<td class="text-left"><p>151643.0</p></td>
+<td class="text-left"><p>vakQOjPaHpZ23kxcqX0tTXi2EzQ=</p></td>
 </tr>
 <tr class="row-odd"><td class="text-left"><p>qwen2-7b-instruct</p></td>
 <td class="text-left"><p><a class="reference external" href="https://huggingface.co/Qwen/Qwen2-7B-Instruct">Qwen/Qwen2-7B-Instruct</a></p></td>
@@ -4243,10 +4246,10 @@
 <td class="text-left"><p>False</p></td>
 <td class="text-left"><p>Qwen2ForCausalLM</p></td>
 <td class="text-left"><p>RMS</p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
+<td class="text-left"><p>Qwen/Qwen2-7B-Instruct</p></td>
+<td class="text-left"><p>Qwen2Tokenizer</p></td>
+<td class="text-left"><p>151643.0</p></td>
+<td class="text-left"><p>vakQOjPaHpZ23kxcqX0tTXi2EzQ=</p></td>
 </tr>
 <tr class="row-even"><td class="text-left"><p>qwen2.5-0.5b</p></td>
 <td class="text-left"><p><a class="reference external" href="https://huggingface.co/Qwen/Qwen2.5-0.5B">Qwen/Qwen2.5-0.5B</a></p></td>
@@ -4262,10 +4265,10 @@
 <td class="text-left"><p>False</p></td>
 <td class="text-left"><p>Qwen2ForCausalLM</p></td>
 <td class="text-left"><p>RMS</p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
+<td class="text-left"><p>Qwen/Qwen2.5-0.5B</p></td>
+<td class="text-left"><p>Qwen2Tokenizer</p></td>
+<td class="text-left"><p>151643.0</p></td>
+<td class="text-left"><p>NI384GYDfJidzgXg_-9habj8lOk=</p></td>
 </tr>
 <tr class="row-odd"><td class="text-left"><p>qwen2.5-0.5b-instruct</p></td>
 <td class="text-left"><p><a class="reference external" href="https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct">Qwen/Qwen2.5-0.5B-Instruct</a></p></td>
@@ -4281,10 +4284,10 @@
 <td class="text-left"><p>False</p></td>
 <td class="text-left"><p>Qwen2ForCausalLM</p></td>
 <td class="text-left"><p>RMS</p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
+<td class="text-left"><p>Qwen/Qwen2.5-0.5B-Instruct</p></td>
+<td class="text-left"><p>Qwen2Tokenizer</p></td>
+<td class="text-left"><p>151643.0</p></td>
+<td class="text-left"><p>NI384GYDfJidzgXg_-9habj8lOk=</p></td>
 </tr>
 <tr class="row-even"><td class="text-left"><p>qwen2.5-1.5b</p></td>
 <td class="text-left"><p><a class="reference external" href="https://huggingface.co/Qwen/Qwen2.5-1.5B">Qwen/Qwen2.5-1.5B</a></p></td>
@@ -4300,10 +4303,10 @@
 <td class="text-left"><p>False</p></td>
 <td class="text-left"><p>Qwen2ForCausalLM</p></td>
 <td class="text-left"><p>RMS</p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
+<td class="text-left"><p>Qwen/Qwen2.5-1.5B</p></td>
+<td class="text-left"><p>Qwen2Tokenizer</p></td>
+<td class="text-left"><p>151643.0</p></td>
+<td class="text-left"><p>NI384GYDfJidzgXg_-9habj8lOk=</p></td>
 </tr>
 <tr class="row-odd"><td class="text-left"><p>qwen2.5-1.5b-instruct</p></td>
 <td class="text-left"><p><a class="reference external" href="https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct">Qwen/Qwen2.5-1.5B-Instruct</a></p></td>
@@ -4319,10 +4322,10 @@
 <td class="text-left"><p>False</p></td>
 <td class="text-left"><p>Qwen2ForCausalLM</p></td>
 <td class="text-left"><p>RMS</p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
+<td class="text-left"><p>Qwen/Qwen2.5-1.5B-Instruct</p></td>
+<td class="text-left"><p>Qwen2Tokenizer</p></td>
+<td class="text-left"><p>151643.0</p></td>
+<td class="text-left"><p>NI384GYDfJidzgXg_-9habj8lOk=</p></td>
 </tr>
 <tr class="row-even"><td class="text-left"><p>qwen2.5-14b</p></td>
 <td class="text-left"><p><a class="reference external" href="https://huggingface.co/Qwen/Qwen2.5-14B">Qwen/Qwen2.5-14B</a></p></td>
@@ -4338,10 +4341,10 @@
 <td class="text-left"><p>False</p></td>
 <td class="text-left"><p>Qwen2ForCausalLM</p></td>
 <td class="text-left"><p>RMS</p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
+<td class="text-left"><p>Qwen/Qwen2.5-14B</p></td>
+<td class="text-left"><p>Qwen2Tokenizer</p></td>
+<td class="text-left"><p>151643.0</p></td>
+<td class="text-left"><p>NI384GYDfJidzgXg_-9habj8lOk=</p></td>
 </tr>
 <tr class="row-odd"><td class="text-left"><p>qwen2.5-14b-instruct</p></td>
 <td class="text-left"><p><a class="reference external" href="https://huggingface.co/Qwen/Qwen2.5-14B-Instruct">Qwen/Qwen2.5-14B-Instruct</a></p></td>
@@ -4357,10 +4360,10 @@
 <td class="text-left"><p>False</p></td>
 <td class="text-left"><p>Qwen2ForCausalLM</p></td>
 <td class="text-left"><p>RMS</p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
+<td class="text-left"><p>Qwen/Qwen2.5-14B-Instruct</p></td>
+<td class="text-left"><p>Qwen2Tokenizer</p></td>
+<td class="text-left"><p>151643.0</p></td>
+<td class="text-left"><p>NI384GYDfJidzgXg_-9habj8lOk=</p></td>
 </tr>
 <tr class="row-even"><td class="text-left"><p>qwen2.5-32b</p></td>
 <td class="text-left"><p><a class="reference external" href="https://huggingface.co/Qwen/Qwen2.5-32B">Qwen/Qwen2.5-32B</a></p></td>
@@ -4376,10 +4379,10 @@
 <td class="text-left"><p>False</p></td>
 <td class="text-left"><p>Qwen2ForCausalLM</p></td>
 <td class="text-left"><p>RMS</p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
+<td class="text-left"><p>Qwen/Qwen2.5-32B</p></td>
+<td class="text-left"><p>Qwen2Tokenizer</p></td>
+<td class="text-left"><p>151643.0</p></td>
+<td class="text-left"><p>NI384GYDfJidzgXg_-9habj8lOk=</p></td>
 </tr>
 <tr class="row-odd"><td class="text-left"><p>qwen2.5-32b-instruct</p></td>
 <td class="text-left"><p><a class="reference external" href="https://huggingface.co/Qwen/Qwen2.5-32B-Instruct">Qwen/Qwen2.5-32B-Instruct</a></p></td>
@@ -4395,10 +4398,10 @@
 <td class="text-left"><p>False</p></td>
 <td class="text-left"><p>Qwen2ForCausalLM</p></td>
 <td class="text-left"><p>RMS</p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
+<td class="text-left"><p>Qwen/Qwen2.5-32B-Instruct</p></td>
+<td class="text-left"><p>Qwen2Tokenizer</p></td>
+<td class="text-left"><p>151643.0</p></td>
+<td class="text-left"><p>NI384GYDfJidzgXg_-9habj8lOk=</p></td>
 </tr>
 <tr class="row-even"><td class="text-left"><p>qwen2.5-3b</p></td>
 <td class="text-left"><p><a class="reference external" href="https://huggingface.co/Qwen/Qwen2.5-3B">Qwen/Qwen2.5-3B</a></p></td>
@@ -4414,10 +4417,10 @@
 <td class="text-left"><p>False</p></td>
 <td class="text-left"><p>Qwen2ForCausalLM</p></td>
 <td class="text-left"><p>RMS</p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
+<td class="text-left"><p>Qwen/Qwen2.5-3B</p></td>
+<td class="text-left"><p>Qwen2Tokenizer</p></td>
+<td class="text-left"><p>151643.0</p></td>
+<td class="text-left"><p>NI384GYDfJidzgXg_-9habj8lOk=</p></td>
 </tr>
 <tr class="row-odd"><td class="text-left"><p>qwen2.5-3b-instruct</p></td>
 <td class="text-left"><p><a class="reference external" href="https://huggingface.co/Qwen/Qwen2.5-3B-Instruct">Qwen/Qwen2.5-3B-Instruct</a></p></td>
@@ -4433,10 +4436,10 @@
 <td class="text-left"><p>False</p></td>
 <td class="text-left"><p>Qwen2ForCausalLM</p></td>
 <td class="text-left"><p>RMS</p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
+<td class="text-left"><p>Qwen/Qwen2.5-3B-Instruct</p></td>
+<td class="text-left"><p>Qwen2Tokenizer</p></td>
+<td class="text-left"><p>151643.0</p></td>
+<td class="text-left"><p>NI384GYDfJidzgXg_-9habj8lOk=</p></td>
 </tr>
 <tr class="row-even"><td class="text-left"><p>qwen2.5-72b</p></td>
 <td class="text-left"><p><a class="reference external" href="https://huggingface.co/Qwen/Qwen2.5-72B">Qwen/Qwen2.5-72B</a></p></td>
@@ -4452,10 +4455,10 @@
 <td class="text-left"><p>False</p></td>
 <td class="text-left"><p>Qwen2ForCausalLM</p></td>
 <td class="text-left"><p>RMS</p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
+<td class="text-left"><p>Qwen/Qwen2.5-72B</p></td>
+<td class="text-left"><p>Qwen2Tokenizer</p></td>
+<td class="text-left"><p>151643.0</p></td>
+<td class="text-left"><p>NI384GYDfJidzgXg_-9habj8lOk=</p></td>
 </tr>
 <tr class="row-odd"><td class="text-left"><p>qwen2.5-72b-instruct</p></td>
 <td class="text-left"><p><a class="reference external" href="https://huggingface.co/Qwen/Qwen2.5-72B-Instruct">Qwen/Qwen2.5-72B-Instruct</a></p></td>
@@ -4471,10 +4474,10 @@
 <td class="text-left"><p>False</p></td>
 <td class="text-left"><p>Qwen2ForCausalLM</p></td>
 <td class="text-left"><p>RMS</p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
+<td class="text-left"><p>Qwen/Qwen2.5-72B-Instruct</p></td>
+<td class="text-left"><p>Qwen2Tokenizer</p></td>
+<td class="text-left"><p>151643.0</p></td>
+<td class="text-left"><p>NI384GYDfJidzgXg_-9habj8lOk=</p></td>
 </tr>
 <tr class="row-even"><td class="text-left"><p>qwen2.5-7b</p></td>
 <td class="text-left"><p><a class="reference external" href="https://huggingface.co/Qwen/Qwen2.5-7B">Qwen/Qwen2.5-7B</a></p></td>
@@ -4490,10 +4493,10 @@
 <td class="text-left"><p>False</p></td>
 <td class="text-left"><p>Qwen2ForCausalLM</p></td>
 <td class="text-left"><p>RMS</p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
+<td class="text-left"><p>Qwen/Qwen2.5-7B</p></td>
+<td class="text-left"><p>Qwen2Tokenizer</p></td>
+<td class="text-left"><p>151643.0</p></td>
+<td class="text-left"><p>NI384GYDfJidzgXg_-9habj8lOk=</p></td>
 </tr>
 <tr class="row-odd"><td class="text-left"><p>qwen2.5-7b-instruct</p></td>
 <td class="text-left"><p><a class="reference external" href="https://huggingface.co/Qwen/Qwen2.5-7B-Instruct">Qwen/Qwen2.5-7B-Instruct</a></p></td>
@@ -4509,10 +4512,10 @@
 <td class="text-left"><p>False</p></td>
 <td class="text-left"><p>Qwen2ForCausalLM</p></td>
 <td class="text-left"><p>RMS</p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
+<td class="text-left"><p>Qwen/Qwen2.5-7B-Instruct</p></td>
+<td class="text-left"><p>Qwen2Tokenizer</p></td>
+<td class="text-left"><p>151643.0</p></td>
+<td class="text-left"><p>NI384GYDfJidzgXg_-9habj8lOk=</p></td>
 </tr>
 <tr class="row-even"><td class="text-left"><p>qwen3-0.6b</p></td>
 <td class="text-left"><p><a class="reference external" href="https://huggingface.co/Qwen/Qwen3-0.6B">Qwen/Qwen3-0.6B</a></p></td>
@@ -4642,10 +4645,10 @@
 <td class="text-left"><p>False</p></td>
 <td class="text-left"><p>Qwen2ForCausalLM</p></td>
 <td class="text-left"><p>RMS</p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
-<td class="text-left"><p></p></td>
+<td class="text-left"><p>Qwen/QwQ-32B-Preview</p></td>
+<td class="text-left"><p>Qwen2Tokenizer</p></td>
+<td class="text-left"><p>151643.0</p></td>
+<td class="text-left"><p>NI384GYDfJidzgXg_-9habj8lOk=</p></td>
 </tr>
 <tr class="row-odd"><td class="text-left"><p>tiny-stories-1L-21M</p></td>
 <td class="text-left"><p></p></td>

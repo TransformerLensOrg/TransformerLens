@@ -26,6 +26,7 @@ Submodules
    :maxdepth: 4
 
    transformer_lens.HookedAudioEncoder
+   transformer_lens.HookedRootModule
    transformer_lens.evals
    transformer_lens.head_detector
    transformer_lens.hook_points

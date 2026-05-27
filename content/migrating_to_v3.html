@@ -219,8 +219,9 @@
 </ul>
 </li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../generated/code/transformer_lens.config.html">transformer_lens.config package</a><input class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" role="switch" type="checkbox"/><label for="toctree-checkbox-6"><div class="visually-hidden">Toggle navigation of transformer_lens.config package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
-<li class="toctree-l4"><a class="reference internal" href="../generated/code/transformer_lens.config.TransformerBridgeConfig.html">transformer_lens.config.TransformerBridgeConfig module</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../generated/code/transformer_lens.config.TransformerLensConfig.html">transformer_lens.config.TransformerLensConfig module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../generated/code/transformer_lens.config.hooked_transformer_config.html">transformer_lens.config.hooked_transformer_config module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../generated/code/transformer_lens.config.transformer_bridge_config.html">transformer_lens.config.transformer_bridge_config module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../generated/code/transformer_lens.config.transformer_lens_config.html">transformer_lens.config.transformer_lens_config module</a></li>
 </ul>
 </li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../generated/code/transformer_lens.conversion_utils.html">transformer_lens.conversion_utils package</a><input class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><div class="visually-hidden">Toggle navigation of transformer_lens.conversion_utils package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
@@ -354,7 +355,6 @@
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.model_bridge.supported_architectures.opt.html">transformer_lens.model_bridge.supported_architectures.opt module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.model_bridge.supported_architectures.phi.html">transformer_lens.model_bridge.supported_architectures.phi module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.model_bridge.supported_architectures.phi3.html">transformer_lens.model_bridge.supported_architectures.phi3 module</a></li>
-<li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.model_bridge.supported_architectures.pythia.html">transformer_lens.model_bridge.supported_architectures.pythia module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.model_bridge.supported_architectures.qwen.html">transformer_lens.model_bridge.supported_architectures.qwen module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.model_bridge.supported_architectures.qwen2.html">transformer_lens.model_bridge.supported_architectures.qwen2 module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.model_bridge.supported_architectures.qwen3.html">transformer_lens.model_bridge.supported_architectures.qwen3 module</a></li>
@@ -455,6 +455,7 @@
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../generated/code/transformer_lens.HookedAudioEncoder.html">transformer_lens.HookedAudioEncoder module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../generated/code/transformer_lens.HookedRootModule.html">transformer_lens.HookedRootModule module</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../generated/code/transformer_lens.evals.html">transformer_lens.evals module</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../generated/code/transformer_lens.head_detector.html">transformer_lens.head_detector module</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../generated/code/transformer_lens.hook_points.html">transformer_lens.hook_points module</a></li>
@@ -483,6 +484,7 @@
 <li class="toctree-l1 has-children"><a class="reference internal" href="contributing.html">Contributing</a><input class="toctree-checkbox" id="toctree-checkbox-22" name="toctree-checkbox-22" role="switch" type="checkbox"/><label for="toctree-checkbox-22"><div class="visually-hidden">Toggle navigation of Contributing</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
 <li class="toctree-l2"><a class="reference internal" href="adapter_development/adapter-creation-guide.html">Architecture Adapter Creation Guide</a></li>
 <li class="toctree-l2"><a class="reference internal" href="adapter_development/hf-model-analysis-guide.html">HuggingFace Model Analysis Guide</a></li>
+<li class="toctree-l2"><a class="reference internal" href="adapter_development/external-adapter-registration.html">External Architecture Adapter Registration</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="../generated/demos/Main_Demo.html">Transformer Lens Main Demo Notebook</a></li>
@@ -497,6 +499,7 @@
 <li class="toctree-l1 has-children"><a class="reference internal" href="contributing.html">Contributing</a><input class="toctree-checkbox" id="toctree-checkbox-23" name="toctree-checkbox-23" role="switch" type="checkbox"/><label for="toctree-checkbox-23"><div class="visually-hidden">Toggle navigation of Contributing</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
 <li class="toctree-l2"><a class="reference internal" href="adapter_development/adapter-creation-guide.html">Architecture Adapter Creation Guide</a></li>
 <li class="toctree-l2"><a class="reference internal" href="adapter_development/hf-model-analysis-guide.html">HuggingFace Model Analysis Guide</a></li>
+<li class="toctree-l2"><a class="reference internal" href="adapter_development/external-adapter-registration.html">External Architecture Adapter Registration</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference external" href="https://transformerlensorg.github.io/TransformerLens/_static/coverage/">Code Coverage</a></li>
@@ -641,6 +644,17 @@
 <p>Bottom-half analyses → call <code class="docutils literal notranslate"><span class="pre">enable_compatibility_mode()</span></code> after booting.</p>
 </section>
 </section>
+<section id="dependency-changes-in-3-0">
+<h2>Dependency changes in 3.0<a class="headerlink" href="#dependency-changes-in-3-0" title="Link to this heading">¶</a></h2>
+<p>TransformerLens 3.0 raises its minimum supported <code class="docutils literal notranslate"><span class="pre">transformers</span></code> to <strong>5.4.0</strong> (previously 4.56). This is enforced automatically, fresh installs and <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">-U</span> <span class="pre">transformer_lens</span></code> will pull in a compatible release with no action on your part.</p>
+<p>If your code calls <code class="docutils literal notranslate"><span class="pre">transformers</span></code> directly alongside TransformerLens (e.g. manual <code class="docutils literal notranslate"><span class="pre">AutoModel.from_pretrained</span></code> calls in notebooks, or a downstream library that imports both), the v4 → v5 jump may surface breaking changes outside TransformerLens’s surface area. See HuggingFace’s Transformers v5 release notes for what changed there.</p>
+<p>A few v5-driven internal adjustments worth knowing about:</p>
+<ul class="simple">
+<li><p><strong>Gemma embedding scaling.</strong> Transformers v5 changed how Gemma applies embedding scaling; <code class="docutils literal notranslate"><span class="pre">enable_compatibility_mode()</span></code> compensates so legacy <code class="docutils literal notranslate"><span class="pre">HookedTransformer</span></code> numerics are preserved.</p></li>
+<li><p><strong>MPT block unpack arity.</strong> <code class="docutils literal notranslate"><span class="pre">MptBlock</span></code> returns a 2-tuple on v5 vs a 3-tuple on v4; the bridge adapts.</p></li>
+<li><p><strong>Qwen3.5.</strong> Requires a v5 release exposing <code class="docutils literal notranslate"><span class="pre">Qwen3_5ForCausalLM</span></code>; see <a class="reference internal" href="special_cases.html"><span class="std std-doc">Special Cases</span></a>.</p></li>
+</ul>
+</section>
 <section id="hook-names">
 <h2>Hook names<a class="headerlink" href="#hook-names" title="Link to this heading">¶</a></h2>
 <p>The canonical hook names on the bridge use a uniform <code class="docutils literal notranslate"><span class="pre">hook_in</span></code> / <code class="docutils literal notranslate"><span class="pre">hook_out</span></code> convention. The old TransformerLens names are preserved through an alias layer, so existing code keeps working without changes:</p>
@@ -650,6 +664,16 @@
 </pre></div>
 </div>
 <p>For the full mapping of legacy → canonical names and the expected tensor shape at each hook point, see the <a class="reference internal" href="model_structure.html"><span class="std std-doc">Model Structure</span></a> page.</p>
+<section id="hook-semantic-notes">
+<h3>Hook semantic notes<a class="headerlink" href="#hook-semantic-notes" title="Link to this heading">¶</a></h3>
+<p>Two semantic differences inside <code class="docutils literal notranslate"><span class="pre">enable_compatibility_mode()</span></code> worth knowing if you are porting activation-patching, DLA, or attribution-patching code:</p>
+<ul class="simple">
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">blocks.{i}.hook_mlp_in</span></code> fires pre-ln2</strong> (matching legacy <code class="docutils literal notranslate"><span class="pre">HookedTransformer</span></code>). Use <code class="docutils literal notranslate"><span class="pre">bridge.set_use_hook_mlp_in(True)</span></code> to enable it — setting <code class="docutils literal notranslate"><span class="pre">cfg.use_hook_mlp_in</span> <span class="pre">=</span> <span class="pre">True</span></code> directly is honored when blocks share the bridge’s <code class="docutils literal notranslate"><span class="pre">cfg</span></code>, but the setter is the supported entry point. The pre-ln2 placement means cached values from one run can be patched into another and re-flow through <code class="docutils literal notranslate"><span class="pre">ln2</span> <span class="pre">→</span> <span class="pre">mlp</span></code> consistently across the bridge and <code class="docutils literal notranslate"><span class="pre">HookedTransformer</span></code>.</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">hook_q_input</span></code> / <code class="docutils literal notranslate"><span class="pre">hook_k_input</span></code> / <code class="docutils literal notranslate"><span class="pre">hook_v_input</span></code> / <code class="docutils literal notranslate"><span class="pre">hook_attn_in</span></code></strong> also fire pre-ln1 in compat mode. On the per-head LN application that follows, the bridge routes through the raw HF norm rather than the <code class="docutils literal notranslate"><span class="pre">NormalizationBridge</span></code> wrapper, so <code class="docutils literal notranslate"><span class="pre">ln1</span></code>’s sub-hooks (<code class="docutils literal notranslate"><span class="pre">hook_in</span></code>, <code class="docutils literal notranslate"><span class="pre">hook_normalized</span></code>, <code class="docutils literal notranslate"><span class="pre">hook_scale</span></code>) do <strong>not</strong> fire once per head the way legacy <code class="docutils literal notranslate"><span class="pre">LayerNormPre</span></code> would. Q/K/V projections downstream still match legacy numerically; only the intermediate LN sub-hook firing is suppressed.</p></li>
+</ul>
+<p>Post-norm architectures (OLMo 2, BERT-style encoders) and MLA blocks (DeepSeek V2/V3/R1) do not participate in the pre-ln1 capture — <code class="docutils literal notranslate"><span class="pre">MLABlockBridge</span></code> does not expose those aliases, and post-norm models would read the post-attention residual instead of the block input.</p>
+<p>Additionally, <strong>HookedRootModule</strong> has been moved to its own module. Prefer <code class="docutils literal notranslate"><span class="pre">from</span> <span class="pre">transformer_lens</span> <span class="pre">import</span> <span class="pre">HookedRootModule</span></code>. The legacy <code class="docutils literal notranslate"><span class="pre">from</span> <span class="pre">transformer_lens.hook_points</span> <span class="pre">import</span> <span class="pre">HookedRootModule</span></code> still works in 3.x, but emits a <code class="docutils literal notranslate"><span class="pre">DeprecationWarning</span></code>. This import path will be removed in 4.0.</p>
+</section>
 </section>
 <section id="apis-that-are-unchanged">
 <h2>APIs that are unchanged<a class="headerlink" href="#apis-that-are-unchanged" title="Link to this heading">¶</a></h2>
@@ -663,6 +687,10 @@
 <li><p><code class="docutils literal notranslate"><span class="pre">W_Q</span></code>, <code class="docutils literal notranslate"><span class="pre">W_K</span></code>, <code class="docutils literal notranslate"><span class="pre">W_V</span></code>, <code class="docutils literal notranslate"><span class="pre">W_O</span></code>, <code class="docutils literal notranslate"><span class="pre">b_Q</span></code>, <code class="docutils literal notranslate"><span class="pre">b_K</span></code>, <code class="docutils literal notranslate"><span class="pre">b_V</span></code>, <code class="docutils literal notranslate"><span class="pre">b_O</span></code> — attention weights are exposed with the same <code class="docutils literal notranslate"><span class="pre">[n_heads,</span> <span class="pre">d_model,</span> <span class="pre">d_head]</span></code> shape conventions</p></li>
 </ul>
 <p>If your code only touches these APIs, the migration is genuinely just the loading call and (optionally) <code class="docutils literal notranslate"><span class="pre">enable_compatibility_mode</span></code>.</p>
+<section id="bert-next-sentence-prediction">
+<h3>BERT Next Sentence Prediction<a class="headerlink" href="#bert-next-sentence-prediction" title="Link to this heading">¶</a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">BertNextSentencePrediction</span></code> is not ported to <code class="docutils literal notranslate"><span class="pre">TransformerBridge</span></code>. Keep using <code class="docutils literal notranslate"><span class="pre">HookedEncoder</span></code> + <code class="docutils literal notranslate"><span class="pre">BertNextSentencePrediction</span></code> for NSP workflows. The bridge’s BERT adapter does load NSP HuggingFace checkpoints (it rewires the unembed to <code class="docutils literal notranslate"><span class="pre">cls.seq_relationship</span></code>), but the high-level NSP API – sentence-pair tokenization, <code class="docutils literal notranslate"><span class="pre">[CLS]</span></code> pooling, “sequential”/”not sequential” decoding — is not exposed. If this is feature is something you’d like added to TransformerBridge, please file an issue.</p>
+</section>
 <section id="new-in-3-x-streaming-generation">
 <h3>New in 3.x: streaming generation<a class="headerlink" href="#new-in-3-x-streaming-generation" title="Link to this heading">¶</a></h3>
 <p>Both <code class="docutils literal notranslate"><span class="pre">HookedTransformer</span></code> and <code class="docutils literal notranslate"><span class="pre">TransformerBridge</span></code> now expose <code class="docutils literal notranslate"><span class="pre">generate_stream</span></code>, which yields tokens progressively instead of returning the full completion at once:</p>
@@ -792,8 +820,13 @@
 <li><a class="reference internal" href="#will-my-numbers-match-hookedtransformer">Will my numbers match HookedTransformer?</a></li>
 </ul>
 </li>
-<li><a class="reference internal" href="#hook-names">Hook names</a></li>
+<li><a class="reference internal" href="#dependency-changes-in-3-0">Dependency changes in 3.0</a></li>
+<li><a class="reference internal" href="#hook-names">Hook names</a><ul>
+<li><a class="reference internal" href="#hook-semantic-notes">Hook semantic notes</a></li>
+</ul>
+</li>
 <li><a class="reference internal" href="#apis-that-are-unchanged">APIs that are unchanged</a><ul>
+<li><a class="reference internal" href="#bert-next-sentence-prediction">BERT Next Sentence Prediction</a></li>
 <li><a class="reference internal" href="#new-in-3-x-streaming-generation">New in 3.x: streaming generation</a></li>
 </ul>
 </li>

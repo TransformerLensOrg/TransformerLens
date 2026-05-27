@@ -1,0 +1,7 @@
+transformer\_lens.config.transformer\_lens\_config module
+=========================================================
+
+.. automodule:: transformer_lens.config.transformer_lens_config
+   :members:
+   :undoc-members:
+   :show-inheritance:
