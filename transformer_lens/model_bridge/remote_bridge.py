@@ -53,6 +53,7 @@ class RemoteBridge(BridgeCore, HookIntrospectionMixin):
         method need vLLM installed. See :func:`sources.vllm.boot_vllm` for kwargs.
         """
         from .sources.vllm import boot_vllm as _boot_vllm
+
         return _boot_vllm(*args, **kwargs)
 
     def _scan_existing_hooks(self, module: Any, prefix: str = "") -> None:

@@ -187,14 +187,20 @@ def _log_hook_summary(model_name: str, architecture: str, driver: VLLMDriver) ->
     fireable = sorted(driver.supported_hook_points)
     log.info(
         "vLLM source on %s (%s) captures %d hook(s): %s",
-        model_name, architecture, len(fireable), ", ".join(fireable),
+        model_name,
+        architecture,
+        len(fireable),
+        ", ".join(fireable),
     )
     nonfiring = sorted(driver.non_fireable_hook_points)
     if nonfiring:
         log.info(
             "vLLM source on %s (%s) cannot fire %d hook(s) (vLLM fuses these): %s. "
             "Use boot_transformers() if you need them.",
-            model_name, architecture, len(nonfiring), ", ".join(nonfiring),
+            model_name,
+            architecture,
+            len(nonfiring),
+            ", ".join(nonfiring),
         )
 
 

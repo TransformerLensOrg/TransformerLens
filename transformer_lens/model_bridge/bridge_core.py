@@ -5,7 +5,18 @@ import re
 import warnings
 from contextlib import contextmanager
 from functools import lru_cache
-from typing import Any, Callable, Dict, List, Literal, Mapping, Optional, Tuple, Union, overload
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    Literal,
+    Mapping,
+    Optional,
+    Tuple,
+    Union,
+    overload,
+)
 
 import torch
 
@@ -235,15 +246,11 @@ class BridgeCore:
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Subclasses implement how the driver gets called."""
-        raise NotImplementedError(
-            f"{type(self).__name__} must implement forward()"
-        )
+        raise NotImplementedError(f"{type(self).__name__} must implement forward()")
 
     def to_tokens(self, *args: Any, **kwargs: Any) -> Any:
         """Subclasses implement against their tokenizer surface."""
-        raise NotImplementedError(
-            f"{type(self).__name__} must implement to_tokens()"
-        )
+        raise NotImplementedError(f"{type(self).__name__} must implement to_tokens()")
 
     def close(self) -> None:
         """Release driver-managed resources. Idempotent — safe to call multiple times."""
@@ -557,6 +564,7 @@ class BridgeCore:
             if stop_at_layer < 0:
                 stop_at_layer = len(self.blocks) + stop_at_layer
             if stop_at_layer >= 0 and stop_at_layer < len(self.blocks):
+
                 def stop_hook(tensor: Any, *, hook: Any) -> Any:
                     raise StopAtLayerException(tensor)
 
@@ -566,7 +574,9 @@ class BridgeCore:
                 if block_hook_name in hook_dict:
                     add_hook_to_point(hook_dict[block_hook_name], stop_hook, block_hook_name, "fwd")
 
-        def apply_hooks(hook_list: List[Tuple[Union[str, Callable], Callable]], is_fwd: bool) -> None:
+        def apply_hooks(
+            hook_list: List[Tuple[Union[str, Callable], Callable]], is_fwd: bool
+        ) -> None:
             direction: Literal["fwd", "bwd"] = "fwd" if is_fwd else "bwd"
             aliases = build_alias_to_canonical_map(self.hook_dict)
             for hook_name_or_filter, hook_fn in hook_list:
@@ -852,4 +862,3 @@ class BridgeCore:
                         if cache[key].size(0) == 1:
                             cache[key] = cache[key][0]
             return (output, cache)
-

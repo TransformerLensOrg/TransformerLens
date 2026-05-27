@@ -37,8 +37,14 @@ def _hf_config() -> SimpleNamespace:
 
 def _cfg() -> TransformerBridgeConfig:
     return TransformerBridgeConfig(
-        d_model=4, d_head=2, n_layers=2, n_ctx=8,
-        n_heads=2, d_vocab=16, d_mlp=8, architecture="LlamaForCausalLM",
+        d_model=4,
+        d_head=2,
+        n_layers=2,
+        n_ctx=8,
+        n_heads=2,
+        d_vocab=16,
+        d_mlp=8,
+        architecture="LlamaForCausalLM",
     )
 
 
@@ -101,13 +107,16 @@ def test_rejects_locked_kwarg_override():
         boot_vllm("any-model", tensor_parallel_size=2)
 
 
-@pytest.mark.parametrize("raw, expected", [
-    (torch.float16, torch.float16),
-    (torch.bfloat16, torch.bfloat16),
-    ("bfloat16", torch.bfloat16),
-    ("nonexistent_dtype", torch.float16),
-    (None, torch.float16),
-])
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        (torch.float16, torch.float16),
+        (torch.bfloat16, torch.bfloat16),
+        ("bfloat16", torch.bfloat16),
+        ("nonexistent_dtype", torch.float16),
+        (None, torch.float16),
+    ],
+)
 def test_dtype_resolution(raw, expected):
     assert _dtype_from_hf_config(SimpleNamespace(torch_dtype=raw)) == expected
 

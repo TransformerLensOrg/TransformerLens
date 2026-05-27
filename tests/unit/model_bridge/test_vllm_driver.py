@@ -41,7 +41,8 @@ def _overlay(specs=None, nonfiring=None):
             "blocks.1.hook_out": ("model.layers.1", hf_config.hidden_size),
             "unembed.hook_out": ("lm_head", hf_config.vocab_size),
         },
-        nonfiring_hooks=lambda: nonfiring or [
+        nonfiring_hooks=lambda: nonfiring
+        or [
             "blocks.{i}.attn.hook_pattern",
             "blocks.{i}.attn.hook_attn_scores",
         ],
@@ -50,8 +51,14 @@ def _overlay(specs=None, nonfiring=None):
 
 def _cfg() -> TransformerBridgeConfig:
     return TransformerBridgeConfig(
-        d_model=4, d_head=2, n_layers=2, n_ctx=8,
-        n_heads=2, d_vocab=16, d_mlp=8, architecture="LlamaForCausalLM",
+        d_model=4,
+        d_head=2,
+        n_layers=2,
+        n_ctx=8,
+        n_heads=2,
+        d_vocab=16,
+        d_mlp=8,
+        architecture="LlamaForCausalLM",
     )
 
 
@@ -67,27 +74,35 @@ def _fake_request_output(generated_token=None, top_logprobs=None):
     completion.token_ids = [generated_token] if generated_token is not None else []
     completion.logprobs = (
         [{tid: MagicMock(logprob=lp) for tid, lp in top_logprobs.items()}]
-        if top_logprobs is not None else []
+        if top_logprobs is not None
+        else []
     )
     ro = MagicMock()
     ro.outputs = [completion]
     return ro
 
 
-def _driver(*, captures=None, hf_config=None, max_num_batched_tokens=2048,
-            generated_token=None, top_logprobs=None) -> VLLMDriver:
+def _driver(
+    *,
+    captures=None,
+    hf_config=None,
+    max_num_batched_tokens=2048,
+    generated_token=None,
+    top_logprobs=None,
+) -> VLLMDriver:
     """Build a VLLMDriver. ``captures`` populates llm.collective_rpc; ``generated_token``
     and ``top_logprobs`` populate llm.generate's RequestOutput so _synthesize_logits
     can be exercised on both code paths (logprobs preferred, token_id fallback)."""
     llm = MagicMock()
     if captures is not None:
         llm.collective_rpc = MagicMock(return_value=[captures])
-    llm.generate = MagicMock(
-        return_value=[_fake_request_output(generated_token, top_logprobs)]
-    )
+    llm.generate = MagicMock(return_value=[_fake_request_output(generated_token, top_logprobs)])
     return VLLMDriver(
-        llm=llm, adapter=_adapter(), tokenizer=None,
-        overlay=_overlay(), hf_config=hf_config or _hf_config(),
+        llm=llm,
+        adapter=_adapter(),
+        tokenizer=None,
+        overlay=_overlay(),
+        hf_config=hf_config or _hf_config(),
         max_num_batched_tokens=max_num_batched_tokens,
     )
 
@@ -108,12 +123,14 @@ class TestVLLMDriverProtocolConformance:
 
     def test_non_fireable_expanded_per_layer(self):
         """``blocks.{i}.attn.hook_pattern`` template expands to one entry per layer."""
-        assert _driver().non_fireable_hook_points == frozenset({
-            "blocks.0.attn.hook_pattern",
-            "blocks.1.attn.hook_pattern",
-            "blocks.0.attn.hook_attn_scores",
-            "blocks.1.attn.hook_attn_scores",
-        })
+        assert _driver().non_fireable_hook_points == frozenset(
+            {
+                "blocks.0.attn.hook_pattern",
+                "blocks.1.attn.hook_pattern",
+                "blocks.0.attn.hook_attn_scores",
+                "blocks.1.attn.hook_attn_scores",
+            }
+        )
 
 
 class TestVLLMDriverForward:
@@ -152,7 +169,9 @@ class TestVLLMDriverForward:
 
     def test_forward_rejects_callable_interventions(self):
         with pytest.raises(NotImplementedError, match="intervention specs"):
-            _driver(captures={}).forward(torch.tensor([[1]]), intervene={"embed.hook_out": lambda a: a})
+            _driver(captures={}).forward(
+                torch.tensor([[1]]), intervene={"embed.hook_out": lambda a: a}
+            )
 
     def test_forward_rejects_unsupported_intervention_op(self):
         with pytest.raises(ValueError, match="Unsupported intervention op"):
@@ -200,7 +219,8 @@ class TestVLLMDriverForward:
         )
         rpc_calls = [c.args for c in driver._llm.collective_rpc.call_args_list]
         assert any(
-            args[0] == "tl_set_interventions" and args[1] == ({"embed.hook_out": {"op": "suppress"}},)
+            args[0] == "tl_set_interventions"
+            and args[1] == ({"embed.hook_out": {"op": "suppress"}},)
             for args in rpc_calls
         )
 
@@ -210,10 +230,7 @@ class TestVLLMDriverForward:
         driver = _driver(captures={"embed.hook_out": torch.zeros(3, 4)})
         driver.forward(torch.tensor([[1, 2, 3]]))
         rpc_calls = [c.args for c in driver._llm.collective_rpc.call_args_list]
-        assert any(
-            args[0] == "tl_set_interventions" and args[1] == ({},)
-            for args in rpc_calls
-        )
+        assert any(args[0] == "tl_set_interventions" and args[1] == ({},) for args in rpc_calls)
 
     def test_forward_rejects_max_new_tokens_gt_one(self):
         """Decode-step writes overwrite the prefill buffer — silent capture corruption."""

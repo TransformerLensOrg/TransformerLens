@@ -184,10 +184,13 @@ class TestQwen3_5LoadingGuards:
     ):
         from transformer_lens.model_bridge.bridge import TransformerBridge
         from transformer_lens.model_bridge.sources import transformers as source
+
         # boot() lives in the submodule after the package split; module-level
         # name lookups for TransformerBridge / setup_tokenizer happen there, not
         # in the package __init__.
-        from transformer_lens.model_bridge.sources.transformers import source as boot_module
+        from transformer_lens.model_bridge.sources.transformers import (
+            source as boot_module,
+        )
 
         text_config = SimpleNamespace(
             model_type="qwen3_5_text",

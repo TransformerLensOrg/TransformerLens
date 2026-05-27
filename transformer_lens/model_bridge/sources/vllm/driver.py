@@ -76,6 +76,7 @@ class VLLMDriver(DriverBase):
 
         from vllm import SamplingParams
         from vllm.inputs import TokensPrompt
+
         # Push intervention state (possibly empty) before generate — this also
         # resets stale interventions from prior forwards.
         self._llm.collective_rpc("tl_set_interventions", args=(intervene_specs,))
@@ -126,6 +127,7 @@ class VLLMDriver(DriverBase):
                 destroy_distributed_environment,
                 destroy_model_parallel,
             )
+
             destroy_model_parallel()
             destroy_distributed_environment()
         except Exception as e:
@@ -176,7 +178,9 @@ class VLLMDriver(DriverBase):
                     f"Supported: {sorted(SUPPORTED_OPS)}."
                 )
             if op == "scale" and "factor" not in spec:
-                raise ValueError(f"Intervention {hook_name!r}: op='scale' requires 'factor' (float).")
+                raise ValueError(
+                    f"Intervention {hook_name!r}: op='scale' requires 'factor' (float)."
+                )
             if op in ("add", "set") and "value" not in spec:
                 raise ValueError(
                     f"Intervention {hook_name!r}: op={op!r} requires 'value' "

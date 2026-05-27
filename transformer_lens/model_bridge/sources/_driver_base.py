@@ -39,7 +39,9 @@ class DriverBase(ABC):
         self.bridge_config = bridge_config
         self.tokenizer = tokenizer
         # Resolution order: explicit kwarg > bridge_config field > class default.
-        self.architecture = architecture or getattr(bridge_config, "architecture", "") or self.architecture
+        self.architecture = (
+            architecture or getattr(bridge_config, "architecture", "") or self.architecture
+        )
 
     @abstractmethod
     def forward(
@@ -51,7 +53,8 @@ class DriverBase(ABC):
         max_new_tokens: int = 1,
         return_logits: bool = True,
         **kwargs: Any,
-    ) -> ForwardResult: ...
+    ) -> ForwardResult:
+        ...
 
     def close(self) -> None:
         """No-op default. Override when the driver owns releasable resources."""

@@ -20,8 +20,14 @@ def _stub_adapter(architecture: str = "Mock"):
     from transformer_lens.config import TransformerBridgeConfig
 
     cfg = TransformerBridgeConfig(
-        d_model=4, d_head=2, n_layers=1, n_ctx=8,
-        n_heads=2, d_vocab=16, d_mlp=8, architecture=architecture,
+        d_model=4,
+        d_head=2,
+        n_layers=1,
+        n_ctx=8,
+        n_heads=2,
+        d_vocab=16,
+        d_mlp=8,
+        architecture=architecture,
     )
 
     class _StubAdapter:
@@ -151,8 +157,16 @@ class TestDriverProtocol:
         assert list(hf_driver.parameters()) == list(model.parameters())
 
         class RemoteLike(DriverBase):
-            def forward(self, input_ids=None, *, capture=(), intervene=None,
-                        max_new_tokens=1, return_logits=True, **kw):
+            def forward(
+                self,
+                input_ids=None,
+                *,
+                capture=(),
+                intervene=None,
+                max_new_tokens=1,
+                return_logits=True,
+                **kw,
+            ):
                 return ForwardResult()
 
         remote = RemoteLike(_stub_adapter().cfg, tokenizer=None)
@@ -204,8 +218,16 @@ class TestValidateDriverCatchesBrokenDrivers:
             def __init__(self, cfg):
                 super().__init__(cfg, tokenizer=None)
 
-            def forward(self, input_ids=None, *, capture=(), intervene=None,
-                        max_new_tokens=1, return_logits=True, **kw):
+            def forward(
+                self,
+                input_ids=None,
+                *,
+                capture=(),
+                intervene=None,
+                max_new_tokens=1,
+                return_logits=True,
+                **kw,
+            ):
                 return ForwardResult()
 
         driver = OverlappingSets(self._cfg())
@@ -221,8 +243,16 @@ class TestValidateDriverCatchesBrokenDrivers:
                 super().__init__(cfg, tokenizer=None)
                 self.architecture = 42  # type: ignore[assignment]
 
-            def forward(self, input_ids=None, *, capture=(), intervene=None,
-                        max_new_tokens=1, return_logits=True, **kw):
+            def forward(
+                self,
+                input_ids=None,
+                *,
+                capture=(),
+                intervene=None,
+                max_new_tokens=1,
+                return_logits=True,
+                **kw,
+            ):
                 return ForwardResult()
 
         driver = WrongTypes(self._cfg())
@@ -238,8 +268,16 @@ class TestValidateDriverCatchesBrokenDrivers:
             def __init__(self, cfg):
                 super().__init__(cfg, tokenizer=None)
 
-            def forward(self, input_ids=None, *, capture=(), intervene=None,
-                        max_new_tokens=1, return_logits=True, **kw):
+            def forward(
+                self,
+                input_ids=None,
+                *,
+                capture=(),
+                intervene=None,
+                max_new_tokens=1,
+                return_logits=True,
+                **kw,
+            ):
                 return ForwardResult()
 
         driver = BadHookNames(self._cfg())
@@ -254,8 +292,16 @@ class TestValidateDriverCatchesBrokenDrivers:
             def __init__(self, cfg):
                 super().__init__(cfg, tokenizer=None)
 
-            def forward(self, input_ids=None, *, capture=(), intervene=None,
-                        max_new_tokens=1, return_logits=True, **kw):
+            def forward(
+                self,
+                input_ids=None,
+                *,
+                capture=(),
+                intervene=None,
+                max_new_tokens=1,
+                return_logits=True,
+                **kw,
+            ):
                 return ForwardResult()
 
         driver = SilentlyEmpty(self._cfg())
@@ -342,8 +388,16 @@ class TestValidateDriverCatchesBrokenDrivers:
             supported_hook_points = frozenset({"x"})
             non_fireable_hook_points = ["wrong_type"]  # type: ignore[assignment]
 
-            def forward(self, input_ids=None, *, capture=(), intervene=None,
-                        max_new_tokens=1, return_logits=True, **kw):
+            def forward(
+                self,
+                input_ids=None,
+                *,
+                capture=(),
+                intervene=None,
+                max_new_tokens=1,
+                return_logits=True,
+                **kw,
+            ):
                 return ForwardResult()
 
         model = nn.Module()
@@ -633,8 +687,16 @@ class TestDriverHookPointDeclaration:
             def __init__(self, cfg) -> None:
                 super().__init__(cfg, tokenizer=None)
 
-            def forward(self, input_ids=None, *, capture=(), intervene=None,
-                        max_new_tokens=1, return_logits=True, **kw):
+            def forward(
+                self,
+                input_ids=None,
+                *,
+                capture=(),
+                intervene=None,
+                max_new_tokens=1,
+                return_logits=True,
+                **kw,
+            ):
                 return ForwardResult()
 
         bridge._driver = NoUnderlyingModel(_stub_adapter().cfg)
@@ -643,8 +705,8 @@ class TestDriverHookPointDeclaration:
 
     def test_whitelist_driver_preserved(self):
         """An Inspect-style driver that declares supported directly is not overwritten."""
-        from transformer_lens.model_bridge.sources._driver_base import DriverBase
         from transformer_lens.model_bridge.driver_protocol import ForwardResult
+        from transformer_lens.model_bridge.sources._driver_base import DriverBase
 
         cfg = _stub_adapter().cfg
 

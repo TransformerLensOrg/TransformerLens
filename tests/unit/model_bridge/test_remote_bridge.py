@@ -15,8 +15,14 @@ from transformer_lens.model_bridge.sources._driver_base import DriverBase
 
 def _cfg() -> TransformerBridgeConfig:
     return TransformerBridgeConfig(
-        d_model=4, d_head=2, n_layers=1, n_ctx=8,
-        n_heads=2, d_vocab=16, d_mlp=8, architecture="Mock",
+        d_model=4,
+        d_head=2,
+        n_layers=1,
+        n_ctx=8,
+        n_heads=2,
+        d_vocab=16,
+        d_mlp=8,
+        architecture="Mock",
     )
 
 
@@ -37,8 +43,16 @@ def _stub_driver(supported_hooks: frozenset[str] = frozenset({"blocks.0.hook_res
             super().__init__(_cfg(), tokenizer=None)
             self.forward_calls: list = []
 
-        def forward(self, input_ids=None, *, capture=(), intervene=None,
-                    max_new_tokens=1, return_logits=True, **kw):
+        def forward(
+            self,
+            input_ids=None,
+            *,
+            capture=(),
+            intervene=None,
+            max_new_tokens=1,
+            return_logits=True,
+            **kw,
+        ):
             self.forward_calls.append({"input_ids": input_ids, "kwargs": kw})
             return ForwardResult(logits=None, captured={})
 
@@ -142,8 +156,16 @@ class TestRemoteBridgeHookLifecycle:
             def parameters(self):
                 yield torch.empty(2, 2, device="meta")
 
-            def forward(self, input_ids=None, *, capture=(), intervene=None,
-                        max_new_tokens=1, return_logits=True, **kw):
+            def forward(
+                self,
+                input_ids=None,
+                *,
+                capture=(),
+                intervene=None,
+                max_new_tokens=1,
+                return_logits=True,
+                **kw,
+            ):
                 return ForwardResult()
 
         bridge = RemoteBridge(_stub_adapter(), tokenizer=None, driver=MetaDriver())
@@ -182,8 +204,16 @@ class TestRemoteBridgeForward:
             def __init__(self):
                 super().__init__(_cfg(), tokenizer=None)
 
-            def forward(self, input_ids=None, *, capture=(), intervene=None,
-                        max_new_tokens=1, return_logits=True, **kw):
+            def forward(
+                self,
+                input_ids=None,
+                *,
+                capture=(),
+                intervene=None,
+                max_new_tokens=1,
+                return_logits=True,
+                **kw,
+            ):
                 return ForwardResult(logits=torch.randn(1, 3, 16), captured={})
 
         bridge = RemoteBridge(_stub_adapter(), tokenizer=None, driver=LogitsDriver())
@@ -200,8 +230,16 @@ class TestRemoteBridgeForward:
             def __init__(self):
                 super().__init__(_cfg(), tokenizer=None)
 
-            def forward(self, input_ids=None, *, capture=(), intervene=None,
-                        max_new_tokens=1, return_logits=True, **kw):
+            def forward(
+                self,
+                input_ids=None,
+                *,
+                capture=(),
+                intervene=None,
+                max_new_tokens=1,
+                return_logits=True,
+                **kw,
+            ):
                 return ForwardResult(logits=torch.randn(1, 3, 16), captured={})
 
         bridge = RemoteBridge(_stub_adapter(), tokenizer=None, driver=LogitsDriver())
@@ -222,8 +260,16 @@ class TestRemoteBridgeForward:
             def __init__(self):
                 super().__init__(_cfg(), tokenizer=None)
 
-            def forward(self, input_ids=None, *, capture=(), intervene=None,
-                        max_new_tokens=1, return_logits=True, **kw):
+            def forward(
+                self,
+                input_ids=None,
+                *,
+                capture=(),
+                intervene=None,
+                max_new_tokens=1,
+                return_logits=True,
+                **kw,
+            ):
                 return ForwardResult(logits=torch.randn(1, 3, 16), captured={})
 
         bridge = RemoteBridge(_stub_adapter(), tokenizer=None, driver=LogitsDriver())
@@ -242,8 +288,16 @@ class TestRemoteBridgeForward:
             def __init__(self):
                 super().__init__(_cfg(), tokenizer=None)
 
-            def forward(self, input_ids=None, *, capture=(), intervene=None,
-                        max_new_tokens=1, return_logits=True, **kw):
+            def forward(
+                self,
+                input_ids=None,
+                *,
+                capture=(),
+                intervene=None,
+                max_new_tokens=1,
+                return_logits=True,
+                **kw,
+            ):
                 return ForwardResult(
                     logits=None,
                     captured={"blocks.0.hook_resid_pre": torch.zeros(2, 3)},

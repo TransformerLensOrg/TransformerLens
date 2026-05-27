@@ -7,8 +7,6 @@ import logging
 import re
 import warnings
 from collections.abc import Generator
-from contextlib import contextmanager
-from functools import lru_cache
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -17,12 +15,10 @@ from typing import (
     Iterator,
     List,
     Literal,
-    Mapping,
     Optional,
     Tuple,
     Union,
     cast,
-    overload,
 )
 
 import einops
@@ -32,18 +28,17 @@ import tqdm
 from torch import nn
 
 from transformer_lens import utilities as utils
-from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookIntrospectionMixin, HookPoint
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.bridge_core import BridgeCore
 from transformer_lens.model_bridge.component_setup import set_original_components
+from transformer_lens.model_bridge.composition_scores import CompositionScores
 from transformer_lens.model_bridge.driver_protocol import (
     TensorLike,
     to_torch,
     validate_driver,
 )
-from transformer_lens.model_bridge.composition_scores import CompositionScores
 from transformer_lens.model_bridge.exceptions import StopAtLayerException
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
@@ -55,12 +50,10 @@ from transformer_lens.model_bridge.generalized_components.block import (
     VARIANT_SUBMODULE_NAMES,
 )
 from transformer_lens.model_bridge.get_params_util import get_bridge_params
-from transformer_lens.utilities.aliases import resolve_alias
 from transformer_lens.utilities.devices import move_to_and_update_config
-from transformer_lens.utilities.lm_utils import lm_cross_entropy_loss
 
 if TYPE_CHECKING:
-    from transformer_lens.ActivationCache import ActivationCache
+    pass
 
 _BLOCK_PATTERN = re.compile("blocks\\.(\\d+)")
 
@@ -75,7 +68,9 @@ def _resolve_attr_path(obj: nn.Module, attr_path: str) -> torch.Tensor:
 
 # build_alias_to_canonical_map lives in bridge_core.py; re-import for the module's
 # internal use (run_with_cache, hooks() context manager in this file).
-from transformer_lens.model_bridge.bridge_core import build_alias_to_canonical_map  # noqa: E402
+from transformer_lens.model_bridge.bridge_core import (  # noqa: E402
+    build_alias_to_canonical_map,
+)
 
 
 class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):

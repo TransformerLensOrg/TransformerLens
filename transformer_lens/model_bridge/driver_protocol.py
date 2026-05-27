@@ -17,12 +17,15 @@ class TensorLike(Protocol):
     # Attribute types stay loose — torch.Size, plain tuple, and numpy's shape
     # don't share a Protocol-strict supertype.
     @property
-    def shape(self) -> Any: ...
+    def shape(self) -> Any:
+        ...
 
     @property
-    def dtype(self) -> Any: ...
+    def dtype(self) -> Any:
+        ...
 
-    def __array__(self, dtype: Any = None) -> np.ndarray: ...
+    def __array__(self, dtype: Any = None) -> np.ndarray:
+        ...
 
 
 InterventionFn = Callable[[TensorLike], TensorLike]
@@ -64,9 +67,11 @@ class Driver(Protocol):
         max_new_tokens: int = 1,
         return_logits: bool = True,
         **kwargs: Any,
-    ) -> ForwardResult: ...
+    ) -> ForwardResult:
+        ...
 
-    def close(self) -> None: ...
+    def close(self) -> None:
+        ...
 
     def supports(self, feature: str) -> bool:
         """Capability flag. Known features: gradients, parameters, state_dict,
@@ -137,9 +142,7 @@ def validate_driver(driver: Any, *, after_bridge_construction: bool = False) -> 
         )
     for name in driver.supported_hook_points | driver.non_fireable_hook_points:
         if not isinstance(name, str):
-            raise TypeError(
-                f"Hook-point names must be str; got {type(name).__name__}: {name!r}"
-            )
+            raise TypeError(f"Hook-point names must be str; got {type(name).__name__}: {name!r}")
 
     forward = getattr(driver, "forward", None)
     if not callable(forward):
@@ -174,9 +177,7 @@ def _expect_attr_type(obj: Any, name: str, expected: type) -> None:
         raise TypeError(f"Driver missing required attribute: {name!r}")
     value = getattr(obj, name)
     if not isinstance(value, expected):
-        raise TypeError(
-            f"Driver.{name} must be {expected.__name__}; got {type(value).__name__}."
-        )
+        raise TypeError(f"Driver.{name} must be {expected.__name__}; got {type(value).__name__}.")
 
 
 __all__ = [
