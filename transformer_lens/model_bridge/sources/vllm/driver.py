@@ -165,7 +165,18 @@ class VLLMDriver(DriverBase):
         """
         batch = len(outputs)
         max_seq = max(prompt_lens) if prompt_lens else 0
-        per_slot = [worker_captures.get(o.request_id, {}) for o in outputs]
+        # Worker keys are engine-internal req_ids ("10-83c3532c"); RequestOutput
+        # carries only the public id ("10"). Join exact-or-prefix; the "-" keeps
+        # "1" from matching "10-...".
+        worker_keys = list(worker_captures.keys())
+
+        def _captures_for(public_rid: str) -> Mapping[str, torch.Tensor]:
+            if public_rid in worker_captures:
+                return worker_captures[public_rid]
+            matches = [k for k in worker_keys if k.startswith(f"{public_rid}-")]
+            return worker_captures[matches[0]] if len(matches) == 1 else {}
+
+        per_slot = [_captures_for(o.request_id) for o in outputs]
 
         hook_names: set[str] = set()
         for caps in per_slot:

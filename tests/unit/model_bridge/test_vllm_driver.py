@@ -321,6 +321,45 @@ class TestBatchedForward:
         assert torch.equal(emb[0, :3], torch.full((3, 4), 1.0))
         assert torch.equal(emb[1, :2], torch.full((2, 4), 2.0))
 
+    def test_join_strips_internal_req_id_suffix(self):
+        """vLLM keys the worker accumulator by f'{public}-{hash}'; RequestOutput
+        carries only the public id. Join must match exact-or-prefix."""
+        pytest.importorskip("vllm")
+        outputs = [
+            _batched_request_output("10", top_logprobs={7: 2.0}),
+            _batched_request_output("11", top_logprobs={3: 2.0}),
+        ]
+        # Worker keys carry the engine-internal "-<hash>" suffix.
+        captures_by_req = {
+            "10-83c3532c": {"embed.hook_out": torch.full((3, 4), 1.0)},
+            "11-a1b2c3d4": {"embed.hook_out": torch.full((2, 4), 2.0)},
+        }
+        result = _batched_driver(outputs=outputs, captures_by_req=captures_by_req).forward(
+            [[1, 2, 3], [4, 5]]
+        )
+        emb = result.captured["embed.hook_out"]
+        assert tuple(emb.shape) == (2, 3, 4)
+        assert torch.equal(emb[0, :3], torch.full((3, 4), 1.0))
+        assert torch.equal(emb[1, :2], torch.full((2, 4), 2.0))
+
+    def test_join_prefix_does_not_collide_on_numeric_ids(self):
+        """Public '1' must not match worker key '10-...'; the '-' delimiter guards it."""
+        pytest.importorskip("vllm")
+        outputs = [
+            _batched_request_output("1", top_logprobs={7: 2.0}),
+            _batched_request_output("10", top_logprobs={3: 2.0}),
+        ]
+        captures_by_req = {
+            "1-aaaaaaaa": {"embed.hook_out": torch.full((2, 4), 1.0)},
+            "10-bbbbbbbb": {"embed.hook_out": torch.full((3, 4), 9.0)},
+        }
+        result = _batched_driver(outputs=outputs, captures_by_req=captures_by_req).forward(
+            [[1, 2], [1, 2, 3]]
+        )
+        emb = result.captured["embed.hook_out"]
+        assert torch.equal(emb[0, :2], torch.full((2, 4), 1.0))  # req "1"
+        assert torch.equal(emb[1, :3], torch.full((3, 4), 9.0))  # req "10"
+
     def test_shorter_rows_right_padded_with_zeros(self):
         pytest.importorskip("vllm")
         outputs = [
