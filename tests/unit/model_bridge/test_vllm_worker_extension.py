@@ -6,6 +6,8 @@ on a real GPU via demos/vLLM_Bridge_Integration_Test.ipynb.
 """
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import torch
 
 from transformer_lens.model_bridge.sources.vllm.worker_extension import (
@@ -13,6 +15,59 @@ from transformer_lens.model_bridge.sources.vllm.worker_extension import (
     _apply_intervention,
     _apply_op,
 )
+
+
+class TestGetParam:
+    """tl_get_param resolves a dotted path to a CPU tensor clone, or None."""
+
+    def test_reads_named_tensor(self):
+        ext = TLWorkerExtension()
+        weight = torch.ones(4)
+        ext.model_runner = SimpleNamespace(  # type: ignore[attr-defined]
+            model=SimpleNamespace(norm=SimpleNamespace(weight=weight))
+        )
+        out = ext.tl_get_param("norm.weight")
+        assert torch.equal(out, weight)
+        assert out is not weight  # cloned, not a live reference
+
+    def test_missing_path_returns_none(self):
+        ext = TLWorkerExtension()
+        ext.model_runner = SimpleNamespace(model=SimpleNamespace())  # type: ignore[attr-defined]
+        assert ext.tl_get_param("norm.weight") is None
+
+    def test_non_tensor_target_returns_none(self):
+        ext = TLWorkerExtension()
+        ext.model_runner = SimpleNamespace(  # type: ignore[attr-defined]
+            model=SimpleNamespace(norm=SimpleNamespace())
+        )
+        assert ext.tl_get_param("norm") is None
+
+
+class TestReadCapturesFiltering:
+    """names restricts the GPU→CPU read; None reads all."""
+
+    def _ext(self):
+        ext = TLWorkerExtension()
+        ext._tl_buffers = {"a": torch.ones(3, 4), "b": torch.zeros(3, 4)}
+        return ext
+
+    def test_names_filters(self):
+        out = self._ext().tl_read_captures([2], names=["a"])
+        assert set(out) == {"a"}
+        assert tuple(out["a"].shape) == (2, 4)
+
+    def test_none_reads_all(self):
+        out = self._ext().tl_read_captures([2])
+        assert set(out) == {"a", "b"}
+
+    def test_batched_names_filters(self):
+        ext = TLWorkerExtension()
+        ext._tl_accum = {
+            ("r", "a"): [torch.ones(2, 4)],
+            ("r", "b"): [torch.zeros(2, 4)],
+        }
+        out = ext.tl_read_batched_captures(names=["a"])
+        assert set(out["r"]) == {"a"}
 
 
 class TestFireCounter:

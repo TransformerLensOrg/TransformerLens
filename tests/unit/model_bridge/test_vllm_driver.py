@@ -133,6 +133,31 @@ class TestVLLMDriverProtocolConformance:
         )
 
 
+class TestVLLMDriverConfig:
+    """Boot-time config: logprobs request must match boot's max_logprobs."""
+
+    def test_n_logprobs_uses_vocab_size(self):
+        # hf_config.vocab_size (16) is the request count, matching boot's
+        # max_logprobs — not bridge_config.d_vocab, which may be padded larger.
+        assert _driver()._n_logprobs == 16
+
+
+class TestVLLMDriverGetParam:
+    """get_param fetches a named worker tensor via collective_rpc."""
+
+    def test_returns_rpc_result(self):
+        driver = _driver(captures={})
+        driver._llm.collective_rpc = MagicMock(return_value=[torch.ones(4)])
+        out = driver.get_param("model.norm.weight")
+        assert torch.equal(out, torch.ones(4))
+        assert driver._llm.collective_rpc.call_args.args[0] == "tl_get_param"
+
+    def test_returns_none_when_closed(self):
+        driver = _driver(captures={})
+        driver._llm = None
+        assert driver.get_param("model.norm.weight") is None
+
+
 class TestVLLMDriverForward:
     """forward dispatches via llm.generate and surfaces captures via ForwardResult."""
 
@@ -398,6 +423,23 @@ class TestBatchedForward:
         assert int(logits[1, 0].argmax().item()) == 3
         assert torch.isinf(logits[1, 2]).all()  # pad position stays -inf
 
+    def test_assemble_padded_raises_on_missing_join(self):
+        """A request with no matching worker key must raise, not zero-fill silently."""
+        outputs = [SimpleNamespace(request_id="99")]
+        worker_captures = {"10-83c3532c": {"embed.hook_out": torch.ones(2, 4)}}
+        with pytest.raises(RuntimeError, match="Cannot join request '99'"):
+            VLLMDriver._assemble_padded(outputs, worker_captures, [2])
+
+    def test_assemble_padded_raises_on_ambiguous_join(self):
+        """Two worker keys sharing the public-id prefix is ambiguous — raise."""
+        outputs = [SimpleNamespace(request_id="1")]
+        worker_captures = {
+            "1-aaaaaaaa": {"embed.hook_out": torch.ones(2, 4)},
+            "1-bbbbbbbb": {"embed.hook_out": torch.ones(2, 4)},
+        }
+        with pytest.raises(RuntimeError, match="found 2 key"):
+            VLLMDriver._assemble_padded(outputs, worker_captures, [2])
+
     def test_resets_accumulator_before_generate(self):
         """tl_reset_accumulators must fire so prior-forward chunks don't leak."""
         pytest.importorskip("vllm")
@@ -438,3 +480,41 @@ class TestVLLMDriverThroughBridge:
         bridge.forward(torch.tensor([[1, 2, 3]]))
         assert len(fired) == 1
         assert tuple(fired[0].shape) == (1, 3, 4)
+
+    def test_forward_rejects_loss_return_types(self):
+        """Synthesized logits are last-position-only; loss/both would be nan, so refuse.
+
+        The guard is the first thing forward() does, so this needs no vllm install.
+        """
+        bridge = RemoteBridge(adapter=_adapter(), tokenizer=None, driver=_driver(captures={}))
+        for rt in ("loss", "both"):
+            with pytest.raises(NotImplementedError, match="return_type"):
+                bridge.forward(torch.tensor([[1, 2, 3]]), return_type=rt)
+
+    def test_run_with_hooks_rejects_bwd_hooks(self):
+        """No backward pass on a remote driver — bwd_hooks raise before any forward."""
+        bridge = RemoteBridge(adapter=_adapter(), tokenizer=None, driver=_driver(captures={}))
+        with pytest.raises(NotImplementedError, match="backward"):
+            bridge.run_with_hooks(
+                torch.tensor([[1, 2, 3]]),
+                bwd_hooks=[("embed.hook_out", lambda a, hook: a)],
+            )
+
+    def test_context_manager_closes_engine(self):
+        """`with bridge:` releases the engine on exit (close() nulls the LLM)."""
+        driver = _driver(captures={})
+        bridge = RemoteBridge(adapter=_adapter(), tokenizer=None, driver=driver)
+        with bridge as entered:
+            assert entered is bridge
+        assert driver._llm is None  # close() ran
+
+    def test_run_with_hooks_warns_fwd_hooks_are_read_only(self):
+        """A mutating fwd_hook is a no-op on a remote driver — warn loudly."""
+        pytest.importorskip("vllm")
+        driver = _driver(captures={"embed.hook_out": torch.randn(3, 4)})
+        bridge = RemoteBridge(adapter=_adapter(), tokenizer=None, driver=driver)
+        with pytest.warns(UserWarning, match="read-only"):
+            bridge.run_with_hooks(
+                torch.tensor([[1, 2, 3]]),
+                fwd_hooks=[("embed.hook_out", lambda a, hook: a)],
+            )

@@ -230,8 +230,11 @@ def _make_batched_hook(
         if not isinstance(t, torch.Tensor):
             return None
 
+        # Only this hook's spec — keyed by name like the compiled per-hook buffers.
+        # Iterating all specs would apply every intervention to every hook.
         modified = t
-        for spec in getattr(worker, "_tl_intervention_specs", {}).values():
+        spec = getattr(worker, "_tl_intervention_specs", {}).get(canonical_name)
+        if spec is not None:
             modified = _apply_op(modified, spec)
 
         qsl, req_ids = segment_by_request(worker.model_runner)

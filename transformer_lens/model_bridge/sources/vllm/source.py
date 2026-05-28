@@ -62,6 +62,13 @@ def boot_vllm(
     :mod:`transformer_lens.model_bridge.sources.vllm.overlays.decoder_only` for
     which hooks diverge and the conversion to apply for HT-equivalent values.
 
+    **Returned logits are log-probs, not raw logits.** vLLM bypasses ``lm_head``;
+    the driver fills the final position from the sampler's ``log_softmax`` output.
+    Correct for argmax / next-token, but absolute scale is off — temperature
+    scaling and logit-lens magnitude analysis will be wrong. Only the final
+    position is populated (earlier positions are ``-inf``); ``return_type`` in
+    ``{"loss", "both"}`` is rejected for that reason.
+
     GPU memory cost: each capture buffer is ``max_num_batched_tokens × width`` at
     the model's dtype. For Llama-3.2-1B at fp16 with ``max_num_batched_tokens=2048``,
     the unembed buffer alone is ~525 MB (2048 × 128256 × 2 bytes); residual-stream

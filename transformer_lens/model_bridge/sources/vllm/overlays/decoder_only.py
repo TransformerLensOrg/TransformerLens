@@ -15,11 +15,11 @@ Two hooks capture different points than HF/HookedTransformer:
   separately (fused-residual). The plugin's hook materializes the sum so the
   captured value matches HF's "post-MLP residual stream".
 - ``ln_final.hook_normalized``: vLLM exposes ``x * rsqrt(var+eps) * weight``;
-  HF/HT exposes the pre-weight value. Divide the vLLM capture by
-  ``model.norm.weight`` (or ``1 + weight`` for Gemma) for HT-equivalent output.
-
-Non-decoder-only architectures (Mamba SSM, T5 encoder-decoder, BERT, MoE
-per-expert) break the convention and would need their own overlays.
+  HF/HT exposes the pre-weight value. They are NOT auto-converted — the cache
+  carries vLLM's post-weight value under this name, so a direct diff against
+  ``boot_transformers`` will mismatch here. To convert, fetch the weight via
+  ``bridge._driver.get_param("model.norm.weight")`` and divide the capture by it
+  (or by ``1 + weight`` for Gemma).
 """
 from __future__ import annotations
 
