@@ -57,6 +57,15 @@ class RemoteBridge(BridgeCore, HookIntrospectionMixin):
 
         return _boot_vllm(*args, **kwargs)
 
+    @staticmethod
+    def boot_inspect(*args: Any, **kwargs: Any) -> "RemoteBridge":
+        """Boot a model via an inspect_ai provider. Returns a RemoteBridge wrapping
+        an InspectDriver. Lazy import keeps remote_bridge inspect-agnostic. See
+        :func:`sources.inspect.boot_inspect` for kwargs."""
+        from .sources.inspect import boot_inspect as _boot_inspect
+
+        return _boot_inspect(*args, **kwargs)
+
     def _scan_existing_hooks(self, module: Any, prefix: str = "") -> None:
         """No-op: registry built from driver declarations in __init__."""
 
