@@ -69,11 +69,13 @@ class RemoteBridge(BridgeCore, HookIntrospectionMixin):
         **kwargs: Any,
     ) -> Any:
         """Tokenize → driver.forward → replay captures → finalize per return_type."""
-        if return_type in ("loss", "both"):
-            # Final-position-only logits ⇒ loss over -inf earlier positions is nan.
+        if return_type in ("loss", "both") and not getattr(
+            self._driver, "provides_sequence_logits", True
+        ):
+            # Final-position-only logits ⇒ loss over the -inf earlier positions is nan.
             raise NotImplementedError(
-                f"RemoteBridge does not support return_type={return_type!r}: the driver "
-                "provides next-token logits for the final position only, so loss over "
+                f"RemoteBridge does not support return_type={return_type!r} on this driver: "
+                "it provides next-token logits for the final position only, so loss over "
                 "earlier positions is undefined. Use return_type='logits' and read "
                 "logits[..., -1, :] (or the per-row last token in batched mode)."
             )

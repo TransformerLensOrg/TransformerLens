@@ -22,6 +22,8 @@ class VLLMDriver(DriverBase):
 
     # vLLM owns the model in a worker — no torch surface (parameters/state_dict/grads).
     _supported_features = frozenset()
+    # Logits synthesized for the final position only (sampler bypass).
+    provides_sequence_logits = False
 
     def __init__(
         self,

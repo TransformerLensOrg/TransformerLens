@@ -29,6 +29,11 @@ class DriverBase(ABC):
     # Subclasses override with the capability strings they actually serve.
     _supported_features: frozenset[str] = frozenset()
 
+    # True if forward() returns logits for every position, so loss is computable.
+    # Drivers that synthesize only the final position set this False; the bridge
+    # then refuses return_type=loss/both rather than return nan.
+    provides_sequence_logits: bool = True
+
     def __init__(
         self,
         bridge_config: TransformerBridgeConfig,
