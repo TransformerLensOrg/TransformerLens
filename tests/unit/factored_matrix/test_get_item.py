@@ -51,6 +51,25 @@ def test_index_dimension_get_element(sample_factored_matrix):
     assert_close(result.AB.squeeze(), sample_factored_matrix.AB[0, 0, 0, 0, 1])
 
 
+def test_index_dimension_get_line_negative(sample_factored_matrix):
+    # Negative index into the row (ldim) of the matrix. `idx == -1` previously
+    # produced an empty slice(-1, 0) and returned a (0, ...) tensor.
+    result = sample_factored_matrix[0, 0, 0, -1]
+    assert_close(result.AB.squeeze(), sample_factored_matrix.AB[0, 0, 0, -1])
+
+
+def test_index_dimension_get_element_negative(sample_factored_matrix):
+    # Negative index into the column (rdim) of the matrix.
+    result = sample_factored_matrix[0, 0, 0, 0, -1]
+    assert_close(result.AB.squeeze(), sample_factored_matrix.AB[0, 0, 0, 0, -1])
+
+
+def test_index_dimension_get_element_both_negative(sample_factored_matrix):
+    # Negative index into both matrix dimensions at once.
+    result = sample_factored_matrix[0, 0, 0, -1, -1]
+    assert_close(result.AB.squeeze(), sample_factored_matrix.AB[0, 0, 0, -1, -1])
+
+
 def test_index_dimension_too_big(sample_factored_matrix):
     with pytest.raises(Exception):
         _ = sample_factored_matrix[1, 1, 1, 1, 1, 1]
