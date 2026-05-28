@@ -22,3 +22,51 @@ def extract_hf_config(llm: Any) -> Any:
             "Could not locate hf_config under llm.llm_engine.model_config. "
             "vLLM may have moved it; update extract_hf_config() to match."
         ) from e
+
+
+# Cumulative per-request query offsets: FlashAttention/Triton name them
+# query_start_loc, FlashInfer names them qo_indptr. Request i = rows i:i+1.
+_QUERY_OFFSET_ATTRS = ("query_start_loc", "qo_indptr")
+
+
+def _to_cpu_offsets(buf: Any) -> Any:
+    """Coerce a CpuGpuBuffer (``.cpu``/``.np``/``.gpu``) or tensor to a CPU tensor."""
+    import torch
+
+    for accessor in ("cpu", "np", "gpu"):
+        data = getattr(buf, accessor, None)
+        if data is not None and hasattr(data, "__len__"):
+            return torch.as_tensor(data)
+    return torch.as_tensor(buf) if hasattr(buf, "shape") else None
+
+
+def segment_by_request(model_runner: Any) -> Any:
+    """Return ``(query_offsets_cpu, req_ids)``; request i = rows offsets[i]:offsets[i+1].
+
+    Only valid inside a forward. ``req_ids`` is row order, NOT submission order —
+    join on it. Reads ``model_runner.query_start_loc`` (backend-agnostic; the
+    runner builds it before any attention backend, whereas FlashInfer buries its
+    offsets in an opaque C++ wrapper), falling back to attn metadata for backends
+    that surface them directly. ``(None, req_ids)`` ⇒ caller single-slices.
+    """
+    req_ids = list(model_runner.input_batch.req_ids)
+    n = len(req_ids)
+
+    qsl = getattr(model_runner, "query_start_loc", None)
+    if qsl is not None:
+        offsets = _to_cpu_offsets(qsl)
+        if offsets is not None and len(offsets) >= n + 1:  # buffer is padded to max batch
+            return offsets[: n + 1].detach().cpu(), req_ids
+
+    from vllm.forward_context import get_forward_context
+
+    attn_metadata = get_forward_context().attn_metadata
+    if isinstance(attn_metadata, list):  # dual-batch-overlap returns a list of dicts
+        attn_metadata = attn_metadata[0]
+    if isinstance(attn_metadata, dict):
+        for meta in attn_metadata.values():
+            for attr in _QUERY_OFFSET_ATTRS:
+                off = getattr(meta, attr, None)
+                if off is not None:
+                    return off.detach().cpu(), req_ids
+    return None, req_ids

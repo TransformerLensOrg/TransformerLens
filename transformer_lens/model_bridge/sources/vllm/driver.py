@@ -30,10 +30,12 @@ class VLLMDriver(DriverBase):
         overlay: Any,
         hf_config: Any,
         max_num_batched_tokens: int,
+        enable_batching: bool = False,
     ) -> None:
         super().__init__(adapter.cfg, tokenizer)
         self._llm = llm
         self._max_num_batched_tokens = max_num_batched_tokens
+        self._enable_batching = enable_batching
 
         self.supported_hook_points = frozenset(overlay.capture_specs(hf_config).keys())
 
@@ -64,6 +66,9 @@ class VLLMDriver(DriverBase):
                 "overwrite the prefill buffer; multi-step capture is multi-buffer work."
             )
         intervene_specs = self._validate_interventions(intervene or {})
+
+        if self._enable_batching:
+            return self._forward_batched(input_ids, intervene_specs, return_logits)
 
         ids_list = self._normalize_input_ids(input_ids)
         if len(ids_list) > self._max_num_batched_tokens:
@@ -103,6 +108,111 @@ class VLLMDriver(DriverBase):
             logits = self._synthesize_logits(outputs[0], n_tokens, self.bridge_config.d_vocab)
 
         return ForwardResult(logits=logits, captured=captured, raw_output=outputs[0])
+
+    def _forward_batched(
+        self,
+        input_ids: TensorLike,
+        intervene_specs: dict,
+        return_logits: bool,
+    ) -> ForwardResult:
+        """Eager batched path: per-request capture, right-padded to (B, S, W).
+
+        No per-prompt length gate — chunked prefill accumulates long prompts
+        across forwards. Interventions are global across the batch.
+        """
+        from vllm import SamplingParams
+        from vllm.inputs import TokensPrompt
+
+        prompts_ids = self._normalize_input_ids_batched(input_ids)
+        prompt_lens = [len(ids) for ids in prompts_ids]
+
+        # Reset accumulators so prior-forward chunks don't leak into the cat.
+        self._llm.collective_rpc("tl_reset_accumulators")
+        self._llm.collective_rpc("tl_reset_counter")
+        self._llm.collective_rpc("tl_set_batched_interventions", args=(intervene_specs,))
+
+        d_vocab = self.bridge_config.d_vocab
+        outputs = self._llm.generate(
+            prompts=[TokensPrompt(prompt_token_ids=ids) for ids in prompts_ids],
+            sampling_params=SamplingParams(
+                max_tokens=1,
+                temperature=0.0,
+                logprobs=d_vocab if return_logits else None,
+            ),
+        )
+
+        # Keyed by req_id (no guaranteed order) — _assemble_padded joins to slot
+        # k via outputs[k].request_id, not by position.
+        worker_captures = self._llm.collective_rpc("tl_read_batched_captures")[0]
+        captured = self._assemble_padded(outputs, worker_captures, prompt_lens)
+
+        logits: torch.Tensor | None = None
+        if return_logits:
+            logits = self._synthesize_logits_batched(outputs, prompt_lens, d_vocab)
+
+        return ForwardResult(logits=logits, captured=captured, raw_output=outputs)
+
+    @staticmethod
+    def _assemble_padded(
+        outputs: list,
+        worker_captures: Mapping[str, Mapping[str, torch.Tensor]],
+        prompt_lens: list[int],
+    ) -> dict[str, torch.Tensor]:
+        """Stack per-request captures into right-padded ``(batch, max_seq, width)``.
+
+        Pad is a cache-assembly artifact only: vLLM computes each request
+        independently, so real-token activations don't depend on the padding.
+        """
+        batch = len(outputs)
+        max_seq = max(prompt_lens) if prompt_lens else 0
+        # Worker keys are engine-internal req_ids ("10-83c3532c"); RequestOutput
+        # carries only the public id ("10"). Join exact-or-prefix; the "-" keeps
+        # "1" from matching "10-...".
+        worker_keys = list(worker_captures.keys())
+
+        def _captures_for(public_rid: str) -> Mapping[str, torch.Tensor]:
+            if public_rid in worker_captures:
+                return worker_captures[public_rid]
+            matches = [k for k in worker_keys if k.startswith(f"{public_rid}-")]
+            return worker_captures[matches[0]] if len(matches) == 1 else {}
+
+        per_slot = [_captures_for(o.request_id) for o in outputs]
+
+        hook_names: set[str] = set()
+        for caps in per_slot:
+            hook_names |= set(caps.keys())
+
+        assembled: dict[str, torch.Tensor] = {}
+        for name in hook_names:
+            sample = next(caps[name] for caps in per_slot if name in caps)
+            buf = torch.zeros(batch, max_seq, sample.shape[-1], dtype=sample.dtype)
+            for k, caps in enumerate(per_slot):
+                t = caps.get(name)
+                if t is not None:
+                    buf[k, : t.shape[0]] = t
+            assembled[name] = buf
+        return assembled
+
+    @staticmethod
+    def _synthesize_logits_batched(
+        outputs: list, prompt_lens: list[int], d_vocab: int
+    ) -> torch.Tensor:
+        """Build ``(batch, max_seq, d_vocab)`` logits; next-token dist at each row's
+        ``prompt_lens[k] - 1``, never ``-1`` (a pad position for shorter prompts)."""
+        batch = len(outputs)
+        max_seq = max(prompt_lens) if prompt_lens else 0
+        logits = torch.full((batch, max_seq, d_vocab), float("-inf"), dtype=torch.float16)
+        for k, request_output in enumerate(outputs):
+            gen = request_output.outputs[0] if request_output.outputs else None
+            if gen is None:
+                continue
+            pos = prompt_lens[k] - 1
+            if gen.logprobs:
+                for token_id, lp_obj in gen.logprobs[0].items():
+                    logits[k, pos, int(token_id)] = float(lp_obj.logprob)
+            elif gen.token_ids:
+                logits[k, pos, int(gen.token_ids[0])] = 0.0
+        return logits
 
     def close(self) -> None:
         # Detach hooks before dropping the LLM so they don't stay registered on
@@ -205,3 +315,16 @@ class VLLMDriver(DriverBase):
                 raise NotImplementedError("VLLMDriver supports batch_size=1 only.")
             ids_list = ids_list[0]
         return ids_list
+
+    @staticmethod
+    def _normalize_input_ids_batched(input_ids: Any) -> list[list[int]]:
+        """Coerce to ``list[list[int]]`` (one per prompt); accepts 1-D/2-D tensor,
+        flat list (single prompt), or ragged list-of-lists."""
+        if isinstance(input_ids, torch.Tensor):
+            if input_ids.dim() == 1:
+                return [input_ids.tolist()]
+            return [row.tolist() for row in input_ids]
+        seq = list(input_ids)
+        if seq and isinstance(seq[0], (list, tuple)):
+            return [list(row) for row in seq]
+        return [list(seq)]
