@@ -1,7 +1,8 @@
 """Non-torch bridge: vLLM workers, Inspect remote providers."""
 from __future__ import annotations
 
-from typing import Any
+import warnings
+from typing import Any, Callable, List, Optional, Tuple, Union
 
 from transformer_lens.hook_points import HookIntrospectionMixin, HookPoint
 from transformer_lens.model_bridge.bridge_core import BridgeCore
@@ -68,6 +69,14 @@ class RemoteBridge(BridgeCore, HookIntrospectionMixin):
         **kwargs: Any,
     ) -> Any:
         """Tokenize → driver.forward → replay captures → finalize per return_type."""
+        if return_type in ("loss", "both"):
+            # Final-position-only logits ⇒ loss over -inf earlier positions is nan.
+            raise NotImplementedError(
+                f"RemoteBridge does not support return_type={return_type!r}: the driver "
+                "provides next-token logits for the final position only, so loss over "
+                "earlier positions is undefined. Use return_type='logits' and read "
+                "logits[..., -1, :] (or the per-row last token in batched mode)."
+            )
         if isinstance(input, str):
             assert self.tokenizer is not None, "Tokenizer must be set for string input."
             tokens = self.tokenizer.encode(input, return_tensors="pt")
@@ -93,8 +102,67 @@ class RemoteBridge(BridgeCore, HookIntrospectionMixin):
             loss_per_token=loss_per_token,
         )
 
+    def run_with_hooks(
+        self,
+        input: Any,
+        fwd_hooks: List[Tuple[Union[str, Callable], Callable]] = [],
+        bwd_hooks: List[Tuple[Union[str, Callable], Callable]] = [],
+        reset_hooks_end: bool = True,
+        clear_contexts: bool = False,
+        return_type: Optional[str] = "logits",
+        names_filter: Optional[Union[str, List[str], Callable[[str], bool]]] = None,
+        stop_at_layer: Optional[int] = None,
+        remove_batch_dim: bool = False,
+        **kwargs: Any,
+    ) -> Any:
+        """Run with hooks. Remote fwd_hooks fire post-forward on captured
+        activations (read-only) — they can't alter the computation, so warn; use
+        ``intervene=`` specs to mutate. bwd_hooks are unsupported (no backward)."""
+        if bwd_hooks:
+            raise NotImplementedError(
+                "RemoteBridge has no backward pass; bwd_hooks are unsupported."
+            )
+        if fwd_hooks:
+            warnings.warn(
+                "RemoteBridge fwd_hooks fire on already-captured activations (read-only): "
+                "a hook that returns a modified tensor does NOT change the forward "
+                "computation or logits — the return is discarded. To intervene on the "
+                "computation, pass intervene={hook_name: {'op': ...}} to "
+                "forward()/run_with_cache().",
+                UserWarning,
+                stacklevel=2,
+            )
+        return super().run_with_hooks(
+            input,
+            fwd_hooks=fwd_hooks,
+            bwd_hooks=bwd_hooks,
+            reset_hooks_end=reset_hooks_end,
+            clear_contexts=clear_contexts,
+            return_type=return_type,
+            names_filter=names_filter,
+            stop_at_layer=stop_at_layer,
+            remove_batch_dim=remove_batch_dim,
+            **kwargs,
+        )
+
     def to_tokens(self, text: Any, *args: Any, **kwargs: Any) -> Any:
         """Tokenize via ``self.tokenizer``. BOS/padding handling lives on
         :class:`TransformerBridge`."""
         assert self.tokenizer is not None, "Tokenizer must be set."
         return self.tokenizer.encode(text, return_tensors="pt")
+
+    def __enter__(self) -> "RemoteBridge":
+        """Use as a context manager so the engine is released on exit:
+        ``with RemoteBridge.boot_vllm(...) as bridge: ...``."""
+        return self
+
+    def __exit__(self, *exc: Any) -> None:
+        self.close()
+
+    def __del__(self) -> None:
+        # Best-effort safety net for notebooks that drop the bridge without
+        # close() — repeated boot_vllm would otherwise OOM. close() is idempotent.
+        try:
+            self.close()
+        except Exception:
+            pass

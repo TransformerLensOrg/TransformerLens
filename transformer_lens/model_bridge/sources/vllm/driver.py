@@ -1,6 +1,7 @@
 """vLLM Driver: forward dispatches via ``llm.generate``; captures via ``collective_rpc``."""
 from __future__ import annotations
 
+import gc
 import logging
 from typing import Any, Mapping
 
@@ -36,6 +37,9 @@ class VLLMDriver(DriverBase):
         self._llm = llm
         self._max_num_batched_tokens = max_num_batched_tokens
         self._enable_batching = enable_batching
+        # Logprobs per forward = real vocab (boot's max_logprobs). d_vocab can be
+        # padded larger, which vLLM would reject; the logits tensor stays d_vocab.
+        self._n_logprobs = int(getattr(hf_config, "vocab_size", self.bridge_config.d_vocab))
 
         self.supported_hook_points = frozenset(overlay.capture_specs(hf_config).keys())
 
@@ -67,8 +71,12 @@ class VLLMDriver(DriverBase):
             )
         intervene_specs = self._validate_interventions(intervene or {})
 
+        # Restrict the GPU→CPU read to these hooks (None = all). run_with_cache
+        # doesn't derive this from names_filter yet — only explicit forward(capture=).
+        names = list(capture) or None
+
         if self._enable_batching:
-            return self._forward_batched(input_ids, intervene_specs, return_logits)
+            return self._forward_batched(input_ids, intervene_specs, return_logits, names)
 
         ids_list = self._normalize_input_ids(input_ids)
         if len(ids_list) > self._max_num_batched_tokens:
@@ -85,21 +93,19 @@ class VLLMDriver(DriverBase):
         # Push intervention state (possibly empty) before generate — this also
         # resets stale interventions from prior forwards.
         self._llm.collective_rpc("tl_set_interventions", args=(intervene_specs,))
-        # Request full-vocab logprobs so the driver can populate position -1 of
-        # the synthesized logits with the real next-token distribution. vLLM's
-        # ``max_logprobs`` was set to d_vocab at boot to make this legal.
+        # Full-vocab logprobs → position -1 of the synthesized logits (see _n_logprobs).
         outputs = self._llm.generate(
             prompts=[TokensPrompt(prompt_token_ids=ids_list)],
             sampling_params=SamplingParams(
                 max_tokens=int(max_new_tokens),
                 temperature=0.0,
-                logprobs=self.bridge_config.d_vocab if return_logits else None,
+                logprobs=self._n_logprobs if return_logits else None,
             ),
         )
 
         n_tokens = len(ids_list)
         # collective_rpc returns one result per worker; single-rank, so [0].
-        worker_captures = self._llm.collective_rpc("tl_read_captures", args=([n_tokens],))[0]
+        worker_captures = self._llm.collective_rpc("tl_read_captures", args=([n_tokens], names))[0]
         # Add batch dim: vLLM hands back (n_tokens, width); bridge expects (1, n_tokens, width).
         captured = {name: t.unsqueeze(0) for name, t in worker_captures.items()}
 
@@ -114,11 +120,13 @@ class VLLMDriver(DriverBase):
         input_ids: TensorLike,
         intervene_specs: dict,
         return_logits: bool,
+        names: list[str] | None = None,
     ) -> ForwardResult:
         """Eager batched path: per-request capture, right-padded to (B, S, W).
 
         No per-prompt length gate — chunked prefill accumulates long prompts
-        across forwards. Interventions are global across the batch.
+        across forwards. Interventions are global across the batch. ``names``
+        restricts the returned hooks (``None`` = all).
         """
         from vllm import SamplingParams
         from vllm.inputs import TokensPrompt
@@ -137,13 +145,13 @@ class VLLMDriver(DriverBase):
             sampling_params=SamplingParams(
                 max_tokens=1,
                 temperature=0.0,
-                logprobs=d_vocab if return_logits else None,
+                logprobs=self._n_logprobs if return_logits else None,
             ),
         )
 
         # Keyed by req_id (no guaranteed order) — _assemble_padded joins to slot
         # k via outputs[k].request_id, not by position.
-        worker_captures = self._llm.collective_rpc("tl_read_batched_captures")[0]
+        worker_captures = self._llm.collective_rpc("tl_read_batched_captures", args=(names,))[0]
         captured = self._assemble_padded(outputs, worker_captures, prompt_lens)
 
         logits: torch.Tensor | None = None
@@ -174,7 +182,16 @@ class VLLMDriver(DriverBase):
             if public_rid in worker_captures:
                 return worker_captures[public_rid]
             matches = [k for k in worker_keys if k.startswith(f"{public_rid}-")]
-            return worker_captures[matches[0]] if len(matches) == 1 else {}
+            # Raise, never silently zero-fill the row: a missing or ambiguous join
+            # is indistinguishable from a genuine zero activation, which is silent
+            # data loss on the collection path.
+            if len(matches) != 1:
+                raise RuntimeError(
+                    f"Cannot join request {public_rid!r} to worker captures: found "
+                    f"{len(matches)} key(s) in {worker_keys}. Expected exactly one "
+                    f"(exact or '{public_rid}-<hash>')."
+                )
+            return worker_captures[matches[0]]
 
         per_slot = [_captures_for(o.request_id) for o in outputs]
 
@@ -214,6 +231,14 @@ class VLLMDriver(DriverBase):
                 logits[k, pos, int(gen.token_ids[0])] = 0.0
         return logits
 
+    def get_param(self, dotted_name: str) -> torch.Tensor | None:
+        """Fetch a named worker tensor (e.g. ``model.norm.weight``) for conversions
+        the bridge can't otherwise do (ln_final post→pre-weight; see the overlay).
+        None if closed or the path is missing."""
+        if self._llm is None:
+            return None
+        return self._llm.collective_rpc("tl_get_param", args=(dotted_name,))[0]
+
     def close(self) -> None:
         # Detach hooks before dropping the LLM so they don't stay registered on
         # worker modules for the life of the process (long-running notebooks).
@@ -229,9 +254,7 @@ class VLLMDriver(DriverBase):
         # vLLM 0.20.2 has no LLM.shutdown() — model weights and KV cache stay
         # resident until process exit unless we explicitly tear down the
         # distributed environment vLLM set up at construction. Both calls are
-        # best-effort: they're no-ops if there's no distributed state. After
-        # this, the caller still needs gc.collect() + torch.cuda.empty_cache()
-        # to drop PyTorch's caching allocator entries.
+        # best-effort: they're no-ops if there's no distributed state.
         try:
             from vllm.distributed.parallel_state import (
                 destroy_distributed_environment,
@@ -242,17 +265,22 @@ class VLLMDriver(DriverBase):
             destroy_distributed_environment()
         except Exception as e:
             log.debug("vLLM distributed teardown failed during close(): %s", e)
+        # Free the caching allocator's blocks here so the caller doesn't have to.
+        gc.collect()
+        try:
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except Exception as e:
+            log.debug("torch.cuda.empty_cache failed during close(): %s", e)
 
     @staticmethod
     def _synthesize_logits(request_output: Any, n_tokens: int, d_vocab: int) -> torch.Tensor:
         """Build a (1, n_tokens, d_vocab) logits-like tensor from vLLM's sampler output.
 
-        vLLM's lm_head bypass means our hook never fires; the sampler returns
-        full-vocab logprobs (we set ``max_logprobs=d_vocab`` at boot to allow this).
-        Position -1 — the input's last token, = next-token prediction — is populated
-        from those logprobs. Earlier positions stay at ``-inf`` so any argmax there
-        is loud rather than silently misleading; populating them would need
-        ``prompt_logprobs`` requested per call (much more expensive).
+        Values are **log-probs**, not raw logits (vLLM returns log_softmax): fine
+        for argmax/next-token, wrong for absolute scale (temperature, logit-lens).
+        lm_head is bypassed so only position -1 is filled (next-token); earlier
+        positions stay -inf — populating them needs prompt_logprobs per call.
         """
         logits = torch.full((1, n_tokens, d_vocab), float("-inf"), dtype=torch.float16)
         gen = request_output.outputs[0] if request_output.outputs else None

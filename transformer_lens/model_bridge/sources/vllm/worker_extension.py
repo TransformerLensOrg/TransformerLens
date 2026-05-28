@@ -16,7 +16,7 @@ Two capture modes, selected at boot:
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import torch
 
@@ -35,15 +35,19 @@ class TLWorkerExtension:
     _tl_accum: Dict[tuple, List[torch.Tensor]]
     _tl_intervention_specs: Dict[str, Dict[str, Any]]
 
-    def tl_read_captures(self, prompt_lens: List[int]) -> Dict[str, torch.Tensor]:
-        """Slice each capture buffer back to ``sum(prompt_lens)`` rows; CPU copies.
+    def tl_read_captures(
+        self, prompt_lens: List[int], names: Optional[List[str]] = None
+    ) -> Dict[str, torch.Tensor]:
+        """Slice each capture buffer to ``sum(prompt_lens)`` rows; CPU copies.
 
-        Caller (VLLMDriver.forward) gates ``sum(prompt_lens) <= max_num_batched_tokens``
-        before the RPC, so ``total`` is always within buffer bounds.
+        ``names`` restricts the read (``None`` = all) — this is the only GPU→CPU
+        crossing, so it's where a names_filtered run saves bandwidth. Caller gates
+        ``sum(prompt_lens) <= max_num_batched_tokens``, so ``total`` is in bounds.
         """
         total = sum(prompt_lens)
         buffers: Dict[str, torch.Tensor] = getattr(self, "_tl_buffers", {})
-        return {name: buf[:total].detach().cpu().clone() for name, buf in buffers.items()}
+        wanted = buffers.keys() if names is None else [n for n in names if n in buffers]
+        return {name: buffers[name][:total].detach().cpu().clone() for name in wanted}
 
     def tl_set_interventions(self, specs: Dict[str, Dict[str, Any]]) -> None:
         """Reset all affine buffers to identity, then apply each spec.
@@ -65,6 +69,19 @@ class TLWorkerExtension:
                 raise KeyError(f"Unknown hook for intervention: {hook_name!r}")
             _apply_intervention(scale_bufs[hook_name], bias_bufs[hook_name], spec)
 
+    def tl_get_param(self, dotted_name: str) -> Optional[torch.Tensor]:
+        """Read a named model tensor (e.g. ``model.norm.weight``) as a CPU clone.
+
+        ``None`` if the path doesn't resolve to a tensor. The bridge has no general
+        weight surface, so this is how callers reach e.g. the ln_final weight.
+        """
+        target = getattr(self, "model_runner").model
+        for seg in dotted_name.split("."):
+            target = target[int(seg)] if seg.isdigit() else getattr(target, seg, None)
+            if target is None:
+                return None
+        return target.detach().cpu().clone() if isinstance(target, torch.Tensor) else None
+
     def tl_reset_counter(self) -> None:
         """Zero the shared hook-fire counter before a forward."""
         counter = getattr(self, "_tl_fire_counter", None)
@@ -80,11 +97,20 @@ class TLWorkerExtension:
         """Clear capture chunks before each generate, else prior chunks leak into the cat."""
         self._tl_accum = {}
 
-    def tl_read_batched_captures(self) -> Dict[str, Dict[str, torch.Tensor]]:
-        """Cat per-request chunks into ``{req_id: {hook: (seq, width)}}`` (chunks are token-order)."""
+    def tl_read_batched_captures(
+        self, names: Optional[List[str]] = None
+    ) -> Dict[str, Dict[str, torch.Tensor]]:
+        """Cat per-request chunks into ``{req_id: {hook: (seq, width)}}`` (token-order).
+
+        ``names`` restricts to those hooks (``None`` = all). Note the per-chunk
+        GPU→CPU copy already happened in the hook, so this only saves the cat.
+        """
         accum: Dict[tuple, List[torch.Tensor]] = getattr(self, "_tl_accum", {})
+        nameset = None if names is None else set(names)
         out: Dict[str, Dict[str, torch.Tensor]] = {}
         for (req_id, name), chunks in accum.items():
+            if nameset is not None and name not in nameset:
+                continue
             out.setdefault(req_id, {})[name] = torch.cat(chunks, dim=0)
         return out
 
