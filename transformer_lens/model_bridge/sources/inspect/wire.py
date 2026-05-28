@@ -1,11 +1,11 @@
 """Serialization chokepoint for the Inspect activation wire format.
 
-Activations ride in ``ModelOutput.metadata["activations"]`` as
-``{"residual_stream": {layer: {"data": <b64>, "dtype": str, "shape": [...]}}}`` —
-aligned with the vllm-lens convention so one provider-agnostic driver decodes
-both our provider's output and a vllm-lens provider's. Numpy-only (no torch) so
-both the torch-using provider and the torch-free driver import it; the single
-place to patch on format drift.
+Activations ride in ``ModelOutput.metadata["activations"]`` as a flat
+``{"<layer>:<kind>": {"data": <b64>, "dtype": str, "shape": [...]}}`` map (keys
+are :func:`hooks.wire_key`). For interop with vllm-lens, decode also understands
+its nested ``{"residual_stream": {layer: ...}}`` shape (mapped to ``resid_post``).
+Numpy-only (no torch) so both the torch-using provider and the torch-free driver
+import it; the single place to patch on format drift.
 """
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from typing import Any, Iterable, Mapping
 
 import numpy as np
 
-_RESIDUAL = "residual_stream"
+_RESIDUAL = "residual_stream"  # vllm-lens's nested key (interop decode only)
 
 
 def encode_array(arr: np.ndarray) -> dict[str, Any]:
@@ -36,23 +36,36 @@ def decode_array(entry: Any) -> np.ndarray:
     return np.frombuffer(raw, dtype=np.dtype(entry["dtype"])).reshape(entry["shape"]).copy()
 
 
-def encode_activations(residual_by_layer: Mapping[int, np.ndarray]) -> dict[str, Any]:
-    """Per-layer residual streams → the ``metadata["activations"]`` payload."""
-    return {_RESIDUAL: {str(layer): encode_array(arr) for layer, arr in residual_by_layer.items()}}
+def encode_activations(captured: Mapping[str, np.ndarray]) -> dict[str, Any]:
+    """``{wire_key: array}`` → the ``metadata["activations"]`` payload."""
+    return {key: encode_array(arr) for key, arr in captured.items()}
 
 
 def decode_activations(
-    metadata: Mapping[str, Any] | None, layers: Iterable[int]
-) -> dict[int, np.ndarray]:
-    """Pull the requested layers' residual streams out of ``metadata["activations"]``.
+    metadata: Mapping[str, Any] | None, wire_keys: Iterable[str]
+) -> dict[str, np.ndarray]:
+    """Pull the requested ``<layer>:<kind>`` keys out of ``metadata["activations"]``.
 
-    Tolerates int or str layer keys (our provider emits str; a peer provider may
-    differ). Missing layers are silently skipped — the driver decides what to do.
+    Falls back to vllm-lens's nested ``residual_stream`` for ``resid_post`` keys so
+    one driver consumes both providers. Missing keys are skipped — the caller decides.
     """
-    residual = ((metadata or {}).get("activations") or {}).get(_RESIDUAL, {})
-    out: dict[int, np.ndarray] = {}
-    for layer in layers:
-        entry = residual.get(str(layer), residual.get(layer))
-        if entry is not None:
-            out[layer] = decode_array(entry)
+    activations = (metadata or {}).get("activations") or {}
+    residual = activations.get(_RESIDUAL, {})
+    out: dict[str, np.ndarray] = {}
+    for key in wire_keys:
+        if key in activations:
+            out[key] = decode_array(activations[key])
+            continue
+        layer, _, kind = key.partition(":")
+        if kind == "resid_post":
+            entry = residual.get(layer, residual.get(_safe_int(layer)))
+            if entry is not None:
+                out[key] = decode_array(entry)
     return out
+
+
+def _safe_int(value: str) -> Any:
+    try:
+        return int(value)
+    except ValueError:
+        return value

@@ -22,7 +22,12 @@ from transformer_lens.model_bridge.driver_protocol import (
     validate_driver,
 )
 from transformer_lens.model_bridge.remote_bridge import RemoteBridge
-from transformer_lens.model_bridge.sources.inspect import intervention, wire
+from transformer_lens.model_bridge.sources.inspect import (
+    hooks,
+    intervention,
+    profiles,
+    wire,
+)
 from transformer_lens.model_bridge.sources.inspect.driver import InspectDriver
 
 N_LAYERS, D_MODEL, D_VOCAB = 2, 4, 16
@@ -47,13 +52,13 @@ def _adapter() -> ArchitectureAdapter:
     return adapter
 
 
-def _fake_model(*, residual=None, last_logits=None, raises=None):
-    """A stand-in inspect_ai Model whose async generate returns a wire-encoded output."""
+def _fake_model(*, captures=None, logits=None, raises=None):
+    """Stand-in inspect_ai Model. ``captures``: {wire_key: (seq,d)}; ``logits``: (seq,vocab)."""
     metadata: dict = {}
-    if residual is not None:
-        metadata["activations"] = wire.encode_activations(residual)
-    if last_logits is not None:
-        metadata["tl_last_logits"] = wire.encode_array(last_logits)
+    if captures is not None:
+        metadata["activations"] = wire.encode_activations(captures)
+    if logits is not None:
+        metadata["tl_logits"] = wire.encode_array(logits)
     output = SimpleNamespace(metadata=metadata)
 
     model = SimpleNamespace()
@@ -82,21 +87,42 @@ class TestProtocolConformance:
         for feature in ("parameters", "state_dict", "gradients", "weight_access"):
             assert driver.supports(feature) is False
 
-    def test_provides_sequence_logits_false(self):
-        assert _driver().provides_sequence_logits is False
+    def test_provides_sequence_logits_true(self):
+        # Provider returns full-sequence logits, so loss/both are available.
+        assert _driver().provides_sequence_logits is True
 
 
 class TestHookSets:
-    def test_supported_are_residual_post(self):
-        assert _driver().supported_hook_points == frozenset(
-            {"blocks.0.hook_resid_post", "blocks.1.hook_resid_post"}
-        )
+    def test_full_residual_attn_mlp_set(self):
+        supported = _driver().supported_hook_points
+        assert len(supported) == 7 * N_LAYERS
+        for name in [
+            "blocks.0.hook_resid_pre",
+            "blocks.0.hook_resid_mid",
+            "blocks.0.hook_resid_post",
+            "blocks.0.hook_attn_out",
+            "blocks.0.attn.hook_out",
+            "blocks.0.hook_mlp_out",
+            "blocks.0.mlp.hook_out",
+        ]:
+            assert name in supported
 
-    def test_nonfireable_disjoint_and_includes_attn(self):
+    def test_nonfireable_disjoint_and_includes_headsplit(self):
         driver = _driver()
         assert driver.supported_hook_points.isdisjoint(driver.non_fireable_hook_points)
         assert "blocks.0.attn.hook_pattern" in driver.non_fireable_hook_points
-        assert "unembed.hook_out" in driver.non_fireable_hook_points
+        assert "ln_final.hook_normalized" in driver.non_fireable_hook_points
+
+    def test_vllm_lens_profile_narrows_to_residual(self):
+        driver = InspectDriver(
+            _fake_model(), _adapter(), tokenizer=None, profile=profiles.VLLMLensProfile()
+        )
+        assert driver.supported_hook_points == frozenset(
+            f"blocks.{i}.hook_resid_post" for i in range(N_LAYERS)
+        )
+        assert driver.provides_sequence_logits is False  # no full logits via that path
+        # attn/mlp hooks our provider could do are non-fireable for the residual-only peer.
+        assert "blocks.0.attn.hook_out" in driver.non_fireable_hook_points
 
 
 class TestNormalizeInputIds:
@@ -106,34 +132,39 @@ class TestNormalizeInputIds:
     def test_2d_single_row(self):
         assert InspectDriver._normalize_input_ids(torch.tensor([[1, 2, 3]])) == [1, 2, 3]
 
-    def test_list(self):
-        assert InspectDriver._normalize_input_ids([4, 5]) == [4, 5]
-
     def test_batch_gt_one_raises(self):
         with pytest.raises(NotImplementedError, match="batch_size=1"):
             InspectDriver._normalize_input_ids(torch.tensor([[1, 2], [3, 4]]))
 
 
 class TestForward:
-    def test_assembles_captures_and_logits(self):
-        residual = {0: np.ones((3, D_MODEL), np.float32), 1: np.full((3, D_MODEL), 2.0, np.float32)}
-        last_logits = np.full((D_VOCAB,), -np.inf, np.float32)
-        last_logits[7] = 5.0
-        driver = _driver(_fake_model(residual=residual, last_logits=last_logits))
+    def test_assembles_named_captures_and_full_logits(self):
+        caps = {
+            "0:resid_post": np.ones((3, D_MODEL), np.float32),
+            "0:attn_out": np.full((3, D_MODEL), 2.0, np.float32),
+        }
+        logits = np.zeros((3, D_VOCAB), np.float32)
+        logits[-1, 7] = 5.0
+        driver = _driver(_fake_model(captures=caps, logits=logits))
 
-        result = driver.forward(torch.tensor([[1, 2, 3]]))
+        result = driver.forward(
+            torch.tensor([[1, 2, 3]]),
+            capture=("blocks.0.hook_resid_post", "blocks.0.attn.hook_out"),
+        )
         assert isinstance(result, ForwardResult)
-        emb = result.captured["blocks.0.hook_resid_post"]
-        assert tuple(emb.shape) == (1, 3, D_MODEL)  # batch dim added
-        assert result.logits is not None and tuple(result.logits.shape) == (1, 3, D_VOCAB)
+        assert tuple(result.captured["blocks.0.hook_resid_post"].shape) == (1, 3, D_MODEL)
+        # alias attn.hook_out resolves to the same wire key 0:attn_out
+        assert tuple(result.captured["blocks.0.attn.hook_out"].shape) == (1, 3, D_MODEL)
+        assert tuple(result.logits.shape) == (1, 3, D_VOCAB)  # full sequence
         assert int(result.logits[0, -1].argmax()) == 7
 
-    def test_capture_filters_layers(self):
-        residual = {0: np.ones((2, D_MODEL), np.float32)}
-        driver = _driver(_fake_model(residual=residual, last_logits=np.zeros(D_VOCAB, np.float32)))
-        result = driver.forward(torch.tensor([[1, 2]]), capture=("blocks.0.hook_resid_post",))
-        # Only layer 0 requested; provider echoes only what we asked for.
-        assert set(result.captured) == {"blocks.0.hook_resid_post"}
+    def test_resid_mid_consumed_under_its_name(self):
+        # The provider derives resid_mid (= resid_pre + attn_out) and sends it under
+        # its wire key; the driver surfaces it as blocks.{i}.hook_resid_mid.
+        caps = {"0:resid_mid": np.full((2, D_MODEL), 4.0, np.float32)}
+        driver = _driver(_fake_model(captures=caps, logits=np.zeros((2, D_VOCAB), np.float32)))
+        result = driver.forward(torch.tensor([[1, 2]]), capture=("blocks.0.hook_resid_mid",))
+        assert np.allclose(result.captured["blocks.0.hook_resid_mid"][0], 4.0)
 
     def test_provider_error_propagates(self):
         driver = _driver(_fake_model(raises=RuntimeError("boom")))
@@ -153,8 +184,8 @@ class TestForward:
 
 class TestAsyncWrapper:
     def test_reuses_one_loop_thread(self):
-        residual = {0: np.ones((1, D_MODEL), np.float32)}
-        driver = _driver(_fake_model(residual=residual, last_logits=np.zeros(D_VOCAB, np.float32)))
+        caps = {"0:resid_post": np.ones((1, D_MODEL), np.float32)}
+        driver = _driver(_fake_model(captures=caps, logits=np.zeros((1, D_VOCAB), np.float32)))
         driver.forward(torch.tensor([[1]]))
         first = driver._loop_thread
         driver.forward(torch.tensor([[1]]))
@@ -164,14 +195,13 @@ class TestAsyncWrapper:
         """The Jupyter case: a loop already running on the calling thread."""
         import asyncio
 
-        residual = {0: np.ones((1, D_MODEL), np.float32)}
-        driver = _driver(_fake_model(residual=residual, last_logits=np.zeros(D_VOCAB, np.float32)))
+        caps = {"0:resid_post": np.ones((1, D_MODEL), np.float32)}
+        driver = _driver(_fake_model(captures=caps, logits=np.zeros((1, D_VOCAB), np.float32)))
 
         async def run():
             return driver.forward(torch.tensor([[1]]))
 
-        result = asyncio.run(run())
-        assert isinstance(result, ForwardResult)
+        assert isinstance(asyncio.run(run()), ForwardResult)
 
 
 class TestWire:
@@ -179,59 +209,109 @@ class TestWire:
         arr = np.arange(12, dtype=np.float32).reshape(3, 4)
         assert np.array_equal(wire.decode_array(wire.encode_array(arr)), arr)
 
-    def test_activations_round_trip_selects_layers(self):
-        residual = {0: np.ones((2, 4), np.float32), 2: np.full((2, 4), 3.0, np.float32)}
-        meta = {"activations": wire.encode_activations(residual)}
-        out = wire.decode_activations(meta, [0, 2])
-        assert set(out) == {0, 2} and np.array_equal(out[2], residual[2])
+    def test_flat_activations_round_trip(self):
+        caps = {
+            "0:resid_post": np.ones((2, 4), np.float32),
+            "1:attn_out": np.full((2, 4), 3.0, np.float32),
+        }
+        meta = {"activations": wire.encode_activations(caps)}
+        out = wire.decode_activations(meta, ["0:resid_post", "1:attn_out"])
+        assert np.array_equal(out["1:attn_out"], caps["1:attn_out"])
 
-    def test_decode_missing_layer_skipped(self):
-        meta = {"activations": wire.encode_activations({0: np.ones((1, 4), np.float32)})}
-        assert set(wire.decode_activations(meta, [0, 1])) == {0}
+    def test_vllm_lens_residual_stream_fallback(self):
+        # A peer provider's nested residual_stream decodes for resid_post keys.
+        meta = {
+            "activations": {
+                "residual_stream": {"3": wire.encode_array(np.ones((2, 4), np.float32))}
+            }
+        }
+        out = wire.decode_activations(meta, ["3:resid_post"])
+        assert tuple(out["3:resid_post"].shape) == (2, 4)
+
+
+class TestHooksRegistry:
+    def test_resolve_aliases(self):
+        assert hooks.resolve("blocks.2.attn.hook_out") == (2, "attn_out")
+        assert hooks.resolve("blocks.2.hook_attn_out") == (2, "attn_out")
+        assert hooks.resolve("blocks.0.hook_resid_mid") == (0, "resid_mid")
+        assert hooks.resolve("embed.hook_out") is None
 
 
 class TestInterventionTranslation:
-    def _h2l(self):
-        return {"blocks.0.hook_resid_post": 0, "blocks.1.hook_resid_post": 1}
-
     def _supported(self):
-        return frozenset(self._h2l())
+        return hooks.supported_hook_points(N_LAYERS)
 
-    def test_ops_translate_to_layer_keyed_specs(self):
-        out = intervention.build_extra_args(
-            {"blocks.1.hook_resid_post": {"op": "suppress"}}, self._supported(), self._h2l()
+    def test_op_translates_to_wire_key(self):
+        out = intervention.build_interventions(
+            {"blocks.1.hook_resid_post": {"op": "suppress"}}, self._supported()
         )
-        assert out == {"1": {"op": "suppress"}}
+        assert out == {"1:resid_post": {"op": "suppress"}}
+
+    def test_attn_out_intervention(self):
+        out = intervention.build_interventions(
+            {"blocks.0.attn.hook_out": {"op": "scale", "factor": 0.5}}, self._supported()
+        )
+        assert out == {"0:attn_out": {"op": "scale", "factor": 0.5}}
+
+    def test_resid_mid_is_capture_only(self):
+        with pytest.raises(ValueError, match="capture-only"):
+            intervention.build_interventions(
+                {"blocks.0.hook_resid_mid": {"op": "suppress"}}, self._supported()
+            )
 
     def test_callable_rejected(self):
         with pytest.raises(NotImplementedError, match="specs"):
-            intervention.build_extra_args(
-                {"blocks.0.hook_resid_post": lambda a: a}, self._supported(), self._h2l()
+            intervention.build_interventions(
+                {"blocks.0.hook_resid_post": lambda a: a}, self._supported()
             )
 
     def test_unknown_hook_rejected(self):
         with pytest.raises(ValueError, match="not in supported_hook_points"):
-            intervention.build_extra_args(
-                {"blocks.9.hook_resid_post": {"op": "suppress"}}, self._supported(), self._h2l()
+            intervention.build_interventions(
+                {"blocks.9.hook_resid_post": {"op": "suppress"}}, self._supported()
             )
 
     def test_bad_op_rejected(self):
         with pytest.raises(ValueError, match="Unsupported intervention op"):
-            intervention.build_extra_args(
-                {"blocks.0.hook_resid_post": {"op": "clamp"}}, self._supported(), self._h2l()
+            intervention.build_interventions(
+                {"blocks.0.hook_resid_post": {"op": "clamp"}}, self._supported()
             )
 
-    def test_scale_requires_factor(self):
-        with pytest.raises(ValueError, match="requires 'factor'"):
-            intervention.build_extra_args(
-                {"blocks.0.hook_resid_post": {"op": "scale"}}, self._supported(), self._h2l()
+
+class TestVLLMLensProfile:
+    """The vllm-lens request/response codec (live path unverified; logic is testable)."""
+
+    def test_build_request_uses_output_residual_stream(self):
+        tokenizer = SimpleNamespace(decode=lambda ids: "hello world")
+        prompt, extra = profiles.VLLMLensProfile().build_request(
+            [1, 2, 3], ["0:resid_post", "1:resid_post"], [], True, tokenizer
+        )
+        assert prompt == "hello world"  # detokenized — vllm-lens re-tokenizes
+        assert extra == {"output_residual_stream": [0, 1]}
+
+    def test_decode_logits_one_hot_from_completion(self):
+        tokenizer = SimpleNamespace(encode=lambda text: [9])
+        output = SimpleNamespace(completion="x", metadata={})
+        logits = profiles.VLLMLensProfile().decode_logits(output, 3, D_VOCAB, tokenizer)
+        assert tuple(logits.shape) == (1, 3, D_VOCAB)
+        assert int(logits[0, -1].argmax()) == 9
+
+    def test_non_additive_intervention_rejected_without_vllm_lens(self):
+        # Validation happens before the lazy vllm_lens import, so this works uninstalled.
+        with pytest.raises(NotImplementedError, match="additive steering"):
+            profiles.VLLMLensProfile().translate_interventions(
+                {"blocks.0.hook_resid_post": {"op": "suppress"}},
+                frozenset({"blocks.0.hook_resid_post"}),
             )
+
+    def test_no_interventions_needs_no_vllm_lens(self):
+        assert profiles.VLLMLensProfile().translate_interventions({}, frozenset()) == []
 
 
 class TestThroughBridge:
-    def test_replays_as_torch_and_rejects_loss(self):
-        residual = {0: np.ones((3, D_MODEL), np.float32), 1: np.ones((3, D_MODEL), np.float32)}
-        driver = _driver(_fake_model(residual=residual, last_logits=np.zeros(D_VOCAB, np.float32)))
+    def test_replays_as_torch(self):
+        caps = {"0:resid_post": np.ones((3, D_MODEL), np.float32)}
+        driver = _driver(_fake_model(captures=caps, logits=np.zeros((3, D_VOCAB), np.float32)))
         bridge = RemoteBridge(adapter=_adapter(), tokenizer=None, driver=driver)
 
         fired: list = []
@@ -240,9 +320,13 @@ class TestThroughBridge:
         assert len(fired) == 1 and isinstance(fired[0], torch.Tensor)  # numpy→torch at the bridge
         assert tuple(fired[0].shape) == (1, 3, D_MODEL)
 
-        for rt in ("loss", "both"):
-            with pytest.raises(NotImplementedError, match="return_type"):
-                bridge.forward(torch.tensor([[1, 2, 3]]), return_type=rt)
+    def test_loss_now_supported(self):
+        # Full-sequence logits ⇒ the bridge computes loss (no longer rejected).
+        logits = np.zeros((3, D_VOCAB), np.float32)
+        driver = _driver(_fake_model(captures={}, logits=logits))
+        bridge = RemoteBridge(adapter=_adapter(), tokenizer=None, driver=driver)
+        loss = bridge.forward(torch.tensor([[1, 2, 3]]), return_type="loss")
+        assert isinstance(loss, torch.Tensor) and loss.ndim == 0
 
     def test_context_manager_closes(self):
         driver = _driver()

@@ -1,12 +1,11 @@
 """InspectDriver — torch-free consumer of an ``inspect_ai`` provider's output.
 
 Talks to a provider (ours, HF-backed, or a wire-compatible peer like vllm-lens)
-through the inspect_ai ``ModelOutput`` envelope: sends token ids + capture/intervention
-requests via ``config.extra_body["extra_args"]``, reads residual-stream activations
-and last-position logits back out of ``metadata``. Stays numpy-only — ``to_torch``
-runs at the bridge boundary — so this file imports zero torch symbols (enforced by
-a unit test). ``inspect_ai`` is imported lazily so the rest of the package works
-without it installed.
+through the inspect_ai ``ModelOutput`` envelope. Everything provider-specific —
+the request schema, which hooks are served, full vs last-token logits, intervention
+translation — lives in a :mod:`profiles` Profile; the driver just drives it. Stays
+numpy-only (``to_torch`` runs at the bridge boundary), so this file imports zero
+torch symbols (enforced by a unit test). ``inspect_ai`` is imported lazily.
 """
 from __future__ import annotations
 
@@ -24,26 +23,29 @@ from transformer_lens.model_bridge.driver_protocol import (
 )
 from transformer_lens.model_bridge.sources._driver_base import DriverBase
 
-from . import intervention, wire
+from . import hooks, wire
+from .profiles import TLBridgeProfile
 
 
 class InspectDriver(DriverBase):
-    """Driver wrapping an ``inspect_ai`` model; residual-stream capture, last-token logits."""
+    """Driver wrapping an ``inspect_ai`` model; capture + interventions via a Profile."""
 
     # Remote provider — no torch weight/grad surface.
     _supported_features = frozenset()
-    # Logits synthesized for the final position only ⇒ RemoteBridge rejects loss/both.
-    provides_sequence_logits = False
 
-    def __init__(self, model: Any, adapter: Any, tokenizer: Any) -> None:
+    def __init__(self, model: Any, adapter: Any, tokenizer: Any, profile: Any = None) -> None:
         super().__init__(adapter.cfg, tokenizer)
         self._model = model
+        self._profile = profile if profile is not None else TLBridgeProfile()
         self._n_layers = int(self.bridge_config.n_layers)
         self._d_vocab = int(self.bridge_config.d_vocab)
-        self.supported_hook_points = frozenset(
-            f"blocks.{i}.hook_resid_post" for i in range(self._n_layers)
+        # Provider-specific: loss/both allowed only if the provider returns full logits.
+        self.provides_sequence_logits = self._profile.provides_sequence_logits
+        self.supported_hook_points = self._profile.supported_hooks(self._n_layers)
+        full = hooks.supported_hook_points(self._n_layers)
+        self.non_fireable_hook_points = hooks.nonfireable_hook_points(self._n_layers) | (
+            full - self.supported_hook_points
         )
-        self.non_fireable_hook_points = frozenset(self._nonfireable())
         # Background event loop, created lazily on first forward.
         self._loop: asyncio.AbstractEventLoop | None = None
         self._loop_thread: threading.Thread | None = None
@@ -67,55 +69,51 @@ class InspectDriver(DriverBase):
                 "InspectDriver supports max_new_tokens=1 only (single-forward capture)."
             )
         ids = self._normalize_input_ids(input_ids)
-        layers = self._layers_for_capture(capture)
-        extra_args: dict[str, Any] = {"input_ids": ids, "output_residual_stream": layers}
-        spec_payload = intervention.build_extra_args(
-            intervene or {}, self.supported_hook_points, self._hook_to_layer()
+        names = list(capture) if capture else sorted(self.supported_hook_points)
+        wire_keys = self._wire_keys(names)
+        interventions = self._profile.translate_interventions(
+            intervene or {}, self.supported_hook_points
         )
-        if spec_payload:
-            extra_args["interventions"] = spec_payload
+        prompt, extra_args = self._profile.build_request(
+            ids, wire_keys, interventions, return_logits, self.tokenizer
+        )
 
-        output = self._run_coro(self._generate(extra_args, return_logits))
+        output = self._run_coro(self._generate(prompt, extra_args))
 
-        captured = self._assemble_captures(output, layers)
-        logits = self._synthesize_logits(output, len(ids)) if return_logits else None
+        captured = self._assemble_captures(output, names)
+        logits = (
+            self._profile.decode_logits(output, len(ids), self._d_vocab, self.tokenizer)
+            if return_logits
+            else None
+        )
         return ForwardResult(logits=logits, captured=captured, raw_output=output)
 
-    async def _generate(self, extra_args: dict[str, Any], return_logits: bool) -> Any:
+    async def _generate(self, prompt: Any, extra_args: dict[str, Any]) -> Any:
         from inspect_ai.model import GenerateConfig
 
         config = GenerateConfig(
-            temperature=0.0,
-            max_tokens=1,
-            logprobs=return_logits or None,
-            extra_body={"extra_args": extra_args},
+            temperature=0.0, max_tokens=1, extra_body={"extra_args": extra_args}
         )
-        return await self._model.generate("", config=config)
+        return await self._model.generate(prompt, config=config)
 
-    def _assemble_captures(self, output: Any, layers: list[int]) -> dict[str, np.ndarray]:
-        """Decode residual streams → ``{blocks.{i}.hook_resid_post: (1, seq, d_model)}``."""
-        metadata = getattr(output, "metadata", None) or {}
-        by_layer = wire.decode_activations(metadata, layers)
-        captured: dict[str, np.ndarray] = {}
-        for layer, arr in by_layer.items():
-            if arr.ndim == 2:  # (seq, d_model) → add batch dim for has_batch_dim caches
-                arr = arr[np.newaxis, ...]
-            captured[f"blocks.{layer}.hook_resid_post"] = arr
-        return captured
+    def _assemble_captures(self, output: Any, names: list[str]) -> dict[str, np.ndarray]:
+        """Decode the requested boundaries → ``{hook_name: (1, seq, d_model)}``.
 
-    def _synthesize_logits(self, output: Any, n_tokens: int) -> np.ndarray:
-        """Place the provider's exact last-position logits at position -1; rest -inf.
-
-        Earlier positions stay -inf (only the next-token row is provided), so any
-        argmax there is loud rather than silently wrong — and provides_sequence_logits
-        is False so the bridge won't ask for a loss over them.
+        ``wire.decode_activations`` reads both our flat ``<layer>:<kind>`` map and a
+        vllm-lens nested ``residual_stream``, so this is provider-agnostic. Aliases
+        (``hook_attn_out`` / ``attn.hook_out``) resolve to the same wire key.
         """
-        logits = np.full((1, n_tokens, self._d_vocab), -np.inf, dtype=np.float32)
         metadata = getattr(output, "metadata", None) or {}
-        entry = metadata.get("tl_last_logits")
-        if entry is not None:
-            logits[0, -1, :] = wire.decode_array(entry)
-        return logits
+        decoded = wire.decode_activations(metadata, self._wire_keys(names))
+        captured: dict[str, np.ndarray] = {}
+        for name in names:
+            resolved = hooks.resolve(name)
+            if resolved is None:
+                continue
+            arr = decoded.get(hooks.wire_key(*resolved))
+            if arr is not None:
+                captured[name] = arr[np.newaxis, ...] if arr.ndim == 2 else arr
+        return captured
 
     def close(self) -> None:
         log = logging.getLogger("transformer_lens.inspect")
@@ -148,30 +146,10 @@ class InspectDriver(DriverBase):
         future = asyncio.run_coroutine_threadsafe(coro, self._ensure_loop())
         return future.result()  # blocks the sync caller; re-raises provider errors
 
-    def _hook_to_layer(self) -> dict[str, int]:
-        return {f"blocks.{i}.hook_resid_post": i for i in range(self._n_layers)}
-
-    def _layers_for_capture(self, capture: tuple[str, ...]) -> list[int]:
-        """Capture-restricted layer indices (default: all)."""
-        if not capture:
-            return list(range(self._n_layers))
-        mapping = self._hook_to_layer()
-        return sorted({mapping[name] for name in capture if name in mapping})
-
-    def _nonfireable(self) -> list[str]:
-        """Hooks the residual-stream-only provider can't fire."""
-        names: list[str] = ["embed.hook_out", "ln_final.hook_normalized", "unembed.hook_out"]
-        for i in range(self._n_layers):
-            names += [
-                f"blocks.{i}.hook_resid_pre",
-                f"blocks.{i}.hook_resid_mid",
-                f"blocks.{i}.attn.hook_pattern",
-                f"blocks.{i}.attn.hook_attn_scores",
-                f"blocks.{i}.attn.hook_z",
-                f"blocks.{i}.hook_attn_out",
-                f"blocks.{i}.hook_mlp_out",
-            ]
-        return names
+    def _wire_keys(self, names: list[str]) -> list[str]:
+        """Unique ``<layer>:<kind>`` keys for the requested hook names (aliases collapse)."""
+        keys = {hooks.wire_key(*r) for r in (hooks.resolve(n) for n in names) if r is not None}
+        return sorted(keys)
 
     @staticmethod
     def _normalize_input_ids(input_ids: Any) -> list[int]:

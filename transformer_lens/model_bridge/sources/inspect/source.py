@@ -15,6 +15,7 @@ from transformer_lens.model_bridge.sources._bridge_builder import (
 )
 from transformer_lens.utilities.hf_utils import get_hf_token
 
+from . import profiles
 from .driver import InspectDriver
 
 
@@ -55,7 +56,10 @@ def boot_inspect(
         tokenizer = AutoTokenizer.from_pretrained(model_name, token=hf_token)
 
     model = get_model(f"{provider}/{model_name}", **inspect_kwargs)
-    driver = InspectDriver(model=model, adapter=adapter, tokenizer=tokenizer)
+    # The profile carries everything provider-specific: hook set, logits behavior,
+    # request schema, intervention translation. Ours = full; vllm-lens = residual-only.
+    profile = profiles.for_provider(provider)
+    driver = InspectDriver(model=model, adapter=adapter, tokenizer=tokenizer, profile=profile)
     bridge = RemoteBridge(adapter=adapter, tokenizer=tokenizer, driver=driver)
     _log_hook_summary(model_name, architecture, provider, driver)
     return bridge

@@ -1,27 +1,27 @@
-"""Validate intervention specs and pack them into the Inspect ``extra_args``.
+"""Validate intervention specs and key them by ``<layer>:<kind>`` for the provider.
 
-Our HF provider applies interventions as forward-hook affine ops, so the full
-vocabulary is available (unlike vllm-lens, which only adds steering vectors).
-The op set mirrors ``vllm.intervention_specs.SUPPORTED_OPS`` — kept local so the
-torch-free driver's import chain doesn't drag in the vLLM package.
+Our HF provider applies interventions as forward-hook affine ops at the residual/
+attn/mlp boundaries, so the full vocabulary works. ``resid_mid`` is derived
+(capture-only), so intervening on it is rejected. Op set mirrors the vLLM driver.
 """
 from __future__ import annotations
 
 from typing import Any, Mapping
 
+from . import hooks
+
 # suppress (→0), scale (factor), add (value), set (value). Mirrors the vLLM driver.
 SUPPORTED_OPS = frozenset({"suppress", "scale", "add", "set"})
 
 
-def build_extra_args(
+def build_interventions(
     intervene: Mapping[str, Any],
     supported_hook_points: frozenset[str],
-    hook_to_layer: Mapping[str, int],
 ) -> dict[str, dict[str, Any]]:
-    """Validate specs and return ``{layer_index: spec}`` for the provider to apply.
+    """Validate specs and return ``{wire_key: spec}`` for the provider to apply.
 
-    Rejects callables (remote drivers take specs, not Python callbacks) and
-    validates op/params/hook membership — mirrors ``VLLMDriver._validate_interventions``.
+    Rejects callables (remote drivers take specs), bad ops, unknown/unsupported
+    hooks, and capture-only hooks (``resid_mid``) — mirrors ``VLLMDriver._validate_interventions``.
     """
     out: dict[str, dict[str, Any]] = {}
     for hook_name, spec in intervene.items():
@@ -43,11 +43,18 @@ def build_extra_args(
             )
         if hook_name not in supported_hook_points:
             raise ValueError(f"Cannot intervene on {hook_name!r}: not in supported_hook_points.")
+        resolved = hooks.resolve(hook_name)
+        if resolved is None or resolved[1] not in hooks.INTERVENEABLE_KINDS:
+            raise ValueError(
+                f"Cannot intervene on {hook_name!r}: capture-only "
+                f"(intervene on resid_pre/attn_out/mlp_out/resid_post instead)."
+            )
         if op == "scale" and "factor" not in spec:
             raise ValueError(f"Intervention {hook_name!r}: op='scale' requires 'factor' (float).")
         if op in ("add", "set") and "value" not in spec:
             raise ValueError(
                 f"Intervention {hook_name!r}: op={op!r} requires 'value' (scalar or width-shaped)."
             )
-        out[str(hook_to_layer[hook_name])] = dict(spec)
+        layer, kind = resolved
+        out[hooks.wire_key(layer, kind)] = dict(spec)
     return out

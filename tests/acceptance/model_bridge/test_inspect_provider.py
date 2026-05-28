@@ -24,7 +24,17 @@ pytestmark = [
 
 MODEL = "gpt2"
 PROMPT = "The quick brown fox"
-RESID_HOOKS = ["blocks.0.hook_resid_post", "blocks.5.hook_resid_post", "blocks.11.hook_resid_post"]
+# A spread across boundary kinds and layers — all must match boot_transformers exactly.
+PARITY_HOOKS = [
+    "blocks.0.hook_resid_pre",
+    "blocks.0.hook_attn_out",
+    "blocks.0.attn.hook_out",
+    "blocks.0.hook_resid_mid",
+    "blocks.0.hook_mlp_out",
+    "blocks.0.hook_resid_post",
+    "blocks.6.hook_attn_out",
+    "blocks.11.hook_resid_post",
+]
 
 
 @pytest.fixture(scope="module")
@@ -56,15 +66,21 @@ class TestInspectParity:
         i_logits = inspect_bridge.forward(tokens)
         assert int(hf_logits[0, -1].argmax()) == int(i_logits[0, -1].argmax())
 
-    def test_residual_stream_matches(self, hf_bridge, inspect_bridge, tokens):
+    def test_hooks_match(self, hf_bridge, inspect_bridge, tokens):
         _, hf_cache = hf_bridge.run_with_cache(tokens)
         _, i_cache = inspect_bridge.run_with_cache(tokens)
-        for hook in RESID_HOOKS:
+        for hook in PARITY_HOOKS:
             a, b = hf_cache[hook].float(), i_cache[hook].float()
             assert a.shape == b.shape
             assert torch.allclose(
                 a, b, atol=1e-3, rtol=1e-3
             ), f"{hook} diverges: max {(a - b).abs().max().item():.2e}"
+
+    def test_loss_matches(self, hf_bridge, inspect_bridge, tokens):
+        # Full-sequence logits ⇒ loss is computable and matches boot_transformers.
+        hf_loss = hf_bridge.forward(tokens, return_type="loss")
+        i_loss = inspect_bridge.forward(tokens, return_type="loss")
+        assert torch.allclose(hf_loss, i_loss, atol=1e-3)
 
 
 class TestInspectInterventions:
