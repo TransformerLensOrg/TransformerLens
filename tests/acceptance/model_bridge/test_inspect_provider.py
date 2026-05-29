@@ -292,3 +292,24 @@ class TestStructuralCheckAcrossFamilies:
                     ), f"{model_id} {hk} diverges: {(a - b).abs().max().item():.2e}"
         finally:
             inspect.close()
+
+
+class TestRebootSemantics:
+    """inspect_ai memoizes get_model by name; boot_inspect passes memoize=False so each
+    boot honors its own args and independently owns (and frees) its model."""
+
+    def test_reboot_is_fresh_and_honors_dtype(self):
+        from transformer_lens.model_bridge.remote_bridge import RemoteBridge
+
+        mid = "hf-internal-testing/tiny-random-LlamaForCausalLM"
+        b1 = RemoteBridge.boot_inspect(mid, dtype=torch.float32)
+        b2 = RemoteBridge.boot_inspect(mid, dtype=torch.float16)
+        try:
+            # Distinct provider objects — not inspect_ai's memoized singleton.
+            assert b1._driver._model is not b2._driver._model
+            # Each provider loaded at the dtype its boot requested (not a stale cache).
+            assert next(b1._driver._model.api._hf.parameters()).dtype == torch.float32
+            assert next(b2._driver._model.api._hf.parameters()).dtype == torch.float16
+        finally:
+            b1.close()
+            b2.close()

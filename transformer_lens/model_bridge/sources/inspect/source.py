@@ -84,7 +84,10 @@ def boot_inspect(
             dict(inspect_kwargs.get("model_kwargs", {})), adapter, resolved_dtype, hf_token
         )
 
-    model = get_model(f"{provider}/{model_name}", **inspect_kwargs)
+    # memoize=False: inspect_ai caches get_model by name, which would (a) return a stale
+    # model ignoring a changed dtype/kwargs on re-boot and (b) keep weights resident past
+    # close(). Each boot must honor its own args and own its model's lifecycle.
+    model = get_model(f"{provider}/{model_name}", memoize=False, **inspect_kwargs)
     # For our HF provider, restrict the profile to the boundaries its structural self-check
     # found this model can serve; warn only if it gated something.
     if provider == "tl_bridge":
