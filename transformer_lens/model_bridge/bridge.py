@@ -1968,6 +1968,8 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                    remove_batch_dim: Whether to remove batch dimension
                    names_filter: Filter for which activations to cache (str, list of str, or callable)
                    stop_at_layer: Layer to stop forward pass at (uses StopAtLayerException; cleans up KV cache on stop)
+                   device: Where to store cached activations (matches ActivationCache.to;
+                       does not move the model). Defaults to per-layer storage.
                    **kwargs: Additional arguments
         # type: ignore[name-defined]
                Returns:
@@ -2075,25 +2077,19 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                     hook_dict[block_hook_name].add_hook(stop_hook)
                     hooks.append((hook_dict[block_hook_name], block_hook_name))
         filtered_kwargs = kwargs.copy()
-        if cache_device is not None:
-            if getattr(self.cfg, "n_devices", 1) > 1:
-                # Moving a dispatched model to a single device collapses accelerate's
-                # split and breaks its routing hooks. The cache will stay spread across
-                # the per-layer devices; callers can .to(cache_device) on cache entries
-                # after the fact if they need a single-device cache.
-                warnings.warn(
-                    f"run_with_cache(device={cache_device!r}) ignored: model is dispatched "
-                    f"across {self.cfg.n_devices} devices via device_map. Cached activations "
-                    "will remain on their per-layer devices.",
-                    stacklevel=2,
-                )
-            else:
-                self.original_model = self.original_model.to(cache_device)
-                if processed_args and isinstance(processed_args[0], torch.Tensor):
-                    processed_args = [processed_args[0].to(cache_device)] + list(processed_args[1:])
-                for key, value in filtered_kwargs.items():
-                    if isinstance(value, torch.Tensor):
-                        filtered_kwargs[key] = value.to(cache_device)
+        # `cache_device` is honored by `make_cache_hook` above (`tensor.detach().to(cache_device)`);
+        # the model and inputs stay where the caller put them, matching `ActivationCache.to`.
+        if cache_device is not None and getattr(self.cfg, "n_devices", 1) > 1:
+            # Moving a dispatched model to a single device collapses accelerate's
+            # split and breaks its routing hooks. The cache will stay spread across
+            # the per-layer devices; callers can .to(cache_device) on cache entries
+            # after the fact if they need a single-device cache.
+            warnings.warn(
+                f"run_with_cache(device={cache_device!r}) ignored: model is dispatched "
+                f"across {self.cfg.n_devices} devices via device_map. Cached activations "
+                "will remain on their per-layer devices.",
+                stacklevel=2,
+            )
         try:
             if "output_attentions" not in filtered_kwargs:
                 filtered_kwargs["output_attentions"] = True
