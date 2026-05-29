@@ -21,6 +21,10 @@ from transformer_lens.utilities.hf_utils import get_hf_token
 from . import hooks, profiles
 from .driver import InspectDriver
 
+# Providers that expose the structural self-check + capture wire format the InspectDriver
+# consumes. boot_inspect queries supported_kinds on these; others route via for_provider.
+_TL_BRIDGE_PROVIDERS = {"tl_bridge", "tl_bridge_vllm"}
+
 
 def boot_inspect(
     model_name: str,
@@ -54,7 +58,7 @@ def boot_inspect(
     from inspect_ai.model import get_model
     from transformers import AutoConfig, AutoTokenizer
 
-    from . import provider as _provider  # noqa: F401 — import registers our @modelapi
+    from . import transformers_provider as _provider  # noqa: F401 — import registers @modelapi
 
     hf_token = get_hf_token()
     hf_config = AutoConfig.from_pretrained(model_name, token=hf_token)
@@ -88,9 +92,10 @@ def boot_inspect(
     # model ignoring a changed dtype/kwargs on re-boot and (b) keep weights resident past
     # close(). Each boot must honor its own args and own its model's lifecycle.
     model = get_model(f"{provider}/{model_name}", memoize=False, **inspect_kwargs)
-    # For our HF provider, restrict the profile to the boundaries its structural self-check
-    # found this model can serve; warn only if it gated something.
-    if provider == "tl_bridge":
+    # Both TL-bridge providers (HF + vLLM) restrict their profile to the boundaries the
+    # provider's structural self-check / overlay found this model can serve; warn only
+    # if it gated something. Third-party providers (e.g. vllm-lens) route via for_provider.
+    if provider in _TL_BRIDGE_PROVIDERS:
         api = getattr(model, "api", None)
         kinds = None
         note = ""

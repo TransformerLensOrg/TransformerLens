@@ -11,8 +11,6 @@ plus the full-sequence logits.
 from __future__ import annotations
 
 import contextvars
-import json
-import re
 import uuid
 from collections import defaultdict
 from contextlib import contextmanager
@@ -24,18 +22,15 @@ from inspect_ai.model import (
     ChatCompletionChoice,
     ChatMessageAssistant,
     GenerateConfig,
-    Logprob,
     Logprobs,
-    ModelAPI,
     ModelOutput,
     ModelUsage,
     StopReason,
-    TopLogprob,
     modelapi,
 )
-from inspect_ai.tool import ToolCall
 
 from . import hooks, wire
+from ._provider_base import _InspectModelAPIBase, _parse_tool_calls, _require_served
 
 # NOT "transformer_lens" — inspect_ai ships a built-in provider by that name (the
 # reverse direction: serving a HookedTransformer as an Inspect model for generation).
@@ -58,11 +53,16 @@ _MLP_ATTRS = ("mlp", "feed_forward")
 @modelapi(name=PROVIDER_NAME)
 def transformer_lens_provider():
     """Lazy registration hook — returns the provider class on first use."""
-    return TransformerLensModelAPI
+    return TransformerLensTransformersModelAPI
 
 
-class TransformerLensModelAPI(ModelAPI):
-    """HF-backed provider: residual/attn/mlp capture + interventions + full logits."""
+class TransformerLensTransformersModelAPI(_InspectModelAPIBase):
+    """HF-backed provider: residual/attn/mlp capture + interventions + full logits.
+
+    Inherits generate() dispatch, _messages_to_ids, _logprob_entry, and the per-turn
+    capture-config validation from :class:`_InspectModelAPIBase`; the HF-specific bits
+    here are the model load, the forward-hook capture machinery, and the structural probe.
+    """
 
     def __init__(
         self,
@@ -83,34 +83,9 @@ class TransformerLensModelAPI(ModelAPI):
         self._tokenizer = AutoTokenizer.from_pretrained(model_name)
         self._layers = _locate_layers(self._hf)
         self._kinds, self._capability_note = _detect_capabilities(self._hf, self._layers)
-        # Optional per-turn capture during plain generation (agent rollouts): every
-        # _generate_eval stashes these hooks in ModelOutput.metadata. Gated by the structural
-        # self-check — the eval entry points get the same protection as the driver path.
-        self._eval_capture: dict[str, str] = {}
-        for name in model_args.pop("capture", None) or []:
-            resolved = hooks.resolve(name)
-            if resolved is None:
-                raise ValueError(f"capture={name!r} is not a fireable hook name.")
-            _require_served(resolved[1], self._kinds, self._capability_note, f"capture={name!r}")
-            self._eval_capture[hooks.wire_key(*resolved)] = name
-
-    def supported_kinds(self) -> frozenset:
-        """Boundary kinds this model is structurally able to serve (resid_pre/resid_post
-        always; attn_out/mlp_out if locatable; resid_mid only if attn feeds mlp)."""
-        return self._kinds
-
-    def capability_note(self) -> str:
-        """Human-readable reason for any gated boundary, or '' if all are served."""
-        return self._capability_note
-
-    async def generate(self, input, tools, tool_choice, config):  # type: ignore[override]
-        # Two callers: the TL driver (extra_args carries input_ids/capture/interventions —
-        # single-forward activation capture) and a plain Inspect eval (chat messages, real
-        # multi-token generation). Branch on whether a TL request is present.
-        extra_args: Mapping[str, Any] = (config.extra_body or {}).get("extra_args", {})
-        if extra_args.get("input_ids") is not None or extra_args.get("capture"):
-            return self._generate_capture(input, extra_args, config)
-        return self._generate_eval(input, config, tools or [])
+        # Per-turn capture during plain generation (agent rollouts): every _generate_eval
+        # stashes these hooks in ModelOutput.metadata. Gated by the structural self-check.
+        self._eval_capture = self._parse_eval_capture(model_args)
 
     def _generate_capture(self, input: Any, extra_args: Mapping[str, Any], config: GenerateConfig):
         """TL-driven single forward: capture residual/attn/mlp boundaries + full logits."""
@@ -265,49 +240,6 @@ class TransformerLensModelAPI(ModelAPI):
                 handle.remove()
             _current_call_id.reset(token)
             metadata["activations"] = wire.encode_activations(_assemble(raw, wire_keys))
-
-    def _logprob_entry(self, token_id: int, step_logits: Any, top_n: Any) -> Logprob:
-        """One token's log-prob (+ top-k alternatives) from a position's logits."""
-        lp = torch.log_softmax(step_logits.float(), dim=-1)
-        top = []
-        if top_n:
-            vals, idx = lp.topk(int(top_n))
-            top = [
-                TopLogprob(
-                    token=str(self._tokenizer.decode([int(i)])), logprob=float(v), bytes=None
-                )
-                for v, i in zip(vals.tolist(), idx.tolist())
-            ]
-        return Logprob(
-            token=str(self._tokenizer.decode([int(token_id)])),
-            logprob=float(lp[int(token_id)]),
-            bytes=None,
-            top_logprobs=top,
-        )
-
-    def _messages_to_ids(self, input: Any, tools: Any = ()) -> Any:
-        """Render Inspect chat messages (+ any ``tools``) to input ids — chat template
-        when the tokenizer has one, else newline-joined message text (e.g. gpt2)."""
-        if isinstance(input, str):
-            messages = [{"role": "user", "content": input}]
-        else:
-            messages = [
-                {"role": getattr(m, "role", "user"), "content": _message_text(m)} for m in input
-            ]
-        template = getattr(self._tokenizer, "chat_template", None)
-        if len(tools) and not template:
-            raise NotImplementedError(
-                f"tl_bridge: tool use needs a tool-aware chat template; {self.model_name} has "
-                "none. Serve a tool-capable instruct model for agentic evals."
-            )
-        if template:
-            kwargs: dict[str, Any] = {"add_generation_prompt": True}
-            if len(tools):
-                kwargs["tools"] = [_tool_schema(t) for t in tools]
-            token_ids = self._tokenizer.apply_chat_template(messages, **kwargs)
-        else:
-            token_ids = self._tokenizer("\n".join(m["content"] for m in messages)).input_ids
-        return torch.tensor([list(token_ids)], device=self._device)
 
     def _install_hooks(self, capture, intervene, raw, call_id: str) -> list:
         """Hook each block's pre/attn/mlp/post boundaries that need capture or intervention.
@@ -585,65 +517,3 @@ def _first_attr(obj: Any, names: tuple[str, ...]) -> Any:
         if found is not None:
             return found
     return None
-
-
-def _message_text(message: Any) -> str:
-    """Text of an Inspect chat message — its ``.text`` (handles multimodal content),
-    falling back to string content, else ''."""
-    text = getattr(message, "text", None)
-    if isinstance(text, str):
-        return text
-    content = getattr(message, "content", None)
-    return content if isinstance(content, str) else ""
-
-
-def _require_served(kind: str, served: frozenset[str], note: str, context: str) -> None:
-    """Raise if ``kind`` was gated by the structural self-check — without this the eval path
-    would silently return a derivation (e.g. ``resid_mid``) the driver path excludes."""
-    if kind not in served:
-        raise ValueError(
-            f"{context} requests kind {kind!r} which this model gated. {note} "
-            f"Served kinds: {sorted(served)}."
-        )
-
-
-def _tool_schema(tool: Any) -> dict[str, Any]:
-    """Inspect ``ToolInfo`` → OpenAI-style function schema for ``apply_chat_template``."""
-    params = tool.parameters
-    params = params.model_dump() if hasattr(params, "model_dump") else dict(params)
-    return {
-        "type": "function",
-        "function": {"name": tool.name, "description": tool.description, "parameters": params},
-    }
-
-
-# Tool-call blocks emitted by common instruct templates (Qwen/Hermes-style); the bare-JSON
-# fallback covers models that emit a single {"name", "arguments"} object.
-_TOOL_CALL_BLOCK = re.compile(r"<tool_call>\s*(\{.*?\})\s*</tool_call>", re.S)
-
-
-def _parse_tool_calls(text: str) -> list[ToolCall] | None:
-    """Best-effort parse of tool calls from a completion. Model-specific formats vary; this
-    handles ``<tool_call>{json}</tool_call>`` blocks and a single bare ``{name, arguments}``."""
-    blocks = _TOOL_CALL_BLOCK.findall(text)
-    if not blocks:
-        match = re.search(r"\{.*\}", text, re.S)
-        blocks = [match.group(0)] if match else []
-    calls = []
-    for block in blocks:
-        try:
-            obj = json.loads(block)
-        except (ValueError, TypeError):
-            continue
-        name = obj.get("name") if isinstance(obj, dict) else None
-        if not isinstance(name, str):
-            continue
-        args = obj.get("arguments") or obj.get("parameters") or {}
-        calls.append(
-            ToolCall(
-                id=uuid.uuid4().hex[:8],
-                function=name,
-                arguments=args if isinstance(args, dict) else {},
-            )
-        )
-    return calls or None

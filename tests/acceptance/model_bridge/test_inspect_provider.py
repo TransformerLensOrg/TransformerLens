@@ -148,21 +148,21 @@ class TestPreHookKwargs:
     CALL = "test_call"
 
     def _hook(self):
-        from transformer_lens.model_bridge.sources.inspect.provider import _pre_hook
+        from transformer_lens.model_bridge.sources.inspect.transformers_provider import _pre_hook
 
         return _pre_hook(
             layer=0, want_capture=True, spec={"op": "suppress"}, raw={}, call_id=self.CALL
         )
 
     def _scope(self):
-        from transformer_lens.model_bridge.sources.inspect.provider import (
+        from transformer_lens.model_bridge.sources.inspect.transformers_provider import (
             _current_call_id,
         )
 
         return _current_call_id.set(self.CALL)
 
     def test_positional_hidden_states(self):
-        from transformer_lens.model_bridge.sources.inspect.provider import (
+        from transformer_lens.model_bridge.sources.inspect.transformers_provider import (
             _current_call_id,
         )
 
@@ -176,7 +176,7 @@ class TestPreHookKwargs:
         assert new_kwargs == {}
 
     def test_kwarg_hidden_states(self):
-        from transformer_lens.model_bridge.sources.inspect.provider import (
+        from transformer_lens.model_bridge.sources.inspect.transformers_provider import (
             _current_call_id,
         )
 
@@ -238,7 +238,7 @@ class TestStructuralProbe:
         return Model()
 
     def test_sequential_offers_resid_mid(self):
-        from transformer_lens.model_bridge.sources.inspect.provider import (
+        from transformer_lens.model_bridge.sources.inspect.transformers_provider import (
             _detect_capabilities,
         )
 
@@ -248,7 +248,7 @@ class TestStructuralProbe:
         assert note == ""  # nothing gated
 
     def test_parallel_gates_resid_mid(self):
-        from transformer_lens.model_bridge.sources.inspect.provider import (
+        from transformer_lens.model_bridge.sources.inspect.transformers_provider import (
             _detect_capabilities,
         )
 
@@ -259,7 +259,7 @@ class TestStructuralProbe:
         assert "resid_mid" in note  # note explains the gate
 
     def test_nonlinear_residual_gates_resid_mid(self):
-        from transformer_lens.model_bridge.sources.inspect.provider import (
+        from transformer_lens.model_bridge.sources.inspect.transformers_provider import (
             _detect_capabilities,
         )
 
@@ -274,7 +274,7 @@ class TestStructuralProbe:
     def test_probe_leaves_global_rng_untouched(self):
         # The probe's attn perturbation must use a local generator — booting a model
         # should never reset the caller's torch RNG.
-        from transformer_lens.model_bridge.sources.inspect.provider import (
+        from transformer_lens.model_bridge.sources.inspect.transformers_provider import (
             _detect_capabilities,
         )
 
@@ -461,7 +461,7 @@ class TestAgenticToolCapture:
     parsing, and per-turn activation capture across a rollout."""
 
     def test_tool_call_parsing(self):
-        from transformer_lens.model_bridge.sources.inspect.provider import (
+        from transformer_lens.model_bridge.sources.inspect.transformers_provider import (
             _parse_tool_calls,
         )
 
@@ -599,7 +599,7 @@ class TestProviderReviewFixes:
         # The hook only fires for the call whose call_id matches the contextvar — so two
         # concurrent inspect_eval samples (each in their own contextvar copy) don't write
         # into each other's raw dicts.
-        from transformer_lens.model_bridge.sources.inspect.provider import (
+        from transformer_lens.model_bridge.sources.inspect.transformers_provider import (
             _current_call_id,
             _out_hook,
         )

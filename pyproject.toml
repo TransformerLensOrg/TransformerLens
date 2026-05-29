@@ -46,8 +46,11 @@
     # Registers our HF-backed activation-extraction provider with inspect_ai so
     # get_model("tl_bridge/<model>") resolves it once the package is installed.
     # (Named tl_bridge, not transformer_lens — inspect_ai ships a built-in by that name.)
+    # tl_bridge_vllm is the vLLM-backed sibling (lazy vllm import in __init__ so
+    # the module imports cleanly without vllm installed).
     [project.entry-points.inspect_ai]
-        tl_bridge="transformer_lens.model_bridge.sources.inspect.provider"
+        tl_bridge="transformer_lens.model_bridge.sources.inspect.transformers_provider"
+        tl_bridge_vllm="transformer_lens.model_bridge.sources.inspect.vllm_provider"
 
 [dependency-groups]
     demo=["gradio>=4.0.0", "orjson>=3.11.7,<4.0"]
