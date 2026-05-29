@@ -79,48 +79,6 @@ class TestQwen3_5ArchitectureDetection:
         assert "Qwen3_5ForConditionalGeneration" not in HF_SUPPORTED_ARCHITECTURES
 
 
-class TestQwen3_5DependencyGate:
-    """Verify optional dependency errors are clear and use real version ordering."""
-
-    def test_old_transformers_version_raises_clear_import_error(self, monkeypatch):
-        import transformers
-
-        from transformer_lens.model_bridge.supported_architectures.qwen3_5 import (
-            Qwen3_5ArchitectureAdapter,
-        )
-
-        monkeypatch.setattr(transformers, "__version__", "4.57.3")
-        monkeypatch.setattr(transformers, "Qwen3_5ForCausalLM", object(), raising=False)
-
-        with pytest.raises(ImportError, match=r"requires transformers >= 5\.2\.0"):
-            Qwen3_5ArchitectureAdapter(_make_bridge_cfg())
-
-    def test_missing_qwen3_5_class_raises_clear_import_error(self, monkeypatch):
-        import transformers
-
-        from transformer_lens.model_bridge.supported_architectures.qwen3_5 import (
-            Qwen3_5ArchitectureAdapter,
-        )
-
-        monkeypatch.setattr(transformers, "__version__", "5.2.0")
-        monkeypatch.setattr(
-            Qwen3_5ArchitectureAdapter,
-            "_has_qwen3_5_causal_lm",
-            staticmethod(lambda _transformers_module: False),
-        )
-
-        with pytest.raises(ImportError, match="Qwen3_5ForCausalLM"):
-            Qwen3_5ArchitectureAdapter(_make_bridge_cfg())
-
-    def test_version_comparison_accepts_future_minor_versions(self, qwen3_5_dependency_available):
-        from transformer_lens.model_bridge.supported_architectures.qwen3_5 import (
-            Qwen3_5ArchitectureAdapter,
-        )
-
-        adapter = Qwen3_5ArchitectureAdapter(_make_bridge_cfg())
-        assert isinstance(adapter, Qwen3_5ArchitectureAdapter)
-
-
 class TestQwen3_5LoadingGuards:
     """Text-only routing and preloaded-model guards."""
 

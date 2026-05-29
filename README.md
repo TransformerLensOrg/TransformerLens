@@ -10,7 +10,7 @@ CD](https://github.com/TransformerLensOrg/TransformerLens/actions/workflows/chec
 [![Docs
 CD](https://github.com/TransformerLensOrg/TransformerLens/actions/workflows/pages/pages-build-deployment/badge.svg)](https://github.com/TransformerLensOrg/TransformerLens/actions/workflows/pages/pages-build-deployment)
 
-A Library for Mechanistic Interpretability of Generative Language Models. Maintained by [Bryce Meyer](https://github.com/bryce13950) and created by [Neel Nanda](https://neelnanda.io/about)
+A Library for Mechanistic Interpretability of Generative Language Models. Maintained by [Bryce Meyer](https://github.com/bryce13950) and [Jonah Larson](https://github.com/jlarson4); created by [Neel Nanda](https://neelnanda.io/about)
 
 [![Read the Docs
 Here](https://img.shields.io/badge/-Read%20the%20Docs%20Here-blue?style=for-the-badge&logo=Read-the-Docs&logoColor=white&link=https://TransformerLensOrg.github.io/TransformerLens/)](https://TransformerLensOrg.github.io/TransformerLens/)
@@ -49,6 +49,8 @@ bridge = TransformerBridge.boot_transformers("gpt2", device="cpu")
 # Run the model and get logits and activations
 logits, activations = bridge.run_with_cache("Hello World")
 ```
+
+> Gated models (Llama, Mistral, Gemma, ...) require `HF_TOKEN` in your environment. See [Environment Variables](https://TransformerLensOrg.github.io/TransformerLens/content/getting_started.html#environment-variables) for the full list.
 
 `TransformerBridge` is the recommended 3.0 path and supports 50+ architectures. By default it preserves raw HuggingFace weights – logits and activations match HF, *not* legacy `HookedTransformer` (which folds LayerNorm and centers weights by default). Call `bridge.enable_compatibility_mode()` after booting for HookedTransformer-equivalent numerics. The legacy `HookedTransformer.from_pretrained` API is still available but deprecated — see the [Migrating to TransformerLens 3](https://TransformerLensOrg.github.io/TransformerLens/content/migrating_to_v3.html) guide.
 
@@ -149,7 +151,7 @@ If you have issues, questions, feature requests or bug reports, please search th
 it's already been answered, and if not please raise an issue!
 
 You're also welcome to join the open source mech interp community on
-[Slack](https://join.slack.com/t/opensourcemechanistic/shared_invite/zt-2n26nfoh1-TzMHrzyW6HiOsmCESxXtyw).
+[Slack](https://join.slack.com/t/opensourcemechanistic/shared_invite/zt-3z9o0hxjl-MDX9pbATO2qESOazNDLpdQ).
 Please use issues for concrete discussions about the package, and Slack for higher bandwidth
 discussions about eg supporting important new use cases, or if you want to make substantial
 contributions to the library and want a maintainer's opinion. We'd also love for you to come and

@@ -96,10 +96,7 @@ def sample_logits(
 
     Repetition penalty (HuggingFace-style) divides positive logits by the penalty value and multiplies negative logits by it for any token that has appeared in the sequence. A value of 1.0 means no penalty. Values > 1.0 discourage repetition. This is applied before temperature scaling.
 
-    #! TODO: Finish testing all the edge cases here. Useful testing code:
-    logits = torch.randn(4)
-    print(logits)
-    np.unique(np.array([sample_logits(logits, top_k=2).item() for i in range(1000)]), return_counts=True)
+    When ``top_k`` exceeds the vocabulary size it is clamped to the vocabulary size (matching HuggingFace), rather than raising an error.
     """
     if temperature == 0.0:
         # Greedy sampling - still apply repetition penalty before argmax
@@ -128,6 +125,10 @@ def sample_logits(
                 )
         if top_k is not None:
             assert top_k > 0, "top_k has to be greater than 0"
+            # Clamp top_k to the vocab size so a large value does not raise
+            # "selected index k out of range" (matches HuggingFace's
+            # TopKLogitsWarper, which does top_k = min(top_k, logits.size(-1))).
+            top_k = min(top_k, final_logits.shape[-1])
             top_logits, top_idx = final_logits.topk(top_k, dim=-1)
             indices_to_remove = final_logits < top_logits[..., -1].unsqueeze(-1)
             final_logits = final_logits.masked_fill(indices_to_remove, -float("inf"))

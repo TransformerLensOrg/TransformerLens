@@ -288,7 +288,12 @@ class FactoredMatrix:
         if isinstance(idx, int):
             sequence = list(sequence)
             if isinstance(sequence[idx], int):
-                sequence[idx] = slice(sequence[idx], sequence[idx] + 1)
+                value = sequence[idx]
+                # `value + 1` selects the single requested element, except when
+                # value == -1: there `value + 1 == 0` yields the empty slice(-1, 0).
+                # Use `None` as the stop so the final element is kept.
+                stop = value + 1 if value != -1 else None
+                sequence[idx] = slice(value, stop)
             sequence = tuple(sequence)
 
         return sequence

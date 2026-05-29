@@ -36,6 +36,10 @@ class AttentionBridge(GeneralizedComponent):
         "hook_v": "v.hook_out",
         "hook_z": "o.hook_in",
     }
+
+    # Override to False on variants without a pre-LN fork (e.g. MLA); skips
+    # the split-qkv HookPoints and the BlockBridge pre-ln1 capture.
+    supports_split_qkv_fork: bool = True
     property_aliases = {
         "W_Q": "q.weight",
         "W_K": "k.weight",
@@ -101,16 +105,15 @@ class AttentionBridge(GeneralizedComponent):
         # by cfg.use_attn_result; the HookPoint exists unconditionally so
         # run_with_cache key lookups never miss.
         self.hook_result = HookPoint()
-        # Independent residual copies feeding Q / K / V (and the shared
-        # `use_attn_in` fork). Fire at [batch, pos, H, d_model] only when
-        # cfg.use_split_qkv_input or cfg.use_attn_in is set. Placement is
-        # post-ln1 — see test_bridge_vs_hooked_transformer_patching.py
-        # (strict xfail) for the semantic divergence from legacy TL's pre-LN
-        # fork and the follow-up work it tracks.
-        self.hook_attn_in = HookPoint()
-        self.hook_q_input = HookPoint()
-        self.hook_k_input = HookPoint()
-        self.hook_v_input = HookPoint()
+        # Pre-ln1 fork hooks ([B, S, H, D]) gated by use_split_qkv_input /
+        # use_attn_in; fall back to post-ln1 if BlockBridge can't wire ln1. See #1317.
+        if self.supports_split_qkv_fork:
+            self.hook_attn_in = HookPoint()
+            self.hook_q_input = HookPoint()
+            self.hook_k_input = HookPoint()
+            self.hook_v_input = HookPoint()
+        self._captured_pre_ln_residual: Optional[torch.Tensor] = None
+        self._ln1_module: Optional[torch.nn.Module] = None
         if (
             hasattr(config, "positional_embedding_type")
             and config.positional_embedding_type == "rotary"
@@ -137,6 +140,27 @@ class AttentionBridge(GeneralizedComponent):
         layer_idx_raw = getattr(original_component, "layer_idx", None)
         if layer_idx_raw is not None:
             self._layer_idx = int(layer_idx_raw)
+
+    def _apply_ln1_per_head(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply ln1 to [B, S, H, D] with H folded into the batch. Identity if ln1 unwired.
+
+        Routes through the raw HF norm to avoid refiring ln1's internal hooks
+        per-head — deliberate divergence from legacy's *Pre sub-hook firing.
+        """
+        if self._ln1_module is None:
+            return x
+        b, s, h, d = x.shape
+        return self._ln1_module(x.reshape(b * s * h, d)).reshape(b, s, h, d)
+
+    def _fork_and_norm_per_head(
+        self, source: torch.Tensor, hook: HookPoint, n_heads: int
+    ) -> torch.Tensor:
+        """Repeat residual to [B, S, H, D], fire ``hook``, re-LN iff source is pre-LN."""
+        forked = einops.repeat(source, "b s d -> b s h d", h=n_heads).contiguous()
+        forked = hook(forked)
+        if self._captured_pre_ln_residual is not None:
+            forked = self._apply_ln1_per_head(forked)
+        return forked
 
     def setup_hook_compatibility(self) -> None:
         """Setup hook compatibility transformations to match HookedTransformer behavior.
@@ -676,7 +700,12 @@ class AttentionBridge(GeneralizedComponent):
             ):
                 hooked = hooked.to(dtype=target_dtype)
             args = (hooked,) + args[1:]
-        output = self.original_component(*args, **kwargs)
+        # try/finally so the captured tensor (and its autograd graph) is
+        # released even if original_component raises.
+        try:
+            output = self.original_component(*args, **kwargs)
+        finally:
+            self._captured_pre_ln_residual = None
         if isinstance(output, tuple) and len(output) >= 2:
             # output[0] is attention output
             # output[1] may be attention weights (pattern) or position_bias (T5)

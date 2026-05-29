@@ -21,6 +21,7 @@ from .HookedEncoder import HookedEncoder
 from .HookedAudioEncoder import HookedAudioEncoder
 from .HookedEncoderDecoder import HookedEncoderDecoder
 from .HookedTransformer import HookedTransformer
+from .HookedRootModule import HookedRootModule
 
 # LIT integration (optional, requires lit-nlp package)
 try:
@@ -31,6 +32,13 @@ except ImportError:
 
 from .SVDInterpreter import SVDInterpreter
 
+import os as _os  # noqa: E402
+
+if _os.environ.get("TRANSFORMERLENS_HF_RETRY") == "1":
+    from .utilities.hf_utils import enable_hf_retry as _enable_hf_retry  # noqa: E402
+
+    _enable_hf_retry()
+
 __all__ = [
     "HookedTransformerConfig",
     "FactoredMatrix",
@@ -39,6 +47,7 @@ __all__ = [
     "SVDInterpreter",
     "HookedEncoder",
     "HookedEncoderDecoder",
+    "HookedRootModule",
     "TransformerLensKeyValueCache",
     "TransformerLensKeyValueCacheEntry",
     "components",

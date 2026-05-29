@@ -3,7 +3,6 @@
 import pytest
 import torch
 
-from transformer_lens import HookedTransformer
 from transformer_lens.model_bridge.bridge import TransformerBridge
 
 
@@ -11,21 +10,17 @@ class TestBridgeCreationModes:
     """Test different modes of creating and configuring TransformerBridge."""
 
     @pytest.fixture
-    def reference_model(self):
-        """Create reference HookedTransformer."""
-        return HookedTransformer.from_pretrained("distilgpt2", device="cpu")
-
-    @pytest.fixture
     def test_text(self):
         """Test text for evaluation."""
         return "Hello world"
 
-    def test_bridge_no_processing(self, reference_model, test_text):
+    def test_bridge_no_processing(
+        self, distilgpt2_bridge_compat_no_processing, distilgpt2_hooked_processed, test_text
+    ):
         """Test bridge with no weight processing."""
-        bridge = TransformerBridge.boot_transformers("distilgpt2", device="cpu")
-        bridge.enable_compatibility_mode(no_processing=True)
+        bridge = distilgpt2_bridge_compat_no_processing
 
-        ref_loss = reference_model(test_text, return_type="loss")
+        ref_loss = distilgpt2_hooked_processed(test_text, return_type="loss")
         bridge_loss = bridge(test_text, return_type="loss")
 
         # With no processing, losses should be close but not identical
@@ -34,12 +29,13 @@ class TestBridgeCreationModes:
         ), f"Losses should be reasonably close: {ref_loss} vs {bridge_loss}"
         assert 3.0 < bridge_loss < 8.0, f"Bridge loss should be reasonable: {bridge_loss}"
 
-    def test_bridge_full_compatibility(self, reference_model, test_text):
+    def test_bridge_full_compatibility(
+        self, distilgpt2_bridge_compat, distilgpt2_hooked_processed, test_text
+    ):
         """Test bridge with full compatibility mode processing."""
-        bridge = TransformerBridge.boot_transformers("distilgpt2", device="cpu")
-        bridge.enable_compatibility_mode()
+        bridge = distilgpt2_bridge_compat
 
-        ref_loss = reference_model(test_text, return_type="loss")
+        ref_loss = distilgpt2_hooked_processed(test_text, return_type="loss")
         bridge_loss = bridge(test_text, return_type="loss")
 
         # With full processing, losses should be very close
@@ -47,9 +43,9 @@ class TestBridgeCreationModes:
         assert diff < 0.01, f"Processed bridge should match reference closely: {diff}"
         assert 3.0 < bridge_loss < 8.0, f"Bridge loss should be reasonable: {bridge_loss}"
 
-    def test_bridge_component_inspection(self):
+    def test_bridge_component_inspection(self, distilgpt2_bridge):
         """Test that bridge components can be inspected."""
-        bridge = TransformerBridge.boot_transformers("distilgpt2", device="cpu")
+        bridge = distilgpt2_bridge
 
         # Check that we can access the original model components
         assert hasattr(bridge.original_model, "transformer"), "Should have transformer"
@@ -68,20 +64,19 @@ class TestBridgeCreationModes:
         assert hasattr(bridge.original_model.transformer, "wpe"), "Should have position embedding"
         assert hasattr(bridge.original_model, "lm_head"), "Should have language model head"
 
-    def test_bridge_tokenizer_compatibility(self, reference_model):
+    def test_bridge_tokenizer_compatibility(self, distilgpt2_bridge, distilgpt2_hooked_processed):
         """Test that bridge tokenizer works like reference."""
-        bridge = TransformerBridge.boot_transformers("distilgpt2", device="cpu")
         test_text = "Hello world test"
 
         # Tokenize with both
-        ref_tokens = reference_model.to_tokens(test_text)
-        bridge_tokens = bridge.to_tokens(test_text)
+        ref_tokens = distilgpt2_hooked_processed.to_tokens(test_text)
+        bridge_tokens = distilgpt2_bridge.to_tokens(test_text)
 
         # Should produce identical tokens
         assert torch.equal(ref_tokens, bridge_tokens), "Tokenizers should produce identical results"
 
     def test_bridge_configuration_persistence(self):
-        """Test that bridge configuration persists correctly."""
+        # Fresh boot: tests the boot → enable_compat transition.
         bridge = TransformerBridge.boot_transformers("distilgpt2", device="cpu")
 
         # Test configuration before compatibility mode
@@ -94,17 +89,15 @@ class TestBridgeCreationModes:
         assert hasattr(bridge, "cfg"), "Configuration should persist after compatibility mode"
         assert bridge.cfg is not None, "Configuration should not be None"
 
-    def test_bridge_device_handling(self):
+    def test_bridge_device_handling(self, gpt2_bridge):
         """Test that bridge handles device specification correctly."""
-        # Test CPU device
-        bridge_cpu = TransformerBridge.boot_transformers("gpt2", device="cpu")
         assert (
-            next(bridge_cpu.original_model.parameters()).device.type == "cpu"
+            next(gpt2_bridge.original_model.parameters()).device.type == "cpu"
         ), "Model should be on CPU device"
 
         # Test that bridge can process text on correct device
         test_text = "Device test"
-        loss = bridge_cpu(test_text, return_type="loss")
+        loss = gpt2_bridge(test_text, return_type="loss")
         assert isinstance(loss, torch.Tensor), "Should return tensor"
         assert loss.device.type == "cpu", "Loss should be on CPU"
 
