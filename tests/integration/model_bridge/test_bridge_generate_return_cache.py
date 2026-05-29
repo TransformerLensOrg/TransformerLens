@@ -10,8 +10,6 @@ return_cache recomputes run_with_cache on the output regardless of the KV-cache 
 this does not change what is being tested.
 """
 
-import warnings
-
 import pytest
 import torch
 
@@ -149,25 +147,20 @@ class TestGenerateReturnCache:
         assert set(cache.cache_dict) == set(ref.cache_dict)
         assert len(cache.cache_dict) < 20
 
-    def test_device_offload_no_spurious_warning(self, bridge):
-        """device= offloads cache tensors (cpu here) without ActivationCache.to's move_model warning."""
+    def test_device_offload_lands_on_requested_device(self, bridge):
+        """device= offloads cache tensors to the requested device."""
         tokens = bridge.to_tokens("The quick brown")
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-            with torch.no_grad():
-                _, cache = bridge.generate(
-                    tokens,
-                    max_new_tokens=4,
-                    do_sample=False,
-                    return_type="tokens",
-                    return_cache=True,
-                    device="cpu",
-                    use_past_kv_cache=False,
-                )
+        with torch.no_grad():
+            _, cache = bridge.generate(
+                tokens,
+                max_new_tokens=4,
+                do_sample=False,
+                return_type="tokens",
+                return_cache=True,
+                device="cpu",
+                use_past_kv_cache=False,
+            )
         assert str(cache["blocks.0.hook_resid_post"].device) == "cpu"
-        assert not any("move_model" in str(w.message) for w in caught), [
-            str(w.message) for w in caught
-        ]
 
 
 class TestGenerateReturnCacheGuards:

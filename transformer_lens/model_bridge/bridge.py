@@ -2854,12 +2854,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         # cache is identical to run_with_cache(output_tokens) - all hook points, including
         # attention patterns. The guards above restrict this to single-sequence, decoder-only
         # text generation (see issue #697).
-        _, cache = self.run_with_cache(output_tokens, names_filter=names_filter)
-        if device is not None:
-            # Offload the cached activations to `device`. We move cache_dict directly rather
-            # than calling ActivationCache.to(device), which currently emits a spurious
-            # move_model DeprecationWarning.
-            cache.cache_dict = {key: value.to(device) for key, value in cache.cache_dict.items()}
+        _, cache = self.run_with_cache(output_tokens, names_filter=names_filter, device=device)
         return result, cache
 
     @torch.no_grad()
