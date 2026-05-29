@@ -421,6 +421,20 @@ class BridgeCore:
         else:
             raise AttributeError(f"Hook point '{hook_name}' not found on component")
 
+    def add_perma_hook(
+        self,
+        name: Union[str, Callable[[str], bool]],
+        hook_fn: Callable,
+        dir: Literal["fwd", "bwd"] = "fwd",
+    ) -> None:
+        """Add a permanent hook that survives ``reset_hooks()`` calls.
+
+        Convenience wrapper for ``add_hook(..., is_permanent=True)``. To remove,
+        call ``reset_hooks(including_permanent=True)`` or remove from the
+        underlying ``HookPoint`` directly.
+        """
+        self.add_hook(name, hook_fn, dir=dir, is_permanent=True)
+
     def reset_hooks(self, clear_contexts: bool = True) -> None:
         """Remove all hooks. Registry is canonical; nn.Module children walked additively."""
         for hp in self._hook_registry.values():
@@ -455,7 +469,7 @@ class BridgeCore:
 
         @contextmanager
         def _hooks_context() -> Iterator["BridgeCore"]:
-            added_hooks: List[Tuple[HookPoint, str]] = []
+            added_hooks: List[Tuple[HookPoint, Literal["fwd", "bwd"]]] = []
 
             def add_hook_to_point(
                 hook_point: HookPoint,
@@ -471,7 +485,7 @@ class BridgeCore:
                     hook_point.add_hook(hook_fn, dir=dir, alias_names=alias_names_list)
                 else:
                     hook_point.add_hook(hook_fn, dir=dir)
-                added_hooks.append((hook_point, name))
+                added_hooks.append((hook_point, dir))
 
             def apply_hooks(hook_list: List[Tuple[Any, Callable]], is_fwd: bool) -> None:
                 direction: Literal["fwd", "bwd"] = "fwd" if is_fwd else "bwd"
@@ -504,8 +518,8 @@ class BridgeCore:
                 yield self
             finally:
                 if reset_hooks_end:
-                    for hook_point, _ in added_hooks:
-                        hook_point.remove_hooks()
+                    for hook_point, direction in added_hooks:
+                        hook_point.remove_hooks(dir=direction)
 
         return _hooks_context()
 
@@ -530,7 +544,7 @@ class BridgeCore:
         (KV cache cleaned up on stop). ``remove_batch_dim`` squeezes/unsqueezes
         the batch dim around hook callbacks (batch_size==1 only).
         """
-        added_hooks: List[Tuple[HookPoint, str]] = []
+        added_hooks: List[Tuple[HookPoint, Literal["fwd", "bwd"]]] = []
         effective_stop_layer = None
         if stop_at_layer is not None and hasattr(self, "blocks"):
             if stop_at_layer < 0:
@@ -559,7 +573,7 @@ class BridgeCore:
                 hook_point.add_hook(hook_fn, dir=dir, alias_names=alias_names_list)
             else:
                 hook_point.add_hook(hook_fn, dir=dir)
-            added_hooks.append((hook_point, name))
+            added_hooks.append((hook_point, dir))
 
         if stop_at_layer is not None and hasattr(self, "blocks"):
             if stop_at_layer < 0:
@@ -629,8 +643,8 @@ class BridgeCore:
             return output
         finally:
             if reset_hooks_end:
-                for hook_point, _ in added_hooks:
-                    hook_point.remove_hooks()
+                for hook_point, direction in added_hooks:
+                    hook_point.remove_hooks(dir=direction)
 
     # ---- high-level execution: run_with_cache ----
 
@@ -668,6 +682,8 @@ class BridgeCore:
         """Run the model and cache activations. Returns ``(output, cache)``.
 
         ``stop_at_layer`` raises :class:`StopAtLayerException` to stop early.
+        ``device`` offloads cached activations (matches ``ActivationCache.to``); the
+        model and inputs stay where the caller put them.
         """
         aliases = build_alias_to_canonical_map(self.hook_dict)
 
@@ -776,37 +792,19 @@ class BridgeCore:
                     hook_dict[block_hook_name].add_hook(stop_hook)
                     hooks.append((hook_dict[block_hook_name], block_hook_name))
         filtered_kwargs = kwargs.copy()
-        if cache_device is not None:
-            if getattr(self.cfg, "n_devices", 1) > 1:
-                # Moving a dispatched model to a single device collapses accelerate's
-                # split and breaks its routing hooks. The cache will stay spread across
-                # the per-layer devices; callers can .to(cache_device) on cache entries
-                # after the fact if they need a single-device cache.
-                warnings.warn(
-                    f"run_with_cache(device={cache_device!r}) ignored: model is dispatched "
-                    f"across {self.cfg.n_devices} devices via device_map. Cached activations "
-                    "will remain on their per-layer devices.",
-                    stacklevel=2,
-                )
-            else:
-                try:
-                    # original_model / its setter exist on TransformerBridge; on
-                    # non-torch bridges the property raises AttributeError.
-                    underlying = getattr(self, "original_model")
-                    setattr(self, "original_model", underlying.to(cache_device))
-                except AttributeError:
-                    # Non-torch driver: cache_device doesn't apply to the model.
-                    warnings.warn(
-                        f"run_with_cache(device={cache_device!r}) ignored: driver does not "
-                        "expose a local model. Cached activations will stay on driver-managed "
-                        "devices.",
-                        stacklevel=2,
-                    )
-                if processed_args and isinstance(processed_args[0], torch.Tensor):
-                    processed_args = [processed_args[0].to(cache_device)] + list(processed_args[1:])
-                for key, value in filtered_kwargs.items():
-                    if isinstance(value, torch.Tensor):
-                        filtered_kwargs[key] = value.to(cache_device)
+        # ``cache_device`` is honored by ``make_cache_hook`` above (``tensor.detach().to(cache_device)``);
+        # the model and inputs stay where the caller put them, matching ``ActivationCache.to``.
+        if cache_device is not None and getattr(self.cfg, "n_devices", 1) > 1:
+            # Moving a dispatched model to a single device collapses accelerate's
+            # split and breaks its routing hooks. The cache will stay spread across
+            # the per-layer devices; callers can .to(cache_device) on cache entries
+            # after the fact if they need a single-device cache.
+            warnings.warn(
+                f"run_with_cache(device={cache_device!r}) ignored: model is dispatched "
+                f"across {self.cfg.n_devices} devices via device_map. Cached activations "
+                "will remain on their per-layer devices.",
+                stacklevel=2,
+            )
         try:
             if "output_attentions" not in filtered_kwargs:
                 filtered_kwargs["output_attentions"] = True
@@ -827,7 +825,7 @@ class BridgeCore:
             raise e
         finally:
             for hp, _ in hooks:
-                hp.remove_hooks()
+                hp.remove_hooks(dir="fwd")
         if self.compatibility_mode == True:
             reverse_aliases = {}
             for old_name, new_name in aliases.items():
