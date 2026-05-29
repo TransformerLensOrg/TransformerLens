@@ -93,6 +93,11 @@ def register() -> None:
         self._tl_buffers = {}
         self._tl_scale_buffers = {}
         self._tl_bias_buffers = {}
+        # Per-hook first-write-wins flag (compiled mode). 0 = open (next forward captures),
+        # 1 = closed (subsequent forwards self-copy and don't overwrite). Driver opens via
+        # tl_reset_capture_flags before any capture-needing call so a multi-token generate's
+        # prefill captures cleanly and decode steps don't overwrite row 0.
+        self._tl_capture_flags = {}
         self._tl_hook_handles = []
         # Batched-mode per-(req_id, hook) accumulators + global spec dict.
         self._tl_accum = {}
@@ -122,15 +127,20 @@ def register() -> None:
                 # to enable suppress/scale/add/set ops between forwards.
                 scale_buf = torch.ones(width, device=device, dtype=dtype)
                 bias_buf = torch.zeros(width, device=device, dtype=dtype)
+                # Default closed — opened explicitly by tl_reset_capture_flags for the
+                # next forward(s) that need to capture.
+                capture_flag = torch.ones(1, device=device, dtype=torch.int64)
                 self._tl_buffers[canonical_name] = capture_buf
                 self._tl_scale_buffers[canonical_name] = scale_buf
                 self._tl_bias_buffers[canonical_name] = bias_buf
+                self._tl_capture_flags[canonical_name] = capture_flag
                 handle = target.register_forward_hook(
                     _make_capture_hook(
                         capture_buf,
                         scale_buf,
                         bias_buf,
                         self._tl_fire_counter,
+                        capture_flag,
                         materialize=materialize,
                     )
                 )
@@ -145,10 +155,11 @@ def _make_capture_hook(
     scale_buf: torch.Tensor,
     bias_buf: torch.Tensor,
     fire_counter: torch.Tensor,
+    capture_flag: torch.Tensor,
     *,
     materialize: bool = False,
 ):
-    """GPU-only, dynamic-shape-safe affine + capture into pre-allocated buffers.
+    """GPU-only, dynamic-shape-safe affine + first-write-wins capture into pre-allocated buffers.
 
     When ``materialize=True`` (decoder layers), treat the module's output as
     vLLM's fused-residual ``(mlp_delta, residual)`` tuple: capture
@@ -156,6 +167,12 @@ def _make_capture_hook(
     blocks.{i}.hook_out semantics) and return ``(modified - residual, residual)``
     so the next layer's input_layernorm sees the same fused sum. Mutations
     propagate through both the capture and the downstream graph.
+
+    ``capture_flag`` (0 = open, 1 = closed) gates the buffer write — driver opens it
+    via ``tl_reset_capture_flags`` before each capture-needing forward, the hook closes
+    it on first fire, so a multi-token generate's prefill captures cleanly and decode
+    steps self-copy (no overwrite). Interventions still apply on every forward
+    regardless of the flag — the gate only affects the capture write.
 
     ``fire_counter`` is incremented per call for the fire-once check.
     """
@@ -169,7 +186,7 @@ def _make_capture_hook(
                 t = hidden + residual
                 modified = t * scale_buf + bias_buf
                 n = t.shape[0]
-                capture_buf.narrow(0, 0, n).copy_(modified)
+                _gated_capture(capture_buf, n, modified, capture_flag)
                 # Reconstructs ``modified`` in the next layer's fused norm: exact at
                 # identity, bounded fp16 error under intervention.
                 return (modified - residual, residual)
@@ -188,13 +205,28 @@ def _make_capture_hook(
         # narrow() keeps the dynamic shape; [:n] gets erased under fake-tensor
         # tracing and copy_ then sees the full buffer ("expand s72 -> max_n").
         n = t.shape[0]
-        capture_buf.narrow(0, 0, n).copy_(modified)
+        _gated_capture(capture_buf, n, modified, capture_flag)
         # Gate on isinstance, not truthy tuple_tail — a 1-tuple has an empty tail.
         if isinstance(output, tuple):
             return (modified,) + tuple_tail
         return modified
 
     return hook
+
+
+def _gated_capture(
+    capture_buf: torch.Tensor, n: Any, modified: torch.Tensor, capture_flag: torch.Tensor
+) -> None:
+    """First-write-wins via torch.where, compile-safe (no Python branching).
+
+    When ``capture_flag == 0`` (open), writes ``modified`` to ``capture_buf[:n]``.
+    When ``capture_flag == 1`` (closed), self-copies ``capture_buf[:n]`` (no-op).
+    Always closes the flag — driver explicitly opens it before each capture forward.
+    """
+    existing = capture_buf.narrow(0, 0, n)
+    to_write = torch.where(capture_flag.bool(), existing, modified)
+    capture_buf.narrow(0, 0, n).copy_(to_write)
+    capture_flag.fill_(1)
 
 
 def _make_batched_hook(

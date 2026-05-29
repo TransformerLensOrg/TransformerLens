@@ -354,7 +354,7 @@ class TestEvalNativeGeneration:
         from inspect_ai.model import get_model
 
         from transformer_lens.model_bridge.sources.inspect import (  # noqa: F401 register
-            provider,
+            transformers_provider,
         )
 
         return get_model("tl_bridge/gpt2", memoize=False).api
@@ -388,7 +388,7 @@ class TestEvalNativeGeneration:
         from inspect_ai.solver import generate
 
         from transformer_lens.model_bridge.sources.inspect import (  # noqa: F401 register
-            provider,
+            transformers_provider,
         )
 
         task = Task(
@@ -419,7 +419,7 @@ class TestCaptureInEval:
         from inspect_ai.solver import generate
 
         from transformer_lens.model_bridge.sources.inspect import (  # noqa: F401 register
-            provider,
+            transformers_provider,
         )
         from transformer_lens.model_bridge.sources.inspect.eval import (
             activations_column,
@@ -480,7 +480,7 @@ class TestAgenticToolCapture:
         from inspect_ai.tool import ToolInfo, ToolParams
 
         from transformer_lens.model_bridge.sources.inspect import (  # noqa: F401 register
-            provider,
+            transformers_provider,
         )
 
         api = get_model("tl_bridge/gpt2", memoize=False).api
@@ -499,7 +499,7 @@ class TestAgenticToolCapture:
         from inspect_ai.solver import generate
 
         from transformer_lens.model_bridge.sources.inspect import (  # noqa: F401 register
-            provider,
+            transformers_provider,
         )
         from transformer_lens.model_bridge.sources.inspect.eval import turn_activations
 
@@ -533,7 +533,7 @@ class TestEvalPathStructuralGating:
         from inspect_ai.model import get_model
 
         from transformer_lens.model_bridge.sources.inspect import (  # noqa: F401 register
-            provider,
+            transformers_provider,
         )
 
         with pytest.raises(ValueError, match="resid_mid"):
@@ -545,7 +545,7 @@ class TestEvalPathStructuralGating:
         from inspect_ai.model import ChatMessageUser, GenerateConfig, get_model
 
         from transformer_lens.model_bridge.sources.inspect import (  # noqa: F401 register
-            provider,
+            transformers_provider,
         )
 
         api = get_model(f"tl_bridge/{self.PARALLEL}", memoize=False).api
@@ -564,7 +564,7 @@ class TestEvalPathStructuralGating:
         from inspect_ai.model import get_model
 
         from transformer_lens.model_bridge.sources.inspect import (  # noqa: F401 register
-            provider,
+            transformers_provider,
         )
 
         with pytest.raises(ValueError, match="not a fireable hook"):

@@ -64,6 +64,9 @@ class TransformerLensTransformersModelAPI(_InspectModelAPIBase):
     here are the model load, the forward-hook capture machinery, and the structural probe.
     """
 
+    # Real per-position logits via direct HF forward — loss/both via RemoteBridge work.
+    provides_sequence_logits = True
+
     def __init__(
         self,
         model_name: str,

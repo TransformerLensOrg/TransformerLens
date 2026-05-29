@@ -91,6 +91,18 @@ class TestProtocolConformance:
         # Provider returns full-sequence logits, so loss/both are available.
         assert _driver().provides_sequence_logits is True
 
+    def test_tl_bridge_profile_can_disable_sequence_logits(self):
+        # The vLLM provider routes through TLBridgeProfile with provides_sequence_logits=False
+        # (set in source.py from api.provides_sequence_logits) so RemoteBridge.forward rejects
+        # loss/both — synthesized logits only cover the gen position; earlier positions are -inf.
+        driver = InspectDriver(
+            _fake_model(),
+            _adapter(),
+            tokenizer=None,
+            profile=profiles.TLBridgeProfile(provides_sequence_logits=False),
+        )
+        assert driver.provides_sequence_logits is False
+
 
 class TestHookSets:
     def test_full_residual_attn_mlp_set(self):

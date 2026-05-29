@@ -99,10 +99,14 @@ def boot_inspect(
         api = getattr(model, "api", None)
         kinds = None
         note = ""
+        # Default True for back-compat; vLLM provider sets False so RemoteBridge.forward
+        # rejects loss/both (otherwise loss over -inf earlier positions silently NaNs).
+        psl = True
         if api is not None:
             kinds = api.supported_kinds() if hasattr(api, "supported_kinds") else None
             note = api.capability_note() if hasattr(api, "capability_note") else ""
-        profile = profiles.TLBridgeProfile(supported_kinds=kinds)
+            psl = bool(getattr(api, "provides_sequence_logits", True))
+        profile = profiles.TLBridgeProfile(supported_kinds=kinds, provides_sequence_logits=psl)
         if note:
             warnings.warn(note, UserWarning, stacklevel=2)
     else:

@@ -95,6 +95,10 @@ class VLLMDriver(DriverBase):
         # Push intervention state (possibly empty) before generate — this also
         # resets stale interventions from prior forwards.
         self._llm.collective_rpc("tl_set_interventions", args=(intervene_specs,))
+        # Open per-hook capture gates; first-write-wins means a fresh prefill writes and
+        # subsequent forwards self-copy. Without this, repeated bridge.forward calls would
+        # see the gate closed from the prior call and read stale buffers.
+        self._llm.collective_rpc("tl_reset_capture_flags")
         # Full-vocab logprobs → position -1 of the synthesized logits (see _n_logprobs).
         outputs = self._llm.generate(
             prompts=[TokensPrompt(prompt_token_ids=ids_list)],

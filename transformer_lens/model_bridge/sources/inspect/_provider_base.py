@@ -104,6 +104,13 @@ class _InspectModelAPIBase(ModelAPI):
     _capability_note: str
     _eval_capture: dict[str, str]
 
+    # Class-level capability flag, read by source.py → TLBridgeProfile → InspectDriver →
+    # RemoteBridge.forward to gate return_type ∈ {loss, both}. Must be set by every
+    # subclass: True iff every position 0..n-1 of metadata['tl_logits'] holds real values
+    # (not -inf padding). HF does a true forward → full logits; vLLM's sampler bypasses
+    # lm_head and only the generated position has logprobs, so vLLM=False.
+    provides_sequence_logits: bool
+
     # --- subclass contract -------------------------------------------------------------
 
     def _generate_capture(

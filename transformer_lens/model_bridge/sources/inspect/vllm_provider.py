@@ -81,6 +81,11 @@ def transformer_lens_vllm_provider():
 class TransformerLensVLLMModelAPI(_InspectModelAPIBase):
     """vLLM-backed Inspect provider. See module docstring for scope per increment."""
 
+    # vLLM's sampler bypasses lm_head; _synthesize_logits populates only the gen position,
+    # so earlier positions are -inf and loss would be NaN. RemoteBridge.forward must reject
+    # return_type ∈ {loss, both} — read by source.py → TLBridgeProfile → InspectDriver.
+    provides_sequence_logits = False
+
     def __init__(
         self,
         model_name: str,
@@ -221,9 +226,12 @@ class TransformerLensVLLMModelAPI(_InspectModelAPIBase):
         want_logits = bool(extra_args.get("return_logits", True))
 
         # Push intervention state (possibly empty — also resets stale interventions from
-        # a prior call). Then run a single-token prefill; vLLM's prefill populates the
-        # capture buffers we registered via plugin.configure.
+        # a prior call), open the per-hook capture gates (so the prefill below writes,
+        # and any later forward — should this driver be reused — would self-copy until
+        # the next explicit reset). Then run a single-token prefill; vLLM's prefill
+        # populates the capture buffers we registered via plugin.configure.
         self._llm.collective_rpc("tl_set_interventions", args=(intervention_specs,))
+        self._llm.collective_rpc("tl_reset_capture_flags")
         outputs = self._llm.generate(
             prompts=[TokensPrompt(prompt_token_ids=list(input_ids))],
             sampling_params=SamplingParams(
@@ -265,15 +273,25 @@ class TransformerLensVLLMModelAPI(_InspectModelAPIBase):
 
     def _generate_eval(self, input: Any, config: GenerateConfig, tools: Any):
         """vLLM generation: chat input → ``llm.generate`` → completion + Logprobs + usage.
-        If ``model_args['capture']`` was set, snapshots prompt activations via a single-
-        token forward before the eval generate (vLLM's decode steps overwrite buffer row 0,
-        so the HF provider's "install-around-generate" trick can't apply here)."""
+        If ``model_args['capture']`` was set, opens per-hook capture gates before the eval
+        generate so prefill captures the prompt activations and decode steps self-copy
+        (first-write-wins on the worker; no separate forward — see plugin._gated_capture)."""
         from vllm import SamplingParams
         from vllm.inputs import TokensPrompt
 
+        # Worker-side intervention buffers are persistent: any prior capture-path call that
+        # pushed specs (e.g. bridge.forward(intervene=...)) would still be applied here
+        # without a reset. The HF provider installs hooks per-call so it's leak-immune.
+        self._llm.collective_rpc("tl_set_interventions", args=({},))
         ids = self._messages_to_ids(input, tools)[0].tolist()
         prompt_len = len(ids)
-        eval_metadata = self._snapshot_eval_capture(ids, prompt_len) if self._eval_capture else {}
+        if self._eval_capture:
+            if prompt_len > self._max_num_batched_tokens:
+                raise ValueError(
+                    f"Prompt length {prompt_len} exceeds max_num_batched_tokens="
+                    f"{self._max_num_batched_tokens}; per-turn capture cannot snapshot it."
+                )
+            self._llm.collective_rpc("tl_reset_capture_flags")
         max_new = int(config.max_tokens) if config.max_tokens else 16
         temperature = float(config.temperature) if config.temperature is not None else 0.0
 
@@ -320,6 +338,22 @@ class TransformerLensVLLMModelAPI(_InspectModelAPIBase):
         else:
             stop_reason = "unknown"
 
+        # Per-turn capture lands in metadata. First-write-wins gating made prefill the
+        # only forward that wrote to the capture buffer, so we read it now (decode steps
+        # left rows 1..prompt_len-1 untouched and row 0 self-copied).
+        eval_metadata: dict[str, Any] = {}
+        if self._eval_capture:
+            capture_names = list(self._eval_capture.values())
+            worker_captures = self._llm.collective_rpc(
+                "tl_read_captures", args=([prompt_len], capture_names)
+            )[0]
+            captured_wire: dict[str, np.ndarray] = {}
+            for wk, name in self._eval_capture.items():
+                tensor = worker_captures.get(name)
+                if tensor is not None:
+                    captured_wire[wk] = tensor.detach().float().cpu().numpy()
+            eval_metadata = {"activations": wire.encode_activations(captured_wire)}
+
         return ModelOutput(
             model=self.model_name,
             choices=[
@@ -334,35 +368,6 @@ class TransformerLensVLLMModelAPI(_InspectModelAPIBase):
             ),
             metadata=eval_metadata or None,
         )
-
-    def _snapshot_eval_capture(self, ids: list[int], prompt_len: int) -> dict[str, Any]:
-        """Snapshot the prompt's per-turn capture before an eval generate. Pushes empty
-        interventions (resets stale state), runs a single-token forward, reads the buffer
-        cleanly. ``self._eval_capture`` is ``{wire_key: hook_name}``; returns the
-        ``metadata`` payload the InspectDriver consumes (same wire format as the capture path)."""
-        from vllm import SamplingParams
-        from vllm.inputs import TokensPrompt
-
-        if prompt_len > self._max_num_batched_tokens:
-            raise ValueError(
-                f"Prompt length {prompt_len} exceeds max_num_batched_tokens="
-                f"{self._max_num_batched_tokens}; per-turn capture cannot snapshot it."
-            )
-        capture_names = list(self._eval_capture.values())
-        self._llm.collective_rpc("tl_set_interventions", args=({},))
-        self._llm.generate(
-            prompts=[TokensPrompt(prompt_token_ids=list(ids))],
-            sampling_params=SamplingParams(max_tokens=1, temperature=0.0),
-        )
-        worker_captures = self._llm.collective_rpc(
-            "tl_read_captures", args=([prompt_len], capture_names)
-        )[0]
-        captured_wire: dict[str, np.ndarray] = {}
-        for wk, name in self._eval_capture.items():
-            tensor = worker_captures.get(name)
-            if tensor is not None:
-                captured_wire[wk] = tensor.detach().float().cpu().numpy()
-        return {"activations": wire.encode_activations(captured_wire)}
 
     def _logprob_from_dict(self, token_id: int, step_logprobs: Any, top_n: Any) -> Logprob:
         """vLLM per-step ``{token_id: Logprob(logprob, rank, decoded_token)}`` →

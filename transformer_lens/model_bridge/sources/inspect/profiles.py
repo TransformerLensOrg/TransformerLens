@@ -27,10 +27,13 @@ class TLBridgeProfile:
     ``resid_mid`` dropped for parallel/norm-variant archs); ``None`` exposes all boundaries.
     """
 
+    # Class-level default — overridden per-instance via __init__ for backends (vLLM) that
+    # only populate the gen position; lets RemoteBridge.forward reject loss/both there.
     provides_sequence_logits = True
 
-    def __init__(self, supported_kinds: Any = None) -> None:
+    def __init__(self, supported_kinds: Any = None, provides_sequence_logits: bool = True) -> None:
         self._kinds = supported_kinds
+        self.provides_sequence_logits = provides_sequence_logits
 
     def supported_hooks(self, n_layers: int) -> frozenset[str]:
         return hooks.supported_hook_points(n_layers, self._kinds)

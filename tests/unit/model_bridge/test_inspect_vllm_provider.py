@@ -177,6 +177,13 @@ class TestConstruction:
         assert provider.supported_kinds() == frozenset({"resid_post", "attn_out", "mlp_out"})
         assert "resid_pre" in provider.capability_note()
 
+    def test_provides_sequence_logits_is_false(self, monkeypatch):
+        # vLLM's sampler bypasses lm_head; _synthesize_logits only populates the gen
+        # position, so RemoteBridge.forward(return_type='loss'|'both') would NaN. The
+        # class attr is the signal source.py reads to set TLBridgeProfile's flag.
+        provider, _ = _make_provider(monkeypatch, MagicMock())
+        assert provider.provides_sequence_logits is False
+
 
 class TestGenerateEval:
     def _config(self, **overrides):
@@ -201,6 +208,20 @@ class TestGenerateEval:
         assert choice.stop_reason == "max_tokens"  # vLLM 'length' → inspect 'max_tokens'
         assert out.usage.output_tokens == 3
         assert out.usage.total_tokens == out.usage.input_tokens + 3
+
+    def test_generate_eval_resets_interventions_first(self, monkeypatch):
+        # Worker intervention buffers are persistent across calls; a prior capture-path
+        # forward(intervene=...) would leak into the eval generate without an explicit
+        # identity reset. Contract: tl_set_interventions({}) fires before llm.generate.
+        llm = MagicMock()
+        llm.generate.return_value = [_make_request_output([65], finish_reason="length")]
+        provider, _ = _make_provider(monkeypatch, llm)
+        asyncio.run(provider.generate(self._user_msg(), None, None, self._config(max_tokens=1)))
+        # First rpc call must be the identity reset (no _eval_capture configured ⇒ exactly one).
+        rpc_calls = llm.collective_rpc.call_args_list
+        assert rpc_calls, "eval path must call tl_set_interventions before generate"
+        assert rpc_calls[0].args[0] == "tl_set_interventions"
+        assert rpc_calls[0].kwargs["args"] == ({},)
 
     def test_generate_eval_finish_stop_maps_to_stop(self, monkeypatch):
         llm = MagicMock()
@@ -311,14 +332,15 @@ class TestCapturePath:
                 ),
             )
         )
-        # tl_set_interventions runs first (resets stale state), then the read.
+        # rpc order: set_interventions (resets stale + applies new) → reset_capture_flags
+        # (opens the first-write-wins gate for the prefill below) → read.
         methods = [c.args[0] for c in llm.collective_rpc.call_args_list]
-        assert methods == ["tl_set_interventions", "tl_read_captures"]
+        assert methods == ["tl_set_interventions", "tl_reset_capture_flags", "tl_read_captures"]
         # Specs translated wire key → TL hook name (worker is keyed by hook name).
         set_call = llm.collective_rpc.call_args_list[0]
         assert set_call.kwargs["args"] == ({"blocks.0.hook_out": {"op": "suppress"}},)
         # Read takes [prompt_lens] + hook names so the worker slices the GPU buffer.
-        read_call = llm.collective_rpc.call_args_list[1]
+        read_call = llm.collective_rpc.call_args_list[2]
         assert read_call.kwargs["args"] == ([4], ["blocks.0.hook_out"])
 
     def test_capture_returns_wire_format_activations(self, monkeypatch):
@@ -484,24 +506,29 @@ class TestPerTurnCapture:
 
         return TransformerLensVLLMModelAPI("any/model", device="cpu", capture=capture), llm
 
-    def test_eval_capture_snapshots_before_generate(self, monkeypatch):
+    def test_eval_capture_during_generate_no_extra_forward(self, monkeypatch):
         from inspect_ai.model import GenerateConfig
 
         provider, llm = self._make_provider_with_capture(monkeypatch, ["blocks.0.hook_out"])
         out = asyncio.run(
             provider.generate(self._user_msg(), None, None, GenerateConfig(max_tokens=4))
         )
-        # Snapshot fires: empty interventions (resets stale state) then a read.
+        # rpc order: leak-guard reset → open capture gates → read after the eval generate.
+        # Prefill of the eval generate captures (first-write-wins); decode steps self-copy.
         methods = [c.args[0] for c in llm.collective_rpc.call_args_list]
-        assert methods == ["tl_set_interventions", "tl_read_captures"]
-        set_call = llm.collective_rpc.call_args_list[0]
-        assert set_call.kwargs["args"] == ({},)
-        # llm.generate called twice: once for the snapshot, once for the real eval.
-        assert llm.generate.call_count == 2
-        # Snapshot lands in metadata as the same wire format the InspectDriver consumes.
+        assert methods == [
+            "tl_set_interventions",
+            "tl_reset_capture_flags",
+            "tl_read_captures",
+        ]
+        leak_guard = llm.collective_rpc.call_args_list[0]
+        assert leak_guard.kwargs["args"] == ({},)
+        # Single llm.generate now — the per-turn capture rides the same forward (was 2 before).
+        assert llm.generate.call_count == 1
+        # Capture lands in metadata as the same wire format the InspectDriver consumes.
         assert out.metadata is not None and "0:resid_post" in out.metadata["activations"]
 
-    def test_no_capture_no_metadata_and_no_rpc(self, monkeypatch):
+    def test_no_capture_only_leak_guard_rpc(self, monkeypatch):
         from inspect_ai.model import GenerateConfig
 
         llm = MagicMock()
@@ -510,9 +537,13 @@ class TestPerTurnCapture:
         out = asyncio.run(
             provider.generate(self._user_msg(), None, None, GenerateConfig(max_tokens=1))
         )
-        # No model_args['capture'] → no snapshot, no metadata, no collective_rpc fires.
+        # No per-turn capture ⇒ no snapshot, no metadata. The only rpc is the identity
+        # reset guarding against stale interventions leaking from a prior capture-path call.
         assert out.metadata is None
-        assert not llm.collective_rpc.called
+        rpc_calls = llm.collective_rpc.call_args_list
+        assert len(rpc_calls) == 1
+        assert rpc_calls[0].args[0] == "tl_set_interventions"
+        assert rpc_calls[0].kwargs["args"] == ({},)
 
     def test_eval_capture_emits_eval_completion_too(self, monkeypatch):
         # The eval still returns the real eval generate's completion + usage — snapshot is
