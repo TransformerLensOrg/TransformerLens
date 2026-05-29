@@ -941,7 +941,8 @@ def run_benchmark_suite(
                 model_name, trust_remote_code=trust_remote_code, token=_hf_token()
             )
             if not hasattr(hf_config, "pad_token_id") or "pad_token_id" not in hf_config.__dict__:
-                hf_config.pad_token_id = getattr(hf_config, "eos_token_id", None)
+                eos = getattr(hf_config, "eos_token_id", None)
+                hf_config.pad_token_id = eos[0] if isinstance(eos, (list, tuple)) else eos
                 hf_kwargs["config"] = hf_config
             if trust_remote_code:
                 hf_kwargs["trust_remote_code"] = True
