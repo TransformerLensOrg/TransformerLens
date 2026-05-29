@@ -35,8 +35,7 @@ def boot_inspect(
     ``tl_bridge`` provider (residual/attn/mlp capture + full affine interventions +
     full-sequence logits); ``"vllm-lens"`` targets a running vllm-lens vLLM provider
     (residual-only, additive-steering-only) — wire-aligned with its documented format,
-    but not yet verified against a live provider. (``transformer_lens`` is inspect_ai's
-    own built-in provider — a different thing — so ours is ``tl_bridge``.)
+    but not yet verified against a live provider.
 
     Fireable hooks (``tl_bridge``, TransformerBridge-native names): ``blocks.{i}.hook_in``
     (resid_pre) / ``ln2.hook_in`` (resid_mid) /

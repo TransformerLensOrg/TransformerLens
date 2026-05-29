@@ -37,6 +37,25 @@ PARITY_HOOKS = [
     "blocks.11.hook_out",
 ]
 
+# Boundary kind -> TransformerBridge-native hook suffix.
+KIND_SUFFIX = {
+    "resid_pre": "hook_in",
+    "resid_mid": "ln2.hook_in",
+    "resid_post": "hook_out",
+    "attn_out": "attn.hook_out",
+    "mlp_out": "mlp.hook_out",
+}
+
+# Token-free tiny-random checkpoints, one per structural-check code path: standard
+# sequential (nothing gated), parallel-residual (resid_mid gated by the causal probe),
+# post-norm (resid_mid gated by the linear-identity probe). Pins cross-family behavior
+# so a detector/load-path regression on non-gpt2 archs fails CI instead of shipping silently.
+STRUCTURAL_FAMILIES = [
+    ("hf-internal-testing/tiny-random-LlamaForCausalLM", frozenset()),
+    ("hf-internal-testing/tiny-random-GPTJForCausalLM", frozenset({"resid_mid"})),
+    ("hf-internal-testing/tiny-random-Gemma2ForCausalLM", frozenset({"resid_mid"})),
+]
+
 
 @pytest.fixture(scope="module")
 def hf_bridge():
@@ -56,8 +75,8 @@ def inspect_bridge():
 
 @pytest.fixture(scope="module")
 def tokens(hf_bridge):
-    # Shared token ids (BOS-prepended, the TL convention) so the only variable is
-    # the backend path — RemoteBridge.to_tokens doesn't prepend BOS on its own.
+    # Shared token ids so the only variable under test is the backend path, not
+    # tokenization (to_tokens BOS parity is covered by test_string_input_parity).
     return hf_bridge.to_tokens(PROMPT)
 
 
@@ -190,7 +209,9 @@ class TestStructuralProbe:
         return Model()
 
     def test_sequential_offers_resid_mid(self):
-        from transformer_lens.model_bridge.sources.inspect.provider import _detect_capabilities
+        from transformer_lens.model_bridge.sources.inspect.provider import (
+            _detect_capabilities,
+        )
 
         m = self._toy_model()  # standard sequential, linear residual
         kinds, note = _detect_capabilities(m, m.layers)
@@ -198,7 +219,9 @@ class TestStructuralProbe:
         assert note == ""  # nothing gated
 
     def test_parallel_gates_resid_mid(self):
-        from transformer_lens.model_bridge.sources.inspect.provider import _detect_capabilities
+        from transformer_lens.model_bridge.sources.inspect.provider import (
+            _detect_capabilities,
+        )
 
         m = self._toy_model(parallel=True)  # mlp reads block input, not attn output
         kinds, note = _detect_capabilities(m, m.layers)
@@ -207,7 +230,9 @@ class TestStructuralProbe:
         assert "resid_mid" in note  # note explains the gate
 
     def test_nonlinear_residual_gates_resid_mid(self):
-        from transformer_lens.model_bridge.sources.inspect.provider import _detect_capabilities
+        from transformer_lens.model_bridge.sources.inspect.provider import (
+            _detect_capabilities,
+        )
 
         # Sequential (attn feeds mlp) but outputs are scaled before the residual add, so
         # resid_post != resid_pre + attn_out + mlp_out — resid_mid must still be gated.
@@ -216,3 +241,44 @@ class TestStructuralProbe:
         assert "resid_mid" not in kinds
         assert {"resid_pre", "resid_post", "attn_out", "mlp_out"} <= kinds
         assert "resid_mid" in note
+
+
+class TestStructuralCheckAcrossFamilies:
+    """Real tiny-random models, one per detector code path, run in CI (no token, seconds).
+    Locks both the gating decision and offered-boundary parity vs boot_transformers, so a
+    structural-check or load-path regression on non-gpt2 architectures fails here."""
+
+    @pytest.mark.parametrize("model_id,expected_gated", STRUCTURAL_FAMILIES)
+    def test_gating_and_parity(self, model_id, expected_gated):
+        from transformer_lens.model_bridge.remote_bridge import RemoteBridge
+        from transformer_lens.model_bridge.transformer_bridge import TransformerBridge
+
+        # Matched fp32 + eager attention (boot_inspect's defaults) so the only variable
+        # is the boundary mapping.
+        hf = TransformerBridge.boot_transformers(model_id, device="cpu", dtype=torch.float32)
+        inspect = RemoteBridge.boot_inspect(model_id, dtype=torch.float32)
+        try:
+            supported = inspect._driver.supported_hook_points
+            offered = {k for k, suf in KIND_SUFFIX.items() if f"blocks.0.{suf}" in supported}
+            gated = frozenset(set(KIND_SUFFIX) - offered)
+            assert gated == expected_gated, f"{model_id}: gated {sorted(gated)}"
+            # gated kinds are reported non-fireable, not silently dropped
+            for kind in expected_gated:
+                assert f"blocks.0.{KIND_SUFFIX[kind]}" in inspect._driver.non_fireable_hook_points
+
+            n_layers = int(hf.cfg.n_layers)
+            toks = hf.to_tokens(PROMPT)
+            _, hf_cache = hf.run_with_cache(toks)
+            _, i_cache = inspect.run_with_cache(toks)
+            assert int(hf.forward(toks)[0, -1].argmax()) == int(
+                inspect.forward(toks)[0, -1].argmax()
+            )
+            for layer in sorted({0, n_layers - 1}):
+                for kind in offered:
+                    hk = f"blocks.{layer}.{KIND_SUFFIX[kind]}"
+                    a, b = hf_cache[hk].float(), i_cache[hk].float()
+                    assert torch.allclose(
+                        a, b, atol=1e-3, rtol=1e-3
+                    ), f"{model_id} {hk} diverges: {(a - b).abs().max().item():.2e}"
+        finally:
+            inspect.close()
