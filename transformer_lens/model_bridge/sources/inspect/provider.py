@@ -301,8 +301,10 @@ def _resid_mid_derivable(model: Any, block: Any, attn: Any, mlp: Any) -> bool:
     def perturb_attn(_m: Any, _i: Any, out: Any):  # type: ignore[no-untyped-def]
         is_tuple = isinstance(out, tuple)
         h = out[0] if is_tuple else out
-        torch.manual_seed(0)
-        h = h + torch.randn_like(h)
+        # Local generator: the probe must not reset the caller's global RNG. Non-uniform
+        # noise so layernorm's mean-subtraction can't cancel it (a constant would).
+        gen = torch.Generator(device=h.device).manual_seed(0)
+        h = h + torch.empty_like(h).normal_(generator=gen)
         return (h, *out[1:]) if is_tuple else h
 
     ids = torch.tensor([[0, 1, 2]], device=next(model.parameters()).device)

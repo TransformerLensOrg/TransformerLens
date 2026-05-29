@@ -242,6 +242,16 @@ class TestStructuralProbe:
         assert {"resid_pre", "resid_post", "attn_out", "mlp_out"} <= kinds
         assert "resid_mid" in note
 
+    def test_probe_leaves_global_rng_untouched(self):
+        # The probe's attn perturbation must use a local generator — booting a model
+        # should never reset the caller's torch RNG.
+        from transformer_lens.model_bridge.sources.inspect.provider import _detect_capabilities
+
+        m = self._toy_model()
+        before = torch.get_rng_state()
+        _detect_capabilities(m, m.layers)
+        assert torch.equal(torch.get_rng_state(), before)
+
 
 class TestStructuralCheckAcrossFamilies:
     """Real tiny-random models, one per detector code path, run in CI (no token, seconds).
