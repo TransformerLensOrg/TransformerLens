@@ -90,9 +90,20 @@ class TestInspectParity:
         assert torch.allclose(hf_loss, i_loss, atol=1e-3)
 
 
+# Each intervenable boundary kind at layer 0, with whether suppress flips the top token
+# (mlp_out shifts the logits but not the argmax at layer 0). resid_pre exercises the
+# forward_pre_hook path; the others the forward_hook path.
+INTERVENE_HOOKS = [
+    ("blocks.0.hook_in", True),  # resid_pre
+    ("blocks.0.attn.hook_out", True),  # attn_out
+    ("blocks.0.mlp.hook_out", False),  # mlp_out
+    ("blocks.0.hook_out", True),  # resid_post
+]
+
+
 class TestInspectInterventions:
-    def test_suppress_zeros_hook_and_shifts_argmax(self, inspect_bridge, tokens):
-        hook = "blocks.0.hook_out"  # resid_post
+    @pytest.mark.parametrize("hook,flips_argmax", INTERVENE_HOOKS)
+    def test_suppress_applies_at_each_boundary(self, inspect_bridge, tokens, hook, flips_argmax):
         clean_logits = inspect_bridge.forward(tokens)
         clean_argmax = int(clean_logits[0, -1].argmax())
 
@@ -100,11 +111,34 @@ class TestInspectInterventions:
             tokens, intervene={hook: {"op": "suppress"}}
         )
         assert supp_cache[hook].abs().max().item() == 0.0  # capture reflects the intervention
-        assert (
-            int(supp_logits[0, -1].argmax()) != clean_argmax
-        )  # zeroing layer 0 changes the output
+        assert not torch.allclose(supp_logits, clean_logits)  # and it propagated to the logits
+        if flips_argmax:
+            assert int(supp_logits[0, -1].argmax()) != clean_argmax
 
     def test_intervention_reverts(self, inspect_bridge, tokens):
         clean_argmax = int(inspect_bridge.forward(tokens)[0, -1].argmax())
         inspect_bridge.forward(tokens, intervene={"blocks.0.hook_out": {"op": "suppress"}})
         assert int(inspect_bridge.forward(tokens)[0, -1].argmax()) == clean_argmax  # not sticky
+
+
+class TestPreHookKwargs:
+    """The resid_pre pre-hook runs with_kwargs=True so it modifies the right tensor
+    whether hidden_states arrives positionally (args[0]) or as a kwarg."""
+
+    def _hook(self):
+        from transformer_lens.model_bridge.sources.inspect.provider import _pre_hook
+
+        return _pre_hook(layer=0, want_capture=True, spec={"op": "suppress"}, raw={})
+
+    def test_positional_hidden_states(self):
+        hidden = torch.ones(1, 2, 4)
+        new_args, new_kwargs = self._hook()(None, (hidden, "mask"), {})
+        assert torch.allclose(new_args[0], torch.zeros_like(hidden)) and new_args[1] == "mask"
+        assert new_kwargs == {}
+
+    def test_kwarg_hidden_states(self):
+        hidden = torch.ones(1, 2, 4)
+        new_args, new_kwargs = self._hook()(None, (), {"hidden_states": hidden, "use_cache": True})
+        assert new_args == ()
+        assert torch.allclose(new_kwargs["hidden_states"], torch.zeros_like(hidden))  # suppressed
+        assert new_kwargs["use_cache"] is True  # other kwargs preserved

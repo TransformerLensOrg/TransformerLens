@@ -135,6 +135,29 @@ class TestNormalizeInputIds:
         with pytest.raises(NotImplementedError, match="batch_size=1"):
             InspectDriver._normalize_input_ids(torch.tensor([[1, 2], [3, 4]]))
 
+    def test_cuda_like_tensor_moved_to_cpu(self):
+        # np.asarray can't read CUDA memory; the torch-free driver must duck-type
+        # .detach().cpu() first. Simulate: __array__ raises (as a CUDA tensor would),
+        # cpu() yields a real ndarray.
+        class FakeCuda:
+            def __init__(self, data):
+                self._data = data
+                self.moved = False
+
+            def detach(self):
+                return self
+
+            def cpu(self):
+                self.moved = True
+                return np.asarray(self._data)
+
+            def __array__(self, *a, **k):
+                raise TypeError("can't convert cuda:0 device tensor to numpy")
+
+        fake = FakeCuda([[1, 2, 3]])
+        assert InspectDriver._normalize_input_ids(fake) == [1, 2, 3]
+        assert fake.moved
+
 
 class TestForward:
     def test_assembles_named_captures_and_full_logits(self):

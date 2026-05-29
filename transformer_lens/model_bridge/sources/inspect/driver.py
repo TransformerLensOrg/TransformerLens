@@ -175,6 +175,10 @@ class InspectDriver(DriverBase):
     @staticmethod
     def _normalize_input_ids(input_ids: Any) -> list[int]:
         """Coerce to a flat list[int] (batch_size=1 only); numpy/list/tensor, no torch import."""
+        # Duck-type a torch tensor onto CPU first — np.asarray can't read CUDA memory,
+        # and a torch-free driver can't import torch to .cpu() it.
+        if hasattr(input_ids, "detach") and hasattr(input_ids, "cpu"):
+            input_ids = input_ids.detach().cpu()
         arr = np.asarray(input_ids)
         if arr.ndim == 2:
             if arr.shape[0] != 1:

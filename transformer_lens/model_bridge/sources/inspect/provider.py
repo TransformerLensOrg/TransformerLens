@@ -113,7 +113,8 @@ class TransformerLensModelAPI(ModelAPI):
             if "resid_pre" in cap_kinds or "resid_pre" in iv_kinds:
                 handles.append(
                     block.register_forward_pre_hook(
-                        _pre_hook(layer, "resid_pre" in cap_kinds, iv_kinds.get("resid_pre"), raw)
+                        _pre_hook(layer, "resid_pre" in cap_kinds, iv_kinds.get("resid_pre"), raw),
+                        with_kwargs=True,
                     )
                 )
             if attn is not None and ("attn_out" in cap_kinds or "attn_out" in iv_kinds):
@@ -184,15 +185,20 @@ def _assemble(raw, capture_keys) -> dict[str, np.ndarray]:
 
 
 def _pre_hook(layer, want_capture, spec, raw):
-    def hook(_module, inputs):
-        hidden = inputs[0]
+    # with_kwargs=True: hidden_states is args[0] for most decoders, but some pass it
+    # as the hidden_states kwarg — handle both so the right tensor is read/modified.
+    def hook(_module, args, kwargs):
+        kw_key = None if args else "hidden_states"
+        hidden = args[0] if args else kwargs["hidden_states"]
         if spec is not None:
             hidden = _apply_affine(hidden, spec)
         if want_capture:
             raw[(layer, "resid_pre")] = hidden[0].detach().float().cpu().numpy()
         if spec is None:
             return None
-        return (hidden, *inputs[1:])
+        if kw_key is None:
+            return (hidden, *args[1:]), kwargs
+        return args, {**kwargs, kw_key: hidden}
 
     return hook
 
