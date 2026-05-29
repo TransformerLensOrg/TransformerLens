@@ -2953,6 +2953,22 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                 hf_kwargs["eos_token_id"] = eos_token_id
             return self.hf_generate(input, **hf_kwargs)
 
+        # Adapters can opt-in to delegating generation to HF's native generate()
+        # (e.g. when the bridge's custom attention has a KV-cache incompatibility
+        # with a specific transformers version). Set self.cfg.use_native_generate = True
+        # in the adapter's __init__.
+        if getattr(self.cfg, "use_native_generate", False):
+            return self.hf_generate(
+                input,
+                max_new_tokens=max_new_tokens,
+                do_sample=do_sample,
+                temperature=temperature,
+                top_k=top_k,
+                top_p=top_p,
+                eos_token_id=eos_token_id,
+                return_type=return_type,
+            )
+
         # SSM cache is built once and mutated in place across forward calls.
         # Adapter owns the cache-type choice; new SSMs just override
         # create_stateful_cache().
