@@ -10,8 +10,13 @@ plus the full-sequence logits.
 """
 from __future__ import annotations
 
+import contextvars
+import json
+import re
+import uuid
 from collections import defaultdict
-from typing import Any, Mapping
+from contextlib import contextmanager
+from typing import Any, Iterator, Mapping
 
 import numpy as np
 import torch
@@ -19,16 +24,29 @@ from inspect_ai.model import (
     ChatCompletionChoice,
     ChatMessageAssistant,
     GenerateConfig,
+    Logprob,
+    Logprobs,
     ModelAPI,
     ModelOutput,
+    ModelUsage,
+    StopReason,
+    TopLogprob,
     modelapi,
 )
+from inspect_ai.tool import ToolCall
 
 from . import hooks, wire
 
 # NOT "transformer_lens" — inspect_ai ships a built-in provider by that name (the
 # reverse direction: serving a HookedTransformer as an Inspect model for generation).
 PROVIDER_NAME = "tl_bridge"
+
+# Per-call hook isolation. Capture/intervene hooks consult this contextvar and only fire
+# for their own call's id — so concurrent inspect_eval samples (each running with their
+# own contextvars copy via asyncio.to_thread) don't cross-pollute each other's activations.
+_current_call_id: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "tl_inspect_call_id", default=""
+)
 
 # Decoder ModuleList by architecture family; each block's output is resid_post.
 _LAYER_PATHS = ("model.layers", "transformer.h", "gpt_neox.layers", "model.decoder.layers")
@@ -65,6 +83,16 @@ class TransformerLensModelAPI(ModelAPI):
         self._tokenizer = AutoTokenizer.from_pretrained(model_name)
         self._layers = _locate_layers(self._hf)
         self._kinds, self._capability_note = _detect_capabilities(self._hf, self._layers)
+        # Optional per-turn capture during plain generation (agent rollouts): every
+        # _generate_eval stashes these hooks in ModelOutput.metadata. Gated by the structural
+        # self-check — the eval entry points get the same protection as the driver path.
+        self._eval_capture: dict[str, str] = {}
+        for name in model_args.pop("capture", None) or []:
+            resolved = hooks.resolve(name)
+            if resolved is None:
+                raise ValueError(f"capture={name!r} is not a fireable hook name.")
+            _require_served(resolved[1], self._kinds, self._capability_note, f"capture={name!r}")
+            self._eval_capture[hooks.wire_key(*resolved)] = name
 
     def supported_kinds(self) -> frozenset:
         """Boundary kinds this model is structurally able to serve (resid_pre/resid_post
@@ -76,26 +104,40 @@ class TransformerLensModelAPI(ModelAPI):
         return self._capability_note
 
     async def generate(self, input, tools, tool_choice, config):  # type: ignore[override]
+        # Two callers: the TL driver (extra_args carries input_ids/capture/interventions —
+        # single-forward activation capture) and a plain Inspect eval (chat messages, real
+        # multi-token generation). Branch on whether a TL request is present.
         extra_args: Mapping[str, Any] = (config.extra_body or {}).get("extra_args", {})
+        if extra_args.get("input_ids") is not None or extra_args.get("capture"):
+            return self._generate_capture(input, extra_args, config)
+        return self._generate_eval(input, config, tools or [])
+
+    def _generate_capture(self, input: Any, extra_args: Mapping[str, Any], config: GenerateConfig):
+        """TL-driven single forward: capture residual/attn/mlp boundaries + full logits."""
         input_ids = extra_args.get("input_ids")
         if input_ids is None:
-            input_ids = self._tokenizer(_last_user_text(input)).input_ids
+            input_ids = self._messages_to_ids(input)[0].tolist()
         # capture/interventions are keyed by "<layer>:<kind>" (hooks.wire_key).
         capture_keys = list(extra_args.get("capture", []))
+        for key in capture_keys:
+            _, _, kind = key.partition(":")
+            _require_served(kind, self._kinds, self._capability_note, f"capture {key!r}")
         interventions: Mapping[str, Any] = extra_args.get("interventions", {})
         want_logits = bool(extra_args.get("return_logits", True))
 
         capture, intervene = _plan(capture_keys, interventions)
         raw: dict[tuple[int, str], np.ndarray] = {}
-        handles = self._install_hooks(capture, intervene, raw)
-
-        with torch.no_grad():
-            try:
+        call_id = uuid.uuid4().hex
+        token = _current_call_id.set(call_id)
+        handles = self._install_hooks(capture, intervene, raw, call_id)
+        try:
+            with torch.no_grad():
                 ids = torch.tensor([list(input_ids)], device=self._device)
                 logits = self._hf(ids).logits  # (1, seq, vocab)
-            finally:
-                for handle in handles:
-                    handle.remove()
+        finally:
+            for handle in handles:
+                handle.remove()
+            _current_call_id.reset(token)
 
         captured = _assemble(raw, capture_keys)
         metadata: dict[str, Any] = {"activations": wire.encode_activations(captured)}
@@ -103,15 +145,173 @@ class TransformerLensModelAPI(ModelAPI):
             metadata["tl_logits"] = wire.encode_array(logits[0].float().cpu().numpy())
 
         next_id = int(logits[0, -1].argmax())
-        completion = str(self._tokenizer.decode([next_id]))
+        logprobs = (
+            Logprobs(content=[self._logprob_entry(next_id, logits[0, -1], config.top_logprobs)])
+            if config.logprobs
+            else None
+        )
         return ModelOutput(
             model=self.model_name,
-            choices=[ChatCompletionChoice(message=ChatMessageAssistant(content=completion))],
+            choices=[
+                ChatCompletionChoice(
+                    message=ChatMessageAssistant(content=str(self._tokenizer.decode([next_id]))),
+                    stop_reason="stop",
+                    logprobs=logprobs,
+                )
+            ],
             metadata=metadata,
         )
 
-    def _install_hooks(self, capture, intervene, raw) -> list:
-        """Hook each block's pre/attn/mlp/post boundaries that need capture or intervention."""
+    def _generate_eval(self, input: Any, config: GenerateConfig, tools: Any):
+        """Plain Inspect generation: HF generate from the chat input (rendering ``tools``
+        into the template), honoring max_tokens/sampling, with optional per-token logprobs,
+        token usage, parsed tool calls, and per-turn activation capture (agent rollouts)."""
+        ids = self._messages_to_ids(input, tools)
+        prompt_len = int(ids.shape[1])
+        max_new = int(config.max_tokens) if config.max_tokens else 16
+        temperature = config.temperature
+        do_sample = temperature is not None and temperature > 0
+        gen: dict[str, Any] = {
+            "max_new_tokens": max_new,
+            "do_sample": do_sample,
+            "return_dict_in_generate": True,
+            "output_scores": True,
+            "pad_token_id": self._tokenizer.pad_token_id or self._tokenizer.eos_token_id,
+        }
+        if temperature is not None and temperature > 0:
+            gen["temperature"] = float(temperature)
+            if config.top_p is not None:
+                gen["top_p"] = float(config.top_p)
+            if config.top_k is not None:
+                gen["top_k"] = int(config.top_k)
+
+        # Save BOTH CPU and CUDA RNG state — get_rng_state() is CPU-only, so seeding on a
+        # CUDA model would otherwise leak its CUDA seed past this generate.
+        rng_state = None
+        cuda_rng_state = None
+        on_cuda = "cuda" in str(self._device)
+        if do_sample and config.seed is not None:
+            rng_state = torch.get_rng_state()
+            if on_cuda:
+                cuda_rng_state = torch.cuda.get_rng_state_all()
+            torch.manual_seed(int(config.seed))
+        # Install per-turn capture hooks AROUND generate (not pre-): first-write-wins lets
+        # the prompt forward populate them and decode forwards skip — no extra forward.
+        with self._eval_capture_scope() as metadata:
+            try:
+                with torch.no_grad():
+                    out = self._hf.generate(ids, **gen)
+            finally:
+                if rng_state is not None:
+                    torch.set_rng_state(rng_state)
+                if cuda_rng_state is not None:
+                    torch.cuda.set_rng_state_all(cuda_rng_state)
+
+        new_ids = out.sequences[0, prompt_len:]
+        completion = str(self._tokenizer.decode(new_ids, skip_special_tokens=True))
+        logprobs = None
+        if config.logprobs:
+            content = [
+                self._logprob_entry(int(tok), step[0], config.top_logprobs)
+                for tok, step in zip(new_ids.tolist(), out.scores)
+            ]
+            logprobs = Logprobs(content=content)
+        n_new = int(new_ids.shape[0])
+        tool_calls = _parse_tool_calls(completion) if len(tools) else None
+        eos = self._tokenizer.eos_token_id
+        stop_reason: StopReason
+        if tool_calls:
+            stop_reason = "tool_calls"
+        elif n_new and eos is not None and int(new_ids[-1]) == eos:
+            stop_reason = "stop"
+        else:
+            stop_reason = "max_tokens"
+        return ModelOutput(
+            model=self.model_name,
+            choices=[
+                ChatCompletionChoice(
+                    message=ChatMessageAssistant(content=completion, tool_calls=tool_calls),
+                    stop_reason=stop_reason,
+                    logprobs=logprobs,
+                )
+            ],
+            usage=ModelUsage(
+                input_tokens=prompt_len, output_tokens=n_new, total_tokens=prompt_len + n_new
+            ),
+            metadata=metadata or None,
+        )
+
+    @contextmanager
+    def _eval_capture_scope(self) -> Iterator[dict[str, Any]]:
+        """Install per-turn ``capture=[...]`` hooks for the duration of a generate. First-
+        write-wins lets the prompt forward populate the raw dict (decode forwards find it
+        populated and skip), so this adds no extra forward. Yields a metadata dict (empty
+        when capture isn't configured) that the caller folds into ``ModelOutput.metadata``.
+        Contextvar-isolated so concurrent inspect_eval samples don't cross-pollute."""
+        if not self._eval_capture:
+            yield {}
+            return
+        wire_keys = list(self._eval_capture)
+        capture, _ = _plan(wire_keys, {})
+        raw: dict[tuple[int, str], np.ndarray] = {}
+        call_id = uuid.uuid4().hex
+        token = _current_call_id.set(call_id)
+        handles = self._install_hooks(capture, {}, raw, call_id)
+        metadata: dict[str, Any] = {}
+        try:
+            yield metadata
+        finally:
+            for handle in handles:
+                handle.remove()
+            _current_call_id.reset(token)
+            metadata["activations"] = wire.encode_activations(_assemble(raw, wire_keys))
+
+    def _logprob_entry(self, token_id: int, step_logits: Any, top_n: Any) -> Logprob:
+        """One token's log-prob (+ top-k alternatives) from a position's logits."""
+        lp = torch.log_softmax(step_logits.float(), dim=-1)
+        top = []
+        if top_n:
+            vals, idx = lp.topk(int(top_n))
+            top = [
+                TopLogprob(
+                    token=str(self._tokenizer.decode([int(i)])), logprob=float(v), bytes=None
+                )
+                for v, i in zip(vals.tolist(), idx.tolist())
+            ]
+        return Logprob(
+            token=str(self._tokenizer.decode([int(token_id)])),
+            logprob=float(lp[int(token_id)]),
+            bytes=None,
+            top_logprobs=top,
+        )
+
+    def _messages_to_ids(self, input: Any, tools: Any = ()) -> Any:
+        """Render Inspect chat messages (+ any ``tools``) to input ids — chat template
+        when the tokenizer has one, else newline-joined message text (e.g. gpt2)."""
+        if isinstance(input, str):
+            messages = [{"role": "user", "content": input}]
+        else:
+            messages = [
+                {"role": getattr(m, "role", "user"), "content": _message_text(m)} for m in input
+            ]
+        template = getattr(self._tokenizer, "chat_template", None)
+        if len(tools) and not template:
+            raise NotImplementedError(
+                f"tl_bridge: tool use needs a tool-aware chat template; {self.model_name} has "
+                "none. Serve a tool-capable instruct model for agentic evals."
+            )
+        if template:
+            kwargs: dict[str, Any] = {"add_generation_prompt": True}
+            if len(tools):
+                kwargs["tools"] = [_tool_schema(t) for t in tools]
+            token_ids = self._tokenizer.apply_chat_template(messages, **kwargs)
+        else:
+            token_ids = self._tokenizer("\n".join(m["content"] for m in messages)).input_ids
+        return torch.tensor([list(token_ids)], device=self._device)
+
+    def _install_hooks(self, capture, intervene, raw, call_id: str) -> list:
+        """Hook each block's pre/attn/mlp/post boundaries that need capture or intervention.
+        Hooks consult ``_current_call_id`` and only fire for ``call_id`` (concurrent calls)."""
         handles = []
         for layer, block in enumerate(self._layers):
             cap_kinds = capture.get(layer, set())
@@ -123,7 +323,9 @@ class TransformerLensModelAPI(ModelAPI):
             if "resid_pre" in cap_kinds or "resid_pre" in iv_kinds:
                 handles.append(
                     block.register_forward_pre_hook(
-                        _pre_hook(layer, "resid_pre" in cap_kinds, iv_kinds.get("resid_pre"), raw),
+                        _pre_hook(
+                            layer, "resid_pre" in cap_kinds, iv_kinds.get("resid_pre"), raw, call_id
+                        ),
                         with_kwargs=True,
                     )
                 )
@@ -136,6 +338,7 @@ class TransformerLensModelAPI(ModelAPI):
                             "attn_out" in cap_kinds,
                             iv_kinds.get("attn_out"),
                             raw,
+                            call_id,
                         )
                     )
                 )
@@ -143,7 +346,12 @@ class TransformerLensModelAPI(ModelAPI):
                 handles.append(
                     mlp.register_forward_hook(
                         _out_hook(
-                            layer, "mlp_out", "mlp_out" in cap_kinds, iv_kinds.get("mlp_out"), raw
+                            layer,
+                            "mlp_out",
+                            "mlp_out" in cap_kinds,
+                            iv_kinds.get("mlp_out"),
+                            raw,
+                            call_id,
                         )
                     )
                 )
@@ -156,6 +364,7 @@ class TransformerLensModelAPI(ModelAPI):
                             "resid_post" in cap_kinds,
                             iv_kinds.get("resid_post"),
                             raw,
+                            call_id,
                         )
                     )
                 )
@@ -194,15 +403,19 @@ def _assemble(raw, capture_keys) -> dict[str, np.ndarray]:
     return out
 
 
-def _pre_hook(layer, want_capture, spec, raw):
-    # with_kwargs=True: hidden_states is args[0] for most decoders, but some pass it
-    # as the hidden_states kwarg — handle both so the right tensor is read/modified.
+def _pre_hook(layer, want_capture, spec, raw, call_id):
+    # with_kwargs=True: hidden_states is args[0] for most decoders, but some pass it as
+    # the hidden_states kwarg — handle both so the right tensor is read/modified.
+    # First-write-wins on raw so install-around-generate captures the prompt forward
+    # (subsequent decode forwards find raw populated and skip — no extra prompt forward).
     def hook(_module, args, kwargs):
+        if _current_call_id.get() != call_id:
+            return None  # different concurrent call's hook
         kw_key = None if args else "hidden_states"
         hidden = args[0] if args else kwargs["hidden_states"]
         if spec is not None:
             hidden = _apply_affine(hidden, spec)
-        if want_capture:
+        if want_capture and (layer, "resid_pre") not in raw:
             raw[(layer, "resid_pre")] = hidden[0].detach().float().cpu().numpy()
         if spec is None:
             return None
@@ -213,13 +426,15 @@ def _pre_hook(layer, want_capture, spec, raw):
     return hook
 
 
-def _out_hook(layer, kind, want_capture, spec, raw):
+def _out_hook(layer, kind, want_capture, spec, raw, call_id):
     def hook(_module, _inputs, output):
+        if _current_call_id.get() != call_id:
+            return None  # different concurrent call's hook
         is_tuple = isinstance(output, tuple)
         hidden = output[0] if is_tuple else output
         if spec is not None:
             hidden = _apply_affine(hidden, spec)
-        if want_capture:
+        if want_capture and (layer, kind) not in raw:
             raw[(layer, kind)] = hidden[0].detach().float().cpu().numpy()
         if spec is None:
             return None
@@ -372,12 +587,63 @@ def _first_attr(obj: Any, names: tuple[str, ...]) -> Any:
     return None
 
 
-def _last_user_text(input: Any) -> str:
-    """Best-effort prompt text from Inspect messages (only used when input_ids absent)."""
-    if isinstance(input, str):
-        return input
-    for message in reversed(list(input)):
-        content = getattr(message, "content", None)
-        if isinstance(content, str):
-            return content
-    return ""
+def _message_text(message: Any) -> str:
+    """Text of an Inspect chat message — its ``.text`` (handles multimodal content),
+    falling back to string content, else ''."""
+    text = getattr(message, "text", None)
+    if isinstance(text, str):
+        return text
+    content = getattr(message, "content", None)
+    return content if isinstance(content, str) else ""
+
+
+def _require_served(kind: str, served: frozenset[str], note: str, context: str) -> None:
+    """Raise if ``kind`` was gated by the structural self-check — without this the eval path
+    would silently return a derivation (e.g. ``resid_mid``) the driver path excludes."""
+    if kind not in served:
+        raise ValueError(
+            f"{context} requests kind {kind!r} which this model gated. {note} "
+            f"Served kinds: {sorted(served)}."
+        )
+
+
+def _tool_schema(tool: Any) -> dict[str, Any]:
+    """Inspect ``ToolInfo`` → OpenAI-style function schema for ``apply_chat_template``."""
+    params = tool.parameters
+    params = params.model_dump() if hasattr(params, "model_dump") else dict(params)
+    return {
+        "type": "function",
+        "function": {"name": tool.name, "description": tool.description, "parameters": params},
+    }
+
+
+# Tool-call blocks emitted by common instruct templates (Qwen/Hermes-style); the bare-JSON
+# fallback covers models that emit a single {"name", "arguments"} object.
+_TOOL_CALL_BLOCK = re.compile(r"<tool_call>\s*(\{.*?\})\s*</tool_call>", re.S)
+
+
+def _parse_tool_calls(text: str) -> list[ToolCall] | None:
+    """Best-effort parse of tool calls from a completion. Model-specific formats vary; this
+    handles ``<tool_call>{json}</tool_call>`` blocks and a single bare ``{name, arguments}``."""
+    blocks = _TOOL_CALL_BLOCK.findall(text)
+    if not blocks:
+        match = re.search(r"\{.*\}", text, re.S)
+        blocks = [match.group(0)] if match else []
+    calls = []
+    for block in blocks:
+        try:
+            obj = json.loads(block)
+        except (ValueError, TypeError):
+            continue
+        name = obj.get("name") if isinstance(obj, dict) else None
+        if not isinstance(name, str):
+            continue
+        args = obj.get("arguments") or obj.get("parameters") or {}
+        calls.append(
+            ToolCall(
+                id=uuid.uuid4().hex[:8],
+                function=name,
+                arguments=args if isinstance(args, dict) else {},
+            )
+        )
+    return calls or None

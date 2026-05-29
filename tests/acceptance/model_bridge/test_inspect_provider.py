@@ -145,20 +145,49 @@ class TestPreHookKwargs:
     """The resid_pre pre-hook runs with_kwargs=True so it modifies the right tensor
     whether hidden_states arrives positionally (args[0]) or as a kwarg."""
 
+    CALL = "test_call"
+
     def _hook(self):
         from transformer_lens.model_bridge.sources.inspect.provider import _pre_hook
 
-        return _pre_hook(layer=0, want_capture=True, spec={"op": "suppress"}, raw={})
+        return _pre_hook(
+            layer=0, want_capture=True, spec={"op": "suppress"}, raw={}, call_id=self.CALL
+        )
+
+    def _scope(self):
+        from transformer_lens.model_bridge.sources.inspect.provider import (
+            _current_call_id,
+        )
+
+        return _current_call_id.set(self.CALL)
 
     def test_positional_hidden_states(self):
+        from transformer_lens.model_bridge.sources.inspect.provider import (
+            _current_call_id,
+        )
+
         hidden = torch.ones(1, 2, 4)
-        new_args, new_kwargs = self._hook()(None, (hidden, "mask"), {})
+        token = self._scope()
+        try:
+            new_args, new_kwargs = self._hook()(None, (hidden, "mask"), {})
+        finally:
+            _current_call_id.reset(token)
         assert torch.allclose(new_args[0], torch.zeros_like(hidden)) and new_args[1] == "mask"
         assert new_kwargs == {}
 
     def test_kwarg_hidden_states(self):
+        from transformer_lens.model_bridge.sources.inspect.provider import (
+            _current_call_id,
+        )
+
         hidden = torch.ones(1, 2, 4)
-        new_args, new_kwargs = self._hook()(None, (), {"hidden_states": hidden, "use_cache": True})
+        token = self._scope()
+        try:
+            new_args, new_kwargs = self._hook()(
+                None, (), {"hidden_states": hidden, "use_cache": True}
+            )
+        finally:
+            _current_call_id.reset(token)
         assert new_args == ()
         assert torch.allclose(new_kwargs["hidden_states"], torch.zeros_like(hidden))  # suppressed
         assert new_kwargs["use_cache"] is True  # other kwargs preserved
@@ -245,7 +274,9 @@ class TestStructuralProbe:
     def test_probe_leaves_global_rng_untouched(self):
         # The probe's attn perturbation must use a local generator — booting a model
         # should never reset the caller's torch RNG.
-        from transformer_lens.model_bridge.sources.inspect.provider import _detect_capabilities
+        from transformer_lens.model_bridge.sources.inspect.provider import (
+            _detect_capabilities,
+        )
 
         m = self._toy_model()
         before = torch.get_rng_state()
@@ -313,3 +344,293 @@ class TestRebootSemantics:
         finally:
             b1.close()
             b2.close()
+
+
+class TestEvalNativeGeneration:
+    """Beyond TL-driven capture, the provider works as a normal Inspect model: real
+    multi-token generation from chat input, with logprobs + usage, so an Inspect eval runs."""
+
+    def _api(self):
+        from inspect_ai.model import get_model
+
+        from transformer_lens.model_bridge.sources.inspect import (  # noqa: F401 register
+            provider,
+        )
+
+        return get_model("tl_bridge/gpt2", memoize=False).api
+
+    def test_multi_token_generation_with_logprobs(self):
+        import asyncio
+
+        from inspect_ai.model import ChatMessageUser, GenerateConfig
+
+        out = asyncio.run(
+            self._api().generate(
+                [ChatMessageUser(content="The capital of France is")],
+                None,
+                None,
+                GenerateConfig(max_tokens=5, logprobs=True, top_logprobs=3),
+            )
+        )
+        choice = out.choices[0]
+        assert choice.message.text  # non-empty completion
+        assert choice.stop_reason in ("max_tokens", "stop")
+        assert len(choice.logprobs.content) == 5  # one logprob per generated token
+        assert len(choice.logprobs.content[0].top_logprobs) == 3
+        assert out.usage.output_tokens == 5
+        assert out.usage.total_tokens == out.usage.input_tokens + 5
+
+    def test_eval_runs_end_to_end(self, tmp_path):
+        from inspect_ai import Task
+        from inspect_ai import eval as inspect_eval
+        from inspect_ai.dataset import Sample
+        from inspect_ai.scorer import includes
+        from inspect_ai.solver import generate
+
+        from transformer_lens.model_bridge.sources.inspect import (  # noqa: F401 register
+            provider,
+        )
+
+        task = Task(
+            dataset=[Sample(input="The capital of France is", target="Paris")],
+            solver=generate(),
+            scorer=includes(),
+        )
+        logs = inspect_eval(
+            task, model="tl_bridge/gpt2", max_tokens=8, log_dir=str(tmp_path), display="none"
+        )
+        assert logs[0].status == "success"
+        assert logs[0].samples and logs[0].samples[0].output.completion
+
+
+class TestCaptureInEval:
+    """The capture_activations solver: full activations to a per-sample side artifact + a
+    reduction in the store, surfaced by samples_df to correlate features with scores."""
+
+    def test_artifact_store_and_samples_df(self, tmp_path):
+        import json
+        import pathlib
+
+        import numpy as np
+        from inspect_ai import Task
+        from inspect_ai import eval as inspect_eval
+        from inspect_ai.analysis import SampleSummary, samples_df
+        from inspect_ai.dataset import Sample
+        from inspect_ai.solver import generate
+
+        from transformer_lens.model_bridge.sources.inspect import (  # noqa: F401 register
+            provider,
+        )
+        from transformer_lens.model_bridge.sources.inspect.eval import (
+            activations_column,
+            capture_activations,
+        )
+
+        acts, logs = str(tmp_path / "acts"), str(tmp_path / "logs")
+        task = Task(
+            dataset=[Sample(input="The capital of France is", target="Paris")],
+            solver=[capture_activations(["blocks.6.hook_out"], output_dir=acts), generate()],
+        )
+        log = inspect_eval(
+            task, model="tl_bridge/gpt2", max_tokens=4, log_dir=logs, display="none"
+        )[0]
+        assert log.status == "success"
+
+        # full activations side-artifact, keyed by hook name
+        npz = list(pathlib.Path(acts).glob("*.npz"))
+        assert len(npz) == 1
+        assert np.load(npz[0])["blocks.6.hook_out"].shape[-1] == 768
+
+        # reduction in the store, queryable via samples_df
+        df = samples_df(logs, columns=[*SampleSummary, activations_column()])
+        reduction = df["tl_activations"].iloc[0]
+        reduction = json.loads(reduction) if isinstance(reduction, str) else reduction
+        assert reduction["blocks.6.hook_out"]["shape"][-1] == 768
+
+    def test_rejects_unknown_hook(self):
+        from transformer_lens.model_bridge.sources.inspect.eval import (
+            capture_activations,
+        )
+
+        with pytest.raises(ValueError, match="not a fireable hook"):
+            capture_activations(["blocks.0.not_a_hook"])
+
+
+class TestAgenticToolCapture:
+    """Honor tools (render into the template or raise clearly), best-effort tool-call
+    parsing, and per-turn activation capture across a rollout."""
+
+    def test_tool_call_parsing(self):
+        from transformer_lens.model_bridge.sources.inspect.provider import (
+            _parse_tool_calls,
+        )
+
+        block = _parse_tool_calls(
+            'ok <tool_call>{"name": "add", "arguments": {"a": 1}}</tool_call>'
+        )
+        assert block and block[0].function == "add" and block[0].arguments == {"a": 1}
+        bare = _parse_tool_calls('{"name": "f", "arguments": {}}')
+        assert bare and bare[0].function == "f"
+        assert _parse_tool_calls("no tool calls in this text") is None
+
+    def test_tools_without_chat_template_raise(self):
+        import asyncio
+
+        from inspect_ai.model import ChatMessageUser, GenerateConfig, get_model
+        from inspect_ai.tool import ToolInfo, ToolParams
+
+        from transformer_lens.model_bridge.sources.inspect import (  # noqa: F401 register
+            provider,
+        )
+
+        api = get_model("tl_bridge/gpt2", memoize=False).api
+        tool = ToolInfo(name="add", description="add two ints", parameters=ToolParams())
+        with pytest.raises(NotImplementedError, match="tool-aware chat template"):
+            asyncio.run(
+                api.generate(
+                    [ChatMessageUser(content="2+2?")], [tool], None, GenerateConfig(max_tokens=3)
+                )
+            )
+
+    def test_per_turn_capture_collected_from_transcript(self, tmp_path):
+        from inspect_ai import Task
+        from inspect_ai import eval as inspect_eval
+        from inspect_ai.dataset import Sample
+        from inspect_ai.solver import generate
+
+        from transformer_lens.model_bridge.sources.inspect import (  # noqa: F401 register
+            provider,
+        )
+        from transformer_lens.model_bridge.sources.inspect.eval import turn_activations
+
+        task = Task(
+            dataset=[Sample(input="The capital of France is", target="Paris")], solver=generate()
+        )
+        log = inspect_eval(
+            task,
+            model="tl_bridge/gpt2",
+            model_args={"capture": ["blocks.6.hook_out"]},
+            max_tokens=4,
+            log_dir=str(tmp_path),
+            display="none",
+        )[0]
+        assert log.status == "success"
+        # each model turn's activations are recoverable from the transcript
+        turns = turn_activations(log.samples[0])
+        assert len(turns) >= 1
+        assert turns[0]["blocks.6.hook_out"].shape[-1] == 768
+
+
+class TestEvalPathStructuralGating:
+    """Both eval entry points (``model_args={"capture": [...]}`` and the solver's
+    ``extra_args`` route through ``_generate_capture``) must enforce the same structural
+    gate as the driver path — pinned on GPT-J, where resid_mid is gated."""
+
+    PARALLEL = "hf-internal-testing/tiny-random-GPTJForCausalLM"
+    GATED_HOOK = "blocks.0.ln2.hook_in"  # resid_mid
+
+    def test_model_args_capture_rejects_gated_kind(self):
+        from inspect_ai.model import get_model
+
+        from transformer_lens.model_bridge.sources.inspect import (  # noqa: F401 register
+            provider,
+        )
+
+        with pytest.raises(ValueError, match="resid_mid"):
+            get_model(f"tl_bridge/{self.PARALLEL}", memoize=False, capture=[self.GATED_HOOK])
+
+    def test_extra_args_capture_rejects_gated_kind(self):
+        import asyncio
+
+        from inspect_ai.model import ChatMessageUser, GenerateConfig, get_model
+
+        from transformer_lens.model_bridge.sources.inspect import (  # noqa: F401 register
+            provider,
+        )
+
+        api = get_model(f"tl_bridge/{self.PARALLEL}", memoize=False).api
+        with pytest.raises(ValueError, match="resid_mid"):
+            asyncio.run(
+                api.generate(
+                    [ChatMessageUser(content="hi")],
+                    None,
+                    None,
+                    GenerateConfig(extra_body={"extra_args": {"capture": ["0:resid_mid"]}}),
+                )
+            )
+
+    def test_model_args_unresolvable_hook_raises(self):
+        # model_args["capture"] must validate like the solver does (was silently dropping).
+        from inspect_ai.model import get_model
+
+        from transformer_lens.model_bridge.sources.inspect import (  # noqa: F401 register
+            provider,
+        )
+
+        with pytest.raises(ValueError, match="not a fireable hook"):
+            get_model("tl_bridge/gpt2", memoize=False, capture=["blocks.0.not_a_hook"])
+
+
+class TestProviderReviewFixes:
+    """Targeted regressions for the post-merge review: validation parity, output_dir
+    absolute-resolve, ContextVar hook isolation (concurrency-safe), and per-turn capture
+    without the extra prompt forward."""
+
+    def test_solver_output_dir_resolved_absolute_at_construction(self, tmp_path, monkeypatch):
+        # A multi-eval run from different CWDs must not scatter artifacts.
+        import os
+
+        from transformer_lens.model_bridge.sources.inspect.eval import (
+            capture_activations,
+        )
+
+        monkeypatch.chdir(tmp_path)
+        # The solver factory captures output_dir in its closure; resolve at construction.
+        cap = capture_activations(["blocks.0.hook_out"], output_dir="tl_acts")
+        # Move CWD; the path the solver writes to must still resolve to tmp_path/tl_acts.
+        elsewhere = tmp_path / "elsewhere"
+        elsewhere.mkdir()
+        monkeypatch.chdir(elsewhere)
+        # Closure inspection: the wrapped solve fn closes over the absolute output_dir.
+        absolute = str(tmp_path / "tl_acts")
+        assert any(absolute == c.cell_contents for c in (cap.__closure__ or ()))
+
+    def test_hooks_isolated_by_contextvar(self):
+        # The hook only fires for the call whose call_id matches the contextvar — so two
+        # concurrent inspect_eval samples (each in their own contextvar copy) don't write
+        # into each other's raw dicts.
+        from transformer_lens.model_bridge.sources.inspect.provider import (
+            _current_call_id,
+            _out_hook,
+        )
+
+        raw: dict = {}
+        hook = _out_hook(
+            layer=0, kind="resid_post", want_capture=True, spec=None, raw=raw, call_id="MINE"
+        )
+
+        # Default contextvar ("") doesn't match -> hook is a no-op.
+        hook(None, None, torch.ones(1, 3, 4))
+        assert raw == {}
+
+        # Set the contextvar to a DIFFERENT call's id -> still skip (concurrent peer).
+        token = _current_call_id.set("OTHER")
+        try:
+            hook(None, None, torch.ones(1, 3, 4))
+            assert raw == {}
+        finally:
+            _current_call_id.reset(token)
+
+        # Set the contextvar to our id -> hook fires.
+        token = _current_call_id.set("MINE")
+        try:
+            hook(None, None, torch.ones(1, 3, 4))
+            assert (0, "resid_post") in raw
+
+            # First-write-wins: a second call with different data doesn't overwrite (so
+            # generate's decode-step forwards don't clobber the prompt-forward capture).
+            first = raw[(0, "resid_post")].copy()
+            hook(None, None, torch.zeros(1, 3, 4))
+            assert (raw[(0, "resid_post")] == first).all()
+        finally:
+            _current_call_id.reset(token)

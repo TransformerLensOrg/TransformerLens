@@ -76,3 +76,11 @@ def resolve(name: str) -> tuple[int, str] | None:
 def wire_key(layer: int, kind: str) -> str:
     """Stable key for one captured boundary in the activation payload."""
     return f"{layer}:{kind}"
+
+
+def name_from_wire_key(key: str) -> str | None:
+    """Inverse of ``wire_key`` ∘ ``resolve``: ``"<layer>:<kind>"`` → the canonical hook
+    name, or ``None`` if the kind is unknown."""
+    layer, _, kind = key.partition(":")
+    template = _KIND_NAMES.get(kind)
+    return template.format(i=int(layer)) if template and layer.isdigit() else None
