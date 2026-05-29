@@ -83,6 +83,7 @@ class Gemma4ArchitectureAdapter(ArchitectureAdapter):
         # Use eager attention to support output_attentions for hook_attn_scores and hook_pattern
         # SDPA doesn't support output_attentions, which is required for HookedTransformer compatibility
         self.cfg.attn_implementation = "eager"
+        self.cfg.use_native_generate = True
 
         # Unwrap text config for multimodal models
         # Gemma4ForConditionalGeneration nests text settings in text_config
@@ -261,6 +262,11 @@ class Gemma4ArchitectureAdapter(ArchitectureAdapter):
             "ln_final": RMSNormalizationBridge(name=f"{self._dot}norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head"),
         }
+
+    def prepare_loading(self, model_name: str, model_kwargs: dict) -> None:
+        """Load bridge HF model with sdpa so hf_generate() avoids eager KV-cache bug."""
+        if getattr(self.cfg, "use_native_generate", False):
+            model_kwargs["attn_implementation"] = "sdpa"
 
     def setup_hook_compatibility(self, bridge: Any) -> None:
         """Setup hook compatibility for Gemma4 models.
