@@ -2,7 +2,7 @@
 
 Our HF provider applies interventions as forward-hook affine ops at the residual/
 attn/mlp boundaries, so the full vocabulary works. ``resid_mid`` is derived
-(capture-only), so intervening on it is rejected. Op set mirrors the vLLM driver.
+(capture-only), so intervening on it is rejected.
 """
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from typing import Any, Mapping
 
 from . import hooks
 
-# suppress (→0), scale (factor), add (value), set (value). Mirrors the vLLM driver.
+# suppress (→0), scale (factor), add (value), set (value).
 SUPPORTED_OPS = frozenset({"suppress", "scale", "add", "set"})
 
 
@@ -20,8 +20,8 @@ def build_interventions(
 ) -> dict[str, dict[str, Any]]:
     """Validate specs and return ``{wire_key: spec}`` for the provider to apply.
 
-    Rejects callables (remote drivers take specs), bad ops, unknown/unsupported
-    hooks, and capture-only hooks (``resid_mid``) — mirrors ``VLLMDriver._validate_interventions``.
+    Rejects callables (remote drivers take specs, not callbacks), bad ops, unknown or
+    unsupported hooks, and the capture-only ``resid_mid``.
     """
     out: dict[str, dict[str, Any]] = {}
     for hook_name, spec in intervene.items():

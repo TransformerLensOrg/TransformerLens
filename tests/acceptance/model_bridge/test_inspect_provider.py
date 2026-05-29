@@ -1,5 +1,6 @@
 """Acceptance gate for the Inspect driver: gpt2 through our HF provider must match
-``boot_transformers`` exactly (same backend), and interventions must take effect.
+``boot_transformers`` to fp tolerance (same backend + dtype + eager attention), with
+exact next-token argmax, and interventions must take effect.
 
 Gated on ``inspect_ai`` being installed (the ``inspect`` extra); runs on CPU.
 """
@@ -24,8 +25,8 @@ pytestmark = [
 
 MODEL = "gpt2"
 PROMPT = "The quick brown fox"
-# A spread across boundary kinds and layers — all must match boot_transformers
-# exactly. TransformerBridge-native names (the bridge cache carries these too).
+# A spread across boundary kinds and layers — all must match boot_transformers to fp
+# tolerance. TransformerBridge-native names (the bridge cache carries these too).
 PARITY_HOOKS = [
     "blocks.0.hook_in",  # resid_pre
     "blocks.0.attn.hook_out",  # attn_out
@@ -142,3 +143,76 @@ class TestPreHookKwargs:
         assert new_args == ()
         assert torch.allclose(new_kwargs["hidden_states"], torch.zeros_like(hidden))  # suppressed
         assert new_kwargs["use_cache"] is True  # other kwargs preserved
+
+
+class TestStructuralProbe:
+    """The boot-time structural self-check: resid_mid is offered only when attn feeds mlp.
+    Toy modules (no download) exercise the causal probe for sequential vs parallel blocks."""
+
+    def _toy_model(self, parallel: bool = False, resid_scale: float = 1.0):
+        import torch.nn as nn
+
+        class Sub(nn.Module):
+            def __init__(self, k):
+                super().__init__()
+                self.lin = nn.Linear(4, 4)
+                self.k = k
+
+            def forward(self, x):
+                return self.lin(x) * self.k
+
+        class Block(nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.self_attn = Sub(0.5)
+                self.mlp = Sub(0.1)
+
+            def forward(self, x):
+                a = self.self_attn(x)
+                m = self.mlp(x) if parallel else self.mlp(x + a)  # parallel reads block input
+                # resid_scale != 1 mimics post-norm/residual-multiplier archs (Gemma2/OLMo2/
+                # Granite): outputs don't add linearly, so resid_pre + attn_out is wrong.
+                return x + resid_scale * a + resid_scale * m
+
+        class Model(nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.embed = nn.Embedding(16, 4)
+                self.layers = nn.ModuleList([Block()])
+
+            def forward(self, ids):
+                x = self.embed(ids)
+                for b in self.layers:
+                    x = b(x)
+                return x
+
+        torch.manual_seed(0)
+        return Model()
+
+    def test_sequential_offers_resid_mid(self):
+        from transformer_lens.model_bridge.sources.inspect.provider import _detect_capabilities
+
+        m = self._toy_model()  # standard sequential, linear residual
+        kinds, note = _detect_capabilities(m, m.layers)
+        assert "resid_mid" in kinds
+        assert note == ""  # nothing gated
+
+    def test_parallel_gates_resid_mid(self):
+        from transformer_lens.model_bridge.sources.inspect.provider import _detect_capabilities
+
+        m = self._toy_model(parallel=True)  # mlp reads block input, not attn output
+        kinds, note = _detect_capabilities(m, m.layers)
+        assert "resid_mid" not in kinds
+        assert {"resid_pre", "resid_post", "attn_out", "mlp_out"} <= kinds  # rest still served
+        assert "resid_mid" in note  # note explains the gate
+
+    def test_nonlinear_residual_gates_resid_mid(self):
+        from transformer_lens.model_bridge.sources.inspect.provider import _detect_capabilities
+
+        # Sequential (attn feeds mlp) but outputs are scaled before the residual add, so
+        # resid_post != resid_pre + attn_out + mlp_out — resid_mid must still be gated.
+        m = self._toy_model(resid_scale=2.0)
+        kinds, note = _detect_capabilities(m, m.layers)
+        assert "resid_mid" not in kinds
+        assert {"resid_pre", "resid_post", "attn_out", "mlp_out"} <= kinds
+        assert "resid_mid" in note

@@ -124,6 +124,34 @@ class TestHookSets:
         assert "blocks.0.attn.hook_out" in driver.non_fireable_hook_points
 
 
+class TestKindGating:
+    """The provider's structural self-check feeds a kind set through to the driver."""
+
+    def test_supported_hook_points_filters_kinds(self):
+        only = hooks.supported_hook_points(2, kinds={"resid_pre", "resid_post"})
+        assert only == frozenset(
+            f"blocks.{i}.{suffix}" for i in range(2) for suffix in ("hook_in", "hook_out")
+        )
+
+    def test_profile_restricts_to_detected_kinds(self):
+        # resid_mid gated (e.g. parallel-residual arch) → ln2.hook_in absent, rest present.
+        prof = profiles.TLBridgeProfile(
+            supported_kinds={"resid_pre", "resid_post", "attn_out", "mlp_out"}
+        )
+        names = prof.supported_hooks(N_LAYERS)
+        assert "blocks.0.ln2.hook_in" not in names
+        assert "blocks.0.attn.hook_out" in names
+        assert len(names) == 4 * N_LAYERS
+
+    def test_driver_moves_gated_kind_to_nonfireable(self):
+        prof = profiles.TLBridgeProfile(
+            supported_kinds={"resid_pre", "resid_post", "attn_out", "mlp_out"}
+        )
+        driver = InspectDriver(_fake_model(), _adapter(), tokenizer=None, profile=prof)
+        assert "blocks.0.ln2.hook_in" not in driver.supported_hook_points
+        assert "blocks.0.ln2.hook_in" in driver.non_fireable_hook_points
+
+
 class TestNormalizeInputIds:
     def test_1d_tensor(self):
         assert InspectDriver._normalize_input_ids(torch.tensor([1, 2, 3])) == [1, 2, 3]

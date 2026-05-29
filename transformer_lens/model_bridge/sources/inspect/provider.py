@@ -64,6 +64,16 @@ class TransformerLensModelAPI(ModelAPI):
         )
         self._tokenizer = AutoTokenizer.from_pretrained(model_name)
         self._layers = _locate_layers(self._hf)
+        self._kinds, self._capability_note = _detect_capabilities(self._hf, self._layers)
+
+    def supported_kinds(self) -> frozenset:
+        """Boundary kinds this model is structurally able to serve (resid_pre/resid_post
+        always; attn_out/mlp_out if locatable; resid_mid only if attn feeds mlp)."""
+        return self._kinds
+
+    def capability_note(self) -> str:
+        """Human-readable reason for any gated boundary, or '' if all are served."""
+        return self._capability_note
 
     async def generate(self, input, tools, tool_choice, config):  # type: ignore[override]
         extra_args: Mapping[str, Any] = (config.extra_body or {}).get("extra_args", {})
@@ -229,6 +239,113 @@ def _apply_affine(t: torch.Tensor, spec: Mapping[str, Any]) -> torch.Tensor:
     if op == "add":
         return t + value
     return torch.zeros_like(t) + value  # set
+
+
+def _detect_capabilities(model: Any, layers: Any) -> tuple[frozenset, str]:
+    """Structural self-check: which boundary kinds this model can serve faithfully.
+
+    resid_pre/resid_post are the block in/out (always); attn_out/mlp_out need their
+    submodules locatable; resid_mid is gated unless its derivation holds (see
+    :func:`_resid_mid_derivable`). Returns (kinds, note); note explains any gating, '' if none.
+    """
+    block = layers[0]
+    attn = _first_attr(block, _ATTN_ATTRS)
+    mlp = _first_attr(block, _MLP_ATTRS)
+    kinds = {"resid_pre", "resid_post"}
+    gated = []
+    if attn is not None:
+        kinds.add("attn_out")
+    else:
+        gated.append("attn_out (no attention submodule found)")
+    if mlp is not None:
+        kinds.add("mlp_out")
+    else:
+        gated.append("mlp_out (no MLP submodule found)")
+    if attn is not None and mlp is not None and _resid_mid_derivable(model, block, attn, mlp):
+        kinds.add("resid_mid")
+    else:
+        gated.append(
+            "resid_mid (resid_pre + attn_out doesn't hold — parallel or norm-variant block)"
+        )
+    note = (
+        ""
+        if not gated
+        else "InspectDriver: this architecture's block layout gates "
+        + ", ".join(gated)
+        + ". Remaining boundaries are served; use boot_transformers() for the gated ones."
+    )
+    return frozenset(kinds), note
+
+
+def _resid_mid_derivable(model: Any, block: Any, attn: Any, mlp: Any) -> bool:
+    """True iff ``resid_mid = resid_pre + attn_out`` holds, via two tiny probe forwards.
+    Requires both the linear identity ``resid_post = resid_pre + attn_out + mlp_out`` (broken
+    by post-norm/multiplier blocks — Gemma2/OLMo2/Granite) and attn feeding mlp (broken by
+    parallel blocks — GPTNeoX/GPT-J, where mlp reads resid_pre directly)."""
+    cap: dict[str, Any] = {}
+
+    def grab(key: str):  # type: ignore[no-untyped-def]
+        def hook(_m: Any, _i: Any, out: Any) -> None:
+            t = out[0] if isinstance(out, tuple) else out
+            cap[key] = t.detach().float()
+
+        return hook
+
+    def grab_in(key: str):  # type: ignore[no-untyped-def]
+        def hook(_m: Any, args: Any, kwargs: Any) -> None:
+            t = args[0] if args else kwargs.get("hidden_states")
+            cap[key] = None if t is None else t.detach().float()
+
+        return hook
+
+    def perturb_attn(_m: Any, _i: Any, out: Any):  # type: ignore[no-untyped-def]
+        is_tuple = isinstance(out, tuple)
+        h = out[0] if is_tuple else out
+        torch.manual_seed(0)
+        h = h + torch.randn_like(h)
+        return (h, *out[1:]) if is_tuple else h
+
+    ids = torch.tensor([[0, 1, 2]], device=next(model.parameters()).device)
+    try:
+        with torch.no_grad():
+            handles = [
+                block.register_forward_pre_hook(grab_in("resid_pre"), with_kwargs=True),
+                attn.register_forward_hook(grab("attn_out")),
+                mlp.register_forward_hook(grab("mlp_out")),
+                mlp.register_forward_pre_hook(grab_in("mlp_in"), with_kwargs=True),
+                block.register_forward_hook(grab("resid_post")),
+            ]
+            model(ids)
+            for h in handles:
+                h.remove()
+            mlp_in_clean = cap.pop("mlp_in", None)
+            handles = [
+                mlp.register_forward_pre_hook(grab_in("mlp_in"), with_kwargs=True),
+                attn.register_forward_hook(perturb_attn),
+            ]
+            model(ids)
+            for h in handles:
+                h.remove()
+            mlp_in_perturbed = cap.get("mlp_in")
+    except Exception:
+        return False  # can't probe (exotic signature) → conservatively gate resid_mid
+
+    rp = cap.get("resid_pre")
+    ao = cap.get("attn_out")
+    mo = cap.get("mlp_out")
+    rpost = cap.get("resid_post")
+    if rp is None or ao is None or mo is None or rpost is None:
+        return False
+    if mlp_in_clean is None or mlp_in_perturbed is None:
+        return False
+    if not (rp.shape == ao.shape == mo.shape == rpost.shape == mlp_in_clean.shape):
+        return False
+    # (1) sub-block outputs add to the residual without intervening norm/scale.
+    identity = (rpost - rp - ao - mo).abs().max().item()
+    identity_ok = identity <= 1e-3 * (rpost.abs().max().item() + 1e-6)
+    # (2) perturbing attn moves mlp's input (sequential, not parallel).
+    causal_ok = (mlp_in_clean - mlp_in_perturbed).abs().max().item() > 1e-6
+    return bool(identity_ok and causal_ok)
 
 
 def _locate_layers(model: Any) -> Any:

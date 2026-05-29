@@ -33,22 +33,24 @@ def boot_inspect(
 
     The driver is provider-agnostic: ``provider`` defaults to our own HF-backed
     ``tl_bridge`` provider (residual/attn/mlp capture + full affine interventions +
-    full-sequence logits, parity with ``boot_transformers`` on the verified
-    architectures); pass ``"vllm-lens"`` to consume a running vllm-lens vLLM provider
-    instead (residual-only, additive-steering-only). (``transformer_lens`` is
-    inspect_ai's own built-in provider — a different thing — so ours is ``tl_bridge``.)
+    full-sequence logits); ``"vllm-lens"`` targets a running vllm-lens vLLM provider
+    (residual-only, additive-steering-only) — wire-aligned with its documented format,
+    but not yet verified against a live provider. (``transformer_lens`` is inspect_ai's
+    own built-in provider — a different thing — so ours is ``tl_bridge``.)
 
-    Fireable hooks (``tl_bridge``, TransformerBridge-native names matching the vLLM
-    driver): ``blocks.{i}.hook_in`` (resid_pre) / ``ln2.hook_in`` (resid_mid) /
-    ``hook_out`` (resid_post) / ``attn.hook_out`` / ``mlp.hook_out``. Head-split hooks
-    (q/k/v/z, pattern), ``embed``, and ``ln_final`` are non-fireable — use
-    ``boot_transformers()`` for those.
+    Fireable hooks (``tl_bridge``, TransformerBridge-native names): ``blocks.{i}.hook_in``
+    (resid_pre) / ``ln2.hook_in`` (resid_mid) /
+    ``hook_out`` (resid_post) / ``attn.hook_out`` / ``mlp.hook_out``. The provider runs
+    a structural self-check per model and gates any boundary it can't serve faithfully:
+    ``resid_mid`` for parallel-residual or norm-variant blocks, and ``attn_out``/
+    ``mlp_out`` when their submodule isn't locatable (it warns when it gates one).
+    Head-split hooks (q/k/v/z, pattern), ``embed``, and ``ln_final`` are always
+    non-fireable — use ``boot_transformers()`` for those.
 
-    Full-sequence logits ride on ``return_logits=True`` (the default) — needed for
-    logits/loss parity. For pure activation capture, pass ``return_logits=False`` to
-    skip the (seq × d_vocab) logits payload; ``run_with_cache`` keeps them since it
-    returns logits. Parity is verified only for ``hooks.PARITY_VERIFIED_ARCHITECTURES``
-    (boot warns otherwise).
+    For parity with ``boot_transformers`` the provider loads with the same dtype (fp32 by
+    default) and eager attention. Full-sequence logits ride on ``return_logits=True`` (the
+    default); pass ``return_logits=False`` to skip the (seq × d_vocab) payload for pure
+    activation capture (``run_with_cache`` keeps them since it returns logits).
     """
     from inspect_ai.model import get_model
     from transformers import AutoConfig, AutoTokenizer
@@ -58,17 +60,9 @@ def boot_inspect(
     hf_token = get_hf_token()
     hf_config = AutoConfig.from_pretrained(model_name, token=hf_token)
     architecture = hf_config.architectures[0]
-    resolved_dtype = dtype or _dtype_from_hf_config(hf_config)
-
-    if provider == "tl_bridge" and architecture not in hooks.PARITY_VERIFIED_ARCHITECTURES:
-        warnings.warn(
-            f"Hook parity vs boot_transformers is unverified for {architecture!r} "
-            f"(verified: {sorted(hooks.PARITY_VERIFIED_ARCHITECTURES)}). The residual/attn/mlp "
-            "boundaries assume the standard HF decoder-layer layout; diff a few hooks against "
-            "boot_transformers before trusting captured values.",
-            UserWarning,
-            stacklevel=2,
-        )
+    # Default fp32 to match boot_transformers (which loads/casts fp32 regardless of the
+    # config's native dtype); an explicit dtype still wins.
+    resolved_dtype = dtype if dtype is not None else torch.float32
 
     bridge_config = build_bridge_config_from_hf(hf_config, architecture, model_name, resolved_dtype)
     adapter = ArchitectureAdapterFactory.select_architecture_adapter(bridge_config)
@@ -83,23 +77,48 @@ def boot_inspect(
         adapter.cfg.tokenizer_appends_eos,
     ) = detect_tokenizer_bos_eos(tokenizer)
 
+    if provider == "tl_bridge":
+        # The provider's raw HF forward must match boot_transformers' load: same dtype,
+        # eager attention (TL forces eager — SDPA/flash diverge and accumulate with depth),
+        # and auth/remote-code so gated/custom models load at all.
+        inspect_kwargs["model_kwargs"] = _provider_model_kwargs(
+            dict(inspect_kwargs.get("model_kwargs", {})), adapter, resolved_dtype, hf_token
+        )
+
     model = get_model(f"{provider}/{model_name}", **inspect_kwargs)
-    # The profile carries everything provider-specific: hook set, logits behavior,
-    # request schema, intervention translation. Ours = full; vllm-lens = residual-only.
-    profile = profiles.for_provider(provider)
+    # For our HF provider, restrict the profile to the boundaries its structural self-check
+    # found this model can serve; warn only if it gated something.
+    if provider == "tl_bridge":
+        api = getattr(model, "api", None)
+        kinds = None
+        note = ""
+        if api is not None:
+            kinds = api.supported_kinds() if hasattr(api, "supported_kinds") else None
+            note = api.capability_note() if hasattr(api, "capability_note") else ""
+        profile = profiles.TLBridgeProfile(supported_kinds=kinds)
+        if note:
+            warnings.warn(note, UserWarning, stacklevel=2)
+    else:
+        profile = profiles.for_provider(provider)
     driver = InspectDriver(model=model, adapter=adapter, tokenizer=tokenizer, profile=profile)
     bridge = RemoteBridge(adapter=adapter, tokenizer=tokenizer, driver=driver)
     _log_hook_summary(model_name, architecture, provider, driver)
     return bridge
 
 
-def _dtype_from_hf_config(hf_config: Any) -> torch.dtype:
-    raw = getattr(hf_config, "torch_dtype", None)
-    if isinstance(raw, torch.dtype):
-        return raw
-    if isinstance(raw, str):
-        return getattr(torch, raw, torch.float32)
-    return torch.float32
+def _provider_model_kwargs(
+    model_kwargs: dict[str, Any], adapter: Any, dtype: torch.dtype, hf_token: Optional[str]
+) -> dict[str, Any]:
+    """Load kwargs for the HF provider that mirror boot_transformers, so the provider's
+    raw forward matches the bridge. Caller-supplied keys win (setdefault)."""
+    model_kwargs.setdefault("torch_dtype", dtype)
+    # boot_transformers forces eager unless the adapter pins an implementation.
+    model_kwargs.setdefault(
+        "attn_implementation", getattr(adapter.cfg, "attn_implementation", None) or "eager"
+    )
+    if hf_token:
+        model_kwargs.setdefault("token", hf_token)
+    return model_kwargs
 
 
 def _log_hook_summary(
@@ -108,7 +127,7 @@ def _log_hook_summary(
     log = logging.getLogger("transformer_lens.inspect")
     fireable = sorted(driver.supported_hook_points)
     log.info(
-        "Inspect source on %s (%s) via provider %r captures %d residual-stream hook(s).",
+        "Inspect source on %s (%s) via provider %r serves %d fireable hook(s).",
         model_name,
         architecture,
         provider,

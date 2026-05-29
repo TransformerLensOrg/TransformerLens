@@ -21,12 +21,19 @@ from . import hooks, intervention, wire
 
 
 class TLBridgeProfile:
-    """Codec for our own ``tl_bridge`` provider: full hooks, full-sequence logits."""
+    """Codec for our own ``tl_bridge`` provider: residual/attn/mlp hooks, full-seq logits.
+
+    ``supported_kinds`` is the provider's structurally-detected boundary set (e.g.
+    ``resid_mid`` dropped for parallel/norm-variant archs); ``None`` exposes all boundaries.
+    """
 
     provides_sequence_logits = True
 
+    def __init__(self, supported_kinds: Any = None) -> None:
+        self._kinds = supported_kinds
+
     def supported_hooks(self, n_layers: int) -> frozenset[str]:
-        return hooks.supported_hook_points(n_layers)
+        return hooks.supported_hook_points(n_layers, self._kinds)
 
     def translate_interventions(self, intervene, supported):
         return intervention.build_interventions(intervene, supported)  # {wire_key: spec}

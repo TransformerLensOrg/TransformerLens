@@ -1,11 +1,10 @@
 """InspectDriver — torch-free consumer of an ``inspect_ai`` provider's output.
 
-Talks to a provider (ours, HF-backed, or a wire-compatible peer like vllm-lens)
-through the inspect_ai ``ModelOutput`` envelope. Everything provider-specific —
-the request schema, which hooks are served, full vs last-token logits, intervention
-translation — lives in a :mod:`profiles` Profile; the driver just drives it. Stays
-numpy-only (``to_torch`` runs at the bridge boundary), so this file imports zero
-torch symbols (enforced by a unit test). ``inspect_ai`` is imported lazily.
+Talks to a provider through the inspect_ai ``ModelOutput`` envelope. Everything
+provider-specific — the request schema, which hooks are served, full vs last-token
+logits, intervention translation — lives in a :mod:`profiles` Profile; the driver just
+drives it. Stays numpy-only (``to_torch`` runs at the bridge boundary), so this file
+imports zero torch symbols (enforced by a unit test). ``inspect_ai`` is imported lazily.
 """
 from __future__ import annotations
 
@@ -101,12 +100,8 @@ class InspectDriver(DriverBase):
         return await self._model.generate(prompt, config=config)
 
     def _assemble_captures(self, output: Any, names: list[str]) -> dict[str, np.ndarray]:
-        """Decode the requested boundaries → ``{hook_name: (1, seq, d_model)}``.
-
-        ``wire.decode_activations`` reads both our flat ``<layer>:<kind>`` map and a
-        vllm-lens nested ``residual_stream``, so this is provider-agnostic. Hook names
-        are TransformerBridge-native (``blocks.{i}.attn.hook_out``, ...).
-        """
+        """Decode the requested boundaries → ``{hook_name: (1, seq, d_model)}``; names the
+        provider didn't return are skipped (and warned once)."""
         metadata = getattr(output, "metadata", None) or {}
         decoded = wire.decode_activations(metadata, self._wire_keys(names))
         captured: dict[str, np.ndarray] = {}

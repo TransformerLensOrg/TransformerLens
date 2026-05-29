@@ -2,8 +2,9 @@
 
 Activations ride in ``ModelOutput.metadata["activations"]`` as a flat
 ``{"<layer>:<kind>": {"data": <b64>, "dtype": str, "shape": [...]}}`` map (keys
-are :func:`hooks.wire_key`). For interop with vllm-lens, decode also understands
-its nested ``{"residual_stream": {layer: ...}}`` shape (mapped to ``resid_post``).
+are :func:`hooks.wire_key`). For vllm-lens interop, decode also understands its
+*documented* nested ``{"residual_stream": {layer: ...}}`` shape (mapped to
+``resid_post``) — unverified against a live vllm-lens provider.
 Numpy-only (no torch) so both the torch-using provider and the torch-free driver
 import it; the single place to patch on format drift.
 """
@@ -44,11 +45,9 @@ def encode_activations(captured: Mapping[str, np.ndarray]) -> dict[str, Any]:
 def decode_activations(
     metadata: Mapping[str, Any] | None, wire_keys: Iterable[str]
 ) -> dict[str, np.ndarray]:
-    """Pull the requested ``<layer>:<kind>`` keys out of ``metadata["activations"]``.
-
-    Falls back to vllm-lens's nested ``residual_stream`` for ``resid_post`` keys so
-    one driver consumes both providers. Missing keys are skipped — the caller decides.
-    """
+    """Pull the requested ``<layer>:<kind>`` keys out of ``metadata["activations"]``,
+    falling back to the nested ``residual_stream`` for ``resid_post``. Missing keys are
+    skipped — the caller decides."""
     activations = (metadata or {}).get("activations") or {}
     residual = activations.get(_RESIDUAL, {})
     out: dict[str, np.ndarray] = {}
