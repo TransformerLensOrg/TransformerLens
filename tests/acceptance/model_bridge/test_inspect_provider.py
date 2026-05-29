@@ -24,16 +24,16 @@ pytestmark = [
 
 MODEL = "gpt2"
 PROMPT = "The quick brown fox"
-# A spread across boundary kinds and layers — all must match boot_transformers exactly.
+# A spread across boundary kinds and layers — all must match boot_transformers
+# exactly. TransformerBridge-native names (the bridge cache carries these too).
 PARITY_HOOKS = [
-    "blocks.0.hook_resid_pre",
-    "blocks.0.hook_attn_out",
-    "blocks.0.attn.hook_out",
-    "blocks.0.hook_resid_mid",
-    "blocks.0.hook_mlp_out",
-    "blocks.0.hook_resid_post",
-    "blocks.6.hook_attn_out",
-    "blocks.11.hook_resid_post",
+    "blocks.0.hook_in",  # resid_pre
+    "blocks.0.attn.hook_out",  # attn_out
+    "blocks.0.ln2.hook_in",  # resid_mid
+    "blocks.0.mlp.hook_out",  # mlp_out
+    "blocks.0.hook_out",  # resid_post
+    "blocks.6.attn.hook_out",
+    "blocks.11.hook_out",
 ]
 
 
@@ -66,6 +66,13 @@ class TestInspectParity:
         i_logits = inspect_bridge.forward(tokens)
         assert int(hf_logits[0, -1].argmax()) == int(i_logits[0, -1].argmax())
 
+    def test_string_input_parity(self, hf_bridge, inspect_bridge):
+        # Same STRING (not shared tokens): exercises RemoteBridge.to_tokens BOS handling.
+        # A bare encode (no BOS) would diverge from boot_transformers here.
+        hf_argmax = int(hf_bridge.forward(PROMPT)[0, -1].argmax())
+        i_argmax = int(inspect_bridge.forward(PROMPT)[0, -1].argmax())
+        assert hf_argmax == i_argmax
+
     def test_hooks_match(self, hf_bridge, inspect_bridge, tokens):
         _, hf_cache = hf_bridge.run_with_cache(tokens)
         _, i_cache = inspect_bridge.run_with_cache(tokens)
@@ -85,7 +92,7 @@ class TestInspectParity:
 
 class TestInspectInterventions:
     def test_suppress_zeros_hook_and_shifts_argmax(self, inspect_bridge, tokens):
-        hook = "blocks.0.hook_resid_post"
+        hook = "blocks.0.hook_out"  # resid_post
         clean_logits = inspect_bridge.forward(tokens)
         clean_argmax = int(clean_logits[0, -1].argmax())
 
@@ -99,5 +106,5 @@ class TestInspectInterventions:
 
     def test_intervention_reverts(self, inspect_bridge, tokens):
         clean_argmax = int(inspect_bridge.forward(tokens)[0, -1].argmax())
-        inspect_bridge.forward(tokens, intervene={"blocks.0.hook_resid_post": {"op": "suppress"}})
+        inspect_bridge.forward(tokens, intervene={"blocks.0.hook_out": {"op": "suppress"}})
         assert int(inspect_bridge.forward(tokens)[0, -1].argmax()) == clean_argmax  # not sticky

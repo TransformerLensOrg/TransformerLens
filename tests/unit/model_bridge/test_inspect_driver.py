@@ -95,17 +95,16 @@ class TestProtocolConformance:
 class TestHookSets:
     def test_full_residual_attn_mlp_set(self):
         supported = _driver().supported_hook_points
-        assert len(supported) == 7 * N_LAYERS
+        assert len(supported) == 5 * N_LAYERS  # one canonical name per boundary, no aliases
         for name in [
-            "blocks.0.hook_resid_pre",
-            "blocks.0.hook_resid_mid",
-            "blocks.0.hook_resid_post",
-            "blocks.0.hook_attn_out",
-            "blocks.0.attn.hook_out",
-            "blocks.0.hook_mlp_out",
-            "blocks.0.mlp.hook_out",
+            "blocks.0.hook_in",  # resid_pre
+            "blocks.0.ln2.hook_in",  # resid_mid
+            "blocks.0.hook_out",  # resid_post
+            "blocks.0.attn.hook_out",  # attn_out
+            "blocks.0.mlp.hook_out",  # mlp_out
         ]:
             assert name in supported
+        assert "blocks.0.hook_attn_out" not in supported  # HookedTransformer alias not duplicated
 
     def test_nonfireable_disjoint_and_includes_headsplit(self):
         driver = _driver()
@@ -118,7 +117,7 @@ class TestHookSets:
             _fake_model(), _adapter(), tokenizer=None, profile=profiles.VLLMLensProfile()
         )
         assert driver.supported_hook_points == frozenset(
-            f"blocks.{i}.hook_resid_post" for i in range(N_LAYERS)
+            f"blocks.{i}.hook_out" for i in range(N_LAYERS)
         )
         assert driver.provides_sequence_logits is False  # no full logits via that path
         # attn/mlp hooks our provider could do are non-fireable for the residual-only peer.
@@ -149,22 +148,40 @@ class TestForward:
 
         result = driver.forward(
             torch.tensor([[1, 2, 3]]),
-            capture=("blocks.0.hook_resid_post", "blocks.0.attn.hook_out"),
+            capture=("blocks.0.hook_out", "blocks.0.attn.hook_out"),
         )
         assert isinstance(result, ForwardResult)
-        assert tuple(result.captured["blocks.0.hook_resid_post"].shape) == (1, 3, D_MODEL)
-        # alias attn.hook_out resolves to the same wire key 0:attn_out
-        assert tuple(result.captured["blocks.0.attn.hook_out"].shape) == (1, 3, D_MODEL)
+        assert tuple(result.captured["blocks.0.hook_out"].shape) == (1, 3, D_MODEL)  # resid_post
+        assert tuple(result.captured["blocks.0.attn.hook_out"].shape) == (1, 3, D_MODEL)  # attn_out
         assert tuple(result.logits.shape) == (1, 3, D_VOCAB)  # full sequence
         assert int(result.logits[0, -1].argmax()) == 7
 
+    def test_empty_capture_captures_nothing(self):
+        # capture=() means "logits only" — the driver requests no activations.
+        driver = _driver(
+            _fake_model(
+                captures={"0:resid_post": np.ones((2, D_MODEL), np.float32)},
+                logits=np.zeros((2, D_VOCAB), np.float32),
+            )
+        )
+        result = driver.forward(torch.tensor([[1, 2]]))
+        assert result.captured == {}
+        assert result.logits is not None
+
+    def test_missing_hook_warns(self):
+        # Provider returns no activation for a requested+supported hook → warn, key absent.
+        driver = _driver(_fake_model(captures={}, logits=np.zeros((2, D_VOCAB), np.float32)))
+        with pytest.warns(UserWarning, match="no activation"):
+            result = driver.forward(torch.tensor([[1, 2]]), capture=("blocks.0.hook_out",))
+        assert "blocks.0.hook_out" not in result.captured
+
     def test_resid_mid_consumed_under_its_name(self):
         # The provider derives resid_mid (= resid_pre + attn_out) and sends it under
-        # its wire key; the driver surfaces it as blocks.{i}.hook_resid_mid.
+        # its wire key; the driver surfaces it as blocks.{i}.ln2.hook_in.
         caps = {"0:resid_mid": np.full((2, D_MODEL), 4.0, np.float32)}
         driver = _driver(_fake_model(captures=caps, logits=np.zeros((2, D_VOCAB), np.float32)))
-        result = driver.forward(torch.tensor([[1, 2]]), capture=("blocks.0.hook_resid_mid",))
-        assert np.allclose(result.captured["blocks.0.hook_resid_mid"][0], 4.0)
+        result = driver.forward(torch.tensor([[1, 2]]), capture=("blocks.0.ln2.hook_in",))
+        assert np.allclose(result.captured["blocks.0.ln2.hook_in"][0], 4.0)
 
     def test_provider_error_propagates(self):
         driver = _driver(_fake_model(raises=RuntimeError("boom")))
@@ -230,11 +247,16 @@ class TestWire:
 
 
 class TestHooksRegistry:
-    def test_resolve_aliases(self):
+    def test_resolve(self):
         assert hooks.resolve("blocks.2.attn.hook_out") == (2, "attn_out")
-        assert hooks.resolve("blocks.2.hook_attn_out") == (2, "attn_out")
-        assert hooks.resolve("blocks.0.hook_resid_mid") == (0, "resid_mid")
+        assert hooks.resolve("blocks.2.mlp.hook_out") == (2, "mlp_out")
+        assert hooks.resolve("blocks.0.ln2.hook_in") == (0, "resid_mid")
+        assert hooks.resolve("blocks.0.hook_in") == (0, "resid_pre")
+        assert hooks.resolve("blocks.0.hook_out") == (0, "resid_post")
         assert hooks.resolve("embed.hook_out") is None
+        assert (
+            hooks.resolve("blocks.2.hook_attn_out") is None
+        )  # HookedTransformer alias not exposed
 
 
 class TestInterventionTranslation:
@@ -243,7 +265,7 @@ class TestInterventionTranslation:
 
     def test_op_translates_to_wire_key(self):
         out = intervention.build_interventions(
-            {"blocks.1.hook_resid_post": {"op": "suppress"}}, self._supported()
+            {"blocks.1.hook_out": {"op": "suppress"}}, self._supported()
         )
         assert out == {"1:resid_post": {"op": "suppress"}}
 
@@ -256,25 +278,23 @@ class TestInterventionTranslation:
     def test_resid_mid_is_capture_only(self):
         with pytest.raises(ValueError, match="capture-only"):
             intervention.build_interventions(
-                {"blocks.0.hook_resid_mid": {"op": "suppress"}}, self._supported()
+                {"blocks.0.ln2.hook_in": {"op": "suppress"}}, self._supported()
             )
 
     def test_callable_rejected(self):
         with pytest.raises(NotImplementedError, match="specs"):
-            intervention.build_interventions(
-                {"blocks.0.hook_resid_post": lambda a: a}, self._supported()
-            )
+            intervention.build_interventions({"blocks.0.hook_out": lambda a: a}, self._supported())
 
     def test_unknown_hook_rejected(self):
         with pytest.raises(ValueError, match="not in supported_hook_points"):
             intervention.build_interventions(
-                {"blocks.9.hook_resid_post": {"op": "suppress"}}, self._supported()
+                {"blocks.9.hook_out": {"op": "suppress"}}, self._supported()
             )
 
     def test_bad_op_rejected(self):
         with pytest.raises(ValueError, match="Unsupported intervention op"):
             intervention.build_interventions(
-                {"blocks.0.hook_resid_post": {"op": "clamp"}}, self._supported()
+                {"blocks.0.hook_out": {"op": "clamp"}}, self._supported()
             )
 
 
@@ -300,8 +320,8 @@ class TestVLLMLensProfile:
         # Validation happens before the lazy vllm_lens import, so this works uninstalled.
         with pytest.raises(NotImplementedError, match="additive steering"):
             profiles.VLLMLensProfile().translate_interventions(
-                {"blocks.0.hook_resid_post": {"op": "suppress"}},
-                frozenset({"blocks.0.hook_resid_post"}),
+                {"blocks.0.hook_out": {"op": "suppress"}},
+                frozenset({"blocks.0.hook_out"}),
             )
 
     def test_no_interventions_needs_no_vllm_lens(self):
@@ -315,7 +335,7 @@ class TestThroughBridge:
         bridge = RemoteBridge(adapter=_adapter(), tokenizer=None, driver=driver)
 
         fired: list = []
-        bridge.add_hook("blocks.0.hook_resid_post", lambda act, hook: fired.append(act))
+        bridge.add_hook("blocks.0.hook_out", lambda act, hook: fired.append(act))
         bridge.forward(torch.tensor([[1, 2, 3]]))
         assert len(fired) == 1 and isinstance(fired[0], torch.Tensor)  # numpy→torch at the bridge
         assert tuple(fired[0].shape) == (1, 3, D_MODEL)

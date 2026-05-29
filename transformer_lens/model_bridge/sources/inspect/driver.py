@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
+import warnings
 from typing import Any, Mapping
 
 import numpy as np
@@ -49,6 +50,7 @@ class InspectDriver(DriverBase):
         # Background event loop, created lazily on first forward.
         self._loop: asyncio.AbstractEventLoop | None = None
         self._loop_thread: threading.Thread | None = None
+        self._warned_missing: set[str] = set()  # hooks we've already warned were absent
 
     def forward(
         self,
@@ -69,7 +71,9 @@ class InspectDriver(DriverBase):
                 "InspectDriver supports max_new_tokens=1 only (single-forward capture)."
             )
         ids = self._normalize_input_ids(input_ids)
-        names = list(capture) if capture else sorted(self.supported_hook_points)
+        # capture is authoritative: the bridge passes exactly the hooks with handlers,
+        # so () means "capture nothing" (logits only), not "capture everything".
+        names = list(capture)
         wire_keys = self._wire_keys(names)
         interventions = self._profile.translate_interventions(
             intervene or {}, self.supported_hook_points
@@ -100,20 +104,37 @@ class InspectDriver(DriverBase):
         """Decode the requested boundaries → ``{hook_name: (1, seq, d_model)}``.
 
         ``wire.decode_activations`` reads both our flat ``<layer>:<kind>`` map and a
-        vllm-lens nested ``residual_stream``, so this is provider-agnostic. Aliases
-        (``hook_attn_out`` / ``attn.hook_out``) resolve to the same wire key.
+        vllm-lens nested ``residual_stream``, so this is provider-agnostic. Hook names
+        are TransformerBridge-native (``blocks.{i}.attn.hook_out``, ...).
         """
         metadata = getattr(output, "metadata", None) or {}
         decoded = wire.decode_activations(metadata, self._wire_keys(names))
         captured: dict[str, np.ndarray] = {}
+        missing: list[str] = []
         for name in names:
             resolved = hooks.resolve(name)
             if resolved is None:
                 continue
             arr = decoded.get(hooks.wire_key(*resolved))
-            if arr is not None:
-                captured[name] = arr[np.newaxis, ...] if arr.ndim == 2 else arr
+            if arr is None:
+                missing.append(name)
+                continue
+            captured[name] = arr[np.newaxis, ...] if arr.ndim == 2 else arr
+        self._warn_missing(missing)
         return captured
+
+    def _warn_missing(self, missing: list[str]) -> None:
+        """Warn once per hook the provider was asked for but didn't return — else its
+        cache entry is silently absent and surfaces only as a later KeyError."""
+        new = [name for name in missing if name not in self._warned_missing]
+        if new:
+            self._warned_missing.update(new)
+            warnings.warn(
+                f"InspectDriver: provider returned no activation for {sorted(new)} "
+                "(requested and in supported_hook_points); those cache keys will be absent.",
+                UserWarning,
+                stacklevel=2,
+            )
 
     def close(self) -> None:
         log = logging.getLogger("transformer_lens.inspect")

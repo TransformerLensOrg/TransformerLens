@@ -1,50 +1,49 @@
 """Canonical hook names ↔ (layer, kind) for the Inspect HF provider.
 
-Torch-free; shared by the provider (what to capture / where to intervene) and the
-driver (supported set, decode). Covers only the ``d_model``-shaped boundaries our
-HF forward hooks match ``boot_transformers`` on exactly. Head-split hooks
-(q/k/v/z, pattern), ``embed.hook_out`` (inline for some architectures), and
-``ln_final.hook_normalized`` (fold-LN convention) are intentionally excluded —
-they're reported non-fireable, matching the vLLM driver.
+Torch-free; shared by the provider (capture/intervene) and the driver (supported set,
+decode). Covers the ``d_model``-shaped decoder-layer boundaries; head-split hooks
+(q/k/v/z, pattern), ``embed``, and ``ln_final`` (fold-LN convention) are non-fireable.
+
+Names are TransformerBridge-native (``blocks.{i}.hook_out``, ``.attn.hook_out``, ...),
+matching the vLLM driver — not the HookedTransformer aliases. A bridge cache carries
+both with identical values, so parity vs ``boot_transformers`` still resolves.
+
+Parity is verified only for ``PARITY_VERIFIED_ARCHITECTURES``; otherwise the boundaries
+assume the standard HF decoder-layer layout (``boot_inspect`` warns).
 """
 from __future__ import annotations
 
 import re
 
-# kind → the canonical TL hook name template(s) that read that boundary. The two
-# attn/mlp aliases are the same tensor under TL's two naming conventions.
-_KIND_NAMES: dict[str, list[str]] = {
-    "resid_pre": ["blocks.{i}.hook_resid_pre"],
-    "resid_mid": ["blocks.{i}.hook_resid_mid"],
-    "resid_post": ["blocks.{i}.hook_resid_post"],
-    "attn_out": ["blocks.{i}.hook_attn_out", "blocks.{i}.attn.hook_out"],
-    "mlp_out": ["blocks.{i}.hook_mlp_out", "blocks.{i}.mlp.hook_out"],
-}
+# Architectures whose boundary↔name mapping is checked against boot_transformers
+# in tests/acceptance/model_bridge/test_inspect_provider.py.
+PARITY_VERIFIED_ARCHITECTURES = frozenset({"GPT2LMHeadModel"})
 
-# Kinds reachable by a forward hook on a clean module boundary. resid_mid is
-# derived (resid_post − mlp_out), so it's capture-only — interventions can't target it.
+# One canonical TransformerBridge name per boundary (no aliases — avoids duplicate
+# HookPoints/cache entries). resid_mid (ln2.hook_in) is derived (resid_pre +
+# attn_out), so it's capture-only.
+_KIND_NAMES = {
+    "resid_pre": "blocks.{i}.hook_in",
+    "resid_mid": "blocks.{i}.ln2.hook_in",
+    "resid_post": "blocks.{i}.hook_out",
+    "attn_out": "blocks.{i}.attn.hook_out",
+    "mlp_out": "blocks.{i}.mlp.hook_out",
+}
 INTERVENEABLE_KINDS = frozenset({"resid_pre", "attn_out", "mlp_out", "resid_post"})
 
 _SUFFIX_TO_KIND = {
-    "hook_resid_pre": "resid_pre",
-    "hook_resid_mid": "resid_mid",
-    "hook_resid_post": "resid_post",
-    "hook_attn_out": "attn_out",
+    "hook_in": "resid_pre",
+    "ln2.hook_in": "resid_mid",
+    "hook_out": "resid_post",
     "attn.hook_out": "attn_out",
-    "hook_mlp_out": "mlp_out",
     "mlp.hook_out": "mlp_out",
 }
 _BLOCK = re.compile(r"^blocks\.(\d+)\.(.+)$")
 
 
 def supported_hook_points(n_layers: int) -> frozenset[str]:
-    """Every fireable hook name across all layers."""
-    return frozenset(
-        name.format(i=i)
-        for i in range(n_layers)
-        for names in _KIND_NAMES.values()
-        for name in names
-    )
+    """Every fireable hook name across all layers (one per boundary)."""
+    return frozenset(name.format(i=i) for i in range(n_layers) for name in _KIND_NAMES.values())
 
 
 def nonfireable_hook_points(n_layers: int) -> frozenset[str]:

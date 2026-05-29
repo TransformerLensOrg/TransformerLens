@@ -61,7 +61,7 @@ class VLLMLensProfile:
     provides_sequence_logits = False
 
     def supported_hooks(self, n_layers: int) -> frozenset[str]:
-        return frozenset(f"blocks.{i}.hook_resid_post" for i in range(n_layers))
+        return frozenset(f"blocks.{i}.hook_out" for i in range(n_layers))
 
     def translate_interventions(self, intervene: Mapping[str, Any], supported) -> list:
         """op='add' with a width-shaped vector → vllm-lens SteeringVector; others raise.
