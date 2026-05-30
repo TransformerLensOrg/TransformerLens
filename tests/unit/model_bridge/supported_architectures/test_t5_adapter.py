@@ -4,7 +4,6 @@ no real checkpoints).
 Covered:
 - Adapter config defaults (RMSNorm, relative position bias, fold-LN disabled, gated
   MLP default off; gated variant when `cfg.is_gated_act` is set).
-- Weight conversions: there are none (T5 stores per-head, no QKVO rearranges needed).
 - Component-mapping structure, bridge types, and HF module paths for both the encoder
   and decoder trees, including the relative-attention-bias wiring.
 - Encoder block: self-attention with q/k/v/o + relative position bias, plain MLP with
@@ -93,8 +92,9 @@ def _mapping(adapter: T5ArchitectureAdapter) -> dict:
 def _conversions(adapter: T5ArchitectureAdapter) -> dict:
     """weight_processing_conversions is Optional on the base class; assert it is populated.
 
-    For T5 it is populated as an empty dict (no QKVO rearranges), which is itself a
-    load-bearing invariant exercised by TestT5WeightConversions and TestT5ArchitectureGuards.
+    For T5 it is populated as an empty dict (no QKVO rearranges, since T5 stores
+    Q/K/V/O per-head). That emptiness is itself a load-bearing invariant; see
+    TestT5ArchitectureGuards.
     """
     conversions = adapter.weight_processing_conversions
     assert conversions is not None
@@ -138,14 +138,6 @@ class TestT5AdapterConfig:
     def test_gated_mlp_set_when_is_gated_act(self, gated_adapter: T5ArchitectureAdapter) -> None:
         """With `cfg.is_gated_act = True` (Flan-T5), the FFN switches to gated."""
         assert gated_adapter.cfg.gated_mlp is True
-
-
-class TestT5WeightConversions:
-    """T5 declares no QKVO rearrange conversions: Q/K/V/O weights are stored
-    per-head already, so no reshape is needed at load time."""
-
-    def test_no_conversions_declared(self, adapter: T5ArchitectureAdapter) -> None:
-        assert _conversions(adapter) == {}
 
 
 class TestT5ComponentMapping:
