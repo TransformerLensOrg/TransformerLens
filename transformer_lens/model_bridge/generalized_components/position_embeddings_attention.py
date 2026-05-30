@@ -369,11 +369,14 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
             key_states = key_states.view(hidden_shape).transpose(1, 2)
             value_states = value_states.view(hidden_shape).transpose(1, 2)
 
-        # Post-reshape phase (Gemma-3/Cohere): norm on [B, H, S, D].
+        # Post-reshape phase (Gemma-3/Cohere/Gemma4): norm on [B, H, S, D].
+        has_v_norm = "v_norm" in self.submodules
         if has_q_norm and self._qk_norm_phase == "post_reshape":
             query_states = self.hook_q_normed(self.q_norm(query_states))
             if has_k_norm:
                 key_states = self.hook_k_normed(self.k_norm(key_states))
+            if has_v_norm:
+                value_states = self.v_norm(value_states)
 
         # --- RoPE ---
         if position_embeddings is not None:
