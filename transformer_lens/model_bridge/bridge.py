@@ -32,6 +32,7 @@ from torch import nn
 
 from transformer_lens import utilities as utils
 from transformer_lens.ActivationCache import ActivationCache
+from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookIntrospectionMixin, HookPoint
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
@@ -270,6 +271,91 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             revision=revision,
             checkpoint_index=checkpoint_index,
             checkpoint_value=checkpoint_value,
+        )
+
+    @classmethod
+    def boot_native(
+        cls,
+        config: Union[TransformerBridgeConfig, dict],
+        tokenizer: Optional[Any] = None,
+        device: Optional[Union[str, torch.device]] = None,
+        dtype: Optional[torch.dtype] = None,
+        model_name: str = "native",
+    ) -> "TransformerBridge":
+        """Build a bridge around a small, randomly-initialized TL-native model.
+
+        No HuggingFace Hub call, no ``transformers`` import. Useful for toy
+        training runs and demos that want a bridge-shaped model without going
+        through the HF pipeline. Init mode and seed are read from ``config``
+        (``config.init_mode``, ``config.seed``).
+
+        Args:
+            config: A :class:`TransformerBridgeConfig` (or dict) carrying the
+                model shape (``d_model``, ``n_heads``, ``n_layers``, ...) plus
+                ``init_mode`` and optional ``seed`` for reproducible weights.
+            tokenizer: Optional tokenizer. Native models are typically used
+                without one — defaults to ``None``.
+            device: Optional device override. Defaults to whatever device the
+                freshly-created module lands on (usually CPU).
+            dtype: Optional dtype override. Defaults to the module's parameter
+                dtype.
+            model_name: Recorded on ``cfg.model_name``.
+
+        Returns:
+            A :class:`TransformerBridge` wrapping a fresh ``NativeModel``.
+        """
+        import copy as _copy
+
+        from transformer_lens.config import TransformerBridgeConfig as _Cfg
+        from transformer_lens.model_bridge.sources._bridge_builder import (
+            build_bridge_from_module,
+        )
+        from transformer_lens.model_bridge.sources.native import (
+            NativeModel,
+            initialize_native_model,
+        )
+
+        if isinstance(config, dict):
+            config = _Cfg.from_dict(config)
+        else:
+            # Deep-copy so NativeModel's default-resolution writes (e.g. d_mlp,
+            # architecture) land on our private copy, never on the caller's.
+            config = _copy.deepcopy(config)
+
+        # boot_native only knows how to build NativeModel and wire the Native
+        # adapter. Refuse foreign architecture strings here — otherwise we'd
+        # dispatch to (e.g.) LlamaArchitectureAdapter against a NativeModel
+        # tree, and the Llama adapter would crash opaquely in prepare_model
+        # looking for paths NativeModel doesn't have.
+        if config.architecture not in (None, "TransformerLensNative"):
+            raise ValueError(
+                f"boot_native cannot build a {config.architecture!r} model — "
+                f"it only constructs the TL-native architecture. Either clear "
+                f"config.architecture or set it to 'TransformerLensNative', "
+                f"or use boot_transformers / build_bridge_from_module for "
+                f"non-native architectures."
+            )
+        # Resolve the architecture locally — never mutate the caller's config.
+        # `build_bridge_from_module` will deep-copy and set `architecture=` on
+        # its own copy.
+        architecture = "TransformerLensNative"
+
+        model = NativeModel(config)
+        initialize_native_model(model, config)
+
+        if device is not None:
+            model = model.to(device)
+        if dtype is not None:
+            model = model.to(dtype=dtype)
+
+        return build_bridge_from_module(
+            model,
+            architecture=architecture,
+            tl_config=config,
+            tokenizer=tokenizer,
+            dtype=dtype,
+            device=device,
+            model_name=model_name,
         )
 
     @property
