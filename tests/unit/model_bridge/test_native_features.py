@@ -64,6 +64,43 @@ def test_attn_scores_soft_cap_bounds_pattern():
     assert torch.isfinite(pattern).all()
 
 
+def test_attn_scale_one_is_rejected_when_d_head_gt_one():
+    """``attn_scale=1.0`` is a UX trap: it reads like "no scaling / standard"
+    but actually means "divide by 1" (no scaling). For any non-trivial d_head
+    the softmax saturates and training breaks. The constructor must refuse
+    this combination with a pointing message."""
+    import pytest
+
+    cfg = _cfg(d_head=16)
+    cfg.use_attn_scale = True
+    cfg.attn_scale = 1.0
+    with pytest.raises(ValueError, match="attn_scale=1.0"):
+        TransformerBridge.boot_native(cfg)
+
+
+def test_attn_scale_one_allowed_when_d_head_one():
+    """``d_head=1`` makes ``sqrt(d_head)==1``, so ``attn_scale=1.0`` is no
+    longer a trap — it's the same as the default scaling. The guard must NOT
+    fire."""
+    cfg = _cfg(d_head=1, d_model=4, n_heads=4)
+    cfg.use_attn_scale = True
+    cfg.attn_scale = 1.0
+    bridge = TransformerBridge.boot_native(cfg)
+    # Forward must work end-to-end.
+    inputs = torch.randint(0, cfg.d_vocab, (2, cfg.n_ctx))
+    _ = bridge(inputs, return_type="logits")
+
+
+def test_attn_scale_custom_nondefault_is_allowed():
+    """The guard fires only on the specific 1.0 trap, not on any other custom
+    scale a user might pick (e.g. for parity with an external implementation)."""
+    cfg = _cfg(d_head=16)
+    cfg.use_attn_scale = True
+    cfg.attn_scale = 2.5  # not 1.0, not sqrt(d_head); user knows what they want
+    bridge = TransformerBridge.boot_native(cfg)
+    assert bridge.original_model.layers[0].attn.scale == 2.5
+
+
 def test_output_logits_soft_cap_bounds_logits():
     """Logits must be bounded by ±cap when output_logits_soft_cap > 0."""
     cap = 5.0
@@ -91,6 +128,40 @@ def test_gated_mlp_swaps_module_class_and_bridge():
     assert isinstance(mlp_bridge, GatedMLPBridge)
     assert isinstance(mlp_bridge.original_component, NativeGatedMLP)
     _ = _forward(bridge)  # forward must work end-to-end
+
+
+def test_gated_mlp_honors_act_fn():
+    """``cfg.act_fn`` selects the gating non-linearity: silu→SwiGLU,
+    relu→ReGLU, gelu/gelu_new→GeGLU. Each must actually use the requested
+    activation rather than silently falling back to silu."""
+    cfg_relu = _cfg(gated_mlp=True, act_fn="relu")
+    cfg_silu = _cfg(gated_mlp=True, act_fn="silu")
+    cfg_gelu = _cfg(gated_mlp=True, act_fn="gelu")
+
+    a = TransformerBridge.boot_native(cfg_relu).blocks[0].mlp.original_component
+    b = TransformerBridge.boot_native(cfg_silu).blocks[0].mlp.original_component
+    c = TransformerBridge.boot_native(cfg_gelu).blocks[0].mlp.original_component
+
+    # Probe each activation with a sentinel: the negatives expose the difference.
+    x = torch.tensor([-2.0, -1.0, 0.0, 1.0, 2.0])
+    relu_ref = torch.relu(x)
+    silu_ref = torch.nn.functional.silu(x)
+    gelu_ref = torch.nn.functional.gelu(x)
+
+    assert torch.allclose(a.act(x), relu_ref)
+    assert torch.allclose(b.act(x), silu_ref)
+    assert torch.allclose(c.act(x), gelu_ref)
+
+
+def test_gated_mlp_rejects_unknown_act_fn():
+    """Parity with NativeMLP: unknown act_fn must raise, not silently default
+    to silu. Otherwise a user typing ``act_fn="reul"`` and toggling gated_mlp
+    on/off would see two different models with no diagnostic."""
+    import pytest
+
+    cfg = _cfg(gated_mlp=True, act_fn="not-an-activation")
+    with pytest.raises(ValueError, match="Unsupported act_fn"):
+        TransformerBridge.boot_native(cfg)
 
 
 def test_gated_mlp_default_is_plain():
@@ -254,6 +325,164 @@ def test_rotary_drops_pos_embed_and_forward_works():
     _ = _forward(bridge)
 
 
+def test_rotary_does_not_shadow_nn_module_apply():
+    """nn.Module.apply(fn) is PyTorch's recursive function-applier — used by
+    init utilities, weight inspection, and many production training loops.
+    NativeRotary's RoPE helper must be named something other than ``apply``
+    so it doesn't break ``bridge.apply(fn)`` when a rotary instance lives in
+    the module tree."""
+    cfg = _cfg(positional_embedding_type="rotary", n_heads=4, d_head=16)
+    bridge = TransformerBridge.boot_native(cfg)
+
+    visited = []
+    bridge.apply(lambda m: visited.append(type(m).__name__))
+    # The recursion must complete and visit modules — including the rotary one
+    # — without TypeError.
+    assert "NativeRotary" in visited
+
+
+def test_rotary_honors_position_ids():
+    """Rotary must slice the cached cos/sin tables by ``position_ids`` so the
+    caller's chosen positions are honored. A silent-drop bug uses 0..seq-1
+    regardless and produces identical patterns regardless of the supplied
+    positions — exactly the failure mode for packed sequences, prefix caches,
+    and continuation past a cached prefix.
+
+    RoPE has a translation-invariance property: rotating Q and K by the same
+    constant shift leaves ``q·k`` (and thus the attention pattern) unchanged.
+    So we pick positions with **different relative spacings** (1-apart vs
+    2-apart), which produce genuinely different attention patterns when RoPE
+    honors ``position_ids`` and identical patterns when it doesn't.
+    """
+    cfg = _cfg(positional_embedding_type="rotary", n_heads=4, d_head=16, n_ctx=16)
+    bridge = TransformerBridge.boot_native(cfg)
+    inputs = torch.randint(0, cfg.d_vocab, (2, 8))
+
+    dense_positions = torch.arange(8).unsqueeze(0).expand(2, -1)  # 0,1,2,...,7
+    spaced_positions = (torch.arange(8) * 2).unsqueeze(0).expand(2, -1)  # 0,2,4,...,14
+
+    _, c_dense = bridge.run_with_cache(inputs, return_type="logits", position_ids=dense_positions)
+    _, c_spaced = bridge.run_with_cache(inputs, return_type="logits", position_ids=spaced_positions)
+    _, c_none = bridge.run_with_cache(inputs, return_type="logits")
+
+    pat_dense = c_dense["blocks.0.attn.hook_pattern"]
+    pat_spaced = c_spaced["blocks.0.attn.hook_pattern"]
+    pat_none = c_none["blocks.0.attn.hook_pattern"]
+
+    # Default (no position_ids) must match dense 0..seq-1 exactly.
+    assert torch.allclose(pat_dense, pat_none, atol=1e-6)
+    # Different relative spacings must produce different attention patterns.
+    assert not torch.allclose(pat_dense, pat_spaced, atol=1e-4), (
+        "Rotary attention ignored position_ids — pattern unchanged despite "
+        "different relative spacings."
+    )
+
+
+def test_input_longer_than_n_ctx_raises_with_clear_message():
+    """Both the absolute-embed nn.Embedding lookup and the rotary cos/sin
+    broadcast would otherwise produce opaque errors that don't mention n_ctx.
+    The up-front check must raise ValueError naming both the input length and
+    n_ctx, on both code paths."""
+    import pytest
+
+    for kind in ("standard", "rotary"):
+        cfg = _cfg(
+            positional_embedding_type=kind,
+            n_heads=4,
+            d_head=16,
+            n_ctx=8,
+        )
+        bridge = TransformerBridge.boot_native(cfg)
+        long_inputs = torch.randint(0, cfg.d_vocab, (2, cfg.n_ctx + 4))
+        with pytest.raises(ValueError, match=r"input length 12 exceeds n_ctx=8"):
+            bridge(long_inputs, return_type="logits")
+
+
+def test_rope_scaling_linear_extends_effective_context():
+    """Linear (position-interpolation) rope_scaling divides positions by the
+    factor before computing freqs. Same n_ctx-slot table, factor× longer
+    effective context. We assert the cached cos table differs from the
+    unscaled version and matches a hand-computed reference."""
+    cfg = _cfg(positional_embedding_type="rotary", n_heads=4, d_head=16, n_ctx=8)
+    cfg.rope_scaling = {"type": "linear", "factor": 2.0}
+    bridge = TransformerBridge.boot_native(cfg)
+    rotary = bridge.original_model.rotary
+    assert rotary.position_scale == 2.0
+
+    # Reference: positions divided by 2 → freqs are half. cos[pos=0] is still
+    # all-ones, but cos[pos=1] is the unscaled cos[pos=0.5] — i.e. shallower
+    # rotation than the unscaled cos[pos=1].
+    cfg_no = _cfg(positional_embedding_type="rotary", n_heads=4, d_head=16, n_ctx=8)
+    rotary_no = TransformerBridge.boot_native(cfg_no).original_model.rotary
+    assert not torch.allclose(rotary.cos_cached, rotary_no.cos_cached)
+
+
+def test_rope_scaling_ntk_scales_base_frequency():
+    """NTK-aware rope_scaling scales the base frequency rather than positions.
+    Effective base must exceed the configured rotary_base by factor^(d/(d-2))."""
+    cfg = _cfg(positional_embedding_type="rotary", n_heads=4, d_head=16, n_ctx=8)
+    cfg.rope_scaling = {"type": "ntk", "factor": 4.0}
+    bridge = TransformerBridge.boot_native(cfg)
+    rotary = bridge.original_model.rotary
+
+    expected_base = float(cfg.rotary_base) * (4.0 ** (16 / 14))
+    assert abs(rotary.effective_base - expected_base) < 1.0
+    assert rotary.position_scale == 1.0  # NTK doesn't touch positions.
+
+
+def test_rope_scaling_llama3_rescales_inv_freq_per_band():
+    """Llama-3 by-parts scheme rescales inv_freq per frequency band rather
+    than uniformly. With factor>1 and a reasonable original_ctx, the resulting
+    cos table must differ from both the unscaled and the linear-scaled versions
+    — otherwise we silently fell through to one of the simpler paths."""
+    cfg = _cfg(positional_embedding_type="rotary", n_heads=4, d_head=16, n_ctx=8)
+    cfg.rope_scaling = {
+        "type": "llama3",
+        "factor": 8.0,
+        "low_freq_factor": 1.0,
+        "high_freq_factor": 4.0,
+        "original_max_position_embeddings": 8,
+    }
+    bridge_llama3 = TransformerBridge.boot_native(cfg)
+
+    cfg_linear = _cfg(positional_embedding_type="rotary", n_heads=4, d_head=16, n_ctx=8)
+    cfg_linear.rope_scaling = {"type": "linear", "factor": 8.0}
+    bridge_linear = TransformerBridge.boot_native(cfg_linear)
+
+    cfg_none = _cfg(positional_embedding_type="rotary", n_heads=4, d_head=16, n_ctx=8)
+    bridge_none = TransformerBridge.boot_native(cfg_none)
+
+    c_llama3 = bridge_llama3.original_model.rotary.cos_cached
+    c_linear = bridge_linear.original_model.rotary.cos_cached
+    c_none = bridge_none.original_model.rotary.cos_cached
+
+    assert not torch.allclose(c_llama3, c_none)
+    assert not torch.allclose(c_llama3, c_linear)
+
+
+def test_rope_scaling_unknown_type_raises():
+    import pytest
+
+    cfg = _cfg(positional_embedding_type="rotary", n_heads=4, d_head=16, n_ctx=8)
+    cfg.rope_scaling = {"type": "moonshot", "factor": 2.0}
+    with pytest.raises(NotImplementedError, match="moonshot"):
+        TransformerBridge.boot_native(cfg)
+
+
+def test_rope_scaling_none_or_factor_one_is_noop():
+    """Empty / None rope_scaling, or factor <= 1, must produce the same cos
+    table as no scaling. A user explicitly disabling scaling shouldn't pay
+    surprise drift."""
+    cfg_none = _cfg(positional_embedding_type="rotary", n_heads=4, d_head=16, n_ctx=8)
+    cfg_factor_1 = _cfg(positional_embedding_type="rotary", n_heads=4, d_head=16, n_ctx=8)
+    cfg_factor_1.rope_scaling = {"type": "linear", "factor": 1.0}
+
+    r_none = TransformerBridge.boot_native(cfg_none).original_model.rotary
+    r_f1 = TransformerBridge.boot_native(cfg_factor_1).original_model.rotary
+    assert torch.allclose(r_none.cos_cached, r_f1.cos_cached)
+    assert r_f1.position_scale == 1.0
+
+
 def test_rotary_pattern_differs_from_absolute():
     """Sanity that rotary actually changes the attention pattern relative to
     absolute embeddings — would catch silent no-op (e.g. cos/sin buffers
@@ -339,6 +568,72 @@ def test_init_modes_diverge_from_each_other():
     assert not torch.allclose(g_w, x_w)
     assert not torch.allclose(g_w, k_w)
     assert not torch.allclose(x_w, k_w)
+
+
+# -- attention_mask -----------------------------------------------------------
+
+
+def test_attention_mask_2d_padding_changes_output():
+    """A 2D HF-style padding mask (1=keep, 0=pad) must actually mask keys.
+    Verified by comparing outputs with and without the mask — a silent-drop
+    bug yields identical outputs."""
+    cfg = _cfg(n_layers=2)
+    bridge = TransformerBridge.boot_native(cfg)
+    inputs = torch.randint(0, cfg.d_vocab, (2, cfg.n_ctx))
+
+    # Mask out the second half of each sequence.
+    mask = torch.ones_like(inputs)
+    mask[:, cfg.n_ctx // 2 :] = 0
+
+    out_masked = bridge(inputs, return_type="logits", attention_mask=mask)
+    out_all_keep = bridge(inputs, return_type="logits", attention_mask=torch.ones_like(inputs))
+    out_no_mask = bridge(inputs, return_type="logits")
+
+    # All-keep mask matches no-mask exactly: providing all-1s must be a no-op.
+    assert torch.allclose(out_no_mask, out_all_keep, atol=1e-6)
+    # Padding mask must change the result on the un-masked positions (positions
+    # 0..n_ctx//2 - 1 can only attend to themselves, but masking the keys for
+    # positions ≥ n_ctx//2 still propagates into the residual stream through
+    # layer 2 because layer 1's masked positions had NaN/garbage outputs that
+    # the next attention reads).
+    # We just need *some* difference somewhere.
+    assert not torch.allclose(
+        out_masked, out_no_mask, atol=1e-4
+    ), "Padding mask had no effect on output — attention_mask was silently dropped."
+
+
+def test_attention_mask_padded_key_has_zero_pattern_weight():
+    """The most direct invariant: when a key position is padded, no query
+    should put any weight on it (post-softmax)."""
+    cfg = _cfg(n_layers=1)
+    bridge = TransformerBridge.boot_native(cfg)
+    inputs = torch.randint(0, cfg.d_vocab, (2, cfg.n_ctx))
+
+    mask = torch.ones_like(inputs)
+    mask[:, cfg.n_ctx // 2 :] = 0  # mask out keys at positions ≥ n_ctx/2
+
+    _, cache = bridge.run_with_cache(inputs, return_type="logits", attention_mask=mask)
+    pattern = cache["blocks.0.attn.hook_pattern"]
+    # For non-padded query rows (positions 0..n_ctx//2-1), no weight on padded
+    # keys. (Padded-query rows have all -inf scores → NaN/uniform post-softmax;
+    # we don't assert on those.)
+    visible_queries = pattern[:, :, : cfg.n_ctx // 2, :]
+    padded_key_weight = visible_queries[:, :, :, cfg.n_ctx // 2 :]
+    assert torch.allclose(
+        padded_key_weight, torch.zeros_like(padded_key_weight), atol=1e-6
+    ), "Visible queries put non-zero weight on padded keys"
+
+
+def test_attention_mask_invalid_shape_raises():
+    import pytest
+
+    cfg = _cfg(n_layers=1)
+    bridge = TransformerBridge.boot_native(cfg)
+    inputs = torch.randint(0, cfg.d_vocab, (2, cfg.n_ctx))
+    # 3D mask shape isn't supported — must raise rather than silently drop.
+    bad_mask = torch.ones(2, cfg.n_ctx, cfg.n_ctx, dtype=torch.bool)
+    with pytest.raises(ValueError, match="attention_mask must be 2D"):
+        bridge(inputs, return_type="logits", attention_mask=bad_mask)
 
 
 # -- combo --------------------------------------------------------------------

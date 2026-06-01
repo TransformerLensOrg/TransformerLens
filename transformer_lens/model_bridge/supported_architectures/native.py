@@ -1,13 +1,7 @@
 """Architecture adapter for TL-native models built via ``boot_native``.
 
-This adapter targets ``NativeModel`` ([sources/native/model.py]). Because the
-native module's hierarchy is fully under our control, the component paths are
-flat (no ``transformer.h.{i}`` prefix) and split-QKV is the natural layout —
-no weight conversions are required for ordinary use.
-
-The component mapping adapts to the cfg: gated MLP swaps in ``GatedMLPBridge``,
-RMS norm swaps in ``RMSNormalizationBridge``, rotary skips ``pos_embed``, and
-``attn_only`` drops the MLP branch.
+Component mapping adapts to cfg: gated MLP → ``GatedMLPBridge``, RMS norm →
+``RMSNormalizationBridge``, rotary drops ``pos_embed``, ``attn_only`` drops MLP.
 """
 from typing import Any
 
@@ -87,21 +81,17 @@ class NativeArchitectureAdapter(ArchitectureAdapter):
     def __init__(self, cfg: Any) -> None:
         super().__init__(cfg)
 
-        # Native layout already stores Q/K/V split per-head in [d_model, n*d_head]
-        # form. We skip weight_processing_conversions for ordinary use; compatibility
-        # mode (fold_ln + center_writing_weights) can be added in a follow-up.
-        # Until then, gate the corresponding ProcessWeights paths off: without the
-        # state-dict key conversions wired up, folding would silently mis-place
-        # weights or raise on missing keys.
+        # Native layout already stores Q/K/V split; no rearranges needed.
+        # Compatibility-mode fold_ln / center_writing_weights aren't wired up,
+        # so gate the corresponding ProcessWeights paths off — folding without
+        # the state-dict conversions would mis-place or drop weights.
         self.supports_fold_ln = False
         self.supports_center_writing_weights = False
         self.weight_processing_conversions = {}
 
-        # Native model uses non-colliding attribute names ("tok_embed", "layers",
-        # "ln_out", "head") because the bridge's __getattr__ forwards unknown
-        # names to original_model.<name>, which would shadow the bridge's own
-        # component slots ("embed", "blocks", "ln_final", "unembed") during
-        # add_module if they matched 1:1.
+        # Internal attribute names avoid collisions with bridge slot names
+        # ("embed", "blocks", "ln_final", "unembed") — the bridge's __getattr__
+        # forwards to original_model and would shadow add_module otherwise.
         mapping: dict = {
             "embed": EmbeddingBridge(name="tok_embed"),
         }
@@ -112,20 +102,16 @@ class NativeArchitectureAdapter(ArchitectureAdapter):
             config=self.cfg,
             submodules=_make_block_submodules(self.cfg),
         )
-        # Under attn_only the ln2 and mlp submodules are absent, but
-        # BlockBridge's class-level hook_aliases still points
-        # ``hook_resid_mid -> ln2.hook_in`` and ``hook_mlp_out -> mlp.hook_out``.
-        # _register_aliases warns when those don't resolve. Drop them so the
-        # warnings stay meaningful elsewhere — the pattern mirrors
-        # ParallelBlockBridge ([block.py:405-407]).
+        # Under attn_only there's no ln2 / mlp to point at; drop the aliases
+        # that would otherwise warn during _register_aliases.
         if self.cfg.attn_only:
             if block_bridge.hook_aliases is BlockBridge.hook_aliases:
                 block_bridge.hook_aliases = dict(block_bridge.hook_aliases)
             block_bridge.hook_aliases.pop("hook_resid_mid", None)
             block_bridge.hook_aliases.pop("hook_mlp_out", None)
         mapping["blocks"] = block_bridge
-        # ``final_rms`` opts into RMSNorm on the final norm regardless of
-        # whether the blocks themselves use RMS — Llama-style configs do this.
+        # final_rms forces RMS on the final norm independent of block norm —
+        # matches Llama's TL config semantic.
         mapping["ln_final"] = _make_norm_bridge(
             "ln_out", self.cfg, force_rms=bool(getattr(self.cfg, "final_rms", False))
         )
@@ -133,23 +119,13 @@ class NativeArchitectureAdapter(ArchitectureAdapter):
         self.component_mapping = mapping
 
     def prepare_model(self, model: Any) -> None:
-        """Reject modules whose attribute names would collide with bridge slots.
+        """Reject modules whose attribute names collide with bridge slots.
 
-        The reserved-slot set is derived from ``self.component_mapping.keys()``
-        at call time — single source of truth. A future variant that adds (or
-        omits) a top-level slot extends the collision check automatically; no
-        sibling list to keep in sync.
-
-        The bridge's ``__getattr__`` falls back to ``getattr(original_model, name)``
-        for unknown attributes — that resolves submodules, registered buffers,
-        plain tensors set with ``self.x = ...``, and any property. Any of these
-        will make ``add_module`` raise during bridge setup. We use ``hasattr``
-        (not ``name in model._modules``) so the check covers all attribute
-        shapes, not just registered nn.Modules.
-
-        Failing here makes the diagnostic point at the real cause instead of a
-        ``KeyError: "attribute 'embed' already exists"`` deep in component
-        setup.
+        Bridge's ``__getattr__`` falls back to ``getattr(original_model, name)``
+        for unknown attrs, so a name match — submodule, buffer, plain tensor,
+        or property — makes ``add_module`` raise mid-setup with an opaque
+        message. Failing here points at the real cause. Reserved set is derived
+        from ``component_mapping.keys()`` so adapter variants stay in sync.
         """
         reserved = set(self.component_mapping.keys()) if self.component_mapping else set()
         collisions = sorted(name for name in reserved if hasattr(model, name))

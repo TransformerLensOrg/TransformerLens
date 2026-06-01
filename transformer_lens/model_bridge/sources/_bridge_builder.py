@@ -1,9 +1,4 @@
-"""Loader-agnostic helpers for building a TransformerBridge around a pre-loaded model.
-
-Signatures and behavior mirror dev-4.x's ``_bridge_builder.py`` so that v4
-migration is mechanical: v4 will replace this module with re-exports of the
-v4 builder, leaving user-facing imports unchanged.
-"""
+"""Loader-agnostic helpers for building a TransformerBridge around a pre-loaded model."""
 from __future__ import annotations
 
 import copy
@@ -164,10 +159,8 @@ def build_bridge_from_module(
             dtype = torch.float32
 
     if tl_config is not None:
-        # Defensive copy: the adapter holds onto adapter.cfg (an alias of this
-        # config) and mutates fields during __init__ (normalization_type, device,
-        # ...). Without copying, a caller that builds multiple bridges from the
-        # same config would see fields leak between bridges.
+        # Defensive copy so adapter-init mutations (normalization_type, device,
+        # ...) don't leak between bridges built from the same config.
         bridge_config = copy.deepcopy(tl_config)
         bridge_config.architecture = architecture
         if model_name != "external" or not getattr(bridge_config, "model_name", None):

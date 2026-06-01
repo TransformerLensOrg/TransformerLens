@@ -1,27 +1,17 @@
-"""Weight init for NativeModel. Supports the standard TL init modes.
+"""Weight init for NativeModel.
 
-Modes:
+Supported modes: ``"gpt2"`` (Normal(0, std) with 1/sqrt(2*n_layers) residual
+scaling on output projections), ``"xavier_uniform"`` / ``"xavier_normal"``,
+``"kaiming_uniform"`` / ``"kaiming_normal"`` (relu nonlinearity). Norm weights
+go to 1, all biases to 0.
 
-- ``"gpt2"`` (default): Normal(0, initializer_range) for everything, with
-  ``1/sqrt(2 * n_layers)`` residual scaling on attn.o and mlp output. Mirrors
-  HookedTransformer's ``init_mode='gpt2'`` and is the right default for GPT-style
-  toy models.
-- ``"xavier_uniform"`` / ``"xavier_normal"``: ``torch.nn.init.xavier_{uniform,normal}_``
-  on linear weights and embeddings. Useful for sanity-checking sensitivity to
-  init scheme without changing architecture.
-- ``"kaiming_uniform"`` / ``"kaiming_normal"``: ``torch.nn.init.kaiming_{uniform,normal}_``
-  with ``nonlinearity='relu'``. Reasonable default for ReLU-family activations.
-
-For every mode: LayerNorm/RMSNorm weights init to 1, biases to 0; Linear biases
-init to 0.
-
-HookedTransformer's exact init pulls from a private RNG. We rely on
-``torch.manual_seed`` plus per-layer ``torch.nn.init`` for reproducibility.
+Determinism uses a scoped ``torch.Generator``, not ``torch.manual_seed``, so
+seeded init does not perturb the caller's global RNG.
 """
 from __future__ import annotations
 
 import math
-from typing import Callable
+from typing import Callable, Optional, cast
 
 import torch
 import torch.nn as nn
@@ -37,13 +27,14 @@ from .model import (
     NativeRMSNorm,
 )
 
-# Init modes that don't depend on residual depth — they treat every weight
-# identically. The residual-scaled output projection trick is gpt2-specific.
-_NON_RESIDUAL_MODES: dict[str, Callable[[torch.Tensor], None]] = {
-    "xavier_uniform": nn.init.xavier_uniform_,
-    "xavier_normal": nn.init.xavier_normal_,
-    "kaiming_uniform": lambda t: nn.init.kaiming_uniform_(t, nonlinearity="relu"),
-    "kaiming_normal": lambda t: nn.init.kaiming_normal_(t, nonlinearity="relu"),
+# Residual-scaled output is gpt2-specific; other modes treat every weight the
+# same. Each entry takes ``(tensor, generator)`` to thread the scoped Generator.
+_NonResidualInit = Callable[[torch.Tensor, Optional[torch.Generator]], torch.Tensor]
+_NON_RESIDUAL_MODES: dict[str, _NonResidualInit] = {
+    "xavier_uniform": lambda t, g: nn.init.xavier_uniform_(t, generator=g),
+    "xavier_normal": lambda t, g: nn.init.xavier_normal_(t, generator=g),
+    "kaiming_uniform": lambda t, g: nn.init.kaiming_uniform_(t, nonlinearity="relu", generator=g),
+    "kaiming_normal": lambda t, g: nn.init.kaiming_normal_(t, nonlinearity="relu", generator=g),
 }
 
 _SUPPORTED_MODES = frozenset({"gpt2", *_NON_RESIDUAL_MODES})
@@ -54,8 +45,19 @@ def initialize_native_model(
 ) -> None:
     """Initialize ``model`` weights in-place. Honors ``cfg.init_mode`` and ``cfg.seed``."""
     effective_seed = seed if seed is not None else cfg.seed
+
+    # Scoped generator on the model's device — None falls back to the global RNG.
+    try:
+        gen_device = next(model.parameters()).device
+    except StopIteration:
+        gen_device = torch.device("cpu")
+    generator: Optional[torch.Generator]
     if effective_seed is not None:
-        torch.manual_seed(effective_seed)
+        g = torch.Generator(device=gen_device)
+        g.manual_seed(effective_seed)
+        generator = g
+    else:
+        generator = None
 
     init_mode = (cfg.init_mode or "gpt2").lower()
     if init_mode not in _SUPPORTED_MODES:
@@ -64,15 +66,20 @@ def initialize_native_model(
             f"Supported modes: {sorted(_SUPPORTED_MODES)}."
         )
 
+    weight_init: Callable[[torch.Tensor], torch.Tensor]
+    output_init: Callable[[torch.Tensor], torch.Tensor]
     if init_mode == "gpt2":
         std = cfg.initializer_range if cfg.initializer_range > 0 else 0.02
         residual_scale = 1.0 / math.sqrt(2 * cfg.n_layers)
-        weight_init = lambda t: nn.init.normal_(t, mean=0.0, std=std)  # noqa: E731
-        output_init = lambda t: nn.init.normal_(t, mean=0.0, std=std * residual_scale)  # noqa: E731
+        weight_init = lambda t: nn.init.normal_(
+            t, mean=0.0, std=std, generator=generator
+        )  # noqa: E731
+        output_init = lambda t: nn.init.normal_(  # noqa: E731
+            t, mean=0.0, std=std * residual_scale, generator=generator
+        )
     else:
-        # Non-gpt2 modes ignore residual-depth scaling — they have their own
-        # gain rules that already account for the layer's role.
-        weight_init = _NON_RESIDUAL_MODES[init_mode]
+        fn = _NON_RESIDUAL_MODES[init_mode]
+        weight_init = lambda t: fn(t, generator)  # noqa: E731
         output_init = weight_init
 
     weight_init(model.tok_embed.weight)
@@ -100,8 +107,8 @@ def _init_norm(norm: nn.Module) -> None:
 def _init_block(
     block: NativeBlock,
     *,
-    weight_init: Callable[[torch.Tensor], None],
-    output_init: Callable[[torch.Tensor], None],
+    weight_init: Callable[[torch.Tensor], torch.Tensor],
+    output_init: Callable[[torch.Tensor], torch.Tensor],
 ) -> None:
     _init_norm(block.ln1)
     _init_attention(block.attn, weight_init=weight_init, output_init=output_init)
@@ -116,8 +123,8 @@ def _init_block(
 def _init_attention(
     attn: NativeAttention,
     *,
-    weight_init: Callable[[torch.Tensor], None],
-    output_init: Callable[[torch.Tensor], None],
+    weight_init: Callable[[torch.Tensor], torch.Tensor],
+    output_init: Callable[[torch.Tensor], torch.Tensor],
 ) -> None:
     for linear in (attn.q, attn.k, attn.v):
         weight_init(linear.weight)
@@ -131,8 +138,8 @@ def _init_attention(
 def _init_mlp(
     mlp: NativeMLP,
     *,
-    weight_init: Callable[[torch.Tensor], None],
-    output_init: Callable[[torch.Tensor], None],
+    weight_init: Callable[[torch.Tensor], torch.Tensor],
+    output_init: Callable[[torch.Tensor], torch.Tensor],
 ) -> None:
     weight_init(mlp.fc_in.weight)
     nn.init.zeros_(mlp.fc_in.bias)
@@ -143,10 +150,11 @@ def _init_mlp(
 def _init_gated_mlp(
     mlp: NativeGatedMLP,
     *,
-    weight_init: Callable[[torch.Tensor], None],
-    output_init: Callable[[torch.Tensor], None],
+    weight_init: Callable[[torch.Tensor], torch.Tensor],
+    output_init: Callable[[torch.Tensor], torch.Tensor],
 ) -> None:
     weight_init(mlp.gate.weight)
     # ``in`` is registered via add_module; getattr resolves it from _modules.
-    weight_init(getattr(mlp, "in").weight)
+    in_proj = cast(nn.Linear, getattr(mlp, "in"))
+    weight_init(in_proj.weight)
     output_init(mlp.out.weight)

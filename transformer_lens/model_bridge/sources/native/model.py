@@ -1,33 +1,15 @@
-"""TL-native transformer model for use with TransformerBridge.
+"""TL-native transformer for TransformerBridge — minimal, no HF/HT dependency.
 
-A minimal, from-scratch transformer implementation with no HuggingFace or
-HookedTransformer dependency. Internal attribute names are deliberately chosen
-to NOT collide with the bridge's top-level component slot names
-("embed", "blocks", "ln_final", "unembed") — the bridge's __getattr__ falls back
-to ``original_model.<slot>`` and an HF-style collision would block add_module
-during bridge setup.
-
-Features driven by config fields:
-
-- ``normalization_type``: ``"LN"`` (default) or ``"RMS"`` / ``"RMSPre"``.
-- ``final_rms``: when True, the final norm uses RMS regardless of block norm.
-- ``gated_mlp``: when True, swaps in a SwiGLU-style gated MLP (Llama/Mistral).
-- ``attn_only``: when True, blocks have no MLP / no ln2.
-- ``n_key_value_heads``: when set and < ``n_heads``, enables grouped-query
-  attention (Llama 3.x / Mistral / DeepSeek style).
-- ``attn_scores_soft_cap``: when > 0, applies Gemma2-style tanh soft-cap to
-  pre-softmax attention scores.
-- ``output_logits_soft_cap``: when > 0, applies tanh soft-cap to final logits.
-- ``positional_embedding_type``: ``"standard"`` (absolute, default) or
-  ``"rotary"``. Rotary applies inside attention; absolute uses ``self.pos``.
-- ``rotary_dim``: partial-rotary dim (rotates first ``rotary_dim`` of each
-  head; pass-through the rest). Default ``d_head``.
-- ``rotary_base``: RoPE base frequency. Default ``10000``.
+Cfg-driven features: ``normalization_type`` (LN / RMS / RMSPre), ``final_rms``,
+``gated_mlp``, ``attn_only``, ``n_key_value_heads`` (GQA), ``attn_scores_soft_cap``,
+``output_logits_soft_cap``, ``positional_embedding_type`` (standard / rotary),
+``rotary_dim`` / ``rotary_base`` / ``rope_scaling`` (linear PI, dynamic/NTK,
+llama3 by-parts).
 """
 from __future__ import annotations
 
 import math
-from typing import Optional
+from typing import Callable, Optional, cast
 
 import torch
 import torch.nn as nn
@@ -35,10 +17,10 @@ import torch.nn.functional as F
 
 from transformer_lens.config import TransformerBridgeConfig
 
-# gelu_new is the tanh-approximation of GELU (what HF GPT-2 and HookedTransformer
-# use). PyTorch's F.gelu accepts approximate="tanh" since 1.10 — that's exactly
-# the same formula, no need to roll our own.
-_ACTIVATIONS = {
+# gelu_new = the tanh-approximation HF GPT-2 / HT use; F.gelu(approximate="tanh")
+# is the exact same formula.
+_Activation = Callable[[torch.Tensor], torch.Tensor]
+_ACTIVATIONS: dict[str, _Activation] = {
     "gelu": F.gelu,
     "gelu_new": lambda x: F.gelu(x, approximate="tanh"),
     "relu": F.relu,
@@ -56,19 +38,8 @@ def _positional_kind(cfg: TransformerBridgeConfig) -> str:
 
 
 class NativeRMSNorm(nn.Module):
-    """Root-mean-square LayerNorm. No mean centering, no bias.
-
-    Matches the math used by Llama / Mistral / T5: ``y = w * x / rms(x)`` where
-    ``rms(x) = sqrt(mean(x^2) + eps)``. The variance is computed in fp32
-    regardless of input dtype — mirroring HF Llama's LlamaRMSNorm — so bf16/fp16
-    inputs don't accumulate variance drift. The result is cast back to the
-    input dtype before the per-channel scale, so the scale runs in the user's
-    chosen precision.
-
-    The bridge's RMSNormalizationBridge wraps any module with a ``weight``
-    attribute and a forward returning the normalized tensor — no further
-    coordination required.
-    """
+    """Llama-style RMSNorm. Variance in fp32 regardless of input dtype, then
+    cast back before the per-channel scale (matches HF LlamaRMSNorm)."""
 
     def __init__(self, d_model: int, eps: float = 1e-5):
         super().__init__()
@@ -89,13 +60,69 @@ def _make_norm(cfg: TransformerBridgeConfig, *, force_rms: bool = False) -> nn.M
     return nn.LayerNorm(cfg.d_model, eps=cfg.eps)
 
 
-class NativeRotary(nn.Module):
-    """Pre-computes the cos/sin tables used by RoPE.
+def _resolve_rope_scaling(
+    cfg: TransformerBridgeConfig, rotary_dim: int
+) -> tuple[float, float, torch.Tensor]:
+    """Returns (effective_base, position_scale, inv_freq) per cfg.rope_scaling."""
+    base = float(cfg.rotary_base)
+    rope_scaling = getattr(cfg, "rope_scaling", None)
+    inv_freq = 1.0 / (base ** (torch.arange(0, rotary_dim, 2).float() / rotary_dim))
 
-    Lives at the model level (one shared instance) so all attention layers
-    re-use the same buffers. Per-call, we just slice to the current sequence
-    length. No HF dependency.
-    """
+    if not isinstance(rope_scaling, dict):
+        return base, 1.0, inv_freq
+
+    # Newer HF configs key on "rope_type"; older ones on "type".
+    scale_type = str(rope_scaling.get("rope_type") or rope_scaling.get("type") or "").lower()
+    factor = float(rope_scaling.get("factor", 1.0))
+
+    if scale_type in ("", "default") or factor <= 1.0:
+        return base, 1.0, inv_freq
+
+    if scale_type == "linear":
+        return base, factor, inv_freq
+
+    if scale_type in ("dynamic", "ntk"):
+        scaled_base = base * (factor ** (rotary_dim / (rotary_dim - 2)))
+        new_inv_freq = 1.0 / (scaled_base ** (torch.arange(0, rotary_dim, 2).float() / rotary_dim))
+        return scaled_base, 1.0, new_inv_freq
+
+    if scale_type == "llama3":
+        low_freq_factor = float(rope_scaling.get("low_freq_factor", 1.0))
+        high_freq_factor = float(rope_scaling.get("high_freq_factor", 4.0))
+        original_ctx = float(
+            rope_scaling.get("original_max_position_embeddings")
+            or rope_scaling.get("original_context_length")
+            or 8192
+        )
+        low_wavelen = original_ctx / low_freq_factor
+        high_wavelen = original_ctx / high_freq_factor
+        wavelens = 2 * math.pi / inv_freq
+        # Three regimes: low-freq → divide by factor; high-freq → unchanged;
+        # in-between → smooth linear interpolation between the two.
+        smooth = (original_ctx / wavelens - low_freq_factor) / (high_freq_factor - low_freq_factor)
+        new_inv_freq = torch.where(
+            wavelens > low_wavelen,
+            inv_freq / factor,
+            torch.where(
+                wavelens < high_wavelen,
+                inv_freq,
+                (1 - smooth) * inv_freq / factor + smooth * inv_freq,
+            ),
+        )
+        return base, 1.0, new_inv_freq
+
+    raise NotImplementedError(
+        f"rope_scaling type {scale_type!r} is not supported. "
+        f"Supported: 'linear', 'dynamic'/'ntk', 'llama3'."
+    )
+
+
+class NativeRotary(nn.Module):
+    """Shared cos/sin tables for RoPE. Honors ``cfg.rope_scaling``."""
+
+    # Declared so mypy sees the buffer dtype; register_buffer alone reports Module|Tensor.
+    cos_cached: torch.Tensor
+    sin_cached: torch.Tensor
 
     def __init__(self, cfg: TransformerBridgeConfig):
         super().__init__()
@@ -103,31 +130,49 @@ class NativeRotary(nn.Module):
         if rotary_dim <= 0 or rotary_dim % 2 != 0:
             raise ValueError(f"rotary_dim must be a positive even integer, got {rotary_dim!r}")
         self.rotary_dim = rotary_dim
-        base = float(cfg.rotary_base)
-        inv_freq = 1.0 / (base ** (torch.arange(0, rotary_dim, 2).float() / rotary_dim))
-        positions = torch.arange(cfg.n_ctx).float()
-        freqs = torch.outer(positions, inv_freq)  # [n_ctx, rotary_dim/2]
-        # Adjacent-pair format (the form Llama/HF use): each pair (2i, 2i+1)
-        # rotates together. We expand cos/sin per element of each pair.
-        cos = freqs.cos().repeat_interleave(2, dim=-1)  # [n_ctx, rotary_dim]
+
+        base, position_scale, inv_freq = _resolve_rope_scaling(cfg, rotary_dim)
+
+        positions = torch.arange(cfg.n_ctx).float() / position_scale
+        freqs = torch.outer(positions, inv_freq)
+        # Llama/HF adjacent-pair format: each (2i, 2i+1) pair rotates together.
+        cos = freqs.cos().repeat_interleave(2, dim=-1)
         sin = freqs.sin().repeat_interleave(2, dim=-1)
         self.register_buffer("cos_cached", cos, persistent=False)
         self.register_buffer("sin_cached", sin, persistent=False)
+        self.effective_base = base
+        self.position_scale = position_scale
 
     @staticmethod
     def _rotate_half(x: torch.Tensor) -> torch.Tensor:
-        # Llama-style adjacent-pair rotation: (x0, x1) -> (-x1, x0)
+        # Llama-style adjacent-pair rotation: (x0, x1) -> (-x1, x0).
         x1 = x[..., 0::2]
         x2 = x[..., 1::2]
         rot = torch.stack((-x2, x1), dim=-1)
         return rot.flatten(-2)
 
-    def apply(self, q: torch.Tensor, k: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        """Apply RoPE to Q and K. Tensors are [batch, heads, seq, d_head]."""
+    def apply_rope(
+        self,
+        q: torch.Tensor,
+        k: torch.Tensor,
+        *,
+        position_ids: Optional[torch.Tensor] = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Apply RoPE to Q/K of shape [batch, heads, seq, d_head].
+
+        Named ``apply_rope`` rather than ``apply`` so ``nn.Module.apply(fn)``
+        — PyTorch's recursive function-application utility used by
+        ``bridge.apply(init_fn)`` — isn't shadowed.
+        """
         seq = q.shape[-2]
         rd = self.rotary_dim
-        cos = self.cos_cached[:seq].to(q.dtype)  # [seq, rd]
-        sin = self.sin_cached[:seq].to(q.dtype)
+        if position_ids is None:
+            cos = self.cos_cached[:seq].to(q.dtype)
+            sin = self.sin_cached[:seq].to(q.dtype)
+        else:
+            # [batch, seq] -> [batch, 1, seq, rd] (head dim for broadcast).
+            cos = self.cos_cached[position_ids].to(q.dtype).unsqueeze(1)
+            sin = self.sin_cached[position_ids].to(q.dtype).unsqueeze(1)
 
         def _rope(x: torch.Tensor) -> torch.Tensor:
             x_rot, x_pass = x[..., :rd], x[..., rd:]
@@ -138,11 +183,10 @@ class NativeRotary(nn.Module):
 
 
 class NativeAttention(nn.Module):
-    """Split-QKV causal self-attention with optional GQA, RoPE, and soft-cap.
+    """Split-QKV causal self-attention. Returns (out, pattern); AttentionBridge
+    fires ``hook_pattern`` off the second element."""
 
-    Returns ``(attn_output, attention_weights)`` so the bridge's AttentionBridge
-    fires ``hook_pattern`` off the second element.
-    """
+    causal_mask: torch.Tensor
 
     def __init__(self, cfg: TransformerBridgeConfig, rotary: Optional[NativeRotary] = None):
         super().__init__()
@@ -150,8 +194,6 @@ class NativeAttention(nn.Module):
         self.n_heads = cfg.n_heads
         self.d_head = cfg.d_head
         self.d_model = cfg.d_model
-        # n_key_value_heads governs GQA: K/V have fewer heads than Q. Default
-        # to n_heads (= standard multi-head attention).
         self.n_kv_heads = cfg.n_key_value_heads or cfg.n_heads
         if self.n_heads % self.n_kv_heads != 0:
             raise ValueError(
@@ -170,14 +212,29 @@ class NativeAttention(nn.Module):
         mask = torch.triu(torch.ones(cfg.n_ctx, cfg.n_ctx, dtype=torch.bool), diagonal=1)
         self.register_buffer("causal_mask", mask, persistent=False)
 
-        scale = (
-            cfg.attn_scale if cfg.use_attn_scale and cfg.attn_scale > 0 else math.sqrt(cfg.d_head)
-        )
+        # attn_scale=1.0 reads like "standard scaling" but is "divide by 1" —
+        # i.e. unscaled scores, which saturate softmax for d_head>1.
+        if cfg.use_attn_scale and cfg.attn_scale > 0:
+            if self.d_head > 1 and math.isclose(cfg.attn_scale, 1.0, abs_tol=1e-9):
+                raise ValueError(
+                    f"attn_scale=1.0 with d_head={self.d_head} (>1) is unscaled "
+                    f"attention; softmax will saturate. For standard scaling "
+                    f"leave attn_scale at -1 (sentinel for sqrt(d_head))."
+                )
+            scale = cfg.attn_scale
+        else:
+            scale = math.sqrt(cfg.d_head)
         self.scale = scale
-        self.rotary = rotary  # None unless cfg.positional_embedding_type == "rotary"
+        self.rotary = rotary
         self.attn_scores_soft_cap = float(cfg.attn_scores_soft_cap)
 
-    def forward(self, hidden_states: torch.Tensor, **kwargs) -> tuple[torch.Tensor, torch.Tensor]:
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.Tensor] = None,
+        **kwargs,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         batch, seq, _ = hidden_states.shape
 
         q = self.q(hidden_states).view(batch, seq, self.n_heads, self.d_head).transpose(1, 2)
@@ -185,35 +242,64 @@ class NativeAttention(nn.Module):
         v = self.v(hidden_states).view(batch, seq, self.n_kv_heads, self.d_head).transpose(1, 2)
 
         if self.rotary is not None:
-            q, k = self.rotary.apply(q, k)
+            q, k = self.rotary.apply_rope(q, k, position_ids=position_ids)
 
-        # Expand K/V to match Q head count under GQA. repeat_interleave keeps
-        # group ordering consistent with HF Llama's repeat_kv.
+        # GQA: repeat_interleave matches HF Llama's repeat_kv group ordering.
         if self.kv_repeats > 1:
             k = k.repeat_interleave(self.kv_repeats, dim=1)
             v = v.repeat_interleave(self.kv_repeats, dim=1)
 
         scores = torch.matmul(q, k.transpose(-2, -1)) / self.scale
-        # Gemma2-style attention soft-cap: c * tanh(scores / c). Bounds raw
-        # logits before the causal mask so masked positions stay -inf.
+        # Gemma2 soft-cap before the causal mask so masked positions stay -inf.
         if self.attn_scores_soft_cap > 0:
             c = self.attn_scores_soft_cap
             scores = c * torch.tanh(scores / c)
-        mask = self.causal_mask[:seq, :seq]
-        scores = scores.masked_fill(mask, float("-inf"))
+
+        block_mask = self.causal_mask[:seq, :seq]
+        if attention_mask is not None:
+            block_mask = self._combine_attention_mask(block_mask, attention_mask, batch=batch)
+        scores = scores.masked_fill(block_mask, float("-inf"))
+
         pattern = F.softmax(scores, dim=-1)
 
         attn = torch.matmul(pattern, v).transpose(1, 2).contiguous().view(batch, seq, -1)
         out = self.o(attn)
         return out, pattern
 
+    @staticmethod
+    def _combine_attention_mask(
+        block_mask: torch.Tensor, attention_mask: torch.Tensor, *, batch: int
+    ) -> torch.Tensor:
+        """Combine an external attention_mask with the causal mask.
+
+        Accepts 2D HF padding mask ``[batch, seq]`` (1=keep, 0=mask), 4D bool
+        mask (True=mask), or 4D additive float mask (HF generation style; values
+        below -1 treated as masked).
+        """
+        if attention_mask.dim() == 2:
+            pad_mask = ~attention_mask.bool()
+            return block_mask | pad_mask[:, None, None, :]
+        if attention_mask.dim() == 4:
+            if attention_mask.dtype is torch.bool:
+                return block_mask | attention_mask
+            # HF additive masks use -inf or large negatives; benign biases bounded.
+            extra = attention_mask < -1.0
+            return block_mask | extra
+        raise ValueError(
+            f"attention_mask must be 2D [batch, seq] or 4D [batch, *, seq, seq], "
+            f"got shape {tuple(attention_mask.shape)}."
+        )
+
 
 class NativeMLP(nn.Module):
     """Two-layer MLP with configurable activation."""
 
+    act: Callable[[torch.Tensor], torch.Tensor]
+
     def __init__(self, cfg: TransformerBridgeConfig):
         super().__init__()
-        d_mlp = cfg.d_mlp
+        assert cfg.d_mlp is not None, "NativeModel resolves d_mlp before instantiating MLPs"
+        d_mlp: int = cfg.d_mlp
         self.fc_in = nn.Linear(cfg.d_model, d_mlp, bias=True)
         self.fc_out = nn.Linear(d_mlp, cfg.d_model, bias=True)
         act_name = (cfg.act_fn or "gelu").lower()
@@ -226,38 +312,34 @@ class NativeMLP(nn.Module):
 
 
 class NativeGatedMLP(nn.Module):
-    """SwiGLU-style gated MLP (Llama / Mistral / Gemma2).
+    """SwiGLU / ReGLU / GeGLU gated MLP (variant picked by ``cfg.act_fn``).
 
-    Submodule names ``gate`` / ``in`` / ``out`` align with the bridge's
-    GatedMLPBridge submodule slots; the adapter wires them by these names.
+    Submodules ``gate`` / ``in`` / ``out`` match GatedMLPBridge's expected slots.
     """
+
+    act: Callable[[torch.Tensor], torch.Tensor]
 
     def __init__(self, cfg: TransformerBridgeConfig):
         super().__init__()
-        d_mlp = cfg.d_mlp
-        # No biases by default — matches Llama. Users wanting biased gated MLPs
-        # can subclass; toy-scope stays simple.
+        assert cfg.d_mlp is not None, "NativeModel resolves d_mlp before instantiating MLPs"
+        d_mlp: int = cfg.d_mlp
+        # Llama convention: no biases on gated MLP projections.
         self.gate = nn.Linear(cfg.d_model, d_mlp, bias=False)
-        # ``in`` is a Python keyword, so we can't write ``self.in = ...`` —
-        # but ``add_module`` accepts any string and stores it in ``_modules``,
-        # so ``getattr(self, "in")`` resolves it the same way the bridge does
-        # when walking ``LinearBridge(name="in")``. No __getattr__ override
-        # required.
+        # ``in`` is a Python keyword; add_module + getattr(self, "in") works
+        # because the bridge resolves LinearBridge(name="in") the same way.
         self.add_module("in", nn.Linear(cfg.d_model, d_mlp, bias=False))
         self.out = nn.Linear(d_mlp, cfg.d_model, bias=False)
-        # Gated MLPs typically pair with SiLU/swish; honor cfg if the user picked
-        # a different activation, but default to silu.
+        # Default to SwiGLU; mirror NativeMLP's dispatch so a typo'd act_fn
+        # raises instead of silently changing the model.
         act_name = (cfg.act_fn or "silu").lower()
-        if act_name == "gelu":  # GeGLU variant
-            self.act = _ACTIVATIONS["gelu"]
-        elif act_name == "gelu_new":
-            self.act = _ACTIVATIONS["gelu_new"]
-        else:
-            self.act = F.silu
+        if act_name not in _ACTIVATIONS:
+            raise ValueError(f"Unsupported act_fn={act_name!r}. Supported: {sorted(_ACTIVATIONS)}")
+        self.act = _ACTIVATIONS[act_name]
 
     def forward(self, hidden_states: torch.Tensor, **kwargs) -> torch.Tensor:
         gate_out = self.act(self.gate(hidden_states))
-        up_out = getattr(self, "in")(hidden_states)
+        in_proj = cast(nn.Linear, getattr(self, "in"))
+        up_out = in_proj(hidden_states)
         return self.out(gate_out * up_out)
 
 
@@ -274,25 +356,35 @@ class NativeBlock(nn.Module):
             self.ln2 = _make_norm(cfg)
             self.mlp = NativeGatedMLP(cfg) if cfg.gated_mlp else NativeMLP(cfg)
 
-    def forward(self, hidden_states: torch.Tensor, **kwargs) -> tuple[torch.Tensor]:
-        attn_out, _pattern = self.attn(self.ln1(hidden_states))
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.Tensor] = None,
+        **kwargs,
+    ) -> tuple[torch.Tensor]:
+        attn_out, _pattern = self.attn(
+            self.ln1(hidden_states),
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+        )
         hidden_states = hidden_states + attn_out
         if not self.cfg.attn_only:
             hidden_states = hidden_states + self.mlp(self.ln2(hidden_states))
-        # Tuple return matches HF block convention so BlockBridge's parser is happy.
+        # Tuple return matches HF block convention; BlockBridge's parser expects it.
         return (hidden_states,)
 
 
 class NativeModel(nn.Module):
     """TL-native transformer. See module docstring for the supported feature set."""
 
+    pos: Optional[nn.Embedding]
+    rotary: Optional[NativeRotary]
+
     def __init__(self, cfg: TransformerBridgeConfig):
         super().__init__()
-        # Resolve defaults that NativeMLP / nn.Embedding need, and write them
-        # back so downstream consumers reading cfg.d_mlp see the real value
-        # instead of None. Mutates the supplied cfg; callers that want isolation
-        # (e.g. TransformerBridge.boot_native) deep-copy the user's cfg before
-        # constructing the model.
+        # Write the resolved d_mlp back so downstream consumers see the real
+        # value, not None. Mutates cfg; isolating callers should deep-copy first.
         if not getattr(cfg, "d_mlp", None):
             cfg.d_mlp = 4 * cfg.d_model
         self.cfg = cfg
@@ -315,9 +407,8 @@ class NativeModel(nn.Module):
         self.layers = nn.ModuleList(
             [NativeBlock(cfg, rotary=self.rotary) for _ in range(cfg.n_layers)]
         )
-        # final_rms overrides the block-norm choice — Llama uses LN-equivalent
-        # blocks but final_rms is true in TL config to opt into RMSNorm on the
-        # final norm. We honor the same semantic.
+        # final_rms forces RMS on the final norm regardless of block-norm choice
+        # — matches the TL config semantic Llama uses.
         self.ln_out = _make_norm(cfg, force_rms=cfg.final_rms)
         d_vocab_out = cfg.d_vocab_out if cfg.d_vocab_out > 0 else cfg.d_vocab
         self.head = nn.Linear(cfg.d_model, d_vocab_out, bias=False)
@@ -330,23 +421,32 @@ class NativeModel(nn.Module):
         position_ids: Optional[torch.Tensor] = None,
         **kwargs,
     ) -> torch.Tensor:
-        """Returns logits directly. The bridge unwraps either .logits, tuple[0],
-        or a bare tensor — we pick the simplest path.
-        """
+        """Returns logits directly."""
+        # Bounds check up front so both absolute and rotary paths produce a
+        # self-explanatory error rather than IndexError / shape mismatch.
+        seq_len = input_ids.shape[-1]
+        if seq_len > self.cfg.n_ctx:
+            raise ValueError(
+                f"input length {seq_len} exceeds n_ctx={self.cfg.n_ctx}; "
+                f"position embeddings and rotary tables are pre-baked at n_ctx."
+            )
+
+        # Resolve position_ids before the block loop so rotary sees the caller's
+        # positions, not the dense default.
+        batch, seq = input_ids.shape
+        if position_ids is None:
+            position_ids = torch.arange(seq, device=input_ids.device).unsqueeze(0).expand(batch, -1)
+
         hidden_states = self.tok_embed(input_ids)
         if self.pos is not None:
-            batch, seq = input_ids.shape
-            if position_ids is None:
-                position_ids = (
-                    torch.arange(seq, device=input_ids.device).unsqueeze(0).expand(batch, -1)
-                )
             hidden_states = hidden_states + self.pos(position_ids)
 
         for block in self.layers:
-            (hidden_states,) = block(hidden_states)
+            (hidden_states,) = block(
+                hidden_states, attention_mask=attention_mask, position_ids=position_ids
+            )
         hidden_states = self.ln_out(hidden_states)
         logits = self.head(hidden_states)
-        # Gemma2-style output soft-cap.
         if self.output_logits_soft_cap > 0:
             c = self.output_logits_soft_cap
             logits = c * torch.tanh(logits / c)

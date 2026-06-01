@@ -97,6 +97,27 @@ def test_boot_native_accepts_dict_config():
     assert bridge.cfg.architecture == "TransformerLensNative"
 
 
+def test_boot_native_does_not_perturb_global_rng():
+    """``boot_native(seed=...)`` must use a scoped torch.Generator instead of
+    ``torch.manual_seed``. Otherwise a user calling boot_native then
+    ``torch.randn(...)`` for batch sampling silently gets a deterministic
+    sequence they didn't ask for."""
+    # Snapshot what torch.randn(5) would produce starting from global seed 0.
+    torch.manual_seed(0)
+    expected_after = torch.randn(5)
+
+    # Now re-seed globally to 0, build a seeded bridge, and confirm the next
+    # torch.randn(5) still matches the pre-bridge prediction.
+    torch.manual_seed(0)
+    TransformerBridge.boot_native(_cfg(seed=42))
+    actual_after = torch.randn(5)
+
+    assert torch.equal(actual_after, expected_after), (
+        "boot_native perturbed the global RNG — the next torch.randn diverged "
+        f"from the pre-call baseline.\n  expected: {expected_after}\n  got:      {actual_after}"
+    )
+
+
 def test_boot_native_seed_is_honored():
     a = TransformerBridge.boot_native(_cfg(seed=123))
     b = TransformerBridge.boot_native(_cfg(seed=123))
