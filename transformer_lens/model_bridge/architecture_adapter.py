@@ -44,6 +44,10 @@ class ArchitectureAdapter:
     # documented in ~/.claude/plans/ssm-verification-compatibility.md.
     applicable_phases: list[int] = [1, 2, 3, 4]
 
+    # Whether this architecture supports text generation via generate().
+    # Encoder-only models (e.g. BERT, HuBERT) should set this to False.
+    supports_generation: bool = True
+
     def __init__(self, cfg: TransformerBridgeConfig) -> None:
         """Initialize the architecture adapter.
 
