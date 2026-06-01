@@ -38,6 +38,8 @@ class HubertArchitectureAdapter(ArchitectureAdapter):
     prepare_model() detects this and adjusts component paths.
     """
 
+    supports_generation: bool = False
+
     def __init__(self, cfg: Any) -> None:
         super().__init__(cfg)
 

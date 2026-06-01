@@ -25,6 +25,8 @@ from transformer_lens.model_bridge.generalized_components import (
 class BertArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for BERT models."""
 
+    supports_generation: bool = False
+
     def __init__(self, cfg: Any) -> None:
         """Initialize the BERT architecture adapter.
 
