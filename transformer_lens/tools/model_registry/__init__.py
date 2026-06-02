@@ -39,10 +39,15 @@ from .verification import VerificationHistory, VerificationRecord
 # These must match the exact strings found in HF model config.architectures[]
 # and correspond to adapters registered in architecture_adapter_factory.py.
 #
-# Internal-only architectures (NanoGPT, MinGPT, NeelSoluOld, GPT2LMHeadCustomModel)
-# are excluded since they never appear on HuggingFace Hub.
+# Internal-only architectures (NanoGPT, MinGPT, NeelSoluOld, GPT2LMHeadCustomModel,
+# TransformerLensNative) are excluded since they never appear on HuggingFace Hub.
+# Factory-internal alias casings (Gemma1, Neo, NeoX) are also excluded since they
+# route to canonical adapters but HF reports the canonical names (Gemma, GPTNeo,
+# GPTNeoX) in config.architectures instead.
 HF_SUPPORTED_ARCHITECTURES: set[str] = {
     "ApertusForCausalLM",
+    "BaiChuanForCausalLM",
+    "BaichuanForCausalLM",
     "BertForMaskedLM",
     "BloomForCausalLM",
     "CodeGenForCausalLM",
@@ -85,6 +90,7 @@ HF_SUPPORTED_ARCHITECTURES: set[str] = {
     "QwenForCausalLM",
     "Qwen2ForCausalLM",
     "Qwen3ForCausalLM",
+    "Qwen3MoeForCausalLM",
     "Qwen3NextForCausalLM",
     "Qwen3_5ForCausalLM",
     "StableLmForCausalLM",
@@ -97,6 +103,7 @@ HF_SUPPORTED_ARCHITECTURES: set[str] = {
 # download-threshold bypass and the docs table's "Canonical only" toggle.
 CANONICAL_AUTHORS_BY_ARCH: dict[str, list[str]] = {
     "ApertusForCausalLM": ["swiss-ai"],
+    "BaiChuanForCausalLM": ["baichuan-inc"],
     "BaichuanForCausalLM": ["baichuan-inc"],
     "BertForMaskedLM": ["google-bert"],
     "BloomForCausalLM": ["bigscience"],
@@ -140,6 +147,7 @@ CANONICAL_AUTHORS_BY_ARCH: dict[str, list[str]] = {
     "PhiForCausalLM": ["microsoft"],
     "Qwen2ForCausalLM": ["Qwen", "nvidia"],
     "Qwen3ForCausalLM": ["Qwen", "nvidia"],
+    "Qwen3MoeForCausalLM": ["Qwen"],
     "Qwen3NextForCausalLM": ["Qwen"],
     "Qwen3_5ForCausalLM": ["Qwen"],
     "QwenForCausalLM": ["Qwen"],
