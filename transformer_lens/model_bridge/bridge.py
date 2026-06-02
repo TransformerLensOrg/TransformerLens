@@ -32,6 +32,7 @@ from torch import nn
 
 from transformer_lens import utilities as utils
 from transformer_lens.ActivationCache import ActivationCache
+from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookIntrospectionMixin, HookPoint
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
@@ -270,6 +271,77 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             revision=revision,
             checkpoint_index=checkpoint_index,
             checkpoint_value=checkpoint_value,
+        )
+
+    @classmethod
+    def boot_native(
+        cls,
+        config: Union[TransformerBridgeConfig, dict],
+        tokenizer: Optional[Any] = None,
+        device: Optional[Union[str, torch.device]] = None,
+        dtype: Optional[torch.dtype] = None,
+        model_name: str = "native",
+    ) -> "TransformerBridge":
+        """Build a bridge around a small, randomly-initialized TL-native model.
+
+        No HuggingFace Hub call, no ``transformers`` import. ``config.init_mode``
+        and ``config.seed`` control reproducibility.
+        """
+        import copy as _copy
+
+        from transformer_lens.config import TransformerBridgeConfig as _Cfg
+        from transformer_lens.model_bridge.sources._bridge_builder import (
+            build_bridge_from_module,
+        )
+        from transformer_lens.model_bridge.sources.native import (
+            NativeModel,
+            initialize_native_model,
+        )
+
+        cfg: TransformerBridgeConfig
+        if isinstance(config, dict):
+            cfg = _Cfg.from_dict(config)
+        else:
+            # Deep-copy so NativeModel's default-resolution writes don't land
+            # on the caller's config.
+            cfg = _copy.deepcopy(config)
+
+        # Foreign architecture strings would dispatch to the wrong adapter and
+        # crash deep in prepare_model. Refuse them with a pointing message.
+        if cfg.architecture not in (None, "TransformerLensNative"):
+            raise ValueError(
+                f"boot_native cannot build a {cfg.architecture!r} model — "
+                f"it only constructs the TL-native architecture. Either clear "
+                f"config.architecture or set it to 'TransformerLensNative', "
+                f"or use boot_transformers / build_bridge_from_module for "
+                f"non-native architectures."
+            )
+        architecture = "TransformerLensNative"
+
+        # Fork RNG around construction + init when seeded so neither nn.Linear's
+        # default reset_parameters nor our scoped init perturb the caller's RNG.
+        # Unseeded calls let global RNG advance normally.
+        if cfg.seed is not None:
+            with torch.random.fork_rng(devices=[]):
+                model = NativeModel(cfg)
+                initialize_native_model(model, cfg)
+        else:
+            model = NativeModel(cfg)
+            initialize_native_model(model, cfg)
+
+        if device is not None:
+            model = model.to(device)
+        if dtype is not None:
+            model = model.to(dtype=dtype)
+
+        return build_bridge_from_module(
+            model,
+            architecture=architecture,
+            tl_config=cfg,
+            tokenizer=tokenizer,
+            dtype=dtype,
+            device=device,
+            model_name=model_name,
         )
 
     @property

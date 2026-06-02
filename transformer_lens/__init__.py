@@ -15,7 +15,7 @@ from .ActivationCache import ActivationCache
 from .BertNextSentencePrediction import BertNextSentencePrediction
 from .cache.key_value_cache import TransformerLensKeyValueCache
 from .cache.key_value_cache_entry import TransformerLensKeyValueCacheEntry
-from .config import HookedTransformerConfig
+from .config import HookedTransformerConfig, TransformerBridgeConfig
 from .FactoredMatrix import FactoredMatrix
 from .HookedEncoder import HookedEncoder
 from .HookedAudioEncoder import HookedAudioEncoder
@@ -41,6 +41,7 @@ if _os.environ.get("TRANSFORMERLENS_HF_RETRY") == "1":
 
 __all__ = [
     "HookedTransformerConfig",
+    "TransformerBridgeConfig",
     "FactoredMatrix",
     "ActivationCache",
     "HookedTransformer",
