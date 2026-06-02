@@ -2,7 +2,7 @@
 
 When a Bridge adapter's integration test fails by `~1e-3` (or any larger delta) against the HuggingFace reference, the failure mode is almost always one of a small set of recurring bugs. This page walks the bisection workflow.
 
-> **Hard rule (also in [AGENTS.md §10](../../../AGENTS.md#10-hard-rules)):** never call observed drift "fp noise" without empirical evidence. Real bugs and accumulated rounding error look identical at noise scale until you measure.
+> **Hard rule** (see also the [project conventions in contributing.md](contributing.md#on-numerical-work)): never call observed drift "fp noise" without empirical evidence. Real bugs and accumulated rounding error look identical at noise scale until you measure.
 
 ---
 
@@ -74,7 +74,7 @@ hf_logits = hf(ids).logits
 print((ref_logits - hf_logits).abs().max())  # should be < 1e-4 in fp32
 ```
 
-If `boot_transformers` itself disagrees with HF on the same model, the issue is upstream of your adapter (probably a `_HF_PASSTHROUGH_ATTRS` gap in [`_bridge_builder.py`](../../../transformer_lens/model_bridge/sources/_bridge_builder.py) or a missing config-attr propagation — see [supported_architectures/AGENTS.md §Config-attr propagation](../../../transformer_lens/model_bridge/supported_architectures/AGENTS.md#config-attr-propagation)).
+If `boot_transformers` itself disagrees with HF on the same model, the issue is upstream of your adapter (probably a `_HF_PASSTHROUGH_ATTRS` gap in `transformer_lens/model_bridge/sources/_bridge_builder.py`, or a non-standard HF config attribute that the adapter never propagated onto `self.cfg`). HF raw config attributes are invisible to TL-side consumers unless explicitly mirrored. Common attributes that need propagation: `final_logit_softcapping` (Gemma2/3), `attn_logit_softcapping` (Gemma2/3), `query_pre_attn_scalar` (Gemma2/3), `sliding_window` (Mistral, Qwen2, Gemma2), `layer_types` (hybrid models), and non-standard RMSNorm eps attribute names (Llama uses `variance_epsilon`).
 
 ## 5. Bisecting `verify_models` phase failures
 
@@ -85,7 +85,7 @@ If `boot_transformers` itself disagrees with HF on the same model, the issue is 
 | 1 | Forward correctness vs HF | Steps 1–4 above; this is the standard parity workflow |
 | 2 | Hook firing / gradient flow | The hook isn't registered, or it's firing on a tensor that's been replaced (in-place op). Grep adapter for in-place ops on hookable tensors. |
 | 3 | Weight processing | Run with `no_processing=True` to isolate. Then bisect compat-mode flags per §3 above. |
-| 4 | Text-generation quality | Usually tokenizer policy (BOS, padding, EOS) — see [supported_architectures/AGENTS.md §Tokenizer policy](../../../transformer_lens/model_bridge/supported_architectures/AGENTS.md#tokenizer-policy). Less often, a generation-loop divergence; rerun with `--no-ht-reference` to skip HT comparison. |
+| 4 | Text-generation quality | Usually tokenizer policy: `default_prepend_bos`, padding side, EOS handling, chat-template wiring. Tokenizer behaviour is per-model, not per-architecture — check the target's `tokenizer_config.json`, don't inherit from a sibling. Less often, a generation-loop divergence; rerun with `--no-ht-reference` to skip HT comparison. |
 | 7 | Multimodal alignment | Vision encoder output drift or projection mismatch. Llava / Gemma3-multimodal only. |
 | 8 | Audio | HuBERT only; check CTC head and audio-feature alignment. |
 
@@ -97,7 +97,7 @@ Empirically, in this codebase:
 - **bf16, eager**: `< 1e-2` is the noise floor.
 - **fp32, sdpa**: `< 5e-4` due to sdpa's internal reductions. Use eager for parity tests.
 
-If you suspect noise, the cheap proof is to run **fp64**: `dtype=torch.float64` on both sides. If the diff stays the same magnitude, it's a bug. If it drops by ~8 orders of magnitude, it was noise. This is what [AGENTS.md §10](../../../AGENTS.md#10-hard-rules)'s rule is asking for.
+If you suspect noise, the cheap proof is to run **fp64**: `dtype=torch.float64` on both sides. If the diff stays the same magnitude, it's a bug. If it drops by ~8 orders of magnitude, it was noise. See the [project conventions in contributing.md](contributing.md#on-numerical-work) for the rule behind this.
 
 ## 7. Tooling
 

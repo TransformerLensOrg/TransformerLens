@@ -4,6 +4,8 @@ Guidance for AI coding agents contributing to **TransformerLens**.
 
 This file is the single source of truth. Vendor-specific files ([CLAUDE.md](CLAUDE.md), [.github/copilot-instructions.md](.github/copilot-instructions.md), [.cursor/rules/transformerlens.mdc](.cursor/rules/transformerlens.mdc)) and sub-folder `AGENTS.md` files all defer here.
 
+> **Just want to use the library?** Start with the [README](README.md). **Just want to run the tests?** Skip to [§3 Quickstart](#3-quickstart). **Contributing?** Read on.
+
 ## TL;DR — read before doing anything
 
 1. **Use `uv`**, not `pip` or `poetry`. Install with `uv sync`.
@@ -28,6 +30,8 @@ Sub-folder rules: [tests/AGENTS.md](tests/AGENTS.md) · [supported_architectures
 |---|---|---|---|---|
 | **`TransformerBridge`** | v3 — default for new work | [transformer_lens/model_bridge/](transformer_lens/model_bridge/) | Raw HF weights by default; `bridge.enable_compatibility_mode()` for HT-equivalent | [transformer_lens/tools/model_registry/data/supported_models.json](transformer_lens/tools/model_registry/data/supported_models.json) |
 | **`HookedTransformer`** | Legacy, maintenance mode, deprecated in 3.0 | [transformer_lens/HookedTransformer.py](transformer_lens/HookedTransformer.py) + [transformer_lens/components/](transformer_lens/components/) | Folds LayerNorm + centres weights → does NOT match HF | [transformer_lens/supported_models.py](transformer_lens/supported_models.py) (**HT-only**) |
+
+> ⚠ The **HookedTransformer acceptance test suite is currently quarantined** ([tests/acceptance/test_hooked_transformer.py](tests/acceptance/test_hooked_transformer.py), [test_hooked_encoder.py](tests/acceptance/test_hooked_encoder.py), [test_hooked_encoder_decoder.py](tests/acceptance/test_hooked_encoder_decoder.py)) — see [tests/QUARANTINES.md §⚠️](tests/QUARANTINES.md). HT-touching changes land essentially untested at the acceptance level until the suite is re-enabled; extra manual care is required.
 
 Bridge architecture-adapter pattern: each HF architecture has one file in [transformer_lens/model_bridge/supported_architectures/](transformer_lens/model_bridge/supported_architectures/) mapping HF module paths to canonical TransformerLens names. Bridge hook names are architecture-native (e.g. `blocks.{i}.hook_out`); HT-style aliases are registered separately in [transformer_lens/model_bridge/bridge.py](transformer_lens/model_bridge/bridge.py).
 
@@ -72,6 +76,8 @@ uv run build-docs       # build to docs/build/
 
 Python: **>=3.10, <4.0**. CI tests 3.10, 3.11, 3.12. Format/type/docstring checks run on 3.12.
 
+**Windows:** use WSL2 — the bash invocations above (`source`, `set -a; source .env; set +a`, heredocs in slash commands) don't translate to PowerShell.
+
 ## 4. Repo map
 
 | Path | What's there |
@@ -95,7 +101,7 @@ Python: **>=3.10, <4.0**. CI tests 3.10, 3.11, 3.12. Format/type/docstring check
 | [docs/source/content/](docs/source/content/) | Sphinx markdown sources |
 | [docs/source/content/adapter_development/](docs/source/content/adapter_development/) | Adapter-authoring guides — read these before adding a new architecture |
 | [makefile](makefile) | Canonical test/format/docs targets |
-| [pyproject.toml](pyproject.toml) | Deps, pytest / mypy / format / build config. |
+| [pyproject.toml](pyproject.toml) | Deps, pytest / mypy / format / build config |
 | [.github/workflows/checks.yml](.github/workflows/checks.yml) | CI gates |
 | [.github/PULL_REQUEST_TEMPLATE.md](.github/PULL_REQUEST_TEMPLATE.md) | PR template + base-branch rules |
 
@@ -118,36 +124,40 @@ When picking solutions to any problem, prioritize by **research impact**, not im
 
 ## 8. PR conventions
 
-- **Base branch**:
-  - `dev` — default for all PRs (new features, refactors, docs, most bug fixes).
-  - `main` — **only** for bug fixes against the currently-released version. PRs to main made at Maintainer's discretion.
-- **Branch names**: do NOT name your branch `main` or `dev` — these conflict with the canonical branches when maintainers periodically refresh PRs against upstream. Include the word `docs` in the branch name if your PR is primarily a docs change (this triggers the docs build job).
-- **New branches must track their own remote**, not the source branch's remote. When you `git push -u`, push to the new branch's namespace, not the branch you forked from.
-- **PR template**: [.github/PULL_REQUEST_TEMPLATE.md](.github/PULL_REQUEST_TEMPLATE.md). No conventional-commits enforcement.
-- **No pre-commit hook is installed.** Run `make format` and `uv run mypy .` manually before pushing; CI will fail otherwise.
-- **Changelog**: no per-PR changelog file. User-facing changes go in the PR description and are rolled up into the next release essay in [docs/source/content/news/](docs/source/content/news/) (`release-2.0.md`, `release-3.0.md`, … — one file per major version). If your PR introduces a breaking change or a notable user-facing feature, note it explicitly in the PR description so the next release essay picks it up.
+**Base branch**:
+- `dev` — default for all PRs (new features, refactors, docs, most bug fixes).
+- `main` — **only** for bug fixes against the currently-released version. PRs to `main` are made by maintainers; request permission before basing off `main`.
+
+**Branch naming**:
+- Do NOT name your branch `main` or `dev` — these conflict with the canonical branches when maintainers periodically refresh PRs against upstream.
+- Include the word `docs` in the branch name if your PR is primarily a docs change (this triggers the docs build job).
+- New branches must track their own remote — `git push -u origin <branch>` from your branch, not from `main`/`dev`.
+
+**Pre-push checks**: no pre-commit hook is installed. Run `make format` and `uv run mypy .` manually before pushing; CI will fail otherwise.
+
+**PR template**: [.github/PULL_REQUEST_TEMPLATE.md](.github/PULL_REQUEST_TEMPLATE.md). No conventional-commits enforcement.
+
+**Changelog / release notes**: there is no per-PR changelog file. **Note user-facing changes in your PR description and commit messages** — release essays in [docs/source/content/news/](docs/source/content/news/) and the GitHub Releases page are drafted by a maintainer at release time by reviewing those. Breaking changes and notable user-facing features should be called out explicitly so the rollup picks them up.
 
 ## 9. CI gates a PR must pass
 
 From [.github/workflows/checks.yml](.github/workflows/checks.yml):
 
-| Job | Runs |
-|---|---|
-| `compatibility-checks` | `make unit-test` + `make acceptance-test` + `uv build` × py 3.10 / 3.11 / 3.12 |
-| `mps-checks` | macOS MPS unit + integration + smoke (PRs to `main` only) |
-| `format-check` | `make check-format` |
-| `type-check` | `uv run mypy .` |
-| `docstring-test` | `make docstring-test` |
-| `coverage-test` | Full suite + coverage artifact |
-| `notebook-checks` | `nbval` over subset of `demos/*.ipynb`; `HF_TOKEN`-gated notebooks skip when secret absent |
-| `build-docs` | Sphinx build (push to `main`/`dev` or branch containing `docs`) |
-| `deploy-docs` | GitHub Pages (push to `main` only) |
+| Job | Runs | When it fails, run locally |
+|---|---|---|
+| `compatibility-checks` | `make unit-test` + `make acceptance-test` + `uv build` × py 3.10 / 3.11 / 3.12 | `make unit-test` / `make acceptance-test` / `uv build`. Repro Python-specific failures with `uv python install <ver>` then `uv run --python <ver> pytest …` |
+| `mps-checks` | macOS MPS unit + integration + smoke (PRs to `main` only) | `TRANSFORMERLENS_ALLOW_MPS=1 uv run pytest tests/mps` on a Mac with MPS |
+| `format-check` | `make check-format` | `make format` (writes the fix) then commit |
+| `type-check` | `uv run mypy .` | `uv run mypy .` — fix the error; never add `# type: ignore` |
+| `docstring-test` | `make docstring-test` | `make docstring-test` — failures are doctest mismatches in `transformer_lens/` |
+| `coverage-test` | Full suite + coverage artifact | `make test-pr` covers most of this; full reproduction with `make coverage-report-test` |
+| `notebook-checks` | `nbval` over subset of `demos/*.ipynb`; `HF_TOKEN`-gated notebooks skip when secret absent | `uv run pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/<notebook>.ipynb` |
+| `build-docs` | Sphinx build (push to `main`/`dev` or branch containing `docs`) | `uv run build-docs` (sources `.env` if needed for HF-gated doctest examples) |
+| `deploy-docs` | GitHub Pages (push to `main` only) | Maintainer-only; rarely the contributor's fault — usually a `build-docs` artifact issue |
 
 In-progress PR runs cancel on new commit; tag/release runs do not.
 
 ## 10. Hard rules
-
-These are the explicit "do / do not" rules. They are informed by maintainer experience.
 
 **On test failures:**
 
@@ -185,7 +195,7 @@ Before declaring a task complete:
 | Notebook change | `pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/<notebook>.ipynb` passes locally |
 | Anything else | `make format` + `uv run mypy .` + `make test-pr` clean before push |
 
-If you're using Claude Code, the `/task-complete` slash command in [.claude/commands/](.claude/commands/) automates the last row (`make test-pr` = unit + docstring + acceptance + integration).
+Claude Code: `/task-complete` automates the last row. See [§15 Workflow shortcuts](#15-workflow-shortcuts).
 
 ## 12. Pointers for further reading
 
@@ -197,12 +207,10 @@ If you're using Claude Code, the `/task-complete` slash command in [.claude/comm
 
 ## 13. Local-only conventions
 
-Two gitignored paths exist for ephemeral work; use them so your work-in-progress doesn't show up in `git status`:
+Two gitignored paths for ephemeral work (gitignore entries checked in — first-class conventions, not personal):
 
-- **`transformer_lens/scratch.py`** — sibling-of-package scratch file for one-off bisection scripts and ad-hoc imports. Already in `.gitignore`; never commit.
-- **`.adapter-workspace/`** — directory for adapter WIP (notes, config dumps, repro scripts) while you're iterating. Already in `.gitignore`.
-
-Both are first-class conventions, not personal preferences — the gitignore entries are checked in. New contributors should know about them so they don't reinvent the convention or accidentally commit experimental code.
+- **`transformer_lens/scratch.py`** — sibling-of-package scratch file for one-off bisection scripts and ad-hoc imports.
+- **`.adapter-workspace/`** — directory for adapter WIP (notes, config dumps, repro scripts).
 
 ## 14. Upstream dependency pins
 
@@ -225,3 +233,18 @@ Load-bearing pins live in [pyproject.toml](pyproject.toml):
 5. Land in a focused PR — pin bumps are reviewed separately from feature work because the blast radius is wide.
 
 Specific to HF: when a `transformers` minor bump introduces a new architecture or renames an existing one, check the impact on `_HF_PASSTHROUGH_ATTRS` in [`transformer_lens/model_bridge/sources/_bridge_builder.py`](transformer_lens/model_bridge/sources/_bridge_builder.py) and `SUPPORTED_ARCHITECTURES` in [`transformer_lens/factories/architecture_adapter_factory.py`](transformer_lens/factories/architecture_adapter_factory.py).
+
+## 15. Workflow shortcuts
+
+Claude Code users have slash commands in [.claude/commands/](.claude/commands/) that wrap common workflows. Non-Claude agents (Cursor, Codex, Copilot, Aider, etc.) can run the manual equivalents:
+
+| Claude shortcut | Manual equivalent | Reference |
+|---|---|---|
+| `/test-unit` | `make unit-test` | [§3 Quickstart](#3-quickstart) |
+| `/test-all` | `make test` (long) | [§3 Quickstart](#3-quickstart) |
+| `/format` | `make format && uv run mypy .` | [§3 Quickstart](#3-quickstart) |
+| `/typecheck` | `uv run mypy .` | [§3 Quickstart](#3-quickstart) |
+| `/build-docs` | `set -a; source .env; set +a && uv run build-docs` | [§3 Quickstart](#3-quickstart) |
+| `/verify-model <repo>` | `set -a; source .env; set +a` then `uv run python -m transformer_lens.tools.model_registry.verify_models --model <repo> --dry-run` first, confirm, then drop `--dry-run` | [tools/model_registry/AGENTS.md](transformer_lens/tools/model_registry/AGENTS.md) |
+| `/add-model-support <hf_repo>` | Follow the 4-way branch + adapter-authoring workflow | [supported_architectures/AGENTS.md](transformer_lens/model_bridge/supported_architectures/AGENTS.md) |
+| `/task-complete` | `make format && uv run mypy . && make test-pr` (loop until clean) | [§11 Done checklist](#11-done-checklist) |

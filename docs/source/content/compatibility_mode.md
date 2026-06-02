@@ -89,6 +89,6 @@ New integration tests should use the variant that matches the property they're t
 
 ## See also
 
-- [supported_architectures/AGENTS.md](../../../transformer_lens/model_bridge/supported_architectures/AGENTS.md) — adapter contract; the `setup_hook_compatibility` override hook is documented there.
-- [debugging_numerical_divergence.md](debugging_numerical_divergence.md) — uses `no_processing=True` as a key bisection tool.
-- [migrating_to_v3.md](migrating_to_v3.md) — when porting HT code, you almost always want `enable_compatibility_mode()`.
+- [Creating Architecture Adapters in contributing.md](contributing.md#creating-architecture-adapters) — adapter contract and the four-place registration; adapter authors override `setup_hook_compatibility` only when an architecture has the post-norm / MLA carve-outs mentioned above.
+- [Debugging Numerical Divergence](debugging_numerical_divergence.md) — uses `no_processing=True` as a key bisection tool.
+- [Migrating to TransformerLens 3](migrating_to_v3.md) — when porting HT code, you almost always want `enable_compatibility_mode()`.

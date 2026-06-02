@@ -2,6 +2,8 @@
 
 Read [the root AGENTS.md](../AGENTS.md) for project-wide rules. This file covers conventions specific to `tests/`.
 
+> **Just running tests?** Run `make test-pr` for the standard PR-review surface (unit + docstring + acceptance + integration). `make unit-test` for fast feedback. Full tier breakdown in [Test tiers](#test-tiers) below.
+
 ---
 
 ## TL;DR
@@ -33,17 +35,27 @@ Common combinations: `make test-pr` (unit + docstring + acceptance + integration
 
 ## Conftest hierarchy
 
+[`tests/conftest.py`](conftest.py) — root, provides:
+
+- `cleanup_memory` (function autouse), `cleanup_class_memory` — CUDA/MPS cache + GC
+- `_enable_hf_retry_for_tests` (session autouse) — wraps HF `from_pretrained` with 429 retry
+- Seeded RNG (numpy/torch/Python @ 42)
+- `gpt2_tokenizer` (session)
+- `gpt2_hooked_processed` (session)
+- `temp_dir`
+
+Sub-folder conftests:
+
 | Path | Provides |
 |---|---|
-| [`tests/conftest.py`](conftest.py) | `cleanup_memory` (function autouse) and `cleanup_class_memory` — CUDA/MPS cache + GC; `_enable_hf_retry_for_tests` (session autouse) — wraps HF `from_pretrained` with 429 retry; seeded RNG (numpy/torch/Python @ 42); `gpt2_tokenizer` + `gpt2_hooked_processed` (session); `temp_dir` |
 | [`tests/acceptance/conftest.py`](acceptance/conftest.py) | `gpt2_model`, `bloom_560m_hooked`, `bloom_560m_hf_model`, `bloom_560m_hf_tokenizer` (all session) |
 | [`tests/acceptance/model_bridge/conftest.py`](acceptance/model_bridge/conftest.py) | Bridge variants of gpt2 with/without compat mode |
 | [`tests/integration/model_bridge/conftest.py`](integration/model_bridge/conftest.py) | distilgpt2 + gpt2 Bridge variants × {compat, no-compat, no-processing} |
 
-**Notes:**
+Two cross-cutting rules:
 
 - All `transformer_lens` imports inside conftest fixtures live in fixture bodies, not at module top — jaxtyping's `pytest_configure` hook must install before the package is first imported.
-- The session-scoped model fixtures (`gpt2_hooked_processed`, `gpt2_bridge`, …) are read-only — mutating them leaks across the entire test session.
+- Session-scoped model fixtures (`gpt2_hooked_processed`, `gpt2_bridge`, …) are read-only — mutating them leaks across the entire test session.
 
 ---
 

@@ -6,7 +6,7 @@
 
 - **Slash commands** — see [.claude/commands/](.claude/commands/) for canonical workflows:
   - `/test-unit` — `make unit-test`
-  - `/test-all` — `make test` (slow; warns before running)
+  - `/test-all` — `make test` (long; runs benchmarks + notebooks too)
   - `/format` — `make format` then `uv run mypy .`
   - `/typecheck` — `uv run mypy .`
   - `/build-docs` — sources `.env`, runs `uv run build-docs`
@@ -19,8 +19,15 @@
 
 ## Pointers when working with Claude Code in this repo
 
-- The hard rules in [AGENTS.md §10](AGENTS.md#10-hard-rules) reflect rules the maintainer has repeatedly enforced. Treat them as load-bearing.
-- The mirroring rule in [AGENTS.md §2](AGENTS.md#2-two-systems-live-in-this-repo) — `HookedTransformer` to `TransformerBridge` — is the single most common source of "you forgot to mirror this to TransformerBridge" PR feedback.
-- When investigating a failing test, **always check [tests/QUARANTINES.md](tests/QUARANTINES.md) first** — known quarantines have documented reasons and "un-skip when…" lines; spending an hour debugging a known macOS-arm64 KV-cache skip is the most common time-sink.
-- For Bridge-vs-HF logit drift, use [docs/source/content/debugging_numerical_divergence.md](docs/source/content/debugging_numerical_divergence.md) — bisection table by symptom and the four-quadrant compatibility-mode matrix.
-- `bridge.enable_compatibility_mode()` is name-dropped in many places but specified in [docs/source/content/compatibility_mode.md](docs/source/content/compatibility_mode.md) — read it before deciding whether a new test needs it.
+- [AGENTS.md §10](AGENTS.md#10-hard-rules) — hard rules; load-bearing.
+- [AGENTS.md §2](AGENTS.md#2-two-systems-live-in-this-repo) — HT → Bridge mirroring rule; single most common source of PR-review pushback.
+- [tests/QUARANTINES.md](tests/QUARANTINES.md) — check this before debugging any failing test. Known quarantines have "un-skip when…" lines; the macOS-arm64 KV-cache skip is the most common time-sink.
+- [docs/source/content/debugging_numerical_divergence.md](docs/source/content/debugging_numerical_divergence.md) — bisection workflow for Bridge-vs-HF logit drift.
+- [docs/source/content/compatibility_mode.md](docs/source/content/compatibility_mode.md) — what `bridge.enable_compatibility_mode()` actually does. Read before deciding whether a new test needs it.
+
+## Looking for a starter task?
+
+- [Issues labeled `good first issue`](https://github.com/TransformerLensOrg/TransformerLens/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
+- [Issues labeled `help wanted`](https://github.com/TransformerLensOrg/TransformerLens/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22)
+- [Issues labeled `verification-request`](https://github.com/TransformerLensOrg/TransformerLens/issues?q=is%3Aissue+is%3Aopen+label%3Averification-request) — models awaiting verification on hardware the requester didn't have. Pick one that fits your machine and run `/verify-model <model_id>`.
+- Backfilling per-adapter unit tests under [`tests/unit/model_bridge/supported_architectures/`](tests/unit/model_bridge/supported_architectures/) is high-leverage — recent commits show this is an active push and the pattern is well-established (copy a sibling adapter test).

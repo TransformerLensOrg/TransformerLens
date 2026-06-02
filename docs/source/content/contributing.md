@@ -2,6 +2,8 @@
 
 ```{warning}
 `HookedTransformer` is deprecated as of TransformerLens 3.0 and will be removed in the next major version. New code should use [`TransformerBridge`](migrating_to_v3.md) instead. Existing `HookedTransformer` code continues to work through the 3.x branch via a compatibility layer. See the [migration guide](migrating_to_v3.md) for conversion recipes.
+
+The HookedTransformer **acceptance test suite is currently quarantined** due to a CI test-pollution issue (see `tests/QUARANTINES.md` in the repo). Changes that touch HookedTransformer internals therefore land essentially untested at the acceptance level — extra manual care is required until the suite is re-enabled.
 ```
 
 ## Setup
@@ -22,6 +24,8 @@ As of TransformerLens 3.0, this project uses [UV](https://docs.astral.sh/uv/gett
 uv sync
 # activate the virtual environment
 source .venv/bin/activate
+# first-time only: create .env from the template, then fill in HF_TOKEN for gated models
+cp .env.example .env
 ```
 
 Dependency groups are defined in `pyproject.toml` under `[dependency-groups]`. The project sets `default-groups = ["dev", "docs", "jupyter"]`, so `uv sync` installs all three out of the box — you do not need to pass `--group` flags for the standard contributor setup.
@@ -33,6 +37,12 @@ You can also add individual groups with `uv sync --group <name>`, or install wit
 
 Requires Python 3.10 or higher.
 
+**Windows users:** the bash invocations above don't translate to PowerShell. Use WSL2.
+
+### Environment variables
+
+Source `.env` (`set -a; source .env; set +a`) before any HuggingFace-Hub-hitting command. `HF_TOKEN` is required for gated models (Llama, Mistral, Gemma, gated Qwen variants). See `.env.example` in the repo root for the full list.
+
 ## Testing
 
 If adding a feature, please add unit tests for it. If you need a model, please use one of the ones
@@ -43,11 +53,33 @@ quite slow (as we only have CPU actions) so the smaller models like `attn-only-1
 
 ### Running the tests
 
-- Unit tests only via `make unit-test`
-- Acceptance tests only via `make acceptance-test`
-- Docstring tests only via `make docstring-test`
-- Notebook tests only via `make notebook-test`
-- Run all test suites mentioned `make test`
+- Standard PR-review surface (unit + docstring + acceptance + integration): `make test-pr`
+- Just unit tests (fast feedback): `make unit-test`
+- Integration tests: `make integration-test`
+- Acceptance tests: `make acceptance-test`
+- Docstring tests: `make docstring-test`
+- Notebook tests: `make notebook-test`
+- All test suites including benchmarks + notebooks (long): `make test`
+
+### Test tiers
+
+| Tier | Path | Loads models? | Hits HF Hub? | Scope |
+|---|---|---|---|---|
+| `unit` | `tests/unit/` | None / synthetic (rare exceptions) | No | Function or single module |
+| `integration` | `tests/integration/` | 1–2 cached models, module-scoped | Yes | Cross-component |
+| `acceptance` | `tests/acceptance/` | Full models, session-scoped | Yes | End-to-end behaviour |
+| `benchmarks` | `tests/benchmarks/` | Varies; performance focus | Yes | Throughput / memory |
+| `mps` | `tests/mps/` | TinyStories-1M, fp32 only | Yes | macOS-MPS smoke only |
+
+Rule of thumb: new tests that load a model should land in `integration/` by default. Tests that need real (large) weights to verify go through the model registry's `verify_models` workflow rather than running in pytest.
+
+The flaky-retry policy (`--reruns 2 --reruns-delay 5`) wraps every `make` target and exists to absorb HF Hub 429s. The root `tests/conftest.py` also enables `enable_hf_retry()` session-wide.
+
+### Quarantined tests
+
+Some tests carry persistent `skip` / `skipif` / `xfail` markers — for optional dependencies (LIT, bitsandbytes), hardware requirements (CUDA, MPS, multi-GPU), CI cost / network budget, or upstream platform bugs. The `tests/QUARANTINES.md` file in the repo inventories every one with an "un-skip when…" line. **Before debugging a failing test, check whether it's a known quarantine.**
+
+The HookedTransformer acceptance suite (`tests/acceptance/test_hooked_transformer.py`, `test_hooked_encoder.py`, `test_hooked_encoder_decoder.py`) is currently a whole-file quarantine — see the warning at the top of this page.
 
 ## Formatting
 
@@ -56,8 +88,64 @@ actions.
 
 - Format all files via `make format`
 - Only check the formatting via `make check-format`
+- Type-check via `uv run mypy .`
 
 Note that `black` line length is set to 100 in `pyproject.toml` (instead of the default 88).
+
+**No pre-commit hook is installed.** Run `make format` and `uv run mypy .` manually before pushing — CI will fail otherwise.
+
+## Project conventions
+
+These rules apply across the codebase and reflect maintainer experience with recurring failure modes.
+
+### On test failures
+
+- **Never dismiss a failing test as "pre-existing" or "unrelated"** — investigate every failure and fix the underlying issue.
+- **Never add platform skips, `@pytest.mark.skip`, or `xfail` to make a failing CI green.** Debug the actual bug. If a skip is genuinely needed (optional dep, hardware requirement), add an entry to `tests/QUARANTINES.md` with the rationale.
+- **If new tests surface pre-existing bugs, fix them.** Don't punt to a future PR.
+
+### On code quality
+
+- **Never add `# type: ignore`.** Prefer `isinstance` assertions or `typing.cast` for narrowing.
+- **Comments**: terse, one-line docstrings; inline comments should explain WHY, not WHAT. No multi-paragraph explanations.
+
+### On numerical work
+
+- **Never claim observed drift is "fp noise" without empirical evidence.** Real bugs and accumulated rounding error look identical at noise scale until you measure. The cheap proof is fp64: if the diff stays the same magnitude in `dtype=torch.float64` on both sides, it's a bug; if it drops by ~8 orders of magnitude, it was noise.
+- **Never run model verification or benchmarks in parallel.** A single CUDA/MPS device does not have memory for concurrent loads.
+
+### On environment and tooling
+
+- Use `uv`, never `pip` or `poetry`. Run commands via `uv run <cmd>` or the appropriate `make` target.
+- Source `.env` before any HF-Hub-hitting command.
+
+## Two systems live in this repo
+
+The library is mid-transition between two parallel paths:
+
+| System | Status | Lives in | Numerics | Registry |
+|---|---|---|---|---|
+| `TransformerBridge` | v3 — default for new work | `transformer_lens/model_bridge/` | Raw HF weights by default; `bridge.enable_compatibility_mode()` for HT-equivalent — see [Compatibility Mode](compatibility_mode.md) | `transformer_lens/tools/model_registry/data/supported_models.json` |
+| `HookedTransformer` | Legacy, maintenance mode, deprecated in 3.0 | `transformer_lens/HookedTransformer.py` + `transformer_lens/components/` | Folds LayerNorm + centres weights → does NOT match HF | `transformer_lens/supported_models.py` (**HT-only**) |
+
+**Mirroring rule**: if you change behaviour in `HookedTransformer` that has a counterpart in `TransformerBridge`, update both in the same PR. They are parallel implementations of the same surface; drift between them is a recurring source of bugs. Conversely, `supported_models.py` is HT-only — Bridge-only models live in the Bridge registry data file under `transformer_lens/tools/model_registry/`.
+
+## PR conventions
+
+### Base branch
+
+- `dev` — default for all PRs (new features, refactors, docs, most bug fixes).
+- `main` — **only** for bug fixes against the currently-released version. PRs to `main` are made by maintainers; request permission before basing off `main`.
+
+### Branch naming
+
+- Do NOT name your branch `main` or `dev` — these conflict with the canonical branches when maintainers periodically refresh PRs against upstream.
+- Include the word `docs` in the branch name if your PR is primarily a docs change (this triggers the docs build job).
+- New branches must track their own remote (`git push -u origin <branch>` from your branch, not from `main`/`dev`).
+
+### Changelog
+
+There is no per-PR changelog file. **Note user-facing changes in your PR description and commit messages** — release essays in `docs/source/content/news/` and GitHub Releases are drafted by a maintainer by reviewing those at release time. Breaking changes and notable user-facing features should be called out explicitly so the rollup picks them up.
 
 ## Documentation
 
@@ -170,7 +258,51 @@ Two guides walk through the process:
 - [Architecture Adapter Creation Guide](adapter_development/adapter-creation-guide.md) — start here. A step-by-step workflow for taking an HF model from unsupported to tested, registered adapter.
 - [HuggingFace Model Analysis Guide](adapter_development/hf-model-analysis-guide.md) — a reference for reading an HF model's `config.json` and source files to extract the attributes you'll set on `self.cfg`.
 
-Adapters live in `transformer_lens/model_bridge/supported_architectures/<model_name>.py` and are registered in two places: `supported_architectures/__init__.py` and `factories/architecture_adapter_factory.py`. Both steps are covered in the creation guide. If you want a starter file, copy [adapter-template.py](../_static/adapter-template.py) into `supported_architectures/` and rename it.
+Adapters live in `transformer_lens/model_bridge/supported_architectures/<model_name>.py` and are registered in **four** places:
+
+1. **`transformer_lens/model_bridge/supported_architectures/__init__.py`** — import the adapter class and add to `__all__`. Missing → import error at boot.
+2. **`transformer_lens/factories/architecture_adapter_factory.py`** — import the class and add to the `SUPPORTED_ARCHITECTURES` dict. The key must match `config.architectures[0]` exactly. Missing → `boot_transformers` raises "unsupported architecture."
+3. **`transformer_lens/tools/model_registry/__init__.py`** — add to `HF_SUPPORTED_ARCHITECTURES` (the set) and `CANONICAL_AUTHORS_BY_ARCH` (the foundation-orgs map). Missing → HF scraper misses canonical models.
+4. **`transformer_lens/tools/model_registry/generate_report.py`** — add a one-line entry to `ARCHITECTURE_DESCRIPTIONS` so the generated docs table covers the new architecture.
+
+If you want a starter file, copy [adapter-template.py](../_static/adapter-template.py) into `supported_architectures/` and rename it.
+
+After registering, verify the four-place wiring by running:
+
+```bash
+uv run pytest tests/unit/tools/test_model_registry.py -k TestRegistrySyncedWithFactory
+```
+
+The `TestRegistrySyncedWithFactory` class bidirectionally asserts that `SUPPORTED_ARCHITECTURES`, `HF_SUPPORTED_ARCHITECTURES`, and `CANONICAL_AUTHORS_BY_ARCH` stay in sync — the failure message names exactly which set is missing your new key.
+
+### Required tests for a new adapter
+
+Two test layers, both required:
+
+1. **Unit adapter test** at `tests/unit/model_bridge/supported_architectures/test_<arch>_adapter.py`. ~29 of these exist; copy the closest sibling. The pattern: a `_make_cfg()` factory, an `adapter` fixture, and one test per architecture-specific quirk. Unit adapter tests instantiate the adapter from a synthetic config and assert structural properties — they don't load weights and don't hit HF Hub.
+2. **Integration parity test** at `tests/integration/model_bridge/test_<arch>_adapter.py`. Loads a real cached HF model and asserts logit parity vs HuggingFace at fp32 + eager attention.
+
+### Common adapter gotchas
+
+- **HF raw config attributes are invisible to TL-side consumers unless explicitly propagated to `self.cfg`.** Walk the HF `config.json` and mirror any non-standard knobs (`final_logit_softcapping`, `attn_logit_softcapping`, `query_pre_attn_scalar`, `sliding_window`, `layer_types`, custom `eps_attr` names) onto `self.cfg` so weight processing and forward passes can see them.
+- **Tokenizer policy is per-model, not per-architecture.** Sibling models in the same family routinely differ — the chat-instruct variant may prepend BOS where the base does not, padding side can flip, EOS handling can differ. Never copy `default_prepend_bos`, padding side, or EOS handling from your starter adapter without checking the target's `tokenizer_config.json` first.
+- **Hook names inside adapters are Bridge-native** (e.g., `blocks.{i}.hook_out`). HookedTransformer-style aliases (e.g., `blocks.{i}.hook_resid_post`) are registered elsewhere — in `transformer_lens/model_bridge/bridge.py` via `build_alias_to_canonical_map()`. Adapters declare canonical names only.
+- **No `# type: ignore` on `ComponentMapping` types.** Use `isinstance` or `typing.cast` if the type system disagrees.
+
+### Verifying a new model
+
+After your adapter is registered, the model registry's `verify_models` runner exercises it end-to-end:
+
+```bash
+set -a; source .env; set +a
+uv run python -m transformer_lens.tools.model_registry.verify_models --model <hf_repo>
+```
+
+`verify_models` runs phases 1–4 (forward correctness vs HF, hook firing + gradients, weight processing, generation quality) and updates `data/supported_models.json` with status and per-phase scores. **Always run `--dry-run` first** to project memory and parameter count without loading the model. Run one model at a time — concurrent loads OOM a single device.
+
+**Use `verify_models`, never `main_benchmark`** — only `verify_models` writes the registry. `main_benchmark` runs the same math but defaults to skipping the registry write (requires `--update-registry`, and even with that flag misses Phase 7 / 8 scores and the resume checkpoint).
+
+If verification fails by `~1e-3` or more against the HF reference, the bisection workflow lives at [Debugging Numerical Divergence](debugging_numerical_divergence.md).
 
 ```{toctree}
 :hidden:
