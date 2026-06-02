@@ -13,5 +13,3 @@ Quick reminders that override common defaults:
 - No pre-commit hook is installed. Run `make format` and `uv run mypy .` manually before push.
 - Source `.env` (e.g. `set -a; source .env; set +a`) before any HuggingFace-Hub-hitting command.
 - Never add `# type: ignore`, never dismiss failing tests as "pre-existing", never add platform skips to dodge CI, never claim drift is "fp noise" without empirical evidence.
-
-See `AGENTS.md` for the full context behind each of these rules.

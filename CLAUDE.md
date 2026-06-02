@@ -20,4 +20,3 @@
 
 - The hard rules in [AGENTS.md §10](AGENTS.md#10-hard-rules) reflect rules the maintainer has repeatedly enforced. Treat them as load-bearing.
 - The mirroring rule in [AGENTS.md §2](AGENTS.md#2-two-systems-live-in-this-repo) — `HookedTransformer` to `TransformerBridge` — is the single most common source of "you forgot to mirror this to TransformerBridge" PR feedback.
-- For tasks spanning more than three steps, use TodoWrite to track progress and finish with `/task-complete` before declaring done.

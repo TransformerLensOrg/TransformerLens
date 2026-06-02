@@ -5,7 +5,10 @@ argument-hint: <hf_repo>
 
 You are adding TransformerBridge support for the HuggingFace model `$ARGUMENTS`. If `$ARGUMENTS` is empty, ask the user for the HF repo path before continuing.
 
-Read [docs/source/content/adapter_development/adapter-creation-guide.md](../../docs/source/content/adapter_development/adapter-creation-guide.md) and [docs/source/content/adapter_development/hf-model-analysis-guide.md](../../docs/source/content/adapter_development/hf-model-analysis-guide.md) first — these are the authoritative step-by-step references.
+Read these first:
+
+- [transformer_lens/model_bridge/supported_architectures/AGENTS.md](../../transformer_lens/model_bridge/supported_architectures/AGENTS.md) — adapter contract, starter-adapter table, registration steps, common gotchas
+- [docs/source/content/adapter_development/adapter-creation-guide.md](../../docs/source/content/adapter_development/adapter-creation-guide.md) and [docs/source/content/adapter_development/hf-model-analysis-guide.md](../../docs/source/content/adapter_development/hf-model-analysis-guide.md) — authoritative step-by-step references
 
 Execute this checklist, stopping at each step until it is genuinely done:
 
@@ -19,6 +22,4 @@ Execute this checklist, stopping at each step until it is genuinely done:
 6. **Add the HF repo path to the Bridge registry** under [transformer_lens/tools/model_registry/](../../transformer_lens/tools/model_registry/). Do NOT add it to [transformer_lens/supported_models.py](../../transformer_lens/supported_models.py) — that file is HookedTransformer-only.
 7. **Verify** end-to-end: run `/verify-model $ARGUMENTS` (one model only — do not parallelize).
 8. **Write an integration test** under [tests/integration/](../../tests/integration/) that asserts logit parity with HuggingFace. Use fp32 + eager attention to match `boot_transformers`' load configuration. Gate probes for optional structural features (`resid_mid` etc.) rather than assuming they exist.
-9. **Format and typecheck**: run `/format`. Fix any new mypy errors — do not add `# type: ignore`.
-
-When all steps pass cleanly, run `/task-complete` to confirm the change holds up under the full local check.
+9. **Run `/task-complete`** — handles comment cleanup, `/format`, and the standard test tiers (unit + docstring + acceptance + integration), looping until clean.

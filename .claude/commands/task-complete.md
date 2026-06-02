@@ -40,7 +40,7 @@ Investigate every failure. Do not dismiss any failure as "pre-existing" or "unre
 
 ### 4. Re-loop on failure
 
-If any of steps 1–3 surface issues, fix them, then **restart from step 1** — fixes can introduce new comments, new format/type drift, or new test failures. Repeat until all three steps pass without changes.
+If any step surfaces issues, fix them and restart from step 1 — fixes can reintroduce comment, format, type, or test drift.
 
 ### 5. Report
 

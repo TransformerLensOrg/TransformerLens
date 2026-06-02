@@ -12,6 +12,6 @@ uv run python -m transformer_lens.tools.model_registry.verify_models --model "$A
 
 If `$ARGUMENTS` is empty, ask the user which model to verify (an HF repo path like `gpt2` or `meta-llama/Llama-2-7b-hf`, or a registry alias) before running.
 
-**Critical**: run verification for **one model at a time**. Never parallelize across models — a single CUDA/MPS device does not have memory for concurrent loads. See [AGENTS.md §10](../../AGENTS.md#10-hard-rules).
+**Use `verify_models`, never `main_benchmark`** — only `verify_models` writes `data/supported_models.json`. See [transformer_lens/tools/model_registry/AGENTS.md](../../transformer_lens/tools/model_registry/AGENTS.md) for the canonical-invocations table, file roles, and the resume/checkpoint mechanism.
 
-Report the actual benchmark output. If any phase fails or shows unexpected drift, investigate before declaring done. Do not claim drift is "fp noise" without empirical evidence.
+Run one model at a time — concurrent loads OOM a single device. Report the actual benchmark output and investigate any failure or drift per [AGENTS.md §10](../../AGENTS.md#10-hard-rules).
