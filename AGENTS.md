@@ -2,19 +2,30 @@
 
 Guidance for AI coding agents contributing to **TransformerLens**.
 
-This file is the single source of truth. Vendor-specific files ([CLAUDE.md](CLAUDE.md), [.github/copilot-instructions.md](.github/copilot-instructions.md), [.cursor/rules/transformerlens.mdc](.cursor/rules/transformerlens.mdc)) all defer here.
+This file is the single source of truth. Vendor-specific files ([CLAUDE.md](CLAUDE.md), [.github/copilot-instructions.md](.github/copilot-instructions.md), [.cursor/rules/transformerlens.mdc](.cursor/rules/transformerlens.mdc)) and sub-folder `AGENTS.md` files all defer here.
+
+## TL;DR — read before doing anything
+
+1. **Use `uv`**, not `pip` or `poetry`. Install with `uv sync`.
+2. **Source `.env`** (`set -a; source .env; set +a`) before any HuggingFace-Hub-hitting command. Gated models need `HF_TOKEN`.
+3. **Base PRs on `dev`**, not `main`. Never name a branch `main` or `dev`.
+4. **Mirror HookedTransformer → TransformerBridge** when changing behaviour that exists in both ([§2](#2-two-systems-live-in-this-repo)).
+5. **Run `make format` + `uv run mypy .` before push** — no pre-commit hook is installed.
+6. **Never add `# type: ignore`** — use `isinstance` / `typing.cast` ([§10](#10-hard-rules)).
+7. **Never dismiss a failing test as "pre-existing"** — investigate every failure ([§10](#10-hard-rules)).
+
+Sub-folder rules: [tests/AGENTS.md](tests/AGENTS.md) · [supported_architectures/AGENTS.md](transformer_lens/model_bridge/supported_architectures/AGENTS.md) · [tools/model_registry/AGENTS.md](transformer_lens/tools/model_registry/AGENTS.md).
 
 ---
 
 ## 1. What this repo is
 
-**TransformerLens** is a library for mechanistic interpretability of generative language models. It loads 9,000+ open-source models across 50+ architecture families (GPT-2, Llama, Gemma, Mistral, Qwen, T5, BERT, Mamba, etc. — see [transformer_lens/tools/model_registry/data/supported_models.json](transformer_lens/tools/model_registry/data/supported_models.json) for the full inventory) and exposes their internal activations through a hook system so researchers can cache, edit, and ablate intermediate state.
-
-Upstream dependency: HuggingFace `transformers`. Most models are wrappers over HF implementations.
+**TransformerLens** — mechanistic-interpretability library. Loads 9,000+ models across 50+ architecture families (see [supported_models.json](transformer_lens/tools/model_registry/data/supported_models.json)) and exposes internal activations through a hook system for caching, editing, and ablating intermediate state. Built on HuggingFace `transformers`.
 
 ## 2. Two systems live in this repo
 
-The library is in the middle of a v2 → v3 transition. **Both systems are still present** and changes to HookedTransformer often need to be mirrored to TransformerBridge.
+- **`TransformerBridge` (v3)** — default for new work. Lives in [transformer_lens/model_bridge/](transformer_lens/model_bridge/).
+- **`HookedTransformer`** — legacy, maintenance mode, deprecated in 3.0.
 
 ### `TransformerBridge` (v3, recommended for new work)
 
@@ -37,22 +48,22 @@ If you change behavior in `HookedTransformer` that has a counterpart in `Transfo
 ## 3. Quickstart
 
 ```bash
-# Install (this repo uses uv, NOT pip and NOT poetry)
+# Install — uv only (not pip, not poetry)
 uv sync
 source .venv/bin/activate
 
-# Source HF token (required for gated models: Llama, Mistral, Gemma, gated Qwen, etc.)
+# Source HF token before any HF-Hub-hitting command
 set -a; source .env; set +a
 
-# Run tests
-make unit-test          # fast, no model loads — run this on every change
-make integration-test   # cross-component, hits HF Hub
+# Tests
+make unit-test          # fast, no model loads
+make integration-test   # cross-component
 make acceptance-test    # end-to-end
-make notebook-test      # demos/*.ipynb (slow; CI parallelizes)
 make docstring-test     # doctest + doctest-plus
-make test               # all of the above (long)
+make notebook-test      # slow; subset run in CI
+make test               # all of the above
 
-# Format + typecheck (no pre-commit hook is installed — run manually before push)
+# Format + typecheck — no pre-commit hook; run manually before push
 make format             # pycln + isort + black
 make check-format       # CI-equivalent check
 uv run mypy .
@@ -92,8 +103,6 @@ Python: **>=3.10, <4.0**. CI tests 3.10, 3.11, 3.12. Format/type/docstring check
 | [.github/PULL_REQUEST_TEMPLATE.md](.github/PULL_REQUEST_TEMPLATE.md) | PR template + base-branch rules |
 
 ## 5. Hook naming — HT vs Bridge
-
-This trips up agents and humans alike.
 
 - **HT canonical names**: uniform across architectures. `hook_embed`, `blocks.{i}.hook_resid_pre`, `blocks.{i}.attn.hook_q`, `blocks.{i}.hook_resid_post`, etc.
 - **Bridge-native names**: architecture-shaped. E.g. `blocks.{i}.hook_out`, `blocks.{i}.attn.q.hook_out`. Aliases are registered via `build_alias_to_canonical_map()` in [transformer_lens/model_bridge/bridge.py](transformer_lens/model_bridge/bridge.py) so HT names continue to resolve.
@@ -135,19 +144,19 @@ When picking solutions to any problem, prioritize by **research impact**, not im
 
 From [.github/workflows/checks.yml](.github/workflows/checks.yml):
 
-| Job | What it runs |
+| Job | Runs |
 |---|---|
-| `compatibility-checks` | `make unit-test` + `make acceptance-test` + `uv build` across Python 3.10 / 3.11 / 3.12 |
-| `mps-checks` | macOS unit + integration + smoke tests with MPS (PRs to `main` only) |
+| `compatibility-checks` | `make unit-test` + `make acceptance-test` + `uv build` × py 3.10 / 3.11 / 3.12 |
+| `mps-checks` | macOS MPS unit + integration + smoke (PRs to `main` only) |
 | `format-check` | `make check-format` |
 | `type-check` | `uv run mypy .` |
 | `docstring-test` | `make docstring-test` |
-| `coverage-test` | Full test suite with coverage report (uploaded as `test-coverage` artifact) |
-| `notebook-checks` | Subset of `demos/*.ipynb` validated via `nbval` against [demos/doc_sanitize.cfg](demos/doc_sanitize.cfg). Notebooks that require `HF_TOKEN` are skipped when the secret is absent. |
-| `build-docs` | Sphinx build (only on push to `main`/`dev` or branches containing `docs`) |
-| `deploy-docs` | Deploys to GitHub Pages (only on push to `main`) |
+| `coverage-test` | Full suite + coverage artifact |
+| `notebook-checks` | `nbval` over subset of `demos/*.ipynb`; `HF_TOKEN`-gated notebooks skip when secret absent |
+| `build-docs` | Sphinx build (push to `main`/`dev` or branch containing `docs`) |
+| `deploy-docs` | GitHub Pages (push to `main` only) |
 
-In-progress PR runs are cancelled when a new commit lands; tag/release runs are not.
+In-progress PR runs cancel on new commit; tag/release runs do not.
 
 ## 10. Hard rules
 
@@ -193,8 +202,5 @@ If you're using Claude Code, the `/task-complete` slash command in [.claude/comm
 
 ## 12. Pointers for further reading
 
-- [docs/source/content/contributing.md](docs/source/content/contributing.md) — the human-facing contributor guide
 - [docs/source/content/migrating_to_v3.md](docs/source/content/migrating_to_v3.md) — HT → Bridge migration recipes
-- [docs/source/content/getting_started.md](docs/source/content/getting_started.md) — full env-vars list and first-time setup
 - [docs/source/content/adapter_development/](docs/source/content/adapter_development/) — adapter authoring deep dive
-- [demos/Main_Demo.ipynb](demos/Main_Demo.ipynb), [demos/Bridge_Evals_Demo.ipynb](demos/Bridge_Evals_Demo.ipynb) — start here to see the library in use
