@@ -28,13 +28,10 @@ If mypy reports new errors, fix the underlying typing issue. Do not add `# type:
 
 ```
 set -a; source .env; set +a
-make unit-test
-make docstring-test
-make acceptance-test
-make integration-test
+make test-pr
 ```
 
-These are the tiers that gate PR review for almost every change. Notebook and benchmark suites are intentionally skipped — they are slow, hit gated models, and are not required to land typical PRs (CI runs them separately). If your change specifically touches a notebook or a benchmark, run that file directly (`pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/<notebook>.ipynb` or `make benchmark-test`) in addition.
+`make test-pr` runs unit + docstring + acceptance + integration — the tiers that gate PR review for almost every change. Notebook and benchmark suites are intentionally skipped (slow, gated models, CI runs them separately). If your change specifically touched a notebook or a benchmark, also run that file directly (`pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/<notebook>.ipynb` or `make benchmark-test`).
 
 Investigate every failure. Do not dismiss any failure as "pre-existing" or "unrelated" — fix the underlying issue, even if it predates this task (see [AGENTS.md §10](../../AGENTS.md#10-hard-rules)). Do not add platform skips or `xfail` markers to dodge a failing test.
 

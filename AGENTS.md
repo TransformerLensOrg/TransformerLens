@@ -24,33 +24,29 @@ Sub-folder rules: [tests/AGENTS.md](tests/AGENTS.md) · [supported_architectures
 
 ## 2. Two systems live in this repo
 
-- **`TransformerBridge` (v3)** — default for new work. Lives in [transformer_lens/model_bridge/](transformer_lens/model_bridge/).
-- **`HookedTransformer`** — legacy, maintenance mode, deprecated in 3.0.
+| System | Status | Lives in | Numerics | Registry |
+|---|---|---|---|---|
+| **`TransformerBridge`** | v3 — default for new work | [transformer_lens/model_bridge/](transformer_lens/model_bridge/) | Raw HF weights by default; `bridge.enable_compatibility_mode()` for HT-equivalent | [transformer_lens/tools/model_registry/data/supported_models.json](transformer_lens/tools/model_registry/data/supported_models.json) |
+| **`HookedTransformer`** | Legacy, maintenance mode, deprecated in 3.0 | [transformer_lens/HookedTransformer.py](transformer_lens/HookedTransformer.py) + [transformer_lens/components/](transformer_lens/components/) | Folds LayerNorm + centres weights → does NOT match HF | [transformer_lens/supported_models.py](transformer_lens/supported_models.py) (**HT-only**) |
 
-### `TransformerBridge` (v3, recommended for new work)
-
-- Lives in [transformer_lens/model_bridge/](transformer_lens/model_bridge/).
-- Architecture-adapter pattern: each HF architecture has an adapter file in [transformer_lens/model_bridge/supported_architectures/](transformer_lens/model_bridge/supported_architectures/) that maps HF module paths to canonical TransformerLens names.
-- Preserves raw HF weights by default (logits match HF). Call `bridge.enable_compatibility_mode()` after booting for HookedTransformer-equivalent numerics.
-- Hook names are architecture-native (e.g. `blocks.{i}.hook_out`), with aliases provided for HT-style names where applicable.
-
-### `HookedTransformer` (legacy, maintenance mode)
-
-- Lives in [transformer_lens/HookedTransformer.py](transformer_lens/HookedTransformer.py) and [transformer_lens/components/](transformer_lens/components/).
-- Folds LayerNorm and centers weights by default — useful for circuit analysis but means weights and logits **do not** match HF.
-- Model registry is [transformer_lens/supported_models.py](transformer_lens/supported_models.py) — **HT-only**. Bridge-only models do not belong here; they live in the Bridge registry data file under [transformer_lens/tools/model_registry/](transformer_lens/tools/model_registry/).
-- Deprecated as of TransformerLens 3.0; will be removed in the next major version. Still fully functional via the compatibility layer.
+Bridge architecture-adapter pattern: each HF architecture has one file in [transformer_lens/model_bridge/supported_architectures/](transformer_lens/model_bridge/supported_architectures/) mapping HF module paths to canonical TransformerLens names. Bridge hook names are architecture-native (e.g. `blocks.{i}.hook_out`); HT-style aliases are registered separately in [transformer_lens/model_bridge/bridge.py](transformer_lens/model_bridge/bridge.py).
 
 ### Mirroring rule
 
-If you change behavior in `HookedTransformer` that has a counterpart in `TransformerBridge`, update both in the same PR. They are parallel implementations of the same surface; drift between them is a recurring source of bugs. Conversely, `supported_models.py` is HT-only — do not add Bridge-only models there.
+If you change behaviour in `HookedTransformer` that has a counterpart in `TransformerBridge`, update both in the same PR. Parallel implementations; drift between them is a recurring source of bugs. The HT-only [supported_models.py](transformer_lens/supported_models.py) is NOT the place to add Bridge-only models — those go in the Bridge registry data file.
 
 ## 3. Quickstart
 
 ```bash
+# Bootstrap uv if missing
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
 # Install — uv only (not pip, not poetry)
 uv sync
 source .venv/bin/activate
+
+# First-time only: create .env from the template, then fill in HF_TOKEN
+cp .env.example .env
 
 # Source HF token before any HF-Hub-hitting command
 set -a; source .env; set +a
@@ -61,7 +57,8 @@ make integration-test   # cross-component
 make acceptance-test    # end-to-end
 make docstring-test     # doctest + doctest-plus
 make notebook-test      # slow; subset run in CI
-make test               # all of the above
+make test-pr            # unit + docstring + acceptance + integration (PR-review surface)
+make test               # everything (long; includes benchmarks + notebooks)
 
 # Format + typecheck — no pre-commit hook; run manually before push
 make format             # pycln + isort + black
@@ -113,18 +110,7 @@ When raw-HF-forward drivers compare against `boot_transformers`, match its load 
 
 ## 6. Adding a model
 
-TransformerBridge adapters are written per architecture family, not per individual model. Adding `gpt2` registers all GPT-2 variants; you generally won't add a new file for a sibling checkpoint of an already-supported architecture.
-
-Start with [docs/source/content/adapter_development/](docs/source/content/adapter_development/) — there are step-by-step guides covering the full workflow. Summary:
-
-1. Read the HF model's `config.json` and source to identify components (embed, attention, MLP, normalization, output head).
-2. Copy [docs/source/_static/adapter-template.py](docs/source/_static/adapter-template.py) into [transformer_lens/model_bridge/supported_architectures/](transformer_lens/model_bridge/supported_architectures/) as `<model_name>.py`.
-3. Fill in component mappings.
-4. Register in both [transformer_lens/model_bridge/supported_architectures/__init__.py](transformer_lens/model_bridge/supported_architectures/__init__.py) and [transformer_lens/factories/architecture_adapter_factory.py](transformer_lens/factories/architecture_adapter_factory.py).
-5. Add the HF repo path to the Bridge registry (model registry data file) and run `verify_models.py` against the new architecture.
-6. Add an integration test under [tests/integration/](tests/integration/) that asserts logit parity with HF.
-
-The existing adapters under [supported_architectures/](transformer_lens/model_bridge/supported_architectures/) are the best references for tricky cases.
+Adapters are written **per architecture family**, not per individual model — adding `gpt2` registers all GPT-2 variants. Full workflow (starter-adapter table, 4-place registration, common gotchas, anti-patterns): **[supported_architectures/AGENTS.md](transformer_lens/model_bridge/supported_architectures/AGENTS.md)**. Verification flow: **[tools/model_registry/AGENTS.md](transformer_lens/tools/model_registry/AGENTS.md)**. Claude Code users: invoke `/add-model-support <hf_repo>`.
 
 ## 7. Prioritization
 
@@ -139,6 +125,7 @@ When picking solutions to any problem, prioritize by **research impact**, not im
 - **New branches must track their own remote**, not the source branch's remote. When you `git push -u`, push to the new branch's namespace, not the branch you forked from.
 - **PR template**: [.github/PULL_REQUEST_TEMPLATE.md](.github/PULL_REQUEST_TEMPLATE.md). No conventional-commits enforcement.
 - **No pre-commit hook is installed.** Run `make format` and `uv run mypy .` manually before pushing; CI will fail otherwise.
+- **Changelog**: no per-PR changelog file. User-facing changes go in the PR description and are rolled up into the next release essay in [docs/source/content/news/](docs/source/content/news/) (`release-2.0.md`, `release-3.0.md`, … — one file per major version). If your PR introduces a breaking change or a notable user-facing feature, note it explicitly in the PR description so the next release essay picks it up.
 
 ## 9. CI gates a PR must pass
 
@@ -193,14 +180,48 @@ Before declaring a task complete:
 | Task type | Must do |
 |---|---|
 | Bug fix | Reproduce in a test, fix, confirm test passes, `make format`, `uv run mypy .` |
-| New adapter | Adapter file + factory registration + Bridge registry entry + integration test asserting HF logit parity + `verify_models.py` run for the new architecture |
+| New adapter | Adapter file + 4-place registration + integration test asserting HF logit parity + `verify_models` run (see [supported_architectures/AGENTS.md](transformer_lens/model_bridge/supported_architectures/AGENTS.md)) |
 | Docs change | `uv run build-docs` succeeds; branch name contains `docs` so the docs job triggers in CI |
 | Notebook change | `pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/<notebook>.ipynb` passes locally |
-| Anything else | `make unit-test` + `make format` + `uv run mypy .` clean before push |
+| Anything else | `make format` + `uv run mypy .` + `make test-pr` clean before push |
 
-If you're using Claude Code, the `/task-complete` slash command in [.claude/commands/](.claude/commands/) automates the last row.
+If you're using Claude Code, the `/task-complete` slash command in [.claude/commands/](.claude/commands/) automates the last row (`make test-pr` = unit + docstring + acceptance + integration).
 
 ## 12. Pointers for further reading
 
 - [docs/source/content/migrating_to_v3.md](docs/source/content/migrating_to_v3.md) — HT → Bridge migration recipes
 - [docs/source/content/adapter_development/](docs/source/content/adapter_development/) — adapter authoring deep dive
+- [docs/source/content/compatibility_mode.md](docs/source/content/compatibility_mode.md) — when to call `bridge.enable_compatibility_mode()`, what each flag does, four-quadrant test matrix
+- [docs/source/content/debugging_numerical_divergence.md](docs/source/content/debugging_numerical_divergence.md) — bisection workflow for HT-vs-Bridge / Bridge-vs-HF logit drift
+- [tests/QUARANTINES.md](tests/QUARANTINES.md) — inventory of every `skip` / `xfail` and when each can be un-skipped
+
+## 13. Local-only conventions
+
+Two gitignored paths exist for ephemeral work; use them so your work-in-progress doesn't show up in `git status`:
+
+- **`transformer_lens/scratch.py`** — sibling-of-package scratch file for one-off bisection scripts and ad-hoc imports. Already in `.gitignore`; never commit.
+- **`.adapter-workspace/`** — directory for adapter WIP (notes, config dumps, repro scripts) while you're iterating. Already in `.gitignore`.
+
+Both are first-class conventions, not personal preferences — the gitignore entries are checked in. New contributors should know about them so they don't reinvent the convention or accidentally commit experimental code.
+
+## 14. Upstream dependency pins
+
+Load-bearing pins live in [pyproject.toml](pyproject.toml):
+
+| Pin | Where | Why it matters |
+|---|---|---|
+| `transformers>=5.4.0` | `[project] dependencies` | The Bridge adapter contract is written against HF module layouts; every minor HF release can break adapter component-mappings. Bumping is a real test pass. |
+| `torch>=2.6` | `[project] dependencies` | Hook system relies on PyTorch's forward / backward hook semantics; major torch bumps occasionally change ordering. |
+| `accelerate>=0.23.0` | `[project] dependencies` | Required for Llama-family loading. |
+| `numpy>=1.24` / `>=1.26` | `[project] dependencies` (python-version-conditional) | Doctest float formatting can drift across NumPy versions. |
+| `isort==5.8.0` | `[dependency-groups] dev` (exact) | Format check pins to exactly this version; a bump flips the formatting of every file. |
+
+**Bumping upstream pins:**
+
+1. Bump the pin in `pyproject.toml`, refresh `uv.lock` (`uv lock`).
+2. Run `make test-pr` locally; expect adapter / hook tests to surface real breakages.
+3. For each break, fix the adapter or component — do not pin around the regression.
+4. Run `uv run python -m transformer_lens.tools.model_registry.verify_models --architectures <a-few-canonical-ones>` to catch numerical regressions the unit tests miss.
+5. Land in a focused PR — pin bumps are reviewed separately from feature work because the blast radius is wide.
+
+Specific to HF: when a `transformers` minor bump introduces a new architecture or renames an existing one, check the impact on `_HF_PASSTHROUGH_ATTRS` in [`transformer_lens/model_bridge/sources/_bridge_builder.py`](transformer_lens/model_bridge/sources/_bridge_builder.py) and `SUPPORTED_ARCHITECTURES` in [`transformer_lens/factories/architecture_adapter_factory.py`](transformer_lens/factories/architecture_adapter_factory.py).

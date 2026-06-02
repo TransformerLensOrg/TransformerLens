@@ -11,20 +11,23 @@ Read [the root AGENTS.md](../AGENTS.md) for project-wide rules. This file covers
 - **Use cached models for fast tests** (`gpt2`, `attn-only-{1,2,3,4}l`, `tiny-stories-1M`). Anything else gets `@pytest.mark.slow`.
 - **MPS is a carve-out, not a green light.** `TRANSFORMERLENS_ALLOW_MPS=1` is required; only [`tests/mps/`](mps/) runs there.
 - **Hard rules in [AGENTS.md §10](../AGENTS.md#10-hard-rules) apply**: no `xfail`/`skipif` to dodge CI, no dismissing failing tests as "pre-existing," no platform skips outside MPS.
+- **Before debugging a failing test, check [QUARANTINES.md](QUARANTINES.md)** — if the failure matches a documented quarantine, it's known. If not, treat it as a real bug.
 
 ---
 
 ## Test tiers
 
-| Tier | Path | Loads models? | Hits HF Hub? | Scope | Example |
-|---|---|---|---|---|---|
-| `unit` | [`tests/unit/`](unit/) | None / synthetic | No | Function or single module | [`tests/unit/test_key_value_cache_entry.py`](unit/test_key_value_cache_entry.py) |
-| `integration` | [`tests/integration/`](integration/) | 1–2 cached models, module-scoped | Yes | Cross-component | [`tests/integration/test_generation_compatibility.py`](integration/test_generation_compatibility.py) |
-| `acceptance` | [`tests/acceptance/`](acceptance/) | Full models (`gpt2`, `bloom-560m`), session-scoped | Yes | End-to-end behaviour | [`tests/acceptance/conftest.py`](acceptance/conftest.py) |
-| `benchmarks` | [`tests/benchmarks/`](benchmarks/) | Varies; performance focus | Yes | Throughput / memory | [`tests/benchmarks/test_boot_memory.py`](benchmarks/test_boot_memory.py) |
-| `mps` | [`tests/mps/`](mps/) | TinyStories-1M, fp32 only | Yes | macOS-MPS smoke only | [`tests/mps/test_mps_basic.py`](mps/test_mps_basic.py) |
+| Tier | Path | Run | Loads models? | Hits HF Hub? | Scope | Example |
+|---|---|---|---|---|---|---|
+| `unit` | [`tests/unit/`](unit/) | `make unit-test` | None / synthetic (rare exceptions) | No | Function or single module | [`tests/unit/test_key_value_cache_entry.py`](unit/test_key_value_cache_entry.py) |
+| `integration` | [`tests/integration/`](integration/) | `make integration-test` | 1–2 cached models, module-scoped | Yes | Cross-component | [`tests/integration/test_generation_compatibility.py`](integration/test_generation_compatibility.py) |
+| `acceptance` | [`tests/acceptance/`](acceptance/) | `make acceptance-test` | Full models (`gpt2`, `bloom-560m`), session-scoped | Yes | End-to-end behaviour | [`tests/acceptance/conftest.py`](acceptance/conftest.py) |
+| `benchmarks` | [`tests/benchmarks/`](benchmarks/) | `make benchmark-test` | Varies; performance focus | Yes | Throughput / memory | [`tests/benchmarks/test_boot_memory.py`](benchmarks/test_boot_memory.py) |
+| `mps` | [`tests/mps/`](mps/) | `pytest tests/mps -v` (needs `TRANSFORMERLENS_ALLOW_MPS=1`) | TinyStories-1M, fp32 only | Yes | macOS-MPS smoke only | [`tests/mps/test_mps_basic.py`](mps/test_mps_basic.py) |
 
-**Rule of thumb:** if your test calls `HookedTransformer.from_pretrained(...)` or `TransformerBridge.boot_transformers(...)`, it is NOT a unit test.
+Common combinations: `make test-pr` (unit + docstring + acceptance + integration — the PR-review surface), `make test` (everything including benchmarks + notebooks).
+
+**Rule of thumb:** new tests that load a model should land in `integration/` by default. The `unit/` tier has a few legitimate model-loading exceptions (e.g. `test_bridge_vs_hooked_transformer_*.py` compares numerics across architectures, which is conceptually unit-scoped) — match that pattern only when the test really is testing isolated behaviour that happens to need a model.
 
 ---
 

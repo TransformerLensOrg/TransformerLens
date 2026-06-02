@@ -9,10 +9,12 @@ For the **verification** workflow after writing an adapter, see [tools/model_reg
 ## TL;DR
 
 - **One file per architecture family**, not per model. `llama.py` covers Llama 1 / 2 / 3 / 3.1 / 3.2; do NOT add `llama7b.py` or `llama2.py`. Family splits happen only when internal structure changes (`gemma1.py` / `gemma2.py` / `gemma3.py`, `qwen.py` / `qwen2.py` / `qwen3.py`, `mistral.py` / `mixtral.py`).
-- **Two-place registration is mandatory.** Re-export in [`__init__.py`](__init__.py) AND add to `SUPPORTED_ARCHITECTURES` in [`../../factories/architecture_adapter_factory.py`](../../factories/architecture_adapter_factory.py). Missing either causes silent runtime failure at boot.
+- **Four-place registration is mandatory.** See [Registration steps](#registration-steps) — missing any one causes silent runtime failure or stale generated docs.
 - **`self.component_mapping: ComponentMapping`** is the load-bearing contract. Maps canonical TransformerLens paths → Bridge components wrapping HF module paths.
 - **Hook names are Bridge-native** (`blocks.{i}.hook_out`, `blocks.{i}.attn.q.hook_out`). Don't invent HT-style aliases here — those are registered separately in [`bridge.py`](../bridge.py).
-- **Copy from the closest existing adapter** before writing from scratch. See the starter table below.
+- **Copy from the closest existing adapter** before writing from scratch. See the [starter table](#starter-adapter-table).
+- **Surface non-standard HF config attrs explicitly** — they are invisible to TL-side consumers unless propagated to `self.cfg`. See [Config-attr propagation](#config-attr-propagation).
+- **Tokenizer policy is per-model, not per-architecture.** Never inherit `default_prepend_bos`, `default_padding_side`, EOS handling, or chat-template wiring from the starter adapter without checking the target's `tokenizer_config.json`. See [Tokenizer policy](#tokenizer-policy).
 
 ---
 
@@ -83,17 +85,62 @@ Optional overrides on the class:
 
 ---
 
+## Config-attr propagation
+
+HF raw config attributes are invisible to TL-side consumers unless explicitly propagated to `self.cfg`. After analysing the HF model, walk the `config.json` and list every non-standard attribute. For each, decide whether the base adapter machinery already handles it; if not, mirror it onto `self.cfg`.
+
+Common attributes that need explicit propagation:
+
+| HF attribute | Surface as | Used by |
+|---|---|---|
+| `final_logit_softcapping` | `self.cfg.final_logit_softcapping` | Gemma2/3 — final-layer logit clip |
+| `attn_logit_softcapping` | `self.cfg.attn_logit_softcapping` | Gemma2/3 — attention-score clip |
+| `query_pre_attn_scalar` | `self.cfg.query_pre_attn_scalar` | Gemma2/3 — query scaling override |
+| `sliding_window` | `self.cfg.sliding_window` | Mistral, Qwen2, Gemma2 — local-attention layers |
+| `layer_types` | `self.cfg.layer_types` | Hybrid models with per-layer attention type lists |
+| Non-standard RMSNorm eps key | `self.cfg.eps_attr = "<attribute_name>"` | Llama uses `"variance_epsilon"` instead of `"eps"` |
+
+Rule of thumb: if the model card or HF source mentions a numerical knob, assume it needs to land on `self.cfg`.
+
+---
+
+## Tokenizer policy
+
+Tokenizer behaviour is **per-model**, not per-architecture. Sibling models in the same family routinely differ — the chat-instruct variant may prepend BOS where the base does not, the multilingual fork may pad on the left where the original pads on the right, the new-generation tokenizer may have a different EOS. **Do not copy these values from your starter adapter blindly; check the target's [tokenizer_config.json] and chat template first.**
+
+Tokenizer-policy fields the adapter / load path is responsible for:
+
+| Flag | Meaning | Default behaviour | What goes wrong if wrong |
+|---|---|---|---|
+| `default_prepend_bos` | Prepend BOS to every input by default | Framework default unless set | Off-by-one in logit positions; generation starting from wrong context |
+| `default_padding_side` | `"left"` or `"right"` | HF tokenizer default | Generation produces garbage for batched inputs of unequal length |
+| EOS handling in generation | Stop on `tokenizer.eos_token_id` (single or list) | Single token from `cfg.eos_token_id` | Generation runs past the natural stop or stops prematurely |
+| Chat-template wiring | Whether the bridge auto-applies `tokenizer.apply_chat_template` | Off — user calls it explicitly | Instruct-tuned models produce base-model-style continuations |
+| Tokenizer class mismatch (HF reports `<X>Tokenizer`, model card uses `<Y>Tokenizer`) | n/a | Whatever HF resolves | Subtle BPE/SentencePiece divergence; rare but real for forks |
+
+**How to verify the right values:**
+
+1. Read [`tokenizer_config.json`] in the HF repo. Look at `add_bos_token`, `padding_side`, `bos_token`, `eos_token`, `chat_template`.
+2. Compare to the closest sibling already in the registry. If they differ, treat that as a deliberate choice and propagate it.
+3. When unsure, **leave the framework default** — explicit wrongness is worse than implicit defaulting, because the wrong explicit value hides under "I configured it" assumptions.
+
+`default_prepend_bos` is the most common trap (instruct/base divergence within Llama, Mistral, Gemma families), but the same logic applies to every flag above.
+
+---
+
 ## Registration steps
 
-After writing `myarch.py` with `MyArchitectureAdapter`:
+After writing `myarch.py` with `MyArchitectureAdapter`, register in **all four** sites. Missing any one breaks something:
 
-1. **Re-export in [`__init__.py`](__init__.py):**
+1. **[`__init__.py`](__init__.py)** — import + add to `__all__`:
    ```python
    from transformer_lens.model_bridge.supported_architectures.myarch import (
        MyArchitectureAdapter,
    )
    ```
-2. **Register in [`../../factories/architecture_adapter_factory.py`](../../factories/architecture_adapter_factory.py)** — add to the imports block AND to `SUPPORTED_ARCHITECTURES`:
+   Missing → import error at boot.
+
+2. **[`../../factories/architecture_adapter_factory.py`](../../factories/architecture_adapter_factory.py)** — import + `SUPPORTED_ARCHITECTURES` entry:
    ```python
    from transformer_lens.model_bridge.supported_architectures import (
        ...,
@@ -102,15 +149,24 @@ After writing `myarch.py` with `MyArchitectureAdapter`:
 
    SUPPORTED_ARCHITECTURES = {
        ...,
-       "MyArchForCausalLM": MyArchitectureAdapter,  # HF class name from config.architectures[]
+       "MyArchForCausalLM": MyArchitectureAdapter,  # key must match config.architectures[0] exactly
    }
    ```
-   The key must match `config.architectures[0]` from the HF model's `config.json` exactly.
-3. **Add to the registry constants** in [`../../tools/model_registry/__init__.py`](../../tools/model_registry/__init__.py):
-   - `HF_SUPPORTED_ARCHITECTURES` set
-   - `CANONICAL_AUTHORS_BY_ARCH` map (foundation-trained orgs for the scraper's download-threshold bypass)
+   Missing → `boot_transformers` raises "unsupported architecture."
 
-Missing step 1 → import error at boot. Missing step 2 → `boot_transformers` raises "unsupported architecture." Missing step 3 → scraper misses canonical models.
+3. **[`../../tools/model_registry/__init__.py`](../../tools/model_registry/__init__.py)** — two updates in this file:
+   - Add `"MyArchForCausalLM"` to `HF_SUPPORTED_ARCHITECTURES`
+   - Add `"MyArchForCausalLM": ["foundation-org-1", "foundation-org-2"]` to `CANONICAL_AUTHORS_BY_ARCH`
+
+   Missing → HF scraper misses canonical models for this architecture (download-threshold bypass).
+
+4. **[`../../tools/model_registry/generate_report.py`](../../tools/model_registry/generate_report.py)** — one-line entry in `ARCHITECTURE_DESCRIPTIONS`:
+   ```python
+   "MyArchForCausalLM": "Short human-readable description.",
+   ```
+   Missing → generated docs table omits the new architecture.
+
+**Verify the four-place wiring**: [`tests/unit/tools/test_model_registry.py`](../../../tests/unit/tools/test_model_registry.py) has a `TestRegistrySyncedWithFactory` class with four bidirectional invariants over `SUPPORTED_ARCHITECTURES`, `HF_SUPPORTED_ARCHITECTURES`, and `CANONICAL_AUTHORS_BY_ARCH`. Run `uv run pytest tests/unit/tools/test_model_registry.py -k TestRegistrySyncedWithFactory` after registering — the failure message tells you which set is missing your new key. (There's an `INTENTIONAL_EXCLUDES` carve-out in the same class for internal-only architectures and HF-emits-different-casing aliases; almost no new adapters need to add themselves there.)
 
 ---
 
@@ -132,16 +188,105 @@ Missing step 1 → import error at boot. Missing step 2 → `boot_transformers` 
 
 ---
 
-## Verification
+## Adding the HF repo to the registry
 
-After registering the adapter, validate end-to-end via the model registry — see [tools/model_registry/AGENTS.md](../../tools/model_registry/AGENTS.md). The minimum check is:
+After registration, add the model ID to [`../../tools/model_registry/data/supported_models.json`](../../tools/model_registry/data/supported_models.json) so `verify_models` can resolve it. The entry shape is:
+
+```json
+{
+  "architecture_id": "MyArchForCausalLM",
+  "model_id": "org/repo-name",
+  "status": 0,
+  "verified_date": null,
+  "metadata": null,
+  "note": null,
+  "phase1_score": null,
+  "phase2_score": null,
+  "phase3_score": null,
+  "phase4_score": null,
+  "phase7_score": null,
+  "phase8_score": null
+}
+```
+
+**Hand-edits are allowed only for adding new model-ID entries.** The `status`, `verified_date`, `note`, and `phaseN_score` fields are written exclusively by `update_model_status()` — never set them manually. See [tools/model_registry/AGENTS.md](../../tools/model_registry/AGENTS.md).
+
+When adding the user-provided model, prompt the user whether to also add the canonical sibling variants from `CANONICAL_AUTHORS_BY_ARCH[<HFArchClass>]` — e.g. when adding `google/gemma-2-2b`, ask about `google/gemma-2-2b-it`, `google/gemma-2-9b`, `google/gemma-2-9b-it`, `google/gemma-2-27b`, `google/gemma-2-27b-it`. The HF scraper picks these up eventually, but explicit entries unblock `verify_models` against the siblings now.
+
+Do NOT add the model to [`transformer_lens/supported_models.py`](../../supported_models.py) — that file is HookedTransformer-only.
+
+---
+
+## Model source paths: `boot_transformers` vs `boot_native`
+
+TransformerBridge has **two parallel load paths**, both routed through the same adapter system:
+
+| Source | Entry | Use case |
+|---|---|---|
+| `boot_transformers` | `TransformerBridge.boot_transformers(model_name, ...)` | Default: wraps a HuggingFace model. Adapter maps HF module paths to canonical names. Every adapter in this directory supports this path. |
+| `boot_native` | `TransformerBridge.boot_native(cfg, init_mode=...)` | TL-native transformer built from scratch, no HF dependency. Used by [`Realtime_Training_Telemetry_Demo.ipynb`](../../../demos/Realtime_Training_Telemetry_Demo.ipynb) and research that needs cfg-driven small models. |
+
+Native models are built by [`transformer_lens/model_bridge/sources/native/model.py`](../sources/native/model.py) and routed through [`native.py`](native.py) — the adapter whose `component_mapping` adapts to `cfg` (rotary drops `pos_embed`, RMS norm picks `RMSNormalizationBridge`, gated MLP picks `GatedMLPBridge`, `attn_only` drops MLP). Init policies live in [`sources/native/init.py`](../sources/native/init.py): `gpt2` (default, Normal with 1/√(2·n_layers) residual scaling), `xavier_uniform` / `xavier_normal`, `kaiming_uniform` / `kaiming_normal`. Determinism uses a scoped `torch.Generator` so seeded init does not perturb the caller's global RNG.
+
+Cfg-driven Native features: `normalization_type` (LN / RMS / RMSPre), `final_rms`, `gated_mlp`, `attn_only`, `n_key_value_heads` (GQA), `attn_scores_soft_cap`, `output_logits_soft_cap`, `positional_embedding_type` (standard / rotary), `rotary_dim` / `rotary_base` / `rope_scaling` (linear PI, dynamic/NTK, llama3 by-parts).
+
+**Sister source paths** under [`sources/`](../sources/) — `transformers/`, `vllm/`, `inspect/` — are different backends; their existence is mostly an internal detail for new adapter authors. Almost all new work goes through `transformers/` (HF backend) and only writes a `supported_architectures/<arch>.py` file.
+
+When **does a new adapter need to support both paths?** Almost never — if you're adding support for an HF-released architecture, you're writing a `boot_transformers` adapter and you're done. `boot_native` is for research-grade from-scratch models and uses the single `native.py` adapter generically. Touch `native.py` only if you're adding a primitive (e.g. a new norm type) that the cfg-driven dispatch doesn't already cover.
+
+---
+
+## Required tests
+
+Two test layers per architecture, both required for review:
+
+### 1. Unit adapter test — `tests/unit/model_bridge/supported_architectures/test_<arch>_adapter.py`
+
+29 of these exist; they all follow the same shape. Copy from a sibling that matches your architecture's quirks:
+
+- **Standard decoder LM** template: [`test_gemma1_adapter.py`](../../../tests/unit/model_bridge/supported_architectures/test_gemma1_adapter.py) or [`test_gpt2_adapter.py`](../../../tests/unit/model_bridge/supported_architectures/test_gpt2_adapter.py)
+- **GQA / modern RMSNorm+RoPE** template: [`test_qwen3_adapter.py`](../../../tests/unit/model_bridge/supported_architectures/test_qwen3_adapter.py)
+- **Multimodal** template: [`test_llava_adapter.py`](../../../tests/unit/model_bridge/supported_architectures/test_llava_adapter.py), [`test_gemma3_multimodal_adapter.py`](../../../tests/unit/model_bridge/supported_architectures/test_gemma3_multimodal_adapter.py)
+
+The minimal shape:
+
+```python
+def _make_cfg(d_model: int = 32) -> TransformerBridgeConfig:
+    return TransformerBridgeConfig(
+        d_model=d_model, d_head=d_model // 4, n_layers=2, n_ctx=128,
+        n_heads=4, d_vocab=256, d_mlp=64, architecture="MyArchForCausalLM",
+    )
+
+@pytest.fixture(scope="module")
+def adapter() -> MyArchitectureAdapter:
+    return MyArchitectureAdapter(_make_cfg())
+
+class TestMyArchHookCompatibility:
+    def test_<arch_quirk>(self, adapter): ...
+```
+
+Unit adapter tests don't load weights — they instantiate the adapter from a synthetic cfg and assert structural / hook-compatibility properties (component_mapping shape, whether `setup_hook_compatibility` is overridden, conversion shapes, etc.). They run in the default `make unit-test` tier with no HF Hub access.
+
+Add a dedicated test for **each architecture quirk** your adapter handles — softcaps, RMSNorm offsets, sliding window, custom eps attr, MoE routing. The Gemma1 test is a great example of a one-quirk-one-test file ("the adapter must NOT override setup_hook_compatibility because the HF embedding scales internally").
+
+### 2. Integration parity test — `tests/integration/model_bridge/test_<arch>_adapter.py` (or `test_<arch>_bridge.py`)
+
+Loads a real cached HF model, asserts logit parity vs HuggingFace at fp32 + eager attention. Templates: [`test_deepseek_adapter.py`](../../../tests/integration/model_bridge/test_deepseek_adapter.py), [`test_falcon_adapter.py`](../../../tests/integration/model_bridge/test_falcon_adapter.py), [`test_mamba_adapter.py`](../../../tests/integration/model_bridge/test_mamba_adapter.py).
+
+If your architecture's reference model is large enough to OOM CI, gate it with `@pytest.mark.skipif(bool(os.getenv("CI")), reason="...")` and add a row to [`tests/QUARANTINES.md`](../../../tests/QUARANTINES.md) under "CI cost / network budget."
+
+### End-to-end registry verification
+
+After both tests pass:
 
 ```bash
 set -a; source .env; set +a
-python -m transformer_lens.tools.model_registry.verify_models --architectures MyArchForCausalLM --per-arch 1
+uv run python -m transformer_lens.tools.model_registry.verify_models --architectures MyArchForCausalLM --per-arch 1
 ```
 
-And an integration test under [`tests/integration/`](../../../tests/integration/) asserting logit parity with HuggingFace at fp32 + eager attention.
+This is what [`/verify-model`](../../../.claude/commands/verify-model.md) wraps. See [tools/model_registry/AGENTS.md](../../tools/model_registry/AGENTS.md) for the canonical workflow and the [`verify_models` vs `main_benchmark` trap](../../tools/model_registry/AGENTS.md#tldr).
+
+If logit parity fails, see [docs/source/content/debugging_numerical_divergence.md](../../../docs/source/content/debugging_numerical_divergence.md) for the bisection workflow.
 
 ---
 
@@ -149,5 +294,8 @@ And an integration test under [`tests/integration/`](../../../tests/integration/
 
 - **No single-model files.** One file per architecture family.
 - **No `# type: ignore` on `ComponentMapping` types.** Use `isinstance` / `typing.cast` if the type system disagrees. See [AGENTS.md §10](../../../AGENTS.md#10-hard-rules).
-- **No skipping the factory registration.** The adapter file existing is not enough — without the entry in `SUPPORTED_ARCHITECTURES`, `boot_transformers` cannot find it and fails at runtime.
+- **No skipping any of the four registration sites.** Each one breaks something different (import, factory, scraper, generated docs). The invariant test in [`test_model_registry.py`](../../../tests/unit/tools/test_model_registry.py) will catch most of these.
 - **No HT-style hook aliases inside adapters.** Aliases live in [`../bridge.py`](../bridge.py) via `build_alias_to_canonical_map()`; adapters declare Bridge-native names only.
+- **No inheriting tokenizer-policy flags from the starter adapter** (`default_prepend_bos`, padding side, EOS). Tokenizer policy is per-model; see [Tokenizer policy](#tokenizer-policy).
+- **No manual edits to existing `supported_models.json` entries' status / phase fields.** Only `update_model_status()` writes those.
+- **No skipping the unit adapter test.** Every architecture has one; an adapter PR without one is incomplete.
