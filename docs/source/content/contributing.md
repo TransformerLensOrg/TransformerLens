@@ -279,13 +279,23 @@ The `TestRegistrySyncedWithFactory` class bidirectionally asserts that `SUPPORTE
 
 Two test layers, both required:
 
-1. **Unit adapter test** at `tests/unit/model_bridge/supported_architectures/test_<arch>_adapter.py`. ~29 of these exist; copy the closest sibling. The pattern: a `_make_cfg()` factory, an `adapter` fixture, and one test per architecture-specific quirk. Unit adapter tests instantiate the adapter from a synthetic config and assert structural properties — they don't load weights and don't hit HF Hub.
+1. **Unit adapter test** at `tests/unit/model_bridge/supported_architectures/test_<arch>_adapter.py`. ~26 of these exist; copy the closest sibling. The pattern: a `_make_cfg()` factory, an `adapter` fixture, and one test per architecture-specific quirk. Unit adapter tests instantiate the adapter from a synthetic config and assert structural properties — they don't load weights and don't hit HF Hub.
 2. **Integration parity test** at `tests/integration/model_bridge/test_<arch>_adapter.py`. Loads a real cached HF model and asserts logit parity vs HuggingFace at fp32 + eager attention.
 
 ### Common adapter gotchas
 
 - **HF raw config attributes are invisible to TL-side consumers unless explicitly propagated to `self.cfg`.** Walk the HF `config.json` and mirror any non-standard knobs (`final_logit_softcapping`, `attn_logit_softcapping`, `query_pre_attn_scalar`, `sliding_window`, `layer_types`, custom `eps_attr` names) onto `self.cfg` so weight processing and forward passes can see them.
-- **Tokenizer policy is per-model, not per-architecture.** Sibling models in the same family routinely differ — the chat-instruct variant may prepend BOS where the base does not, padding side can flip, EOS handling can differ. Never copy `default_prepend_bos`, padding side, or EOS handling from your starter adapter without checking the target's `tokenizer_config.json` first.
+- **Some config attrs need both surface-on-cfg AND fold-into-weight** via a `preprocess_weights()` override. The trigger: a numerical operation HF's forward applies natively must also be baked into the raw weights, or `bridge.enable_compatibility_mode()` (which calls `process_weights` on raw weights) produces wrong results. Concrete examples in-tree: Cohere `logit_scale` → `unembed.weight`; Gemma embedding scale (`√d_model`) → `embed.weight`. Skip the fold and Phase 3 / Phase 4 of `verify_models` will silently degrade.
+- **Tokenizer policy is per-model, not per-architecture.** Sibling models in the same family routinely differ — the chat-instruct variant may prepend BOS where the base does not, padding side can flip, EOS handling can differ. Never copy `default_prepend_bos`, padding side, or EOS handling from your starter adapter without checking the target's behaviour. **`tokenizer_config.json` lies for some architectures** (Cohere declares `add_bos_token=False` but HF's `__call__` prepends BOS anyway). The reliable check is to invoke the tokenizer:
+
+  ```python
+  from transformers import AutoTokenizer
+  t = AutoTokenizer.from_pretrained("<hf_repo>")
+  print(t("hello").input_ids)        # what generation actually uses
+  print(t.bos_token_id)
+  ```
+
+  If `t("hello").input_ids[0] == t.bos_token_id`, set `cfg.default_prepend_bos = True`. Otherwise leave the flag unset.
 - **Hook names inside adapters are Bridge-native** (e.g., `blocks.{i}.hook_out`). HookedTransformer-style aliases (e.g., `blocks.{i}.hook_resid_post`) are registered elsewhere — in `transformer_lens/model_bridge/bridge.py` via `build_alias_to_canonical_map()`. Adapters declare canonical names only.
 - **No `# type: ignore` on `ComponentMapping` types.** Use `isinstance` or `typing.cast` if the type system disagrees.
 
@@ -301,6 +311,19 @@ uv run python -m transformer_lens.tools.model_registry.verify_models --model <hf
 `verify_models` runs phases 1–4 (forward correctness vs HF, hook firing + gradients, weight processing, generation quality) and updates `data/supported_models.json` with status and per-phase scores. **Always run `--dry-run` first** to project memory and parameter count without loading the model. Run one model at a time — concurrent loads OOM a single device.
 
 **Use `verify_models`, never `main_benchmark`** — only `verify_models` writes the registry. `main_benchmark` runs the same math but defaults to skipping the registry write (requires `--update-registry`, and even with that flag misses Phase 7 / 8 scores and the resume checkpoint).
+
+**Read the per-phase scores, not just the status.** `verify_models` enforces hard pass/fail at the thresholds in `_MIN_PHASE_SCORES`; below threshold or a required-test failure causes `STATUS_FAILED`. The contract:
+
+| Phase | Min score | Required tests | Effect when below threshold |
+|---|---|---|---|
+| 1 | 100% | — | `STATUS_FAILED` |
+| 2 | 75% | `logits_equivalence`, `loss_equivalence` | `STATUS_FAILED` |
+| 3 | 75% | `logits_equivalence`, `loss_equivalence` | `STATUS_FAILED` |
+| 4 | 50% | — | **Non-gating** — below 50% adds `"low text quality"` to the registry `note`; never causes `STATUS_FAILED`. |
+| 7 | 75% | `multimodal_forward` | `STATUS_FAILED`. NULL score also fails. |
+| 8 | 75% | `audio_forward` | `STATUS_FAILED`. NULL score also fails. |
+
+Phase 4 is intentionally lenient — it's a coherence metric, not a correctness check. A sub-100% Phase-4 score on a small parity-test model can still indicate a real adapter bug that the system doesn't gate on (missing `preprocess_weights` fold, wrong `default_prepend_bos`, etc.); investigate manually even when the entry says VERIFIED.
 
 If verification fails by `~1e-3` or more against the HF reference, the bisection workflow lives at [Debugging Numerical Divergence](debugging_numerical_divergence.md).
 

@@ -63,7 +63,7 @@ class MyArchitectureAdapter(ArchitectureAdapter):
 Optional overrides on the class:
 
 - `default_cfg` — class-level defaults merged into the runtime config
-- `preprocess_weights()` — pre-load weight transforms (e.g. Gemma embedding scaling)
+- `preprocess_weights()` — pre-load weight transforms (e.g. Gemma embedding scaling, Cohere `logit_scale` fold). See [When to override `preprocess_weights`](#when-to-override-preprocess_weights).
 - `applicable_phases` — subset of `[1, 2, 3, 4, 7, 8]` (default `[1, 2, 3, 4]`); see [tools/model_registry/AGENTS.md](../../tools/model_registry/AGENTS.md) for what each phase tests
 - `supports_generation` — set `False` for encoder-only models (BERT, HuBERT)
 
@@ -89,7 +89,7 @@ Optional overrides on the class:
 
 HF raw config attributes are invisible to TL-side consumers unless explicitly propagated to `self.cfg`. After analysing the HF model, walk the `config.json` and list every non-standard attribute. For each, decide whether the base adapter machinery already handles it; if not, mirror it onto `self.cfg`.
 
-Common attributes that need explicit propagation:
+**Surface-on-cfg attributes** (set on `self.cfg.<name>`; the rest of the bridge reads them from there):
 
 | HF attribute | Surface as | Used by |
 |---|---|---|
@@ -100,7 +100,54 @@ Common attributes that need explicit propagation:
 | `layer_types` | `self.cfg.layer_types` | Hybrid models with per-layer attention type lists |
 | Non-standard RMSNorm eps key | `self.cfg.eps_attr = "<attribute_name>"` | Llama uses `"variance_epsilon"` instead of `"eps"` |
 
-Rule of thumb: if the model card or HF source mentions a numerical knob, assume it needs to land on `self.cfg`.
+**Weight-fold attributes** (need BOTH surface-on-cfg AND fold-into-weight via `preprocess_weights` — see [the next section](#when-to-override-preprocess_weights)):
+
+| HF attribute | Fold target | Used by |
+|---|---|---|
+| `logit_scale` | `unembed.weight` (multiply in fp32 then cast back) | Cohere — final logits scaled by `1/16` |
+| `embedding_multiplier` / embed-scale flags | `embed.weight` (multiply) | Gemma — embeddings scaled by `√d_model` |
+| Tied unembed with extra scale | `unembed.weight` | T5-family tied projection variants |
+
+Rule of thumb: if the model card or HF source mentions a numerical knob, assume it needs to land on `self.cfg`. If that knob changes weights or final outputs and HF's forward applies it natively, you ALSO need a `preprocess_weights` override or compatibility mode will diverge.
+
+---
+
+## When to override `preprocess_weights`
+
+The framework default for `preprocess_weights()` is a no-op pass-through. Override it when **a numerical operation that HF's forward applies natively must also be baked into the raw weights** — otherwise `bridge.enable_compatibility_mode()` (which calls `process_weights` on the raw weights, expecting them to already encode all the math) produces wrong results.
+
+The trigger rule:
+
+> If a config attr changes the math of the forward pass AND would not be re-applied during compatibility-mode weight processing, fold it into the relevant weight inside `preprocess_weights()`.
+
+Concrete examples in-tree:
+
+- **Cohere** — `cfg.logit_scale` (default `0.0625`) must be folded into `unembed.weight`. HF forward multiplies logits by `logit_scale`; compat-mode `process_weights` does not, so without the fold, compat-mode logits are off by `1/16`.
+- **Gemma1 / Gemma2 / Gemma3** — embedding scale (`√d_model`) must be folded into `embed.weight`. HF's `GemmaTextScaledWordEmbedding` scales internally on forward; compat-mode reads embeddings raw.
+
+Skeleton:
+
+```python
+import torch
+
+def preprocess_weights(self, state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+    """Fold <attr> into <weight> before ProcessWeights runs.
+
+    bridge.py clones unembed.weight before calling this, so the scale does not
+    leak into the tied embed.weight.
+    """
+    scale: float = getattr(self.cfg, "<attr>")  # set in __init__
+    if scale != 1.0:  # no-op when scale is identity
+        key = "unembed.weight"
+        if key in state_dict:
+            orig_dtype = state_dict[key].dtype
+            state_dict[key] = (state_dict[key].float() * scale).to(orig_dtype)
+    return state_dict
+```
+
+**When you do NOT need `preprocess_weights`:** if the numerical operation lives entirely inside an HF submodule that the bridge delegates to (e.g. RoPE inside `CohereRotaryEmbedding`), HF forward applies it on both paths and you inherit parity for free.
+
+**Verification**: a missing `preprocess_weights` fold most often degrades Phase 4 (text-generation quality), and can show up as Phase 3 (weight processing) below 75% if severe enough to trip the strict gate. P4's 50% bar is intentionally lenient, so a sub-100% P4 on a small parity-test model is worth investigating even when the system reports `STATUS_VERIFIED`. See [tools/model_registry/AGENTS.md §Phase-score thresholds](../../tools/model_registry/AGENTS.md#phase-score-thresholds).
 
 ---
 
@@ -120,11 +167,25 @@ Tokenizer-policy fields the adapter / load path is responsible for:
 
 **How to verify the right values:**
 
-1. Read [`tokenizer_config.json`] in the HF repo. Look at `add_bos_token`, `padding_side`, `bos_token`, `eos_token`, `chat_template`.
-2. Compare to the closest sibling already in the registry. If they differ, treat that as a deliberate choice and propagate it.
-3. When unsure, **leave the framework default** — explicit wrongness is worse than implicit defaulting, because the wrong explicit value hides under "I configured it" assumptions.
+1. **Run the tokenizer.** `tokenizer_config.json` LIES for some architectures — Cohere is the canonical example: it declares `add_bos_token=False` but HF's `__call__` prepends BOS anyway via `add_special_tokens=True`. The only reliable check is to actually invoke it:
 
-`default_prepend_bos` is the most common trap (instruct/base divergence within Llama, Mistral, Gemma families), but the same logic applies to every flag above.
+   ```python
+   from transformers import AutoTokenizer
+   t = AutoTokenizer.from_pretrained("<hf_repo>")
+   print("encode:", t.encode("hello"))         # raw encode
+   print("__call__:", t("hello").input_ids)    # what generation actually uses
+   print("bos_token_id:", t.bos_token_id)
+   ```
+
+   If `t("hello").input_ids[0] == t.bos_token_id`, set `cfg.default_prepend_bos = True`. If the first token is NOT BOS, leave the flag unset.
+
+2. **Cross-check against `tokenizer_config.json`** for `padding_side`, `bos_token`, `eos_token`, `chat_template`. These tend to be honest; the runtime override mostly affects BOS-prepending.
+
+3. **Compare to the closest sibling already in the registry.** If they differ, treat that as a deliberate choice and propagate it.
+
+4. **When unsure, leave the framework default.** Explicit wrongness is worse than implicit defaulting — the wrong explicit value hides under "I configured it" assumptions.
+
+`default_prepend_bos` is the most common trap (Cohere's tokenizer-config-vs-runtime mismatch, instruct/base divergence within Llama / Mistral / Gemma families). The same recipe applies to verifying every flag above.
 
 ---
 
@@ -242,7 +303,7 @@ Two test layers per architecture, both required for review:
 
 ### 1. Unit adapter test — `tests/unit/model_bridge/supported_architectures/test_<arch>_adapter.py`
 
-29 of these exist; they all follow the same shape. Copy from a sibling that matches your architecture's quirks:
+26 of these exist; they all follow the same shape. Copy from a sibling that matches your architecture's quirks:
 
 - **Standard decoder LM** template: [`test_gemma1_adapter.py`](../../../tests/unit/model_bridge/supported_architectures/test_gemma1_adapter.py) or [`test_gpt2_adapter.py`](../../../tests/unit/model_bridge/supported_architectures/test_gpt2_adapter.py)
 - **GQA / modern RMSNorm+RoPE** template: [`test_qwen3_adapter.py`](../../../tests/unit/model_bridge/supported_architectures/test_qwen3_adapter.py)

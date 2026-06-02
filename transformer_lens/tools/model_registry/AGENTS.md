@@ -123,7 +123,31 @@ Agents should never edit it manually; let `verify_models` manage it.
 | 7 | Multimodal (vision/text alignment) — only Llava / Gemma3-multimodal |
 | 8 | Audio — only Hubert |
 
-A model entry's `status` is `1` (verified) only after all applicable phases pass.
+### Phase-score thresholds
+
+`verify_models` enforces hard pass/fail at the thresholds in `_MIN_PHASE_SCORES` ([`verify_models.py:508`](verify_models.py)). Below threshold OR a required-test failure → `STATUS_FAILED`. The contract:
+
+| Phase | Min score | Required tests | Effect when below threshold or required tests fail |
+|---|---|---|---|
+| 1 | **100%** | — | `STATUS_FAILED` |
+| 2 | 75% | `logits_equivalence`, `loss_equivalence` | `STATUS_FAILED` |
+| 3 | 75% | `logits_equivalence`, `loss_equivalence` | `STATUS_FAILED` |
+| 4 | 50% | — | **Non-gating.** Below 50% adds `"low text quality"` to the registry `note`; never causes `STATUS_FAILED`. |
+| 7 | 75% | `multimodal_forward` | `STATUS_FAILED`. NULL score (processor unavailable) also fails. |
+| 8 | 75% | `audio_forward` | `STATUS_FAILED`. NULL score also fails. |
+
+Phase 4 is intentionally lenient — the source comment ([`verify_models.py:554`](verify_models.py)) calls it *"a quality metric, not a correctness check."* The 50% bar asks "is the generated text coherent at all?" rather than "is this adapter clean?"
+
+**For adapter authors**: a `STATUS_VERIFIED` entry whose Phase 4 score is well below 100% on a small parity-test model (e.g. `tiny-<arch>ForCausalLM`) can still indicate a real adapter bug that the system intentionally doesn't gate on. Cohere's first cold-agent run produced `P4=74.8%, status=1, note="Full verification completed"` — the system was correct (74.8 > 50, P4 doesn't gate), but the score reflected a missing `preprocess_weights` fold for `logit_scale`. Treat sub-100% P4 on tiny test models as a yellow flag worth investigating, even when the system reports VERIFIED.
+
+**Reading the result**:
+
+- `status == 1` AND `note == "Full verification completed"` → all hard gates passed AND no quality flag. Good.
+- `status == 1` AND `note` mentions `"low text quality"` → P4 < 50%; investigate.
+- `status == 1` AND P4 well below 100% on a small model, no quality flag → still potentially a subtle weight-fold or tokenizer bug; investigate manually.
+- `status == 3` (FAILED) → `note` carries the specific failure reason and which tests failed; debug from there.
+
+For Phase-1 / Phase-3 failures, see [supported_architectures/AGENTS.md §When to override preprocess_weights](../../model_bridge/supported_architectures/AGENTS.md#when-to-override-preprocess_weights) and [debugging_numerical_divergence.md](../../../docs/source/content/debugging_numerical_divergence.md). For Phase-4 quality drift, see [supported_architectures/AGENTS.md §Tokenizer policy](../../model_bridge/supported_architectures/AGENTS.md#tokenizer-policy) and the same `preprocess_weights` reference (logit-scale / embedding-scale folds typically degrade P4 without crossing the 50% gate).
 
 ---
 

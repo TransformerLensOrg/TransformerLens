@@ -48,7 +48,7 @@ Execute this checklist, stopping at each step until it is genuinely done:
 
 6. **Add the HF repo entry** to [`data/supported_models.json`](../../transformer_lens/tools/model_registry/data/supported_models.json) per [supported_architectures/AGENTS.md §"Adding the HF repo to the registry"](../../transformer_lens/model_bridge/supported_architectures/AGENTS.md#adding-the-hf-repo-to-the-registry). Then ask the user whether to also add the canonical sibling variants from `CANONICAL_AUTHORS_BY_ARCH[<HFArchClass>]`.
 
-7. **Verify** end-to-end: run `/verify-model $ARGUMENTS`. (`/verify-model` enforces dry-run-first and one-at-a-time.)
+7. **Verify** end-to-end: run `/verify-model $ARGUMENTS`. (`/verify-model` enforces dry-run-first and one-at-a-time.) Read both `status` and per-phase scores from the output. `STATUS_VERIFIED` means the system's hard gates passed (see [tools/model_registry/AGENTS.md §Phase-score thresholds](../../transformer_lens/tools/model_registry/AGENTS.md#phase-score-thresholds) for the actual table) — but Phase 4's 50% bar is intentionally lenient. If Phase 4 on a small parity-test model is well below 100% even though `status == 1`, suspect a missing `preprocess_weights` fold or wrong `default_prepend_bos` and investigate before continuing to step 8.
 
 8. **Write tests.** Read [Required tests in supported_architectures/AGENTS.md](../../transformer_lens/model_bridge/supported_architectures/AGENTS.md#required-tests) for the two-layer pattern (unit adapter test + integration parity test) and copy the closest sibling.
 

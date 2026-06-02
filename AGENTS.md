@@ -146,7 +146,7 @@ From [.github/workflows/checks.yml](.github/workflows/checks.yml):
 | Job | Runs | When it fails, run locally |
 |---|---|---|
 | `compatibility-checks` | `make unit-test` + `make acceptance-test` + `uv build` × py 3.10 / 3.11 / 3.12 | `make unit-test` / `make acceptance-test` / `uv build`. Repro Python-specific failures with `uv python install <ver>` then `uv run --python <ver> pytest …` |
-| `mps-checks` | macOS MPS unit + integration + smoke (PRs to `main` only) | `TRANSFORMERLENS_ALLOW_MPS=1 uv run pytest tests/mps` on a Mac with MPS |
+| `mps-checks` | macOS MPS unit + integration + smoke (PRs targeting `main` or pushes to `main` only) | `TRANSFORMERLENS_ALLOW_MPS=1 uv run pytest tests/mps` on a Mac with MPS |
 | `format-check` | `make check-format` | `make format` (writes the fix) then commit |
 | `type-check` | `uv run mypy .` | `uv run mypy .` — fix the error; never add `# type: ignore` |
 | `docstring-test` | `make docstring-test` | `make docstring-test` — failures are doctest mismatches in `transformer_lens/` |

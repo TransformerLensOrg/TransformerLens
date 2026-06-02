@@ -45,8 +45,27 @@ Full reference: [tools/model_registry/AGENTS.md §Flag reference](../../transfor
 
 Batch flags (`--architectures`, `--per-arch`, `--limit`, `--resume`) are not relevant for `--model <repo>` — use the batch invocation in [tools/model_registry/AGENTS.md §Canonical invocations](../../transformer_lens/tools/model_registry/AGENTS.md#canonical-invocations) if you need them.
 
+## Interpreting the output
+
+`verify_models` enforces hard thresholds (from `_MIN_PHASE_SCORES` in `verify_models.py`):
+
+| Phase | Min score | Required tests | Below = |
+|---|---|---|---|
+| 1 | 100% | — | `STATUS_FAILED` |
+| 2 | 75% | `logits_equivalence`, `loss_equivalence` | `STATUS_FAILED` |
+| 3 | 75% | `logits_equivalence`, `loss_equivalence` | `STATUS_FAILED` |
+| 4 | 50% | — | **Non-gating** — only adds `"low text quality"` to the `note`; never causes `STATUS_FAILED`. |
+| 7 | 75% | `multimodal_forward` | `STATUS_FAILED`. NULL = fail. |
+| 8 | 75% | `audio_forward` | `STATUS_FAILED`. NULL = fail. |
+
+`STATUS_VERIFIED` means the system's hard contract is met. The `note` field carries quality flags (`"low text quality"`) or failure details.
+
+**One caveat for adapter authors:** Phase 4's 50% bar is intentionally lenient (it's a coherence metric, not correctness). A small parity-test model that gets Phase 4 well below 100% can still indicate a real adapter bug the system doesn't gate on — most often a missing `preprocess_weights` fold ([supported_architectures/AGENTS.md §When to override preprocess_weights](../../transformer_lens/model_bridge/supported_architectures/AGENTS.md#when-to-override-preprocess_weights)) or wrong `default_prepend_bos` ([§Tokenizer policy](../../transformer_lens/model_bridge/supported_architectures/AGENTS.md#tokenizer-policy)). Worth investigating even on VERIFIED runs.
+
+Full reference: [tools/model_registry/AGENTS.md §Phase-score thresholds](../../transformer_lens/tools/model_registry/AGENTS.md#phase-score-thresholds).
+
 ## Hard rules
 
 **Use `verify_models`, never `main_benchmark`** — only `verify_models` writes `data/supported_models.json`. See [transformer_lens/tools/model_registry/AGENTS.md](../../transformer_lens/tools/model_registry/AGENTS.md) for the canonical-invocations table, file roles, and the resume/checkpoint mechanism.
 
-Run one model at a time — concurrent loads OOM a single device. Report the actual benchmark output and investigate any failure or drift per [AGENTS.md §10](../../AGENTS.md#10-hard-rules). For phase failures or logit-parity drift, the bisection workflow lives in [docs/source/content/debugging_numerical_divergence.md](../../docs/source/content/debugging_numerical_divergence.md).
+Run one model at a time — concurrent loads OOM a single device. Report the actual benchmark output (including per-phase scores) and investigate any failure or drift per [AGENTS.md §10](../../AGENTS.md#10-hard-rules).
