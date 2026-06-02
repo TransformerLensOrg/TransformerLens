@@ -20,9 +20,9 @@ interpretability](https://distill.pub/2020/circuits/zoom-in/) of GPT-2 Style lan
 goal of mechanistic interpretability is to take a trained model and reverse engineer the algorithms
 the model learned during training from its weights.
 
-TransformerLens lets you load in 50+ different open source language models, and exposes the internal
-activations of the model to you. You can cache any internal activation in the model, and add in
-functions to edit, remove or replace these activations as the model runs.
+TransformerLens lets you load in 9,000+ open source language models across 50+ architecture families,
+and exposes the internal activations of the model to you. You can cache any internal activation in the
+model, and add in functions to edit, remove or replace these activations as the model runs.
 
 ## Quick Start
 
@@ -52,7 +52,7 @@ logits, activations = bridge.run_with_cache("Hello World")
 
 > Gated models (Llama, Mistral, Gemma, ...) require `HF_TOKEN` in your environment. See [Environment Variables](https://TransformerLensOrg.github.io/TransformerLens/content/getting_started.html#environment-variables) for the full list.
 
-`TransformerBridge` is the recommended 3.0 path and supports 50+ architectures. By default it preserves raw HuggingFace weights – logits and activations match HF, *not* legacy `HookedTransformer` (which folds LayerNorm and centers weights by default). Call `bridge.enable_compatibility_mode()` after booting for HookedTransformer-equivalent numerics. The legacy `HookedTransformer.from_pretrained` API is still available but deprecated — see the [Migrating to TransformerLens 3](https://TransformerLensOrg.github.io/TransformerLens/content/migrating_to_v3.html) guide.
+`TransformerBridge` is the recommended 3.0 path and supports 9,000+ models across 50+ architecture families (see [`supported_models.json`](transformer_lens/tools/model_registry/data/supported_models.json) for the full inventory). By default it preserves raw HuggingFace weights – logits and activations match HF, *not* legacy `HookedTransformer` (which folds LayerNorm and centers weights by default). Call `bridge.enable_compatibility_mode()` after booting for HookedTransformer-equivalent numerics. The legacy `HookedTransformer.from_pretrained` API is still available but deprecated — see the [Migrating to TransformerLens 3](https://TransformerLensOrg.github.io/TransformerLens/content/migrating_to_v3.html) guide.
 
 ## Key Tutorials
 

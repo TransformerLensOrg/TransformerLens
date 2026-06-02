@@ -1,0 +1,17 @@
+---
+description: TransformerLens project conventions for Cursor agents.
+alwaysApply: true
+---
+
+Read `AGENTS.md` at the repo root before doing any work. It is the single source of truth for project conventions, quickstart commands, repo layout, hook-naming rules, the HookedTransformer ↔ TransformerBridge mirroring rule, PR conventions, and hard rules.
+
+Quick reminders that override common defaults:
+
+- Use `uv`, not `pip` or `poetry`. Install with `uv sync`; run commands with `uv run …` or `make` targets.
+- This repo has two parallel systems (`HookedTransformer` legacy and `TransformerBridge` v3). Changes to HookedTransformer that have equivalents in TransformerBridge must be mirrored to TransformerBridge.
+- Base PRs against `dev`, not `main`. Never name a branch `main` or `dev`.
+- No pre-commit hook is installed. Run `make format` and `uv run mypy .` manually before push.
+- Source `.env` (e.g. `set -a; source .env; set +a`) before any HuggingFace-Hub-hitting command.
+- Never add `# type: ignore`, never dismiss failing tests as "pre-existing", never add platform skips to dodge CI, never claim drift is "fp noise" without empirical evidence.
+
+See `AGENTS.md` for the full context behind each of these rules.
