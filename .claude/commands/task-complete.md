@@ -15,14 +15,16 @@ Review every comment and docstring **added or modified during this task** agains
 
 Use `git diff` against the merge-base to scope the review to genuinely new comments — do NOT rewrite unrelated comments elsewhere in the file.
 
-### 2. Format
+### 2. Type-check, then format
+
+Run mypy **before** format. Mypy fixes (`isinstance`, `typing.cast`, signature changes) can introduce format drift — running format after mypy means a single format pass.
 
 ```
-make format
 uv run mypy .
+make format
 ```
 
-If mypy reports new errors, fix the underlying typing issue. Do not add `# type: ignore` — prefer `isinstance` assertions or `typing.cast`.
+If mypy reports new errors, fix the underlying typing issue. Do not add `# type: ignore`.
 
 ### 3. Run the standard test tiers
 

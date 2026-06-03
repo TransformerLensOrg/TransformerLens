@@ -110,6 +110,8 @@ HF raw config attributes are invisible to TL-side consumers unless propagated to
 
 Rule of thumb: if the model card or HF source mentions a numerical knob, assume it needs to land on `self.cfg`. If that knob changes weights or final outputs and HF's forward applies it natively, you ALSO need a `preprocess_weights` override or compatibility mode will diverge.
 
+**Passthrough gotcha:** if your attr is NOT a declared `TransformerBridgeConfig` field, `TransformerBridgeConfig.from_dict(hf_config)` silently filters it out — `getattr(cfg, "<attr>", None)` in your adapter will return `None` and your fallback default fires regardless of the model's actual value. To propagate, add the attr name to `_HF_PASSTHROUGH_ATTRS` in [`sources/transformers.py`](../sources/transformers.py) (and the duplicate list in [`sources/_bridge_builder.py`](../sources/_bridge_builder.py)). Verify with an integration-test assertion: `assert bridge.cfg.<attr> == hf_model.config.<attr>`.
+
 ---
 
 ## When to override `preprocess_weights`
@@ -326,7 +328,29 @@ Add one test per architecture quirk (softcaps, RMSNorm offsets, sliding window, 
 
 ### 2. Integration parity test — `tests/integration/model_bridge/test_<arch>_adapter.py`
 
-Loads a real cached HF model; asserts logit parity at fp32 + eager attention. Templates: [`test_deepseek_adapter.py`](../../../tests/integration/model_bridge/test_deepseek_adapter.py), [`test_falcon_adapter.py`](../../../tests/integration/model_bridge/test_falcon_adapter.py), [`test_mamba_adapter.py`](../../../tests/integration/model_bridge/test_mamba_adapter.py). If the reference model OOMs CI, gate with `@pytest.mark.skipif(bool(os.getenv("CI")), ...)` and add a row to [`QUARANTINES.md`](../../../tests/QUARANTINES.md) under "CI cost / network budget."
+Loads a real cached HF model; asserts logit parity at fp32 + eager attention. Templates: [`test_deepseek_adapter.py`](../../../tests/integration/model_bridge/test_deepseek_adapter.py), [`test_falcon_adapter.py`](../../../tests/integration/model_bridge/test_falcon_adapter.py), [`test_mamba_adapter.py`](../../../tests/integration/model_bridge/test_mamba_adapter.py).
+
+Required test classes (one per concern; copy-rename from a sibling):
+
+| Class | Asserts |
+|---|---|
+| `Test<Arch>BridgeCreation` | Boot succeeds, expected components present, `cfg.<flags>` set correctly |
+| `Test<Arch>ForwardEquivalence` | Logit parity vs HF at fp32 + eager attention |
+| `Test<Arch>HFDelegation` | Bridge submodules hold live HF objects (e.g. `bridge.blocks[0].attn.q.original_component is hf_model.model.layers[0].self_attn.q_proj`) |
+| `Test<Arch>HookShapes` | Hook fires; output shape matches expectation (replace with `ParallelHooks` / `MoEHooks` etc. for architecture-specific block shapes) |
+| `Test<Arch><Quirk>` | One class per architectural quirk: `LogitScale`, `RMSNormOffset`, `Softcap`, `TiedEmbedding`, etc. — each propagated config attr should have a test asserting `bridge.cfg.<attr> == hf_model.config.<attr>` |
+
+The boot fixture uses `dtype=` (Bridge's API), NOT `torch_dtype=` (HF's):
+
+```python
+@pytest.fixture(scope="module")
+def bridge():
+    return TransformerBridge.boot_transformers(
+        "<hf_repo>", device="cpu", dtype=torch.float32, attn_implementation="eager",
+    )
+```
+
+If the reference model OOMs CI, gate with `@pytest.mark.skipif(bool(os.getenv("CI")), ...)` and add a row to [`QUARANTINES.md`](../../../tests/QUARANTINES.md) under "CI cost / network budget."
 
 ### End-to-end registry verification
 
