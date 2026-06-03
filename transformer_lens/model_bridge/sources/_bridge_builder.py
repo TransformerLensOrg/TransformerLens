@@ -39,8 +39,7 @@ _HF_PASSTHROUGH_ATTRS = [
     "chunk_size",
     # Multimodal
     "vision_config",
-    # Cohere (and any architecture that reads logit_scale / rope_parameters
-    # directly from cfg in its adapter)
+    # Cohere
     "logit_scale",
     "rope_parameters",
 ]
