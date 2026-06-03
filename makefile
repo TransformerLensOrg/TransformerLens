@@ -62,6 +62,12 @@ notebook-test:
 	$(RUN) pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/Attribution_Patching_Demo.ipynb $(RERUN_ARGS)
 	$(RUN) pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/Grokking_Demo.ipynb $(RERUN_ARGS)
 
+test-pr:
+	$(MAKE) unit-test
+	$(MAKE) docstring-test
+	$(MAKE) acceptance-test
+	$(MAKE) integration-test
+
 test:
 	$(MAKE) unit-test
 	$(MAKE) integration-test
