@@ -83,9 +83,9 @@ New integration tests should use the variant that matches the property they're t
 
 `enable_compatibility_mode()` mutates the bridge's weights in-place. It is:
 
-- **One-shot**: calling it twice on the same bridge is safe but pointless; the second call re-folds already-folded weights into the new (already-folded) LayerNorm modules — which is a no-op for `fold_ln` semantically, but it does re-run the centering subtractions. Don't.
-- **Not reversible** from within the bridge: if you need raw weights again, re-boot the bridge.
-- **Idempotent in `_setup_hook_compatibility`**: that method can be called multiple times safely; only `process_weights` mutates weights.
+- **One-shot:** calling it twice re-runs the centering subtractions. Don't.
+- **Not reversible** from within the bridge — re-boot for raw weights.
+- **`_setup_hook_compatibility` is idempotent**; only `process_weights` mutates weights.
 
 ## See also
 

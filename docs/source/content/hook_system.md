@@ -95,17 +95,17 @@ model.remove_all_hook_fns(including_permanent=True)  # also removes permanent
 
 ## Hook naming
 
-Hook names are stable strings you address from outside the model. They differ between HookedTransformer and TransformerBridge:
+Stable strings; differ between HookedTransformer and TransformerBridge:
 
 | System | Style | Example |
 |---|---|---|
 | `HookedTransformer` (legacy) | Uniform across architectures | `blocks.5.attn.hook_q`, `blocks.5.hook_resid_post`, `hook_embed` |
 | `TransformerBridge` (default) | Architecture-native | `blocks.5.attn.q.hook_out`, `blocks.5.hook_out`, `embed.hook_out` |
-| `TransformerBridge` + compatibility mode | Bridge-native **and** HT-style aliases both fire | Same as above, plus `blocks.5.attn.hook_q` etc. |
+| `TransformerBridge` + compatibility mode | Bridge-native AND HT-style aliases | Above + `blocks.5.attn.hook_q` etc. |
 
-For the full canonical-name catalogue, the demo notebooks ([Main Demo](generated/demos/Main_Demo), [Exploratory Analysis Demo](generated/demos/Exploratory_Analysis_Demo)) walk through them with examples. For an architecture diagram showing where each name fires, see [TransformerLens_Diagram.svg](../_static/TransformerLens_Diagram.svg).
+Full catalogue: [Main Demo](generated/demos/Main_Demo), [Exploratory Analysis Demo](generated/demos/Exploratory_Analysis_Demo). Architecture diagram: [TransformerLens_Diagram.svg](../_static/TransformerLens_Diagram.svg).
 
-When porting HookedTransformer code to TransformerBridge, calling `bridge.enable_compatibility_mode()` (see [Compatibility Mode](compatibility_mode.md)) registers the HT-style aliases so your existing hook names continue to resolve.
+Porting HT code to Bridge: `bridge.enable_compatibility_mode()` (see [Compatibility Mode](compatibility_mode.md)) registers HT aliases so existing names resolve.
 
 ---
 

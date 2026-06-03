@@ -6,16 +6,16 @@ When a Bridge adapter's integration test fails by `~1e-3` (or any larger delta) 
 
 ---
 
-## 0. Setup checklist before debugging
+## 0. Setup checklist
 
-- **fp32, eager attention** on both sides. `bridge.boot_transformers(..., dtype=torch.float32, attn_implementation="eager")` and the HF `AutoModelForCausalLM.from_pretrained(..., torch_dtype=torch.float32, attn_implementation="eager")`. Mismatched dtype or `sdpa` / `flash_attention_2` masks bugs.
-- **`enable_compatibility_mode(no_processing=True)`** for the first pass. This isolates forward-pass bugs from weight-processing bugs. See [compatibility_mode.md](compatibility_mode.md) for the four-quadrant matrix.
-- **Single-token input**, then short input (5–10 tokens), then longer. Most adapter bugs surface on the single-token case; widen only after that's clean.
-- **Same seed / disable dropout**. Adapters generally don't use dropout, but a stray `nn.Dropout(p=0.1)` in a generalized component will silently de-correlate runs.
+- **fp32 + eager attention on both sides.** `dtype=torch.float32, attn_implementation="eager"`. `sdpa` / `flash_attention_2` mask bugs.
+- **`enable_compatibility_mode(no_processing=True)`** for the first pass — isolates forward-pass bugs from weight-processing bugs. See [compatibility_mode.md](compatibility_mode.md).
+- **Single-token first**, then 5–10, then longer. Most adapter bugs surface single-token.
+- **Same seed / no dropout.** A stray `nn.Dropout(p=0.1)` in a generalized component silently de-correlates runs.
 
 ## 1. Bisect by component
 
-Compare intermediate activations end-to-end. The Bridge exposes them via hooks; HF exposes them via `output_hidden_states=True` and `output_attentions=True`. Walk forward through the stack and find the **first** layer where Bridge ≠ HF:
+Walk Bridge hooks vs HF `output_hidden_states=True` / `output_attentions=True` and find the first layer where they diverge:
 
 | Stage | Bridge hook | HF output |
 |---|---|---|

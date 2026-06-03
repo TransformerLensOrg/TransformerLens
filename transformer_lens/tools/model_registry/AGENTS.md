@@ -6,12 +6,12 @@ Read [the root AGENTS.md](../../../AGENTS.md) for project-wide rules. This file 
 
 ## TL;DR
 
-> **Use `verify_models`, not `main_benchmark`.** Only `uv run python -m transformer_lens.tools.model_registry.verify_models …` updates `data/supported_models.json`. `uv run python -m transformer_lens.benchmarks.main_benchmark …` runs the same benchmark math but defaults to **not** writing the registry (needs `--update-registry`, and even with that flag misses Phase 7 / 8 scores and the resume checkpoint). **If you ran `main_benchmark`, the registry is stale — re-run via `verify_models`.**
+> **Use `verify_models`, not `main_benchmark`.** Only `verify_models` writes `data/supported_models.json`. `main_benchmark` runs the same math but defaults to NOT writing the registry (needs `--update-registry`, and even with it misses Phase 7/8 scores and the resume checkpoint). If you ran `main_benchmark`, the registry is stale.
 
-- **`update_model_status()` in `registry_io.py` is the only function that mutates status / phase / note fields on existing entries.** Never set those fields by hand.
-- **Adding a brand-new model-ID entry is allowed (and required before `verify_models --model <repo>` can find it).** See [Adding a new model entry](#adding-a-new-model-entry).
-- **Never run `verify_models` in parallel.** A single CUDA/MPS device cannot hold concurrent loads (see [AGENTS.md §10](../../../AGENTS.md#10-hard-rules)).
-- **HF token required.** `verify_models` calls `AutoConfig.from_pretrained(..., token=get_hf_token())` for parameter estimation; gated models fail without `HF_TOKEN`. Source `.env` first: `set -a; source .env; set +a`.
+- **`update_model_status()` in `registry_io.py` is the only mutator of status/phase/note on existing entries.** Never set by hand.
+- **Adding a new model-ID entry is allowed** (required before `verify_models --model <repo>` can find it). See [Adding a new model entry](#adding-a-new-model-entry).
+- **Never run in parallel** — single CUDA/MPS device OOMs ([AGENTS.md §10](../../../AGENTS.md#10-hard-rules)).
+- **HF token required** for parameter estimation on gated models. Source `.env`: `set -a; source .env; set +a`.
 
 ---
 
@@ -74,39 +74,32 @@ Read [the root AGENTS.md](../../../AGENTS.md) for project-wide rules. This file 
 
 ## Adding a new model entry
 
-To verify a model that isn't already in `data/supported_models.json`, you must add the entry by hand first. This is the **only** allowed hand-edit:
+To verify a model not yet in `data/supported_models.json`, hand-add the entry first. This is the **only** allowed hand-edit:
 
 ```json
 {
   "architecture_id": "MyArchForCausalLM",
   "model_id": "org/repo-name",
   "status": 0,
-  "verified_date": null,
-  "metadata": null,
-  "note": null,
-  "phase1_score": null,
-  "phase2_score": null,
-  "phase3_score": null,
-  "phase4_score": null,
-  "phase7_score": null,
-  "phase8_score": null
+  "verified_date": null, "metadata": null, "note": null,
+  "phase1_score": null, "phase2_score": null, "phase3_score": null,
+  "phase4_score": null, "phase7_score": null, "phase8_score": null
 }
 ```
 
-After adding the entry, `verify_models --model org/repo-name` will populate the status / score / note fields via `update_model_status()`. **Do not** set those fields manually in the JSON; they are owned by the verification pipeline.
+`verify_models --model org/repo-name` then populates status/score/note via `update_model_status()`. Never set those fields manually.
 
 ---
 
 ## `data/verification_checkpoint.json` (gitignored)
 
-Resume state for long-running `verify_models` runs. Lists tested / verified / failed / skipped model IDs plus start timestamp. Behaviour:
+Resume state for long-running runs (tested/verified/failed/skipped IDs + timestamp):
 
-- On Ctrl-C, the SIGINT handler in `verify_models.py` finishes the current model, persists the checkpoint, and exits cleanly.
-- Re-running with `--resume` reads it and skips already-tested models.
-- Deleted automatically on a successful full run.
-- Missing or corrupt → fresh run from scratch (safe, just slow).
+- Ctrl-C → SIGINT handler finishes current model, persists checkpoint, exits cleanly.
+- `--resume` reads it, skips already-tested models.
+- Deleted on successful full run; missing/corrupt → fresh run (safe).
 
-Agents should never edit it manually; let `verify_models` manage it.
+Never edit manually.
 
 ---
 
@@ -136,25 +129,25 @@ Agents should never edit it manually; let `verify_models` manage it.
 | 7 | 75% | `multimodal_forward` | `STATUS_FAILED`. NULL score (processor unavailable) also fails. |
 | 8 | 75% | `audio_forward` | `STATUS_FAILED`. NULL score also fails. |
 
-Phase 4 is intentionally lenient — the source comment ([`verify_models.py:554`](verify_models.py)) calls it *"a quality metric, not a correctness check."* The 50% bar asks "is the generated text coherent at all?" rather than "is this adapter clean?"
+Phase 4 is intentionally lenient — source ([`verify_models.py:554`](verify_models.py)) calls it *"a quality metric, not a correctness check."* The 50% bar asks "is the text coherent at all?" not "is this adapter clean?"
 
-**For adapter authors**: a `STATUS_VERIFIED` entry whose Phase 4 score is well below 100% on a small parity-test model (e.g. `tiny-<arch>ForCausalLM`) can still indicate a real adapter bug that the system intentionally doesn't gate on. Cohere's first cold-agent run produced `P4=74.8%, status=1, note="Full verification completed"` — the system was correct (74.8 > 50, P4 doesn't gate), but the score reflected a missing `preprocess_weights` fold for `logit_scale`. Treat sub-100% P4 on tiny test models as a yellow flag worth investigating, even when the system reports VERIFIED.
+**For adapter authors:** a `STATUS_VERIFIED` entry with P4 well below 100% on a small parity-test model can still indicate a real bug the system doesn't gate on (e.g. missing `preprocess_weights` fold). Investigate manually even when VERIFIED.
 
-**Reading the result**:
+**Reading the result:**
 
-- `status == 1` AND `note == "Full verification completed"` → all hard gates passed AND no quality flag. Good.
-- `status == 1` AND `note` mentions `"low text quality"` → P4 < 50%; investigate.
-- `status == 1` AND P4 well below 100% on a small model, no quality flag → still potentially a subtle weight-fold or tokenizer bug; investigate manually.
-- `status == 3` (FAILED) → `note` carries the specific failure reason and which tests failed; debug from there.
+- `status==1` + `note="Full verification completed"` → all gates passed, no quality flag. Good.
+- `status==1` + `note` mentions `"low text quality"` → P4 < 50%; investigate.
+- `status==1` + P4 < 100% on a small model, no quality flag → potential weight-fold/tokenizer bug; investigate.
+- `status==3` (FAILED) → `note` carries the failure reason; debug from there.
 
-For Phase-1 / Phase-3 failures, see [supported_architectures/AGENTS.md §When to override preprocess_weights](../../model_bridge/supported_architectures/AGENTS.md#when-to-override-preprocess_weights) and [debugging_numerical_divergence.md](../../../docs/source/content/debugging_numerical_divergence.md). For Phase-4 quality drift, see [supported_architectures/AGENTS.md §Tokenizer policy](../../model_bridge/supported_architectures/AGENTS.md#tokenizer-policy) and the same `preprocess_weights` reference (logit-scale / embedding-scale folds typically degrade P4 without crossing the 50% gate).
+P1/P3 failures: [supported_architectures/AGENTS.md §When to override preprocess_weights](../../model_bridge/supported_architectures/AGENTS.md#when-to-override-preprocess_weights), [debugging_numerical_divergence.md](../../../docs/source/content/debugging_numerical_divergence.md). P4 drift: [§Tokenizer policy](../../model_bridge/supported_architectures/AGENTS.md#tokenizer-policy) (logit-scale / embedding-scale folds typically degrade P4 without crossing the 50% gate).
 
 ---
 
 ## Hard "don'ts"
 
-- **No `main_benchmark` for registry updates.** It misses Phase 7 / 8, doesn't manage the checkpoint, and silently skips the registry write unless `--update-registry` is passed.
-- **No parallel `verify_models` runs.** Device OOM. See [AGENTS.md §10](../../../AGENTS.md#10-hard-rules).
-- **No manual edits to existing entries' `status` / `verified_date` / `note` / `phaseN_score` fields.** Only `update_model_status()` writes those. (Adding new model-ID entries is allowed — see [Adding a new model entry](#adding-a-new-model-entry).)
-- **No deleting `data/verification_checkpoint.json` mid-run.** Let the SIGINT handler clean up.
-- **No skipping `.env` sourcing.** Gated-model arch verification (Llama / Mistral / Gemma / gated Qwen) needs `HF_TOKEN`.
+- **No `main_benchmark` for registry updates** — misses P7/P8, no checkpoint, no registry write without `--update-registry`.
+- **No parallel `verify_models`** — device OOM ([AGENTS.md §10](../../../AGENTS.md#10-hard-rules)).
+- **No manual edits to existing entries' `status`/`verified_date`/`note`/`phaseN_score`** — only `update_model_status()` writes those. (New entries OK — see [Adding a new model entry](#adding-a-new-model-entry).)
+- **No deleting `data/verification_checkpoint.json` mid-run** — let SIGINT clean up.
+- **No skipping `.env`** — gated-model verification needs `HF_TOKEN`.

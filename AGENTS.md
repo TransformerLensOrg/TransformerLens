@@ -6,15 +6,15 @@ This file is the single source of truth. Vendor-specific files ([CLAUDE.md](CLAU
 
 > **Just want to use the library?** Start with the [README](README.md). **Just want to run the tests?** Skip to [§3 Quickstart](#3-quickstart). **Contributing?** Read on.
 
-## TL;DR — read before doing anything
+## TL;DR
 
-1. **Use `uv`**, not `pip` or `poetry`. Install with `uv sync`.
-2. **Source `.env`** (`set -a; source .env; set +a`) before any HuggingFace-Hub-hitting command. Gated models need `HF_TOKEN`.
+1. **Use `uv`**, not `pip` or `poetry` (`uv sync`).
+2. **Source `.env`** (`set -a; source .env; set +a`) before any HF-Hub command.
 3. **Base PRs on `dev`**, not `main`. Never name a branch `main` or `dev`.
-4. **Mirror HookedTransformer → TransformerBridge** when changing behaviour that exists in both ([§2](#2-two-systems-live-in-this-repo)).
-5. **Run `make format` + `uv run mypy .` before push** — no pre-commit hook is installed.
-6. **Never add `# type: ignore`** — use `isinstance` / `typing.cast` ([§10](#10-hard-rules)).
-7. **Never dismiss a failing test as "pre-existing"** — investigate every failure ([§10](#10-hard-rules)).
+4. **Mirror HookedTransformer → TransformerBridge** when behaviour exists in both ([§2](#2-two-systems-live-in-this-repo)).
+5. **`make format` + `uv run mypy .` before push** — no pre-commit hook.
+6. **Never add `# type: ignore`** ([§10](#10-hard-rules)).
+7. **Never dismiss a failing test as "pre-existing"** ([§10](#10-hard-rules)).
 
 Sub-folder rules: [tests/AGENTS.md](tests/AGENTS.md) · [supported_architectures/AGENTS.md](transformer_lens/model_bridge/supported_architectures/AGENTS.md) · [tools/model_registry/AGENTS.md](transformer_lens/tools/model_registry/AGENTS.md).
 
@@ -31,13 +31,11 @@ Sub-folder rules: [tests/AGENTS.md](tests/AGENTS.md) · [supported_architectures
 | **`TransformerBridge`** | v3 — default for new work | [transformer_lens/model_bridge/](transformer_lens/model_bridge/) | Raw HF weights by default; `bridge.enable_compatibility_mode()` for HT-equivalent | [transformer_lens/tools/model_registry/data/supported_models.json](transformer_lens/tools/model_registry/data/supported_models.json) |
 | **`HookedTransformer`** | Legacy, maintenance mode, deprecated in 3.0 | [transformer_lens/HookedTransformer.py](transformer_lens/HookedTransformer.py) + [transformer_lens/components/](transformer_lens/components/) | Folds LayerNorm + centres weights → does NOT match HF | [transformer_lens/supported_models.py](transformer_lens/supported_models.py) (**HT-only**) |
 
-> ⚠ The **HookedTransformer acceptance test suite is currently quarantined** ([tests/acceptance/test_hooked_transformer.py](tests/acceptance/test_hooked_transformer.py), [test_hooked_encoder.py](tests/acceptance/test_hooked_encoder.py), [test_hooked_encoder_decoder.py](tests/acceptance/test_hooked_encoder_decoder.py)) — see [tests/QUARANTINES.md §⚠️](tests/QUARANTINES.md). HT-touching changes land essentially untested at the acceptance level until the suite is re-enabled; extra manual care is required.
+> ⚠ The **HookedTransformer acceptance suite is quarantined** ([test_hooked_transformer.py](tests/acceptance/test_hooked_transformer.py), [test_hooked_encoder.py](tests/acceptance/test_hooked_encoder.py), [test_hooked_encoder_decoder.py](tests/acceptance/test_hooked_encoder_decoder.py); see [QUARANTINES.md](tests/QUARANTINES.md)). HT changes land untested at the acceptance level — extra manual care required.
 
-Bridge architecture-adapter pattern: each HF architecture has one file in [transformer_lens/model_bridge/supported_architectures/](transformer_lens/model_bridge/supported_architectures/) mapping HF module paths to canonical TransformerLens names. Bridge hook names are architecture-native (e.g. `blocks.{i}.hook_out`); HT-style aliases are registered separately in [transformer_lens/model_bridge/bridge.py](transformer_lens/model_bridge/bridge.py).
+Bridge architecture-adapter pattern: each HF architecture has one file in [supported_architectures/](transformer_lens/model_bridge/supported_architectures/) mapping HF module paths to canonical names. Bridge hooks are architecture-native (e.g. `blocks.{i}.hook_out`); HT-style aliases live in [bridge.py](transformer_lens/model_bridge/bridge.py).
 
-### Mirroring rule
-
-If you change behaviour in `HookedTransformer` that has a counterpart in `TransformerBridge`, update both in the same PR. Parallel implementations; drift between them is a recurring source of bugs. The HT-only [supported_models.py](transformer_lens/supported_models.py) is NOT the place to add Bridge-only models — those go in the Bridge registry data file.
+**Mirroring rule:** if you change `HookedTransformer` behaviour that has a `TransformerBridge` counterpart, update both in the same PR. [supported_models.py](transformer_lens/supported_models.py) is HT-only — Bridge-only models go in the Bridge registry data file.
 
 ## 3. Quickstart
 
@@ -107,12 +105,10 @@ Python: **>=3.10, <4.0**. CI tests 3.10, 3.11, 3.12. Format/type/docstring check
 
 ## 5. Hook naming — HT vs Bridge
 
-- **HT canonical names**: uniform across architectures. `hook_embed`, `blocks.{i}.hook_resid_pre`, `blocks.{i}.attn.hook_q`, `blocks.{i}.hook_resid_post`, etc.
-- **Bridge-native names**: architecture-shaped. E.g. `blocks.{i}.hook_out`, `blocks.{i}.attn.q.hook_out`. Aliases are registered via `build_alias_to_canonical_map()` in [transformer_lens/model_bridge/bridge.py](transformer_lens/model_bridge/bridge.py) so HT names continue to resolve.
+- **HT canonical**: uniform across architectures — `hook_embed`, `blocks.{i}.hook_resid_pre`, `blocks.{i}.attn.hook_q`, `blocks.{i}.hook_resid_post`.
+- **Bridge-native**: architecture-shaped — `blocks.{i}.hook_out`, `blocks.{i}.attn.q.hook_out`. HT aliases registered via `build_alias_to_canonical_map()` in [bridge.py](transformer_lens/model_bridge/bridge.py).
 
-When writing new code, prefer Bridge-native names.
-
-When raw-HF-forward drivers compare against `boot_transformers`, match its load configuration (fp32, eager attention). Probe for structural features like `resid_mid` rather than assuming all architectures expose them.
+Prefer Bridge-native names in new code. Raw-HF-forward drivers comparing against `boot_transformers` must match its load configuration (fp32, eager attention) and probe for optional features like `resid_mid` rather than assume.
 
 ## 6. Adding a model
 
@@ -133,11 +129,11 @@ When picking solutions to any problem, prioritize by **research impact**, not im
 - Include the word `docs` in the branch name if your PR is primarily a docs change (this triggers the docs build job).
 - New branches must track their own remote — `git push -u origin <branch>` from your branch, not from `main`/`dev`.
 
-**Pre-push checks**: no pre-commit hook is installed. Run `make format` and `uv run mypy .` manually before pushing; CI will fail otherwise.
+**Pre-push checks**: no pre-commit hook — `make format` + `uv run mypy .` manually.
 
 **PR template**: [.github/PULL_REQUEST_TEMPLATE.md](.github/PULL_REQUEST_TEMPLATE.md). No conventional-commits enforcement.
 
-**Changelog / release notes**: there is no per-PR changelog file. **Note user-facing changes in your PR description and commit messages** — release essays in [docs/source/content/news/](docs/source/content/news/) and the GitHub Releases page are drafted by a maintainer at release time by reviewing those. Breaking changes and notable user-facing features should be called out explicitly so the rollup picks them up.
+**Changelog**: no per-PR file. Note user-facing changes in your PR description and commit messages — release essays in [news/](docs/source/content/news/) and GitHub Releases are drafted by a maintainer from those at release time.
 
 ## 9. CI gates a PR must pass
 
@@ -159,29 +155,29 @@ In-progress PR runs cancel on new commit; tag/release runs do not.
 
 ## 10. Hard rules
 
-**On test failures:**
+**Test failures:**
 
-- Never dismiss a failing test as "pre-existing" or "unrelated" — investigate every failure and fix the underlying issue.
-- Never fabricate test counts or claim tests passed without running them. Reviewers re-run tests; agent self-reports are not trusted as evidence.
-- Never add platform skips, `@pytest.mark.skip`, or `xfail` to make a failing CI green. Debug the actual bug.
-- If new tests surface pre-existing bugs, fix them. Don't punt to a future PR or `xfail` marker.
+- Never dismiss a failing test as "pre-existing" — investigate every failure.
+- Never fabricate test counts or claim passes without running. Reviewers re-run.
+- Never add `@pytest.mark.skip` / `xfail` / platform-skip to make CI green. Debug the bug.
+- If new tests surface pre-existing bugs, fix them — don't punt.
 
-**On code quality:**
+**Code quality:**
 
-- Never add `# type: ignore`. Prefer `isinstance` assertions or `typing.cast` for narrowing.
-- Comments: terse, one-line docstrings; inline comments should explain WHY, not WHAT. No multi-paragraph explanations.
-- Never reference plan-file details (audit IDs, finding IDs, "see plan section X") in source comments or docstrings. Plan artifacts belong in PR descriptions, not the codebase.
+- Never add `# type: ignore` — use `isinstance` / `typing.cast`.
+- Comments: terse one-liners; inline comments explain WHY, not WHAT.
+- Never reference plan-file details (audit IDs, "see plan section X") in source.
 
-**On numerical work:**
+**Numerical work:**
 
-- Never claim observed drift is "fp noise" without empirical evidence. Real bugs and accumulated rounding error look identical at noise scale.
-- Never run model verification or benchmarks in parallel, unless explicitly requested to — a single CUDA/MPS device does not have memory for concurrent loads. Serialize them.
+- Never claim drift is "fp noise" without empirical evidence — bugs and accumulated rounding look identical at noise scale.
+- Never run model verification or benchmarks in parallel — a single CUDA/MPS device OOMs.
 
-**On environment and tooling:**
+**Environment:**
 
-- Use `uv`, never `pip` or `poetry`. Run commands via `uv run <cmd>` or the appropriate `make` target.
-- Source `.env` before any HF-Hub-hitting command (docs build, notebook runs, `boot_transformers` against gated models). The `HF_TOKEN` is required for Llama, Mistral, Gemma, and gated Qwen variants.
-- No pre-commit hook is installed; run `make format` + `uv run mypy .` manually before push.
+- `uv` only — never `pip` or `poetry`. Run via `uv run <cmd>` or `make`.
+- Source `.env` before any HF-Hub-hitting command. `HF_TOKEN` required for Llama, Mistral, Gemma, gated Qwen.
+- No pre-commit hook — `make format` + `uv run mypy .` manually before push.
 
 ## 11. "Done" checklist
 
@@ -207,10 +203,10 @@ Claude Code: `/task-complete` automates the last row. See [§15 Workflow shortcu
 
 ## 13. Local-only conventions
 
-Two gitignored paths for ephemeral work (gitignore entries checked in — first-class conventions, not personal):
+Gitignored, first-class (entries checked in):
 
-- **`transformer_lens/scratch.py`** — sibling-of-package scratch file for one-off bisection scripts and ad-hoc imports.
-- **`.adapter-workspace/`** — directory for adapter WIP (notes, config dumps, repro scripts).
+- **`transformer_lens/scratch.py`** — one-off bisection scripts, ad-hoc imports.
+- **`.adapter-workspace/`** — adapter WIP (notes, dumps, repros).
 
 ## 14. Upstream dependency pins
 
@@ -226,13 +222,12 @@ Load-bearing pins live in [pyproject.toml](pyproject.toml):
 
 **Bumping upstream pins:**
 
-1. Bump the pin in `pyproject.toml`, refresh `uv.lock` (`uv lock`).
-2. Run `make test-pr` locally; expect adapter / hook tests to surface real breakages.
-3. For each break, fix the adapter or component — do not pin around the regression.
-4. Run `uv run python -m transformer_lens.tools.model_registry.verify_models --architectures <a-few-canonical-ones>` to catch numerical regressions the unit tests miss.
-5. Land in a focused PR — pin bumps are reviewed separately from feature work because the blast radius is wide.
+1. Bump in `pyproject.toml`, `uv lock`.
+2. `make test-pr` — expect real breakages, don't pin around them.
+3. `uv run python -m transformer_lens.tools.model_registry.verify_models --architectures <canonical>` to catch numerical regressions.
+4. Land in a focused PR — pin bumps are reviewed separately (wide blast radius).
 
-Specific to HF: when a `transformers` minor bump introduces a new architecture or renames an existing one, check the impact on `_HF_PASSTHROUGH_ATTRS` in [`transformer_lens/model_bridge/sources/_bridge_builder.py`](transformer_lens/model_bridge/sources/_bridge_builder.py) and `SUPPORTED_ARCHITECTURES` in [`transformer_lens/factories/architecture_adapter_factory.py`](transformer_lens/factories/architecture_adapter_factory.py).
+HF specifically: a `transformers` minor bump that adds or renames an architecture impacts `_HF_PASSTHROUGH_ATTRS` in [`_bridge_builder.py`](transformer_lens/model_bridge/sources/_bridge_builder.py) and `SUPPORTED_ARCHITECTURES` in [`architecture_adapter_factory.py`](transformer_lens/factories/architecture_adapter_factory.py).
 
 ## 15. Workflow shortcuts
 

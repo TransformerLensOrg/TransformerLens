@@ -8,12 +8,12 @@ Read [the root AGENTS.md](../AGENTS.md) for project-wide rules. This file covers
 
 ## TL;DR
 
-- **Tier placement matters.** Use [the tier table](#test-tiers) below — a unit test loading a model belongs in `integration/`, not `unit/`.
-- **No mocking of model loads or the HF Hub.** Tests load real models. The session-scoped fixtures amortize the cost.
-- **Use cached models for fast tests** (`gpt2`, `attn-only-{1,2,3,4}l`, `tiny-stories-1M`). Anything else gets `@pytest.mark.slow`.
-- **MPS is a carve-out, not a green light.** `TRANSFORMERLENS_ALLOW_MPS=1` is required; only [`tests/mps/`](mps/) runs there.
-- **Hard rules in [AGENTS.md §10](../AGENTS.md#10-hard-rules) apply**: no `xfail`/`skipif` to dodge CI, no dismissing failing tests as "pre-existing," no platform skips outside MPS.
-- **Before debugging a failing test, check [QUARANTINES.md](QUARANTINES.md)** — if the failure matches a documented quarantine, it's known. If not, treat it as a real bug.
+- **Tier placement matters** — a unit test loading a model belongs in `integration/`. See [tier table](#test-tiers).
+- **No mocking model loads or HF Hub.** Session-scoped fixtures amortize the cost.
+- **Cached models for fast tests** (`gpt2`, `attn-only-{1,2,3,4}l`, `tiny-stories-1M`). Anything else → `@pytest.mark.slow`.
+- **MPS is a carve-out** — `TRANSFORMERLENS_ALLOW_MPS=1` required; only [`tests/mps/`](mps/) runs there.
+- **[AGENTS.md §10](../AGENTS.md#10-hard-rules) applies**: no `xfail`/`skipif` to dodge CI; no platform skips outside MPS.
+- **Check [QUARANTINES.md](QUARANTINES.md) before debugging a failing test** — known quarantines have documented reasons.
 
 ---
 
@@ -61,42 +61,40 @@ Two cross-cutting rules:
 
 ## Cached-model allowlist
 
-The CI cache in [`.github/workflows/checks.yml`](../.github/workflows/checks.yml) covers: `gpt2`, `gpt2-xl`, `distilgpt2`, `pythia-70m`, `gpt-neo-125M`, `gemma-2-2b-it`, `bloom-560m`, `Qwen2-0.5B`, `bert-base-cased`, `NeelNanda/Attn_Only*`, `roneneldan/TinyStories-1M*`, `NeelNanda/SoLU*`, `redwood_attn_2l`, `tiny-random-llama-2`, `DialoGPT-medium`.
+CI cache ([`checks.yml`](../.github/workflows/checks.yml)) covers: `gpt2`, `gpt2-xl`, `distilgpt2`, `pythia-70m`, `gpt-neo-125M`, `gemma-2-2b-it`, `bloom-560m`, `Qwen2-0.5B`, `bert-base-cased`, `NeelNanda/Attn_Only*`, `roneneldan/TinyStories-1M*`, `NeelNanda/SoLU*`, `redwood_attn_2l`, `tiny-random-llama-2`, `DialoGPT-medium`.
 
-Of those, prefer **`attn-only-{1,2,3,4}l`** and **`tiny-stories-1M`** for fast tests — `gpt2` is "quite slow" on CI's CPU runners ([contributing.md](../docs/source/content/contributing.md)). Use `gpt2` when you specifically need GPT-2 numerics.
-
-Anything outside this set → `@pytest.mark.slow`.
+Prefer `attn-only-{1,2,3,4}l` and `tiny-stories-1M` for fast tests — `gpt2` is slow on CI's CPU runners. Use `gpt2` only when you need GPT-2 numerics. Anything outside the cached set → `@pytest.mark.slow`.
 
 ---
 
 ## The `slow` marker
 
-Defined in [`pyproject.toml`](../pyproject.toml) as `slow: marks tests as slow (deselect with '-m "not slow"')`. Add it when the test:
+`pyproject.toml`: `"slow: marks tests as slow (deselect with '-m \"not slow\"')"`. Add when the test:
 
 - loads a non-cached model
-- iterates exhaustively over many parameter combinations
-- takes more than ~5 seconds per invocation
+- iterates exhaustively over many param combos
+- takes >5 s per invocation
 
-Deselect with `pytest -m "not slow"`. Note: the default `make` targets do NOT filter out `slow`; the marker is for ad-hoc local runs.
+Deselect with `pytest -m "not slow"`. Default `make` targets do NOT filter; the marker is for ad-hoc runs.
 
 ---
 
 ## MPS rules
 
-- The macOS CI job [`mps-checks`](../.github/workflows/checks.yml) sets `TRANSFORMERLENS_ALLOW_MPS=1` and runs `tests/unit`, `tests/integration`, and `tests/mps` on `macos-latest`.
-- `get_device()` returns `"cpu"` unless `TRANSFORMERLENS_ALLOW_MPS=1` is set — the default protects against silent MPS divergence.
-- The long `--ignore=` list in the workflow is for tests known to diverge on MPS (MoE, optimizer compatibility, KV-cache layout). It is **not** a license to add new skips — it documents existing limitations.
-- [`tests/mps/test_mps_basic.py`](mps/test_mps_basic.py) is the template: float32 only (MPS lacks bfloat16), TinyStories-1M only (50 MB fits the runner), `torch.mps.empty_cache()` + `gc.collect()` between tests.
-- Top of the module: `pytestmark = pytest.mark.skipif(not torch.backends.mps.is_available(), reason="MPS not available")` — required on any MPS-only test.
+- [`mps-checks`](../.github/workflows/checks.yml) sets `TRANSFORMERLENS_ALLOW_MPS=1` and runs `tests/unit`, `tests/integration`, `tests/mps` on `macos-latest`.
+- `get_device()` returns `"cpu"` unless `TRANSFORMERLENS_ALLOW_MPS=1` — protects against silent MPS divergence.
+- The workflow's long `--ignore=` list documents existing MPS divergence (MoE, optimizer compat, KV-cache layout); it's **not** a license to add new skips.
+- [`tests/mps/test_mps_basic.py`](mps/test_mps_basic.py) is the template: float32 only (no bfloat16 on MPS), TinyStories-1M only (50 MB fits the runner), `torch.mps.empty_cache()` + `gc.collect()` between tests.
+- MPS-only modules need: `pytestmark = pytest.mark.skipif(not torch.backends.mps.is_available(), reason="MPS not available")`.
 
 ---
 
 ## Hard "don'ts"
 
-Repo-wide rules in [AGENTS.md §10](../AGENTS.md#10-hard-rules) apply. Specifics for this directory:
+Plus [AGENTS.md §10](../AGENTS.md#10-hard-rules):
 
-- **No mocking model loads.** Use the session-scoped fixtures; they're cheap enough.
-- **No mocking the HF Hub.** Tests hit the real hub with `enable_hf_retry()` handling 429s.
-- **No platform `skipif` other than MPS.** No `skipif(sys.platform == 'win32')` or `skipif(not torch.cuda.is_available())` to dodge CI.
-- **No `xfail` to dodge a failing test.** Fix the underlying bug — even if it predates your PR.
-- **No copying acceptance-tier tests as templates for unit tests.** Their model fixtures will time out or OOM in the unit tier.
+- **No mocking model loads** — session-scoped fixtures are cheap enough.
+- **No mocking the HF Hub** — tests hit the real hub with `enable_hf_retry()` handling 429s.
+- **No platform `skipif` outside MPS** — no `skipif(sys.platform == 'win32')` or `skipif(not torch.cuda.is_available())` to dodge CI.
+- **No `xfail` to dodge a failing test** — fix the bug, even if pre-existing.
+- **No copying acceptance-tier tests as unit-test templates** — their model fixtures time out / OOM at the unit tier.
