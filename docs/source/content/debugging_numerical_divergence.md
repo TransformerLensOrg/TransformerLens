@@ -2,7 +2,7 @@
 
 When a Bridge adapter's integration test fails by `~1e-3` (or any larger delta) against the HuggingFace reference, the failure mode is almost always one of a small set of recurring bugs. This page walks the bisection workflow.
 
-> **Hard rule** (see also the [project conventions in contributing.md](contributing.md#on-numerical-work)): never call observed drift "fp noise" without empirical evidence. Real bugs and accumulated rounding error look identical at noise scale until you measure.
+> A note before you start: it's tempting to attribute small drift to "floating-point noise" and move on, but genuine bugs and accumulated rounding error are indistinguishable at small magnitudes until you measure. The [numerical-work conventions in contributing.md](contributing.md#numerical-work) describe the cheap fp64 check that disambiguates the two.
 
 ---
 
@@ -97,7 +97,7 @@ Empirically, in this codebase:
 - **bf16, eager**: `< 1e-2` is the noise floor.
 - **fp32, sdpa**: `< 5e-4` due to sdpa's internal reductions. Use eager for parity tests.
 
-If you suspect noise, the cheap proof is to run **fp64**: `dtype=torch.float64` on both sides. If the diff stays the same magnitude, it's a bug. If it drops by ~8 orders of magnitude, it was noise. See the [project conventions in contributing.md](contributing.md#on-numerical-work) for the rule behind this.
+If you suspect noise, the cheap proof is to run **fp64**: `dtype=torch.float64` on both sides. If the diff stays the same magnitude, it's a bug. If it drops by ~8 orders of magnitude, it was noise. See the [numerical-work conventions in contributing.md](contributing.md#numerical-work) for more context on why this check is worth running.
 
 ## 7. Tooling
 
@@ -108,4 +108,4 @@ If you suspect noise, the cheap proof is to run **fp64**: `dtype=torch.float64` 
 
 ---
 
-If you exhaust this guide and still can't localize the bug, the failure pattern is worth adding to §2 above so the next agent doesn't repeat the bisection.
+If you exhaust this guide and still can't localize the bug, the failure pattern is worth adding to §2 above so the next contributor doesn't repeat the bisection.

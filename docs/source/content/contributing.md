@@ -96,28 +96,27 @@ Note that `black` line length is set to 100 in `pyproject.toml` (instead of the 
 
 ## Project conventions
 
-These rules apply across the codebase and reflect maintainer experience with recurring failure modes.
+A few conventions have grown out of recurring failure modes. Following them tends to make reviews go faster.
 
-### On test failures
+### Test failures
 
-- **Never dismiss a failing test as "pre-existing" or "unrelated"** — investigate every failure and fix the underlying issue.
-- **Never add platform skips, `@pytest.mark.skip`, or `xfail` to make a failing CI green.** Debug the actual bug. If a skip is genuinely needed (optional dep, hardware requirement), add an entry to `tests/QUARANTINES.md` with the rationale.
-- **If new tests surface pre-existing bugs, fix them.** Don't punt to a future PR.
+Treat every failing test as a signal worth investigating, even if the failure looks unrelated to your change. "Pre-existing failure" is rarely true once you dig in, and the cost of finding out is small compared to shipping a regression. If a new test surfaces a pre-existing bug, it's worth fixing in the same PR rather than deferring.
 
-### On code quality
+Avoid reaching for `@pytest.mark.skip`, `xfail`, or platform-gated `skipif` to make a red CI go green. If a skip is genuinely required — an optional dependency, a hardware requirement, an upstream platform bug — document it in `tests/QUARANTINES.md` so the next person debugging knows why it's quarantined.
 
-- **Never add `# type: ignore`.** Prefer `isinstance` assertions or `typing.cast` for narrowing.
-- **Comments**: terse, one-line docstrings; inline comments should explain WHY, not WHAT. No multi-paragraph explanations.
+### Code quality
 
-### On numerical work
+We avoid `# type: ignore` comments throughout the codebase; if the type system disagrees with you, the usual escape hatches are `isinstance` narrowing or `typing.cast`. Keep comments terse — one-line docstrings, and inline comments that explain *why* code does what it does rather than restating *what* it does.
 
-- **Never claim observed drift is "fp noise" without empirical evidence.** Real bugs and accumulated rounding error look identical at noise scale until you measure. The cheap proof is fp64: if the diff stays the same magnitude in `dtype=torch.float64` on both sides, it's a bug; if it drops by ~8 orders of magnitude, it was noise.
-- **Never run model verification or benchmarks in parallel.** A single CUDA/MPS device does not have memory for concurrent loads.
+### Numerical work
 
-### On environment and tooling
+When a forward pass disagrees with HuggingFace, it's tempting to call the difference "floating-point noise" and move on. The trouble is that genuine bugs and accumulated rounding error are indistinguishable at small magnitudes until you measure. A cheap check: rerun the comparison in `dtype=torch.float64` on both sides. If the diff stays the same magnitude, it's a bug; if it drops by roughly eight orders of magnitude, it was noise. The [Debugging Numerical Divergence](debugging_numerical_divergence.md) guide walks the rest of the bisection.
 
-- Use `uv`, never `pip` or `poetry`. Run commands via `uv run <cmd>` or the appropriate `make` target.
-- Source `.env` before any HF-Hub-hitting command.
+Model verification and benchmark runs each load a full model; a single CUDA or MPS device generally lacks the memory to host two at once. Run them serially.
+
+### Environment and tooling
+
+Use `uv` rather than `pip` or `poetry` — commands run via `uv run <cmd>` or the appropriate `make` target. Source `.env` (`set -a; source .env; set +a`) before any command that hits the HuggingFace Hub.
 
 ## Two systems live in this repo
 
@@ -128,7 +127,7 @@ The library is mid-transition between two parallel paths:
 | `TransformerBridge` | v3 — default for new work | `transformer_lens/model_bridge/` | Raw HF weights by default; `bridge.enable_compatibility_mode()` for HT-equivalent — see [Compatibility Mode](compatibility_mode.md) | `transformer_lens/tools/model_registry/data/supported_models.json` |
 | `HookedTransformer` | Legacy, maintenance mode, deprecated in 3.0 | `transformer_lens/HookedTransformer.py` + `transformer_lens/components/` | Folds LayerNorm + centres weights → does NOT match HF | `transformer_lens/supported_models.py` (**HT-only**) |
 
-**Mirroring rule**: if you change behaviour in `HookedTransformer` that has a counterpart in `TransformerBridge`, update both in the same PR. They are parallel implementations of the same surface; drift between them is a recurring source of bugs. Conversely, `supported_models.py` is HT-only — Bridge-only models live in the Bridge registry data file under `transformer_lens/tools/model_registry/`.
+Because the two systems are parallel implementations of the same surface, behavioural changes on one side usually need a matching change on the other. If you change a feature in `HookedTransformer` that has a counterpart in `TransformerBridge` (or vice versa), update both in the same PR — drift between them has historically been a steady source of bugs. The registries are *not* parallel, though: `supported_models.py` is HookedTransformer-only, while Bridge-only models live in the Bridge registry data file under `transformer_lens/tools/model_registry/`.
 
 ## PR conventions
 
@@ -258,12 +257,12 @@ Two guides walk through the process:
 - [Architecture Adapter Creation Guide](adapter_development/adapter-creation-guide.md) — start here. A step-by-step workflow for taking an HF model from unsupported to tested, registered adapter.
 - [HuggingFace Model Analysis Guide](adapter_development/hf-model-analysis-guide.md) — a reference for reading an HF model's `config.json` and source files to extract the attributes you'll set on `self.cfg`.
 
-Adapters live in `transformer_lens/model_bridge/supported_architectures/<model_name>.py` and are registered in **four** places:
+Adapters live in `transformer_lens/model_bridge/supported_architectures/<model_name>.py` and need to be registered in **four** places. Each registration site has a different consequence if you skip it, which is why the next section's invariant test is worth running before you open the PR.
 
-1. **`transformer_lens/model_bridge/supported_architectures/__init__.py`** — import the adapter class and add to `__all__`. Missing → import error at boot.
-2. **`transformer_lens/factories/architecture_adapter_factory.py`** — import the class and add to the `SUPPORTED_ARCHITECTURES` dict. The key must match `config.architectures[0]` exactly. Missing → `boot_transformers` raises "unsupported architecture."
-3. **`transformer_lens/tools/model_registry/__init__.py`** — add to `HF_SUPPORTED_ARCHITECTURES` (the set) and `CANONICAL_AUTHORS_BY_ARCH` (the foundation-orgs map). Missing → HF scraper misses canonical models.
-4. **`transformer_lens/tools/model_registry/generate_report.py`** — add a one-line entry to `ARCHITECTURE_DESCRIPTIONS` so the generated docs table covers the new architecture.
+1. **`transformer_lens/model_bridge/supported_architectures/__init__.py`** — import the adapter class and add it to `__all__`. The package fails to import at boot if this is missed.
+2. **`transformer_lens/factories/architecture_adapter_factory.py`** — import the class and add it to the `SUPPORTED_ARCHITECTURES` dict. The dict key must match `config.architectures[0]` exactly; otherwise `boot_transformers` raises "unsupported architecture."
+3. **`transformer_lens/tools/model_registry/__init__.py`** — add the architecture name to `HF_SUPPORTED_ARCHITECTURES` (the set) and `CANONICAL_AUTHORS_BY_ARCH` (the foundation-orgs map). Without this, the HF scraper won't discover canonical models for the new architecture.
+4. **`transformer_lens/tools/model_registry/generate_report.py`** — add a one-line entry to `ARCHITECTURE_DESCRIPTIONS` so the generated coverage table covers the new architecture.
 
 If you want a starter file, copy [adapter-template.py](../_static/adapter-template.py) into `supported_architectures/` and rename it.
 
@@ -286,7 +285,7 @@ Two test layers, both required:
 
 - **HF raw config attributes are invisible to TL-side consumers unless explicitly propagated to `self.cfg`.** Walk the HF `config.json` and mirror any non-standard knobs (`final_logit_softcapping`, `attn_logit_softcapping`, `query_pre_attn_scalar`, `sliding_window`, `layer_types`, custom `eps_attr` names) onto `self.cfg` so weight processing and forward passes can see them.
 - **Some config attrs need both surface-on-cfg AND fold-into-weight** via a `preprocess_weights()` override. The trigger: a numerical operation HF's forward applies natively must also be baked into the raw weights, or `bridge.enable_compatibility_mode()` (which calls `process_weights` on raw weights) produces wrong results. Concrete examples in-tree: Cohere `logit_scale` → `unembed.weight`; Gemma embedding scale (`√d_model`) → `embed.weight`. Skip the fold and Phase 3 / Phase 4 of `verify_models` will silently degrade.
-- **Tokenizer policy is per-model, not per-architecture.** Sibling models in the same family routinely differ — the chat-instruct variant may prepend BOS where the base does not, padding side can flip, EOS handling can differ. Never copy `default_prepend_bos`, padding side, or EOS handling from your starter adapter without checking the target's behaviour. **`tokenizer_config.json` lies for some architectures** (Cohere declares `add_bos_token=False` but HF's `__call__` prepends BOS anyway). The reliable check is to invoke the tokenizer:
+- **Tokenizer policy is per-model, not per-architecture.** Sibling models in the same family routinely differ — the chat-instruct variant may prepend BOS where the base does not, padding side can flip, EOS handling can differ. It's worth re-checking `default_prepend_bos`, padding side, and EOS handling against the specific target rather than copying them from a starter adapter. `tokenizer_config.json` is not always reliable on its own — some architectures (Cohere is a notable example) declare `add_bos_token=False` but HF's `__call__` prepends BOS anyway. The most reliable check is to invoke the tokenizer directly:
 
   ```python
   from transformers import AutoTokenizer
@@ -295,9 +294,9 @@ Two test layers, both required:
   print(t.bos_token_id)
   ```
 
-  If `t("hello").input_ids[0] == t.bos_token_id`, set `cfg.default_prepend_bos = True`. Otherwise leave the flag unset.
+  If `t("hello").input_ids[0] == t.bos_token_id`, set `cfg.default_prepend_bos = True`; otherwise leave the flag unset.
 - **Hook names inside adapters are Bridge-native** (e.g., `blocks.{i}.hook_out`). HookedTransformer-style aliases (e.g., `blocks.{i}.hook_resid_post`) are registered elsewhere — in `transformer_lens/model_bridge/bridge.py` via `build_alias_to_canonical_map()`. Adapters declare canonical names only.
-- **No `# type: ignore` on `ComponentMapping` types.** Use `isinstance` or `typing.cast` if the type system disagrees.
+- **`ComponentMapping` types do not need `# type: ignore`.** If the type system disagrees, prefer `isinstance` narrowing or `typing.cast`; the project as a whole avoids `# type: ignore`.
 
 ### Verifying a new model
 
@@ -308,22 +307,22 @@ set -a; source .env; set +a
 uv run python -m transformer_lens.tools.model_registry.verify_models --model <hf_repo>
 ```
 
-`verify_models` runs phases 1–4 (forward correctness vs HF, hook firing + gradients, weight processing, generation quality) and updates `data/supported_models.json` with status and per-phase scores. **Always run `--dry-run` first** to project memory and parameter count without loading the model. Run one model at a time — concurrent loads OOM a single device.
+`verify_models` runs phases 1–4 (forward correctness vs HF, hook firing + gradients, weight processing, generation quality) and updates `data/supported_models.json` with the resulting status and per-phase scores. We recommend running `--dry-run` first to project memory and parameter count without loading the model, and verifying one model at a time — concurrent loads tend to OOM a single device.
 
-**Use `verify_models`, never `main_benchmark`** — only `verify_models` writes the registry. `main_benchmark` runs the same math but defaults to skipping the registry write (requires `--update-registry`, and even with that flag misses Phase 7 / 8 scores and the resume checkpoint).
+A note on entry points: `verify_models` is the script that writes the registry. `main_benchmark` runs the same underlying benchmarks but defaults to *not* writing the registry (it requires `--update-registry`, and even then it doesn't record Phase 7 / 8 scores or the resume checkpoint). If you want the registry updated after your run, use `verify_models`.
 
-**Read the per-phase scores, not just the status.** `verify_models` enforces hard pass/fail at the thresholds in `_MIN_PHASE_SCORES`; below threshold or a required-test failure causes `STATUS_FAILED`. The contract:
+It's worth reading the per-phase scores in addition to the final status — the verifier enforces hard pass/fail thresholds, and a model that just clears the bar tells you something different than one that breezes through. The current thresholds:
 
 | Phase | Min score | Required tests | Effect when below threshold |
 |---|---|---|---|
-| 1 | 100% | — | `STATUS_FAILED` |
-| 2 | 75% | `logits_equivalence`, `loss_equivalence` | `STATUS_FAILED` |
-| 3 | 75% | `logits_equivalence`, `loss_equivalence` | `STATUS_FAILED` |
-| 4 | 50% | — | **Non-gating** — below 50% adds `"low text quality"` to the registry `note`; never causes `STATUS_FAILED`. |
-| 7 | 75% | `multimodal_forward` | `STATUS_FAILED`. NULL score also fails. |
-| 8 | 75% | `audio_forward` | `STATUS_FAILED`. NULL score also fails. |
+| 1 | 100% | — | Verification fails |
+| 2 | 75% | `logits_equivalence`, `loss_equivalence` | Verification fails |
+| 3 | 75% | `logits_equivalence`, `loss_equivalence` | Verification fails |
+| 4 | 50% | — | **Non-gating** — below 50% adds `"low text quality"` to the registry `note`; never fails verification. |
+| 7 | 75% | `multimodal_forward` | Verification fails. A NULL score also fails. |
+| 8 | 75% | `audio_forward` | Verification fails. A NULL score also fails. |
 
-Phase 4 is intentionally lenient — it's a coherence metric, not a correctness check. A sub-100% Phase-4 score on a small parity-test model can still indicate a real adapter bug that the system doesn't gate on (missing `preprocess_weights` fold, wrong `default_prepend_bos`, etc.); investigate manually even when the entry says VERIFIED.
+Phase 4 is intentionally lenient — it's a coherence metric, not a correctness check. A sub-100% Phase-4 score on a small parity-test model can still indicate a real adapter bug that the gates don't catch (missing `preprocess_weights` fold, wrong `default_prepend_bos`, and so on); the model can pass verification overall and still be worth a manual look.
 
 If verification fails by `~1e-3` or more against the HF reference, the bisection workflow lives at [Debugging Numerical Divergence](debugging_numerical_divergence.md).
 
