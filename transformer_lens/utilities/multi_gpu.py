@@ -133,13 +133,16 @@ def get_device_for_block_index(
         This will be removed in 3.0
     """
     assert cfg.device is not None
-    layers_per_device = cfg.n_layers // cfg.n_devices
     if device is None:
         device = cfg.device
     device = torch.device(device)
     if device.type == "cpu":
         return device
-    device_index = (device.index or 0) + (index // layers_per_device)
+    # Multiplying first guarantees the result is in [0, n_devices - 1] and avoids
+    # the divide-by-zero when n_layers < n_devices. The naive form
+    # `index // (n_layers // n_devices)` floors the divisor and overshoots when
+    # n_layers is not a multiple of n_devices (e.g. 62 layers / 8 devices → 8).
+    device_index = (device.index or 0) + (index * cfg.n_devices) // cfg.n_layers
     return torch.device(device.type, device_index)
 
 
