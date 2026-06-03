@@ -3,7 +3,8 @@
 Model: trl-internal-testing/tiny-CohereForCausalLM
   - 2 layers, ~8M params, CPU-safe, no gating required
   - tie_word_embeddings=True by default
-  - logit_scale=0.0625 (1/16)
+  - logit_scale=0.125 (canonical Command-R uses 0.0625; the tiny model
+    deliberately diverges so regression tests can catch silent fallback bugs)
 
 NOTE: The tiny model has use_qk_norm=False, so QK-norm is not exercised here.
 Cohere's QK-norm is a per-head LayerNorm inside CohereAttention.forward; it is
@@ -96,8 +97,32 @@ class TestCohereBridgeCreation:
     def test_cfg_logit_scale_is_float(self, cohere_bridge: TransformerBridge) -> None:
         assert isinstance(getattr(cohere_bridge.cfg, "logit_scale"), float)
 
-    def test_cfg_logit_scale_value(self, cohere_bridge: TransformerBridge) -> None:
-        assert getattr(cohere_bridge.cfg, "logit_scale") == pytest.approx(0.0625)
+    def test_cfg_logit_scale_matches_hf(
+        self, cohere_bridge: TransformerBridge, cohere_hf: Any
+    ) -> None:
+        """Regression: bridge.cfg.logit_scale must equal hf_model.config.logit_scale.
+
+        Catches the silent-fallback bug where logit_scale was missing from
+        _HF_PASSTHROUGH_ATTRS — the adapter's getattr(cfg, "logit_scale", None)
+        returned None and fell back to a hardcoded 0.0625 regardless of model.
+        The tiny model's logit_scale is 0.125 (canonical Command-R is 0.0625),
+        so this assertion catches the fallback by construction.
+        """
+        assert cohere_bridge.cfg.logit_scale == cohere_hf.config.logit_scale  # type: ignore[attr-defined]
+        # Anchor the expected value so a future passthrough regression also trips here.
+        assert cohere_bridge.cfg.logit_scale == pytest.approx(0.125)  # type: ignore[attr-defined]
+
+    def test_cfg_rope_parameters_matches_hf(
+        self, cohere_bridge: TransformerBridge, cohere_hf: Any
+    ) -> None:
+        """Regression: bridge.cfg.rope_parameters must equal hf_model.config.rope_parameters.
+
+        Same passthrough trap as logit_scale — the Cohere adapter reads
+        rope_parameters via getattr() and falls back to a 10000.0 default theta.
+        For the tiny model (rope_theta=10000.0) the fallback happens to match,
+        but a model with non-default theta would silently use 10000.0.
+        """
+        assert cohere_bridge.cfg.rope_parameters == cohere_hf.config.rope_parameters  # type: ignore[attr-defined]
 
 
 # ---------------------------------------------------------------------------

@@ -502,6 +502,10 @@ def boot(
         "chunk_size",
         # Multimodal
         "vision_config",
+        # Cohere (and any architecture that reads logit_scale / rope_parameters
+        # directly from cfg in its adapter)
+        "logit_scale",
+        "rope_parameters",
     ]
     for attr in _HF_PASSTHROUGH_ATTRS:
         val = getattr(hf_config, attr, None)
