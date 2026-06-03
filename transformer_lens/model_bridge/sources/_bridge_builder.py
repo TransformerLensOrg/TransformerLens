@@ -39,6 +39,9 @@ _HF_PASSTHROUGH_ATTRS = [
     "chunk_size",
     # Multimodal
     "vision_config",
+    # Cohere
+    "logit_scale",
+    "rope_parameters",
 ]
 
 

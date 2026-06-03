@@ -502,6 +502,9 @@ def boot(
         "chunk_size",
         # Multimodal
         "vision_config",
+        # Cohere
+        "logit_scale",
+        "rope_parameters",
     ]
     for attr in _HF_PASSTHROUGH_ATTRS:
         val = getattr(hf_config, attr, None)
