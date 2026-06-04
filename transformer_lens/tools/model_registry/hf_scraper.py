@@ -317,6 +317,7 @@ def scrape_all_models(
 
     skip_main_scan = architecture is not None and architecture in CANONICAL_AUTHORS_BY_ARCH
     if skip_main_scan:
+        assert architecture is not None  # narrowed by skip_main_scan
         logger.info(
             f"Targeted scrape for architecture={architecture!r}: skipping the global "
             f"'{task}' scan; relying on canonical-author sweep over "
