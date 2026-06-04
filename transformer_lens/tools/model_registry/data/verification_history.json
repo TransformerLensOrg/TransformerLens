@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-05-19T15:11:14.577399",
+  "last_updated": "2026-06-04T10:14:58.733898",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -12135,6 +12135,66 @@
       "model_id": "facebook/xglm-2.9B",
       "architecture_id": "XGLMForCausalLM",
       "verified_date": "2026-05-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "HuggingFaceTB/SmolLM3-3B",
+      "architecture_id": "SmolLM3ForCausalLM",
+      "verified_date": "2026-06-04",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "HuggingFaceTB/SmolLM3-3B-Base",
+      "architecture_id": "SmolLM3ForCausalLM",
+      "verified_date": "2026-06-04",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "optimum-internal-testing/tiny-random-SmolLM3ForCausalLM",
+      "architecture_id": "SmolLM3ForCausalLM",
+      "verified_date": "2026-06-04",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "onnx-internal-testing/tiny-random-SmolLM3ForCausalLM",
+      "architecture_id": "SmolLM3ForCausalLM",
+      "verified_date": "2026-06-04",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "unsloth/SmolLM3-3B",
+      "architecture_id": "SmolLM3ForCausalLM",
+      "verified_date": "2026-06-04",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "HuggingFaceTB/SmolLM3-3B-GSM8K-SFT",
+      "architecture_id": "SmolLM3ForCausalLM",
+      "verified_date": "2026-06-04",
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Full verification completed",
