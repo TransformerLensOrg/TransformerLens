@@ -229,6 +229,7 @@ def determine_architecture_from_hf_config(hf_config):
             # text-only) are routed to Qwen3_5ForCausalLM.
             "qwen3_5": "Qwen3_5ForCausalLM",
             "qwen3_5_text": "Qwen3_5ForCausalLM",
+            "smollm3": "SmolLM3ForCausalLM",
             "openelm": "OpenELMForCausalLM",
             "stablelm": "StableLmForCausalLM",
             "t5": "T5ForConditionalGeneration",
