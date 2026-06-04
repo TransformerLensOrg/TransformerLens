@@ -48,6 +48,7 @@ ARCHITECTURE_DESCRIPTIONS: dict[str, str] = {
     "Olmo3ForCausalLM": "Allen AI's OLMo 3 latest generation",
     "OlmoeForCausalLM": "Allen AI's OLMoE Mixture of Experts model",
     "StableLmForCausalLM": "Stability AI's StableLM model",
+    "SmolLM3ForCausalLM": "Hugging Face's SmolLM3 compact open model with NoPE layers",
     "T5ForConditionalGeneration": "Google's T5 encoder-decoder model (partial support)",
     # Unsupported architectures
     "BertModel": "Google's BERT bidirectional encoder for understanding tasks",
