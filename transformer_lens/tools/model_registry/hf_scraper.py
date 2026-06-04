@@ -643,11 +643,29 @@ def scrape_all_models(
     # Compute relevancy scores and sort by score descending
     compute_scores_for_gaps(gaps)
 
+    # Guard the load-bearing invariant: each architecture appears at most once in
+    # the gaps list. The merge above produces unique-by-arch entries by
+    # construction, but the report header reads from this list — so an explicit
+    # dedup keeps the header consistent if the merge ever drifts.
+    seen_archs: set[str] = set()
+    deduped: list[dict] = []
+    for g in gaps:
+        arch_id = g["architecture_id"]
+        if arch_id in seen_archs:
+            logger.warning(f"Dropping duplicate gap entry for architecture {arch_id!r}")
+            continue
+        seen_archs.add(arch_id)
+        deduped.append(g)
+    gaps = deduped
+
     gaps_report = {
         "generated_at": date.today().isoformat(),
         "scan_info": scan_info,
         "total_unsupported_architectures": len(gaps),
-        "total_unsupported_models": sum(unsupported_arch_counts.values()),
+        # Sum from the merged+deduped list so the header stays consistent with
+        # its own gaps[*].total_models — the prior `sum(unsupported_arch_counts...)`
+        # only reflected this run, while the list also carried prior-scrape data.
+        "total_unsupported_models": sum(g["total_models"] for g in gaps),
         "gaps": gaps,
     }
 
