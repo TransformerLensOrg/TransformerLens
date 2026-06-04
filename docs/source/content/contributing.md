@@ -256,6 +256,7 @@ Two guides walk through the process:
 
 - [Architecture Adapter Creation Guide](adapter_development/adapter-creation-guide.md) — start here. A step-by-step workflow for taking an HF model from unsupported to tested, registered adapter.
 - [HuggingFace Model Analysis Guide](adapter_development/hf-model-analysis-guide.md) — a reference for reading an HF model's `config.json` and source files to extract the attributes you'll set on `self.cfg`.
+- [HuggingFace Model Scraper](adapter_development/hf-scraper.md) — how to run the scraper that discovers HF models for the registry, including the per-architecture targeted-scrape mode used after merging a new adapter.
 
 Adapters live in `transformer_lens/model_bridge/supported_architectures/<model_name>.py` and need to be registered in **four** places. Each registration site has a different consequence if you skip it, which is why the next section's invariant test is worth running before you open the PR.
 
@@ -332,5 +333,6 @@ If verification fails by `~1e-3` or more against the HF reference, the bisection
 
 adapter_development/adapter-creation-guide
 adapter_development/hf-model-analysis-guide
+adapter_development/hf-scraper
 adapter_development/external-adapter-registration
 ```

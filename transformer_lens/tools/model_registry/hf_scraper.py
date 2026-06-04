@@ -17,6 +17,10 @@ Usage:
     # Full scan of all HuggingFace models (recommended)
     python -m transformer_lens.tools.model_registry.hf_scraper --full-scan
 
+    # Targeted scrape: only models of a specific architecture
+    python -m transformer_lens.tools.model_registry.hf_scraper \\
+        --architecture LlamaForCausalLM --full-scan
+
     # Quick scan (top N models by downloads)
     python -m transformer_lens.tools.model_registry.hf_scraper --limit 10000
 
@@ -176,8 +180,13 @@ def _canonical_author_sweep(
     api,  # type: ignore[no-untyped-def]
     supported_models: list[dict],
     seen_models: set[str],
+    architecture: Optional[str] = None,
 ) -> int:
-    """Admit canonical-org supported-arch models regardless of downloads. Returns count added."""
+    """Admit canonical-org supported-arch models regardless of downloads. Returns count added.
+
+    When ``architecture`` is set, only sweep authors canonical for that architecture and
+    only admit models whose extracted arch matches it.
+    """
     from . import CANONICAL_AUTHORS_BY_ARCH, HF_SUPPORTED_ARCHITECTURES
 
     # Same author can be canonical for multiple archs (e.g. google: T5 + MT5 + Gemma).
@@ -188,6 +197,8 @@ def _canonical_author_sweep(
 
     added = 0
     for author, expected_archs in sorted(authors_to_archs.items()):
+        if architecture is not None and architecture not in expected_archs:
+            continue
         try:
             models_iter = api.list_models(author=author, expand=["config", "safetensors"])
         except Exception as exc:  # pragma: no cover — network/transient
@@ -203,6 +214,8 @@ def _canonical_author_sweep(
                     continue
                 model_arch: Optional[str] = _extract_architecture(model)
                 if model_arch is None or model_arch not in HF_SUPPORTED_ARCHITECTURES:
+                    continue
+                if architecture is not None and model_arch != architecture:
                     continue
                 # Reject e.g. mistralai's non-Mistral checkpoints.
                 if model_arch not in expected_archs:
@@ -227,6 +240,7 @@ def scrape_all_models(
     checkpoint_interval: int = 5000,
     min_downloads: int = 500,
     canonical_sweep: bool = True,
+    architecture: Optional[str] = None,
 ) -> tuple[dict, dict]:
     """Scrape ALL models from HuggingFace and categorize by architecture.
 
@@ -250,6 +264,10 @@ def scrape_all_models(
         min_downloads: Minimum download count to include a model (default: 500)
         canonical_sweep: If True, run the post-scrape pass that admits canonical-org models
             below the download threshold (default: True).
+        architecture: If set, only include models whose ``config.architectures[0]`` matches
+            this class (e.g. ``"LlamaForCausalLM"``). Applies to both the main scan and
+            the canonical-author sweep. Useful for populating the registry after adding
+            a single new adapter without rescanning every architecture.
 
     Returns:
         Tuple of (supported_models_dict, architecture_gaps_dict)
@@ -289,7 +307,30 @@ def scrape_all_models(
     checkpoint_path = output_dir / "scrape_checkpoint.json"
     seen_models: set[str] = set(existing_model_ids)  # Include existing as "seen"
 
-    if checkpoint_path.exists():
+    # When `architecture` is set AND we have canonical orgs for it, skip the global
+    # text-generation scan: the canonical sweep already exhausts those orgs and is
+    # exact (`author=` is a server-side filter). The main scan would only add
+    # community fine-tunes of that arch, which are rarely worth verifying. For
+    # archs with no canonical orgs registered, fall back to the main scan +
+    # client-side filter.
+    from . import CANONICAL_AUTHORS_BY_ARCH
+
+    skip_main_scan = architecture is not None and architecture in CANONICAL_AUTHORS_BY_ARCH
+    if skip_main_scan:
+        assert architecture is not None  # narrowed by skip_main_scan
+        logger.info(
+            f"Targeted scrape for architecture={architecture!r}: skipping the global "
+            f"'{task}' scan; relying on canonical-author sweep over "
+            f"{sorted(CANONICAL_AUTHORS_BY_ARCH[architecture])}."
+        )
+        if not canonical_sweep:
+            logger.warning(
+                "skip_main_scan is set but --no-canonical-sweep was passed. No HF "
+                "queries will run. Re-run without --no-canonical-sweep to actually "
+                "discover models."
+            )
+
+    if not skip_main_scan and checkpoint_path.exists():
         logger.info(f"Found checkpoint at {checkpoint_path}, loading...")
         with open(checkpoint_path) as f:
             checkpoint = json.load(f)
@@ -308,14 +349,15 @@ def scrape_all_models(
         skipped = checkpoint.get("skipped", 0)
         logger.info(f"Resumed from checkpoint: {scanned} models already scanned")
 
-    logger.info(f"Starting comprehensive HuggingFace scan for task='{task}'...")
-    logger.info(f"Skipping {len(existing_model_ids)} models already in supported_models.json")
-    logger.info(f"Supported architectures: {len(HF_SUPPORTED_ARCHITECTURES)}")
-    logger.info(f"Minimum downloads threshold: {min_downloads:,}")
-    if max_models:
-        logger.info(f"Will scan up to {max_models} NEW models")
-    else:
-        logger.info("Will scan ALL new models (this may take a while)")
+    if not skip_main_scan:
+        logger.info(f"Starting comprehensive HuggingFace scan for task='{task}'...")
+        logger.info(f"Skipping {len(existing_model_ids)} models already in supported_models.json")
+        logger.info(f"Supported architectures: {len(HF_SUPPORTED_ARCHITECTURES)}")
+        logger.info(f"Minimum downloads threshold: {min_downloads:,}")
+        if max_models:
+            logger.info(f"Will scan up to {max_models} NEW models")
+        else:
+            logger.info("Will scan ALL new models (this may take a while)")
 
     try:
         # Use expand=['config', 'safetensors'] to get architecture and parameter
@@ -339,6 +381,12 @@ def scrape_all_models(
         # and restart iteration. Already-seen models are skipped automatically.
         max_retries = 10
         for attempt in range(max_retries + 1):
+            if skip_main_scan:
+                # Targeted scrape with canonical orgs available — the sweep below is
+                # exhaustive within those orgs and exact (server-side `author=`), so
+                # the global text-generation pagination would only add community
+                # fine-tunes for the same arch.
+                break
             try:
                 for model in api.list_models(**list_kwargs):
                     # Skip if already in our JSON or processed in this run
@@ -371,6 +419,12 @@ def scrape_all_models(
 
                     # Extract architecture from inline config (no extra API call)
                     arch = _extract_architecture(model)
+
+                    # Targeted scrape: drop everything that isn't the requested arch.
+                    # Applied before classification so the unsupported counters reflect
+                    # only the architecture under inspection.
+                    if architecture is not None and arch != architecture:
+                        continue
 
                     if arch is None:
                         errors += 1
@@ -481,7 +535,9 @@ def scrape_all_models(
         logger.info("\nRunning canonical-author sweep (bypasses download threshold)...")
         # Don't lose the main-scan registry on a sweep-time failure.
         try:
-            canonical_added = _canonical_author_sweep(api, supported_models, seen_models)
+            canonical_added = _canonical_author_sweep(
+                api, supported_models, seen_models, architecture=architecture
+            )
             new_supported += canonical_added
             logger.info(f"Canonical sweep added {canonical_added} models.")
         except Exception as exc:
@@ -683,6 +739,10 @@ Examples:
     # Full scan of ALL text-generation models (recommended)
     python -m transformer_lens.tools.model_registry.hf_scraper --full-scan
 
+    # Targeted scrape: only one architecture (e.g. after adding a new adapter)
+    python -m transformer_lens.tools.model_registry.hf_scraper \\
+        --architecture LlamaForCausalLM --full-scan
+
     # Quick scan of top 10,000 models by downloads
     python -m transformer_lens.tools.model_registry.hf_scraper --limit 10000
 
@@ -735,6 +795,14 @@ Examples:
         help="Skip the per-author sweep that admits canonical-org models below the "
         "download threshold (default: sweep is on)",
     )
+    parser.add_argument(
+        "--architecture",
+        type=str,
+        default=None,
+        help="Only include models whose config.architectures[0] matches this class "
+        "(e.g. 'LlamaForCausalLM'). Use after adding a new adapter to populate the "
+        "registry with that architecture's models without rescanning everything.",
+    )
 
     args = parser.parse_args()
 
@@ -747,6 +815,7 @@ Examples:
         checkpoint_interval=args.checkpoint_interval,
         min_downloads=args.min_downloads,
         canonical_sweep=not args.no_canonical_sweep,
+        architecture=args.architecture,
     )
 
 
