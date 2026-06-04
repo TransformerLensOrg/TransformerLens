@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-06-04T10:14:58.733898",
+  "last_updated": "2026-06-04T16:34:50.119128",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -12198,6 +12198,116 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "trl-internal-testing/tiny-Qwen3_5ForConditionalGeneration",
+      "architecture_id": "Qwen3_5ForCausalLM",
+      "verified_date": "2026-06-04",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P2=92.3% (failed: gated_hooks_fire); P3=94.7% (failed: gated_hooks_fire)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Qwen/Qwen3.5-2B-Base",
+      "architecture_id": "Qwen3_5ForCausalLM",
+      "verified_date": "2026-06-04",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P2=92.3% (failed: gated_hooks_fire); P3=94.7% (failed: gated_hooks_fire)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "trl-internal-testing/tiny-Qwen3_5ForConditionalGeneration",
+      "architecture_id": "Qwen3_5ForConditionalGeneration",
+      "verified_date": "2026-06-04",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P2=92.3% (failed: gated_hooks_fire); P3=94.7% (failed: gated_hooks_fire)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Qwen/Qwen3.5-0.8B-Base",
+      "architecture_id": "Qwen3_5ForConditionalGeneration",
+      "verified_date": "2026-06-04",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P2=92.3% (failed: gated_hooks_fire); P3=94.7% (failed: gated_hooks_fire)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Qwen/Qwen3.5-2B",
+      "architecture_id": "Qwen3_5ForConditionalGeneration",
+      "verified_date": "2026-06-04",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P2=92.3% (failed: gated_hooks_fire); P3=94.7% (failed: gated_hooks_fire)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Qwen/Qwen3.5-2B-Base",
+      "architecture_id": "Qwen3_5ForConditionalGeneration",
+      "verified_date": "2026-06-04",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P2=92.3% (failed: gated_hooks_fire); P3=94.7% (failed: gated_hooks_fire)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Qwen/Qwen3.5-4B-Base",
+      "architecture_id": "Qwen3_5ForConditionalGeneration",
+      "verified_date": "2026-06-04",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P2=92.3% (failed: gated_hooks_fire); P3=94.7% (failed: gated_hooks_fire)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Qwen/Qwen3.5-9B-Base",
+      "architecture_id": "Qwen3_5ForConditionalGeneration",
+      "verified_date": "2026-06-04",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: I/O error: IO Error: No space left on device (os error 28)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Qwen/Qwen3.5-0.8B",
+      "architecture_id": "Qwen3_5ForConditionalGeneration",
+      "verified_date": "2026-06-04",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P2=92.3% (failed: gated_hooks_fire); P3=94.7% (failed: gated_hooks_fire)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Qwen/Qwen3.5-4B",
+      "architecture_id": "Qwen3_5ForConditionalGeneration",
+      "verified_date": "2026-06-04",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P2=92.3% (failed: gated_hooks_fire); P3=94.7% (failed: gated_hooks_fire)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Qwen/Qwen3.5-9B",
+      "architecture_id": "Qwen3_5ForConditionalGeneration",
+      "verified_date": "2026-06-04",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: I/O error: IO Error: No space left on device (os error 28)",
       "invalidated": false,
       "invalidation_reason": null
     }

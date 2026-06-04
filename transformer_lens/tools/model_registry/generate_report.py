@@ -38,6 +38,7 @@ ARCHITECTURE_DESCRIPTIONS: dict[str, str] = {
     "Gemma3ForCausalLM": "Google's Gemma 3 latest generation",
     "Qwen2ForCausalLM": "Alibaba's Qwen2 multilingual model",
     "Qwen3ForCausalLM": "Alibaba's Qwen3 latest generation",
+    "Qwen3_5ForConditionalGeneration": "Alibaba's Qwen3.5 vision-language model",
     "BloomForCausalLM": "BigScience's BLOOM multilingual model",
     "OPTForCausalLM": "Meta's Open Pre-trained Transformer",
     "PhiForCausalLM": "Microsoft's Phi small language model",
