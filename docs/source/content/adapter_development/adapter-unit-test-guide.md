@@ -5,13 +5,15 @@ This is the companion to the [Architecture Adapter Creation Guide](adapter-creat
 A new adapter needs two test layers:
 
 - **Unit adapter test** — `tests/unit/model_bridge/supported_architectures/test_<arch>_adapter.py`. Instantiates the adapter from a *synthetic* `TransformerBridgeConfig` and asserts **structural** properties. No weight load, no HF Hub, runs in `make unit-test`. **This guide is about this layer.**
-- **Integration parity test** — `tests/integration/model_bridge/test_<arch>_adapter.py`. If possible, loads a real cached HF model and asserts logit parity at fp32 + eager attention. Covered in [contributing.md](../contributing.md#required-tests-for-a-new-adapter).
+- **Integration parity test** — `tests/integration/model_bridge/test_<arch>_adapter.py`. Loads a real cached HF model — or a tiny random fixture when the real model OOMs CI — and asserts logit parity at fp32 + eager attention. Required; covered in [contributing.md](../contributing.md#required-tests-for-a-new-adapter).
 
 ## The one rule
 
 > A unit test earns its place if a realistic bug in **this adapter** would fail it, **and no other test would catch that bug**.
 
 Everything below is a corollary. When you copy a sibling test file as a starting point, don't keep a test just because the sibling has it. Keep it only if it guards something *your* adapter does that isn't already covered.
+
+One caveat to *"no other test would catch it"*: that other test has to actually run. If your model is too large for a real integration parity test in CI and you have no tiny fixture for it, the unit suite is the sole guard — keep the behavioral coverage (hook shapes, fold values, end-to-end override effects) you'd otherwise lean on integration to provide.
 
 ## What to test
 
@@ -27,9 +29,11 @@ Organize around the three things an adapter decides (config, component mapping, 
 
 If your model invents a mechanism (AltUp's stacked residual, T5's relative-position bias, NoPE layers), test the **observable consequence** of it — the active-stream hook shape, the `is_cross_attention`/`requires_relative_position_bias` flags, a NoPE layer ignoring position embeddings end-to-end.
 
+The behavioral rows (hook shapes, end-to-end effects) need a forward pass, but the unit layer has no weights — so you wire one by hand. The pattern (see `test_mixtral_adapter.py::TestMixtralGQAHookShapes` for a worked example): build a small fake attention `nn.Module`, attach it with `set_original_component`, wire the child q/k/v/o bridges, call `setup_hook_compatibility()`, then run with identity rotary `(cos, sin)` inputs and read the hook. It's more scaffolding than a structural assertion — reserve it for reshaping logic a structural check can't reach.
+
 ## What not to test
 
-These five anti-patterns make up the bulk potential test bloat. Each "test" below changes only when the line it mirrors changes, or when a third party / the base class changes — never when *your adapter* regresses.
+These five anti-patterns make up the bulk of potential test bloat. Each "test" below changes only when the line it mirrors changes, or when a third party / the base class changes — never when *your adapter* regresses.
 
 ### 1. Config-literal restatements
 
@@ -39,7 +43,7 @@ def test_normalization_type(self, adapter):
     assert adapter.cfg.normalization_type == "RMS"     # tautological
 ```
 
-Asserting `cfg.<flag> == <the literal you assigned>` is a change-detector, not a behavior guard. Test what the flag *does* (the bridge type it selects, the fold it enables) or don't test it. Exception: a flag whose value is a deliberate **anti-drift** choice against a sibling (e.g. OLMoE `final_rms=False` vs the family default, GPT-BigCode `n_key_value_heads=1` for MQA) is worth one test with a comment saying why.
+Asserting `cfg.<flag> == <the literal you assigned>` is a change-detector, not a behavior guard. Test what the flag *does* (the bridge type it selects, the fold it enables) — and delete the literal restatement only once that effect is covered (e.g. a component-mapping test already asserts the resulting `RMSNormalizationBridge` / `NormalizationBridge`). If the effect isn't tested anywhere, test the effect, not the flag. Exception: a flag whose value is a deliberate **anti-drift** choice against a sibling (e.g. OLMoE `final_rms=False` vs the family default, GPT-BigCode `n_key_value_heads=1` for MQA) is worth one test with a comment saying why.
 
 ### 2. Factory / registration duplicates
 

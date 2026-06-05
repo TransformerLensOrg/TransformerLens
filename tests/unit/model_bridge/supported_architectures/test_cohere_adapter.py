@@ -4,10 +4,6 @@ import pytest
 import torch
 
 from transformer_lens.config import TransformerBridgeConfig
-from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion
-from transformer_lens.conversion_utils.param_processing_conversion import (
-    ParamProcessingConversion,
-)
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
@@ -439,54 +435,6 @@ class TestCoherePreprocessWeights:
         sd = {"unembed.weight": torch.ones(100, 64, dtype=torch.float16)}
         sd = adapter.preprocess_weights(sd)
         assert sd["unembed.weight"].dtype == torch.float16
-
-
-class TestCohereWeightConversionSemantics:
-    """QKVO conversion entries use the expected types and patterns."""
-
-    def test_q_conversion_types(self, adapter: CohereArchitectureAdapter) -> None:
-        conv = adapter.weight_processing_conversions["blocks.{i}.attn.q.weight"]
-        assert isinstance(conv, ParamProcessingConversion)
-        assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)
-
-    def test_qkv_split_heads_pattern(self, adapter: CohereArchitectureAdapter) -> None:
-        for slot in ("q", "k", "v"):
-            conv = adapter.weight_processing_conversions[f"blocks.{{i}}.attn.{slot}.weight"]
-            assert isinstance(conv, ParamProcessingConversion)
-            assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)
-            assert conv.tensor_conversion.pattern == "(n h) m -> n m h"
-
-    def test_o_merge_heads_pattern(self, adapter: CohereArchitectureAdapter) -> None:
-        conv = adapter.weight_processing_conversions["blocks.{i}.attn.o.weight"]
-        assert isinstance(conv, ParamProcessingConversion)
-        assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)
-        assert conv.tensor_conversion.pattern == "m (n h) -> n h m"
-
-
-class TestCohereGQASupport:
-    """n_key_value_heads propagates to K/V conversions only."""
-
-    def test_no_gqa_falls_back_to_n_heads(self) -> None:
-        cfg = _make_cfg(n_heads=4, n_key_value_heads=None)
-        adapter = CohereArchitectureAdapter(cfg)
-        for slot in ("k", "v"):
-            conv = adapter.weight_processing_conversions[f"blocks.{{i}}.attn.{slot}.weight"]
-            assert conv.tensor_conversion.axes_lengths["n"] == adapter.cfg.n_heads
-
-    def test_gqa_propagates_to_kv_conversions(self) -> None:
-        cfg = _make_cfg(n_heads=8, n_key_value_heads=2)
-        adapter = CohereArchitectureAdapter(cfg)
-        for slot in ("k", "v"):
-            conv = adapter.weight_processing_conversions[f"blocks.{{i}}.attn.{slot}.weight"]
-            assert conv.tensor_conversion.axes_lengths["n"] == 2
-
-    def test_gqa_does_not_change_q_or_o_conversions(self) -> None:
-        cfg = _make_cfg(n_heads=8, n_key_value_heads=2)
-        adapter = CohereArchitectureAdapter(cfg)
-        q_conv = adapter.weight_processing_conversions["blocks.{i}.attn.q.weight"]
-        o_conv = adapter.weight_processing_conversions["blocks.{i}.attn.o.weight"]
-        assert q_conv.tensor_conversion.axes_lengths["n"] == 8
-        assert o_conv.tensor_conversion.axes_lengths["n"] == 8
 
 
 class TestCohereArchitectureGuards:

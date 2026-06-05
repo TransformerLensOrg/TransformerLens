@@ -24,10 +24,6 @@ from transformer_lens.conversion_utils.conversion_steps.rearrange_tensor_convers
 from transformer_lens.conversion_utils.param_processing_conversion import (
     ParamProcessingConversion,
 )
-from transformer_lens.factories.architecture_adapter_factory import (
-    SUPPORTED_ARCHITECTURES,
-    ArchitectureAdapterFactory,
-)
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
@@ -422,17 +418,6 @@ class TestMixtralGQAHookShapes:
     def test_attn_output_shape(self, wired_attn_bridge: PositionEmbeddingsAttentionBridge) -> None:
         _, _, _, out = self._run_and_capture(wired_attn_bridge)
         assert out.shape == (self.BATCH, self.SEQ, self.D_MODEL)
-
-
-class TestMixtralFactoryRegistration:
-    """Mixtral is registered in the factory and dispatched from a matching config."""
-
-    def test_factory_lookup_returns_adapter_class(self) -> None:
-        assert SUPPORTED_ARCHITECTURES["MixtralForCausalLM"] is MixtralArchitectureAdapter
-
-    def test_factory_selects_correct_adapter(self) -> None:
-        adapter = ArchitectureAdapterFactory.select_architecture_adapter(_cfg())
-        assert isinstance(adapter, MixtralArchitectureAdapter)
 
 
 class TestMixtralSetupComponentTesting:
