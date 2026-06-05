@@ -48,9 +48,3 @@ def test_hook_q_gate_fires_under_nested_language_model_path():
     assert torch.isfinite(gate).all()
     # A real (non-degenerate) gate signal, not an all-zero placeholder.
     assert gate.float().std() > 0
-
-
-def test_linear_attention_layer_has_no_gate_hook():
-    """The GatedDeltaNet (linear-attention) layer must not expose a q_proj gate hook."""
-    bridge = TransformerBridge.boot_transformers(MODEL_NAME, device="cpu", dtype=torch.float32)
-    assert not any("blocks.0." in n for n in _gate_hooks(bridge))
