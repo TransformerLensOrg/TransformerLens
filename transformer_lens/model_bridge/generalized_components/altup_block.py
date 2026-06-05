@@ -60,14 +60,21 @@ class AltUpBlockBridge(GeneralizedComponent):
         return self._hook_output(output)
 
     def _patch_active_stream(self, stack: torch.Tensor, hook: HookPoint) -> torch.Tensor:
-        """Fire ``hook`` on the active AltUp stream and write the (possibly patched) result back."""
+        """Fire ``hook`` on the active AltUp stream, cloning the stack only if it was patched."""
         if (
             not isinstance(stack, torch.Tensor)
             or stack.dim() < 1
             or stack.shape[0] <= self.altup_active_idx
         ):
             return stack
-        active = hook(stack[self.altup_active_idx])
+        # Capture the view once: indexing returns a fresh object each call, so the identity
+        # check must compare against this exact view, not a re-indexed one.
+        active_view = stack[self.altup_active_idx]
+        active = hook(active_view)
+        # Common case (no hooks, or read-only hooks that return their input): nothing changed,
+        # so skip the full [num_altup, batch, seq, d_model] clone.
+        if active is active_view:
+            return stack
         stack = stack.clone()
         stack[self.altup_active_idx] = active
         return stack

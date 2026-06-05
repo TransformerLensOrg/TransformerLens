@@ -48,12 +48,10 @@ class ArchitectureAdapter:
     # Encoder-only models (e.g. BERT, HuBERT) should set this to False.
     supports_generation: bool = True
 
-    # Optional libraries this architecture needs to load (e.g. the multimodal dependency
-    # group's timm). Checked at construction so a missing dep gives a clear, actionable error
-    # instead of a deep HuggingFace import failure further down the boot.
+    # Optional libraries this adapter needs at load time (e.g. the multimodal group's timm).
+    # Checked at construction so a missing one raises a clear error, not a deep HF failure.
     required_libraries: list[str] = []
-    # The dependency group that ships required_libraries (named in the missing-dep error).
-    # Set by adapters that declare required_libraries; empty on the generic base.
+    # Dependency group that ships required_libraries (named in the error); empty on the base.
     required_libraries_group: str = ""
 
     def __init__(self, cfg: TransformerBridgeConfig) -> None:

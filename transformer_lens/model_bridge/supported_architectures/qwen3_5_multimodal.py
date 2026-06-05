@@ -21,6 +21,10 @@ from transformer_lens.model_bridge.supported_architectures.qwen3 import (
 class Qwen3_5MultimodalArchitectureAdapter(Qwen3ArchitectureAdapter):
     """Full vision-language adapter for Qwen3_5ForConditionalGeneration."""
 
+    # Qwen3.5's image/video processor (Qwen3VLProcessor) requires torchvision.
+    required_libraries: list[str] = ["torchvision"]
+    required_libraries_group: str = "multimodal"
+
     def __init__(self, cfg: Any) -> None:
         setattr(cfg, "gated_q_proj", True)
         super().__init__(cfg, hybrid=True, lm_prefix="model.language_model")

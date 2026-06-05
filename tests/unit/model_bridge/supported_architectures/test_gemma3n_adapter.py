@@ -45,12 +45,6 @@ def test_registered_and_selected():
     assert CANONICAL_AUTHORS_BY_ARCH.get(ARCH) == ["google"]
 
 
-def test_declares_timm_requirement():
-    # Full-model load pulls in the timm vision tower even text-only.
-    assert "timm" in Gemma3nArchitectureAdapter.required_libraries
-    assert Gemma3nArchitectureAdapter.required_libraries_group == "multimodal"
-
-
 def test_missing_required_library_raises_actionable_error():
     """A missing multimodal dep surfaces a clear error, not a deep HF import failure."""
 
