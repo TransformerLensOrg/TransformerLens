@@ -1,5 +1,7 @@
 """Unit tests for the Gemma 3n text-only architecture adapter."""
 
+import pytest
+
 from transformer_lens.config.transformer_bridge_config import TransformerBridgeConfig
 from transformer_lens.factories.architecture_adapter_factory import (
     SUPPORTED_ARCHITECTURES,
@@ -41,6 +43,35 @@ def test_registered_and_selected():
     assert isinstance(_adapter(), Gemma3nArchitectureAdapter)
     assert ARCH in HF_SUPPORTED_ARCHITECTURES
     assert CANONICAL_AUTHORS_BY_ARCH.get(ARCH) == ["google"]
+
+
+def test_declares_timm_requirement():
+    # Full-model load pulls in the timm vision tower even text-only.
+    assert "timm" in Gemma3nArchitectureAdapter.required_libraries
+    assert Gemma3nArchitectureAdapter.required_libraries_group == "multimodal"
+
+
+def test_missing_required_library_raises_actionable_error():
+    """A missing multimodal dep surfaces a clear error, not a deep HF import failure."""
+
+    class _FakeMissing(Gemma3nArchitectureAdapter):
+        required_libraries = ["definitely_not_installed_xyz"]
+        required_libraries_group = "custom-group"
+
+    cfg = TransformerBridgeConfig(
+        d_model=2048,
+        d_head=256,
+        n_heads=8,
+        n_layers=30,
+        n_ctx=4096,
+        d_vocab=262400,
+        n_key_value_heads=2,
+        architecture=ARCH,
+    )
+    # The error names the missing lib and the adapter's declared dependency group (not a
+    # hardcoded one).
+    with pytest.raises(ImportError, match=r"definitely_not_installed_xyz.*custom-group"):
+        _FakeMissing(cfg)
 
 
 def test_config_flags():

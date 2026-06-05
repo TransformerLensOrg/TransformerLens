@@ -25,6 +25,11 @@ from transformer_lens.model_bridge.generalized_components.base import (
 class Gemma3nArchitectureAdapter(ArchitectureAdapter):
     """Text-only adapter for Gemma 3n (`Gemma3nForConditionalGeneration`)."""
 
+    # The full model includes a timm-based vision tower (TimmWrapperModel), so timm is needed
+    # even for text-only use (the towers stay referenced).
+    required_libraries: list[str] = ["timm"]
+    required_libraries_group: str = "multimodal"
+
     # Phase 3 (processed/compatibility mode) folds LN into a single residual stream, which
     # AltUp's 4-stream residual can't represent. Phases 1 (HF parity), 2 (hooks), and 4 (text
     # quality) do apply and pass.
