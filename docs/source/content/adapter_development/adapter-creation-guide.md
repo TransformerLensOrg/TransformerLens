@@ -218,6 +218,8 @@ Write tests that exercise actual behavior:
 - Weight shapes match expectations after loading
 - Forward pass produces sensible output for a tiny variant
 
+See the [Architecture Unit Test Suite Guide](adapter-unit-test-guide.md) for what each unit test should (and should not) assert. Aim to guard real, adapter-specific regression, avoid restating configs or re-testing the base class.
+
 ### New bridge components
 
 Don't add a new bridge unless the existing ones can't express your model. The bar is: the `forward()` must be fundamentally different from any existing bridge. If you do add one:

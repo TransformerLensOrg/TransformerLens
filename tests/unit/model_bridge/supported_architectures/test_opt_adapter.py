@@ -6,16 +6,11 @@ Tests cover:
 - Weight conversion keys
 - Component mapping structure
 - OPT-350m projection mapping
-- Factory registration
 """
 
 import pytest
 
 from transformer_lens.config import TransformerBridgeConfig
-from transformer_lens.factories.architecture_adapter_factory import (
-    SUPPORTED_ARCHITECTURES,
-    ArchitectureAdapterFactory,
-)
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     BlockBridge,
@@ -86,18 +81,6 @@ class TestOptAdapterConfig:
 
     def test_positional_embedding_type_is_standard(self, adapter: OptArchitectureAdapter) -> None:
         assert adapter.cfg.positional_embedding_type == "standard"
-
-    def test_final_rms_is_false(self, adapter: OptArchitectureAdapter) -> None:
-        assert adapter.cfg.final_rms is False
-
-    def test_gated_mlp_is_false(self, adapter: OptArchitectureAdapter) -> None:
-        assert adapter.cfg.gated_mlp is False
-
-    def test_attn_only_is_false(self, adapter: OptArchitectureAdapter) -> None:
-        assert adapter.cfg.attn_only is False
-
-    def test_default_prepend_bos_is_true(self, adapter: OptArchitectureAdapter) -> None:
-        assert adapter.cfg.default_prepend_bos is True
 
 
 class TestOptAdapterPostNorm:
@@ -260,20 +243,3 @@ class TestOpt350mProjectionMapping:
         adapter = OptArchitectureAdapter(_make_cfg(d_model=64, word_embed_proj_dim=32))
         assert isinstance(adapter.component_mapping["project_out"], LinearBridge)
         assert adapter.component_mapping["project_out"].name == "model.decoder.project_out"
-
-
-# ---------------------------------------------------------------------------
-# Factory registration tests
-# ---------------------------------------------------------------------------
-
-
-class TestOptFactoryRegistration:
-    """ArchitectureAdapterFactory must resolve OPTForCausalLM -> OptArchitectureAdapter."""
-
-    def test_factory_resolves_opt_architecture(self) -> None:
-        adapter = ArchitectureAdapterFactory.select_architecture_adapter(_make_cfg())
-        assert isinstance(adapter, OptArchitectureAdapter)
-
-    def test_opt_in_supported_architectures_dict(self) -> None:
-        assert "OPTForCausalLM" in SUPPORTED_ARCHITECTURES
-        assert SUPPORTED_ARCHITECTURES["OPTForCausalLM"] is OptArchitectureAdapter

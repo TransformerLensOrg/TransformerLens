@@ -69,9 +69,6 @@ def adapter(cfg: TransformerBridgeConfig) -> CohereArchitectureAdapter:
 class TestCohereAdapterConfig:
     """Adapter sets cfg.* attributes correctly."""
 
-    def test_normalization_type_is_ln(self, adapter: CohereArchitectureAdapter) -> None:
-        assert adapter.cfg.normalization_type == "LN"
-
     def test_uses_rms_norm_is_false(self, adapter: CohereArchitectureAdapter) -> None:
         # CohereLayerNorm subtracts the mean — NOT RMSNorm.
         assert adapter.cfg.uses_rms_norm is False
@@ -79,18 +76,6 @@ class TestCohereAdapterConfig:
     def test_eps_attr_is_variance_epsilon(self, adapter: CohereArchitectureAdapter) -> None:
         # CohereLayerNorm stores epsilon as self.variance_epsilon.
         assert adapter.cfg.eps_attr == "variance_epsilon"
-
-    def test_final_rms_is_false(self, adapter: CohereArchitectureAdapter) -> None:
-        assert adapter.cfg.final_rms is False
-
-    def test_positional_embedding_type_is_rotary(self, adapter: CohereArchitectureAdapter) -> None:
-        assert adapter.cfg.positional_embedding_type == "rotary"
-
-    def test_gated_mlp_is_true(self, adapter: CohereArchitectureAdapter) -> None:
-        assert adapter.cfg.gated_mlp is True
-
-    def test_attn_only_is_false(self, adapter: CohereArchitectureAdapter) -> None:
-        assert adapter.cfg.attn_only is False
 
     def test_parallel_attn_mlp_is_true(self, adapter: CohereArchitectureAdapter) -> None:
         # Single input_layernorm; attn and MLP run in parallel on same normed input.
@@ -137,37 +122,6 @@ class TestCohereLogitScaleNoneCheck:
         cfg = _make_cfg(logit_scale=1.0)
         adapter = CohereArchitectureAdapter(cfg)
         assert getattr(adapter.cfg, "logit_scale") == pytest.approx(1.0)
-
-
-class TestCohereFactoryRegistration:
-    """Factory maps 'CohereForCausalLM' to CohereArchitectureAdapter."""
-
-    def test_factory_returns_cohere_adapter(self) -> None:
-        from transformer_lens.factories.architecture_adapter_factory import (
-            ArchitectureAdapterFactory,
-        )
-
-        cfg = _make_cfg()
-        adapter = ArchitectureAdapterFactory.select_architecture_adapter(cfg)
-        assert isinstance(
-            adapter, CohereArchitectureAdapter
-        ), f"Expected CohereArchitectureAdapter, got {type(adapter).__name__}"
-
-    def test_factory_key_is_cohere_for_causal_lm(self) -> None:
-        from transformer_lens.factories.architecture_adapter_factory import (
-            SUPPORTED_ARCHITECTURES,
-        )
-
-        assert (
-            "CohereForCausalLM" in SUPPORTED_ARCHITECTURES
-        ), "CohereForCausalLM must be registered in SUPPORTED_ARCHITECTURES"
-
-    def test_factory_maps_to_correct_class(self) -> None:
-        from transformer_lens.factories.architecture_adapter_factory import (
-            SUPPORTED_ARCHITECTURES,
-        )
-
-        assert SUPPORTED_ARCHITECTURES["CohereForCausalLM"] is CohereArchitectureAdapter
 
 
 class TestCohereAdapterComponentMapping:
@@ -362,32 +316,11 @@ class TestCohereAdapterComponentMapping:
 class TestCohereAdapterWeightConversions:
     """weight_processing_conversions has GQA-aware Q/K/V/O keys."""
 
-    def test_weight_processing_conversions_not_none(
-        self, adapter: CohereArchitectureAdapter
-    ) -> None:
-        assert adapter.weight_processing_conversions is not None
-
     def test_weight_processing_conversions_has_exactly_four_keys(
         self, adapter: CohereArchitectureAdapter
     ) -> None:
         assert adapter.weight_processing_conversions is not None
         assert len(adapter.weight_processing_conversions) == 4
-
-    def test_q_weight_key_present(self, adapter: CohereArchitectureAdapter) -> None:
-        assert adapter.weight_processing_conversions is not None
-        assert "blocks.{i}.attn.q.weight" in adapter.weight_processing_conversions
-
-    def test_k_weight_key_present(self, adapter: CohereArchitectureAdapter) -> None:
-        assert adapter.weight_processing_conversions is not None
-        assert "blocks.{i}.attn.k.weight" in adapter.weight_processing_conversions
-
-    def test_v_weight_key_present(self, adapter: CohereArchitectureAdapter) -> None:
-        assert adapter.weight_processing_conversions is not None
-        assert "blocks.{i}.attn.v.weight" in adapter.weight_processing_conversions
-
-    def test_o_weight_key_present(self, adapter: CohereArchitectureAdapter) -> None:
-        assert adapter.weight_processing_conversions is not None
-        assert "blocks.{i}.attn.o.weight" in adapter.weight_processing_conversions
 
     def test_exact_key_set(self, adapter: CohereArchitectureAdapter) -> None:
         assert adapter.weight_processing_conversions is not None
@@ -507,13 +440,6 @@ class TestCoherePreprocessWeights:
         sd = adapter.preprocess_weights(sd)
         assert sd["unembed.weight"].dtype == torch.float16
 
-    def test_returns_state_dict(self) -> None:
-        cfg = _make_cfg(logit_scale=0.0625)
-        adapter = CohereArchitectureAdapter(cfg)
-        sd = self._make_state_dict()
-        result = adapter.preprocess_weights(sd)
-        assert isinstance(result, dict)
-
 
 class TestCohereWeightConversionSemantics:
     """QKVO conversion entries use the expected types and patterns."""
@@ -587,7 +513,3 @@ class TestCohereArchitectureGuards:
         assert adapter.cfg.uses_rms_norm is False
         assert adapter.cfg.normalization_type == "LN"
         assert adapter.cfg.final_rms is False
-
-    def test_block_has_no_ln2(self, adapter: CohereArchitectureAdapter) -> None:
-        blocks = adapter.component_mapping["blocks"]
-        assert "ln2" not in blocks.submodules

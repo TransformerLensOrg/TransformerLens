@@ -4,7 +4,6 @@ import pytest
 
 from transformer_lens.config.transformer_bridge_config import TransformerBridgeConfig
 from transformer_lens.factories.architecture_adapter_factory import (
-    SUPPORTED_ARCHITECTURES,
     ArchitectureAdapterFactory,
 )
 from transformer_lens.model_bridge.generalized_components import (
@@ -15,10 +14,6 @@ from transformer_lens.model_bridge.generalized_components import (
 )
 from transformer_lens.model_bridge.supported_architectures.gemma3n import (
     Gemma3nArchitectureAdapter,
-)
-from transformer_lens.tools.model_registry import (
-    CANONICAL_AUTHORS_BY_ARCH,
-    HF_SUPPORTED_ARCHITECTURES,
 )
 
 ARCH = "Gemma3nForConditionalGeneration"
@@ -36,13 +31,6 @@ def _adapter():
         architecture=ARCH,
     )
     return ArchitectureAdapterFactory.select_architecture_adapter(cfg)
-
-
-def test_registered_and_selected():
-    assert SUPPORTED_ARCHITECTURES[ARCH] is Gemma3nArchitectureAdapter
-    assert isinstance(_adapter(), Gemma3nArchitectureAdapter)
-    assert ARCH in HF_SUPPORTED_ARCHITECTURES
-    assert CANONICAL_AUTHORS_BY_ARCH.get(ARCH) == ["google"]
 
 
 def test_missing_required_library_raises_actionable_error():

@@ -17,10 +17,6 @@ from transformer_lens.conversion_utils.conversion_steps.arithmetic_tensor_conver
 from transformer_lens.conversion_utils.param_processing_conversion import (
     ParamProcessingConversion,
 )
-from transformer_lens.factories.architecture_adapter_factory import (
-    SUPPORTED_ARCHITECTURES,
-    ArchitectureAdapterFactory,
-)
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
@@ -53,21 +49,6 @@ def _make_gemma3_cfg(**overrides):
     return TransformerBridgeConfig(**defaults)
 
 
-class TestGemma3AdapterRegistration:
-    """Gemma3ArchitectureAdapter registration."""
-
-    def test_architecture_in_supported_architectures(self):
-        assert "Gemma3ForCausalLM" in SUPPORTED_ARCHITECTURES
-
-    def test_architecture_maps_to_correct_adapter(self):
-        assert SUPPORTED_ARCHITECTURES["Gemma3ForCausalLM"] is Gemma3ArchitectureAdapter
-
-    def test_factory_selects_correct_adapter(self):
-        cfg = _make_gemma3_cfg()
-        adapter = ArchitectureAdapterFactory.select_architecture_adapter(cfg)
-        assert isinstance(adapter, Gemma3ArchitectureAdapter)
-
-
 class TestGemma3AdapterConfig:
     """Gemma3ArchitectureAdapter cfg attributes."""
 
@@ -75,25 +56,9 @@ class TestGemma3AdapterConfig:
     def adapter(self):
         return Gemma3ArchitectureAdapter(_make_gemma3_cfg())
 
-    def test_gated_mlp(self, adapter):
-        assert adapter.cfg.gated_mlp is True
-
-    def test_uses_rms_norm(self, adapter):
-        assert adapter.cfg.uses_rms_norm is True
-
-    def test_normalization_type(self, adapter):
-        assert adapter.cfg.normalization_type == "RMS"
-
     def test_rmsnorm_uses_offset(self, adapter):
         # Gemma uses (1 + weight); offset must be advertised on cfg.
         assert adapter.cfg.rmsnorm_uses_offset is True
-
-    def test_positional_embedding_type(self, adapter):
-        assert adapter.cfg.positional_embedding_type == "rotary"
-
-    def test_attn_implementation_eager(self, adapter):
-        # eager required so output_attentions works (hook_attn_scores / hook_pattern).
-        assert adapter.cfg.attn_implementation == "eager"
 
 
 class TestGemma3ComponentMappingPresence:

@@ -335,29 +335,3 @@ class TestHookedTransformerConfigRotaryBaseLocal:
             attn_only=True,
         )
         assert cfg.rotary_base_local is None
-
-    def test_rotary_base_local_can_be_set(self):
-        cfg = HookedTransformerConfig(
-            d_model=128,
-            d_head=32,
-            n_heads=4,
-            n_ctx=128,
-            n_layers=2,
-            attn_only=True,
-            rotary_base_local=10000,
-        )
-        assert cfg.rotary_base_local == 10000
-
-    def test_rotary_base_and_rotary_base_local_coexist(self):
-        cfg = HookedTransformerConfig(
-            d_model=128,
-            d_head=32,
-            n_heads=4,
-            n_ctx=128,
-            n_layers=2,
-            attn_only=True,
-            rotary_base=1000000,
-            rotary_base_local=10000,
-        )
-        assert cfg.rotary_base == 1000000
-        assert cfg.rotary_base_local == 10000

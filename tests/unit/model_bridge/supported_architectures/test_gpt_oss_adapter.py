@@ -4,7 +4,6 @@ plus small synthetic tensors and a fake attention module, no real checkpoints).
 Covered:
 - Adapter config defaults (RMSNorm with `variance_epsilon`, rotary, gated MoE MLP).
 - Weight conversions: QKVO weights (no biases) with GQA-aware head counts.
-- Numerical round-trips: the rearrange conversions actually reshape and revert losslessly.
 - Component-mapping structure, bridge types, and HF module paths.
 - Factory registration and dispatch.
 - GQA forward hook shapes (Q uses n_heads, K/V use n_key_value_heads).
@@ -17,7 +16,7 @@ from typing import Any
 
 import pytest
 import torch.nn as nn
-from torch import equal, ones, randn, zeros
+from torch import ones, randn, zeros
 
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.conversion_utils.conversion_steps.rearrange_tensor_conversion import (
@@ -166,18 +165,6 @@ class FakeGPTOSSAttention(nn.Module):
 class TestGPTOSSAdapterConfig:
     """Adapter-owned config defaults that downstream bridge code relies on."""
 
-    def test_normalization_type_is_rms(self, adapter: GPTOSSArchitectureAdapter) -> None:
-        assert adapter.cfg.normalization_type == "RMS"
-
-    def test_uses_rms_norm_is_true(self, adapter: GPTOSSArchitectureAdapter) -> None:
-        assert adapter.cfg.uses_rms_norm is True
-
-    def test_positional_embedding_type_is_rotary(self, adapter: GPTOSSArchitectureAdapter) -> None:
-        assert adapter.cfg.positional_embedding_type == "rotary"
-
-    def test_gated_mlp_is_true(self, adapter: GPTOSSArchitectureAdapter) -> None:
-        assert adapter.cfg.gated_mlp is True
-
     def test_eps_attr_is_variance_epsilon(self, adapter: GPTOSSArchitectureAdapter) -> None:
         """GPT-OSS uses HF's `variance_epsilon` attribute name on RMSNorm modules,
         not the default `eps`. Downstream norm-folding reads this attribute."""
@@ -228,50 +215,6 @@ class TestGPTOSSWeightConversions:
     def test_gqa_does_not_affect_q_or_o(self, adapter: GPTOSSArchitectureAdapter) -> None:
         assert _rearrange(adapter, "blocks.{i}.attn.q.weight").axes_lengths["n"] == 4
         assert _rearrange(adapter, "blocks.{i}.attn.o.weight").axes_lengths["n"] == 4
-
-
-class TestGPTOSSWeightConversionRoundTrips:
-    """Run the rearrange conversions on synthetic HF-shaped tensors.
-
-    The pattern/axis assertions above only check metadata. These confirm the
-    conversions actually reshape realistic weight tensors into the split-head
-    layout and revert losslessly (a rearrange operation is a pure permutation,
-    so the round-trip must be exactly equal).
-    """
-
-    N_HEADS = 4
-    N_KV_HEADS = 2
-    D_HEAD = 16
-    D_MODEL = 64
-
-    @pytest.fixture
-    def adapter(self) -> GPTOSSArchitectureAdapter:
-        return GPTOSSArchitectureAdapter(_cfg(n_key_value_heads=self.N_KV_HEADS))
-
-    def _roundtrip(self, adapter: GPTOSSArchitectureAdapter, key: str, tensor: Any) -> tuple:
-        conv = _param_conversion(adapter, key)
-        converted = conv.convert({key: tensor}, key)
-        reverted = conv.revert(converted)
-        return converted, reverted
-
-    def test_q_weight_splits_into_n_heads(self, adapter: GPTOSSArchitectureAdapter) -> None:
-        w = randn(self.N_HEADS * self.D_HEAD, self.D_MODEL)
-        converted, reverted = self._roundtrip(adapter, "blocks.{i}.attn.q.weight", w)
-        assert converted.shape == (self.N_HEADS, self.D_MODEL, self.D_HEAD)
-        assert equal(reverted, w)
-
-    def test_kv_weight_splits_into_n_kv_heads(self, adapter: GPTOSSArchitectureAdapter) -> None:
-        for slot in ("k", "v"):
-            w = randn(self.N_KV_HEADS * self.D_HEAD, self.D_MODEL)
-            converted, reverted = self._roundtrip(adapter, f"blocks.{{i}}.attn.{slot}.weight", w)
-            assert converted.shape == (self.N_KV_HEADS, self.D_MODEL, self.D_HEAD)
-            assert equal(reverted, w)
-
-    def test_o_weight_merges_heads(self, adapter: GPTOSSArchitectureAdapter) -> None:
-        w = randn(self.D_MODEL, self.N_HEADS * self.D_HEAD)
-        converted, reverted = self._roundtrip(adapter, "blocks.{i}.attn.o.weight", w)
-        assert converted.shape == (self.N_HEADS, self.D_HEAD, self.D_MODEL)
-        assert equal(reverted, w)
 
 
 class TestGPTOSSComponentMapping:
@@ -541,8 +484,3 @@ class TestGPTOSSArchitectureGuards:
         """GPT-OSS has no biases on any projection."""
         for key in _conversions(adapter):
             assert not key.endswith(".bias")
-
-    def test_attn_is_not_optional(self, adapter: GPTOSSArchitectureAdapter) -> None:
-        """Every layer has self_attn (no hybrid/optional attention)."""
-        attn = _mapping(adapter)["blocks"].submodules["attn"]
-        assert getattr(attn, "optional", False) is False
