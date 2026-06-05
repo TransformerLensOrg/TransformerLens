@@ -72,6 +72,10 @@ from transformer_lens.model_bridge.generalized_components.normalization import (
 from transformer_lens.model_bridge.generalized_components.pos_embed import (
     PosEmbedBridge,
 )
+from transformer_lens.model_bridge.generalized_components.qwen3_5_vision_encoder import (
+    Qwen3_5VisionBlockBridge,
+    Qwen3_5VisionEncoderBridge,
+)
 from transformer_lens.model_bridge.generalized_components.position_embeddings_attention import (
     PositionEmbeddingsAttentionBridge,
 )
@@ -129,6 +133,8 @@ __all__ = [
     "GatedRMSNormBridge",
     "MoEBridge",
     "PositionEmbeddingsAttentionBridge",
+    "Qwen3_5VisionBlockBridge",
+    "Qwen3_5VisionEncoderBridge",
     "SymbolicBridge",
     "UnembeddingBridge",
     "T5BlockBridge",
