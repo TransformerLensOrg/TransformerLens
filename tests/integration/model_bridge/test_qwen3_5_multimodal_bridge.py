@@ -1,11 +1,8 @@
 """Integration tests for the Qwen3.5 multimodal TransformerBridge.
 
-Boots the tiny ``Qwen3_5ForConditionalGeneration`` fixture and asserts the gated
-q_proj gate signal is observable under the nested ``model.language_model.layers.*``
-path. The verify suite's ``gated_hooks_fire`` benchmark only toggles
-``use_split_qkv_input``/``use_attn_in`` (which gated q_proj intentionally rejects)
-and never exercises ``hook_q_gate``; the adapter's ``preprocess_weights`` slices the
-query half, so the gate is the interpretability payload that must remain hookable.
+Asserts the gated-q_proj gate signal (``hook_q_gate``) is hookable under the nested
+``model.language_model.layers.*`` path — the verify suite's ``gated_hooks_fire`` benchmark
+never exercises it, so this guards the gate as an interpretability surface.
 """
 
 import torch

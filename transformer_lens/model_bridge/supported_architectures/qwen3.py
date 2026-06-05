@@ -95,11 +95,9 @@ class Qwen3ArchitectureAdapter(ArchitectureAdapter):
         )
 
     def _build_component_mapping(self, *, hybrid: bool = False, lm_prefix: str = "model") -> dict:
-        """Parametric component mapping. hybrid=True adds optional linear_attn.
-
-        lm_prefix is the HF path to the text model (``model`` for text-only, or
-        ``model.language_model`` when the text backbone is nested under a multimodal
-        wrapper). lm_head stays top-level regardless.
+        """Parametric component mapping. hybrid=True adds optional linear_attn; lm_prefix
+        nests the text model (``model``, or ``model.language_model`` for multimodal). lm_head
+        stays top-level.
         """
         block_submodules: dict = {
             "ln1": RMSNormalizationBridge(name="input_layernorm", config=self.cfg),

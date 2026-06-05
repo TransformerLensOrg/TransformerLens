@@ -1,24 +1,15 @@
-"""Qwen3.5 multimodal (vision-language) architecture adapter.
+"""Qwen3.5 multimodal (vision-language) adapter for ``Qwen3_5ForConditionalGeneration``.
 
-Supports ``Qwen3_5ForConditionalGeneration`` — the full vision-language Qwen3.5 model:
-- model.visual: Qwen3.5 vision tower (patch_embed, pos_embed, blocks, merger)
-- model.language_model: hybrid linear-attention/full-attention text backbone
-- lm_head: output projection
-
-The text backbone is identical to the text-only ``Qwen3_5ArchitectureAdapter`` (hybrid
-GatedDeltaNet + optional full attention with gated q_proj), so this adapter reuses the
-Qwen3 block construction and nests it under ``model.language_model``. The HF model performs
-the actual vision computation during forward; this adapter supplies the component mapping
-(hooks + weights) for both the vision and language paths.
+Reuses the text-only Qwen3.5 hybrid backbone nested under ``model.language_model`` and adds
+the vision tower (``model.visual``) + merger. The HF model runs the vision computation during
+forward; this adapter only supplies the component mapping (hooks + weights).
 """
 
 from typing import Any
 
 import torch
 
-from transformer_lens.model_bridge.generalized_components import (
-    VisionProjectionBridge,
-)
+from transformer_lens.model_bridge.generalized_components import VisionProjectionBridge
 from transformer_lens.model_bridge.generalized_components.qwen3_5_vision_encoder import (
     Qwen3_5VisionEncoderBridge,
 )
@@ -28,20 +19,15 @@ from transformer_lens.model_bridge.supported_architectures.qwen3 import (
 
 
 class Qwen3_5MultimodalArchitectureAdapter(Qwen3ArchitectureAdapter):
-    """Architecture adapter for Qwen3.5 multimodal models (Qwen3_5ForConditionalGeneration).
-
-    Reuses the Qwen3 hybrid text backbone (nested under model.language_model) and adds a
-    decomposed vision tower (model.visual) plus its merger as the vision projector.
-    """
+    """Full vision-language adapter for Qwen3_5ForConditionalGeneration."""
 
     def __init__(self, cfg: Any) -> None:
         setattr(cfg, "gated_q_proj", True)
-        # Build the hybrid text backbone nested under model.language_model directly.
         super().__init__(cfg, hybrid=True, lm_prefix="model.language_model")
 
         self.cfg.is_multimodal = True
 
-        # Store vision-related config (Qwen vision config uses depth/num_heads).
+        # Qwen vision config uses depth/num_heads, not num_hidden_layers/num_attention_heads.
         vision_cfg = getattr(cfg, "vision_config", None)
         if vision_cfg is not None:
             self.cfg.vision_hidden_size = getattr(vision_cfg, "hidden_size", None)
@@ -52,7 +38,6 @@ class Qwen3_5MultimodalArchitectureAdapter(Qwen3ArchitectureAdapter):
                 vision_cfg, "num_attention_heads", None
             )
 
-        # Add the vision tower and its merger (the vision->text projector).
         assert self.component_mapping is not None  # built by super().__init__
         self.component_mapping["vision_encoder"] = Qwen3_5VisionEncoderBridge(
             name="model.visual", config=self.cfg

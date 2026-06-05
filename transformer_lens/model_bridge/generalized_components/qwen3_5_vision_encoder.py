@@ -1,13 +1,8 @@
-"""Qwen3.5 vision encoder bridge components.
+"""Qwen3.5 vision-tower bridges (``model.visual``).
 
-Bridges for the Qwen3.5 vision tower (``model.visual``, a ``Qwen3_5VisionModel``).
-Unlike SigLIP/CLIP towers, the Qwen vision tower is structured as:
-- patch_embed: Conv3d patch embedding (video-capable)
-- pos_embed: learned position embedding
-- rotary_pos_emb: vision RoPE (no params; not bridged)
-- blocks[]: norm1/norm2 (LayerNorm), attn (fused qkv + proj), mlp (linear_fc1/linear_fc2)
-- merger: Qwen3_5VisionPatchMerger — the vision->text projector, bridged separately as
-  ``vision_projector`` so each HF module has exactly one owning bridge.
+The Qwen vision tower differs from SigLIP/CLIP, so it needs its own bridge. The merger
+(vision->text projector) is bridged separately as the adapter's ``vision_projector``, and
+the paramless ``rotary_pos_emb`` is left native.
 """
 from typing import Any, Dict, Optional
 
@@ -20,10 +15,8 @@ from transformer_lens.model_bridge.generalized_components.linear import LinearBr
 class Qwen3_5VisionBlockBridge(GeneralizedComponent):
     """Bridge for a single Qwen3.5 vision block.
 
-    Submodules: norm1/norm2 (LayerNorm), attn (fused qkv + proj), mlp (linear_fc1/linear_fc2).
-    Norms are wrapped as black-box GeneralizedComponents (hook around the native LayerNorm,
-    no recomputation), since NormalizationBridge recomputes the norm and would need the
-    vision LayerNorm's eps — keeping them native preserves exact parity.
+    Norms stay black-box (hooked, not recomputed): NormalizationBridge would recompute
+    with the wrong eps and break parity.
     """
 
     is_list_item: bool = True
@@ -42,13 +35,6 @@ class Qwen3_5VisionBlockBridge(GeneralizedComponent):
         config: Optional[Any] = None,
         submodules: Optional[Dict[str, GeneralizedComponent]] = None,
     ):
-        """Initialize the Qwen3.5 vision block bridge.
-
-        Args:
-            name: Component name relative to the vision tower (e.g., "blocks").
-            config: Optional configuration object.
-            submodules: Optional override/extension of the default submodules.
-        """
         default_submodules: Dict[str, GeneralizedComponent] = {
             "norm1": GeneralizedComponent(name="norm1"),
             "norm2": GeneralizedComponent(name="norm2"),
@@ -73,12 +59,7 @@ class Qwen3_5VisionBlockBridge(GeneralizedComponent):
 
 
 class Qwen3_5VisionEncoderBridge(GeneralizedComponent):
-    """Bridge for the complete Qwen3.5 vision tower (``model.visual``).
-
-    Decomposes patch embedding, position embedding, and the transformer blocks for
-    interpretability. The merger (vision->text projection) is bridged separately as the
-    adapter's ``vision_projector`` to keep one bridge per HF module.
-    """
+    """Bridge for the Qwen3.5 vision tower (``model.visual``); merger is bridged separately."""
 
     hook_aliases = {
         "hook_vision_embed": "patch_embed.hook_out",
@@ -91,13 +72,6 @@ class Qwen3_5VisionEncoderBridge(GeneralizedComponent):
         config: Optional[Any] = None,
         submodules: Optional[Dict[str, GeneralizedComponent]] = None,
     ):
-        """Initialize the Qwen3.5 vision encoder bridge.
-
-        Args:
-            name: The HF module path for the vision tower (e.g., "model.visual").
-            config: Optional configuration object.
-            submodules: Optional override/extension of the default submodules.
-        """
         default_submodules: Dict[str, GeneralizedComponent] = {
             "patch_embed": GeneralizedComponent(name="patch_embed"),
             "pos_embed": GeneralizedComponent(name="pos_embed"),

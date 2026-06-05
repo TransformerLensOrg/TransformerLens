@@ -175,9 +175,8 @@ class TestQwen3_5LoadingGuards:
             pad_token_id=0,
             eos_token_id=1,
         )
-        # An explicit ForConditionalGeneration arch now routes to the multimodal
-        # adapter (which keeps the full config). The text-only adapter's text_config
-        # swap is exercised here via a bare qwen3_5 config that routes text-only.
+        # A bare qwen3_5 config routes text-only; an explicit ForConditionalGeneration arch
+        # now goes to the multimodal adapter, so this exercises the text-only text_config swap.
         full_config = SimpleNamespace(
             model_type="qwen3_5",
             architectures=[],
