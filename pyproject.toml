@@ -16,14 +16,18 @@
         "protobuf>=3.20.0",
         "rich>=12.6.0",
         "sentencepiece",
+        "timm>=1.0.27",
         "torch>=2.6",
+        # Pin torchvision (pulled in by timm) to the release that pairs with torch 2.7.x so
+        # adding timm for the Gemma3n vision tower doesn't force a repo-wide torch upgrade.
+        "torchvision>=0.22,<0.23",
         "tqdm>=4.64.1",
         "transformers-stream-generator>=0.0.5,<0.1",
         "transformers>=5.4.0",
         "typeguard>=4.2,<5",
         "typing-extensions",
         "wandb>=0.13.5",
-    ]
+]
     description="An implementation of transformers tailored for mechanistic interpretability."
     license={text="MIT"}
     name="transformer-lens"

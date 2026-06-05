@@ -36,6 +36,7 @@ ARCHITECTURE_DESCRIPTIONS: dict[str, str] = {
     "GemmaForCausalLM": "Google's Gemma lightweight open model family",
     "Gemma2ForCausalLM": "Google's Gemma 2 with improved architecture",
     "Gemma3ForCausalLM": "Google's Gemma 3 latest generation",
+    "Gemma3nForConditionalGeneration": "Google's Gemma 3n efficient tri-modal model (text-only support)",
     "Qwen2ForCausalLM": "Alibaba's Qwen2 multilingual model",
     "Qwen3ForCausalLM": "Alibaba's Qwen3 latest generation",
     "BloomForCausalLM": "BigScience's BLOOM multilingual model",

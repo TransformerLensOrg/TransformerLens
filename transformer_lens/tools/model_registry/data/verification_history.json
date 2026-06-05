@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-06-04T10:14:58.733898",
+  "last_updated": "2026-06-05T13:10:29.591019",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -12195,6 +12195,36 @@
       "model_id": "HuggingFaceTB/SmolLM3-3B-GSM8K-SFT",
       "architecture_id": "SmolLM3ForCausalLM",
       "verified_date": "2026-06-04",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "google/gemma-3n-E2B-it",
+      "architecture_id": "Gemma3nForConditionalGeneration",
+      "verified_date": "2026-06-05",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P3=78.9% but required tests failed: logits_equivalence, loss_equivalence \u2014 Weight magnitude issues: 1 too large",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "google/gemma-3n-E2B-it",
+      "architecture_id": "Gemma3nForConditionalGeneration",
+      "verified_date": "2026-06-05",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P3=78.9% but required tests failed: logits_equivalence, loss_equivalence \u2014 Weight magnitude issues: 1 too large",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "google/gemma-3n-E2B-it",
+      "architecture_id": "Gemma3nForConditionalGeneration",
+      "verified_date": "2026-06-05",
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Full verification completed",
