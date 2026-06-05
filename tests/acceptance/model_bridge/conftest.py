@@ -1,4 +1,4 @@
-"""Shared fixtures for model_bridge acceptance tests.
+"""Session fixtures for model_bridge acceptance tests.
 
 Session-scoped fixtures avoid redundant model loads across test files.
 All models used here must be in the CI cache (see .github/workflows/checks.yml).

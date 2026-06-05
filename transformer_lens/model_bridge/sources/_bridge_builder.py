@@ -1,6 +1,7 @@
 """Loader-agnostic helpers for building a TransformerBridge around a pre-loaded model."""
 from __future__ import annotations
 
+import copy
 from typing import Any, Callable, Optional
 
 import torch
@@ -42,6 +43,9 @@ _HF_PASSTHROUGH_ATTRS = [
     "chunk_size",
     # Multimodal
     "vision_config",
+    # Cohere
+    "logit_scale",
+    "rope_parameters",
 ]
 
 
@@ -98,6 +102,7 @@ def detect_tokenizer_bos_eos(tokenizer: Any) -> tuple[bool, bool]:
 def build_bridge_from_module(
     model: nn.Module,
     architecture: str,
+    *,
     hf_config: Optional[Any] = None,
     tl_config: Optional[TransformerBridgeConfig] = None,
     tokenizer: Optional[Any] = None,
@@ -113,7 +118,9 @@ def build_bridge_from_module(
     Args:
         model: Any ``nn.Module`` whose submodule tree matches the adapter's
             expected dot-paths for ``architecture``.
-        architecture: Architecture identifier (e.g. ``"LlamaForCausalLM"``).
+        architecture: Architecture identifier registered in the
+            ``ArchitectureAdapterFactory`` (e.g. ``"LlamaForCausalLM"``,
+            ``"TransformerLensNative"``).
         hf_config: Optional HF-style config; translated via
             :func:`build_bridge_config_from_hf`. Mutually exclusive with ``tl_config``.
         tl_config: Optional pre-built :class:`TransformerBridgeConfig`; bypasses
@@ -153,7 +160,9 @@ def build_bridge_from_module(
             dtype = torch.float32
 
     if tl_config is not None:
-        bridge_config = tl_config
+        # Defensive copy so adapter-init mutations (normalization_type, device,
+        # ...) don't leak between bridges built from the same config.
+        bridge_config = copy.deepcopy(tl_config)
         bridge_config.architecture = architecture
         # Explicit kwarg wins over whatever tl_config carries; default only fills a gap.
         if model_name != "external" or not getattr(bridge_config, "model_name", None):

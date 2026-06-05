@@ -120,7 +120,14 @@ def map_default_transformer_lens_config(hf_config):
     if hasattr(source_config, "n_inner"):
         tl_config.d_mlp = source_config.n_inner
     elif hasattr(source_config, "intermediate_size"):
-        tl_config.d_mlp = source_config.intermediate_size
+        intermediate_size = source_config.intermediate_size
+        # Gemma 3n exposes a per-layer intermediate_size list (the MatFormer design permits
+        # variation). All released checkpoints (E2B/E4B) are uniform, and d_mlp is scalar
+        # metadata (the bridge defers MLP math to HF), so collapse to max — the shared value
+        # when uniform, an upper bound otherwise.
+        if isinstance(intermediate_size, (list, tuple)):
+            intermediate_size = max(intermediate_size) if intermediate_size else None
+        tl_config.d_mlp = intermediate_size
     elif hasattr(tl_config, "d_model"):
         tl_config.d_mlp = getattr(source_config, "n_inner", 4 * tl_config.d_model)
     if hasattr(source_config, "head_dim") and source_config.head_dim is not None:
@@ -186,6 +193,9 @@ def determine_architecture_from_hf_config(hf_config):
             "gemma": "GemmaForCausalLM",
             "gemma2": "Gemma2ForCausalLM",
             "gemma3": "Gemma3ForCausalLM",
+            # gemma3n is tri-modal; the text path loads as the full ForConditionalGeneration
+            # (vision/audio referenced but unbridged in the text-only adapter).
+            "gemma3n": "Gemma3nForConditionalGeneration",
             "bert": "BertForMaskedLM",
             "bloom": "BloomForCausalLM",
             "codegen": "CodeGenForCausalLM",
@@ -204,6 +214,7 @@ def determine_architecture_from_hf_config(hf_config):
             # text-only) are routed to Qwen3_5ForCausalLM.
             "qwen3_5": "Qwen3_5ForCausalLM",
             "qwen3_5_text": "Qwen3_5ForCausalLM",
+            "smollm3": "SmolLM3ForCausalLM",
             "openelm": "OpenELMForCausalLM",
             "stablelm": "StableLmForCausalLM",
             "t5": "T5ForConditionalGeneration",

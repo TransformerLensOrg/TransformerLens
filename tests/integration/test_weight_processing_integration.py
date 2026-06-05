@@ -174,68 +174,6 @@ class TestWeightProcessingIntegration:
         assert wk_tensor is not None
         assert wv_tensor is not None
 
-    @pytest.mark.skip(reason="Test is no longer needed for new architecture")
-    def test_extract_attention_tensors_with_adapter(self, gpt2_small_adapter):
-        """Test tensor extraction with HuggingFace adapter."""
-        # Create a mock state dict with HuggingFace format
-        d_model = 768
-        n_heads = 12
-        d_head = 64
-
-        # Combined QKV weight: [d_model, 3*d_model]
-        combined_qkv_weight = torch.randn(d_model, 3 * d_model)
-        # Combined QKV bias: [3*d_model]
-        combined_qkv_bias = torch.randn(3 * d_model)
-
-        # Mock state dict
-        state_dict = {
-            "transformer.h.0.attn.c_attn.weight": combined_qkv_weight,
-            "transformer.h.0.attn.c_attn.bias": combined_qkv_bias,
-        }
-
-        # Mock config - define as function to avoid variable scope issue
-        def create_mock_config():
-            class MockConfig:
-                pass
-
-            config = MockConfig()
-            config.n_heads = n_heads
-            config.d_head = d_head
-            config.d_model = d_model
-            return config
-
-        cfg = create_mock_config()
-        layer = 0
-        adapter = gpt2_small_adapter
-
-        # Extract tensors
-        tensors = ProcessWeights.extract_attention_tensors_for_folding(
-            state_dict, cfg, layer, adapter
-        )
-
-        wq_tensor = tensors["wq"]
-        wk_tensor = tensors["wk"]
-        wv_tensor = tensors["wv"]
-        bq_tensor = tensors["bq"]
-        bk_tensor = tensors["bk"]
-        bv_tensor = tensors["bv"]
-
-        # Verify shapes (should be in TransformerLens format)
-        expected_shape = (n_heads, d_model, d_head)
-        assert wq_tensor.shape == expected_shape
-        assert wk_tensor.shape == expected_shape
-        assert wv_tensor.shape == expected_shape
-
-        expected_bias_shape = (n_heads, d_head)
-        assert bq_tensor.shape == expected_bias_shape
-        assert bk_tensor.shape == expected_bias_shape
-        assert bv_tensor.shape == expected_bias_shape
-
-        # Verify tensors are properly extracted
-        assert wq_tensor is not None
-        assert wk_tensor is not None
-        assert wv_tensor is not None
-
     def test_full_pipeline_with_hooked_transformer(self, gpt2_small_model):
         """Test the full pipeline with HookedTransformer model."""
         model = gpt2_small_model

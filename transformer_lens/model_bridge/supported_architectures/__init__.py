@@ -39,6 +39,9 @@ from transformer_lens.model_bridge.supported_architectures.gemma3 import (
 from transformer_lens.model_bridge.supported_architectures.gemma3_multimodal import (
     Gemma3MultimodalArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.gemma3n import (
+    Gemma3nArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.gpt2 import (
     GPT2ArchitectureAdapter,
 )
@@ -102,6 +105,9 @@ from transformer_lens.model_bridge.supported_architectures.mpt import (
 from transformer_lens.model_bridge.supported_architectures.nanogpt import (
     NanogptArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.native import (
+    NativeArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.neel_solu_old import (
     NeelSoluOldArchitectureAdapter,
 )
@@ -135,9 +141,6 @@ from transformer_lens.model_bridge.supported_architectures.phi import (
 from transformer_lens.model_bridge.supported_architectures.phi3 import (
     Phi3ArchitectureAdapter,
 )
-from transformer_lens.model_bridge.supported_architectures.pythia import (
-    PythiaArchitectureAdapter,
-)
 from transformer_lens.model_bridge.supported_architectures.qwen import (
     QwenArchitectureAdapter,
 )
@@ -155,6 +158,12 @@ from transformer_lens.model_bridge.supported_architectures.qwen3_next import (
 )
 from transformer_lens.model_bridge.supported_architectures.qwen3_5 import (
     Qwen3_5ArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.qwen3_5_multimodal import (
+    Qwen3_5MultimodalArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.smollm3 import (
+    SmolLM3ArchitectureAdapter,
 )
 from transformer_lens.model_bridge.supported_architectures.stablelm import (
     StableLmArchitectureAdapter,
@@ -178,6 +187,7 @@ __all__ = [
     "Gemma1ArchitectureAdapter",
     "Gemma2ArchitectureAdapter",
     "Gemma3ArchitectureAdapter",
+    "Gemma3nArchitectureAdapter",
     "Gemma3MultimodalArchitectureAdapter",
     "GraniteArchitectureAdapter",
     "GraniteMoeArchitectureAdapter",
@@ -200,6 +210,7 @@ __all__ = [
     "MixtralArchitectureAdapter",
     "MPTArchitectureAdapter",
     "NanogptArchitectureAdapter",
+    "NativeArchitectureAdapter",
     "NeelSoluOldArchitectureAdapter",
     "NeoArchitectureAdapter",
     "NeoxArchitectureAdapter",
@@ -211,13 +222,14 @@ __all__ = [
     "OptArchitectureAdapter",
     "PhiArchitectureAdapter",
     "Phi3ArchitectureAdapter",
-    "PythiaArchitectureAdapter",
     "QwenArchitectureAdapter",
     "Qwen2ArchitectureAdapter",
     "Qwen3ArchitectureAdapter",
     "Qwen3MoeArchitectureAdapter",
     "Qwen3NextArchitectureAdapter",
     "Qwen3_5ArchitectureAdapter",
+    "Qwen3_5MultimodalArchitectureAdapter",
+    "SmolLM3ArchitectureAdapter",
     "StableLmArchitectureAdapter",
     "T5ArchitectureAdapter",
     "XGLMArchitectureAdapter",

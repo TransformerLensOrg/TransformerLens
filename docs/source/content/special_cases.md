@@ -17,15 +17,7 @@ There are two main ways to mitigate this:
 
 ## Qwen3.5 text-only models
 
-Qwen3.5 support is available only through `TransformerBridge`, not the legacy
-`HookedTransformer.from_pretrained` path. Install a Transformers release that
-includes `Qwen3_5ForCausalLM` before loading these models:
-
-```bash
-pip install "transformers>=5.2.0"
-```
-
-Dense text-only checkpoints can then be loaded with:
+Qwen3.5 has no `HookedTransformer.from_pretrained` legacy path. Load it through `TransformerBridge`. Dense text-only checkpoints can be loaded with:
 
 ```python
 from transformer_lens.model_bridge import TransformerBridge

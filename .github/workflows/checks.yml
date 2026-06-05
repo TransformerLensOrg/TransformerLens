@@ -43,6 +43,15 @@ permissions:
   actions: write
   contents: write
 
+# Cancel in-progress PR runs on new push; non-PR events (release, tags) are exempt.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Retry HF 429s in non-pytest invocations; pytest enables via tests/conftest.py.
+env:
+  TRANSFORMERLENS_HF_RETRY: "1"
+
 jobs:
   compatibility-checks:
     name: Compatibility Checks

@@ -34,7 +34,7 @@ class Qwen3ArchitectureAdapter(ArchitectureAdapter):
     Serves as base class for Qwen3.5 and Qwen3Next hybrid variants.
     """
 
-    def __init__(self, cfg: Any, *, hybrid: bool = False) -> None:
+    def __init__(self, cfg: Any, *, hybrid: bool = False, lm_prefix: str = "model") -> None:
         super().__init__(cfg)
         self._setup_qwen3_config(cfg)
         if hybrid:
@@ -42,7 +42,7 @@ class Qwen3ArchitectureAdapter(ArchitectureAdapter):
             self.weight_processing_conversions: dict = {}
         else:
             self.weight_processing_conversions = {**self._qkvo_weight_conversions()}
-        self.component_mapping = self._build_component_mapping(hybrid=hybrid)
+        self.component_mapping = self._build_component_mapping(hybrid=hybrid, lm_prefix=lm_prefix)
 
     def _setup_qwen3_config(self, cfg: Any) -> None:
         """Config shared across all Qwen3 variants (dense, hybrid, MoE)."""
@@ -94,8 +94,11 @@ class Qwen3ArchitectureAdapter(ArchitectureAdapter):
             optional=optional,
         )
 
-    def _build_component_mapping(self, *, hybrid: bool = False) -> dict:
-        """Parametric component mapping. hybrid=True adds optional linear_attn."""
+    def _build_component_mapping(self, *, hybrid: bool = False, lm_prefix: str = "model") -> dict:
+        """Parametric component mapping. hybrid=True adds optional linear_attn; lm_prefix
+        nests the text model (``model``, or ``model.language_model`` for multimodal). lm_head
+        stays top-level.
+        """
         block_submodules: dict = {
             "ln1": RMSNormalizationBridge(name="input_layernorm", config=self.cfg),
             "ln2": RMSNormalizationBridge(name="post_attention_layernorm", config=self.cfg),
@@ -105,10 +108,10 @@ class Qwen3ArchitectureAdapter(ArchitectureAdapter):
         if hybrid:
             block_submodules["linear_attn"] = self._build_linear_attn_bridge(optional=True)
         return {
-            "embed": EmbeddingBridge(name="model.embed_tokens"),
-            "rotary_emb": RotaryEmbeddingBridge(name="model.rotary_emb", config=self.cfg),
-            "blocks": BlockBridge(name="model.layers", submodules=block_submodules),
-            "ln_final": RMSNormalizationBridge(name="model.norm", config=self.cfg),
+            "embed": EmbeddingBridge(name=f"{lm_prefix}.embed_tokens"),
+            "rotary_emb": RotaryEmbeddingBridge(name=f"{lm_prefix}.rotary_emb", config=self.cfg),
+            "blocks": BlockBridge(name=f"{lm_prefix}.layers", submodules=block_submodules),
+            "ln_final": RMSNormalizationBridge(name=f"{lm_prefix}.norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head"),
         }
 

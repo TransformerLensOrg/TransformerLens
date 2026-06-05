@@ -42,6 +42,9 @@ from transformer_lens.model_bridge.generalized_components.alibi_joint_qkv_attent
 from transformer_lens.model_bridge.generalized_components.gated_delta_net import (
     GatedDeltaNetBridge,
 )
+from transformer_lens.model_bridge.generalized_components.altup_block import (
+    AltUpBlockBridge,
+)
 from transformer_lens.model_bridge.generalized_components.gated_mlp import (
     GatedMLPBridge,
 )
@@ -71,6 +74,10 @@ from transformer_lens.model_bridge.generalized_components.normalization import (
 )
 from transformer_lens.model_bridge.generalized_components.pos_embed import (
     PosEmbedBridge,
+)
+from transformer_lens.model_bridge.generalized_components.qwen3_5_vision_encoder import (
+    Qwen3_5VisionBlockBridge,
+    Qwen3_5VisionEncoderBridge,
 )
 from transformer_lens.model_bridge.generalized_components.position_embeddings_attention import (
     PositionEmbeddingsAttentionBridge,
@@ -124,11 +131,14 @@ __all__ = [
     "LinearBridge",
     "MLPBridge",
     "MPTALiBiAttentionBridge",
+    "AltUpBlockBridge",
     "GatedMLPBridge",
     "MLAAttentionBridge",
     "GatedRMSNormBridge",
     "MoEBridge",
     "PositionEmbeddingsAttentionBridge",
+    "Qwen3_5VisionBlockBridge",
+    "Qwen3_5VisionEncoderBridge",
     "SymbolicBridge",
     "UnembeddingBridge",
     "T5BlockBridge",

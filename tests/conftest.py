@@ -50,6 +50,30 @@ def pytest_configure(config):
         torch.cuda.manual_seed_all(42)
 
 
+@pytest.fixture(autouse=True, scope="session")
+def _enable_hf_retry_for_tests():
+    """Deferred to fixture (not pytest_configure) so jaxtyping installs first."""
+    from transformer_lens.utilities.hf_utils import enable_hf_retry
+
+    enable_hf_retry()
+    yield
+
+
+@pytest.fixture(scope="session")
+def gpt2_tokenizer():
+    from transformers import AutoTokenizer
+
+    return AutoTokenizer.from_pretrained("gpt2")
+
+
+@pytest.fixture(scope="session")
+def gpt2_hooked_processed():
+    """Read-only use only — mutations leak across the session."""
+    from transformer_lens import HookedTransformer
+
+    return HookedTransformer.from_pretrained("gpt2", device="cpu")
+
+
 def pytest_sessionfinish(session, exitstatus):
     """Clean up at the end of test session."""
     if torch.cuda.is_available():

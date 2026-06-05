@@ -74,51 +74,26 @@ class TestQwen3_5ArchitectureDetection:
         cfg = SimpleNamespace(model_type="qwen3_5_text", architectures=[])
         assert determine_architecture_from_hf_config(cfg) == "Qwen3_5ForCausalLM"
 
-    def test_full_conditional_generation_architecture_is_not_registered(self):
-        assert "Qwen3_5ForConditionalGeneration" not in SUPPORTED_ARCHITECTURES
-        assert "Qwen3_5ForConditionalGeneration" not in HF_SUPPORTED_ARCHITECTURES
-
-
-class TestQwen3_5DependencyGate:
-    """Verify optional dependency errors are clear and use real version ordering."""
-
-    def test_old_transformers_version_raises_clear_import_error(self, monkeypatch):
-        import transformers
-
-        from transformer_lens.model_bridge.supported_architectures.qwen3_5 import (
+    def test_full_conditional_generation_routes_to_multimodal_not_text_only(self):
+        # Qwen3.5 multimodal is now the default route for ForConditionalGeneration
+        # checkpoints; the text-only adapter is deliberately not selected for them.
+        from transformer_lens.model_bridge.supported_architectures import (
             Qwen3_5ArchitectureAdapter,
         )
-
-        monkeypatch.setattr(transformers, "__version__", "4.57.3")
-        monkeypatch.setattr(transformers, "Qwen3_5ForCausalLM", object(), raising=False)
-
-        with pytest.raises(ImportError, match=r"requires transformers >= 5\.2\.0"):
-            Qwen3_5ArchitectureAdapter(_make_bridge_cfg())
-
-    def test_missing_qwen3_5_class_raises_clear_import_error(self, monkeypatch):
-        import transformers
-
-        from transformer_lens.model_bridge.supported_architectures.qwen3_5 import (
-            Qwen3_5ArchitectureAdapter,
+        from transformer_lens.model_bridge.supported_architectures.qwen3_5_multimodal import (
+            Qwen3_5MultimodalArchitectureAdapter,
         )
 
-        monkeypatch.setattr(transformers, "__version__", "5.2.0")
-        monkeypatch.setattr(
-            Qwen3_5ArchitectureAdapter,
-            "_has_qwen3_5_causal_lm",
-            staticmethod(lambda _transformers_module: False),
+        assert "Qwen3_5ForConditionalGeneration" in SUPPORTED_ARCHITECTURES
+        assert "Qwen3_5ForConditionalGeneration" in HF_SUPPORTED_ARCHITECTURES
+        assert (
+            SUPPORTED_ARCHITECTURES["Qwen3_5ForConditionalGeneration"]
+            is Qwen3_5MultimodalArchitectureAdapter
         )
-
-        with pytest.raises(ImportError, match="Qwen3_5ForCausalLM"):
-            Qwen3_5ArchitectureAdapter(_make_bridge_cfg())
-
-    def test_version_comparison_accepts_future_minor_versions(self, qwen3_5_dependency_available):
-        from transformer_lens.model_bridge.supported_architectures.qwen3_5 import (
-            Qwen3_5ArchitectureAdapter,
+        assert (
+            SUPPORTED_ARCHITECTURES["Qwen3_5ForConditionalGeneration"]
+            is not Qwen3_5ArchitectureAdapter
         )
-
-        adapter = Qwen3_5ArchitectureAdapter(_make_bridge_cfg())
-        assert isinstance(adapter, Qwen3_5ArchitectureAdapter)
 
 
 class TestQwen3_5LoadingGuards:
@@ -208,9 +183,11 @@ class TestQwen3_5LoadingGuards:
             pad_token_id=0,
             eos_token_id=1,
         )
+        # A bare qwen3_5 config routes text-only; an explicit ForConditionalGeneration arch
+        # now goes to the multimodal adapter, so this exercises the text-only text_config swap.
         full_config = SimpleNamespace(
             model_type="qwen3_5",
-            architectures=["Qwen3_5ForConditionalGeneration"],
+            architectures=[],
             text_config=text_config,
             pad_token_id=0,
             eos_token_id=1,
