@@ -73,9 +73,26 @@ class TestQwen3_5ArchitectureDetection:
         cfg = SimpleNamespace(model_type="qwen3_5_text", architectures=[])
         assert determine_architecture_from_hf_config(cfg) == "Qwen3_5ForCausalLM"
 
-    def test_full_conditional_generation_architecture_is_not_registered(self):
-        assert "Qwen3_5ForConditionalGeneration" not in SUPPORTED_ARCHITECTURES
-        assert "Qwen3_5ForConditionalGeneration" not in HF_SUPPORTED_ARCHITECTURES
+    def test_full_conditional_generation_routes_to_multimodal_not_text_only(self):
+        # Qwen3.5 multimodal is now the default route for ForConditionalGeneration
+        # checkpoints; the text-only adapter is deliberately not selected for them.
+        from transformer_lens.model_bridge.supported_architectures import (
+            Qwen3_5ArchitectureAdapter,
+        )
+        from transformer_lens.model_bridge.supported_architectures.qwen3_5_multimodal import (
+            Qwen3_5MultimodalArchitectureAdapter,
+        )
+
+        assert "Qwen3_5ForConditionalGeneration" in SUPPORTED_ARCHITECTURES
+        assert "Qwen3_5ForConditionalGeneration" in HF_SUPPORTED_ARCHITECTURES
+        assert (
+            SUPPORTED_ARCHITECTURES["Qwen3_5ForConditionalGeneration"]
+            is Qwen3_5MultimodalArchitectureAdapter
+        )
+        assert (
+            SUPPORTED_ARCHITECTURES["Qwen3_5ForConditionalGeneration"]
+            is not Qwen3_5ArchitectureAdapter
+        )
 
 
 class TestQwen3_5LoadingGuards:
@@ -158,9 +175,11 @@ class TestQwen3_5LoadingGuards:
             pad_token_id=0,
             eos_token_id=1,
         )
+        # A bare qwen3_5 config routes text-only; an explicit ForConditionalGeneration arch
+        # now goes to the multimodal adapter, so this exercises the text-only text_config swap.
         full_config = SimpleNamespace(
             model_type="qwen3_5",
-            architectures=["Qwen3_5ForConditionalGeneration"],
+            architectures=[],
             text_config=text_config,
             pad_token_id=0,
             eos_token_id=1,

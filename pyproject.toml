@@ -17,6 +17,9 @@
         "rich>=12.6.0",
         "sentencepiece",
         "torch>=2.6",
+        # Pin to the torchvision that pairs with the project's torch 2.7.x so adding
+        # it for multimodal processors doesn't force a repo-wide torch upgrade.
+        "torchvision>=0.22,<0.23",
         "tqdm>=4.64.1",
         "transformers-stream-generator>=0.0.5,<0.1",
         "transformers>=5.4.0",
