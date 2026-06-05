@@ -42,6 +42,9 @@ from transformer_lens.model_bridge.generalized_components.alibi_joint_qkv_attent
 from transformer_lens.model_bridge.generalized_components.gated_delta_net import (
     GatedDeltaNetBridge,
 )
+from transformer_lens.model_bridge.generalized_components.altup_block import (
+    AltUpBlockBridge,
+)
 from transformer_lens.model_bridge.generalized_components.gated_mlp import (
     GatedMLPBridge,
 )
@@ -128,6 +131,7 @@ __all__ = [
     "LinearBridge",
     "MLPBridge",
     "MPTALiBiAttentionBridge",
+    "AltUpBlockBridge",
     "GatedMLPBridge",
     "MLAAttentionBridge",
     "GatedRMSNormBridge",

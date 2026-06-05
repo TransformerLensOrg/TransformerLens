@@ -48,18 +48,41 @@ class ArchitectureAdapter:
     # Encoder-only models (e.g. BERT, HuBERT) should set this to False.
     supports_generation: bool = True
 
+    # Optional libraries this adapter needs at load time (e.g. the multimodal group's timm).
+    # Checked at construction so a missing one raises a clear error, not a deep HF failure.
+    required_libraries: list[str] = []
+    # Dependency group that ships required_libraries (named in the error); empty on the base.
+    required_libraries_group: str = ""
+
     def __init__(self, cfg: TransformerBridgeConfig) -> None:
         """Initialize the architecture adapter.
 
         Args:
             cfg: The configuration object.
         """
+        self._check_required_libraries()
         self.cfg = cfg
         self.component_mapping: ComponentMapping | None = None
         self.weight_processing_conversions: Dict[str, ParamProcessingConversion | str] | None = None
         self.uses_split_attention: bool = getattr(cfg, "uses_split_attention", False)
         self._fold_ln_requested: bool = True
         self._merge_default_config()
+
+    def _check_required_libraries(self) -> None:
+        """Raise a clear error if an optional library this adapter needs is not installed."""
+        import importlib.util
+
+        missing = [lib for lib in self.required_libraries if importlib.util.find_spec(lib) is None]
+        if missing:
+            joined = ", ".join(missing)
+            plural = "y" if len(missing) == 1 else "ies"
+            group = self.required_libraries_group
+            group_clause = f" from the '{group}' dependency group" if group else ""
+            contrib = f" (contributors: `uv sync --group {group}`)" if group else ""
+            raise ImportError(
+                f"{type(self).__name__} needs the optional {joined} librar{plural}{group_clause}. "
+                f"Install with `pip install {' '.join(missing)}`{contrib}."
+            )
 
     def _merge_default_config(self) -> None:
         """Merge default_cfg into cfg for variables that don't exist in cfg."""
