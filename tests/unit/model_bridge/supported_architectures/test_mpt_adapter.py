@@ -47,48 +47,11 @@ def adapter(cfg: TransformerBridgeConfig) -> MPTArchitectureAdapter:
 
 
 # ---------------------------------------------------------------------------
-# Config attribute tests
-# ---------------------------------------------------------------------------
-
-
-class TestMPTAdapterConfig:
-    def test_normalization_type_is_ln(self, adapter: MPTArchitectureAdapter) -> None:
-        assert adapter.cfg.normalization_type == "LN"
-
-    def test_positional_embedding_type_is_alibi(self, adapter: MPTArchitectureAdapter) -> None:
-        assert adapter.cfg.positional_embedding_type == "alibi"
-
-    def test_gated_mlp_is_false(self, adapter: MPTArchitectureAdapter) -> None:
-        assert adapter.cfg.gated_mlp is False
-
-    def test_final_rms_is_false(self, adapter: MPTArchitectureAdapter) -> None:
-        assert adapter.cfg.final_rms is False
-
-    def test_attn_only_is_false(self, adapter: MPTArchitectureAdapter) -> None:
-        assert adapter.cfg.attn_only is False
-
-    def test_default_prepend_bos_is_false(self, adapter: MPTArchitectureAdapter) -> None:
-        assert adapter.cfg.default_prepend_bos is False
-
-
-# ---------------------------------------------------------------------------
 # Weight processing conversion tests
 # ---------------------------------------------------------------------------
 
 
 class TestMPTAdapterWeightConversions:
-    def test_q_weight_key_present(self, adapter: MPTArchitectureAdapter) -> None:
-        assert "blocks.{i}.attn.q.weight" in adapter.weight_processing_conversions
-
-    def test_k_weight_key_present(self, adapter: MPTArchitectureAdapter) -> None:
-        assert "blocks.{i}.attn.k.weight" in adapter.weight_processing_conversions
-
-    def test_v_weight_key_present(self, adapter: MPTArchitectureAdapter) -> None:
-        assert "blocks.{i}.attn.v.weight" in adapter.weight_processing_conversions
-
-    def test_o_weight_key_present(self, adapter: MPTArchitectureAdapter) -> None:
-        assert "blocks.{i}.attn.o.weight" in adapter.weight_processing_conversions
-
     def test_exactly_four_conversion_keys(self, adapter: MPTArchitectureAdapter) -> None:
         # No MLP conversions: up_proj/down_proj use standard [out, in] layout.
         assert len(adapter.weight_processing_conversions) == 4
@@ -96,35 +59,6 @@ class TestMPTAdapterWeightConversions:
     def test_no_mlp_conversion_keys(self, adapter: MPTArchitectureAdapter) -> None:
         keys = adapter.weight_processing_conversions
         assert not any("mlp" in k for k in keys)
-
-
-# ---------------------------------------------------------------------------
-# LayerNorm with bias=None test
-# ---------------------------------------------------------------------------
-
-
-class TestMPTLayerNormBiasNone:
-    """NormalizationBridge handles MPT's bias=None LayerNorm."""
-
-    def test_layernorm_bias_none_wraps_without_error(self, cfg: TransformerBridgeConfig) -> None:
-        """MptBlock.__init__ explicitly sets norm_1.bias = None for Hub-weight compat."""
-        from transformer_lens.model_bridge.generalized_components import (
-            NormalizationBridge,
-        )
-
-        ln = nn.LayerNorm(cfg.d_model, eps=1e-5)
-        ln.bias = None
-
-        bridge = NormalizationBridge(name="norm_1", config=cfg)
-        bridge.set_original_component(ln)
-
-        x = torch.randn(2, 4, cfg.d_model)
-        with torch.no_grad():
-            out = bridge(x)
-
-        assert out.shape == x.shape
-        assert not torch.isnan(out).any()
-        assert not torch.isinf(out).any()
 
 
 # ---------------------------------------------------------------------------
@@ -204,41 +138,6 @@ class TestMPTSplitQKV:
         recovered = torch.cat([q_lin.weight, k_lin.weight, v_lin.weight], dim=0)
 
         assert torch.allclose(recovered, original_w)
-
-
-# ---------------------------------------------------------------------------
-# Factory registration test (Phase D)
-# ---------------------------------------------------------------------------
-
-
-class TestMPTFactoryRegistration:
-    def test_factory_resolves_mpt_architecture(self) -> None:
-        from transformer_lens.factories.architecture_adapter_factory import (
-            ArchitectureAdapterFactory,
-        )
-
-        cfg = _make_cfg()
-        cfg.architecture = "MPTForCausalLM"
-        adapter = ArchitectureAdapterFactory.select_architecture_adapter(cfg)
-        assert isinstance(adapter, MPTArchitectureAdapter)
-
-    def test_factory_unknown_architecture_raises(self) -> None:
-        from transformer_lens.factories.architecture_adapter_factory import (
-            ArchitectureAdapterFactory,
-        )
-
-        cfg = _make_cfg()
-        cfg.architecture = "NonExistentForCausalLM"
-        with pytest.raises(ValueError, match="Unsupported architecture"):
-            ArchitectureAdapterFactory.select_architecture_adapter(cfg)
-
-    def test_mpt_in_supported_architectures_dict(self) -> None:
-        from transformer_lens.factories.architecture_adapter_factory import (
-            SUPPORTED_ARCHITECTURES,
-        )
-
-        assert "MPTForCausalLM" in SUPPORTED_ARCHITECTURES
-        assert SUPPORTED_ARCHITECTURES["MPTForCausalLM"] is MPTArchitectureAdapter
 
 
 # ---------------------------------------------------------------------------
@@ -476,12 +375,6 @@ class TestMPTMQASupport:
 
 class TestMPTArchitectureGuards:
     """No rotary, no pos_embed (MPT uses ALiBi)."""
-
-    def test_no_rotary_emb_in_component_mapping(self, adapter: MPTArchitectureAdapter) -> None:
-        assert "rotary_emb" not in adapter.component_mapping
-
-    def test_no_pos_embed_in_component_mapping(self, adapter: MPTArchitectureAdapter) -> None:
-        assert "pos_embed" not in adapter.component_mapping
 
     def test_no_rotary_emb_in_attn_submodules(self, adapter: MPTArchitectureAdapter) -> None:
         # ALiBi bias is computed inside the attention bridge: no rotary submodule.

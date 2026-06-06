@@ -24,6 +24,8 @@ docs/source/generated
 .venv
 .env
 .adapter-workspace
-.claude
+.claude/*
+!.claude/settings.json
+!.claude/commands/
 .adapter-progress.json
 transformer_lens/tools/model_registry/data/verification_checkpoint.json

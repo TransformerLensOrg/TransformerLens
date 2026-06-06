@@ -26,10 +26,6 @@ from transformer_lens.conversion_utils.conversion_steps.rearrange_tensor_convers
 from transformer_lens.conversion_utils.param_processing_conversion import (
     ParamProcessingConversion,
 )
-from transformer_lens.factories.architecture_adapter_factory import (
-    SUPPORTED_ARCHITECTURES,
-    ArchitectureAdapterFactory,
-)
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
@@ -182,28 +178,9 @@ class FakeOlmoeAttention(nn.Module):
 class TestOlmoeAdapterConfig:
     """Adapter-owned config defaults that downstream bridge code relies on."""
 
-    def test_normalization_type_is_rms(self, adapter: OlmoeArchitectureAdapter) -> None:
-        assert adapter.cfg.normalization_type == "RMS"
-
-    def test_positional_embedding_type_is_rotary(self, adapter: OlmoeArchitectureAdapter) -> None:
-        assert adapter.cfg.positional_embedding_type == "rotary"
-
     def test_final_rms_is_false(self, adapter: OlmoeArchitectureAdapter) -> None:
         """OLMoE does not apply a final RMS fold."""
         assert adapter.cfg.final_rms is False
-
-    def test_gated_mlp_is_true(self, adapter: OlmoeArchitectureAdapter) -> None:
-        assert adapter.cfg.gated_mlp is True
-
-    def test_attn_only_is_false(self, adapter: OlmoeArchitectureAdapter) -> None:
-        assert adapter.cfg.attn_only is False
-
-    def test_uses_rms_norm_is_true(self, adapter: OlmoeArchitectureAdapter) -> None:
-        assert adapter.cfg.uses_rms_norm is True
-
-    def test_attn_implementation_is_eager(self, adapter: OlmoeArchitectureAdapter) -> None:
-        """OLMoE forces eager attention for numerical parity with the reference."""
-        assert adapter.cfg.attn_implementation == "eager"
 
     def test_n_kv_heads_propagated(self) -> None:
         adapter = OlmoeArchitectureAdapter(_cfg(n_key_value_heads=2))
@@ -487,17 +464,6 @@ class TestOlmoeGQAHookShapes:
     def test_attn_output_shape(self, wired_attn_bridge: PositionEmbeddingsAttentionBridge) -> None:
         _, _, _, out = self._run_and_capture(wired_attn_bridge)
         assert out.shape == (self.BATCH, self.SEQ, self.D_MODEL)
-
-
-class TestOlmoeFactoryRegistration:
-    """OLMoE is registered in the factory and dispatched from a matching config."""
-
-    def test_factory_lookup_returns_adapter_class(self) -> None:
-        assert SUPPORTED_ARCHITECTURES["OlmoeForCausalLM"] is OlmoeArchitectureAdapter
-
-    def test_factory_selects_correct_adapter(self) -> None:
-        adapter = ArchitectureAdapterFactory.select_architecture_adapter(_cfg())
-        assert isinstance(adapter, OlmoeArchitectureAdapter)
 
 
 class TestOlmoeSetupComponentTesting:

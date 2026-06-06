@@ -36,8 +36,10 @@ ARCHITECTURE_DESCRIPTIONS: dict[str, str] = {
     "GemmaForCausalLM": "Google's Gemma lightweight open model family",
     "Gemma2ForCausalLM": "Google's Gemma 2 with improved architecture",
     "Gemma3ForCausalLM": "Google's Gemma 3 latest generation",
+    "Gemma3nForConditionalGeneration": "Google's Gemma 3n efficient tri-modal model (text-only support)",
     "Qwen2ForCausalLM": "Alibaba's Qwen2 multilingual model",
     "Qwen3ForCausalLM": "Alibaba's Qwen3 latest generation",
+    "Qwen3_5ForConditionalGeneration": "Alibaba's Qwen3.5 vision-language model",
     "BloomForCausalLM": "BigScience's BLOOM multilingual model",
     "OPTForCausalLM": "Meta's Open Pre-trained Transformer",
     "PhiForCausalLM": "Microsoft's Phi small language model",
@@ -48,6 +50,7 @@ ARCHITECTURE_DESCRIPTIONS: dict[str, str] = {
     "Olmo3ForCausalLM": "Allen AI's OLMo 3 latest generation",
     "OlmoeForCausalLM": "Allen AI's OLMoE Mixture of Experts model",
     "StableLmForCausalLM": "Stability AI's StableLM model",
+    "SmolLM3ForCausalLM": "Hugging Face's SmolLM3 compact open model with NoPE layers",
     "T5ForConditionalGeneration": "Google's T5 encoder-decoder model (partial support)",
     # Unsupported architectures
     "BertModel": "Google's BERT bidirectional encoder for understanding tasks",

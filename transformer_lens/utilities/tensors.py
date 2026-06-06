@@ -23,7 +23,13 @@ def to_numpy(tensor):
         array = np.array(tensor)
         return array
     elif isinstance(tensor, (torch.Tensor, torch.nn.parameter.Parameter)):
-        return tensor.detach().cpu().numpy()
+        tensor = tensor.detach().cpu()
+        # NumPy has no bfloat16 dtype, so calling .numpy() directly on a bfloat16
+        # tensor raises a TypeError. Upcast to float32 first (bfloat16 is common in
+        # TransformerLens since many pretrained models are loaded in reduced precision).
+        if tensor.dtype == torch.bfloat16:
+            tensor = tensor.to(torch.float32)
+        return tensor.numpy()
     elif isinstance(tensor, (int, float, bool, str)):
         return np.array(tensor)
     else:

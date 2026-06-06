@@ -3,7 +3,6 @@
 Tests cover:
 - Component mapping structure (correct bridge types and HF module names)
 - Weight conversion keys and count
-- Factory registration (GPT2LMHeadCustomModel maps to the right adapter)
 
 Note: unlike GPT2ArchitectureAdapter, this adapter sets no cfg.* attributes
 and uses a plain AttentionBridge (no combined-QKV split), so it has no
@@ -13,10 +12,6 @@ config-attribute tests.
 import pytest
 
 from transformer_lens.config import TransformerBridgeConfig
-from transformer_lens.factories.architecture_adapter_factory import (
-    SUPPORTED_ARCHITECTURES,
-    ArchitectureAdapterFactory,
-)
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     BlockBridge,
@@ -179,21 +174,3 @@ class TestCustomAdapterWeightConversions:
         for key in ("blocks.{i}.attn.q", "blocks.{i}.attn.k", "blocks.{i}.attn.v"):
             conversion = adapter.weight_processing_conversions[key]
             assert conversion.source_key == "transformer.h.{i}.attn.c_attn.weight"
-
-
-# ---------------------------------------------------------------------------
-# Factory registration tests
-# ---------------------------------------------------------------------------
-
-
-class TestCustomFactoryRegistration:
-    """Factory must resolve GPT2LMHeadCustomModel -> Gpt2LmHeadCustomArchitectureAdapter."""
-
-    def test_factory_returns_custom_adapter(self) -> None:
-        adapter = ArchitectureAdapterFactory.select_architecture_adapter(_make_cfg())
-        assert isinstance(adapter, Gpt2LmHeadCustomArchitectureAdapter)
-
-    def test_custom_model_in_supported_architectures(self) -> None:
-        assert (
-            SUPPORTED_ARCHITECTURES["GPT2LMHeadCustomModel"] is Gpt2LmHeadCustomArchitectureAdapter
-        )

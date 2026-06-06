@@ -32,6 +32,7 @@ from torch import nn
 
 from transformer_lens import utilities as utils
 from transformer_lens.ActivationCache import ActivationCache
+from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookIntrospectionMixin, HookPoint
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
@@ -270,6 +271,77 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             revision=revision,
             checkpoint_index=checkpoint_index,
             checkpoint_value=checkpoint_value,
+        )
+
+    @classmethod
+    def boot_native(
+        cls,
+        config: Union[TransformerBridgeConfig, dict],
+        tokenizer: Optional[Any] = None,
+        device: Optional[Union[str, torch.device]] = None,
+        dtype: Optional[torch.dtype] = None,
+        model_name: str = "native",
+    ) -> "TransformerBridge":
+        """Build a bridge around a small, randomly-initialized TL-native model.
+
+        No HuggingFace Hub call, no ``transformers`` import. ``config.init_mode``
+        and ``config.seed`` control reproducibility.
+        """
+        import copy as _copy
+
+        from transformer_lens.config import TransformerBridgeConfig as _Cfg
+        from transformer_lens.model_bridge.sources._bridge_builder import (
+            build_bridge_from_module,
+        )
+        from transformer_lens.model_bridge.sources.native import (
+            NativeModel,
+            initialize_native_model,
+        )
+
+        cfg: TransformerBridgeConfig
+        if isinstance(config, dict):
+            cfg = _Cfg.from_dict(config)
+        else:
+            # Deep-copy so NativeModel's default-resolution writes don't land
+            # on the caller's config.
+            cfg = _copy.deepcopy(config)
+
+        # Foreign architecture strings would dispatch to the wrong adapter and
+        # crash deep in prepare_model. Refuse them with a pointing message.
+        if cfg.architecture not in (None, "TransformerLensNative"):
+            raise ValueError(
+                f"boot_native cannot build a {cfg.architecture!r} model — "
+                f"it only constructs the TL-native architecture. Either clear "
+                f"config.architecture or set it to 'TransformerLensNative', "
+                f"or use boot_transformers / build_bridge_from_module for "
+                f"non-native architectures."
+            )
+        architecture = "TransformerLensNative"
+
+        # Fork RNG around construction + init when seeded so neither nn.Linear's
+        # default reset_parameters nor our scoped init perturb the caller's RNG.
+        # Unseeded calls let global RNG advance normally.
+        if cfg.seed is not None:
+            with torch.random.fork_rng(devices=[]):
+                model = NativeModel(cfg)
+                initialize_native_model(model, cfg)
+        else:
+            model = NativeModel(cfg)
+            initialize_native_model(model, cfg)
+
+        if device is not None:
+            model = model.to(device)
+        if dtype is not None:
+            model = model.to(dtype=dtype)
+
+        return build_bridge_from_module(
+            model,
+            architecture=architecture,
+            tl_config=cfg,
+            tokenizer=tokenizer,
+            dtype=dtype,
+            device=device,
+            model_name=model_name,
         )
 
     @property
@@ -1968,6 +2040,8 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                    remove_batch_dim: Whether to remove batch dimension
                    names_filter: Filter for which activations to cache (str, list of str, or callable)
                    stop_at_layer: Layer to stop forward pass at (uses StopAtLayerException; cleans up KV cache on stop)
+                   device: Where to store cached activations (matches ActivationCache.to;
+                       does not move the model). Defaults to per-layer storage.
                    **kwargs: Additional arguments
         # type: ignore[name-defined]
                Returns:
@@ -2075,25 +2149,19 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                     hook_dict[block_hook_name].add_hook(stop_hook)
                     hooks.append((hook_dict[block_hook_name], block_hook_name))
         filtered_kwargs = kwargs.copy()
-        if cache_device is not None:
-            if getattr(self.cfg, "n_devices", 1) > 1:
-                # Moving a dispatched model to a single device collapses accelerate's
-                # split and breaks its routing hooks. The cache will stay spread across
-                # the per-layer devices; callers can .to(cache_device) on cache entries
-                # after the fact if they need a single-device cache.
-                warnings.warn(
-                    f"run_with_cache(device={cache_device!r}) ignored: model is dispatched "
-                    f"across {self.cfg.n_devices} devices via device_map. Cached activations "
-                    "will remain on their per-layer devices.",
-                    stacklevel=2,
-                )
-            else:
-                self.original_model = self.original_model.to(cache_device)
-                if processed_args and isinstance(processed_args[0], torch.Tensor):
-                    processed_args = [processed_args[0].to(cache_device)] + list(processed_args[1:])
-                for key, value in filtered_kwargs.items():
-                    if isinstance(value, torch.Tensor):
-                        filtered_kwargs[key] = value.to(cache_device)
+        # `cache_device` is honored by `make_cache_hook` above (`tensor.detach().to(cache_device)`);
+        # the model and inputs stay where the caller put them, matching `ActivationCache.to`.
+        if cache_device is not None and getattr(self.cfg, "n_devices", 1) > 1:
+            # Moving a dispatched model to a single device collapses accelerate's
+            # split and breaks its routing hooks. The cache will stay spread across
+            # the per-layer devices; callers can .to(cache_device) on cache entries
+            # after the fact if they need a single-device cache.
+            warnings.warn(
+                f"run_with_cache(device={cache_device!r}) ignored: model is dispatched "
+                f"across {self.cfg.n_devices} devices via device_map. Cached activations "
+                "will remain on their per-layer devices.",
+                stacklevel=2,
+            )
         try:
             if "output_attentions" not in filtered_kwargs:
                 filtered_kwargs["output_attentions"] = True
@@ -2501,9 +2569,14 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         return_type: Optional[str] = "input",
         verbose: bool = True,
         output_logits: bool = False,
+        return_cache: bool = False,
+        names_filter: Optional[Union[str, List[str], Callable[[str], bool]]] = None,
+        device: Optional[Union[str, torch.device]] = None,
         pixel_values: Optional[torch.Tensor] = None,
         **multimodal_kwargs,
-    ) -> str | list[str] | torch.Tensor | Any:  # Any for transformers.utils.ModelOutput
+    ) -> (
+        str | list[str] | torch.Tensor | Any | tuple[Any, ActivationCache]
+    ):  # Any for transformers.utils.ModelOutput
         # Any: beartype forward ref limitation (beartype#546)
         """Sample tokens from the model.
 
@@ -2533,6 +2606,18 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             return_type: The type of output to return - 'input', 'str', or 'tokens'
             verbose: Not used in Bridge (kept for API compatibility)
             output_logits: If True, return a ModelOutput with sequences and logits tuple
+            return_cache: If True, also return an ActivationCache for the full prompt +
+                generated sequence, identical to ``run_with_cache(output)``, and the call
+                returns an ``(output, cache)`` tuple. Implemented as one extra clean forward
+                over the output, so the cache includes every hook point (attention patterns
+                included). Supported only for single-sequence, decoder-only text generation;
+                encoder-decoder, SSM, multimodal, batched, and inputs_embeds inputs raise
+                NotImplementedError. The cache spans prompt + max_new_tokens and can be large,
+                use ``names_filter`` to scope it and/or ``device`` to offload it.
+            names_filter: Passed to ``run_with_cache`` when ``return_cache=True``; restricts
+                which activations are cached (str, list of str, or callable).
+            device: Passed through when ``return_cache=True`` to offload the cached tensors
+                to this device (e.g. "cpu") to save accelerator memory.
             pixel_values: Optional image tensor for multimodal models. Only passed on the
                 first generation step (the vision encoder processes the image once, then
                 embeddings are part of the token sequence for subsequent steps).
@@ -2540,6 +2625,13 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         Returns:
             Generated sequence as string, list of strings, or tensor depending on input type and return_type.
             If output_logits=True, returns a ModelOutput-like object with 'sequences' and 'logits' attributes.
+            If return_cache=True, returns an ``(output, ActivationCache)`` tuple where ``output`` is the
+            value that would otherwise be returned and the cache equals ``run_with_cache(output)``.
+
+        Example:
+            ``out, cache = model.generate(prompt, max_new_tokens=20, return_cache=True)`` returns a
+            normal ActivationCache over the full prompt + generated sequence (equivalent to
+            ``run_with_cache(out)``).
         """
         # prepend_bos is intentionally not applied during generation.
         # The HF model expects tokens in its native format. Overriding BOS can silently
@@ -2632,6 +2724,37 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         is_encoder_decoder = hasattr(self.original_model, "config") and getattr(
             self.original_model.config, "is_encoder_decoder", False
         )
+
+        # return_cache recomputes run_with_cache on the generated output (see issue #697).
+        # That is well-defined only for single-sequence, decoder-only text generation, so
+        # reject the paths whose cache would be wrong/undefined, with a clear pointer to the
+        # run_with_cache workaround. Fail fast here, before any generation work.
+        if return_cache:
+            if is_encoder_decoder:
+                raise NotImplementedError(
+                    "generate(return_cache=True) is not supported for encoder-decoder "
+                    "models yet. Run run_with_cache on the generated output instead."
+                )
+            if is_stateful_model:
+                raise NotImplementedError(
+                    "generate(return_cache=True) is not supported for stateful/SSM models "
+                    "(e.g. Mamba); they do not expose standard transformer hook points."
+                )
+            if pixel_values is not None or multimodal_kwargs:
+                raise NotImplementedError(
+                    "generate(return_cache=True) is not supported for multimodal generation "
+                    "yet. Run run_with_cache on the generated output instead."
+                )
+            if _generate_from_embeds:
+                raise NotImplementedError(
+                    "generate(return_cache=True) requires token input, not inputs_embeds."
+                )
+            if batch_size > 1:
+                raise NotImplementedError(
+                    "generate(return_cache=True) is not supported for batched/multi-prompt "
+                    "generation yet. Pass a single prompt, or run run_with_cache on each "
+                    "output sequence."
+                )
 
         # HF cache flows opaquely through the component chain via
         # _reconstruct_attention() → _update_kv_cache() on each layer.
@@ -2756,7 +2879,8 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         else:
             output_tokens = torch.cat([input_tokens, sampled_tokens], dim=1)
 
-        # Return ModelOutput if output_logits was requested
+        # Build the formatted output (shape unchanged: ModelOutput / str / list[str] / tokens).
+        result: Any
         if output_logits and logits_seq_list is not None:
             from transformers.utils import ModelOutput  # type: ignore
 
@@ -2768,9 +2892,9 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             try:
                 from transformers.generation.utils import GenerateDecoderOnlyOutput
 
-                # Return a HF-compatible ModelOutput structure
+                # HF-compatible ModelOutput structure.
                 # GenerateDecoderOnlyOutput expects: sequences, scores (optional), logits (optional)
-                return GenerateDecoderOnlyOutput(
+                result = GenerateDecoderOnlyOutput(
                     sequences=cast(torch.LongTensor, output_tokens),
                     # HF's type hint says tuple[FloatTensor] but should be tuple[FloatTensor, ...]
                     # (variable-length tuple with one element per generated token)
@@ -2778,24 +2902,32 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                 )
             except (ImportError, AttributeError):
                 # Fallback if GenerateDecoderOnlyOutput not available in this transformers version
-                return ModelOutput(
+                result = ModelOutput(
                     sequences=output_tokens,
                     logits=_logits_to_tuple(logits_seq_list),
                 )
-
-        # Format output
-        if return_type == "str":
+        elif return_type == "str":
             assert self.tokenizer is not None
             if input_type == "str":
-                return self.tokenizer.decode(output_tokens[0], skip_special_tokens=True)
+                result = self.tokenizer.decode(output_tokens[0], skip_special_tokens=True)
             else:
                 decoded_texts = [
                     self.tokenizer.decode(tokens, skip_special_tokens=True)
                     for tokens in output_tokens
                 ]
-                return decoded_texts[0] if len(decoded_texts) == 1 else decoded_texts
+                result = decoded_texts[0] if len(decoded_texts) == 1 else decoded_texts
         else:  # return_type == "tokens"
-            return output_tokens
+            result = output_tokens
+
+        if not return_cache:
+            return result
+
+        # return_cache: recompute one clean forward over the full generated sequence so the
+        # cache is identical to run_with_cache(output_tokens) - all hook points, including
+        # attention patterns. The guards above restrict this to single-sequence, decoder-only
+        # text generation (see issue #697).
+        _, cache = self.run_with_cache(output_tokens, names_filter=names_filter, device=device)
+        return result, cache
 
     @torch.no_grad()
     def generate_stream(
