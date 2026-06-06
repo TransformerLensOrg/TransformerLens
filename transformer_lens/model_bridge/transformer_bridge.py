@@ -2673,6 +2673,23 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         self.cfg.use_attn_in = use_attn_in
         self._propagate_attention_flag("use_attn_in", use_attn_in)
 
+    def set_use_hook_mlp_in(self, use_hook_mlp_in: bool) -> None:
+        """Toggle the pre-ln2 ``hook_mlp_in`` HookPoint, matching legacy semantics.
+
+        See :py:meth:`HookedTransformer.set_use_hook_mlp_in`.
+        """
+        self.cfg.use_hook_mlp_in = use_hook_mlp_in
+        if not hasattr(self, "blocks"):
+            return
+        for block in self.blocks:
+            block_cfg = getattr(block, "config", None)
+            if block_cfg is not None and block_cfg is not self.cfg:
+                try:
+                    block_cfg.use_hook_mlp_in = use_hook_mlp_in
+                except Exception:
+                    pass
+            block._use_hook_mlp_in = use_hook_mlp_in
+
     def _propagate_attention_flag(self, flag_name: str, value: bool) -> None:
         """Mirror `bridge.cfg.<flag>` onto every block's attention config.
 
