@@ -18,7 +18,7 @@ from transformer_lens.model_bridge.sources._bridge_builder import (
 from transformer_lens.model_bridge.sources._hf_format import setup_tokenizer
 from transformer_lens.utilities.hf_utils import get_hf_token
 
-from . import hooks, profiles
+from . import profiles
 from .driver import InspectDriver
 
 # Providers that expose the structural self-check + capture wire format the InspectDriver
@@ -58,7 +58,9 @@ def boot_inspect(
     from inspect_ai.model import get_model
     from transformers import AutoConfig, AutoTokenizer
 
-    from . import transformers_provider as _provider  # noqa: F401 — import registers @modelapi
+    from . import (  # noqa: F401 — import registers @modelapi
+        transformers_provider as _provider,
+    )
 
     hf_token = get_hf_token()
     hf_config = AutoConfig.from_pretrained(model_name, token=hf_token)

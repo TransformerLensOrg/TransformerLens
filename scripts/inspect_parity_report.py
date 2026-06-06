@@ -13,7 +13,6 @@ from __future__ import annotations
 import gc
 import os
 import sys
-import traceback
 import warnings
 
 warnings.filterwarnings("ignore")
@@ -122,10 +121,10 @@ def verify(model_id: str) -> dict:
         result["status"] = "SKIP"
         result["detail"] = f"{type(e).__name__}: {str(e).splitlines()[0][:120]}"
     finally:
-        for b in (inspect, hf):
+        for bridge in (inspect, hf):
             try:
-                if b is not None:
-                    b.close()
+                if bridge is not None:
+                    bridge.close()
             except Exception:
                 pass
         del hf, inspect

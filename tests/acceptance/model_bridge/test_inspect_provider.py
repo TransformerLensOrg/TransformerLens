@@ -148,7 +148,9 @@ class TestPreHookKwargs:
     CALL = "test_call"
 
     def _hook(self):
-        from transformer_lens.model_bridge.sources.inspect.transformers_provider import _pre_hook
+        from transformer_lens.model_bridge.sources.inspect.transformers_provider import (
+            _pre_hook,
+        )
 
         return _pre_hook(
             layer=0, want_capture=True, spec={"op": "suppress"}, raw={}, call_id=self.CALL
@@ -578,7 +580,6 @@ class TestProviderReviewFixes:
 
     def test_solver_output_dir_resolved_absolute_at_construction(self, tmp_path, monkeypatch):
         # A multi-eval run from different CWDs must not scatter artifacts.
-        import os
 
         from transformer_lens.model_bridge.sources.inspect.eval import (
             capture_activations,

@@ -29,7 +29,7 @@ from inspect_ai.model import (
     modelapi,
 )
 
-from . import hooks, wire
+from . import wire
 from ._provider_base import _InspectModelAPIBase, _parse_tool_calls, _require_served
 
 # NOT "transformer_lens" — inspect_ai ships a built-in provider by that name (the
