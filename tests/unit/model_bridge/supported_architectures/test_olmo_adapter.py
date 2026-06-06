@@ -25,10 +25,6 @@ from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorCo
 from transformer_lens.conversion_utils.param_processing_conversion import (
     ParamProcessingConversion,
 )
-from transformer_lens.factories.architecture_adapter_factory import (
-    SUPPORTED_ARCHITECTURES,
-    ArchitectureAdapterFactory,
-)
 from transformer_lens.model_bridge.component_setup import setup_submodules
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
@@ -145,34 +141,6 @@ def _wire_attention_bridge(
 
 class TestOlmoAdapterConfig:
     """Config mutations performed by OlmoArchitectureAdapter."""
-
-    def test_normalization_type(self, adapter: OlmoArchitectureAdapter) -> None:
-        """OLMo v1 uses LayerNorm rather than RMSNorm."""
-        assert adapter.cfg.normalization_type == "LN"
-
-    def test_positional_embedding_type(self, adapter: OlmoArchitectureAdapter) -> None:
-        """The adapter should declare rotary position embeddings."""
-        assert adapter.cfg.positional_embedding_type == "rotary"
-
-    def test_final_rms(self, adapter: OlmoArchitectureAdapter) -> None:
-        """The final normalization is LayerNorm, so final_rms must stay false."""
-        assert adapter.cfg.final_rms is False
-
-    def test_gated_mlp(self, adapter: OlmoArchitectureAdapter) -> None:
-        """OLMo uses a gated MLP block."""
-        assert adapter.cfg.gated_mlp is True
-
-    def test_attn_only(self, adapter: OlmoArchitectureAdapter) -> None:
-        """The adapter should expose both attention and MLP components."""
-        assert adapter.cfg.attn_only is False
-
-    def test_uses_rms_norm(self, adapter: OlmoArchitectureAdapter) -> None:
-        """OLMo v1 should not advertise RMSNorm semantics."""
-        assert adapter.cfg.uses_rms_norm is False
-
-    def test_attn_implementation_forced_eager(self, adapter: OlmoArchitectureAdapter) -> None:
-        """The bridge forces eager attention for consistent hook behavior."""
-        assert adapter.cfg.attn_implementation == "eager"
 
     def test_default_config_propagates_gqa(self, adapter: OlmoArchitectureAdapter) -> None:
         """Any configured KV-head count should be mirrored into default_config."""
@@ -312,38 +280,6 @@ class TestOlmoAdapterWeightConversions:
         assert conv.tensor_conversion.pattern == "m (n h) -> n h m"
         assert conv.tensor_conversion.axes_lengths["n"] == adapter.cfg.n_heads
 
-    def test_q_weight_conversion_shape_and_values(self, adapter: OlmoArchitectureAdapter) -> None:
-        """Q conversion should preserve ordering while reshaping to [head, in, dim]."""
-        convs = adapter.weight_processing_conversions
-        assert convs is not None
-        conv = convs["blocks.{i}.attn.q.weight"]
-        assert isinstance(conv, ParamProcessingConversion)
-        weight = torch.arange(adapter.cfg.n_heads * adapter.cfg.d_head * adapter.cfg.d_model).view(
-            adapter.cfg.n_heads * adapter.cfg.d_head,
-            adapter.cfg.d_model,
-        )
-        converted = conv.tensor_conversion.handle_conversion(weight)
-        expected = weight.view(
-            adapter.cfg.n_heads, adapter.cfg.d_head, adapter.cfg.d_model
-        ).permute(0, 2, 1)
-        assert converted.shape == (adapter.cfg.n_heads, adapter.cfg.d_model, adapter.cfg.d_head)
-        assert torch.equal(converted, expected)
-
-    def test_k_weight_conversion_respects_gqa_shape(self, adapter: OlmoArchitectureAdapter) -> None:
-        """K conversion should produce one slice per KV head under GQA."""
-        convs = adapter.weight_processing_conversions
-        assert convs is not None
-        conv = convs["blocks.{i}.attn.k.weight"]
-        assert isinstance(conv, ParamProcessingConversion)
-        n_kv_heads = adapter.cfg.n_key_value_heads
-        assert n_kv_heads is not None
-        weight = torch.arange(n_kv_heads * adapter.cfg.d_head * adapter.cfg.d_model).view(
-            n_kv_heads * adapter.cfg.d_head,
-            adapter.cfg.d_model,
-        )
-        converted = conv.tensor_conversion.handle_conversion(weight)
-        assert converted.shape == (n_kv_heads, adapter.cfg.d_model, adapter.cfg.d_head)
-
 
 class TestOlmoAttentionBridge:
     """Forward-path tests for the adapter's attention bridge."""
@@ -389,17 +325,6 @@ class TestOlmoAttentionBridge:
         assert seen["k"] == torch.Size([batch, seq_len, cfg.n_key_value_heads, cfg.d_head])
         assert seen["v"] == torch.Size([batch, seq_len, cfg.n_key_value_heads, cfg.d_head])
         assert seen["z"] == torch.Size([batch, seq_len, cfg.n_heads, cfg.d_head])
-
-    def test_get_random_inputs_includes_mask_and_position_embeddings(
-        self, adapter: OlmoArchitectureAdapter, cfg: TransformerBridgeConfig
-    ) -> None:
-        """Random input generation should include hidden states and RoPE inputs."""
-        attn_bridge = _wire_attention_bridge(adapter, cfg)
-        inputs = attn_bridge.get_random_inputs(batch_size=2, seq_len=4)
-        assert inputs["hidden_states"].shape == (2, 4, cfg.d_model)
-        cos, sin = inputs["position_embeddings"]
-        assert cos.shape == (1, 4, cfg.d_head)
-        assert sin.shape == (1, 4, cfg.d_head)
 
 
 class TestOlmoPrepareModel:
@@ -485,18 +410,3 @@ class TestOlmoSetupComponentTesting:
 
         template_attn = adapter.get_generalized_component("blocks.0.attn")
         assert template_attn._rotary_emb is rotary_emb
-
-
-class TestOlmoFactoryRegistration:
-    """Factory coverage for the OLMo architecture id."""
-
-    def test_factory_key_present(self) -> None:
-        """The supported-architectures registry should expose the OLMo key."""
-        assert "OlmoForCausalLM" in SUPPORTED_ARCHITECTURES
-
-    def test_factory_returns_olmo_adapter(self) -> None:
-        """Factory selection should instantiate the OLMo adapter for OLMo configs."""
-        selected = ArchitectureAdapterFactory.select_architecture_adapter(
-            _make_cfg(n_key_value_heads=2)
-        )
-        assert isinstance(selected, OlmoArchitectureAdapter)

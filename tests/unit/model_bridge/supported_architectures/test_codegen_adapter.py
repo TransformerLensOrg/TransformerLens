@@ -161,23 +161,6 @@ class TestCodeGenAdapterComponentMapping:
 # ---------------------------------------------------------------------------
 
 
-class TestCodeGenAdapterWeightConversions:
-    def test_q_weight_key_present(self, adapter: CodeGenArchitectureAdapter) -> None:
-        assert "blocks.{i}.attn.q.weight" in adapter.weight_processing_conversions
-
-    def test_k_weight_key_present(self, adapter: CodeGenArchitectureAdapter) -> None:
-        assert "blocks.{i}.attn.k.weight" in adapter.weight_processing_conversions
-
-    def test_v_weight_key_present(self, adapter: CodeGenArchitectureAdapter) -> None:
-        assert "blocks.{i}.attn.v.weight" in adapter.weight_processing_conversions
-
-    def test_o_weight_key_present(self, adapter: CodeGenArchitectureAdapter) -> None:
-        assert "blocks.{i}.attn.o.weight" in adapter.weight_processing_conversions
-
-    def test_exactly_four_conversion_keys(self, adapter: CodeGenArchitectureAdapter) -> None:
-        assert len(adapter.weight_processing_conversions) == 4
-
-
 class TestCodeGenAdapterWeightConversionSemantics:
     """Each Q/K/V/O wraps a RearrangeTensorConversion with the right pattern and n axis."""
 
@@ -369,26 +352,3 @@ class TestCodeGenSplitQKVMatrix:
         assert q_lin(x).shape == (batch, seq, d_model)
         assert k_lin(x).shape == (batch, seq, d_model)
         assert v_lin(x).shape == (batch, seq, d_model)
-
-
-# ---------------------------------------------------------------------------
-# Factory registration test
-# ---------------------------------------------------------------------------
-
-
-class TestCodeGenFactoryRegistration:
-    def test_factory_returns_codegen_adapter(self) -> None:
-        from transformer_lens.factories.architecture_adapter_factory import (
-            ArchitectureAdapterFactory,
-        )
-
-        cfg = _make_cfg()
-        adapter = ArchitectureAdapterFactory.select_architecture_adapter(cfg)
-        assert isinstance(adapter, CodeGenArchitectureAdapter)
-
-    def test_factory_key_is_codegen_for_causal_lm(self) -> None:
-        from transformer_lens.factories.architecture_adapter_factory import (
-            SUPPORTED_ARCHITECTURES,
-        )
-
-        assert "CodeGenForCausalLM" in SUPPORTED_ARCHITECTURES

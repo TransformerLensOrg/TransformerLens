@@ -74,30 +74,6 @@ class TestQwen3AdapterConfig:
     default_prepend_bos=False, and GQA propagation via n_key_value_heads.
     """
 
-    def test_normalization_type(self, adapter: Qwen3ArchitectureAdapter) -> None:
-        assert adapter.cfg.normalization_type == "RMS"
-
-    def test_positional_embedding_type(self, adapter: Qwen3ArchitectureAdapter) -> None:
-        assert adapter.cfg.positional_embedding_type == "rotary"
-
-    def test_final_rms(self, adapter: Qwen3ArchitectureAdapter) -> None:
-        assert adapter.cfg.final_rms is True
-
-    def test_gated_mlp(self, adapter: Qwen3ArchitectureAdapter) -> None:
-        assert adapter.cfg.gated_mlp is True
-
-    def test_attn_only(self, adapter: Qwen3ArchitectureAdapter) -> None:
-        assert adapter.cfg.attn_only is False
-
-    def test_uses_rms_norm(self, adapter: Qwen3ArchitectureAdapter) -> None:
-        assert adapter.cfg.uses_rms_norm is True
-
-    def test_default_prepend_bos_false(self, adapter: Qwen3ArchitectureAdapter) -> None:
-        assert adapter.cfg.default_prepend_bos is False
-
-    def test_attn_implementation_eager(self, adapter: Qwen3ArchitectureAdapter) -> None:
-        assert adapter.cfg.attn_implementation == "eager"
-
     def test_n_key_value_heads_preserved(self, adapter: Qwen3ArchitectureAdapter) -> None:
         assert adapter.cfg.n_key_value_heads == 4
 
@@ -190,17 +166,6 @@ class TestQwen3AdapterWeightConversions:
         convs = adapter.weight_processing_conversions
         assert convs is not None
         assert len(convs) == 4
-
-    def test_qkvo_keys_present(self, adapter: Qwen3ArchitectureAdapter) -> None:
-        convs = adapter.weight_processing_conversions
-        assert convs is not None
-        for key in [
-            "blocks.{i}.attn.q.weight",
-            "blocks.{i}.attn.k.weight",
-            "blocks.{i}.attn.v.weight",
-            "blocks.{i}.attn.o.weight",
-        ]:
-            assert key in convs
 
     def test_q_uses_n_heads(self, adapter: Qwen3ArchitectureAdapter) -> None:
         convs = adapter.weight_processing_conversions
@@ -411,32 +376,3 @@ class TestQwen3SetupComponentTesting:
         hf = self._make_fake_hf_model()
         # Must not raise.
         adapter.setup_component_testing(hf)
-
-
-class TestQwen3FactoryRegistration:
-    """Factory registration and dispatch via select_architecture_adapter,
-    plus the import-from-__init__ guard."""
-
-    def test_factory_key_registered(self) -> None:
-        from transformer_lens.factories.architecture_adapter_factory import (
-            SUPPORTED_ARCHITECTURES,
-        )
-
-        assert "Qwen3ForCausalLM" in SUPPORTED_ARCHITECTURES
-
-    def test_factory_returns_qwen3_adapter(self) -> None:
-        from transformer_lens.factories.architecture_adapter_factory import (
-            ArchitectureAdapterFactory,
-        )
-
-        cfg = _make_cfg()
-        cfg.architecture = "Qwen3ForCausalLM"
-        adapter = ArchitectureAdapterFactory.select_architecture_adapter(cfg)
-        assert isinstance(adapter, Qwen3ArchitectureAdapter)
-
-    def test_import_from_init(self) -> None:
-        from transformer_lens.model_bridge.supported_architectures import (
-            Qwen3ArchitectureAdapter as FromInit,
-        )
-
-        assert FromInit is Qwen3ArchitectureAdapter

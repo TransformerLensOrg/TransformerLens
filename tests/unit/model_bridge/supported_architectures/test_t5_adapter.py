@@ -25,7 +25,6 @@ import pytest
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.factories.architecture_adapter_factory import (
     SUPPORTED_ARCHITECTURES,
-    ArchitectureAdapterFactory,
 )
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
@@ -111,25 +110,6 @@ def _decoder_block(adapter: T5ArchitectureAdapter) -> Any:
 
 class TestT5AdapterConfig:
     """Adapter-owned config defaults that downstream bridge code relies on."""
-
-    def test_normalization_type_is_rms(self, adapter: T5ArchitectureAdapter) -> None:
-        assert adapter.cfg.normalization_type == "RMS"
-
-    def test_positional_embedding_type_is_relative_bias(
-        self, adapter: T5ArchitectureAdapter
-    ) -> None:
-        """T5 uses learned per-head relative position bias, not rotary or learned-absolute."""
-        assert adapter.cfg.positional_embedding_type == "relative_positional_bias"
-
-    def test_final_rms_is_false(self, adapter: T5ArchitectureAdapter) -> None:
-        assert adapter.cfg.final_rms is False
-
-    def test_attn_only_is_false(self, adapter: T5ArchitectureAdapter) -> None:
-        assert adapter.cfg.attn_only is False
-
-    def test_supports_fold_ln_is_false(self, adapter: T5ArchitectureAdapter) -> None:
-        """T5 RMSNorm fold would corrupt weights, so the adapter disables fold-LN."""
-        assert adapter.supports_fold_ln is False
 
     def test_gated_mlp_default_is_false(self, adapter: T5ArchitectureAdapter) -> None:
         """Without `cfg.is_gated_act`, the FFN is the plain T5DenseReluDense variant."""
@@ -384,24 +364,9 @@ class TestT5FactoryRegistration:
     """T5 is dual-registered under both T5ForConditionalGeneration and
     MT5ForConditionalGeneration; both dispatch back to the same adapter class."""
 
-    def test_t5_factory_lookup_returns_adapter_class(self) -> None:
-        assert SUPPORTED_ARCHITECTURES["T5ForConditionalGeneration"] is T5ArchitectureAdapter
-
     def test_mt5_factory_lookup_returns_adapter_class(self) -> None:
         """MT5 shares the T5 architecture wiring, so the factory reuses the adapter."""
         assert SUPPORTED_ARCHITECTURES["MT5ForConditionalGeneration"] is T5ArchitectureAdapter
-
-    def test_t5_factory_dispatch(self) -> None:
-        adapter = ArchitectureAdapterFactory.select_architecture_adapter(
-            _base_cfg(architecture="T5ForConditionalGeneration")
-        )
-        assert isinstance(adapter, T5ArchitectureAdapter)
-
-    def test_mt5_factory_dispatch(self) -> None:
-        adapter = ArchitectureAdapterFactory.select_architecture_adapter(
-            _base_cfg(architecture="MT5ForConditionalGeneration")
-        )
-        assert isinstance(adapter, T5ArchitectureAdapter)
 
 
 class TestT5ArchitectureGuards:

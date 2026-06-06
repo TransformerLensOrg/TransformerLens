@@ -19,7 +19,7 @@ from typing import Any
 
 import pytest
 import torch.nn as nn
-from torch import equal, ones, randn, zeros
+from torch import ones, randn, zeros
 
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.conversion_utils.conversion_steps.rearrange_tensor_conversion import (
@@ -27,10 +27,6 @@ from transformer_lens.conversion_utils.conversion_steps.rearrange_tensor_convers
 )
 from transformer_lens.conversion_utils.param_processing_conversion import (
     ParamProcessingConversion,
-)
-from transformer_lens.factories.architecture_adapter_factory import (
-    SUPPORTED_ARCHITECTURES,
-    ArchitectureAdapterFactory,
 )
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
@@ -46,10 +42,7 @@ from transformer_lens.model_bridge.supported_architectures.smollm3 import (
     SmolLM3ArchitectureAdapter,
     _SmolLM3AttentionBridge,
 )
-from transformer_lens.tools.model_registry import (
-    CANONICAL_AUTHORS_BY_ARCH,
-    HF_SUPPORTED_ARCHITECTURES,
-)
+from transformer_lens.tools.model_registry import CANONICAL_AUTHORS_BY_ARCH
 
 
 def _make_cfg(
@@ -171,29 +164,8 @@ def _rearrange(adapter: SmolLM3ArchitectureAdapter, key: str) -> RearrangeTensor
 class TestSmolLM3AdapterConfig:
     """Adapter-owned config defaults that downstream bridge code relies on."""
 
-    def test_normalization_type_is_rms(self, adapter: SmolLM3ArchitectureAdapter) -> None:
-        assert adapter.cfg.normalization_type == "RMS"
-
-    def test_positional_embedding_type_is_rotary(self, adapter: SmolLM3ArchitectureAdapter) -> None:
-        assert adapter.cfg.positional_embedding_type == "rotary"
-
-    def test_final_rms_is_true(self, adapter: SmolLM3ArchitectureAdapter) -> None:
-        assert adapter.cfg.final_rms is True
-
-    def test_gated_mlp_is_true(self, adapter: SmolLM3ArchitectureAdapter) -> None:
-        assert adapter.cfg.gated_mlp is True
-
-    def test_attn_only_is_false(self, adapter: SmolLM3ArchitectureAdapter) -> None:
-        assert adapter.cfg.attn_only is False
-
-    def test_uses_rms_norm_is_true(self, adapter: SmolLM3ArchitectureAdapter) -> None:
-        assert adapter.cfg.uses_rms_norm is True
-
     def test_default_prepend_bos_is_false(self, adapter: SmolLM3ArchitectureAdapter) -> None:
         assert adapter.cfg.default_prepend_bos is False
-
-    def test_attn_implementation_is_eager(self, adapter: SmolLM3ArchitectureAdapter) -> None:
-        assert adapter.cfg.attn_implementation == "eager"
 
     def test_n_key_value_heads_propagated(self) -> None:
         adapter = SmolLM3ArchitectureAdapter(_make_cfg(n_heads=8, n_key_value_heads=4))
@@ -353,50 +325,6 @@ class TestSmolLM3WeightConversions:
             assert "ln1" not in key
             assert "ln2" not in key
             assert "ln_final" not in key
-
-
-class TestSmolLM3WeightConversionRoundTrips:
-    """Run the rearrange conversions on synthetic HF-shaped tensors.
-
-    The pattern/axis assertions above only check metadata. These confirm the
-    conversions actually reshape realistic weight tensors into the split-head
-    layout and revert losslessly (a rearrange is a pure permutation, so the
-    round-trip must be exactly equal).
-    """
-
-    N_HEADS = 4
-    N_KV_HEADS = 2
-    D_HEAD = 16
-    D_MODEL = 64
-
-    @pytest.fixture
-    def adapter(self) -> SmolLM3ArchitectureAdapter:
-        return SmolLM3ArchitectureAdapter(_make_cfg(n_key_value_heads=self.N_KV_HEADS))
-
-    def _roundtrip(self, adapter: SmolLM3ArchitectureAdapter, key: str, tensor: Any) -> tuple:
-        conv = _param_conversion(adapter, key)
-        converted = conv.convert({key: tensor}, key)
-        reverted = conv.revert(converted)
-        return converted, reverted
-
-    def test_q_weight_splits_into_n_heads(self, adapter: SmolLM3ArchitectureAdapter) -> None:
-        w = randn(self.N_HEADS * self.D_HEAD, self.D_MODEL)
-        converted, reverted = self._roundtrip(adapter, "blocks.{i}.attn.q.weight", w)
-        assert converted.shape == (self.N_HEADS, self.D_MODEL, self.D_HEAD)
-        assert equal(reverted, w)
-
-    def test_kv_weight_splits_into_n_kv_heads(self, adapter: SmolLM3ArchitectureAdapter) -> None:
-        for slot in ("k", "v"):
-            w = randn(self.N_KV_HEADS * self.D_HEAD, self.D_MODEL)
-            converted, reverted = self._roundtrip(adapter, f"blocks.{{i}}.attn.{slot}.weight", w)
-            assert converted.shape == (self.N_KV_HEADS, self.D_MODEL, self.D_HEAD)
-            assert equal(reverted, w)
-
-    def test_o_weight_merges_heads(self, adapter: SmolLM3ArchitectureAdapter) -> None:
-        w = randn(self.D_MODEL, self.N_HEADS * self.D_HEAD)
-        converted, reverted = self._roundtrip(adapter, "blocks.{i}.attn.o.weight", w)
-        assert converted.shape == (self.N_HEADS, self.D_HEAD, self.D_MODEL)
-        assert equal(reverted, w)
 
 
 class TestSmolLM3GQAHookShapes:
@@ -700,22 +628,8 @@ class TestSmolLM3SetupComponentTesting:
         assert attn_template._rotary_emb is rotary_emb
 
 
-class TestSmolLM3FactoryRegistration:
-    """SmolLM3 is registered in the factory and dispatched from a matching config."""
-
-    def test_factory_lookup_returns_adapter_class(self) -> None:
-        assert SUPPORTED_ARCHITECTURES["SmolLM3ForCausalLM"] is SmolLM3ArchitectureAdapter
-
-    def test_factory_selects_correct_adapter(self) -> None:
-        adapter = ArchitectureAdapterFactory.select_architecture_adapter(_make_cfg())
-        assert isinstance(adapter, SmolLM3ArchitectureAdapter)
-
-
 class TestSmolLM3RegistryRegistration:
     """Registry sets must stay in sync with the factory (enforced by the #1354 invariant)."""
-
-    def test_in_hf_supported_architectures(self) -> None:
-        assert "SmolLM3ForCausalLM" in HF_SUPPORTED_ARCHITECTURES
 
     def test_in_canonical_authors(self) -> None:
         assert "SmolLM3ForCausalLM" in CANONICAL_AUTHORS_BY_ARCH

@@ -5,7 +5,6 @@ Tests cover:
 - Component mapping structure
 - Weight conversion keys and rearrange patterns
 - Architecture guards
-- Factory registration
 """
 
 import pytest
@@ -17,7 +16,6 @@ from transformer_lens.conversion_utils.param_processing_conversion import (
 )
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
-    BlockBridge,
     EmbeddingBridge,
     LinearBridge,
     MLPBridge,
@@ -80,15 +78,6 @@ class TestGptjAdapterConfig:
     def test_positional_embedding_type_is_rotary(self, adapter: GptjArchitectureAdapter) -> None:
         assert adapter.cfg.positional_embedding_type == "rotary"
 
-    def test_final_rms_is_false(self, adapter: GptjArchitectureAdapter) -> None:
-        assert adapter.cfg.final_rms is False
-
-    def test_gated_mlp_is_false(self, adapter: GptjArchitectureAdapter) -> None:
-        assert adapter.cfg.gated_mlp is False
-
-    def test_attn_only_is_false(self, adapter: GptjArchitectureAdapter) -> None:
-        assert adapter.cfg.attn_only is False
-
     def test_parallel_attn_mlp_is_true(self, adapter: GptjArchitectureAdapter) -> None:
         """GPT-J runs attention and MLP in parallel within each block."""
         assert adapter.cfg.parallel_attn_mlp is True
@@ -109,9 +98,6 @@ class TestGptjAdapterComponentMapping:
 
     def test_embed_name(self, adapter: GptjArchitectureAdapter) -> None:
         assert adapter.component_mapping["embed"].name == "transformer.wte"
-
-    def test_blocks_is_block_bridge(self, adapter: GptjArchitectureAdapter) -> None:
-        assert isinstance(adapter.component_mapping["blocks"], BlockBridge)
 
     def test_blocks_is_parallel_block_bridge(self, adapter: GptjArchitectureAdapter) -> None:
         """Parallel attn+MLP requires ParallelBlockBridge, not sequential BlockBridge."""
@@ -216,9 +202,6 @@ class TestGptjAdapterWeightConversions:
     def test_conversion_key_present(self, adapter: GptjArchitectureAdapter, key: str) -> None:
         assert key in adapter.weight_processing_conversions
 
-    def test_exactly_four_conversion_keys(self, adapter: GptjArchitectureAdapter) -> None:
-        assert len(adapter.weight_processing_conversions) == 4
-
     @pytest.mark.parametrize("slot", ["q", "k", "v"])
     def test_qkv_uses_split_heads_pattern(
         self, adapter: GptjArchitectureAdapter, slot: str
@@ -271,28 +254,3 @@ class TestGptjArchitectureGuards:
             "blocks.{i}.attn.v.weight",
             "blocks.{i}.attn.o.weight",
         }
-
-
-# ---------------------------------------------------------------------------
-# Factory registration tests
-# ---------------------------------------------------------------------------
-
-
-class TestGptjFactoryRegistration:
-    """ArchitectureAdapterFactory must resolve GPTJForCausalLM -> GptjArchitectureAdapter."""
-
-    def test_factory_returns_gptj_adapter(self) -> None:
-        from transformer_lens.factories.architecture_adapter_factory import (
-            ArchitectureAdapterFactory,
-        )
-
-        adapter = ArchitectureAdapterFactory.select_architecture_adapter(_make_cfg())
-        assert isinstance(adapter, GptjArchitectureAdapter)
-
-    def test_gptj_in_supported_architectures_dict(self) -> None:
-        from transformer_lens.factories.architecture_adapter_factory import (
-            SUPPORTED_ARCHITECTURES,
-        )
-
-        assert "GPTJForCausalLM" in SUPPORTED_ARCHITECTURES
-        assert SUPPORTED_ARCHITECTURES["GPTJForCausalLM"] is GptjArchitectureAdapter

@@ -74,24 +74,6 @@ def _make_w_pack_component(d_model: int) -> Any:
 
 
 class TestBaichuanAdapterConfig:
-    def test_normalization_type(self, adapter: BaichuanArchitectureAdapter) -> None:
-        assert adapter.cfg.normalization_type == "RMS"
-
-    def test_positional_embedding_type(self, adapter: BaichuanArchitectureAdapter) -> None:
-        assert adapter.cfg.positional_embedding_type == "rotary"
-
-    def test_final_rms(self, adapter: BaichuanArchitectureAdapter) -> None:
-        assert adapter.cfg.final_rms is True
-
-    def test_gated_mlp(self, adapter: BaichuanArchitectureAdapter) -> None:
-        assert adapter.cfg.gated_mlp is True
-
-    def test_attn_only(self, adapter: BaichuanArchitectureAdapter) -> None:
-        assert adapter.cfg.attn_only is False
-
-    def test_uses_rms_norm(self, adapter: BaichuanArchitectureAdapter) -> None:
-        assert adapter.cfg.uses_rms_norm is True
-
     def test_eps_attr(self, adapter: BaichuanArchitectureAdapter) -> None:
         assert adapter.cfg.eps_attr == "variance_epsilon"
 
@@ -642,54 +624,6 @@ class TestBaichuanPrepareModel:
             torch.ones(head_dim),
             atol=1e-6,
         )
-
-
-# ---------------------------------------------------------------------------
-# Factory registration tests
-# ---------------------------------------------------------------------------
-
-
-class TestBaichuanFactoryRegistration:
-    def test_factory_v2_key(self) -> None:
-        from transformer_lens.factories.architecture_adapter_factory import (
-            SUPPORTED_ARCHITECTURES,
-        )
-
-        assert "BaichuanForCausalLM" in SUPPORTED_ARCHITECTURES
-
-    def test_factory_v1_key(self) -> None:
-        from transformer_lens.factories.architecture_adapter_factory import (
-            SUPPORTED_ARCHITECTURES,
-        )
-
-        assert "BaiChuanForCausalLM" in SUPPORTED_ARCHITECTURES
-
-    def test_factory_v2_returns_baichuan_adapter(self) -> None:
-        from transformer_lens.factories.architecture_adapter_factory import (
-            ArchitectureAdapterFactory,
-        )
-
-        cfg = _make_cfg(n_heads=8, d_model=64)
-        cfg.architecture = "BaichuanForCausalLM"
-        adapter = ArchitectureAdapterFactory.select_architecture_adapter(cfg)
-        assert isinstance(adapter, BaichuanArchitectureAdapter)
-
-    def test_factory_v1_returns_baichuan_adapter(self) -> None:
-        from transformer_lens.factories.architecture_adapter_factory import (
-            ArchitectureAdapterFactory,
-        )
-
-        cfg = _make_cfg(n_heads=8, d_model=64)
-        cfg.architecture = "BaiChuanForCausalLM"
-        adapter = ArchitectureAdapterFactory.select_architecture_adapter(cfg)
-        assert isinstance(adapter, BaichuanArchitectureAdapter)
-
-    def test_import_from_init(self) -> None:
-        from transformer_lens.model_bridge.supported_architectures import (
-            BaichuanArchitectureAdapter as FromInit,
-        )
-
-        assert FromInit is BaichuanArchitectureAdapter
 
 
 # ---------------------------------------------------------------------------

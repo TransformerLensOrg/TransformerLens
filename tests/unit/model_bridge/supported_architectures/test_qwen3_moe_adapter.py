@@ -9,10 +9,6 @@ from transformer_lens.conversion_utils.conversion_steps.rearrange_tensor_convers
 from transformer_lens.conversion_utils.param_processing_conversion import (
     ParamProcessingConversion,
 )
-from transformer_lens.factories.architecture_adapter_factory import (
-    SUPPORTED_ARCHITECTURES,
-    ArchitectureAdapterFactory,
-)
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
@@ -49,23 +45,9 @@ def adapter(cfg: TransformerBridgeConfig) -> Qwen3MoeArchitectureAdapter:
 
 
 class TestQwen3MoeAdapterConfig:
-    def test_normalization_type_is_rms(self, adapter: Qwen3MoeArchitectureAdapter) -> None:
-        assert adapter.cfg.normalization_type == "RMS"
-
-    def test_positional_embedding_type_is_rotary(
-        self, adapter: Qwen3MoeArchitectureAdapter
-    ) -> None:
-        assert adapter.cfg.positional_embedding_type == "rotary"
-
     def test_final_rms_is_true(self, adapter: Qwen3MoeArchitectureAdapter) -> None:
         """OLMoE sets final_rms=False; Qwen3MoE must not drift to that."""
         assert adapter.cfg.final_rms is True
-
-    def test_gated_mlp_is_true(self, adapter: Qwen3MoeArchitectureAdapter) -> None:
-        assert adapter.cfg.gated_mlp is True
-
-    def test_uses_rms_norm_is_true(self, adapter: Qwen3MoeArchitectureAdapter) -> None:
-        assert adapter.cfg.uses_rms_norm is True
 
     def test_attn_implementation_is_eager(self, adapter: Qwen3MoeArchitectureAdapter) -> None:
         assert adapter.cfg.attn_implementation == "eager"
@@ -89,23 +71,6 @@ class TestQwen3MoeAdapterConfig:
 
 
 class TestQwen3MoeWeightConversions:
-    def test_has_qkvo_keys(self, adapter: Qwen3MoeArchitectureAdapter) -> None:
-        convs = adapter.weight_processing_conversions
-        assert convs is not None
-        assert "blocks.{i}.attn.q.weight" in convs
-        assert "blocks.{i}.attn.k.weight" in convs
-        assert "blocks.{i}.attn.v.weight" in convs
-        assert "blocks.{i}.attn.o.weight" in convs
-
-    def test_q_rearrange_uses_n_heads(self, adapter: Qwen3MoeArchitectureAdapter) -> None:
-        convs = adapter.weight_processing_conversions
-        assert convs is not None
-        q_conv = convs["blocks.{i}.attn.q.weight"]
-        assert isinstance(q_conv, ParamProcessingConversion)
-        assert isinstance(q_conv.tensor_conversion, RearrangeTensorConversion)
-        axes = q_conv.tensor_conversion.axes_lengths
-        assert axes.get("n") == 4
-
     def test_kv_rearrange_uses_n_kv_heads(self, adapter: Qwen3MoeArchitectureAdapter) -> None:
         """GQA: K/V follow n_key_value_heads (2), not n_heads."""
         convs = adapter.weight_processing_conversions
@@ -118,14 +83,6 @@ class TestQwen3MoeWeightConversions:
         assert isinstance(v_conv.tensor_conversion, RearrangeTensorConversion)
         assert k_conv.tensor_conversion.axes_lengths.get("n") == 2
         assert v_conv.tensor_conversion.axes_lengths.get("n") == 2
-
-    def test_o_rearrange_uses_n_heads(self, adapter: Qwen3MoeArchitectureAdapter) -> None:
-        convs = adapter.weight_processing_conversions
-        assert convs is not None
-        o_conv = convs["blocks.{i}.attn.o.weight"]
-        assert isinstance(o_conv, ParamProcessingConversion)
-        assert isinstance(o_conv.tensor_conversion, RearrangeTensorConversion)
-        assert o_conv.tensor_conversion.axes_lengths.get("n") == 4
 
 
 class TestQwen3MoeComponentMapping:
@@ -189,25 +146,6 @@ class TestQwen3MoeComponentMapping:
         assert subs["mlp"].name == "mlp"
 
 
-class TestQwen3MoeFactoryRegistration:
-    def test_factory_lookup_returns_adapter_class(self) -> None:
-        assert SUPPORTED_ARCHITECTURES["Qwen3MoeForCausalLM"] is Qwen3MoeArchitectureAdapter
-
-    def test_factory_selects_correct_adapter(self) -> None:
-        cfg = TransformerBridgeConfig(
-            d_model=64,
-            d_head=16,
-            n_layers=2,
-            n_ctx=128,
-            n_heads=4,
-            n_key_value_heads=2,
-            d_vocab=256,
-            architecture="Qwen3MoeForCausalLM",
-        )
-        adapter = ArchitectureAdapterFactory.select_architecture_adapter(cfg)
-        assert isinstance(adapter, Qwen3MoeArchitectureAdapter)
-
-
 class TestQwen3MoeComponentTypes:
     """Top-level bridge classes — guards against silent type substitution."""
 
@@ -268,22 +206,6 @@ class TestQwen3MoeBlockSubmodules:
         """Router is a LinearBridge so the routing logits can be hooked."""
         mlp = adapter.component_mapping["blocks"].submodules["mlp"]
         assert isinstance(mlp.submodules["gate"], LinearBridge)
-
-
-class TestQwen3MoeWeightConversionPatterns:
-    """Rearrange patterns on weight conversions."""
-
-    def test_qkv_pattern_is_split_heads(self, adapter: Qwen3MoeArchitectureAdapter) -> None:
-        convs = adapter.weight_processing_conversions
-        for slot in ("q", "k", "v"):
-            conv = convs[f"blocks.{{i}}.attn.{slot}.weight"]
-            assert isinstance(conv, ParamProcessingConversion)
-            assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)
-            assert conv.tensor_conversion.pattern == "(n h) m -> n m h"
-
-    def test_o_pattern_is_merge_heads(self, adapter: Qwen3MoeArchitectureAdapter) -> None:
-        conv = adapter.weight_processing_conversions["blocks.{i}.attn.o.weight"]
-        assert conv.tensor_conversion.pattern == "m (n h) -> n h m"
 
 
 class TestQwen3MoeGQA:

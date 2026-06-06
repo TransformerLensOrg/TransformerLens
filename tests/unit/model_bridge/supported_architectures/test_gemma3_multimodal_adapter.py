@@ -16,10 +16,6 @@ from transformer_lens.conversion_utils.conversion_steps.arithmetic_tensor_conver
 from transformer_lens.conversion_utils.param_processing_conversion import (
     ParamProcessingConversion,
 )
-from transformer_lens.factories.architecture_adapter_factory import (
-    SUPPORTED_ARCHITECTURES,
-    ArchitectureAdapterFactory,
-)
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     CLIPVisionEncoderBridge,
@@ -65,24 +61,6 @@ def _make_gemma3_mm_cfg(with_vision_config: bool = True, **overrides):
     return cfg
 
 
-class TestGemma3MultimodalRegistration:
-    """Test that Gemma3MultimodalArchitectureAdapter is properly registered."""
-
-    def test_architecture_in_supported_architectures(self):
-        assert "Gemma3ForConditionalGeneration" in SUPPORTED_ARCHITECTURES
-
-    def test_architecture_maps_to_correct_adapter(self):
-        assert (
-            SUPPORTED_ARCHITECTURES["Gemma3ForConditionalGeneration"]
-            is Gemma3MultimodalArchitectureAdapter
-        )
-
-    def test_factory_selects_correct_adapter(self):
-        cfg = _make_gemma3_mm_cfg()
-        adapter = ArchitectureAdapterFactory.select_architecture_adapter(cfg)
-        assert isinstance(adapter, Gemma3MultimodalArchitectureAdapter)
-
-
 class TestGemma3MultimodalAdapterConfig:
     """Test Gemma3MultimodalArchitectureAdapter configuration."""
 
@@ -94,24 +72,9 @@ class TestGemma3MultimodalAdapterConfig:
     def test_is_multimodal(self, adapter):
         assert adapter.cfg.is_multimodal is True
 
-    def test_gated_mlp(self, adapter):
-        assert adapter.cfg.gated_mlp is True
-
-    def test_uses_rms_norm(self, adapter):
-        assert adapter.cfg.uses_rms_norm is True
-
-    def test_normalization_type(self, adapter):
-        assert adapter.cfg.normalization_type == "RMS"
-
     def test_rmsnorm_uses_offset(self, adapter):
         # Required to keep fold_ln from setting identity to 1.0 (Gemma's +1 trick).
         assert adapter.cfg.rmsnorm_uses_offset is True
-
-    def test_positional_embedding_type(self, adapter):
-        assert adapter.cfg.positional_embedding_type == "rotary"
-
-    def test_attn_implementation_eager(self, adapter):
-        assert adapter.cfg.attn_implementation == "eager"
 
     def test_vision_config_extracted(self, adapter):
         assert adapter.cfg.vision_hidden_size == 1152

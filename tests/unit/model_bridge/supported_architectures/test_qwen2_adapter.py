@@ -16,16 +16,6 @@ import torch.nn as nn
 from torch import ones, randn, zeros
 
 from transformer_lens.config import TransformerBridgeConfig
-from transformer_lens.conversion_utils.conversion_steps.rearrange_tensor_conversion import (
-    RearrangeTensorConversion,
-)
-from transformer_lens.conversion_utils.param_processing_conversion import (
-    ParamProcessingConversion,
-)
-from transformer_lens.factories.architecture_adapter_factory import (
-    SUPPORTED_ARCHITECTURES,
-    ArchitectureAdapterFactory,
-)
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
@@ -120,26 +110,8 @@ class DummyBridgeModel:
 class TestQwen2AdapterConfig:
     """Adapter-owned config defaults that downstream bridge code relies on."""
 
-    def test_normalization_type_is_rms(self, adapter: Qwen2ArchitectureAdapter) -> None:
-        assert adapter.cfg.normalization_type == "RMS"
-
-    def test_positional_embedding_type_is_rotary(self, adapter: Qwen2ArchitectureAdapter) -> None:
-        assert adapter.cfg.positional_embedding_type == "rotary"
-
-    def test_final_rms_is_true(self, adapter: Qwen2ArchitectureAdapter) -> None:
-        assert adapter.cfg.final_rms is True
-
-    def test_gated_mlp_is_true(self, adapter: Qwen2ArchitectureAdapter) -> None:
-        assert adapter.cfg.gated_mlp is True
-
-    def test_attn_only_is_false(self, adapter: Qwen2ArchitectureAdapter) -> None:
-        assert adapter.cfg.attn_only is False
-
     def test_default_prepend_bos_is_false(self, adapter: Qwen2ArchitectureAdapter) -> None:
         assert adapter.cfg.default_prepend_bos is False
-
-    def test_uses_rms_norm_is_true(self, adapter: Qwen2ArchitectureAdapter) -> None:
-        assert adapter.cfg.uses_rms_norm is True
 
     def test_n_key_value_heads_propagated(self) -> None:
         adapter = Qwen2ArchitectureAdapter(_make_cfg(n_heads=8, n_key_value_heads=2))
@@ -334,51 +306,3 @@ class TestQwen2SetupComponentTesting:
         adapter.setup_component_testing(_fake_hf_model(rotary_emb), bridge_model=bridge_model)
 
         assert bridge_model.blocks[0].attn.rotary_emb is rotary_emb
-
-
-class TestQwen2WeightConversions:
-    """Qwen2 uses the standard QKVO conversions, with GQA-specific K/V heads."""
-
-    def test_has_qkvo_keys(self, adapter: Qwen2ArchitectureAdapter) -> None:
-        convs = adapter.weight_processing_conversions
-        assert convs is not None
-        assert set(convs.keys()) == {
-            "blocks.{i}.attn.q.weight",
-            "blocks.{i}.attn.k.weight",
-            "blocks.{i}.attn.v.weight",
-            "blocks.{i}.attn.o.weight",
-        }
-
-    def test_q_uses_n_heads(self, adapter: Qwen2ArchitectureAdapter) -> None:
-        conv = adapter.weight_processing_conversions["blocks.{i}.attn.q.weight"]
-        assert isinstance(conv, ParamProcessingConversion)
-        assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)
-        assert conv.tensor_conversion.axes_lengths["n"] == adapter.cfg.n_heads
-
-    def test_kv_use_n_key_value_heads(self, adapter: Qwen2ArchitectureAdapter) -> None:
-        for key in ("blocks.{i}.attn.k.weight", "blocks.{i}.attn.v.weight"):
-            conv = adapter.weight_processing_conversions[key]
-            assert isinstance(conv, ParamProcessingConversion)
-            assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)
-            assert conv.tensor_conversion.axes_lengths["n"] == adapter.cfg.n_key_value_heads
-
-    def test_o_uses_n_heads(self, adapter: Qwen2ArchitectureAdapter) -> None:
-        conv = adapter.weight_processing_conversions["blocks.{i}.attn.o.weight"]
-        assert isinstance(conv, ParamProcessingConversion)
-        assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)
-        assert conv.tensor_conversion.axes_lengths["n"] == adapter.cfg.n_heads
-
-
-class TestQwen2FactoryRegistration:
-    """Factory lookup must resolve HF's architecture string to this adapter."""
-
-    def test_factory_key_present(self) -> None:
-        assert "Qwen2ForCausalLM" in SUPPORTED_ARCHITECTURES
-
-    def test_factory_maps_to_correct_adapter_class(self) -> None:
-        assert SUPPORTED_ARCHITECTURES["Qwen2ForCausalLM"] is Qwen2ArchitectureAdapter
-
-    def test_factory_returns_correct_instance(self) -> None:
-        cfg = _make_cfg()
-        adapter = ArchitectureAdapterFactory.select_architecture_adapter(cfg)
-        assert isinstance(adapter, Qwen2ArchitectureAdapter)

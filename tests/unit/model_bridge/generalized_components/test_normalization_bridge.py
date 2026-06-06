@@ -116,3 +116,18 @@ def test_native_autograd_path_also_respects_override():
     )
     x = torch.randn(2, 5, d)
     torch.testing.assert_close(bridge(x), layer(x), rtol=1e-5, atol=1e-5)
+
+
+def test_layernorm_with_none_bias_matches_torch():
+    # MPT's MptBlock and Cohere set norm.bias = None for Hub-weight compat; the bridge must
+    # treat the missing bias as zero (as F.layer_norm does), not crash or NaN.
+    d = 16
+    layer = nn.LayerNorm(d, eps=1e-5)
+    nn.init.normal_(layer.weight, std=0.1)
+    layer.bias = None
+    layer.eval()
+    bridge = _make_bridge(layer, _Cfg(uses_rms_norm=False))
+    x = torch.randn(2, 4, d)
+    out = bridge(x)
+    assert torch.isfinite(out).all()
+    torch.testing.assert_close(out, layer(x), rtol=1e-5, atol=1e-5)

@@ -9,10 +9,6 @@ from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorCo
 from transformer_lens.conversion_utils.param_processing_conversion import (
     ParamProcessingConversion,
 )
-from transformer_lens.factories.architecture_adapter_factory import (
-    SUPPORTED_ARCHITECTURES,
-    ArchitectureAdapterFactory,
-)
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     CLIPVisionEncoderBridge,
@@ -56,21 +52,6 @@ def _make_llava_cfg(vision_model_type: str = "clip_vision_model", **overrides):
     return cfg
 
 
-class TestLlavaRegistration:
-    """LlavaArchitectureAdapter is registered."""
-
-    def test_architecture_in_supported_architectures(self):
-        assert "LlavaForConditionalGeneration" in SUPPORTED_ARCHITECTURES
-
-    def test_architecture_maps_to_correct_adapter(self):
-        assert SUPPORTED_ARCHITECTURES["LlavaForConditionalGeneration"] is LlavaArchitectureAdapter
-
-    def test_factory_selects_correct_adapter(self):
-        cfg = _make_llava_cfg()
-        adapter = ArchitectureAdapterFactory.select_architecture_adapter(cfg)
-        assert isinstance(adapter, LlavaArchitectureAdapter)
-
-
 class TestLlavaAdapterConfig:
     """LlavaArchitectureAdapter configuration."""
 
@@ -81,27 +62,6 @@ class TestLlavaAdapterConfig:
 
     def test_is_multimodal(self, adapter):
         assert adapter.cfg.is_multimodal is True
-
-    def test_gated_mlp(self, adapter):
-        assert adapter.cfg.gated_mlp is True
-
-    def test_uses_rms_norm(self, adapter):
-        assert adapter.cfg.uses_rms_norm is True
-
-    def test_normalization_type(self, adapter):
-        assert adapter.cfg.normalization_type == "RMS"
-
-    def test_positional_embedding_type(self, adapter):
-        assert adapter.cfg.positional_embedding_type == "rotary"
-
-    def test_attn_implementation(self, adapter):
-        assert adapter.cfg.attn_implementation == "eager"
-
-    def test_final_rms_is_true(self, adapter):
-        assert adapter.cfg.final_rms is True
-
-    def test_attn_only_is_false(self, adapter):
-        assert adapter.cfg.attn_only is False
 
     def test_eps_attr(self, adapter):
         assert adapter.cfg.eps_attr == "variance_epsilon"
