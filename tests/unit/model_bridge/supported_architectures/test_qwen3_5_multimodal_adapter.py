@@ -10,10 +10,6 @@ from types import SimpleNamespace
 import torch
 
 from transformer_lens.config.transformer_bridge_config import TransformerBridgeConfig
-from transformer_lens.factories.architecture_adapter_factory import (
-    SUPPORTED_ARCHITECTURES,
-    ArchitectureAdapterFactory,
-)
 from transformer_lens.model_bridge.generalized_components import (
     LinearBridge,
     Qwen3_5VisionBlockBridge,
@@ -48,12 +44,6 @@ def _make_cfg(**overrides):
     # Qwen vision config uses depth/num_heads (not num_hidden_layers/num_attention_heads).
     cfg.vision_config = SimpleNamespace(hidden_size=16, depth=2, num_heads=4)
     return cfg
-
-
-def test_registered_and_selected_as_multimodal_adapter():
-    assert SUPPORTED_ARCHITECTURES[ARCH] is Qwen3_5MultimodalArchitectureAdapter
-    adapter = ArchitectureAdapterFactory.select_architecture_adapter(_make_cfg())
-    assert isinstance(adapter, Qwen3_5MultimodalArchitectureAdapter)
 
 
 def test_registry_invariants():

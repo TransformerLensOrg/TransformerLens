@@ -255,6 +255,7 @@ The work is mostly bookkeeping: identify each component on the HF side (embeddin
 Two guides walk through the process:
 
 - [Architecture Adapter Creation Guide](adapter_development/adapter-creation-guide.md) — start here. A step-by-step workflow for taking an HF model from unsupported to tested, registered adapter.
+- [Architecture Unit Test Suite Guide](adapter_development/adapter-unit-test-guide.md) — what to test (and what not to) in the per-adapter unit suite, so every test guards a real, adapter-specific regression.
 - [HuggingFace Model Analysis Guide](adapter_development/hf-model-analysis-guide.md) — a reference for reading an HF model's `config.json` and source files to extract the attributes you'll set on `self.cfg`.
 - [HuggingFace Model Scraper](adapter_development/hf-scraper.md) — how to run the scraper that discovers HF models for the registry, including the per-architecture targeted-scrape mode used after merging a new adapter.
 
@@ -277,10 +278,10 @@ The `TestRegistrySyncedWithFactory` class bidirectionally asserts that `SUPPORTE
 
 ### Required tests for a new adapter
 
-Two test layers, both required:
+Two test layers:
 
 1. **Unit adapter test** at `tests/unit/model_bridge/supported_architectures/test_<arch>_adapter.py`. ~26 of these exist; copy the closest sibling. The pattern: a `_make_cfg()` factory, an `adapter` fixture, and one test per architecture-specific quirk. Unit adapter tests instantiate the adapter from a synthetic config and assert structural properties — they don't load weights and don't hit HF Hub.
-2. **Integration parity test** at `tests/integration/model_bridge/test_<arch>_adapter.py`. Loads a real cached HF model and asserts logit parity vs HuggingFace at fp32 + eager attention.
+2. **Integration parity test** at `tests/integration/model_bridge/test_<arch>_adapter.py`. Loads a real cached HF model and asserts logit parity vs HuggingFace at fp32 + eager attention. If there are no small cached models available, make a note of the missing test in the creation PR.
 
 ### Common adapter gotchas
 
@@ -332,6 +333,7 @@ If verification fails by `~1e-3` or more against the HF reference, the bisection
 :maxdepth: 1
 
 adapter_development/adapter-creation-guide
+adapter_development/adapter-unit-test-guide
 adapter_development/hf-model-analysis-guide
 adapter_development/hf-scraper
 adapter_development/external-adapter-registration

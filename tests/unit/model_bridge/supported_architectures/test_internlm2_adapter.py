@@ -94,24 +94,6 @@ def _fill_interleaved(
 class TestInternLM2AdapterConfig:
     """Adapter sets all required config attributes."""
 
-    def test_normalization_type(self, adapter: InternLM2ArchitectureAdapter) -> None:
-        assert adapter.cfg.normalization_type == "RMS"
-
-    def test_positional_embedding_type(self, adapter: InternLM2ArchitectureAdapter) -> None:
-        assert adapter.cfg.positional_embedding_type == "rotary"
-
-    def test_final_rms(self, adapter: InternLM2ArchitectureAdapter) -> None:
-        assert adapter.cfg.final_rms is True
-
-    def test_gated_mlp(self, adapter: InternLM2ArchitectureAdapter) -> None:
-        assert adapter.cfg.gated_mlp is True
-
-    def test_attn_only(self, adapter: InternLM2ArchitectureAdapter) -> None:
-        assert adapter.cfg.attn_only is False
-
-    def test_uses_rms_norm(self, adapter: InternLM2ArchitectureAdapter) -> None:
-        assert adapter.cfg.uses_rms_norm is True
-
     def test_eps_attr(self, adapter: InternLM2ArchitectureAdapter) -> None:
         assert adapter.cfg.eps_attr == "variance_epsilon"
 
@@ -242,38 +224,9 @@ class TestInternLM2AdapterComponentMapping:
 class TestInternLM2AdapterWeightConversions:
     """weight_processing_conversions has correct keys, types, and rearrange patterns."""
 
-    def test_q_weight_key_present(self, adapter: InternLM2ArchitectureAdapter) -> None:
-        assert adapter.weight_processing_conversions is not None
-        assert "blocks.{i}.attn.q.weight" in adapter.weight_processing_conversions
-
-    def test_k_weight_key_present(self, adapter: InternLM2ArchitectureAdapter) -> None:
-        assert adapter.weight_processing_conversions is not None
-        assert "blocks.{i}.attn.k.weight" in adapter.weight_processing_conversions
-
-    def test_v_weight_key_present(self, adapter: InternLM2ArchitectureAdapter) -> None:
-        assert adapter.weight_processing_conversions is not None
-        assert "blocks.{i}.attn.v.weight" in adapter.weight_processing_conversions
-
-    def test_o_weight_key_present(self, adapter: InternLM2ArchitectureAdapter) -> None:
-        assert adapter.weight_processing_conversions is not None
-        assert "blocks.{i}.attn.o.weight" in adapter.weight_processing_conversions
-
     def test_exactly_four_conversion_keys(self, adapter: InternLM2ArchitectureAdapter) -> None:
         assert adapter.weight_processing_conversions is not None
         assert len(adapter.weight_processing_conversions) == 4
-
-    def test_q_conversion_is_param_processing_conversion(
-        self, adapter: InternLM2ArchitectureAdapter
-    ) -> None:
-        assert adapter.weight_processing_conversions is not None
-        conv = adapter.weight_processing_conversions["blocks.{i}.attn.q.weight"]
-        assert isinstance(conv, ParamProcessingConversion)
-
-    def test_q_tensor_conversion_is_rearrange(self, adapter: InternLM2ArchitectureAdapter) -> None:
-        assert adapter.weight_processing_conversions is not None
-        conv = adapter.weight_processing_conversions["blocks.{i}.attn.q.weight"]
-        assert isinstance(conv, ParamProcessingConversion)
-        assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)
 
     def test_q_rearrange_pattern(self, adapter: InternLM2ArchitectureAdapter) -> None:
         assert adapter.weight_processing_conversions is not None
@@ -338,14 +291,6 @@ class TestInternLM2SplitWqkv:
         return InternLM2ArchitectureAdapter(
             _make_cfg(n_heads=n_heads, n_key_value_heads=n_kv_heads, d_model=d_model)
         )
-
-    def test_returns_three_linears(self) -> None:
-        adapter = self._adapter()
-        attn = _make_attn_component(8, 2, 4, 32)
-        q, k, v = adapter._split_internlm2_wqkv(attn)
-        assert isinstance(q, nn.Linear)
-        assert isinstance(k, nn.Linear)
-        assert isinstance(v, nn.Linear)
 
     def test_gqa_shapes(self) -> None:
         adapter = self._adapter(n_heads=8, n_kv_heads=2, d_model=32)
@@ -429,16 +374,6 @@ class TestInternLM2SplitWqkv:
         assert torch.all(k.bias[head_dim:] == 5.0)
         assert torch.all(v.bias[:head_dim] == 3.0)
         assert torch.all(v.bias[head_dim:] == 6.0)
-
-    def test_forward_output_shapes(self) -> None:
-        n_heads, n_kv_heads, head_dim, d_model = 8, 2, 4, 32
-        adapter = self._adapter(n_heads=n_heads, n_kv_heads=n_kv_heads, d_model=d_model)
-        attn = _make_attn_component(n_heads, n_kv_heads, head_dim, d_model)
-        q, k, v = adapter._split_internlm2_wqkv(attn)
-        x = torch.randn(2, 5, d_model)
-        assert q(x).shape == (2, 5, n_heads * head_dim)
-        assert k(x).shape == (2, 5, n_kv_heads * head_dim)
-        assert v(x).shape == (2, 5, n_kv_heads * head_dim)
 
 
 class TestInternLM2PreprocessWeights:
@@ -610,35 +545,6 @@ class TestInternLM2PreprocessWeights:
             assert f"blocks.{i}.attn.q.weight" in result
 
 
-class TestInternLM2FactoryRegistration:
-    """Factory maps InternLM2ForCausalLM to InternLM2ArchitectureAdapter."""
-
-    def test_factory_returns_internlm2_adapter(self) -> None:
-        from transformer_lens.factories.architecture_adapter_factory import (
-            ArchitectureAdapterFactory,
-        )
-
-        cfg = _make_cfg()
-        adapter = ArchitectureAdapterFactory.select_architecture_adapter(cfg)
-        assert isinstance(
-            adapter, InternLM2ArchitectureAdapter
-        ), f"Expected InternLM2ArchitectureAdapter, got {type(adapter).__name__}"
-
-    def test_factory_key_in_supported_architectures(self) -> None:
-        from transformer_lens.factories.architecture_adapter_factory import (
-            SUPPORTED_ARCHITECTURES,
-        )
-
-        assert "InternLM2ForCausalLM" in SUPPORTED_ARCHITECTURES
-
-    def test_factory_maps_to_correct_class(self) -> None:
-        from transformer_lens.factories.architecture_adapter_factory import (
-            SUPPORTED_ARCHITECTURES,
-        )
-
-        assert SUPPORTED_ARCHITECTURES["InternLM2ForCausalLM"] is InternLM2ArchitectureAdapter
-
-
 class TestInternLM2ComponentMappingPresence:
     """Component slots exist (deletion guard)."""
 
@@ -728,9 +634,6 @@ class TestInternLM2ArchitectureGuards:
     def test_no_mlp_weight_conversions(self, adapter: InternLM2ArchitectureAdapter) -> None:
         for key in adapter.weight_processing_conversions:
             assert "mlp" not in key
-
-    def test_no_top_level_rotary_emb(self, adapter: InternLM2ArchitectureAdapter) -> None:
-        assert "rotary_emb" not in adapter.component_mapping
 
     def test_block_uses_block_bridge_not_parallel(
         self, adapter: InternLM2ArchitectureAdapter

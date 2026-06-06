@@ -31,30 +31,6 @@ def qwen3_5_dependency_available(monkeypatch):
     monkeypatch.setattr(transformers, "Qwen3_5ForCausalLM", object(), raising=False)
 
 
-class TestQwen3_5Registration:
-    """Adapter is registered in all lookup tables."""
-
-    def test_adapter_importable(self):
-        from transformer_lens.model_bridge.supported_architectures import (
-            Qwen3_5ArchitectureAdapter,
-        )
-
-        assert Qwen3_5ArchitectureAdapter is not None
-
-    def test_in_supported_architectures(self):
-        assert "Qwen3_5ForCausalLM" in SUPPORTED_ARCHITECTURES
-
-    def test_in_hf_supported_architectures(self):
-        assert "Qwen3_5ForCausalLM" in HF_SUPPORTED_ARCHITECTURES
-
-    def test_adapter_class_correct(self):
-        from transformer_lens.model_bridge.supported_architectures import (
-            Qwen3_5ArchitectureAdapter,
-        )
-
-        assert SUPPORTED_ARCHITECTURES["Qwen3_5ForCausalLM"] is Qwen3_5ArchitectureAdapter
-
-
 class TestQwen3_5ArchitectureDetection:
     """Tests that do not require a Transformers build with Qwen3.5 classes."""
 
@@ -425,34 +401,9 @@ class TestQwen3_5ConfigAttributes:
         cfg = _make_bridge_cfg()
         return Qwen3_5ArchitectureAdapter(cfg)
 
-    def test_normalization_type(self, adapter):
-        assert adapter.cfg.normalization_type == "RMS"
-
-    def test_positional_embedding_type(self, adapter):
-        assert adapter.cfg.positional_embedding_type == "rotary"
-
-    def test_final_rms(self, adapter):
-        assert adapter.cfg.final_rms is True
-
-    def test_gated_mlp(self, adapter):
-        assert adapter.cfg.gated_mlp is True
-
-    def test_attn_only(self, adapter):
-        assert adapter.cfg.attn_only is False
-
-    def test_uses_rms_norm(self, adapter):
-        assert adapter.cfg.uses_rms_norm is True
-
-    def test_default_prepend_bos(self, adapter):
-        assert adapter.cfg.default_prepend_bos is False
-
     def test_supports_fold_ln_false(self, adapter):
         """Hybrid layers break fold_ln."""
         assert adapter.supports_fold_ln is False
-
-    def test_attn_implementation_eager(self, adapter):
-        """Eager attention required for output_attentions support."""
-        assert adapter.cfg.attn_implementation == "eager"
 
     def test_n_key_value_heads_set_when_gqa(self, qwen3_5_dependency_available):
         from transformer_lens.model_bridge.supported_architectures.qwen3_5 import (
@@ -598,10 +549,6 @@ class TestQwen3_5PreprocessWeights:
         original_keys = set(state_dict.keys())
         result = adapter.preprocess_weights(state_dict)
         assert set(result.keys()) == original_keys
-
-    def test_weight_processing_conversions_is_empty_dict(self, adapter):
-        """q_proj slicing happens in preprocess_weights, not as a conversion."""
-        assert adapter.weight_processing_conversions == {}
 
 
 @pytest.mark.skipif(

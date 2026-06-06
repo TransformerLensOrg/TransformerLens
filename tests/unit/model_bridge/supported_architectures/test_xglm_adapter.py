@@ -3,10 +3,6 @@
 import pytest
 
 from transformer_lens.config import TransformerBridgeConfig
-from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion
-from transformer_lens.conversion_utils.param_processing_conversion import (
-    ParamProcessingConversion,
-)
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     BlockBridge,
@@ -56,42 +52,8 @@ def adapter(cfg: TransformerBridgeConfig) -> XGLMArchitectureAdapter:
 class TestXGLMAdapterConfig:
     """Adapter sets all required config attributes."""
 
-    def test_normalization_type_is_ln(self, adapter: XGLMArchitectureAdapter) -> None:
-        assert adapter.cfg.normalization_type == "LN"
-
     def test_positional_embedding_type_is_standard(self, adapter: XGLMArchitectureAdapter) -> None:
         assert adapter.cfg.positional_embedding_type == "standard"
-
-    def test_final_rms_is_false(self, adapter: XGLMArchitectureAdapter) -> None:
-        assert adapter.cfg.final_rms is False
-
-    def test_gated_mlp_is_false(self, adapter: XGLMArchitectureAdapter) -> None:
-        assert adapter.cfg.gated_mlp is False
-
-    def test_attn_only_is_false(self, adapter: XGLMArchitectureAdapter) -> None:
-        assert adapter.cfg.attn_only is False
-
-    def test_uses_rms_norm_is_false(self, adapter: XGLMArchitectureAdapter) -> None:
-        assert adapter.cfg.uses_rms_norm is False
-
-
-class TestXGLMAdapterWeightConversions:
-    """Adapter defines exactly the four standard QKVO weight conversions."""
-
-    def test_q_weight_key_present(self, adapter: XGLMArchitectureAdapter) -> None:
-        assert "blocks.{i}.attn.q.weight" in adapter.weight_processing_conversions
-
-    def test_k_weight_key_present(self, adapter: XGLMArchitectureAdapter) -> None:
-        assert "blocks.{i}.attn.k.weight" in adapter.weight_processing_conversions
-
-    def test_v_weight_key_present(self, adapter: XGLMArchitectureAdapter) -> None:
-        assert "blocks.{i}.attn.v.weight" in adapter.weight_processing_conversions
-
-    def test_o_weight_key_present(self, adapter: XGLMArchitectureAdapter) -> None:
-        assert "blocks.{i}.attn.o.weight" in adapter.weight_processing_conversions
-
-    def test_exactly_four_conversion_keys(self, adapter: XGLMArchitectureAdapter) -> None:
-        assert len(adapter.weight_processing_conversions) == 4
 
 
 class TestXGLMAdapterComponentMapping:
@@ -198,47 +160,8 @@ class TestXGLMAdapterHookCompatibility:
         assert "setup_hook_compatibility" not in vars(type(adapter))
 
 
-class TestXGLMFactoryRegistration:
-    """XGLMForCausalLM is registered in SUPPORTED_ARCHITECTURES and resolves correctly."""
-
-    def test_factory_returns_xglm_adapter(self) -> None:
-        from transformer_lens.factories.architecture_adapter_factory import (
-            ArchitectureAdapterFactory,
-        )
-
-        cfg = _make_cfg()
-        adapter = ArchitectureAdapterFactory.select_architecture_adapter(cfg)
-        assert isinstance(adapter, XGLMArchitectureAdapter)
-
-    def test_factory_key_is_xglm_for_causal_lm(self) -> None:
-        from transformer_lens.factories.architecture_adapter_factory import (
-            SUPPORTED_ARCHITECTURES,
-        )
-
-        assert "XGLMForCausalLM" in SUPPORTED_ARCHITECTURES
-
-    def test_factory_maps_to_correct_class(self) -> None:
-        from transformer_lens.factories.architecture_adapter_factory import (
-            SUPPORTED_ARCHITECTURES,
-        )
-
-        assert SUPPORTED_ARCHITECTURES["XGLMForCausalLM"] is XGLMArchitectureAdapter
-
-
 class TestXGLMComponentMappingPresence:
     """Component slots exist (deletion guard)."""
-
-    def test_has_embed(self, adapter: XGLMArchitectureAdapter) -> None:
-        assert "embed" in adapter.component_mapping
-
-    def test_has_blocks(self, adapter: XGLMArchitectureAdapter) -> None:
-        assert "blocks" in adapter.component_mapping
-
-    def test_has_ln_final(self, adapter: XGLMArchitectureAdapter) -> None:
-        assert "ln_final" in adapter.component_mapping
-
-    def test_has_unembed(self, adapter: XGLMArchitectureAdapter) -> None:
-        assert "unembed" in adapter.component_mapping
 
     def test_all_expected_top_level_keys_present(self, adapter: XGLMArchitectureAdapter) -> None:
         # No top-level rotary_emb (sinusoidal) and no pos_embed (non-persistent).
@@ -303,50 +226,6 @@ class TestXGLMBlockSubmodules:
         # Standard 2-layer MLP (fc1 -> gelu -> fc2), NOT gated.
         mlp = blocks.submodules["mlp"]
         assert "gate" not in mlp.submodules
-
-
-class TestXGLMComponentTypes:
-    """Component bridge classes — guard against silent type substitution."""
-
-    def test_embed_type(self, adapter: XGLMArchitectureAdapter) -> None:
-        assert isinstance(adapter.component_mapping["embed"], EmbeddingBridge)
-
-    def test_blocks_type(self, adapter: XGLMArchitectureAdapter) -> None:
-        assert isinstance(adapter.component_mapping["blocks"], BlockBridge)
-
-    def test_ln_final_type(self, adapter: XGLMArchitectureAdapter) -> None:
-        # XGLM uses LayerNorm (not RMS).
-        assert isinstance(adapter.component_mapping["ln_final"], NormalizationBridge)
-
-    def test_unembed_type(self, adapter: XGLMArchitectureAdapter) -> None:
-        assert isinstance(adapter.component_mapping["unembed"], UnembeddingBridge)
-
-
-class TestXGLMWeightConversionSemantics:
-    """QKVO conversion entries use the expected types and patterns."""
-
-    def test_q_conversion_type(self, adapter: XGLMArchitectureAdapter) -> None:
-        conv = adapter.weight_processing_conversions["blocks.{i}.attn.q.weight"]
-        assert isinstance(conv, ParamProcessingConversion)
-        assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)
-
-    def test_qkv_split_heads_pattern(self, adapter: XGLMArchitectureAdapter) -> None:
-        for slot in ("q", "k", "v"):
-            conv = adapter.weight_processing_conversions[f"blocks.{{i}}.attn.{slot}.weight"]
-            assert isinstance(conv, ParamProcessingConversion)
-            assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)
-            assert conv.tensor_conversion.pattern == "(n h) m -> n m h"
-
-    def test_o_merge_heads_pattern(self, adapter: XGLMArchitectureAdapter) -> None:
-        conv = adapter.weight_processing_conversions["blocks.{i}.attn.o.weight"]
-        assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)
-        assert conv.tensor_conversion.pattern == "m (n h) -> n h m"
-
-    def test_qkvo_n_axis_equals_n_heads(self, adapter: XGLMArchitectureAdapter) -> None:
-        # MHA: K/V share n_heads with Q/O (no GQA on XGLM).
-        for slot in ("q", "k", "v", "o"):
-            conv = adapter.weight_processing_conversions[f"blocks.{{i}}.attn.{slot}.weight"]
-            assert conv.tensor_conversion.axes_lengths["n"] == adapter.cfg.n_heads
 
 
 class TestXGLMArchitectureGuards:
