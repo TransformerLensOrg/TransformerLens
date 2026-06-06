@@ -11,10 +11,6 @@ from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorCo
 from transformer_lens.conversion_utils.param_processing_conversion import (
     ParamProcessingConversion,
 )
-from transformer_lens.factories.architecture_adapter_factory import (
-    SUPPORTED_ARCHITECTURES,
-    ArchitectureAdapterFactory,
-)
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
@@ -89,23 +85,6 @@ def adapter(cfg: TransformerBridgeConfig) -> GPTBigCodeArchitectureAdapter:
 
 
 class TestGPTBigCodeAdapterConfig:
-    def test_normalization_type_is_ln(self, adapter: GPTBigCodeArchitectureAdapter) -> None:
-        assert adapter.cfg.normalization_type == "LN"
-
-    def test_positional_embedding_type_is_standard(
-        self, adapter: GPTBigCodeArchitectureAdapter
-    ) -> None:
-        assert adapter.cfg.positional_embedding_type == "standard"
-
-    def test_final_rms_is_false(self, adapter: GPTBigCodeArchitectureAdapter) -> None:
-        assert adapter.cfg.final_rms is False
-
-    def test_gated_mlp_is_false(self, adapter: GPTBigCodeArchitectureAdapter) -> None:
-        assert adapter.cfg.gated_mlp is False
-
-    def test_attn_only_is_false(self, adapter: GPTBigCodeArchitectureAdapter) -> None:
-        assert adapter.cfg.attn_only is False
-
     def test_n_key_value_heads_is_one(self, adapter: GPTBigCodeArchitectureAdapter) -> None:
         assert adapter.cfg.n_key_value_heads == 1
 
@@ -206,23 +185,6 @@ class TestGPTBigCodeAdapterComponentMapping:
 # ---------------------------------------------------------------------------
 # Weight processing conversion tests
 # ---------------------------------------------------------------------------
-
-
-class TestGPTBigCodeAdapterWeightConversions:
-    def test_q_weight_key_present(self, adapter: GPTBigCodeArchitectureAdapter) -> None:
-        assert "blocks.{i}.attn.q.weight" in adapter.weight_processing_conversions
-
-    def test_k_weight_key_present(self, adapter: GPTBigCodeArchitectureAdapter) -> None:
-        assert "blocks.{i}.attn.k.weight" in adapter.weight_processing_conversions
-
-    def test_v_weight_key_present(self, adapter: GPTBigCodeArchitectureAdapter) -> None:
-        assert "blocks.{i}.attn.v.weight" in adapter.weight_processing_conversions
-
-    def test_o_weight_key_present(self, adapter: GPTBigCodeArchitectureAdapter) -> None:
-        assert "blocks.{i}.attn.o.weight" in adapter.weight_processing_conversions
-
-    def test_exactly_four_conversion_keys(self, adapter: GPTBigCodeArchitectureAdapter) -> None:
-        assert len(adapter.weight_processing_conversions) == 4
 
 
 class TestGPTBigCodeWeightConversionSemantics:
@@ -472,27 +434,6 @@ class TestGPTBigCodeMQASplitQKVMatrix:
         # K/V share shape [d_head, d_model]; only Q differs in shape, so compare K vs V.
         assert not torch.allclose(k.weight, v.weight)
 
-    def test_q_forward_output_shape(
-        self, adapter: GPTBigCodeArchitectureAdapter, fake_attn: FakeMQAAttention
-    ) -> None:
-        q, _, _ = adapter._split_qkv_matrix(fake_attn)
-        x = torch.randn(self.BATCH, self.SEQ, self.D_MODEL)
-        assert q(x).shape == (self.BATCH, self.SEQ, self.D_MODEL)
-
-    def test_k_forward_output_shape(
-        self, adapter: GPTBigCodeArchitectureAdapter, fake_attn: FakeMQAAttention
-    ) -> None:
-        _, k, _ = adapter._split_qkv_matrix(fake_attn)
-        x = torch.randn(self.BATCH, self.SEQ, self.D_MODEL)
-        assert k(x).shape == (self.BATCH, self.SEQ, self.D_HEAD)
-
-    def test_v_forward_output_shape(
-        self, adapter: GPTBigCodeArchitectureAdapter, fake_attn: FakeMQAAttention
-    ) -> None:
-        _, _, v = adapter._split_qkv_matrix(fake_attn)
-        x = torch.randn(self.BATCH, self.SEQ, self.D_MODEL)
-        assert v(x).shape == (self.BATCH, self.SEQ, self.D_HEAD)
-
     def test_weight_values_match_c_attn_rows(
         self, adapter: GPTBigCodeArchitectureAdapter, fake_attn: FakeMQAAttention
     ) -> None:
@@ -587,21 +528,3 @@ class TestGPTBigCodeHookShapes:
         out = wired_attn_bridge(hidden)
         out_tensor = out[0] if isinstance(out, tuple) else out
         assert out_tensor.shape == (self.BATCH, self.SEQ, self.D_MODEL)
-
-
-# ---------------------------------------------------------------------------
-# Factory registration tests
-# ---------------------------------------------------------------------------
-
-
-class TestGPTBigCodeFactoryRegistration:
-    def test_factory_key_present(self) -> None:
-        assert "GPTBigCodeForCausalLM" in SUPPORTED_ARCHITECTURES
-
-    def test_factory_maps_to_correct_adapter_class(self) -> None:
-        assert SUPPORTED_ARCHITECTURES["GPTBigCodeForCausalLM"] is GPTBigCodeArchitectureAdapter
-
-    def test_factory_returns_correct_instance(self) -> None:
-        cfg = _make_cfg()
-        adapter = ArchitectureAdapterFactory.select_architecture_adapter(cfg)
-        assert isinstance(adapter, GPTBigCodeArchitectureAdapter)

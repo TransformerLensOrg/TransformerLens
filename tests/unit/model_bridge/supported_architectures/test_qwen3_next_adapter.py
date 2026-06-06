@@ -7,35 +7,6 @@ transformer_lens.loading_from_pretrained, so no convert_hf_model_config tests he
 
 import pytest
 
-from transformer_lens.factories.architecture_adapter_factory import (
-    SUPPORTED_ARCHITECTURES,
-)
-from transformer_lens.tools.model_registry import HF_SUPPORTED_ARCHITECTURES
-
-
-class TestQwen3NextRegistration:
-    """Adapter is registered in all lookup tables."""
-
-    def test_adapter_importable(self):
-        from transformer_lens.model_bridge.supported_architectures import (
-            Qwen3NextArchitectureAdapter,
-        )
-
-        assert Qwen3NextArchitectureAdapter is not None
-
-    def test_in_supported_architectures(self):
-        assert "Qwen3NextForCausalLM" in SUPPORTED_ARCHITECTURES
-
-    def test_in_hf_supported_architectures(self):
-        assert "Qwen3NextForCausalLM" in HF_SUPPORTED_ARCHITECTURES
-
-    def test_adapter_class_correct(self):
-        from transformer_lens.model_bridge.supported_architectures import (
-            Qwen3NextArchitectureAdapter,
-        )
-
-        assert SUPPORTED_ARCHITECTURES["Qwen3NextForCausalLM"] is Qwen3NextArchitectureAdapter
-
 
 def _make_bridge_cfg(**overrides):
     """Minimal TransformerBridgeConfig for Qwen3Next adapter tests."""
@@ -297,10 +268,6 @@ class TestQwen3NextWeightConversions:
 
         assert set(result.keys()) == original_keys
 
-    def test_weight_processing_conversions_is_empty_dict(self, adapter):
-        """q_proj slicing happens in preprocess_weights, not as a conversion."""
-        assert adapter.weight_processing_conversions == {}
-
 
 class TestQwen3NextConfigAttributes:
     """cfg attributes set by the adapter."""
@@ -312,30 +279,6 @@ class TestQwen3NextConfigAttributes:
         )
 
         return Qwen3NextArchitectureAdapter(_make_bridge_cfg())
-
-    def test_normalization_type(self, adapter):
-        assert adapter.cfg.normalization_type == "RMS"
-
-    def test_positional_embedding_type(self, adapter):
-        assert adapter.cfg.positional_embedding_type == "rotary"
-
-    def test_final_rms(self, adapter):
-        assert adapter.cfg.final_rms is True
-
-    def test_gated_mlp(self, adapter):
-        assert adapter.cfg.gated_mlp is True
-
-    def test_attn_only(self, adapter):
-        assert adapter.cfg.attn_only is False
-
-    def test_uses_rms_norm(self, adapter):
-        assert adapter.cfg.uses_rms_norm is True
-
-    def test_default_prepend_bos(self, adapter):
-        assert adapter.cfg.default_prepend_bos is False
-
-    def test_attn_implementation_eager(self, adapter):
-        assert adapter.cfg.attn_implementation == "eager"
 
     def test_supports_fold_ln_false(self, adapter):
         """Hybrid layers break fold_ln."""

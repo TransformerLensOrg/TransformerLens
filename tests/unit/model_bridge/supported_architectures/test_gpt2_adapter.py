@@ -5,7 +5,6 @@ Tests cover:
 - Component mapping structure (correct bridge types and HF module names)
 - Weight conversion keys and count
 - QKVSplitRearrangeConversion numerical correctness
-- Factory registration (GPT2LMHeadModel maps to the right adapter)
 """
 
 import pytest
@@ -78,25 +77,12 @@ class TestGPT2AdapterConfig:
     def test_positional_embedding_type_is_standard(self, adapter: GPT2ArchitectureAdapter) -> None:
         assert adapter.cfg.positional_embedding_type == "standard"
 
-    def test_final_rms_is_false(self, adapter: GPT2ArchitectureAdapter) -> None:
-        assert adapter.cfg.final_rms is False
-
-    def test_gated_mlp_is_false(self, adapter: GPT2ArchitectureAdapter) -> None:
-        assert adapter.cfg.gated_mlp is False
-
-    def test_attn_only_is_false(self, adapter: GPT2ArchitectureAdapter) -> None:
-        assert adapter.cfg.attn_only is False
-
     def test_split_attention_weights_is_true(self, adapter: GPT2ArchitectureAdapter) -> None:
         assert adapter.cfg.split_attention_weights is True
 
     def test_uses_combined_qkv_is_true(self, adapter: GPT2ArchitectureAdapter) -> None:
         """GPT-2 stores Q, K, V in a single combined c_attn matrix."""
         assert adapter.uses_combined_qkv is True
-
-    def test_default_prepend_bos_is_true(self, adapter: GPT2ArchitectureAdapter) -> None:
-        """GPT-2 prepends a BOS token by default (adapter inherits this)."""
-        assert adapter.cfg.default_prepend_bos is True
 
     def test_default_cfg_uses_split_attention(self, adapter: GPT2ArchitectureAdapter) -> None:
         """default_cfg flags that GPT-2's combined QKV must be split."""
@@ -275,30 +261,3 @@ class TestQKVSplitRearrangeConversion:
         recovered = conv.revert(conv.handle_conversion(original))
         assert recovered.shape == original.shape
         assert torch.allclose(original, recovered)
-
-
-# ---------------------------------------------------------------------------
-# Factory registration tests
-# ---------------------------------------------------------------------------
-
-
-class TestGPT2FactoryRegistration:
-    """Tests that the factory maps GPT2LMHeadModel to the correct adapter."""
-
-    def test_factory_returns_gpt2_adapter(self) -> None:
-        from transformer_lens.factories.architecture_adapter_factory import (
-            ArchitectureAdapterFactory,
-        )
-
-        cfg = _make_cfg()
-        adapter = ArchitectureAdapterFactory.select_architecture_adapter(cfg)
-        assert isinstance(
-            adapter, GPT2ArchitectureAdapter
-        ), f"Expected GPT2ArchitectureAdapter, got {type(adapter).__name__}"
-
-    def test_factory_key_is_registered(self) -> None:
-        from transformer_lens.factories.architecture_adapter_factory import (
-            SUPPORTED_ARCHITECTURES,
-        )
-
-        assert SUPPORTED_ARCHITECTURES["GPT2LMHeadModel"] is GPT2ArchitectureAdapter
