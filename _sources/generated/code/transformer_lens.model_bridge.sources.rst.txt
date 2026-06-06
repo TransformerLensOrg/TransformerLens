@@ -1,6 +1,14 @@
 transformer\_lens.model\_bridge.sources package
 ===============================================
 
+Subpackages
+-----------
+
+.. toctree::
+   :maxdepth: 4
+
+   transformer_lens.model_bridge.sources.native
+
 Submodules
 ----------
 

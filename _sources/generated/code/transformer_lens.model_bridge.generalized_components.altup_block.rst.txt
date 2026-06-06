@@ -1,0 +1,7 @@
+transformer\_lens.model\_bridge.generalized\_components.altup\_block module
+===========================================================================
+
+.. automodule:: transformer_lens.model_bridge.generalized_components.altup_block
+   :members:
+   :undoc-members:
+   :show-inheritance:

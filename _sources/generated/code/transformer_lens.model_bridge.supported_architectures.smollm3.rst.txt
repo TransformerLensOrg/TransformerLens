@@ -1,0 +1,7 @@
+transformer\_lens.model\_bridge.supported\_architectures.smollm3 module
+=======================================================================
+
+.. automodule:: transformer_lens.model_bridge.supported_architectures.smollm3
+   :members:
+   :undoc-members:
+   :show-inheritance:

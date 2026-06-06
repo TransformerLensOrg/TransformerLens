@@ -1,0 +1,7 @@
+transformer\_lens.model\_bridge.sources.native.model module
+===========================================================
+
+.. automodule:: transformer_lens.model_bridge.sources.native.model
+   :members:
+   :undoc-members:
+   :show-inheritance:

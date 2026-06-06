@@ -54,6 +54,9 @@ content/migrating_to_v3
 content/tutorials
 content/citation
 content/contributing
+content/hook_system
+content/compatibility_mode
+content/debugging_numerical_divergence
 generated/demos/Main_Demo
 generated/demos/Exploratory_Analysis_Demo
 content/special_cases

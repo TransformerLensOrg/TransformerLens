@@ -9,6 +9,7 @@ Submodules
 
    transformer_lens.model_bridge.generalized_components.alibi_joint_qkv_attention
    transformer_lens.model_bridge.generalized_components.alibi_utils
+   transformer_lens.model_bridge.generalized_components.altup_block
    transformer_lens.model_bridge.generalized_components.attention
    transformer_lens.model_bridge.generalized_components.audio_feature_extractor
    transformer_lens.model_bridge.generalized_components.base
@@ -37,6 +38,7 @@ Submodules
    transformer_lens.model_bridge.generalized_components.pos_embed
    transformer_lens.model_bridge.generalized_components.position_embedding_hooks_mixin
    transformer_lens.model_bridge.generalized_components.position_embeddings_attention
+   transformer_lens.model_bridge.generalized_components.qwen3_5_vision_encoder
    transformer_lens.model_bridge.generalized_components.rms_normalization
    transformer_lens.model_bridge.generalized_components.rotary_embedding
    transformer_lens.model_bridge.generalized_components.siglip_vision_encoder

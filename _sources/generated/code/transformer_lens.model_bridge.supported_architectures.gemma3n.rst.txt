@@ -1,0 +1,7 @@
+transformer\_lens.model\_bridge.supported\_architectures.gemma3n module
+=======================================================================
+
+.. automodule:: transformer_lens.model_bridge.supported_architectures.gemma3n
+   :members:
+   :undoc-members:
+   :show-inheritance:
