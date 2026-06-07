@@ -1,7 +1,7 @@
 """Direct Logit Attribution.
 
 Decomposes a model's logit difference into per-component contributions from
-the residual stream. See :func:`DLA` for usage.
+the residual stream. See :func:`dla` for usage.
 """
 
 from typing import List, Tuple
@@ -12,142 +12,136 @@ from jaxtyping import Float, Int
 
 from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.model_bridge import TransformerBridge
-from transformer_lens.utils import get_act_name
+from transformer_lens.utilities import get_act_name
 
-# Variant submodule names that indicate a hybrid block. Mamba, SSM, Mixer, and LinearAttention layers don't have the usual attn_out / mlp_out decomposition that ActivationCache.decompose_resid expects.
+# Block variants that lack the attn_out + mlp_out structure decompose_resid expects.
 _HYBRID_VARIANT_NAMES = ("mamba", "ssm", "mixer", "linear_attn")
-dont 
 
-def DLA(
+
+def dla(
     bridge: TransformerBridge,
     prompts: List[str],
     answer_tokens: Int[torch.Tensor, "batch answers"],
     accumulated: bool = False,
 ) -> Tuple[Float[torch.Tensor, "component"], List[str]]:
-    """Compute Direct Logit Attribution For A TransformerBridge Model.
+    """Compute Direct Logit Attribution for a TransformerBridge model.
 
-    Decomposes the logit difference between a correct and wrong answer token
-    into per-component contributions from the residual stream. Two modes:
+    Decomposes the logit (or logit difference between a correct and wrong token)
+    into per-component contributions from the residual stream, averaged across
+    the batch of prompts. Two modes:
 
-    * ``accumulated=False`` (default): returns the contribution of each
-      individual component (embedding, per-layer attention output, per-layer
-      MLP output) — see :meth:`transformer_lens.ActivationCache.decompose_resid`.
-    * ``accumulated=True``: returns the cumulative residual stream contribution
-      at each layer boundary (logit-lens style) — see
-      :meth:`transformer_lens.ActivationCache.accumulated_resid`.
-
-    Warning:
-
-    Returned scores sum to ``actual_logit_diff - (b_U[correct] - b_U[wrong])``,
-    not to ``actual_logit_diff`` directly. The unembedding bias :math:`b_U` is
-    a constant offset added after unembedding, not a contribution from the
-    residual stream, so it is excluded by convention (matching the behavior of
-    :meth:`transformer_lens.ActivationCache.decompose_resid`).
+    * ``accumulated=False`` (default): the contribution of each individual
+      component — embedding, per-layer attention output, per-layer MLP output —
+      via :meth:`transformer_lens.ActivationCache.decompose_resid`. These are
+      additive: their sum reconstructs the (bias-excluded) logit difference.
+    * ``accumulated=True``: the cumulative residual stream at each layer boundary
+      (logit-lens style) via
+      :meth:`transformer_lens.ActivationCache.accumulated_resid`. These are
+      cumulative, so the full reconstruction is the *last* entry, not the sum.
 
     Warning:
 
-    This function requires the bridge to be in compatibility mode so that the
-    final LayerNorm weights are folded into :math:`W_U`. Without folding, the
-    projection direction is incorrect and per-component scores will not reflect
-    actual logit contributions. Call ``bridge.enable_compatibility_mode()``
-    after loading the bridge.
+    Returned scores sum (decompose mode) or end (accumulated mode) at
+    ``actual_logit_diff - (b_U[correct] - b_U[wrong])``, not ``actual_logit_diff``
+    directly. The unembedding bias :math:`b_U` is a constant offset added after
+    unembedding rather than a residual-stream contribution, so it is excluded by
+    convention — matching :meth:`transformer_lens.ActivationCache.logit_attrs`.
+
+    Warning:
+
+    This function requires the bridge to be in compatibility mode so the final
+    LayerNorm weights are folded into :math:`W_U`. Without folding, the
+    projection direction is wrong and the scores do not reflect actual logit
+    contributions. Call ``bridge.enable_compatibility_mode()`` after loading.
 
     Warning:
 
     Hybrid architectures (Mamba, SSM, Mixer, LinearAttention) are not yet
-    supported and will raise :class:`NotImplementedError`. Support requires
-    extending :meth:`transformer_lens.ActivationCache.decompose_resid` to handle
-    non-attention block variants, which is tracked separately.
+    supported and raise :class:`NotImplementedError`; support requires extending
+    :meth:`transformer_lens.ActivationCache.decompose_resid` to handle
+    non-attention blocks.
 
     Args:
         bridge:
             A :class:`transformer_lens.model_bridge.TransformerBridge` with
             compatibility mode enabled.
         prompts:
-            List of prompt strings to evaluate. Length must match
-            ``answer_tokens.shape[0]``.
+            Prompt strings to evaluate. Length must match ``answer_tokens.shape[0]``.
         answer_tokens:
-            Tensor of shape ``(batch, answers)``. When ``answers == 1``, treated
-            as a single target token per prompt. When ``answers == 2``, treated
-            as a ``(correct, wrong)`` pair per prompt and the logit difference
-            ``correct - wrong`` is decomposed.
+            Tensor of shape ``(batch, answers)``. ``answers == 1`` decomposes the
+            single target token's logit; ``answers == 2`` treats each row as a
+            ``(correct, wrong)`` pair and decomposes the logit difference.
         accumulated:
-            If ``True``, return cumulative residual stream contributions at each
-            layer boundary (logit lens). If ``False``, return per-component
-            contributions. Defaults to ``False``.
+            If ``True``, return cumulative per-layer contributions (logit lens).
+            If ``False`` (default), return per-component contributions.
 
     Returns:
-        A tuple ``(scores, labels)`` where ``scores`` is a 1D tensor of per-
-        component or per-layer contributions (averaged across the batch), and
-        ``labels`` is the matching list of human-readable component names.
+        ``(scores, labels)``: ``scores`` is a 1D tensor of per-component (or
+        per-layer) contributions averaged across the batch, and ``labels`` is the
+        matching list of human-readable component names.
 
     Raises:
-        ValueError: If the bridge is not in compatibility mode.
+        ValueError: If ``len(prompts)`` does not match ``answer_tokens.shape[0]``,
+            if ``answer_tokens.shape[1]`` is not ``1`` or ``2``, or if the bridge
+            is not in compatibility mode.
         NotImplementedError: If the bridge contains hybrid (non attention + MLP)
-            block variants.
-        AssertionError: If ``len(prompts)`` does not match
-            ``answer_tokens.shape[0]``, or if ``answer_tokens.shape[1]`` is not
-            ``1`` or ``2``.
+            blocks.
     """
 
-    assert len(prompts) == answer_tokens.shape[0]
-    assert answer_tokens.shape[1] == 1 or answer_tokens.shape[1] == 2
+    # input validation
+    if len(prompts) != answer_tokens.shape[0]:
+        raise ValueError(
+            "Each prompt needs a matching row of answer tokens: got "
+            f"{len(prompts)} prompts but {answer_tokens.shape[0]} answer-token rows."
+        )
+    if answer_tokens.shape[1] not in (1, 2):
+        raise ValueError(
+            "answer_tokens must have 1 (single token) or 2 (correct, wrong) columns, "
+            f"got {answer_tokens.shape[1]}."
+        )
 
-    # DLA requires the LayerNorm gamma to be folded into W_U. Without folding,
-    # projections onto W_U use the wrong direction (some features under-weighted,
-    # others over-weighted) and the per-component scores will not sum to the
-    # actual logit difference. Compatibility mode applies fold_ln by default
+    # safeguard: DLA needs LayerNorm folded into W_U, which compatibility mode does
     if not getattr(bridge, "compatibility_mode", False):
         raise ValueError(
-            "DLA requires bridge to be in compatibility mode so that "
-            "LayerNorm weights are folded into W_U. Call "
-            "`bridge.enable_compatibility_mode()` after loading the bridge, "
-            "then re-run DLA."
+            "DLA requires the bridge to be in compatibility mode so that LayerNorm "
+            "weights are folded into W_U. Call `bridge.enable_compatibility_mode()` "
+            "after loading the bridge, then re-run DLA."
         )
 
-    # Strict mode: hybrid architectures (Mamba, SSM, etc.) aren't supported yet
-    # because ActivationCache.decompose_resid only knows how to decompose into
-    # attn_out + mlp_out per layer. A model with Mamba blocks would silently
-    # under-attribute. Raise here so callers fail loudly instead of getting
-    # wrong numbers.
-    for module_name, _ in bridge.named_modules():
-        lowered = module_name.lower()
-        if any(variant in lowered for variant in _HYBRID_VARIANT_NAMES):
-            raise NotImplementedError(
-                f"DLA does not yet support hybrid architectures "
-                f"(found component {module_name!r}). Currently only standard "
-                f"attention + MLP transformers (e.g. GPT-2, LLaMA, Pythia) are "
-                f"supported. Hybrid support requires extending "
-                f"ActivationCache.decompose_resid — tracked separately."
-            )
-
-    #grab residiual directions from bridge (essentially unembedding matrix transposed)
-    answer_residual_directions: Float[torch.Tensor, "batch answers d_model"] = bridge.tokens_to_residual_directions(answer_tokens)
-
-    #ensure all residual directions are of shape [batch, d_model]
-    if answer_tokens.numel() == 1:
-        logit_diff_directions: Float[torch.Tensor, "batch d_model"] = torch.unsqueeze(answer_residual_directions, dim=0)
-    elif answer_residual_directions.shape[1] == 1:
-        #strip middle dimension
-        logit_diff_directions: Float[torch.Tensor, "batch d_model"] = answer_residual_directions[:, 0, :]
-    else: #case where we have correct tokens and incorrect tokens
-        correct_token_direction, incorrect_token_direction = answer_residual_directions.unbind(dim=1)
-        logit_diff_directions: Float[torch.Tensor, "batch d_model"] = (
-            correct_token_direction - incorrect_token_direction
+    # safeguard: hybrid blocks (Mamba/SSM/...) have no attn_out + mlp_out to decompose
+    hybrid_blocks = [
+        layer_type
+        for layer_type in bridge.layer_types()
+        if any(part in _HYBRID_VARIANT_NAMES for part in layer_type.split("+"))
+    ]
+    if hybrid_blocks:
+        raise NotImplementedError(
+            f"DLA does not yet support hybrid architectures (found block types "
+            f"{hybrid_blocks}). Only standard attention + MLP transformers (e.g. "
+            f"GPT-2, LLaMA, Pythia) are supported; hybrid support requires extending "
+            f"ActivationCache.decompose_resid."
         )
 
-#turns residual stream contributions into logit-difference scores accounting for layerNorm
+    # unembedding direction per prompt; single-token tensors collapse to [d_model]
+    answer_residual_directions = bridge.tokens_to_residual_directions(answer_tokens).reshape(
+        answer_tokens.shape[0], answer_tokens.shape[1], -1
+    )
+    if answer_tokens.shape[1] == 1:
+        logit_diff_directions: Float[torch.Tensor, "batch d_model"] = answer_residual_directions[
+            :, 0, :
+        ]
+    else:  # (correct, wrong) pair -> direction of the logit difference
+        correct_direction, wrong_direction = answer_residual_directions.unbind(dim=1)
+        logit_diff_directions = correct_direction - wrong_direction
+
     def residual_stack_to_logit_diff(
         residual_stack: Float[torch.Tensor, "... batch d_model"],
         cache: ActivationCache,
-        logit_diff_directions: Float[torch.Tensor, "batch d_model"],
     ) -> Float[torch.Tensor, "..."]:
+        # apply the final LayerNorm once, project onto the answer direction, average over prompts
         batch_size = residual_stack.size(-2)
-        scaled_residual_stack = cache.apply_ln_to_stack(
-            residual_stack, layer=-1, pos_slice=-1
-        )
+        scaled_residual_stack = cache.apply_ln_to_stack(residual_stack, layer=-1, pos_slice=-1)
         return (
-            #average logit-difference contribution across prompts
             einops.einsum(
                 scaled_residual_stack,
                 logit_diff_directions,
@@ -156,48 +150,28 @@ def DLA(
             / batch_size
         )
 
-    
     if accumulated:
         n_layers = bridge.cfg.n_layers
-
-        #filtered residual stream cache
-        _, cache = bridge.run_with_cache(prompts,
-            return_type=None,
-            names_filter=lambda x: x == get_act_name("resid_post", n_layers - 1)
-            or x == get_act_name("ln_final.hook_scale")
-            or x.endswith("resid_pre")
-            or x.endswith("resid_mid"),
+        _, cache = bridge.run_with_cache(
+            prompts,
+            names_filter=lambda name: name == get_act_name("resid_post", n_layers - 1)
+            or name == "ln_final.hook_scale"
+            or name.endswith("resid_pre")
+            or name.endswith("resid_mid"),
         )
-        #stack stream into tensor
         accumulated_residual, labels = cache.accumulated_resid(
             layer=-1, pos_slice=-1, incl_mid=True, return_labels=True
         )
-    
-        logit_lens_logit_diffs: Float[
-            torch.Tensor, "component"
-        ] = residual_stack_to_logit_diff(
-            accumulated_residual, cache, logit_diff_directions
-        )
+        return residual_stack_to_logit_diff(accumulated_residual, cache), labels
 
-        return logit_lens_logit_diffs, labels
-
-    else:
-        _, cache = bridge.run_with_cache(
-            prompts,
-            return_type=None,
-            names_filter=lambda x: x == get_act_name("ln_final.hook_scale")
-            or x.endswith("embed")
-            or x.endswith("attn_out")
-            or x.endswith("mlp_out"),
-        )
-
-        per_layer_residual, labels = cache.decompose_resid(
-            layer=-1, pos_slice=-1, return_labels=True
-        )
-        per_layer_logit_diffs: Float[
-            torch.Tensor, "component"
-        ] = residual_stack_to_logit_diff(
-            per_layer_residual, cache, logit_diff_directions
-        )
-
-        return per_layer_logit_diffs, labels
+    _, cache = bridge.run_with_cache(
+        prompts,
+        names_filter=lambda name: name == "ln_final.hook_scale"
+        or name in ("hook_embed", "hook_pos_embed")
+        or name.endswith("attn_out")
+        or name.endswith("mlp_out"),
+    )
+    per_component_residual, labels = cache.decompose_resid(
+        layer=-1, pos_slice=-1, return_labels=True
+    )
+    return residual_stack_to_logit_diff(per_component_residual, cache), labels
