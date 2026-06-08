@@ -2033,7 +2033,7 @@ def get_pretrained_state_dict(
                 hf_model = AutoModelForCausalLM.from_pretrained(
                     official_model_name,
                     revision=f"step{cfg.checkpoint_value}",
-                    dtype=dtype,
+                    torch_dtype=dtype,
                     token=huggingface_token,
                     **kwargs,
                 )
@@ -2046,49 +2046,49 @@ def get_pretrained_state_dict(
             elif "hubert" in official_model_name:
                 hf_model = HubertModel.from_pretrained(
                     official_model_name,
-                    dtype=dtype,
+                    dtorch_dtype=dtype,
                     token=huggingface_token if len(huggingface_token) > 0 else None,
                     **kwargs,
                 )
             elif "wav2vec2" in official_model_name:
                 hf_model = Wav2Vec2Model.from_pretrained(
                     official_model_name,
-                    dtype=dtype,
+                    torch_dtype=dtype,
                     token=huggingface_token if len(huggingface_token) > 0 else None,
                     **kwargs,
                 )
             elif cfg.original_architecture == "ViTForImageClassification":
                 hf_model = ViTForImageClassification.from_pretrained(
                     official_model_name,
-                    dtype=dtype,
+                    torch_dtype=dtype,
                     token=huggingface_token if len(huggingface_token) > 0 else None,
                     **kwargs,
                 )
             elif cfg.original_architecture == "ViTModel":
                 hf_model = ViTModel.from_pretrained(
                     official_model_name,
-                    dtype=dtype,
+                    torch_dtype=dtype,
                     token=huggingface_token if len(huggingface_token) > 0 else None,
                     **kwargs,
                 )
             elif cfg.original_architecture == "DeiTForImageClassificationWithTeacher":
                 hf_model = DeiTForImageClassificationWithTeacher.from_pretrained(
                     official_model_name,
-                    dtype=dtype,
+                    torch_dtype=dtype,
                     token=huggingface_token if len(huggingface_token) > 0 else None,
                     **kwargs,
                 )
             elif cfg.original_architecture == "DeiTForImageClassification":
                 hf_model = DeiTForImageClassification.from_pretrained(
                     official_model_name,
-                    dtype=dtype,
+                    torch_dtype=dtype,
                     token=huggingface_token if len(huggingface_token) > 0 else None,
                     **kwargs,
                 )
             elif "bert" in official_model_name:
                 hf_model = BertForPreTraining.from_pretrained(
                     official_model_name,
-                    dtype=dtype,
+                    torch_dtype=dtype,
                     token=huggingface_token if len(huggingface_token) > 0 else None,
                     **kwargs,
                 )
