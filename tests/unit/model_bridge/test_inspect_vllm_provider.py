@@ -13,6 +13,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
+# Tests deferred-import ``inspect_ai.model`` inside method bodies; provider construction
+# in the fixtures also pulls inspect_ai transitively. Skip when the ``inspect`` extra is
+# absent rather than fail each test with ModuleNotFoundError.
+pytest.importorskip("inspect_ai")
+
 
 def _install_vllm_mocks(monkeypatch, llm_class: Any) -> None:
     """Install fake ``vllm``/``vllm.inputs``/``vllm.distributed.parallel_state`` modules

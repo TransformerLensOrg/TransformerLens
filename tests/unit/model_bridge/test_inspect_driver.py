@@ -14,6 +14,10 @@ import numpy as np
 import pytest
 import torch
 
+# The driver lazily imports inspect_ai inside ``_generate``; without the ``inspect`` extra
+# the import fires at first call and tests fail with ModuleNotFoundError. Skip-collect here.
+pytest.importorskip("inspect_ai")
+
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.driver_protocol import (
