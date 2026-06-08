@@ -30,6 +30,8 @@ class TLWorkerExtension:
     _tl_buffers: Dict[str, torch.Tensor]
     _tl_scale_buffers: Dict[str, torch.Tensor]
     _tl_bias_buffers: Dict[str, torch.Tensor]
+    # Per-hook first-write-wins gates (compiled mode); see plugin._gated_capture.
+    _tl_capture_flags: Dict[str, torch.Tensor]
     _tl_fire_counter: torch.Tensor
     # Batched-mode state (eager).
     _tl_accum: Dict[tuple, List[torch.Tensor]]
@@ -88,6 +90,17 @@ class TLWorkerExtension:
         if counter is not None:
             counter.zero_()
 
+    def tl_reset_capture_flags(self) -> None:
+        """Open every per-hook capture gate so the next forward writes to the buffers.
+
+        First-write-wins gating means decode-step forwards self-copy and never overwrite
+        prefill activations — the driver calls this once before any capture-needing
+        generate (single-forward or multi-token eval) and ``tl_read_captures`` afterward.
+        """
+        flags: Dict[str, torch.Tensor] = getattr(self, "_tl_capture_flags", {})
+        for flag in flags.values():
+            flag.zero_()
+
     def tl_read_counter(self) -> int:
         """Total hook fires since the last reset."""
         counter = getattr(self, "_tl_fire_counter", None)
@@ -132,6 +145,7 @@ class TLWorkerExtension:
         self._tl_buffers = {}
         self._tl_scale_buffers = {}
         self._tl_bias_buffers = {}
+        self._tl_capture_flags = {}
         self._tl_accum = {}
         self._tl_intervention_specs = {}
 

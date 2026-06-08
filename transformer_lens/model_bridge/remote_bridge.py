@@ -57,6 +57,15 @@ class RemoteBridge(BridgeCore, HookIntrospectionMixin):
 
         return _boot_vllm(*args, **kwargs)
 
+    @staticmethod
+    def boot_inspect(*args: Any, **kwargs: Any) -> "RemoteBridge":
+        """Boot a model via an inspect_ai provider. Returns a RemoteBridge wrapping
+        an InspectDriver. Lazy import keeps remote_bridge inspect-agnostic. See
+        :func:`sources.inspect.boot_inspect` for kwargs."""
+        from .sources.inspect import boot_inspect as _boot_inspect
+
+        return _boot_inspect(*args, **kwargs)
+
     def _scan_existing_hooks(self, module: Any, prefix: str = "") -> None:
         """No-op: registry built from driver declarations in __init__."""
 
@@ -80,11 +89,16 @@ class RemoteBridge(BridgeCore, HookIntrospectionMixin):
                 "logits[..., -1, :] (or the per-row last token in batched mode)."
             )
         if isinstance(input, str):
-            assert self.tokenizer is not None, "Tokenizer must be set for string input."
-            tokens = self.tokenizer.encode(input, return_tensors="pt")
-            kwargs["input_ids"] = tokens
+            kwargs["input_ids"] = self.to_tokens(input)  # BOS-aware, matches boot_transformers
         elif input is not None:
             kwargs["input_ids"] = input
+
+        # Only request hooks with a registered handler, so a plain forward(tokens)
+        # ships logits alone instead of the full residual decomposition every call.
+        if "capture" not in kwargs:
+            kwargs["capture"] = tuple(
+                name for name, hp in self._hook_registry.items() if hp.fwd_hooks
+            )
 
         result: ForwardResult = self._driver.forward(**kwargs)
         if result.captured:
@@ -147,11 +161,35 @@ class RemoteBridge(BridgeCore, HookIntrospectionMixin):
             **kwargs,
         )
 
-    def to_tokens(self, text: Any, *args: Any, **kwargs: Any) -> Any:
-        """Tokenize via ``self.tokenizer``. BOS/padding handling lives on
-        :class:`TransformerBridge`."""
+    def to_tokens(self, input: Any, prepend_bos: bool | None = None, truncate: bool = True) -> Any:
+        """Tokenize a string with the same BOS handling as ``TransformerBridge``.
+
+        Mirrors ``cfg.default_prepend_bos`` / ``tokenizer_prepends_bos`` so
+        ``boot_inspect(m).run_with_cache("text")`` matches ``boot_transformers(m)``
+        on the same string — a bare ``encode`` (no BOS) would silently diverge.
+        """
+        from transformer_lens import utils
+
         assert self.tokenizer is not None, "Tokenizer must be set."
-        return self.tokenizer.encode(text, return_tensors="pt")
+        if prepend_bos is None:
+            prepend_bos = getattr(self.cfg, "default_prepend_bos", True)
+        tokenizer_prepends_bos = getattr(self.cfg, "tokenizer_prepends_bos", True)
+        if prepend_bos and not tokenizer_prepends_bos:
+            input = utils.get_input_with_manually_prepended_bos(self.tokenizer.bos_token, input)
+        if isinstance(input, str):
+            input = [input]
+        # A single sequence never needs padding; only pad when batching (which also
+        # avoids requiring a pad_token on tokenizers that lack one, e.g. raw gpt2).
+        tokens = self.tokenizer(
+            input,
+            return_tensors="pt",
+            padding=len(input) > 1,
+            truncation=truncate,
+            max_length=self.cfg.n_ctx if truncate else None,
+        )["input_ids"]
+        if not prepend_bos and tokenizer_prepends_bos:
+            tokens = utils.get_tokens_with_bos_removed(self.tokenizer, tokens)
+        return tokens
 
     def __enter__(self) -> "RemoteBridge":
         """Use as a context manager so the engine is released on exit:

@@ -1,7 +1,12 @@
 """Session fixtures for model_bridge acceptance tests.
 
-transformer_lens imports stay inside fixture bodies — jaxtyping's pytest_configure
-hook must install before the package is first imported.
+Session-scoped fixtures avoid redundant model loads across test files.
+All models used here must be in the CI cache (see .github/workflows/checks.yml).
+
+Imports of ``transformer_lens`` are deferred into the fixtures: this conftest is
+loaded during pytest's initial conftest collection (before plugins' pytest_configure),
+and a module-level TL import would trip jaxtyping's "package already imported" guard
+when a single test file under this directory is run in isolation.
 """
 
 import pytest
