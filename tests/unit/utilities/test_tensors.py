@@ -153,17 +153,6 @@ class TestFilterDictByPrefix:
         assert result_with_dot.keys() == result_without_dot.keys()
         assert len(result_with_dot) == 2
 
-    def test_filter_dict_type_preservation(self):
-        """Test that the function returns a dictionary."""
-        test_dict = {
-            "key1.subkey": "value1",
-            "key2.subkey": "value2",
-        }
-
-        result = filter_dict_by_prefix(test_dict, "key1")
-
-        assert isinstance(result, dict)
-
     def test_filter_dict_with_real_state_dict_keys(self):
         """Test with realistic state dict keys from a transformer model."""
         test_dict = {

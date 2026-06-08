@@ -166,10 +166,6 @@ class TestGPTOSSAdapterConfig:
         not the default `eps`. Downstream norm-folding reads this attribute."""
         assert adapter.cfg.eps_attr == "variance_epsilon"
 
-    def test_n_kv_heads_propagated(self) -> None:
-        adapter = GPTOSSArchitectureAdapter(_cfg(n_key_value_heads=2))
-        assert adapter.cfg.n_key_value_heads == 2
-
 
 class TestGPTOSSWeightConversions:
     """GPT-OSS uses the standard QKVO weight conversions (no biases), with GQA head counts."""

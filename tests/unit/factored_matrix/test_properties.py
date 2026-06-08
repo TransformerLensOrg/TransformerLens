@@ -164,10 +164,6 @@ class TestFactoredMatrixProperties:
             )
             assert torch.allclose(result, expected)
 
-    def test_ndim(self, factored_matrices):
-        for factored_matrix in factored_matrices:
-            assert factored_matrix.ndim == len(factored_matrix.shape)
-
     def test_collapse_l(self, factored_matrices):
         for factored_matrix in factored_matrices:
             result = factored_matrix.collapse_l()

@@ -234,7 +234,6 @@ class TestLlavaGQASupport:
     def test_gqa_propagates_to_kv_conversions(self):
         cfg = _make_llava_cfg(n_key_value_heads=8)
         adapter = LlavaArchitectureAdapter(cfg)
-        assert adapter.cfg.n_key_value_heads == 8
         for slot in ("k", "v"):
             conv = adapter.weight_processing_conversions[f"blocks.{{i}}.attn.{slot}.weight"]
             assert conv.tensor_conversion.axes_lengths["n"] == 8

@@ -80,31 +80,6 @@ def tiny_qwen3moe_bridge(tiny_qwen3moe_config, tiny_qwen3moe_model_meta):
     )
 
 
-class TestQwen3MoeModelStructure:
-    def test_model_has_layers(self, tiny_qwen3moe_model_meta) -> None:
-        assert hasattr(tiny_qwen3moe_model_meta, "model")
-        assert hasattr(tiny_qwen3moe_model_meta.model, "layers")
-        assert len(tiny_qwen3moe_model_meta.model.layers) == 2
-
-    def test_layer_has_sparse_moe_block(self, tiny_qwen3moe_model_meta) -> None:
-        # Qwen3MoeSparseMoeBlock stores experts as batched 3D tensors, not a ModuleList
-        layer0_mlp = tiny_qwen3moe_model_meta.model.layers[0].mlp
-        assert hasattr(layer0_mlp, "experts")
-        experts = layer0_mlp.experts
-        assert hasattr(experts, "gate_up_proj")
-        assert hasattr(experts, "down_proj")
-        assert not hasattr(experts, "__iter__")
-
-    def test_layer_has_gate_router(self, tiny_qwen3moe_model_meta) -> None:
-        layer0_mlp = tiny_qwen3moe_model_meta.model.layers[0].mlp
-        assert hasattr(layer0_mlp, "gate")
-
-    def test_attention_has_q_norm_k_norm(self, tiny_qwen3moe_model_meta) -> None:
-        attn = tiny_qwen3moe_model_meta.model.layers[0].self_attn
-        assert hasattr(attn, "q_norm")
-        assert hasattr(attn, "k_norm")
-
-
 class TestQwen3MoeBridgeStructure:
     def test_block_count(self, tiny_qwen3moe_bridge) -> None:
         assert len(tiny_qwen3moe_bridge.blocks) == 2

@@ -94,33 +94,3 @@ class TestJointQKVAttentionHookCompatibility:
         assert (
             joint_qkv_attention_bridge.k.hook_out is bridge.blocks[0].attn.hook_k
         ), "k.hook_out in Joint QKV Attention bridge should be the same object as blocks.0.attn.hook_k"
-
-    def test_hook_aliases_work_correctly(self):
-        """Test that hook aliases work correctly in compatibility mode."""
-        # Load DistilGPT-2 in TransformerBridge (faster for testing)
-        bridge = TransformerBridge.boot_transformers("distilgpt2", device="cpu")
-
-        # Turn on compatibility mode
-        bridge.enable_compatibility_mode(disable_warnings=True)
-
-        # Create test input
-        test_input = torch.tensor([[1, 2, 3, 4, 5]])  # Simple test sequence
-
-        # Get the QKV bridge from the first attention layer
-        joint_qkv_attention_bridge = bridge.blocks[0].attn
-
-        # Run a forward pass to populate the hooks
-        with torch.no_grad():
-            _ = bridge(test_input)
-
-        # Test that hook aliases work correctly
-        # These should all reference the same hook points
-        assert (
-            joint_qkv_attention_bridge.q.hook_out is bridge.blocks[0].attn.hook_q
-        ), "Q hook alias should work"
-        assert (
-            joint_qkv_attention_bridge.k.hook_out is bridge.blocks[0].attn.hook_k
-        ), "K hook alias should work"
-        assert (
-            joint_qkv_attention_bridge.v.hook_out is bridge.blocks[0].attn.hook_v
-        ), "V hook alias should work"

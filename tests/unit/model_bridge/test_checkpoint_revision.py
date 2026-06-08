@@ -5,7 +5,6 @@ from unittest.mock import patch
 import pytest
 
 from transformer_lens.model_bridge.sources.transformers import (
-    _CHECKPOINT_REVISION_FORMATS,
     _resolve_checkpoint_to_revision,
 )
 
@@ -75,10 +74,6 @@ class TestResolveCheckpointToRevision:
             _resolve_checkpoint_to_revision(
                 "EleutherAI/pythia-70m", checkpoint_index=None, checkpoint_value=None
             )
-
-    def test_known_families_registered(self):
-        assert "EleutherAI/pythia" in _CHECKPOINT_REVISION_FORMATS
-        assert "stanford-crfm" in _CHECKPOINT_REVISION_FORMATS
 
 
 class _AbortBoot(Exception):

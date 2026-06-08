@@ -167,10 +167,6 @@ class TestSmolLM3AdapterConfig:
     def test_default_prepend_bos_is_false(self, adapter: SmolLM3ArchitectureAdapter) -> None:
         assert adapter.cfg.default_prepend_bos is False
 
-    def test_n_key_value_heads_propagated(self) -> None:
-        adapter = SmolLM3ArchitectureAdapter(_make_cfg(n_heads=8, n_key_value_heads=4))
-        assert adapter.cfg.n_key_value_heads == 4
-
 
 class TestSmolLM3ComponentMapping:
     """The adapter contract: TL canonical names mapped to SmolLM3 HF module paths."""

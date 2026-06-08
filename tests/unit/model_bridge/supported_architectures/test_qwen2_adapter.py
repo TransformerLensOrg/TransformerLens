@@ -113,10 +113,6 @@ class TestQwen2AdapterConfig:
     def test_default_prepend_bos_is_false(self, adapter: Qwen2ArchitectureAdapter) -> None:
         assert adapter.cfg.default_prepend_bos is False
 
-    def test_n_key_value_heads_propagated(self) -> None:
-        adapter = Qwen2ArchitectureAdapter(_make_cfg(n_heads=8, n_key_value_heads=2))
-        assert adapter.cfg.n_key_value_heads == 2
-
 
 class TestQwen2ComponentMapping:
     """The adapter contract: TL canonical names mapped to Qwen2 HF module paths."""

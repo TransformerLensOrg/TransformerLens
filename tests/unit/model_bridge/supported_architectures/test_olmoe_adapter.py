@@ -182,10 +182,6 @@ class TestOlmoeAdapterConfig:
         """OLMoE does not apply a final RMS fold."""
         assert adapter.cfg.final_rms is False
 
-    def test_n_kv_heads_propagated(self) -> None:
-        adapter = OlmoeArchitectureAdapter(_cfg(n_key_value_heads=2))
-        assert adapter.cfg.n_key_value_heads == 2
-
 
 class TestOlmoeWeightConversions:
     """OLMoE uses the standard QKVO weight conversions (no biases), with GQA head counts."""

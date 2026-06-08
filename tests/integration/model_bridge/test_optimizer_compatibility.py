@@ -114,9 +114,6 @@ def test_optimizer_compatibility_after_compatibility_mode():
     loss.backward()
     optimizer.step()
 
-    # If we got here without errors, the test passed
-    assert True, "Optimizer should work after compatibility mode"
-
 
 def test_bridge_hooked_parity_multi_step_optimization():
     """Test parity between Bridge and HookedTransformer across multiple optimization steps.

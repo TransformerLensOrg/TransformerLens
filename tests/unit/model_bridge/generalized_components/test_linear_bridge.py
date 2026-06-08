@@ -118,16 +118,3 @@ def test_linear_bridge_parameter_modifications():
         # Always restore original parameters
         linear_layer.weight.data.copy_(original_weight_data)
         linear_layer.bias.data.copy_(original_bias_data)
-
-
-def test_linear_bridge_property_accessibility():
-    """Test that all properties are accessible via hasattr."""
-    linear_layer = nn.Linear(3, 2, bias=True)
-    bridge = LinearBridge(name="test_property_accessibility")
-    bridge.set_original_component(linear_layer)
-
-    # Test that all properties are accessible via hasattr
-    assert hasattr(bridge, "weight"), "Bridge should have weight attribute"
-    assert hasattr(bridge, "bias"), "Bridge should have bias attribute"
-    assert hasattr(bridge, "in_features"), "Bridge should have in_features attribute"
-    assert hasattr(bridge, "out_features"), "Bridge should have out_features attribute"

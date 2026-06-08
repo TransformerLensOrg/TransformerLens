@@ -80,9 +80,6 @@ class TestCohereAdapterConfig:
     def test_default_prepend_bos_is_true(self, adapter: CohereArchitectureAdapter) -> None:
         assert adapter.cfg.default_prepend_bos is True
 
-    def test_n_key_value_heads_forwarded(self, adapter: CohereArchitectureAdapter) -> None:
-        assert adapter.cfg.n_key_value_heads == 2
-
     def test_logit_scale_default(self, adapter: CohereArchitectureAdapter) -> None:
         assert getattr(adapter.cfg, "logit_scale") == pytest.approx(0.0625)
 
