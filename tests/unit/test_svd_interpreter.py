@@ -145,7 +145,7 @@ def test_svd_interpreter_fails_on_not_passing_required_head_index(model):
     svd_interpreter = SVDInterpreter(model)
     with pytest.raises(AssertionError) as e:
         svd_interpreter.get_singular_vectors("OV", layer_index=0, num_vectors=4)
-        assert str(e.value) == "Head index optional only for w_in and w_out, got OV"
+    assert str(e.value) == "Head index optional only for w_in and w_out, got OV"
 
 
 def test_svd_interpreter_fails_on_invalid_layer_index(model):

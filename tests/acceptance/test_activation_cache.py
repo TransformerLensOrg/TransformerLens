@@ -1,3 +1,5 @@
+from functools import lru_cache
+
 import pytest
 import torch
 from fancy_einsum import einsum
@@ -45,7 +47,10 @@ def get_ioi_tokens_and_answer_tokens(model):
     return tokens, answer_tokens
 
 
+@lru_cache(maxsize=None)
 def load_model(name):
+    # Cached so each model loads once for the whole module instead of per-test.
+    # Read-only: tests here only run forward/run_with_cache and read cfg — never mutate the model.
     return HookedTransformer.from_pretrained(
         name,
         center_unembed=True,

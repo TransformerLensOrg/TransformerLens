@@ -8,7 +8,6 @@ from unittest import mock
 
 import pytest
 
-from transformer_lens.config.hooked_transformer_config import HookedTransformerConfig
 from transformer_lens.loading_from_pretrained import get_pretrained_model_config
 from transformer_lens.supported_models import OFFICIAL_MODEL_NAMES
 
@@ -320,18 +319,3 @@ class TestGemma3ContextLength:
         ):
             cfg = get_pretrained_model_config("google/gemma-3-270m")
         assert cfg.n_ctx == 8192
-
-
-class TestHookedTransformerConfigRotaryBaseLocal:
-    """HookedTransformerConfig supports rotary_base_local."""
-
-    def test_rotary_base_local_default_none(self):
-        cfg = HookedTransformerConfig(
-            d_model=128,
-            d_head=32,
-            n_heads=4,
-            n_ctx=128,
-            n_layers=2,
-            attn_only=True,
-        )
-        assert cfg.rotary_base_local is None

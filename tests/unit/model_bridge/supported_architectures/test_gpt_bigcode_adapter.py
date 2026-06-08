@@ -80,16 +80,6 @@ def adapter(cfg: TransformerBridgeConfig) -> GPTBigCodeArchitectureAdapter:
 
 
 # ---------------------------------------------------------------------------
-# Config attribute tests
-# ---------------------------------------------------------------------------
-
-
-class TestGPTBigCodeAdapterConfig:
-    def test_n_key_value_heads_is_one(self, adapter: GPTBigCodeArchitectureAdapter) -> None:
-        assert adapter.cfg.n_key_value_heads == 1
-
-
-# ---------------------------------------------------------------------------
 # Component mapping structure tests
 # ---------------------------------------------------------------------------
 

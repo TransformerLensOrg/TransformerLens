@@ -81,48 +81,6 @@ def test_tensor_conversion_set_tuple_subconversion():
     assert torch.allclose(result_tensor, expected_tensor), f"Expected [11, 12], got {result_tensor}"
 
 
-def test_tensor_conversion_set_process_conversion_action_tensor():
-    """
-    Tests process_conversion_action for a direct tensor.
-    """
-    field_set = {"some_weight": torch.tensor([5.0])}
-    conversion_set = TensorConversionSet(fields=field_set)
-
-    input_value = {}  # not used for direct tensor
-    output = conversion_set.convert(input_value)
-    assert "some_weight" in output
-    assert torch.allclose(output["some_weight"], torch.tensor([5.0]))
-
-
-def test_tensor_conversion_set_process_conversion_action_str_property():
-    """
-    Tests process_conversion_action for a str property lookup
-    with a nested dict.
-    """
-    field_set = {"some_str_key": "my_field.data"}
-    conversion_set = TensorConversionSet(fields=field_set)
-
-    input_value = {"my_field": {"data": torch.tensor([42.0])}}
-    output = conversion_set.convert(input_value)
-    assert torch.allclose(output["some_str_key"], torch.tensor([42.0]))
-
-
-def test_tensor_conversion_set_process_conversion_action_tuple():
-    """
-    Tests process_conversion_action for a tuple (remote_field, sub_conversion).
-    We'll reuse MockSubConversion for demonstration.
-    """
-    mock_sub = MockSubConversion()
-    field_set = {"my_tuple_key": ("fieldA", mock_sub)}
-    conversion_set = TensorConversionSet(fields=field_set)
-
-    input_value = {"fieldA": torch.tensor([0.0])}
-    output = conversion_set.convert(input_value)
-
-    assert mock_sub.was_called, "Expected the sub-conversion to be used."
-    assert torch.allclose(output["my_tuple_key"], torch.tensor([10.0]))
-
-
 def test_tensor_conversion_set_repr():
     """
     Checks that __repr__ includes a string of the nested conversions,

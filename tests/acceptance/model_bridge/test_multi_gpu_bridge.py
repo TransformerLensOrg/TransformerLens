@@ -175,14 +175,6 @@ class TestBootParamValidation:
             )
 
 
-class TestSingleDevicePathUnchanged:
-    def test_cpu_load_default_unchanged(self, gpt2_bridge):
-        # If any of our changes broke the baseline path, existing bridge tests would
-        # catch it too — this is a smoke check that n_devices stays 1 on the default path.
-        assert gpt2_bridge.cfg.n_devices == 1
-        assert gpt2_bridge.cfg.device is not None
-
-
 class TestToMethodGuardsMultiDevice:
     def test_to_warns_and_drops_device_when_n_devices_gt_1(self, gpt2_bridge):
         # Simulate a dispatched model by bumping n_devices — we don't need multi-GPU

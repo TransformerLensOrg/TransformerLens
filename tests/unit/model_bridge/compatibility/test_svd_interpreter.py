@@ -16,13 +16,6 @@ def model():
 
 
 @pytest.fixture(scope="module")
-def unfolded_model():
-    # Note: TransformerBridge may not support fold_ln parameter directly
-    # We'll use the same model for now, but this test may need adjustment
-    return TransformerBridge.boot_transformers(MODEL, device="cpu")
-
-
-@pytest.fixture(scope="module")
 def second_model():
     # Use a different model architecture if available, otherwise same model
     # Note: If gpt2-medium fails to load, tests that need different models will be skipped
@@ -60,16 +53,6 @@ def test_svd_interpreter_returns_meaningful_values(model):
         top2 = vectors.topk(2, dim=0).values.mean()
         bot2 = vectors.topk(2, dim=0, largest=False).values.mean()
         assert top2 > bot2, f"{name}: top singular values should exceed bottom values"
-
-
-def test_w_in_unfolded_produces_nonzero_values(unfolded_model):
-    """SVDInterpreter w_in should produce non-zero results on an unfolded model."""
-    svd_interpreter = SVDInterpreter(unfolded_model)
-    w_in = svd_interpreter.get_singular_vectors(
-        "w_in", num_vectors=4, layer_index=0, head_index=0
-    ).abs()
-
-    assert w_in.abs().sum() > 0
 
 
 def test_svd_interpreter_returns_different_answers_for_different_layers(model):

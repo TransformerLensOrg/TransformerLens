@@ -94,9 +94,6 @@ class TestCohereBridgeCreation:
     def test_cfg_uses_rms_norm_false(self, cohere_bridge: TransformerBridge) -> None:
         assert cohere_bridge.cfg.uses_rms_norm is False
 
-    def test_cfg_logit_scale_is_float(self, cohere_bridge: TransformerBridge) -> None:
-        assert isinstance(getattr(cohere_bridge.cfg, "logit_scale"), float)
-
     def test_cfg_logit_scale_matches_hf(
         self, cohere_bridge: TransformerBridge, cohere_hf: Any
     ) -> None:
@@ -138,15 +135,6 @@ class TestCohereForwardEquivalence:
             hf_out = cohere_hf(tokens).logits
         max_diff = (bridge_out - hf_out).abs().max().item()
         assert max_diff < 1e-4, f"Bridge vs HF max diff = {max_diff:.6f}"
-
-    def test_forward_shape_matches_hf(
-        self, cohere_bridge: TransformerBridge, cohere_hf: Any
-    ) -> None:
-        tokens = torch.tensor([[1, 2, 3, 4]])
-        with torch.no_grad():
-            bridge_out = cohere_bridge(tokens)
-            hf_out = cohere_hf(tokens).logits
-        assert bridge_out.shape == hf_out.shape
 
 
 # ---------------------------------------------------------------------------

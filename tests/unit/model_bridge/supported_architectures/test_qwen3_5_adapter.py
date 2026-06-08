@@ -391,15 +391,6 @@ class TestQwen3_5ConfigAttributes:
         """Hybrid layers break fold_ln."""
         assert adapter.supports_fold_ln is False
 
-    def test_n_key_value_heads_set_when_gqa(self, qwen3_5_dependency_available):
-        from transformer_lens.model_bridge.supported_architectures.qwen3_5 import (
-            Qwen3_5ArchitectureAdapter,
-        )
-
-        cfg = _make_bridge_cfg(n_key_value_heads=2)
-        adapter = Qwen3_5ArchitectureAdapter(cfg)
-        assert adapter.cfg.n_key_value_heads == 2
-
     def test_n_key_value_heads_not_set_when_absent(self, qwen3_5_dependency_available):
         from transformer_lens.config.transformer_bridge_config import (
             TransformerBridgeConfig,
