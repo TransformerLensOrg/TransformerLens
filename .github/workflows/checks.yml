@@ -51,6 +51,10 @@ concurrency:
 # Retry HF 429s in non-pytest invocations; pytest enables via tests/conftest.py.
 env:
   TRANSFORMERLENS_HF_RETRY: "1"
+  # A native dep leaves non-daemon threads alive that hang the process at
+  # interpreter shutdown after the suite has already passed. Let conftest report
+  # the lingering threads and hard-exit with the real status once tests finish.
+  TL_FORCE_EXIT_AFTER_TESTS: "1"
 
 jobs:
   compatibility-checks:
