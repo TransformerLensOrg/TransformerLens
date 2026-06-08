@@ -153,9 +153,7 @@ def _validate_bridge_compatibility(model) -> None:
         )
 
     layer_types = model.layer_types()
-    hybrid = [
-        lt for lt in layer_types if any(p in _HYBRID_VARIANT_NAMES for p in lt.split("+"))
-    ]
+    hybrid = [lt for lt in layer_types if any(p in _HYBRID_VARIANT_NAMES for p in lt.split("+"))]
     if hybrid:
         raise NotImplementedError(
             f"DLA does not yet support hybrid architectures (found block types {hybrid}). "
