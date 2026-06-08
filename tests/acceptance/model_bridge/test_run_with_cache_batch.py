@@ -8,14 +8,6 @@ tests guard against that regression.
 import torch
 
 
-def _last_real_token_idx(bridge, tokens):
-    """Find the index of the last real token for each sequence in a batch."""
-    if bridge.tokenizer.pad_token_id is None:
-        return torch.full((tokens.shape[0],), tokens.shape[1] - 1)
-    # With left-padding, the last real token is always at position -1
-    return torch.full((tokens.shape[0],), tokens.shape[1] - 1)
-
-
 def test_run_with_cache_batch_matches_individual(gpt2_bridge):
     """Batched run_with_cache logits at the last real token should match per-prompt runs."""
     prompts = [

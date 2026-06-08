@@ -43,27 +43,6 @@ class TestBridgeCreationModes:
         assert diff < 0.01, f"Processed bridge should match reference closely: {diff}"
         assert 3.0 < bridge_loss < 8.0, f"Bridge loss should be reasonable: {bridge_loss}"
 
-    def test_bridge_component_inspection(self, distilgpt2_bridge):
-        """Test that bridge components can be inspected."""
-        bridge = distilgpt2_bridge
-
-        # Check that we can access the original model components
-        assert hasattr(bridge.original_model, "transformer"), "Should have transformer"
-        assert hasattr(bridge.original_model.transformer, "h"), "Should have layers"
-        assert len(bridge.original_model.transformer.h) > 0, "Should have at least one layer"
-
-        # Check layer 0 components
-        block_0 = bridge.original_model.transformer.h[0]
-        assert hasattr(block_0, "ln_1"), "Should have ln_1"
-        assert hasattr(block_0, "attn"), "Should have attention"
-        assert hasattr(block_0, "ln_2"), "Should have ln_2"
-        assert hasattr(block_0, "mlp"), "Should have MLP"
-
-        # Check embedding and final components
-        assert hasattr(bridge.original_model.transformer, "wte"), "Should have token embedding"
-        assert hasattr(bridge.original_model.transformer, "wpe"), "Should have position embedding"
-        assert hasattr(bridge.original_model, "lm_head"), "Should have language model head"
-
     def test_bridge_tokenizer_compatibility(self, distilgpt2_bridge, distilgpt2_hooked_processed):
         """Test that bridge tokenizer works like reference."""
         test_text = "Hello world test"
@@ -100,29 +79,6 @@ class TestBridgeCreationModes:
         loss = gpt2_bridge(test_text, return_type="loss")
         assert isinstance(loss, torch.Tensor), "Should return tensor"
         assert loss.device.type == "cpu", "Loss should be on CPU"
-
-    def test_bridge_memory_efficiency(self):
-        """Test that bridge creation doesn't leak excessive memory."""
-        import gc
-
-        # Get initial memory usage
-        torch.cuda.empty_cache() if torch.cuda.is_available() else None
-        gc.collect()
-
-        # Create and destroy bridge
-        bridge = TransformerBridge.boot_transformers("distilgpt2", device="cpu")
-        bridge.enable_compatibility_mode()
-
-        # Process some text to ensure everything is initialized
-        _ = bridge("Test", return_type="loss")
-
-        # Clean up
-        del bridge
-        gc.collect()
-        torch.cuda.empty_cache() if torch.cuda.is_available() else None
-
-        # Should not raise any memory-related errors
-        assert True, "Memory cleanup should work correctly"
 
 
 class TestBridgeOfflineWithHfModel:

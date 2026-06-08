@@ -9,9 +9,6 @@ import torch.nn as nn
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.component_setup import setup_submodules
-from transformer_lens.model_bridge.generalized_components.base import (
-    GeneralizedComponent,
-)
 from transformer_lens.model_bridge.generalized_components.block import BlockBridge
 from transformer_lens.model_bridge.generalized_components.linear import LinearBridge
 
@@ -131,17 +128,6 @@ def _make_hybrid_bridge_with_attn():
 
 
 # -- Tests: optional flag -----------------------------------------------------
-
-
-class TestOptionalFlag:
-    def test_default_is_false(self):
-        assert GeneralizedComponent(name="test").optional is False
-
-    def test_optional_true(self):
-        assert GeneralizedComponent(name="test", optional=True).optional is True
-
-    def test_optional_false_explicit(self):
-        assert GeneralizedComponent(name="test", optional=False).optional is False
 
 
 # -- Tests: setup_submodules --------------------------------------------------

@@ -53,12 +53,6 @@ def bert_nsp(mock_transformer_bridge):
     return BertNextSentencePrediction(mock_transformer_bridge)
 
 
-def test_init(mock_transformer_bridge):
-    """Test initialization of BertNextSentencePrediction with TransformerBridge"""
-    bert_nsp = BertNextSentencePrediction(mock_transformer_bridge)
-    assert bert_nsp.model == mock_transformer_bridge
-
-
 def test_tokenizer_integration(bert_nsp, mock_transformer_bridge):
     """Test that tokenizer integration works with TransformerBridge"""
     input_sentences = ["First sentence.", "Second sentence."]

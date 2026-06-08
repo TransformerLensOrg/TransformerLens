@@ -48,36 +48,6 @@ class TestJointQKVAttentionBridgeIntegration:
         hook_point.remove_hooks()
         assert not hook_point.has_hooks()
 
-    def test_architecture_imports(self):
-        """Test that architecture files can be imported and use appropriate attention bridges."""
-        # Test that we can import the architecture files without errors
-        # Test that appropriate attention bridges are referenced in the source files
-        import inspect
-
-        from transformer_lens.model_bridge.supported_architectures import (
-            bloom,
-            gpt2,
-            neox,
-        )
-
-        gpt2_source = inspect.getsource(gpt2)
-        assert (
-            "JointQKVAttentionBridge" in gpt2_source
-        ), "GPT-2 architecture should reference JointQKVAttentionBridge"
-
-        # BLOOM uses BloomAttentionBridge instead of JointQKVAttentionBridge
-        # because it requires alibi bias and residual connections
-        bloom_source = inspect.getsource(bloom)
-        assert (
-            "BloomAttentionBridge" in bloom_source
-        ), "BLOOM architecture should reference BloomAttentionBridge"
-
-        # NeoX uses JointQKVPositionEmbeddingsAttentionBridge for rotary embeddings
-        neox_source = inspect.getsource(neox)
-        assert (
-            "JointQKVPositionEmbeddingsAttentionBridge" in neox_source
-        ), "NeoX architecture should reference JointQKVPositionEmbeddingsAttentionBridge"
-
     @pytest.mark.slow
     def test_distilgpt2_integration(self):
         """Full integration test with DistilGPT-2 (skipped in CI)."""

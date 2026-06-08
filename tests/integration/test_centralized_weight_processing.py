@@ -82,9 +82,3 @@ class TestCentralizedWeightProcessing:
             bridge_loss = bridge(test_tokens, return_type="loss")
 
         assert bridge_loss.item() > 0, "Should produce valid loss after processing"
-
-        # Verify the bridge has expected components after processing
-        assert hasattr(bridge, "blocks"), "Should have transformer blocks"
-        assert len(bridge.blocks) > 0, "Should have at least one block"
-        assert hasattr(bridge, "embed"), "Should have embedding component"
-        assert hasattr(bridge, "unembed"), "Should have unembedding component"

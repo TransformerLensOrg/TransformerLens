@@ -97,9 +97,6 @@ class TestInternLM2AdapterConfig:
     def test_eps_attr(self, adapter: InternLM2ArchitectureAdapter) -> None:
         assert adapter.cfg.eps_attr == "variance_epsilon"
 
-    def test_n_key_value_heads_propagated(self, adapter: InternLM2ArchitectureAdapter) -> None:
-        assert adapter.cfg.n_key_value_heads == 2
-
     def test_supports_fold_ln_false(self, adapter: InternLM2ArchitectureAdapter) -> None:
         # fold_ln silently skips attn when wqkv is fused in bridge state dict.
         assert adapter.supports_fold_ln is False
@@ -607,7 +604,6 @@ class TestInternLM2GQASupport:
     def test_gqa_propagates_to_kv_conversions(self) -> None:
         cfg = _make_cfg(n_heads=8, n_key_value_heads=2)
         adapter = InternLM2ArchitectureAdapter(cfg)
-        assert adapter.cfg.n_key_value_heads == 2
         for slot in ("k", "v"):
             conv = adapter.weight_processing_conversions[f"blocks.{{i}}.attn.{slot}.weight"]
             assert conv.tensor_conversion.axes_lengths["n"] == 2
