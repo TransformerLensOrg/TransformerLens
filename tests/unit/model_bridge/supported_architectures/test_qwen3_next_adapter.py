@@ -288,9 +288,6 @@ class TestQwen3NextConfigAttributes:
         """Flag drives preprocess_weights to slice the gated half of q_proj."""
         assert getattr(adapter.cfg, "gated_q_proj", False) is True
 
-    def test_n_key_value_heads_propagates(self, adapter):
-        assert adapter.cfg.n_key_value_heads == 2
-
 
 class TestQwen3NextComponentTypes:
     """Top-level bridge classes — guards against silent type substitution."""

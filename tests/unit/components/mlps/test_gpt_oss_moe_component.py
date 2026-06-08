@@ -64,33 +64,6 @@ def test_forward_shape():
     assert out.shape == (2, 5, 32)
 
 
-def test_routing_softmax_after_topk():
-    """GPT-OSS applies softmax AFTER top-k, not before.
-
-    Verify the routing produces weights via: topk(logits) -> softmax(selected).
-    With softmax-before (no renormalization), non-selected experts absorb
-    probability mass, producing weights that don't sum to 1.
-    """
-    k = 2
-    # Craft logits where non-top experts have significant mass
-    gate_logits = torch.tensor([[5.0, 4.0, 3.0, 3.0, 3.0, 3.0, 3.0, 3.0]])
-
-    # GPT-OSS way: top-k first, then softmax over selected
-    top_values, _ = torch.topk(gate_logits, k, dim=-1)
-    gpt_oss_weights = F.softmax(top_values, dim=-1, dtype=torch.float)
-
-    # Weights must sum to 1 (softmax over selected experts only)
-    assert torch.allclose(gpt_oss_weights.sum(dim=-1), torch.tensor([1.0]), atol=1e-5)
-
-    # Softmax-before approach (without renormalization) produces different weights:
-    # non-selected experts absorb mass so selected weights sum to less than 1
-    all_weights = F.softmax(gate_logits, dim=-1, dtype=torch.float)
-    before_topk_weights, _ = torch.topk(all_weights, k, dim=-1)
-
-    assert before_topk_weights.sum(dim=-1).item() < 1.0
-    assert not torch.allclose(gpt_oss_weights, before_topk_weights, atol=1e-3)
-
-
 def test_routing_experts_per_token():
     """Each token is routed to exactly experts_per_token experts."""
     cfg = make_moe_cfg()

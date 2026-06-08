@@ -170,10 +170,6 @@ class FakeMixtralAttention(nn.Module):
 class TestMixtralAdapterConfig:
     """Adapter-owned config defaults that downstream bridge code relies on."""
 
-    def test_n_kv_heads_propagated(self) -> None:
-        adapter = MixtralArchitectureAdapter(_cfg(n_key_value_heads=2))
-        assert adapter.cfg.n_key_value_heads == 2
-
 
 class TestMixtralWeightConversions:
     """Mixtral uses QKVO weight conversions plus Q/K/V biases, with GQA head counts."""

@@ -4,6 +4,7 @@ Test that demonstrates perfect ablation matching using corrected ProcessWeights.
 This test validates that the weight processing approach works correctly.
 """
 
+import pytest
 import torch
 
 from transformer_lens import HookedTransformer, utils

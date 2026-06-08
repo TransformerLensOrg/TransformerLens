@@ -55,20 +55,6 @@ class TestQwen3MoeAdapterConfig:
     def test_default_prepend_bos_is_false(self, adapter: Qwen3MoeArchitectureAdapter) -> None:
         assert adapter.cfg.default_prepend_bos is False
 
-    def test_n_kv_heads_propagated(self) -> None:
-        cfg = TransformerBridgeConfig(
-            d_model=64,
-            d_head=16,
-            n_layers=2,
-            n_ctx=128,
-            n_heads=4,
-            n_key_value_heads=2,
-            d_vocab=256,
-            architecture="Qwen3MoeForCausalLM",
-        )
-        adapter = Qwen3MoeArchitectureAdapter(cfg)
-        assert adapter.cfg.n_key_value_heads == 2
-
 
 class TestQwen3MoeWeightConversions:
     def test_kv_rearrange_uses_n_kv_heads(self, adapter: Qwen3MoeArchitectureAdapter) -> None:

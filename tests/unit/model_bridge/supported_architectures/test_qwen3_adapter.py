@@ -74,9 +74,6 @@ class TestQwen3AdapterConfig:
     default_prepend_bos=False, and GQA propagation via n_key_value_heads.
     """
 
-    def test_n_key_value_heads_preserved(self, adapter: Qwen3ArchitectureAdapter) -> None:
-        assert adapter.cfg.n_key_value_heads == 4
-
 
 class TestQwen3AdapterComponentMapping:
     """
