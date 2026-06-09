@@ -66,6 +66,18 @@ class RemoteBridge(BridgeCore, HookIntrospectionMixin):
 
         return _boot_inspect(*args, **kwargs)
 
+    @staticmethod
+    def boot_sglang(*args: Any, **kwargs: Any) -> "RemoteBridge":
+        """Boot a model via SGLang. Returns a RemoteBridge wrapping an SGLangDriver.
+
+        Mirrors :meth:`boot_vllm`. Lazy import so ``remote_bridge`` itself stays
+        sglang-agnostic — only callers of this method need sglang installed.
+        See :func:`sources.sglang.boot_sglang` for kwargs.
+        """
+        from .sources.sglang import boot_sglang as _boot_sglang
+
+        return _boot_sglang(*args, **kwargs)
+
     def _scan_existing_hooks(self, module: Any, prefix: str = "") -> None:
         """No-op: registry built from driver declarations in __init__."""
 

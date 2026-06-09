@@ -41,6 +41,11 @@
         evals=["lm-eval>=0.4", "chardet<6"]
         inspect=["inspect_ai>=0.3"]
         lit=["lit-nlp>=1.3"]
+        # NOTE on sglang + vllm: NOT declared as extras. SGLang's hard pin on
+        # ``timm==1.0.16`` conflicts with the multimodal extra's ``timm>=1.0.27``,
+        # and vllm's CUDA-bound wheel choice depends on the deploy environment.
+        # Users install them per the relevant demo notebook:
+        # demos/SGLang_Bridge_Integration_Test.ipynb / demos/vLLM_Bridge_Integration_Test.ipynb
 
     [project.scripts]
         build-docs="docs.make_docs:build_docs"
@@ -49,10 +54,11 @@
     # Registers our HF-backed activation-extraction provider with inspect_ai so
     # get_model("tl_bridge/<model>") resolves it once the package is installed.
     # (Named tl_bridge, not transformer_lens — inspect_ai ships a built-in by that name.)
-    # tl_bridge_vllm is the vLLM-backed sibling (lazy vllm import in __init__ so
-    # the module imports cleanly without vllm installed).
+    # tl_bridge_vllm + tl_bridge_sglang are the inference-engine siblings (lazy
+    # vllm/sglang imports in __init__ so the modules import cleanly without them).
     [project.entry-points.inspect_ai]
         tl_bridge="transformer_lens.model_bridge.sources.inspect.transformers_provider"
+        tl_bridge_sglang="transformer_lens.model_bridge.sources.inspect.sglang_provider"
         tl_bridge_vllm="transformer_lens.model_bridge.sources.inspect.vllm_provider"
 
 [dependency-groups]

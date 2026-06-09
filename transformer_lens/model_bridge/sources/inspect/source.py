@@ -23,7 +23,7 @@ from .driver import InspectDriver
 
 # Providers that expose the structural self-check + capture wire format the InspectDriver
 # consumes. boot_inspect queries supported_kinds on these; others route via for_provider.
-_TL_BRIDGE_PROVIDERS = {"tl_bridge", "tl_bridge_vllm"}
+_TL_BRIDGE_PROVIDERS = {"tl_bridge", "tl_bridge_vllm", "tl_bridge_sglang"}
 
 
 def boot_inspect(

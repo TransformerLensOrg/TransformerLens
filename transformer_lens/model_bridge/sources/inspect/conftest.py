@@ -13,6 +13,7 @@ collect_ignore_glob = (
     else [
         "_provider_base.py",
         "eval.py",
+        "sglang_provider.py",
         "transformers_provider.py",
         "vllm_provider.py",
     ]
