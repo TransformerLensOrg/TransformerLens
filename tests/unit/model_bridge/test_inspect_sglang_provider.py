@@ -1,9 +1,8 @@
 """Unit tests for the SGLang-backed Inspect provider (``tl_bridge_sglang``).
 
-Mocks SGLang so no install is needed. Live end-to-end verification (real SGLang,
-real GPU) is in the Colab walkthrough; the mocked tests pin the construction
-sequence, generate→ModelOutput conversion, and validation surface.
-"""
+Mocks ``sglang.srt.entrypoints.engine.Engine`` + :class:`CapturePuller` + the
+``extract_hf_config`` walk so no install is needed. Live verification (real
+SGLang, real GPU) is in the Colab walkthrough."""
 from __future__ import annotations
 
 import sys
@@ -14,15 +13,12 @@ from unittest.mock import MagicMock
 
 import pytest
 
-# The provider lazy-imports inspect_ai inside method bodies; provider construction
-# in the fixtures also pulls inspect_ai transitively. Skip when the ``inspect`` extra
-# is absent rather than fail each test with ModuleNotFoundError.
 pytest.importorskip("inspect_ai")
 
 
 def _install_sglang_mocks(monkeypatch, engine_class: Any) -> None:
-    """Install fake ``sglang``/``sglang.srt.entrypoints.engine`` modules in ``sys.modules``
-    so the provider's lazy ``from sglang.srt.entrypoints.engine import Engine`` resolves."""
+    """Install fake ``sglang.srt.entrypoints.engine`` module so the provider's
+    ``from sglang.srt.entrypoints.engine import Engine`` resolves to our mock."""
     sglang_pkg = types.ModuleType("sglang")
     srt = types.ModuleType("sglang.srt")
     entrypoints = types.ModuleType("sglang.srt.entrypoints")
@@ -63,38 +59,67 @@ def _fake_hf_config(n_layers: int = 2, d_model: int = 8, vocab_size: int = 128) 
     )
 
 
-def _patch_construction(monkeypatch, hf_config: Any) -> None:
-    """Patch AutoConfig + assert_sglang_supported + plugin.configure/register +
-    extract_hf_config so ``__init__`` runs without sglang / real worker processes."""
+def _patch_construction(monkeypatch, hf_config: Any, puller_messages: list | None = None):
+    """Patch AutoConfig + assert_sglang_supported + extract_hf_config + CapturePuller.
+
+    Returns a recording handle for the puller so tests can assert close/drain order.
+    """
     from transformers import AutoConfig
 
-    from transformer_lens.model_bridge.sources.sglang import internals, plugin
+    from transformer_lens.model_bridge.sources.sglang import internals
 
     monkeypatch.setattr(AutoConfig, "from_pretrained", lambda *a, **kw: hf_config)
     monkeypatch.setattr(internals, "assert_sglang_supported", lambda: None)
-    monkeypatch.setattr(plugin, "configure", lambda **kw: None)
-    monkeypatch.setattr(plugin, "register", lambda: None)
     monkeypatch.setattr(internals, "extract_hf_config", lambda engine: hf_config)
 
+    puller_state: dict[str, Any] = {"messages": list(puller_messages or []), "closed": False}
 
-def _make_provider(monkeypatch, engine_instance: Any, hf_config: Any | None = None):
-    """Construct the provider with mocked sglang.Engine + fake tokenizer + patched
-    construction; device='cpu' so intermediate tensors don't require CUDA."""
+    class _FakePuller:
+        def __init__(self, channel: str) -> None:
+            self.channel = channel
+
+        def drain(self, timeout_ms: int = 1000):
+            msgs = puller_state["messages"]
+            puller_state["messages"] = []
+            return msgs
+
+        def close(self) -> None:
+            puller_state["closed"] = True
+
+    from transformer_lens.model_bridge.sources.inspect import sglang_provider
+    from transformer_lens.model_bridge.sources.sglang import capture_puller as cp_module
+
+    monkeypatch.setattr(
+        sglang_provider, "__name__", sglang_provider.__name__
+    )  # touch to ensure module loaded
+    monkeypatch.setattr(cp_module, "CapturePuller", _FakePuller)
+
+    return puller_state
+
+
+def _make_provider(
+    monkeypatch,
+    engine_instance: Any,
+    *,
+    hf_config: Any | None = None,
+    puller_messages: list | None = None,
+):
+    """Construct the provider with mocked sglang.Engine + tokenizer + CapturePuller."""
     _fake_tokenizer(monkeypatch)
     hf_config = hf_config or _fake_hf_config()
-    _patch_construction(monkeypatch, hf_config)
+    puller_state = _patch_construction(monkeypatch, hf_config, puller_messages)
     engine_class = MagicMock(return_value=engine_instance, name="Engine")
     _install_sglang_mocks(monkeypatch, engine_class)
     from transformer_lens.model_bridge.sources.inspect.sglang_provider import (
         TransformerLensSGLangModelAPI,
     )
 
-    return TransformerLensSGLangModelAPI("any/model", device="cpu"), engine_class
+    provider = TransformerLensSGLangModelAPI("any/model", device="cpu")
+    return provider, engine_class, puller_state
 
 
 class TestModuleSafety:
     def test_module_imports_without_sglang(self):
-        # Confirm the lazy-sglang pattern: importing the module loads no sglang symbols.
         assert "sglang" not in sys.modules
         from transformer_lens.model_bridge.sources.inspect import (  # noqa: F401
             sglang_provider,
@@ -115,75 +140,61 @@ class TestConstruction:
         with pytest.raises(ValueError, match="tp_size"):
             TransformerLensSGLangModelAPI("any/model", device="cpu", sglang_kwargs={"tp_size": 2})
 
-    def test_passes_locked_kwargs_to_engine(self, monkeypatch):
-        provider, engine_class = _make_provider(monkeypatch, MagicMock())
+    def test_passes_locked_kwargs_and_forward_hooks(self, monkeypatch):
+        provider, engine_class, _ = _make_provider(monkeypatch, MagicMock())
         kwargs = engine_class.call_args.kwargs
         assert kwargs["tp_size"] == 1
         assert kwargs["dp_size"] == 1
         assert kwargs["skip_tokenizer_init"] is True
         assert kwargs["model_path"] == "any/model"
+        # forward_hooks list built from the overlay's capture_specs.
+        assert isinstance(kwargs["forward_hooks"], list)
+        assert kwargs["forward_hooks"]  # non-empty for a 2-layer config
+        # Every entry points at our factory and carries a channel.
+        for spec in kwargs["forward_hooks"]:
+            assert spec["hook_factory"].endswith(":make_capture_hook")
+            assert spec["config"]["channel"].startswith("ipc://")
+
+    def test_disable_cuda_graph_default(self, monkeypatch):
+        """Default True — full CUDA graph capture would silently skip our hooks."""
+        provider, engine_class, _ = _make_provider(monkeypatch, MagicMock())
+        assert engine_class.call_args.kwargs["disable_cuda_graph"] is True
 
     def test_supported_kinds_match_overlay(self, monkeypatch):
-        provider, _ = _make_provider(monkeypatch, MagicMock())
-        # Decoder-only overlay serves resid_post / attn_out / mlp_out; resid_pre and
-        # the derived resid_mid are gated.
+        provider, _, _ = _make_provider(monkeypatch, MagicMock())
         assert provider.supported_kinds() == frozenset({"resid_post", "attn_out", "mlp_out"})
         assert "resid_pre" in provider.capability_note()
 
 
 class TestCapturePath:
-    """TL-driven single-forward capture: extra_args carries input_ids/capture/interventions;
-    provider pushes specs → generates → reads captures via the RPC module."""
+    """TL-driven single-token capture: extra_args carries input_ids/capture/interventions;
+    provider drives engine.collective_rpc + drains the puller."""
 
     def _config_with(self, extra_args: dict[str, Any]):
         from inspect_ai.model import GenerateConfig
 
         return GenerateConfig(extra_body={"extra_args": extra_args})
 
-    def _make_capture_provider(self, monkeypatch, *, captures=None, next_token: int = 65):
-        import torch
-
+    def _make_capture_provider(self, monkeypatch, *, puller_messages=None, next_token: int = 65):
         engine = MagicMock()
         engine.generate.return_value = [
             {
-                "token_ids": [next_token],
+                "output_ids": [next_token],
                 "meta_info": {"output_top_logprobs": [[(-0.1, next_token, "A")]]},
             }
         ]
-        captures = (
-            captures
-            if captures is not None
-            else {"blocks.0.hook_out": torch.zeros(4, 8, dtype=torch.float32)}
+        provider, engine_class, puller_state = _make_provider(
+            monkeypatch, engine, puller_messages=puller_messages
         )
+        return provider, engine, puller_state
 
-        # Patch the rpc module's methods directly on the provider instance after build.
-        provider, engine_class = _make_provider(monkeypatch, engine)
-
-        rpc_calls: list[tuple[str, Any]] = []
-
-        def _set_interventions(engine, specs):
-            rpc_calls.append(("set_interventions", specs))
-
-        def _reset_flags(engine):
-            rpc_calls.append(("reset_capture_flags", None))
-
-        def _read(engine, method, prompt_lens, names):
-            rpc_calls.append(("read_captures", (prompt_lens, names)))
-            return captures
-
-        # The provider's _rpc handle was set at __init__; patch the module functions.
-        provider._rpc = SimpleNamespace(
-            set_interventions=_set_interventions,
-            reset_capture_flags=_reset_flags,
-            call_with_prompt_lens=_read,
-        )
-
-        return provider, engine, rpc_calls
-
-    def test_capture_pushes_interventions_and_reads(self, monkeypatch):
+    def test_capture_rpc_sequence(self, monkeypatch):
         import asyncio
 
-        provider, engine, rpc_calls = self._make_capture_provider(monkeypatch)
+        import torch
+
+        captures = [{"name": "blocks.0.hook_out", "tensor": torch.zeros(4, 8, dtype=torch.float32)}]
+        provider, engine, _ = self._make_capture_provider(monkeypatch, puller_messages=captures)
         asyncio.run(
             provider.generate(
                 [],
@@ -198,18 +209,23 @@ class TestCapturePath:
                 ),
             )
         )
-        # set_interventions runs first (resets stale state), then reset_capture_flags, then read.
-        methods = [name for name, _ in rpc_calls]
-        assert methods == ["set_interventions", "reset_capture_flags", "read_captures"]
-        # Specs translated wire key → TL hook name (worker is keyed by hook name).
-        assert rpc_calls[0][1] == {"blocks.0.hook_out": {"op": "suppress"}}
-        # Read takes (prompt_lens, hook names).
-        assert rpc_calls[2][1] == ([4], ["blocks.0.hook_out"])
+        # tl_set_interventions → tl_set_capture_enabled(True) → generate → tl_set_capture_enabled(False).
+        methods = [c.args[0] for c in engine.collective_rpc.call_args_list]
+        assert methods == [
+            "tl_set_interventions",
+            "tl_set_capture_enabled",
+            "tl_set_capture_enabled",
+        ]
+        # First set_interventions translates wire key → TL hook name.
+        first = engine.collective_rpc.call_args_list[0]
+        assert first.kwargs["specs"] == {"blocks.0.hook_out": {"op": "suppress"}}
+        # Enable then disable.
+        enabled = [c.kwargs["enabled"] for c in engine.collective_rpc.call_args_list[1:]]
+        assert enabled == [True, False]
 
     def test_capture_gated_kind_raises(self, monkeypatch):
         import asyncio
 
-        # resid_pre (blocks.{i}.hook_in) is gated by SGLang's fused execution.
         provider, _, _ = self._make_capture_provider(monkeypatch)
         with pytest.raises(ValueError, match="resid_pre|gated"):
             asyncio.run(

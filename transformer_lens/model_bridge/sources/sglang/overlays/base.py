@@ -5,9 +5,7 @@ from typing import Any, Dict, List, Tuple
 
 
 class AdapterOverlay:
-    """An SGLang overlay for one architecture family. ``capture_specs`` runs
-    before ``Engine(...)`` so the plugin can install hooks pre-compile;
-    ``nonfiring_hooks`` enumerates the kernel-fused boundaries we can't reach."""
+    """SGLang overlay for one architecture family."""
 
     def capture_specs(self, hf_config: Any) -> Dict[str, Tuple[str, int]]:
         """``{canonical_hook_name: (dot_path_in_sglang_model, output_width)}``."""

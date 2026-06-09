@@ -61,6 +61,12 @@
         tl_bridge_sglang="transformer_lens.model_bridge.sources.inspect.sglang_provider"
         tl_bridge_vllm="transformer_lens.model_bridge.sources.inspect.vllm_provider"
 
+    # SGLang plugin discovery — load_plugins() runs in every spawned worker
+    # subprocess and the driver process. Our register() patches Scheduler with
+    # the tl_* methods invoked via engine.collective_rpc(...).
+    [project.entry-points."sglang.srt.plugins"]
+        transformer_lens="transformer_lens.model_bridge.sources.sglang.worker_plugin:register"
+
 [dependency-groups]
     demo=["gradio>=4.0.0", "orjson>=3.11.7,<4.0"]
     dev=[

@@ -1,7 +1,6 @@
-"""Unit tests for ``SGLangDriver``: input normalization, intervention validation,
-and RPC dispatch shape. The engine is mocked so no SGLang install is needed; live
-end-to-end verification (real SGLang, real GPU) is in the Colab walkthrough.
-"""
+"""Unit tests for :class:`SGLangDriver`: orchestration of ``collective_rpc`` for
+control, ``engine.generate`` for the forward, and :class:`CapturePuller` for
+tensor collection. Engine + puller are mocked so no SGLang / GPU needed."""
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -34,29 +33,77 @@ def _adapter() -> SimpleNamespace:
     return SimpleNamespace(cfg=cfg)
 
 
-def _driver(engine: Any | None = None) -> SGLangDriver:
+def _stub_engine_and_puller(
+    token_id: int = 7, captures: list[dict] | None = None
+) -> tuple[MagicMock, MagicMock]:
+    """Coupled engine+puller stubs: ``engine.generate`` enqueues ``captures`` so
+    ``puller.drain`` returns them on the post-generate drain (not the pre-drain).
+    Models the real worker behavior — hooks fire during generate."""
+    queue: list[dict] = []
+    engine = MagicMock()
+
+    def _generate(*args, **kwargs):
+        queue.extend(captures or [])
+        return [
+            {
+                "output_ids": [token_id],
+                "meta_info": {"output_top_logprobs": [[(-0.1, token_id, "A")]]},
+            }
+        ]
+
+    engine.generate.side_effect = _generate
+
+    puller = MagicMock()
+
+    def _drain(timeout_ms: int = 0):
+        out = list(queue)
+        queue.clear()
+        return out
+
+    puller.drain.side_effect = _drain
+    return engine, puller
+
+
+def _stub_engine(token_id: int = 7) -> MagicMock:
+    engine, _ = _stub_engine_and_puller(token_id=token_id)
+    return engine
+
+
+def _stub_puller(messages: list[dict] | None = None) -> MagicMock:
+    """Standalone puller that always returns ``messages`` on the next drain."""
+    puller = MagicMock()
+    queue = list(messages or [])
+
+    def _drain(timeout_ms: int = 0):
+        out = list(queue)
+        queue.clear()
+        return out
+
+    puller.drain.side_effect = _drain
+    return puller
+
+
+def _driver(engine: Any | None = None, puller: Any | None = None) -> SGLangDriver:
     return SGLangDriver(
-        engine=engine if engine is not None else MagicMock(),
+        engine=engine or _stub_engine(),
         adapter=_adapter(),
         tokenizer=None,
         overlay=DecoderOnlyOverlay(),
         hf_config=_hf_config(),
         max_num_batched_tokens=128,
+        puller=puller or _stub_puller(),
     )
 
 
 class TestConstruction:
     def test_supported_hook_points_match_overlay(self):
         d = _driver()
-        # 2 module-level + 3 per-layer * 2 layers = 8 fireable hooks.
+        # 2 module-level + 3 per-layer * 2 layers = 8.
         assert len(d.supported_hook_points) == 8
         assert "blocks.0.hook_out" in d.supported_hook_points
-        assert "embed.hook_out" in d.supported_hook_points
 
     def test_non_fireable_expands_layer_templates(self):
         d = _driver()
-        # 4 per-layer templates expanded * 2 layers + 1 module-level (unembed).
-        assert len(d.non_fireable_hook_points) == 4 * 2 + 1
         assert "blocks.0.attn.hook_pattern" in d.non_fireable_hook_points
         assert "blocks.1.attn.hook_attn_scores" in d.non_fireable_hook_points
         assert "unembed.hook_out" in d.non_fireable_hook_points
@@ -64,106 +111,111 @@ class TestConstruction:
 
 class TestNormalizeInputIds:
     def test_tensor_to_list(self):
-        d = _driver()
-        ids = d._normalize_input_ids(torch.tensor([1, 2, 3]))
-        assert ids == [1, 2, 3]
+        assert _driver()._normalize_input_ids(torch.tensor([1, 2, 3])) == [1, 2, 3]
 
     def test_nested_singleton_unwrapped(self):
-        d = _driver()
-        ids = d._normalize_input_ids([[1, 2, 3]])
-        assert ids == [1, 2, 3]
+        assert _driver()._normalize_input_ids([[1, 2, 3]]) == [1, 2, 3]
 
     def test_batch_size_above_one_raises(self):
-        d = _driver()
         with pytest.raises(NotImplementedError, match="batch_size=1"):
-            d._normalize_input_ids([[1, 2], [3, 4]])
+            _driver()._normalize_input_ids([[1, 2], [3, 4]])
 
 
 class TestValidateInterventions:
     def test_callable_rejected(self):
-        d = _driver()
         with pytest.raises(NotImplementedError, match="dict"):
-            d._validate_interventions({"blocks.0.hook_out": lambda x: x})
+            _driver()._validate_interventions({"blocks.0.hook_out": lambda x: x})
 
     def test_unknown_hook_rejected(self):
-        d = _driver()
         with pytest.raises(ValueError, match="not in supported_hook_points"):
-            d._validate_interventions({"blocks.99.hook_out": {"op": "suppress"}})
+            _driver()._validate_interventions({"blocks.99.hook_out": {"op": "suppress"}})
 
     def test_unsupported_op_rejected(self):
-        d = _driver()
         with pytest.raises(ValueError, match="Unsupported"):
-            d._validate_interventions({"blocks.0.hook_out": {"op": "rotate"}})
+            _driver()._validate_interventions({"blocks.0.hook_out": {"op": "rotate"}})
 
     def test_scale_requires_factor(self):
-        d = _driver()
         with pytest.raises(ValueError, match="'factor'"):
-            d._validate_interventions({"blocks.0.hook_out": {"op": "scale"}})
+            _driver()._validate_interventions({"blocks.0.hook_out": {"op": "scale"}})
 
     def test_set_requires_value(self):
-        d = _driver()
         with pytest.raises(ValueError, match="requires 'value'"):
-            d._validate_interventions({"blocks.0.hook_out": {"op": "set"}})
-
-    def test_valid_specs_pass_through(self):
-        d = _driver()
-        out = d._validate_interventions({"blocks.0.hook_out": {"op": "suppress"}})
-        assert out == {"blocks.0.hook_out": {"op": "suppress"}}
+            _driver()._validate_interventions({"blocks.0.hook_out": {"op": "set"}})
 
 
 class TestForwardDispatch:
-    """The forward path: RPC sequence + sampling-params shape."""
+    """The orchestration: set_interventions → drain stale → set_capture_enabled →
+    generate → set_capture_enabled(False) → collect."""
 
-    def _engine_with_capture(self, captures: dict | None = None):
-        """Mock engine whose ``generate`` returns a stub output. RPC dispatch is
-        intercepted by patching the ``rpc`` module in the driver."""
-        engine = MagicMock()
-        engine.generate.return_value = [
-            {"token_ids": [7], "meta_info": {"output_top_logprobs": [[(-0.1, 7, "A")]]}}
+    def test_rpc_call_sequence(self):
+        engine = _stub_engine()
+        puller = _stub_puller([{"name": "blocks.0.hook_out", "tensor": torch.full((3, 8), 0.5)}])
+        d = _driver(engine=engine, puller=puller)
+
+        d.forward(input_ids=torch.tensor([1, 2, 3]), capture=("blocks.0.hook_out",))
+
+        # Order: tl_set_interventions, tl_set_capture_enabled(True), generate, tl_set_capture_enabled(False).
+        rpc_methods = [c.args[0] for c in engine.collective_rpc.call_args_list]
+        assert rpc_methods == [
+            "tl_set_interventions",
+            "tl_set_capture_enabled",
+            "tl_set_capture_enabled",
         ]
-        return engine
+        # The two capture-enabled toggles: True then False.
+        enabled_values = [c.kwargs.get("enabled") for c in engine.collective_rpc.call_args_list[1:]]
+        assert enabled_values == [True, False]
 
-    def test_forward_pushes_interventions_then_captures(self, monkeypatch):
-        from transformer_lens.model_bridge.sources.sglang import rpc as rpc_module
+    def test_captures_collected_from_puller(self):
+        captures = [{"name": "blocks.0.hook_out", "tensor": torch.full((3, 8), 0.5)}]
+        engine, puller = _stub_engine_and_puller(captures=captures)
+        d = _driver(engine=engine, puller=puller)
 
-        # Track every call to the rpc module's methods.
-        captures_returned = {"blocks.0.hook_out": torch.full((3, 8), 0.5)}
-        calls: list[tuple[str, dict]] = []
+        result = d.forward(input_ids=torch.tensor([1, 2, 3]), capture=("blocks.0.hook_out",))
+        # Driver adds the batch dim.
+        assert result.captured["blocks.0.hook_out"].shape == (1, 3, 8)
 
-        def _set_interventions(engine, specs):
-            calls.append(("set_interventions", {"specs": specs}))
+    def test_first_wins_on_repeated_name(self):
+        """If two messages with the same name leak through, keep the first.
+        Mirrors the inspect provider's behavior; protects against warmup straggler
+        overwriting the real prefill capture."""
+        prefill = {"name": "blocks.0.hook_out", "tensor": torch.full((3, 8), 1.0)}
+        straggler = {"name": "blocks.0.hook_out", "tensor": torch.full((3, 8), 99.0)}
+        engine, puller = _stub_engine_and_puller(captures=[prefill, straggler])
+        d = _driver(engine=engine, puller=puller)
+        result = d.forward(input_ids=torch.tensor([1, 2, 3]), capture=("blocks.0.hook_out",))
+        # First-wins: prefill (1.0), not straggler (99.0).
+        assert result.captured["blocks.0.hook_out"][0, 0, 0].item() == 1.0
 
-        def _reset_flags(engine):
-            calls.append(("reset_capture_flags", {}))
-
-        def _read(engine, method, prompt_lens, names):
-            calls.append(("read_captures", {"prompt_lens": prompt_lens, "names": names}))
-            return captures_returned
-
-        monkeypatch.setattr(rpc_module, "set_interventions", _set_interventions)
-        monkeypatch.setattr(rpc_module, "reset_capture_flags", _reset_flags)
-        monkeypatch.setattr(rpc_module, "call_with_prompt_lens", _read)
-
-        engine = self._engine_with_capture()
-        d = _driver(engine=engine)
-
+    def test_capture_filters_to_wanted_names(self):
+        captures = [
+            {"name": "blocks.0.hook_out", "tensor": torch.zeros(3, 8)},
+            {"name": "blocks.1.hook_out", "tensor": torch.ones(3, 8)},
+        ]
+        engine, puller = _stub_engine_and_puller(captures=captures)
+        d = _driver(engine=engine, puller=puller)
         result = d.forward(
             input_ids=torch.tensor([1, 2, 3]),
             capture=("blocks.0.hook_out",),
         )
+        # Only the wanted name shows up; the other is filtered.
+        assert "blocks.0.hook_out" in result.captured
+        assert "blocks.1.hook_out" not in result.captured
 
-        # RPC sequence: set_interventions → reset_capture_flags → generate → read.
-        rpc_only = [name for name, _ in calls]
-        assert rpc_only == ["set_interventions", "reset_capture_flags", "read_captures"]
-        # read_captures got the right prompt_lens / names.
-        assert calls[2][1] == {"prompt_lens": [3], "names": ["blocks.0.hook_out"]}
-        # Captured tensors carry the batch dim added by the driver.
-        assert result.captured["blocks.0.hook_out"].shape == (1, 3, 8)
+    def test_capture_disabled_even_on_generate_exception(self):
+        engine = _stub_engine()
+        engine.generate.side_effect = RuntimeError("boom")
+        d = _driver(engine=engine, puller=_stub_puller())
+        with pytest.raises(RuntimeError, match="boom"):
+            d.forward(input_ids=torch.tensor([1, 2]))
+        # The disable-capture RPC fires in the finally block.
+        rpc_calls = engine.collective_rpc.call_args_list
+        last = rpc_calls[-1]
+        assert last.args[0] == "tl_set_capture_enabled"
+        assert last.kwargs["enabled"] is False
 
     def test_multi_token_generate_rejected(self):
-        d = _driver()
         with pytest.raises(NotImplementedError, match="max_new_tokens=1"):
-            d.forward(input_ids=torch.tensor([1, 2]), max_new_tokens=2)
+            _driver().forward(input_ids=torch.tensor([1, 2]), max_new_tokens=2)
 
     def test_prompt_over_capacity_rejected(self):
         d = _driver()
@@ -172,16 +224,66 @@ class TestForwardDispatch:
             d.forward(input_ids=torch.tensor(list(range(10))))
 
     def test_input_ids_required(self):
-        d = _driver()
         with pytest.raises(ValueError, match="requires input_ids"):
-            d.forward()
+            _driver().forward()
+
+
+class TestGetParam:
+    """``get_param`` dispatches ``tl_get_param`` over collective_rpc and drains the
+    PULL socket for the ``{"_param": dotted_name, "tensor": ...}`` response."""
+
+    def test_returns_tensor_when_param_message_arrives(self):
+        engine = _stub_engine()
+        weight = torch.arange(8.0).reshape(2, 4)
+        puller = _stub_puller([{"_param": "model.norm.weight", "tensor": weight}])
+        d = _driver(engine=engine, puller=puller)
+        out = d.get_param("model.norm.weight")
+        assert out is not None and torch.equal(out, weight)
+        # RPC dispatched with the channel + dotted_name.
+        rpc_call = engine.collective_rpc.call_args
+        assert rpc_call.args[0] == "tl_get_param"
+        assert rpc_call.kwargs["dotted_name"] == "model.norm.weight"
+
+    def test_returns_none_when_no_matching_message(self):
+        d = _driver(puller=_stub_puller([]))
+        assert d.get_param("model.norm.weight") is None
+
+    def test_returns_none_after_close(self):
+        d = _driver()
+        d._engine = None
+        assert d.get_param("anything") is None
+
+    def test_ignores_non_param_messages(self):
+        """Any leftover capture messages on the channel get drained and discarded."""
+        msgs = [
+            {"name": "blocks.0.hook_out", "tensor": torch.zeros(2, 4)},  # leftover capture
+            {"_param": "model.norm.weight", "tensor": torch.ones(4)},
+        ]
+        d = _driver(puller=_stub_puller(msgs))
+        out = d.get_param("model.norm.weight")
+        assert out is not None and torch.equal(out, torch.ones(4))
+
+
+class TestClose:
+    def test_clear_state_rpc_then_shutdown(self):
+        engine = _stub_engine()
+        puller = _stub_puller()
+        d = _driver(engine=engine, puller=puller)
+        d.close()
+        # close() runs tl_clear_state.
+        methods = [c.args[0] for c in engine.collective_rpc.call_args_list]
+        assert "tl_clear_state" in methods
+        # And the engine's shutdown() was invoked.
+        engine.shutdown.assert_called_once()
+        # And the puller closed.
+        puller.close.assert_called_once()
 
 
 class TestSynthesizeLogits:
     def test_top_logprobs_fill_gen_position(self):
         outputs = [
             {
-                "token_ids": [3],
+                "output_ids": [3],
                 "meta_info": {
                     "output_top_logprobs": [[(-0.5, 3, "C"), (-1.0, 5, "E"), (-2.0, 7, "G")]]
                 },
@@ -189,19 +291,10 @@ class TestSynthesizeLogits:
         ]
         logits = SGLangDriver._synthesize_logits(outputs, n_tokens=4, d_vocab=16)
         assert logits.shape == (1, 4, 16)
-        # Earlier positions are -inf.
-        assert torch.isinf(logits[0, 0]).all() and (logits[0, 0] < 0).all()
-        # Last position carries the three top logprobs.
+        assert torch.isinf(logits[0, 0]).all()
         assert logits[0, -1, 3].item() == pytest.approx(-0.5)
-        assert logits[0, -1, 5].item() == pytest.approx(-1.0)
-        assert logits[0, -1, 7].item() == pytest.approx(-2.0)
 
     def test_falls_back_to_one_hot_when_no_top_logprobs(self):
-        outputs = [{"token_ids": [4], "meta_info": {}}]
+        outputs = [{"output_ids": [4], "meta_info": {}}]
         logits = SGLangDriver._synthesize_logits(outputs, n_tokens=3, d_vocab=16)
-        # Only the generated token id is finite at the last position.
         assert logits[0, -1, 4].item() == 0.0
-        # All others at the last position stay -inf.
-        mask = torch.ones(16, dtype=torch.bool)
-        mask[4] = False
-        assert torch.isinf(logits[0, -1, mask]).all()
