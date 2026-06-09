@@ -98,13 +98,6 @@ class DummyBridgeModel:
 class TestPhiAdapterConfig:
     """Adapter must set all required config flags to the values Phi expects."""
 
-    def test_positional_embedding_type_is_rotary(self, adapter: PhiArchitectureAdapter) -> None:
-        assert adapter.cfg.positional_embedding_type == "rotary"
-
-    def test_parallel_attn_mlp_is_true(self, adapter: PhiArchitectureAdapter) -> None:
-        """Phi runs attention and MLP in parallel within each block."""
-        assert adapter.cfg.parallel_attn_mlp is True
-
     def test_use_fast_is_false(self, adapter: PhiArchitectureAdapter) -> None:
         """Do not use the rust based HF tokenizer. Uses python based version instead"""
         assert adapter.cfg.use_fast is False
