@@ -49,7 +49,6 @@ def test_svd_interpreter_returns_meaningful_values(model):
 
 
 def test_svd_interpreter_returns_different_answers_for_different_layers(model):
-
     svd_interpreter = SVDInterpreter(model)
 
     # Layer 0 results
@@ -81,7 +80,6 @@ def test_svd_interpreter_returns_different_answers_for_different_layers(model):
 
 
 def test_svd_interpreter_returns_different_answers_for_different_models(model, second_model):
-
     # Get results from first model
     svd_interpreter_1 = SVDInterpreter(model)
     ov_1 = svd_interpreter_1.get_singular_vectors(
