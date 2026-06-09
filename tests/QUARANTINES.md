@@ -66,6 +66,7 @@ Rule ([AGENTS.md §10](../AGENTS.md#10-hard-rules)): **never add `xfail` / `skip
 | Path | Reason | Issue |
 |---|---|---|
 | [`unit/model_bridge/test_bridge_generate_no_tokenizer.py`:30,128](unit/model_bridge/test_bridge_generate_no_tokenizer.py) | `skipif(_MACOS_ARM64)` — KV-cache NaN | Upstream PyTorch/HF on M-series Macs |
+| [`integration/model_bridge/test_bridge_generate_stopping_criteria.py`](integration/model_bridge/test_bridge_generate_stopping_criteria.py) | `skipif(_MACOS_ARM64)`, KV-cache NaN (one `use_past_kv_cache=True` test) | Upstream PyTorch/HF on M-series Macs |
 
 **Un-skip:** when upstream resolves. Don't bypass — produces NaN logits.
 
