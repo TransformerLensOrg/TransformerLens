@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>Coverage for transformer_lens/model_bridge/bridge.py: 75%</title>
+    <title>Coverage for transformer_lens/model_bridge/bridge.py: 74%</title>
     <link rel="icon" sizes="32x32" href="favicon_32_cb_58284776.png">
     <link rel="stylesheet" href="style_cb_6b508a39.css" type="text/css">
     <script src="coverage_html_cb_6fb7b396.js" defer></script>
@@ -12,7 +12,7 @@
     <div class="content">
         <h1>
             <span class="text">Coverage for </span><b>transformer_lens/model_bridge/bridge.py</b>:
-            <span class="pc_cov">75%</span>
+            <span class="pc_cov">74%</span>
         </h1>
         <aside id="help_panel_wrapper">
             <input id="help_panel_state" type="checkbox">
@@ -56,10 +56,10 @@
         </aside>
         <h2>
             <span class="text">1765 statements &nbsp;</span>
-            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">1383<span class="text"> run</span></button>
-            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">382<span class="text"> missing</span></button>
+            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">1381<span class="text"> run</span></button>
+            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">384<span class="text"> missing</span></button>
             <button type="button" class="exc show_exc button_toggle_exc" value="exc" data-shortcut="x" title="Toggle lines excluded">3<span class="text"> excluded</span></button>
-            <button type="button" class="par run show_par button_toggle_par" value="par" data-shortcut="p" title="Toggle lines partially run">158<span class="text"> partial</span></button>
+            <button type="button" class="par run show_par button_toggle_par" value="par" data-shortcut="p" title="Toggle lines partially run">159<span class="text"> partial</span></button>
         </h2>
         <p class="text">
             <a id="prevFileLink" class="nav" href="z_1d599f999bbb9d44_architecture_adapter_py.html">&#xab; prev</a> &nbsp; &nbsp;
@@ -67,7 +67,7 @@
             <a id="nextFileLink" class="nav" href="z_1d599f999bbb9d44_compat_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-06-06 17:15 +0000
+            created at 2026-06-09 00:32 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -2720,16 +2720,16 @@
     <p class="pln"><span class="n"><a id="t2636" href="#t2636">2636</a></span><span class="t">        <span class="com"># prepend_bos is intentionally not applied during generation.</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t2637" href="#t2637">2637</a></span><span class="t">        <span class="com"># The HF model expects tokens in its native format. Overriding BOS can silently</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t2638" href="#t2638">2638</a></span><span class="t">        <span class="com"># degrade quality.</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t2639" href="#t2639">2639</a></span><span class="t">        <span class="key">if</span> <span class="nam">prepend_bos</span> <span class="key">is</span> <span class="key">not</span> <span class="key">None</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t2640" href="#t2640">2640</a></span><span class="t">            <span class="key">import</span> <span class="nam">warnings</span>&nbsp;</span><span class="r"></span></p>
+    <p class="par run show_par"><span class="n"><a id="t2639" href="#t2639">2639</a></span><span class="t">        <span class="key">if</span> <span class="nam">prepend_bos</span> <span class="key">is</span> <span class="key">not</span> <span class="key">None</span><span class="op">:</span>&nbsp;</span><span class="r"><span class="annotate short">2639&#x202F;&#x219B;&#x202F;2640</span><span class="annotate long">line 2639 didn't jump to line 2640 because the condition on line 2639 was never true</span></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t2640" href="#t2640">2640</a></span><span class="t">            <span class="key">import</span> <span class="nam">warnings</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t2641" href="#t2641">2641</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t2642" href="#t2642">2642</a></span><span class="t">            <span class="nam">warnings</span><span class="op">.</span><span class="nam">warn</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t2643" href="#t2643">2643</a></span><span class="t">                <span class="str">"prepend_bos is ignored during TransformerBridge.generate(). "</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t2644" href="#t2644">2644</a></span><span class="t">                <span class="str">"The HF model expects tokens with the tokenizer's default BOS handling. "</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t2645" href="#t2645">2645</a></span><span class="t">                <span class="str">"To control BOS, tokenize with to_tokens(prepend_bos=...) and pass the "</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t2646" href="#t2646">2646</a></span><span class="t">                <span class="str">"resulting tensor to generate()."</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t2647" href="#t2647">2647</a></span><span class="t">                <span class="nam">stacklevel</span><span class="op">=</span><span class="num">2</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t2648" href="#t2648">2648</a></span><span class="t">            <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t2642" href="#t2642">2642</a></span><span class="t">            <span class="nam">warnings</span><span class="op">.</span><span class="nam">warn</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t2643" href="#t2643">2643</a></span><span class="t">                <span class="str">"prepend_bos is ignored during TransformerBridge.generate(). "</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t2644" href="#t2644">2644</a></span><span class="t">                <span class="str">"The HF model expects tokens with the tokenizer's default BOS handling. "</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t2645" href="#t2645">2645</a></span><span class="t">                <span class="str">"To control BOS, tokenize with to_tokens(prepend_bos=...) and pass the "</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t2646" href="#t2646">2646</a></span><span class="t">                <span class="str">"resulting tensor to generate()."</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t2647" href="#t2647">2647</a></span><span class="t">                <span class="nam">stacklevel</span><span class="op">=</span><span class="num">2</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t2648" href="#t2648">2648</a></span><span class="t">            <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t2649" href="#t2649">2649</a></span><span class="t">        <span class="com"># padding_side is handled internally: for batched list inputs, left-padding</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t2650" href="#t2650">2650</a></span><span class="t">        <span class="com"># is forced to ensure correct generation. See _is_batched_list logic below.</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t2651" href="#t2651">2651</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
@@ -4038,7 +4038,7 @@
             <a class="nav" href="z_1d599f999bbb9d44_compat_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-06-06 17:15 +0000
+            created at 2026-06-09 00:32 +0000
         </p>
     </div>
 </footer>
