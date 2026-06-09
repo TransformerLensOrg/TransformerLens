@@ -5,6 +5,7 @@ Tests cover:
 - Component mapping structure
 - Weight conversion keys and rearrange patterns
 - Architecture guards
+- Setup component tests
 """
 
 from types import SimpleNamespace
