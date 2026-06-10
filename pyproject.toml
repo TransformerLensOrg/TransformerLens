@@ -17,9 +17,10 @@
         "rich>=12.6.0",
         "sentencepiece",
         "torch>=2.6",
-        # Pin to the torchvision that pairs with the project's torch 2.7.x so adding
-        # it for multimodal processors doesn't force a repo-wide torch upgrade.
-        "torchvision>=0.22,<0.23",
+        # Lower bound matches torch 2.6's torchvision; no upper bound so backends
+        # that require newer torch (sglang pins torch==2.11.0 → torchvision 0.26)
+        # don't trigger a pip downgrade cascade.
+        "torchvision>=0.22",
         "tqdm>=4.64.1",
         "transformers-stream-generator>=0.0.5,<0.1",
         "transformers>=5.4.0",
@@ -101,9 +102,9 @@
     jupyter=["ipywidgets>=8.1.1", "jupyterlab>=3.5.0"]
     # Vision/audio deps for multimodal adapters (Gemma 3n's vision tower needs timm; image
     # processors need torchvision). In default-groups so contributor/CI test runs install them,
-    # while downstream users get a light core install. torchvision is pinned to the release
-    # pairing with torch 2.7.x so it doesn't force a repo-wide torch upgrade.
-    multimodal=["timm>=1.0.27", "torchvision>=0.22,<0.23"]
+    # while downstream users get a light core install. No upper bound on torchvision so
+    # the sglang backend's torch 2.11.0 chain can resolve.
+    multimodal=["timm>=1.0.27", "torchvision>=0.22"]
     quantization=["bitsandbytes>=0.46.1", "optimum-quanto>=0.2.7"]
 
 [tool.uv]
