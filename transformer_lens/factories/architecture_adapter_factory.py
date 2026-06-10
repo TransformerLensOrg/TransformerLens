@@ -23,6 +23,7 @@ from transformer_lens.model_bridge.supported_architectures import (
     Gemma3ArchitectureAdapter,
     Gemma3MultimodalArchitectureAdapter,
     Gemma3nArchitectureAdapter,
+    Gemma4ArchitectureAdapter,
     GPT2ArchitectureAdapter,
     Gpt2LmHeadCustomArchitectureAdapter,
     GPTBigCodeArchitectureAdapter,
@@ -86,6 +87,11 @@ SUPPORTED_ARCHITECTURES = {
     "Gemma3ForCausalLM": Gemma3ArchitectureAdapter,
     "Gemma3ForConditionalGeneration": Gemma3MultimodalArchitectureAdapter,
     "Gemma3nForConditionalGeneration": Gemma3nArchitectureAdapter,
+    "Gemma4ForConditionalGeneration": Gemma4ArchitectureAdapter,
+    # The unified (encoder-free) 12B variant's text decoder is a strict structural
+    # subset of gemma4 (no PLE, no MoE — both optional in the adapter), with the
+    # same module paths. Requires transformers >= 5.10 to load.
+    "Gemma4UnifiedForConditionalGeneration": Gemma4ArchitectureAdapter,
     "GraniteForCausalLM": GraniteArchitectureAdapter,
     "GraniteMoeForCausalLM": GraniteMoeArchitectureAdapter,
     "GraniteMoeHybridForCausalLM": GraniteMoeHybridArchitectureAdapter,
