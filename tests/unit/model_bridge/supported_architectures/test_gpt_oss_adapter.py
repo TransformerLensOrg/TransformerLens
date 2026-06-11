@@ -158,15 +158,6 @@ class FakeGPTOSSAttention(nn.Module):
         self.o_proj = nn.Linear(cfg.n_heads * cfg.d_head, cfg.d_model, bias=False)
 
 
-class TestGPTOSSAdapterConfig:
-    """Adapter-owned config defaults that downstream bridge code relies on."""
-
-    def test_eps_attr_is_variance_epsilon(self, adapter: GPTOSSArchitectureAdapter) -> None:
-        """GPT-OSS uses HF's `variance_epsilon` attribute name on RMSNorm modules,
-        not the default `eps`. Downstream norm-folding reads this attribute."""
-        assert adapter.cfg.eps_attr == "variance_epsilon"
-
-
 class TestGPTOSSWeightConversions:
     """GPT-OSS uses the standard QKVO weight conversions (no biases), with GQA head counts."""
 

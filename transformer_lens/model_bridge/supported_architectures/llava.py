@@ -62,7 +62,6 @@ class LlavaArchitectureAdapter(ArchitectureAdapter):
         self.cfg.attn_implementation = "eager"
         self.cfg.final_rms = True
         self.cfg.attn_only = False
-        self.cfg.eps_attr = "variance_epsilon"
 
         # GQA support
         if hasattr(cfg, "n_key_value_heads") and cfg.n_key_value_heads is not None:

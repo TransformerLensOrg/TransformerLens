@@ -64,10 +64,6 @@ class ModelNameArchitectureAdapter(ArchitectureAdapter):
         self.cfg.attn_only = False  # True only for attention-only models (rare)
         self.cfg.uses_rms_norm = True  # Should match normalization_type
 
-        # TODO: Set the epsilon attribute name used by this model's normalization
-        # Check the HF model's norm layer to find the correct attribute name
-        self.cfg.eps_attr = "variance_epsilon"  # or "layer_norm_eps", "rms_norm_eps", etc.
-
         # TODO: Handle GQA if applicable
         # If the model uses Grouped Query Attention (n_key_value_heads < n_heads):
         if hasattr(cfg, "n_key_value_heads") and cfg.n_key_value_heads is not None:

@@ -63,8 +63,6 @@ class LlamaArchitectureAdapter(ArchitectureAdapter):
             self.cfg.n_key_value_heads = cfg.n_key_value_heads
 
         self.cfg.uses_rms_norm = True
-        # Llama uses 'variance_epsilon' instead of 'eps' for RMSNorm
-        self.cfg.eps_attr = "variance_epsilon"
 
         self.weight_processing_conversions = {
             **self._qkvo_weight_conversions(),
