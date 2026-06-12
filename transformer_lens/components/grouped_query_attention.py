@@ -153,7 +153,7 @@ class GroupedQueryAttention(AbstractAttention):
         k: Float[torch.Tensor, "batch key_pos kv_head_index d_head"],
     ) -> Float[torch.Tensor, "batch head_index query_pos key_pos"]:
         """Calculate attention scores from Q and the unexpanded K matrix.
-        K will be expaned from [batch, pos, n_key_value_head, d_head] to [batch, pos, n_query_heads, d_head] using torch.repeat_interleave.
+        K will be expanded from [batch, pos, n_key_value_head, d_head] to [batch, pos, n_query_heads, d_head] using torch.repeat_interleave.
 
         Args:
         q (Float[torch.Tensor, "batch query_pos head_index d_head"]): The Q tensor.
@@ -172,7 +172,7 @@ class GroupedQueryAttention(AbstractAttention):
         pattern: Float[torch.Tensor, "batch head_index query_pos key_pos"],
     ) -> Float[torch.Tensor, "batch query_pos head_index d_head"]:
         """Calculate z scores from the attention pattern and the unexpanded V matrix.
-        V will be expaned from [batch, pos, n_key_value_head, d_head] to [batch, pos, n_query_heads, d_head] using torch.repeat_interleave.
+        V will be expanded from [batch, pos, n_key_value_head, d_head] to [batch, pos, n_query_heads, d_head] using torch.repeat_interleave.
 
         Args:
         v (Float[torch.Tensor, "batch query_pos head_index d_head"]): The V tensor.

@@ -175,7 +175,7 @@ class AbstractAttention(ABC, nn.Module):
             self.register_buffer("rotary_sin", sin)
             self.register_buffer("rotary_cos", cos)
         elif self.cfg.positional_embedding_type == "alibi":
-            # ALiBi bias wil be constructed on the first forward pass.
+            # ALiBi bias will be constructed on the first forward pass.
             # Note: While computationally efficient, initializing an bias with max n_ctx (16, 1024, 1024) of float32 will occupy ~256MiB of contiguous GPU memory, which may not be optimal for memory usage.
             self.alibi = None
 
