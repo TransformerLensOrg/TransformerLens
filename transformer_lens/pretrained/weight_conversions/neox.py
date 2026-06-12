@@ -14,7 +14,7 @@ def convert_neox_weights(neox, cfg: HookedTransformerConfig):
         state_dict[f"blocks.{l}.ln1.b"] = neox.gpt_neox.layers[l].input_layernorm.bias
 
         # For some inexplicable reason, NeoX both uses the concatenated QKV
-        # matmul of GPT-2 (afaict this has a neglible performance impact) AND
+        # matmul of GPT-2 (afaict this has a negligible performance impact) AND
         # has the flattened axis in the DIFFERENT order of (head_index qkv
         # d_head) - this took me an hour to debug...
         W = neox.gpt_neox.layers[l].attention.query_key_value.weight
