@@ -72,7 +72,6 @@ class Gemma4ArchitectureAdapter(ArchitectureAdapter):
         self.cfg.uses_rms_norm = True
         self.cfg.normalization_type = "RMS"
         self.cfg.final_rms = True
-        self.cfg.eps_attr = "rms_norm_eps"
         # Gemma models use (1.0 + weight) in RMSNorm instead of just weight
         # See: https://github.com/huggingface/transformers/pull/29402
         self.cfg.rmsnorm_uses_offset = True
@@ -83,7 +82,7 @@ class Gemma4ArchitectureAdapter(ArchitectureAdapter):
         # Use eager attention to support output_attentions for hook_attn_scores and hook_pattern
         # SDPA doesn't support output_attentions, which is required for HookedTransformer compatibility
         self.cfg.attn_implementation = "eager"
-        self.cfg.use_native_generate = True
+        setattr(self.cfg, "use_native_generate", True)
 
         # Unwrap text config for multimodal models
         # Gemma4ForConditionalGeneration nests text settings in text_config

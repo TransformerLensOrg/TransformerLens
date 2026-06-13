@@ -97,9 +97,6 @@ class TestGemma4ConfigAttributes:
     def test_final_rms(self, adapter):
         assert adapter.cfg.final_rms is True
 
-    def test_eps_attr(self, adapter):
-        assert adapter.cfg.eps_attr == "rms_norm_eps"
-
     def test_rmsnorm_uses_offset(self, adapter):
         assert adapter.cfg.rmsnorm_uses_offset is True
 

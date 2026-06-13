@@ -39,13 +39,12 @@ from transformer_lens.model_bridge.supported_architectures.gemma3 import (
 from transformer_lens.model_bridge.supported_architectures.gemma3_multimodal import (
     Gemma3MultimodalArchitectureAdapter,
 )
-<<<<<<< HEAD
+
 from transformer_lens.model_bridge.supported_architectures.gemma3n import (
     Gemma3nArchitectureAdapter,
 )
 from transformer_lens.model_bridge.supported_architectures.gemma4 import (
     Gemma4ArchitectureAdapter,
-)
 )
 from transformer_lens.model_bridge.supported_architectures.gpt2 import (
     GPT2ArchitectureAdapter,
