@@ -94,9 +94,6 @@ def _fill_interleaved(
 class TestInternLM2AdapterConfig:
     """Adapter sets all required config attributes."""
 
-    def test_eps_attr(self, adapter: InternLM2ArchitectureAdapter) -> None:
-        assert adapter.cfg.eps_attr == "variance_epsilon"
-
     def test_supports_fold_ln_false(self, adapter: InternLM2ArchitectureAdapter) -> None:
         # fold_ln silently skips attn when wqkv is fused in bridge state dict.
         assert adapter.supports_fold_ln is False

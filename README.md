@@ -202,7 +202,7 @@ exploratory research!
 
 ### Creator's Note (Neel Nanda)
 
-I (Neel Nanda) used to work for the [Anthropic interpretability team](transformer-circuits.pub), and
+I (Neel Nanda) used to work for the [Anthropic interpretability team](https://transformer-circuits.pub), and
 I wrote this library because after I left and tried doing independent research, I got extremely
 frustrated by the state of open source tooling. There's a lot of excellent infrastructure like
 HuggingFace and DeepSpeed to _use_ or _train_ models, but very little to dig into their internals

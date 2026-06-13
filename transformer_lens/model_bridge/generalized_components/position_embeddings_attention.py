@@ -246,6 +246,10 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
         # varies by architecture and isn't captured by nn.Module's type signature.
         hf_attn: Any = self.original_component
 
+        # Gemma4 KV-sharing layers: delegate to original when k/v submodules absent
+        if "k" not in self.submodules or "v" not in self.submodules:
+            return self.original_component(*args, **kwargs)
+
         # Extract hidden_states and kwargs
         if "hidden_states" in kwargs:
             hidden_states = kwargs.pop("hidden_states")
@@ -365,11 +369,14 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
             key_states = key_states.view(hidden_shape).transpose(1, 2)
             value_states = value_states.view(hidden_shape).transpose(1, 2)
 
-        # Post-reshape phase (Gemma-3/Cohere): norm on [B, H, S, D].
+        # Post-reshape phase (Gemma-3/Cohere/Gemma4): norm on [B, H, S, D].
+        has_v_norm = "v_norm" in self.submodules
         if has_q_norm and self._qk_norm_phase == "post_reshape":
             query_states = self.hook_q_normed(self.q_norm(query_states))
             if has_k_norm:
                 key_states = self.hook_k_normed(self.k_norm(key_states))
+            if has_v_norm:
+                value_states = self.v_norm(value_states)
 
         # --- RoPE ---
         if position_embeddings is not None:
@@ -388,6 +395,14 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
                 key_states = torch.cat([k_rot, k_pass], dim=-1)
             else:
                 query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
+
+        # Store KV in shared_kv_states for Gemma4 KV-sharing layers
+        if "shared_kv_states" in kwargs:
+            shared_kv_states = kwargs["shared_kv_states"]
+            if shared_kv_states is not None:
+                layer_type = getattr(hf_attn, "layer_type", None)
+                if layer_type is not None:
+                    shared_kv_states[layer_type] = (key_states, value_states)
 
         # Fire hook_rot_q/hook_rot_k (post-rotation)
         if hasattr(self, "hook_rot_q"):

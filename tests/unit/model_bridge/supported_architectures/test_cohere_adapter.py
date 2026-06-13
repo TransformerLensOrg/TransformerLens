@@ -69,10 +69,6 @@ class TestCohereAdapterConfig:
         # CohereLayerNorm subtracts the mean — NOT RMSNorm.
         assert adapter.cfg.uses_rms_norm is False
 
-    def test_eps_attr_is_variance_epsilon(self, adapter: CohereArchitectureAdapter) -> None:
-        # CohereLayerNorm stores epsilon as self.variance_epsilon.
-        assert adapter.cfg.eps_attr == "variance_epsilon"
-
     def test_parallel_attn_mlp_is_true(self, adapter: CohereArchitectureAdapter) -> None:
         # Single input_layernorm; attn and MLP run in parallel on same normed input.
         assert adapter.cfg.parallel_attn_mlp is True

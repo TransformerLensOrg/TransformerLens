@@ -119,23 +119,7 @@ class PhiArchitectureAdapter(ArchitectureAdapter):
         """
         # Get rotary embedding instance from the model
         # Phi models have rotary_emb at model.model.rotary_emb
-        if hasattr(hf_model, "model") and hasattr(hf_model.model, "rotary_emb"):
-            rotary_emb = hf_model.model.rotary_emb
-        else:
-            # Fallback: try to get from first layer
-            if hasattr(hf_model, "model") and hasattr(hf_model.model, "layers"):
-                if len(hf_model.model.layers) > 0:
-                    first_layer = hf_model.model.layers[0]
-                    if hasattr(first_layer, "self_attn") and hasattr(
-                        first_layer.self_attn, "rotary_emb"
-                    ):
-                        rotary_emb = first_layer.self_attn.rotary_emb
-                    else:
-                        return  # Can't find rotary_emb
-                else:
-                    return
-            else:
-                return
+        rotary_emb = hf_model.model.rotary_emb
 
         # Set rotary_emb on actual bridge instances in bridge_model if available
         if bridge_model is not None and hasattr(bridge_model, "blocks"):
