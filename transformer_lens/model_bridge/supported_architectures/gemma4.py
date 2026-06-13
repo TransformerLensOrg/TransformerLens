@@ -24,6 +24,10 @@ from transformer_lens.model_bridge.generalized_components import (
     RMSNormalizationBridge,
     RotaryEmbeddingBridge,
     UnembeddingBridge,
+    VisionProjectionBridge,
+)
+from transformer_lens.model_bridge.generalized_components.base import (
+    GeneralizedComponent,
 )
 from transformer_lens.model_bridge.generalized_components.position_embeddings_attention import (
     PositionEmbeddingsAttentionBridge,
@@ -63,6 +67,14 @@ class Gemma4ArchitectureAdapter(ArchitectureAdapter):
         arch = getattr(cfg, "architecture", None) or ""
         if "Gemma4ForConditionalGeneration" in arch:
             self.text_prefix = "model.language_model"
+            self.cfg.is_multimodal = True
+            # Extract vision config for Phase 7 multimodal testing
+            if hasattr(cfg, "vision_config"):
+                vcfg = cfg.vision_config
+                self.cfg.vision_hidden_size = getattr(vcfg, "hidden_size", None)
+                self.cfg.vision_num_layers = getattr(vcfg, "num_hidden_layers", None)
+                self.cfg.vision_num_heads = getattr(vcfg, "num_attention_heads", None)
+                self.cfg.mm_tokens_per_image = getattr(cfg, "vision_soft_tokens_per_image", 256)
         else:
             self.text_prefix = "model"
         self._dot = f"{self.text_prefix}."
@@ -254,13 +266,21 @@ class Gemma4ArchitectureAdapter(ArchitectureAdapter):
             block_submodules["router"] = _router
             block_submodules["experts"] = _experts
 
-        self.component_mapping = {
+        self.component_mapping: dict[str, Any] = {
             "embed": EmbeddingBridge(name=f"{self._dot}embed_tokens"),
             "rotary_emb": RotaryEmbeddingBridge(name=f"{self._dot}rotary_emb"),
             "blocks": BlockBridge(name=f"{self._dot}layers", submodules=block_submodules),
             "ln_final": RMSNormalizationBridge(name=f"{self._dot}norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head"),
         }
+
+        # For multimodal models, prepend vision components
+        if self.cfg.is_multimodal:
+            self.component_mapping = {
+                "vision_encoder": GeneralizedComponent(name="model.vision_tower"),
+                "vision_projector": VisionProjectionBridge(name="model.embed_vision"),
+                **self.component_mapping,
+            }
 
     def prepare_loading(self, model_name: str, model_kwargs: dict) -> None:
         """Load bridge HF model with sdpa so hf_generate() avoids eager KV-cache bug."""

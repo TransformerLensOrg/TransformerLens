@@ -318,6 +318,15 @@ class TestGemma4ComponentMappingMultimodal:
         assert adapter.component_mapping["blocks"].name == "model.language_model.layers"
         assert adapter.component_mapping["ln_final"].name == "model.language_model.norm"
 
+    def test_is_multimodal_true_for_conditional(self, adapter):
+        assert adapter.cfg.is_multimodal is True
+
+    def test_has_vision_components(self, adapter):
+        assert "vision_encoder" in adapter.component_mapping
+        assert "vision_projector" in adapter.component_mapping
+        assert adapter.component_mapping["vision_encoder"].name == "model.vision_tower"
+        assert adapter.component_mapping["vision_projector"].name == "model.embed_vision"
+
 
 class TestGemma4WeightConversions:
     """Test Gemma4ArchitectureAdapter weight processing conversions exist."""
