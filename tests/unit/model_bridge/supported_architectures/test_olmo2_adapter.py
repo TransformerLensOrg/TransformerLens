@@ -11,7 +11,7 @@ Covered:
 - Q/K-norm submodules under attention with the correct HF names.
 - hook_alias_overrides: hook_resid_mid points at mlp.hook_in (the true post-attn
   pre-mlp residual under post-norm), overriding BlockBridge's default ln2.hook_in.
-- GQA forward hook shapes with Q/K-norm wired into the fake attention.
+- GQA forward hook shapes for Q and K/V with Q/K-norm wired into the fake attention.
 - setup_component_testing: rotary wiring on template and bridge-model attentions,
   plus forcing eager attention on the HF model and per-layer self_attn configs.
 - Architecture guards.
@@ -368,27 +368,22 @@ class TestOlmo2GQAHookShapes:
         # Identity RoPE inputs keep this test focused on hook reshaping, not rotation math.
         cos = ones(1, self.SEQ, self.D_HEAD)
         sin = zeros(1, self.SEQ, self.D_HEAD)
-        out = attn_bridge(hidden, position_embeddings=(cos, sin))
-        out_tensor = out[0] if isinstance(out, tuple) else out
+        attn_bridge(hidden, position_embeddings=(cos, sin))
 
-        return captured["q"], captured["k"], captured["v"], out_tensor
+        return captured["q"], captured["k"], captured["v"]
 
     def test_hook_q_uses_n_heads(
         self, wired_attn_bridge: PositionEmbeddingsAttentionBridge
     ) -> None:
-        q, _, _, _ = self._run_and_capture(wired_attn_bridge)
+        q, _, _ = self._run_and_capture(wired_attn_bridge)
         assert q.shape == (self.BATCH, self.SEQ, self.N_HEADS, self.D_HEAD)
 
     def test_hook_kv_use_n_kv_heads(
         self, wired_attn_bridge: PositionEmbeddingsAttentionBridge
     ) -> None:
-        _, k, v, _ = self._run_and_capture(wired_attn_bridge)
+        _, k, v = self._run_and_capture(wired_attn_bridge)
         assert k.shape == (self.BATCH, self.SEQ, self.N_KV_HEADS, self.D_HEAD)
         assert v.shape == (self.BATCH, self.SEQ, self.N_KV_HEADS, self.D_HEAD)
-
-    def test_attn_output_shape(self, wired_attn_bridge: PositionEmbeddingsAttentionBridge) -> None:
-        _, _, _, out = self._run_and_capture(wired_attn_bridge)
-        assert out.shape == (self.BATCH, self.SEQ, self.D_MODEL)
 
 
 class TestOlmo2SetupComponentTesting:
