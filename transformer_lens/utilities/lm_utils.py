@@ -1,6 +1,6 @@
 """lm_utils.
 
-This module contains utility functions related to langauge models
+This module contains utility functions related to language models
 """
 
 from __future__ import annotations

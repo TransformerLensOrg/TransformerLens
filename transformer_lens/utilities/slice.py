@@ -1,6 +1,6 @@
 """Slice.
 
-This module contains the functionailty for the Slice object
+This module contains the functionality for the Slice object
 """
 
 from __future__ import annotations

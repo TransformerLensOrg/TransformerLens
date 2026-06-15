@@ -2094,7 +2094,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                     try:
                         if hasattr(tensor, "detach"):
                             cache[name] = tensor.detach().to(cache_device)
-                    except:
+                    except Exception:
                         pass
                 return tensor
 
