@@ -53,8 +53,7 @@ References
 
 from __future__ import annotations
 
-from functools import partial
-from typing import Callable, Literal, Optional
+from typing import Callable, Literal
 
 import torch
 from jaxtyping import Float
@@ -186,7 +185,7 @@ def get_act_patch_direct_path(
     # which are always available:
     #   result_h = z[:, :, h, :] @ W_O[h]   shape [batch, pos, d_model]
     src_z_name = f"blocks.{src_layer}.attn.hook_z"
-    W_O = model.blocks[src_layer].attn.W_O  # [n_heads, d_head, d_model]
+    W_O = model.blocks[src_layer].attn.W_O  # type: ignore[union-attr]  # [n_heads, d_head, d_model]
 
     def _head_result(cache, h):
         z = cache[src_z_name][:, :, h, :]  # [batch, pos, d_head]
@@ -217,7 +216,7 @@ def get_act_patch_direct_path(
         disable=not verbose,
     ):
         ln_scale_name = f"blocks.{dst_layer}.ln1.hook_scale"
-        W_comp = W_all(model.blocks[dst_layer].attn)[dst_head]  # [d_model, d_head]
+        W_comp = W_all(model.blocks[dst_layer].attn)[dst_head]  # type: ignore[index]  # [d_model, d_head]
 
         hook_fn = _make_direct_path_hook(
             delta_resid=delta_resid,

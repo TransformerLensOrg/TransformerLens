@@ -14,21 +14,10 @@ directly into the queries of all downstream heads and see which
 (src → dst) paths carry the most information.
 """
 
-import importlib.util
-import os
-import sys
-
-import einops
 import torch
 
 from transformer_lens import HookedTransformer
-
-# Load our local module
-_path = os.path.join(os.path.dirname(__file__), "..", "transformer_lens", "direct_path_patching.py")
-_spec = importlib.util.spec_from_file_location("direct_path_patching", _path)
-_mod = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(_mod)
-get_act_patch_direct_path = _mod.get_act_patch_direct_path
+from transformer_lens.direct_path_patching import get_act_patch_direct_path
 
 # ---------------------------------------------------------------------------
 # 1. Load model
