@@ -278,15 +278,6 @@ def convert_vit_model_weights(
             "model mlp -> mlp model",
         )
         state_dict[f"blocks.{l}.mlp.b_out"] = block.mlp.fc2.bias
-        state_dict[f"blocks.{l}.mlp.b_in"] = block.intermediate.dense.bias
-
-        # HF output.dense: [d_model, d_mlp]
-        # TL stores W_out as [d_mlp, d_model]
-        state_dict[f"blocks.{l}.mlp.W_out"] = einops.rearrange(
-            block.output.dense.weight,
-            "model mlp -> mlp model",
-        )
-        state_dict[f"blocks.{l}.mlp.b_out"] = block.output.dense.bias
 
     # -------------------------
     # Final encoder norm
