@@ -66,33 +66,33 @@ def convert_vit_weights(
         # HF Linear weight shape: [out_features, in_features] = [d_model, d_model]
         # TL expects per-head tensors.
         q_w = einops.rearrange(
-            block.attention.attention.query.weight,
+            block.attention.q_proj.weight,
             "(h d) m -> h m d",
             h=cfg.n_heads,
         )
         k_w = einops.rearrange(
-            block.attention.attention.key.weight,
+            block.attention.k_proj.weight,
             "(h d) m -> h m d",
             h=cfg.n_heads,
         )
         v_w = einops.rearrange(
-            block.attention.attention.value.weight,
+            block.attention.v_proj.weight,
             "(h d) m -> h m d",
             h=cfg.n_heads,
         )
 
         q_b = einops.rearrange(
-            block.attention.attention.query.bias,
+            block.attention.q_proj.bias,
             "(h d) -> h d",
             h=cfg.n_heads,
         )
         k_b = einops.rearrange(
-            block.attention.attention.key.bias,
+            block.attention.k_proj.bias,
             "(h d) -> h d",
             h=cfg.n_heads,
         )
         v_b = einops.rearrange(
-            block.attention.attention.value.bias,
+            block.attention.v_proj.bias,
             "(h d) -> h d",
             h=cfg.n_heads,
         )
@@ -108,11 +108,11 @@ def convert_vit_weights(
         # HF weight: [d_model, d_model]
         # TL: [n_heads, d_head, d_model]
         state_dict[f"blocks.{l}.attn.W_O"] = einops.rearrange(
-            block.attention.output.dense.weight,
+            block.attention.o_proj.weight,
             "m (h d) -> h d m",
             h=cfg.n_heads,
         )
-        state_dict[f"blocks.{l}.attn.b_O"] = block.attention.output.dense.bias
+        state_dict[f"blocks.{l}.attn.b_O"] = block.attention.o_proj.bias
 
         # Post-attention / pre-MLP LN
         state_dict[f"blocks.{l}.ln2.w"] = block.layernorm_after.weight
@@ -122,18 +122,18 @@ def convert_vit_weights(
         # HF intermediate.dense: [d_mlp, d_model]
         # Your TL BERT converter stores W_in as [d_model, d_mlp]
         state_dict[f"blocks.{l}.mlp.W_in"] = einops.rearrange(
-            block.intermediate.dense.weight,
+            block.mlp.fc1.weight,
             "mlp model -> model mlp",
         )
-        state_dict[f"blocks.{l}.mlp.b_in"] = block.intermediate.dense.bias
+        state_dict[f"blocks.{l}.mlp.b_in"] = block.mlp.fc1.bias
 
         # HF output.dense: [d_model, d_mlp]
         # TL stores W_out as [d_mlp, d_model]
         state_dict[f"blocks.{l}.mlp.W_out"] = einops.rearrange(
-            block.output.dense.weight,
+            block.mlp.fc2.weight,
             "model mlp -> mlp model",
         )
-        state_dict[f"blocks.{l}.mlp.b_out"] = block.output.dense.bias
+        state_dict[f"blocks.{l}.mlp.b_out"] = block.mlp.fc2.bias
 
     # -------------------------
     # Final encoder norm
@@ -210,33 +210,33 @@ def convert_vit_model_weights(
         # HF Linear weight shape: [out_features, in_features] = [d_model, d_model]
         # TL expects per-head tensors.
         q_w = einops.rearrange(
-            block.attention.attention.query.weight,
+            block.attention.q_proj.weight,
             "(h d) m -> h m d",
             h=cfg.n_heads,
         )
         k_w = einops.rearrange(
-            block.attention.attention.key.weight,
+            block.attention.k_proj.weight,
             "(h d) m -> h m d",
             h=cfg.n_heads,
         )
         v_w = einops.rearrange(
-            block.attention.attention.value.weight,
+            block.attention.v_proj.weight,
             "(h d) m -> h m d",
             h=cfg.n_heads,
         )
 
         q_b = einops.rearrange(
-            block.attention.attention.query.bias,
+            block.attention.q_proj.bias,
             "(h d) -> h d",
             h=cfg.n_heads,
         )
         k_b = einops.rearrange(
-            block.attention.attention.key.bias,
+            block.attention.k_proj.bias,
             "(h d) -> h d",
             h=cfg.n_heads,
         )
         v_b = einops.rearrange(
-            block.attention.attention.value.bias,
+            block.attention.v_proj.bias,
             "(h d) -> h d",
             h=cfg.n_heads,
         )
@@ -252,11 +252,11 @@ def convert_vit_model_weights(
         # HF weight: [d_model, d_model]
         # TL: [n_heads, d_head, d_model]
         state_dict[f"blocks.{l}.attn.W_O"] = einops.rearrange(
-            block.attention.output.dense.weight,
+            block.attention.o_proj.weight,
             "m (h d) -> h d m",
             h=cfg.n_heads,
         )
-        state_dict[f"blocks.{l}.attn.b_O"] = block.attention.output.dense.bias
+        state_dict[f"blocks.{l}.attn.b_O"] = block.attention.o_proj.bias
 
         # Post-attention / pre-MLP LN
         state_dict[f"blocks.{l}.ln2.w"] = block.layernorm_after.weight
@@ -266,9 +266,18 @@ def convert_vit_model_weights(
         # HF intermediate.dense: [d_mlp, d_model]
         # Your TL BERT converter stores W_in as [d_model, d_mlp]
         state_dict[f"blocks.{l}.mlp.W_in"] = einops.rearrange(
-            block.intermediate.dense.weight,
+            block.mlp.fc1.weight,
             "mlp model -> model mlp",
         )
+        state_dict[f"blocks.{l}.mlp.b_in"] = block.mlp.fc1.bias
+
+        # HF output.dense: [d_model, d_mlp]
+        # TL stores W_out as [d_mlp, d_model]
+        state_dict[f"blocks.{l}.mlp.W_out"] = einops.rearrange(
+            block.mlp.fc2.weight,
+            "model mlp -> mlp model",
+        )
+        state_dict[f"blocks.{l}.mlp.b_out"] = block.mlp.fc2.bias
         state_dict[f"blocks.{l}.mlp.b_in"] = block.intermediate.dense.bias
 
         # HF output.dense: [d_model, d_mlp]
