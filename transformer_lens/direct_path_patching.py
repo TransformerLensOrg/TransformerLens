@@ -189,7 +189,7 @@ def get_act_patch_direct_path(
 
     def _head_result(cache, h):
         z = cache[src_z_name][:, :, h, :]  # [batch, pos, d_head]
-        return z @ W_O[h]  # [batch, pos, d_model]
+        return z @ W_O[h]  # type: ignore[index]  # [batch, pos, d_model]
 
     delta_resid = _head_result(clean_cache, src_head) - _head_result(corrupted_cache, src_head)
     # shape: [batch, pos, d_model]
