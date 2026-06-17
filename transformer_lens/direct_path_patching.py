@@ -63,7 +63,6 @@ from tqdm.auto import tqdm
 from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.HookedTransformer import HookedTransformer
 
-
 # ---------------------------------------------------------------------------
 # Core hook factory
 # ---------------------------------------------------------------------------
@@ -191,7 +190,7 @@ def get_act_patch_direct_path(
 
     def _head_result(cache, h):
         z = cache[src_z_name][:, :, h, :]  # [batch, pos, d_head]
-        return z @ W_O[h]                  # [batch, pos, d_model]
+        return z @ W_O[h]  # [batch, pos, d_model]
 
     delta_resid = _head_result(clean_cache, src_head) - _head_result(corrupted_cache, src_head)
     # shape: [batch, pos, d_model]
@@ -210,11 +209,7 @@ def get_act_patch_direct_path(
     W_all = _comp_map[component]  # callable: attn → [n_heads, d_model, d_head]
     hook_name_fn = _hook_name_map[component]
 
-    dst_pairs = [
-        (lb, hb)
-        for lb in range(src_layer + 1, n_layers)
-        for hb in range(n_heads)
-    ]
+    dst_pairs = [(lb, hb) for lb in range(src_layer + 1, n_layers) for hb in range(n_heads)]
 
     for dst_layer, dst_head in tqdm(
         dst_pairs,

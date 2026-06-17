@@ -9,13 +9,12 @@ in seconds on CPU without downloading any weights.
 
 import pytest
 import torch
-from transformer_lens import HookedTransformer, HookedTransformerConfig
 
+from transformer_lens import HookedTransformer, HookedTransformerConfig
 from transformer_lens.direct_path_patching import (
     get_act_patch_direct_path,
     get_act_patch_direct_path_all_sources,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -81,9 +80,10 @@ class TestOutputShape:
                 component="q",
                 verbose=False,
             )
-        assert results.shape == (tiny_model.cfg.n_layers, tiny_model.cfg.n_heads), (
-            f"Expected ({tiny_model.cfg.n_layers}, {tiny_model.cfg.n_heads}), got {results.shape}"
-        )
+        assert results.shape == (
+            tiny_model.cfg.n_layers,
+            tiny_model.cfg.n_heads,
+        ), f"Expected ({tiny_model.cfg.n_layers}, {tiny_model.cfg.n_heads}), got {results.shape}"
 
     def test_all_sources_shape(self, tiny_model, tokens_and_caches):
         _, corrupted_tokens, clean_cache, corrupted_cache = tokens_and_caches
@@ -99,9 +99,7 @@ class TestOutputShape:
             )
         n = tiny_model.cfg.n_layers
         h = tiny_model.cfg.n_heads
-        assert results.shape == (n, h, n, h), (
-            f"Expected ({n},{h},{n},{h}), got {results.shape}"
-        )
+        assert results.shape == (n, h, n, h), f"Expected ({n},{h},{n},{h}), got {results.shape}"
 
     @pytest.mark.parametrize("component", ["q", "k", "v"])
     def test_all_components(self, tiny_model, tokens_and_caches, component):
@@ -144,9 +142,9 @@ class TestCausalStructure:
                 verbose=False,
             )
         # Rows 0..src_layer (inclusive) should be exactly 0
-        assert results[: src_layer + 1].eq(0).all(), (
-            "Expected zero for dst_layer <= src_layer, but got non-zero entries."
-        )
+        assert (
+            results[: src_layer + 1].eq(0).all()
+        ), "Expected zero for dst_layer <= src_layer, but got non-zero entries."
 
     def test_later_layers_are_nonzero(self, tiny_model, tokens_and_caches):
         """At least some entries for dst_layer > src_layer should be non-zero
@@ -186,7 +184,7 @@ class TestCausalStructure:
                 model=tiny_model,
                 corrupted_tokens=tokens,
                 clean_cache=cache,
-                corrupted_cache=cache,   # same cache → delta = 0
+                corrupted_cache=cache,  # same cache → delta = 0
                 patching_metric=simple_metric,
                 src_layer=0,
                 src_head=0,
@@ -219,9 +217,11 @@ class TestCorrectness:
 
         # --- Manually compute the expected patched metric ---
         W_O = tiny_model.blocks[src_layer].attn.W_O  # [n_heads, d_head, d_model]
+
         def _head_result(cache, h):
             z = cache[f"blocks.{src_layer}.attn.hook_z"][:, :, h, :]
             return z @ W_O[h]
+
         delta_resid = _head_result(clean_cache, src_head) - _head_result(corrupted_cache, src_head)
         ln_scale = corrupted_cache[f"blocks.{dst_layer}.ln1.hook_scale"]
         W_Q_dst = tiny_model.blocks[dst_layer].attn.W_Q[dst_head]  # [d_model, d_head]
@@ -255,9 +255,9 @@ class TestCorrectness:
             )
 
         actual = results[dst_layer, dst_head].item()
-        assert abs(actual - expected) < 1e-4, (
-            f"Manual patch gave {expected:.6f} but function gave {actual:.6f}"
-        )
+        assert (
+            abs(actual - expected) < 1e-4
+        ), f"Manual patch gave {expected:.6f} but function gave {actual:.6f}"
 
     def test_all_sources_consistent_with_single(self, tiny_model, tokens_and_caches):
         """get_act_patch_direct_path_all_sources should give the same result as
@@ -315,9 +315,9 @@ class TestEdgeCases:
                 component="q",
                 verbose=False,
             )
-        assert results.eq(0).all(), (
-            "Source in last layer should produce all-zero results (no downstream)."
-        )
+        assert results.eq(
+            0
+        ).all(), "Source in last layer should produce all-zero results (no downstream)."
 
     def test_returns_cpu_tensor(self, tiny_model, tokens_and_caches):
         """Return tensor should be on the same device as the model."""
