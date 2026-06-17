@@ -56,7 +56,7 @@ def convert_vit_weights(
     # Transformer blocks
     # -------------------------
     for l in range(cfg.n_layers):
-        block = vit.encoder.layer[l]
+        block = vit.layer[l]
 
         # Pre-attention LN
         state_dict[f"blocks.{l}.ln1.w"] = block.layernorm_before.weight
@@ -200,7 +200,7 @@ def convert_vit_model_weights(
     # Transformer blocks
     # -------------------------
     for l in range(cfg.n_layers):
-        block = vit.encoder.layer[l]
+        block = vit.layer[l]
 
         # Pre-attention LN
         state_dict[f"blocks.{l}.ln1.w"] = block.layernorm_before.weight
