@@ -109,8 +109,13 @@ class RotaryEmbeddingBridge(GeneralizedComponent):
         # Call original component to get (cos, sin) tuple
         output = self.original_component(*args, **kwargs)
 
-        # Ensure output is a tuple
+        # Ensure output is a tuple — or a complex tensor (DeepSeek-V2 freqs_cis style)
         if not isinstance(output, tuple):
+            if isinstance(output, torch.Tensor) and output.is_complex():
+                # V2-style: freqs_cis complex tensor — pass through without cos/sin split.
+                # hook_cos/hook_sin do not apply here; the complex form is consumed by
+                # MLAAttentionBridge which detects it and uses complex multiplication.
+                return output
             if hasattr(output, "__iter__") and (not isinstance(output, torch.Tensor)):
                 output = tuple(output)
             else:
