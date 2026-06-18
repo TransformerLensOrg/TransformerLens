@@ -70,22 +70,29 @@ from transformer_lens.model_bridge.bridge import TransformerBridge
 
 
 def _check_fold_ln(model: Union["HookedTransformer", "TransformerBridge"]) -> None:
-    """Warn if the model's LayerNorm weights have not been folded in."""
+    """Warn if the model's LayerNorm weights have not been folded in.
+
+    HookedTransformer stores the learned scale as ``.w``; TransformerBridge wraps
+    the original HuggingFace module, which stores it as ``.weight``.  We check
+    both so the guard works for either system.
+    """
     try:
         ln1 = model.blocks[0].ln1  # type: ignore[index]
-        w = getattr(ln1, "w", None)
+        # .w  → HookedTransformer; .weight → TransformerBridge (wraps HF module)
+        w = getattr(ln1, "w", None) or getattr(ln1, "weight", None)
         if w is not None and not torch.allclose(w, torch.ones_like(w), atol=1e-3):
             warnings.warn(
                 "get_act_patch_direct_path is most accurate when LayerNorm parameters "
-                "are folded into the weight matrices. Load your model with "
-                "fold_ln=True (HookedTransformer.from_pretrained) or call "
-                "model.process_weights_() before running this function. "
+                "are folded into the weight matrices. "
+                "For HookedTransformer: pass fold_ln=True to from_pretrained, or call "
+                "model.process_weights_(). "
+                "For TransformerBridge: call model.process_weights(fold_ln=True). "
                 "Results may be inaccurate with unfolded LayerNorm.",
                 UserWarning,
                 stacklevel=3,
             )
     except (AttributeError, TypeError):
-        pass  # TransformerBridge or non-standard model — cannot check, proceed
+        pass  # non-standard model — cannot inspect LN weights, proceed
 
 
 # ---------------------------------------------------------------------------
