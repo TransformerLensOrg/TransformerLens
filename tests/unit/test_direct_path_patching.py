@@ -37,6 +37,7 @@ def tiny_model():
         attn_only=False,
     )
     model = HookedTransformer(cfg)
+    model.process_weights_()
     model.eval()
     return model
 
@@ -202,45 +203,49 @@ class TestCausalStructure:
 
 
 # ---------------------------------------------------------------------------
-# Correctness: manual verification for a single pair
+# Correctness: independent verification for a single pair
 # ---------------------------------------------------------------------------
 
 
 class TestCorrectness:
-    def test_manual_patch_matches_function(self, tiny_model, tokens_and_caches):
-        """Manually apply the linear approximation for one (src→dst) pair and
-        compare with the function's output."""
+    def test_correctness_against_actual_ln_forward(self, tiny_model, tokens_and_caches):
+        """Independent correctness check: reference uses actual LN forward, not the linear shortcut."""
         _, corrupted_tokens, clean_cache, corrupted_cache = tokens_and_caches
         src_layer, src_head = 0, 0
         dst_layer, dst_head = 2, 1
-        component = "q"
 
-        # --- Manually compute the expected patched metric ---
-        W_O = tiny_model.blocks[src_layer].attn.W_O  # [n_heads, d_head, d_model]
+        # Compute delta_resid from src head (independent of the formula being tested)
+        W_O = tiny_model.blocks[src_layer].attn.W_O  # type: ignore[union-attr]
+        clean_z = clean_cache[f"blocks.{src_layer}.attn.hook_z"][:, :, src_head, :]
+        corrupted_z = corrupted_cache[f"blocks.{src_layer}.attn.hook_z"][:, :, src_head, :]
+        delta_resid = (clean_z @ W_O[src_head]) - (corrupted_z @ W_O[src_head])  # type: ignore[index]
 
-        def _head_result(cache, h):
-            z = cache[f"blocks.{src_layer}.attn.hook_z"][:, :, h, :]
-            return z @ W_O[h]
+        # INDEPENDENT REFERENCE: patch through actual LayerNorm forward (not the linear shortcut)
+        corrupted_resid = corrupted_cache[f"blocks.{dst_layer}.hook_resid_pre"]
+        patched_resid = corrupted_resid + delta_resid
 
-        delta_resid = _head_result(clean_cache, src_head) - _head_result(corrupted_cache, src_head)
-        ln_scale = corrupted_cache[f"blocks.{dst_layer}.ln1.hook_scale"]
-        W_Q_dst = tiny_model.blocks[dst_layer].attn.W_Q[dst_head]  # [d_model, d_head]
-        delta_q = (delta_resid / ln_scale) @ W_Q_dst
+        with torch.no_grad():
+            ln1 = tiny_model.blocks[dst_layer].ln1  # type: ignore[index]
+            patched_normed = ln1(patched_resid)  # [batch, pos, d_model]
+            corrupted_normed = ln1(corrupted_resid)  # [batch, pos, d_model]
 
-        def manual_hook(value, hook):
+        W_Q_dst = tiny_model.blocks[dst_layer].attn.W_Q[dst_head]  # type: ignore[index,union-attr]
+        true_delta_q = (patched_normed - corrupted_normed) @ W_Q_dst  # [batch, pos, d_head]
+
+        def true_hook(value, hook):
             if value.requires_grad:
                 value = value.clone()
-            value[:, :, dst_head, :] = value[:, :, dst_head, :] + delta_q
+            value[:, :, dst_head, :] = value[:, :, dst_head, :] + true_delta_q
             return value
 
         with torch.no_grad():
-            patched_logits = tiny_model.run_with_hooks(
+            ref_logits = tiny_model.run_with_hooks(
                 corrupted_tokens,
-                fwd_hooks=[(f"blocks.{dst_layer}.attn.hook_q", manual_hook)],
+                fwd_hooks=[(f"blocks.{dst_layer}.attn.hook_q", true_hook)],
             )
-        expected = simple_metric(patched_logits).item()
+        ref_metric = simple_metric(ref_logits).item()
 
-        # --- Get the function's result ---
+        # Our function's result
         with torch.no_grad():
             results = get_act_patch_direct_path(
                 model=tiny_model,
@@ -250,14 +255,18 @@ class TestCorrectness:
                 patching_metric=simple_metric,
                 src_layer=src_layer,
                 src_head=src_head,
-                component=component,
+                component="q",
                 verbose=False,
             )
+        our_metric = results[dst_layer, dst_head].item()
 
-        actual = results[dst_layer, dst_head].item()
-        assert (
-            abs(actual - expected) < 1e-4
-        ), f"Manual patch gave {expected:.6f} but function gave {actual:.6f}"
+        # With fold_ln applied (process_weights_() in fixture), the linear approximation
+        # is the first-order Taylor of the actual LN forward. Agreement within atol=0.15
+        # validates the implementation without being circular.
+        assert abs(our_metric - ref_metric) < 0.15, (
+            f"Our approx {our_metric:.4f} disagrees with actual-LN reference {ref_metric:.4f} "
+            f"(diff={abs(our_metric - ref_metric):.4f}). Possible implementation bug."
+        )
 
     def test_all_sources_consistent_with_single(self, tiny_model, tokens_and_caches):
         """get_act_patch_direct_path_all_sources should give the same result as

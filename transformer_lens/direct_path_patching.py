@@ -53,7 +53,8 @@ References
 
 from __future__ import annotations
 
-from typing import Callable, Literal
+import warnings
+from typing import Callable, Literal, Union
 
 import torch
 from jaxtyping import Float
@@ -61,6 +62,31 @@ from tqdm.auto import tqdm
 
 from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.HookedTransformer import HookedTransformer
+from transformer_lens.model_bridge.bridge import TransformerBridge
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
+
+
+def _check_fold_ln(model: Union["HookedTransformer", "TransformerBridge"]) -> None:
+    """Warn if the model's LayerNorm weights have not been folded in."""
+    try:
+        ln1 = model.blocks[0].ln1  # type: ignore[index]
+        w = getattr(ln1, "w", None)
+        if w is not None and not torch.allclose(w, torch.ones_like(w), atol=1e-3):
+            warnings.warn(
+                "get_act_patch_direct_path is most accurate when LayerNorm parameters "
+                "are folded into the weight matrices. Load your model with "
+                "fold_ln=True (HookedTransformer.from_pretrained) or call "
+                "model.process_weights_() before running this function. "
+                "Results may be inaccurate with unfolded LayerNorm.",
+                UserWarning,
+                stacklevel=3,
+            )
+    except (AttributeError, TypeError):
+        pass  # TransformerBridge or non-standard model — cannot check, proceed
+
 
 # ---------------------------------------------------------------------------
 # Core hook factory
@@ -122,7 +148,7 @@ def _make_direct_path_hook(
 
 
 def get_act_patch_direct_path(
-    model: HookedTransformer,
+    model: Union[HookedTransformer, TransformerBridge],
     corrupted_tokens: torch.Tensor,
     clean_cache: ActivationCache,
     corrupted_cache: ActivationCache,
@@ -148,7 +174,7 @@ def get_act_patch_direct_path(
     Parameters
     ----------
     model:
-        A HookedTransformer.
+        A HookedTransformer or TransformerBridge instance.
     corrupted_tokens:
         Token IDs for the corrupted input, shape [batch, seq_len].
     clean_cache:
@@ -173,6 +199,8 @@ def get_act_patch_direct_path(
         A → B is patched in.  Entries for dst_layer <= src_layer are left as 0.0
         (no causal path from A to those layers).
     """
+    _check_fold_ln(model)
+
     n_layers = model.cfg.n_layers
     n_heads = model.cfg.n_heads
 
@@ -238,7 +266,7 @@ def get_act_patch_direct_path(
 
 
 def get_act_patch_direct_path_all_sources(
-    model: HookedTransformer,
+    model: Union[HookedTransformer, TransformerBridge],
     corrupted_tokens: torch.Tensor,
     clean_cache: ActivationCache,
     corrupted_cache: ActivationCache,
@@ -258,6 +286,8 @@ def get_act_patch_direct_path_all_sources(
     intended for small models or targeted sub-sweeps.  For large models prefer
     calling get_act_patch_direct_path per source head.
     """
+    _check_fold_ln(model)
+
     n_layers = model.cfg.n_layers
     n_heads = model.cfg.n_heads
     results = torch.zeros(n_layers, n_heads, n_layers, n_heads, device=model.cfg.device)
