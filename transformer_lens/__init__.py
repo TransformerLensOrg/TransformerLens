@@ -1,12 +1,12 @@
 from . import (
     components,
     conversion_utils,
-    direct_path_patching,
     evals,
     factories,
     head_detector,
     hook_points,
     patching,
+    tools,
     train,
     utilities,
 )
@@ -56,5 +56,5 @@ __all__ = [
     "conversion_utils",
     "factories",
     "utilities",
-    "direct_path_patching",
+    "tools",
 ]

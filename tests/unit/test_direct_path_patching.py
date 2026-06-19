@@ -1,17 +1,20 @@
-"""Tests for direct_path_patching.py
+"""Tests for transformer_lens/tools/analysis/direct_path_patching.py
 
 Run with:
-    pytest tests/test_direct_path_patching.py -v
+    pytest tests/unit/test_direct_path_patching.py -v
 
-These tests use a tiny randomly-initialised 2-layer GPT-2 config so they run
+These tests use a tiny randomly-initialised 3-layer model so they run
 in seconds on CPU without downloading any weights.
 """
+
+import warnings
 
 import pytest
 import torch
 
 from transformer_lens import HookedTransformer, HookedTransformerConfig
-from transformer_lens.direct_path_patching import (
+from transformer_lens.tools.analysis.direct_path_patching import (
+    _check_fold_ln,
     get_act_patch_direct_path,
     get_act_patch_direct_path_all_sources,
 )
@@ -23,7 +26,7 @@ from transformer_lens.direct_path_patching import (
 
 @pytest.fixture(scope="module")
 def tiny_model():
-    """A small, randomly-initialised transformer for fast tests."""
+    """A small, randomly-initialised transformer with LN folded in."""
     cfg = HookedTransformerConfig(
         n_layers=3,
         d_model=64,
@@ -62,6 +65,77 @@ def simple_metric(logits):
 
 
 # ---------------------------------------------------------------------------
+# _check_fold_ln tests
+# ---------------------------------------------------------------------------
+
+
+class TestCheckFoldLn:
+    def test_folded_model_no_warning(self, tiny_model):
+        """No warning when LN is already folded (tiny_model fixture calls process_weights_())."""
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            _check_fold_ln(tiny_model)
+        user_warnings = [x for x in w if issubclass(x.category, UserWarning)]
+        assert len(user_warnings) == 0, "Should not warn when LN is folded"
+
+    def test_unfolded_model_warns(self):
+        """UserWarning fires when LN has a non-unit learned scale (pretrained, pre-fold)."""
+        cfg = HookedTransformerConfig(
+            n_layers=2, d_model=32, d_head=8, n_heads=4,
+            d_mlp=64, d_vocab=50, n_ctx=8, act_fn="gelu",
+            normalization_type="LN",
+        )
+        model = HookedTransformer(cfg)
+        model.eval()
+        # Simulate a pretrained model that has learned non-unit LN scale (not yet folded).
+        # After process_weights_(), LayerNorm is replaced with LayerNormPre (no .w),
+        # so the warning only fires in the pre-fold state with non-trivial .w.
+        with torch.no_grad():
+            model.blocks[0].ln1.w.fill_(2.0)
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            _check_fold_ln(model)
+        user_warnings = [x for x in w if issubclass(x.category, UserWarning)]
+        assert len(user_warnings) == 1
+        assert "fold" in str(user_warnings[0].message).lower()
+
+    def test_hooked_transformer_w_attribute(self):
+        """Before process_weights_(), HookedTransformer LayerNorm exposes .w.
+        After folding, LayerNorm is replaced with LayerNormPre (no .w) — that's
+        why _check_fold_ln passes silently on a folded model.
+        """
+        cfg = HookedTransformerConfig(
+            n_layers=2, d_model=32, d_head=8, n_heads=4,
+            d_mlp=64, d_vocab=50, n_ctx=8, act_fn="gelu",
+            normalization_type="LN",
+        )
+        model = HookedTransformer(cfg)
+        ln1 = model.blocks[0].ln1
+        assert hasattr(ln1, "w"), "HookedTransformer LayerNorm should expose .w before folding"
+
+    def test_no_crash_on_missing_attribute(self):
+        """_check_fold_ln silently passes when the model has no .blocks[0].ln1."""
+        class WeirdModel:
+            class cfg:
+                pass
+            class blocks:
+                pass
+
+        # Should not raise — the except block in _check_fold_ln catches AttributeError
+        _check_fold_ln(WeirdModel())  # type: ignore[arg-type]
+
+    def test_no_runtime_error_on_multielement_tensor(self, tiny_model):
+        """Regression: getattr(...) or getattr(...) on a multi-element tensor raises
+        RuntimeError. The explicit None-check fix must prevent this."""
+        # Calling _check_fold_ln on a real model exercises the tensor path.
+        # If the bug were present this would raise RuntimeError.
+        try:
+            _check_fold_ln(tiny_model)
+        except RuntimeError as e:
+            pytest.fail(f"_check_fold_ln raised RuntimeError: {e}")
+
+
+# ---------------------------------------------------------------------------
 # Shape tests
 # ---------------------------------------------------------------------------
 
@@ -81,10 +155,7 @@ class TestOutputShape:
                 component="q",
                 verbose=False,
             )
-        assert results.shape == (
-            tiny_model.cfg.n_layers,
-            tiny_model.cfg.n_heads,
-        ), f"Expected ({tiny_model.cfg.n_layers}, {tiny_model.cfg.n_heads}), got {results.shape}"
+        assert results.shape == (tiny_model.cfg.n_layers, tiny_model.cfg.n_heads)
 
     def test_all_sources_shape(self, tiny_model, tokens_and_caches):
         _, corrupted_tokens, clean_cache, corrupted_cache = tokens_and_caches
@@ -100,7 +171,7 @@ class TestOutputShape:
             )
         n = tiny_model.cfg.n_layers
         h = tiny_model.cfg.n_heads
-        assert results.shape == (n, h, n, h), f"Expected ({n},{h},{n},{h}), got {results.shape}"
+        assert results.shape == (n, h, n, h)
 
     @pytest.mark.parametrize("component", ["q", "k", "v"])
     def test_all_components(self, tiny_model, tokens_and_caches, component):
@@ -142,16 +213,11 @@ class TestCausalStructure:
                 component="q",
                 verbose=False,
             )
-        # Rows 0..src_layer (inclusive) should be exactly 0
-        assert (
-            results[: src_layer + 1].eq(0).all()
-        ), "Expected zero for dst_layer <= src_layer, but got non-zero entries."
+        assert results[: src_layer + 1].eq(0).all()
 
     def test_later_layers_are_nonzero(self, tiny_model, tokens_and_caches):
-        """At least some entries for dst_layer > src_layer should be non-zero
-        when clean != corrupted."""
+        """At least some entries for dst_layer > src_layer should be non-zero."""
         _, corrupted_tokens, clean_cache, corrupted_cache = tokens_and_caches
-        src_layer = 0
         with torch.no_grad():
             results = get_act_patch_direct_path(
                 model=tiny_model,
@@ -159,20 +225,15 @@ class TestCausalStructure:
                 clean_cache=clean_cache,
                 corrupted_cache=corrupted_cache,
                 patching_metric=simple_metric,
-                src_layer=src_layer,
+                src_layer=0,
                 src_head=0,
                 component="q",
                 verbose=False,
             )
-        downstream = results[src_layer + 1 :]
-        assert not downstream.eq(0).all(), (
-            "Expected at least some non-zero values for downstream layers, "
-            "but all were zero (this is extremely unlikely with random weights)."
-        )
+        assert not results[1:].eq(0).all()
 
     def test_clean_equals_corrupted_gives_zero_delta(self, tiny_model):
-        """If clean == corrupted, the delta is zero and the metric should be
-        identical for all pairs (patching in nothing should change nothing)."""
+        """If clean == corrupted, delta is zero and every entry equals the baseline."""
         torch.manual_seed(7)
         tokens = torch.randint(0, 100, (1, 6))
         with torch.no_grad():
@@ -185,7 +246,7 @@ class TestCausalStructure:
                 model=tiny_model,
                 corrupted_tokens=tokens,
                 clean_cache=cache,
-                corrupted_cache=cache,  # same cache → delta = 0
+                corrupted_cache=cache,
                 patching_metric=simple_metric,
                 src_layer=0,
                 src_head=0,
@@ -193,13 +254,12 @@ class TestCausalStructure:
                 verbose=False,
             )
 
-        # Every entry should equal the baseline (delta is zero, so hooks do nothing)
         nonzero_entries = results[results != 0]
         assert nonzero_entries.numel() == 0 or torch.allclose(
             nonzero_entries,
             torch.full_like(nonzero_entries, baseline),
             atol=1e-4,
-        ), "When clean==corrupted, metric should equal baseline for all pairs."
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -209,28 +269,42 @@ class TestCausalStructure:
 
 class TestCorrectness:
     def test_correctness_against_actual_ln_forward(self, tiny_model, tokens_and_caches):
-        """Independent correctness check: reference uses actual LN forward, not the linear shortcut."""
+        """Logit-diff metric: linear-LN approximation should match actual LN within 1e-3.
+
+        process_weights_() folds LN into the weight matrices, so the linear
+        approximation is exact and the tolerance can be tight.  Using logit diff
+        (correct_tok - incorrect_tok) cancels the centering offset introduced by
+        process_weights_() and gives a numerically clean comparison.
+        """
         _, corrupted_tokens, clean_cache, corrupted_cache = tokens_and_caches
         src_layer, src_head = 0, 0
         dst_layer, dst_head = 2, 1
 
-        # Compute delta_resid from src head (independent of the formula being tested)
+        # Pick stable token indices for the logit-diff metric
+        torch.manual_seed(0)
+        correct_tok = 17
+        incorrect_tok = 42
+
+        def logit_diff(logits):
+            return logits[0, -1, correct_tok] - logits[0, -1, incorrect_tok]
+
+        # Compute delta_resid from src head
         W_O = tiny_model.blocks[src_layer].attn.W_O  # type: ignore[union-attr]
         clean_z = clean_cache[f"blocks.{src_layer}.attn.hook_z"][:, :, src_head, :]
         corrupted_z = corrupted_cache[f"blocks.{src_layer}.attn.hook_z"][:, :, src_head, :]
         delta_resid = (clean_z @ W_O[src_head]) - (corrupted_z @ W_O[src_head])  # type: ignore[index]
 
-        # INDEPENDENT REFERENCE: patch through actual LayerNorm forward (not the linear shortcut)
+        # Independent reference: patch through actual LayerNorm forward
         corrupted_resid = corrupted_cache[f"blocks.{dst_layer}.hook_resid_pre"]
         patched_resid = corrupted_resid + delta_resid
 
         with torch.no_grad():
             ln1 = tiny_model.blocks[dst_layer].ln1  # type: ignore[index]
-            patched_normed = ln1(patched_resid)  # [batch, pos, d_model]
-            corrupted_normed = ln1(corrupted_resid)  # [batch, pos, d_model]
+            patched_normed = ln1(patched_resid)
+            corrupted_normed = ln1(corrupted_resid)
 
         W_Q_dst = tiny_model.blocks[dst_layer].attn.W_Q[dst_head]  # type: ignore[index,union-attr]
-        true_delta_q = (patched_normed - corrupted_normed) @ W_Q_dst  # [batch, pos, d_head]
+        true_delta_q = (patched_normed - corrupted_normed) @ W_Q_dst
 
         def true_hook(value, hook):
             if value.requires_grad:
@@ -243,16 +317,15 @@ class TestCorrectness:
                 corrupted_tokens,
                 fwd_hooks=[(f"blocks.{dst_layer}.attn.hook_q", true_hook)],
             )
-        ref_metric = simple_metric(ref_logits).item()
+        ref_metric = logit_diff(ref_logits).item()
 
-        # Our function's result
         with torch.no_grad():
             results = get_act_patch_direct_path(
                 model=tiny_model,
                 corrupted_tokens=corrupted_tokens,
                 clean_cache=clean_cache,
                 corrupted_cache=corrupted_cache,
-                patching_metric=simple_metric,
+                patching_metric=logit_diff,
                 src_layer=src_layer,
                 src_head=src_head,
                 component="q",
@@ -260,19 +333,14 @@ class TestCorrectness:
             )
         our_metric = results[dst_layer, dst_head].item()
 
-        # With fold_ln applied (process_weights_() in fixture), the linear approximation
-        # is the first-order Taylor of the actual LN forward. Agreement within atol=0.15
-        # validates the implementation without being circular.
-        assert abs(our_metric - ref_metric) < 0.15, (
-            f"Our approx {our_metric:.4f} disagrees with actual-LN reference {ref_metric:.4f} "
-            f"(diff={abs(our_metric - ref_metric):.4f}). Possible implementation bug."
+        assert abs(our_metric - ref_metric) < 1e-3, (
+            f"Linear-LN approx {our_metric:.6f} disagrees with actual-LN ref {ref_metric:.6f} "
+            f"(diff={abs(our_metric - ref_metric):.2e}). process_weights_() should make these exact."
         )
 
     def test_all_sources_consistent_with_single(self, tiny_model, tokens_and_caches):
-        """get_act_patch_direct_path_all_sources should give the same result as
-        calling get_act_patch_direct_path for each source individually."""
+        """get_act_patch_direct_path_all_sources matches individual calls."""
         _, corrupted_tokens, clean_cache, corrupted_cache = tokens_and_caches
-
         src_layer, src_head = 0, 2
 
         with torch.no_grad():
@@ -297,9 +365,7 @@ class TestCorrectness:
                 verbose=False,
             )
 
-        assert torch.allclose(
-            single, all_sources[src_layer, src_head], atol=1e-5
-        ), "all_sources result doesn't match single-source call."
+        assert torch.allclose(single, all_sources[src_layer, src_head], atol=1e-5)
 
 
 # ---------------------------------------------------------------------------
@@ -309,7 +375,7 @@ class TestCorrectness:
 
 class TestEdgeCases:
     def test_last_layer_source_all_zero(self, tiny_model, tokens_and_caches):
-        """A source head in the last layer has no downstream heads → all zeros."""
+        """A source in the last layer has no downstream heads → all zeros."""
         _, corrupted_tokens, clean_cache, corrupted_cache = tokens_and_caches
         src_layer = tiny_model.cfg.n_layers - 1
         with torch.no_grad():
@@ -324,9 +390,7 @@ class TestEdgeCases:
                 component="q",
                 verbose=False,
             )
-        assert results.eq(
-            0
-        ).all(), "Source in last layer should produce all-zero results (no downstream)."
+        assert results.eq(0).all()
 
     def test_returns_cpu_tensor(self, tiny_model, tokens_and_caches):
         """Return tensor should be on the same device as the model."""

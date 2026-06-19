@@ -79,7 +79,9 @@ def _check_fold_ln(model: Union["HookedTransformer", "TransformerBridge"]) -> No
     try:
         ln1 = model.blocks[0].ln1  # type: ignore[index]
         # .w  → HookedTransformer; .weight → TransformerBridge (wraps HF module)
-        w = getattr(ln1, "w", None) or getattr(ln1, "weight", None)
+        w = getattr(ln1, "w", None)
+        if w is None:
+            w = getattr(ln1, "weight", None)
         if w is not None and not torch.allclose(w, torch.ones_like(w), atol=1e-3):
             warnings.warn(
                 "get_act_patch_direct_path is most accurate when LayerNorm parameters "
