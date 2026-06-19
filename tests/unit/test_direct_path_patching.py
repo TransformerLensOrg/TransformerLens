@@ -81,8 +81,14 @@ class TestCheckFoldLn:
     def test_unfolded_model_warns(self):
         """UserWarning fires when LN has a non-unit learned scale (pretrained, pre-fold)."""
         cfg = HookedTransformerConfig(
-            n_layers=2, d_model=32, d_head=8, n_heads=4,
-            d_mlp=64, d_vocab=50, n_ctx=8, act_fn="gelu",
+            n_layers=2,
+            d_model=32,
+            d_head=8,
+            n_heads=4,
+            d_mlp=64,
+            d_vocab=50,
+            n_ctx=8,
+            act_fn="gelu",
             normalization_type="LN",
         )
         model = HookedTransformer(cfg)
@@ -105,8 +111,14 @@ class TestCheckFoldLn:
         why _check_fold_ln passes silently on a folded model.
         """
         cfg = HookedTransformerConfig(
-            n_layers=2, d_model=32, d_head=8, n_heads=4,
-            d_mlp=64, d_vocab=50, n_ctx=8, act_fn="gelu",
+            n_layers=2,
+            d_model=32,
+            d_head=8,
+            n_heads=4,
+            d_mlp=64,
+            d_vocab=50,
+            n_ctx=8,
+            act_fn="gelu",
             normalization_type="LN",
         )
         model = HookedTransformer(cfg)
@@ -115,9 +127,11 @@ class TestCheckFoldLn:
 
     def test_no_crash_on_missing_attribute(self):
         """_check_fold_ln silently passes when the model has no .blocks[0].ln1."""
+
         class WeirdModel:
             class cfg:
                 pass
+
             class blocks:
                 pass
 
