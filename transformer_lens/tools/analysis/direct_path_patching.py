@@ -54,7 +54,7 @@ References
 from __future__ import annotations
 
 import warnings
-from typing import Callable, Literal, Union
+from typing import Any, Callable, Literal, Union
 
 import torch
 from jaxtyping import Float
@@ -69,7 +69,7 @@ from transformer_lens.model_bridge.bridge import TransformerBridge
 # ---------------------------------------------------------------------------
 
 
-def _check_fold_ln(model: Union["HookedTransformer", "TransformerBridge"]) -> None:
+def _check_fold_ln(model: Any) -> None:
     """Warn if the model's LayerNorm weights have not been folded in.
 
     HookedTransformer stores the learned scale as ``.w``; TransformerBridge wraps
