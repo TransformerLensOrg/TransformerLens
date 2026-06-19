@@ -58,6 +58,7 @@ def tiny_deepseek_v2_lite_bridge():
 # Shared helpers
 # ---------------------------------------------------------------------------
 
+
 def _tokens():
     return torch.tensor([[1, 2, 3, 4]])
 
@@ -65,6 +66,7 @@ def _tokens():
 # ---------------------------------------------------------------------------
 # V2-full tests
 # ---------------------------------------------------------------------------
+
 
 class TestDeepSeekV2BridgeCreation:
     def test_block_count(self, tiny_deepseek_v2_bridge):
@@ -79,6 +81,7 @@ class TestDeepSeekV2BridgeCreation:
         from transformer_lens.model_bridge.generalized_components.mla_attention import (
             MLAAttentionBridge,
         )
+
         assert isinstance(tiny_deepseek_v2_bridge.blocks[0].attn, MLAAttentionBridge)
 
 
@@ -113,9 +116,9 @@ class TestDeepSeekV2DenseVsMoELayers:
         # never called and its bridge hooks cannot fire. shared_experts IS called via
         # __call__, so GatedMLPBridge hooks fire correctly.
         _, cache = tiny_deepseek_v2_bridge.run_with_cache(_tokens())
-        assert not any("blocks.1.mlp.gate" in k for k in cache), (
-            "gate hooks should not appear — gate is called via functional.linear, not forward()"
-        )
+        assert not any(
+            "blocks.1.mlp.gate" in k for k in cache
+        ), "gate hooks should not appear — gate is called via functional.linear, not forward()"
         assert any("blocks.1.mlp.shared_experts" in k for k in cache)
 
     def test_all_layers_have_mlp_hooks(self, tiny_deepseek_v2_bridge):
@@ -143,6 +146,7 @@ class TestDeepSeekV2AttentionHooks:
 # V2-Lite tests (q_lora_rank=None — direct q_proj, no compression)
 # ---------------------------------------------------------------------------
 
+
 class TestDeepSeekV2LiteBridgeCreation:
     def test_block_count(self, tiny_deepseek_v2_lite_bridge):
         assert len(tiny_deepseek_v2_lite_bridge.blocks) == 4
@@ -151,6 +155,7 @@ class TestDeepSeekV2LiteBridgeCreation:
         from transformer_lens.model_bridge.generalized_components.mla_attention import (
             MLAAttentionBridge,
         )
+
         assert isinstance(tiny_deepseek_v2_lite_bridge.blocks[0].attn, MLAAttentionBridge)
 
 

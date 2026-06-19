@@ -56,9 +56,7 @@ class DeepSeekV2ArchitectureAdapter(ArchitectureAdapter):
                 name="model.layers",
                 submodules={
                     "ln1": RMSNormalizationBridge(name="input_layernorm", config=self.cfg),
-                    "ln2": RMSNormalizationBridge(
-                        name="post_attention_layernorm", config=self.cfg
-                    ),
+                    "ln2": RMSNormalizationBridge(name="post_attention_layernorm", config=self.cfg),
                     "attn": MLAAttentionBridge(
                         name="self_attn",
                         config=self.cfg,

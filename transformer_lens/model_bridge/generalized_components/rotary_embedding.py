@@ -2,7 +2,7 @@
 
 This module contains the bridge component for rotary position embedding layers.
 """
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
 
@@ -81,7 +81,9 @@ class RotaryEmbeddingBridge(GeneralizedComponent):
             args = (x, position_ids, layer_type)
         return {"args": args}
 
-    def forward(self, *args: Any, **kwargs: Any) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward(
+        self, *args: Any, **kwargs: Any
+    ) -> Union[Tuple[torch.Tensor, torch.Tensor], torch.Tensor]:
         """Forward pass through the rotary embedding bridge.
 
         Rotary embeddings typically take seq_len or position_ids and return (cos, sin) tensors.
@@ -94,7 +96,9 @@ class RotaryEmbeddingBridge(GeneralizedComponent):
 
         Returns:
             Tuple of (cos, sin) tensors for rotary position embeddings, after being
-            passed through hook_cos and hook_sin respectively
+            passed through hook_cos and hook_sin respectively. For DeepSeek-V2-style
+            embeddings that return a single complex ``freqs_cis`` tensor, that tensor is
+            passed through unchanged for downstream complex multiplication.
         """
         if self.original_component is None:
             raise RuntimeError(
