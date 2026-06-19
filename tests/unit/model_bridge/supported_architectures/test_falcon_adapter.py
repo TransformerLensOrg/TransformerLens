@@ -136,9 +136,9 @@ class TestFalconComponentMapping:
         assert adapter.component_mapping["blocks"].submodules["attn"].name == "self_attention"
 
     def test_attn_submodule_keys(self, adapter: FalconArchitectureAdapter) -> None:
-        """Falcon fuses QKV — submodules are qkv and o, not separate q/k/v."""
+        """Falcon has fused qkv projection plus separate q/k/v split-out slots and o."""
         attn = adapter.component_mapping["blocks"].submodules["attn"]
-        assert set(attn.submodules.keys()) == {"qkv", "o"}
+        assert set(attn.submodules.keys()) == {"q", "k", "v", "qkv", "o"}
 
     def test_attn_submodule_hf_paths(self, adapter: FalconArchitectureAdapter) -> None:
         attn = adapter.component_mapping["blocks"].submodules["attn"]
