@@ -25,7 +25,9 @@ from transformer_lens.model_bridge.generalized_components import (
     PosEmbedBridge,
     UnembeddingBridge,
 )
-from transformer_lens.model_bridge.supported_architectures.bert import BertArchitectureAdapter
+from transformer_lens.model_bridge.supported_architectures.bert import (
+    BertArchitectureAdapter,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers / fixtures
