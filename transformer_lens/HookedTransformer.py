@@ -35,7 +35,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 import tqdm.auto as tqdm
 from jaxtyping import Float, Int
-from packaging import version
 from transformers import AutoTokenizer, PreTrainedModel, PreTrainedTokenizerBase
 from transformers.models.auto.tokenization_auto import AutoTokenizer
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
@@ -1345,9 +1344,6 @@ class HookedTransformer(HookedRootModule):
             load_in_8bit = qc.get("load_in_8bit", False)
             quant_method = qc.get("quant_method", "")
             assert not load_in_8bit, "8-bit quantization is not supported"
-            assert not (
-                load_in_4bit and (version.parse(torch.__version__) < version.parse("2.1.1"))
-            ), "Quantization is only supported for torch versions >= 2.1.1"
             assert not (
                 load_in_4bit and ("llama" not in model_name.lower())
             ), "Quantization is only supported for Llama models"
