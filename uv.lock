@@ -6483,10 +6483,7 @@ demo = [
 dev = [
     { name = "black" },
     { name = "circuitsvis" },
-    { name = "ipython", version = "8.38.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "ipython", version = "9.10.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "isort" },
-    { name = "jupyter" },
     { name = "mypy" },
     { name = "nbval" },
     { name = "plotly" },
@@ -6511,7 +6508,10 @@ docs = [
     { name = "tabulate" },
 ]
 jupyter = [
+    { name = "ipython", version = "8.38.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "ipython", version = "9.10.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "ipywidgets" },
+    { name = "jupyter" },
     { name = "jupyterlab" },
 ]
 multimodal = [
@@ -6561,9 +6561,7 @@ demo = [
 dev = [
     { name = "black", specifier = ">=23.3.0" },
     { name = "circuitsvis", specifier = ">=1.38.1" },
-    { name = "ipython", specifier = ">=8.0.0" },
     { name = "isort", specifier = "==5.8.0" },
-    { name = "jupyter", specifier = ">=1.0.0" },
     { name = "mypy", specifier = ">=1.10.0" },
     { name = "nbval", specifier = ">=0.10.0" },
     { name = "plotly", specifier = ">=5.12.0" },
@@ -6588,7 +6586,9 @@ docs = [
     { name = "tabulate", specifier = ">=0.9.0" },
 ]
 jupyter = [
+    { name = "ipython", specifier = ">=8.0.0" },
     { name = "ipywidgets", specifier = ">=8.1.1" },
+    { name = "jupyter", specifier = ">=1.0.0" },
     { name = "jupyterlab", specifier = ">=3.5.0" },
 ]
 multimodal = [
