@@ -33,6 +33,7 @@ MULTIMODAL_ARCHITECTURES: set[str] = {
     "LlavaNextForConditionalGeneration",
     "LlavaOnevisionForConditionalGeneration",
     "Gemma3ForConditionalGeneration",
+    "Gemma4ForConditionalGeneration",
     "Qwen3_5ForConditionalGeneration",
 }
 
