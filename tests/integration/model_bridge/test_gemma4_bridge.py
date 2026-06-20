@@ -1,4 +1,4 @@
-"""Integration tests for the Gemma 4 text-only TransformerBridge.
+"""Integration tests for the Gemma 4 TransformerBridge.
 
 Uses tiny random-init `Gemma4ForConditionalGeneration` fixtures (4 layers, d_model 8) so CI
 stays light while still exercising the real per-layer heterogeneity across the family:
@@ -48,7 +48,7 @@ def test_text_only_logit_parity_vs_hf(bridge):
 def test_config_from_text_config(bridge):
     # Text dims resolve from the nested text_config of the multimodal model.
     assert bridge.cfg.n_layers == 4
-    assert getattr(bridge.cfg, "is_multimodal", False) is False
+    assert getattr(bridge.cfg, "is_multimodal", False) is True
 
 
 def test_resid_hooks_fire_with_conventional_shape(bridge):

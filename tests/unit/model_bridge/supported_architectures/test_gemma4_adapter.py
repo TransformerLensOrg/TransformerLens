@@ -1,22 +1,25 @@
-"""Unit tests for the Gemma 4 text-only architecture adapter."""
+"""Unit tests for the Gemma 4 architecture adapter."""
 
-from transformer_lens.config.transformer_bridge_config import TransformerBridgeConfig
-from transformer_lens.factories.architecture_adapter_factory import (
-    ArchitectureAdapterFactory,
-)
+from types import SimpleNamespace
+
+from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.model_bridge.generalized_components import (
     DelegatedAttentionBlockBridge,
     EmbeddingBridge,
     LinearBridge,
     RotaryEmbeddingBridge,
     UnembeddingBridge,
+    VisionProjectionBridge,
+)
+from transformer_lens.model_bridge.supported_architectures.gemma4 import (
+    Gemma4ArchitectureAdapter,
 )
 
 ARCH = "Gemma4ForConditionalGeneration"
+ARCH_UNIFIED = "Gemma4UnifiedForConditionalGeneration"
 
 
-def _adapter():
-    # Dimensions follow google/gemma-4-E2B's text_config.
+def _cfg(arch: str = ARCH, **kwargs) -> TransformerBridgeConfig:
     cfg = TransformerBridgeConfig(
         d_model=1536,
         d_head=256,
@@ -25,15 +28,28 @@ def _adapter():
         n_ctx=131072,
         d_vocab=262144,
         n_key_value_heads=1,
-        architecture=ARCH,
+        architecture=arch,
+        **kwargs,
     )
-    return ArchitectureAdapterFactory.select_architecture_adapter(cfg)
+    # Both variants are multimodal (have vision_config + embed_vision).
+    cfg.vision_config = SimpleNamespace(
+        hidden_size=2048,
+        num_hidden_layers=27,
+        num_attention_heads=16,
+    )
+    cfg.vision_soft_tokens_per_image = 256
+    return cfg
+
+
+def _adapter(arch: str = ARCH) -> Gemma4ArchitectureAdapter:
+    return Gemma4ArchitectureAdapter(_cfg(arch))
 
 
 def test_config_flags():
     a = _adapter()
-    # Text-only; PLE / layer_scalar / MoE residual topology is not fold-safe.
-    assert a.cfg.is_multimodal is False
+    # Multimodal (Gemma4ForConditionalGeneration has vision tower + projector).
+    assert a.cfg.is_multimodal is True
+    # PLE / layer_scalar / MoE residual topology is not fold-safe.
     assert a.supports_fold_ln is False
     assert a.weight_processing_conversions == {}
     assert a.cfg.normalization_type == "RMS"
@@ -41,6 +57,16 @@ def test_config_flags():
     assert a.cfg.rmsnorm_uses_offset is False
     assert a.cfg.positional_embedding_type == "rotary"
     assert a.applicable_phases == [1, 2, 4]
+
+
+def test_config_flags_unified():
+    """Gemma4UnifiedForConditionalGeneration (12B) is encoder-free but still multimodal:
+    has model.embed_vision (raw-patch projector) but no model.vision_tower."""
+    a = _adapter(ARCH_UNIFIED)
+    assert a.cfg.is_multimodal is True
+    assert "vision_encoder" not in a.component_mapping
+    assert "vision_projector" in a.component_mapping
+    assert a.component_mapping["vision_projector"].name == "model.embed_vision"
 
 
 def test_text_path_nested_under_language_model():
@@ -54,8 +80,22 @@ def test_text_path_nested_under_language_model():
     assert isinstance(m["rotary_emb"], RotaryEmbeddingBridge)
     assert isinstance(m["blocks"], DelegatedAttentionBlockBridge)
     assert isinstance(m["unembed"], UnembeddingBridge)
-    # Vision/audio towers are referenced-but-unbridged.
-    assert "vision_encoder" not in m and "audio_encoder" not in m
+
+
+def test_vision_components_present_for_multimodal():
+    """Gemma4ForConditionalGeneration has vision_tower + embed_vision."""
+    m = _adapter().component_mapping
+    assert "vision_encoder" in m
+    assert "vision_projector" in m
+    assert m["vision_encoder"].name == "model.vision_tower"
+    assert m["vision_projector"].name == "model.embed_vision"
+    assert isinstance(m["vision_projector"], VisionProjectionBridge)
+    # Vision config fields extracted from vision_config.
+    a = _adapter()
+    assert a.cfg.vision_hidden_size == 2048
+    assert a.cfg.vision_num_layers == 27
+    assert a.cfg.vision_num_heads == 16
+    assert a.cfg.mm_tokens_per_image == 256
 
 
 def test_block_decomposition():

@@ -1,13 +1,15 @@
-"""Gemma 4 text-only architecture adapter.
+"""Gemma 4 architecture adapter.
 
-Bridges the text path of the multimodal ``Gemma4ForConditionalGeneration``
-(``model.language_model`` + ``lm_head``); the vision/audio towers stay referenced but
-unbridged. All released Gemma 4 checkpoints (E2B / E4B / 31B / 26B-A4B) ship as
-``Gemma4ForConditionalGeneration``, so there is no separate text-only entry point.
+Bridges the text path of ``Gemma4ForConditionalGeneration``
+(``model.language_model`` + ``lm_head``) and the vision pipeline. For the standard
+variants (E2B / E4B / 31B / 26B-A4B) the vision encoder (``model.vision_tower``) and
+projector (``model.embed_vision``) are both bridged, enabling Phase 7 multimodal testing.
 
 The same adapter also covers ``Gemma4UnifiedForConditionalGeneration`` (the
 encoder-free 12B variant, transformers >= 5.10): its text decoder is a strict
 structural subset — same module paths, no PLE and no MoE, both optional here.
+It is still multimodal but has no ``vision_tower`` — ``model.embed_vision`` is the
+full vision pipeline (raw-patch projection), mapped as the projector only.
 
 Per-layer structure is heterogeneous across the family, so all math is deferred to HF
 and submodules are decomposed only for hooks (parity-safe delegation):
@@ -34,6 +36,7 @@ from transformer_lens.model_bridge.generalized_components import (
     LinearBridge,
     RotaryEmbeddingBridge,
     UnembeddingBridge,
+    VisionProjectionBridge,
 )
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
@@ -41,7 +44,8 @@ from transformer_lens.model_bridge.generalized_components.base import (
 
 
 class Gemma4ArchitectureAdapter(ArchitectureAdapter):
-    """Text-only adapter for Gemma 4 (`Gemma4ForConditionalGeneration`)."""
+    """Adapter for Gemma 4 (`Gemma4ForConditionalGeneration` — multimodal, or
+    `Gemma4UnifiedForConditionalGeneration` — text-only 12B)."""
 
     # Phase 3 (processed/compatibility mode) folds LN into a single residual stream,
     # which the PLE residual mix, per-layer `layer_scalar` buffers, and the MoE branch
@@ -51,7 +55,21 @@ class Gemma4ArchitectureAdapter(ArchitectureAdapter):
     def __init__(self, cfg: Any) -> None:
         super().__init__(cfg)
 
-        self.cfg.is_multimodal = False
+        # Both variants are multimodal (take pixel_values). The difference:
+        # - Gemma4ForConditionalGeneration: vision_tower (encoder) + embed_vision (projector)
+        # - Gemma4UnifiedForConditionalGeneration (12B): embed_vision only — encoder-free
+        #   embedder that does raw-patch projection without an attention-based vision encoder.
+        arch = getattr(cfg, "architecture", "") or ""
+        self._is_unified = "Gemma4Unified" in arch
+        self.cfg.is_multimodal = True
+
+        if hasattr(cfg, "vision_config"):
+            vcfg = cfg.vision_config
+            self.cfg.vision_hidden_size = getattr(vcfg, "hidden_size", None)
+            self.cfg.vision_num_layers = getattr(vcfg, "num_hidden_layers", None)
+            self.cfg.vision_num_heads = getattr(vcfg, "num_attention_heads", None)
+            self.cfg.mm_tokens_per_image = getattr(cfg, "vision_soft_tokens_per_image", 256)
+
         self.cfg.gated_mlp = True
         self.cfg.uses_rms_norm = True
         self.cfg.normalization_type = "RMS"
@@ -63,7 +81,21 @@ class Gemma4ArchitectureAdapter(ArchitectureAdapter):
         self.supports_fold_ln = False
         self.weight_processing_conversions: dict = {}
 
+        # Vision components. Gemma4ForConditionalGeneration has a separate vision
+        # encoder (model.vision_tower) + projector (model.embed_vision). The 12B
+        # unified variant is encoder-free — model.embed_vision is the full vision
+        # pipeline (raw-patch projection), so it maps as the projector with no encoder.
+        _vision_mapping: dict[str, Any] = {
+            "vision_projector": VisionProjectionBridge(name="model.embed_vision"),
+        }
+        if not self._is_unified:
+            _vision_mapping = {
+                "vision_encoder": GeneralizedComponent(name="model.vision_tower"),
+                **_vision_mapping,
+            }
+
         self.component_mapping = {
+            **_vision_mapping,
             "embed": EmbeddingBridge(name="model.language_model.embed_tokens"),
             # Single rotary module serving both layer types (full / sliding) via a
             # per-layer-type forward kwarg, with separate rope parameters per type.
