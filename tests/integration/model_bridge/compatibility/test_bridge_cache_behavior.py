@@ -56,20 +56,20 @@ class TestCacheBasics:
     def test_run_with_cache_returns_nonempty(self, bridge_compat):
         """run_with_cache returns a non-empty cache."""
         with torch.no_grad():
-            _, cache = bridge_compat.run_with_cache("Hello world")
+            _, cache = bridge_compat.run_with_cache(input="Hello world")
         assert len(cache) > 0
 
     def test_cache_contains_residual_hooks(self, bridge_compat):
         """Cache should contain residual stream hooks."""
         with torch.no_grad():
-            _, cache = bridge_compat.run_with_cache("Hello world")
+            _, cache = bridge_compat.run_with_cache(input="Hello world")
         cache_keys = list(cache.keys())
         assert any("hook_resid" in k for k in cache_keys)
 
     def test_cache_values_are_tensors(self, bridge_compat):
         """All cached values should be tensors with correct batch dimension."""
         with torch.no_grad():
-            _, cache = bridge_compat.run_with_cache("Hello")
+            _, cache = bridge_compat.run_with_cache(input="Hello")
         for key, value in cache.items():
             assert isinstance(value, torch.Tensor), f"Cache[{key}] is {type(value)}"
             assert value.shape[0] == 1, f"Cache[{key}] batch dim is {value.shape[0]}"
@@ -81,9 +81,9 @@ class TestCacheNamesFilter:
     def test_names_filter_returns_subset(self, bridge_compat):
         """names_filter should return only matching keys."""
         with torch.no_grad():
-            _, full_cache = bridge_compat.run_with_cache("Hello")
+            _, full_cache = bridge_compat.run_with_cache(input="Hello")
             _, filtered_cache = bridge_compat.run_with_cache(
-                "Hello",
+                input="Hello",
                 names_filter=lambda name: "hook_resid_pre" in name,
             )
 
@@ -98,7 +98,7 @@ class TestCacheCompleteness:
 
     def test_all_expected_hooks_in_cache(self, bridge_compat):
         """Cache should contain all expected hook names."""
-        _, cache = bridge_compat.run_with_cache("Hello World!")
+        _, cache = bridge_compat.run_with_cache(input="Hello World!")
         actual_keys = set(cache.keys())
         missing = set(EXPECTED_HOOKS) - actual_keys
         assert len(missing) == 0, f"Missing expected hooks: {sorted(missing)}"
@@ -133,8 +133,8 @@ class TestCacheEqualityWithHookedTransformer:
         Unmasked scores and resulting patterns should still match.
         """
         prompt = "Hello World!"
-        _, bridge_cache = bridge_compat.run_with_cache(prompt)
-        _, ht_cache = reference_ht.run_with_cache(prompt)
+        _, bridge_cache = bridge_compat.run_with_cache(input=prompt)
+        _, ht_cache = reference_ht.run_with_cache(input=prompt)
 
         for hook in EXPECTED_HOOKS:
             if hook not in bridge_cache or hook not in ht_cache:

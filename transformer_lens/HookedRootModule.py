@@ -278,7 +278,6 @@ class HookedRootModule(HookIntrospectionMixin, nn.Module):
 
     def run_with_hooks(
         self,
-        *model_args: Any,  # TODO: unsure about whether or not this Any typing is correct or not; may need to be replaced with something more specific?
         fwd_hooks: list[tuple[Union[str, Callable], Callable]] = [],
         bwd_hooks: list[tuple[Union[str, Callable], Callable]] = [],
         reset_hooks_end: bool = True,
@@ -299,7 +298,6 @@ class HookedRootModule(HookIntrospectionMixin, nn.Module):
                 during this run. Default is True.
             clear_contexts (bool): If True, clears hook contexts whenever hooks are reset. Default is
                 False.
-            *model_args: Positional arguments for the model.
             **model_kwargs: Keyword arguments for the model's forward function. See your related
                 models forward pass for details as to what sort of arguments you can pass through.
 
@@ -313,7 +311,7 @@ class HookedRootModule(HookIntrospectionMixin, nn.Module):
             )
 
         with self.hooks(fwd_hooks, bwd_hooks, reset_hooks_end, clear_contexts) as hooked_model:
-            return hooked_model.forward(*model_args, **model_kwargs)
+            return hooked_model.forward(**model_kwargs)
 
     def add_caching_hooks(
         self,
@@ -372,7 +370,6 @@ class HookedRootModule(HookIntrospectionMixin, nn.Module):
 
     def run_with_cache(
         self,
-        *model_args: Any,
         names_filter: NamesFilter = None,
         device: DeviceType = None,
         remove_batch_dim: bool = False,
@@ -386,7 +383,6 @@ class HookedRootModule(HookIntrospectionMixin, nn.Module):
         Runs the model and returns the model output and a Cache object.
 
         Args:
-            *model_args: Positional arguments for the model.
             names_filter (NamesFilter, optional): A filter for which activations to cache. Accepts None, str,
                 list of str, or a function that takes a string and returns a bool. Defaults to None, which
                 means cache everything.
@@ -428,7 +424,7 @@ class HookedRootModule(HookIntrospectionMixin, nn.Module):
             reset_hooks_end=reset_hooks_end,
             clear_contexts=clear_contexts,
         ):
-            model_out = self(*model_args, **model_kwargs)
+            model_out = self(**model_kwargs)
             if incl_bwd:
                 model_out.backward()
 

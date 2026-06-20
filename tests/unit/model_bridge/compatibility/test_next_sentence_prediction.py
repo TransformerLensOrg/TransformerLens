@@ -179,7 +179,7 @@ def test_run_with_cache(bert_nsp, mock_transformer_bridge):
 
     # Run with cache
     output, cache = bert_nsp.run_with_cache(
-        input_data, return_type="logits", return_cache_object=True
+        input=input_data, return_type="logits", return_cache_object=True
     )
 
     # Verify output shape and values

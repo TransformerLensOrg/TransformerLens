@@ -91,7 +91,7 @@ class TestBridgeForwardPass:
     def test_run_with_cache_returns_activations(self, bridge):
         """run_with_cache should return non-empty cache."""
         with torch.no_grad():
-            _, cache = bridge.run_with_cache("Hello")
+            _, cache = bridge.run_with_cache(input="Hello")
         assert len(cache) > 0
         # Should have block-level hooks
         block_keys = [k for k in cache.keys() if "blocks.0" in k]

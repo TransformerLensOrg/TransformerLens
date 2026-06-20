@@ -68,7 +68,7 @@ def test_context_manager_run_with_cache():
     c = Counter()
     with model.hooks(fwd_hooks=[(embed, c.inc)]):
         assert len(model.hook_dict["hook_embed"].fwd_hooks) == 1
-        model.run_with_cache(prompt)
+        model.run_with_cache(input=prompt)
         assert len(model.hook_dict["hook_embed"].fwd_hooks) == 1
     assert len(model.hook_dict["hook_embed"].fwd_hooks) == 0
     assert c.count == 1
@@ -224,7 +224,7 @@ def test_conditional_hooks():
         set_use_hook_function(True)
 
         cache = model.run_with_cache(
-            prompt,
+            input=prompt,
             names_filter=lambda x: x == hook_name,
         )[1]
 

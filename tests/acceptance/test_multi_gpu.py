@@ -50,10 +50,10 @@ def test_device_separation_and_cache(gpt2_medium_on_1_device, n_devices):
     gpt2_tokens = model_1_device.to_tokens(gpt2_text)
 
     gpt2_logits_1_device, gpt2_cache_1_device = model_1_device.run_with_cache(
-        gpt2_tokens, remove_batch_dim=True
+        input=gpt2_tokens, remove_batch_dim=True
     )
     gpt2_logits_n_devices, gpt2_cache_n_devices = model_n_devices.run_with_cache(
-        gpt2_tokens, remove_batch_dim=True
+        input=gpt2_tokens, remove_batch_dim=True
     )
 
     # Make sure the tensors in cache remain on their respective devices
@@ -106,16 +106,16 @@ def test_load_model_on_target_device():
 def test_cache_device():
     model = HookedTransformer.from_pretrained("gpt2-small", device="cuda:1")
 
-    logits, cache = model.run_with_cache("Hello there")
+    logits, cache = model.run_with_cache(input="Hello there")
     assert norm_device(cache["blocks.0.mlp.hook_post"].device) == norm_device(
         torch.device("cuda:1")
     )
 
-    logits, cache = model.run_with_cache("Hello there", device=torch.device("cpu"))
+    logits, cache = model.run_with_cache(input="Hello there", device=torch.device("cpu"))
     assert norm_device(cache["blocks.0.mlp.hook_post"].device) == norm_device(torch.device("cpu"))
 
     model.to("cuda")
-    logits, cache = model.run_with_cache("Hello there")
+    logits, cache = model.run_with_cache(input="Hello there")
     assert norm_device(cache["blocks.0.mlp.hook_post"].device) == norm_device(logits.device)
 
 

@@ -27,14 +27,14 @@ class TestActivationCacheCompatibility:
     def sample_cache(self, bridge_model):
         """Create a sample cache for testing."""
         prompt = "The quick brown fox jumps over the lazy dog."
-        output, cache = bridge_model.run_with_cache(prompt)
+        output, cache = bridge_model.run_with_cache(input=prompt)
         return cache
 
     def test_cache_creation(self, bridge_model):
         """Test that caches can be created from TransformerBridge."""
         prompt = "Test cache creation."
 
-        output, cache = bridge_model.run_with_cache(prompt, return_cache_object=True)
+        output, cache = bridge_model.run_with_cache(input=prompt, return_cache_object=True)
 
         assert isinstance(output, torch.Tensor)
         assert isinstance(cache, (dict, ActivationCache))
@@ -92,7 +92,7 @@ class TestActivationCacheCompatibility:
         filter_names = list(hook_dict.keys())[:3]
 
         try:
-            output, cache = bridge_model.run_with_cache(prompt, names_filter=filter_names)
+            output, cache = bridge_model.run_with_cache(input=prompt, names_filter=filter_names)
 
             if hasattr(cache, "cache_dict"):
                 cache_dict = cache.cache_dict
@@ -153,7 +153,7 @@ class TestActivationCacheCompatibility:
         prompts = ["First prompt for batch testing.", "Second prompt for batch testing."]
 
         try:
-            output, cache = bridge_model.run_with_cache(prompts)
+            output, cache = bridge_model.run_with_cache(input=prompts)
 
             if hasattr(cache, "cache_dict"):
                 cache_dict = cache.cache_dict
@@ -173,7 +173,7 @@ class TestActivationCacheCompatibility:
         prompt = "Test device consistency."
 
         model_cpu = bridge_model.cpu()
-        output, cache = model_cpu.run_with_cache(prompt)
+        output, cache = model_cpu.run_with_cache(input=prompt)
 
         if hasattr(cache, "cache_dict"):
             cache_dict = cache.cache_dict
@@ -192,7 +192,7 @@ class TestActivationCacheCompatibility:
             initial_memory = torch.cuda.memory_allocated()
 
         for _ in range(3):
-            output, cache = bridge_model.run_with_cache(prompt)
+            output, cache = bridge_model.run_with_cache(input=prompt)
             del output, cache
 
         import gc
@@ -209,10 +209,10 @@ class TestActivationCacheCompatibility:
 
     def test_cache_with_different_inputs(self, bridge_model):
         """Test that cache works with different input types."""
-        output1, cache1 = bridge_model.run_with_cache("String input test.")
+        output1, cache1 = bridge_model.run_with_cache(input="String input test.")
 
         tokens = bridge_model.to_tokens("Token input test.")
-        output2, cache2 = bridge_model.run_with_cache(tokens)
+        output2, cache2 = bridge_model.run_with_cache(input=tokens)
 
         assert isinstance(output1, torch.Tensor)
         assert isinstance(output2, torch.Tensor)

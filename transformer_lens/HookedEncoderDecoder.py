@@ -487,19 +487,18 @@ class HookedEncoderDecoder(HookedRootModule):
 
     @overload  # type: ignore[overload-overlap]
     def run_with_cache(
-        self, *model_args: Any, return_cache_object: Literal[True] = True, **kwargs: Any
+        self, return_cache_object: Literal[True] = True, **kwargs: Any
     ) -> Tuple[Float[torch.Tensor, "batch pos d_vocab"], ActivationCache]:
         ...
 
     @overload  # type: ignore[overload-overlap]
     def run_with_cache(
-        self, *model_args: Any, return_cache_object: Literal[False] = False, **kwargs: Any
+        self, return_cache_object: Literal[False] = False, **kwargs: Any
     ) -> Tuple[Float[torch.Tensor, "batch pos d_vocab"], Dict[str, torch.Tensor]]:
         ...
 
     def run_with_cache(
         self,
-        *model_args: Any,
         return_cache_object: bool = True,
         remove_batch_dim: bool = False,
         **kwargs: Any,
@@ -511,7 +510,7 @@ class HookedEncoderDecoder(HookedRootModule):
         Wrapper around run_with_cache in HookedRootModule. If return_cache_object is True, this will return an ActivationCache object, with a bunch of useful HookedTransformer specific methods, otherwise it will return a dictionary of activations as in HookedRootModule. This function was copied directly from HookedTransformer.
         """
         out, cache_dict = super().run_with_cache(
-            *model_args, remove_batch_dim=remove_batch_dim, **kwargs
+            remove_batch_dim=remove_batch_dim, **kwargs
         )
         if return_cache_object:
             cache = ActivationCache(cache_dict, self, has_batch_dim=not remove_batch_dim)
