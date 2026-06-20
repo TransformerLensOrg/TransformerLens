@@ -180,7 +180,7 @@ def test_run_with_hooks_stop_at_layer_default(bridge_default):
     # Hook at blocks.0 should fire
     # Hook at blocks.1 should NOT fire (stop_at_layer=1)
     output = bridge_default.run_with_hooks(
-        rand_input,
+        input=rand_input,
         stop_at_layer=1,
         fwd_hooks=[
             ("embed.hook_out", count_hook),
@@ -505,7 +505,7 @@ def test_run_with_hooks_stop_at_layer_compat_with_processing(
     # Hook at blocks.0 should fire
     # Hook at blocks.1 should NOT fire (stop_at_layer=1)
     output = bridge_with_compat_and_processing.run_with_hooks(
-        rand_input,
+        input=rand_input,
         stop_at_layer=1,
         fwd_hooks=[
             ("embed.hook_out", count_hook),

@@ -803,7 +803,7 @@ class TestQwen3_5Integration:
         tokens = torch.randint(0, 512, (1, 4))
         with torch.no_grad():
             bridge.run_with_hooks(
-                tokens,
+                input=tokens,
                 fwd_hooks=[(name, capture_hook(name)) for name in hook_names],
             )
 

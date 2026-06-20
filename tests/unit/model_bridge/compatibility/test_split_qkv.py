@@ -54,7 +54,7 @@ def test_qkv_input_shapes(gpt2_bridge):
 
     try:
         gpt2_bridge.run_with_hooks(
-            x,
+            input=x,
             fwd_hooks=[
                 ("blocks.0.attn.hook_q_input", cap("q")),
                 ("blocks.0.attn.hook_k_input", cap("k")),
@@ -93,7 +93,7 @@ def test_split_qkv_independence(gpt2_bridge):
             return _hook
 
         gpt2_bridge.run_with_hooks(
-            x,
+            input=x,
             fwd_hooks=[
                 ("blocks.0.attn.k.hook_out", cap_baseline("k")),
                 ("blocks.0.attn.v.hook_out", cap_baseline("v")),
@@ -113,7 +113,7 @@ def test_split_qkv_independence(gpt2_bridge):
             return torch.zeros_like(tensor)
 
         gpt2_bridge.run_with_hooks(
-            x,
+            input=x,
             fwd_hooks=[
                 ("blocks.0.attn.hook_q_input", zero_q_input),
                 ("blocks.0.attn.k.hook_out", cap_patched("k")),

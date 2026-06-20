@@ -60,7 +60,7 @@ class TestMainDemoPatternHooks:
 
         # Run with hooks (should not raise any errors)
         model.run_with_hooks(
-            repeated_tokens,
+            input=repeated_tokens,
             return_type=None,  # For efficiency, don't calculate logits
             fwd_hooks=[(pattern_hook_names_filter, induction_score_hook)],
         )
@@ -97,7 +97,7 @@ class TestMainDemoPatternHooks:
         pattern_filter = lambda name: name.endswith("pattern")
 
         # Run with hooks
-        model.run_with_hooks(tokens, return_type=None, fwd_hooks=[(pattern_filter, tracking_hook)])
+        model.run_with_hooks(input=tokens, return_type=None, fwd_hooks=[(pattern_filter, tracking_hook)])
 
         # Verify each pattern hook was called exactly once
         for name, count in hook_calls.items():
@@ -130,7 +130,7 @@ class TestMainDemoPatternHooks:
 
         # Run with hooks
         model.run_with_hooks(
-            tokens, return_type=None, fwd_hooks=[(pattern_filter, layer_tracking_hook)]
+            input=tokens, return_type=None, fwd_hooks=[(pattern_filter, layer_tracking_hook)]
         )
 
         # Verify we got layer indices for all layers
@@ -183,7 +183,7 @@ class TestMainDemoPatternHooksWithBridge:
 
         # Run with hooks
         model.run_with_hooks(
-            repeated_tokens,
+            input=repeated_tokens,
             return_type=None,
             fwd_hooks=[(pattern_hook_names_filter, induction_score_hook)],
         )

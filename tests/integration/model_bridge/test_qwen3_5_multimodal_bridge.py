@@ -38,7 +38,7 @@ def test_hook_q_gate_fires_under_nested_language_model_path():
 
     with torch.no_grad():
         bridge.run_with_hooks(
-            "The quick brown fox", fwd_hooks=[(n, capture(n)) for n in gate_hooks]
+            input="The quick brown fox", fwd_hooks=[(n, capture(n)) for n in gate_hooks]
         )
 
     gate = captured.get("blocks.1.attn.hook_q_gate")

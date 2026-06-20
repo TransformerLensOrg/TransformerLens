@@ -95,7 +95,7 @@ def test_weight_processing_flag_combinations(
         return activation
 
     ref_ablated_loss = reference_ht.run_with_hooks(
-        test_text, return_type="loss", fwd_hooks=[(hook_name, ablation_hook)]
+        input=test_text, return_type="loss", fwd_hooks=[(hook_name, ablation_hook)]
     )
     ref_ablation_effect = ref_ablated_loss - ref_loss
 
@@ -115,7 +115,7 @@ def test_weight_processing_flag_combinations(
 
     # Test ablation with bridge
     bridge_ablated_loss = bridge.run_with_hooks(
-        test_text, return_type="loss", fwd_hooks=[(hook_name, ablation_hook)]
+        input=test_text, return_type="loss", fwd_hooks=[(hook_name, ablation_hook)]
     )
     bridge_ablation_effect = bridge_ablated_loss - bridge_loss
 
@@ -193,7 +193,7 @@ def _run_ablation(model, text, layer, head):
     hook_name = utils.get_act_name("v", layer)
     orig = model(tokens, return_type="loss").item()
     ablated = model.run_with_hooks(
-        tokens, return_type="loss", fwd_hooks=[(hook_name, ablation_hook)]
+        input=tokens, return_type="loss", fwd_hooks=[(hook_name, ablation_hook)]
     ).item()
     return orig, ablated
 

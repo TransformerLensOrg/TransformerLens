@@ -83,7 +83,7 @@ class TestJointQKVAttentionBridgeIntegration:
             original_loss = model(tokens, return_type="loss")
             # Use the correct hook name for Bridge architecture (v.hook_out instead of hook_v)
             hooked_loss = model.run_with_hooks(
-                tokens,
+                input=tokens,
                 return_type="loss",
                 fwd_hooks=[("blocks.0.attn.v.hook_out", v_ablation_hook)],
             )

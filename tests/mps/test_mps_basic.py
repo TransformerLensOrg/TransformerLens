@@ -204,7 +204,7 @@ def test_mps_activation_hook_fires_on_metal():
         return value
 
     model.run_with_hooks(
-        tokens,
+        input=tokens,
         fwd_hooks=[
             ("blocks.0.attn.hook_q", capture_hook),
             ("blocks.0.mlp.hook_post", capture_hook),

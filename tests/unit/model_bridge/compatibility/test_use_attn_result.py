@@ -43,7 +43,7 @@ def test_hook_result_shape_and_sum_equals_hook_out(gpt2_bridge):
 
     try:
         gpt2_bridge.run_with_hooks(
-            x,
+            input=x,
             fwd_hooks=[
                 ("blocks.0.attn.hook_result", cap("result")),
                 ("blocks.0.attn.hook_out", cap("out")),
@@ -80,7 +80,7 @@ def test_hook_result_does_not_fire_when_flag_off(gpt2_bridge):
         fired["result"] = True
         return tensor
 
-    gpt2_bridge.run_with_hooks(x, fwd_hooks=[("blocks.0.attn.hook_result", _hook)])
+    gpt2_bridge.run_with_hooks(input=x, fwd_hooks=[("blocks.0.attn.hook_result", _hook)])
     assert fired["result"] is False, (
         "hook_result fired when use_attn_result was False; the flag is "
         "supposed to skip the per-head computation."

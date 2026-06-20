@@ -44,7 +44,7 @@ class TestHookFiring:
             return tensor
 
         bridge.run_with_hooks(
-            "Hello world",
+            input="Hello world",
             fwd_hooks=[("blocks.0.hook_resid_pre", hook_fn)],
         )
         assert count == 1
@@ -58,7 +58,7 @@ class TestHookFiring:
             return tensor
 
         bridge.run_with_hooks(
-            "Hello",
+            input="Hello",
             fwd_hooks=[("blocks.0.hook_resid_pre", hook_fn)],
         )
         assert len(captured["shape"]) >= 2
@@ -76,7 +76,7 @@ class TestHookFiring:
             return hook_fn
 
         bridge.run_with_hooks(
-            "Hello",
+            input="Hello",
             fwd_hooks=[
                 ("blocks.0.hook_resid_pre", make_hook("resid_pre_0")),
                 ("blocks.0.hook_resid_post", make_hook("resid_post_0")),
@@ -116,7 +116,7 @@ class TestHookModification:
                 return torch.zeros_like(tensor)
 
             modified_output = bridge.run_with_hooks(
-                "Hello world",
+                input="Hello world",
                 fwd_hooks=[("blocks.0.hook_resid_pre", zero_hook)],
             )
 
@@ -132,7 +132,7 @@ class TestHookModification:
             return activation
 
         ablated_loss = bridge_compat.run_with_hooks(
-            test_text,
+            input=test_text,
             return_type="loss",
             fwd_hooks=[("blocks.0.attn.hook_v", ablation_hook)],
         )
@@ -154,14 +154,14 @@ class TestHookAblationEquivalence:
 
         ht_baseline = reference_ht(test_text, return_type="loss")
         ht_ablated = reference_ht.run_with_hooks(
-            test_text,
+            input=test_text,
             return_type="loss",
             fwd_hooks=[("blocks.0.attn.hook_v", ablation_hook)],
         )
 
         bridge_baseline = bridge_compat(test_text, return_type="loss")
         bridge_ablated = bridge_compat.run_with_hooks(
-            test_text,
+            input=test_text,
             return_type="loss",
             fwd_hooks=[("blocks.0.attn.hook_v", ablation_hook)],
         )
@@ -190,7 +190,7 @@ class TestHookActivationShapes:
             return hook_fn
 
         bridge_compat.run_with_hooks(
-            "The quick brown fox",
+            input="The quick brown fox",
             return_type="logits",
             fwd_hooks=[("hook_embed", capture("embed"))],
         )
@@ -209,7 +209,7 @@ class TestHookActivationShapes:
             return hook_fn
 
         bridge_compat.run_with_hooks(
-            "The quick brown fox",
+            input="The quick brown fox",
             return_type="logits",
             fwd_hooks=[("blocks.0.attn.hook_v", capture("v"))],
         )
@@ -259,7 +259,7 @@ class TestHookContextManager:
 
         with torch.no_grad():
             bridge.run_with_hooks(
-                "Hello",
+                input="Hello",
                 fwd_hooks=[("blocks.0.hook_resid_pre", hook_fn)],
             )
         assert count == 1

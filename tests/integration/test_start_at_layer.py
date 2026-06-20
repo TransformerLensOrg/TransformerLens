@@ -52,7 +52,7 @@ def test_run_with_hooks(setup_data: Dict[str, Any]):
         return None
 
     output = model.run_with_hooks(
-        rand_embed,
+        input=rand_embed,
         start_at_layer=1,
         fwd_hooks=[
             ("hook_embed", count_hook),

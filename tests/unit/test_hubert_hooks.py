@@ -91,13 +91,13 @@ class TestHubertHeadAblation:
 
         # Baseline
         baseline_out = audio_model.run_with_hooks(
-            frames, fwd_hooks=[], one_zero_attention_mask=frame_mask
+            inputs=frames, fwd_hooks=[], one_zero_attention_mask=frame_mask
         )
         baseline_tensor = _get_output_tensor(baseline_out)
 
         # Ablated
         ablated_out = audio_model.run_with_hooks(
-            frames,
+            inputs=frames,
             fwd_hooks=[(v_act_name, head_ablation_hook)],
             one_zero_attention_mask=frame_mask,
         )

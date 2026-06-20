@@ -168,7 +168,7 @@ class TestMambaHookMutation:
 
         with torch.no_grad():
             ablated = mamba_bridge.run_with_hooks(
-                tokens,
+                input=tokens,
                 fwd_hooks=[("blocks.12.hook_in", zero_resid)],
             )
         # Zeroing a mid-layer residual stream should change the output
