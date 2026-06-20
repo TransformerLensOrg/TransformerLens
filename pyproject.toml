@@ -76,6 +76,7 @@
         "ipywidgets>=8.1.1",
         "jupyter>=1.0.0",
         "jupyterlab>=3.5.0",
+        "notebook>=6.5.4",
     ]
     # Vision/audio deps for multimodal adapters (Gemma 3n's vision tower needs timm; image
     # processors need torchvision). In default-groups so contributor/CI test runs install them,
