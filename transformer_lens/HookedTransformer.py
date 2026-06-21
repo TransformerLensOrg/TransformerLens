@@ -66,6 +66,7 @@ from transformer_lens.HookedRootModule import HookedRootModule
 from transformer_lens.loading_from_pretrained import NON_HF_HOSTED_MODEL_NAMES
 from transformer_lens.utilities import (
     USE_DEFAULT_VALUE,
+    TypedModuleList,
     get_best_available_device,
     get_device_for_block_index,
     init_kaiming_normal_,
@@ -138,7 +139,7 @@ class HookedTransformer(HookedRootModule):
 
     ln_final: nn.Module
     tokenizer: Optional[PreTrainedTokenizerBase]
-    blocks: nn.ModuleList[TransformerBlock]  # type: ignore[type-arg]
+    blocks: TypedModuleList[TransformerBlock]
 
     def __init__(
         self,
@@ -224,7 +225,7 @@ class HookedTransformer(HookedRootModule):
         if self.cfg.use_hook_tokens:
             self.hook_tokens = HookPoint()  # [batch, pos]
 
-        self.blocks = nn.ModuleList(
+        self.blocks = TypedModuleList(
             [TransformerBlock(self.cfg, block_index) for block_index in range(self.cfg.n_layers)]
         )
 
@@ -640,7 +641,7 @@ class HookedTransformer(HookedRootModule):
             # Eg: start_at_layer==None + stop_at_layer==0 means to only run the embed.
             # Eg: start_at_layer==3 + stop_at_layer==-1 means to run from layer 3 until the end of the PENULTIMATE layer
             blocks_and_idxs = list(zip(range(self.cfg.n_layers), self.blocks))
-            for i, block in blocks_and_idxs[start_at_layer:stop_at_layer]:  # type: ignore
+            for i, block in blocks_and_idxs[start_at_layer:stop_at_layer]:
                 # Note that each block includes skip connections, so we don't need
                 # residual + block(residual)
                 # If we're using multiple GPUs, we need to send the residual and shortformer_pos_embed to the correct GPU
@@ -2550,35 +2551,31 @@ class HookedTransformer(HookedRootModule):
     # we want to do analysis on weights across all layers. If GPU memory is a bottleneck, don't use
     # these properties!
 
-    def _get_blocks(self) -> list[TransformerBlock]:
-        """Helper to get blocks with proper typing."""
-        return [cast(TransformerBlock, block) for block in self.blocks]
-
     @property
     def W_K(self) -> Float[torch.Tensor, "n_layers n_heads d_model d_head"]:
         """Stack the key weights across all layers."""
-        return torch.stack([block.attn.W_K for block in self._get_blocks()], dim=0)
+        return torch.stack([block.attn.W_K for block in self.blocks], dim=0)
 
     @property
     def W_Q(self) -> Float[torch.Tensor, "n_layers n_heads d_model d_head"]:
         """Stack the query weights across all layers."""
-        return torch.stack([block.attn.W_Q for block in self._get_blocks()], dim=0)
+        return torch.stack([block.attn.W_Q for block in self.blocks], dim=0)
 
     @property
     def W_V(self) -> Float[torch.Tensor, "n_layers n_heads d_model d_head"]:
         """Stack the value weights across all layers."""
-        return torch.stack([block.attn.W_V for block in self._get_blocks()], dim=0)
+        return torch.stack([block.attn.W_V for block in self.blocks], dim=0)
 
     @property
     def W_O(self) -> Float[torch.Tensor, "n_layers n_heads d_head d_model"]:
         """Stack the attn output weights across all layers."""
-        return torch.stack([block.attn.W_O for block in self._get_blocks()], dim=0)
+        return torch.stack([block.attn.W_O for block in self.blocks], dim=0)
 
     @property
     def W_in(self) -> Float[torch.Tensor, "n_layers d_model d_mlp"]:
         """Stack the MLP input weights across all layers."""
         return torch.stack(
-            [cast(Union[MLP, GatedMLP], block.mlp).W_in for block in self._get_blocks()], dim=0
+            [cast(Union[MLP, GatedMLP], block.mlp).W_in for block in self.blocks], dim=0
         )
 
     @property
@@ -2588,9 +2585,7 @@ class HookedTransformer(HookedRootModule):
         Only works for models with gated MLPs.
         """
         if self.cfg.gated_mlp:
-            return torch.stack(
-                [cast(GatedMLP, block.mlp).W_gate for block in self._get_blocks()], dim=0
-            )
+            return torch.stack([cast(GatedMLP, block.mlp).W_gate for block in self.blocks], dim=0)
         else:
             return None
 
@@ -2598,41 +2593,41 @@ class HookedTransformer(HookedRootModule):
     def W_out(self) -> Float[torch.Tensor, "n_layers d_mlp d_model"]:
         """Stack the MLP output weights across all layers."""
         return torch.stack(
-            [cast(Union[MLP, GatedMLP], block.mlp).W_out for block in self._get_blocks()], dim=0
+            [cast(Union[MLP, GatedMLP], block.mlp).W_out for block in self.blocks], dim=0
         )
 
     @property
     def b_K(self) -> Float[torch.Tensor, "n_layers n_heads d_head"]:
         """Stack the key biases across all layers."""
-        return torch.stack([block.attn.b_K for block in self._get_blocks()], dim=0)
+        return torch.stack([block.attn.b_K for block in self.blocks], dim=0)
 
     @property
     def b_Q(self) -> Float[torch.Tensor, "n_layers n_heads d_head"]:
         """Stack the query biases across all layers."""
-        return torch.stack([block.attn.b_Q for block in self._get_blocks()], dim=0)
+        return torch.stack([block.attn.b_Q for block in self.blocks], dim=0)
 
     @property
     def b_V(self) -> Float[torch.Tensor, "n_layers n_heads d_head"]:
         """Stack the value biases across all layers."""
-        return torch.stack([block.attn.b_V for block in self._get_blocks()], dim=0)
+        return torch.stack([block.attn.b_V for block in self.blocks], dim=0)
 
     @property
     def b_O(self) -> Float[torch.Tensor, "n_layers d_model"]:
         """Stack the attn output biases across all layers."""
-        return torch.stack([block.attn.b_O for block in self._get_blocks()], dim=0)
+        return torch.stack([block.attn.b_O for block in self.blocks], dim=0)
 
     @property
     def b_in(self) -> Float[torch.Tensor, "n_layers d_mlp"]:
         """Stack the MLP input biases across all layers."""
         return torch.stack(
-            [cast(Union[MLP, GatedMLP], block.mlp).b_in for block in self._get_blocks()], dim=0
+            [cast(Union[MLP, GatedMLP], block.mlp).b_in for block in self.blocks], dim=0
         )
 
     @property
     def b_out(self) -> Float[torch.Tensor, "n_layers d_model"]:
         """Stack the MLP output biases across all layers."""
         return torch.stack(
-            [cast(Union[MLP, GatedMLP], block.mlp).b_out for block in self._get_blocks()], dim=0
+            [cast(Union[MLP, GatedMLP], block.mlp).b_out for block in self.blocks], dim=0
         )
 
     @property
@@ -2668,13 +2663,13 @@ class HookedTransformer(HookedRootModule):
         accumulated_bias = torch.zeros(self.cfg.d_model, device=self.cfg.device)
 
         for i in range(layer):
-            block = cast(TransformerBlock, self.blocks[i])
+            block = self.blocks[i]
             accumulated_bias += cast(torch.Tensor, block.attn.b_O)
             if include_mlp_biases:
                 accumulated_bias += cast(torch.Tensor, block.mlp.b_out)
         if mlp_input:
             assert layer < self.cfg.n_layers, "Cannot include attn_bias from beyond the final layer"
-            block = cast(TransformerBlock, self.blocks[layer])
+            block = self.blocks[layer]
             accumulated_bias += cast(torch.Tensor, block.attn.b_O)
         return accumulated_bias
 
