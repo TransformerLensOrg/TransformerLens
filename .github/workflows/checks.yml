@@ -367,7 +367,7 @@ jobs:
         include:
           - notebook: "LLaMA"
             requires_hf_token: true
-          - notebook: "LLaMA2_GPU_Quantized"
+          - notebook: "LLaMA_GPU_Quantized"
             requires_hf_token: true
     steps:
       - uses: actions/checkout@v4
