@@ -171,6 +171,8 @@ def map_default_transformer_lens_config(hf_config):
         tl_config.eps = source_config.layer_norm_eps
     elif hasattr(source_config, "layer_norm_epsilon"):
         tl_config.eps = source_config.layer_norm_epsilon
+    elif hasattr(source_config, "norm_eps"):
+        tl_config.eps = source_config.norm_eps
     if hasattr(source_config, "num_local_experts"):
         tl_config.num_experts = source_config.num_local_experts
     if hasattr(source_config, "num_experts_per_tok"):
@@ -517,6 +519,15 @@ def boot(
         # Cohere
         "logit_scale",
         "rope_parameters",
+        # Hybrid/MoE architectures
+        "layer_types",
+        "moe_intermediate_size",
+        "norm_eps",
+        "attention_bias",
+        "lm_head_bias",
+        "router_jitter_noise",
+        "input_jitter_noise",
+        "eos_token_id",
     ]
     for attr in _HF_PASSTHROUGH_ATTRS:
         val = getattr(hf_config, attr, None)
