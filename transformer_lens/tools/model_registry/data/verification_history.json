@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-06-05T13:10:29.591019",
+  "last_updated": "2026-06-22T13:18:31.460076",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -12355,6 +12355,36 @@
       "model_id": "google/gemma-3n-E2B-it",
       "architecture_id": "Gemma3nForConditionalGeneration",
       "verified_date": "2026-06-05",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "trl-internal-testing/tiny-Glm4MoeForCausalLM",
+      "architecture_id": "Glm4MoeForCausalLM",
+      "verified_date": "2026-06-22",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "trl-internal-testing/tiny-Glm4MoeForCausalLM",
+      "architecture_id": "Glm4MoeForCausalLM",
+      "verified_date": "2026-06-22",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "trl-internal-testing/tiny-Glm4MoeForCausalLM",
+      "architecture_id": "Glm4MoeForCausalLM",
+      "verified_date": "2026-06-22",
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Full verification completed",
