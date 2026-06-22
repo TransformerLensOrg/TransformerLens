@@ -66,6 +66,7 @@ from transformer_lens.model_bridge.supported_architectures import (
     SmolLM3ArchitectureAdapter,
     StableLmArchitectureAdapter,
     T5ArchitectureAdapter,
+    T5GemmaArchitectureAdapter,
     XGLMArchitectureAdapter,
 )
 
@@ -128,6 +129,7 @@ SUPPORTED_ARCHITECTURES = {
     "StableLmForCausalLM": StableLmArchitectureAdapter,
     "T5ForConditionalGeneration": T5ArchitectureAdapter,
     "MT5ForConditionalGeneration": T5ArchitectureAdapter,
+    "T5GemmaForConditionalGeneration": T5GemmaArchitectureAdapter,
     "XGLMForCausalLM": XGLMArchitectureAdapter,
     "NanoGPTForCausalLM": NanogptArchitectureAdapter,
     "TransformerLensNative": NativeArchitectureAdapter,
