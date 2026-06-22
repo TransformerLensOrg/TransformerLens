@@ -44,7 +44,9 @@ from transformer_lens.model_bridge.generalized_components import (
     SSMBlockBridge,
     UnembeddingBridge,
 )
-from transformer_lens.model_bridge.generalized_components.base import GeneralizedComponent
+from transformer_lens.model_bridge.generalized_components.base import (
+    GeneralizedComponent,
+)
 
 
 def _make_optional(component: "GeneralizedComponent") -> "GeneralizedComponent":

@@ -10,7 +10,9 @@ from unittest.mock import MagicMock
 import pytest
 
 from transformer_lens.config import TransformerBridgeConfig
-from transformer_lens.factories.architecture_adapter_factory import ArchitectureAdapterFactory
+from transformer_lens.factories.architecture_adapter_factory import (
+    ArchitectureAdapterFactory,
+)
 from transformer_lens.model_bridge.generalized_components import (
     DepthwiseConv1DBridge,
     EmbeddingBridge,
@@ -104,7 +106,9 @@ class TestNemotronHAdapterConfig:
     def test_is_stateful_true(self, adapter: NemotronHArchitectureAdapter) -> None:
         assert adapter.cfg.is_stateful is True
 
-    def test_mamba_intermediate_size_propagated(self, adapter: NemotronHArchitectureAdapter) -> None:
+    def test_mamba_intermediate_size_propagated(
+        self, adapter: NemotronHArchitectureAdapter
+    ) -> None:
         # mamba_num_heads=4, mamba_head_dim=8 → 32
         assert getattr(adapter.cfg, "mamba_intermediate_size", None) == 32
 
@@ -296,7 +300,9 @@ class TestNemotronHFactoryRegistration:
         assert isinstance(adapter, NemotronHArchitectureAdapter)
 
     def test_architecture_key_present(self) -> None:
-        from transformer_lens.factories.architecture_adapter_factory import SUPPORTED_ARCHITECTURES
+        from transformer_lens.factories.architecture_adapter_factory import (
+            SUPPORTED_ARCHITECTURES,
+        )
 
         assert "NemotronHForCausalLM" in SUPPORTED_ARCHITECTURES
         assert SUPPORTED_ARCHITECTURES["NemotronHForCausalLM"] is NemotronHArchitectureAdapter
