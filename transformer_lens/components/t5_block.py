@@ -16,7 +16,7 @@ from transformer_lens.utilities import repeat_along_head_dimension
 
 class T5Block(nn.Module):
     """
-    T5 decoder Block. Uses T5Layernorm, and T5attention insted of usual ones.
+    T5 decoder Block. Uses T5Layernorm, and T5attention instead of usual ones.
     Also uses cross attention if is_decoder is True.
     """
 

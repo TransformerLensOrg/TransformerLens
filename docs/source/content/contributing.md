@@ -6,6 +6,25 @@
 The HookedTransformer **acceptance test suite is currently quarantined** due to a CI test-pollution issue (see `tests/QUARANTINES.md` in the repo). Changes that touch HookedTransformer internals therefore land essentially untested at the acceptance level — extra manual care is required until the suite is re-enabled.
 ```
 
+## Contributing with AI coding agents
+
+This repo ships first-class guidance for AI coding agents (Claude Code, Cursor, Copilot, Codex, and the like). If you contribute with one, point it at these files — they encode the same conventions documented on this page, in a form an agent reads in-context.
+
+The primary source of information is [`AGENTS.md`](https://github.com/TransformerLensOrg/TransformerLens/blob/main/AGENTS.md) at the repo root. Vendor-specific entry points all defer to it. Several subdirectories carry their own `AGENTS.md` with narrower rules (`tests/`, `transformer_lens/model_bridge/supported_architectures/`, and `transformer_lens/tools/model_registry/`). An agent working in one of those areas should read the local file as well as the root one.
+
+Claude Code users also get slash commands in `.claude/commands/` that wrap the common workflows. Most have plain `make`/`uv` equivalent, so non-Claude agents (and humans) can run the same thing by hand, but there are a handful that are Claude-specific at the moment.
+
+| Claude shortcut | Manual equivalent |
+|---|---|
+| `/test-unit` | `make unit-test` |
+| `/test-all` | `make test` (long) |
+| `/format` | `make format && uv run mypy .` |
+| `/typecheck` | `uv run mypy .` |
+| `/build-docs` | `set -a; source .env; set +a && uv run build-docs` |
+| `/verify-model <repo>` | `uv run python -m transformer_lens.tools.model_registry.verify_models --model <repo>` (dry-run first) |
+| `/add-model-support <hf_repo>` | Follow the adapter-authoring workflow under [Creating Architecture Adapters](#creating-architecture-adapters) |
+| `/task-complete` | `make format && uv run mypy . && make test-pr` (loop until clean) |
+
 ## Setup
 
 ### DevContainer
@@ -285,7 +304,7 @@ Two test layers:
 
 ### Common adapter gotchas
 
-- **HF raw config attributes are invisible to TL-side consumers unless explicitly propagated to `self.cfg`.** Walk the HF `config.json` and mirror any non-standard knobs (`final_logit_softcapping`, `attn_logit_softcapping`, `query_pre_attn_scalar`, `sliding_window`, `layer_types`, custom `eps_attr` names) onto `self.cfg` so weight processing and forward passes can see them.
+- **HF raw config attributes are invisible to TL-side consumers unless explicitly propagated to `self.cfg`.** Walk the HF `config.json` and mirror any non-standard knobs (`final_logit_softcapping`, `attn_logit_softcapping`, `query_pre_attn_scalar`, `sliding_window`, `layer_types`) onto `self.cfg` so weight processing and forward passes can see them.
 - **Some config attrs need both surface-on-cfg AND fold-into-weight** via a `preprocess_weights()` override. The trigger: a numerical operation HF's forward applies natively must also be baked into the raw weights, or `bridge.enable_compatibility_mode()` (which calls `process_weights` on raw weights) produces wrong results. Concrete examples in-tree: Cohere `logit_scale` → `unembed.weight`; Gemma embedding scale (`√d_model`) → `embed.weight`. Skip the fold and Phase 3 / Phase 4 of `verify_models` will silently degrade.
 - **Tokenizer policy is per-model, not per-architecture.** Sibling models in the same family routinely differ — the chat-instruct variant may prepend BOS where the base does not, padding side can flip, EOS handling can differ. It's worth re-checking `default_prepend_bos`, padding side, and EOS handling against the specific target rather than copying them from a starter adapter. `tokenizer_config.json` is not always reliable on its own — some architectures (Cohere is a notable example) declare `add_bos_token=False` but HF's `__call__` prepends BOS anyway. The most reliable check is to invoke the tokenizer directly:
 

@@ -6458,7 +6458,6 @@ dependencies = [
     { name = "rich" },
     { name = "sentencepiece" },
     { name = "torch" },
-    { name = "torchvision" },
     { name = "tqdm" },
     { name = "transformers" },
     { name = "transformers-stream-generator" },
@@ -6545,7 +6544,6 @@ requires-dist = [
     { name = "rich", specifier = ">=12.6.0" },
     { name = "sentencepiece" },
     { name = "torch", specifier = ">=2.6" },
-    { name = "torchvision", specifier = ">=0.22,<0.23" },
     { name = "tqdm", specifier = ">=4.64.1" },
     { name = "transformers", specifier = ">=5.4.0" },
     { name = "transformers-stream-generator", specifier = ">=0.0.5,<0.1" },
@@ -6595,7 +6593,7 @@ jupyter = [
 ]
 multimodal = [
     { name = "timm", specifier = ">=1.0.27" },
-    { name = "torchvision", specifier = ">=0.22,<0.23" },
+    { name = "torchvision", specifier = ">=0.22" },
 ]
 quantization = [
     { name = "bitsandbytes", specifier = ">=0.46.1" },
