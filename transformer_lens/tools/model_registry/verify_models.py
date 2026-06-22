@@ -1116,7 +1116,7 @@ def verify_models(
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
                 torch.cuda.synchronize()
-            if hasattr(torch, "mps") and hasattr(torch.mps, "empty_cache"):
+            if torch.backends.mps.is_available():
                 torch.mps.synchronize()
                 torch.mps.empty_cache()
 
