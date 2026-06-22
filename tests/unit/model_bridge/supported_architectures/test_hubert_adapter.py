@@ -30,7 +30,9 @@ from transformer_lens.model_bridge.generalized_components import (
     NormalizationBridge,
     UnembeddingBridge,
 )
-from transformer_lens.model_bridge.generalized_components.base import GeneralizedComponent
+from transformer_lens.model_bridge.generalized_components.base import (
+    GeneralizedComponent,
+)
 from transformer_lens.model_bridge.supported_architectures.hubert import (
     HubertArchitectureAdapter,
 )
@@ -67,7 +69,6 @@ def _make_cfg(
 
 @pytest.fixture(scope="module")
 def adapter() -> HubertArchitectureAdapter:
-    """Default bare HubertModel adapter (post-LN, no HubertForCTC prefix)."""
     return HubertArchitectureAdapter(_make_cfg())
 
 
@@ -80,7 +81,6 @@ class TestHubertComponentMapping:
     """Component mapping has the correct slots, bridge types, and HF module paths."""
 
     def test_top_level_keys_bare_model(self, adapter: HubertArchitectureAdapter) -> None:
-        """Bare HubertModel has no unembed — only audio-specific + encoder components."""
         assert set(adapter.component_mapping.keys()) == {
             "audio_feature_extractor",
             "feat_proj",
@@ -88,6 +88,10 @@ class TestHubertComponentMapping:
             "embed_ln",
             "blocks",
         }
+
+    def test_no_embed_key(self, adapter: HubertArchitectureAdapter) -> None:
+        """HuBERT processes raw audio — no token embedding component."""
+        assert "embed" not in adapter.component_mapping
 
     def test_bridge_types(self, adapter: HubertArchitectureAdapter) -> None:
         mapping = adapter.component_mapping
@@ -162,15 +166,27 @@ class TestHubertComponentMapping:
 
 
 class TestHubertAdapterConfig:
-    """Anti-drift config flags that must not silently regress."""
+    """Anti-drift flags that must not silently regress."""
+
+    def test_normalization_type_is_ln(self, adapter: HubertArchitectureAdapter) -> None:
+        assert adapter.cfg.normalization_type == "LN"
 
     def test_positional_embedding_type_is_conv(self, adapter: HubertArchitectureAdapter) -> None:
-        """Anti-drift: HuBERT is the only adapter using 'conv' — not standard/rotary/alibi."""
+        """HuBERT uses a convolutional positional encoding — not standard, rotary, or alibi."""
         assert adapter.cfg.positional_embedding_type == "conv"
 
     def test_is_audio_model_true(self, adapter: HubertArchitectureAdapter) -> None:
-        """Anti-drift: only audio adapters set this flag; text adapters must not."""
+        """Only audio adapters set this flag; text adapters must not."""
         assert adapter.cfg.is_audio_model is True
+
+    def test_final_rms_is_false(self, adapter: HubertArchitectureAdapter) -> None:
+        assert adapter.cfg.final_rms is False
+
+    def test_gated_mlp_is_false(self, adapter: HubertArchitectureAdapter) -> None:
+        assert adapter.cfg.gated_mlp is False
+
+    def test_attn_only_is_false(self, adapter: HubertArchitectureAdapter) -> None:
+        assert adapter.cfg.attn_only is False
 
     def test_supports_generation_is_false(self) -> None:
         """HuBERT is an audio encoder — generation is not supported."""
@@ -192,7 +208,7 @@ class TestHubertAdapterConfig:
 
 
 class TestHubertWeightConversions:
-    """weight_processing_conversions matches BERT's seven-key set (weight + biases for QKVO)."""
+    """weight_processing_conversions has exactly the expected QKV weight+bias and O weight keys."""
 
     def test_exact_conversion_key_set(self, adapter: HubertArchitectureAdapter) -> None:
         assert set(adapter.weight_processing_conversions.keys()) == {
@@ -206,6 +222,7 @@ class TestHubertWeightConversions:
         }
 
     def test_qkv_weight_pattern(self, adapter: HubertArchitectureAdapter) -> None:
+        """'(h d_head) d_model -> h d_model d_head' splits heads for Q/K/V weights."""
         for slot in ("q", "k", "v"):
             conv = adapter.weight_processing_conversions[f"blocks.{{i}}.attn.{slot}.weight"]
             assert isinstance(conv, ParamProcessingConversion)
@@ -213,6 +230,7 @@ class TestHubertWeightConversions:
             assert conv.tensor_conversion.pattern == "(h d_head) d_model -> h d_model d_head"
 
     def test_qkv_bias_pattern(self, adapter: HubertArchitectureAdapter) -> None:
+        """'(h d_head) -> h d_head' splits heads for Q/K/V biases."""
         for slot in ("q", "k", "v"):
             conv = adapter.weight_processing_conversions[f"blocks.{{i}}.attn.{slot}.bias"]
             assert isinstance(conv, ParamProcessingConversion)
@@ -220,6 +238,7 @@ class TestHubertWeightConversions:
             assert conv.tensor_conversion.pattern == "(h d_head) -> h d_head"
 
     def test_o_weight_pattern(self, adapter: HubertArchitectureAdapter) -> None:
+        """'d_model (h d_head) -> h d_head d_model' for output projection."""
         conv = adapter.weight_processing_conversions["blocks.{i}.attn.o.weight"]
         assert isinstance(conv, ParamProcessingConversion)
         assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)
@@ -240,6 +259,10 @@ class TestHubertWeightConversions:
     def test_no_norm_conversion_keys(self, adapter: HubertArchitectureAdapter) -> None:
         """LayerNorm does not need head-splitting."""
         assert not any("ln" in k for k in adapter.weight_processing_conversions)
+
+    def test_no_o_bias_key(self, adapter: HubertArchitectureAdapter) -> None:
+        """Output projection bias is not rearranged — only its weight is converted."""
+        assert "blocks.{i}.attn.o.bias" not in adapter.weight_processing_conversions
 
 
 # ---------------------------------------------------------------------------
@@ -267,7 +290,9 @@ class TestHubertPrepareModel:
     def test_ctc_model_adds_hubert_prefix_to_feature_extractor(self) -> None:
         adapter = HubertArchitectureAdapter(_make_cfg())
         adapter.prepare_model(self._ctc_model())
-        assert adapter.component_mapping["audio_feature_extractor"].name == "hubert.feature_extractor"
+        assert (
+            adapter.component_mapping["audio_feature_extractor"].name == "hubert.feature_extractor"
+        )
 
     def test_ctc_model_adds_hubert_prefix_to_blocks(self) -> None:
         adapter = HubertArchitectureAdapter(_make_cfg())
