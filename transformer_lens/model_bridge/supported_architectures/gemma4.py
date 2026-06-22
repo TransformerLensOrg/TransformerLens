@@ -36,7 +36,6 @@ from transformer_lens.model_bridge.generalized_components import (
     LinearBridge,
     RotaryEmbeddingBridge,
     UnembeddingBridge,
-    VisionProjectionBridge,
 )
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
@@ -86,7 +85,7 @@ class Gemma4ArchitectureAdapter(ArchitectureAdapter):
         # unified variant is encoder-free — model.embed_vision is the full vision
         # pipeline (raw-patch projection), so it maps as the projector with no encoder.
         _vision_mapping: dict[str, Any] = {
-            "vision_projector": VisionProjectionBridge(name="model.embed_vision"),
+            "vision_projector": GeneralizedComponent(name="model.embed_vision"),
         }
         if not self._is_unified:
             _vision_mapping = {

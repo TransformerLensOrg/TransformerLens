@@ -9,7 +9,9 @@ from transformer_lens.model_bridge.generalized_components import (
     LinearBridge,
     RotaryEmbeddingBridge,
     UnembeddingBridge,
-    VisionProjectionBridge,
+)
+from transformer_lens.model_bridge.generalized_components.base import (
+    GeneralizedComponent,
 )
 from transformer_lens.model_bridge.supported_architectures.gemma4 import (
     Gemma4ArchitectureAdapter,
@@ -89,7 +91,7 @@ def test_vision_components_present_for_multimodal():
     assert "vision_projector" in m
     assert m["vision_encoder"].name == "model.vision_tower"
     assert m["vision_projector"].name == "model.embed_vision"
-    assert isinstance(m["vision_projector"], VisionProjectionBridge)
+    assert isinstance(m["vision_projector"], GeneralizedComponent)
     # Vision config fields extracted from vision_config.
     a = _adapter()
     assert a.cfg.vision_hidden_size == 2048
