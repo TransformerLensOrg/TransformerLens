@@ -93,6 +93,9 @@ from transformer_lens.model_bridge.supported_architectures.mamba import (
 from transformer_lens.model_bridge.supported_architectures.mamba2 import (
     Mamba2ArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.nemotron_h import (
+    NemotronHArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.mingpt import (
     MingptArchitectureAdapter,
 )
@@ -214,6 +217,7 @@ __all__ = [
     "MixtralArchitectureAdapter",
     "MPTArchitectureAdapter",
     "NanogptArchitectureAdapter",
+    "NemotronHArchitectureAdapter",
     "NativeArchitectureAdapter",
     "NeelSoluOldArchitectureAdapter",
     "NeoArchitectureAdapter",
