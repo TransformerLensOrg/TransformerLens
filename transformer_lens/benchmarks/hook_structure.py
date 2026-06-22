@@ -15,6 +15,7 @@ from transformer_lens.benchmarks.utils import (
     make_capture_hook,
     make_grad_capture_hook,
 )
+from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge import TransformerBridge
 
 
@@ -52,13 +53,13 @@ def benchmark_forward_hooks_structure(
             hook_names = list(bridge.hook_dict.keys())
 
         # Register hooks on bridge and track missing hooks
-        bridge_handles = []
+        bridge_hook_points: list[tuple[str, HookPoint]] = []
         missing_from_bridge = []
         for hook_name in hook_names:
             if hook_name in bridge.hook_dict:
                 hook_point = bridge.hook_dict[hook_name]
-                handle = hook_point.add_hook(make_capture_hook(bridge_activations, hook_name))  # type: ignore[func-returns-value]
-                bridge_handles.append((hook_name, handle))
+                hook_point.add_hook(make_capture_hook(bridge_activations, hook_name))
+                bridge_hook_points.append((hook_name, hook_point))
             else:
                 missing_from_bridge.append(hook_name)
 
@@ -70,12 +71,11 @@ def benchmark_forward_hooks_structure(
                 _ = bridge(test_text)
 
         # Clean up bridge hooks
-        for hook_name, handle in bridge_handles:
-            if handle is not None:
-                handle.remove()
+        for _, hook_point in bridge_hook_points:
+            hook_point.remove_hooks()
 
         # Check for hooks that didn't fire
-        registered_hooks = {name for name, _ in bridge_handles}
+        registered_hooks = {name for name, _ in bridge_hook_points}
         hooks_that_didnt_fire = registered_hooks - set(bridge_activations.keys())
 
         if reference_model is None:
@@ -100,12 +100,12 @@ def benchmark_forward_hooks_structure(
             )
 
         # Register hooks on reference model
-        reference_handles = []
+        reference_hook_points: list[HookPoint] = []
         for hook_name in hook_names:
             if hook_name in reference_model.hook_dict:
                 hook_point = reference_model.hook_dict[hook_name]
-                handle = hook_point.add_hook(make_capture_hook(reference_activations, hook_name))  # type: ignore[func-returns-value]
-                reference_handles.append(handle)
+                hook_point.add_hook(make_capture_hook(reference_activations, hook_name))
+                reference_hook_points.append(hook_point)
 
         # Run reference forward pass
         with torch.no_grad():
@@ -115,9 +115,8 @@ def benchmark_forward_hooks_structure(
                 _ = reference_model(test_text)
 
         # Clean up reference hooks
-        for handle in reference_handles:
-            if handle is not None:
-                handle.remove()
+        for hook_point in reference_hook_points:
+            hook_point.remove_hooks()
 
         # CRITICAL CHECK: Bridge must have all hooks that reference has
         if missing_from_bridge:
@@ -245,13 +244,13 @@ def benchmark_backward_hooks_structure(
         ]
 
         # Register backward hooks on bridge
-        bridge_handles = []
+        bridge_hook_points: list[tuple[str, HookPoint]] = []
         missing_from_bridge = []
         for hook_name in grad_hook_names:
             if hook_name in bridge.hook_dict:
                 hook_point = bridge.hook_dict[hook_name]
-                handle = hook_point.add_hook(make_grad_capture_hook(bridge_grads, hook_name), dir="bwd")  # type: ignore[func-returns-value]
-                bridge_handles.append((hook_name, handle))
+                hook_point.add_hook(make_grad_capture_hook(bridge_grads, hook_name), dir="bwd")
+                bridge_hook_points.append((hook_name, hook_point))
             else:
                 missing_from_bridge.append(hook_name)
 
@@ -265,12 +264,11 @@ def benchmark_backward_hooks_structure(
         loss.backward()
 
         # Clean up bridge hooks
-        for hook_name, handle in bridge_handles:
-            if handle is not None:
-                handle.remove()
+        for _, hook_point in bridge_hook_points:
+            hook_point.remove_hooks(dir="bwd")
 
         # Check for hooks that didn't fire
-        registered_hooks = {name for name, _ in bridge_handles}
+        registered_hooks = {name for name, _ in bridge_hook_points}
         hooks_that_didnt_fire = registered_hooks - set(bridge_grads.keys())
 
         if reference_model is None:
@@ -295,12 +293,12 @@ def benchmark_backward_hooks_structure(
             )
 
         # Register backward hooks on reference
-        reference_handles = []
+        reference_hook_points: list[HookPoint] = []
         for hook_name in grad_hook_names:
             if hook_name in reference_model.hook_dict:
                 hook_point = reference_model.hook_dict[hook_name]
-                handle = hook_point.add_hook(make_grad_capture_hook(reference_grads, hook_name), dir="bwd")  # type: ignore[func-returns-value]
-                reference_handles.append(handle)
+                hook_point.add_hook(make_grad_capture_hook(reference_grads, hook_name), dir="bwd")
+                reference_hook_points.append(hook_point)
 
         # Run reference forward + backward pass
         if prepend_bos is not None:
@@ -312,9 +310,8 @@ def benchmark_backward_hooks_structure(
         ref_loss.backward()
 
         # Clean up reference hooks
-        for handle in reference_handles:
-            if handle is not None:
-                handle.remove()
+        for hook_point in reference_hook_points:
+            hook_point.remove_hooks(dir="bwd")
 
         # CRITICAL CHECK: Bridge must have all backward hooks that reference has
         if missing_from_bridge:
