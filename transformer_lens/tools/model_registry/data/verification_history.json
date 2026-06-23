@@ -12372,6 +12372,16 @@
       "invalidation_reason": null
     },
     {
+      "model_id": "google/gemma-4-E2B-it",
+      "architecture_id": "Gemma4ForConditionalGeneration",
+      "verified_date": "2026-06-10",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
       "model_id": "trl-internal-testing/tiny-Glm4MoeForCausalLM",
       "architecture_id": "Glm4MoeForCausalLM",
       "verified_date": "2026-06-22",
@@ -12388,6 +12398,36 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "google/gemma-4-31B-it",
+      "architecture_id": "Gemma4ForConditionalGeneration",
+      "verified_date": "2026-06-22",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "CUDA error: device-side assert triggered\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAU",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "trl-internal-testing/tiny-Glm4MoeForCausalLM",
+      "architecture_id": "Glm4MoeForCausalLM",
+      "verified_date": "2026-06-22",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "google/gemma-4-26B-A4B-it",
+      "architecture_id": "Gemma4ForConditionalGeneration",
+      "verified_date": "2026-06-22",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "CUDA error: device-side assert triggered\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAU",
       "invalidated": false,
       "invalidation_reason": null
     },

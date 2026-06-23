@@ -16,6 +16,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from transformer_lens.config import TransformerBridgeConfig
+from transformer_lens.utilities import TypedModuleList
 
 # gelu_new = the tanh-approximation HF GPT-2 / HT use; F.gelu(approximate="tanh")
 # is the exact same formula.
@@ -404,7 +405,7 @@ class NativeModel(nn.Module):
                 f"NativeModel supports 'standard' and 'rotary'."
             )
 
-        self.layers = nn.ModuleList(
+        self.layers = TypedModuleList(
             [NativeBlock(cfg, rotary=self.rotary) for _ in range(cfg.n_layers)]
         )
         # final_rms forces RMS on the final norm regardless of block-norm choice

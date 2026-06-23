@@ -405,3 +405,34 @@ class ParallelBlockBridge(BlockBridge):
         if self.hook_aliases is BlockBridge.hook_aliases:
             self.hook_aliases = dict(self.hook_aliases)
         self.hook_aliases.pop("hook_resid_mid", None)
+
+
+class DelegatedAttentionBlockBridge(BlockBridge):
+    """Block whose attention is delegated wholesale to HF (no split-qkv fork).
+
+    For architectures with heterogeneous per-layer attention structure — e.g.
+    Gemma 4, where KV-shared layers have no ``k_proj``/``v_proj`` at all and
+    K==V layers have no ``v_proj`` — there is no uniform HookPoint that
+    represents "input that becomes Q/K/V", so the block-level ``hook_q_input``/
+    ``hook_k_input``/``hook_v_input``/``hook_attn_in`` aliases do not apply.
+    Type-level distinction means a reader of the adapter sees
+    ``DelegatedAttentionBlockBridge`` and knows those hooks are absent.
+    """
+
+    def __init__(
+        self,
+        name: str,
+        config: Optional[Any] = None,
+        submodules: Optional[Dict[str, GeneralizedComponent]] = None,
+        hook_alias_overrides: Optional[Dict[str, str]] = None,
+    ):
+        super().__init__(
+            name,
+            config=config,
+            submodules=submodules,
+            hook_alias_overrides=hook_alias_overrides,
+        )
+        if self.hook_aliases is BlockBridge.hook_aliases:
+            self.hook_aliases = dict(self.hook_aliases)
+        for alias in ("hook_q_input", "hook_k_input", "hook_v_input", "hook_attn_in"):
+            self.hook_aliases.pop(alias, None)
