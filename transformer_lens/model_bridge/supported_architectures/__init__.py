@@ -45,6 +45,9 @@ from transformer_lens.model_bridge.supported_architectures.gemma3_multimodal imp
 from transformer_lens.model_bridge.supported_architectures.gemma3n import (
     Gemma3nArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.glm4_moe import (
+    Glm4MoeArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.gpt2 import (
     GPT2ArchitectureAdapter,
 )
@@ -86,6 +89,9 @@ from transformer_lens.model_bridge.supported_architectures.llava_next import (
 )
 from transformer_lens.model_bridge.supported_architectures.llava_onevision import (
     LlavaOnevisionArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.lfm2_moe import (
+    Lfm2MoeArchitectureAdapter,
 )
 from transformer_lens.model_bridge.supported_architectures.mamba import (
     MambaArchitectureAdapter,
@@ -147,6 +153,9 @@ from transformer_lens.model_bridge.supported_architectures.phi import (
 from transformer_lens.model_bridge.supported_architectures.phi3 import (
     Phi3ArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.phimoe import (
+    PhiMoEArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.qwen import (
     QwenArchitectureAdapter,
 )
@@ -177,6 +186,9 @@ from transformer_lens.model_bridge.supported_architectures.stablelm import (
 from transformer_lens.model_bridge.supported_architectures.t5 import (
     T5ArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.t5gemma import (
+    T5GemmaArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.xglm import (
     XGLMArchitectureAdapter,
 )
@@ -196,6 +208,7 @@ __all__ = [
     "Gemma3ArchitectureAdapter",
     "Gemma3nArchitectureAdapter",
     "Gemma3MultimodalArchitectureAdapter",
+    "Glm4MoeArchitectureAdapter",
     "GraniteArchitectureAdapter",
     "GraniteMoeArchitectureAdapter",
     "GraniteMoeHybridArchitectureAdapter",
@@ -210,6 +223,7 @@ __all__ = [
     "LlavaArchitectureAdapter",
     "LlavaNextArchitectureAdapter",
     "LlavaOnevisionArchitectureAdapter",
+    "Lfm2MoeArchitectureAdapter",
     "MambaArchitectureAdapter",
     "Mamba2ArchitectureAdapter",
     "MingptArchitectureAdapter",
@@ -230,6 +244,7 @@ __all__ = [
     "OptArchitectureAdapter",
     "PhiArchitectureAdapter",
     "Phi3ArchitectureAdapter",
+    "PhiMoEArchitectureAdapter",
     "QwenArchitectureAdapter",
     "Qwen2ArchitectureAdapter",
     "Qwen3ArchitectureAdapter",
@@ -240,5 +255,6 @@ __all__ = [
     "SmolLM3ArchitectureAdapter",
     "StableLmArchitectureAdapter",
     "T5ArchitectureAdapter",
+    "T5GemmaArchitectureAdapter",
     "XGLMArchitectureAdapter",
 ]

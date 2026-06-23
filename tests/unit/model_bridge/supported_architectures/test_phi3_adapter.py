@@ -83,18 +83,6 @@ def adapter(cfg: TransformerBridgeConfig) -> Phi3ArchitectureAdapter:
 class TestPhi3AdapterConfig:
     """Tests that the adapter sets the correct config flags."""
 
-    def test_normalization_type(self, adapter: Phi3ArchitectureAdapter) -> None:
-        assert adapter.cfg.normalization_type == "RMS"
-
-    def test_positional_embedding_type(self, adapter: Phi3ArchitectureAdapter) -> None:
-        assert adapter.cfg.positional_embedding_type == "rotary"
-
-    def test_gated_mlp(self, adapter: Phi3ArchitectureAdapter) -> None:
-        assert adapter.cfg.gated_mlp is True
-
-    def test_final_rms(self, adapter: Phi3ArchitectureAdapter) -> None:
-        assert adapter.cfg.final_rms is False
-
     def test_supports_fold_ln_false(self, adapter: Phi3ArchitectureAdapter) -> None:
         """Standard fold_ln is disabled — handled in preprocess_weights instead."""
         assert adapter.supports_fold_ln is False

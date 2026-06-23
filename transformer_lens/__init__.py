@@ -6,6 +6,7 @@ from . import (
     head_detector,
     hook_points,
     patching,
+    tools,
     train,
     utilities,
 )
@@ -55,4 +56,5 @@ __all__ = [
     "conversion_utils",
     "factories",
     "utilities",
+    "tools",
 ]

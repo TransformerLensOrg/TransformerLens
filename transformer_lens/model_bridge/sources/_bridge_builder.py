@@ -42,6 +42,15 @@ _HF_PASSTHROUGH_ATTRS = [
     # Cohere
     "logit_scale",
     "rope_parameters",
+    # Hybrid/MoE architectures
+    "layer_types",
+    "moe_intermediate_size",
+    "norm_eps",
+    "attention_bias",
+    "lm_head_bias",
+    "router_jitter_noise",
+    "input_jitter_noise",
+    "eos_token_id",
 ]
 
 
