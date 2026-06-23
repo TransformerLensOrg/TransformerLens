@@ -103,7 +103,7 @@ Stable strings; differ between HookedTransformer and TransformerBridge:
 | `TransformerBridge` (default) | Architecture-native | `blocks.5.attn.q.hook_out`, `blocks.5.hook_out`, `embed.hook_out` |
 | `TransformerBridge` + compatibility mode | Bridge-native AND HT-style aliases | Above + `blocks.5.attn.hook_q` etc. |
 
-Full catalogue: [Main Demo](generated/demos/Main_Demo), [Exploratory Analysis Demo](generated/demos/Exploratory_Analysis_Demo). Architecture diagram: [TransformerLens_Diagram.svg](../_static/TransformerLens_Diagram.svg).
+Full catalogue: [Main Demo](../generated/demos/Main_Demo), [Exploratory Analysis Demo](../generated/demos/Exploratory_Analysis_Demo). Architecture diagram: [TransformerLens_Diagram.svg](../_static/TransformerLens_Diagram.svg).
 
 Porting HT code to Bridge: `bridge.enable_compatibility_mode()` (see [Compatibility Mode](compatibility_mode.md)) registers HT aliases so existing names resolve.
 
@@ -173,5 +173,5 @@ model.run_with_hooks(
 
 - [Compatibility Mode](compatibility_mode.md) — when to enable HT-style hook aliases on a Bridge model.
 - [Migrating to TransformerLens 3](migrating_to_v3.md) — porting HookedTransformer hook patterns to TransformerBridge.
-- [Main Demo](generated/demos/Main_Demo) — end-to-end walkthrough using the hook system.
+- [Main Demo](../generated/demos/Main_Demo) — end-to-end walkthrough using the hook system.
 - [`transformer_lens/hook_points.py`](https://github.com/TransformerLensOrg/TransformerLens/blob/main/transformer_lens/hook_points.py), [`transformer_lens/ActivationCache.py`](https://github.com/TransformerLensOrg/TransformerLens/blob/main/transformer_lens/ActivationCache.py), [`transformer_lens/patching.py`](https://github.com/TransformerLensOrg/TransformerLens/blob/main/transformer_lens/patching.py) — source.
