@@ -7,6 +7,7 @@ from transformer_lens.model_bridge.generalized_components.audio_feature_extracto
 )
 from transformer_lens.model_bridge.generalized_components.block import (
     BlockBridge,
+    DelegatedAttentionBlockBridge,
     MLABlockBridge,
     ParallelBlockBridge,
 )
@@ -111,6 +112,7 @@ __all__ = [
     "AttentionBridge",
     "AudioFeatureExtractorBridge",
     "BlockBridge",
+    "DelegatedAttentionBlockBridge",
     "MLABlockBridge",
     "ParallelBlockBridge",
     "BloomBlockBridge",

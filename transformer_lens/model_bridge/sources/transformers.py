@@ -231,6 +231,10 @@ def determine_architecture_from_hf_config(hf_config):
             # gemma3n is tri-modal; the text path loads as the full ForConditionalGeneration
             # (vision/audio referenced but unbridged in the text-only adapter).
             "gemma3n": "Gemma3nForConditionalGeneration",
+            # gemma4 is multimodal-only; all released checkpoints load as the full
+            # ForConditionalGeneration (vision/audio referenced but unbridged).
+            "gemma4": "Gemma4ForConditionalGeneration",
+            "gemma4_unified": "Gemma4UnifiedForConditionalGeneration",
             "bert": "BertForMaskedLM",
             "bloom": "BloomForCausalLM",
             "codegen": "CodeGenForCausalLM",
