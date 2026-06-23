@@ -110,10 +110,49 @@ def test_generate_without_tokenizer_stop_at_eos_requires_eos_id(tokenizer_free_b
     assert bridge.tokenizer is None
 
     tokens = _PROMPT_TOKENS.clone()
-    with pytest.raises(AssertionError, match="eos_token_id"):
-        bridge.generate(
-            tokens, max_new_tokens=3, stop_at_eos=True, return_type="tokens", verbose=False
+    old_eos_token_id = getattr(bridge.cfg, "eos_token_id", None)
+    bridge.cfg.eos_token_id = None
+    try:
+        with pytest.raises(AssertionError, match="eos_token_id"):
+            bridge.generate(
+                tokens, max_new_tokens=3, stop_at_eos=True, return_type="tokens", verbose=False
+            )
+    finally:
+        bridge.cfg.eos_token_id = old_eos_token_id
+
+
+@pytest.mark.parametrize("cfg_eos_token_id", ["int", "list"])
+def test_generate_without_tokenizer_uses_cfg_eos_id(tokenizer_free_bridge, cfg_eos_token_id):
+    """generate() falls back to cfg.eos_token_id when no tokenizer or explicit EOS is set."""
+    bridge = tokenizer_free_bridge
+    assert bridge.tokenizer is None
+
+    tokens = _PROMPT_TOKENS.clone()
+    first_token_output = bridge.generate(
+        tokens,
+        max_new_tokens=1,
+        stop_at_eos=False,
+        do_sample=False,
+        return_type="tokens",
+        verbose=False,
+    )
+    next_token = int(first_token_output[0, -1])
+
+    old_eos_token_id = getattr(bridge.cfg, "eos_token_id", None)
+    bridge.cfg.eos_token_id = next_token if cfg_eos_token_id == "int" else [50256, next_token]
+    try:
+        output = bridge.generate(
+            tokens,
+            max_new_tokens=3,
+            stop_at_eos=True,
+            do_sample=False,
+            return_type="tokens",
+            verbose=False,
         )
+    finally:
+        bridge.cfg.eos_token_id = old_eos_token_id
+
+    assert output.shape == (1, tokens.shape[1] + 1)
 
 
 def test_generate_string_input_without_tokenizer_errors(tokenizer_free_bridge):
@@ -184,14 +223,57 @@ def test_generate_stream_without_tokenizer_stop_at_eos_requires_eos_id(tokenizer
     assert bridge.tokenizer is None
 
     tokens = _PROMPT_TOKENS.clone()
-    with pytest.raises(AssertionError, match="eos_token_id"):
-        # Generator is lazy — must consume to trigger the assert.
-        list(
+    old_eos_token_id = getattr(bridge.cfg, "eos_token_id", None)
+    bridge.cfg.eos_token_id = None
+    try:
+        with pytest.raises(AssertionError, match="eos_token_id"):
+            # Generator is lazy — must consume to trigger the assert.
+            list(
+                bridge.generate_stream(
+                    tokens,
+                    max_new_tokens=3,
+                    stop_at_eos=True,
+                    return_type="tokens",
+                    verbose=False,
+                )
+            )
+    finally:
+        bridge.cfg.eos_token_id = old_eos_token_id
+
+
+@pytest.mark.parametrize("cfg_eos_token_id", ["int", "list"])
+def test_generate_stream_without_tokenizer_uses_cfg_eos_id(tokenizer_free_bridge, cfg_eos_token_id):
+    """generate_stream() falls back to cfg.eos_token_id without tokenizer or explicit EOS."""
+    bridge = tokenizer_free_bridge
+    assert bridge.tokenizer is None
+
+    tokens = _PROMPT_TOKENS.clone()
+    first_token_output = bridge.generate(
+        tokens,
+        max_new_tokens=1,
+        stop_at_eos=False,
+        do_sample=False,
+        return_type="tokens",
+        verbose=False,
+    )
+    next_token = int(first_token_output[0, -1])
+
+    old_eos_token_id = getattr(bridge.cfg, "eos_token_id", None)
+    bridge.cfg.eos_token_id = next_token if cfg_eos_token_id == "int" else [50256, next_token]
+    try:
+        chunks = list(
             bridge.generate_stream(
                 tokens,
                 max_new_tokens=3,
+                max_tokens_per_yield=10,
                 stop_at_eos=True,
+                do_sample=False,
                 return_type="tokens",
                 verbose=False,
             )
         )
+    finally:
+        bridge.cfg.eos_token_id = old_eos_token_id
+
+    total_yielded = sum(chunk.shape[-1] for chunk in chunks)
+    assert total_yielded == tokens.shape[1] + 1

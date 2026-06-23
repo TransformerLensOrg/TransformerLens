@@ -2805,11 +2805,16 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                 self.tokenizer is not None and self.tokenizer.eos_token_id is not None
             )
             if eos_token_id is None:
-                assert (
-                    tokenizer_has_eos_token
-                ), "Must pass eos_token_id if stop_at_eos is True and tokenizer is None or has no eos_token_id"
-                assert self.tokenizer is not None
-                eos_token_id = self.tokenizer.eos_token_id
+                # Some chat models use a turn-end token that differs from the
+                # tokenizer's primary EOS. Let adapters provide the full stop
+                # set via cfg.eos_token_id; otherwise fall back to the tokenizer.
+                eos_token_id = getattr(self.cfg, "eos_token_id", None)
+                if eos_token_id is None:
+                    assert (
+                        tokenizer_has_eos_token
+                    ), "Must pass eos_token_id if stop_at_eos is True and tokenizer is None or has no eos_token_id"
+                    assert self.tokenizer is not None
+                    eos_token_id = self.tokenizer.eos_token_id
 
             if isinstance(eos_token_id, int):
                 stop_tokens = [eos_token_id]
@@ -3191,11 +3196,16 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                 self.tokenizer is not None and self.tokenizer.eos_token_id is not None
             )
             if eos_token_id is None:
-                assert (
-                    tokenizer_has_eos_token
-                ), "Must pass eos_token_id if stop_at_eos is True and tokenizer is None or has no eos_token_id"
-                assert self.tokenizer is not None
-                eos_token_id = self.tokenizer.eos_token_id
+                # Some chat models use a turn-end token that differs from the
+                # tokenizer's primary EOS. Let adapters provide the full stop
+                # set via cfg.eos_token_id; otherwise fall back to the tokenizer.
+                eos_token_id = getattr(self.cfg, "eos_token_id", None)
+                if eos_token_id is None:
+                    assert (
+                        tokenizer_has_eos_token
+                    ), "Must pass eos_token_id if stop_at_eos is True and tokenizer is None or has no eos_token_id"
+                    assert self.tokenizer is not None
+                    eos_token_id = self.tokenizer.eos_token_id
             if isinstance(eos_token_id, int):
                 stop_tokens = [eos_token_id]
                 eos_token_for_padding = eos_token_id
@@ -3305,6 +3315,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                 if all_finished:
                     if accumulated_tokens is not None:
                         yield _maybe_decode(accumulated_tokens)
+                        accumulated_tokens = None
                     break
 
             # Yield remainder after loop completes without break

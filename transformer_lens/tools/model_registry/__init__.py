@@ -52,6 +52,7 @@ HF_SUPPORTED_ARCHITECTURES: set[str] = {
     "BloomForCausalLM",
     "CodeGenForCausalLM",
     "CohereForCausalLM",
+    "DeepseekV2ForCausalLM",
     "DeepseekV3ForCausalLM",
     "FalconForCausalLM",
     "GemmaForCausalLM",
@@ -78,6 +79,7 @@ HF_SUPPORTED_ARCHITECTURES: set[str] = {
     "LlavaForConditionalGeneration",
     "LlavaNextForConditionalGeneration",
     "LlavaOnevisionForConditionalGeneration",
+    "Lfm2MoeForCausalLM",
     "MambaForCausalLM",
     "Mamba2ForCausalLM",
     "MPTForCausalLM",
@@ -90,6 +92,7 @@ HF_SUPPORTED_ARCHITECTURES: set[str] = {
     "OPTForCausalLM",
     "PhiForCausalLM",
     "Phi3ForCausalLM",
+    "PhiMoEForCausalLM",
     "QwenForCausalLM",
     "Qwen2ForCausalLM",
     "Qwen3ForCausalLM",
@@ -101,6 +104,7 @@ HF_SUPPORTED_ARCHITECTURES: set[str] = {
     "StableLmForCausalLM",
     "T5ForConditionalGeneration",
     "MT5ForConditionalGeneration",
+    "T5GemmaForConditionalGeneration",
     "XGLMForCausalLM",
 }
 
@@ -114,6 +118,7 @@ CANONICAL_AUTHORS_BY_ARCH: dict[str, list[str]] = {
     "BloomForCausalLM": ["bigscience"],
     "CodeGenForCausalLM": ["Salesforce"],
     "CohereForCausalLM": ["CohereLabs"],
+    "DeepseekV2ForCausalLM": ["deepseek-ai"],
     "DeepseekV3ForCausalLM": ["deepseek-ai"],
     "FalconForCausalLM": ["tiiuae"],
     "Gemma2ForCausalLM": ["google"],
@@ -138,6 +143,7 @@ CANONICAL_AUTHORS_BY_ARCH: dict[str, list[str]] = {
     "LlavaForConditionalGeneration": ["llava-hf"],
     "LlavaNextForConditionalGeneration": ["llava-hf"],
     "LlavaOnevisionForConditionalGeneration": ["llava-hf"],
+    "Lfm2MoeForCausalLM": ["LiquidAI"],
     "Mamba2ForCausalLM": ["state-spaces"],
     "MambaForCausalLM": ["state-spaces"],
     "MistralForCausalLM": ["mistralai"],
@@ -151,6 +157,7 @@ CANONICAL_AUTHORS_BY_ARCH: dict[str, list[str]] = {
     "OpenELMForCausalLM": ["apple"],
     "OPTForCausalLM": ["facebook"],
     "Phi3ForCausalLM": ["microsoft"],
+    "PhiMoEForCausalLM": ["microsoft"],
     "PhiForCausalLM": ["microsoft"],
     "Glm4MoeForCausalLM": ["zai-org"],
     "Qwen2ForCausalLM": ["Qwen", "nvidia"],
@@ -163,6 +170,7 @@ CANONICAL_AUTHORS_BY_ARCH: dict[str, list[str]] = {
     "SmolLM3ForCausalLM": ["HuggingFaceTB"],
     "StableLmForCausalLM": ["stabilityai"],
     "T5ForConditionalGeneration": ["google-t5", "google", "Salesforce", "MBZUAI"],
+    "T5GemmaForConditionalGeneration": ["google"],
     "XGLMForCausalLM": ["facebook"],
 }
 
