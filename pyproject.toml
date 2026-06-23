@@ -48,6 +48,7 @@
         "black>=23.3.0",
         "circuitsvis>=1.38.1",
         "isort==5.8.0",
+        "matplotlib>=3.10.8",
         "mypy>=1.10.0",
         "nbval>=0.10.0",
         "plotly>=5.12.0",
