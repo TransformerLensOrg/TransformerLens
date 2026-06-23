@@ -31,6 +31,7 @@ ARCHITECTURE_DESCRIPTIONS: dict[str, str] = {
     "GPTNeoXForCausalLM": "EleutherAI's GPT-NeoX architecture used in Pythia models",
     "GPTJForCausalLM": "EleutherAI's GPT-J 6B parameter model",
     "LlamaForCausalLM": "Meta's LLaMA architecture, basis for many open models",
+    "Lfm2MoeForCausalLM": "LiquidAI's LFM2 hybrid convolution/attention Mixture of Experts model",
     "MistralForCausalLM": "Mistral AI's efficient 7B parameter model with sliding window attention",
     "MixtralForCausalLM": "Mistral AI's Mixture of Experts model",
     "GemmaForCausalLM": "Google's Gemma lightweight open model family",
@@ -47,6 +48,7 @@ ARCHITECTURE_DESCRIPTIONS: dict[str, str] = {
     "OPTForCausalLM": "Meta's Open Pre-trained Transformer",
     "PhiForCausalLM": "Microsoft's Phi small language model",
     "Phi3ForCausalLM": "Microsoft's Phi-3 improved small model",
+    "PhiMoEForCausalLM": "Microsoft's Phi sparse Mixture of Experts model",
     "FalconForCausalLM": "TII's Falcon model series",
     "OlmoForCausalLM": "Allen AI's OLMo open language model",
     "Olmo2ForCausalLM": "Allen AI's OLMo 2 with improved training",
@@ -55,6 +57,7 @@ ARCHITECTURE_DESCRIPTIONS: dict[str, str] = {
     "StableLmForCausalLM": "Stability AI's StableLM model",
     "SmolLM3ForCausalLM": "Hugging Face's SmolLM3 compact open model with NoPE layers",
     "T5ForConditionalGeneration": "Google's T5 encoder-decoder model (partial support)",
+    "T5GemmaForConditionalGeneration": "Google's T5Gemma encoder-decoder model with Gemma-style RoPE, GQA, and gated MLP",
     # Unsupported architectures
     "BertModel": "Google's BERT bidirectional encoder for understanding tasks",
     "BertForMaskedLM": "BERT with masked language modeling head",
