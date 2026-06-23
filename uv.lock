@@ -1189,6 +1189,15 @@ wheels = [
 ]
 
 [[package]]
+name = "entrypoints"
+version = "0.4"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/ea/8d/a7121ffe5f402dc015277d2d31eb82d2187334503a011c18f2e78ecbb9b2/entrypoints-0.4.tar.gz", hash = "sha256:b706eddaa9218a19ebcd67b56818f05bb27589b1ca9e8d797b74affad4ccacd4", size = 13974, upload-time = "2022-02-02T21:30:28.172Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/35/a8/365059bbcd4572cbc41de17fd5b682be5868b218c3c5479071865cab9078/entrypoints-0.4-py3-none-any.whl", hash = "sha256:f174b5ff827504fd3cd97cc3f8649f3693f51538c7e4bdf3ef002c8429d42f9f", size = 5294, upload-time = "2022-02-02T21:30:26.024Z" },
+]
+
+[[package]]
 name = "etils"
 version = "1.13.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1943,7 +1952,7 @@ wheels = [
 
 [[package]]
 name = "ipykernel"
-version = "6.30.0"
+version = "6.29.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "appnope", marker = "sys_platform == 'darwin'" },
@@ -1961,9 +1970,9 @@ dependencies = [
     { name = "tornado" },
     { name = "traitlets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/38/27/9e6e30ed92f2ac53d29f70b09da8b2dc456e256148e289678fa0e825f46a/ipykernel-6.30.0.tar.gz", hash = "sha256:b7b808ddb2d261aae2df3a26ff3ff810046e6de3dfbc6f7de8c98ea0a6cb632c", size = 165125, upload-time = "2025-07-21T10:36:09.259Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e9/5c/67594cb0c7055dc50814b21731c22a601101ea3b1b50a9a1b090e11f5d0f/ipykernel-6.29.5.tar.gz", hash = "sha256:f093a22c4a40f8828f8e330a9c297cb93dcab13bd9678ded6de8e5cf81c56215", size = 163367, upload-time = "2024-07-01T14:07:22.543Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1f/3d/00813c3d9b46e3dcd88bd4530e0a3c63c0509e5d8c9eff34723ea243ab04/ipykernel-6.30.0-py3-none-any.whl", hash = "sha256:fd2936e55c4a1c2ee8b1e5fa6a372b8eecc0ab1338750dee76f48fa5cca1301e", size = 117264, upload-time = "2025-07-21T10:36:06.854Z" },
+    { url = "https://files.pythonhosted.org/packages/94/5c/368ae6c01c7628438358e6d337c19b05425727fbb221d2a3c4303c372f42/ipykernel-6.29.5-py3-none-any.whl", hash = "sha256:afdb66ba5aa354b09b91379bac28ae4afebbb30e8b39510c9690afb7a10421b5", size = 117173, upload-time = "2024-07-01T14:07:19.603Z" },
 ]
 
 [[package]]
@@ -2219,18 +2228,20 @@ wheels = [
 
 [[package]]
 name = "jupyter-client"
-version = "8.6.3"
+version = "7.4.9"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
+    { name = "entrypoints" },
     { name = "jupyter-core" },
+    { name = "nest-asyncio" },
     { name = "python-dateutil" },
     { name = "pyzmq" },
     { name = "tornado" },
     { name = "traitlets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/71/22/bf9f12fdaeae18019a468b68952a60fe6dbab5d67cd2a103cac7659b41ca/jupyter_client-8.6.3.tar.gz", hash = "sha256:35b3a0947c4a6e9d589eb97d7d4cd5e90f910ee73101611f01283732bd6d9419", size = 342019, upload-time = "2024-09-17T10:44:17.613Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/1e/33/71778cdd2c69445bcd3bb6029da2e43cc9b5cbbeef4f4982ef3aaf396650/jupyter_client-7.4.9.tar.gz", hash = "sha256:52be28e04171f07aed8f20e1616a5a552ab9fee9cbbe6c1896ae170c3880d392", size = 329115, upload-time = "2023-01-12T20:05:10.58Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/11/85/b0394e0b6fcccd2c1eeefc230978a6f8cb0c5df1e4cd3e7625735a0d7d1e/jupyter_client-8.6.3-py3-none-any.whl", hash = "sha256:e8a19cc986cc45905ac3362915f410f3af85424b4c0905e94fa5f2cb08e8f23f", size = 106105, upload-time = "2024-09-17T10:44:15.218Z" },
+    { url = "https://files.pythonhosted.org/packages/fd/a7/ef3b7c8b9d6730a21febdd0809084e4cea6d2a7e43892436adecdd0acbd4/jupyter_client-7.4.9-py3-none-any.whl", hash = "sha256:214668aaea208195f4c13d28eb272ba79f945fc0cf3f11c7092c20b2ca1980e7", size = 133492, upload-time = "2023-01-12T20:05:08.044Z" },
 ]
 
 [[package]]
@@ -3579,7 +3590,7 @@ wheels = [
 
 [[package]]
 name = "notebook"
-version = "6.5.4"
+version = "6.5.7"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "argon2-cffi" },
@@ -3599,9 +3610,9 @@ dependencies = [
     { name = "tornado" },
     { name = "traitlets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/52/1e/b555b6e33c962a605e2e85b6014f609d3e1c6a5ff48f7c2480376b430d96/notebook-6.5.4.tar.gz", hash = "sha256:517209568bd47261e2def27a140e97d49070602eea0d226a696f42a7f16c9a4e", size = 5785832, upload-time = "2023-04-06T15:08:15.471Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/05/bc/b025bac523640c13b0c1150466475eac3d79acbf187ef6c1967596c41c43/notebook-6.5.7.tar.gz", hash = "sha256:04eb9011dfac634fbd4442adaf0a8c27cd26beef831fe1d19faf930c327768e4", size = 5786526, upload-time = "2024-05-01T17:42:26.956Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/7a/21/0e7683e7c4d51b8f6cc5df9bbd33fb2d1e114b9e5dcddeef96ebd8e86348/notebook-6.5.4-py3-none-any.whl", hash = "sha256:dd17e78aefe64c768737b32bf171c1c766666a21cc79a44d37a1700771cab56f", size = 529822, upload-time = "2023-04-06T15:08:11.457Z" },
+    { url = "https://files.pythonhosted.org/packages/af/9c/0620631da9d7013e95a8f985043cad229a0d8fb537a7e3f8ff8467565a8c/notebook-6.5.7-py3-none-any.whl", hash = "sha256:a6afa9a4ff4d149a0771ff8b8c881a7a73b3835f9add0606696d6e9d98ac1cd0", size = 529829, upload-time = "2024-05-01T17:42:22.403Z" },
 ]
 
 [[package]]
@@ -6538,10 +6549,8 @@ demo = [
 dev = [
     { name = "black" },
     { name = "circuitsvis" },
-    { name = "ipython", version = "8.38.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "ipython", version = "9.10.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "isort" },
-    { name = "jupyter" },
+    { name = "matplotlib" },
     { name = "mypy" },
     { name = "nbval" },
     { name = "plotly" },
@@ -6566,8 +6575,12 @@ docs = [
     { name = "tabulate" },
 ]
 jupyter = [
+    { name = "ipython", version = "8.38.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "ipython", version = "9.10.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "ipywidgets" },
+    { name = "jupyter" },
     { name = "jupyterlab" },
+    { name = "notebook" },
 ]
 multimodal = [
     { name = "timm" },
@@ -6616,9 +6629,8 @@ demo = [
 dev = [
     { name = "black", specifier = ">=23.3.0" },
     { name = "circuitsvis", specifier = ">=1.38.1" },
-    { name = "ipython", specifier = ">=8.0.0" },
     { name = "isort", specifier = "==5.8.0" },
-    { name = "jupyter", specifier = ">=1.0.0" },
+    { name = "matplotlib", specifier = ">=3.10.8" },
     { name = "mypy", specifier = ">=1.10.0" },
     { name = "nbval", specifier = ">=0.10.0" },
     { name = "plotly", specifier = ">=5.12.0" },
@@ -6643,8 +6655,11 @@ docs = [
     { name = "tabulate", specifier = ">=0.9.0" },
 ]
 jupyter = [
+    { name = "ipython", specifier = ">=8.0.0" },
     { name = "ipywidgets", specifier = ">=8.1.1" },
+    { name = "jupyter", specifier = ">=1.0.0" },
     { name = "jupyterlab", specifier = ">=3.5.0" },
+    { name = "notebook", specifier = ">=6.5.7" },
 ]
 multimodal = [
     { name = "timm", specifier = ">=1.0.27" },
