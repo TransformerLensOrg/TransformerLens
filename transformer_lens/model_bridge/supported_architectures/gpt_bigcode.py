@@ -84,7 +84,6 @@ class GPTBigCodeArchitectureAdapter(ArchitectureAdapter):
         self.cfg.gated_mlp = False
         self.cfg.attn_only = False
         self.cfg.uses_rms_norm = False
-        self.cfg.eps_attr = "layer_norm_epsilon"
         self.cfg.n_key_value_heads = 1  # MQA: always 1 KV head
 
         # Mirror GPT-2 combined-QKV flags

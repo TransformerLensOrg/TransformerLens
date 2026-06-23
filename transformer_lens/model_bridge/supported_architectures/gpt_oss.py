@@ -30,8 +30,6 @@ class GPTOSSArchitectureAdapter(ArchitectureAdapter):
 
         self.cfg.normalization_type = "RMS"
         self.cfg.uses_rms_norm = True
-        # GPT-OSS uses 'variance_epsilon' instead of 'eps' for RMSNorm
-        self.cfg.eps_attr = "variance_epsilon"
         # GPT-OSS uses rotary position embeddings, not learned embeddings
         self.cfg.positional_embedding_type = "rotary"
         # GPT-OSS attention returns (output, attn_weights), not a 3-tuple

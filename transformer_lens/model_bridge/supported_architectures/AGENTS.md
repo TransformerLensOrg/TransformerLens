@@ -98,7 +98,6 @@ HF raw config attributes are invisible to TL-side consumers unless propagated to
 | `query_pre_attn_scalar` | `self.cfg.query_pre_attn_scalar` | Gemma2/3 — query scaling override |
 | `sliding_window` | `self.cfg.sliding_window` | Mistral, Qwen2, Gemma2 — local-attention layers |
 | `layer_types` | `self.cfg.layer_types` | Hybrid models with per-layer attention type lists |
-| Non-standard RMSNorm eps key | `self.cfg.eps_attr = "<attribute_name>"` | Llama uses `"variance_epsilon"` instead of `"eps"` |
 
 **Weight-fold attributes** (need BOTH surface-on-cfg AND fold-into-weight via `preprocess_weights` — see [the next section](#when-to-override-preprocess_weights)):
 
@@ -238,7 +237,6 @@ Failure message names the missing set. (`INTENTIONAL_EXCLUDES` in the test handl
 | RoPE (rotary positional embeddings) | `llama.py`, `mistral.py`, `qwen2.py`+ | `RotaryEmbeddingBridge(name="model.rotary_emb")` + `cfg.positional_embedding_type = "rotary"` |
 | GQA / MQA (`n_key_value_heads < n_heads`) | `llama.py`, `mistral.py`, `falcon.py`, `cohere.py` | Set `cfg.n_key_value_heads`; pass `n_kv_heads=` to `_qkvo_weight_conversions()` |
 | RMSNorm with offset | `gemma1.py`, `gemma2.py`, `gemma3.py` | `cfg.rmsnorm_uses_offset = True` + `ArithmeticTensorConversion(ADDITION, 1.0)` |
-| Custom RMSNorm eps attribute | `llama.py` | `cfg.eps_attr = "variance_epsilon"` (Llama uses this instead of `eps`) |
 | Standard LayerNorm | `gpt2.py`, `bloom.py` | `cfg.normalization_type = "LN"` |
 | Gated MLP (`gate_proj`, `up_proj`, `down_proj`) | `llama.py`, `mistral.py`, `gemma1.py`, `qwen2.py`+ | `GatedMLPBridge` with submodules `{gate, in, out}` |
 | Combined QKV (`c_attn`) | `gpt2.py`, `bloom.py` | `QKVSplitRearrangeConversion` to split + rearrange |
@@ -324,7 +322,7 @@ class TestMyArchHookCompatibility:
 
 No weight load, no HF Hub access — synthetic cfg + structural assertions only. Runs in default `make unit-test`.
 
-Add one test per architecture quirk (softcaps, RMSNorm offsets, sliding window, custom `eps_attr`, MoE routing). Gemma1's "must NOT override `setup_hook_compatibility`" is a good one-quirk-one-test example.
+Add one test per architecture quirk (softcaps, RMSNorm offsets, sliding window, MoE routing). Gemma1's "must NOT override `setup_hook_compatibility`" is a good one-quirk-one-test example.
 
 ### 2. Integration parity test — `tests/integration/model_bridge/test_<arch>_adapter.py`
 

@@ -63,9 +63,6 @@ class TestLlavaAdapterConfig:
     def test_is_multimodal(self, adapter):
         assert adapter.cfg.is_multimodal is True
 
-    def test_eps_attr(self, adapter):
-        assert adapter.cfg.eps_attr == "variance_epsilon"
-
     def test_vision_config_extracted(self, adapter):
         assert adapter.cfg.vision_hidden_size == 1024
         assert adapter.cfg.vision_num_layers == 24

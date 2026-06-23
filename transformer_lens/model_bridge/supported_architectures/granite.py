@@ -52,7 +52,6 @@ class GraniteArchitectureAdapter(ArchitectureAdapter):
         self.cfg.attn_only = False
         self.cfg.uses_rms_norm = True
         self.cfg.default_prepend_bos = False
-        self.cfg.eps_attr = "variance_epsilon"
 
         self.default_config = {
             "d_model": cfg.d_model,

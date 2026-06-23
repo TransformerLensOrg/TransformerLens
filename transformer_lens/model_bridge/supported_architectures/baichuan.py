@@ -186,7 +186,6 @@ class BaichuanArchitectureAdapter(ArchitectureAdapter):
         self.cfg.gated_mlp = True
         self.cfg.attn_only = False
         self.cfg.uses_rms_norm = True
-        self.cfg.eps_attr = "variance_epsilon"
 
         # Fused W_pack prevents standard fold_ln from reaching Q/K/V separately.
         # preprocess_weights() handles it instead.

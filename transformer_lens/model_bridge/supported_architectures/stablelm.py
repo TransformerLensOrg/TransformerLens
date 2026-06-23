@@ -16,6 +16,7 @@ from transformer_lens.model_bridge.generalized_components import (
     GatedMLPBridge,
     LinearBridge,
     NormalizationBridge,
+    ParallelBlockBridge,
     PositionEmbeddingsAttentionBridge,
     RotaryEmbeddingBridge,
     UnembeddingBridge,
@@ -135,10 +136,13 @@ class StableLmArchitectureAdapter(ArchitectureAdapter):
             },
         )
 
+        # StableLM has both parallel (use_parallel_residual=True) and sequential variants.
+        block_cls = ParallelBlockBridge if use_parallel_residual else BlockBridge
+
         self.component_mapping = {
             "embed": EmbeddingBridge(name="model.embed_tokens"),
             "rotary_emb": RotaryEmbeddingBridge(name="model.rotary_emb"),
-            "blocks": BlockBridge(
+            "blocks": block_cls(
                 name="model.layers",
                 submodules=block_submodules,
             ),

@@ -121,7 +121,7 @@ def get_offset_position_ids(
     """
     Returns the indices of non-padded tokens, offset by the position of the first attended token.
     """
-    # shift the position ids so that the id at the the first attended token position becomes zero.
+    # shift the position ids so that the id at the first attended token position becomes zero.
     # The position ids of the prepending pad tokens are shifted to -1.
     shifted_position_ids = attention_mask.cumsum(dim=1) - 1  # [batch, tokens_length]
 

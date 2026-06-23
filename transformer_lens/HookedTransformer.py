@@ -35,7 +35,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 import tqdm.auto as tqdm
 from jaxtyping import Float, Int
-from packaging import version
 from transformers import AutoTokenizer, PreTrainedModel, PreTrainedTokenizerBase
 from transformers.models.auto.tokenization_auto import AutoTokenizer
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
@@ -1346,9 +1345,6 @@ class HookedTransformer(HookedRootModule):
             quant_method = qc.get("quant_method", "")
             assert not load_in_8bit, "8-bit quantization is not supported"
             assert not (
-                load_in_4bit and (version.parse(torch.__version__) < version.parse("2.1.1"))
-            ), "Quantization is only supported for torch versions >= 2.1.1"
-            assert not (
                 load_in_4bit and ("llama" not in model_name.lower())
             ), "Quantization is only supported for Llama models"
             if load_in_4bit:
@@ -1509,7 +1505,7 @@ class HookedTransformer(HookedRootModule):
         The default PyTorch scheme is the following: all linear layers use uniform(-1/sqrt(fan_in),
         1/sqrt(fan_in)) for weights, and uniform(-1/sqrt(fan_in), 1/sqrt(fan_in)) for biases. For
         biases, fan_in is computed using the fan_in for the weight matrix of the linear layer. Note
-        tha it *does not actually* use Kaiming initialization, despite the fact that it calls the
+        that it *does not actually* use Kaiming initialization, despite the fact that it calls the
         function.
 
         However, for Transformer blocks, it instead initializes biases to zero and weights using Xavier uniform, that

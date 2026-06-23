@@ -53,10 +53,8 @@ class CohereArchitectureAdapter(ArchitectureAdapter):
         # --- Normalization ---
         # CohereLayerNorm is true LayerNorm (subtracts mean), NOT RMSNorm.
         # uses_rms_norm=False tells NormalizationBridge to subtract the mean.
-        # eps_attr="variance_epsilon": CohereLayerNorm stores eps as self.variance_epsilon.
         self.cfg.normalization_type = "LN"
         self.cfg.uses_rms_norm = False
-        self.cfg.eps_attr = "variance_epsilon"
         self.cfg.final_rms = False
 
         # --- Position embeddings and MLP ---

@@ -74,9 +74,6 @@ def _make_w_pack_component(d_model: int) -> Any:
 
 
 class TestBaichuanAdapterConfig:
-    def test_eps_attr(self, adapter: BaichuanArchitectureAdapter) -> None:
-        assert adapter.cfg.eps_attr == "variance_epsilon"
-
     def test_supports_fold_ln_false(self, adapter: BaichuanArchitectureAdapter) -> None:
         assert adapter.supports_fold_ln is False
 

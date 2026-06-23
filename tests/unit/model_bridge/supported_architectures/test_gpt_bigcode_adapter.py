@@ -265,10 +265,6 @@ class TestGPTBigCodeArchitectureGuards:
     def test_uses_rms_norm_false(self, adapter: GPTBigCodeArchitectureAdapter) -> None:
         assert adapter.cfg.uses_rms_norm is False
 
-    def test_eps_attr(self, adapter: GPTBigCodeArchitectureAdapter) -> None:
-        # GPT-2 family eps (not RMS variance_epsilon).
-        assert adapter.cfg.eps_attr == "layer_norm_epsilon"
-
 
 # ---------------------------------------------------------------------------
 # MQAQKVConversionRule tests
