@@ -97,6 +97,9 @@ from transformer_lens.model_bridge.generalized_components.ssm_block import SSMBl
 from transformer_lens.model_bridge.generalized_components.ssm_mixer import SSMMixerBridge
 from transformer_lens.model_bridge.generalized_components.symbolic import SymbolicBridge
 from transformer_lens.model_bridge.generalized_components.t5_block import T5BlockBridge
+from transformer_lens.model_bridge.generalized_components.t5gemma_decoder_block import (
+    T5GemmaDecoderBlockBridge,
+)
 from transformer_lens.model_bridge.generalized_components.unembedding import (
     UnembeddingBridge,
 )
@@ -142,6 +145,7 @@ __all__ = [
     "SymbolicBridge",
     "UnembeddingBridge",
     "T5BlockBridge",
+    "T5GemmaDecoderBlockBridge",
     "SiglipVisionEncoderBridge",
     "SiglipVisionEncoderLayerBridge",
     "SSM2MixerBridge",
