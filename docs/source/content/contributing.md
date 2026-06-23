@@ -28,7 +28,7 @@ source .venv/bin/activate
 cp .env.example .env
 ```
 
-Dependency groups are defined in `pyproject.toml` under `[dependency-groups]`. The project sets `default-groups = ["dev", "docs", "jupyter", "multimodal"]`, so `uv sync` installs the standard contributor environment out of the box — you do not need to pass `--group` flags for the standard contributor setup.
+Dependency groups are defined in `pyproject.toml` under `[dependency-groups]`. The project sets `default-groups = ["dev", "docs", "jupyter", "multimodal"]`, so `uv sync` installs these groups out of the box — you do not need to pass `--group` flags for the standard contributor setup.
 
 - Standard contributor setup (recommended default): `uv sync`
 - Include the optional `quantization` group (bitsandbytes, optimum-quanto): `uv sync --all-groups`
@@ -156,7 +156,7 @@ They will also be automatically checked with [pytest](https://docs.pytest.org/) 
 If you want to view your documentation changes, run `uv run docs-hot-reload`. This will give you
 hot-reloading docs (they change in real time as you edit docstrings).
 
-For documentation generation to work, the standard `uv sync` is enough because `docs` is a default group. For a docs-focused environment without other default groups, use `uv sync --no-default-groups --group docs`.
+The standard `uv sync` includes documentation generation. For a docs-focused environment without other default groups, use `uv sync --no-default-groups --group docs`.
 
 ### Docstring Style Guide
 
