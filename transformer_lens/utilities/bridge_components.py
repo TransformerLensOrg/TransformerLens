@@ -1,6 +1,6 @@
 """Utilities for traversing and applying functions to every component in a TransformerBridge model."""
 
-from typing import Any, Callable
+from typing import Any, Callable, cast
 
 import torch.nn as nn
 
@@ -73,8 +73,13 @@ def collect_components_of_block_bridge(
     # Make sure the remote component is a ModuleList
     if isinstance(remote_module_list, nn.ModuleList):
         for block in remote_module_list:
-            components[block.name] = block
-            components = collect_all_submodules_of_component(model, block, components, block.name)
+            block_component = cast(GeneralizedComponent, block)
+            block_name = block_component.name
+            assert block_name is not None, "Block bridge component must have a name"
+            components[block_name] = block_component
+            components = collect_all_submodules_of_component(
+                model, block_component, components, block_name
+            )
     return components
 
 
