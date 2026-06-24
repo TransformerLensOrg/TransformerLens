@@ -935,7 +935,7 @@ def run_benchmark_suite(
             # Use appropriate AutoModel class (e.g., AutoModelForSeq2SeqLM for T5)
             auto_model_class = get_auto_model_class(model_name, trust_remote_code=trust_remote_code)
             if verbose and auto_model_class != AutoModelForCausalLM:
-                print(f"Using {auto_model_class.__name__} for encoder-decoder model")
+                print(f"Using {auto_model_class.__name__}")
             # Ensure pad_token_id exists (some models crash without it during init).
             hf_config = AutoConfig.from_pretrained(
                 model_name, trust_remote_code=trust_remote_code, token=_hf_token()
