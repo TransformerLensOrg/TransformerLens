@@ -423,12 +423,9 @@ class ComponentBenchmarker:
         # These architectures delegate all math to HF; the benchmark can't call the HF
         # attention in isolation (missing position_embeddings, attention_mask, etc.) and
         # PLE submodules receive per-layer inputs at a different dimension than hidden_states.
-        _is_delegated = (
-            hasattr(self.bridge_model, "blocks")
-            and "hook_q_input"
-            not in getattr(
-                self.bridge_model.blocks, "hook_aliases", {"hook_q_input": True}
-            )
+        _blocks_component = getattr(self.adapter, "component_mapping", {}).get("blocks") if self.adapter is not None else None
+        _is_delegated = _blocks_component is not None and (
+            "hook_q_input" not in getattr(_blocks_component, "hook_aliases", {"hook_q_input": True})
         )
         if _is_delegated and "attn" in component_path:
             return
