@@ -419,6 +419,31 @@ class ComponentBenchmarker:
         ):
             return
 
+        # Skip attention and PLE submodules when using DelegatedAttentionBlockBridge.
+        # These architectures delegate all math to HF; the benchmark can't call the HF
+        # attention in isolation (missing position_embeddings, attention_mask, etc.) and
+        # PLE submodules receive per-layer inputs at a different dimension than hidden_states.
+        _is_delegated = (
+            hasattr(self.bridge_model, "blocks")
+            and "hook_q_input"
+            not in getattr(
+                self.bridge_model.blocks, "hook_aliases", {"hook_q_input": True}
+            )
+        )
+        if _is_delegated and "attn" in component_path:
+            return
+        if _is_delegated and component_path == "rotary_emb":
+            return
+        if _is_delegated and any(
+            name in component_path
+            for name in (
+                "per_layer_input_gate",
+                "per_layer_projection",
+                "post_per_layer_input_norm",
+            )
+        ):
+            return
+
         # Skip models whose MLP/attn forward signatures require extra context from the block:
         # - BLOOM: MLP requires residual and alibi bias
         # - T5: requires cache_position for relative position embeddings
