@@ -11,6 +11,7 @@ from transformer_lens.benchmarks.utils import (
     make_grad_capture_hook,
     safe_allclose,
 )
+from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge import TransformerBridge
 
 
@@ -44,12 +45,15 @@ def benchmark_backward_hooks(
             hook_names = list(bridge._hook_registry.keys())
 
         # Register backward hooks on bridge
-        bridge_handles = []
+        bridge_hook_points: list[HookPoint] = []
         for hook_name in hook_names:
             if hook_name in bridge.hook_dict:
                 hook_point = bridge.hook_dict[hook_name]
-                handle = hook_point.add_hook(make_grad_capture_hook(bridge_gradients, hook_name, return_none=True), dir="bwd")  # type: ignore[func-returns-value]
-                bridge_handles.append(handle)
+                hook_point.add_hook(
+                    make_grad_capture_hook(bridge_gradients, hook_name, return_none=True),
+                    dir="bwd",
+                )
+                bridge_hook_points.append(hook_point)
 
         # Run bridge forward and backward
         bridge_output = bridge(test_text)
@@ -57,9 +61,8 @@ def benchmark_backward_hooks(
         bridge_loss.backward()
 
         # Clean up hooks
-        for handle in bridge_handles:
-            if handle is not None:
-                handle.remove()
+        for hook_point in bridge_hook_points:
+            hook_point.remove_hooks(dir="bwd")
 
         if reference_model is None:
             # No reference - just verify gradients were captured
@@ -77,12 +80,15 @@ def benchmark_backward_hooks(
             return result
 
         # Register backward hooks on reference model
-        reference_handles = []
+        reference_hook_points: list[HookPoint] = []
         for hook_name in hook_names:
             if hook_name in reference_model.hook_dict:
                 hook_point = reference_model.hook_dict[hook_name]
-                handle = hook_point.add_hook(make_grad_capture_hook(reference_gradients, hook_name, return_none=True), dir="bwd")  # type: ignore[func-returns-value]
-                reference_handles.append(handle)
+                hook_point.add_hook(
+                    make_grad_capture_hook(reference_gradients, hook_name, return_none=True),
+                    dir="bwd",
+                )
+                reference_hook_points.append(hook_point)
 
         # Run reference forward and backward
         reference_output = reference_model(test_text)
@@ -90,9 +96,8 @@ def benchmark_backward_hooks(
         reference_loss.backward()
 
         # Clean up hooks
-        for handle in reference_handles:
-            if handle is not None:
-                handle.remove()
+        for hook_point in reference_hook_points:
+            hook_point.remove_hooks(dir="bwd")
 
         # Compare gradients
         common_hooks = set(bridge_gradients.keys()) & set(reference_gradients.keys())
@@ -295,12 +300,15 @@ def benchmark_critical_backward_hooks(
         bridge_gradients: Dict[str, torch.Tensor] = {}
 
         # Register backward hooks on bridge
-        bridge_handles = []
+        bridge_hook_points: list[HookPoint] = []
         for hook_name in critical_hooks:
             if hook_name in bridge.hook_dict:
                 hook_point = bridge.hook_dict[hook_name]
-                handle = hook_point.add_hook(make_grad_capture_hook(bridge_gradients, hook_name, return_none=True), dir="bwd")  # type: ignore[func-returns-value]
-                bridge_handles.append(handle)
+                hook_point.add_hook(
+                    make_grad_capture_hook(bridge_gradients, hook_name, return_none=True),
+                    dir="bwd",
+                )
+                bridge_hook_points.append(hook_point)
 
         # Run bridge forward and backward
         bridge_output = bridge(test_text)
@@ -308,9 +316,8 @@ def benchmark_critical_backward_hooks(
         bridge_loss.backward()
 
         # Clean up hooks
-        for handle in bridge_handles:
-            if handle is not None:
-                handle.remove()
+        for hook_point in bridge_hook_points:
+            hook_point.remove_hooks(dir="bwd")
 
         if reference_model is None:
             # No reference - just verify gradients were captured
@@ -331,12 +338,15 @@ def benchmark_critical_backward_hooks(
         # Register backward hooks on reference model
         reference_gradients: Dict[str, torch.Tensor] = {}
 
-        reference_handles = []
+        reference_hook_points: list[HookPoint] = []
         for hook_name in critical_hooks:
             if hook_name in reference_model.hook_dict:
                 hook_point = reference_model.hook_dict[hook_name]
-                handle = hook_point.add_hook(make_grad_capture_hook(reference_gradients, hook_name, return_none=True), dir="bwd")  # type: ignore[func-returns-value]
-                reference_handles.append(handle)
+                hook_point.add_hook(
+                    make_grad_capture_hook(reference_gradients, hook_name, return_none=True),
+                    dir="bwd",
+                )
+                reference_hook_points.append(hook_point)
 
         # Run reference forward and backward
         reference_output = reference_model(test_text)
@@ -344,9 +354,8 @@ def benchmark_critical_backward_hooks(
         reference_loss.backward()
 
         # Clean up hooks
-        for handle in reference_handles:
-            if handle is not None:
-                handle.remove()
+        for hook_point in reference_hook_points:
+            hook_point.remove_hooks(dir="bwd")
 
         # Compare gradients
         mismatches = []

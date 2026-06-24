@@ -104,7 +104,6 @@ Set these on `self.cfg` in `__init__` *before* building the component mapping (t
 | `gated_mlp`                | `bool` | MLP has gate projection (SwiGLU)              |
 | `attn_only`                | `bool` | Model has no MLP layers (rare)                |
 | `uses_rms_norm`            | `bool` | Should match `normalization_type == "RMS"`    |
-| `eps_attr`                 | `str`  | HF attribute name for norm epsilon            |
 
 For GQA models, also forward `n_key_value_heads`:
 
@@ -284,7 +283,6 @@ Both must be clean. Don't paper over mypy errors with `# type: ignore` — fix t
 
 ## Common pitfalls
 
-- **Wrong `eps_attr` name.** Models that look identical use different attribute names (`variance_epsilon`, `rms_norm_eps`, `eps`). Read the norm class.
 - **Forgetting `n_key_value_heads`.** Without it, GQA models silently reshape weights as if they were MHA — verification fails with cryptic shape errors.
 - **Missing registration.** Adapter exists but the factory can't find it. Update both `__init__.py` and `architecture_adapter_factory.py`.
 - **Skipping `setup_component_testing` for RoPE.** Rotary embeddings need to be wired through to each attention bridge or component testing produces nonsense.

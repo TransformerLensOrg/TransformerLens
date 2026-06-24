@@ -28,7 +28,7 @@ INVALID_HEAD_NAME_ERR = (
 
 SEQ_LEN_ERR = "The sequence must be non-empty and must fit within the model's context window."
 
-DET_PAT_NOT_SQUARE_ERR = "The detection pattern must be a lower triangular matrix of shape (sequence_length, sequence_length); sequence_length=%d; got detection patern of shape %s"
+DET_PAT_NOT_SQUARE_ERR = "The detection pattern must be a lower triangular matrix of shape (sequence_length, sequence_length); sequence_length=%d; got detection pattern of shape %s"
 
 
 def detect_head(
@@ -87,7 +87,7 @@ def detect_head(
             Currently available heads are: `["previous_token_head", "duplicate_token_head",
             "induction_head"]`.
         heads: If specific attention heads is given here, all other heads' score is set to -1.
-            Useful for IOI-style circuit analysis. Heads can be spacified as a list tuples (layer,
+            Useful for IOI-style circuit analysis. Heads can be specified as a list of tuples (layer,
             head) or a dictionary mapping a layer to heads within that layer that we want to
             analyze. cache: Include the cache to save time if you want.
         exclude_bos: Exclude attention paid to the beginning of sequence token.

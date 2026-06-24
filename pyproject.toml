@@ -17,16 +17,13 @@
         "rich>=12.6.0",
         "sentencepiece",
         "torch>=2.6",
-        # Pin to the torchvision that pairs with the project's torch 2.7.x so adding
-        # it for multimodal processors doesn't force a repo-wide torch upgrade.
-        "torchvision>=0.22,<0.23",
         "tqdm>=4.64.1",
         "transformers-stream-generator>=0.0.5,<0.1",
         "transformers>=5.4.0",
         "typeguard>=4.2,<5",
         "typing-extensions",
         "wandb>=0.13.5",
-]
+    ]
     description="An implementation of transformers tailored for mechanistic interpretability."
     license={text="MIT"}
     name="transformer-lens"
@@ -60,9 +57,8 @@
     dev=[
         "black>=23.3.0",
         "circuitsvis>=1.38.1",
-        "ipython>=8.0.0",
         "isort==5.8.0",
-        "jupyter>=1.0.0",
+        "matplotlib>=3.10.8",
         "mypy>=1.10.0",
         "nbval>=0.10.0",
         "plotly>=5.12.0",
@@ -86,12 +82,20 @@
         "sphinxcontrib-napoleon>=0.7",
         "tabulate>=0.9.0",
     ]
-    jupyter=["ipywidgets>=8.1.1", "jupyterlab>=3.5.0"]
+    jupyter=[
+        "ipython>=8.0.0",
+        "ipywidgets>=8.1.1",
+        "jupyter>=1.0.0",
+        "jupyterlab>=3.5.0",
+        "notebook>=6.5.7",
+    ]
     # Vision/audio deps for multimodal adapters (Gemma 3n's vision tower needs timm; image
     # processors need torchvision). In default-groups so contributor/CI test runs install them,
-    # while downstream users get a light core install. torchvision is pinned to the release
-    # pairing with torch 2.7.x so it doesn't force a repo-wide torch upgrade.
-    multimodal=["timm>=1.0.27", "torchvision>=0.22,<0.23"]
+    # while downstream users get a light core install. No torchvision upper bound: torchvision
+    # exact-pins its matching torch, so the resolver co-selects a compatible
+    # (Python, torch, torchvision) set (e.g. py3.12→0.22/torch2.7, py3.13→0.23+/torch2.8+).
+    # Capping it would just reintroduce the Python-3.13 block on the next torch/torchvision bump.
+    multimodal=["timm>=1.0.27", "torchvision>=0.22"]
     quantization=["bitsandbytes>=0.46.1", "optimum-quanto>=0.2.7"]
 
 [tool.uv]

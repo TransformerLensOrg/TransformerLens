@@ -56,7 +56,7 @@ class Phi3ArchitectureAdapter(ArchitectureAdapter):
         # Set config variables for weight processing
         self.cfg.normalization_type = "RMS"
         self.cfg.positional_embedding_type = "rotary"
-        self.cfg.final_rms = False
+        self.cfg.final_rms = True
         self.cfg.gated_mlp = True
         self.cfg.attn_only = False
 
