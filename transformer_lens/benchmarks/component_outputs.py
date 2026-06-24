@@ -437,8 +437,6 @@ class ComponentBenchmarker:
         _is_delegated = self._is_delegated_block()
         if _is_delegated and "attn" in component_path:
             return
-        if _is_delegated and component_path == "rotary_emb":
-            return
         if _is_delegated and any(
             name in component_path
             for name in (
