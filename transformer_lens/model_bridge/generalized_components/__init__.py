@@ -49,6 +49,9 @@ from transformer_lens.model_bridge.generalized_components.altup_block import (
 from transformer_lens.model_bridge.generalized_components.gated_mlp import (
     GatedMLPBridge,
 )
+from transformer_lens.model_bridge.generalized_components.glm_moe_dsa_attention import (
+    GlmMoeDsaAttentionBridge,
+)
 from transformer_lens.model_bridge.generalized_components.gated_rms_norm import (
     GatedRMSNormBridge,
 )
@@ -138,6 +141,7 @@ __all__ = [
     "MPTALiBiAttentionBridge",
     "AltUpBlockBridge",
     "GatedMLPBridge",
+    "GlmMoeDsaAttentionBridge",
     "MLAAttentionBridge",
     "GatedRMSNormBridge",
     "MoEBridge",

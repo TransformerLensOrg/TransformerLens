@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-06-22T13:18:31.460076",
+  "last_updated": "2026-06-22T15:04:27.156125",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -12362,9 +12362,29 @@
       "invalidation_reason": null
     },
     {
+      "model_id": "tiny-random/glm-5.1",
+      "architecture_id": "GlmMoeDsaForCausalLM",
+      "verified_date": "2026-06-22",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P3=85.0% (failed: layer_norm_folding, value_bias_folding, weight_modification)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
       "model_id": "google/gemma-4-E2B-it",
       "architecture_id": "Gemma4ForConditionalGeneration",
       "verified_date": "2026-06-10",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "trl-internal-testing/tiny-Glm4MoeForCausalLM",
+      "architecture_id": "Glm4MoeForCausalLM",
+      "verified_date": "2026-06-22",
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Full verification completed",

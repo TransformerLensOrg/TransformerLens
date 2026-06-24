@@ -40,6 +40,7 @@ ARCHITECTURE_DESCRIPTIONS: dict[str, str] = {
     "Gemma3nForConditionalGeneration": "Google's Gemma 3n efficient tri-modal model (text-only support)",
     "Gemma4ForConditionalGeneration": "Google's Gemma 4 multimodal model family (text-only support)",
     "Gemma4UnifiedForConditionalGeneration": "Google's Gemma 4 unified encoder-free multimodal model (text-only support)",
+    "GlmMoeDsaForCausalLM": "Z.ai's GLM-5 MoE model with DeepSeek Sparse Attention",
     "Glm4MoeForCausalLM": "Z.ai's GLM-4.5/4.6/4.7 sparse Mixture-of-Experts causal LM",
     "Qwen2ForCausalLM": "Alibaba's Qwen2 multilingual model",
     "Qwen3ForCausalLM": "Alibaba's Qwen3 latest generation",
