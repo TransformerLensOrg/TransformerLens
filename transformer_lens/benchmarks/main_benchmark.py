@@ -1209,14 +1209,14 @@ def run_benchmark_suite(
     # PHASE 2: Bridge (unprocessed) + HookedTransformer (unprocessed)
     # ========================================================================
     current_phase[0] = 2
-    if verbose:
-        print(f"\n{'='*80}")
-        print("PHASE 2: TransformerBridge (unprocessed) + HookedTransformer (unprocessed)")
-        print(f"{'='*80}\n")
 
     # OPTIMIZATION: Run generation benchmarks first (only bridge in memory)
     # Then cleanup bridge before loading HT to reduce peak memory
     if should_run_phase(2) and bridge_unprocessed:
+        if verbose:
+            print(f"\n{'='*80}")
+            print("PHASE 2: TransformerBridge (unprocessed) + HookedTransformer (unprocessed)")
+            print(f"{'='*80}\n")
         if verbose:
             print("Running Phase 2 benchmarks...\n")
 
