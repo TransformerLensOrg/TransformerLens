@@ -199,6 +199,17 @@ class BenchmarkReport:
 class ComponentBenchmarker:
     """Benchmarking utility for testing TransformerBridge components against HuggingFace."""
 
+    def _is_delegated_block(self) -> bool:
+        """Return True if the blocks component uses DelegatedAttentionBlockBridge."""
+        blocks = (
+            getattr(self.adapter, "component_mapping", {}).get("blocks")
+            if self.adapter is not None
+            else None
+        )
+        return blocks is not None and (
+            "hook_q_input" not in getattr(blocks, "hook_aliases", {"hook_q_input": True})
+        )
+
     def __init__(
         self,
         bridge_model: nn.Module,
@@ -423,10 +434,7 @@ class ComponentBenchmarker:
         # These architectures delegate all math to HF; the benchmark can't call the HF
         # attention in isolation (missing position_embeddings, attention_mask, etc.) and
         # PLE submodules receive per-layer inputs at a different dimension than hidden_states.
-        _blocks_component = getattr(self.adapter, "component_mapping", {}).get("blocks") if self.adapter is not None else None
-        _is_delegated = _blocks_component is not None and (
-            "hook_q_input" not in getattr(_blocks_component, "hook_aliases", {"hook_q_input": True})
-        )
+        _is_delegated = self._is_delegated_block()
         if _is_delegated and "attn" in component_path:
             return
         if _is_delegated and component_path == "rotary_emb":
@@ -548,6 +556,12 @@ class ComponentBenchmarker:
             ComponentTestResult or None if the component cannot be tested
         """
         try:
+            # Skip rotary_emb for DelegatedAttentionBlockBridge architectures.
+            # Gemma4's RotaryEmbeddingBridge wraps a rotary that returns a set-like
+            # structure which the benchmark comparison can't subscript.
+            if self._is_delegated_block() and component_path == "rotary_emb":
+                return None
+
             # Get bridge component
             # The adapter returns nn.Module, but for bridge models it's actually GeneralizedComponent
             bridge_component = cast(
