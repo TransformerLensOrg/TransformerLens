@@ -3,6 +3,7 @@
 This module provides the bridge components that wrap remote model components and provide
 a consistent interface for accessing their weights and performing operations.
 """
+
 import logging
 import re
 import warnings
@@ -3010,7 +3011,11 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             freq_penalty: Frequency penalty for previous tokens.
             repetition_penalty: HF-style repetition penalty (>1.0 discourages repeats).
             use_past_kv_cache: Use KV caching for faster generation.
-            prepend_bos: Not applied (API compatibility). See generate() docstring.
+            prepend_bos: Whether to prepend a BOS token when tokenizing string inputs.
+                Defaults to None (uses ``cfg.default_prepend_bos``, typically True).
+                Pass ``prepend_bos=False`` when the input is pre-formatted chat-template
+                text that already contains the BOS token to avoid double-BOS.
+                Ignored when input is already a token tensor.
             padding_side: Which side to pad for batched list inputs. Left-padding
                 is forced internally for batched generation.
             return_type: 'input' (match input type), 'str', or 'tokens'.
@@ -3021,25 +3026,22 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             max_tokens_per_yield tokens between yields. First yield includes
             the input tokens; subsequent yields contain only new tokens.
         """
-        if prepend_bos is not None:
-            warnings.warn(
-                "prepend_bos is ignored during TransformerBridge.generate_stream(). "
-                "The HF model expects tokens with the tokenizer's default BOS handling.",
-                stacklevel=2,
-            )
-
         # --- Input parsing (mirrors generate()) ---
         _is_batched_list = isinstance(input, list) and len(input) > 1
 
         if isinstance(input, str):
-            input_tokens = self.to_tokens(input, move_to_device=True, truncate=False)
+            input_tokens = self.to_tokens(
+                input, prepend_bos=prepend_bos, move_to_device=True, truncate=False
+            )
             input_type = "str"
         elif isinstance(input, list):
             if _is_batched_list:
                 _orig_ps = self.tokenizer.padding_side
                 self.tokenizer.padding_side = "left"
             try:
-                input_tokens = self.to_tokens(input, move_to_device=True, truncate=False)
+                input_tokens = self.to_tokens(
+                    input, prepend_bos=prepend_bos, move_to_device=True, truncate=False
+                )
             finally:
                 if _is_batched_list:
                     self.tokenizer.padding_side = _orig_ps
