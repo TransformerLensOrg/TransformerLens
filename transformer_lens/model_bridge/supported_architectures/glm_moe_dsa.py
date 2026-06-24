@@ -31,6 +31,7 @@ class GlmMoeDsaArchitectureAdapter(ArchitectureAdapter):
     def __init__(self, cfg: Any) -> None:
         super().__init__(cfg)
 
+        self.supports_fold_ln = False
         self.cfg.normalization_type = "RMS"
         self.cfg.positional_embedding_type = "rotary"
         self.cfg.gated_mlp = True

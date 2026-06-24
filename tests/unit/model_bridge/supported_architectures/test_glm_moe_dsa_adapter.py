@@ -53,6 +53,7 @@ class TestGlmMoeDsaAdapter:
         assert adapter.cfg.gated_mlp is True
         assert adapter.cfg.attn_implementation == "eager"
         assert adapter.cfg.default_prepend_bos is False
+        assert adapter.supports_fold_ln is False
 
     def test_component_mapping_uses_dsa_attention_and_moe(self) -> None:
         adapter = GlmMoeDsaArchitectureAdapter(make_cfg())

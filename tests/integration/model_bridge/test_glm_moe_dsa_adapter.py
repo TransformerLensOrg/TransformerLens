@@ -73,13 +73,13 @@ class TestGlmMoeDsaBridge:
 
     def test_forward_matches_hf(self) -> None:
         bridge, hf_reference = tiny_glm_moe_dsa_bridge()
-        tokens = torch.tensor([[1, 2, 3, 4]])
+        tokens = torch.tensor([[1, 2, 3, 4, 5, 6, 7, 8]])
 
         with torch.no_grad():
             bridge_out = bridge(tokens)
             hf_out = hf_reference(tokens).logits
 
-        assert bridge_out.shape == (1, 4, 128)
+        assert bridge_out.shape == (1, 8, 128)
         assert not torch.isnan(bridge_out).any()
         assert not torch.isinf(bridge_out).any()
         max_diff = (bridge_out - hf_out).abs().max().item()
@@ -87,7 +87,7 @@ class TestGlmMoeDsaBridge:
 
     def test_run_with_cache_captures_mla_and_dsa_hooks(self) -> None:
         bridge, _ = tiny_glm_moe_dsa_bridge()
-        tokens = torch.tensor([[1, 2, 3, 4]])
+        tokens = torch.tensor([[1, 2, 3, 4, 5, 6, 7, 8]])
 
         _, cache = bridge.run_with_cache(tokens)
 
@@ -97,3 +97,7 @@ class TestGlmMoeDsaBridge:
         assert "blocks.0.attn.hook_dsa_mask" in cache
         assert "blocks.0.mlp.hook_in" in cache
         assert "blocks.1.mlp.shared_experts.hook_out" in cache
+        assert cache["blocks.0.attn.hook_topk_indices"].shape[-1] == 4
+        dsa_mask = cache["blocks.0.attn.hook_dsa_mask"]
+        assert torch.isneginf(dsa_mask).any()
+        assert (dsa_mask == 0).any()
