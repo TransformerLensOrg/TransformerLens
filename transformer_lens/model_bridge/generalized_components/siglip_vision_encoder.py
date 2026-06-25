@@ -30,10 +30,6 @@ class SiglipVisionEncoderLayerBridge(GeneralizedComponent):
     hook_aliases = {
         "hook_resid_pre": "hook_in",
         "hook_resid_post": "hook_out",
-        "hook_attn_in": "attn.hook_in",
-        "hook_attn_out": "attn.hook_out",
-        "hook_mlp_in": "mlp.hook_in",
-        "hook_mlp_out": "mlp.hook_out",
     }
 
     def __init__(
@@ -115,15 +111,15 @@ class SiglipVisionEncoderBridge(GeneralizedComponent):
         """
         # All submodule names are resolved relative to the parent's
         # original_component (a SiglipVisionModel) by setup_submodules().
-        # SiglipVisionModel wraps SiglipVisionTransformer as .vision_model,
-        # so all paths go through vision_model.*.
+        # SiglipVisionModel used to wrap a SiglipVisionTransformer as .vision_model before
+        # version 5.6.0, but now it can directly be used.
         # post_layernorm is nn.LayerNorm; NormalizationBridge introspects the
         # wrapped module so the RMSNorm-LM config (Gemma 3, LLaVA) doesn't leak.
         default_submodules = {
-            "embeddings": GeneralizedComponent(name="vision_model.embeddings"),
-            "encoder_layers": SiglipVisionEncoderLayerBridge(name="vision_model.encoder.layers"),
+            "embeddings": GeneralizedComponent(name="embeddings"),
+            "encoder_layers": SiglipVisionEncoderLayerBridge(name="encoder.layers"),
             "post_layernorm": NormalizationBridge(
-                name="vision_model.post_layernorm", config=config
+                name="post_layernorm", config=config
             ),
         }
 

@@ -31,10 +31,6 @@ class CLIPVisionEncoderLayerBridge(GeneralizedComponent):
     hook_aliases = {
         "hook_resid_pre": "hook_in",
         "hook_resid_post": "hook_out",
-        "hook_attn_in": "attn.hook_in",
-        "hook_attn_out": "attn.hook_out",
-        "hook_mlp_in": "mlp.hook_in",
-        "hook_mlp_out": "mlp.hook_out",
     }
 
     def __init__(
@@ -123,11 +119,11 @@ class CLIPVisionEncoderBridge(GeneralizedComponent):
             submodules: Dictionary of submodules to register
         """
         default_submodules: Dict[str, GeneralizedComponent] = {
-            "embeddings": GeneralizedComponent(name="vision_model.embeddings"),
-            "pre_layernorm": NormalizationBridge(name="vision_model.pre_layrnorm", config=config),
-            "encoder_layers": CLIPVisionEncoderLayerBridge(name="vision_model.encoder.layers"),
+            "embeddings": GeneralizedComponent(name="embeddings"),
+            "pre_layernorm": NormalizationBridge(name="pre_layrnorm", config=config),
+            "encoder_layers": CLIPVisionEncoderLayerBridge(name="encoder.layers"),
             "post_layernorm": NormalizationBridge(
-                name="vision_model.post_layernorm", config=config
+                name="post_layernorm", config=config
             ),
         }
 

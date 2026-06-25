@@ -6613,7 +6613,7 @@ requires-dist = [
     { name = "sentencepiece" },
     { name = "torch", specifier = ">=2.6" },
     { name = "tqdm", specifier = ">=4.64.1" },
-    { name = "transformers", specifier = ">=5.4.0" },
+    { name = "transformers", specifier = ">=5.6.0" },
     { name = "transformers-stream-generator", specifier = ">=0.0.5,<0.1" },
     { name = "typeguard", specifier = ">=4.2,<5" },
     { name = "typing-extensions" },
