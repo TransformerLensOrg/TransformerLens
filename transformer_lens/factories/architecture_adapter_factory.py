@@ -12,6 +12,7 @@ from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapt
 from transformer_lens.model_bridge.supported_architectures import (
     ApertusArchitectureAdapter,
     BaichuanArchitectureAdapter,
+    BartArchitectureAdapter,
     BertArchitectureAdapter,
     BloomArchitectureAdapter,
     CodeGenArchitectureAdapter,
@@ -81,6 +82,7 @@ SUPPORTED_ARCHITECTURES = {
     "ApertusForCausalLM": ApertusArchitectureAdapter,
     "BaiChuanForCausalLM": BaichuanArchitectureAdapter,
     "BaichuanForCausalLM": BaichuanArchitectureAdapter,
+    "BartForConditionalGeneration": BartArchitectureAdapter,
     "BertForMaskedLM": BertArchitectureAdapter,
     "BloomForCausalLM": BloomArchitectureAdapter,
     "CodeGenForCausalLM": CodeGenArchitectureAdapter,

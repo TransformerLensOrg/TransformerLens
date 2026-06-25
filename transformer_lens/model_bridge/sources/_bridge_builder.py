@@ -20,6 +20,13 @@ _HF_PASSTHROUGH_ATTRS = [
     "is_gated_act",
     "word_embed_proj_dim",
     "do_layer_norm_before",
+    # BART
+    "encoder_layers",
+    "decoder_layers",
+    "encoder_attention_heads",
+    "decoder_attention_heads",
+    "encoder_ffn_dim",
+    "decoder_ffn_dim",
     # Granite
     "position_embedding_type",
     # Falcon

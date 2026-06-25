@@ -9,6 +9,9 @@ from transformer_lens.model_bridge.supported_architectures.apertus import (
 from transformer_lens.model_bridge.supported_architectures.baichuan import (
     BaichuanArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.bart import (
+    BartArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.bert import (
     BertArchitectureAdapter,
 )
@@ -199,6 +202,7 @@ from transformer_lens.model_bridge.supported_architectures.xglm import (
 __all__ = [
     "ApertusArchitectureAdapter",
     "BaichuanArchitectureAdapter",
+    "BartArchitectureAdapter",
     "BertArchitectureAdapter",
     "BloomArchitectureAdapter",
     "CodeGenArchitectureAdapter",
