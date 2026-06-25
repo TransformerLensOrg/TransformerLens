@@ -549,7 +549,7 @@ class ComponentBenchmarker:
 
             # For embedding components, generate token indices once
             shared_token_indices = None
-            if component_path == "embed":
+            if component_path in ("embed", "encoder_embed", "decoder_embed"):
                 batch, seq_len, _ = test_input.shape
                 shared_token_indices = torch.randint(
                     0, self.cfg.d_vocab, (batch, seq_len), device=test_input.device
@@ -756,7 +756,7 @@ class ComponentBenchmarker:
                 except TypeError:
                     # Try simple call
                     return component(test_input)
-        elif component_path == "embed":
+        elif component_path in ("embed", "encoder_embed", "decoder_embed"):
             # Main embedding component expects integer indices
             # Use shared token indices if provided, otherwise generate new ones
             if shared_token_indices is not None:

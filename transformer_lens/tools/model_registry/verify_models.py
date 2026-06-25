@@ -209,6 +209,17 @@ def estimate_model_params(model_id: str) -> int:
     # is nested under text_config. Fall through to the top-level config otherwise.
     lang_config = getattr(config, "text_config", config)
 
+    # Encoder-decoder models (e.g. T5Gemma) nest dimensions under decoder/encoder
+    # subconfigs rather than the top level; prefer the decoder for the estimate.
+    if not (hasattr(lang_config, "hidden_size") or hasattr(lang_config, "d_model")):
+        for _sub in ("decoder", "encoder"):
+            _subcfg = getattr(config, _sub, None)
+            if _subcfg is not None and (
+                hasattr(_subcfg, "hidden_size") or hasattr(_subcfg, "d_model")
+            ):
+                lang_config = _subcfg
+                break
+
     # Extract dimensions from config (different models use different attribute names)
     d_model = (
         getattr(lang_config, "hidden_size", None)
