@@ -19,7 +19,7 @@
         "torch>=2.6",
         "tqdm>=4.64.1",
         "transformers-stream-generator>=0.0.5,<0.1",
-        "transformers>=5.6.0",
+        "transformers>=5.4.0",
         "typeguard>=4.2,<5",
         "typing-extensions",
         "wandb>=0.13.5",

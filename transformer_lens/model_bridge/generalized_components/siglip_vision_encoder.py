@@ -30,6 +30,10 @@ class SiglipVisionEncoderLayerBridge(GeneralizedComponent):
     hook_aliases = {
         "hook_resid_pre": "hook_in",
         "hook_resid_post": "hook_out",
+        "hook_attn_in": "attn.hook_in",
+        "hook_attn_out": "attn.hook_out",
+        "hook_mlp_in": "mlp.hook_in",
+        "hook_mlp_out": "mlp.hook_out",
     }
 
     def __init__(
@@ -111,15 +115,15 @@ class SiglipVisionEncoderBridge(GeneralizedComponent):
         """
         # All submodule names are resolved relative to the parent's
         # original_component (a SiglipVisionModel) by setup_submodules().
-        # SiglipVisionModel used to wrap a SiglipVisionTransformer as .vision_model before
-        # version 5.6.0, but now it can directly be used.
+        # SiglipVisionModel wraps a SiglipVisionTransformer as .vision_model till
+        # transformers version 5.6.0
         # post_layernorm is nn.LayerNorm; NormalizationBridge introspects the
         # wrapped module so the RMSNorm-LM config (Gemma 3, LLaVA) doesn't leak.
         default_submodules = {
-            "embeddings": GeneralizedComponent(name="embeddings"),
-            "encoder_layers": SiglipVisionEncoderLayerBridge(name="encoder.layers"),
+            "embeddings": GeneralizedComponent(name="vision_model.embeddings"),
+            "encoder_layers": SiglipVisionEncoderLayerBridge(name="vision_model.encoder.layers"),
             "post_layernorm": NormalizationBridge(
-                name="post_layernorm", config=config
+                name="vision_model.post_layernorm", config=config
             ),
         }
 
@@ -167,3 +171,17 @@ class SiglipVisionEncoderBridge(GeneralizedComponent):
             output = self.hook_out(output)
 
         return output
+
+    def set_original_component(self, original_component: torch.nn.Module) -> None:
+        """Set the original component that this bridge wraps.
+        Note that SiglipVisionModel used to wrap a inner object as .vision_model before
+        transformers version 5.6.0, but after that it must directly be used.
+        This is a temporary hack to fix that till the transformers version is bumped.
+
+        Args:
+            original_component: The original transformer component to wrap
+        """
+        if not hasattr(original_component, "vision_model"):
+            # We should bypass any pytorch module registration.
+            object.__setattr__(original_component, "vision_model", original_component)
+        super().set_original_component(original_component)
