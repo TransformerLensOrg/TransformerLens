@@ -3,6 +3,7 @@
 This module provides the bridge components that wrap remote model components and provide
 a consistent interface for accessing their weights and performing operations.
 """
+
 import logging
 import re
 import warnings
@@ -124,6 +125,29 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
     BPE/SentencePiece tokenizers treat ``"hello"``, ``" hello"``, and
     ``"Hello"`` as distinct tokens. Concatenated prompts may not tokenize
     as the sum of parts — inspect with :meth:`to_str_tokens` when in doubt.
+
+    BOS token and chat templates
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    ``model.tokenizer`` is configured with ``add_bos_token=True`` and is
+    **not** the stock HuggingFace tokenizer. Direct ``.encode()`` calls
+    will prepend BOS automatically.
+
+    When passing pre-applied chat-template text (i.e., the output of
+    ``tokenizer.apply_chat_template(..., tokenize=False)``), pass
+    ``prepend_bos=False`` to :meth:`to_tokens` to avoid a double BOS::
+
+        # Correct pattern for chat templates:
+        text = model.tokenizer.apply_chat_template(messages, tokenize=False)
+        tokens = model.to_tokens(text, prepend_bos=False)
+
+    The chat template already embeds the model's expected BOS token in
+    the rendered text; letting :meth:`to_tokens` add another would produce
+    a malformed sequence like ``[BOS, BOS, ...]``.
+
+    To inspect what tokens will actually be fed to the model during
+    generation, use :meth:`to_tokens` directly or pass
+    ``return_input_tokens=True`` to :meth:`generate`.
     """
 
     hook_aliases: Dict[str, Union[str, List[str]]] = {
@@ -2573,18 +2597,22 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                         temperature=temperature,
                         freq_penalty=freq_penalty,
                         repetition_penalty=repetition_penalty,
-                        tokens=penalty_tokens
-                        if _generate_from_embeds
-                        else (decoder_tokens if is_encoder_decoder else current_tokens),
+                        tokens=(
+                            penalty_tokens
+                            if _generate_from_embeds
+                            else (decoder_tokens if is_encoder_decoder else current_tokens)
+                        ),
                     ).to(self.cfg.device)
                 else:
                     sampled_tokens = utils.sample_logits(
                         final_logits,
                         temperature=0.0,
                         repetition_penalty=repetition_penalty,
-                        tokens=penalty_tokens
-                        if _generate_from_embeds
-                        else (decoder_tokens if is_encoder_decoder else current_tokens),
+                        tokens=(
+                            penalty_tokens
+                            if _generate_from_embeds
+                            else (decoder_tokens if is_encoder_decoder else current_tokens)
+                        ),
                     ).to(self.cfg.device)
 
                 # Freeze rows that finished on an earlier step so they stop emitting
@@ -2660,6 +2688,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         verbose: bool = True,
         output_logits: bool = False,
         return_cache: bool = False,
+        return_input_tokens: bool = False,
         names_filter: Optional[Union[str, List[str], Callable[[str], bool]]] = None,
         device: Optional[Union[str, torch.device]] = None,
         pixel_values: Optional[torch.Tensor] = None,
@@ -2667,7 +2696,12 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         stopping_criteria: Optional[Any] = None,
         **multimodal_kwargs,
     ) -> (
-        str | list[str] | torch.Tensor | Any | tuple[Any, ActivationCache]
+        str
+        | list[str]
+        | torch.Tensor
+        | Any
+        | tuple[Any, ActivationCache]
+        | tuple[Any, torch.Tensor]
     ):  # Any for transformers.utils.ModelOutput
         # Any: beartype forward ref limitation (beartype#546)
         """Sample tokens from the model.
@@ -2689,9 +2723,11 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                 repetition by dividing positive logits and multiplying negative logits for
                 previously seen tokens. Default 1.0 (no penalty).
             use_past_kv_cache: If True, use KV caching for faster generation
-            prepend_bos: Accepted for API compatibility but not applied during generation.
-                The HF model expects tokens in its native format (tokenizer defaults).
-                Overriding BOS can silently degrade generation quality.
+            prepend_bos: Whether to prepend a BOS token when tokenizing string inputs.
+                Defaults to None (uses ``cfg.default_prepend_bos``, typically True).
+                Pass ``prepend_bos=False`` when the input is pre-formatted chat-template
+                text that already contains the BOS token to avoid double-BOS.
+                Ignored when input is already a token tensor.
             padding_side: Which side to pad when tokenizing multiple strings of different
                 lengths. For batched list inputs, left-padding is forced internally for
                 correct generation behavior. Defaults to None (tokenizer default).
@@ -2706,6 +2742,11 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                 encoder-decoder, SSM, multimodal, batched, and inputs_embeds inputs raise
                 NotImplementedError. The cache spans prompt + max_new_tokens and can be large,
                 use ``names_filter`` to scope it and/or ``device`` to offload it.
+            return_input_tokens: If True, return an ``(output, input_tokens)`` tuple where
+                ``input_tokens`` is the token tensor that was actually fed to the model
+                (after BOS handling). Useful for debugging tokenization, especially when
+                using chat templates where BOS handling can be subtle. Can be combined
+                with ``return_cache`` to get ``(output, cache, input_tokens)``.
             names_filter: Passed to ``run_with_cache`` when ``return_cache=True``; restricts
                 which activations are cached (str, list of str, or callable).
             device: Passed through when ``return_cache=True`` to offload the cached tensors
@@ -2735,25 +2776,18 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             If output_logits=True, returns a ModelOutput-like object with 'sequences' and 'logits' attributes.
             If return_cache=True, returns an ``(output, ActivationCache)`` tuple where ``output`` is the
             value that would otherwise be returned and the cache equals ``run_with_cache(output)``.
+            If return_input_tokens=True, returns an ``(output, input_tokens)`` tuple.
+            If both return_cache and return_input_tokens are True, returns ``(output, cache, input_tokens)``.
 
         Example:
             ``out, cache = model.generate(prompt, max_new_tokens=20, return_cache=True)`` returns a
             normal ActivationCache over the full prompt + generated sequence (equivalent to
             ``run_with_cache(out)``).
-        """
-        # prepend_bos is intentionally not applied during generation.
-        # The HF model expects tokens in its native format. Overriding BOS can silently
-        # degrade quality.
-        if prepend_bos is not None:
-            import warnings
 
-            warnings.warn(
-                "prepend_bos is ignored during TransformerBridge.generate(). "
-                "The HF model expects tokens with the tokenizer's default BOS handling. "
-                "To control BOS, tokenize with to_tokens(prepend_bos=...) and pass the "
-                "resulting tensor to generate().",
-                stacklevel=2,
-            )
+            ``out, input_tokens = model.generate(prompt, return_input_tokens=True)`` returns
+            the tokens that were fed to the model, useful for verifying BOS handling with
+            chat templates.
+        """
         # padding_side is handled internally: for batched list inputs, left-padding
         # is forced to ensure correct generation. See _is_batched_list logic below.
 
@@ -2765,7 +2799,9 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
 
         _generate_from_embeds = False
         if isinstance(input, str):
-            input_tokens = self.to_tokens(input, move_to_device=True, truncate=False)
+            input_tokens = self.to_tokens(
+                input, prepend_bos=prepend_bos, move_to_device=True, truncate=False
+            )
             input_type = "str"
         elif isinstance(input, list):
             # Force left-padding for batched generation so real tokens are
@@ -2773,7 +2809,9 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             if _is_batched_list:
                 _orig_padding_side = self.tokenizer.padding_side
                 self.tokenizer.padding_side = "left"
-            input_tokens = self.to_tokens(input, move_to_device=True, truncate=False)
+            input_tokens = self.to_tokens(
+                input, prepend_bos=prepend_bos, move_to_device=True, truncate=False
+            )
             if _is_batched_list:
                 self.tokenizer.padding_side = _orig_padding_side
             input_type = "list"
@@ -3089,15 +3127,21 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         else:  # return_type == "tokens"
             result = output_tokens
 
-        if not return_cache:
+        if not return_cache and not return_input_tokens:
             return result
 
-        # return_cache: recompute one clean forward over the full generated sequence so the
-        # cache is identical to run_with_cache(output_tokens) - all hook points, including
-        # attention patterns. The guards above restrict this to single-sequence, decoder-only
-        # text generation (see issue #697).
-        _, cache = self.run_with_cache(output_tokens, names_filter=names_filter, device=device)
-        return result, cache
+        if return_cache:
+            # return_cache: recompute one clean forward over the full generated sequence so the
+            # cache is identical to run_with_cache(output_tokens) - all hook points, including
+            # attention patterns. The guards above restrict this to single-sequence, decoder-only
+            # text generation (see issue #697).
+            _, cache = self.run_with_cache(output_tokens, names_filter=names_filter, device=device)
+            if return_input_tokens:
+                return result, cache, input_tokens
+            return result, cache
+
+        # return_input_tokens only (no cache)
+        return result, input_tokens
 
     @torch.no_grad()
     def generate_stream(
@@ -3139,7 +3183,11 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             freq_penalty: Frequency penalty for previous tokens.
             repetition_penalty: HF-style repetition penalty (>1.0 discourages repeats).
             use_past_kv_cache: Use KV caching for faster generation.
-            prepend_bos: Not applied (API compatibility). See generate() docstring.
+            prepend_bos: Whether to prepend a BOS token when tokenizing string inputs.
+                Defaults to None (uses ``cfg.default_prepend_bos``, typically True).
+                Pass ``prepend_bos=False`` when the input is pre-formatted chat-template
+                text that already contains the BOS token to avoid double-BOS.
+                Ignored when input is already a token tensor.
             padding_side: Which side to pad for batched list inputs. Left-padding
                 is forced internally for batched generation.
             return_type: 'input' (match input type), 'str', or 'tokens'.
@@ -3156,25 +3204,22 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             max_tokens_per_yield tokens between yields. First yield includes
             the input tokens; subsequent yields contain only new tokens.
         """
-        if prepend_bos is not None:
-            warnings.warn(
-                "prepend_bos is ignored during TransformerBridge.generate_stream(). "
-                "The HF model expects tokens with the tokenizer's default BOS handling.",
-                stacklevel=2,
-            )
-
         # --- Input parsing (mirrors generate()) ---
         _is_batched_list = isinstance(input, list) and len(input) > 1
 
         if isinstance(input, str):
-            input_tokens = self.to_tokens(input, move_to_device=True, truncate=False)
+            input_tokens = self.to_tokens(
+                input, prepend_bos=prepend_bos, move_to_device=True, truncate=False
+            )
             input_type = "str"
         elif isinstance(input, list):
             if _is_batched_list:
                 _orig_ps = self.tokenizer.padding_side
                 self.tokenizer.padding_side = "left"
             try:
-                input_tokens = self.to_tokens(input, move_to_device=True, truncate=False)
+                input_tokens = self.to_tokens(
+                    input, prepend_bos=prepend_bos, move_to_device=True, truncate=False
+                )
             finally:
                 if _is_batched_list:
                     self.tokenizer.padding_side = _orig_ps
