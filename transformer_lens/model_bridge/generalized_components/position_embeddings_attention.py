@@ -182,6 +182,9 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
 
         hf_norm_name = self.submodules["q_norm"].name
 
+        if hf_norm_name is None:
+            raise RuntimeError(f"{self.name}: q_norm submodule declared without a name.")
+
         q_norm = getattr(hf_attn, hf_norm_name, None)
 
         if q_norm is None:
