@@ -200,15 +200,13 @@ class ComponentBenchmarker:
     """Benchmarking utility for testing TransformerBridge components against HuggingFace."""
 
     def _is_delegated_block(self) -> bool:
-        """Return True if the blocks component uses DelegatedAttentionBlockBridge."""
+        """Return True if the blocks component has maintain_native_attention set."""
         blocks = (
             getattr(self.adapter, "component_mapping", {}).get("blocks")
             if self.adapter is not None
             else None
         )
-        return blocks is not None and (
-            "hook_q_input" not in getattr(blocks, "hook_aliases", {"hook_q_input": True})
-        )
+        return getattr(blocks, "maintain_native_attention", False)
 
     def __init__(
         self,

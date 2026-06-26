@@ -419,6 +419,10 @@ class DelegatedAttentionBlockBridge(BlockBridge):
     ``DelegatedAttentionBlockBridge`` and knows those hooks are absent.
     """
 
+    # Tell the component benchmark this block's attention is delegated wholesale
+    # to HF and cannot be tested in isolation (requires model-specific kwargs).
+    maintain_native_attention: bool = True
+
     def __init__(
         self,
         name: str,
