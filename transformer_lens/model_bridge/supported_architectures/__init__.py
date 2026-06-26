@@ -123,6 +123,9 @@ from transformer_lens.model_bridge.supported_architectures.native import (
 from transformer_lens.model_bridge.supported_architectures.neel_solu_old import (
     NeelSoluOldArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.nemotron_h import (
+    NemotronHArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.neo import (
     NeoArchitectureAdapter,
 )
@@ -234,6 +237,7 @@ __all__ = [
     "NemotronHArchitectureAdapter",
     "NativeArchitectureAdapter",
     "NeelSoluOldArchitectureAdapter",
+    "NemotronHArchitectureAdapter",
     "NeoArchitectureAdapter",
     "NeoxArchitectureAdapter",
     "OpenElmArchitectureAdapter",
