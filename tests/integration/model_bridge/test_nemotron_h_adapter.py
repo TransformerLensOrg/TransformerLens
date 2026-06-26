@@ -25,6 +25,8 @@ from transformer_lens.model_bridge.generalized_components import (
     SSMBlockBridge,
 )
 
+pytestmark = pytest.mark.slow
+
 MODEL = "nvidia/Nemotron-H-8B-Base"
 
 # ---------------------------------------------------------------------------
