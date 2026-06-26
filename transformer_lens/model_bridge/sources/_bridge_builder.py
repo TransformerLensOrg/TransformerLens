@@ -44,6 +44,14 @@ _HF_PASSTHROUGH_ATTRS = [
     # Mamba-2 (additional SSM config)
     "n_groups",
     "chunk_size",
+    # Falcon-H1 (parallel attn + Mamba-2 hybrid SSM config)
+    "mamba_d_ssm",
+    "mamba_n_heads",
+    "mamba_d_head",
+    "mamba_d_state",
+    "mamba_n_groups",
+    "mamba_d_conv",
+    "mamba_chunk_size",
     # Multimodal
     "vision_config",
     # Cohere

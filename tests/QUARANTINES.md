@@ -46,6 +46,7 @@ Rule ([AGENTS.md §10](../AGENTS.md#10-hard-rules)): **never add `xfail` / `skip
 | [`unit/model_bridge/supported_architectures/test_gemma2_adapter.py`:49](unit/model_bridge/supported_architectures/test_gemma2_adapter.py) | "Network/disk fetch of tiny Gemma2" |
 | [`integration/model_bridge/test_bridge_integration.py`:801](integration/model_bridge/test_bridge_integration.py) | "Skip Gemma2 in CI to avoid timeout" |
 | [`acceptance/model_bridge/compatibility/test_hook_completeness.py`:156](acceptance/model_bridge/compatibility/test_hook_completeness.py) | "Gemma2 too large for CI" |
+| [`integration/model_bridge/test_falcon_h1_adapter.py`](integration/model_bridge/test_falcon_h1_adapter.py) (module `pytestmark`) | "Falcon-H1-0.5B not in CI cached-model set" |
 
 **Un-skip:** locally with `HF_TOKEN` sourced.
 
