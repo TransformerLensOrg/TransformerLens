@@ -18,7 +18,6 @@ import gc
 
 import pytest
 import torch
-
 from transformer_lens.model_bridge.bridge import TransformerBridge
 from transformer_lens.model_bridge.generalized_components import (
     SSM2MixerBridge,
@@ -144,9 +143,7 @@ class TestNemotronHForwardPass:
             "Expected 0 because SSM2MixerBridge.forward() is a pure passthrough."
         )
 
-    def test_forward_no_nan_on_longer_sequence(
-        self, nemotron_bridge: TransformerBridge
-    ) -> None:
+    def test_forward_no_nan_on_longer_sequence(self, nemotron_bridge: TransformerBridge) -> None:
         # Exercise more SSM steps to catch state accumulation issues
         tokens = torch.arange(1, 33).unsqueeze(0).to(_device())
         with torch.no_grad():
@@ -189,12 +186,8 @@ class TestNemotronHGeneration:
         prompt = prompt.to(_device())
         hf_model = nemotron_bridge.original_model
         with torch.no_grad():
-            bridge_out = nemotron_bridge.generate(
-                prompt, max_new_tokens=8, do_sample=False
-            )
-            hf_out = hf_model.generate(
-                prompt, max_new_tokens=8, do_sample=False, pad_token_id=0
-            )
+            bridge_out = nemotron_bridge.generate(prompt, max_new_tokens=8, do_sample=False)
+            hf_out = hf_model.generate(prompt, max_new_tokens=8, do_sample=False, pad_token_id=0)
         assert torch.equal(bridge_out, hf_out), (
             f"Token mismatch between bridge and HF.\n"
             f"  bridge : {bridge_out.tolist()}\n"
