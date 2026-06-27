@@ -142,7 +142,7 @@ class TestSmolLM3MatchesHuggingFace:
             for i in range(n_layers)
         ]
         with torch.inference_mode():
-            bridge.run_with_hooks(tokens, fwd_hooks=fwd_hooks)
+            bridge.run_with_hooks(input=tokens, fwd_hooks=fwd_hooks)
 
         for i, layer in enumerate(hf_eager.model.layers):
             drift = (hf_layer_out[i] - bridge_layer_out[i]).abs().max().item()
@@ -163,7 +163,7 @@ class TestSmolLM3MatchesHuggingFace:
         """
         fired: list[bool] = []
         bridge.run_with_hooks(
-            tokens,
+            input=tokens,
             fwd_hooks=[
                 ("blocks.0.attn.hook_attn_scores", lambda value, hook: fired.append(True)),
             ],

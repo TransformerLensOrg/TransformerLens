@@ -48,7 +48,7 @@ def test_run_with_hooks_batch_matches_individual(gpt2_bridge):
 
     for p in prompts:
         gpt2_bridge.run_with_hooks(
-            p,
+            input=p,
             fwd_hooks=[("blocks.11.hook_resid_post", capture_individual)],
         )
 
@@ -61,7 +61,7 @@ def test_run_with_hooks_batch_matches_individual(gpt2_bridge):
             captured_batched.append(tensor[i, -1, :].detach().clone())
 
     gpt2_bridge.run_with_hooks(
-        prompts,
+        input=prompts,
         fwd_hooks=[("blocks.11.hook_resid_post", capture_batched)],
     )
 

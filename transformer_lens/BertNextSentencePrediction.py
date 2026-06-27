@@ -217,19 +217,18 @@ class BertNextSentencePrediction:
 
     @overload
     def run_with_cache(
-        self, *model_args, return_cache_object: Literal[True] = True, **kwargs
+        self, return_cache_object: Literal[True] = True, **kwargs
     ) -> Tuple[Float[torch.Tensor, "batch 2"], ActivationCache,]:
         ...
 
     @overload
     def run_with_cache(
-        self, *model_args, return_cache_object: Literal[False], **kwargs
+        self, return_cache_object: Literal[False], **kwargs
     ) -> Tuple[Float[torch.Tensor, "batch 2"], Dict[str, torch.Tensor],]:
         ...
 
     def run_with_cache(
         self,
-        *model_args,
         return_cache_object: bool = True,
         remove_batch_dim: bool = False,
         **kwargs,
@@ -263,7 +262,7 @@ class BertNextSentencePrediction:
 
         with ForwardWrapper(self):
             out, cache_dict = self.model.run_with_cache(
-                *model_args, remove_batch_dim=remove_batch_dim, **kwargs
+                remove_batch_dim=remove_batch_dim, **kwargs
             )
             if return_cache_object:
                 cache = ActivationCache(cache_dict, self, has_batch_dim=not remove_batch_dim)

@@ -178,7 +178,7 @@ def test_mps_run_with_cache():
     model = _load_tiny_model(device="mps")
     tokens = model.to_tokens("The quick brown fox")
 
-    logits, cache = model.run_with_cache(tokens)
+    logits, cache = model.run_with_cache(input=tokens)
 
     assert logits.device.type == "mps"
 
@@ -204,7 +204,7 @@ def test_mps_activation_hook_fires_on_metal():
         return value
 
     model.run_with_hooks(
-        tokens,
+        input=tokens,
         fwd_hooks=[
             ("blocks.0.attn.hook_q", capture_hook),
             ("blocks.0.mlp.hook_post", capture_hook),

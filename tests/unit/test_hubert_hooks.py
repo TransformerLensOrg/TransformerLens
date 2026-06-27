@@ -47,7 +47,7 @@ class TestHubertRunWithCache:
     def test_cache_contains_attention_pattern(self, audio_model, frames_and_mask):
         frames, frame_mask = frames_and_mask
         _, cache = audio_model.run_with_cache(
-            frames, one_zero_attention_mask=frame_mask, remove_batch_dim=True
+            inputs=frames, one_zero_attention_mask=frame_mask, remove_batch_dim=True
         )
         layer = 0
         pattern_name = utils.get_act_name("pattern", layer)
@@ -61,7 +61,7 @@ class TestHubertRunWithCache:
     def test_cache_attention_pattern_shape(self, audio_model, frames_and_mask):
         frames, frame_mask = frames_and_mask
         _, cache = audio_model.run_with_cache(
-            frames, one_zero_attention_mask=frame_mask, remove_batch_dim=True
+            inputs=frames, one_zero_attention_mask=frame_mask, remove_batch_dim=True
         )
         pattern_name = utils.get_act_name("pattern", 0)
         if pattern_name in cache:
@@ -91,13 +91,13 @@ class TestHubertHeadAblation:
 
         # Baseline
         baseline_out = audio_model.run_with_hooks(
-            frames, fwd_hooks=[], one_zero_attention_mask=frame_mask
+            inputs=frames, fwd_hooks=[], one_zero_attention_mask=frame_mask
         )
         baseline_tensor = _get_output_tensor(baseline_out)
 
         # Ablated
         ablated_out = audio_model.run_with_hooks(
-            frames,
+            inputs=frames,
             fwd_hooks=[(v_act_name, head_ablation_hook)],
             one_zero_attention_mask=frame_mask,
         )

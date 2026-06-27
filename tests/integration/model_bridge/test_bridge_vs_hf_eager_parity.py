@@ -94,7 +94,7 @@ def test_bridge_residual_stream_matches_hf_eager(bridge, hf_eager, tokenize):
         for i in range(n_layers)
     ]
     with torch.inference_mode():
-        bridge.run_with_hooks(tokens, fwd_hooks=fwd_hooks)
+        bridge.run_with_hooks(input=tokens, fwd_hooks=fwd_hooks)
 
     for i in range(n_layers):
         d = (hf_layer_out[i] - bridge_layer_out[i]).abs().max().item()
@@ -114,7 +114,7 @@ def test_bridge_attention_reconstruction_actually_runs(bridge, tokenize):
     tokens = tokenize("Hello, world!")
     attn_scores_fired: list[bool] = []
     bridge.run_with_hooks(
-        tokens,
+        input=tokens,
         fwd_hooks=[
             ("blocks.0.attn.hook_attn_scores", lambda v, hook: attn_scores_fired.append(True)),
         ],

@@ -72,8 +72,8 @@ def test_cross_run_mlp_in_patch_matches_legacy(model: str, layer: int, no_proces
 
         return _inner
 
-    bridge.run_with_hooks(prompt_a, fwd_hooks=[(f"blocks.{layer}.hook_mlp_in", _cap_bridge)])
-    ht.run_with_hooks(prompt_a, fwd_hooks=[(f"blocks.{layer}.hook_mlp_in", _cap_ht)])
+    bridge.run_with_hooks(input=prompt_a, fwd_hooks=[(f"blocks.{layer}.hook_mlp_in", _cap_bridge)])
+    ht.run_with_hooks(input=prompt_a, fwd_hooks=[(f"blocks.{layer}.hook_mlp_in", _cap_ht)])
 
     # Pins down a silent-miss in the ln2 pre-hook (the #1317 bug class).
     assert bridge_fire_count["n"] == 1, (
@@ -89,10 +89,10 @@ def test_cross_run_mlp_in_patch_matches_legacy(model: str, layer: int, no_proces
     )
 
     bridge_logits = bridge.run_with_hooks(
-        prompt_b, fwd_hooks=[(f"blocks.{layer}.hook_mlp_in", _patch(cache_a_bridge))]
+        input=prompt_b, fwd_hooks=[(f"blocks.{layer}.hook_mlp_in", _patch(cache_a_bridge))]
     )
     ht_logits = ht.run_with_hooks(
-        prompt_b, fwd_hooks=[(f"blocks.{layer}.hook_mlp_in", _patch(cache_a_ht))]
+        input=prompt_b, fwd_hooks=[(f"blocks.{layer}.hook_mlp_in", _patch(cache_a_ht))]
     )
 
     baseline_diff = _baseline_logit_diff(model, no_processing, prompt_b)
@@ -117,7 +117,7 @@ def test_mlp_in_gated_off_does_not_fire() -> None:
         return tensor
 
     prompt = torch.arange(1, 9).unsqueeze(0)
-    bridge.run_with_hooks(prompt, fwd_hooks=[("blocks.0.hook_mlp_in", _counter)])
+    bridge.run_with_hooks(input=prompt, fwd_hooks=[("blocks.0.hook_mlp_in", _counter)])
     assert fire_count["n"] == 0, (
         f"hook_mlp_in fired {fire_count['n']} times with use_hook_mlp_in=False; "
         "should not fire when the flag is off"

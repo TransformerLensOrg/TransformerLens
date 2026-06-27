@@ -225,7 +225,7 @@ def test_ungroup_grouped_query_attention_flag_changes_k_v_hooks_shape():
 
     x = torch.arange(1, 9).unsqueeze(0)
     flag_off_output, flag_off_cache = model.run_with_cache(
-        x,
+        input=x,
         names_filter=[
             "blocks.0.attn.hook_k",
             "blocks.0.attn.hook_v",
@@ -238,7 +238,7 @@ def test_ungroup_grouped_query_attention_flag_changes_k_v_hooks_shape():
     assert model.cfg.ungroup_grouped_query_attention is True
 
     flag_on_output, flag_on_cache = model.run_with_cache(
-        x,
+        input=x,
         names_filter=[
             "blocks.0.attn.hook_k",
             "blocks.0.attn.hook_v",

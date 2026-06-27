@@ -56,7 +56,7 @@ def test_run_with_hooks():
         return None
 
     output = model.run_with_hooks(
-        rand_input,
+        input=rand_input,
         stop_at_layer=1,
         fwd_hooks=[
             ("hook_embed", count_hook),
