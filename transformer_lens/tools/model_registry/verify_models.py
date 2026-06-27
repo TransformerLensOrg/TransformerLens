@@ -309,8 +309,10 @@ def estimate_model_params(model_id: str) -> int:
         n_params += n_layers * (d_model * d_mlp * mlp_multiplier)
 
         # MoE expert scaling
-        num_experts = getattr(lang_config, "num_local_experts", None) or getattr(
-            lang_config, "num_experts", None
+        num_experts = (
+            getattr(lang_config, "num_local_experts", None)
+            or getattr(lang_config, "num_experts", None)
+            or getattr(lang_config, "n_routed_experts", None)  # DeepSeek-V2/V3
         )
         if num_experts and num_experts > 1:
             # Qwen3MoE and similar store per-expert hidden size in moe_intermediate_size;
