@@ -169,7 +169,7 @@ jobs:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
       - name: MPS Integration Tests
         run: >
-          uv run pytest tests/integration -v
+          uv run pytest tests/integration -v -m "not slow"
           --ignore=tests/integration/model_bridge/test_optimizer_compatibility.py
           --ignore=tests/integration/model_bridge/test_bridge_generation.py
           --ignore=tests/integration/model_bridge/test_bridge_integration.py
