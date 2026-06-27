@@ -84,6 +84,9 @@ from transformer_lens.model_bridge.supported_architectures.granite_moe_hybrid im
 from transformer_lens.model_bridge.supported_architectures.hubert import (
     HubertArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.hunyuan_v1_dense import (
+    HunYuanDenseV1ArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.internlm2 import (
     InternLM2ArchitectureAdapter,
 )
@@ -227,6 +230,7 @@ __all__ = [
     "Gpt2LmHeadCustomArchitectureAdapter",
     "GptjArchitectureAdapter",
     "HubertArchitectureAdapter",
+    "HunYuanDenseV1ArchitectureAdapter",
     "InternLM2ArchitectureAdapter",
     "LlamaArchitectureAdapter",
     "LlavaArchitectureAdapter",
