@@ -18,6 +18,7 @@ import gc
 
 import pytest
 import torch
+
 from transformer_lens.model_bridge.bridge import TransformerBridge
 from transformer_lens.model_bridge.generalized_components import (
     SSM2MixerBridge,
