@@ -98,6 +98,14 @@ class DummyBridgeModel:
 class TestPhiAdapterConfig:
     """Adapter must set all required config flags to the values Phi expects."""
 
+    def test_transformer_config_flags(self, adapter: PhiArchitectureAdapter) -> None:
+        assert adapter.cfg.normalization_type == "LN"
+        assert adapter.cfg.positional_embedding_type == "rotary"
+        assert adapter.cfg.final_rms is False
+        assert adapter.cfg.gated_mlp is False
+        assert adapter.cfg.attn_only is False
+        assert adapter.cfg.parallel_attn_mlp is True
+
     def test_use_fast_is_false(self, adapter: PhiArchitectureAdapter) -> None:
         """Do not use the rust based HF tokenizer. Uses python based version instead"""
         assert adapter.cfg.use_fast is False
@@ -116,6 +124,15 @@ class TestPhiAdapterComponentMapping:
     """Component mapping must have the correct bridge types and HF module names."""
 
     # -- Top-level keys --
+
+    def test_top_level_keys(self, adapter: PhiArchitectureAdapter) -> None:
+        assert set(adapter.component_mapping.keys()) == {
+            "embed",
+            "rotary_emb",
+            "blocks",
+            "ln_final",
+            "unembed",
+        }
 
     def test_embed_is_embedding_bridge(self, adapter: PhiArchitectureAdapter) -> None:
         assert isinstance(adapter.component_mapping["embed"], EmbeddingBridge)
@@ -159,6 +176,10 @@ class TestPhiAdapterComponentMapping:
         blocks = adapter.component_mapping["blocks"]
         assert isinstance(blocks.submodules["ln1"], NormalizationBridge)
 
+    def test_block_submodule_keys(self, adapter: PhiArchitectureAdapter) -> None:
+        blocks = adapter.component_mapping["blocks"]
+        assert set(blocks.submodules.keys()) == {"ln1", "attn", "mlp"}
+
     def test_blocks_ln1_name(self, adapter: PhiArchitectureAdapter) -> None:
         blocks = adapter.component_mapping["blocks"]
         assert blocks.submodules["ln1"].name == "input_layernorm"
@@ -199,6 +220,10 @@ class TestPhiAdapterComponentMapping:
 
     # -- Attention submodules --
 
+    def test_attention_submodule_keys(self, adapter: PhiArchitectureAdapter) -> None:
+        attn = adapter.component_mapping["blocks"].submodules["attn"]
+        assert set(attn.submodules.keys()) == {"q", "k", "v", "o"}
+
     @pytest.mark.parametrize("slot", ["q", "k", "v", "o"])
     def test_attn_submodule_is_linear_bridge(
         self, adapter: PhiArchitectureAdapter, slot: str
@@ -217,6 +242,10 @@ class TestPhiAdapterComponentMapping:
         assert attn.submodules[slot].name == hf_name
 
     # -- MLP submodules --
+
+    def test_mlp_submodule_keys(self, adapter: PhiArchitectureAdapter) -> None:
+        mlp = adapter.component_mapping["blocks"].submodules["mlp"]
+        assert set(mlp.submodules.keys()) == {"in", "out"}
 
     def test_mlp_in_is_linear_bridge(self, adapter: PhiArchitectureAdapter) -> None:
         mlp = adapter.component_mapping["blocks"].submodules["mlp"]
