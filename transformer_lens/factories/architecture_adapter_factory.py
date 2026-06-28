@@ -9,6 +9,7 @@ from importlib.metadata import entry_points
 
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
+
 from transformer_lens.model_bridge.supported_architectures import (
     ApertusArchitectureAdapter,
     BaichuanArchitectureAdapter,
