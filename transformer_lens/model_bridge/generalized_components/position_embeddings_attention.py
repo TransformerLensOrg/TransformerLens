@@ -181,7 +181,14 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
         """Dispatch pre/post-reshape norm from weight shape; raise on ambiguity."""
         if "q_norm" not in self.submodules:
             return None
-        q_norm = getattr(hf_attn, "q_norm", None)
+
+        hf_norm_name = self.submodules["q_norm"].name
+
+        if hf_norm_name is None:
+            raise RuntimeError(f"{self.name}: q_norm submodule declared without a name.")
+
+        q_norm = getattr(hf_attn, hf_norm_name, None)
+
         if q_norm is None:
             raise RuntimeError(f"{self.name}: q_norm declared but HF module has none.")
 
