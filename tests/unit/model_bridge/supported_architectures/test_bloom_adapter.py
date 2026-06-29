@@ -24,7 +24,6 @@ from transformer_lens.model_bridge.supported_architectures.bloom import (
     BloomArchitectureAdapter,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
