@@ -20,7 +20,6 @@ from transformer_lens.model_bridge.supported_architectures.granite_moe_hybrid im
     GraniteMoeHybridArchitectureAdapter,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers / fixtures
 # ---------------------------------------------------------------------------
