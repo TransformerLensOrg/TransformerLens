@@ -60,6 +60,9 @@ class T5GemmaArchitectureAdapter(ArchitectureAdapter):
         self.cfg.final_rms = True
         self.cfg.gated_mlp = True
         self.cfg.attn_only = False
+        # Gemma-family GELU; the nested enc/dec config defeats the auto-mapper,
+        # which would otherwise leave act_fn at the "relu" default.
+        self.cfg.act_fn = "gelu_pytorch_tanh"
         self.cfg.uses_rms_norm = True
         # T5Gemma uses Gemma-style (1.0 + weight) RMSNorm offset
         self.cfg.rmsnorm_uses_offset = True
@@ -196,6 +199,7 @@ class T5GemmaArchitectureAdapter(ArchitectureAdapter):
                         },
                         requires_attention_mask=True,
                         requires_position_embeddings=True,
+                        is_causal=False,  # T5Gemma encoder is bidirectional
                     ),
                     "ln2": RMSNormalizationBridge(
                         name="pre_feedforward_layernorm", config=self.cfg

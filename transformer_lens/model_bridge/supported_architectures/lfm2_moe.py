@@ -34,9 +34,10 @@ class Lfm2MoeArchitectureAdapter(ArchitectureAdapter):
     homogeneous attention/MLP substructure.
     """
 
-    # Phase verification expects standard attention/MLP components. This adapter
-    # intentionally exposes only whole-layer residual hooks for hybrid LFM2 layers.
-    applicable_phases: list[int] = []
+    # Phases 1-3 compare standard attention/MLP components, which this hybrid
+    # adapter intentionally doesn't expose (whole-layer residual hooks only).
+    # Phase 4 (generation + text-quality) needs no component comparison, so it applies.
+    applicable_phases: list[int] = [4]
 
     def __init__(self, cfg: Any) -> None:
         """Initialize the LFM2 MoE architecture adapter."""

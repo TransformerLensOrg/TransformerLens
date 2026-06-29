@@ -209,6 +209,17 @@ def estimate_model_params(model_id: str) -> int:
     # is nested under text_config. Fall through to the top-level config otherwise.
     lang_config = getattr(config, "text_config", config)
 
+    # Encoder-decoder models (e.g. T5Gemma) nest dimensions under decoder/encoder
+    # subconfigs rather than the top level; prefer the decoder for the estimate.
+    if not (hasattr(lang_config, "hidden_size") or hasattr(lang_config, "d_model")):
+        for _sub in ("decoder", "encoder"):
+            _subcfg = getattr(config, _sub, None)
+            if _subcfg is not None and (
+                hasattr(_subcfg, "hidden_size") or hasattr(_subcfg, "d_model")
+            ):
+                lang_config = _subcfg
+                break
+
     # Extract dimensions from config (different models use different attribute names)
     d_model = (
         getattr(lang_config, "hidden_size", None)
@@ -298,8 +309,10 @@ def estimate_model_params(model_id: str) -> int:
         n_params += n_layers * (d_model * d_mlp * mlp_multiplier)
 
         # MoE expert scaling
-        num_experts = getattr(lang_config, "num_local_experts", None) or getattr(
-            lang_config, "num_experts", None
+        num_experts = (
+            getattr(lang_config, "num_local_experts", None)
+            or getattr(lang_config, "num_experts", None)
+            or getattr(lang_config, "n_routed_experts", None)  # DeepSeek-V2/V3
         )
         if num_experts and num_experts > 1:
             # Qwen3MoE and similar store per-expert hidden size in moe_intermediate_size;
