@@ -64,6 +64,7 @@ class AttentionBridge(GeneralizedComponent):
         attention_mask_4d: bool = False,
         requires_relative_position_bias: bool = False,
         is_cross_attention: bool = False,
+        is_causal: bool = True,
         optional: bool = False,
     ):
         """Initialize the attention bridge.
@@ -87,6 +88,8 @@ class AttentionBridge(GeneralizedComponent):
             requires_relative_position_bias: T5/mT5-style relative attention; supplies a
                 zero ``position_bias`` so HF's forward skips its ``cache_position[-1]`` fallback.
             is_cross_attention: Encoder-decoder cross-attention; supplies ``key_value_states``.
+            is_causal: If True, apply a causal (lower-triangular) mask when reconstructing
+                attention. Set False for bidirectional encoders (e.g. T5Gemma's encoder).
         """
         if conversion_rule is None:
             conversion_rule = AttentionAutoConversion(config)
@@ -132,6 +135,7 @@ class AttentionBridge(GeneralizedComponent):
         self.attention_mask_4d = attention_mask_4d
         self.requires_relative_position_bias = requires_relative_position_bias
         self.is_cross_attention = is_cross_attention
+        self.is_causal = is_causal
         self._layer_idx: Optional[int] = None
 
     def set_original_component(self, original_component: torch.nn.Module) -> None:
@@ -487,7 +491,10 @@ class AttentionBridge(GeneralizedComponent):
             q_seq_len = seq_len
         min_dtype = torch.finfo(attn_scores.dtype).min
         use_direct_hf_mask = attention_mask is not None and attention_mask.ndim >= 4
-        if not use_direct_hf_mask:
+        # Bidirectional attention (encoders) and cross-attention have no causal
+        # structure, so only synthesize the triangular mask for causal self-attention.
+        apply_causal = self.is_causal and not self.is_cross_attention
+        if not use_direct_hf_mask and apply_causal:
             # Rectangular causal mask: query i attends to KV 0..(offset+i)
             # where offset = kv_seq_len - q_seq_len (cached positions).
             causal_mask = torch.ones(

@@ -36,7 +36,6 @@ import transformer_lens.utilities as utils
 from transformer_lens.utilities import Slice, SliceInput, warn_if_mps
 
 if TYPE_CHECKING:
-    from transformer_lens.components import TransformerBlock
     from transformer_lens.HookedTransformer import HookedTransformer
 
 
@@ -748,8 +747,7 @@ class ActivationCache:
             )
 
             # Element-wise multiplication of z and W_O (with shape [head_index, d_head, d_model])
-            # nn.ModuleList[T][i] is typed Tensor|Module upstream; cast restores T.
-            block = cast("TransformerBlock", self.model.blocks[layer])
+            block = self.model.blocks[layer]
             result = z * block.attn.W_O
 
             # Sum over d_head to get the contribution of each head to the residual stream
@@ -906,8 +904,7 @@ class ActivationCache:
             pos_slice = Slice(pos_slice)
 
         neuron_acts = self[("post", layer, "mlp")]
-        # ModuleList[T] indexing is typed `Tensor | Module` upstream; cast restores T.
-        block = cast("TransformerBlock", self.model.blocks[layer])
+        block = self.model.blocks[layer]
         W_out = block.mlp.W_out
         if pos_slice is not None:
             # Note - order is important, as Slice.apply *may* collapse a dimension, so this ensures
@@ -974,8 +971,7 @@ class ActivationCache:
 
         components: list = []
         for l in range(layer):
-            # nn.ModuleList[T][i] is typed Tensor|Module upstream; cast restores T.
-            block = cast("TransformerBlock", self.model.blocks[l])
+            block = self.model.blocks[l]
             W_out_l = block.mlp.W_out  # [d_mlp, d_model]
             W_out_l_sliced = neuron_slice.apply(W_out_l, dim=0)
             W_proj_l = W_out_l_sliced @ project_2d  # [d_mlp, n_outs]

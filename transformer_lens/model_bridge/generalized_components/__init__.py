@@ -7,6 +7,7 @@ from transformer_lens.model_bridge.generalized_components.audio_feature_extracto
 )
 from transformer_lens.model_bridge.generalized_components.block import (
     BlockBridge,
+    DelegatedAttentionBlockBridge,
     MLABlockBridge,
     ParallelBlockBridge,
 )
@@ -47,6 +48,9 @@ from transformer_lens.model_bridge.generalized_components.altup_block import (
 )
 from transformer_lens.model_bridge.generalized_components.gated_mlp import (
     GatedMLPBridge,
+)
+from transformer_lens.model_bridge.generalized_components.glm_moe_dsa_attention import (
+    GlmMoeDsaAttentionBridge,
 )
 from transformer_lens.model_bridge.generalized_components.gated_rms_norm import (
     GatedRMSNormBridge,
@@ -97,6 +101,9 @@ from transformer_lens.model_bridge.generalized_components.ssm_block import SSMBl
 from transformer_lens.model_bridge.generalized_components.ssm_mixer import SSMMixerBridge
 from transformer_lens.model_bridge.generalized_components.symbolic import SymbolicBridge
 from transformer_lens.model_bridge.generalized_components.t5_block import T5BlockBridge
+from transformer_lens.model_bridge.generalized_components.t5gemma_decoder_block import (
+    T5GemmaDecoderBlockBridge,
+)
 from transformer_lens.model_bridge.generalized_components.unembedding import (
     UnembeddingBridge,
 )
@@ -108,6 +115,7 @@ __all__ = [
     "AttentionBridge",
     "AudioFeatureExtractorBridge",
     "BlockBridge",
+    "DelegatedAttentionBlockBridge",
     "MLABlockBridge",
     "ParallelBlockBridge",
     "BloomBlockBridge",
@@ -133,6 +141,7 @@ __all__ = [
     "MPTALiBiAttentionBridge",
     "AltUpBlockBridge",
     "GatedMLPBridge",
+    "GlmMoeDsaAttentionBridge",
     "MLAAttentionBridge",
     "GatedRMSNormBridge",
     "MoEBridge",
@@ -142,6 +151,7 @@ __all__ = [
     "SymbolicBridge",
     "UnembeddingBridge",
     "T5BlockBridge",
+    "T5GemmaDecoderBlockBridge",
     "SiglipVisionEncoderBridge",
     "SiglipVisionEncoderLayerBridge",
     "SSM2MixerBridge",

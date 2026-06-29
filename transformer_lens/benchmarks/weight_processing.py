@@ -77,11 +77,11 @@ def benchmark_weight_processing(
                 )
             _mlp_idx, mlp_block = mlp_blocks[0]
             bridge_w_out = mlp_block.mlp.W_out
-            reference_w_out = reference_model.blocks[_mlp_idx].mlp.W_out  # type: ignore[union-attr]
+            reference_w_out = reference_model.blocks[_mlp_idx].mlp.W_out
 
             bridge_mean = torch.mean(torch.abs(torch.mean(bridge_w_out, dim=-1, keepdim=True)))
             reference_mean = torch.mean(
-                torch.abs(torch.mean(reference_w_out, dim=-1, keepdim=True))  # type: ignore[arg-type]
+                torch.abs(torch.mean(reference_w_out, dim=-1, keepdim=True))
             )
 
             if bridge_mean.item() > 1e-3:
@@ -161,7 +161,7 @@ def benchmark_weight_sharing(
             # Verify weights are identical before modification
             bridge_W_V = torch.clone(cast(torch.Tensor, bridge_attn_block.attn.W_V))
             reference_W_V = torch.clone(
-                cast(torch.Tensor, reference_model.blocks[bridge_attn_idx].attn.W_V)  # type: ignore[union-attr]
+                cast(torch.Tensor, reference_model.blocks[bridge_attn_idx].attn.W_V)
             )
 
             # Check if models have GQA (different head counts for K/V vs Q)
@@ -206,7 +206,7 @@ def benchmark_weight_sharing(
             # Modify weights in both models
             with torch.no_grad():
                 bridge_attn_block.attn.W_V[0, :, :] = 0  # type: ignore[union-attr,operator]
-                reference_model.blocks[bridge_attn_idx].attn.W_V[0, :, :] = 0  # type: ignore[union-attr,operator]
+                reference_model.blocks[bridge_attn_idx].attn.W_V[0, :, :] = 0
 
             # Test modified losses
             bridge_modified = bridge(test_text, return_type="loss")
@@ -218,7 +218,7 @@ def benchmark_weight_sharing(
             # Restore weights
             with torch.no_grad():
                 bridge_attn_block.attn.W_V.copy_(bridge_W_V)  # type: ignore[union-attr,operator,arg-type]
-                reference_model.blocks[bridge_attn_idx].attn.W_V.copy_(reference_W_V)  # type: ignore[union-attr,operator,arg-type]
+                reference_model.blocks[bridge_attn_idx].attn.W_V.copy_(reference_W_V)
 
             diff = abs(bridge_change - reference_change)
             if diff < atol:

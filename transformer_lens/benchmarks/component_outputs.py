@@ -199,6 +199,15 @@ class BenchmarkReport:
 class ComponentBenchmarker:
     """Benchmarking utility for testing TransformerBridge components against HuggingFace."""
 
+    def _is_delegated_block(self) -> bool:
+        """Return True if the blocks component has maintain_native_attention set."""
+        blocks = (
+            getattr(self.adapter, "component_mapping", {}).get("blocks")
+            if self.adapter is not None
+            else None
+        )
+        return getattr(blocks, "maintain_native_attention", False)
+
     def __init__(
         self,
         bridge_model: nn.Module,
@@ -419,6 +428,23 @@ class ComponentBenchmarker:
         ):
             return
 
+        # Skip attention and PLE submodules when using DelegatedAttentionBlockBridge.
+        # These architectures delegate all math to HF; the benchmark can't call the HF
+        # attention in isolation (missing position_embeddings, attention_mask, etc.) and
+        # PLE submodules receive per-layer inputs at a different dimension than hidden_states.
+        _is_delegated = self._is_delegated_block()
+        if _is_delegated and "attn" in component_path:
+            return
+        if _is_delegated and any(
+            name in component_path
+            for name in (
+                "per_layer_input_gate",
+                "per_layer_projection",
+                "post_per_layer_input_norm",
+            )
+        ):
+            return
+
         # Skip models whose MLP/attn forward signatures require extra context from the block:
         # - BLOOM: MLP requires residual and alibi bias
         # - T5: requires cache_position for relative position embeddings
@@ -526,6 +552,12 @@ class ComponentBenchmarker:
             ComponentTestResult or None if the component cannot be tested
         """
         try:
+            # Skip rotary_emb for DelegatedAttentionBlockBridge architectures.
+            # Gemma4's RotaryEmbeddingBridge wraps a rotary that returns a set-like
+            # structure which the benchmark comparison can't subscript.
+            if self._is_delegated_block() and component_path == "rotary_emb":
+                return None
+
             # Get bridge component
             # The adapter returns nn.Module, but for bridge models it's actually GeneralizedComponent
             bridge_component = cast(
@@ -549,7 +581,7 @@ class ComponentBenchmarker:
 
             # For embedding components, generate token indices once
             shared_token_indices = None
-            if component_path == "embed":
+            if component_path in ("embed", "encoder_embed", "decoder_embed"):
                 batch, seq_len, _ = test_input.shape
                 shared_token_indices = torch.randint(
                     0, self.cfg.d_vocab, (batch, seq_len), device=test_input.device
@@ -756,7 +788,7 @@ class ComponentBenchmarker:
                 except TypeError:
                     # Try simple call
                     return component(test_input)
-        elif component_path == "embed":
+        elif component_path in ("embed", "encoder_embed", "decoder_embed"):
             # Main embedding component expects integer indices
             # Use shared token indices if provided, otherwise generate new ones
             if shared_token_indices is not None:

@@ -54,6 +54,13 @@ def map_default_transformer_lens_config(hf_config):
     source_config = hf_config
     if hasattr(hf_config, "text_config") and hf_config.text_config is not None:
         source_config = hf_config.text_config
+    # T5Gemma: nested encoder/decoder sub-configs; use decoder (LM head is decoder-side)
+    elif (
+        hasattr(hf_config, "decoder")
+        and hf_config.decoder is not None
+        and hasattr(hf_config.decoder, "hidden_size")
+    ):
+        source_config = hf_config.decoder
 
     tl_config = copy.deepcopy(hf_config)
     if hasattr(source_config, "n_embd"):
@@ -171,6 +178,8 @@ def map_default_transformer_lens_config(hf_config):
         tl_config.eps = source_config.layer_norm_eps
     elif hasattr(source_config, "layer_norm_epsilon"):
         tl_config.eps = source_config.layer_norm_epsilon
+    elif hasattr(source_config, "norm_eps"):
+        tl_config.eps = source_config.norm_eps
     if hasattr(source_config, "num_local_experts"):
         tl_config.num_experts = source_config.num_local_experts
     if hasattr(source_config, "num_experts_per_tok"):
@@ -210,6 +219,7 @@ def determine_architecture_from_hf_config(hf_config):
             "apertus": "ApertusForCausalLM",
             "gpt2": "GPT2LMHeadModel",
             "hubert": "HubertModel",
+            "bart": "BartForConditionalGeneration",
             "llama": "LlamaForCausalLM",
             "mamba": "MambaForCausalLM",
             "mamba2": "Mamba2ForCausalLM",
@@ -221,6 +231,12 @@ def determine_architecture_from_hf_config(hf_config):
             # gemma3n is tri-modal; the text path loads as the full ForConditionalGeneration
             # (vision/audio referenced but unbridged in the text-only adapter).
             "gemma3n": "Gemma3nForConditionalGeneration",
+            # gemma4 is multimodal-only; all released checkpoints load as the full
+            # ForConditionalGeneration (vision/audio referenced but unbridged).
+            "gemma4": "Gemma4ForConditionalGeneration",
+            "gemma4_unified": "Gemma4UnifiedForConditionalGeneration",
+            "glm4_moe": "Glm4MoeForCausalLM",
+            "glm_moe_dsa": "GlmMoeDsaForCausalLM",
             "bert": "BertForMaskedLM",
             "bloom": "BloomForCausalLM",
             "codegen": "CodeGenForCausalLM",
@@ -244,6 +260,7 @@ def determine_architecture_from_hf_config(hf_config):
             "stablelm": "StableLmForCausalLM",
             "t5": "T5ForConditionalGeneration",
             "mt5": "MT5ForConditionalGeneration",
+            "t5gemma": "T5GemmaForConditionalGeneration",
         }
         if model_type in model_type_mappings:
             architectures.append(model_type_mappings[model_type])
@@ -494,6 +511,13 @@ def boot(
         "is_gated_act",
         "word_embed_proj_dim",
         "do_layer_norm_before",
+        # BART
+        "encoder_layers",
+        "decoder_layers",
+        "encoder_attention_heads",
+        "decoder_attention_heads",
+        "encoder_ffn_dim",
+        "decoder_ffn_dim",
         # Granite
         "position_embedding_type",
         # Falcon
@@ -516,6 +540,15 @@ def boot(
         # Cohere
         "logit_scale",
         "rope_parameters",
+        # Hybrid/MoE architectures
+        "layer_types",
+        "moe_intermediate_size",
+        "norm_eps",
+        "attention_bias",
+        "lm_head_bias",
+        "router_jitter_noise",
+        "input_jitter_noise",
+        "eos_token_id",
     ]
     for attr in _HF_PASSTHROUGH_ATTRS:
         val = getattr(hf_config, attr, None)
