@@ -26,6 +26,7 @@ Submodules
    transformer_lens.model_bridge.generalized_components.gated_delta_net
    transformer_lens.model_bridge.generalized_components.gated_mlp
    transformer_lens.model_bridge.generalized_components.gated_rms_norm
+   transformer_lens.model_bridge.generalized_components.glm_moe_dsa_attention
    transformer_lens.model_bridge.generalized_components.joint_gate_up_mlp
    transformer_lens.model_bridge.generalized_components.joint_qkv_attention
    transformer_lens.model_bridge.generalized_components.joint_qkv_position_embeddings_attention
@@ -47,6 +48,7 @@ Submodules
    transformer_lens.model_bridge.generalized_components.ssm_mixer
    transformer_lens.model_bridge.generalized_components.symbolic
    transformer_lens.model_bridge.generalized_components.t5_block
+   transformer_lens.model_bridge.generalized_components.t5gemma_decoder_block
    transformer_lens.model_bridge.generalized_components.unembedding
    transformer_lens.model_bridge.generalized_components.vision_projection
 

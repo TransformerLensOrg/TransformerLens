@@ -67,7 +67,7 @@
             <a id="nextFileLink" class="nav" href="z_b2114f845e0399b7_tokenize_utils_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-06-18 23:55 +0000
+            created at 2026-06-29 17:59 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -205,7 +205,7 @@
     <p class="pln"><span class="n"><a id="t121" href="#t121">121</a></span><span class="t">    <span class="str">"""</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t122" href="#t122">122</a></span><span class="t"><span class="str">    Returns the indices of non-padded tokens, offset by the position of the first attended token.</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t123" href="#t123">123</a></span><span class="t"><span class="str">    """</span>&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t124" href="#t124">124</a></span><span class="t">    <span class="com"># shift the position ids so that the id at the the first attended token position becomes zero.</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t124" href="#t124">124</a></span><span class="t">    <span class="com"># shift the position ids so that the id at the first attended token position becomes zero.</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t125" href="#t125">125</a></span><span class="t">    <span class="com"># The position ids of the prepending pad tokens are shifted to -1.</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t126" href="#t126">126</a></span><span class="t">    <span class="nam">shifted_position_ids</span> <span class="op">=</span> <span class="nam">attention_mask</span><span class="op">.</span><span class="nam">cumsum</span><span class="op">(</span><span class="nam">dim</span><span class="op">=</span><span class="num">1</span><span class="op">)</span> <span class="op">-</span> <span class="num">1</span>  <span class="com"># [batch, tokens_length]</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t127" href="#t127">127</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
@@ -282,7 +282,7 @@
             <a class="nav" href="z_b2114f845e0399b7_tokenize_utils_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-06-18 23:55 +0000
+            created at 2026-06-29 17:59 +0000
         </p>
     </div>
 </footer>

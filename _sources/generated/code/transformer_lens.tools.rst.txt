@@ -7,6 +7,7 @@ Subpackages
 .. toctree::
    :maxdepth: 4
 
+   transformer_lens.tools.analysis
    transformer_lens.tools.model_registry
 
 Module contents

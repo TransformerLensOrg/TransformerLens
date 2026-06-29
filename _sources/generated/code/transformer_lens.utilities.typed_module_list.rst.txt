@@ -1,0 +1,7 @@
+transformer\_lens.utilities.typed\_module\_list module
+======================================================
+
+.. automodule:: transformer_lens.utilities.typed_module_list
+   :members:
+   :undoc-members:
+   :show-inheritance:

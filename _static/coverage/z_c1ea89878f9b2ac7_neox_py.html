@@ -67,7 +67,7 @@
             <a id="nextFileLink" class="nav" href="z_c1ea89878f9b2ac7_olmo_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-06-18 23:55 +0000
+            created at 2026-06-29 17:59 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -98,7 +98,7 @@
     <p class="run"><span class="n"><a id="t14" href="#t14">14</a></span><span class="t">        <span class="nam">state_dict</span><span class="op">[</span><span class="fst">f"</span><span class="fst">blocks.</span><span class="op">{</span><span class="nam">l</span><span class="op">}</span><span class="fst">.ln1.b</span><span class="fst">"</span><span class="op">]</span> <span class="op">=</span> <span class="nam">neox</span><span class="op">.</span><span class="nam">gpt_neox</span><span class="op">.</span><span class="nam">layers</span><span class="op">[</span><span class="nam">l</span><span class="op">]</span><span class="op">.</span><span class="nam">input_layernorm</span><span class="op">.</span><span class="nam">bias</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t15" href="#t15">15</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t16" href="#t16">16</a></span><span class="t">        <span class="com"># For some inexplicable reason, NeoX both uses the concatenated QKV</span>&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t17" href="#t17">17</a></span><span class="t">        <span class="com"># matmul of GPT-2 (afaict this has a neglible performance impact) AND</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t17" href="#t17">17</a></span><span class="t">        <span class="com"># matmul of GPT-2 (afaict this has a negligible performance impact) AND</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t18" href="#t18">18</a></span><span class="t">        <span class="com"># has the flattened axis in the DIFFERENT order of (head_index qkv</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t19" href="#t19">19</a></span><span class="t">        <span class="com"># d_head) - this took me an hour to debug...</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t20" href="#t20">20</a></span><span class="t">        <span class="nam">W</span> <span class="op">=</span> <span class="nam">neox</span><span class="op">.</span><span class="nam">gpt_neox</span><span class="op">.</span><span class="nam">layers</span><span class="op">[</span><span class="nam">l</span><span class="op">]</span><span class="op">.</span><span class="nam">attention</span><span class="op">.</span><span class="nam">query_key_value</span><span class="op">.</span><span class="nam">weight</span>&nbsp;</span><span class="r"></span></p>
@@ -150,7 +150,7 @@
             <a class="nav" href="z_c1ea89878f9b2ac7_olmo_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-06-18 23:55 +0000
+            created at 2026-06-29 17:59 +0000
         </p>
     </div>
 </footer>

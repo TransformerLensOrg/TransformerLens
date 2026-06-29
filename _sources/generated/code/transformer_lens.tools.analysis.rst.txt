@@ -1,0 +1,19 @@
+transformer\_lens.tools.analysis package
+========================================
+
+Submodules
+----------
+
+.. toctree::
+   :maxdepth: 4
+
+   transformer_lens.tools.analysis.direct_logit_attribution
+   transformer_lens.tools.analysis.direct_path_patching
+
+Module contents
+---------------
+
+.. automodule:: transformer_lens.tools.analysis
+   :members:
+   :undoc-members:
+   :show-inheritance:

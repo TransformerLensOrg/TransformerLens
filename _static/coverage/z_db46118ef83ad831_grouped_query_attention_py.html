@@ -67,7 +67,7 @@
             <a id="nextFileLink" class="nav" href="z_db46118ef83ad831_layer_norm_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-06-18 23:55 +0000
+            created at 2026-06-29 17:59 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -237,7 +237,7 @@
     <p class="run run2"><span class="n"><a id="t153" href="#t153">153</a></span><span class="t">        <span class="nam">k</span><span class="op">:</span> <span class="nam">Float</span><span class="op">[</span><span class="nam">torch</span><span class="op">.</span><span class="nam">Tensor</span><span class="op">,</span> <span class="str">"batch key_pos kv_head_index d_head"</span><span class="op">]</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t154" href="#t154">154</a></span><span class="t">    <span class="op">)</span> <span class="op">-></span> <span class="nam">Float</span><span class="op">[</span><span class="nam">torch</span><span class="op">.</span><span class="nam">Tensor</span><span class="op">,</span> <span class="str">"batch head_index query_pos key_pos"</span><span class="op">]</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t155" href="#t155">155</a></span><span class="t">        <span class="str">"""Calculate attention scores from Q and the unexpanded K matrix.</span>&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t156" href="#t156">156</a></span><span class="t"><span class="str">        K will be expaned from [batch, pos, n_key_value_head, d_head] to [batch, pos, n_query_heads, d_head] using torch.repeat_interleave.</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t156" href="#t156">156</a></span><span class="t"><span class="str">        K will be expanded from [batch, pos, n_key_value_head, d_head] to [batch, pos, n_query_heads, d_head] using torch.repeat_interleave.</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t157" href="#t157">157</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t158" href="#t158">158</a></span><span class="t"><span class="str">        Args:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t159" href="#t159">159</a></span><span class="t"><span class="str">        q (Float[torch.Tensor, "batch query_pos head_index d_head"]): The Q tensor.</span>&nbsp;</span><span class="r"></span></p>
@@ -256,7 +256,7 @@
     <p class="run run2"><span class="n"><a id="t172" href="#t172">172</a></span><span class="t">        <span class="nam">pattern</span><span class="op">:</span> <span class="nam">Float</span><span class="op">[</span><span class="nam">torch</span><span class="op">.</span><span class="nam">Tensor</span><span class="op">,</span> <span class="str">"batch head_index query_pos key_pos"</span><span class="op">]</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t173" href="#t173">173</a></span><span class="t">    <span class="op">)</span> <span class="op">-></span> <span class="nam">Float</span><span class="op">[</span><span class="nam">torch</span><span class="op">.</span><span class="nam">Tensor</span><span class="op">,</span> <span class="str">"batch query_pos head_index d_head"</span><span class="op">]</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t174" href="#t174">174</a></span><span class="t">        <span class="str">"""Calculate z scores from the attention pattern and the unexpanded V matrix.</span>&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t175" href="#t175">175</a></span><span class="t"><span class="str">        V will be expaned from [batch, pos, n_key_value_head, d_head] to [batch, pos, n_query_heads, d_head] using torch.repeat_interleave.</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t175" href="#t175">175</a></span><span class="t"><span class="str">        V will be expanded from [batch, pos, n_key_value_head, d_head] to [batch, pos, n_query_heads, d_head] using torch.repeat_interleave.</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t176" href="#t176">176</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t177" href="#t177">177</a></span><span class="t"><span class="str">        Args:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t178" href="#t178">178</a></span><span class="t"><span class="str">        v (Float[torch.Tensor, "batch query_pos head_index d_head"]): The V tensor.</span>&nbsp;</span><span class="r"></span></p>
@@ -295,7 +295,7 @@
             <a class="nav" href="z_db46118ef83ad831_layer_norm_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-06-18 23:55 +0000
+            created at 2026-06-29 17:59 +0000
         </p>
     </div>
 </footer>

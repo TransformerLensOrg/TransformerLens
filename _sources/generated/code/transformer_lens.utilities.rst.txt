@@ -30,6 +30,7 @@ Submodules
    transformer_lens.utilities.slice
    transformer_lens.utilities.tensors
    transformer_lens.utilities.tokenize_utils
+   transformer_lens.utilities.typed_module_list
 
 Module contents
 ---------------
