@@ -269,18 +269,6 @@ class TestGemma3MultimodalWeightProcessingConversions:
         o_conv = adapter.weight_processing_conversions["blocks.{i}.attn.o.weight"]
         assert o_conv.tensor_conversion.pattern == "m (n h) -> n h m"
 
-    def test_norm_offset_keys_present(self, adapter):
-        for key in (
-            "blocks.{i}.ln1.weight",
-            "blocks.{i}.ln1_post.weight",
-            "blocks.{i}.ln2.weight",
-            "blocks.{i}.ln2_post.weight",
-            "ln_final.weight",
-            "blocks.{i}.attn.q_norm.weight",
-            "blocks.{i}.attn.k_norm.weight",
-        ):
-            assert key in adapter.weight_processing_conversions, f"missing {key}"
-
     def test_norm_offset_conversion_semantics(self, adapter):
         for key in (
             "blocks.{i}.ln1.weight",

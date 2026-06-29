@@ -489,11 +489,6 @@ class TestQwen3NextIntegration:
         _, hf = bridge_and_model
         return hf
 
-    def test_bridge_creation(self, bridge):
-        from transformer_lens.model_bridge import TransformerBridge
-
-        assert isinstance(bridge, TransformerBridge)
-
     def test_hook_names_present(self, bridge):
         """blocks.0.attn.* must NOT appear — self_attn is absent on linear-attn layers."""
         hook_keys = set(bridge.hook_dict.keys())

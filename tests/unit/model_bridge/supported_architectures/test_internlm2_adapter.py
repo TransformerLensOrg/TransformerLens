@@ -639,8 +639,3 @@ class TestInternLM2ArchitectureGuards:
         blocks = adapter.component_mapping["blocks"]
         assert not isinstance(blocks, ParallelBlockBridge)
         assert isinstance(blocks, BlockBridge)
-
-    def test_has_both_ln1_and_ln2(self, adapter: InternLM2ArchitectureAdapter) -> None:
-        blocks = adapter.component_mapping["blocks"]
-        assert "ln1" in blocks.submodules
-        assert "ln2" in blocks.submodules

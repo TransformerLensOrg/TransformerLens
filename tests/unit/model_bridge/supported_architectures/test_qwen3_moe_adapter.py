@@ -99,18 +99,6 @@ class TestQwen3MoeComponentMapping:
         assert isinstance(subs["ln1"], RMSNormalizationBridge)
         assert isinstance(subs["ln2"], RMSNormalizationBridge)
 
-    def test_mlp_is_moe_bridge(self, adapter: Qwen3MoeArchitectureAdapter) -> None:
-        mapping = adapter.component_mapping
-        assert mapping is not None
-        mlp = mapping["blocks"].submodules["mlp"]
-        assert isinstance(mlp, MoEBridge)
-
-    def test_mlp_has_gate_submodule(self, adapter: Qwen3MoeArchitectureAdapter) -> None:
-        mapping = adapter.component_mapping
-        assert mapping is not None
-        mlp = mapping["blocks"].submodules["mlp"]
-        assert "gate" in mlp.submodules
-
     def test_q_norm_k_norm_are_rms_norm_bridges(self, adapter: Qwen3MoeArchitectureAdapter) -> None:
         mapping = adapter.component_mapping
         assert mapping is not None

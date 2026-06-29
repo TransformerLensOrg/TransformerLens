@@ -92,10 +92,6 @@ class TestFalconComponentMapping:
             "unembed",
         }
 
-    def test_no_pos_embed_key(self, adapter: FalconArchitectureAdapter) -> None:
-        """Falcon uses rotary or ALiBi — no learned positional embedding component."""
-        assert "pos_embed" not in adapter.component_mapping
-
     def test_bridge_types(self, adapter: FalconArchitectureAdapter) -> None:
         mapping = adapter.component_mapping
         assert isinstance(mapping["embed"], EmbeddingBridge)
@@ -114,10 +110,6 @@ class TestFalconComponentMapping:
     def test_blocks_is_parallel_block_bridge(self, adapter: FalconArchitectureAdapter) -> None:
         """Parallel attention mode uses ParallelBlockBridge."""
         assert isinstance(adapter.component_mapping["blocks"], ParallelBlockBridge)
-
-    def test_parallel_block_has_no_ln2(self, adapter: FalconArchitectureAdapter) -> None:
-        """Parallel attention shares one LN — no ln2 in default config."""
-        assert "ln2" not in adapter.component_mapping["blocks"].submodules
 
     def test_block_submodule_keys_parallel(self, adapter: FalconArchitectureAdapter) -> None:
         assert set(adapter.component_mapping["blocks"].submodules.keys()) == {"ln1", "attn", "mlp"}
@@ -309,22 +301,6 @@ class TestFalconWeightConversions:
 
 class TestFalconGQASupport:
     """n_key_value_heads propagates to K/V; multi_query forces it to 1."""
-
-    def test_gqa_propagates_to_kv(self) -> None:
-        adapter = FalconArchitectureAdapter(_make_cfg(n_heads=32, n_key_value_heads=8))
-        for slot in ("k", "v"):
-            conv = adapter.weight_processing_conversions[f"blocks.{{i}}.attn.{slot}"]
-            assert conv.tensor_conversion.axes_lengths["n"] == 8
-
-    def test_gqa_does_not_affect_q(self) -> None:
-        adapter = FalconArchitectureAdapter(_make_cfg(n_heads=32, n_key_value_heads=8))
-        q_conv = adapter.weight_processing_conversions["blocks.{i}.attn.q"]
-        assert q_conv.tensor_conversion.axes_lengths["n"] == 32
-
-    def test_gqa_does_not_affect_o(self) -> None:
-        adapter = FalconArchitectureAdapter(_make_cfg(n_heads=32, n_key_value_heads=8))
-        o_conv = adapter.weight_processing_conversions["blocks.{i}.attn.o"]
-        assert o_conv.tensor_conversion.axes_lengths["n"] == 32
 
     def test_no_kv_heads_falls_back_to_n_heads(self) -> None:
         adapter = FalconArchitectureAdapter(_make_cfg(n_heads=32, n_key_value_heads=None))

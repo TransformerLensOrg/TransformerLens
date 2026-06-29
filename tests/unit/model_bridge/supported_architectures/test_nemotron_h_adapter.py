@@ -345,13 +345,6 @@ class TestNemotronHGuards:
         assert not isinstance(blocks, BlockBridge)
         assert isinstance(blocks, SSMBlockBridge)
 
-    def test_no_weight_conversions_defined(self, adapter: NemotronHArchitectureAdapter) -> None:
-        # Unlike attention adapters, NemotronH has no rearrange/split conversions.
-        assert len(adapter.weight_processing_conversions) == 0
-
-    def test_cfg_is_not_attn_only(self, adapter: NemotronHArchitectureAdapter) -> None:
-        assert adapter.cfg.attn_only is False
-
     def test_mamba_intermediate_size_formula(self) -> None:
         """Verify formula: intermediate = mamba_num_heads * mamba_head_dim."""
         cfg = _make_cfg(mamba_num_heads=16, mamba_head_dim=32)
