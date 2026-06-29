@@ -115,20 +115,15 @@ class AbstractAttention(ABC, nn.Module):
             self.k_norm = None
 
         self.attn_type = attn_type
-        # Create a max_ctx x max_ctx mask, with True iff that query position
-        # can attend to that key position (query is first axis, key is second axis)
-        causal_mask = torch.tril(torch.ones((self.cfg.n_ctx, self.cfg.n_ctx)).bool())
-        if self.attn_type == "global":
-            # For global attention, this is a lower triangular matrix - key <= query
-            self.register_buffer("mask", causal_mask)
-        elif self.attn_type == "local":
-            # For local, this is banded, query - window_size < key <= query
+        if self.attn_type == "local":
             if not isinstance(self.cfg.window_size, int):
                 raise ValueError("Window size must be an integer for local attention")
-            self.register_buffer("mask", torch.triu(causal_mask, 1 - self.cfg.window_size))
-        else:
+        elif self.attn_type != "global":
             raise ValueError(f"Invalid attention type: {self.attn_type}")
 
+        # Kept as a tiny buffer for state-dict/device compatibility. The actual
+        # causal mask is built at forward time for the current sequence length.
+        self.register_buffer("mask", torch.empty((0, 0), dtype=torch.bool))
         self.register_buffer("IGNORE", torch.tensor(-torch.inf))
 
         self.layer_id = layer_id
@@ -572,14 +567,13 @@ class AbstractAttention(ABC, nn.Module):
                 f"query_ctx_length {query_ctx_length} + past_kv_pos_offset {past_kv_pos_offset} != key_ctx_length {key_ctx_length} - you likely have a bug."
             )
 
-        # Dynamically extend mask if needed for long context
-        if key_ctx_length > self.mask.shape[0]:
-            self._extend_mask(key_ctx_length)
-
-        # Index back to front to ensure local attention works
-        final_mask = cast(torch.Tensor, self.mask)[
-            None, None, -query_ctx_length:, -key_ctx_length:
-        ]  # [1, 1, pos, pos]
+        mask_device = attention_mask.device if attention_mask is not None else attn_scores.device
+        final_mask = self._make_causal_mask(
+            query_ctx_length=query_ctx_length,
+            key_ctx_length=key_ctx_length,
+            past_kv_pos_offset=past_kv_pos_offset,
+            device=mask_device,
+        )
         if attention_mask is not None:
             # Apply a causal mask to the attention scores considering the padding
 
@@ -588,13 +582,36 @@ class AbstractAttention(ABC, nn.Module):
                 attention_mask, "batch offset_pos -> batch 1 1 offset_pos"
             )
 
-            final_mask = final_mask.to(attention_mask.device)
-
-            # Element-wise multiplication of the final mask and the attention mask and cast to boolean
-            final_mask = (final_mask * attention_mask).bool()  # [batch, head, pos, offset_pos]
+            final_mask = final_mask & attention_mask.bool()  # [batch, head, pos, offset_pos]
 
         attn_scores = attn_scores.to(final_mask.device)
-        return torch.where(final_mask, attn_scores, cast(torch.Tensor, self.IGNORE))
+        ignore = cast(torch.Tensor, self.IGNORE).to(final_mask.device)
+        return torch.where(final_mask, attn_scores, ignore)
+
+    def _make_causal_mask(
+        self,
+        query_ctx_length: int,
+        key_ctx_length: int,
+        past_kv_pos_offset: int,
+        device: torch.device,
+    ) -> torch.Tensor:
+        """Create the causal mask for the current attention-score shape."""
+        query_positions = torch.arange(
+            past_kv_pos_offset,
+            past_kv_pos_offset + query_ctx_length,
+            device=device,
+        )
+        key_positions = torch.arange(key_ctx_length, device=device)
+
+        final_mask = key_positions[None, :] <= query_positions[:, None]
+        if self.attn_type == "local":
+            if not isinstance(self.cfg.window_size, int):
+                raise ValueError("Window size must be an integer for local attention")
+            final_mask = final_mask & (
+                key_positions[None, :] > query_positions[:, None] - self.cfg.window_size
+            )
+
+        return final_mask[None, None, :, :]
 
     def calculate_sin_cos_rotary(
         self,
@@ -770,16 +787,33 @@ class AbstractAttention(ABC, nn.Module):
         self.rotary_cos = cos.to(self.rotary_cos.device)
 
     def _extend_mask(self, new_size: int):
-        """Extend causal mask to support longer contexts dynamically."""
-        causal_mask = torch.tril(torch.ones((new_size, new_size), device=self.mask.device).bool())
-        if self.attn_type == "global":
-            self.mask = causal_mask
-        elif self.attn_type == "local":
-            if not isinstance(self.cfg.window_size, int):
-                raise ValueError("Window size must be an integer for local attention")
-            self.mask = torch.triu(causal_mask, 1 - self.cfg.window_size)
-        else:
-            raise ValueError(f"Invalid attention type: {self.attn_type}")
+        """Deprecated no-op kept for external callers."""
+        del new_size
+
+    def _load_from_state_dict(
+        self,
+        state_dict,
+        prefix,
+        local_metadata,
+        strict,
+        missing_keys,
+        unexpected_keys,
+        error_msgs,
+    ):
+        mask_key = prefix + "mask"
+        saved_mask = state_dict.get(mask_key)
+        if isinstance(saved_mask, torch.Tensor) and saved_mask.shape != self.mask.shape:
+            state_dict = state_dict.copy()
+            state_dict[mask_key] = self.mask
+        super()._load_from_state_dict(
+            state_dict,
+            prefix,
+            local_metadata,
+            strict,
+            missing_keys,
+            unexpected_keys,
+            error_msgs,
+        )
 
     @staticmethod
     def create_alibi_slope(

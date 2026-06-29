@@ -121,6 +121,120 @@ def test_attention_config_dict():
     assert attn.cfg.act_fn == "relu"
 
 
+def test_attention_does_not_allocate_full_causal_mask():
+    cfg = HookedTransformerConfig(
+        n_layers=1,
+        d_model=4,
+        n_ctx=8192,
+        d_head=2,
+        n_heads=2,
+        act_fn="relu",
+    )
+
+    attn = Attention(cfg)
+
+    assert attn.mask.shape == (0, 0)
+    assert attn.state_dict()["mask"].numel() == 0
+
+
+def test_apply_causal_mask_global_matches_absolute_positions():
+    cfg = HookedTransformerConfig(
+        n_layers=1,
+        d_model=4,
+        n_ctx=16,
+        d_head=2,
+        n_heads=2,
+        act_fn="relu",
+    )
+    attn = Attention(cfg)
+    attn_scores = torch.zeros((1, 1, 3, 5))
+
+    masked_scores = attn.apply_causal_mask(attn_scores, past_kv_pos_offset=2)
+
+    expected_allowed = torch.tensor(
+        [
+            [True, True, True, False, False],
+            [True, True, True, True, False],
+            [True, True, True, True, True],
+        ]
+    )
+    assert torch.equal(torch.isfinite(masked_scores[0, 0]), expected_allowed)
+
+
+def test_apply_causal_mask_local_matches_window():
+    cfg = HookedTransformerConfig(
+        n_layers=1,
+        d_model=4,
+        n_ctx=16,
+        d_head=2,
+        n_heads=2,
+        act_fn="relu",
+        window_size=2,
+    )
+    attn = Attention(cfg, attn_type="local")
+    attn_scores = torch.zeros((1, 1, 3, 5))
+
+    masked_scores = attn.apply_causal_mask(attn_scores, past_kv_pos_offset=2)
+
+    expected_allowed = torch.tensor(
+        [
+            [False, True, True, False, False],
+            [False, False, True, True, False],
+            [False, False, False, True, True],
+        ]
+    )
+    assert torch.equal(torch.isfinite(masked_scores[0, 0]), expected_allowed)
+
+
+def test_apply_causal_mask_combines_padding_mask():
+    cfg = HookedTransformerConfig(
+        n_layers=1,
+        d_model=4,
+        n_ctx=16,
+        d_head=2,
+        n_heads=2,
+        act_fn="relu",
+    )
+    attn = Attention(cfg)
+    attn_scores = torch.zeros((1, 1, 3, 5))
+    attention_mask = torch.tensor([[1, 1, 0, 1, 1]])
+
+    masked_scores = attn.apply_causal_mask(
+        attn_scores,
+        past_kv_pos_offset=2,
+        attention_mask=attention_mask,
+    )
+
+    expected_allowed = torch.tensor(
+        [
+            [True, True, False, False, False],
+            [True, True, False, True, False],
+            [True, True, False, True, True],
+        ]
+    )
+    assert torch.equal(torch.isfinite(masked_scores[0, 0]), expected_allowed)
+
+
+def test_attention_loads_legacy_full_mask_with_strict_true():
+    cfg = HookedTransformerConfig(
+        n_layers=1,
+        d_model=4,
+        n_ctx=16,
+        d_head=2,
+        n_heads=2,
+        act_fn="relu",
+    )
+    attn = Attention(cfg)
+    state_dict = attn.state_dict()
+    state_dict["mask"] = torch.ones((cfg.n_ctx, cfg.n_ctx), dtype=torch.bool)
+
+    incompatible_keys = attn.load_state_dict(state_dict, strict=True)
+
+    assert incompatible_keys.missing_keys == []
+    assert incompatible_keys.unexpected_keys == []
+    assert attn.mask.shape == (0, 0)
+
+
 def test_remove_einsum_from_complex_attn_linear():
     batch = 64
     pos = 128
