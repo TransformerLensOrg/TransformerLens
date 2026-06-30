@@ -1,5 +1,5 @@
 """Architecture adapter for HF's Mamba2ForCausalLM, plus the effective attention helper."""
-from typing import Any, Dict, Optional, Union
+from typing import Any, Callable, Dict, Optional, Union
 
 import torch
 
@@ -162,10 +162,28 @@ def compute_effective_attention(
             cache, layer_idx=layer, include_dt_scaling=include_dt_scaling
         )
 
-    # All-layers: enumerate SSM mixer layers structurally (blocks_with checks
-    # _modules, so attention layers without a `.mixer` slot are skipped). On a
-    # hybrid where every block carries a passthrough `.mixer` (NemotronH), the
-    # cached-hook check below filters out the non-Mamba mixers.
+    return _over_ssm_layers(
+        bridge,
+        cache,
+        lambda mixer, idx: mixer.compute_effective_attention(
+            cache, layer_idx=idx, include_dt_scaling=include_dt_scaling
+        ),
+    )
+
+
+def _over_ssm_layers(
+    bridge: TransformerBridge,
+    cache: ActivationCache,
+    fn: Callable[[SSM2MixerBridge, int], torch.Tensor],
+) -> Union[torch.Tensor, Dict[int, torch.Tensor]]:
+    """Apply ``fn(mixer, layer_idx)`` over every SSM mixer layer, stack or dict.
+
+    Enumerates SSM mixer layers structurally (``blocks_with`` checks ``_modules``,
+    so attention layers without a ``.mixer`` slot are skipped). On a hybrid where
+    every block carries a passthrough ``.mixer`` (NemotronH), the cached-hook
+    check filters out the non-Mamba mixers. Returns a stacked tensor (dim 0 =
+    layer) when *every* block is an SSM layer, else a ``{layer_idx: result}`` dict.
+    """
     results: Dict[int, torch.Tensor] = {}
     for layer_idx, block in bridge.blocks_with("mixer"):
         mixer = block.mixer
@@ -175,18 +193,59 @@ def compute_effective_attention(
         conv1d_key = f"blocks.{layer_idx}.mixer.conv1d.hook_out"
         if in_proj_key not in cache or conv1d_key not in cache:
             continue
-        results[layer_idx] = mixer.compute_effective_attention(
-            cache, layer_idx=layer_idx, include_dt_scaling=include_dt_scaling
-        )
+        results[layer_idx] = fn(mixer, layer_idx)
 
     if not results:
         raise RuntimeError(
-            "compute_effective_attention found no SSM mixer layers with cached "
-            "in_proj/conv1d hooks. Run `run_with_cache()` on a Mamba-2 / SSM "
-            "bridge first."
+            "No SSM mixer layers with cached in_proj/conv1d hooks were found. "
+            "Run `run_with_cache()` on a Mamba-2 / SSM bridge first."
         )
 
     n_blocks = len(bridge.blocks)
     if len(results) == n_blocks and list(results) == list(range(n_blocks)):
         return torch.stack([results[i] for i in range(n_blocks)], dim=0)
     return results
+
+
+def compute_ssm_state(
+    bridge: TransformerBridge,
+    cache: ActivationCache,
+    layer: Optional[int] = None,
+    time_step: Optional[int] = None,
+) -> Union[torch.Tensor, Dict[int, torch.Tensor]]:
+    """Reconstruct the recurrent SSM state ``S`` for one or all SSM layers.
+
+    Thin wrapper over ``SSM2MixerBridge.compute_ssm_state`` mirroring
+    ``compute_effective_attention``; also reachable as ``cache.compute_ssm_state``.
+    See ``SSM2MixerBridge.compute_ssm_state`` for the reconstruction and shapes.
+
+    Args:
+        bridge: A loaded ``TransformerBridge`` whose SSM layers use ``.mixer``.
+        cache: ActivationCache from ``run_with_cache`` with in_proj/conv1d hooks.
+        layer: Specific block index, or None for every SSM layer.
+        time_step: Optional single position (memory-bounded); None for all steps.
+
+    Returns:
+        For a single ``layer``: the per-layer state tensor.
+        For ``layer=None``: a stacked tensor (dim 0 = layer) when every block is
+        an SSM layer, else a ``{layer_idx: state}`` dict over the SSM layers.
+
+    Raises:
+        TypeError: If the requested ``layer`` has no ``SSM2MixerBridge`` mixer.
+        RuntimeError: If ``layer=None`` finds no cached SSM mixer layers.
+    """
+    if layer is not None:
+        mixer = getattr(bridge.blocks[layer], "mixer", None)
+        if not isinstance(mixer, SSM2MixerBridge):
+            raise TypeError(
+                f"Layer {layer} has no SSM2MixerBridge mixer (got "
+                f"{type(mixer).__name__}); compute_ssm_state requires a Mamba-2 / "
+                "SSM layer."
+            )
+        return mixer.compute_ssm_state(cache, layer_idx=layer, time_step=time_step)
+
+    return _over_ssm_layers(
+        bridge,
+        cache,
+        lambda mixer, idx: mixer.compute_ssm_state(cache, layer_idx=idx, time_step=time_step),
+    )

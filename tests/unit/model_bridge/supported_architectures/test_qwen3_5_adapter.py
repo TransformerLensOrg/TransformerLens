@@ -680,3 +680,108 @@ class TestQwen3_5Integration:
                 f"Expected {hook_name} shape ({batch}, {seq}, {d_model}), "
                 f"got {activations[0].shape}"
             )
+
+
+@pytest.mark.skipif(
+    not _QWEN3_5_AVAILABLE,
+    reason="Qwen3_5TextConfig / Qwen3_5ForCausalLM not available in installed transformers",
+)
+class TestQwen3_5GatedDeltaNetEffectiveAttention:
+    """Faithfulness gate for GatedDeltaNetBridge.compute_effective_attention.
+
+    The reconstruction is a documented heuristic: (1) interior hooks fire only on
+    the hooked prefill path (use_cache=False); (2) the hooked Q/K are pre-norm
+    while the kernel L2-normalizes them; (3) the gated-linear-attention form omits
+    the delta rule's key-removal term. These tests pin the measured divergences.
+    """
+
+    LINEAR_LAYER = 0  # full-attn lands at 3 and 7 (interval=4); 0 is GatedDeltaNet
+    SEQ_LEN = 12
+
+    @pytest.fixture(scope="class")
+    def bridge(self):
+        br, _ = _make_tiny_bridge()
+        return br
+
+    @pytest.fixture(scope="class")
+    def cache(self, bridge):
+        import torch
+
+        torch.manual_seed(0)
+        tokens = torch.randint(0, 512, (1, self.SEQ_LEN))
+        with torch.no_grad():
+            # use_cache=False forces the hooked prefill path so interior hooks fire.
+            _, cache = bridge.run_with_cache(tokens, use_cache=False)
+        return cache
+
+    @staticmethod
+    def _build_M(cache, layer, *, l2norm, dtype):
+        """Recompute M from cached hooks, independent of the bridge impl."""
+        import torch
+        import torch.nn.functional as F
+
+        prefix = f"blocks.{layer}.linear_attn"
+        q = cache[f"{prefix}.hook_q"].to(dtype)
+        k = cache[f"{prefix}.hook_k"].to(dtype)
+        beta = cache[f"{prefix}.hook_beta"].to(dtype)
+        g = cache[f"{prefix}.hook_log_decay"].to(dtype)
+        if l2norm:
+            q, k = F.normalize(q, p=2, dim=-1), F.normalize(k, p=2, dim=-1)
+        if q.shape[2] < beta.shape[-1]:
+            rep = beta.shape[-1] // q.shape[2]
+            q, k = q.repeat_interleave(rep, dim=2), k.repeat_interleave(rep, dim=2)
+        qk = torch.matmul(q.permute(0, 2, 1, 3), k.permute(0, 2, 1, 3).transpose(-2, -1))
+        cum = torch.cumsum(g.permute(0, 2, 1), dim=-1)
+        L_log = cum[:, :, :, None] - cum[:, :, None, :]
+        seq = q.shape[1]
+        mask = torch.tril(torch.ones(seq, seq, dtype=torch.bool))
+        L = torch.where(mask[None, None], torch.exp(L_log), torch.zeros_like(L_log))
+        return qk * beta.permute(0, 2, 1)[:, :, None, :] * L
+
+    def test_requires_use_cache_false(self, bridge):
+        """Default cache path omits interior hooks -> compute_effective_attention raises."""
+        import torch
+
+        tokens = torch.randint(0, 512, (1, self.SEQ_LEN))
+        with torch.no_grad():
+            _, cache = bridge.run_with_cache(tokens)  # default: cache allocated
+        mixer = bridge.blocks[self.LINEAR_LAYER].linear_attn
+        with pytest.raises(RuntimeError, match="in cache"):
+            mixer.compute_effective_attention(cache, layer_idx=self.LINEAR_LAYER)
+
+    def test_shape_causal_finite(self, bridge, cache):
+        import torch
+
+        mixer = bridge.blocks[self.LINEAR_LAYER].linear_attn
+        M = mixer.compute_effective_attention(cache, layer_idx=self.LINEAR_LAYER)
+        assert M.ndim == 4 and M.shape[-1] == M.shape[-2] == self.SEQ_LEN
+        assert torch.isfinite(M).all()
+        upper = torch.triu(torch.ones(self.SEQ_LEN, self.SEQ_LEN, dtype=torch.bool), diagonal=1)
+        assert torch.all(M[..., upper] == 0), "effective attention must be causal"
+
+    def test_impl_matches_fp64_reference(self, bridge, cache):
+        """The impl must match its own fp64 recomputation (no numerical/algorithm bug)."""
+        import torch
+
+        mixer = bridge.blocks[self.LINEAR_LAYER].linear_attn
+        M = mixer.compute_effective_attention(cache, layer_idx=self.LINEAR_LAYER)
+        M_ref = self._build_M(cache, self.LINEAR_LAYER, l2norm=False, dtype=torch.float64)
+        rel = (M.double() - M_ref).abs().max().item() / max(M_ref.abs().max().item(), 1e-12)
+        assert rel < 1e-5, f"impl vs fp64 pre-norm reference rel diff {rel:.2e}"
+
+    def test_l2norm_approximation_divergence_measured(self, bridge, cache):
+        """Pin the L2-norm approximation divergence (documented in the docstring).
+
+        The hooked Q/K are pre-norm; the kernel L2-normalizes them. On the random-
+        init fixture (small, non-uniform Q/K norms) the relative divergence is ~1.0.
+        """
+        import torch
+
+        M_prenorm = self._build_M(cache, self.LINEAR_LAYER, l2norm=False, dtype=torch.float64)
+        M_l2 = self._build_M(cache, self.LINEAR_LAYER, l2norm=True, dtype=torch.float64)
+        rel = (M_prenorm - M_l2).abs().max().item() / max(M_l2.abs().max().item(), 1e-12)
+        assert torch.isfinite(torch.tensor(rel))
+        assert 0.5 < rel < 1.5, (
+            f"L2-norm approximation divergence {rel:.3f} outside the documented ~1.0 "
+            "band for the random-init fixture; update the docstring if the model changed."
+        )

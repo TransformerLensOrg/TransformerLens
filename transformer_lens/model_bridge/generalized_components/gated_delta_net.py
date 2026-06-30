@@ -4,18 +4,16 @@ Reimplements forward (prefill only) to expose mech-interp-relevant intermediate
 states. Falls back to HF native forward during autoregressive generation where
 cache state management is required.
 """
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import Any, Dict, Optional
 
 import torch
 import torch.nn.functional as F
 
+from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
-
-if TYPE_CHECKING:
-    from transformer_lens.ActivationCache import ActivationCache
 
 
 class GatedDeltaNetBridge(GeneralizedComponent):
@@ -229,28 +227,38 @@ class GatedDeltaNetBridge(GeneralizedComponent):
 
     def compute_effective_attention(
         self,
-        cache: "ActivationCache",
+        cache: ActivationCache,
         layer_idx: int,
     ) -> torch.Tensor:
-        """Materialize the effective attention matrix from cached hook values.
+        """Materialize a heuristic effective-attention matrix from cached hooks.
 
-        The gated delta rule recurrence is::
+        Uses the gated-linear-attention form of the recurrence (the exact gated
+        *delta* rule additionally removes the key being written)::
 
-            S_t = exp(g_t) * S_{t-1} + beta_t * v_t @ k_t^T
+            S_t ≈ exp(g_t) * S_{t-1} + beta_t * v_t @ k_t^T
             o_t = S_t^T @ q_t
-
-        The effective attention M[i,j] = contribution of input j to output i::
-
             M[i,j] = (q_i^T @ k_j) * beta_j * prod_{t=j+1}^{i} exp(g_t)
 
-        **Approximation note:** The fused kernel applies L2-normalization to Q
-        and K internally (``use_qk_l2norm_in_kernel=True``). The hooked Q/K are
-        pre-normalization, so this reconstruction diverges when Q/K norms vary
-        significantly across positions/heads. Accuracy is best when Q/K norms
-        are roughly uniform (common after training converges).
+        so ``M`` is an interpretability heuristic, not a faithful output decomposition.
+
+        Requires the interior hooks (hook_q/k/beta/log_decay), which fire only on
+        the hooked prefill path: call ``run_with_cache(tokens, use_cache=False)``
+        so ``cache_params`` is None. The default cached path exposes only
+        hook_in/hook_out and this method then raises.
+
+        **Measured divergence (tiny random-init test fixture, seed-stable):**
+
+        - *L2-norm gap.* The fused kernel L2-normalizes Q/K internally
+          (``use_qk_l2norm_in_kernel=True``) but the hooked Q/K are pre-norm, so
+          ``M`` differs from the normalized form by ≈1.0 relative when Q/K norms
+          are small/non-uniform (the random-init regime); the gap shrinks toward 0
+          as norms equalize after training.
+        - *Delta-rule omission.* Even with normalized Q/K, ``M @ V`` reconstructs
+          the fused-kernel ``hook_recurrence_out`` only to O(1) relative error
+          because the key-removal term is dropped.
 
         Args:
-            cache: ActivationCache from ``run_with_cache``.
+            cache: ActivationCache from ``run_with_cache(..., use_cache=False)``.
             layer_idx: Block index for this linear_attn layer.
 
         Returns:

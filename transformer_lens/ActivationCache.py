@@ -37,6 +37,7 @@ from transformer_lens.utilities import Slice, SliceInput, warn_if_mps
 
 if TYPE_CHECKING:
     from transformer_lens.HookedTransformer import HookedTransformer
+    from transformer_lens.model_bridge.bridge import TransformerBridge
 
 
 def _normalize_projection_to_2d(
@@ -752,6 +753,37 @@ class ActivationCache:
 
             # Sum over d_head to get the contribution of each head to the residual stream
             self.cache_dict[f"blocks.{layer}.attn.hook_result"] = result.sum(dim=-2)
+
+    def compute_ssm_state(
+        self,
+        layer: Optional[int] = None,
+        time_step: Optional[int] = None,
+    ) -> Union[torch.Tensor, Dict[int, torch.Tensor]]:
+        """Reconstruct the recurrent SSM state ``S`` from this cache.
+
+        The single discovery surface for Mamba-2 / SSM recurrent state, mirroring
+        ``compute_head_results``. Read-only post-hoc reconstruction from the
+        cached in_proj/conv1d hooks (no forward re-run); requires a
+        ``TransformerBridge`` with SSM layers, cached via ``run_with_cache``. See
+        ``SSM2MixerBridge.compute_ssm_state`` for the recurrence, shapes, and the
+        ``time_step`` memory bound.
+
+        Args:
+            layer: Specific block index, or None for every SSM layer.
+            time_step: Optional single position (memory-bounded); None for all.
+
+        Returns:
+            A per-layer state tensor for a single ``layer``; for ``layer=None`` a
+            stacked tensor (dim 0 = layer) when every block is an SSM layer, else
+            a ``{layer_idx: state}`` dict over the SSM layers.
+        """
+        from transformer_lens.model_bridge.supported_architectures.mamba2 import (
+            compute_ssm_state,
+        )
+
+        return compute_ssm_state(
+            cast("TransformerBridge", self.model), self, layer=layer, time_step=time_step
+        )
 
     def stack_head_results(
         self,

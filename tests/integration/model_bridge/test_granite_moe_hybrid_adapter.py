@@ -37,6 +37,7 @@ from transformer_lens.model_bridge.supported_architectures.granite_moe_hybrid im
 )
 from transformer_lens.model_bridge.supported_architectures.mamba2 import (
     compute_effective_attention,
+    compute_ssm_state,
 )
 
 LAYER_TYPES = ["mamba", "attention", "mamba"]
@@ -245,3 +246,46 @@ class TestGraniteMoeHybridEffectiveAttention:
             "attention dims are inconsistent with HF's SSM output (likely reading "
             "attention dims off the shared cfg instead of the mamba module)."
         )
+
+
+class TestGraniteMoeHybridSSMState:
+    """compute_ssm_state works across the hybrid: per-SSM-layer dict, correct dims."""
+
+    def test_single_layer_shape(self, bridge: TransformerBridge, cache, tokens) -> None:
+        seq_len = tokens.shape[1]
+        oc = bridge.blocks[MAMBA_LAYERS[0]].mixer.original_component
+        S = cache.compute_ssm_state(layer=MAMBA_LAYERS[0])
+        assert isinstance(S, torch.Tensor)
+        assert S.shape == (1, oc.num_heads, seq_len, oc.head_dim, oc.ssm_state_size)
+        assert torch.isfinite(S).all()
+
+    def test_all_layers_returns_per_ssm_layer_dict(self, bridge: TransformerBridge, cache) -> None:
+        S_all = cache.compute_ssm_state()
+        assert isinstance(S_all, dict)
+        assert sorted(S_all.keys()) == MAMBA_LAYERS
+
+    def test_attention_layer_raises_typeerror(self, bridge: TransformerBridge, cache) -> None:
+        with pytest.raises(TypeError):
+            compute_ssm_state(bridge, cache, layer=ATTN_LAYER)
+
+    def test_reconstructs_ssm_output(self, bridge: TransformerBridge, cache, tokens) -> None:
+        """y = C·S + D·x reconstructs HF's SSM output — proves hybrid dims are right."""
+        layer = MAMBA_LAYERS[0]
+        seq_len = tokens.shape[1]
+        mixer = bridge.blocks[layer].mixer
+        oc = mixer.original_component
+        nh, hd, ns, ng = oc.num_heads, oc.head_dim, oc.ssm_state_size, oc.n_groups
+
+        S = cache.compute_ssm_state(layer=layer)
+        conv = cache[f"blocks.{layer}.mixer.conv1d.hook_out"][..., :seq_len].float()
+        conv_act = torch.nn.functional.silu(conv).transpose(1, 2)
+        x_flat, _, C_flat = conv_act.split([oc.intermediate_size, ng * ns, ng * ns], dim=-1)
+        x = x_flat.view(1, seq_len, nh, hd)
+        C_h = C_flat.view(1, seq_len, ng, ns).repeat_interleave(nh // ng, dim=2)
+        D = mixer.D.float()
+
+        y = torch.einsum("bthn,bhtpn->bthp", C_h, S) + D[None, None, :, None] * x
+        y_actual = cache[f"blocks.{layer}.mixer.inner_norm.hook_in"].float()
+        max_diff = (y_actual - y.reshape(1, seq_len, -1)).abs().max().item()
+        scale = max(y_actual.abs().max().item(), 1e-8)
+        assert max_diff / scale < 1e-4, f"state reconstruction rel diff {max_diff / scale:.2e}"
