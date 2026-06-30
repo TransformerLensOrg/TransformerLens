@@ -1,5 +1,5 @@
 """Architecture adapter for HF's Mamba2ForCausalLM, plus the effective attention helper."""
-from typing import Any, Optional
+from typing import Any, Dict, Optional, Union
 
 import torch
 
@@ -115,26 +115,31 @@ def compute_effective_attention(
     cache: ActivationCache,
     layer: Optional[int] = None,
     include_dt_scaling: bool = False,
-) -> torch.Tensor:
+) -> Union[torch.Tensor, Dict[int, torch.Tensor]]:
     """Compute Mamba-2 effective attention M = L ⊙ (C B^T) for one or all layers.
 
     Wraps ``SSM2MixerBridge.compute_effective_attention`` so callers don't have
-    to repeat the layer index, and adds all-layers stacking when ``layer`` is
-    None.
+    to repeat the layer index, and resolves SSM layers across all families
+    (full Mamba-2 and hybrids like NemotronH / GraniteMoeHybrid) when ``layer``
+    is None. Non-SSM layers (attention / MLP / MoE) are skipped structurally.
 
     Args:
-        bridge: A loaded Mamba-2 ``TransformerBridge``.
+        bridge: A loaded ``TransformerBridge`` whose SSM layers use ``.mixer``.
         cache: ActivationCache from ``run_with_cache`` with in_proj and conv1d
-            hooks populated for every requested layer.
-        layer: Specific block index, or None for all layers stacked.
+            hooks populated for every SSM layer.
+        layer: Specific block index, or None for every SSM layer.
         include_dt_scaling: See ``SSM2MixerBridge.compute_effective_attention``.
 
     Returns:
-        Shape ``[batch, num_heads, seq, seq]`` for a single layer, or
-        ``[n_layers, batch, num_heads, seq, seq]`` when layer is None.
+        For a single ``layer``: ``[batch, num_heads, seq, seq]``.
+        For ``layer=None``: a stacked ``[n_layers, batch, num_heads, seq, seq]``
+        tensor when *every* block is an SSM layer (full Mamba-2), otherwise a
+        ``{layer_idx: [batch, num_heads, seq, seq]}`` dict over the SSM layers
+        (heterogeneous hybrids).
 
     Raises:
-        TypeError: If any targeted block's mixer isn't an ``SSM2MixerBridge``.
+        TypeError: If the requested ``layer`` has no ``SSM2MixerBridge`` mixer.
+        RuntimeError: If ``layer=None`` finds no cached SSM mixer layers.
 
     Example::
 
@@ -146,29 +151,42 @@ def compute_effective_attention(
         M_all = compute_effective_attention(bridge, cache)
     """
     if layer is not None:
-        mixer = bridge.blocks[layer].mixer
+        mixer = getattr(bridge.blocks[layer], "mixer", None)
         if not isinstance(mixer, SSM2MixerBridge):
             raise TypeError(
-                f"Layer {layer} mixer is {type(mixer).__name__}, not "
-                "SSM2MixerBridge. compute_effective_attention requires a "
-                "Mamba-2 bridge."
+                f"Layer {layer} has no SSM2MixerBridge mixer (got "
+                f"{type(mixer).__name__}); compute_effective_attention requires "
+                "a Mamba-2 / SSM layer."
             )
         return mixer.compute_effective_attention(
             cache, layer_idx=layer, include_dt_scaling=include_dt_scaling
         )
 
-    matrices = []
-    for layer_idx, block in enumerate(bridge.blocks):
+    # All-layers: enumerate SSM mixer layers structurally (blocks_with checks
+    # _modules, so attention layers without a `.mixer` slot are skipped). On a
+    # hybrid where every block carries a passthrough `.mixer` (NemotronH), the
+    # cached-hook check below filters out the non-Mamba mixers.
+    results: Dict[int, torch.Tensor] = {}
+    for layer_idx, block in bridge.blocks_with("mixer"):
         mixer = block.mixer
         if not isinstance(mixer, SSM2MixerBridge):
-            raise TypeError(
-                f"Layer {layer_idx} mixer is {type(mixer).__name__}, not "
-                "SSM2MixerBridge. compute_effective_attention requires a "
-                "Mamba-2 bridge."
-            )
-        matrices.append(
-            mixer.compute_effective_attention(
-                cache, layer_idx=layer_idx, include_dt_scaling=include_dt_scaling
-            )
+            continue
+        in_proj_key = f"blocks.{layer_idx}.mixer.in_proj.hook_out"
+        conv1d_key = f"blocks.{layer_idx}.mixer.conv1d.hook_out"
+        if in_proj_key not in cache or conv1d_key not in cache:
+            continue
+        results[layer_idx] = mixer.compute_effective_attention(
+            cache, layer_idx=layer_idx, include_dt_scaling=include_dt_scaling
         )
-    return torch.stack(matrices, dim=0)
+
+    if not results:
+        raise RuntimeError(
+            "compute_effective_attention found no SSM mixer layers with cached "
+            "in_proj/conv1d hooks. Run `run_with_cache()` on a Mamba-2 / SSM "
+            "bridge first."
+        )
+
+    n_blocks = len(bridge.blocks)
+    if len(results) == n_blocks and list(results) == list(range(n_blocks)):
+        return torch.stack([results[i] for i in range(n_blocks)], dim=0)
+    return results

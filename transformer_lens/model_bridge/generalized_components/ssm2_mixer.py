@@ -100,14 +100,28 @@ class SSM2MixerBridge(GeneralizedComponent):
             )
 
         cfg = self.config
-        num_heads: int = cfg.n_heads
-        head_dim: int = cfg.d_head
-        intermediate_size: int = getattr(cfg, "intermediate_size", num_heads * head_dim)
-        state_size: int = getattr(cfg, "state_size", 128)
-        n_groups: int = getattr(cfg, "n_groups", 1)
+        # SSM dims come from the wrapped HF mixer, not cfg: on a hybrid the shared
+        # cfg holds the *attention* dims (cfg.n_heads etc.), while the HF mixer
+        # module always carries the true Mamba dims (matching A_log/dt_bias, which
+        # are already read off the module via __getattr__). cfg is the fallback.
+        oc = self.original_component
+
+        def _mamba_dim(module_attr: str, cfg_attr: str, default: Any) -> Any:
+            if oc is not None:
+                val = getattr(oc, module_attr, None)
+                if val is not None:
+                    return val
+            return getattr(cfg, cfg_attr, default)
+
+        num_heads = int(_mamba_dim("num_heads", "n_heads", 0))
+        intermediate_size = int(
+            _mamba_dim("intermediate_size", "intermediate_size", num_heads * int(cfg.d_head))
+        )
+        state_size = int(_mamba_dim("ssm_state_size", "state_size", 128))
+        n_groups = int(_mamba_dim("n_groups", "n_groups", 1))
 
         # Mirror HF's tuple convention so downstream equality checks stay consistent
-        time_step_limit = getattr(cfg, "time_step_limit", (0.0, float("inf")))
+        time_step_limit = _mamba_dim("time_step_limit", "time_step_limit", (0.0, float("inf")))
         time_step_min = float(time_step_limit[0])
         time_step_max = float(time_step_limit[1])
 

@@ -5,7 +5,10 @@ a few are standard attention (determined by config.layer_types). Every layer
 has a shared MLP and optional sparse MoE.
 
 Both attention and Mamba are mapped as optional — each present only on its
-respective layer type. Mamba hooks expose in_proj, conv1d, and inner_norm.
+respective layer type. The Mamba mixer is wired under the canonical ``.mixer``
+slot (HF path is ``.mamba``) so SSM analyses (compute_effective_attention)
+reach it the same way as on NemotronH / Mamba-2. Mamba hooks expose in_proj,
+conv1d, and inner_norm (the gated two-input MambaRMSNormGated).
 """
 
 from typing import Any
@@ -14,6 +17,7 @@ from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapt
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
+    GatedRMSNormBridge,
     LinearBridge,
     MLPBridge,
     MoEBridge,
@@ -47,10 +51,24 @@ class GraniteMoeHybridArchitectureAdapter(GraniteArchitectureAdapter):
 
         self.supports_fold_ln = False
         self.weight_processing_conversions = {}
+
+        # Expose the per-layer mixer-type list uniformly as cfg.layers_block_type
+        # (HF stores it as `layer_types`; passthrough copies that name). Matches
+        # NemotronH so analysis tools can inspect which layers are Mamba.
+        layers_block_type = (
+            getattr(cfg, "layers_block_type", None) or getattr(cfg, "layer_types", None) or []
+        )
+        setattr(self.cfg, "layers_block_type", list(layers_block_type))
+
         self.component_mapping = self._build_component_mapping()
 
     def _build_mamba_bridge(self) -> SSM2MixerBridge:
-        """Mamba-2 mixer bridge with in_proj, conv1d, inner_norm hooks."""
+        """Mamba-2 mixer bridge with in_proj, conv1d, inner_norm hooks.
+
+        ``name="mamba"`` is the HF submodule path; the bridge exposes it under the
+        canonical ``.mixer`` dict key (see ``_build_component_mapping``). inner_norm
+        is the gated two-input MambaRMSNormGated, so it wraps GatedRMSNormBridge.
+        """
         return SSM2MixerBridge(
             name="mamba",
             config=self.cfg,
@@ -58,7 +76,7 @@ class GraniteMoeHybridArchitectureAdapter(GraniteArchitectureAdapter):
             submodules={
                 "in_proj": LinearBridge(name="in_proj"),
                 "conv1d": DepthwiseConv1DBridge(name="conv1d"),
-                "inner_norm": LinearBridge(name="norm"),
+                "inner_norm": GatedRMSNormBridge(name="norm"),
             },
         )
 
@@ -67,7 +85,7 @@ class GraniteMoeHybridArchitectureAdapter(GraniteArchitectureAdapter):
             "ln1": RMSNormalizationBridge(name="input_layernorm", config=self.cfg),
             "ln2": RMSNormalizationBridge(name="post_attention_layernorm", config=self.cfg),
             "attn": self._build_attention_bridge(optional=True),
-            "mamba": self._build_mamba_bridge(),
+            "mixer": self._build_mamba_bridge(),
             "shared_mlp": MLPBridge(
                 name="shared_mlp",
                 config=self.cfg,
