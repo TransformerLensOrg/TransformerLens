@@ -253,9 +253,11 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                 BitsAndBytesConfig). When provided, load_weights is ignored. If the pre-loaded
                 model was built with a ``device_map``, ``cfg.device`` and ``cfg.n_devices`` are
                 derived from its ``hf_device_map`` automatically.
-            device_map: HuggingFace-style device map for multi-GPU inference. Pass ``"auto"``,
-                ``"balanced"``, ``"sequential"``, or an explicit ``{submodule_path: device}`` dict.
-                Mutually exclusive with ``device``.
+            device_map: HuggingFace-style device map for dispatched inference. Pass ``"auto"``,
+                ``"balanced"``, ``"sequential"``, or an explicit ``{submodule_path: device}``
+                dict. Explicit maps may include CPU targets; disk / meta offload targets are
+                still rejected because Bridge component wrappers need additional offload-hook
+                routing work. Mutually exclusive with ``device``.
             n_devices: Convenience shortcut: split the model across this many CUDA devices.
                 Translated to a ``max_memory`` dict over devices 0..n_devices-1 and passed as
                 ``device_map`` to HF. Requires CUDA with at least this many visible devices.
