@@ -137,6 +137,142 @@ def test_attention_does_not_allocate_full_causal_mask():
     assert attn.state_dict()["mask"].numel() == 0
 
 
+def test_rotary_embeddings_initial_cache_is_bounded():
+    cfg = HookedTransformerConfig(
+        n_layers=1,
+        d_model=8,
+        n_ctx=8192,
+        d_head=4,
+        n_heads=2,
+        act_fn="relu",
+        positional_embedding_type="rotary",
+    )
+
+    attn = Attention(cfg)
+    rotary_dim = cfg.rotary_dim
+    assert rotary_dim is not None
+
+    assert attn.cfg.n_ctx == 8192
+    assert attn.rotary_sin.shape == (2048, rotary_dim)
+    assert attn.rotary_cos.shape == (2048, rotary_dim)
+
+
+def test_rotary_embeddings_initial_cache_matches_short_context():
+    cfg = HookedTransformerConfig(
+        n_layers=1,
+        d_model=8,
+        n_ctx=128,
+        d_head=4,
+        n_heads=2,
+        act_fn="relu",
+        positional_embedding_type="rotary",
+    )
+
+    attn = Attention(cfg)
+    rotary_dim = cfg.rotary_dim
+    assert rotary_dim is not None
+
+    assert attn.rotary_sin.shape == (cfg.n_ctx, rotary_dim)
+    assert attn.rotary_cos.shape == (cfg.n_ctx, rotary_dim)
+
+
+def test_apply_rotary_extends_embeddings_on_demand():
+    cfg = HookedTransformerConfig(
+        n_layers=1,
+        d_model=8,
+        n_ctx=4096,
+        d_head=4,
+        n_heads=2,
+        act_fn="relu",
+        positional_embedding_type="rotary",
+    )
+    attn = Attention(cfg)
+    rotary_dim = cfg.rotary_dim
+    assert rotary_dim is not None
+    x = torch.randn((1, 2, cfg.n_heads, cfg.d_head), dtype=cfg.dtype)
+
+    out = attn.apply_rotary(x, past_kv_pos_offset=2047)
+
+    expected_sin, expected_cos = attn.calculate_sin_cos_rotary(
+        rotary_dim,
+        2049,
+        base=cfg.rotary_base,
+        dtype=cfg.dtype,
+    )
+    assert out.shape == x.shape
+    assert attn.rotary_sin.shape == (2049, rotary_dim)
+    assert attn.rotary_cos.shape == (2049, rotary_dim)
+    torch.testing.assert_close(attn.rotary_sin, expected_sin)
+    torch.testing.assert_close(attn.rotary_cos, expected_cos)
+
+
+def test_local_rotary_extension_uses_local_base():
+    cfg = HookedTransformerConfig(
+        n_layers=1,
+        d_model=8,
+        n_ctx=4096,
+        d_head=4,
+        n_heads=2,
+        act_fn="relu",
+        positional_embedding_type="rotary",
+        rotary_base=1_000_000,
+        rotary_base_local=10_000,
+        window_size=128,
+    )
+    attn = Attention(cfg, attn_type="local")
+    rotary_dim = cfg.rotary_dim
+    rotary_base_local = cfg.rotary_base_local
+    assert rotary_dim is not None
+    assert rotary_base_local is not None
+
+    attn._extend_rotary_embeddings(2050)
+
+    expected_local_sin, expected_local_cos = attn.calculate_sin_cos_rotary(
+        rotary_dim,
+        2050,
+        base=rotary_base_local,
+        dtype=cfg.dtype,
+    )
+    global_sin, _ = attn.calculate_sin_cos_rotary(
+        rotary_dim,
+        2050,
+        base=cfg.rotary_base,
+        dtype=cfg.dtype,
+    )
+    torch.testing.assert_close(attn.rotary_sin, expected_local_sin)
+    torch.testing.assert_close(attn.rotary_cos, expected_local_cos)
+    assert not torch.allclose(attn.rotary_sin, global_sin)
+
+
+def test_attention_loads_legacy_full_rotary_buffers_with_strict_true():
+    cfg = HookedTransformerConfig(
+        n_layers=1,
+        d_model=8,
+        n_ctx=4096,
+        d_head=4,
+        n_heads=2,
+        act_fn="relu",
+        positional_embedding_type="rotary",
+    )
+    attn = Attention(cfg)
+    rotary_dim = cfg.rotary_dim
+    assert rotary_dim is not None
+    state_dict = attn.state_dict()
+    state_dict["rotary_sin"], state_dict["rotary_cos"] = attn.calculate_sin_cos_rotary(
+        rotary_dim,
+        cfg.n_ctx,
+        base=cfg.rotary_base,
+        dtype=cfg.dtype,
+    )
+
+    incompatible_keys = attn.load_state_dict(state_dict, strict=True)
+
+    assert incompatible_keys.missing_keys == []
+    assert incompatible_keys.unexpected_keys == []
+    assert attn.rotary_sin.shape == (2048, rotary_dim)
+    assert attn.rotary_cos.shape == (2048, rotary_dim)
+
+
 def test_apply_causal_mask_global_matches_absolute_positions():
     cfg = HookedTransformerConfig(
         n_layers=1,
