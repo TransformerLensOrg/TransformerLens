@@ -85,13 +85,15 @@ class TestWeightProcessingIntegration:
             (wv_tensor, bv_tensor, new_bv),
         ):
             expected = b_tensor + torch.einsum("hij,i->hj", w_tensor, ln_bias)
-            torch.testing.assert_close(new_b, expected)
+            # The einsum reduces the d_model sum in a different order than the impl's
+            # .sum(-2), so allow fp32 summation-order slack (a wrong axis is order-1 off).
+            torch.testing.assert_close(new_b, expected, atol=1e-4, rtol=1e-3)
 
         # Independent scalar spot-check on one (head, d_head) entry: a plain dot product
         # over d_model, no broadcasting, to pin down the contraction axis.
         h, j = 3, 7
         manual = bq_tensor[h, j] + (wq_tensor[h, :, j] * ln_bias).sum()
-        torch.testing.assert_close(new_bq[h, j], manual)
+        torch.testing.assert_close(new_bq[h, j], manual, atol=1e-4, rtol=1e-3)
 
         # Centering/zero-bias guard: with zero LN bias the attention biases are unchanged.
         zero_bq, zero_bk, zero_bv = ProcessWeights.fold_layer_norm_biases(

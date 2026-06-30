@@ -62,12 +62,13 @@ def test_multimodal_effect_vision_pipeline_bridged(bridge):
     assert isinstance(bridge.vision_projector, torch.nn.Module)
     assert isinstance(bridge.vision_encoder, torch.nn.Module)
 
-    # EFFECT 2: the is_multimodal gate is open. prepare_multimodal_inputs() raises
-    # "requires a multimodal model" only when cfg.is_multimodal is False; a missing
-    # processor raises a different ("No processor available") error, which is fine here.
-    with pytest.raises(ValueError) as exc:
+    # EFFECT 2: the is_multimodal gate is open. The "requires a multimodal model" guard
+    # fires only when cfg.is_multimodal is False, so it must NOT fire here. The call may
+    # succeed (processor present) or raise a different error (e.g. no processor) — both fine.
+    try:
         bridge.prepare_multimodal_inputs("a")
-    assert "requires a multimodal model" not in str(exc.value)
+    except ValueError as exc:
+        assert "requires a multimodal model" not in str(exc)
 
 
 def test_resid_hooks_fire_with_conventional_shape(bridge):
