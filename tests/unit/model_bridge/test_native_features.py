@@ -18,6 +18,7 @@ from transformer_lens.model_bridge.generalized_components import (
     NormalizationBridge,
     RMSNormalizationBridge,
 )
+from transformer_lens.model_bridge.generalized_components.base import GeneralizedComponent
 from transformer_lens.model_bridge.sources.native.model import (
     NativeGatedMLP,
     NativeMLP,
@@ -235,6 +236,22 @@ def test_final_rms_only_swaps_the_final_norm():
     assert isinstance(ln_final_bridge, RMSNormalizationBridge)
     assert isinstance(ln_final_bridge.original_component, NativeRMSNorm)
     _ = _forward(bridge)
+
+
+def test_no_norm_uses_identity_modules_with_hooks():
+    cfg = _cfg(normalization_type=None)
+    bridge = TransformerBridge.boot_native(cfg)
+
+    assert isinstance(bridge.blocks[0].ln1, GeneralizedComponent)
+    assert not isinstance(bridge.blocks[0].ln1, NormalizationBridge)
+    assert isinstance(bridge.blocks[0].ln1.original_component, torch.nn.Identity)
+    assert isinstance(bridge.blocks[0].ln2.original_component, torch.nn.Identity)
+    assert isinstance(bridge.ln_final.original_component, torch.nn.Identity)
+
+    inputs = torch.randint(0, cfg.d_vocab, (2, cfg.n_ctx))
+    _, cache = bridge.run_with_cache(inputs, return_type="logits")
+    assert torch.equal(cache["blocks.0.ln1.hook_in"], cache["blocks.0.ln1.hook_out"])
+    assert torch.equal(cache["ln_final.hook_in"], cache["ln_final.hook_out"])
 
 
 def test_ln_default_uses_layernorm():
@@ -571,6 +588,34 @@ def test_init_modes_diverge_from_each_other():
 
 
 # -- attention_mask -----------------------------------------------------------
+
+
+def test_attention_dir_causal_masks_future_tokens():
+    cfg = _cfg(attention_dir="causal")
+    bridge = TransformerBridge.boot_native(cfg)
+    inputs = torch.randint(0, cfg.d_vocab, (2, cfg.n_ctx))
+
+    _, cache = bridge.run_with_cache(inputs, return_type="logits")
+    pattern = cache["blocks.0.attn.hook_pattern"]
+    future_mask = torch.triu(torch.ones(cfg.n_ctx, cfg.n_ctx, dtype=torch.bool), diagonal=1)
+
+    assert torch.allclose(
+        pattern[:, :, future_mask],
+        torch.zeros_like(pattern[:, :, future_mask]),
+        atol=1e-6,
+    )
+
+
+def test_attention_dir_bidirectional_allows_future_tokens():
+    cfg = _cfg(attention_dir="bidirectional")
+    bridge = TransformerBridge.boot_native(cfg)
+    inputs = torch.randint(0, cfg.d_vocab, (2, cfg.n_ctx))
+
+    _, cache = bridge.run_with_cache(inputs, return_type="logits")
+    pattern = cache["blocks.0.attn.hook_pattern"]
+
+    assert pattern[:, :, 0, 1:].gt(0).all()
+    assert torch.allclose(pattern.sum(dim=-1), torch.ones_like(pattern.sum(dim=-1)), atol=1e-6)
 
 
 def test_attention_mask_2d_padding_changes_output():

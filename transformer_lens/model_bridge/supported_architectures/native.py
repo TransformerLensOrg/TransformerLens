@@ -18,10 +18,15 @@ from transformer_lens.model_bridge.generalized_components import (
     RMSNormalizationBridge,
     UnembeddingBridge,
 )
+from transformer_lens.model_bridge.generalized_components.base import GeneralizedComponent
 
 
 def _uses_rms(cfg: Any) -> bool:
     return (getattr(cfg, "normalization_type", None) or "LN").upper() in ("RMS", "RMSPRE")
+
+
+def _uses_no_norm(cfg: Any) -> bool:
+    return getattr(cfg, "normalization_type", None) is None
 
 
 def _is_rotary(cfg: Any) -> bool:
@@ -31,6 +36,8 @@ def _is_rotary(cfg: Any) -> bool:
 def _make_norm_bridge(name: str, cfg: Any, *, force_rms: bool = False):
     if force_rms or _uses_rms(cfg):
         return RMSNormalizationBridge(name=name, config=cfg)
+    if _uses_no_norm(cfg):
+        return GeneralizedComponent(name=name, config=cfg)
     return NormalizationBridge(name=name, config=cfg)
 
 

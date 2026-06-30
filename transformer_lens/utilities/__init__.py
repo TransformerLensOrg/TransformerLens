@@ -80,4 +80,10 @@ from .tokenize_utils import (
     get_tokens_with_bos_removed,
     tokenize_and_concatenate,
 )
+from .tracr import (
+    infer_tracr_output_label,
+    make_tracr_categorical_unembed,
+    make_tracr_transformer_bridge_config,
+    make_tracr_transformer_bridge_state_dict,
+)
 from .typed_module_list import TypedModuleList
