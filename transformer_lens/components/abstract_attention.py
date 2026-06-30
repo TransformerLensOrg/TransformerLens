@@ -750,7 +750,11 @@ class AbstractAttention(ABC, nn.Module):
         # Dynamically extend rotary embeddings if needed for long context
         max_pos_needed = past_kv_pos_offset + x_pos
         if max_pos_needed > self.rotary_cos.shape[0]:
-            self._extend_rotary_embeddings(max_pos_needed)
+            new_size = min(
+                self.cfg.n_ctx,
+                max(max_pos_needed, 2 * self.rotary_cos.shape[0]),
+            )
+            self._extend_rotary_embeddings(new_size)
 
         if attention_mask is None:
             rotary_cos = cast(torch.Tensor, self.rotary_cos)[
