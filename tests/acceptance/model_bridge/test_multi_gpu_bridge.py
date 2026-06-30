@@ -206,6 +206,17 @@ class TestBootParamValidation:
         with pytest.raises(ValueError, match="mutually exclusive"):
             TransformerBridge.boot_transformers("gpt2", device="cpu", device_map="auto")
 
+    def test_explicit_cpu_device_map_boots_and_runs(self):
+        bridge = TransformerBridge.boot_transformers("gpt2", device_map={"": "cpu"})
+
+        assert bridge.cfg.device == "cpu"
+        assert bridge.cfg.n_devices == 1
+        tokens = torch.tensor([[bridge.tokenizer.eos_token_id]])
+        with torch.no_grad():
+            logits = bridge(tokens)
+        assert logits.shape == (1, 1, bridge.cfg.d_vocab_out)
+        assert logits.device.type == "cpu"
+
     def test_preloaded_with_device_map_rejected(self, gpt2_bridge):
         # Passing both hf_model= and device_map/n_devices is ambiguous — the device_map
         # would be silently ignored. We raise so the caller isn't surprised.
