@@ -11,6 +11,7 @@ import torch
 
 from transformer_lens.model_bridge import TransformerBridge
 from transformer_lens.utilities.multi_gpu import (
+    cast_floating_params_to_dtype,
     count_unique_devices,
     find_embedding_device,
     resolve_device_map,
@@ -80,14 +81,20 @@ class TestResolveDeviceMap:
         assert dm == "balanced"
         assert mm == user_mm
 
-    def test_cpu_value_in_device_map_rejected(self):
-        bad: Dict[str, Union[str, int]] = {"transformer.h.0": "cpu"}
-        with pytest.raises(ValueError, match="not supported"):
-            resolve_device_map(None, bad, None)
+    def test_cpu_value_in_device_map_passes_through(self):
+        explicit: Dict[str, Union[str, int]] = {"transformer.h.0": "cpu"}
+        dm, mm = resolve_device_map(None, explicit, None)
+        assert dm is explicit
+        assert mm is None
 
     def test_disk_value_in_device_map_rejected(self):
         bad: Dict[str, Union[str, int]] = {"transformer.h.0": "disk"}
-        with pytest.raises(ValueError, match="not supported"):
+        with pytest.raises(ValueError, match="not supported yet"):
+            resolve_device_map(None, bad, None)
+
+    def test_meta_value_in_device_map_rejected(self):
+        bad: Dict[str, Union[str, int]] = {"transformer.h.0": "meta"}
+        with pytest.raises(ValueError, match="not supported yet"):
             resolve_device_map(None, bad, None)
 
 
@@ -155,10 +162,60 @@ class TestCountUniqueDevices:
         assert count_unique_devices(Stub()) == 3
 
 
+class TestCastFloatingParamsToDtype:
+    def test_casts_cpu_and_disk_offloaded_params(self, tmp_path):
+        from accelerate.big_modeling import dispatch_model
+        from accelerate.utils import align_module_device
+
+        class StubModel(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.first = torch.nn.Linear(3, 3, dtype=torch.float32)
+                self.second = torch.nn.Linear(3, 2, dtype=torch.float32)
+
+        model = StubModel()
+        dispatch_model(
+            model,
+            device_map={"first": "cpu", "second": "disk"},
+            offload_dir=str(tmp_path),
+        )
+
+        assert model.first.weight.device.type == "cpu"
+        assert model.second.weight.device.type == "meta"
+
+        cast_floating_params_to_dtype(model, torch.float16)
+
+        assert model.first.weight.dtype == torch.float16
+        assert model.second.weight.device.type == "meta"
+        assert model.second.weight.dtype == torch.float16
+        with align_module_device(model.second):
+            assert model.second.weight.device.type == "cpu"
+            assert model.second.weight.dtype == torch.float16
+
+    def test_skips_plain_meta_params(self):
+        module = torch.nn.Linear(3, 2, device="meta", dtype=torch.float32)
+
+        cast_floating_params_to_dtype(module, torch.float16)
+
+        assert module.weight.device.type == "meta"
+        assert module.weight.dtype == torch.float32
+
+
 class TestBootParamValidation:
     def test_device_and_device_map_mutually_exclusive(self):
         with pytest.raises(ValueError, match="mutually exclusive"):
             TransformerBridge.boot_transformers("gpt2", device="cpu", device_map="auto")
+
+    def test_explicit_cpu_device_map_boots_and_runs(self):
+        bridge = TransformerBridge.boot_transformers("gpt2", device_map={"": "cpu"})
+
+        assert bridge.cfg.device == "cpu"
+        assert bridge.cfg.n_devices == 1
+        tokens = torch.tensor([[bridge.tokenizer.eos_token_id]])
+        with torch.no_grad():
+            logits = bridge(tokens)
+        assert logits.shape == (1, 1, bridge.cfg.d_vocab_out)
+        assert logits.device.type == "cpu"
 
     def test_preloaded_with_device_map_rejected(self, gpt2_bridge):
         # Passing both hf_model= and device_map/n_devices is ambiguous — the device_map

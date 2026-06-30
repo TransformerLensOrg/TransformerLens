@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Union
 
 import torch
+from torch import nn
 
 if TYPE_CHECKING:
     from transformer_lens.config.hooked_transformer_config import (
@@ -15,6 +16,8 @@ if TYPE_CHECKING:
     )
 else:
     ConfigType = Any
+
+_UNSUPPORTED_OFFLOAD_DEVICE_MAP_VALUES = {"disk", "meta"}
 
 AvailableDeviceMemory = list[tuple[int, int]]
 """
@@ -146,30 +149,6 @@ def get_device_for_block_index(
     return torch.device(device.type, device_index)
 
 
-_UNSUPPORTED_DEVICE_MAP_VALUES = {"cpu", "disk", "meta"}
-"""v1 multi-GPU scope is GPU-only. CPU offload and disk offload cause dtype-cast loops to
-silently miss offloaded params (meta tensors), and cross-layer hook routing has different
-semantics. Reject them explicitly until a v2 scopes those paths."""
-
-
-def _validate_device_map_values(
-    device_map: Union[str, Dict[str, Union[str, int]]],
-) -> None:
-    """Reject CPU / disk / meta values in a user-supplied device_map dict."""
-    if isinstance(device_map, str):
-        # "balanced_low_0" is fine — still GPU-only; "cpu" as a string-form device_map
-        # would tell HF to put everything on CPU, which is single-device and meaningless
-        # as a multi-GPU config. We allow strings through; HF will validate them.
-        return
-    for key, value in device_map.items():
-        normalized = str(value).lower() if isinstance(value, str) else None
-        if normalized in _UNSUPPORTED_DEVICE_MAP_VALUES:
-            raise ValueError(
-                f"device_map[{key!r}]={value!r} is not supported. Multi-device bridge "
-                f"support is GPU-only in v1; CPU / disk / meta offload routes are excluded."
-            )
-
-
 def resolve_device_map(
     n_devices: Optional[int],
     device_map: Optional[Union[str, Dict[str, Union[str, int]]]],
@@ -181,8 +160,10 @@ def resolve_device_map(
     Returns ``(device_map, max_memory)`` tuple ready to pass into ``model_kwargs``.
 
     Semantics:
-        - Explicit ``device_map`` wins; it's validated and passed through unchanged (user-
-          provided ``max_memory`` is passed through too).
+        - Explicit ``device_map`` wins and is passed through unchanged (user-provided
+          ``max_memory`` is passed through too). CPU targets are supported; disk / meta
+          offload targets are still rejected because Bridge component wrappers can bypass
+          Accelerate's offload hooks during forward passes.
         - ``n_devices=None`` or ``1``: returns ``(None, None)`` — single-device path.
         - ``n_devices > 1``: returns ``("balanced", {0: "auto", ..., n-1: "auto"})``.
           ``"balanced"`` is accelerate's string directive for balanced layer dispatch;
@@ -205,6 +186,36 @@ def resolve_device_map(
         dict(max_memory) if max_memory else {i: "auto" for i in range(n_devices)}
     )
     return "balanced", resolved_max_memory
+
+
+def _validate_device_map_values(
+    device_map: Union[str, Dict[str, Union[str, int]]],
+) -> None:
+    """Reject explicit disk / meta values in a user-supplied device_map dict."""
+    if isinstance(device_map, str):
+        return
+    for key, value in device_map.items():
+        normalized = str(value).lower() if isinstance(value, str) else None
+        if normalized in _UNSUPPORTED_OFFLOAD_DEVICE_MAP_VALUES:
+            raise ValueError(
+                f"device_map[{key!r}]={value!r} is not supported yet. TransformerBridge "
+                "currently supports CPU device_map targets, but disk / meta offload can "
+                "bypass Accelerate hooks inside wrapped Bridge components."
+            )
+
+
+def cast_floating_params_to_dtype(model: nn.Module, dtype: torch.dtype) -> None:
+    """Cast materialized floating parameters while preserving Accelerate offload hooks."""
+    from accelerate.utils import align_module_device
+
+    for module in model.modules():
+        with align_module_device(module):
+            for param in module.parameters(recurse=False):
+                if not param.is_floating_point() or param.dtype == dtype:
+                    continue
+                if param.device.type == "meta":
+                    continue
+                param.data = param.data.to(dtype=dtype)
 
 
 def find_embedding_device(hf_model: Any) -> Optional[torch.device]:
