@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from transformer_lens.config import TransformerBridgeConfig
+from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion
 from transformer_lens.conversion_utils.conversion_steps.rearrange_tensor_conversion import (
     RearrangeTensorConversion,
 )
@@ -151,6 +152,14 @@ class TestGlm4MoeWeightConversions:
         )
         assert _rearrange(minimal, "blocks.{i}.attn.k.weight").axes_lengths["n"] == 4
         assert _rearrange(minimal, "blocks.{i}.attn.v.weight").axes_lengths["n"] == 4
+
+    def test_qkv_rearrange_is_gqa_aware(self, adapter: Glm4MoeArchitectureAdapter) -> None:
+        assert _rearrange(adapter, "blocks.{i}.attn.q.weight").axes_lengths["n"] == 4
+        for slot in ("k", "v"):
+            assert _rearrange(adapter, f"blocks.{{i}}.attn.{slot}.weight").axes_lengths["n"] == 2
+
+    def test_o_weight_uses_n_heads(self, adapter: Glm4MoeArchitectureAdapter) -> None:
+        assert _rearrange(adapter, "blocks.{i}.attn.o.weight").axes_lengths["n"] == 4
 
 
 class TestGlm4MoeComponentMapping:

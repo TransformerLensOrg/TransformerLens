@@ -13,6 +13,10 @@ from types import SimpleNamespace
 import pytest
 
 from transformer_lens.config import TransformerBridgeConfig
+from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion
+from transformer_lens.conversion_utils.param_processing_conversion import (
+    ParamProcessingConversion,
+)
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
@@ -298,6 +302,24 @@ class TestHunYuanDenseV1AdapterWeightConversions:
             "blocks.{i}.attn.v.weight",
             "blocks.{i}.attn.o.weight",
         }
+
+    @pytest.mark.parametrize("slot", ["q", "k", "v"])
+    def test_qkv_weight_uses_split_heads_pattern(
+        self, adapter: HunYuanDenseV1ArchitectureAdapter, slot: str
+    ) -> None:
+        conv = adapter.weight_processing_conversions[f"blocks.{{i}}.attn.{slot}.weight"]
+        expected = adapter.cfg.n_key_value_heads if slot in ["k", "v"] else adapter.cfg.n_heads
+        assert isinstance(conv, ParamProcessingConversion)
+        assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)
+        assert conv.tensor_conversion.pattern == "(n h) m -> n m h"
+        assert conv.tensor_conversion.axes_lengths["n"] == expected
+
+    def test_o_uses_merge_heads_pattern(self, adapter: HunYuanDenseV1ArchitectureAdapter) -> None:
+        conv = adapter.weight_processing_conversions["blocks.{i}.attn.o.weight"]
+        assert isinstance(conv, ParamProcessingConversion)
+        assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)
+        assert conv.tensor_conversion.pattern == "m (n h) -> n h m"
+        assert conv.tensor_conversion.axes_lengths["n"] == adapter.cfg.n_heads
 
 
 # ---------------------------------------------------------------------------

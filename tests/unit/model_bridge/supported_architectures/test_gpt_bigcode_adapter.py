@@ -195,6 +195,25 @@ class TestGPTBigCodeWeightConversionSemantics:
         assert conv.tensor_conversion.pattern == "(n h) m -> n m h"
         assert conv.tensor_conversion.axes_lengths["n"] == 1
 
+    def test_q_conversion_type_and_pattern(self, adapter: GPTBigCodeArchitectureAdapter) -> None:
+        conv = adapter.weight_processing_conversions["blocks.{i}.attn.q.weight"]
+        assert isinstance(conv, ParamProcessingConversion)
+        assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)
+        assert conv.tensor_conversion.pattern == "(n h) m -> n m h"
+
+    def test_q_n_equals_n_heads(self, adapter: GPTBigCodeArchitectureAdapter) -> None:
+        conv = adapter.weight_processing_conversions["blocks.{i}.attn.q.weight"]
+        assert isinstance(conv, ParamProcessingConversion)
+        assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)
+        assert conv.tensor_conversion.axes_lengths["n"] == adapter.cfg.n_heads
+
+    def test_o_conversion_type_and_pattern(self, adapter: GPTBigCodeArchitectureAdapter) -> None:
+        conv = adapter.weight_processing_conversions["blocks.{i}.attn.o.weight"]
+        assert isinstance(conv, ParamProcessingConversion)
+        assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)
+        assert conv.tensor_conversion.pattern == "m (n h) -> n h m"
+        assert conv.tensor_conversion.axes_lengths["n"] == adapter.cfg.n_heads
+
 
 class TestGPTBigCodeCombinedQKVFlags:
     """Combined-QKV flags the loader depends on."""

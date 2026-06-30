@@ -22,6 +22,7 @@ import torch.nn as nn
 from torch import ones, randn, zeros
 
 from transformer_lens.config import TransformerBridgeConfig
+from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion
 from transformer_lens.conversion_utils.conversion_steps.rearrange_tensor_conversion import (
     RearrangeTensorConversion,
 )
@@ -297,6 +298,23 @@ class TestSmolLM3WeightConversions:
         adapter = SmolLM3ArchitectureAdapter(_make_cfg(n_key_value_heads=None))
         for slot in ("k", "v"):
             assert _rearrange(adapter, f"blocks.{{i}}.attn.{slot}.weight").axes_lengths["n"] == 4
+
+    def test_q_weight_uses_n_heads(self, adapter: SmolLM3ArchitectureAdapter) -> None:
+        rearrange = _rearrange(adapter, "blocks.{i}.attn.q.weight")
+        assert rearrange.pattern == "(n h) m -> n m h"
+        assert rearrange.axes_lengths["n"] == adapter.cfg.n_heads
+
+    def test_kv_weights_use_n_kv_heads(self, adapter: SmolLM3ArchitectureAdapter) -> None:
+        """GQA: K/V weights follow n_key_value_heads (2), not n_heads (4)."""
+        for slot in ("k", "v"):
+            rearrange = _rearrange(adapter, f"blocks.{{i}}.attn.{slot}.weight")
+            assert rearrange.pattern == "(n h) m -> n m h"
+            assert rearrange.axes_lengths["n"] == adapter.cfg.n_key_value_heads
+
+    def test_o_weight_uses_n_heads(self, adapter: SmolLM3ArchitectureAdapter) -> None:
+        rearrange = _rearrange(adapter, "blocks.{i}.attn.o.weight")
+        assert rearrange.pattern == "m (n h) -> n h m"
+        assert rearrange.axes_lengths["n"] == adapter.cfg.n_heads
 
 
 class TestSmolLM3GQAHookShapes:

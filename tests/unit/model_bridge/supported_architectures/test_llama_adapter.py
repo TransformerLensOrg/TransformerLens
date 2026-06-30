@@ -248,3 +248,32 @@ class TestLlamaSetupComponentTesting:
         """setup_component_testing without a bridge_model must not raise."""
         adapter = LlamaArchitectureAdapter(_make_cfg())
         adapter.setup_component_testing(_fake_hf_model(object()))
+
+
+class TestLlamaGQASupport:
+    """n_key_value_heads must propagate to K/V conversions and leave Q/O unchanged."""
+
+    def test_no_gqa_defaults_to_n_heads(self) -> None:
+        """Without n_key_value_heads, K/V use n_heads (MHA mode)."""
+        adapter = LlamaArchitectureAdapter(_make_cfg(n_heads=32))
+        k_conv = adapter.weight_processing_conversions["blocks.{i}.attn.k.weight"]
+        assert k_conv.tensor_conversion.axes_lengths["n"] == 32
+
+    def test_gqa_propagates_to_kv_conversions(self) -> None:
+        """With 8 KV heads (LLaMA-3 style), K/V conversions must use n=8."""
+        adapter = LlamaArchitectureAdapter(_make_cfg(n_heads=32, n_key_value_heads=8))
+        for slot in ("k", "v"):
+            conv = adapter.weight_processing_conversions[f"blocks.{{i}}.attn.{slot}.weight"]
+            assert conv.tensor_conversion.axes_lengths["n"] == 8
+
+    def test_gqa_does_not_affect_q_conversion(self) -> None:
+        """Q always uses full n_heads regardless of GQA."""
+        adapter = LlamaArchitectureAdapter(_make_cfg(n_heads=32, n_key_value_heads=8))
+        q_conv = adapter.weight_processing_conversions["blocks.{i}.attn.q.weight"]
+        assert q_conv.tensor_conversion.axes_lengths["n"] == 32
+
+    def test_gqa_does_not_affect_o_conversion(self) -> None:
+        """O projection always uses n_heads; GQA only affects K/V."""
+        adapter = LlamaArchitectureAdapter(_make_cfg(n_heads=32, n_key_value_heads=8))
+        o_conv = adapter.weight_processing_conversions["blocks.{i}.attn.o.weight"]
+        assert o_conv.tensor_conversion.axes_lengths["n"] == 32
