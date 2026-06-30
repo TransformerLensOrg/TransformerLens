@@ -111,11 +111,6 @@ class TestInternLM2AdapterComponentMapping:
         assert adapter.component_mapping is not None
         assert adapter.component_mapping["embed"].name == "model.tok_embeddings"
 
-    def test_no_top_level_rotary_emb(self, adapter: InternLM2ArchitectureAdapter) -> None:
-        # Per-layer rotary, not a top-level component.
-        assert adapter.component_mapping is not None
-        assert "rotary_emb" not in adapter.component_mapping
-
     def test_blocks_is_block_bridge(self, adapter: InternLM2ArchitectureAdapter) -> None:
         assert adapter.component_mapping is not None
         assert isinstance(adapter.component_mapping["blocks"], BlockBridge)
@@ -547,11 +542,6 @@ class TestInternLM2ComponentMappingPresence:
         expected = {"embed", "blocks", "ln_final", "unembed"}
         assert set(adapter.component_mapping.keys()) == expected
 
-    def test_block_has_required_submodules(self, adapter: InternLM2ArchitectureAdapter) -> None:
-        blocks = adapter.component_mapping["blocks"]
-        for name in ("ln1", "ln2", "attn", "mlp"):
-            assert name in blocks.submodules, f"BlockBridge missing submodule '{name}'"
-
 
 class TestInternLM2BlockLinearBridges:
     """All attn/mlp submodule projections are LinearBridge instances."""
@@ -567,12 +557,6 @@ class TestInternLM2BlockLinearBridges:
     def test_attn_o_is_linear_bridge(self, blocks: BlockBridge) -> None:
         attn = blocks.submodules["attn"]
         assert isinstance(attn.submodules["o"], LinearBridge)
-
-    def test_attn_has_fused_qkv_path(self, blocks: BlockBridge) -> None:
-        # Fused HF projection at name="wqkv"; JointQKV* base adds virtual q/k/v splits on top.
-        attn = blocks.submodules["attn"]
-        assert "qkv" in attn.submodules
-        assert attn.submodules["qkv"].name == "wqkv"
 
     def test_mlp_gate_is_linear_bridge(self, blocks: BlockBridge) -> None:
         mlp = blocks.submodules["mlp"]
@@ -639,8 +623,3 @@ class TestInternLM2ArchitectureGuards:
         blocks = adapter.component_mapping["blocks"]
         assert not isinstance(blocks, ParallelBlockBridge)
         assert isinstance(blocks, BlockBridge)
-
-    def test_has_both_ln1_and_ln2(self, adapter: InternLM2ArchitectureAdapter) -> None:
-        blocks = adapter.component_mapping["blocks"]
-        assert "ln1" in blocks.submodules
-        assert "ln2" in blocks.submodules

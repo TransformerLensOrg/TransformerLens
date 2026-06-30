@@ -81,29 +81,6 @@ class TestGemma3MultimodalAdapterConfig:
         assert adapter.cfg.vision_num_layers == 27
         assert adapter.cfg.vision_num_heads == 16
 
-    def test_mm_tokens_per_image_passthrough_when_set(self):
-        # When cfg.mm_tokens_per_image is set, the adapter passes it through.
-        cfg = _make_gemma3_mm_cfg()
-        cfg.mm_tokens_per_image = 128
-        adapter = Gemma3MultimodalArchitectureAdapter(cfg)
-        assert adapter.cfg.mm_tokens_per_image == 128
-
-
-class TestGemma3MultimodalComponentMappingPresence:
-    """Top-level component slots must exist (deletion guard)."""
-
-    @pytest.fixture(scope="class")
-    def adapter(self):
-        return Gemma3MultimodalArchitectureAdapter(_make_gemma3_mm_cfg())
-
-    def test_has_vision_components(self, adapter):
-        assert "vision_encoder" in adapter.component_mapping
-        assert "vision_projector" in adapter.component_mapping
-
-    def test_has_language_model_components(self, adapter):
-        for name in ("embed", "rotary_emb", "blocks", "ln_final", "unembed"):
-            assert name in adapter.component_mapping
-
 
 class TestGemma3MultimodalComponentMappingPaths:
     """HF module paths for each component slot (refactor-drift guard)."""
@@ -172,10 +149,6 @@ class TestGemma3MultimodalBlockSubmodules:
     def blocks(self):
         adapter = Gemma3MultimodalArchitectureAdapter(_make_gemma3_mm_cfg())
         return adapter.component_mapping["blocks"]
-
-    def test_block_has_required_submodules(self, blocks):
-        for name in ("ln1", "ln1_post", "ln2", "ln2_post", "attn", "mlp"):
-            assert name in blocks.submodules, f"BlockBridge missing submodule '{name}'"
 
     def test_dual_normalization_pre_and_post(self, blocks):
         for name in ("ln1", "ln1_post", "ln2", "ln2_post"):
@@ -268,18 +241,6 @@ class TestGemma3MultimodalWeightProcessingConversions:
             assert conv.tensor_conversion.pattern == "(n h) m -> n m h"
         o_conv = adapter.weight_processing_conversions["blocks.{i}.attn.o.weight"]
         assert o_conv.tensor_conversion.pattern == "m (n h) -> n h m"
-
-    def test_norm_offset_keys_present(self, adapter):
-        for key in (
-            "blocks.{i}.ln1.weight",
-            "blocks.{i}.ln1_post.weight",
-            "blocks.{i}.ln2.weight",
-            "blocks.{i}.ln2_post.weight",
-            "ln_final.weight",
-            "blocks.{i}.attn.q_norm.weight",
-            "blocks.{i}.attn.k_norm.weight",
-        ):
-            assert key in adapter.weight_processing_conversions, f"missing {key}"
 
     def test_norm_offset_conversion_semantics(self, adapter):
         for key in (

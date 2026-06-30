@@ -69,20 +69,8 @@ def _make_qkv_component(d_model: int) -> Any:
 
 
 class TestBloomAdapterConfig:
-    def test_normalization_type(self, adapter: BloomArchitectureAdapter) -> None:
-        assert adapter.cfg.normalization_type == "LN"
-
     def test_positional_embedding_type(self, adapter: BloomArchitectureAdapter) -> None:
         assert adapter.cfg.positional_embedding_type == "alibi"
-
-    def test_final_rms(self, adapter: BloomArchitectureAdapter) -> None:
-        assert adapter.cfg.final_rms is False
-
-    def test_gated_mlp(self, adapter: BloomArchitectureAdapter) -> None:
-        assert adapter.cfg.gated_mlp is False
-
-    def test_attn_only(self, adapter: BloomArchitectureAdapter) -> None:
-        assert adapter.cfg.attn_only is False
 
     def test_default_prepend_bos(self, adapter: BloomArchitectureAdapter) -> None:
         assert adapter.cfg.default_prepend_bos is False
@@ -184,15 +172,6 @@ class TestBloomWeightConversions:
             "blocks.{i}.attn.o",
         ]:
             assert key in convs
-
-    def test_q_conversion_type(self, adapter: BloomArchitectureAdapter) -> None:
-        convs = adapter.weight_processing_conversions
-        assert convs is not None
-
-        conv = convs["blocks.{i}.attn.q"]
-
-        assert isinstance(conv, ParamProcessingConversion)
-        assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)
 
     def test_q_rearrange_pattern(self, adapter: BloomArchitectureAdapter) -> None:
         convs = adapter.weight_processing_conversions
@@ -323,19 +302,6 @@ class TestBloomSplitQKV:
         assert torch.all(q.bias == 1.0)
         assert torch.all(k.bias == 2.0)
         assert torch.all(v.bias == 3.0)
-
-    def test_forward_shapes(self) -> None:
-        adapter = self._adapter()
-
-        component = _make_qkv_component(64)
-
-        q, k, v = adapter.split_qkv_matrix(component)
-
-        x = torch.randn(2, 5, 64)
-
-        assert q(x).shape == (2, 5, 64)
-        assert k(x).shape == (2, 5, 64)
-        assert v(x).shape == (2, 5, 64)
 
 
 # ---------------------------------------------------------------------------

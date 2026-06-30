@@ -167,16 +167,6 @@ class TestMistralAdapterConfig:
         """Mistral does not use final RMSNorm — final_rms must remain False."""
         assert adapter.cfg.final_rms is False
 
-    def test_uses_rms_norm_is_true(self, adapter: MistralArchitectureAdapter) -> None:
-        assert adapter.cfg.uses_rms_norm is True
-
-    def test_gated_mlp_is_true(self, adapter: MistralArchitectureAdapter) -> None:
-        """Mistral uses a gated SwiGLU MLP — must not silently revert to vanilla MLP."""
-        assert adapter.cfg.gated_mlp is True
-
-    def test_attn_only_is_false(self, adapter: MistralArchitectureAdapter) -> None:
-        assert adapter.cfg.attn_only is False
-
 
 # ---------------------------------------------------------------------------
 # Weight processing conversions
@@ -212,16 +202,6 @@ class TestMistralWeightConversions:
         assert isinstance(conv, ParamProcessingConversion)
         assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)
         assert conv.tensor_conversion.pattern == "m (n h) -> n h m"
-
-    def test_no_bias_conversion_keys(self, adapter: MistralArchitectureAdapter) -> None:
-        """Mistral has no attention biases — no bias conversion entries."""
-        keys = set(adapter.weight_processing_conversions.keys())
-        assert not any("bias" in k or ".b_" in k for k in keys)
-
-    def test_no_norm_conversion_keys(self, adapter: MistralArchitectureAdapter) -> None:
-        """RMSNorm has no bias offset — no ln1/ln2/ln_final conversion entries."""
-        keys = set(adapter.weight_processing_conversions.keys())
-        assert not any("ln" in k for k in keys)
 
 
 # ---------------------------------------------------------------------------

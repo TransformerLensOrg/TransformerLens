@@ -245,13 +245,20 @@ class TestUtils:
 class TestConstants:
     """Tests for constants module."""
 
-    def test_input_field_names(self):
-        """Test input field names are defined."""
-        from transformer_lens.lit.constants import INPUT_FIELDS
+    @pytest.mark.skipif(not LIT_AVAILABLE, reason="LIT not installed")
+    def test_input_field_names_drive_input_spec(self, mock_hooked_transformer):
+        """Input field-name constants become input_spec dict keys."""
+        from transformer_lens.lit.model import HookedTransformerLIT
 
-        assert INPUT_FIELDS.TEXT == "text"
-        assert INPUT_FIELDS.TOKENS == "tokens"
-        assert INPUT_FIELDS.TARGET_MASK == "target_mask"
+        with patch("transformer_lens.HookedTransformer", type(mock_hooked_transformer)):
+            wrapper = HookedTransformerLIT(mock_hooked_transformer)
+            spec = wrapper.input_spec()
+
+            assert "text" in spec
+            assert isinstance(spec["text"], lit_types.TextSegment)  # type: ignore[union-attr]
+            assert "tokens" in spec
+            # TARGET_MASK appears because compute_gradients is on by default.
+            assert "target_mask" in spec
 
     def test_output_field_names(self):
         """Test output field names are defined."""
@@ -278,12 +285,17 @@ class TestConstants:
         assert "{layer}" in HOOK_POINTS.RESID_PRE_TEMPLATE
         assert "{layer}" in HOOK_POINTS.ATTN_PATTERN_TEMPLATE
 
-    def test_error_messages(self):
-        """Test error messages are defined."""
-        from transformer_lens.lit.constants import ERRORS
+    @pytest.mark.skipif(not LIT_AVAILABLE, reason="LIT not installed")
+    def test_no_tokenizer_error_is_raised(self, mock_hooked_transformer):
+        """Predicting without a tokenizer raises the NO_TOKENIZER message."""
+        from transformer_lens.lit.model import HookedTransformerLIT
 
-        assert "tokenizer" in ERRORS.NO_TOKENIZER.lower()
-        assert "lit" in ERRORS.LIT_NOT_INSTALLED.lower()
+        mock_hooked_transformer.tokenizer = None
+
+        with patch("transformer_lens.HookedTransformer", type(mock_hooked_transformer)):
+            wrapper = HookedTransformerLIT(mock_hooked_transformer)
+            with pytest.raises(ValueError, match="tokenizer"):
+                wrapper._predict_single({"text": "hello"})
 
 
 # Tests for dataset.py
@@ -392,18 +404,24 @@ class TestModel:
     """Tests for model wrapper classes."""
 
     @pytest.mark.skipif(not LIT_AVAILABLE, reason="LIT not installed")
-    def test_config_defaults(self):
-        """Test HookedTransformerLITConfig defaults."""
-        from transformer_lens.lit.model import HookedTransformerLITConfig
+    def test_default_config_drives_wrapper_behavior(self, mock_hooked_transformer):
+        """Default config drives batch size and embedding/attention outputs."""
+        from transformer_lens.lit.model import HookedTransformerLIT
 
-        config = HookedTransformerLITConfig()
+        with patch("transformer_lens.HookedTransformer", type(mock_hooked_transformer)):
+            wrapper = HookedTransformerLIT(mock_hooked_transformer)
+            spec = wrapper.output_spec()
 
-        assert config.max_seq_length == 512
-        assert config.batch_size == 8
-        assert config.top_k == 10
-        assert config.compute_gradients is True
-        assert config.output_attention is True
-        assert config.output_embeddings is True
+            # batch_size default feeds the minibatch limit LIT batches with.
+            assert wrapper.max_minibatch_size() == 8
+            # output_embeddings default -> embedding fields present.
+            assert "cls_embedding" in spec
+            assert "mean_embedding" in spec
+            # output_attention default -> a per-layer attention field per model layer.
+            assert "layer_0/attention" in spec
+            assert "layer_3/attention" in spec
+            # compute_gradients default -> salience gradient fields present.
+            assert "grad_l2" in spec
 
     @pytest.mark.skipif(not LIT_AVAILABLE, reason="LIT not installed")
     def test_config_custom(self):

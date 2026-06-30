@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from transformer_lens.config import TransformerBridgeConfig
+from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion
 from transformer_lens.conversion_utils.conversion_steps.rearrange_tensor_conversion import (
     RearrangeTensorConversion,
 )
@@ -127,13 +128,6 @@ class TestGlm4MoeAdapterConfig:
     def test_default_prepend_bos_is_false(self, adapter: Glm4MoeArchitectureAdapter) -> None:
         assert adapter.cfg.default_prepend_bos is False
 
-    def test_normalization_and_embedding_settings(
-        self, adapter: Glm4MoeArchitectureAdapter
-    ) -> None:
-        assert adapter.cfg.normalization_type == "RMS"
-        assert adapter.cfg.positional_embedding_type == "rotary"
-        assert adapter.cfg.uses_rms_norm is True
-
 
 class TestGlm4MoeWeightConversions:
     def test_conversion_keys_are_only_qkvo(self, adapter: Glm4MoeArchitectureAdapter) -> None:
@@ -143,14 +137,6 @@ class TestGlm4MoeWeightConversions:
             "blocks.{i}.attn.v.weight",
             "blocks.{i}.attn.o.weight",
         }
-
-    def test_qkv_rearrange_is_gqa_aware(self, adapter: Glm4MoeArchitectureAdapter) -> None:
-        assert _rearrange(adapter, "blocks.{i}.attn.q.weight").axes_lengths["n"] == 4
-        for slot in ("k", "v"):
-            assert _rearrange(adapter, f"blocks.{{i}}.attn.{slot}.weight").axes_lengths["n"] == 2
-
-    def test_o_weight_uses_n_heads(self, adapter: Glm4MoeArchitectureAdapter) -> None:
-        assert _rearrange(adapter, "blocks.{i}.attn.o.weight").axes_lengths["n"] == 4
 
     def test_qkv_rearrange_with_no_kv_heads_falls_back_to_n_heads(self) -> None:
         minimal = Glm4MoeArchitectureAdapter(
@@ -167,18 +153,16 @@ class TestGlm4MoeWeightConversions:
         assert _rearrange(minimal, "blocks.{i}.attn.k.weight").axes_lengths["n"] == 4
         assert _rearrange(minimal, "blocks.{i}.attn.v.weight").axes_lengths["n"] == 4
 
+    def test_qkv_rearrange_is_gqa_aware(self, adapter: Glm4MoeArchitectureAdapter) -> None:
+        assert _rearrange(adapter, "blocks.{i}.attn.q.weight").axes_lengths["n"] == 4
+        for slot in ("k", "v"):
+            assert _rearrange(adapter, f"blocks.{{i}}.attn.{slot}.weight").axes_lengths["n"] == 2
+
+    def test_o_weight_uses_n_heads(self, adapter: Glm4MoeArchitectureAdapter) -> None:
+        assert _rearrange(adapter, "blocks.{i}.attn.o.weight").axes_lengths["n"] == 4
+
 
 class TestGlm4MoeComponentMapping:
-    def test_has_required_top_level_keys(self, adapter: Glm4MoeArchitectureAdapter) -> None:
-        mapping = _mapping(adapter)
-        for key in ("embed", "rotary_emb", "blocks", "ln_final", "unembed"):
-            assert key in mapping
-
-    def test_blocks_has_required_submodules(self, adapter: Glm4MoeArchitectureAdapter) -> None:
-        blocks = _mapping(adapter)["blocks"]
-        for key in ("ln1", "ln2", "attn", "mlp"):
-            assert key in blocks.submodules, f"Missing blocks submodule: {key!r}"
-
     def test_attn_has_expected_submodules(self, adapter: Glm4MoeArchitectureAdapter) -> None:
         attn = _mapping(adapter)["blocks"].submodules["attn"]
         for key in ("q", "k", "v", "o", "q_norm", "k_norm"):

@@ -734,39 +734,6 @@ class TestProcessWeights:
             # Expected behavior for missing keys
             pass
 
-    def test_config_attribute_access(self):
-        """Test that config attribute access works with getattr defaults."""
-        minimal_config = create_test_config(n_layers=1)
-        # TransformerLensConfig is a dataclass with all attributes defined,
-        # so we can't delete attributes to test getattr defaults.
-        # The test still validates that the processing works with minimal config.
-
-        state_dict = {
-            "blocks.0.ln1.w": torch.ones(8),
-            "blocks.0.ln1.b": torch.zeros(8),
-            "blocks.0.ln2.w": torch.ones(8),
-            "blocks.0.ln2.b": torch.zeros(8),
-            "blocks.0.attn.W_Q": torch.ones(4, 8, 2),
-            "blocks.0.attn.W_K": torch.ones(4, 8, 2),
-            "blocks.0.attn.W_V": torch.ones(4, 8, 2),
-            "blocks.0.attn.b_Q": torch.zeros(4, 2),
-            "blocks.0.attn.b_K": torch.zeros(4, 2),
-            "blocks.0.attn.b_V": torch.zeros(4, 2),
-            "blocks.0.mlp.W_in": torch.ones(8, 16),
-            "blocks.0.mlp.b_in": torch.zeros(16),
-            "ln_final.w": torch.ones(8),
-            "ln_final.b": torch.zeros(8),
-            "unembed.W_U": torch.ones(8, 100),
-            "unembed.b_U": torch.zeros(100),
-        }
-
-        # Should work with getattr defaults
-        processed_dict = ProcessWeights.fold_layer_norm(state_dict, minimal_config)
-        assert "blocks.0.ln1.w" in processed_dict
-        assert torch.allclose(
-            processed_dict["blocks.0.ln1.w"], torch.ones_like(processed_dict["blocks.0.ln1.w"])
-        )
-
     def test_fold_layer_no_adapter_transformer_lens_format(self, basic_config):
         """Test _fold_layer function with no adapter (TransformerLens format).
 

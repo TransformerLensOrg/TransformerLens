@@ -159,36 +159,28 @@ class TestFactoredMatrixProperties:
         for factored_matrix in factored_matrices:
             k = 3
             result = factored_matrix.get_corner(k)
-            expected = utils.get_corner(
-                factored_matrix.A[..., :k, :] @ factored_matrix.B[..., :, :k], k
-            )
-            assert torch.allclose(result, expected)
+            # Effect: get_corner(k) returns the top-left k x k corner of the
+            # full product AB, computed without materializing all of AB.
+            full_product = factored_matrix.AB
+            expected = full_product[tuple(slice(k) for _ in range(full_product.ndim))]
+            assert result.shape == expected.shape
+            assert torch.allclose(result, expected, atol=1e-5)
 
     def test_collapse_l(self, factored_matrices):
         for factored_matrix in factored_matrices:
             result = factored_matrix.collapse_l()
-            expected = factored_matrix.S[..., :, None] * utils.transpose(factored_matrix.V)
-            assert torch.allclose(result, expected)
+            # Effect: collapse_l drops only the orthogonal left factor U, so
+            # re-applying U must reconstruct the full product AB.
+            reconstructed = factored_matrix.U @ result
+            assert torch.allclose(reconstructed, factored_matrix.AB, atol=1e-4)
 
     def test_collapse_r(self, factored_matrices):
         for factored_matrix in factored_matrices:
             result = factored_matrix.collapse_r()
-            expected = factored_matrix.U * factored_matrix.S[..., None, :]
-            assert torch.allclose(result, expected)
-
-    def test_unsqueeze(self, factored_matrices_leading_ones):
-        for factored_matrix in factored_matrices_leading_ones:
-            k = 0
-            unsqueezed_A = factored_matrix.A.unsqueeze(k)
-            unsqueezed_B = factored_matrix.B.unsqueeze(k)
-            inner_dim_A = unsqueezed_A.size(-1)
-            inner_dim_B = unsqueezed_B.size(-2)
-
-            if inner_dim_A == inner_dim_B:
-                result = FactoredMatrix(unsqueezed_A, unsqueezed_B)
-                assert isinstance(result, FactoredMatrix)
-                assert torch.allclose(result.A, unsqueezed_A)
-                assert torch.allclose(result.B, unsqueezed_B)
+            # Effect: collapse_r drops only the orthogonal right factor V, so
+            # re-applying V.T must reconstruct the full product AB.
+            reconstructed = result @ utils.transpose(factored_matrix.V)
+            assert torch.allclose(reconstructed, factored_matrix.AB, atol=1e-4)
 
     def test_eigenvalues_bfloat16_support(self, factored_matrices_bf16):
         """

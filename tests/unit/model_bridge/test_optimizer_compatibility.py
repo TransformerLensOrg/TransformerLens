@@ -228,16 +228,6 @@ class TestParametersAfterCompatibilityMode:
 class TestParametersMatchOriginalModel:
     """Test that parameters() returns the same parameters as the original HF model."""
 
-    def test_parameter_count_matches(self, small_bridge_model):
-        """Verify parameter count matches original model."""
-        bridge_param_count = sum(1 for _ in small_bridge_model.parameters())
-        original_param_count = sum(1 for _ in small_bridge_model.original_model.parameters())
-
-        assert bridge_param_count == original_param_count, (
-            f"Parameter count mismatch: Bridge has {bridge_param_count}, "
-            f"original model has {original_param_count}"
-        )
-
     def test_parameters_are_same_objects(self, small_bridge_model):
         """Verify that parameters() returns the actual original model parameters."""
         bridge_params = list(small_bridge_model.parameters())

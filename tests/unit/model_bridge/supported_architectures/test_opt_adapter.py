@@ -79,8 +79,18 @@ class TestOptAdapterConfig:
     def test_normalization_type_is_ln(self, adapter: OptArchitectureAdapter) -> None:
         assert adapter.cfg.normalization_type == "LN"
 
-    def test_positional_embedding_type_is_standard(self, adapter: OptArchitectureAdapter) -> None:
-        assert adapter.cfg.positional_embedding_type == "standard"
+    def test_standard_pos_embedding_omits_rotary_attn_hooks(
+        self, adapter: OptArchitectureAdapter
+    ) -> None:
+        """Standard (learned) positional embeddings build attention WITHOUT rotary hooks.
+
+        AttentionBridge only creates hook_rot_q/hook_rot_k when
+        positional_embedding_type == "rotary"; OPT's "standard" setting must leave
+        them off. Flipping OPT to rotary would add these hooks and fail this test.
+        """
+        attn = adapter.component_mapping["blocks"].submodules["attn"]
+        assert not hasattr(attn, "hook_rot_q")
+        assert not hasattr(attn, "hook_rot_k")
 
 
 class TestOptAdapterPostNorm:

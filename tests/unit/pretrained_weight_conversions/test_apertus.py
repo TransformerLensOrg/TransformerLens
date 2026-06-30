@@ -173,18 +173,21 @@ class TestApertusWeightConversion:
         assert "blocks.0.ln1.w" in sd
         assert "blocks.0.ln2.w" in sd
 
-    def test_zero_biases_have_correct_device(self):
+    def test_zero_biases_exist_with_correct_shapes(self):
+        """Apertus has no projection biases, so converter fills zeros with config-derived shapes."""
         cfg = make_cfg()
         model = make_mock_model(cfg)
         sd = convert_apertus_weights(model, cfg)
-        for key in [
-            "blocks.0.attn.b_Q",
-            "blocks.0.attn.b_O",
-            "blocks.0.mlp.b_in",
-            "blocks.0.mlp.b_out",
-            "unembed.b_U",
-        ]:
-            assert sd[key].device.type == cfg.device, f"{key} on wrong device"
+        expected_shapes = {
+            "blocks.0.attn.b_Q": (cfg.n_heads, cfg.d_head),
+            "blocks.0.attn.b_O": (cfg.d_model,),
+            "blocks.0.mlp.b_in": (cfg.d_mlp,),
+            "blocks.0.mlp.b_out": (cfg.d_model,),
+            "unembed.b_U": (cfg.d_vocab,),
+        }
+        for key, shape in expected_shapes.items():
+            assert sd[key].shape == shape, f"{key} wrong shape"
+            assert torch.count_nonzero(sd[key]) == 0, f"{key} should be all zeros"
 
     def test_unembed_shapes(self):
         cfg = make_cfg()

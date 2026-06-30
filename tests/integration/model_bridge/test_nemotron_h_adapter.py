@@ -21,6 +21,7 @@ import torch
 
 from transformer_lens.model_bridge.bridge import TransformerBridge
 from transformer_lens.model_bridge.generalized_components import (
+    RMSNormalizationBridge,
     SSM2MixerBridge,
     SSMBlockBridge,
 )
@@ -70,13 +71,15 @@ def nemotron_bridge():
 class TestNemotronHBridgeCreation:
     """Smoke-test that the bridge loads with the right config flags."""
 
-    def test_config_flags(self, nemotron_bridge: TransformerBridge) -> None:
-        cfg = nemotron_bridge.cfg
-        assert cfg.normalization_type == "RMS"
-        assert cfg.uses_rms_norm is True
-        assert cfg.positional_embedding_type == "none"
-        assert cfg.gated_mlp is False
-        assert cfg.is_stateful is True
+    def test_norm_bridges_are_rms(self, nemotron_bridge: TransformerBridge) -> None:
+        """normalization_type='RMS' must wire RMSNormalizationBridge, not LayerNorm.
+
+        The block pre-norm and the final norm should both be RMS. Asserting the
+        concrete bridge type (rather than cfg.normalization_type) catches a
+        regression where the adapter wires the wrong normalization component.
+        """
+        assert isinstance(nemotron_bridge.blocks[0].norm, RMSNormalizationBridge)
+        assert isinstance(nemotron_bridge.ln_final, RMSNormalizationBridge)
 
     def test_block_count(self, nemotron_bridge: TransformerBridge) -> None:
         # Nemotron-H-8B has 56 layers

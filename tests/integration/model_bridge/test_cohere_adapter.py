@@ -74,9 +74,6 @@ class TestCohereBridgeCreation:
         # tiny model has 2 layers
         assert len(cohere_bridge.blocks) == 2
 
-    def test_parallel_attn_mlp_flag(self, cohere_bridge: TransformerBridge) -> None:
-        assert cohere_bridge.cfg.parallel_attn_mlp is True
-
     def test_has_core_components(self, cohere_bridge: TransformerBridge) -> None:
         assert hasattr(cohere_bridge, "embed")
         assert hasattr(cohere_bridge, "unembed")
@@ -88,11 +85,39 @@ class TestCohereBridgeCreation:
         for block in cohere_bridge.blocks:
             assert not hasattr(block, "ln2"), "Parallel block must not have ln2"
 
-    def test_cfg_normalization_type(self, cohere_bridge: TransformerBridge) -> None:
-        assert cohere_bridge.cfg.normalization_type == "LN"
+    def test_ln1_subtracts_mean_like_hf_layernorm(
+        self, cohere_bridge: TransformerBridge, cohere_hf: Any
+    ) -> None:
+        """uses_rms_norm=False must make ln1 mean-subtract (true LayerNorm), not RMS.
 
-    def test_cfg_uses_rms_norm_false(self, cohere_bridge: TransformerBridge) -> None:
-        assert cohere_bridge.cfg.uses_rms_norm is False
+        Drives blocks[0].ln1 on a deliberately non-zero-mean input and compares
+        against the raw HF CohereLayerNorm (which subtracts the mean). If
+        uses_rms_norm regressed to True, the bridge would skip mean subtraction
+        and diverge from HF by O(1), tripping this assertion.
+        """
+        ln1 = cohere_bridge.blocks[0].ln1
+        hf_ln1 = cohere_hf.model.layers[0].input_layernorm
+        d_model = cohere_bridge.cfg.d_model
+        torch.manual_seed(0)
+        # +5.0 shift guarantees a large mean so LN and RMS outputs differ markedly.
+        x = torch.randn(1, 4, d_model) + 5.0
+        with torch.no_grad():
+            bridge_out = ln1(x)
+            hf_out = hf_ln1(x)
+        ln_diff = (bridge_out - hf_out).abs().max().item()
+        assert ln_diff < 1e-4, f"ln1 does not match HF CohereLayerNorm: max_diff={ln_diff:.6f}"
+        # And it must NOT match an RMS-only (no mean subtraction) normalization.
+        variance = x.float().pow(2).mean(-1, keepdim=True)
+        rms_only = (
+            x.float()
+            * torch.rsqrt(variance + ln1.original_component.variance_epsilon)
+            * ln1.original_component.weight.float()
+        ).to(bridge_out.dtype)
+        rms_diff = (bridge_out - rms_only).abs().max().item()
+        assert rms_diff > 1e-2, (
+            "ln1 output matches RMS-only normalization; uses_rms_norm must be False "
+            f"so the mean is subtracted (rms_diff={rms_diff:.6f})"
+        )
 
     def test_cfg_logit_scale_matches_hf(
         self, cohere_bridge: TransformerBridge, cohere_hf: Any

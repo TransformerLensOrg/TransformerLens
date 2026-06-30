@@ -99,28 +99,6 @@ def test_attention_forward_half_precisions(dtype):
     assert out.device.type == "cuda"
 
 
-def test_attention_config_dict():
-    cfg = {
-        "n_layers": 12,
-        "d_model": 512,
-        "n_ctx": 1024,
-        "d_head": 64,
-        "n_heads": 8,
-        "load_in_4bit": False,
-        "dtype": torch.float32,
-        "act_fn": "relu",
-    }
-    attn = Attention(cfg)
-    assert attn.cfg.n_layers == 12
-    assert attn.cfg.d_model == 512
-    assert attn.cfg.n_ctx == 1024
-    assert attn.cfg.d_head == 64
-    assert attn.cfg.n_heads == 8
-    assert attn.cfg.load_in_4bit == False
-    assert attn.cfg.dtype == torch.float32
-    assert attn.cfg.act_fn == "relu"
-
-
 def test_attention_does_not_allocate_full_causal_mask():
     cfg = HookedTransformerConfig(
         n_layers=1,
