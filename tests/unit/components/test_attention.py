@@ -195,15 +195,46 @@ def test_apply_rotary_extends_embeddings_on_demand():
 
     expected_sin, expected_cos = attn.calculate_sin_cos_rotary(
         rotary_dim,
-        2049,
+        cfg.n_ctx,
         base=cfg.rotary_base,
         dtype=cfg.dtype,
     )
     assert out.shape == x.shape
-    assert attn.rotary_sin.shape == (2049, rotary_dim)
-    assert attn.rotary_cos.shape == (2049, rotary_dim)
+    assert attn.rotary_sin.shape == (cfg.n_ctx, rotary_dim)
+    assert attn.rotary_cos.shape == (cfg.n_ctx, rotary_dim)
     torch.testing.assert_close(attn.rotary_sin, expected_sin)
     torch.testing.assert_close(attn.rotary_cos, expected_cos)
+
+
+def test_apply_rotary_extends_with_headroom_for_token_generation(monkeypatch):
+    cfg = HookedTransformerConfig(
+        n_layers=1,
+        d_model=8,
+        n_ctx=8192,
+        d_head=4,
+        n_heads=2,
+        act_fn="relu",
+        positional_embedding_type="rotary",
+    )
+    attn = Attention(cfg)
+    rotary_dim = cfg.rotary_dim
+    assert rotary_dim is not None
+    x = torch.randn((1, 1, cfg.n_heads, cfg.d_head), dtype=cfg.dtype)
+    extension_sizes = []
+    original_extend = attn._extend_rotary_embeddings
+
+    def record_extension(new_size):
+        extension_sizes.append(new_size)
+        original_extend(new_size)
+
+    monkeypatch.setattr(attn, "_extend_rotary_embeddings", record_extension)
+
+    attn.apply_rotary(x, past_kv_pos_offset=2048)
+    attn.apply_rotary(x, past_kv_pos_offset=2049)
+
+    assert extension_sizes == [4096]
+    assert attn.rotary_sin.shape == (4096, rotary_dim)
+    assert attn.rotary_cos.shape == (4096, rotary_dim)
 
 
 def test_local_rotary_extension_uses_local_base():
