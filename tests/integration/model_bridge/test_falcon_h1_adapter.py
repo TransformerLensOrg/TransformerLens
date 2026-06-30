@@ -1,6 +1,9 @@
 """Integration tests for the Falcon-H1 architecture adapter.
 
-Verifies wrap-don't-reimplement behaviour against ``tiiuae/Falcon-H1-0.5B-Base``:
+Verifies wrap-don't-reimplement behaviour against Falcon-H1 checkpoints:
+
+- ``tiiuae/Falcon-H1-Tiny-90M-Instruct`` — smallest variant (issue #1403 verify-first).
+- ``tiiuae/Falcon-H1-0.5B-Base`` — primary parity suite.
 - Forward-pass logits match HF **exactly** (the bridge delegates the whole block
   to HF, which applies Falcon-H1's ~12 scalar multipliers natively).
 - Both the attention branch AND the Mamba-2 branch are independently hookable in
@@ -30,6 +33,7 @@ from transformer_lens.model_bridge.generalized_components import (
 )
 
 MODEL = "tiiuae/Falcon-H1-0.5B-Base"
+TINY_MODEL = "tiiuae/Falcon-H1-Tiny-90M-Instruct"
 
 pytestmark = [
     pytest.mark.slow,
@@ -217,6 +221,65 @@ class TestFalconH1HookAblation:
                 tokens, fwd_hooks=[("blocks.0.mamba.hook_out", zero)]
             )
         assert not torch.allclose(baseline, ablated)
+
+    def test_attn_branch_ablation_changes_output(self, falcon_h1_bridge):
+        # Symmetric to the Mamba ablation: zeroing the attention branch output
+        # must perturb logits, proving both parallel paths are live.
+        tokens = torch.tensor([[1, 2, 3, 4]])
+        with torch.no_grad():
+            baseline = falcon_h1_bridge(tokens)
+
+        def zero(t, hook):
+            return torch.zeros_like(t)
+
+        with torch.no_grad():
+            ablated = falcon_h1_bridge.run_with_hooks(
+                tokens, fwd_hooks=[("blocks.0.attn.hook_out", zero)]
+            )
+        assert not torch.allclose(baseline, ablated)
+
+
+# ---------------------------------------------------------------------------
+# Tiny-90M parity (issue #1403 verify-smallest-first)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def falcon_h1_tiny_bridge():
+    return TransformerBridge.boot_transformers(TINY_MODEL, device="cpu", dtype=torch.float32)
+
+
+class TestFalconH1Tiny90MParity:
+    """Smoke parity on the smallest Falcon-H1 checkpoint."""
+
+    def test_block_count(self, falcon_h1_tiny_bridge):
+        assert len(falcon_h1_tiny_bridge.blocks) == 24
+
+    def test_both_branches_present(self, falcon_h1_tiny_bridge):
+        block = falcon_h1_tiny_bridge.blocks[0]
+        assert isinstance(block.attn, PositionEmbeddingsAttentionBridge)
+        assert isinstance(block.mamba, SSM2MixerBridge)
+
+    def test_forward_matches_hf_exactly(self, falcon_h1_tiny_bridge):
+        tokens = torch.tensor([[1, 2, 3, 4, 5, 6, 7, 8]])
+        hf_model = falcon_h1_tiny_bridge.original_model
+        with torch.no_grad():
+            bridge_out = falcon_h1_tiny_bridge(tokens)
+            hf_out = hf_model(tokens).logits
+        max_diff = (bridge_out - hf_out).abs().max().item()
+        assert max_diff == 0.0, f"Tiny-90M bridge vs HF max diff = {max_diff}"
+
+    @pytest.mark.parametrize("prompt_len", [1, 4])
+    def test_greedy_matches_hf(self, falcon_h1_tiny_bridge, prompt_len):
+        tokens = torch.arange(1, prompt_len + 1).unsqueeze(0)
+        with torch.no_grad():
+            bridge_out = falcon_h1_tiny_bridge.generate(tokens, max_new_tokens=6, do_sample=False)
+            hf_out = falcon_h1_tiny_bridge.original_model.generate(
+                tokens, max_new_tokens=6, do_sample=False, pad_token_id=0
+            )
+        assert torch.equal(
+            bridge_out, hf_out
+        ), f"Tiny-90M prompt_len={prompt_len}: bridge={bridge_out.tolist()} vs HF={hf_out.tolist()}"
 
 
 # ---------------------------------------------------------------------------
