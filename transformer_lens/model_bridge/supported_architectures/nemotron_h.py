@@ -90,9 +90,12 @@ class NemotronHArchitectureAdapter(ArchitectureAdapter):
         self.cfg.is_stateful = True
 
         # Expose the heterogeneous layer-type list so tests and analysis tools
-        # can inspect which layers are which without loading a full HF model.
-        layers_block_type = getattr(cfg, "layers_block_type", [])
-        setattr(self.cfg, "layers_block_type", layers_block_type)
+        # can inspect which layers are which without loading a full HF model. The
+        # passthrough copies HF's `layer_types`; fall back to it (matches Granite).
+        layers_block_type = (
+            getattr(cfg, "layers_block_type", None) or getattr(cfg, "layer_types", None) or []
+        )
+        setattr(self.cfg, "layers_block_type", list(layers_block_type))
 
         # Mamba-2 dimensional config (mirrors Mamba2ArchitectureAdapter).
         mamba_num_heads = getattr(cfg, "mamba_num_heads", 128)

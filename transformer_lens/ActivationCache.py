@@ -785,6 +785,116 @@ class ActivationCache:
             cast("TransformerBridge", self.model), self, layer=layer, time_step=time_step
         )
 
+    def ssm_layers(self, mixer_type: Optional[type] = None) -> List[int]:
+        """Return the block indices whose mixer is an SSM / recurrent mixer.
+
+        Family-agnostic and purely structural: finds each block's *realized* SSM
+        mixer in its variant slot (``.mixer`` / ``.linear_attn`` / …) via
+        ``find_ssm_mixer``, which excludes a hybrid's passthrough ``.mixer`` on
+        non-SSM layers (e.g. NemotronH attention/MLP/MoE) — no dependence on
+        ``cfg.layers_block_type``.
+
+        Args:
+            mixer_type: Optional concrete bridge class to filter to (e.g.
+                ``SSM2MixerBridge`` for only Mamba-2 layers).
+
+        Returns:
+            Ascending list of SSM block indices.
+        """
+        from transformer_lens.model_bridge.generalized_components.ssm_protocol import (
+            find_ssm_mixer,
+        )
+
+        bridge = self.model
+        layers: List[int] = []
+        for i, block in enumerate(bridge.blocks):
+            mixer = find_ssm_mixer(block)
+            if mixer is None:
+                continue
+            if mixer_type is not None and not isinstance(mixer, mixer_type):
+                continue
+            layers.append(i)
+        return layers
+
+    def compute_ssm_effective_attention(
+        self,
+        layer: Optional[int] = None,
+        include_dt_scaling: bool = False,
+        per_state_coord: bool = False,
+    ) -> Union[torch.Tensor, Dict[int, torch.Tensor]]:
+        """Materialize SSM effective attention for one or all SSM layers, any family.
+
+        The single discovery surface for effective attention across Mamba-1,
+        Mamba-2, and gated-delta-net layers; dispatches to each layer's mixer
+        ``compute_effective_attention`` regardless of family. Family-specific
+        options are forwarded only to mixers whose signature accepts them.
+
+        Args:
+            layer: Specific block index, or None for every SSM layer.
+            include_dt_scaling: Forwarded to Mamba-1/Mamba-2 mixers (the
+                reconstruction form); gated-delta-net does not accept it.
+            per_state_coord: Forwarded to Mamba-1 only (per-state-coordinate
+                matrices). Setting it True for another family raises ValueError.
+
+        Returns:
+            A per-layer matrix for a single ``layer``; for ``layer=None`` a
+            stacked tensor (dim 0 = layer) when every block is an SSM layer, else
+            a ``{layer_idx: matrix}`` dict over the SSM layers.
+
+        Raises:
+            TypeError: If the requested ``layer`` has no SSM mixer.
+            ValueError: If an option is set that the target mixer does not support.
+            RuntimeError: If ``layer=None`` finds no SSM layers.
+        """
+        import inspect
+
+        from transformer_lens.model_bridge.generalized_components.ssm_protocol import (
+            find_ssm_mixer,
+        )
+
+        def _call(mixer: Any, layer_idx: int) -> torch.Tensor:
+            fn = cast(Any, mixer).compute_effective_attention
+            params = inspect.signature(fn).parameters
+            kwargs: Dict[str, Any] = {}
+            for name, value in (
+                ("include_dt_scaling", include_dt_scaling),
+                ("per_state_coord", per_state_coord),
+            ):
+                if name in params:
+                    kwargs[name] = value
+                elif value:
+                    raise ValueError(
+                        f"{type(mixer).__name__}.compute_effective_attention does not "
+                        f"support {name}=True."
+                    )
+            result: torch.Tensor = fn(cache=self, layer_idx=layer_idx, **kwargs)
+            return result
+
+        bridge = self.model
+        if layer is not None:
+            single = find_ssm_mixer(bridge.blocks[layer])
+            if single is None:
+                raise TypeError(f"Block {layer} has no SSM mixer (no compute_effective_attention).")
+            return _call(single, layer)
+
+        indices = self.ssm_layers()
+        if not indices:
+            raise RuntimeError(
+                "compute_ssm_effective_attention found no SSM layers. Use an SSM "
+                "or hybrid bridge and run_with_cache first (gated-delta-net needs "
+                "run_with_cache(..., use_cache=False))."
+            )
+        results: Dict[int, torch.Tensor] = {}
+        for i in indices:
+            mixer = find_ssm_mixer(bridge.blocks[i])
+            assert mixer is not None  # ssm_layers only returns blocks with a mixer
+            results[i] = _call(mixer, i)
+
+        n_blocks = len(bridge.blocks)
+        if indices == list(range(n_blocks)):
+            return torch.stack([results[i] for i in range(n_blocks)], dim=0)
+        return results
+
     def stack_head_results(
         self,
         layer: int = -1,

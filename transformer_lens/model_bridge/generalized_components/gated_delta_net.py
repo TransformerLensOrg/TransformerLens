@@ -46,6 +46,15 @@ class GatedDeltaNetBridge(GeneralizedComponent):
     hook_aliases = {
         "hook_linear_attn_in": "hook_in",
         "hook_linear_attn_out": "hook_out",
+        # Canonical SSM vocabulary (additive) — maps onto GDN's existing hooks so
+        # interp tools can find these quantities by the same name across families.
+        # Semantic mapping: q reads the state (~C), k writes to it (~B), the gate
+        # g is the decay, beta is the per-step write strength.
+        "hook_ssm_out": "hook_out",
+        "hook_ssm_C": "hook_q",
+        "hook_ssm_B": "hook_k",
+        "hook_ssm_decay": "hook_log_decay",
+        "hook_ssm_write": "hook_beta",
     }
 
     property_aliases = {

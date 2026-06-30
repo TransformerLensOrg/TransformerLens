@@ -27,6 +27,9 @@ class SSMMixerBridge(GeneralizedComponent):
         "hook_x_proj": "x_proj.hook_out",
         "hook_dt_proj": "dt_proj.hook_out",
         "hook_ssm_out": "hook_out",
+        # Canonical SSM vocabulary (additive): Mamba-1 exposes the discrete time
+        # step via dt_proj. B/C are bundled in x_proj (not separately hooked).
+        "hook_ssm_dt": "dt_proj.hook_out",
     }
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:

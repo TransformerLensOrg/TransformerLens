@@ -39,6 +39,10 @@ class SSM2MixerBridge(GeneralizedComponent):
         "hook_in_proj": "in_proj.hook_out",
         "hook_conv": "conv1d.hook_out",
         "hook_inner_norm": "inner_norm.hook_out",
+        # Canonical SSM vocabulary (additive). Mamba-2 fuses B/C/dt into the
+        # in_proj/conv1d outputs, so only the mixer output has a granular hook;
+        # B/C/dt/decay/state are reconstructed via compute_effective_attention /
+        # compute_ssm_state rather than exposed as separate HookPoints.
         "hook_ssm_out": "hook_out",
     }
 
