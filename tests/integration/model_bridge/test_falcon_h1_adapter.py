@@ -12,14 +12,13 @@ Verifies wrap-don't-reimplement behaviour against Falcon-H1 checkpoints:
   KV-cache path.
 - Config propagation: SSM dims surface on ``bridge.cfg``.
 
-The 0.5B checkpoint is not in the CI cached-model allowlist, so this module is
-marked ``slow`` and skipped under CI (mirrors the NemotronH heavy-test gating;
-see tests/QUARANTINES.md). Run locally with:
+The Falcon-H1 checkpoints are not in the CI cached-model allowlist, so this
+module is marked ``slow``. CI and ``make integration-test`` deselect it via
+``-m "not slow"`` (same pattern as ``test_nemotron_h_adapter.py``). Run
+locally with:
 
     pytest tests/integration/model_bridge/test_falcon_h1_adapter.py -v
 """
-
-import os
 
 import pytest
 import torch
@@ -35,13 +34,7 @@ from transformer_lens.model_bridge.generalized_components import (
 MODEL = "tiiuae/Falcon-H1-0.5B-Base"
 TINY_MODEL = "tiiuae/Falcon-H1-Tiny-90M-Instruct"
 
-pytestmark = [
-    pytest.mark.slow,
-    pytest.mark.skipif(
-        bool(os.getenv("CI")),
-        reason="Falcon-H1-0.5B is not in the CI cached-model set; see tests/QUARANTINES.md",
-    ),
-]
+pytestmark = pytest.mark.slow
 
 
 @pytest.fixture(scope="module")
