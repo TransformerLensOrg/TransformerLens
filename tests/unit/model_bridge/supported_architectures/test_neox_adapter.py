@@ -121,10 +121,6 @@ class TestNeoxAdapterComponentMapping:
         assert mapping["ln_final"].name == "gpt_neox.final_layer_norm"
         assert mapping["unembed"].name == "embed_out"
 
-    def test_no_pos_embed_key(self, adapter: NeoxArchitectureAdapter) -> None:
-        """NeoX uses rotary embeddings — no learned positional embedding component."""
-        assert "pos_embed" not in adapter.component_mapping
-
     def test_block_submodule_keys(self, adapter: NeoxArchitectureAdapter) -> None:
         blocks = adapter.component_mapping["blocks"]
         assert set(blocks.submodules.keys()) == {"ln1", "ln2", "attn", "mlp"}

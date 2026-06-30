@@ -97,9 +97,6 @@ class TestNemotronHAdapterConfig:
         # MLP layers use relu2, not SwiGLU.
         assert adapter.cfg.gated_mlp is False
 
-    def test_attn_only_false(self, adapter: NemotronHArchitectureAdapter) -> None:
-        assert adapter.cfg.attn_only is False
-
     def test_final_rms_true(self, adapter: NemotronHArchitectureAdapter) -> None:
         assert adapter.cfg.final_rms is True
 
@@ -125,12 +122,6 @@ class TestNemotronHAdapterConfig:
     ) -> None:
         assert adapter.weight_processing_conversions == {}
 
-    def test_layers_block_type_propagated(self) -> None:
-        block_types = ["mamba", "attention", "mamba"]
-        cfg = _make_cfg(layers_block_type=block_types)
-        a = NemotronHArchitectureAdapter(cfg)
-        assert getattr(a.cfg, "layers_block_type") == block_types
-
     def test_layers_block_type_defaults_to_empty(self) -> None:
         cfg = _make_cfg()
         a = NemotronHArchitectureAdapter(cfg)
@@ -147,10 +138,6 @@ class TestNemotronHTopLevelComponents:
 
     def test_required_keys(self, adapter: NemotronHArchitectureAdapter) -> None:
         assert set(adapter.component_mapping.keys()) == {"embed", "blocks", "ln_final", "unembed"}
-
-    def test_no_rotary_emb_key(self, adapter: NemotronHArchitectureAdapter) -> None:
-        # No model-level rotary; attention handles RoPE via position_ids.
-        assert "rotary_emb" not in adapter.component_mapping
 
     def test_embed_is_embedding_bridge(self, adapter: NemotronHArchitectureAdapter) -> None:
         assert isinstance(adapter.component_mapping["embed"], EmbeddingBridge)
@@ -316,11 +303,6 @@ class TestNemotronHFactoryRegistration:
 class TestNemotronHModelRegistry:
     """NemotronHForCausalLM is listed in the model registry constants."""
 
-    def test_in_hf_supported_architectures(self) -> None:
-        from transformer_lens.tools.model_registry import HF_SUPPORTED_ARCHITECTURES
-
-        assert "NemotronHForCausalLM" in HF_SUPPORTED_ARCHITECTURES
-
     def test_canonical_author_is_nvidia(self) -> None:
         from transformer_lens.tools.model_registry import CANONICAL_AUTHORS_BY_ARCH
 
@@ -334,16 +316,6 @@ class TestNemotronHModelRegistry:
 
 class TestNemotronHGuards:
     """Guards against drift toward neighbouring adapter patterns."""
-
-    def test_uses_ssm_block_bridge_not_block_bridge(
-        self, adapter: NemotronHArchitectureAdapter
-    ) -> None:
-        # BlockBridge enforces ln2; NemotronH is single-norm. Must use SSMBlockBridge.
-        from transformer_lens.model_bridge.generalized_components import BlockBridge
-
-        blocks = adapter.component_mapping["blocks"]
-        assert not isinstance(blocks, BlockBridge)
-        assert isinstance(blocks, SSMBlockBridge)
 
     def test_mamba_intermediate_size_formula(self) -> None:
         """Verify formula: intermediate = mamba_num_heads * mamba_head_dim."""

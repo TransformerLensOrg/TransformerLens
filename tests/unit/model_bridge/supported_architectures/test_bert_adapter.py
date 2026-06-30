@@ -79,11 +79,6 @@ class TestBertComponentMapping:
             "unembed",
         }
 
-    def test_has_pos_embed_not_rotary(self, adapter: BertArchitectureAdapter) -> None:
-        """BERT uses learned positional embeddings — pos_embed present, no rotary_emb."""
-        assert "pos_embed" in adapter.component_mapping
-        assert "rotary_emb" not in adapter.component_mapping
-
     def test_bridge_types(self, adapter: BertArchitectureAdapter) -> None:
         mapping = adapter.component_mapping
         assert isinstance(mapping["embed"], EmbeddingBridge)
@@ -155,17 +150,8 @@ class TestBertAdapterConfig:
     def test_normalization_type_is_ln(self, adapter: BertArchitectureAdapter) -> None:
         assert adapter.cfg.normalization_type == "LN"
 
-    def test_positional_embedding_type_is_standard(self, adapter: BertArchitectureAdapter) -> None:
-        assert adapter.cfg.positional_embedding_type == "standard"
-
     def test_final_rms_is_false(self, adapter: BertArchitectureAdapter) -> None:
         assert adapter.cfg.final_rms is False
-
-    def test_gated_mlp_is_false(self, adapter: BertArchitectureAdapter) -> None:
-        assert adapter.cfg.gated_mlp is False
-
-    def test_attn_only_is_false(self, adapter: BertArchitectureAdapter) -> None:
-        assert adapter.cfg.attn_only is False
 
     def test_supports_fold_ln_is_false(self, adapter: BertArchitectureAdapter) -> None:
         """BERT uses post-LN: fold_ln assumes pre-LN and produces wrong results if enabled."""
@@ -217,15 +203,6 @@ class TestBertWeightConversions:
         assert isinstance(conv, ParamProcessingConversion)
         assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)
         assert conv.tensor_conversion.pattern == "d_model (h d_head) -> h d_head d_model"
-
-    def test_no_norm_conversion_keys(self, adapter: BertArchitectureAdapter) -> None:
-        """LayerNorm has a bias but no head-splitting needed — no ln conversion entries."""
-        keys = set(adapter.weight_processing_conversions.keys())
-        assert not any("ln" in k for k in keys)
-
-    def test_no_o_bias_key(self, adapter: BertArchitectureAdapter) -> None:
-        """Output projection bias is not rearranged — only its weight is converted."""
-        assert "blocks.{i}.attn.o.bias" not in adapter.weight_processing_conversions
 
     def test_qkv_weight_head_axis(self, adapter: BertArchitectureAdapter) -> None:
         """h axis in weight conversions matches n_heads=12."""

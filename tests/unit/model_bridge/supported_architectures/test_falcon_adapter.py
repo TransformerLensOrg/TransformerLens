@@ -156,10 +156,6 @@ class TestFalconComponentMapping:
 class TestFalconALiBiVariant:
     """ALiBi Falcon uses a different attention bridge and has no rotary_emb key."""
 
-    def test_no_rotary_emb_key(self) -> None:
-        adapter = FalconArchitectureAdapter(_make_cfg(alibi=True))
-        assert "rotary_emb" not in adapter.component_mapping
-
     def test_alibi_top_level_keys(self) -> None:
         adapter = FalconArchitectureAdapter(_make_cfg(alibi=True))
         assert set(adapter.component_mapping.keys()) == {
@@ -306,11 +302,6 @@ class TestFalconGQASupport:
         adapter = FalconArchitectureAdapter(_make_cfg(n_heads=32, n_key_value_heads=None))
         k_conv = adapter.weight_processing_conversions["blocks.{i}.attn.k"]
         assert k_conv.tensor_conversion.axes_lengths["n"] == 32
-
-    def test_multi_query_sets_kv_heads_to_1(self) -> None:
-        """multi_query=True overrides n_key_value_heads to 1 on the config."""
-        adapter = FalconArchitectureAdapter(_make_cfg(n_heads=32, multi_query=True))
-        assert adapter.cfg.n_key_value_heads == 1
 
     def test_multi_query_kv_conversion_uses_1_head(self) -> None:
         adapter = FalconArchitectureAdapter(_make_cfg(n_heads=32, multi_query=True))

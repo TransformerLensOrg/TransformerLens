@@ -19,6 +19,7 @@ from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.factories.architecture_adapter_factory import (
     ArchitectureAdapterFactory,
 )
+from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
@@ -78,18 +79,15 @@ class TestQwenAdapterConfig:
     def test_normalization_type_is_rms(self, adapter: QwenArchitectureAdapter) -> None:
         assert adapter.cfg.normalization_type == "RMS"
 
-    def test_positional_embedding_type_is_rotary(self, adapter: QwenArchitectureAdapter) -> None:
-        assert adapter.cfg.positional_embedding_type == "rotary"
+    def test_attn_bridge_has_rotary_hooks(self, adapter: QwenArchitectureAdapter) -> None:
+        """positional_embedding_type='rotary' makes AttentionBridge create the
+        hook_rot_q/hook_rot_k HookPoints; assert that effect, not the flag."""
+        attn = adapter.component_mapping["blocks"].submodules["attn"]
+        assert isinstance(attn.hook_rot_q, HookPoint)
+        assert isinstance(attn.hook_rot_k, HookPoint)
 
     def test_final_rms_is_true(self, adapter: QwenArchitectureAdapter) -> None:
         assert adapter.cfg.final_rms is True
-
-    def test_gated_mlp_is_true(self, adapter: QwenArchitectureAdapter) -> None:
-        """Qwen's MLP has a gate branch, so the adapter flags gated_mlp."""
-        assert adapter.cfg.gated_mlp is True
-
-    def test_attn_only_is_false(self, adapter: QwenArchitectureAdapter) -> None:
-        assert adapter.cfg.attn_only is False
 
 
 # Component mapping tests

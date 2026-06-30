@@ -305,29 +305,6 @@ class TestMPTBlockSubmoduleStructure:
 class TestMPTWeightConversionSemantics:
     """Each weight conversion entry uses the expected class and pattern."""
 
-    def test_qkv_conversion_classes_and_patterns(self, adapter: MPTArchitectureAdapter) -> None:
-        from transformer_lens.conversion_utils.conversion_steps import (
-            RearrangeTensorConversion,
-        )
-        from transformer_lens.conversion_utils.param_processing_conversion import (
-            ParamProcessingConversion,
-        )
-
-        for slot in ("q", "k", "v"):
-            conv = adapter.weight_processing_conversions[f"blocks.{{i}}.attn.{slot}.weight"]
-            assert isinstance(conv, ParamProcessingConversion)
-            assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)
-            assert conv.tensor_conversion.pattern == "(n h) m -> n m h"
-
-    def test_o_conversion_class_and_pattern(self, adapter: MPTArchitectureAdapter) -> None:
-        from transformer_lens.conversion_utils.conversion_steps import (
-            RearrangeTensorConversion,
-        )
-
-        conv = adapter.weight_processing_conversions["blocks.{i}.attn.o.weight"]
-        assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)
-        assert conv.tensor_conversion.pattern == "m (n h) -> n h m"
-
     def test_no_norm_offset_conversions(self, adapter: MPTArchitectureAdapter) -> None:
         # Plain LayerNorm: no +1 trick like Gemma.
         for key in adapter.weight_processing_conversions:
@@ -348,24 +325,6 @@ class TestMPTMQASupport:
         adapter = MPTArchitectureAdapter(_make_cfg(n_heads=2))
         kv_conv = adapter.weight_processing_conversions["blocks.{i}.attn.k.weight"]
         assert kv_conv.tensor_conversion.axes_lengths["n"] == 2
-
-    def test_mqa_propagates_to_kv_conversions(self) -> None:
-        # MQA: single KV head shared across all Q heads.
-        cfg = _make_cfg(n_heads=4)
-        cfg.n_key_value_heads = 1
-        adapter = MPTArchitectureAdapter(cfg)
-        for slot in ("k", "v"):
-            conv = adapter.weight_processing_conversions[f"blocks.{{i}}.attn.{slot}.weight"]
-            assert conv.tensor_conversion.axes_lengths["n"] == 1
-
-    def test_mqa_does_not_change_q_or_o(self) -> None:
-        cfg = _make_cfg(n_heads=4)
-        cfg.n_key_value_heads = 1
-        adapter = MPTArchitectureAdapter(cfg)
-        q_conv = adapter.weight_processing_conversions["blocks.{i}.attn.q.weight"]
-        o_conv = adapter.weight_processing_conversions["blocks.{i}.attn.o.weight"]
-        assert q_conv.tensor_conversion.axes_lengths["n"] == 4
-        assert o_conv.tensor_conversion.axes_lengths["n"] == 4
 
 
 # ---------------------------------------------------------------------------

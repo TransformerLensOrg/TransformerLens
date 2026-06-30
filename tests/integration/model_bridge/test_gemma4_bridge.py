@@ -45,10 +45,29 @@ def test_text_only_logit_parity_vs_hf(bridge):
     assert torch.max(torch.abs(out - ref)).item() < 1e-3
 
 
-def test_config_from_text_config(bridge):
-    # Text dims resolve from the nested text_config of the multimodal model.
+def test_multimodal_effect_vision_pipeline_bridged(bridge):
+    """is_multimodal drives the booted bridge to wire the HF vision pipeline as real
+    submodules and to open the multimodal-input gate. Assert those effects, not the flag.
+
+    Text dims still resolve from the nested text_config of the multimodal model.
+    """
     assert bridge.cfg.n_layers == 4
-    assert getattr(bridge.cfg, "is_multimodal", False) is True
+
+    # EFFECT 1: the vision pipeline is bridged. All three fixtures are
+    # Gemma4ForConditionalGeneration (vision_tower encoder + embed_vision projector),
+    # so both map to real attached nn.Modules on the booted bridge.
+    real = bridge.real_components
+    assert real["vision_projector"][0] == "model.embed_vision"
+    assert real["vision_encoder"][0] == "model.vision_tower"
+    assert isinstance(bridge.vision_projector, torch.nn.Module)
+    assert isinstance(bridge.vision_encoder, torch.nn.Module)
+
+    # EFFECT 2: the is_multimodal gate is open. prepare_multimodal_inputs() raises
+    # "requires a multimodal model" only when cfg.is_multimodal is False; a missing
+    # processor raises a different ("No processor available") error, which is fine here.
+    with pytest.raises(ValueError) as exc:
+        bridge.prepare_multimodal_inputs("a")
+    assert "requires a multimodal model" not in str(exc.value)
 
 
 def test_resid_hooks_fire_with_conventional_shape(bridge):

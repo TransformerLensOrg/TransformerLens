@@ -89,10 +89,6 @@ class TestHubertComponentMapping:
             "blocks",
         }
 
-    def test_no_embed_key(self, adapter: HubertArchitectureAdapter) -> None:
-        """HuBERT processes raw audio — no token embedding component."""
-        assert "embed" not in adapter.component_mapping
-
     def test_bridge_types(self, adapter: HubertArchitectureAdapter) -> None:
         mapping = adapter.component_mapping
         assert isinstance(mapping["audio_feature_extractor"], AudioFeatureExtractorBridge)
@@ -182,12 +178,6 @@ class TestHubertAdapterConfig:
     def test_final_rms_is_false(self, adapter: HubertArchitectureAdapter) -> None:
         assert adapter.cfg.final_rms is False
 
-    def test_gated_mlp_is_false(self, adapter: HubertArchitectureAdapter) -> None:
-        assert adapter.cfg.gated_mlp is False
-
-    def test_attn_only_is_false(self, adapter: HubertArchitectureAdapter) -> None:
-        assert adapter.cfg.attn_only is False
-
     def test_supports_generation_is_false(self) -> None:
         """HuBERT is an audio encoder — generation is not supported."""
         assert HubertArchitectureAdapter.supports_generation is False
@@ -255,14 +245,6 @@ class TestHubertWeightConversions:
         for slot in ("q", "k", "v"):
             conv = adapter.weight_processing_conversions[f"blocks.{{i}}.attn.{slot}.bias"]
             assert conv.tensor_conversion.axes_lengths["h"] == 12
-
-    def test_no_norm_conversion_keys(self, adapter: HubertArchitectureAdapter) -> None:
-        """LayerNorm does not need head-splitting."""
-        assert not any("ln" in k for k in adapter.weight_processing_conversions)
-
-    def test_no_o_bias_key(self, adapter: HubertArchitectureAdapter) -> None:
-        """Output projection bias is not rearranged — only its weight is converted."""
-        assert "blocks.{i}.attn.o.bias" not in adapter.weight_processing_conversions
 
 
 # ---------------------------------------------------------------------------

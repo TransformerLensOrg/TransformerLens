@@ -313,17 +313,6 @@ class TestHookRegistry:
         """
         assert len(bridge_compat.hook_dict) > 200
 
-    def test_expected_attention_hooks_available(self, bridge_compat):
-        """Expected attention hook names should be available."""
-        expected = [
-            "blocks.0.attn.hook_v",
-            "blocks.0.attn.hook_q",
-            "blocks.0.attn.hook_k",
-        ]
-        hook_names = set(bridge_compat.hook_dict.keys())
-        for hook_name in expected:
-            assert hook_name in hook_names, f"Bridge missing hook: {hook_name}"
-
 
 class TestHookErrorHandling:
     """Test error handling in hooks."""

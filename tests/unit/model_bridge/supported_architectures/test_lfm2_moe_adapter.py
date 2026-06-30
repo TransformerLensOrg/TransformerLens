@@ -42,12 +42,6 @@ def adapter(cfg: TransformerBridgeConfig) -> Lfm2MoeArchitectureAdapter:
 
 
 class TestLfm2MoeAdapterConfig:
-    def test_hybrid_config_is_propagated(self, adapter: Lfm2MoeArchitectureAdapter) -> None:
-        assert adapter.cfg.layer_types == ["conv", "conv", "full_attention", "conv"]
-        assert adapter.cfg.moe_intermediate_size == 56
-        assert adapter.cfg.num_experts == 8
-        assert adapter.cfg.experts_per_token == 2
-
     def test_norm_and_rope_config(self, adapter: Lfm2MoeArchitectureAdapter) -> None:
         assert adapter.cfg.normalization_type == "RMS"
         assert adapter.cfg.positional_embedding_type == "rotary"

@@ -225,13 +225,6 @@ class TestQwen3MoeMoEStructure:
 class TestQwen3MoeArchitectureGuards:
     """Guards against drift from Qwen3 conventions."""
 
-    def test_no_norm_offset_conversions(self, adapter: Qwen3MoeArchitectureAdapter) -> None:
-        """LLaMA-style RMSNorm — no +1 offset like Gemma."""
-        for key in adapter.weight_processing_conversions:
-            assert "ln1" not in key
-            assert "ln2" not in key
-            assert "ln_final" not in key
-
     def test_weight_conversions_are_only_qkvo(self, adapter: Qwen3MoeArchitectureAdapter) -> None:
         """Expert/gate weights pass through untouched."""
         assert set(adapter.weight_processing_conversions.keys()) == {

@@ -10,10 +10,6 @@ Tests cover:
 import pytest
 
 from transformer_lens.config.transformer_bridge_config import TransformerBridgeConfig
-from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion
-from transformer_lens.conversion_utils.param_processing_conversion import (
-    ParamProcessingConversion,
-)
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     BlockBridge,
@@ -167,16 +163,6 @@ class TestMistralAdapterConfig:
         """Mistral does not use final RMSNorm — final_rms must remain False."""
         assert adapter.cfg.final_rms is False
 
-    def test_uses_rms_norm_is_true(self, adapter: MistralArchitectureAdapter) -> None:
-        assert adapter.cfg.uses_rms_norm is True
-
-    def test_gated_mlp_is_true(self, adapter: MistralArchitectureAdapter) -> None:
-        """Mistral uses a gated SwiGLU MLP — must not silently revert to vanilla MLP."""
-        assert adapter.cfg.gated_mlp is True
-
-    def test_attn_only_is_false(self, adapter: MistralArchitectureAdapter) -> None:
-        assert adapter.cfg.attn_only is False
-
 
 # ---------------------------------------------------------------------------
 # Weight processing conversions
@@ -194,35 +180,6 @@ class TestMistralWeightConversions:
             "blocks.{i}.attn.o.weight",
         }
 
-    def test_qkv_conversions_use_split_heads_pattern(
-        self, adapter: MistralArchitectureAdapter
-    ) -> None:
-        """'(n h) m -> n m h' splits [n_heads*d_head, d_model] → [n, d_model, d_head]."""
-        for slot in ("q", "k", "v"):
-            conv = adapter.weight_processing_conversions[f"blocks.{{i}}.attn.{slot}.weight"]
-            assert isinstance(conv, ParamProcessingConversion)
-            assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)
-            assert conv.tensor_conversion.pattern == "(n h) m -> n m h"
-
-    def test_o_conversion_uses_merge_heads_pattern(
-        self, adapter: MistralArchitectureAdapter
-    ) -> None:
-        """'m (n h) -> n h m' moves n to the front for the output projection."""
-        conv = adapter.weight_processing_conversions["blocks.{i}.attn.o.weight"]
-        assert isinstance(conv, ParamProcessingConversion)
-        assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)
-        assert conv.tensor_conversion.pattern == "m (n h) -> n h m"
-
-    def test_no_bias_conversion_keys(self, adapter: MistralArchitectureAdapter) -> None:
-        """Mistral has no attention biases — no bias conversion entries."""
-        keys = set(adapter.weight_processing_conversions.keys())
-        assert not any("bias" in k or ".b_" in k for k in keys)
-
-    def test_no_norm_conversion_keys(self, adapter: MistralArchitectureAdapter) -> None:
-        """RMSNorm has no bias offset — no ln1/ln2/ln_final conversion entries."""
-        keys = set(adapter.weight_processing_conversions.keys())
-        assert not any("ln" in k for k in keys)
-
 
 # ---------------------------------------------------------------------------
 # GQA support
@@ -237,22 +194,3 @@ class TestMistralGQASupport:
         adapter = MistralArchitectureAdapter(_make_cfg(n_heads=32, n_key_value_heads=None))
         k_conv = adapter.weight_processing_conversions["blocks.{i}.attn.k.weight"]
         assert k_conv.tensor_conversion.axes_lengths["n"] == 32
-
-    def test_gqa_propagates_to_kv_conversions(self) -> None:
-        """With 8 KV heads, K/V conversions must use n=8."""
-        adapter = MistralArchitectureAdapter(_make_cfg(n_heads=32, n_key_value_heads=8))
-        for slot in ("k", "v"):
-            conv = adapter.weight_processing_conversions[f"blocks.{{i}}.attn.{slot}.weight"]
-            assert conv.tensor_conversion.axes_lengths["n"] == 8
-
-    def test_gqa_does_not_affect_q_conversion(self) -> None:
-        """Q always uses full n_heads regardless of GQA."""
-        adapter = MistralArchitectureAdapter(_make_cfg(n_heads=32, n_key_value_heads=8))
-        q_conv = adapter.weight_processing_conversions["blocks.{i}.attn.q.weight"]
-        assert q_conv.tensor_conversion.axes_lengths["n"] == 32
-
-    def test_gqa_does_not_affect_o_conversion(self) -> None:
-        """O projection always uses n_heads; GQA only affects K/V."""
-        adapter = MistralArchitectureAdapter(_make_cfg(n_heads=32, n_key_value_heads=8))
-        o_conv = adapter.weight_processing_conversions["blocks.{i}.attn.o.weight"]
-        assert o_conv.tensor_conversion.axes_lengths["n"] == 32

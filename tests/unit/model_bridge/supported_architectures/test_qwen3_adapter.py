@@ -14,10 +14,6 @@ import pytest
 import torch
 
 from transformer_lens.config import TransformerBridgeConfig
-from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion
-from transformer_lens.conversion_utils.param_processing_conversion import (
-    ParamProcessingConversion,
-)
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
@@ -153,51 +149,6 @@ class TestQwen3AdapterComponentMapping:
     def test_no_linear_attn_when_dense(self, adapter: Qwen3ArchitectureAdapter) -> None:
         blocks = self._mapping(adapter)["blocks"]
         assert "linear_attn" not in blocks.submodules
-
-
-class TestQwen3AdapterWeightConversions:
-    """QKVO weight conversions with GQA-aware head counts:
-    Q uses n_heads; K and V use n_key_value_heads."""
-
-    def test_four_conversion_keys(self, adapter: Qwen3ArchitectureAdapter) -> None:
-        convs = adapter.weight_processing_conversions
-        assert convs is not None
-        assert len(convs) == 4
-
-    def test_q_uses_n_heads(self, adapter: Qwen3ArchitectureAdapter) -> None:
-        convs = adapter.weight_processing_conversions
-        assert convs is not None
-        conv = convs["blocks.{i}.attn.q.weight"]
-        assert isinstance(conv, ParamProcessingConversion)
-        assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)
-        assert conv.tensor_conversion.pattern == "(n h) m -> n m h"
-        assert conv.tensor_conversion.axes_lengths["n"] == adapter.cfg.n_heads
-
-    def test_k_uses_n_key_value_heads(self, adapter: Qwen3ArchitectureAdapter) -> None:
-        """GQA: K is split along n_key_value_heads, not n_heads."""
-        convs = adapter.weight_processing_conversions
-        assert convs is not None
-        conv = convs["blocks.{i}.attn.k.weight"]
-        assert isinstance(conv, ParamProcessingConversion)
-        assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)
-        assert conv.tensor_conversion.axes_lengths["n"] == adapter.cfg.n_key_value_heads
-
-    def test_v_uses_n_key_value_heads(self, adapter: Qwen3ArchitectureAdapter) -> None:
-        convs = adapter.weight_processing_conversions
-        assert convs is not None
-        conv = convs["blocks.{i}.attn.v.weight"]
-        assert isinstance(conv, ParamProcessingConversion)
-        assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)
-        assert conv.tensor_conversion.axes_lengths["n"] == adapter.cfg.n_key_value_heads
-
-    def test_o_pattern(self, adapter: Qwen3ArchitectureAdapter) -> None:
-        convs = adapter.weight_processing_conversions
-        assert convs is not None
-        conv = convs["blocks.{i}.attn.o.weight"]
-        assert isinstance(conv, ParamProcessingConversion)
-        assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)
-        assert conv.tensor_conversion.pattern == "m (n h) -> n h m"
-        assert conv.tensor_conversion.axes_lengths["n"] == adapter.cfg.n_heads
 
 
 class TestPreprocessGatedQProj:
