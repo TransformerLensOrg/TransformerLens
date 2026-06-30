@@ -330,3 +330,117 @@ class TestMambaStatefulGeneration:
             "Mid-layer mutation had no effect on generation — the stateful "
             "loop may be bypassing the bridge's forward() path."
         )
+
+
+class TestMamba1EffectiveAttention:
+    """Mamba-1's S6 scan as per-channel effective attention M.
+
+    Two checks: M·x + D·x matches an fp64 eager recurrence (matrix-algebra
+    correctness), and the full mixer output reconstructed through gate + out_proj
+    matches HF's cached hook_out (ties M to HF's numerically-independent forward).
+    """
+
+    SEQ_LEN = 6
+
+    @pytest.fixture(scope="class")
+    def cache(self, mamba_bridge):
+        tokens = torch.arange(1, self.SEQ_LEN + 1).unsqueeze(0)
+        with torch.no_grad():
+            _, cache = mamba_bridge.run_with_cache(tokens)
+        return cache
+
+    @staticmethod
+    def _inputs(cache, mixer, layer, seq_len):
+        """Re-extract x (post-conv SiLU), B, C, dt, A, D, gate — independent of the impl."""
+        import torch.nn.functional as F
+
+        oc = mixer.original_component
+        d_inner, state, dt_rank = oc.intermediate_size, oc.ssm_state_size, oc.time_step_rank
+        conv = cache[f"blocks.{layer}.mixer.conv1d.hook_out"][..., :seq_len].float()
+        x_proj = cache[f"blocks.{layer}.mixer.x_proj.hook_out"].float()
+        dt_proj = cache[f"blocks.{layer}.mixer.dt_proj.hook_out"].float()
+        in_proj = cache[f"blocks.{layer}.mixer.in_proj.hook_out"].float()
+        x = F.silu(conv)  # [b, d_inner, seq]
+        _ts, B, C = x_proj.split([dt_rank, state, state], dim=-1)
+        dt = F.softplus(dt_proj).transpose(1, 2)  # [b, d_inner, seq]
+        A = -torch.exp(mixer.A_log.float())
+        gate = in_proj.transpose(1, 2)[:, d_inner:, :]  # [b, d_inner, seq]
+        return x, B, C, dt, A, mixer.D.float(), gate
+
+    def test_shape(self, cache, mamba_bridge):
+        mixer = mamba_bridge.blocks[0].mixer
+        oc = mixer.original_component
+        M = mixer.compute_effective_attention(cache, layer_idx=0)
+        assert M.shape == (1, oc.intermediate_size, self.SEQ_LEN, self.SEQ_LEN)
+        assert torch.isfinite(M).all()
+
+    def test_per_state_coord_sums_to_default(self, cache, mamba_bridge):
+        mixer = mamba_bridge.blocks[0].mixer
+        oc = mixer.original_component
+        M = mixer.compute_effective_attention(cache, layer_idx=0, include_dt_scaling=True)
+        M_coord = mixer.compute_effective_attention(
+            cache, layer_idx=0, include_dt_scaling=True, per_state_coord=True
+        )
+        assert M_coord.shape == (
+            1,
+            oc.intermediate_size,
+            oc.ssm_state_size,
+            self.SEQ_LEN,
+            self.SEQ_LEN,
+        )
+        assert torch.allclose(M_coord.sum(dim=2), M, atol=1e-6)
+
+    def test_causal(self, cache, mamba_bridge):
+        M = mamba_bridge.blocks[0].mixer.compute_effective_attention(cache, layer_idx=0)
+        upper = torch.triu(torch.ones(self.SEQ_LEN, self.SEQ_LEN, dtype=torch.bool), diagonal=1)
+        assert torch.all(M[..., upper] == 0), "effective attention must be causal"
+
+    def test_matches_fp64_eager_recurrence(self, cache, mamba_bridge):
+        """M·x + D·x must match a naive fp64 step-by-step S6 recurrence."""
+        mixer = mamba_bridge.blocks[0].mixer
+        M = mixer.compute_effective_attention(cache, layer_idx=0, include_dt_scaling=True)
+        x, B, C, dt, A, D, _ = self._inputs(cache, mixer, 0, self.SEQ_LEN)
+        y_pred = torch.einsum("bcij,bcj->bci", M, x) + D[None, :, None] * x
+
+        A, B, C, x, dt = A.double(), B.double(), C.double(), x.double(), dt.double()
+        b, d_inner = x.shape[0], x.shape[1]
+        ssm = torch.zeros(b, d_inner, A.shape[1], dtype=torch.float64)
+        y_ref = torch.zeros(b, d_inner, self.SEQ_LEN, dtype=torch.float64)
+        for i in range(self.SEQ_LEN):
+            dA = torch.exp(A[None] * dt[:, :, i, None])  # [b, d_inner, state]
+            dBu = dt[:, :, i, None] * B[:, i, None, :] * x[:, :, i, None]
+            ssm = dA * ssm + dBu
+            y_ref[:, :, i] = torch.einsum("bcn,bn->bc", ssm, C[:, i, :])
+        y_ref = y_ref + D[None, :, None].double() * x
+
+        rel = (y_pred.double() - y_ref).abs().max().item() / max(y_ref.abs().max().item(), 1e-8)
+        assert rel < 1e-5, f"M·x reconstruction vs fp64 eager scan rel diff {rel:.2e}"
+
+    def test_reconstructs_mixer_output(self, cache, mamba_bridge):
+        """out_proj((M·x + D·x)·silu(gate)) must reconstruct HF's mixer output."""
+        import torch.nn.functional as F
+
+        mixer = mamba_bridge.blocks[0].mixer
+        M = mixer.compute_effective_attention(cache, layer_idx=0, include_dt_scaling=True)
+        x, _, _, _, _, D, gate = self._inputs(cache, mixer, 0, self.SEQ_LEN)
+        y = torch.einsum("bcij,bcj->bci", M, x) + D[None, :, None] * x
+        out = mixer.original_component.out_proj((y * F.silu(gate)).transpose(1, 2))
+        hook_out = cache["blocks.0.mixer.hook_out"].float()
+        rel = (out - hook_out).abs().max().item() / max(hook_out.abs().max().item(), 1e-8)
+        assert rel < 1e-5, (
+            f"reconstructed mixer output vs hook_out rel diff {rel:.2e}; M is "
+            "inconsistent with HF's independently-computed forward."
+        )
+
+    def test_include_dt_scaling_changes_output(self, cache, mamba_bridge):
+        mixer = mamba_bridge.blocks[0].mixer
+        M_att = mixer.compute_effective_attention(cache, layer_idx=0, include_dt_scaling=False)
+        M_full = mixer.compute_effective_attention(cache, layer_idx=0, include_dt_scaling=True)
+        assert not torch.allclose(M_att, M_full)
+
+    def test_raises_on_empty_cache(self, mamba_bridge):
+        from transformer_lens.ActivationCache import ActivationCache
+
+        empty = ActivationCache({}, model=mamba_bridge)
+        with pytest.raises(RuntimeError, match="in cache"):
+            mamba_bridge.blocks[0].mixer.compute_effective_attention(empty, layer_idx=0)
