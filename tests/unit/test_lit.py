@@ -254,10 +254,8 @@ class TestConstants:
             wrapper = HookedTransformerLIT(mock_hooked_transformer)
             spec = wrapper.input_spec()
 
-            # TEXT is the primary text input.
             assert "text" in spec
             assert isinstance(spec["text"], lit_types.TextSegment)  # type: ignore[union-attr]
-            # TOKENS is the optional pre-tokenized input.
             assert "tokens" in spec
             # TARGET_MASK appears because compute_gradients is on by default.
             assert "target_mask" in spec

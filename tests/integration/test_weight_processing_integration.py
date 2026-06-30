@@ -71,7 +71,6 @@ class TestWeightProcessingIntegration:
             wq_tensor, wk_tensor, wv_tensor, bq_tensor, bk_tensor, bv_tensor, ln_bias
         )
 
-        # Shapes preserved.
         assert new_bq.shape == bq_tensor.shape
         assert new_bk.shape == bk_tensor.shape
         assert new_bv.shape == bv_tensor.shape
@@ -117,7 +116,6 @@ class TestWeightProcessingIntegration:
             wq_tensor, wk_tensor, wv_tensor, ln_weight
         )
 
-        # Shapes preserved.
         assert new_wq.shape == wq_tensor.shape
         assert new_wk.shape == wk_tensor.shape
         assert new_wv.shape == wv_tensor.shape
@@ -153,7 +151,6 @@ class TestWeightProcessingIntegration:
             wq_tensor, wk_tensor, wv_tensor
         )
 
-        # Shapes preserved.
         assert centered_wq.shape == wq_tensor.shape
         assert centered_wk.shape == wk_tensor.shape
         assert centered_wv.shape == wv_tensor.shape

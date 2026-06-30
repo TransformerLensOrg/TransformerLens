@@ -239,7 +239,6 @@ def test_run_with_cache(bert_nsp, mock_hooked_encoder):
     original_forward = Mock(name="original_forward")
     mock_hooked_encoder.forward = original_forward
 
-    # Underlying encoder cache: size-1 batch dim that ActivationCache should squeeze.
     mock_cache = {
         "resid_pre": torch.randn(1, 3, 768),
         "attn_output": torch.randn(1, 3, 768),
@@ -265,7 +264,6 @@ def test_run_with_cache(bert_nsp, mock_hooked_encoder):
     assert not isinstance(cache, dict)
     assert cache.model is bert_nsp
 
-    # Effect 2: the wrapped cache exposes the encoder's activations by key.
     assert cache["resid_pre"].shape == (1, 3, 768)
     assert cache["attn_output"].shape == (1, 3, 768)
 

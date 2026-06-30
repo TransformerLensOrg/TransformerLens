@@ -35,9 +35,6 @@ def test_atten_result_normal_attn_correct():
     # Switching to the per-head compute branch must not change the output.
     assert torch.allclose(normal_output, split_output, atol=1e-6)
 
-    # The structural effect of the flag: the per-head hook_result hookpoint now
-    # fires with shape [batch, pos, n_heads, d_model], and summing over the head
-    # dimension (plus b_O) reconstructs the attention block output.
     result = cache["blocks.0.attn.hook_result"]
     assert result.shape == (x.shape[0], x.shape[1], n_heads, d_model)
     summed = result.sum(dim=2) + model.blocks[0].attn.b_O
@@ -78,7 +75,6 @@ def test_atten_result_grouped_query_attn_correct():
     # Switching to the per-head compute branch must not change the output.
     assert torch.allclose(normal_output, split_output, atol=1e-6)
 
-    # The structural effect of the flag: the per-head hook_result hookpoint now
     # fires with shape [batch, pos, n_heads, d_model] (one row per query head even
     # under GQA), and head-sum (plus b_O) reconstructs the attention block output.
     result = cache["blocks.0.attn.hook_result"]

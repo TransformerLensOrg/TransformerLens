@@ -104,7 +104,6 @@ class TestCohereBridgeCreation:
         with torch.no_grad():
             bridge_out = ln1(x)
             hf_out = hf_ln1(x)
-        # Bridge ln1 must reproduce HF's mean-subtracting LayerNorm.
         ln_diff = (bridge_out - hf_out).abs().max().item()
         assert ln_diff < 1e-4, f"ln1 does not match HF CohereLayerNorm: max_diff={ln_diff:.6f}"
         # And it must NOT match an RMS-only (no mean subtraction) normalization.
