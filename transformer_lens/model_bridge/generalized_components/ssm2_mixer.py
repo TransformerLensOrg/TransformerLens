@@ -52,9 +52,8 @@ class SSM2MixerBridge(SSMStateHookMixin, GeneralizedComponent):
     }
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
-        super().__init__(*args, **kwargs)  # SSMStateHookMixin adds hook_ssm_state + eager_scan
-        # Real per-step write term dt·(x⊗B) (input-linear); fires only on the
-        # eager-scan path. hook_ssm_state comes from the mixin.
+        super().__init__(*args, **kwargs)  # mixin adds hook_ssm_state + eager_scan
+        # Real per-step write term dt·(x⊗B); fires only on the eager-scan path.
         self.hook_ssm_write = HookPoint()
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
@@ -124,7 +123,7 @@ class SSM2MixerBridge(SSMStateHookMixin, GeneralizedComponent):
             return states
 
         # 1-2. Projection + conv — reuse the HF submodule bridges (their hooks fire).
-        # HF masks padding both before in_proj and after the conv (before B/C split).
+        # Match HF: mask padding before in_proj and after conv (before B/C split).
         projected = oc.in_proj(_mask_pad(hidden_states))
         d_mlp = (projected.shape[-1] - 2 * intermediate - 2 * n_groups * state - num_heads) // 2
         _, _, gate, hidden_B_C, dt = projected.split(
@@ -154,7 +153,6 @@ class SSM2MixerBridge(SSMStateHookMixin, GeneralizedComponent):
         A = -torch.exp(self.A_log.float())  # [num_heads]
 
         # 3. Eager recurrence with intervention hooks.
-        # write_t[b, t, h, d, n] = dt_t · x_t[d] · B_t[n]
         writes = dt[:, :, :, None, None] * x[:, :, :, :, None] * B[:, :, :, None, :]
         writes = self.hook_ssm_write(writes)  # [batch, seq, heads, head_dim, state]
 
@@ -305,7 +303,6 @@ class SSM2MixerBridge(SSMStateHookMixin, GeneralizedComponent):
         conv1d_out = cache[conv1d_key].float()  # [batch, conv_dim, seq + kernel - 1]
         batch_size, seq_len = in_proj_out.shape[0], in_proj_out.shape[1]
 
-        # dt: last num_heads features of in_proj, post softplus + clamp
         dt = torch.nn.functional.softplus(in_proj_out[..., -num_heads:] + self.dt_bias.float())
         dt = torch.clamp(dt, float(time_step_limit[0]), float(time_step_limit[1]))
 

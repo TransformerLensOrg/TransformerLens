@@ -650,3 +650,180 @@ class TestMamba1EagerScanIntervention:
         with torch.no_grad():
             fused_after = mamba_bridge(self.TOKENS)
         assert torch.equal(fused_before, fused_after)
+
+
+class _DummyTok:
+    pass
+
+
+def _build_synthetic_mamba_bridge():
+    """Tiny random-init Mamba-1 bridge (from_config, no download) for CI-runnable tests."""
+    from transformers import AutoModelForCausalLM
+    from transformers.models.mamba import MambaConfig
+
+    from transformer_lens.model_bridge.sources._bridge_builder import (
+        build_bridge_config_from_hf,
+    )
+    from transformer_lens.model_bridge.supported_architectures.mamba import (
+        MambaArchitectureAdapter,
+    )
+
+    torch.manual_seed(0)
+    cfg = MambaConfig(
+        vocab_size=128,
+        hidden_size=32,
+        state_size=16,
+        num_hidden_layers=2,
+        expand=2,
+        time_step_rank=4,
+        conv_kernel=4,
+    )
+    cfg.architectures = ["MambaForCausalLM"]
+    hf = AutoModelForCausalLM.from_config(cfg).eval()
+    bridge_cfg = build_bridge_config_from_hf(
+        hf.config, "MambaForCausalLM", "m1-tiny", torch.float32
+    )
+    return TransformerBridge(hf, MambaArchitectureAdapter(bridge_cfg), tokenizer=_DummyTok())
+
+
+class TestMamba1EagerScanFp64Reference:
+    """Independent fp64 correctness gate on the Mamba-1 eager scan (_eager_scan_forward).
+
+    Pins the eager scan's hook_ssm_write / hook_ssm_state to a naive fp64 step recurrence
+    built from the cached submodule outputs — distinct from both the fused-kernel parity
+    test and the read-path fp64 tests, so a shared discretization error can't pass. Uses
+    synthetic weights (from_config) so it runs in stock CI without a model download.
+    """
+
+    SEQ_LEN = 7
+    LAYER = 0
+
+    @pytest.fixture(scope="class")
+    def bridge(self):
+        return _build_synthetic_mamba_bridge()
+
+    @pytest.fixture(scope="class")
+    def eager_cache(self, bridge):
+        tokens = torch.randint(1, 128, (2, self.SEQ_LEN))
+        with _eager_scan(bridge), torch.no_grad():
+            _, cache = bridge.run_with_cache(tokens, use_cache=False)
+        return cache
+
+    def _fp64_reference(self, bridge, cache):
+        """Reconstruct (writes, state) in fp64 from cached submodule hooks.
+
+        Independent reimplementation of the S6 write term + recurrence; reads the same
+        HF submodule outputs the eager scan reuses (so their hooks fire), not the eager
+        code. Returns channel-first ``[b, d_inner, seq, state]`` tensors.
+        """
+        import torch.nn.functional as F
+
+        oc = bridge.blocks[self.LAYER].mixer.original_component
+        d_inner, state, dt_rank = oc.intermediate_size, oc.ssm_state_size, oc.time_step_rank
+        p = f"blocks.{self.LAYER}.mixer"
+
+        conv = cache[f"{p}.conv1d.hook_out"][..., : self.SEQ_LEN].double()  # [b, d_inner, seq]
+        x = F.silu(conv)  # HF act (silu) on the trimmed conv output
+        xp = cache[f"{p}.x_proj.hook_out"].double()  # [b, seq, dt_rank + 2*state]
+        _, B, _C = xp.split([dt_rank, state, state], dim=-1)  # B: [b, seq, state]
+        dtp = cache[f"{p}.dt_proj.hook_out"].double()  # [b, seq, d_inner] (pre-softplus)
+        dt = F.softplus(dtp).transpose(1, 2)  # [b, d_inner, seq]
+        A = -torch.exp(bridge.blocks[self.LAYER].mixer.A_log.double())  # [d_inner, state]
+
+        writes = (dt * x)[:, :, :, None] * B[:, None, :, :]  # [b, d_inner, seq, state]
+        b = writes.shape[0]
+        ssm = torch.zeros(b, d_inner, state, dtype=torch.float64)
+        states = []
+        for t in range(self.SEQ_LEN):
+            ssm = torch.exp(A[None] * dt[:, :, t, None]) * ssm + writes[:, :, t]
+            states.append(ssm)
+        return writes, torch.stack(states, dim=2)  # [b, d_inner, seq, state]
+
+    def test_eager_write_matches_fp64_reference(self, bridge, eager_cache):
+        writes_ref, _ = self._fp64_reference(bridge, eager_cache)
+        got = eager_cache[f"blocks.{self.LAYER}.mixer.hook_ssm_write"].double()
+        rel = (got - writes_ref).abs().max().item() / max(writes_ref.abs().max().item(), 1e-12)
+        assert rel < 1e-5, f"eager hook_ssm_write vs fp64 reference rel diff {rel:.2e}"
+
+    def test_eager_state_matches_fp64_reference(self, bridge, eager_cache):
+        _, state_ref = self._fp64_reference(bridge, eager_cache)
+        got = eager_cache[f"blocks.{self.LAYER}.mixer.hook_ssm_state"].double()
+        rel = (got - state_ref).abs().max().item() / max(state_ref.abs().max().item(), 1e-12)
+        assert rel < 1e-5, f"eager hook_ssm_state vs fp64 reference rel diff {rel:.2e}"
+
+    def test_write_knockout_propagates_forward(self, bridge):
+        """Zeroing hook_ssm_write at position k must change the state at every position
+        >= k (the recurrence carries it forward) and leave positions < k untouched."""
+        tokens = torch.randint(1, 128, (1, self.SEQ_LEN))
+        k = 3
+        state_key = f"blocks.{self.LAYER}.mixer.hook_ssm_state"
+        write_key = f"blocks.{self.LAYER}.mixer.hook_ssm_write"
+
+        def knock(writes, hook):
+            writes = writes.clone()
+            writes[:, :, k] = 0.0
+            return writes
+
+        captured = {}
+
+        def grab(state, hook):
+            captured["s"] = state.detach().clone()
+            return state
+
+        with _eager_scan(bridge), torch.no_grad():
+            _, base_cache = bridge.run_with_cache(tokens, use_cache=False)
+            base_state = base_cache[state_key]
+            bridge.run_with_hooks(
+                tokens, use_cache=False, fwd_hooks=[(write_key, knock), (state_key, grab)]
+            )
+        patched_state = captured["s"]
+        # positions before k unchanged; positions at/after k changed
+        assert torch.allclose(patched_state[:, :, :k], base_state[:, :, :k], atol=1e-6)
+        assert (patched_state[:, :, k:] - base_state[:, :, k:]).abs().max().item() > 1e-6
+
+    def test_state_patch_is_same_position_only(self, bridge):
+        """Patching hook_ssm_state at position k changes only the same-position mixer
+        output (y_t = C_t·S_t is a post-scan readout — it does not re-run the scan)."""
+        tokens = torch.randint(1, 128, (1, self.SEQ_LEN))
+        k = 3
+        state_key = f"blocks.{self.LAYER}.mixer.hook_ssm_state"
+        out_key = f"blocks.{self.LAYER}.mixer.hook_out"
+
+        def patch(state, hook):
+            state = state.clone()
+            state[:, :, k] = 0.0
+            return state
+
+        base_out, patched_out = {}, {}
+
+        def grab_base(o, hook):
+            base_out["o"] = o.detach().clone()
+            return o
+
+        def grab_patched(o, hook):
+            patched_out["o"] = o.detach().clone()
+            return o
+
+        with _eager_scan(bridge), torch.no_grad():
+            bridge.run_with_hooks(tokens, use_cache=False, fwd_hooks=[(out_key, grab_base)])
+            bridge.run_with_hooks(
+                tokens, use_cache=False, fwd_hooks=[(state_key, patch), (out_key, grab_patched)]
+            )
+        delta = (patched_out["o"] - base_out["o"]).abs()
+        assert delta[:, k].max().item() > 1e-6, "same-position output must change"
+        other = torch.cat([delta[:, :k], delta[:, k + 1 :]], dim=1)
+        assert other.max().item() < 1e-6, "other positions must be untouched (no propagation)"
+
+    def test_batch1_padded_matches_hf(self, bridge):
+        """Batch-1 with a padding mask must match HF: MambaMixer masks whenever
+        attention_mask is present (no batch>1 guard, unlike Mamba-2)."""
+        tokens = torch.tensor([[1, 2, 3, 4, 0]])
+        mask = torch.tensor([[1, 1, 1, 1, 0]])
+        with torch.no_grad():
+            fused = bridge(tokens, attention_mask=mask)
+            with _eager_scan(bridge):
+                eager = bridge.run_with_hooks(
+                    tokens, use_cache=False, attention_mask=mask, fwd_hooks=[]
+                )
+        rel = (eager - fused).abs().max().item() / max(fused.abs().max().item(), 1e-8)
+        assert rel < 1e-4, f"batch-1 padded eager vs HF fused rel diff {rel:.2e}"

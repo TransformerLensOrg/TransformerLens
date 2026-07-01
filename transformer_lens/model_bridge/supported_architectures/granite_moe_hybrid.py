@@ -41,6 +41,9 @@ class GraniteMoeHybridArchitectureAdapter(GraniteArchitectureAdapter):
     universal. Inherits Granite config and attention bridge construction.
     """
 
+    # Explicit for parity with the Mamba/NemotronH siblings.
+    applicable_phases: list[int] = [1, 2, 3, 4]
+
     def __init__(self, cfg: Any) -> None:
         ArchitectureAdapter.__init__(self, cfg)
         self._setup_common_config(cfg)
@@ -52,9 +55,8 @@ class GraniteMoeHybridArchitectureAdapter(GraniteArchitectureAdapter):
         self.supports_fold_ln = False
         self.weight_processing_conversions = {}
 
-        # Expose the per-layer mixer-type list uniformly as cfg.layers_block_type
-        # (HF stores it as `layer_types`; passthrough copies that name). Matches
-        # NemotronH so analysis tools can inspect which layers are Mamba.
+        # Normalize the per-layer mixer-type list as cfg.layers_block_type (HF names
+        # it `layer_types`) so analysis tools can find the Mamba layers, as on NemotronH.
         layers_block_type = (
             getattr(cfg, "layers_block_type", None) or getattr(cfg, "layer_types", None) or []
         )

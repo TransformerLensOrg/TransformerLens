@@ -1059,3 +1059,95 @@ class TestQwen3_5GatedDeltaNetEagerScan:
                 _ = bridge(tokens, use_cache=False)
             after = bridge(tokens, use_cache=False)
         assert torch.equal(first, after)
+
+
+def _make_tiny_gqa_bridge():
+    """Qwen3_5 bridge with n_v_heads (4) > n_k_heads (2) to exercise the GDN GQA branch.
+
+    The default _make_tiny_bridge uses n_k==n_v==4, so the repeat_interleave GQA
+    expansion in GatedDeltaNetBridge._hooked_forward never runs. Here Q/K carry 2
+    heads and V carries 4, so the recurrence path must expand Q/K 2x.
+    """
+    from unittest.mock import MagicMock
+
+    from transformer_lens.config.transformer_bridge_config import (
+        TransformerBridgeConfig,
+    )
+    from transformer_lens.model_bridge import TransformerBridge
+    from transformer_lens.model_bridge.supported_architectures.qwen3_5 import (
+        Qwen3_5ArchitectureAdapter,
+    )
+
+    cfg = Qwen3_5TextConfig(
+        hidden_size=128,
+        num_hidden_layers=8,
+        num_attention_heads=4,
+        num_key_value_heads=2,
+        head_dim=32,
+        intermediate_size=256,
+        vocab_size=512,
+        full_attention_interval=4,
+        linear_conv_kernel_dim=4,
+        linear_key_head_dim=32,
+        linear_value_head_dim=32,
+        linear_num_key_heads=2,  # < value heads -> GQA expansion required
+        linear_num_value_heads=4,
+        rope_parameters={
+            "rope_theta": 10000.0,
+            "partial_rotary_factor": 0.25,
+            "rope_type": "default",
+        },
+    )
+    hf_model = _Qwen3_5ForCausalLM(cfg).eval()
+    bridge_cfg = TransformerBridgeConfig(
+        d_model=128,
+        d_head=32,
+        n_heads=4,
+        n_layers=8,
+        n_ctx=2048,
+        d_vocab=512,
+        n_key_value_heads=2,
+        architecture="Qwen3_5ForCausalLM",
+    )
+    return (
+        TransformerBridge(hf_model, Qwen3_5ArchitectureAdapter(bridge_cfg), tokenizer=MagicMock()),
+        hf_model,
+    )
+
+
+@pytest.mark.skipif(
+    not _QWEN3_5_AVAILABLE,
+    reason="Qwen3_5TextConfig / Qwen3_5ForCausalLM not available in installed transformers",
+)
+class TestQwen3_5GatedDeltaNetGQA:
+    """Cover the GDN GQA expansion (n_v_heads > n_k_heads) in CI, not just env-gated
+    real-weight tests. Forward parity requires the Q/K repeat_interleave to be correct."""
+
+    LINEAR_LAYER = 0
+
+    def test_gqa_branch_engaged_and_parity(self):
+        import torch
+
+        bridge, hf = _make_tiny_gqa_bridge()
+        assert hf.config.linear_num_value_heads > hf.config.linear_num_key_heads  # GQA active
+        torch.manual_seed(0)
+        tokens = torch.randint(0, 512, (1, 10))
+        with torch.no_grad():
+            bridge_logits = bridge(tokens, use_cache=False)
+            hf_logits = hf(tokens).logits
+        rel = (bridge_logits.float() - hf_logits.float()).abs().max().item() / max(
+            hf_logits.float().abs().max().item(), 1e-8
+        )
+        assert rel < 1e-4, f"GQA GDN forward parity rel diff {rel:.2e}"
+
+    def test_gqa_hook_head_counts(self):
+        """hook_q is pre-GQA (n_k_heads); hook_recurrence_out is post-expansion (n_v_heads)."""
+        import torch
+
+        bridge, hf = _make_tiny_gqa_bridge()
+        tokens = torch.randint(0, 512, (1, 8))
+        with torch.no_grad():
+            _, cache = bridge.run_with_cache(tokens, use_cache=False)
+        p = f"blocks.{self.LINEAR_LAYER}.linear_attn"
+        assert cache[f"{p}.hook_q"].shape[2] == hf.config.linear_num_key_heads
+        assert cache[f"{p}.hook_recurrence_out"].shape[2] == hf.config.linear_num_value_heads

@@ -46,9 +46,8 @@ class SSMMixerBridge(SSMStateHookMixin, GeneralizedComponent):
     }
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
-        super().__init__(*args, **kwargs)  # SSMStateHookMixin adds hook_ssm_state + eager_scan
-        # Real per-step write term dt·x·B (input-linear). Per-channel (no head_dim):
-        # [batch, channels, seq, state]. hook_ssm_state comes from the mixin.
+        super().__init__(*args, **kwargs)  # mixin adds hook_ssm_state + eager_scan
+        # Real per-step write term dt·x·B, per-channel [batch, channels, seq, state].
         self.hook_ssm_write = HookPoint()
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
@@ -113,8 +112,9 @@ class SSMMixerBridge(SSMStateHookMixin, GeneralizedComponent):
         dt_rank = oc.time_step_rank
 
         def _mask_cf(states: torch.Tensor) -> torch.Tensor:
-            # Channel-first padding mask, mirroring HF (no-op for batch 1 / unpadded).
-            if attention_mask is not None and attention_mask.shape[1] > 1 and batch > 1:
+            # HF MambaMixer masks whenever attention_mask is present (no batch guard,
+            # unlike Mamba-2), so match that — batch-1 padded inputs included.
+            if attention_mask is not None:
                 return states * attention_mask.unsqueeze(1).to(states.dtype)
             return states
 
@@ -133,7 +133,6 @@ class SSMMixerBridge(SSMStateHookMixin, GeneralizedComponent):
         x_f, B_f, C_f = x.float(), B.float(), C.float()
 
         # 4. Eager recurrence with intervention hooks.
-        # write_t[b, c, t, s] = dt_t[c] · x_t[c] · B_t[s]
         writes = (dt * x_f)[:, :, :, None] * B_f[:, None, :, :]  # [b, d_inner, seq, state]
         writes = self.hook_ssm_write(writes)
 
@@ -148,7 +147,7 @@ class SSMMixerBridge(SSMStateHookMixin, GeneralizedComponent):
 
         y = torch.einsum("bcts,bts->bct", state_traj, C_f)  # [batch, d_inner, seq]
         y = y + self.D.float()[None, :, None] * x_f
-        scan_output = y * torch.nn.functional.silu(gate.float())
+        scan_output = y * oc.act(gate.float())  # HF gates with self.act, not hardcoded silu
 
         # 5. Output projection — reuse the HF submodule bridge.
         contextualized: torch.Tensor = oc.out_proj(
@@ -306,7 +305,6 @@ class SSMMixerBridge(SSMStateHookMixin, GeneralizedComponent):
         # B, C from x_proj output (shared across channels); first dt_rank cols are dt low-rank.
         _time_step, B, C = x_proj_out.split([dt_rank, state_size, state_size], dim=-1)
 
-        # Per-channel dt = softplus(dt_proj output), channel-first.
         dt = torch.nn.functional.softplus(dt_proj_out).transpose(1, 2)  # [batch, channels, seq]
         A = -torch.exp(self.A_log.float())  # [channels, state]
 

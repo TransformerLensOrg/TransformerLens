@@ -387,6 +387,13 @@ class ComponentBenchmarker:
         if component_path in skip_components:
             return
 
+        # Skip an SSM/recurrent mixer's internal submodules: they wrap the identical HF
+        # module (parity already covered by forward_pass_logits) and take SSM-internal
+        # shapes (channel-first conv, d_inner/dt_rank), not the [b, seq, d_model] residual
+        # the isolated harness feeds. The mixer node itself is still tested against HF.
+        if any(slot in component_path.split(".")[:-1] for slot in ("mixer", "linear_attn")):
+            return
+
         # Skip MLP components that don't exist as separate modules in HF (name=None)
         # These are virtual components where fc1/fc2 are directly on the layer
         # Component testing doesn't work for these because get_component returns the parent layer

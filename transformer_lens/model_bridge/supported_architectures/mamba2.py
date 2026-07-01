@@ -29,11 +29,9 @@ class Mamba2ArchitectureAdapter(ArchitectureAdapter):
     loop with Mamba-1.
     """
 
-    # Phases 1-3 are transformer-shaped (component/weight comparison) and don't
-    # fit SSMs; component-level coverage lives in integration tests:
-    # tests/integration/model_bridge/test_mamba2_adapter.py. Phase 4 (generation
-    # + text-quality) needs no component comparison, so it applies.
-    applicable_phases: list[int] = [4]
+    # White-box forward: P1 is exact vs raw HF (mixer delegates to HF); P2/P3 skip
+    # without a HookedTransformer; P4 is generation.
+    applicable_phases: list[int] = [1, 2, 3, 4]
 
     def __init__(self, cfg: Any) -> None:
         super().__init__(cfg)

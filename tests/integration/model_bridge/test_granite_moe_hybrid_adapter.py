@@ -350,6 +350,31 @@ def _available_devices():
     return devices
 
 
+class TestGraniteMoeHybridProcessedParity:
+    """Phase-3 parity guard: processed (compat-mode) bridge vs raw HF via log_softmax.
+
+    The forward test only checks UNPROCESSED delegation (==0.0); this pins the PROCESSED
+    path so a compat-mode regression is caught in CI without the full-size checkpoint.
+    Granite is RMSNorm + fold_ln-off, so the centering rewrite must be output-invariant.
+    """
+
+    def test_compat_mode_logits_match_raw_hf(self):
+        bridge = _build_granite_bridge()
+        tokens = torch.tensor([[1, 2, 3, 4, 5, 6, 7, 8]])
+        with torch.no_grad():
+            raw = bridge(tokens)
+        bridge.enable_compatibility_mode(disable_warnings=True)
+        with torch.no_grad():
+            proc = bridge(tokens)
+        raw_lsm = torch.log_softmax(raw.float(), dim=-1)
+        proc_lsm = torch.log_softmax(proc.float(), dim=-1)
+        max_diff = (raw_lsm - proc_lsm).abs().max().item()
+        assert max_diff < 1e-4, (
+            f"compat-mode processed vs raw-HF log_softmax max_diff {max_diff:.2e} — the "
+            "weight-centering rewrite must be output-invariant in fp32 (P3 logits_equivalence)."
+        )
+
+
 class TestGraniteMoeHybridEagerScanIntervention:
     """Phase 4 eager-scan intervention on Granite's Mamba-2 mixer layers (hybrid):
     hooks fire on the Mamba layers only, interventions propagate to logits, and the
