@@ -19,6 +19,8 @@ Coverage focus (Phase 0, SSM mixer access normalization):
 - Attention / shared-MLP / MoE hooks still fire (rename did not disturb them).
 """
 
+import contextlib
+
 import pytest
 import torch
 from transformers import AutoModelForCausalLM
@@ -285,3 +287,123 @@ class TestGraniteMoeHybridSSMState:
         max_diff = (y_actual - y.reshape(1, seq_len, -1)).abs().max().item()
         scale = max(y_actual.abs().max().item(), 1e-8)
         assert max_diff / scale < 1e-4, f"state reconstruction rel diff {max_diff / scale:.2e}"
+
+
+@contextlib.contextmanager
+def _granite_eager(bridge):
+    """Enable the eager-scan intervention path on Granite's Mamba-2 mixer layers."""
+    for i in MAMBA_LAYERS:
+        bridge.blocks[i].mixer.eager_scan = True
+    try:
+        yield bridge
+    finally:
+        for i in MAMBA_LAYERS:
+            bridge.blocks[i].mixer.eager_scan = False
+
+
+def _build_granite_bridge(device="cpu"):
+    """Fresh tiny Granite bridge on the given device (for device-parametrized tests)."""
+    cfg = GraniteMoeHybridConfig(
+        vocab_size=256,
+        hidden_size=64,
+        intermediate_size=32,
+        shared_intermediate_size=32,
+        num_hidden_layers=3,
+        num_attention_heads=8,
+        num_key_value_heads=4,
+        num_local_experts=4,
+        num_experts_per_tok=2,
+        max_position_embeddings=64,
+        layer_types=LAYER_TYPES,
+        mamba_n_heads=8,
+        mamba_n_groups=2,
+        mamba_d_state=16,
+        mamba_d_head=16,
+        mamba_d_conv=4,
+        mamba_expand=2,
+        mamba_chunk_size=16,
+        position_embedding_type="rope",
+        rope_parameters={"rope_type": "default", "rope_theta": 10000.0},
+    )
+    cfg.architectures = ["GraniteMoeHybridForCausalLM"]
+    torch.manual_seed(0)
+    hf = AutoModelForCausalLM.from_config(cfg).to(torch.float32).eval()
+    bridge_config = build_bridge_config_from_hf(
+        hf.config, "GraniteMoeHybridForCausalLM", "granitemoehybrid-tiny", torch.float32
+    )
+    bridge = TransformerBridge(
+        model=hf, adapter=GraniteMoeHybridArchitectureAdapter(bridge_config), tokenizer=_MockTokenizer()
+    )
+    if device != "cpu":
+        hf.to(device)
+    return bridge
+
+
+def _available_devices():
+    devices = ["cpu"]
+    if torch.cuda.is_available():
+        devices.append("cuda")
+    if torch.backends.mps.is_available():
+        devices.append("mps")
+    return devices
+
+
+class TestGraniteMoeHybridEagerScanIntervention:
+    """Phase 4 eager-scan intervention on Granite's Mamba-2 mixer layers (hybrid):
+    hooks fire on the Mamba layers only, interventions propagate to logits, and the
+    default path is untouched. Eager scan needs use_cache=False (prefill)."""
+
+    def test_default_path_has_no_eager_hooks(self, bridge, tokens):
+        with torch.no_grad():
+            _, c = bridge.run_with_cache(tokens)
+        assert "blocks.0.mixer.hook_ssm_write" not in c
+
+    def test_eager_hooks_fire_on_mamba_layers_only(self, bridge, tokens):
+        with _granite_eager(bridge), torch.no_grad():
+            _, c = bridge.run_with_cache(tokens, use_cache=False)
+        for i in MAMBA_LAYERS:
+            assert f"blocks.{i}.mixer.hook_ssm_write" in c
+            assert f"blocks.{i}.mixer.hook_ssm_state" in c
+        assert f"blocks.{ATTN_LAYER}.mixer.hook_ssm_write" not in c  # attention layer: no mixer
+
+    def test_eager_scan_matches_fused(self, bridge, tokens):
+        with torch.no_grad():
+            fused = bridge(tokens)
+        with _granite_eager(bridge), torch.no_grad():
+            eager = bridge.run_with_hooks(tokens, use_cache=False, fwd_hooks=[])
+        rel = (eager - fused).abs().max().item() / max(fused.abs().max().item(), 1e-8)
+        assert rel < 1e-4, f"Granite eager vs fused rel diff {rel:.2e}"
+
+    def test_write_knockout_changes_logits(self, bridge, tokens):
+        def knockout(writes, hook):
+            writes = writes.clone()
+            writes[:, 2] = 0.0
+            return writes
+
+        with _granite_eager(bridge), torch.no_grad():
+            base = bridge.run_with_hooks(tokens, use_cache=False, fwd_hooks=[])
+            patched = bridge.run_with_hooks(
+                tokens, use_cache=False, fwd_hooks=[("blocks.0.mixer.hook_ssm_write", knockout)]
+            )
+        assert (patched - base).abs().max().item() > 1e-6
+
+
+@pytest.mark.parametrize("device", _available_devices())
+def test_granite_eager_scan_device_correctness(device):
+    """Regression for the eager-scan device fix: ssm_state must be created on the
+    input's device. Parametrized over every available device (cpu + cuda/mps)."""
+    bridge = _build_granite_bridge(device)
+    toks = torch.tensor([[1, 2, 3, 4, 5]], device=device)
+    with torch.no_grad():
+        fused = bridge(toks)
+    for i in MAMBA_LAYERS:
+        bridge.blocks[i].mixer.eager_scan = True
+    with torch.no_grad():
+        _, cache = bridge.run_with_cache(toks, use_cache=False)
+        eager = bridge.run_with_hooks(toks, use_cache=False, fwd_hooks=[])
+
+    dev_type = torch.device(device).type
+    assert eager.device.type == dev_type
+    assert cache["blocks.0.mixer.hook_ssm_write"].device.type == dev_type
+    rel = (eager.cpu() - fused.cpu()).abs().max().item() / max(fused.abs().max().item(), 1e-8)
+    assert rel < 1e-4, f"eager vs fused rel diff on {device}: {rel:.2e}"

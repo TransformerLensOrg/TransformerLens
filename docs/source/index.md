@@ -56,6 +56,7 @@ content/citation
 content/contributing
 content/hook_system
 content/compatibility_mode
+content/ssm_interpretability
 content/debugging_numerical_divergence
 generated/demos/Main_Demo
 generated/demos/Exploratory_Analysis_Demo

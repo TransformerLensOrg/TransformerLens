@@ -8,6 +8,9 @@ from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
+from transformer_lens.model_bridge.generalized_components.ssm_protocol import (
+    SSMStateHookMixin,
+)
 
 
 class _SSDTerms(NamedTuple):
@@ -20,7 +23,7 @@ class _SSDTerms(NamedTuple):
     C: torch.Tensor  # [batch, seq, num_heads, state] (group-expanded)
 
 
-class SSM2MixerBridge(GeneralizedComponent):
+class SSM2MixerBridge(SSMStateHookMixin, GeneralizedComponent):
     """Opaque wrapper around Mamba-2's Mamba2Mixer.
 
     Structural differences from Mamba-1:
@@ -48,18 +51,11 @@ class SSM2MixerBridge(GeneralizedComponent):
         "hook_ssm_out": "hook_out",
     }
 
-    # Opt-in slow path: when True (and not generating), forward() runs an eager
-    # Python scan instead of HF's fused kernel, firing hook_ssm_write /
-    # hook_ssm_state so they can be intervened on. Default False — the standard
-    # run_with_cache path is untouched. See _eager_scan_forward.
-    eager_scan: bool = False
-
     def __init__(self, *args: Any, **kwargs: Any) -> None:
-        super().__init__(*args, **kwargs)
-        # Per-step write term (dt·x⊗B) and recurrent-state trajectory. Only fire
-        # on the eager-scan path; intervening on them re-runs the recurrence.
+        super().__init__(*args, **kwargs)  # SSMStateHookMixin adds hook_ssm_state + eager_scan
+        # Real per-step write term dt·(x⊗B) (input-linear); fires only on the
+        # eager-scan path. hook_ssm_state comes from the mixin.
         self.hook_ssm_write = HookPoint()
-        self.hook_ssm_state = HookPoint()
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Hook the input, run HF torch_forward (or the eager scan), hook the output."""

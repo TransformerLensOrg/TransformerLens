@@ -785,3 +785,277 @@ class TestQwen3_5GatedDeltaNetEffectiveAttention:
             f"L2-norm approximation divergence {rel:.3f} outside the documented ~1.0 "
             "band for the random-init fixture; update the docstring if the model changed."
         )
+
+
+@pytest.mark.skipif(
+    not _QWEN3_5_AVAILABLE,
+    reason="Qwen3_5TextConfig / Qwen3_5ForCausalLM not available in installed transformers",
+)
+class TestQwen3_5GatedDeltaNetState:
+    """Faithful recurrent-state reconstruction + eager-scan interventions for GDN.
+
+    Unlike compute_effective_attention (a gated-linear-attention heuristic that drops
+    key removal), compute_ssm_state replays the *full* delta rule, so ``S_t^T q_t``
+    must reconstruct the fused kernel's hook_recurrence_out to fp tolerance.
+    """
+
+    LINEAR_LAYER = 0  # full-attn lands at 3 and 7 (interval=4); 0 is GatedDeltaNet
+    SEQ_LEN = 10
+
+    @pytest.fixture(scope="class")
+    def bridge(self):
+        br, _ = _make_tiny_bridge()
+        return br
+
+    @pytest.fixture(scope="class")
+    def cache(self, bridge):
+        import torch
+
+        torch.manual_seed(0)
+        tokens = torch.randint(0, 512, (2, self.SEQ_LEN))
+        with torch.no_grad():
+            _, cache = bridge.run_with_cache(tokens, use_cache=False)
+        return cache
+
+    @staticmethod
+    def _ref_scan(cache, layer, dtype):
+        """Independent gated-delta-rule scan from cached hooks (not the impl).
+
+        Uses the kernel's L2-norm convention (eps=1e-6) so the only differences vs
+        the impl are reduction order (fp32) and precision (fp64).
+        """
+        import torch
+
+        def l2norm(x):
+            return x / torch.sqrt((x * x).sum(-1, keepdim=True) + 1e-6)
+
+        prefix = f"blocks.{layer}.linear_attn"
+        q = cache[f"{prefix}.hook_q"].to(dtype)
+        k = cache[f"{prefix}.hook_k"].to(dtype)
+        v = cache[f"{prefix}.hook_v"].to(dtype)
+        beta = cache[f"{prefix}.hook_beta"].to(dtype)
+        g = cache[f"{prefix}.hook_log_decay"].to(dtype)
+        n_v = v.shape[2]
+        if q.shape[2] < n_v:
+            rep = n_v // q.shape[2]
+            q, k = q.repeat_interleave(rep, dim=2), k.repeat_interleave(rep, dim=2)
+        q = l2norm(q) * (q.shape[-1] ** -0.5)
+        k = l2norm(k)
+        b, seq, _, kd = q.shape
+        vd = v.shape[-1]
+        state = torch.zeros(b, n_v, kd, vd, dtype=dtype)
+        states, outs = [], []
+        for t in range(seq):
+            state = state * g[:, t].exp()[:, :, None, None]
+            kv = (state * k[:, t][:, :, :, None]).sum(-2)
+            delta = (v[:, t] - kv) * beta[:, t][:, :, None]
+            state = state + k[:, t][:, :, :, None] * delta[:, :, None, :]
+            states.append(state)
+            outs.append((state * q[:, t][:, :, :, None]).sum(-2))
+        return torch.stack(states, 1), torch.stack(outs, 1)
+
+    def test_requires_use_cache_false(self, bridge):
+        """Default cache path omits interior hooks -> compute_ssm_state raises."""
+        import torch
+
+        tokens = torch.randint(0, 512, (1, self.SEQ_LEN))
+        with torch.no_grad():
+            _, cache = bridge.run_with_cache(tokens)  # default: cache allocated
+        mixer = bridge.blocks[self.LINEAR_LAYER].linear_attn
+        with pytest.raises(RuntimeError, match="in cache"):
+            mixer.compute_ssm_state(cache, layer_idx=self.LINEAR_LAYER)
+
+    def test_state_shape(self, bridge, cache):
+        mixer = bridge.blocks[self.LINEAR_LAYER].linear_attn
+        S = mixer.compute_ssm_state(cache, layer_idx=self.LINEAR_LAYER)
+        # [batch, seq, n_v_heads, head_k_dim, head_v_dim]
+        assert S.ndim == 5
+        assert S.shape[1] == self.SEQ_LEN
+        assert S.shape[2] == cache[f"blocks.{self.LINEAR_LAYER}.linear_attn.hook_v"].shape[2]
+
+    def test_reconstructs_recurrence_out(self, bridge, cache):
+        """o_t = S_t^T q_t must match the fused kernel's hook_recurrence_out (faithful)."""
+        import torch
+
+        mixer = bridge.blocks[self.LINEAR_LAYER].linear_attn
+        S = mixer.compute_ssm_state(cache, layer_idx=self.LINEAR_LAYER)
+        # o_t from the impl's own state, using the impl's normalized/scaled q.
+        prefix = f"blocks.{self.LINEAR_LAYER}.linear_attn"
+        q = cache[f"{prefix}.hook_q"].float()
+        n_v = cache[f"{prefix}.hook_v"].shape[2]
+        if q.shape[2] < n_v:
+            q = q.repeat_interleave(n_v // q.shape[2], dim=2)
+        q = mixer._l2norm(q) * (q.shape[-1] ** -0.5)
+        o = torch.einsum("bshkv,bshk->bshv", S, q)
+        rec = cache[f"{prefix}.hook_recurrence_out"].float()
+        rel = (o - rec).abs().max().item() / max(rec.abs().max().item(), 1e-8)
+        assert rel < 1e-4, f"delta-rule state reconstruction rel diff {rel:.2e}"
+
+    def test_impl_matches_independent_reference(self, bridge, cache):
+        """The impl state must match an independent reimplementation of the scan.
+
+        The impl works in fp32 by design, so it is compared to a fp32 reference at
+        tight tolerance (independent-algorithm check, only reduction-order noise).
+        The residual against a fp64 reference is then shown to be no larger than
+        fp32's own rounding gap — i.e. the impl adds no error beyond its working
+        precision (an actual algorithm bug would be O(1), not fp32-scale).
+        """
+        import torch
+
+        mixer = bridge.blocks[self.LINEAR_LAYER].linear_attn
+        S = mixer.compute_ssm_state(cache, layer_idx=self.LINEAR_LAYER).float()
+        S_ref32, _ = self._ref_scan(cache, self.LINEAR_LAYER, torch.float32)
+        S_ref64, _ = self._ref_scan(cache, self.LINEAR_LAYER, torch.float64)
+
+        denom = max(S_ref64.abs().max().item(), 1e-12)
+        rel32 = (S - S_ref32).abs().max().item() / denom
+        assert rel32 < 1e-5, f"impl vs independent fp32 reference rel diff {rel32:.2e}"
+
+        # fp64 gap of the impl vs fp64 gap of the fp32 reference: comparable ⇒ fp32 noise.
+        impl_vs_fp64 = (S.double() - S_ref64).abs().max().item() / denom
+        ref_fp32_vs_fp64 = (S_ref32.double() - S_ref64).abs().max().item() / denom
+        assert impl_vs_fp64 <= 4 * ref_fp32_vs_fp64 + 1e-6, (
+            f"impl fp64 gap {impl_vs_fp64:.2e} exceeds fp32 rounding gap "
+            f"{ref_fp32_vs_fp64:.2e} — not attributable to fp32 accumulation"
+        )
+
+    def test_time_step_matches_full(self, bridge, cache):
+        import torch
+
+        mixer = bridge.blocks[self.LINEAR_LAYER].linear_attn
+        S = mixer.compute_ssm_state(cache, layer_idx=self.LINEAR_LAYER)
+        for t in (0, self.SEQ_LEN // 2, self.SEQ_LEN - 1):
+            St = mixer.compute_ssm_state(cache, layer_idx=self.LINEAR_LAYER, time_step=t)
+            assert torch.equal(St, S[:, t])
+
+
+@pytest.mark.skipif(
+    not _QWEN3_5_AVAILABLE,
+    reason="Qwen3_5TextConfig / Qwen3_5ForCausalLM not available in installed transformers",
+)
+class TestQwen3_5GatedDeltaNetEagerScan:
+    """Opt-in eager_scan path: fused-kernel parity, hook_ssm_state interventions."""
+
+    LINEAR_LAYER = 0
+    SEQ_LEN = 10
+
+    @pytest.fixture(scope="class")
+    def bridge(self):
+        br, _ = _make_tiny_bridge()
+        return br
+
+    @pytest.fixture(scope="class")
+    def tokens(self):
+        import torch
+
+        torch.manual_seed(0)
+        return torch.randint(0, 512, (2, self.SEQ_LEN))
+
+    @staticmethod
+    def _eager(bridge):
+        import contextlib
+
+        from transformer_lens.model_bridge.generalized_components import (
+            GatedDeltaNetBridge,
+        )
+
+        @contextlib.contextmanager
+        def _ctx():
+            mixers = [
+                b.linear_attn
+                for b in bridge.blocks
+                if isinstance(getattr(b, "linear_attn", None), GatedDeltaNetBridge)
+            ]
+            for m in mixers:
+                m.eager_scan = True
+            try:
+                yield
+            finally:
+                for m in mixers:
+                    m.eager_scan = False
+
+        return _ctx()
+
+    def test_default_path_has_no_state_hook(self, bridge, tokens):
+        import torch
+
+        with torch.no_grad():
+            _, cache = bridge.run_with_cache(tokens, use_cache=False)
+        assert not any("hook_ssm_state" in k for k in cache)
+
+    def test_eager_scan_matches_fused(self, bridge, tokens):
+        """Eager delta-rule scan reproduces the fused-kernel logits to fp tolerance."""
+        import torch
+
+        with torch.no_grad():
+            base = bridge(tokens, use_cache=False)
+            with self._eager(bridge):
+                eager = bridge(tokens, use_cache=False)
+        rel = (eager.float() - base.float()).abs().max().item() / max(
+            base.float().abs().max().item(), 1e-8
+        )
+        assert rel < 1e-3, f"eager vs fused logit parity rel diff {rel:.2e}"
+
+    def test_eager_scan_fires_state_hook(self, bridge, tokens):
+        import torch
+
+        captured = {}
+
+        def _grab(t, hook):
+            captured["shape"] = tuple(t.shape)
+            return t
+
+        with self._eager(bridge):
+            with torch.no_grad():
+                bridge.run_with_hooks(
+                    tokens,
+                    use_cache=False,
+                    fwd_hooks=[(f"blocks.{self.LINEAR_LAYER}.linear_attn.hook_ssm_state", _grab)],
+                )
+        assert captured.get("shape") is not None
+        assert captured["shape"][1] == self.SEQ_LEN and len(captured["shape"]) == 5
+
+    def test_state_patch_changes_logits(self, bridge, tokens):
+        """Zeroing the state trajectory (hook_ssm_state) must change the output."""
+        import torch
+
+        def _zero(t, hook):
+            return torch.zeros_like(t)
+
+        with self._eager(bridge):
+            with torch.no_grad():
+                base = bridge(tokens, use_cache=False)
+                patched = bridge.run_with_hooks(
+                    tokens,
+                    use_cache=False,
+                    fwd_hooks=[(f"blocks.{self.LINEAR_LAYER}.linear_attn.hook_ssm_state", _zero)],
+                )
+        assert (patched.float() - base.float()).abs().max().item() > 1e-4
+
+    def test_write_knockout_via_beta_alias(self, bridge, tokens):
+        """hook_ssm_write (alias -> hook_beta) knockout propagates through the scan."""
+        import torch
+
+        def _zero(t, hook):
+            return torch.zeros_like(t)
+
+        with self._eager(bridge):
+            with torch.no_grad():
+                base = bridge(tokens, use_cache=False)
+                ko = bridge.run_with_hooks(
+                    tokens,
+                    use_cache=False,
+                    fwd_hooks=[(f"blocks.{self.LINEAR_LAYER}.linear_attn.hook_ssm_write", _zero)],
+                )
+        assert (ko.float() - base.float()).abs().max().item() > 1e-4
+
+    def test_disabling_restores_default(self, bridge, tokens):
+        """Toggling eager_scan off must return bit-identical fused-path logits."""
+        import torch
+
+        with torch.no_grad():
+            first = bridge(tokens, use_cache=False)
+            with self._eager(bridge):
+                _ = bridge(tokens, use_cache=False)
+            after = bridge(tokens, use_cache=False)
+        assert torch.equal(first, after)

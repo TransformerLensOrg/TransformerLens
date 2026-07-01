@@ -364,8 +364,8 @@ class TestCanonicalHookVocabulary:
 
 
 # ---------------------------------------------------------------------------
-# cache.compute_ssm_state (Phase 4.5) — family-agnostic over Mamba-1 / Mamba-2,
-# excluding gated-delta-net (no recurrent-state reconstruction).
+# cache.compute_ssm_state (Phase 4.5) — family-agnostic over Mamba-1 / Mamba-2
+# and gated-delta-net (each reconstructs its own recurrent state).
 # ---------------------------------------------------------------------------
 
 
@@ -393,9 +393,22 @@ class TestComputeSsmStateDispatch:
         assert sorted(S.keys()) == [0, 2]
 
     @pytest.mark.skipif(not _QWEN3_5_AVAILABLE, reason="Qwen3_5 not available")
-    def test_gated_delta_net_has_no_state(self, qwen35_bridge):
+    def test_gated_delta_net_reachable_via_cache(self, qwen35_bridge):
         with torch.no_grad():
             _, cache = qwen35_bridge.run_with_cache(TOKENS, use_cache=False)
-        # GDN conforms to the effective-attention protocol but has no S_t.
-        with pytest.raises(TypeError, match="Mamba-1 / Mamba-2"):
-            cache.compute_ssm_state(layer=0)
+        # Hybrid (full-attn layers interleaved) → dict over the linear-attn layers.
+        S = cache.compute_ssm_state()
+        assert isinstance(S, dict)
+        assert cache.ssm_layers() == sorted(S.keys())
+        layer = cache.ssm_layers()[0]
+        # [batch, seq, n_v_heads, head_k_dim, head_v_dim]
+        assert S[layer].ndim == 5
+        assert torch.equal(S[layer], cache.compute_ssm_state(layer=layer))
+
+    @pytest.mark.skipif(not _QWEN3_5_AVAILABLE, reason="Qwen3_5 not available")
+    def test_full_attention_layer_raises_typeerror(self, qwen35_bridge):
+        with torch.no_grad():
+            _, cache = qwen35_bridge.run_with_cache(TOKENS, use_cache=False)
+        attn_layer = next(i for i in range(qwen35_bridge.cfg.n_layers) if i not in cache.ssm_layers())
+        with pytest.raises(TypeError, match="gated-delta-net"):
+            cache.compute_ssm_state(layer=attn_layer)

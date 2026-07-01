@@ -18,6 +18,8 @@ machinery. If a future phase adds per-step SSM state hooks (compatibility mode),
 those hooks MUST `.clone()` captured state tensors.
 """
 
+import contextlib
+
 import pytest
 import torch
 
@@ -549,3 +551,100 @@ class TestMamba1SSMState:
         empty = ActivationCache({}, model=mamba_bridge)
         with pytest.raises(RuntimeError, match="in cache"):
             mamba_bridge.blocks[0].mixer.compute_ssm_state(empty, layer_idx=0)
+
+
+@contextlib.contextmanager
+def _eager_scan(bridge):
+    """Enable the opt-in eager-scan intervention path on every Mamba-1 mixer."""
+    for block in bridge.blocks:
+        block.mixer.eager_scan = True
+    try:
+        yield bridge
+    finally:
+        for block in bridge.blocks:
+            block.mixer.eager_scan = False
+
+
+class TestMamba1EagerScanIntervention:
+    """Phase 4 (Mamba-1): opt-in eager S6 scan exposes hook_ssm_write / hook_ssm_state
+    for interventions that propagate to logits, while the default path is untouched.
+    Eager scan needs use_cache=False (prefill; cache_params is None)."""
+
+    TOKENS = torch.tensor([[1, 2, 3, 4, 5, 6]])
+
+    def test_default_path_has_no_eager_hooks(self, mamba_bridge):
+        with torch.no_grad():
+            _, cache = mamba_bridge.run_with_cache(self.TOKENS)
+        assert "blocks.0.mixer.hook_ssm_write" not in cache
+        assert "blocks.0.mixer.hook_ssm_state" not in cache
+
+    def test_eager_requires_use_cache_false(self, mamba_bridge):
+        with _eager_scan(mamba_bridge), torch.no_grad():
+            _, cache = mamba_bridge.run_with_cache(self.TOKENS)  # default use_cache
+        assert "blocks.0.mixer.hook_ssm_write" not in cache
+
+    def test_eager_scan_matches_fused_logits(self, mamba_bridge):
+        with torch.no_grad():
+            fused = mamba_bridge(self.TOKENS)
+        with _eager_scan(mamba_bridge), torch.no_grad():
+            eager = mamba_bridge.run_with_hooks(self.TOKENS, use_cache=False, fwd_hooks=[])
+        rel = (eager - fused).abs().max().item() / max(fused.abs().max().item(), 1e-8)
+        assert rel < 1e-4, f"eager scan vs HF kernel rel diff {rel:.2e}"
+
+    def test_eager_scan_matches_fused_padded_batch(self, mamba_bridge):
+        """Padded batch: eager path mirrors HF's channel-first padding mask (before
+        and after the conv)."""
+        ids = torch.tensor([[1, 2, 3, 4, 5], [6, 7, 8, 9, 0]])
+        mask = torch.tensor([[1, 1, 1, 1, 1], [1, 1, 1, 1, 0]])
+        with torch.no_grad():
+            fused = mamba_bridge(ids, attention_mask=mask)
+        with _eager_scan(mamba_bridge), torch.no_grad():
+            eager = mamba_bridge.run_with_hooks(
+                ids, use_cache=False, attention_mask=mask, fwd_hooks=[]
+            )
+        rel = (eager - fused).abs().max().item() / max(fused.abs().max().item(), 1e-8)
+        assert rel < 1e-4, f"padded-batch eager vs fused rel diff {rel:.2e}"
+
+    def test_eager_hooks_fire_with_use_cache_false(self, mamba_bridge):
+        with _eager_scan(mamba_bridge), torch.no_grad():
+            _, cache = mamba_bridge.run_with_cache(self.TOKENS, use_cache=False)
+        oc = mamba_bridge.blocks[0].mixer.original_component
+        seq = self.TOKENS.shape[1]
+        expected = (1, oc.intermediate_size, seq, oc.ssm_state_size)
+        assert cache["blocks.0.mixer.hook_ssm_write"].shape == expected
+        assert cache["blocks.0.mixer.hook_ssm_state"].shape == expected
+
+    def test_write_knockout_changes_logits(self, mamba_bridge):
+        def knockout(writes, hook):
+            writes = writes.clone()
+            writes[:, :, 2] = 0.0  # channel-first: zero all channels' write at position 2
+            return writes
+
+        with _eager_scan(mamba_bridge), torch.no_grad():
+            base = mamba_bridge.run_with_hooks(self.TOKENS, use_cache=False, fwd_hooks=[])
+            patched = mamba_bridge.run_with_hooks(
+                self.TOKENS, use_cache=False, fwd_hooks=[("blocks.0.mixer.hook_ssm_write", knockout)]
+            )
+        assert (patched - base).abs().max().item() > 1e-6
+
+    def test_state_patch_changes_logits(self, mamba_bridge):
+        def patch(state, hook):
+            state = state.clone()
+            state[:, :, 3] = 0.0
+            return state
+
+        with _eager_scan(mamba_bridge), torch.no_grad():
+            base = mamba_bridge.run_with_hooks(self.TOKENS, use_cache=False, fwd_hooks=[])
+            patched = mamba_bridge.run_with_hooks(
+                self.TOKENS, use_cache=False, fwd_hooks=[("blocks.0.mixer.hook_ssm_state", patch)]
+            )
+        assert (patched - base).abs().max().item() > 1e-6
+
+    def test_disabling_restores_fused_path(self, mamba_bridge):
+        with torch.no_grad():
+            fused_before = mamba_bridge(self.TOKENS)
+        with _eager_scan(mamba_bridge), torch.no_grad():
+            mamba_bridge.run_with_hooks(self.TOKENS, use_cache=False, fwd_hooks=[])
+        with torch.no_grad():
+            fused_after = mamba_bridge(self.TOKENS)
+        assert torch.equal(fused_before, fused_after)

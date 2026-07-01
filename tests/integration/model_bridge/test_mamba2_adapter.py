@@ -710,6 +710,41 @@ class TestMamba2EagerScanIntervention:
         rel = (eager - fused).abs().max().item() / max(fused.abs().max().item(), 1e-8)
         assert rel < 1e-4, f"eager scan vs fused kernel rel diff {rel:.2e}"
 
+    def test_eager_scan_matches_fp64_step_reference(self, mamba2_bridge):
+        """The eager scan's write/state must match an independent fp64 step recurrence.
+
+        ``test_eager_scan_matches_fused_logits`` pins the eager scan to HF's fused
+        kernel — but a shared discretization error would pass both. This pins the
+        eager scan's own ``hook_ssm_write`` / ``hook_ssm_state`` to a naive fp64
+        step-by-step recurrence built independently from the cached in_proj/conv1d
+        outputs (``S_t = dA_t·S_{t-1} + dt_t·(x_t⊗B_t)``), so it is a genuine
+        correctness gate on the eager scan, not just kernel agreement.
+        """
+        seq = self.TOKENS.shape[1]
+        with _eager_scan(mamba2_bridge), torch.no_grad():
+            _, cache = mamba2_bridge.run_with_cache(self.TOKENS, use_cache=False)
+        mixer = mamba2_bridge.blocks[0].mixer
+        write_hook = cache["blocks.0.mixer.hook_ssm_write"].double()
+        state_hook = cache["blocks.0.mixer.hook_ssm_state"].double()
+
+        dt, x, B_h, _, A, _ = TestMamba2SSMState._ssd_inputs(cache, mixer, 0, seq)
+        dt, x, B_h, A = dt.double(), x.double(), B_h.double(), A.double()
+        b, nh, hd, ns = state_hook.shape[0], state_hook.shape[2], state_hook.shape[3], state_hook.shape[4]
+
+        state = torch.zeros(b, nh, hd, ns, dtype=torch.float64)
+        ref_write = torch.zeros(b, seq, nh, hd, ns, dtype=torch.float64)
+        ref_state = torch.zeros(b, seq, nh, hd, ns, dtype=torch.float64)
+        for t in range(seq):
+            dA = torch.exp(dt[:, t, :] * A[None, :])  # [b, nh]
+            write = dt[:, t, :, None, None] * x[:, t, :, :, None] * B_h[:, t, :, None, :]
+            ref_write[:, t] = write
+            state = dA[:, :, None, None] * state + write
+            ref_state[:, t] = state
+
+        for name, got, ref in (("write", write_hook, ref_write), ("state", state_hook, ref_state)):
+            rel = (got - ref).abs().max().item() / max(ref.abs().max().item(), 1e-8)
+            assert rel < 1e-5, f"eager {name} vs fp64 step reference rel diff {rel:.2e}"
+
     def test_eager_scan_matches_fused_padded_batch(self, mamba2_bridge):
         """Padded batch: the eager path must mirror HF's padding mask (applied both
         before in_proj and after the conv) to stay at parity."""

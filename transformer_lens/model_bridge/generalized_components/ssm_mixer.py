@@ -4,8 +4,12 @@ from typing import Any, NamedTuple, Optional
 import torch
 
 from transformer_lens.ActivationCache import ActivationCache
+from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
+)
+from transformer_lens.model_bridge.generalized_components.ssm_protocol import (
+    SSMStateHookMixin,
 )
 
 
@@ -18,7 +22,7 @@ class _S6Terms(NamedTuple):
     C: torch.Tensor  # [batch, seq, state] (shared across channels)
 
 
-class SSMMixerBridge(GeneralizedComponent):
+class SSMMixerBridge(SSMStateHookMixin, GeneralizedComponent):
     """Opaque wrapper around Mamba-1's MambaMixer.
 
     Submodules (in_proj, conv1d, x_proj, dt_proj, out_proj) are swapped into
@@ -41,22 +45,34 @@ class SSMMixerBridge(GeneralizedComponent):
         "hook_ssm_dt": "dt_proj.hook_out",
     }
 
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)  # SSMStateHookMixin adds hook_ssm_state + eager_scan
+        # Real per-step write term dt·x·B (input-linear). Per-channel (no head_dim):
+        # [batch, channels, seq, state]. hook_ssm_state comes from the mixin.
+        self.hook_ssm_write = HookPoint()
+
     def forward(self, *args: Any, **kwargs: Any) -> Any:
-        """Hook the input, delegate to HF slow_forward, hook the output."""
+        """Hook the input, run HF slow_forward (or the eager scan), hook the output."""
         if self.original_component is None:
             raise RuntimeError(
                 f"Original component not set for {self.name}. "
                 "Call set_original_component() first."
             )
 
-        # Hook the hidden_states input (positional or keyword)
+        hidden_states: Optional[torch.Tensor] = None
         if len(args) > 0 and isinstance(args[0], torch.Tensor):
-            hooked = self.hook_in(args[0])
-            args = (hooked,) + args[1:]
+            hidden_states = self.hook_in(args[0])
+            args = (hidden_states,) + args[1:]
         elif "hidden_states" in kwargs and isinstance(kwargs["hidden_states"], torch.Tensor):
-            kwargs["hidden_states"] = self.hook_in(kwargs["hidden_states"])
+            hidden_states = self.hook_in(kwargs["hidden_states"])
+            kwargs["hidden_states"] = hidden_states
 
-        output = self.original_component(*args, **kwargs)
+        # Eager-scan slow path: opt-in, prefill only (no cache_params). Keyed on
+        # explicit state, never on hook-registry introspection.
+        if self.eager_scan and hidden_states is not None and kwargs.get("cache_params") is None:
+            output: Any = self._eager_scan_forward(hidden_states, kwargs.get("attention_mask"))
+        else:
+            output = self.original_component(*args, **kwargs)
 
         # Hook the primary output tensor, preserving tuple structure
         if isinstance(output, tuple) and len(output) > 0:
@@ -67,6 +83,76 @@ class SSMMixerBridge(GeneralizedComponent):
         if isinstance(output, torch.Tensor):
             return self.hook_out(output)
         return output
+
+    def _eager_scan_forward(
+        self, hidden_states: torch.Tensor, attention_mask: Optional[torch.Tensor]
+    ) -> torch.Tensor:
+        """Reimplement the Mamba-1 mixer prefill forward with an eager Python S6 scan.
+
+        Reuses HF's in_proj / conv1d / x_proj / dt_proj / out_proj submodules (so
+        their hooks still fire) and reimplements ONLY the S6 recurrence::
+
+            write_t[c, s] = dt_t[c] · x_t[c] · B_t[s]        -> hook_ssm_write [b, c, seq, s]
+            S_t[c, s]     = exp(A[c,s]·dt_t[c]) · S_{t-1} + write_t
+            S             = stack_t S_t                       -> hook_ssm_state [b, c, seq, s]
+            y_t[c]        = sum_s C_t[s] · S_t[c, s] + D[c] · x_t[c]
+
+        Intervening on hook_ssm_write re-runs the recurrence (propagates to later
+        states); hook_ssm_state is the post-scan trajectory, so a patch there
+        changes only the same-position output y_t = C_t·S_t — patch hook_ssm_write
+        for a propagating state edit.
+
+        Kernel-divergence caveat: reproduces HF's scan only to fp tolerance
+        (≈1e-6 fp32), never bit-for-bit. O(seq) Python; materializes an
+        O(b·channels·seq·state) write/state tensor. Prefill only.
+        """
+        oc: Any = self.original_component
+        batch, seq_len, _ = hidden_states.shape
+        d_inner = oc.intermediate_size
+        state = oc.ssm_state_size
+        dt_rank = oc.time_step_rank
+
+        def _mask_cf(states: torch.Tensor) -> torch.Tensor:
+            # Channel-first padding mask, mirroring HF (no-op for batch 1 / unpadded).
+            if attention_mask is not None and attention_mask.shape[1] > 1 and batch > 1:
+                return states * attention_mask.unsqueeze(1).to(states.dtype)
+            return states
+
+        # 1-2. in_proj + gate split, conv — reuse the HF submodule bridges (hooks fire).
+        # HF masks padding on the channel-first x both before and after the conv.
+        projected = oc.in_proj(hidden_states).transpose(1, 2)  # [b, 2*d_inner, seq]
+        x_raw, gate = projected.chunk(2, dim=1)  # [b, d_inner, seq]
+        x = oc.act(oc.conv1d(_mask_cf(x_raw))[..., :seq_len])  # [b, d_inner, seq]
+        x = _mask_cf(x)
+
+        # 3. x_proj -> dt low-rank / B / C ; dt_proj -> dt (softplus, channel-first).
+        ssm_params = oc.x_proj(x.transpose(1, 2))  # [b, seq, dt_rank + 2*state]
+        time_step, B, C = ssm_params.split([dt_rank, state, state], dim=-1)  # B, C: [b, seq, state]
+        dt = torch.nn.functional.softplus(oc.dt_proj(time_step)).transpose(1, 2).float()
+        A = -torch.exp(self.A_log.float())  # [d_inner, state]
+        x_f, B_f, C_f = x.float(), B.float(), C.float()
+
+        # 4. Eager recurrence with intervention hooks.
+        # write_t[b, c, t, s] = dt_t[c] · x_t[c] · B_t[s]
+        writes = (dt * x_f)[:, :, :, None] * B_f[:, None, :, :]  # [b, d_inner, seq, state]
+        writes = self.hook_ssm_write(writes)
+
+        ssm_state = torch.zeros(batch, d_inner, state, dtype=writes.dtype, device=writes.device)
+        states = []
+        for t in range(seq_len):
+            decay = torch.exp(A[None] * dt[:, :, t, None])  # [batch, d_inner, state]
+            ssm_state = decay * ssm_state + writes[:, :, t]
+            states.append(ssm_state)
+        state_traj = torch.stack(states, dim=2)  # [batch, d_inner, seq, state]
+        state_traj = self.hook_ssm_state(state_traj)
+
+        y = torch.einsum("bcts,bts->bct", state_traj, C_f)  # [batch, d_inner, seq]
+        y = y + self.D.float()[None, :, None] * x_f
+        scan_output = y * torch.nn.functional.silu(gate.float())
+
+        # 5. Output projection — reuse the HF submodule bridge.
+        contextualized: torch.Tensor = oc.out_proj(scan_output.transpose(1, 2).to(hidden_states.dtype))
+        return contextualized
 
     def compute_effective_attention(
         self,
