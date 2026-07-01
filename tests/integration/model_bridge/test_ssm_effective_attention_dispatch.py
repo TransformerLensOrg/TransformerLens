@@ -409,6 +409,8 @@ class TestComputeSsmStateDispatch:
     def test_full_attention_layer_raises_typeerror(self, qwen35_bridge):
         with torch.no_grad():
             _, cache = qwen35_bridge.run_with_cache(TOKENS, use_cache=False)
-        attn_layer = next(i for i in range(qwen35_bridge.cfg.n_layers) if i not in cache.ssm_layers())
+        attn_layer = next(
+            i for i in range(qwen35_bridge.cfg.n_layers) if i not in cache.ssm_layers()
+        )
         with pytest.raises(TypeError, match="gated-delta-net"):
             cache.compute_ssm_state(layer=attn_layer)

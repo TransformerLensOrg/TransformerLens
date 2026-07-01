@@ -151,7 +151,9 @@ class SSMMixerBridge(SSMStateHookMixin, GeneralizedComponent):
         scan_output = y * torch.nn.functional.silu(gate.float())
 
         # 5. Output projection — reuse the HF submodule bridge.
-        contextualized: torch.Tensor = oc.out_proj(scan_output.transpose(1, 2).to(hidden_states.dtype))
+        contextualized: torch.Tensor = oc.out_proj(
+            scan_output.transpose(1, 2).to(hidden_states.dtype)
+        )
         return contextualized
 
     def compute_effective_attention(

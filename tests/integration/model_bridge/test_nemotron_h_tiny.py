@@ -52,7 +52,9 @@ def bridge():
     )
     cfg.architectures = ["NemotronHForCausalLM"]
     hf = AutoModelForCausalLM.from_config(cfg).to(torch.float32).eval()
-    bridge_cfg = build_bridge_config_from_hf(hf.config, "NemotronHForCausalLM", "nh-tiny", torch.float32)
+    bridge_cfg = build_bridge_config_from_hf(
+        hf.config, "NemotronHForCausalLM", "nh-tiny", torch.float32
+    )
     return TransformerBridge(hf, NemotronHArchitectureAdapter(bridge_cfg), tokenizer=_Tok())
 
 

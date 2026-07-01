@@ -332,7 +332,9 @@ def _build_granite_bridge(device="cpu"):
         hf.config, "GraniteMoeHybridForCausalLM", "granitemoehybrid-tiny", torch.float32
     )
     bridge = TransformerBridge(
-        model=hf, adapter=GraniteMoeHybridArchitectureAdapter(bridge_config), tokenizer=_MockTokenizer()
+        model=hf,
+        adapter=GraniteMoeHybridArchitectureAdapter(bridge_config),
+        tokenizer=_MockTokenizer(),
     )
     if device != "cpu":
         hf.to(device)

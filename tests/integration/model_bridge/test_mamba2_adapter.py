@@ -729,7 +729,12 @@ class TestMamba2EagerScanIntervention:
 
         dt, x, B_h, _, A, _ = TestMamba2SSMState._ssd_inputs(cache, mixer, 0, seq)
         dt, x, B_h, A = dt.double(), x.double(), B_h.double(), A.double()
-        b, nh, hd, ns = state_hook.shape[0], state_hook.shape[2], state_hook.shape[3], state_hook.shape[4]
+        b, nh, hd, ns = (
+            state_hook.shape[0],
+            state_hook.shape[2],
+            state_hook.shape[3],
+            state_hook.shape[4],
+        )
 
         state = torch.zeros(b, nh, hd, ns, dtype=torch.float64)
         ref_write = torch.zeros(b, seq, nh, hd, ns, dtype=torch.float64)

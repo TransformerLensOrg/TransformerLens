@@ -106,7 +106,11 @@ class TestRealWeightSSMSurface:
 
     def test_compute_ssm_state_finite(self, cache, tokens):
         state = cache.compute_ssm_state()
-        mats = list(state.values()) if isinstance(state, dict) else [state[i] for i in range(state.shape[0])]
+        mats = (
+            list(state.values())
+            if isinstance(state, dict)
+            else [state[i] for i in range(state.shape[0])]
+        )
         assert len(mats) == len(cache.ssm_layers())
         for S in mats:
             assert torch.isfinite(S).all()

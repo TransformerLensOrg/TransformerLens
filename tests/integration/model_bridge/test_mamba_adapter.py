@@ -623,7 +623,9 @@ class TestMamba1EagerScanIntervention:
         with _eager_scan(mamba_bridge), torch.no_grad():
             base = mamba_bridge.run_with_hooks(self.TOKENS, use_cache=False, fwd_hooks=[])
             patched = mamba_bridge.run_with_hooks(
-                self.TOKENS, use_cache=False, fwd_hooks=[("blocks.0.mixer.hook_ssm_write", knockout)]
+                self.TOKENS,
+                use_cache=False,
+                fwd_hooks=[("blocks.0.mixer.hook_ssm_write", knockout)],
             )
         assert (patched - base).abs().max().item() > 1e-6
 
