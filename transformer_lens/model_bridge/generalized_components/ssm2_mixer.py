@@ -162,7 +162,9 @@ class SSM2MixerBridge(GeneralizedComponent):
         writes = dt[:, :, :, None, None] * x[:, :, :, :, None] * B[:, :, :, None, :]
         writes = self.hook_ssm_write(writes)  # [batch, seq, heads, head_dim, state]
 
-        ssm_state = torch.zeros(batch, num_heads, head_dim, state, dtype=torch.float32)
+        ssm_state = torch.zeros(
+            batch, num_heads, head_dim, state, dtype=writes.dtype, device=writes.device
+        )
         states = []
         for t in range(seq_len):
             decay = torch.exp(dt[:, t, :] * A[None, :])  # [batch, heads]
