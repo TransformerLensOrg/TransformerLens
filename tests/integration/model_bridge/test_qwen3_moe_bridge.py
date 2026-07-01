@@ -12,7 +12,12 @@ from transformers import AutoConfig, AutoModelForCausalLM
 
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.model_bridge.bridge import TransformerBridge
-from transformer_lens.model_bridge.generalized_components import MoEBridge
+from transformer_lens.model_bridge.generalized_components import (
+    MoEBridge,
+    PositionEmbeddingsAttentionBridge,
+    RMSNormalizationBridge,
+    RotaryEmbeddingBridge,
+)
 from transformer_lens.model_bridge.sources.transformers import (
     map_default_transformer_lens_config,
 )
@@ -96,11 +101,18 @@ class TestQwen3MoeBridgeStructure:
     def test_cfg_n_kv_heads(self, tiny_qwen3moe_bridge) -> None:
         assert tiny_qwen3moe_bridge.cfg.n_key_value_heads == 2
 
-    def test_cfg_positional_embedding_type(self, tiny_qwen3moe_bridge) -> None:
-        assert tiny_qwen3moe_bridge.cfg.positional_embedding_type == "rotary"
+    def test_rotary_pos_embed_structure(self, tiny_qwen3moe_bridge) -> None:
+        """positional_embedding_type='rotary' must select RoPE attention + a rotary_emb bridge."""
+        attn = tiny_qwen3moe_bridge.blocks[0].attn
+        assert isinstance(attn, PositionEmbeddingsAttentionBridge)
+        assert isinstance(tiny_qwen3moe_bridge.rotary_emb, RotaryEmbeddingBridge)
 
-    def test_cfg_normalization_type(self, tiny_qwen3moe_bridge) -> None:
-        assert tiny_qwen3moe_bridge.cfg.normalization_type == "RMS"
+    def test_norm_components_are_rms(self, tiny_qwen3moe_bridge) -> None:
+        """normalization_type='RMS' must select RMSNormalizationBridge for every norm."""
+        block = tiny_qwen3moe_bridge.blocks[0]
+        assert isinstance(block.ln1, RMSNormalizationBridge)
+        assert isinstance(block.ln2, RMSNormalizationBridge)
+        assert isinstance(tiny_qwen3moe_bridge.ln_final, RMSNormalizationBridge)
 
     def test_mlp_blocks_are_moe_bridge(self, tiny_qwen3moe_bridge) -> None:
         for i, block in enumerate(tiny_qwen3moe_bridge.blocks):

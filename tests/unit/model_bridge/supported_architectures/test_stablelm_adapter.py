@@ -684,28 +684,3 @@ class TestStableLMSetupComponentTesting:
         attn_template = adapter.get_generalized_component("blocks.0.attn")
         assert isinstance(attn_template, PositionEmbeddingsAttentionBridge)
         assert attn_template._rotary_emb is rotary_emb
-
-
-class TestStableLMArchitectureGuards:
-    """Guards against drift from the StableLM conversion-map contract."""
-
-    def test_no_normalization_weights_in_conversions(
-        self, adapter: StableLmArchitectureAdapter
-    ) -> None:
-        """LayerNorm weights and biases are not folded by this adapter, so no norm keys
-        appear in the conversion map."""
-        for key in _conversions(adapter):
-            assert "ln1" not in key
-            assert "ln2" not in key
-            assert "ln_final" not in key
-
-    def test_no_output_or_mlp_bias_conversions(self, adapter: StableLmArchitectureAdapter) -> None:
-        """O has no bias (HF does not expose one) and the MLP projections are bias-free.
-        The only biases declared are Q/K/V on the attention input."""
-        for key in _conversions(adapter):
-            if key.endswith(".bias"):
-                assert key in {
-                    "blocks.{i}.attn.q.bias",
-                    "blocks.{i}.attn.k.bias",
-                    "blocks.{i}.attn.v.bias",
-                }

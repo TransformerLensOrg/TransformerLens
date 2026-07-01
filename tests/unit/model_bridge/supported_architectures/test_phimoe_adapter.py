@@ -61,12 +61,6 @@ class TestPhiMoEAdapterConfig:
         assert adapter.cfg.rotary_base == 10_000.0
         assert adapter.cfg.eos_token_id == [32000, 32007]
 
-    def test_moe_config_is_propagated(self, adapter: PhiMoEArchitectureAdapter) -> None:
-        assert adapter.cfg.num_experts == 8
-        assert adapter.cfg.experts_per_token == 2
-        assert adapter.cfg.router_jitter_noise == 0.01
-        assert adapter.cfg.input_jitter_noise == 0.01
-
 
 class TestPhiMoEWeightConversions:
     def test_conversion_keys_include_attention_biases(

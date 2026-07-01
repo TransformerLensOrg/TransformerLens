@@ -27,6 +27,8 @@ if is_bitsandbytes_available():
 
 
 class AbstractAttention(ABC, nn.Module):
+    ROTARY_INITIAL_CACHE_SIZE = 2048
+
     alibi: Union[torch.Tensor, None]
     q_norm: Optional[RMSNorm]
     k_norm: Optional[RMSNorm]
@@ -156,15 +158,11 @@ class AbstractAttention(ABC, nn.Module):
             self.hook_rot_q = HookPoint()
             if self.cfg.rotary_dim is None:  # keep mypy happy
                 raise ValueError("Rotary dim must be provided for rotary positional embeddings")
-            # Use per-layer RoPE base if specified (e.g., Gemma 3 uses 10k for local, 1M for global)
-            if self.cfg.rotary_base_local is not None and self.attn_type == "local":
-                rope_base = self.cfg.rotary_base_local
-            else:
-                rope_base = self.cfg.rotary_base
+            rotary_cache_size = min(self.cfg.n_ctx, self.ROTARY_INITIAL_CACHE_SIZE)
             sin, cos = self.calculate_sin_cos_rotary(
                 self.cfg.rotary_dim,
-                self.cfg.n_ctx,
-                base=rope_base,
+                rotary_cache_size,
+                base=self._rotary_base(),
                 dtype=self.cfg.dtype,
             )
             self.register_buffer("rotary_sin", sin)
@@ -613,6 +611,11 @@ class AbstractAttention(ABC, nn.Module):
 
         return final_mask[None, None, :, :]
 
+    def _rotary_base(self) -> Union[float, int]:
+        if self.cfg.rotary_base_local is not None and self.attn_type == "local":
+            return self.cfg.rotary_base_local
+        return self.cfg.rotary_base
+
     def calculate_sin_cos_rotary(
         self,
         rotary_dim: int,
@@ -747,7 +750,11 @@ class AbstractAttention(ABC, nn.Module):
         # Dynamically extend rotary embeddings if needed for long context
         max_pos_needed = past_kv_pos_offset + x_pos
         if max_pos_needed > self.rotary_cos.shape[0]:
-            self._extend_rotary_embeddings(max_pos_needed)
+            new_size = min(
+                self.cfg.n_ctx,
+                max(max_pos_needed, 2 * self.rotary_cos.shape[0]),
+            )
+            self._extend_rotary_embeddings(new_size)
 
         if attention_mask is None:
             rotary_cos = cast(torch.Tensor, self.rotary_cos)[
@@ -768,9 +775,6 @@ class AbstractAttention(ABC, nn.Module):
 
     def _extend_rotary_embeddings(self, new_size: int):
         """Extend rotary embeddings to support longer contexts dynamically."""
-        # Get the RoPE base from config or use default
-        rope_base = getattr(self.cfg, "rotary_base", 10000)
-
         # Ensure rotary_dim is set
         assert self.cfg.rotary_dim is not None, "rotary_dim must be set for rotary embeddings"
 
@@ -778,7 +782,7 @@ class AbstractAttention(ABC, nn.Module):
         sin, cos = self.calculate_sin_cos_rotary(
             self.cfg.rotary_dim,
             new_size,
-            base=rope_base,
+            base=self._rotary_base(),
             dtype=self.cfg.dtype,
         )
 
@@ -800,11 +804,17 @@ class AbstractAttention(ABC, nn.Module):
         unexpected_keys,
         error_msgs,
     ):
-        mask_key = prefix + "mask"
-        saved_mask = state_dict.get(mask_key)
-        if isinstance(saved_mask, torch.Tensor) and saved_mask.shape != self.mask.shape:
-            state_dict = state_dict.copy()
-            state_dict[mask_key] = self.mask
+        for buffer_name in ("mask", "rotary_sin", "rotary_cos"):
+            buffer_key = prefix + buffer_name
+            saved_buffer = state_dict.get(buffer_key)
+            current_buffer = getattr(self, buffer_name, None)
+            if (
+                isinstance(saved_buffer, torch.Tensor)
+                and isinstance(current_buffer, torch.Tensor)
+                and saved_buffer.shape != current_buffer.shape
+            ):
+                state_dict = state_dict.copy()
+                state_dict[buffer_key] = current_buffer
         super()._load_from_state_dict(
             state_dict,
             prefix,

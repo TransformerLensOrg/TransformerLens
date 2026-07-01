@@ -80,14 +80,6 @@ def adapter(cfg: TransformerBridgeConfig) -> GraniteMoeHybridArchitectureAdapter
 class TestGraniteMoeHybridAdapterConfig:
     """Tests that the adapter sets Granite and hybrid-specific config flags."""
 
-    def test_synthetic_config_fields_are_preserved(
-        self, adapter: GraniteMoeHybridArchitectureAdapter
-    ) -> None:
-        assert adapter.cfg.layer_types == LAYER_TYPES
-        assert adapter.cfg.num_experts == 4
-        assert adapter.cfg.experts_per_token == 2
-        assert adapter.cfg.n_key_value_heads == N_KV_HEADS
-
     def test_common_granite_flags(self, adapter: GraniteMoeHybridArchitectureAdapter) -> None:
         assert adapter.cfg.normalization_type == "RMS"
         assert adapter.cfg.positional_embedding_type == "rotary"

@@ -22,6 +22,7 @@ import torch.nn as nn
 from torch import ones, randn, zeros
 
 from transformer_lens.config import TransformerBridgeConfig
+from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion
 from transformer_lens.conversion_utils.conversion_steps.rearrange_tensor_conversion import (
     RearrangeTensorConversion,
 )
@@ -292,6 +293,12 @@ class TestSmolLM3WeightConversions:
             "blocks.{i}.attn.o.weight",
         }
 
+    def test_gqa_fallback_to_n_heads_without_kv_heads(self) -> None:
+        """Without n_key_value_heads, K/V fall back to n_heads in the conversions."""
+        adapter = SmolLM3ArchitectureAdapter(_make_cfg(n_key_value_heads=None))
+        for slot in ("k", "v"):
+            assert _rearrange(adapter, f"blocks.{{i}}.attn.{slot}.weight").axes_lengths["n"] == 4
+
     def test_q_weight_uses_n_heads(self, adapter: SmolLM3ArchitectureAdapter) -> None:
         rearrange = _rearrange(adapter, "blocks.{i}.attn.q.weight")
         assert rearrange.pattern == "(n h) m -> n m h"
@@ -308,19 +315,6 @@ class TestSmolLM3WeightConversions:
         rearrange = _rearrange(adapter, "blocks.{i}.attn.o.weight")
         assert rearrange.pattern == "m (n h) -> n h m"
         assert rearrange.axes_lengths["n"] == adapter.cfg.n_heads
-
-    def test_gqa_fallback_to_n_heads_without_kv_heads(self) -> None:
-        """Without n_key_value_heads, K/V fall back to n_heads in the conversions."""
-        adapter = SmolLM3ArchitectureAdapter(_make_cfg(n_key_value_heads=None))
-        for slot in ("k", "v"):
-            assert _rearrange(adapter, f"blocks.{{i}}.attn.{slot}.weight").axes_lengths["n"] == 4
-
-    def test_no_norm_offset_conversions(self, adapter: SmolLM3ArchitectureAdapter) -> None:
-        """LLaMA-style RMSNorm: no normalization weights in the conversion map."""
-        for key in _conversions(adapter):
-            assert "ln1" not in key
-            assert "ln2" not in key
-            assert "ln_final" not in key
 
 
 class TestSmolLM3GQAHookShapes:

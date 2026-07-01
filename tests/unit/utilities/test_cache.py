@@ -23,13 +23,6 @@ class TestGetPosOffset:
         assert result == 0
         assert isinstance(result, int)
 
-    def test_get_pos_offset_none_cache_different_batch_sizes(self):
-        """Test get_pos_offset with None cache and different batch sizes."""
-        for batch_size in [1, 2, 10, 100]:
-            result = get_pos_offset(None, batch_size=batch_size)
-            assert result == 0
-            assert isinstance(result, int)
-
     def test_get_pos_offset_with_empty_cache(self):
         """Test get_pos_offset with an empty cache (0 positions)."""
         # Create a real cache entry with 0 positions

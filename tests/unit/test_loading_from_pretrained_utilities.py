@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from unittest import mock
 
 import pytest
@@ -93,6 +94,63 @@ def test_n_ctx_override_larger_than_default_warns(mock_warning: mock.MagicMock):
         "trained on sequences this long and may produce unreliable results. "
         "Ensure you have sufficient memory for this context length."
     )
+
+
+def _minimal_qwen_config(architecture: str, **overrides: object) -> SimpleNamespace:
+    values = {
+        "architectures": [architecture],
+        "hidden_size": 128,
+        "num_attention_heads": 4,
+        "intermediate_size": 512,
+        "num_hidden_layers": 2,
+        "layer_norm_epsilon": 1e-6,
+        "rms_norm_eps": 1e-6,
+        "vocab_size": 1000,
+        "scale_attn_weights": True,
+        "initializer_range": 0.02,
+        "kv_channels": 32,
+        "num_key_value_heads": 4,
+        "hidden_act": "silu",
+        "rope_theta": 1000000.0,
+    }
+    values.update(overrides)
+    return SimpleNamespace(**values)
+
+
+@mock.patch("transformer_lens.loading_from_pretrained.AutoConfig.from_pretrained")
+def test_qwen_uses_hf_seq_length_for_n_ctx(mock_from_pretrained: mock.MagicMock):
+    mock_from_pretrained.return_value = _minimal_qwen_config(
+        "QWenLMHeadModel",
+        seq_length=8192,
+        max_position_embeddings=32768,
+    )
+
+    cfg = get_pretrained_model_config("Qwen/Qwen-7B")
+
+    assert cfg.n_ctx == 8192
+
+
+@mock.patch("transformer_lens.loading_from_pretrained.AutoConfig.from_pretrained")
+@pytest.mark.parametrize(
+    ("model_name", "max_position_embeddings"),
+    [
+        ("Qwen/Qwen1.5-0.5B", 32768),
+        ("Qwen/Qwen2-0.5B", 131072),
+    ],
+)
+def test_qwen2_uses_hf_max_position_embeddings_for_n_ctx(
+    mock_from_pretrained: mock.MagicMock,
+    model_name: str,
+    max_position_embeddings: int,
+):
+    mock_from_pretrained.return_value = _minimal_qwen_config(
+        "Qwen2ForCausalLM",
+        max_position_embeddings=max_position_embeddings,
+    )
+
+    cfg = get_pretrained_model_config(model_name)
+
+    assert cfg.n_ctx == max_position_embeddings
 
 
 # --- Architecture config tests ---

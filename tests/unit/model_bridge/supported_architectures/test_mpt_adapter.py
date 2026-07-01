@@ -5,6 +5,10 @@ import torch
 import torch.nn as nn
 
 from transformer_lens.config import TransformerBridgeConfig
+from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion
+from transformer_lens.conversion_utils.param_processing_conversion import (
+    ParamProcessingConversion,
+)
 from transformer_lens.model_bridge.supported_architectures.mpt import (
     MPTArchitectureAdapter,
 )
@@ -305,6 +309,12 @@ class TestMPTBlockSubmoduleStructure:
 class TestMPTWeightConversionSemantics:
     """Each weight conversion entry uses the expected class and pattern."""
 
+    def test_no_norm_offset_conversions(self, adapter: MPTArchitectureAdapter) -> None:
+        # Plain LayerNorm: no +1 trick like Gemma.
+        for key in adapter.weight_processing_conversions:
+            assert not key.startswith("blocks.{i}.ln")
+            assert key != "ln_final.weight"
+
     def test_qkv_conversion_classes_and_patterns(self, adapter: MPTArchitectureAdapter) -> None:
         from transformer_lens.conversion_utils.conversion_steps import (
             RearrangeTensorConversion,
@@ -327,12 +337,6 @@ class TestMPTWeightConversionSemantics:
         conv = adapter.weight_processing_conversions["blocks.{i}.attn.o.weight"]
         assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)
         assert conv.tensor_conversion.pattern == "m (n h) -> n h m"
-
-    def test_no_norm_offset_conversions(self, adapter: MPTArchitectureAdapter) -> None:
-        # Plain LayerNorm: no +1 trick like Gemma.
-        for key in adapter.weight_processing_conversions:
-            assert not key.startswith("blocks.{i}.ln")
-            assert key != "ln_final.weight"
 
 
 # ---------------------------------------------------------------------------

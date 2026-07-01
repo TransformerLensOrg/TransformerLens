@@ -59,9 +59,6 @@ class TestLlavaOnevisionInheritance:
     def test_subclass_of_llava(self) -> None:
         assert issubclass(LlavaOnevisionArchitectureAdapter, LlavaArchitectureAdapter)
 
-    def test_instance_of_llava(self, adapter: LlavaOnevisionArchitectureAdapter) -> None:
-        assert isinstance(adapter, LlavaArchitectureAdapter)
-
 
 # ---------------------------------------------------------------------------
 # prepare_model weight-tying tests

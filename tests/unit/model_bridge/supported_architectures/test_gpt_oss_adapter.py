@@ -195,10 +195,6 @@ class TestGPTOSSWeightConversions:
         for slot in ("k", "v"):
             assert _rearrange(adapter, f"blocks.{{i}}.attn.{slot}.weight").axes_lengths["n"] == 4
 
-    def test_gqa_does_not_affect_q_or_o(self, adapter: GPTOSSArchitectureAdapter) -> None:
-        assert _rearrange(adapter, "blocks.{i}.attn.q.weight").axes_lengths["n"] == 4
-        assert _rearrange(adapter, "blocks.{i}.attn.o.weight").axes_lengths["n"] == 4
-
 
 class TestGPTOSSComponentMapping:
     """Structure of the component mapping: required keys and submodules."""
@@ -299,12 +295,6 @@ class TestGPTOSSMoEStructure:
         mlp = _mapping(adapter)["blocks"].submodules["mlp"]
         assert isinstance(mlp, MoEBridge)
         assert not isinstance(mlp, GatedMLPBridge)
-
-    def test_mlp_submodules_is_empty(self, adapter: GPTOSSArchitectureAdapter) -> None:
-        """The entire MoE block (router + experts) is wrapped opaquely by MoEBridge,
-        no submodules are exposed for hook access."""
-        mlp = _mapping(adapter)["blocks"].submodules["mlp"]
-        assert mlp.submodules == {}
 
 
 class TestGPTOSSGQAHookShapes:

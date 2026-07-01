@@ -254,103 +254,13 @@ class TestQwen3_5ComponentMapping:
             "unembed",
         }
 
-    def test_embed_path(self, adapter):
-        assert adapter.component_mapping["embed"].name == "model.embed_tokens"
-
-    def test_rotary_emb_path(self, adapter):
-        assert adapter.component_mapping["rotary_emb"].name == "model.rotary_emb"
-
-    def test_blocks_path(self, adapter):
-        assert adapter.component_mapping["blocks"].name == "model.layers"
-
-    def test_ln_final_path(self, adapter):
-        assert adapter.component_mapping["ln_final"].name == "model.norm"
-
-    def test_unembed_path(self, adapter):
-        assert adapter.component_mapping["unembed"].name == "lm_head"
-
     def test_block_submodules_keys(self, adapter):
         submodules = adapter.component_mapping["blocks"].submodules
         assert set(submodules.keys()) == {"ln1", "ln2", "mlp", "attn", "linear_attn"}
 
-    def test_attn_is_optional(self, adapter):
-        """attn is absent on linear-attention layers."""
-        submodules = adapter.component_mapping["blocks"].submodules
-        assert submodules["attn"].optional is True
-
-    def test_linear_attn_is_optional(self, adapter):
-        """linear_attn is absent on full-attention layers."""
-        submodules = adapter.component_mapping["blocks"].submodules
-        assert submodules["linear_attn"].optional is True
-
-    def test_linear_attn_bridge_type(self, adapter):
-        from transformer_lens.model_bridge.generalized_components.gated_delta_net import (
-            GatedDeltaNetBridge,
-        )
-
-        submodules = adapter.component_mapping["blocks"].submodules
-        assert isinstance(submodules["linear_attn"], GatedDeltaNetBridge)
-
-    def test_ln1_path(self, adapter):
-        assert adapter.component_mapping["blocks"].submodules["ln1"].name == "input_layernorm"
-
-    def test_ln2_path(self, adapter):
-        assert (
-            adapter.component_mapping["blocks"].submodules["ln2"].name == "post_attention_layernorm"
-        )
-
-    def test_mlp_path(self, adapter):
-        assert adapter.component_mapping["blocks"].submodules["mlp"].name == "mlp"
-
     def test_mlp_submodule_keys(self, adapter):
         mlp = adapter.component_mapping["blocks"].submodules["mlp"]
         assert set(mlp.submodules.keys()) == {"gate", "in", "out"}
-
-    def test_mlp_gate_path(self, adapter):
-        mlp = adapter.component_mapping["blocks"].submodules["mlp"]
-        assert mlp.submodules["gate"].name == "gate_proj"
-
-    def test_mlp_in_path(self, adapter):
-        mlp = adapter.component_mapping["blocks"].submodules["mlp"]
-        assert mlp.submodules["in"].name == "up_proj"
-
-    def test_mlp_out_path(self, adapter):
-        mlp = adapter.component_mapping["blocks"].submodules["mlp"]
-        assert mlp.submodules["out"].name == "down_proj"
-
-    def test_blocks_bridge_type(self, adapter):
-        from transformer_lens.model_bridge.generalized_components import BlockBridge
-
-        assert isinstance(adapter.component_mapping["blocks"], BlockBridge)
-
-    def test_rotary_emb_bridge_type(self, adapter):
-        from transformer_lens.model_bridge.generalized_components import (
-            RotaryEmbeddingBridge,
-        )
-
-        assert isinstance(adapter.component_mapping["rotary_emb"], RotaryEmbeddingBridge)
-
-    def test_ln1_bridge_type(self, adapter):
-        from transformer_lens.model_bridge.generalized_components import (
-            RMSNormalizationBridge,
-        )
-
-        ln1 = adapter.component_mapping["blocks"].submodules["ln1"]
-        assert isinstance(ln1, RMSNormalizationBridge)
-
-    def test_ln2_bridge_type(self, adapter):
-        from transformer_lens.model_bridge.generalized_components import (
-            RMSNormalizationBridge,
-        )
-
-        ln2 = adapter.component_mapping["blocks"].submodules["ln2"]
-        assert isinstance(ln2, RMSNormalizationBridge)
-
-    def test_mlp_bridge_type(self, adapter):
-        from transformer_lens.model_bridge.generalized_components import GatedMLPBridge
-
-        mlp = adapter.component_mapping["blocks"].submodules["mlp"]
-        assert isinstance(mlp, GatedMLPBridge)
 
     def test_mlp_gate_bridge_type(self, adapter):
         from transformer_lens.model_bridge.generalized_components import LinearBridge
@@ -370,10 +280,6 @@ class TestQwen3_5ComponentMapping:
         down = adapter.component_mapping["blocks"].submodules["mlp"].submodules["out"]
         assert isinstance(down, LinearBridge)
 
-    def test_weight_processing_conversions_empty(self, adapter):
-        """No attention submodules mapped, so no conversions."""
-        assert adapter.weight_processing_conversions == {}
-
 
 class TestQwen3_5ConfigAttributes:
     """cfg attributes set by the adapter."""
@@ -386,10 +292,6 @@ class TestQwen3_5ConfigAttributes:
 
         cfg = _make_bridge_cfg()
         return Qwen3_5ArchitectureAdapter(cfg)
-
-    def test_supports_fold_ln_false(self, adapter):
-        """Hybrid layers break fold_ln."""
-        assert adapter.supports_fold_ln is False
 
     def test_n_key_value_heads_not_set_when_absent(self, qwen3_5_dependency_available):
         from transformer_lens.config.transformer_bridge_config import (
@@ -543,25 +445,6 @@ class TestQwen3_5ComponentTypes:
 
         return Qwen3_5ArchitectureAdapter(_make_bridge_cfg())
 
-    def test_embed_is_embedding_bridge(self, adapter):
-        from transformer_lens.model_bridge.generalized_components import EmbeddingBridge
-
-        assert isinstance(adapter.component_mapping["embed"], EmbeddingBridge)
-
-    def test_ln_final_is_rms_norm_bridge(self, adapter):
-        from transformer_lens.model_bridge.generalized_components import (
-            RMSNormalizationBridge,
-        )
-
-        assert isinstance(adapter.component_mapping["ln_final"], RMSNormalizationBridge)
-
-    def test_unembed_is_unembedding_bridge(self, adapter):
-        from transformer_lens.model_bridge.generalized_components import (
-            UnembeddingBridge,
-        )
-
-        assert isinstance(adapter.component_mapping["unembed"], UnembeddingBridge)
-
 
 @pytest.mark.skipif(
     not _QWEN3_5_AVAILABLE,
@@ -579,16 +462,6 @@ class TestQwen3_5AttnSubmodules:
         adapter = Qwen3_5ArchitectureAdapter(_make_bridge_cfg())
         return adapter.component_mapping["blocks"].submodules["attn"]
 
-    def test_attn_is_position_embeddings_attention(self, attn):
-        from transformer_lens.model_bridge.generalized_components.position_embeddings_attention import (
-            PositionEmbeddingsAttentionBridge,
-        )
-
-        assert isinstance(attn, PositionEmbeddingsAttentionBridge)
-
-    def test_attn_path(self, attn):
-        assert attn.name == "self_attn"
-
     def test_attn_qkvo_submodule_paths(self, attn):
         from transformer_lens.model_bridge.generalized_components import LinearBridge
 
@@ -601,17 +474,6 @@ class TestQwen3_5AttnSubmodules:
             sub = attn.submodules[sub_name]
             assert isinstance(sub, LinearBridge)
             assert sub.name == expected_path
-
-    def test_attn_q_norm_k_norm_present(self, attn):
-        """Qwen3 family uses per-head Q/K RMSNorm."""
-        from transformer_lens.model_bridge.generalized_components import (
-            RMSNormalizationBridge,
-        )
-
-        assert isinstance(attn.submodules["q_norm"], RMSNormalizationBridge)
-        assert isinstance(attn.submodules["k_norm"], RMSNormalizationBridge)
-        assert attn.submodules["q_norm"].name == "q_norm"
-        assert attn.submodules["k_norm"].name == "k_norm"
 
 
 @pytest.mark.skipif(

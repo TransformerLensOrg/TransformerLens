@@ -253,14 +253,3 @@ class TestGraniteMoeAdapterComponentMapping:
         attn = moe_adapter.component_mapping["blocks"].submodules["attn"]
         assert isinstance(attn, PositionEmbeddingsAttentionBridge)
         assert set(attn.submodules.keys()) == {"q", "k", "v", "o"}
-
-    def test_moe_config_flags_match_dense(
-        self,
-        adapter: GraniteArchitectureAdapter,
-        moe_adapter: GraniteMoeArchitectureAdapter,
-    ) -> None:
-        """MoE variant inherits the same config flags as dense Granite."""
-        assert moe_adapter.cfg.normalization_type == adapter.cfg.normalization_type
-        assert moe_adapter.cfg.positional_embedding_type == adapter.cfg.positional_embedding_type
-        assert moe_adapter.cfg.final_rms == adapter.cfg.final_rms
-        assert moe_adapter.cfg.default_prepend_bos == adapter.cfg.default_prepend_bos

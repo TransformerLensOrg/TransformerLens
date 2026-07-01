@@ -391,8 +391,9 @@ def boot(
             models loaded with custom configurations (e.g., quantization via BitsAndBytesConfig).
             When provided, load_weights is ignored.
         device_map: HuggingFace-style device map (``"auto"``, ``"balanced"``, dict, etc.) for
-            multi-GPU inference. Passed straight to ``from_pretrained``. Mutually exclusive
-            with ``device``.
+            dispatched inference. Explicit maps may include CPU targets; disk / meta offload
+            targets are still rejected because Bridge component wrappers need additional
+            offload-hook routing work. Mutually exclusive with ``device``.
         n_devices: Convenience: split the model across this many CUDA devices (translated to a
             ``max_memory`` dict internally). Requires CUDA with at least this many visible devices.
         max_memory: Optional per-device memory budget for HF's dispatcher.
@@ -590,6 +591,7 @@ def boot(
     # device_map + max_memory pair here so downstream code only needs to check the
     # resolved values.
     from transformer_lens.utilities.multi_gpu import (
+        cast_floating_params_to_dtype,
         count_unique_devices,
         find_embedding_device,
         resolve_device_map,
@@ -665,24 +667,34 @@ def boot(
         # Skip explicit .to(device) when accelerate has placed weights via device_map.
         if resolved_device_map is None and device is not None:
             hf_model = hf_model.to(device)
-        # Cast params to dtype; preserve float32 buffers (e.g., RotaryEmbedding.inv_freq)
-        for param in hf_model.parameters():
-            if param.is_floating_point() and param.dtype != dtype:
-                param.data = param.data.to(dtype=dtype)
+        # Cast params to dtype; preserve float32 buffers (e.g., RotaryEmbedding.inv_freq).
+        # Use module-level alignment so Accelerate can temporarily materialize offloaded
+        # parameters before we touch them.
+        cast_floating_params_to_dtype(hf_model, dtype)
     # Derive cfg.device / cfg.n_devices from hf_device_map when present. This covers:
     #   - fresh loads with a resolved device_map (set above)
     #   - pre-loaded hf_model that the caller dispatched themselves (e.g., device_map="auto")
     hf_device_map_post = getattr(hf_model, "hf_device_map", None)
     if hf_device_map_post:
-        # Pre-loaded path can still smuggle CPU/disk offload in; validate here too.
+        # CPU placement is supported. Disk / meta offload still needs a separate Bridge
+        # hook-routing pass because wrapped subcomponents can bypass Accelerate hooks.
         offload_values = {str(v).lower() for v in hf_device_map_post.values() if isinstance(v, str)}
-        forbidden = offload_values & {"cpu", "disk", "meta"}
-        if forbidden and ((n_devices is not None and n_devices > 1) or device_map is not None):
-            # Fresh-load path: we set the device_map ourselves, so this shouldn't happen —
-            # but if the user asked for n_devices>1 and somehow got CPU offload, surface it.
+        unsupported = offload_values & {"disk", "meta"}
+        if unsupported:
             raise ValueError(
-                f"hf_device_map contains unsupported offload targets: {sorted(forbidden)}. "
-                "v1 multi-device support is GPU-only."
+                f"hf_device_map contains unsupported offload targets: {sorted(unsupported)}. "
+                "TransformerBridge currently supports CPU device_map targets, but disk / meta "
+                "offload can bypass Accelerate hooks inside wrapped Bridge components."
+            )
+        if (
+            "cpu" in offload_values
+            and device_map is None
+            and n_devices is not None
+            and n_devices > 1
+        ):
+            raise ValueError(
+                "hf_device_map contains CPU targets. n_devices is GPU-only; pass device_map "
+                "explicitly for CPU placement."
             )
     embedding_device = find_embedding_device(hf_model)
     if embedding_device is not None:
