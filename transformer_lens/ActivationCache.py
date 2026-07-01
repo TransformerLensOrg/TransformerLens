@@ -17,6 +17,7 @@ import logging
 from typing import (
     TYPE_CHECKING,
     Any,
+    Callable,
     Dict,
     Iterator,
     List,
@@ -37,7 +38,6 @@ from transformer_lens.utilities import Slice, SliceInput, warn_if_mps
 
 if TYPE_CHECKING:
     from transformer_lens.HookedTransformer import HookedTransformer
-    from transformer_lens.model_bridge.bridge import TransformerBridge
 
 
 def _normalize_projection_to_2d(
@@ -754,37 +754,6 @@ class ActivationCache:
             # Sum over d_head to get the contribution of each head to the residual stream
             self.cache_dict[f"blocks.{layer}.attn.hook_result"] = result.sum(dim=-2)
 
-    def compute_ssm_state(
-        self,
-        layer: Optional[int] = None,
-        time_step: Optional[int] = None,
-    ) -> Union[torch.Tensor, Dict[int, torch.Tensor]]:
-        """Reconstruct the recurrent SSM state ``S`` from this cache.
-
-        The single discovery surface for Mamba-2 / SSM recurrent state, mirroring
-        ``compute_head_results``. Read-only post-hoc reconstruction from the
-        cached in_proj/conv1d hooks (no forward re-run); requires a
-        ``TransformerBridge`` with SSM layers, cached via ``run_with_cache``. See
-        ``SSM2MixerBridge.compute_ssm_state`` for the recurrence, shapes, and the
-        ``time_step`` memory bound.
-
-        Args:
-            layer: Specific block index, or None for every SSM layer.
-            time_step: Optional single position (memory-bounded); None for all.
-
-        Returns:
-            A per-layer state tensor for a single ``layer``; for ``layer=None`` a
-            stacked tensor (dim 0 = layer) when every block is an SSM layer, else
-            a ``{layer_idx: state}`` dict over the SSM layers.
-        """
-        from transformer_lens.model_bridge.supported_architectures.mamba2 import (
-            compute_ssm_state,
-        )
-
-        return compute_ssm_state(
-            cast("TransformerBridge", self.model), self, layer=layer, time_step=time_step
-        )
-
     def ssm_layers(self, mixer_type: Optional[type] = None) -> List[int]:
         """Return the block indices whose mixer is an SSM / recurrent mixer.
 
@@ -815,6 +784,36 @@ class ActivationCache:
                 continue
             layers.append(i)
         return layers
+
+    def _over_ssm_layers(
+        self,
+        fn: Callable[[Any, int], torch.Tensor],
+        mixer_type: Optional[type] = None,
+    ) -> Union[torch.Tensor, Dict[int, torch.Tensor]]:
+        """Apply ``fn(mixer, layer_idx)`` over every SSM layer; stack or dict.
+
+        The single SSM layer-enumeration used by both ``compute_ssm_state`` and
+        ``compute_ssm_effective_attention``. Returns a stacked tensor (dim 0 =
+        layer) when *every* block is an SSM layer, else a ``{layer_idx: result}``
+        dict over the SSM layers (heterogeneous hybrids).
+        """
+        from transformer_lens.model_bridge.generalized_components.ssm_protocol import (
+            find_ssm_mixer,
+        )
+
+        bridge = self.model
+        indices = self.ssm_layers(mixer_type=mixer_type)
+        if not indices:
+            raise RuntimeError(
+                "No SSM mixer layers found. Use an SSM / hybrid bridge and "
+                "run_with_cache first (gated-delta-net needs use_cache=False)."
+            )
+        results: Dict[int, torch.Tensor] = {
+            i: fn(cast(Any, find_ssm_mixer(bridge.blocks[i])), i) for i in indices
+        }
+        if indices == list(range(len(bridge.blocks))):
+            return torch.stack([results[i] for i in indices], dim=0)
+        return results
 
     def compute_ssm_effective_attention(
         self,
@@ -870,30 +869,59 @@ class ActivationCache:
             result: torch.Tensor = fn(cache=self, layer_idx=layer_idx, **kwargs)
             return result
 
-        bridge = self.model
         if layer is not None:
-            single = find_ssm_mixer(bridge.blocks[layer])
+            single = find_ssm_mixer(self.model.blocks[layer])
             if single is None:
                 raise TypeError(f"Block {layer} has no SSM mixer (no compute_effective_attention).")
             return _call(single, layer)
+        return self._over_ssm_layers(_call)
 
-        indices = self.ssm_layers()
-        if not indices:
-            raise RuntimeError(
-                "compute_ssm_effective_attention found no SSM layers. Use an SSM "
-                "or hybrid bridge and run_with_cache first (gated-delta-net needs "
-                "run_with_cache(..., use_cache=False))."
+    def compute_ssm_state(
+        self,
+        layer: Optional[int] = None,
+        time_step: Optional[int] = None,
+    ) -> Union[torch.Tensor, Dict[int, torch.Tensor]]:
+        """Reconstruct the recurrent SSM state ``S`` from this cache.
+
+        The single discovery surface for Mamba-2 recurrent state (only
+        ``SSM2MixerBridge`` reconstructs it), mirroring ``compute_head_results``.
+        Read-only post-hoc reconstruction from the cached in_proj/conv1d hooks (no
+        forward re-run); requires a Mamba-2 / Mamba-2-hybrid bridge cached via
+        ``run_with_cache``. See ``SSM2MixerBridge.compute_ssm_state`` for the
+        recurrence, shapes, and the ``time_step`` memory bound.
+
+        Args:
+            layer: Specific block index, or None for every Mamba-2 layer.
+            time_step: Optional single position (memory-bounded); None for all.
+
+        Returns:
+            A per-layer state tensor for a single ``layer``; for ``layer=None`` a
+            stacked tensor (dim 0 = layer) when every block is a Mamba-2 layer,
+            else a ``{layer_idx: state}`` dict over the Mamba-2 layers.
+
+        Raises:
+            TypeError: If the requested ``layer`` has no Mamba-2 mixer.
+            RuntimeError: If ``layer=None`` finds no Mamba-2 layers.
+        """
+        from transformer_lens.model_bridge.generalized_components import SSM2MixerBridge
+        from transformer_lens.model_bridge.generalized_components.ssm_protocol import (
+            find_ssm_mixer,
+        )
+
+        def _call(mixer: Any, layer_idx: int) -> torch.Tensor:
+            state: torch.Tensor = cast(Any, mixer).compute_ssm_state(
+                self, layer_idx=layer_idx, time_step=time_step
             )
-        results: Dict[int, torch.Tensor] = {}
-        for i in indices:
-            mixer = find_ssm_mixer(bridge.blocks[i])
-            assert mixer is not None  # ssm_layers only returns blocks with a mixer
-            results[i] = _call(mixer, i)
+            return state
 
-        n_blocks = len(bridge.blocks)
-        if indices == list(range(n_blocks)):
-            return torch.stack([results[i] for i in range(n_blocks)], dim=0)
-        return results
+        if layer is not None:
+            single = find_ssm_mixer(self.model.blocks[layer])
+            if not isinstance(single, SSM2MixerBridge):
+                raise TypeError(
+                    f"Block {layer} has no Mamba-2 mixer; compute_ssm_state is Mamba-2 only."
+                )
+            return _call(single, layer)
+        return self._over_ssm_layers(_call, mixer_type=SSM2MixerBridge)
 
     def stack_head_results(
         self,

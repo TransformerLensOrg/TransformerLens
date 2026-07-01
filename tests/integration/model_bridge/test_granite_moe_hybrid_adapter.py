@@ -35,10 +35,6 @@ from transformer_lens.model_bridge.sources._bridge_builder import (
 from transformer_lens.model_bridge.supported_architectures.granite_moe_hybrid import (
     GraniteMoeHybridArchitectureAdapter,
 )
-from transformer_lens.model_bridge.supported_architectures.mamba2 import (
-    compute_effective_attention,
-    compute_ssm_state,
-)
 
 LAYER_TYPES = ["mamba", "attention", "mamba"]
 MAMBA_LAYERS = [0, 2]
@@ -179,28 +175,28 @@ class TestGraniteMoeHybridEffectiveAttention:
         seq_len = tokens.shape[1]
         mixer = bridge.blocks[MAMBA_LAYERS[0]].mixer
         n_heads = mixer.original_component.num_heads
-        M = compute_effective_attention(bridge, cache, layer=MAMBA_LAYERS[0])
+        M = cache.compute_ssm_effective_attention(layer=MAMBA_LAYERS[0])
         assert isinstance(M, torch.Tensor)
         assert M.shape == (1, n_heads, seq_len, seq_len)
         assert torch.isfinite(M).all()
 
     def test_single_layer_is_causal(self, bridge: TransformerBridge, cache) -> None:
-        M = compute_effective_attention(bridge, cache, layer=MAMBA_LAYERS[0])
+        M = cache.compute_ssm_effective_attention(layer=MAMBA_LAYERS[0])
         seq_len = M.shape[-1]
         upper = torch.triu(torch.ones(seq_len, seq_len, dtype=torch.bool), diagonal=1)
         assert torch.all(M[..., upper] == 0), "effective attention must be lower-triangular"
 
     def test_all_layers_returns_per_ssm_layer_dict(self, bridge: TransformerBridge, cache) -> None:
         # Heterogeneous hybrid -> dict keyed by SSM layer index (attention layer skipped).
-        M_all = compute_effective_attention(bridge, cache)
+        M_all = cache.compute_ssm_effective_attention()
         assert isinstance(M_all, dict)
         assert sorted(M_all.keys()) == MAMBA_LAYERS
         for idx, M in M_all.items():
-            assert torch.equal(M, compute_effective_attention(bridge, cache, layer=idx))
+            assert torch.equal(M, cache.compute_ssm_effective_attention(layer=idx))
 
     def test_attention_layer_index_raises_typeerror(self, bridge: TransformerBridge, cache) -> None:
         with pytest.raises(TypeError):
-            compute_effective_attention(bridge, cache, layer=ATTN_LAYER)
+            cache.compute_ssm_effective_attention(layer=ATTN_LAYER)
 
     def test_reconstruction_matches_ssm_output(
         self, bridge: TransformerBridge, cache, tokens
@@ -223,7 +219,7 @@ class TestGraniteMoeHybridEffectiveAttention:
             oc.ssm_state_size,
         )
 
-        M_full = compute_effective_attention(bridge, cache, layer=layer, include_dt_scaling=True)
+        M_full = cache.compute_ssm_effective_attention(layer=layer, include_dt_scaling=True)
 
         conv_out = cache[f"blocks.{layer}.mixer.conv1d.hook_out"][..., :seq_len].float()
         conv_activated = torch.nn.functional.silu(conv_out).transpose(1, 2)
@@ -266,7 +262,7 @@ class TestGraniteMoeHybridSSMState:
 
     def test_attention_layer_raises_typeerror(self, bridge: TransformerBridge, cache) -> None:
         with pytest.raises(TypeError):
-            compute_ssm_state(bridge, cache, layer=ATTN_LAYER)
+            cache.compute_ssm_state(layer=ATTN_LAYER)
 
     def test_reconstructs_ssm_output(self, bridge: TransformerBridge, cache, tokens) -> None:
         """y = C·S + D·x reconstructs HF's SSM output — proves hybrid dims are right."""

@@ -16,6 +16,8 @@ hooked tensors are projection inputs/outputs, which are per-step and not
 mutated by the cache machinery.
 """
 
+import contextlib
+
 import pytest
 import torch
 
@@ -390,12 +392,9 @@ class TestMamba2EffectiveAttention:
         assert not torch.allclose(M0, M5)
 
 
-class TestMamba2EffectiveAttentionHelper:
-    """Tests for the mamba2.compute_effective_attention helper function.
-
-    The helper wraps the mixer method so callers don't repeat the layer index
-    and can request all layers at once.
-    """
+class TestMamba2EffectiveAttentionDispatch:
+    """cache.compute_ssm_effective_attention wraps the mixer method so callers
+    don't repeat the layer index and can request all layers at once."""
 
     @pytest.fixture(scope="class")
     def bridge_cache(self, mamba2_bridge):
@@ -405,37 +404,22 @@ class TestMamba2EffectiveAttentionHelper:
         return mamba2_bridge, cache
 
     def test_single_layer_matches_mixer_method(self, bridge_cache):
-        """helper(bridge, cache, layer=i) must match the underlying mixer call."""
-        from transformer_lens.model_bridge.supported_architectures.mamba2 import (
-            compute_effective_attention,
-        )
-
         bridge, cache = bridge_cache
         for layer in [0, 5, 23]:
-            M_helper = compute_effective_attention(bridge, cache, layer=layer)
+            M_helper = cache.compute_ssm_effective_attention(layer=layer)
             M_direct = bridge.blocks[layer].mixer.compute_effective_attention(
                 cache, layer_idx=layer
             )
             assert torch.equal(M_helper, M_direct)
 
     def test_all_layers_shape(self, bridge_cache, mamba2_bridge):
-        """helper(bridge, cache) with layer=None stacks all layers."""
-        from transformer_lens.model_bridge.supported_architectures.mamba2 import (
-            compute_effective_attention,
-        )
-
-        bridge, cache = bridge_cache
-        M_all = compute_effective_attention(bridge, cache)
+        _, cache = bridge_cache
+        M_all = cache.compute_ssm_effective_attention()
         assert M_all.shape == (mamba2_bridge.cfg.n_layers, 1, mamba2_bridge.cfg.n_heads, 5, 5)
 
     def test_all_layers_matches_individual_calls(self, bridge_cache):
-        """Stacked all-layers tensor must match per-layer calls along dim 0."""
-        from transformer_lens.model_bridge.supported_architectures.mamba2 import (
-            compute_effective_attention,
-        )
-
         bridge, cache = bridge_cache
-        M_all = compute_effective_attention(bridge, cache)
+        M_all = cache.compute_ssm_effective_attention()
         for layer in [0, 12, 23]:
             M_single = bridge.blocks[layer].mixer.compute_effective_attention(
                 cache, layer_idx=layer
@@ -443,15 +427,20 @@ class TestMamba2EffectiveAttentionHelper:
             assert torch.equal(M_all[layer], M_single)
 
     def test_include_dt_scaling_propagates(self, bridge_cache):
-        """The include_dt_scaling flag must flow through the helper to the mixer."""
+        _, cache = bridge_cache
+        M_att = cache.compute_ssm_effective_attention(layer=0, include_dt_scaling=False)
+        M_full = cache.compute_ssm_effective_attention(layer=0, include_dt_scaling=True)
+        assert not torch.allclose(M_att, M_full)
+
+    def test_deprecated_module_wrapper_warns_and_delegates(self, bridge_cache):
         from transformer_lens.model_bridge.supported_architectures.mamba2 import (
             compute_effective_attention,
         )
 
         bridge, cache = bridge_cache
-        M_att = compute_effective_attention(bridge, cache, layer=0, include_dt_scaling=False)
-        M_full = compute_effective_attention(bridge, cache, layer=0, include_dt_scaling=True)
-        assert not torch.allclose(M_att, M_full)
+        with pytest.warns(DeprecationWarning):
+            M_dep = compute_effective_attention(bridge, cache, layer=0)
+        assert torch.equal(M_dep, cache.compute_ssm_effective_attention(layer=0))
 
 
 class TestMamba2ParameterAccess:
@@ -662,13 +651,15 @@ class TestMamba2SSMState:
         assert torch.is_tensor(S_all)
         assert S_all.shape[0] == mamba2_bridge.cfg.n_layers
 
-    def test_module_wrapper_matches_mixer(self, cache, mamba2_bridge):
+    def test_deprecated_module_wrapper_warns_and_delegates(self, cache, mamba2_bridge):
         from transformer_lens.model_bridge.supported_architectures.mamba2 import (
             compute_ssm_state,
         )
 
         S_mixer = mamba2_bridge.blocks[0].mixer.compute_ssm_state(cache, layer_idx=0)
-        assert torch.equal(compute_ssm_state(mamba2_bridge, cache, layer=0), S_mixer)
+        with pytest.warns(DeprecationWarning):
+            S_dep = compute_ssm_state(mamba2_bridge, cache, layer=0)
+        assert torch.equal(S_dep, S_mixer)
 
     def test_raises_on_empty_cache(self, mamba2_bridge):
         from transformer_lens.ActivationCache import ActivationCache
@@ -676,3 +667,107 @@ class TestMamba2SSMState:
         empty = ActivationCache({}, model=mamba2_bridge)
         with pytest.raises(RuntimeError, match="in cache"):
             mamba2_bridge.blocks[0].mixer.compute_ssm_state(empty, layer_idx=0)
+
+
+@contextlib.contextmanager
+def _eager_scan(bridge):
+    """Enable the opt-in eager-scan intervention path on every mixer, then reset."""
+    for blk in bridge.blocks:
+        blk.mixer.eager_scan = True
+    try:
+        yield bridge
+    finally:
+        for blk in bridge.blocks:
+            blk.mixer.eager_scan = False
+
+
+class TestMamba2EagerScanIntervention:
+    """Phase 4: opt-in eager-scan path exposes hook_ssm_write / hook_ssm_state for
+    interventions (write-knockout, state-patch) that propagate to logits, while the
+    default run_with_cache path is untouched. Eager scan requires use_cache=False
+    (so cache_params is None — prefill only)."""
+
+    TOKENS = torch.tensor([[1, 2, 3, 4, 5, 6]])
+
+    def test_default_path_has_no_eager_hooks(self, mamba2_bridge):
+        with torch.no_grad():
+            _, cache = mamba2_bridge.run_with_cache(self.TOKENS)
+        assert "blocks.0.mixer.hook_ssm_write" not in cache
+        assert "blocks.0.mixer.hook_ssm_state" not in cache
+
+    def test_eager_requires_use_cache_false(self, mamba2_bridge):
+        """With eager on but a default (stateful) forward, cache_params is present
+        so the eager path is skipped and the hooks do not fire."""
+        with _eager_scan(mamba2_bridge), torch.no_grad():
+            _, cache = mamba2_bridge.run_with_cache(self.TOKENS)  # default use_cache
+        assert "blocks.0.mixer.hook_ssm_write" not in cache
+
+    def test_eager_scan_matches_fused_logits(self, mamba2_bridge):
+        with torch.no_grad():
+            fused = mamba2_bridge(self.TOKENS)
+        with _eager_scan(mamba2_bridge), torch.no_grad():
+            eager = mamba2_bridge(self.TOKENS, use_cache=False)
+        rel = (eager - fused).abs().max().item() / max(fused.abs().max().item(), 1e-8)
+        assert rel < 1e-4, f"eager scan vs fused kernel rel diff {rel:.2e}"
+
+    def test_eager_scan_matches_fused_padded_batch(self, mamba2_bridge):
+        """Padded batch: the eager path must mirror HF's padding mask (applied both
+        before in_proj and after the conv) to stay at parity."""
+        ids = torch.tensor([[1, 2, 3, 4, 5], [6, 7, 8, 9, 0]])
+        mask = torch.tensor([[1, 1, 1, 1, 1], [1, 1, 1, 1, 0]])
+        with torch.no_grad():
+            fused = mamba2_bridge(ids, attention_mask=mask)
+        with _eager_scan(mamba2_bridge), torch.no_grad():
+            eager = mamba2_bridge(ids, attention_mask=mask, use_cache=False)
+        rel = (eager - fused).abs().max().item() / max(fused.abs().max().item(), 1e-8)
+        assert rel < 1e-4, f"padded-batch eager vs fused rel diff {rel:.2e}"
+
+    def test_eager_hooks_fire_with_use_cache_false(self, mamba2_bridge):
+        with _eager_scan(mamba2_bridge), torch.no_grad():
+            _, cache = mamba2_bridge.run_with_cache(self.TOKENS, use_cache=False)
+        oc = mamba2_bridge.blocks[0].mixer.original_component
+        seq = self.TOKENS.shape[1]
+        expected = (1, seq, oc.num_heads, oc.head_dim, oc.ssm_state_size)
+        assert cache["blocks.0.mixer.hook_ssm_write"].shape == expected
+        assert cache["blocks.0.mixer.hook_ssm_state"].shape == expected
+
+    def test_write_knockout_changes_logits(self, mamba2_bridge):
+        with _eager_scan(mamba2_bridge), torch.no_grad():
+            base = mamba2_bridge(self.TOKENS, use_cache=False)
+
+            def knockout(writes, hook):
+                writes = writes.clone()
+                writes[:, 2] = 0.0  # input position 2 writes nothing — column knockout
+                return writes
+
+            patched = mamba2_bridge.run_with_hooks(
+                self.TOKENS,
+                use_cache=False,
+                fwd_hooks=[("blocks.0.mixer.hook_ssm_write", knockout)],
+            )
+        assert (patched - base).abs().max().item() > 1e-6
+
+    def test_state_patch_changes_logits(self, mamba2_bridge):
+        with _eager_scan(mamba2_bridge), torch.no_grad():
+            base = mamba2_bridge(self.TOKENS, use_cache=False)
+
+            def patch(state, hook):
+                state = state.clone()
+                state[:, 3] = 0.0
+                return state
+
+            patched = mamba2_bridge.run_with_hooks(
+                self.TOKENS,
+                use_cache=False,
+                fwd_hooks=[("blocks.0.mixer.hook_ssm_state", patch)],
+            )
+        assert (patched - base).abs().max().item() > 1e-6
+
+    def test_disabling_restores_fused_path(self, mamba2_bridge):
+        with torch.no_grad():
+            fused_before = mamba2_bridge(self.TOKENS)
+        with _eager_scan(mamba2_bridge), torch.no_grad():
+            mamba2_bridge(self.TOKENS, use_cache=False)
+        with torch.no_grad():
+            fused_after = mamba2_bridge(self.TOKENS)
+        assert torch.equal(fused_before, fused_after)

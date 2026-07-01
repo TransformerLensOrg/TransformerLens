@@ -35,7 +35,12 @@ class SSMMixerProtocol(Protocol):
         ...
 
 
-_PASSTHROUGH_CHILDREN = frozenset({"hook_in", "hook_out", "_original_component"})
+# Children present on *every* SSM2MixerBridge regardless of whether it wraps a
+# real Mamba layer — universal I/O hooks, the wrapped module, and the eager-scan
+# analysis hooks. None of these signal that the mixer is realized.
+_PASSTHROUGH_CHILDREN = frozenset(
+    {"hook_in", "hook_out", "_original_component", "hook_ssm_write", "hook_ssm_state"}
+)
 
 
 def _is_realized_ssm_mixer(mixer: object) -> bool:
@@ -43,10 +48,10 @@ def _is_realized_ssm_mixer(mixer: object) -> bool:
 
     A hybrid like NemotronH wires a single ``SSM2MixerBridge`` ``.mixer`` slot on
     *every* layer; on attention / MLP / MoE layers its optional projection
-    submodules are skipped, leaving only the universal ``hook_in`` / ``hook_out``.
-    A realized mixer always has something more — projection submodules (Mamba-1/2)
-    or interior hooks like ``hook_q`` / ``hook_log_decay`` (gated-delta-net). This
-    structural check needs no ``cfg.layers_block_type``.
+    submodules are skipped, leaving only the universal hooks. A realized mixer
+    always has something more — projection submodules (Mamba-1/2) or interior
+    hooks like ``hook_q`` / ``hook_log_decay`` (gated-delta-net). This structural
+    check needs no ``cfg.layers_block_type``.
     """
     return any(name not in _PASSTHROUGH_CHILDREN for name in getattr(mixer, "_modules", {}))
 
