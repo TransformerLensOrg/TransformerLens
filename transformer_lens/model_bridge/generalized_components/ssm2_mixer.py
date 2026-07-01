@@ -239,6 +239,9 @@ class SSM2MixerBridge(GeneralizedComponent):
         ``compute_effective_attention``. Read-only: no ``forward()`` re-run.
         Verify with ``y_t = C_t · S_t + D · x_t == inner_norm.hook_in``.
 
+        On padded batches the cached hooks are unmasked, so ``S`` is exact only at
+        non-pad positions; pad-position state is out of contract.
+
         Args:
             cache: ActivationCache from ``run_with_cache`` with this layer's
                 in_proj and conv1d hooks.

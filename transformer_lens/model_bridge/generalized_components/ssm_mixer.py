@@ -143,6 +143,9 @@ class SSMMixerBridge(GeneralizedComponent):
         (``SiLU(conv1d.hook_out)``). Read-only: no ``forward()`` re-run. Verify
         with ``y_t[c] = sum_s C_t[s]·S_t[c,s] + D[c]·x_t[c]``.
 
+        On padded batches the cached hooks are unmasked, so ``S`` is exact only at
+        non-pad positions; pad-position state is out of contract.
+
         Args:
             cache: ActivationCache from ``run_with_cache`` with this layer's
                 x_proj, dt_proj, and conv1d hooks.
@@ -155,8 +158,9 @@ class SSMMixerBridge(GeneralizedComponent):
             ``[batch, channels, state]`` for a single ``time_step``.
 
         Peak memory is O(batch · channels · state · seq²) — the per-(channel,
-        state) decay tensor (as in ``compute_effective_attention``); use on short
-        sequences (or pass ``time_step``).
+        state) decay tensor, built in full by ``_s6_terms`` regardless of
+        ``time_step`` (which bounds only the returned tensor, not this peak); use
+        on short sequences.
         """
         conv_key = f"blocks.{layer_idx}.mixer.conv1d.hook_out"
         if conv_key not in cache:
