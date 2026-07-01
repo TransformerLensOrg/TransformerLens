@@ -39,7 +39,7 @@ CASES = [
     _Case("mamba1", "TL_MAMBA1_MODEL", "state-spaces/mamba-130m-hf"),
     _Case("mamba2", "TL_MAMBA2_MODEL", "AntonV/mamba2-130m-hf"),
     _Case("granite", "TL_GRANITE_MODEL", "ibm-granite/granite-4.0-tiny-preview"),
-    _Case("nemotron_h", "TL_NEMOTRON_H_MODEL", "nvidia/Nemotron-H-8B-Base"),
+    _Case("nemotron_h", "TL_NEMOTRON_H_MODEL", "nvidia/NVIDIA-Nemotron-Nano-9B-v2"),
     _Case("qwen3_next", "TL_QWEN3_NEXT_MODEL", "Qwen/Qwen3-Next-80B-A3B-Instruct"),
     _Case("qwen3_5", "TL_QWEN3_5_MODEL", ""),
 ]

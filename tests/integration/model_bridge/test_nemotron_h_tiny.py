@@ -1,7 +1,7 @@
-"""Tiny from_config NemotronH integration tests — CI coverage without the 8B checkpoint.
+"""Tiny from_config NemotronH integration tests — CI coverage without a real checkpoint.
 
-The full nvidia/Nemotron-H-8B-Base parity suite (test_nemotron_h_adapter.py) is
-``@pytest.mark.slow`` and needs ~18 GB, so it does not run in normal CI. This file
+The full nvidia/NVIDIA-Nemotron-Nano-9B-v2 parity suite (test_nemotron_h_adapter.py) is
+``@pytest.mark.slow`` and needs ~36 GB, so it does not run in normal CI. This file
 builds a tiny synthetic NemotronH (real random CPU weights, no Hub download) that
 exercises the same surfaces — the single passthrough ``.mixer`` slot on every
 layer, forward parity, hook coverage, and the family-agnostic SSM dispatch.

@@ -1,6 +1,6 @@
 """Nemotron-H hybrid Mamba2-Transformer architecture adapter.
 
-Supports NemotronHForCausalLM (nvidia/Nemotron-H-8B-Base, Nemotron-H-47B-A13B).
+Supports NemotronHForCausalLM (e.g. nvidia/NVIDIA-Nemotron-Nano-9B-v2, Nemotron-3 series).
 
 Architecture overview:
 - Heterogeneous layers defined by ``config.layers_block_type`` — each element is
