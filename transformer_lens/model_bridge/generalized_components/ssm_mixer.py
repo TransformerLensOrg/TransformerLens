@@ -1,5 +1,5 @@
 """Wrap-don't-reimplement bridge for HF's MambaMixer (Mamba-1), plus S6 effective attention."""
-from typing import Any
+from typing import Any, NamedTuple, Optional
 
 import torch
 
@@ -7,6 +7,15 @@ from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
+
+
+class _S6Terms(NamedTuple):
+    """S6 intermediates reconstructed from cached Mamba-1 hooks (per-channel)."""
+
+    dt: torch.Tensor  # [batch, channels, seq]
+    decay: torch.Tensor  # [batch, channels, state, i, j] causal (upper triangle zero)
+    B: torch.Tensor  # [batch, seq, state] (shared across channels)
+    C: torch.Tensor  # [batch, seq, state] (shared across channels)
 
 
 class SSMMixerBridge(GeneralizedComponent):
@@ -102,6 +111,77 @@ class SSMMixerBridge(GeneralizedComponent):
         per-(channel, state) decay tensor — even for the summed default; use on
         short sequences.
         """
+        t = self._s6_terms(cache, layer_idx)
+
+        # M_coord[c, s, i, j] = C[i, s] · decay[c, s, i, j] · B[j, s]
+        C_col = t.C.permute(0, 2, 1)[:, None, :, :, None]  # [batch, 1, state, i, 1]
+        B_col = t.B.permute(0, 2, 1)[:, None, :, None, :]  # [batch, 1, state, 1, j]
+        M_coord = C_col * t.decay * B_col  # [batch, channels, state, i, j]
+
+        if include_dt_scaling:
+            M_coord = M_coord * t.dt[:, :, None, None, :]  # × dt[c, j]
+
+        if per_state_coord:
+            return M_coord
+        return M_coord.sum(dim=2)  # [batch, channels, seq, seq]
+
+    def compute_ssm_state(
+        self,
+        cache: ActivationCache,
+        layer_idx: int,
+        time_step: Optional[int] = None,
+    ) -> torch.Tensor:
+        """Reconstruct Mamba-1's recurrent state ``S`` from cached hook values.
+
+        S6 recurrence ``h_t[c,s] = exp(A[c,s]·dt_t[c])·h_{t-1}[c,s] + dt_t[c]·x_t[c]·B_t[s]``
+        unrolls to::
+
+            S_t[c, s] = sum_{j<=t} decay[c, s, t, j] · dt_j[c] · x_j[c] · B_j[s]
+
+        with the same per-(channel, state) ``decay`` used by
+        ``compute_effective_attention``. ``x`` is the post-conv SiLU input
+        (``SiLU(conv1d.hook_out)``). Read-only: no ``forward()`` re-run. Verify
+        with ``y_t[c] = sum_s C_t[s]·S_t[c,s] + D[c]·x_t[c]``.
+
+        Args:
+            cache: ActivationCache from ``run_with_cache`` with this layer's
+                x_proj, dt_proj, and conv1d hooks.
+            layer_idx: Block index for this mixer.
+            time_step: If given, return only ``S`` at that position
+                (``[batch, channels, state]``); None returns every step.
+
+        Returns:
+            ``[batch, channels, seq, state]`` for all steps, or
+            ``[batch, channels, state]`` for a single ``time_step``.
+
+        Peak memory is O(batch · channels · state · seq²) — the per-(channel,
+        state) decay tensor (as in ``compute_effective_attention``); use on short
+        sequences (or pass ``time_step``).
+        """
+        conv_key = f"blocks.{layer_idx}.mixer.conv1d.hook_out"
+        if conv_key not in cache:
+            raise RuntimeError(
+                f"compute_ssm_state needs {conv_key!r} in cache. Run "
+                "`run_with_cache()` on the bridge before calling this method."
+            )
+        t = self._s6_terms(cache, layer_idx)
+        seq_len = t.dt.shape[-1]
+        # x = SiLU(conv output), the SSM scan input; channel-first [batch, channels, seq].
+        x = torch.nn.functional.silu(cache[conv_key].float()[..., :seq_len])
+        dtx = t.dt * x  # dt_j[c]·x_j[c], [batch, channels, seq]
+        # S_t[c, s] = sum_{j<=t} decay[c, s, t, j] · dtx[c, j] · B_j[s]
+        if time_step is not None:
+            return torch.einsum("bcsj,bcj,bjs->bcs", t.decay[:, :, :, time_step, :], dtx, t.B)
+        return torch.einsum("bcsij,bcj,bjs->bcis", t.decay, dtx, t.B)
+
+    def _s6_terms(self, cache: ActivationCache, layer_idx: int) -> _S6Terms:
+        """Reconstruct the shared S6 intermediates (dt, per-(channel,state) decay, B, C).
+
+        Reused by ``compute_effective_attention`` and ``compute_ssm_state``. Reads
+        B/C from ``x_proj.hook_out`` (shared across channels), dt from
+        ``dt_proj.hook_out`` (softplus), and A via ``__getattr__``. Dims come from
+        the wrapped HF mixer, cfg is the fallback (mirrors the Mamba-2 bridge).
+        """
         if self.config is None:
             raise RuntimeError("SSMMixerBridge.config must be set")
 
@@ -110,8 +190,8 @@ class SSMMixerBridge(GeneralizedComponent):
         for key in (x_proj_key, dt_proj_key):
             if key not in cache:
                 raise RuntimeError(
-                    f"compute_effective_attention needs {key!r} in cache. Run "
-                    "`run_with_cache()` on the bridge before calling this method."
+                    f"S6 reconstruction needs {key!r} in cache. Run "
+                    "`run_with_cache()` on the bridge before calling this."
                 )
 
         cfg = self.config
@@ -128,7 +208,7 @@ class SSMMixerBridge(GeneralizedComponent):
         dt_rank = int(_mamba_dim("time_step_rank", "time_step_rank", 0))
 
         x_proj_out = cache[x_proj_key].float()  # [batch, seq, dt_rank + 2*state]
-        dt_proj_out = cache[dt_proj_key].float()  # [batch, seq, intermediate_size]
+        dt_proj_out = cache[dt_proj_key].float()  # [batch, seq, channels]
         seq_len = dt_proj_out.shape[1]
 
         # B, C from x_proj output (shared across channels); first dt_rank cols are dt low-rank.
@@ -138,8 +218,7 @@ class SSMMixerBridge(GeneralizedComponent):
         dt = torch.nn.functional.softplus(dt_proj_out).transpose(1, 2)  # [batch, channels, seq]
         A = -torch.exp(self.A_log.float())  # [channels, state]
 
-        # Per-(channel, state) causal decay:
-        # decay[c, n, i, j] = exp(A[c,n] · (cumdt[c,i] - cumdt[c,j])) for i >= j, else 0.
+        # decay[c, s, i, j] = exp(A[c,s]·(cumdt[c,i]-cumdt[c,j])) for i >= j, else 0.
         cumdt = torch.cumsum(dt, dim=-1)  # [batch, channels, seq]
         dcs = cumdt[:, :, :, None] - cumdt[:, :, None, :]  # [batch, channels, i, j]
         decay_exp = (
@@ -153,15 +232,4 @@ class SSMMixerBridge(GeneralizedComponent):
             torch.exp(decay_exp),
             torch.zeros_like(decay_exp),
         )
-
-        # M_coord[c, n, i, j] = C[i, n] · decay · B[j, n]
-        C_col = C.permute(0, 2, 1)[:, None, :, :, None]  # [batch, 1, state, i, 1]
-        B_col = B.permute(0, 2, 1)[:, None, :, None, :]  # [batch, 1, state, 1, j]
-        M_coord = C_col * decay * B_col  # [batch, channels, state, i, j]
-
-        if include_dt_scaling:
-            M_coord = M_coord * dt[:, :, None, None, :]  # × dt[c, j]
-
-        if per_state_coord:
-            return M_coord
-        return M_coord.sum(dim=2)  # [batch, channels, seq, seq]
+        return _S6Terms(dt=dt, decay=decay, B=B, C=C)

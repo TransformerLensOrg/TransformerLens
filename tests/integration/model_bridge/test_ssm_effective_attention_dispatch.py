@@ -361,3 +361,41 @@ class TestCanonicalHookVocabulary:
         assert torch.equal(
             cache["blocks.0.mixer.hook_ssm_dt"], cache["blocks.0.mixer.dt_proj.hook_out"]
         )
+
+
+# ---------------------------------------------------------------------------
+# cache.compute_ssm_state (Phase 4.5) — family-agnostic over Mamba-1 / Mamba-2,
+# excluding gated-delta-net (no recurrent-state reconstruction).
+# ---------------------------------------------------------------------------
+
+
+class TestComputeSsmStateDispatch:
+    def test_mamba1_reachable_via_cache(self, mamba1_bridge):
+        with torch.no_grad():
+            _, cache = mamba1_bridge.run_with_cache(TOKENS)
+        S = cache.compute_ssm_state()  # pure Mamba-1 → stacked
+        assert torch.is_tensor(S)
+        assert S.shape[0] == mamba1_bridge.cfg.n_layers
+        assert torch.equal(S[0], cache.compute_ssm_state(layer=0))
+
+    def test_mamba2_reachable_via_cache(self, mamba2_bridge):
+        with torch.no_grad():
+            _, cache = mamba2_bridge.run_with_cache(TOKENS)
+        S = cache.compute_ssm_state()
+        assert torch.is_tensor(S)
+        assert S.shape[0] == mamba2_bridge.cfg.n_layers
+
+    def test_granite_returns_per_ssm_layer_dict(self, granite_bridge):
+        with torch.no_grad():
+            _, cache = granite_bridge.run_with_cache(TOKENS)
+        S = cache.compute_ssm_state()
+        assert isinstance(S, dict)
+        assert sorted(S.keys()) == [0, 2]
+
+    @pytest.mark.skipif(not _QWEN3_5_AVAILABLE, reason="Qwen3_5 not available")
+    def test_gated_delta_net_has_no_state(self, qwen35_bridge):
+        with torch.no_grad():
+            _, cache = qwen35_bridge.run_with_cache(TOKENS, use_cache=False)
+        # GDN conforms to the effective-attention protocol but has no S_t.
+        with pytest.raises(TypeError, match="Mamba-1 / Mamba-2"):
+            cache.compute_ssm_state(layer=0)

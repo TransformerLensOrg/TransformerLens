@@ -444,3 +444,108 @@ class TestMamba1EffectiveAttention:
         empty = ActivationCache({}, model=mamba_bridge)
         with pytest.raises(RuntimeError, match="in cache"):
             mamba_bridge.blocks[0].mixer.compute_effective_attention(empty, layer_idx=0)
+
+
+class TestMamba1SSMState:
+    """Mamba-1 recurrent-state reconstruction (Phase 4.5): read-parity with Mamba-2.
+
+    The vectorized state must match a naive fp64 step-by-step S6 scan, and
+    ``y = C·S + D·x`` reconstructed through gate + out_proj must match HF's cached
+    ``hook_out`` (ties S to HF's numerically-independent forward).
+    """
+
+    SEQ_LEN = 6
+
+    @pytest.fixture(scope="class")
+    def cache(self, mamba_bridge):
+        tokens = torch.arange(1, self.SEQ_LEN + 1).unsqueeze(0)
+        with torch.no_grad():
+            _, cache = mamba_bridge.run_with_cache(tokens)
+        return cache
+
+    @staticmethod
+    def _inputs(cache, mixer, layer, seq_len):
+        """Re-extract x (post-conv SiLU), B, C, dt, A, D, gate — independent of the impl."""
+        import torch.nn.functional as F
+
+        oc = mixer.original_component
+        d_inner, state, dt_rank = oc.intermediate_size, oc.ssm_state_size, oc.time_step_rank
+        conv = cache[f"blocks.{layer}.mixer.conv1d.hook_out"][..., :seq_len].float()
+        x_proj = cache[f"blocks.{layer}.mixer.x_proj.hook_out"].float()
+        dt_proj = cache[f"blocks.{layer}.mixer.dt_proj.hook_out"].float()
+        in_proj = cache[f"blocks.{layer}.mixer.in_proj.hook_out"].float()
+        x = F.silu(conv)  # [b, d_inner, seq]
+        _ts, B, C = x_proj.split([dt_rank, state, state], dim=-1)
+        dt = F.softplus(dt_proj).transpose(1, 2)  # [b, d_inner, seq]
+        A = -torch.exp(mixer.A_log.float())
+        gate = in_proj.transpose(1, 2)[:, d_inner:, :]  # [b, d_inner, seq]
+        return x, B, C, dt, A, mixer.D.float(), gate
+
+    def test_shape(self, cache, mamba_bridge):
+        mixer = mamba_bridge.blocks[0].mixer
+        oc = mixer.original_component
+        S = mixer.compute_ssm_state(cache, layer_idx=0)
+        assert S.shape == (1, oc.intermediate_size, self.SEQ_LEN, oc.ssm_state_size)
+        assert torch.isfinite(S).all()
+
+    def test_matches_fp64_eager_recurrence(self, cache, mamba_bridge):
+        """The vectorized state must match a naive fp64 step-by-step S6 scan."""
+        mixer = mamba_bridge.blocks[0].mixer
+        S = mixer.compute_ssm_state(cache, layer_idx=0)
+
+        x, B, _, dt, A, _, _ = self._inputs(cache, mixer, 0, self.SEQ_LEN)
+        A, B, x, dt = A.double(), B.double(), x.double(), dt.double()
+        b, d_inner = x.shape[0], x.shape[1]
+        ssm = torch.zeros(b, d_inner, A.shape[1], dtype=torch.float64)
+        ref = torch.zeros(b, d_inner, self.SEQ_LEN, A.shape[1], dtype=torch.float64)
+        for i in range(self.SEQ_LEN):
+            dA = torch.exp(A[None] * dt[:, :, i, None])  # [b, d_inner, state]
+            dBu = dt[:, :, i, None] * B[:, i, None, :] * x[:, :, i, None]
+            ssm = dA * ssm + dBu
+            ref[:, :, i] = ssm
+
+        rel = (S.double() - ref).abs().max().item() / max(ref.abs().max().item(), 1e-8)
+        assert rel < 1e-5, f"S vs fp64 eager recurrence rel diff {rel:.2e}"
+
+    def test_reconstructs_mixer_output(self, cache, mamba_bridge):
+        """out_proj((C·S + D·x)·silu(gate)) must reconstruct HF's mixer output."""
+        import torch.nn.functional as F
+
+        mixer = mamba_bridge.blocks[0].mixer
+        S = mixer.compute_ssm_state(cache, layer_idx=0)  # [b, channels, seq, state]
+        x, _, C, _, _, D, gate = self._inputs(cache, mixer, 0, self.SEQ_LEN)
+        y = torch.einsum("bcts,bts->bct", S, C) + D[None, :, None] * x
+        out = mixer.original_component.out_proj((y * F.silu(gate)).transpose(1, 2))
+        hook_out = cache["blocks.0.mixer.hook_out"].float()
+        rel = (out - hook_out).abs().max().item() / max(hook_out.abs().max().item(), 1e-8)
+        assert rel < 1e-5, (
+            f"C·S+D·x reconstruction vs hook_out rel diff {rel:.2e}; the state is "
+            "inconsistent with HF's independently-computed forward."
+        )
+
+    def test_time_step_matches_full_slice(self, cache, mamba_bridge):
+        mixer = mamba_bridge.blocks[0].mixer
+        S = mixer.compute_ssm_state(cache, layer_idx=0)
+        S_t = mixer.compute_ssm_state(cache, layer_idx=0, time_step=3)
+        assert S_t.shape == (S.shape[0], S.shape[1], S.shape[3])
+        # Same math; the full ("bcsij") and single-step ("bcsj") einsums differ only
+        # in fp reduction order (measured ~1 fp32 ULP), so allclose, not equal.
+        assert torch.allclose(S[:, :, 3], S_t, atol=1e-6)
+
+    def test_cache_method_matches_mixer(self, cache, mamba_bridge):
+        direct = mamba_bridge.blocks[0].mixer.compute_ssm_state(cache, layer_idx=0)
+        via_cache = cache.compute_ssm_state(layer=0)
+        assert torch.equal(direct, via_cache)
+
+    def test_cache_all_layers_stacks(self, cache, mamba_bridge):
+        S_all = cache.compute_ssm_state()  # pure Mamba-1 → every block is SSM → stacked
+        assert torch.is_tensor(S_all)
+        assert S_all.shape[0] == mamba_bridge.cfg.n_layers
+        assert torch.equal(S_all[0], cache.compute_ssm_state(layer=0))
+
+    def test_raises_on_empty_cache(self, mamba_bridge):
+        from transformer_lens.ActivationCache import ActivationCache
+
+        empty = ActivationCache({}, model=mamba_bridge)
+        with pytest.raises(RuntimeError, match="in cache"):
+            mamba_bridge.blocks[0].mixer.compute_ssm_state(empty, layer_idx=0)

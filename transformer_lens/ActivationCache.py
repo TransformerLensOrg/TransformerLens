@@ -754,7 +754,7 @@ class ActivationCache:
             # Sum over d_head to get the contribution of each head to the residual stream
             self.cache_dict[f"blocks.{layer}.attn.hook_result"] = result.sum(dim=-2)
 
-    def ssm_layers(self, mixer_type: Optional[type] = None) -> List[int]:
+    def ssm_layers(self, mixer_type: Optional[Union[type, Tuple[type, ...]]] = None) -> List[int]:
         """Return the block indices whose mixer is an SSM / recurrent mixer.
 
         Family-agnostic and purely structural: finds each block's *realized* SSM
@@ -788,7 +788,7 @@ class ActivationCache:
     def _over_ssm_layers(
         self,
         fn: Callable[[Any, int], torch.Tensor],
-        mixer_type: Optional[type] = None,
+        mixer_type: Optional[Union[type, Tuple[type, ...]]] = None,
     ) -> Union[torch.Tensor, Dict[int, torch.Tensor]]:
         """Apply ``fn(mixer, layer_idx)`` over every SSM layer; stack or dict.
 
@@ -883,30 +883,37 @@ class ActivationCache:
     ) -> Union[torch.Tensor, Dict[int, torch.Tensor]]:
         """Reconstruct the recurrent SSM state ``S`` from this cache.
 
-        The single discovery surface for Mamba-2 recurrent state (only
-        ``SSM2MixerBridge`` reconstructs it), mirroring ``compute_head_results``.
-        Read-only post-hoc reconstruction from the cached in_proj/conv1d hooks (no
-        forward re-run); requires a Mamba-2 / Mamba-2-hybrid bridge cached via
-        ``run_with_cache``. See ``SSM2MixerBridge.compute_ssm_state`` for the
+        The single discovery surface for Mamba-1 / Mamba-2 recurrent state (both
+        ``SSMMixerBridge`` and ``SSM2MixerBridge`` reconstruct it; gated-delta-net
+        has no ``S_t`` reconstruction and is excluded), mirroring
+        ``compute_head_results``. Read-only post-hoc reconstruction from cached
+        hooks (no forward re-run); requires an SSM / SSM-hybrid bridge cached via
+        ``run_with_cache``. See the mixer's ``compute_ssm_state`` for the
         recurrence, shapes, and the ``time_step`` memory bound.
 
         Args:
-            layer: Specific block index, or None for every Mamba-2 layer.
+            layer: Specific block index, or None for every Mamba (SSM-state) layer.
             time_step: Optional single position (memory-bounded); None for all.
 
         Returns:
             A per-layer state tensor for a single ``layer``; for ``layer=None`` a
-            stacked tensor (dim 0 = layer) when every block is a Mamba-2 layer,
-            else a ``{layer_idx: state}`` dict over the Mamba-2 layers.
+            stacked tensor (dim 0 = layer) when every block is a Mamba layer, else
+            a ``{layer_idx: state}`` dict over the Mamba layers.
 
         Raises:
-            TypeError: If the requested ``layer`` has no Mamba-2 mixer.
-            RuntimeError: If ``layer=None`` finds no Mamba-2 layers.
+            TypeError: If the requested ``layer`` has no state-reconstructing Mamba mixer.
+            RuntimeError: If ``layer=None`` finds no such layers.
         """
-        from transformer_lens.model_bridge.generalized_components import SSM2MixerBridge
+        from transformer_lens.model_bridge.generalized_components import (
+            SSM2MixerBridge,
+            SSMMixerBridge,
+        )
         from transformer_lens.model_bridge.generalized_components.ssm_protocol import (
             find_ssm_mixer,
         )
+
+        # Both Mamba families reconstruct S_t; gated-delta-net has no compute_ssm_state.
+        state_mixers = (SSMMixerBridge, SSM2MixerBridge)
 
         def _call(mixer: Any, layer_idx: int) -> torch.Tensor:
             state: torch.Tensor = cast(Any, mixer).compute_ssm_state(
@@ -916,12 +923,13 @@ class ActivationCache:
 
         if layer is not None:
             single = find_ssm_mixer(self.model.blocks[layer])
-            if not isinstance(single, SSM2MixerBridge):
+            if not isinstance(single, state_mixers):
                 raise TypeError(
-                    f"Block {layer} has no Mamba-2 mixer; compute_ssm_state is Mamba-2 only."
+                    f"Block {layer} has no state-reconstructing Mamba mixer; "
+                    "compute_ssm_state supports Mamba-1 / Mamba-2 (not gated-delta-net)."
                 )
             return _call(single, layer)
-        return self._over_ssm_layers(_call, mixer_type=SSM2MixerBridge)
+        return self._over_ssm_layers(_call, mixer_type=state_mixers)
 
     def stack_head_results(
         self,
