@@ -480,6 +480,7 @@
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.slice.html">transformer_lens.utilities.slice module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.tensors.html">transformer_lens.utilities.tensors module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.tokenize_utils.html">transformer_lens.utilities.tokenize_utils module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.tracr.html">transformer_lens.utilities.tracr module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.typed_module_list.html">transformer_lens.utilities.typed_module_list module</a></li>
 </ul>
 </li>
@@ -605,6 +606,12 @@ The second entry will be how much memory is currently available.</p>
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.utilities.multi_gpu.cast_floating_params_to_dtype">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utilities.multi_gpu.</span></span><span class="sig-name descname"><span class="pre">cast_floating_params_to_dtype</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Module</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dtype</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dtype</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#transformer_lens.utilities.multi_gpu.cast_floating_params_to_dtype" title="Link to this definition">¶</a></dt>
+<dd><p>Cast materialized floating parameters while preserving Accelerate offload hooks.</p>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="transformer_lens.utilities.multi_gpu.count_unique_devices">
 <span class="sig-prename descclassname"><span class="pre">transformer_lens.utilities.multi_gpu.</span></span><span class="sig-name descname"><span class="pre">count_unique_devices</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">hf_model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">int</span></span></span><a class="headerlink" href="#transformer_lens.utilities.multi_gpu.count_unique_devices" title="Link to this definition">¶</a></dt>
 <dd><p>Count the number of unique devices across a dispatched HF model’s <code class="docutils literal notranslate"><span class="pre">hf_device_map</span></code>.</p>
@@ -709,8 +716,10 @@ This will be removed in 3.0</p>
 <p>Returns <code class="docutils literal notranslate"><span class="pre">(device_map,</span> <span class="pre">max_memory)</span></code> tuple ready to pass into <code class="docutils literal notranslate"><span class="pre">model_kwargs</span></code>.</p>
 <dl class="simple">
 <dt>Semantics:</dt><dd><ul class="simple">
-<li><p>Explicit <code class="docutils literal notranslate"><span class="pre">device_map</span></code> wins; it’s validated and passed through unchanged (user-
-provided <code class="docutils literal notranslate"><span class="pre">max_memory</span></code> is passed through too).</p></li>
+<li><p>Explicit <code class="docutils literal notranslate"><span class="pre">device_map</span></code> wins and is passed through unchanged (user-provided
+<code class="docutils literal notranslate"><span class="pre">max_memory</span></code> is passed through too). CPU targets are supported; disk / meta
+offload targets are still rejected because Bridge component wrappers can bypass
+Accelerate’s offload hooks during forward passes.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">n_devices=None</span></code> or <code class="docutils literal notranslate"><span class="pre">1</span></code>: returns <code class="docutils literal notranslate"><span class="pre">(None,</span> <span class="pre">None)</span></code> — single-device path.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">n_devices</span> <span class="pre">&gt;</span> <span class="pre">1</span></code>: returns <code class="docutils literal notranslate"><span class="pre">(&quot;balanced&quot;,</span> <span class="pre">{0:</span> <span class="pre">&quot;auto&quot;,</span> <span class="pre">...,</span> <span class="pre">n-1:</span> <span class="pre">&quot;auto&quot;})</span></code>.
 <code class="docutils literal notranslate"><span class="pre">&quot;balanced&quot;</span></code> is accelerate’s string directive for balanced layer dispatch;
@@ -798,6 +807,7 @@ available memory first</p>
 <li><a class="reference internal" href="#">transformer_lens.utilities.multi_gpu module</a><ul>
 <li><a class="reference internal" href="#transformer_lens.utilities.multi_gpu.AvailableDeviceMemory"><code class="docutils literal notranslate"><span class="pre">AvailableDeviceMemory</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utilities.multi_gpu.calculate_available_device_cuda_memory"><code class="docutils literal notranslate"><span class="pre">calculate_available_device_cuda_memory()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.utilities.multi_gpu.cast_floating_params_to_dtype"><code class="docutils literal notranslate"><span class="pre">cast_floating_params_to_dtype()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utilities.multi_gpu.count_unique_devices"><code class="docutils literal notranslate"><span class="pre">count_unique_devices()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utilities.multi_gpu.determine_available_memory_for_available_devices"><code class="docutils literal notranslate"><span class="pre">determine_available_memory_for_available_devices()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utilities.multi_gpu.find_embedding_device"><code class="docutils literal notranslate"><span class="pre">find_embedding_device()</span></code></a></li>

@@ -480,6 +480,7 @@
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.slice.html">transformer_lens.utilities.slice module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.tensors.html">transformer_lens.utilities.tensors module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.tokenize_utils.html">transformer_lens.utilities.tokenize_utils module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.tracr.html">transformer_lens.utilities.tracr module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.typed_module_list.html">transformer_lens.utilities.typed_module_list module</a></li>
 </ul>
 </li>
@@ -600,6 +601,11 @@
 <p>Done in the order Q on the left, K on the right, because the pattern has dimensions [destination_pos, source_pos]</p>
 <p>Returns a FactoredMatrix, with left matrix W_Q [head_index, d_model, d_head] and right matrix W_K.T [head_index, d_head, d_model] - this is a low rank factorisation of the underlying [head_index, d_model, d_model] matrix. FactoredMatrix has helper functions to deal with these large matrices efficiently. To get the QK circuit of a head k, attn.QK[k] works.</p>
 </dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.components.abstract_attention.AbstractAttention.ROTARY_INITIAL_CACHE_SIZE">
+<span class="sig-name descname"><span class="pre">ROTARY_INITIAL_CACHE_SIZE</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">2048</span></em><a class="headerlink" href="#transformer_lens.components.abstract_attention.AbstractAttention.ROTARY_INITIAL_CACHE_SIZE" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="transformer_lens.components.abstract_attention.AbstractAttention.__init__">
@@ -861,6 +867,7 @@ attention_mask is the attention mask for padded tokens. Defaults to None.</p>
 <li><a class="reference internal" href="#transformer_lens.components.abstract_attention.AbstractAttention.IGNORE"><code class="docutils literal notranslate"><span class="pre">AbstractAttention.IGNORE</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.components.abstract_attention.AbstractAttention.OV"><code class="docutils literal notranslate"><span class="pre">AbstractAttention.OV</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.components.abstract_attention.AbstractAttention.QK"><code class="docutils literal notranslate"><span class="pre">AbstractAttention.QK</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.components.abstract_attention.AbstractAttention.ROTARY_INITIAL_CACHE_SIZE"><code class="docutils literal notranslate"><span class="pre">AbstractAttention.ROTARY_INITIAL_CACHE_SIZE</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.components.abstract_attention.AbstractAttention.__init__"><code class="docutils literal notranslate"><span class="pre">AbstractAttention.__init__()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.components.abstract_attention.AbstractAttention.alibi"><code class="docutils literal notranslate"><span class="pre">AbstractAttention.alibi</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.components.abstract_attention.AbstractAttention.apply_causal_mask"><code class="docutils literal notranslate"><span class="pre">AbstractAttention.apply_causal_mask()</span></code></a></li>

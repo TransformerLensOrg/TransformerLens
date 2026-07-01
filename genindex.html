@@ -478,6 +478,7 @@
 <li class="toctree-l4"><a class="reference internal" href="generated/code/transformer_lens.utilities.slice.html">transformer_lens.utilities.slice module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="generated/code/transformer_lens.utilities.tensors.html">transformer_lens.utilities.tensors module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="generated/code/transformer_lens.utilities.tokenize_utils.html">transformer_lens.utilities.tokenize_utils module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="generated/code/transformer_lens.utilities.tracr.html">transformer_lens.utilities.tracr module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="generated/code/transformer_lens.utilities.typed_module_list.html">transformer_lens.utilities.typed_module_list module</a></li>
 </ul>
 </li>
@@ -1780,6 +1781,8 @@
           <li><a href="generated/code/transformer_lens.conversion_utils.conversion_steps.callable_tensor_conversion.html#transformer_lens.conversion_utils.conversion_steps.callable_tensor_conversion.CallableTensorConversion">(class in transformer_lens.conversion_utils.conversion_steps.callable_tensor_conversion)</a>
 </li>
         </ul></li>
+        <li><a href="generated/code/transformer_lens.utilities.multi_gpu.html#transformer_lens.utilities.multi_gpu.cast_floating_params_to_dtype">cast_floating_params_to_dtype() (in module transformer_lens.utilities.multi_gpu)</a>
+</li>
         <li><a href="generated/code/transformer_lens.model_bridge.sources.native.model.html#transformer_lens.model_bridge.sources.native.model.NativeAttention.causal_mask">causal_mask (transformer_lens.model_bridge.sources.native.model.NativeAttention attribute)</a>
 
         <ul>
@@ -3730,6 +3733,8 @@
           <li><a href="generated/code/transformer_lens.lit.dataset.html#transformer_lens.lit.dataset.InductionDataset">(class in transformer_lens.lit.dataset)</a>
 </li>
         </ul></li>
+        <li><a href="generated/code/transformer_lens.utilities.tracr.html#transformer_lens.utilities.tracr.infer_tracr_output_label">infer_tracr_output_label() (in module transformer_lens.utilities.tracr)</a>
+</li>
         <li><a href="generated/code/transformer_lens.benchmarks.html#transformer_lens.benchmarks.BenchmarkSeverity.INFO">INFO (transformer_lens.benchmarks.BenchmarkSeverity attribute)</a>
 
         <ul>
@@ -3828,10 +3833,10 @@
           <li><a href="generated/code/transformer_lens.tools.model_registry.html#id48">(transformer_lens.tools.model_registry.VerificationRecord attribute)</a>, <a href="generated/code/transformer_lens.tools.model_registry.html#transformer_lens.tools.model_registry.VerificationRecord.invalidation_reason">[1]</a>
 </li>
         </ul></li>
-        <li><a href="generated/code/transformer_lens.evals.html#transformer_lens.evals.ioi_eval">ioi_eval() (in module transformer_lens.evals)</a>
-</li>
     </ul></td>
     <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="generated/code/transformer_lens.evals.html#transformer_lens.evals.ioi_eval">ioi_eval() (in module transformer_lens.evals)</a>
+</li>
         <li><a href="generated/code/transformer_lens.evals.html#transformer_lens.evals.IOIDataset">IOIDataset (class in transformer_lens.evals)</a>
 
         <ul>
@@ -4205,6 +4210,12 @@
         <li><a href="generated/code/transformer_lens.evals.html#transformer_lens.evals.make_owt_data_loader">make_owt_data_loader() (in module transformer_lens.evals)</a>
 </li>
         <li><a href="generated/code/transformer_lens.evals.html#transformer_lens.evals.make_pile_data_loader">make_pile_data_loader() (in module transformer_lens.evals)</a>
+</li>
+        <li><a href="generated/code/transformer_lens.utilities.tracr.html#transformer_lens.utilities.tracr.make_tracr_categorical_unembed">make_tracr_categorical_unembed() (in module transformer_lens.utilities.tracr)</a>
+</li>
+        <li><a href="generated/code/transformer_lens.utilities.tracr.html#transformer_lens.utilities.tracr.make_tracr_transformer_bridge_config">make_tracr_transformer_bridge_config() (in module transformer_lens.utilities.tracr)</a>
+</li>
+        <li><a href="generated/code/transformer_lens.utilities.tracr.html#transformer_lens.utilities.tracr.make_tracr_transformer_bridge_state_dict">make_tracr_transformer_bridge_state_dict() (in module transformer_lens.utilities.tracr)</a>
 </li>
         <li><a href="generated/code/transformer_lens.evals.html#transformer_lens.evals.make_wiki_data_loader">make_wiki_data_loader() (in module transformer_lens.evals)</a>
 </li>
@@ -4959,6 +4970,8 @@
           <li><a href="generated/code/transformer_lens.utilities.tensors.html#module-transformer_lens.utilities.tensors">transformer_lens.utilities.tensors</a>
 </li>
           <li><a href="generated/code/transformer_lens.utilities.tokenize_utils.html#module-transformer_lens.utilities.tokenize_utils">transformer_lens.utilities.tokenize_utils</a>
+</li>
+          <li><a href="generated/code/transformer_lens.utilities.tracr.html#module-transformer_lens.utilities.tracr">transformer_lens.utilities.tracr</a>
 </li>
           <li><a href="generated/code/transformer_lens.utilities.typed_module_list.html#module-transformer_lens.utilities.typed_module_list">transformer_lens.utilities.typed_module_list</a>
 </li>
@@ -6090,6 +6103,8 @@
         <li><a href="generated/code/transformer_lens.components.abstract_attention.html#transformer_lens.components.abstract_attention.AbstractAttention.rotary_cos">rotary_cos (transformer_lens.components.abstract_attention.AbstractAttention attribute)</a>
 </li>
         <li><a href="generated/code/transformer_lens.config.hooked_transformer_config.html#transformer_lens.config.hooked_transformer_config.HookedTransformerConfig.rotary_dim">rotary_dim (transformer_lens.config.hooked_transformer_config.HookedTransformerConfig attribute)</a>
+</li>
+        <li><a href="generated/code/transformer_lens.components.abstract_attention.html#transformer_lens.components.abstract_attention.AbstractAttention.ROTARY_INITIAL_CACHE_SIZE">ROTARY_INITIAL_CACHE_SIZE (transformer_lens.components.abstract_attention.AbstractAttention attribute)</a>
 </li>
         <li><a href="generated/code/transformer_lens.config.hooked_transformer_config.html#transformer_lens.config.hooked_transformer_config.HookedTransformerConfig.rotary_scaling_factor">rotary_scaling_factor (transformer_lens.config.hooked_transformer_config.HookedTransformerConfig attribute)</a>
 </li>
@@ -9082,6 +9097,13 @@
 
         <ul>
           <li><a href="generated/code/transformer_lens.utilities.tokenize_utils.html#module-transformer_lens.utilities.tokenize_utils">module</a>
+</li>
+        </ul></li>
+        <li>
+    transformer_lens.utilities.tracr
+
+        <ul>
+          <li><a href="generated/code/transformer_lens.utilities.tracr.html#module-transformer_lens.utilities.tracr">module</a>
 </li>
         </ul></li>
         <li>

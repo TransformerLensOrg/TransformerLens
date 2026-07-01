@@ -480,6 +480,7 @@
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.slice.html">transformer_lens.utilities.slice module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.tensors.html">transformer_lens.utilities.tensors module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.tokenize_utils.html">transformer_lens.utilities.tokenize_utils module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.tracr.html">transformer_lens.utilities.tracr module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.typed_module_list.html">transformer_lens.utilities.typed_module_list module</a></li>
 </ul>
 </li>
@@ -3080,8 +3081,9 @@ adapter is selected automatically (e.g., BertForNextSentencePrediction).</p></li
 models loaded with custom configurations (e.g., quantization via BitsAndBytesConfig).
 When provided, load_weights is ignored.</p></li>
 <li><p><strong>device_map</strong> – HuggingFace-style device map (<code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;balanced&quot;</span></code>, dict, etc.) for
-multi-GPU inference. Passed straight to <code class="docutils literal notranslate"><span class="pre">from_pretrained</span></code>. Mutually exclusive
-with <code class="docutils literal notranslate"><span class="pre">device</span></code>.</p></li>
+dispatched inference. Explicit maps may include CPU targets; disk / meta offload
+targets are still rejected because Bridge component wrappers need additional
+offload-hook routing work. Mutually exclusive with <code class="docutils literal notranslate"><span class="pre">device</span></code>.</p></li>
 <li><p><strong>n_devices</strong> – Convenience: split the model across this many CUDA devices (translated to a
 <code class="docutils literal notranslate"><span class="pre">max_memory</span></code> dict internally). Requires CUDA with at least this many visible devices.</p></li>
 <li><p><strong>max_memory</strong> – Optional per-device memory budget for HF’s dispatcher.</p></li>

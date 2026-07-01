@@ -1,0 +1,7 @@
+transformer\_lens.utilities.tracr module
+========================================
+
+.. automodule:: transformer_lens.utilities.tracr
+   :members:
+   :undoc-members:
+   :show-inheritance:
