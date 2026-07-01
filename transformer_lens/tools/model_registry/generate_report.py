@@ -26,6 +26,7 @@ from .api import (
 # Descriptions of common architectures (both supported and unsupported)
 ARCHITECTURE_DESCRIPTIONS: dict[str, str] = {
     # Supported architectures
+    "ArceeForCausalLM": "Arcee AI's AFM, a Llama-style decoder with an ungated squared-ReLU (ReLU^2) MLP",
     "GPT2LMHeadModel": "OpenAI's GPT-2 decoder-only transformer for causal language modeling",
     "GPTNeoForCausalLM": "EleutherAI's GPT-Neo, an open-source GPT-3-like model",
     "GPTNeoXForCausalLM": "EleutherAI's GPT-NeoX architecture used in Pythia models",

@@ -46,6 +46,7 @@ from .verification import VerificationHistory, VerificationRecord
 # GPTNeoX) in config.architectures instead.
 HF_SUPPORTED_ARCHITECTURES: set[str] = {
     "ApertusForCausalLM",
+    "ArceeForCausalLM",
     "BaiChuanForCausalLM",
     "BaichuanForCausalLM",
     "BartForConditionalGeneration",
@@ -117,6 +118,7 @@ HF_SUPPORTED_ARCHITECTURES: set[str] = {
 # download-threshold bypass and the docs table's "Canonical only" toggle.
 CANONICAL_AUTHORS_BY_ARCH: dict[str, list[str]] = {
     "ApertusForCausalLM": ["swiss-ai"],
+    "ArceeForCausalLM": ["arcee-ai"],
     "BaiChuanForCausalLM": ["baichuan-inc"],
     "BaichuanForCausalLM": ["baichuan-inc"],
     "BartForConditionalGeneration": ["facebook"],
