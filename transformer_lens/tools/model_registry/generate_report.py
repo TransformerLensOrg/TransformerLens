@@ -44,6 +44,7 @@ ARCHITECTURE_DESCRIPTIONS: dict[str, str] = {
     "GlmMoeDsaForCausalLM": "Z.ai's GLM-5 MoE model with DeepSeek Sparse Attention",
     "Glm4MoeForCausalLM": "Z.ai's GLM-4.5/4.6/4.7 sparse Mixture-of-Experts causal LM",
     "Qwen2ForCausalLM": "Alibaba's Qwen2 multilingual model",
+    "Qwen2MoeForCausalLM": "Alibaba's Qwen2 sparse Mixture-of-Experts model with shared experts",
     "Qwen3ForCausalLM": "Alibaba's Qwen3 latest generation",
     "Qwen3_5ForConditionalGeneration": "Alibaba's Qwen3.5 vision-language model",
     "BloomForCausalLM": "BigScience's BLOOM multilingual model",
