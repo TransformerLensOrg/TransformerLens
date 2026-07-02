@@ -99,6 +99,11 @@ from transformer_lens.model_bridge.generalized_components.siglip_vision_encoder 
 from transformer_lens.model_bridge.generalized_components.ssm2_mixer import SSM2MixerBridge
 from transformer_lens.model_bridge.generalized_components.ssm_block import SSMBlockBridge
 from transformer_lens.model_bridge.generalized_components.ssm_mixer import SSMMixerBridge
+from transformer_lens.model_bridge.generalized_components.ssm_protocol import (
+    SSMMixerProtocol,
+    SSMStateHookMixin,
+    find_ssm_mixer,
+)
 from transformer_lens.model_bridge.generalized_components.symbolic import SymbolicBridge
 from transformer_lens.model_bridge.generalized_components.t5_block import T5BlockBridge
 from transformer_lens.model_bridge.generalized_components.t5gemma_decoder_block import (
@@ -155,6 +160,9 @@ __all__ = [
     "SiglipVisionEncoderBridge",
     "SiglipVisionEncoderLayerBridge",
     "SSM2MixerBridge",
+    "SSMMixerProtocol",
+    "SSMStateHookMixin",
+    "find_ssm_mixer",
     "SSMBlockBridge",
     "SSMMixerBridge",
     "VisionProjectionBridge",
