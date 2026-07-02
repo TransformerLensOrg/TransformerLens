@@ -17,7 +17,7 @@ from transformer_lens.model_bridge.supported_architectures.qwen2 import (
 class Qwen2MoeRouterBridge(LinearBridge):
     """Bridge Qwen2-MoE router logits while preserving HF's tuple return."""
 
-    def forward(self, input: torch.Tensor, *args: Any, **kwargs: Any) -> tuple[Any, ...]:
+    def forward(self, input: torch.Tensor, *args: Any, **kwargs: Any) -> Any:
         if self.original_component is None:
             raise RuntimeError(
                 f"Original component not set for {self.name}. Call set_original_component() first."
