@@ -86,16 +86,34 @@ class TestQwen2MoeBridge:
 
     def test_run_with_cache_captures_moe_hooks(self) -> None:
         bridge, _ = tiny_qwen2_moe_bridge()
+        tokens = _tokens()
+        batch, seq_len = tokens.shape
+        flat_tokens = batch * seq_len
+        d_model = bridge.cfg.d_model
+        num_experts = bridge.cfg.num_experts
 
-        _, cache = bridge.run_with_cache(_tokens())
+        _, cache = bridge.run_with_cache(tokens)
 
         for layer_idx in range(len(bridge.blocks)):
-            for hook_name in (
-                "gate.hook_out",
-                "experts.hook_out",
-                "shared_expert.hook_out",
-                "shared_expert_gate.hook_out",
-                "hook_out",
-            ):
-                key = f"blocks.{layer_idx}.mlp.{hook_name}"
-                assert key in cache, f"Missing cache key: {key}"
+            gate_key = f"blocks.{layer_idx}.mlp.gate.hook_out"
+            assert gate_key in cache, f"Missing cache key: {gate_key}"
+            assert cache[gate_key].shape == (flat_tokens, num_experts)
+
+            experts_key = f"blocks.{layer_idx}.mlp.experts.hook_out"
+            assert experts_key in cache, f"Missing cache key: {experts_key}"
+            assert cache[experts_key].shape == (flat_tokens, d_model)
+
+            shared_expert_key = f"blocks.{layer_idx}.mlp.shared_expert.hook_out"
+            assert shared_expert_key in cache, f"Missing cache key: {shared_expert_key}"
+            assert cache[shared_expert_key].shape == (flat_tokens, d_model)
+
+            shared_expert_gate_key = f"blocks.{layer_idx}.mlp.shared_expert_gate.hook_out"
+            assert shared_expert_gate_key in cache, f"Missing cache key: {shared_expert_gate_key}"
+            assert cache[shared_expert_gate_key].shape == (flat_tokens, 1)
+
+            mlp_out_key = f"blocks.{layer_idx}.mlp.hook_out"
+            assert mlp_out_key in cache, f"Missing cache key: {mlp_out_key}"
+            assert cache[mlp_out_key].shape == (batch, seq_len, d_model)
+
+            router_scores_key = f"blocks.{layer_idx}.mlp.hook_router_scores"
+            assert router_scores_key not in cache
