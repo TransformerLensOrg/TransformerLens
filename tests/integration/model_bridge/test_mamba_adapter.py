@@ -362,7 +362,7 @@ class TestMamba1EffectiveAttention:
         x_proj = cache[f"blocks.{layer}.mixer.x_proj.hook_out"].float()
         dt_proj = cache[f"blocks.{layer}.mixer.dt_proj.hook_out"].float()
         in_proj = cache[f"blocks.{layer}.mixer.in_proj.hook_out"].float()
-        x = F.silu(conv)  # [b, d_inner, seq]
+        x = oc.act(conv)  # [b, d_inner, seq]
         _ts, B, C = x_proj.split([dt_rank, state, state], dim=-1)
         dt = F.softplus(dt_proj).transpose(1, 2)  # [b, d_inner, seq]
         A = -torch.exp(mixer.A_log.float())
@@ -419,14 +419,14 @@ class TestMamba1EffectiveAttention:
         assert rel < 1e-5, f"M·x reconstruction vs fp64 eager scan rel diff {rel:.2e}"
 
     def test_reconstructs_mixer_output(self, cache, mamba_bridge):
-        """out_proj((M·x + D·x)·silu(gate)) must reconstruct HF's mixer output."""
-        import torch.nn.functional as F
-
+        """out_proj((M·x + D·x)·act(gate)) must reconstruct HF's mixer output."""
         mixer = mamba_bridge.blocks[0].mixer
         M = mixer.compute_effective_attention(cache, layer_idx=0, include_dt_scaling=True)
         x, _, _, _, _, D, gate = self._inputs(cache, mixer, 0, self.SEQ_LEN)
         y = torch.einsum("bcij,bcj->bci", M, x) + D[None, :, None] * x
-        out = mixer.original_component.out_proj((y * F.silu(gate)).transpose(1, 2))
+        out = mixer.original_component.out_proj(
+            (y * mixer.original_component.act(gate)).transpose(1, 2)
+        )
         hook_out = cache["blocks.0.mixer.hook_out"].float()
         rel = (out - hook_out).abs().max().item() / max(hook_out.abs().max().item(), 1e-8)
         assert rel < 1e-5, (
@@ -476,7 +476,7 @@ class TestMamba1SSMState:
         x_proj = cache[f"blocks.{layer}.mixer.x_proj.hook_out"].float()
         dt_proj = cache[f"blocks.{layer}.mixer.dt_proj.hook_out"].float()
         in_proj = cache[f"blocks.{layer}.mixer.in_proj.hook_out"].float()
-        x = F.silu(conv)  # [b, d_inner, seq]
+        x = oc.act(conv)  # [b, d_inner, seq]
         _ts, B, C = x_proj.split([dt_rank, state, state], dim=-1)
         dt = F.softplus(dt_proj).transpose(1, 2)  # [b, d_inner, seq]
         A = -torch.exp(mixer.A_log.float())
@@ -510,14 +510,14 @@ class TestMamba1SSMState:
         assert rel < 1e-5, f"S vs fp64 eager recurrence rel diff {rel:.2e}"
 
     def test_reconstructs_mixer_output(self, cache, mamba_bridge):
-        """out_proj((C·S + D·x)·silu(gate)) must reconstruct HF's mixer output."""
-        import torch.nn.functional as F
-
+        """out_proj((C·S + D·x)·act(gate)) must reconstruct HF's mixer output."""
         mixer = mamba_bridge.blocks[0].mixer
         S = mixer.compute_ssm_state(cache, layer_idx=0)  # [b, channels, seq, state]
         x, _, C, _, _, D, gate = self._inputs(cache, mixer, 0, self.SEQ_LEN)
         y = torch.einsum("bcts,bts->bct", S, C) + D[None, :, None] * x
-        out = mixer.original_component.out_proj((y * F.silu(gate)).transpose(1, 2))
+        out = mixer.original_component.out_proj(
+            (y * mixer.original_component.act(gate)).transpose(1, 2)
+        )
         hook_out = cache["blocks.0.mixer.hook_out"].float()
         rel = (out - hook_out).abs().max().item() / max(hook_out.abs().max().item(), 1e-8)
         assert rel < 1e-5, (
@@ -723,7 +723,7 @@ class TestMamba1EagerScanFp64Reference:
         p = f"blocks.{self.LAYER}.mixer"
 
         conv = cache[f"{p}.conv1d.hook_out"][..., : self.SEQ_LEN].double()  # [b, d_inner, seq]
-        x = F.silu(conv)  # HF act (silu) on the trimmed conv output
+        x = oc.act(conv)  # HF act on the trimmed conv output
         xp = cache[f"{p}.x_proj.hook_out"].double()  # [b, seq, dt_rank + 2*state]
         _, B, _C = xp.split([dt_rank, state, state], dim=-1)  # B: [b, seq, state]
         dtp = cache[f"{p}.dt_proj.hook_out"].double()  # [b, seq, d_inner] (pre-softplus)

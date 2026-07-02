@@ -196,6 +196,16 @@ class BenchmarkReport:
         print("=" * 80 + "\n")
 
 
+def _is_ssm_mixer_internal(component_path: str) -> bool:
+    """True for a submodule *inside* an SSM/recurrent mixer slot (``.mixer``/``.linear_attn``).
+
+    Such submodules wrap the identical HF module (parity is covered by forward_pass_logits)
+    and take SSM-internal shapes, not the ``[b, seq, d_model]`` residual the isolated harness
+    feeds — so they are skipped. The mixer node itself (path ending in the slot) is not.
+    """
+    return any(slot in component_path.split(".")[:-1] for slot in ("mixer", "linear_attn"))
+
+
 class ComponentBenchmarker:
     """Benchmarking utility for testing TransformerBridge components against HuggingFace."""
 
@@ -387,11 +397,9 @@ class ComponentBenchmarker:
         if component_path in skip_components:
             return
 
-        # Skip an SSM/recurrent mixer's internal submodules: they wrap the identical HF
-        # module (parity already covered by forward_pass_logits) and take SSM-internal
-        # shapes (channel-first conv, d_inner/dt_rank), not the [b, seq, d_model] residual
-        # the isolated harness feeds. The mixer node itself is still tested against HF.
-        if any(slot in component_path.split(".")[:-1] for slot in ("mixer", "linear_attn")):
+        # SSM/recurrent mixer internal submodules can't be tested in isolation (see
+        # _is_ssm_mixer_internal); the mixer node itself is still tested against HF.
+        if _is_ssm_mixer_internal(component_path):
             return
 
         # Skip MLP components that don't exist as separate modules in HF (name=None)

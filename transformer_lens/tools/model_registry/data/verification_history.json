@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-07-01T11:28:07.646010",
+  "last_updated": "2026-07-02T02:19:51.172022",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -16398,8 +16398,8 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Below threshold: P1=50.0% < 100.0% (failed: all_components) \u2014 96/171 components failed (96 critical)",
-      "invalidated": false,
-      "invalidation_reason": null
+      "invalidated": true,
+      "invalidation_reason": "Superseded by the clean re-run (P1=100) after the component-benchmark fix that skips SSM mixer-internal submodules; the 96/171 component failures were the isolated harness feeding d_model-shaped inputs to SSM-internal projections, not a real divergence."
     },
     {
       "model_id": "state-spaces/mamba-130m-hf",
@@ -16428,8 +16428,8 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Below threshold: P3=94.7% but required tests failed: logits_equivalence \u2014 Tensors differ: max_diff=0.375000, mean_rel=0.002045",
-      "invalidated": false,
-      "invalidation_reason": null
+      "invalidated": true,
+      "invalidation_reason": "bf16 precision of compatibility-mode center_unembed (root-caused by toggle: off=0.000 both dtypes, fp32=4.2e-5); superseded by the clean fp32 run (P3=100). Not an algorithmic bug."
     },
     {
       "model_id": "NYTK/PULI-HuBA-mamba-130M",
@@ -16708,6 +16708,156 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Full verification completed with issues: P3=90.0% (failed: attention_output_centering, mlp_output_centering)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "state-spaces/mamba-130m-hf",
+      "architecture_id": "MambaForCausalLM",
+      "verified_date": "2026-07-01",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "dominguesm/mambarim-110m",
+      "architecture_id": "MambaForCausalLM",
+      "verified_date": "2026-07-01",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "NYTK/PULI-HuBA-mamba-130M",
+      "architecture_id": "MambaForCausalLM",
+      "verified_date": "2026-07-01",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "state-spaces/mamba-370m-hf",
+      "architecture_id": "MambaForCausalLM",
+      "verified_date": "2026-07-01",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "state-spaces/mamba-790m-hf",
+      "architecture_id": "MambaForCausalLM",
+      "verified_date": "2026-07-01",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "AntonV/mamba2-130m-hf",
+      "architecture_id": "Mamba2ForCausalLM",
+      "verified_date": "2026-07-01",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "deqing/convergent-mamba2-300M-adamw-original",
+      "architecture_id": "Mamba2ForCausalLM",
+      "verified_date": "2026-07-01",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues, low text quality",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "deqing/mamba2-300M-v5-mamba2",
+      "architecture_id": "Mamba2ForCausalLM",
+      "verified_date": "2026-07-01",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "evolai/evolai_mamba_naive_kl",
+      "architecture_id": "Mamba2ForCausalLM",
+      "verified_date": "2026-07-01",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "limloop/whiff-mamba2-50M-v0.1",
+      "architecture_id": "Mamba2ForCausalLM",
+      "verified_date": "2026-07-01",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "yujiepan/qwen3-next-moe-tiny-random",
+      "architecture_id": "Qwen3NextForCausalLM",
+      "verified_date": "2026-07-01",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Evelyn67/Qwen3.5-2B-Her",
+      "architecture_id": "Qwen3_5ForCausalLM",
+      "verified_date": "2026-07-01",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "GoodStartLabs/gin-rummy-hbc-qwen3.5-0.8b",
+      "architecture_id": "Qwen3_5ForCausalLM",
+      "verified_date": "2026-07-01",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16",
+      "architecture_id": "NemotronHForCausalLM",
+      "verified_date": "2026-07-01",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "nvidia/NVIDIA-Nemotron-Nano-9B-v2",
+      "architecture_id": "NemotronHForCausalLM",
+      "verified_date": "2026-07-02",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
       "invalidated": false,
       "invalidation_reason": null
     }

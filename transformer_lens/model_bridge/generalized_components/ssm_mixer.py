@@ -257,8 +257,9 @@ class SSMMixerBridge(SSMStateHookMixin, GeneralizedComponent):
             )
         t = self._s6_terms(cache, layer_idx)
         seq_len = t.dt.shape[-1]
-        # x = SiLU(conv output), the SSM scan input; channel-first [batch, channels, seq].
-        x = torch.nn.functional.silu(cache[conv_key].float()[..., :seq_len])
+        oc: Any = self.original_component
+        # x = act(conv output), the SSM scan input; channel-first [batch, channels, seq].
+        x = oc.act(cache[conv_key].float()[..., :seq_len])
         dtx = t.dt * x  # dt_j[c]·x_j[c], [batch, channels, seq]
         # S_t[c, s] = sum_{j<=t} decay[c, s, t, j] · dtx[c, j] · B_j[s]
         if time_step is not None:
