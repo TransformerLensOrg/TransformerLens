@@ -6,6 +6,9 @@ This module contains all the supported architecture adapters for different model
 from transformer_lens.model_bridge.supported_architectures.apertus import (
     ApertusArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.arcee import (
+    ArceeArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.baichuan import (
     BaichuanArchitectureAdapter,
 )
@@ -207,6 +210,7 @@ from transformer_lens.model_bridge.supported_architectures.xglm import (
 
 __all__ = [
     "ApertusArchitectureAdapter",
+    "ArceeArchitectureAdapter",
     "BaichuanArchitectureAdapter",
     "BartArchitectureAdapter",
     "BertArchitectureAdapter",
