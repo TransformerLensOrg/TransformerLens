@@ -96,7 +96,7 @@ class FalconH1ArchitectureAdapter(ArchitectureAdapter):
         self.cfg.gated_mlp = True
         self.cfg.attn_only = False
         # FalconH1RMSNorm stores its epsilon as `variance_epsilon` (like Llama).
-        self.cfg.eps_attr = "variance_epsilon"
+        setattr(self.cfg, "eps_attr", "variance_epsilon")
 
         if hasattr(cfg, "n_key_value_heads") and cfg.n_key_value_heads is not None:
             self.cfg.n_key_value_heads = cfg.n_key_value_heads
