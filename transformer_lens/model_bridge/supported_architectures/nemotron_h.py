@@ -1,6 +1,6 @@
 """Nemotron-H hybrid Mamba2-Transformer architecture adapter.
 
-Supports NemotronHForCausalLM (nvidia/Nemotron-H-8B-Base, Nemotron-H-47B-A13B).
+Supports NemotronHForCausalLM (e.g. nvidia/NVIDIA-Nemotron-Nano-9B-v2, Nemotron-3 series).
 
 Architecture overview:
 - Heterogeneous layers defined by ``config.layers_block_type`` — each element is
@@ -26,9 +26,8 @@ Key adapter decisions:
   Mamba-specific inner submodules (in_proj, conv1d, inner_norm, out_proj) are
   declared ``optional=True`` so setup skips them gracefully on non-Mamba layers.
 - MLP layers use ``relu2`` activation (not SwiGLU); ``gated_mlp = False``.
-- ``applicable_phases = []``: ``verify_models`` is transformer-shaped and would
-  require a dedicated refactor to cover SSM hybrids. Coverage lives in the
-  integration test instead.
+- ``applicable_phases = [1, 2, 3, 4]``: P1 is exact vs raw HF (passthrough mixers);
+  P2/P3 skip without a HookedTransformer; P4 is generation.
 """
 
 from typing import Any
@@ -69,9 +68,9 @@ class NemotronHArchitectureAdapter(ArchitectureAdapter):
     is determined by ``config.layers_block_type[layer_idx]``.
     """
 
-    # verify_models is transformer-shaped and requires a dedicated refactor to
-    # cover SSM hybrids. Integration tests cover forward-pass correctness instead.
-    applicable_phases: list[int] = []
+    # White-box forward: P1 is exact vs raw HF (passthrough mixers); P2/P3 skip
+    # without a HookedTransformer; P4 is generation.
+    applicable_phases: list[int] = [1, 2, 3, 4]
 
     def __init__(self, cfg: Any) -> None:
         super().__init__(cfg)
@@ -89,10 +88,12 @@ class NemotronHArchitectureAdapter(ArchitectureAdapter):
         # Mamba layers require per-step SSM state; generation is stateful.
         self.cfg.is_stateful = True
 
-        # Expose the heterogeneous layer-type list so tests and analysis tools
-        # can inspect which layers are which without loading a full HF model.
-        layers_block_type = getattr(cfg, "layers_block_type", [])
-        setattr(self.cfg, "layers_block_type", layers_block_type)
+        # Normalize the per-layer type list as cfg.layers_block_type (HF names it
+        # `layer_types`) so analysis tools can find the Mamba layers, as on Granite.
+        layers_block_type = (
+            getattr(cfg, "layers_block_type", None) or getattr(cfg, "layer_types", None) or []
+        )
+        setattr(self.cfg, "layers_block_type", list(layers_block_type))
 
         # Mamba-2 dimensional config (mirrors Mamba2ArchitectureAdapter).
         mamba_num_heads = getattr(cfg, "mamba_num_heads", 128)
