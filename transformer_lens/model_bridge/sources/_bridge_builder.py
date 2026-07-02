@@ -60,6 +60,7 @@ _HF_PASSTHROUGH_ATTRS = [
     # Hybrid/MoE architectures
     "layer_types",
     "moe_intermediate_size",
+    "shared_expert_intermediate_size",
     "norm_eps",
     "attention_bias",
     "lm_head_bias",

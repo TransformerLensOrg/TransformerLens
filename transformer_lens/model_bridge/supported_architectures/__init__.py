@@ -6,6 +6,9 @@ This module contains all the supported architecture adapters for different model
 from transformer_lens.model_bridge.supported_architectures.apertus import (
     ApertusArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.arcee import (
+    ArceeArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.baichuan import (
     BaichuanArchitectureAdapter,
 )
@@ -177,6 +180,9 @@ from transformer_lens.model_bridge.supported_architectures.qwen import (
 from transformer_lens.model_bridge.supported_architectures.qwen2 import (
     Qwen2ArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.qwen2_moe import (
+    Qwen2MoeArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.qwen3 import (
     Qwen3ArchitectureAdapter,
 )
@@ -210,6 +216,7 @@ from transformer_lens.model_bridge.supported_architectures.xglm import (
 
 __all__ = [
     "ApertusArchitectureAdapter",
+    "ArceeArchitectureAdapter",
     "BaichuanArchitectureAdapter",
     "BartArchitectureAdapter",
     "BertArchitectureAdapter",
@@ -268,6 +275,7 @@ __all__ = [
     "PhiMoEArchitectureAdapter",
     "QwenArchitectureAdapter",
     "Qwen2ArchitectureAdapter",
+    "Qwen2MoeArchitectureAdapter",
     "Qwen3ArchitectureAdapter",
     "Qwen3MoeArchitectureAdapter",
     "Qwen3NextArchitectureAdapter",

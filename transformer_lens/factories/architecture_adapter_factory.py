@@ -11,6 +11,7 @@ from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.supported_architectures import (
     ApertusArchitectureAdapter,
+    ArceeArchitectureAdapter,
     BaichuanArchitectureAdapter,
     BartArchitectureAdapter,
     BertArchitectureAdapter,
@@ -67,6 +68,7 @@ from transformer_lens.model_bridge.supported_architectures import (
     PhiArchitectureAdapter,
     PhiMoEArchitectureAdapter,
     Qwen2ArchitectureAdapter,
+    Qwen2MoeArchitectureAdapter,
     Qwen3_5ArchitectureAdapter,
     Qwen3_5MultimodalArchitectureAdapter,
     Qwen3ArchitectureAdapter,
@@ -83,6 +85,7 @@ from transformer_lens.model_bridge.supported_architectures import (
 # Export supported architectures
 SUPPORTED_ARCHITECTURES = {
     "ApertusForCausalLM": ApertusArchitectureAdapter,
+    "ArceeForCausalLM": ArceeArchitectureAdapter,
     "BaiChuanForCausalLM": BaichuanArchitectureAdapter,
     "BaichuanForCausalLM": BaichuanArchitectureAdapter,
     "BartForConditionalGeneration": BartArchitectureAdapter,
@@ -144,6 +147,7 @@ SUPPORTED_ARCHITECTURES = {
     "PhiMoEForCausalLM": PhiMoEArchitectureAdapter,
     "QwenForCausalLM": QwenArchitectureAdapter,
     "Qwen2ForCausalLM": Qwen2ArchitectureAdapter,
+    "Qwen2MoeForCausalLM": Qwen2MoeArchitectureAdapter,
     "Qwen3ForCausalLM": Qwen3ArchitectureAdapter,
     "Qwen3MoeForCausalLM": Qwen3MoeArchitectureAdapter,
     "Qwen3NextForCausalLM": Qwen3NextArchitectureAdapter,
