@@ -126,12 +126,12 @@ def map_default_transformer_lens_config(hf_config):
         tl_config.n_layers = source_config.n_layer
     elif hasattr(source_config, "num_hidden_layers"):
         tl_config.n_layers = source_config.num_hidden_layers
-    elif hasattr(source_config, "n_blocks"):
-        tl_config.n_layers = source_config.n_blocks
     elif hasattr(source_config, "num_transformer_layers"):
         tl_config.n_layers = source_config.num_transformer_layers
     elif hasattr(source_config, "num_layers"):
         tl_config.n_layers = source_config.num_layers
+    elif hasattr(source_config, "n_blocks"):
+        tl_config.n_layers = source_config.n_blocks
     if hasattr(source_config, "vocab_size") and isinstance(source_config.vocab_size, int):
         tl_config.d_vocab = source_config.vocab_size
     if hasattr(source_config, "n_positions"):

@@ -47,6 +47,7 @@ class BD3LMArchitectureAdapter(ArchitectureAdapter):
         self.cfg.gated_mlp = False  # standard GELU MLP, not gated
         self.cfg.attn_only = False
         self.cfg.final_rms = False  # final norm is custom LayerNorm
+        self.cfg.tokenizer_name = "gpt2"
 
         # BD3LM-specific config fields.  These live on the HF config and are
         # forwarded via _HF_PASSTHROUGH_ATTRS; we also store them explicitly
@@ -112,6 +113,12 @@ class BD3LMArchitectureAdapter(ArchitectureAdapter):
                         },
                     ),
                 },
+                # hook_attn_out captures the raw projection, not the gate_msa-scaled
+                # value added to residual stream, as gating is fused inside a
+                # torch.jit.script function with no hookable module boundary.
+                hook_alias_overrides={
+                    "hook_attn_out": "attn.o.hook_out",
+                },
             ),
             "sigma_map": MLPBridge(
                 name="backbone.sigma_map.mlp",
@@ -126,6 +133,21 @@ class BD3LMArchitectureAdapter(ArchitectureAdapter):
             ),
             "unembed": UnembeddingBridge(name="backbone.output_layer.linear"),
         }
+
+    def prepare_loading(self, model_name: str, model_kwargs: dict) -> None:
+        """Patch BD3LM dynamic class before from_pretrained runs.
+
+        Modeling code has a custom __getattr__ that fails to delegate back
+        to PreTrainedModel, raising AttributeError on all_tied_weights_keys.
+        """
+        try:
+            from transformers.dynamic_module_utils import get_class_from_dynamic_module
+
+            model_class = get_class_from_dynamic_module("modeling_bd3lm.BD3LM", model_name)
+            setattr(model_class, "all_tied_weights_keys", {})
+        except Exception:
+            # Best-effort patch: should never block loading if dynamic module is missing/modified.
+            pass
 
     def prepare_model(self, hf_model: Any) -> None:
         """Patch BD3LM quirks that prevent standard bridge construction.
@@ -148,12 +170,15 @@ class BD3LMArchitectureAdapter(ArchitectureAdapter):
 
         # Fix attention backend for CPU and ensure mask is on a real device
         if hasattr(hf_model, "backbone"):
-            backend = getattr(self.cfg, "attn_backend", "sdpa")
-            if not torch.cuda.is_available() and backend == "flex":
+            if not torch.cuda.is_available():
                 backend = "sdpa"
                 setattr(self.cfg, "attn_backend", "sdpa")
                 for b in hf_model.backbone.blocks:
                     b.attn_backend = "sdpa"
+            else:
+                first_block = hf_model.backbone.blocks[0]
+                backend = getattr(first_block, "attn_backend", "sdpa")
+
             if hasattr(hf_model.backbone, "gen_mask"):
                 hf_model.backbone.gen_mask(
                     getattr(self.cfg, "model_length", getattr(self.cfg, "n_ctx", 2048)),
