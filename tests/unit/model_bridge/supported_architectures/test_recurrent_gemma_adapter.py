@@ -51,9 +51,7 @@ def adapter(cfg: TransformerBridgeConfig) -> RecurrentGemmaArchitectureAdapter:
 
 
 class TestRecurrentGemmaAdapterConfig:
-    def test_norm_config_is_gemma_rmsnorm(
-        self, adapter: RecurrentGemmaArchitectureAdapter
-    ) -> None:
+    def test_norm_config_is_gemma_rmsnorm(self, adapter: RecurrentGemmaArchitectureAdapter) -> None:
         assert adapter.cfg.normalization_type == "RMS"
         assert adapter.cfg.uses_rms_norm is True
         assert adapter.cfg.final_rms is True
@@ -69,9 +67,7 @@ class TestRecurrentGemmaAdapterConfig:
     def test_final_logit_soft_cap(self, adapter: RecurrentGemmaArchitectureAdapter) -> None:
         assert adapter.cfg.output_logits_soft_cap == 30.0
 
-    def test_default_prepend_bos_is_false(
-        self, adapter: RecurrentGemmaArchitectureAdapter
-    ) -> None:
+    def test_default_prepend_bos_is_false(self, adapter: RecurrentGemmaArchitectureAdapter) -> None:
         assert adapter.cfg.default_prepend_bos is False
 
     def test_block_types_exposed_for_analysis(
