@@ -53,6 +53,7 @@ ARCHITECTURE_DESCRIPTIONS: dict[str, str] = {
     "Phi3ForCausalLM": "Microsoft's Phi-3 improved small model",
     "PhiMoEForCausalLM": "Microsoft's Phi sparse Mixture of Experts model",
     "FalconForCausalLM": "TII's Falcon model series",
+    "FalconH1ForCausalLM": "TII's Falcon-H1 parallel attention + Mamba-2 hybrid series",
     "OlmoForCausalLM": "Allen AI's OLMo open language model",
     "Olmo2ForCausalLM": "Allen AI's OLMo 2 with improved training",
     "Olmo3ForCausalLM": "Allen AI's OLMo 3 latest generation",
