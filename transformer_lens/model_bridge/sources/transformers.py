@@ -184,7 +184,9 @@ def map_default_transformer_lens_config(hf_config):
         tl_config.eps = source_config.layer_norm_epsilon
     elif hasattr(source_config, "norm_eps"):
         tl_config.eps = source_config.norm_eps
-    if hasattr(source_config, "num_local_experts"):
+    if hasattr(source_config, "num_experts"):
+        tl_config.num_experts = source_config.num_experts
+    elif hasattr(source_config, "num_local_experts"):
         tl_config.num_experts = source_config.num_local_experts
     if hasattr(source_config, "num_experts_per_tok"):
         tl_config.experts_per_token = source_config.num_experts_per_tok
@@ -252,6 +254,7 @@ def determine_architecture_from_hf_config(hf_config):
             "phi3": "Phi3ForCausalLM",
             "qwen": "QwenForCausalLM",
             "qwen2": "Qwen2ForCausalLM",
+            "qwen2_moe": "Qwen2MoeForCausalLM",
             "qwen3": "Qwen3ForCausalLM",
             # qwen3_5 is the top-level multimodal config type; qwen3_5_text is
             # the text-only sub-config. Both map to the text-only adapter so
@@ -548,6 +551,7 @@ def boot(
         # Hybrid/MoE architectures
         "layer_types",
         "moe_intermediate_size",
+        "shared_expert_intermediate_size",
         "norm_eps",
         "attention_bias",
         "lm_head_bias",

@@ -105,6 +105,19 @@ def xielu(input: Float[torch.Tensor, "batch pos d_mlp"]) -> Float[torch.Tensor, 
     )
 
 
+def relu2(input: Float[torch.Tensor, "batch pos d_mlp"]) -> Float[torch.Tensor, "batch pos d_mlp"]:
+    """Squared-ReLU (ReLU^2) activation function: ``relu(x) ** 2``.
+
+    Used by Arcee (ArceeForCausalLM / AFM-4.5B) in an ungated MLP. Matches
+    HuggingFace's ``ReLUSquaredActivation`` (registered as ``"relu2"`` in
+    ``transformers`` ACT2FN), so the key here mirrors the HF ``hidden_act`` string.
+    The squaring drives high activation sparsity, which is useful for neuron-level
+    interpretability (https://arxiv.org/abs/2109.08668).
+    """
+    relu_applied = F.relu(input)
+    return relu_applied * relu_applied
+
+
 # Convenient type for the format of each activation function
 ActivationFunction = Callable[..., torch.Tensor]
 
@@ -120,4 +133,5 @@ SUPPORTED_ACTIVATIONS: Dict[str, ActivationFunction] = {
     "gelu": F.gelu,
     "gelu_pytorch_tanh": gelu_pytorch_tanh,
     "xielu": xielu,
+    "relu2": relu2,
 }
