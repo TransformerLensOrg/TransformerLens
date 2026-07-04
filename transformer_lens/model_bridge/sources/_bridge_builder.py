@@ -49,6 +49,8 @@ _HF_PASSTHROUGH_ATTRS = [
     # Cohere
     "logit_scale",
     "rope_parameters",
+    "sliding_window_pattern",
+    "_sliding_window_pattern",
     # Hybrid/MoE architectures
     "layer_types",
     "moe_intermediate_size",

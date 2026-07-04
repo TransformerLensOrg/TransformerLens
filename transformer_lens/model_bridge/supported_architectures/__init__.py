@@ -22,6 +22,7 @@ from transformer_lens.model_bridge.supported_architectures.codegen import (
     CodeGenArchitectureAdapter,
 )
 from transformer_lens.model_bridge.supported_architectures.cohere import (
+    Cohere2ArchitectureAdapter,
     CohereArchitectureAdapter,
 )
 from transformer_lens.model_bridge.supported_architectures.deepseek_v2 import (
@@ -54,6 +55,9 @@ from transformer_lens.model_bridge.supported_architectures.gemma4 import (
 from transformer_lens.model_bridge.supported_architectures.glm4_moe import (
     Glm4MoeArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.glm_moe_dsa import (
+    GlmMoeDsaArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.gpt2 import (
     GPT2ArchitectureAdapter,
 )
@@ -68,9 +72,6 @@ from transformer_lens.model_bridge.supported_architectures.gpt_oss import (
 )
 from transformer_lens.model_bridge.supported_architectures.gptj import (
     GptjArchitectureAdapter,
-)
-from transformer_lens.model_bridge.supported_architectures.glm_moe_dsa import (
-    GlmMoeDsaArchitectureAdapter,
 )
 from transformer_lens.model_bridge.supported_architectures.granite import (
     GraniteArchitectureAdapter,
@@ -212,6 +213,7 @@ __all__ = [
     "BertArchitectureAdapter",
     "BloomArchitectureAdapter",
     "CodeGenArchitectureAdapter",
+    "Cohere2ArchitectureAdapter",
     "CohereArchitectureAdapter",
     "DeepSeekV2ArchitectureAdapter",
     "DeepSeekV3ArchitectureAdapter",

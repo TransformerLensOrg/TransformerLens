@@ -240,6 +240,7 @@ def determine_architecture_from_hf_config(hf_config):
             "bert": "BertForMaskedLM",
             "bloom": "BloomForCausalLM",
             "codegen": "CodeGenForCausalLM",
+            "cohere2": "Cohere2ForCausalLM",
             "gptj": "GPTJForCausalLM",
             "gpt_neo": "GPTNeoForCausalLM",
             "gpt_neox": "GPTNeoXForCausalLM",
@@ -541,6 +542,8 @@ def boot(
         # Cohere
         "logit_scale",
         "rope_parameters",
+        "sliding_window_pattern",
+        "_sliding_window_pattern",
         # Hybrid/MoE architectures
         "layer_types",
         "moe_intermediate_size",
