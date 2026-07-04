@@ -2046,7 +2046,7 @@ def get_pretrained_state_dict(
             elif "hubert" in official_model_name:
                 hf_model = HubertModel.from_pretrained(
                     official_model_name,
-                    dtorch_dtype=dtype,
+                    torch_dtype=dtype,
                     token=huggingface_token if len(huggingface_token) > 0 else None,
                     **kwargs,
                 )
