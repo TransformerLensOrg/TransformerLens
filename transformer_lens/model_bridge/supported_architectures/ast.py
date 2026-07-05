@@ -15,15 +15,17 @@ class ASTEmbed(nn.Module):
     def __init__(self, cfg):
         super().__init__()
         self.cfg = cfg
-        # AST uses a 16x16 patch size by default
+        # AST uses a 16x16 patch size
         patch_size = (16, 16)
+        # AST uses overlapping patches with stride of 10, this frequenly causes problems if not known
+        stride = (10, 10)
 
         # the Conv2d layer acts as the patch extractor
         self.patch_embeddings = nn.Conv2d(
             in_channels=1,
             out_channels=cfg.d_model,
             kernel_size=patch_size,
-            stride=patch_size
+            stride=stride
         )
 
         # learnable CLS token prepended to sequence
@@ -75,6 +77,9 @@ class ASTAdapter(ArchitectureAdapter):
             "eps": hf_config.layer_norm_eps,
             "act_fn": "gelu",
             "d_head": hf_config.hidden_size // hf_config.num_attention_heads,
+
+            # tell TL this is Image/Audio model not Text model
+            "attention_dir": "bidirectional",
         }
     
     @classmethod

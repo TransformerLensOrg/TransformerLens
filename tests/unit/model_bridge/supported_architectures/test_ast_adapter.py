@@ -35,29 +35,41 @@ def test_ast_parity():
     mapped_weights = ASTAdapter.convert_weights(hf_model.state_dict(), tl_config)
     tl_model.load_state_dict(mapped_weights, strict=False)
 
+    # lock both models to disable dropout for increased reproducibility
+    hf_model.eval()
+    tl_model.eval()
+
     # create dummy mel spectrogram
     dummy_spectrogram = torch.randn(1, 1024, 128)
 
-    print("Running forward passes . . .")
+    print("\n--- INITIATING LAYER BY LAYER AUTOPSY ---")
     with torch.no_grad():
+
+        # 0. HF forward pass with hidden states exposed
+        hf_outputs = hf_model.audio_spectrogram_transformer(dummy_spectrogram, output_hidden_states=True)
+        hf_hidden_states = hf_outputs.hidden_states
         hf_logits = hf_model(dummy_spectrogram).logits
 
         # == TL manual matrix forward pass ==
-        # 1. extract patches & CLS tokens via custom ASTEmbed
+        # STEP 1. embeddings parity
         resid = tl_model.embed(dummy_spectrogram)
-
-        # 2. add positional embeddings (sliced to actual sequence length)
         seq_len = resid.shape[1]
         resid = resid + tl_model.pos_embed.W_pos[:seq_len, :]
 
-        # 3. pass thru standard transformer blocks
-        for block in tl_model.blocks:
+        diff_embed = (hf_hidden_states[0] - resid).abs().max().item()
+        print(f"1. Embeddings Max Diff: {diff_embed:.6e}")
+
+        # STEP 2. transformer blocks parity 
+        for i, block in enumerate(tl_model.blocks):
             resid = block(resid)
+            # compare against the corresponding HF hidden state (i+1 because index 0 is embeddings)
+            diff_block = (hf_hidden_states[i+1] - resid).abs().max().item()
+            print(f"2. Block {i} Max Diff:  {diff_block:.6e}")
         
-        # 4. final LayerNorm
+        # STEP 3: final LayerNorm
         resid = tl_model.ln_final(resid)
 
-        # 5. ViT: only unembed the CLS token (index 0)
+        # STEP 4: pooling and classifier
         cls_token_out = resid[:, 0, :]
         dist_token_out = resid[:, 1, :]
         pooled_out = (cls_token_out + dist_token_out) / 2.0
@@ -76,10 +88,11 @@ def test_ast_parity():
 
         tl_logits = tl_model.unembed(pooled_out)
     
-    diff = (hf_logits - tl_logits).abs().max().item()
-    print(f"Max logit difference: {diff:.6e}")
+    diff_final = (hf_logits - tl_logits).abs().max().item()
+    print(f"3. Final Logits Max Diff: {diff_final:.6e}")
+    print("-----------------------------------------\n")
 
-    assert diff < 1e-4, "parity failed: tensors do not match"
+    assert diff_final < 1e-4, "parity failed: tensors do not match"
     print("Parity dub. adapter mapping math yes")
 
 if __name__ == "__main__":
