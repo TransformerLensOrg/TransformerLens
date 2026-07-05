@@ -1,11 +1,12 @@
+from typing import Any, Dict
+
 import torch
 import torch.nn as nn
-from typing import Dict, Any
 from transformers import ASTConfig
 
-from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.config.hooked_transformer_config import HookedTransformerConfig
 from transformer_lens.hook_points import HookPoint
+from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 
 class ASTEmbed(nn.Module):
     # custom embedding layer for ViT/AST architectures

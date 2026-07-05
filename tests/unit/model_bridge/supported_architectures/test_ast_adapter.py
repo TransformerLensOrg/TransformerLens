@@ -1,5 +1,6 @@
 import torch
-from transformers import ASTForAudioClassification, ASTConfig
+from transformers import ASTConfig, ASTForAudioClassification
+
 from transformer_lens import HookedTransformer, HookedTransformerConfig
 from transformer_lens.model_bridge.supported_architectures.ast import ASTAdapter, ASTEmbed
 
