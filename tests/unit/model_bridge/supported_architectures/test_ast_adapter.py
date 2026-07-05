@@ -2,7 +2,11 @@ import torch
 from transformers import ASTConfig, ASTForAudioClassification
 
 from transformer_lens import HookedTransformer, HookedTransformerConfig
-from transformer_lens.model_bridge.supported_architectures.ast import ASTAdapter, ASTEmbed
+from transformer_lens.model_bridge.supported_architectures.ast import (
+    ASTAdapter,
+    ASTEmbed,
+)
+
 
 def test_ast_parity():
     print("Loading HuggingFace AST . . .")
@@ -22,7 +26,9 @@ def test_ast_parity():
     tl_config_dict.pop("is_multimodal", None)
 
     # dynamically grab the true sequence length HF generated
-    actual_n_ctx = hf_model.state_dict()["audio_spectrogram_transformer.embeddings.position_embeddings"].shape[1]
+    actual_n_ctx = hf_model.state_dict()[
+        "audio_spectrogram_transformer.embeddings.position_embeddings"
+    ].shape[1]
     tl_config_dict["n_ctx"] = actual_n_ctx
 
     tl_config = HookedTransformerConfig(**tl_config_dict)
@@ -45,9 +51,10 @@ def test_ast_parity():
 
     print("\n--- INITIATING LAYER BY LAYER AUTOPSY ---")
     with torch.no_grad():
-
         # 0. HF forward pass with hidden states exposed
-        hf_outputs = hf_model.audio_spectrogram_transformer(dummy_spectrogram, output_hidden_states=True)
+        hf_outputs = hf_model.audio_spectrogram_transformer(
+            dummy_spectrogram, output_hidden_states=True
+        )
         hf_hidden_states = hf_outputs.hidden_states
         hf_logits = hf_model(dummy_spectrogram).logits
 
@@ -60,13 +67,13 @@ def test_ast_parity():
         diff_embed = (hf_hidden_states[0] - resid).abs().max().item()
         print(f"1. Embeddings Max Diff: {diff_embed:.6e}")
 
-        # STEP 2. transformer blocks parity 
+        # STEP 2. transformer blocks parity
         for i, block in enumerate(tl_model.blocks):
             resid = block(resid)
             # compare against the corresponding HF hidden state (i+1 because index 0 is embeddings)
-            diff_block = (hf_hidden_states[i+1] - resid).abs().max().item()
+            diff_block = (hf_hidden_states[i + 1] - resid).abs().max().item()
             print(f"2. Block {i} Max Diff:  {diff_block:.6e}")
-        
+
         # STEP 3: final LayerNorm
         resid = tl_model.ln_final(resid)
 
@@ -84,17 +91,18 @@ def test_ast_parity():
             normalized_shape=(tl_model.cfg.d_model,),
             weight=classifier_ln_w,
             bias=classifier_ln_b,
-            eps=tl_model.cfg.eps
+            eps=tl_model.cfg.eps,
         )
 
         tl_logits = tl_model.unembed(pooled_out)
-    
+
     diff_final = (hf_logits - tl_logits).abs().max().item()
     print(f"3. Final Logits Max Diff: {diff_final:.6e}")
     print("-----------------------------------------\n")
 
     assert diff_final < 1e-4, "parity failed: tensors do not match"
     print("Parity dub. adapter mapping math yes")
+
 
 if __name__ == "__main__":
     test_ast_parity()
