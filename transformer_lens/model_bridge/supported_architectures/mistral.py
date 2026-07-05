@@ -4,11 +4,11 @@ from typing import Any
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
-    AttentionBridge,
     BlockBridge,
     EmbeddingBridge,
     GatedMLPBridge,
     LinearBridge,
+    PositionEmbeddingsAttentionBridge,
     RMSNormalizationBridge,
     RotaryEmbeddingBridge,
     UnembeddingBridge,
@@ -49,10 +49,11 @@ class MistralArchitectureAdapter(ArchitectureAdapter):
             "rotary_emb": RotaryEmbeddingBridge(name="model.rotary_emb", config=self.cfg),
             "blocks": BlockBridge(
                 name="model.layers",
+                config=self.cfg,
                 submodules={
                     "ln1": RMSNormalizationBridge(name="input_layernorm", config=self.cfg),
                     "ln2": RMSNormalizationBridge(name="post_attention_layernorm", config=self.cfg),
-                    "attn": AttentionBridge(
+                    "attn": PositionEmbeddingsAttentionBridge(
                         name="self_attn",
                         config=self.cfg,
                         requires_position_embeddings=True,
