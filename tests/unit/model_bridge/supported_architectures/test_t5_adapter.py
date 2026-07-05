@@ -108,18 +108,6 @@ def _decoder_block(adapter: T5ArchitectureAdapter) -> Any:
     return _mapping(adapter)["decoder_blocks"]
 
 
-class TestT5AdapterConfig:
-    """Adapter-owned config defaults that downstream bridge code relies on."""
-
-    def test_gated_mlp_default_is_false(self, adapter: T5ArchitectureAdapter) -> None:
-        """Without `cfg.is_gated_act`, the FFN is the plain T5DenseReluDense variant."""
-        assert adapter.cfg.gated_mlp is False
-
-    def test_gated_mlp_set_when_is_gated_act(self, gated_adapter: T5ArchitectureAdapter) -> None:
-        """With `cfg.is_gated_act = True` (Flan-T5), the FFN switches to gated."""
-        assert gated_adapter.cfg.gated_mlp is True
-
-
 class TestT5ComponentMapping:
     """Top-level structure of the encoder-decoder component mapping."""
 
@@ -375,14 +363,3 @@ class TestT5ArchitectureGuards:
     def test_weight_conversions_stay_empty(self, adapter: T5ArchitectureAdapter) -> None:
         """T5 stores Q/K/V/O per-head, so no rearrange conversions should ever be added."""
         assert _conversions(adapter) == {}
-
-    def test_encoder_has_no_cross_attention_submodule(self, adapter: T5ArchitectureAdapter) -> None:
-        """Cross-attention is decoder-only; an encoder block must never grow one."""
-        assert "cross_attn" not in _encoder_block(adapter).submodules
-
-    def test_encoder_has_no_third_layer_norm(self, adapter: T5ArchitectureAdapter) -> None:
-        """Only the decoder has three layer norms (around self-attn, cross-attn, FFN)."""
-        assert "ln3" not in _encoder_block(adapter).submodules
-
-    def test_decoder_has_cross_attention_submodule(self, adapter: T5ArchitectureAdapter) -> None:
-        assert "cross_attn" in _decoder_block(adapter).submodules

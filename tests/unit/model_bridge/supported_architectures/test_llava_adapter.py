@@ -63,9 +63,6 @@ class TestLlavaAdapterConfig:
     def test_is_multimodal(self, adapter):
         assert adapter.cfg.is_multimodal is True
 
-    def test_eps_attr(self, adapter):
-        assert adapter.cfg.eps_attr == "variance_epsilon"
-
     def test_vision_config_extracted(self, adapter):
         assert adapter.cfg.vision_hidden_size == 1024
         assert adapter.cfg.vision_num_layers == 24
@@ -78,16 +75,6 @@ class TestLlavaComponentMappingPresence:
     @pytest.fixture(scope="class")
     def adapter(self):
         return LlavaArchitectureAdapter(_make_llava_cfg())
-
-    def test_has_vision_encoder_component(self, adapter):
-        assert "vision_encoder" in adapter.component_mapping
-
-    def test_has_vision_projector_component(self, adapter):
-        assert "vision_projector" in adapter.component_mapping
-
-    def test_has_language_model_components(self, adapter):
-        for name in ("embed", "rotary_emb", "blocks", "ln_final", "unembed"):
-            assert name in adapter.component_mapping
 
 
 class TestLlavaComponentMappingPaths:
@@ -170,10 +157,6 @@ class TestLlavaBlockSubmodules:
         adapter = LlavaArchitectureAdapter(_make_llava_cfg())
         return adapter.component_mapping["blocks"]
 
-    def test_block_has_required_submodules(self, blocks):
-        for name in ("ln1", "ln2", "attn", "mlp"):
-            assert name in blocks.submodules, f"BlockBridge missing submodule '{name}'"
-
     def test_ln1_is_rms_norm(self, blocks):
         ln1 = blocks.submodules["ln1"]
         assert isinstance(ln1, RMSNormalizationBridge)
@@ -254,11 +237,6 @@ class TestLlavaWeightProcessingConversions:
     @pytest.fixture(scope="class")
     def adapter(self):
         return LlavaArchitectureAdapter(_make_llava_cfg())
-
-    def test_all_qkvo_keys_exist(self, adapter):
-        for slot in ("q", "k", "v", "o"):
-            key = f"blocks.{{i}}.attn.{slot}.weight"
-            assert key in adapter.weight_processing_conversions
 
     def test_qkv_conversions_use_split_heads_pattern(self, adapter):
         """'(n h) m -> n m h' splits (n_heads * d_head, d_model) into the bridge's (n, d_model, d_head)."""

@@ -54,6 +54,13 @@ def map_default_transformer_lens_config(hf_config):
     source_config = hf_config
     if hasattr(hf_config, "text_config") and hf_config.text_config is not None:
         source_config = hf_config.text_config
+    # T5Gemma: nested encoder/decoder sub-configs; use decoder (LM head is decoder-side)
+    elif (
+        hasattr(hf_config, "decoder")
+        and hf_config.decoder is not None
+        and hasattr(hf_config.decoder, "hidden_size")
+    ):
+        source_config = hf_config.decoder
 
     tl_config = copy.deepcopy(hf_config)
     if hasattr(source_config, "n_embd"):
@@ -171,6 +178,8 @@ def map_default_transformer_lens_config(hf_config):
         tl_config.eps = source_config.layer_norm_eps
     elif hasattr(source_config, "layer_norm_epsilon"):
         tl_config.eps = source_config.layer_norm_epsilon
+    elif hasattr(source_config, "norm_eps"):
+        tl_config.eps = source_config.norm_eps
     if hasattr(source_config, "num_local_experts"):
         tl_config.num_experts = source_config.num_local_experts
     if hasattr(source_config, "num_experts_per_tok"):
@@ -210,6 +219,7 @@ def determine_architecture_from_hf_config(hf_config):
             "apertus": "ApertusForCausalLM",
             "gpt2": "GPT2LMHeadModel",
             "hubert": "HubertModel",
+            "bart": "BartForConditionalGeneration",
             "llama": "LlamaForCausalLM",
             "mamba": "MambaForCausalLM",
             "mamba2": "Mamba2ForCausalLM",
@@ -221,6 +231,12 @@ def determine_architecture_from_hf_config(hf_config):
             # gemma3n is tri-modal; the text path loads as the full ForConditionalGeneration
             # (vision/audio referenced but unbridged in the text-only adapter).
             "gemma3n": "Gemma3nForConditionalGeneration",
+            # gemma4 is multimodal-only; all released checkpoints load as the full
+            # ForConditionalGeneration (vision/audio referenced but unbridged).
+            "gemma4": "Gemma4ForConditionalGeneration",
+            "gemma4_unified": "Gemma4UnifiedForConditionalGeneration",
+            "glm4_moe": "Glm4MoeForCausalLM",
+            "glm_moe_dsa": "GlmMoeDsaForCausalLM",
             "bert": "BertForMaskedLM",
             "bloom": "BloomForCausalLM",
             "codegen": "CodeGenForCausalLM",
@@ -244,6 +260,7 @@ def determine_architecture_from_hf_config(hf_config):
             "stablelm": "StableLmForCausalLM",
             "t5": "T5ForConditionalGeneration",
             "mt5": "MT5ForConditionalGeneration",
+            "t5gemma": "T5GemmaForConditionalGeneration",
         }
         if model_type in model_type_mappings:
             architectures.append(model_type_mappings[model_type])
@@ -374,8 +391,9 @@ def boot(
             models loaded with custom configurations (e.g., quantization via BitsAndBytesConfig).
             When provided, load_weights is ignored.
         device_map: HuggingFace-style device map (``"auto"``, ``"balanced"``, dict, etc.) for
-            multi-GPU inference. Passed straight to ``from_pretrained``. Mutually exclusive
-            with ``device``.
+            dispatched inference. Explicit maps may include CPU targets; disk / meta offload
+            targets are still rejected because Bridge component wrappers need additional
+            offload-hook routing work. Mutually exclusive with ``device``.
         n_devices: Convenience: split the model across this many CUDA devices (translated to a
             ``max_memory`` dict internally). Requires CUDA with at least this many visible devices.
         max_memory: Optional per-device memory budget for HF's dispatcher.
@@ -494,6 +512,13 @@ def boot(
         "is_gated_act",
         "word_embed_proj_dim",
         "do_layer_norm_before",
+        # BART
+        "encoder_layers",
+        "decoder_layers",
+        "encoder_attention_heads",
+        "decoder_attention_heads",
+        "encoder_ffn_dim",
+        "decoder_ffn_dim",
         # Granite
         "position_embedding_type",
         # Falcon
@@ -516,6 +541,15 @@ def boot(
         # Cohere
         "logit_scale",
         "rope_parameters",
+        # Hybrid/MoE architectures
+        "layer_types",
+        "moe_intermediate_size",
+        "norm_eps",
+        "attention_bias",
+        "lm_head_bias",
+        "router_jitter_noise",
+        "input_jitter_noise",
+        "eos_token_id",
     ]
     for attr in _HF_PASSTHROUGH_ATTRS:
         val = getattr(hf_config, attr, None)
@@ -557,6 +591,7 @@ def boot(
     # device_map + max_memory pair here so downstream code only needs to check the
     # resolved values.
     from transformer_lens.utilities.multi_gpu import (
+        cast_floating_params_to_dtype,
         count_unique_devices,
         find_embedding_device,
         resolve_device_map,
@@ -632,24 +667,34 @@ def boot(
         # Skip explicit .to(device) when accelerate has placed weights via device_map.
         if resolved_device_map is None and device is not None:
             hf_model = hf_model.to(device)
-        # Cast params to dtype; preserve float32 buffers (e.g., RotaryEmbedding.inv_freq)
-        for param in hf_model.parameters():
-            if param.is_floating_point() and param.dtype != dtype:
-                param.data = param.data.to(dtype=dtype)
+        # Cast params to dtype; preserve float32 buffers (e.g., RotaryEmbedding.inv_freq).
+        # Use module-level alignment so Accelerate can temporarily materialize offloaded
+        # parameters before we touch them.
+        cast_floating_params_to_dtype(hf_model, dtype)
     # Derive cfg.device / cfg.n_devices from hf_device_map when present. This covers:
     #   - fresh loads with a resolved device_map (set above)
     #   - pre-loaded hf_model that the caller dispatched themselves (e.g., device_map="auto")
     hf_device_map_post = getattr(hf_model, "hf_device_map", None)
     if hf_device_map_post:
-        # Pre-loaded path can still smuggle CPU/disk offload in; validate here too.
+        # CPU placement is supported. Disk / meta offload still needs a separate Bridge
+        # hook-routing pass because wrapped subcomponents can bypass Accelerate hooks.
         offload_values = {str(v).lower() for v in hf_device_map_post.values() if isinstance(v, str)}
-        forbidden = offload_values & {"cpu", "disk", "meta"}
-        if forbidden and ((n_devices is not None and n_devices > 1) or device_map is not None):
-            # Fresh-load path: we set the device_map ourselves, so this shouldn't happen —
-            # but if the user asked for n_devices>1 and somehow got CPU offload, surface it.
+        unsupported = offload_values & {"disk", "meta"}
+        if unsupported:
             raise ValueError(
-                f"hf_device_map contains unsupported offload targets: {sorted(forbidden)}. "
-                "v1 multi-device support is GPU-only."
+                f"hf_device_map contains unsupported offload targets: {sorted(unsupported)}. "
+                "TransformerBridge currently supports CPU device_map targets, but disk / meta "
+                "offload can bypass Accelerate hooks inside wrapped Bridge components."
+            )
+        if (
+            "cpu" in offload_values
+            and device_map is None
+            and n_devices is not None
+            and n_devices > 1
+        ):
+            raise ValueError(
+                "hf_device_map contains CPU targets. n_devices is GPU-only; pass device_map "
+                "explicitly for CPU placement."
             )
     embedding_device = find_embedding_device(hf_model)
     if embedding_device is not None:

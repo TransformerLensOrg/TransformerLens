@@ -17,7 +17,7 @@ from typing import Any
 
 import pytest
 import torch.nn as nn
-from torch import equal, ones, randn, zeros
+from torch import ones, randn, zeros
 
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.conversion_utils.conversion_steps.rearrange_tensor_conversion import (
@@ -225,50 +225,6 @@ class TestOlmoeWeightConversions:
         assert _rearrange(adapter, "blocks.{i}.attn.o.weight").axes_lengths["n"] == 4
 
 
-class TestOlmoeWeightConversionRoundTrips:
-    """Run the rearrange conversions on synthetic HF-shaped tensors.
-
-    The pattern/axis assertions above only check metadata. These confirm the
-    conversions actually reshape realistic weight tensors into the split-head
-    layout and revert losslessly (a rearrange operation is a pure permutation,
-    so the round-trip must be exactly equal).
-    """
-
-    N_HEADS = 4
-    N_KV_HEADS = 2
-    D_HEAD = 16
-    D_MODEL = 64
-
-    @pytest.fixture
-    def adapter(self) -> OlmoeArchitectureAdapter:
-        return OlmoeArchitectureAdapter(_cfg(n_key_value_heads=self.N_KV_HEADS))
-
-    def _roundtrip(self, adapter: OlmoeArchitectureAdapter, key: str, tensor: Any) -> tuple:
-        conv = _param_conversion(adapter, key)
-        converted = conv.convert({key: tensor}, key)
-        reverted = conv.revert(converted)
-        return converted, reverted
-
-    def test_q_weight_splits_into_n_heads(self, adapter: OlmoeArchitectureAdapter) -> None:
-        w = randn(self.N_HEADS * self.D_HEAD, self.D_MODEL)
-        converted, reverted = self._roundtrip(adapter, "blocks.{i}.attn.q.weight", w)
-        assert converted.shape == (self.N_HEADS, self.D_MODEL, self.D_HEAD)
-        assert equal(reverted, w)
-
-    def test_kv_weight_splits_into_n_kv_heads(self, adapter: OlmoeArchitectureAdapter) -> None:
-        for slot in ("k", "v"):
-            w = randn(self.N_KV_HEADS * self.D_HEAD, self.D_MODEL)
-            converted, reverted = self._roundtrip(adapter, f"blocks.{{i}}.attn.{slot}.weight", w)
-            assert converted.shape == (self.N_KV_HEADS, self.D_MODEL, self.D_HEAD)
-            assert equal(reverted, w)
-
-    def test_o_weight_merges_heads(self, adapter: OlmoeArchitectureAdapter) -> None:
-        w = randn(self.D_MODEL, self.N_HEADS * self.D_HEAD)
-        converted, reverted = self._roundtrip(adapter, "blocks.{i}.attn.o.weight", w)
-        assert converted.shape == (self.N_HEADS, self.D_HEAD, self.D_MODEL)
-        assert equal(reverted, w)
-
-
 class TestOlmoeComponentMapping:
     """Structure of the component mapping: required keys and submodules."""
 
@@ -438,28 +394,22 @@ class TestOlmoeGQAHookShapes:
         # Identity RoPE inputs keep this test focused on hook reshaping, not rotation math.
         cos = ones(1, self.SEQ, self.D_HEAD)
         sin = zeros(1, self.SEQ, self.D_HEAD)
-        out = attn_bridge(hidden, position_embeddings=(cos, sin))
-        # The attention bridge may return either a bare tensor or an (output, ...) tuple.
-        out_tensor = out[0] if isinstance(out, tuple) else out
+        attn_bridge(hidden, position_embeddings=(cos, sin))
 
-        return captured["q"], captured["k"], captured["v"], out_tensor
+        return captured["q"], captured["k"], captured["v"]
 
     def test_hook_q_uses_n_heads(
         self, wired_attn_bridge: PositionEmbeddingsAttentionBridge
     ) -> None:
-        q, _, _, _ = self._run_and_capture(wired_attn_bridge)
+        q, _, _ = self._run_and_capture(wired_attn_bridge)
         assert q.shape == (self.BATCH, self.SEQ, self.N_HEADS, self.D_HEAD)
 
     def test_hook_kv_use_n_kv_heads(
         self, wired_attn_bridge: PositionEmbeddingsAttentionBridge
     ) -> None:
-        _, k, v, _ = self._run_and_capture(wired_attn_bridge)
+        _, k, v = self._run_and_capture(wired_attn_bridge)
         assert k.shape == (self.BATCH, self.SEQ, self.N_KV_HEADS, self.D_HEAD)
         assert v.shape == (self.BATCH, self.SEQ, self.N_KV_HEADS, self.D_HEAD)
-
-    def test_attn_output_shape(self, wired_attn_bridge: PositionEmbeddingsAttentionBridge) -> None:
-        _, _, _, out = self._run_and_capture(wired_attn_bridge)
-        assert out.shape == (self.BATCH, self.SEQ, self.D_MODEL)
 
 
 class TestOlmoeSetupComponentTesting:

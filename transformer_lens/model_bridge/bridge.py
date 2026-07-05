@@ -3,6 +3,7 @@
 This module provides the bridge components that wrap remote model components and provide
 a consistent interface for accessing their weights and performing operations.
 """
+
 import logging
 import re
 import warnings
@@ -252,9 +253,11 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                 BitsAndBytesConfig). When provided, load_weights is ignored. If the pre-loaded
                 model was built with a ``device_map``, ``cfg.device`` and ``cfg.n_devices`` are
                 derived from its ``hf_device_map`` automatically.
-            device_map: HuggingFace-style device map for multi-GPU inference. Pass ``"auto"``,
-                ``"balanced"``, ``"sequential"``, or an explicit ``{submodule_path: device}`` dict.
-                Mutually exclusive with ``device``.
+            device_map: HuggingFace-style device map for dispatched inference. Pass ``"auto"``,
+                ``"balanced"``, ``"sequential"``, or an explicit ``{submodule_path: device}``
+                dict. Explicit maps may include CPU targets; disk / meta offload targets are
+                still rejected because Bridge component wrappers need additional offload-hook
+                routing work. Mutually exclusive with ``device``.
             n_devices: Convenience shortcut: split the model across this many CUDA devices.
                 Translated to a ``max_memory`` dict over devices 0..n_devices-1 and passed as
                 ``device_map`` to HF. Requires CUDA with at least this many visible devices.
@@ -2117,7 +2120,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                     try:
                         if hasattr(tensor, "detach"):
                             cache[name] = tensor.detach().to(cache_device)
-                    except:
+                    except Exception:
                         pass
                 return tensor
 
@@ -2370,6 +2373,66 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                 for hook_point, direction in added_hooks:
                     hook_point.remove_hooks(dir=direction)
 
+    def _resolve_stopping_criteria(
+        self,
+        stop_strings: Optional[Union[str, List[str]]],
+        stopping_criteria: Optional[Any],
+    ) -> Optional[Any]:
+        """Combine ``stop_strings`` and ``stopping_criteria`` into one StoppingCriteriaList.
+
+        Returns ``None`` when neither is supplied (or both reduce to no-ops),
+        so callers can cheaply check whether any extra stop signal is active.
+        ``stop_strings`` is turned into a HuggingFace ``StopStringCriteria`` (which reproduces
+        HF's exact partial-token-aware, end-anchored matching: it fires when the stop string
+        ends the generated text, even if the string straddles token boundaries) and therefore
+        requires a tokenizer.
+        A user-supplied ``stopping_criteria`` may be a single ``StoppingCriteria``,
+        a list of them, or a ``StoppingCriteriaList``.
+
+        Raises:
+            ValueError: if ``stop_strings`` is supplied without a tokenizer.
+            TypeError: if ``stopping_criteria`` is not a ``StoppingCriteria``, a
+                list/tuple of them, or a ``StoppingCriteriaList``.
+        """
+        if stop_strings is None and stopping_criteria is None:
+            return None
+
+        from transformers import (  # local import: matches the file's transformers usage
+            StoppingCriteria,
+            StoppingCriteriaList,
+            StopStringCriteria,
+        )
+
+        criteria = StoppingCriteriaList()
+
+        if stop_strings is not None:
+            strings = [stop_strings] if isinstance(stop_strings, str) else list(stop_strings)
+            strings = [s for s in strings if s]  # drop empty strings (HF errors on them)
+            if strings:
+                if self.tokenizer is None:
+                    raise ValueError(
+                        "stop_strings requires a tokenizer (stop strings are detected by "
+                        "matching against the tokenizer vocabulary), but this TransformerBridge "
+                        "has no tokenizer. Pass a stopping_criteria callable that operates on "
+                        "token ids instead, or use hf_generate()."
+                    )
+                criteria.append(StopStringCriteria(tokenizer=self.tokenizer, stop_strings=strings))
+
+        if stopping_criteria is not None:
+            if isinstance(stopping_criteria, StoppingCriteriaList):
+                criteria.extend(stopping_criteria)
+            elif isinstance(stopping_criteria, (list, tuple)):
+                criteria.extend(stopping_criteria)
+            elif isinstance(stopping_criteria, StoppingCriteria):
+                criteria.append(stopping_criteria)
+            else:
+                raise TypeError(
+                    "stopping_criteria must be a transformers.StoppingCriteria, a list of "
+                    f"them, or a StoppingCriteriaList, but got {type(stopping_criteria).__name__}."
+                )
+
+        return criteria if len(criteria) > 0 else None
+
     def _generate_tokens(
         self,
         current_tokens: torch.Tensor,
@@ -2400,14 +2463,21 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         pixel_values: Optional[torch.Tensor],
         multimodal_kwargs: Dict[str, Any],
         verbose: bool,
+        stopping_criteria_list: Optional[Any] = None,
     ) -> Generator[Tuple[torch.Tensor, torch.Tensor, bool], None, None]:
         """Core generation loop. Yields (sampled_tokens, final_logits, all_finished) per step.
 
-        Owns the forward pass, sampling, EOS handling, token accumulation, and
-        KV cache management. Callers are responsible for try/finally cleanup of
-        ``_capture_hf_cache``.
+        Owns the forward pass, sampling, stop handling (EOS and any
+        ``stopping_criteria_list``), token accumulation, and KV cache management. Callers
+        are responsible for try/finally cleanup of ``_capture_hf_cache``.
+
+        ``stopping_criteria_list`` (from ``_resolve_stopping_criteria``) is evaluated on
+        the running sequence each step and folded into the finished-sequence mask alongside
+        EOS, so when it is ``None`` the loop runs the EOS-only path unchanged.
         """
         _hf_kv_cache = None
+        # A row may finish via EOS and/or any of the configured stopping criteria.
+        any_stop_active = stop_at_eos or stopping_criteria_list is not None
 
         for gen_step_idx in tqdm.tqdm(range(max_new_tokens), disable=not verbose):
             with torch.no_grad():
@@ -2547,9 +2617,13 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                         ),
                     ).to(self.cfg.device)
 
-                # Handle EOS
-                if stop_at_eos:
+                # Freeze rows that finished on an earlier step so they stop emitting
+                # real tokens. Applies to every active stop mechanism, not just EOS.
+                if any_stop_active:
                     sampled_tokens[finished_sequences] = eos_token_for_padding
+
+                # Fold this step's EOS matches into the finished mask.
+                if stop_at_eos:
                     finished_sequences.logical_or_(
                         torch.isin(
                             sampled_tokens.to(self.cfg.device),
@@ -2571,7 +2645,26 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                 else:
                     current_tokens = torch.cat([current_tokens, sampled_tokens.unsqueeze(1)], dim=1)
 
-                all_finished = bool(stop_at_eos and finished_sequences.all().item())
+                # Fold stop_strings / stopping_criteria into the finished mask. They are
+                # evaluated on the full running sequence (prompt + everything generated so
+                # far, including the token just appended) with this step's logits as the
+                # scores argument, matching transformers' StoppingCriteria contract. The
+                # combined list returns a per-row bool [batch] OR-ing every criterion.
+                # generate()/generate_stream() guarantee this is plain decoder-only token
+                # generation, so current_tokens is the running token sequence.
+                if stopping_criteria_list is not None:
+                    criteria_finished = stopping_criteria_list(current_tokens, final_logits).to(
+                        device=self.cfg.device, dtype=torch.bool
+                    )
+                    if criteria_finished.shape != finished_sequences.shape:
+                        raise ValueError(
+                            "A stopping criterion returned shape "
+                            f"{tuple(criteria_finished.shape)}, expected a per-row bool of "
+                            f"shape {tuple(finished_sequences.shape)} (one entry per sequence)."
+                        )
+                    finished_sequences.logical_or_(criteria_finished)
+
+                all_finished = bool(any_stop_active and finished_sequences.all().item())
 
             yield sampled_tokens, final_logits, all_finished
 
@@ -2601,6 +2694,8 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         names_filter: Optional[Union[str, List[str], Callable[[str], bool]]] = None,
         device: Optional[Union[str, torch.device]] = None,
         pixel_values: Optional[torch.Tensor] = None,
+        stop_strings: Optional[Union[str, List[str]]] = None,
+        stopping_criteria: Optional[Any] = None,
         **multimodal_kwargs,
     ) -> (
         str
@@ -2661,6 +2756,22 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             pixel_values: Optional image tensor for multimodal models. Only passed on the
                 first generation step (the vision encoder processes the image once, then
                 embeddings are part of the token sequence for subsequent steps).
+            stop_strings: Optional string or list of strings. A sequence stops once its
+                generated text ends with one of these strings, using HuggingFace's
+                StopStringCriteria (partial-token-aware, end-anchored) matching.
+                Requires a tokenizer (raises ValueError otherwise).
+                Independent of stop_at_eos: either can stop a sequence.
+            stopping_criteria: Optional HuggingFace stopping criteria, a single
+                transformers.StoppingCriteria, a list of them, or a StoppingCriteriaList.
+                Each is called as criterion(input_ids, scores) after every step and ORed
+                with the other stop signals, where input_ids is the running sequence and
+                scores is this step's logits ([batch, d_vocab]). Each criterion must return
+                a per-row bool [batch] (or a scalar bool). stop_strings and stopping_criteria
+                are supported only for standard decoder-only text generation. Encoder-decoder,
+                inputs_embeds, and multimodal generation always raise NotImplementedError.
+                Stateful/SSM models raise only when run with use_past_kv_cache=False (the
+                default keeps them on the hooked loop). Each error names the supported
+                alternative.
 
         Returns:
             Generated sequence as string, list of strings, or tensor depending on input type and return_type.
@@ -2734,11 +2845,16 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                 self.tokenizer is not None and self.tokenizer.eos_token_id is not None
             )
             if eos_token_id is None:
-                assert (
-                    tokenizer_has_eos_token
-                ), "Must pass eos_token_id if stop_at_eos is True and tokenizer is None or has no eos_token_id"
-                assert self.tokenizer is not None
-                eos_token_id = self.tokenizer.eos_token_id
+                # Some chat models use a turn-end token that differs from the
+                # tokenizer's primary EOS. Let adapters provide the full stop
+                # set via cfg.eos_token_id; otherwise fall back to the tokenizer.
+                eos_token_id = getattr(self.cfg, "eos_token_id", None)
+                if eos_token_id is None:
+                    assert (
+                        tokenizer_has_eos_token
+                    ), "Must pass eos_token_id if stop_at_eos is True and tokenizer is None or has no eos_token_id"
+                    assert self.tokenizer is not None
+                    eos_token_id = self.tokenizer.eos_token_id
 
             if isinstance(eos_token_id, int):
                 stop_tokens = [eos_token_id]
@@ -2812,6 +2928,62 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             and pixel_values is None
             and not multimodal_kwargs
         )
+
+        # stop_strings / stopping_criteria are applied inside the hooked _generate_tokens
+        # loop, so they are supported only on the standard decoder-only text path. Reject
+        # the paths that route around that loop with a clear error rather than silently
+        # dropping the kwargs. This must run before the stateful delegation below.
+        stopping_criteria_list = self._resolve_stopping_criteria(stop_strings, stopping_criteria)
+        if stopping_criteria_list is not None:
+            if is_encoder_decoder:
+                _unsupported = "encoder-decoder models"
+            elif _generate_from_embeds:
+                _unsupported = "inputs_embeds generation"
+            elif pixel_values is not None or multimodal_kwargs:
+                _unsupported = "multimodal (pixel_values) generation"
+            else:
+                _unsupported = None
+            if _unsupported is not None:
+                raise NotImplementedError(
+                    f"stop_strings/stopping_criteria are not supported for {_unsupported} in "
+                    "TransformerBridge.generate(). Call hf_generate(...), which runs "
+                    "HuggingFace's own generation loop and supports HF-native stopping on "
+                    "those inputs."
+                )
+            if is_stateful_model and not use_stateful_cache:
+                # Reached only for a stateful/SSM model with use_past_kv_cache=False: the
+                # hooked loop needs the stateful cache, so generate() would otherwise fall
+                # back to hf_generate() and drop these kwargs. The default cache setting
+                # keeps generation on the hooked loop, where stopping is applied.
+                raise NotImplementedError(
+                    "stop_strings/stopping_criteria on a stateful/SSM model require the "
+                    "stateful cache path, which runs only with use_past_kv_cache=True (the "
+                    "default). With use_past_kv_cache=False generate() falls back to "
+                    "hf_generate(). Set use_past_kv_cache=True to keep stopping on the hooked "
+                    "loop, or call hf_generate(...) directly for HF-native stopping."
+                )
+            # Finished rows are overwritten with this id so they stop emitting real tokens
+            # while the rest of a batch keeps going. stop_at_eos already set a sensible
+            # value, otherwise fall back to the tokenizer pad/eos id. (For a single
+            # sequence this id is never read: the loop exits when the row finishes.)
+            if not stop_at_eos:
+                _pad_id = None
+                if self.tokenizer is not None:
+                    _pad_id = (
+                        self.tokenizer.pad_token_id
+                        if self.tokenizer.pad_token_id is not None
+                        else self.tokenizer.eos_token_id
+                    )
+                if _pad_id is not None:
+                    eos_token_for_padding = _pad_id
+                elif batch_size > 1:
+                    raise ValueError(
+                        "Batched generation with stopping_criteria and stop_at_eos=False "
+                        "needs a padding token to freeze finished rows, but no tokenizer "
+                        "pad/eos id is available. Set stop_at_eos=True, use a tokenizer with "
+                        "a pad or eos token, or generate one sequence at a time."
+                    )
+
         if is_stateful_model and not use_stateful_cache:
             hf_kwargs: dict[str, Any] = {
                 "max_new_tokens": max_new_tokens,
@@ -2894,6 +3066,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                 pixel_values=pixel_values,
                 multimodal_kwargs=multimodal_kwargs if multimodal_kwargs else {},
                 verbose=verbose,
+                stopping_criteria_list=stopping_criteria_list,
             ):
                 sampled_tokens_list.append(sampled_tokens.unsqueeze(1))
                 if logits_seq_list is not None:
@@ -2991,6 +3164,8 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         padding_side: Optional[str] = None,
         return_type: Optional[str] = "input",
         verbose: bool = True,
+        stop_strings: Optional[Union[str, List[str]]] = None,
+        stopping_criteria: Optional[Any] = None,
     ) -> Generator[Union[torch.Tensor, str], None, None]:
         """Stream tokens from the model as they are generated.
 
@@ -3010,36 +3185,43 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             freq_penalty: Frequency penalty for previous tokens.
             repetition_penalty: HF-style repetition penalty (>1.0 discourages repeats).
             use_past_kv_cache: Use KV caching for faster generation.
-            prepend_bos: Not applied (API compatibility). See generate() docstring.
+            prepend_bos: Whether to prepend a BOS token when tokenizing string inputs.
+                Defaults to None (uses ``cfg.default_prepend_bos``, typically True).
+                Pass ``prepend_bos=False`` when the input is pre-formatted chat-template
+                text that already contains the BOS token to avoid double-BOS.
+                Ignored when input is already a token tensor.
             padding_side: Which side to pad for batched list inputs. Left-padding
                 is forced internally for batched generation.
             return_type: 'input' (match input type), 'str', or 'tokens'.
             verbose: Show progress bar.
+            stop_strings: Optional string or list of strings. A sequence stops once its
+                generated text ends with one of them (HF StopStringCriteria). Requires a
+                tokenizer. See generate() for details.
+            stopping_criteria: Optional transformers StoppingCriteria, list, or
+                StoppingCriteriaList, called as criterion(input_ids, scores) each step
+                (scores is the step's logits). See generate() for the full contract.
 
         Yields:
             Token tensors [batch, seq_len] or strings, accumulated up to
             max_tokens_per_yield tokens between yields. First yield includes
             the input tokens; subsequent yields contain only new tokens.
         """
-        if prepend_bos is not None:
-            warnings.warn(
-                "prepend_bos is ignored during TransformerBridge.generate_stream(). "
-                "The HF model expects tokens with the tokenizer's default BOS handling.",
-                stacklevel=2,
-            )
-
         # --- Input parsing (mirrors generate()) ---
         _is_batched_list = isinstance(input, list) and len(input) > 1
 
         if isinstance(input, str):
-            input_tokens = self.to_tokens(input, move_to_device=True, truncate=False)
+            input_tokens = self.to_tokens(
+                input, prepend_bos=prepend_bos, move_to_device=True, truncate=False
+            )
             input_type = "str"
         elif isinstance(input, list):
             if _is_batched_list:
                 _orig_ps = self.tokenizer.padding_side
                 self.tokenizer.padding_side = "left"
             try:
-                input_tokens = self.to_tokens(input, move_to_device=True, truncate=False)
+                input_tokens = self.to_tokens(
+                    input, prepend_bos=prepend_bos, move_to_device=True, truncate=False
+                )
             finally:
                 if _is_batched_list:
                     self.tokenizer.padding_side = _orig_ps
@@ -3061,11 +3243,16 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                 self.tokenizer is not None and self.tokenizer.eos_token_id is not None
             )
             if eos_token_id is None:
-                assert (
-                    tokenizer_has_eos_token
-                ), "Must pass eos_token_id if stop_at_eos is True and tokenizer is None or has no eos_token_id"
-                assert self.tokenizer is not None
-                eos_token_id = self.tokenizer.eos_token_id
+                # Some chat models use a turn-end token that differs from the
+                # tokenizer's primary EOS. Let adapters provide the full stop
+                # set via cfg.eos_token_id; otherwise fall back to the tokenizer.
+                eos_token_id = getattr(self.cfg, "eos_token_id", None)
+                if eos_token_id is None:
+                    assert (
+                        tokenizer_has_eos_token
+                    ), "Must pass eos_token_id if stop_at_eos is True and tokenizer is None or has no eos_token_id"
+                    assert self.tokenizer is not None
+                    eos_token_id = self.tokenizer.eos_token_id
             if isinstance(eos_token_id, int):
                 stop_tokens = [eos_token_id]
                 eos_token_for_padding = eos_token_id
@@ -3078,6 +3265,28 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                     eos_token_for_padding = eos_token_id[0]
 
         finished_sequences = torch.zeros(batch_size, dtype=torch.bool, device=self.cfg.device)
+
+        # stop_strings / stopping_criteria: build the combined criteria list (validates
+        # tokenizer for stop_strings). generate_stream only runs the decoder-only text
+        # path, so no path guards are needed here.
+        stopping_criteria_list = self._resolve_stopping_criteria(stop_strings, stopping_criteria)
+        if stopping_criteria_list is not None and not stop_at_eos:
+            _pad_id = None
+            if self.tokenizer is not None:
+                _pad_id = (
+                    self.tokenizer.pad_token_id
+                    if self.tokenizer.pad_token_id is not None
+                    else self.tokenizer.eos_token_id
+                )
+            if _pad_id is not None:
+                eos_token_for_padding = _pad_id
+            elif batch_size > 1:
+                raise ValueError(
+                    "Batched generate_stream with stopping_criteria and stop_at_eos=False "
+                    "needs a padding token to freeze finished rows, but no tokenizer pad/eos "
+                    "id is available. Set stop_at_eos=True or use a tokenizer with a pad/eos "
+                    "token."
+                )
 
         # --- Cache setup ---
         if use_past_kv_cache:
@@ -3130,6 +3339,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                     pixel_values=None,
                     multimodal_kwargs={},
                     verbose=verbose,
+                    stopping_criteria_list=stopping_criteria_list,
                 )
             ):
                 new_tokens = sampled_tokens.unsqueeze(-1)
@@ -3152,6 +3362,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                 if all_finished:
                     if accumulated_tokens is not None:
                         yield _maybe_decode(accumulated_tokens)
+                        accumulated_tokens = None
                     break
 
             # Yield remainder after loop completes without break

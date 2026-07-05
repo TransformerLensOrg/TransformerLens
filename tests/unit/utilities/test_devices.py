@@ -48,23 +48,12 @@ def test_get_device_cuda_available():
 
 @patch.dict("os.environ", {"TRANSFORMERLENS_ALLOW_MPS": "1"})
 def test_get_device_mps_available():
-    """Test get_device when MPS is available, PyTorch version >= 2.0, and env var set."""
+    """Test get_device when MPS is available and env var set."""
     with patch("torch.cuda.is_available", return_value=False):
         with patch("torch.backends.mps.is_available", return_value=True):
             with patch("torch.backends.mps.is_built", return_value=True):
-                with patch("torch.__version__", "2.0.0"):
-                    device = get_device()
-                    assert device == "mps"
-
-
-def test_get_device_mps_pytorch_1x():
-    """Test get_device when MPS is available but PyTorch version < 2.0."""
-    with patch("torch.cuda.is_available", return_value=False):
-        with patch("torch.backends.mps.is_available", return_value=True):
-            with patch("torch.backends.mps.is_built", return_value=True):
-                with patch("torch.__version__", "1.13.0"):
-                    device = get_device()
-                    assert device == "cpu"
+                device = get_device()
+                assert device == "mps"
 
 
 def test_get_device_cpu_fallback():
@@ -376,28 +365,3 @@ def test_warn_if_mps_broken_warning_fires_only_once():
             warn_if_mps(torch.device("mps"))
         broken_warnings = [warning for warning in w if "known MPS bug" in str(warning.message)]
         assert len(broken_warnings) == 1
-
-
-def test_torch_mps_has_known_broken_bug_for_2_8():
-    """_torch_mps_has_known_broken_bug should return True for torch 2.8."""
-    from transformer_lens.utilities.devices import _torch_mps_has_known_broken_bug
-
-    with patch(
-        "transformer_lens.utilities.devices._torch_version_tuple",
-        return_value=(2, 8),
-    ):
-        assert _torch_mps_has_known_broken_bug() is True
-
-
-def test_torch_mps_has_known_broken_bug_false_for_other_versions():
-    """_torch_mps_has_known_broken_bug should return False for non-broken torch versions."""
-    from transformer_lens.utilities.devices import _torch_mps_has_known_broken_bug
-
-    for version in [(2, 7), (2, 9), (3, 0)]:
-        with patch(
-            "transformer_lens.utilities.devices._torch_version_tuple",
-            return_value=version,
-        ):
-            assert (
-                _torch_mps_has_known_broken_bug() is False
-            ), f"torch {version} incorrectly flagged as broken"

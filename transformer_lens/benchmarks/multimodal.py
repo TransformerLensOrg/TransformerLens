@@ -4,7 +4,6 @@ Tests that multimodal models (LLaVA, Gemma3, etc.) correctly handle image inputs
 through forward(), generate(), and run_with_cache().
 """
 
-
 import torch
 
 from transformer_lens.benchmarks.utils import (
@@ -46,8 +45,10 @@ def _prepare_test_inputs(bridge: TransformerBridge):
     # Different models use different tokens:
     #   LLava: image_token = "<image>"
     #   Gemma3: boi_token = "<start_of_image>"
-    image_token = getattr(bridge.processor, "boi_token", None) or getattr(
-        bridge.processor, "image_token", "<image>"
+    #   Gemma4: image_token is the expandable placeholder (280 tokens),
+    #           boi_token ("<|image>") is just a marker — use image_token first.
+    image_token = getattr(bridge.processor, "image_token", None) or getattr(
+        bridge.processor, "boi_token", "<image>"
     )
     prompt = f"{image_token}\nDescribe this image."
     try:
@@ -141,9 +142,9 @@ def benchmark_multimodal_forward(
             details={
                 "logits_shape": list(logits.shape),
                 "input_ids_shape": list(input_ids.shape),
-                "pixel_values_shape": list(pixel_values.shape)
-                if pixel_values is not None
-                else None,
+                "pixel_values_shape": (
+                    list(pixel_values.shape) if pixel_values is not None else None
+                ),
             },
         )
 

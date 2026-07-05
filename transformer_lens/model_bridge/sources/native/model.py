@@ -6,6 +6,7 @@ Cfg-driven features: ``normalization_type`` (LN / RMS / RMSPre), ``final_rms``,
 ``rotary_dim`` / ``rotary_base`` / ``rope_scaling`` (linear PI, dynamic/NTK,
 llama3 by-parts).
 """
+
 from __future__ import annotations
 
 import math
@@ -16,6 +17,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from transformer_lens.config import TransformerBridgeConfig
+from transformer_lens.utilities import TypedModuleList
 
 # gelu_new = the tanh-approximation HF GPT-2 / HT use; F.gelu(approximate="tanh")
 # is the exact same formula.
@@ -29,8 +31,17 @@ _ACTIVATIONS: dict[str, _Activation] = {
 }
 
 
+def _normalization_type(cfg: TransformerBridgeConfig) -> str | None:
+    normalization_type = cfg.normalization_type
+    return None if normalization_type is None else normalization_type.upper()
+
+
 def _uses_rms_norm(cfg: TransformerBridgeConfig) -> bool:
-    return (cfg.normalization_type or "LN").upper() in ("RMS", "RMSPRE")
+    return _normalization_type(cfg) in ("RMS", "RMSPRE")
+
+
+def _uses_no_norm(cfg: TransformerBridgeConfig) -> bool:
+    return _normalization_type(cfg) is None
 
 
 def _positional_kind(cfg: TransformerBridgeConfig) -> str:
@@ -57,7 +68,13 @@ class NativeRMSNorm(nn.Module):
 def _make_norm(cfg: TransformerBridgeConfig, *, force_rms: bool = False) -> nn.Module:
     if force_rms or _uses_rms_norm(cfg):
         return NativeRMSNorm(cfg.d_model, eps=cfg.eps)
+    if _uses_no_norm(cfg):
+        return nn.Identity()
     return nn.LayerNorm(cfg.d_model, eps=cfg.eps)
+
+
+def _uses_causal_attention(cfg: TransformerBridgeConfig) -> bool:
+    return cfg.attention_dir == "causal"
 
 
 def _resolve_rope_scaling(
@@ -227,6 +244,7 @@ class NativeAttention(nn.Module):
         self.scale = scale
         self.rotary = rotary
         self.attn_scores_soft_cap = float(cfg.attn_scores_soft_cap)
+        self.causal = _uses_causal_attention(cfg)
 
     def forward(
         self,
@@ -255,7 +273,10 @@ class NativeAttention(nn.Module):
             c = self.attn_scores_soft_cap
             scores = c * torch.tanh(scores / c)
 
-        block_mask = self.causal_mask[:seq, :seq]
+        if self.causal:
+            block_mask = self.causal_mask[:seq, :seq]
+        else:
+            block_mask = torch.zeros(seq, seq, dtype=torch.bool, device=scores.device)
         if attention_mask is not None:
             block_mask = self._combine_attention_mask(block_mask, attention_mask, batch=batch)
         scores = scores.masked_fill(block_mask, float("-inf"))
@@ -404,7 +425,7 @@ class NativeModel(nn.Module):
                 f"NativeModel supports 'standard' and 'rotary'."
             )
 
-        self.layers = nn.ModuleList(
+        self.layers = TypedModuleList(
             [NativeBlock(cfg, rotary=self.rotary) for _ in range(cfg.n_layers)]
         )
         # final_rms forces RMS on the final norm regardless of block-norm choice

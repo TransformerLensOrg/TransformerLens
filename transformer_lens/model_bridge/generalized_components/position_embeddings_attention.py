@@ -122,6 +122,7 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
         # but always forced to True — this bridge reimplements attention.
         requires_attention_mask: bool = True,
         requires_position_embeddings: bool = True,
+        is_causal: bool = True,
         **kwargs,  # absorb any other AttentionBridge kwargs callers may pass
     ):
         super().__init__(
@@ -131,6 +132,7 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
             requires_position_embeddings=True,
             requires_attention_mask=True,
             maintain_native_attention=True,
+            is_causal=is_causal,
             optional=optional,
         )
         self._init_position_embedding_hooks()
@@ -179,7 +181,14 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
         """Dispatch pre/post-reshape norm from weight shape; raise on ambiguity."""
         if "q_norm" not in self.submodules:
             return None
-        q_norm = getattr(hf_attn, "q_norm", None)
+
+        hf_norm_name = self.submodules["q_norm"].name
+
+        if hf_norm_name is None:
+            raise RuntimeError(f"{self.name}: q_norm submodule declared without a name.")
+
+        q_norm = getattr(hf_attn, hf_norm_name, None)
+
         if q_norm is None:
             raise RuntimeError(f"{self.name}: q_norm declared but HF module has none.")
 

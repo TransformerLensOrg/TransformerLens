@@ -23,10 +23,11 @@ class MambaArchitectureAdapter(ArchitectureAdapter):
     ``_HF_PASSTHROUGH_ATTRS`` in sources/transformers.py.
     """
 
-    # verify_models is transformer-shaped today and would need a dedicated
-    # refactor to meaningfully cover SSMs. Verification lives in integration
-    # tests: tests/integration/model_bridge/test_mamba_adapter.py
-    applicable_phases: list[int] = []
+    # Phases 1-3 are transformer-shaped (component/weight comparison) and don't
+    # fit SSMs; component-level coverage lives in integration tests:
+    # tests/integration/model_bridge/test_mamba_adapter.py. Phase 4 (generation
+    # + text-quality) needs no component comparison, so it applies.
+    applicable_phases: list[int] = [4]
 
     def __init__(self, cfg: Any) -> None:
         super().__init__(cfg)

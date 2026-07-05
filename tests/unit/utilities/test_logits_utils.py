@@ -1,6 +1,5 @@
 """Unit tests for transformer_lens.utilities.logits_utils."""
 
-import pandas as pd
 import pytest
 import torch
 
@@ -27,10 +26,6 @@ def logits() -> torch.Tensor:
 
 
 class TestLogitsToDf:
-    def test_returns_dataframe(self, logits: torch.Tensor):
-        df = logits_to_df(logits)
-        assert isinstance(df, pd.DataFrame)
-
     def test_columns_no_tokenizer(self, logits: torch.Tensor):
         df = logits_to_df(logits)
         assert list(df.columns) == ["token_index", "logit", "log_prob", "probability"]

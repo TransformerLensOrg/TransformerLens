@@ -8,10 +8,16 @@ The documentation uses Sphinx. However, the documentation is written in regular 
 
 ## Build the Documentation
 
-First install the packages:
+For the standard contributor setup, install the default dependency groups:
 
 ```bash
-uv sync --group docs
+uv sync
+```
+
+For a docs-focused environment without the other default groups, install only the docs group:
+
+```bash
+uv sync --no-default-groups --group docs
 ```
 
 Then for hot-reloading, run this (note the model properties table won't hot reload, but everything

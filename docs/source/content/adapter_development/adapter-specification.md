@@ -44,7 +44,6 @@ Set these on `self.cfg` in `__init__` before building the component mapping:
 | `gated_mlp` | `bool` | Whether MLP uses gate projection | Llama=True, GPT2=False |
 | `attn_only` | `bool` | Whether model has no MLP layers | Usually False |
 | `uses_rms_norm` | `bool` | Redundant with normalization_type but needed | Match normalization_type |
-| `eps_attr` | `str` | Attribute name for norm epsilon | `"variance_epsilon"`, `"layer_norm_eps"` |
 
 ### GQA (Grouped Query Attention)
 

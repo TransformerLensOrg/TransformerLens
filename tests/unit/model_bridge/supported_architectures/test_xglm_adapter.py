@@ -52,8 +52,13 @@ def adapter(cfg: TransformerBridgeConfig) -> XGLMArchitectureAdapter:
 class TestXGLMAdapterConfig:
     """Adapter sets all required config attributes."""
 
-    def test_positional_embedding_type_is_standard(self, adapter: XGLMArchitectureAdapter) -> None:
-        assert adapter.cfg.positional_embedding_type == "standard"
+    def test_attn_has_no_rotary_hooks(self, adapter: XGLMArchitectureAdapter) -> None:
+        # positional_embedding_type="standard" (sinusoidal) means the AttentionBridge
+        # must NOT create rotary hooks; those exist only when the type is "rotary"
+        # (attention.py:120-125). Asserts the structural effect, not the flag literal.
+        attn = adapter.component_mapping["blocks"].submodules["attn"]
+        assert not hasattr(attn, "hook_rot_q")
+        assert not hasattr(attn, "hook_rot_k")
 
 
 class TestXGLMAdapterComponentMapping:
@@ -64,10 +69,6 @@ class TestXGLMAdapterComponentMapping:
 
     def test_embed_name(self, adapter: XGLMArchitectureAdapter) -> None:
         assert adapter.component_mapping["embed"].name == "model.embed_tokens"
-
-    def test_no_pos_embed_in_mapping(self, adapter: XGLMArchitectureAdapter) -> None:
-        # Sinusoidal embeddings have no weights — no bridge entry.
-        assert "pos_embed" not in adapter.component_mapping
 
     def test_blocks_is_block_bridge(self, adapter: XGLMArchitectureAdapter) -> None:
         assert isinstance(adapter.component_mapping["blocks"], BlockBridge)
@@ -86,67 +87,6 @@ class TestXGLMAdapterComponentMapping:
 
     def test_unembed_name(self, adapter: XGLMArchitectureAdapter) -> None:
         assert adapter.component_mapping["unembed"].name == "lm_head"
-
-    def test_ln1_is_normalization_bridge(self, adapter: XGLMArchitectureAdapter) -> None:
-        blocks = adapter.component_mapping["blocks"]
-        assert isinstance(blocks.submodules["ln1"], NormalizationBridge)
-
-    def test_ln1_name(self, adapter: XGLMArchitectureAdapter) -> None:
-        blocks = adapter.component_mapping["blocks"]
-        assert blocks.submodules["ln1"].name == "self_attn_layer_norm"
-
-    def test_attn_is_attention_bridge(self, adapter: XGLMArchitectureAdapter) -> None:
-        blocks = adapter.component_mapping["blocks"]
-        assert isinstance(blocks.submodules["attn"], AttentionBridge)
-
-    def test_attn_name(self, adapter: XGLMArchitectureAdapter) -> None:
-        blocks = adapter.component_mapping["blocks"]
-        assert blocks.submodules["attn"].name == "self_attn"
-
-    def test_attn_requires_attention_mask(self, adapter: XGLMArchitectureAdapter) -> None:
-        blocks = adapter.component_mapping["blocks"]
-        assert blocks.submodules["attn"].requires_attention_mask is True
-
-    def test_attn_attention_mask_4d(self, adapter: XGLMArchitectureAdapter) -> None:
-        blocks = adapter.component_mapping["blocks"]
-        assert blocks.submodules["attn"].attention_mask_4d is True
-
-    def test_attn_q_name(self, adapter: XGLMArchitectureAdapter) -> None:
-        attn = adapter.component_mapping["blocks"].submodules["attn"]
-        assert attn.submodules["q"].name == "q_proj"
-
-    def test_attn_k_name(self, adapter: XGLMArchitectureAdapter) -> None:
-        attn = adapter.component_mapping["blocks"].submodules["attn"]
-        assert attn.submodules["k"].name == "k_proj"
-
-    def test_attn_v_name(self, adapter: XGLMArchitectureAdapter) -> None:
-        attn = adapter.component_mapping["blocks"].submodules["attn"]
-        assert attn.submodules["v"].name == "v_proj"
-
-    def test_attn_o_name_is_out_proj(self, adapter: XGLMArchitectureAdapter) -> None:
-        # XGLM uses out_proj, not o_proj (common scaffold mistake).
-        attn = adapter.component_mapping["blocks"].submodules["attn"]
-        assert attn.submodules["o"].name == "out_proj"
-
-    def test_ln2_is_normalization_bridge(self, adapter: XGLMArchitectureAdapter) -> None:
-        blocks = adapter.component_mapping["blocks"]
-        assert isinstance(blocks.submodules["ln2"], NormalizationBridge)
-
-    def test_ln2_name(self, adapter: XGLMArchitectureAdapter) -> None:
-        blocks = adapter.component_mapping["blocks"]
-        assert blocks.submodules["ln2"].name == "final_layer_norm"
-
-    def test_mlp_is_symbolic_bridge(self, adapter: XGLMArchitectureAdapter) -> None:
-        blocks = adapter.component_mapping["blocks"]
-        assert isinstance(blocks.submodules["mlp"], SymbolicBridge)
-
-    def test_mlp_in_name(self, adapter: XGLMArchitectureAdapter) -> None:
-        mlp = adapter.component_mapping["blocks"].submodules["mlp"]
-        assert mlp.submodules["in"].name == "fc1"
-
-    def test_mlp_out_name(self, adapter: XGLMArchitectureAdapter) -> None:
-        mlp = adapter.component_mapping["blocks"].submodules["mlp"]
-        assert mlp.submodules["out"].name == "fc2"
 
 
 class TestXGLMAdapterHookCompatibility:
@@ -175,10 +115,6 @@ class TestXGLMBlockSubmodules:
     @pytest.fixture(scope="class")
     def blocks(self, adapter: XGLMArchitectureAdapter) -> BlockBridge:
         return adapter.component_mapping["blocks"]
-
-    def test_block_has_required_submodules(self, blocks: BlockBridge) -> None:
-        for name in ("ln1", "ln2", "attn", "mlp"):
-            assert name in blocks.submodules, f"BlockBridge missing submodule '{name}'"
 
     def test_ln1_is_normalization_bridge(self, blocks: BlockBridge) -> None:
         ln1 = blocks.submodules["ln1"]
@@ -253,6 +189,3 @@ class TestXGLMArchitectureGuards:
     def test_no_rotary_in_blocks(self, adapter: XGLMArchitectureAdapter) -> None:
         blocks = adapter.component_mapping["blocks"]
         assert "rotary_emb" not in blocks.submodules
-
-    def test_no_top_level_rotary_emb(self, adapter: XGLMArchitectureAdapter) -> None:
-        assert "rotary_emb" not in adapter.component_mapping

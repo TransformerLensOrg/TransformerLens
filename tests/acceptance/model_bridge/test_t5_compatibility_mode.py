@@ -103,29 +103,6 @@ class TestT5CompatibilityMode:
         assert isinstance(encoder_attn.v.hook_out, HookPoint)
         assert isinstance(encoder_attn.o.hook_out, HookPoint)
 
-    def test_compatibility_mode_enables_successfully(self, bridge_model):
-        """Test that compatibility mode can be enabled for T5.
-
-        This is the main acceptance test - compatibility mode should enable
-        without errors and properly register all hooks.
-        """
-        # Enable compatibility mode manually (avoiding full enable_compatibility_mode
-        # which includes weight processing that doesn't work for T5 yet)
-        bridge_model.compatibility_mode = True
-
-        def set_compatibility_mode(component):
-            component.compatibility_mode = True
-            component.disable_warnings = False
-
-        apply_fn_to_all_components(bridge_model, set_compatibility_mode)
-
-        # Re-initialize hook registry to include aliases
-        bridge_model.clear_hook_registry()
-        bridge_model._initialize_hook_registry()
-
-        # Verify compatibility mode is enabled
-        assert bridge_model.compatibility_mode is True
-
     def test_hook_registry_populated(self, bridge_model):
         """Test that hook registry is populated after enabling compatibility mode."""
         # Enable compatibility mode

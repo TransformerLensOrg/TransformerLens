@@ -20,6 +20,13 @@ _HF_PASSTHROUGH_ATTRS = [
     "is_gated_act",
     "word_embed_proj_dim",
     "do_layer_norm_before",
+    # BART
+    "encoder_layers",
+    "decoder_layers",
+    "encoder_attention_heads",
+    "decoder_attention_heads",
+    "encoder_ffn_dim",
+    "decoder_ffn_dim",
     # Granite
     "position_embedding_type",
     # Falcon
@@ -42,6 +49,15 @@ _HF_PASSTHROUGH_ATTRS = [
     # Cohere
     "logit_scale",
     "rope_parameters",
+    # Hybrid/MoE architectures
+    "layer_types",
+    "moe_intermediate_size",
+    "norm_eps",
+    "attention_bias",
+    "lm_head_bias",
+    "router_jitter_noise",
+    "input_jitter_noise",
+    "eos_token_id",
 ]
 
 

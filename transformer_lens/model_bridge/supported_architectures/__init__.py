@@ -9,6 +9,9 @@ from transformer_lens.model_bridge.supported_architectures.apertus import (
 from transformer_lens.model_bridge.supported_architectures.baichuan import (
     BaichuanArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.bart import (
+    BartArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.bert import (
     BertArchitectureAdapter,
 )
@@ -20,6 +23,9 @@ from transformer_lens.model_bridge.supported_architectures.codegen import (
 )
 from transformer_lens.model_bridge.supported_architectures.cohere import (
     CohereArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.deepseek_v2 import (
+    DeepSeekV2ArchitectureAdapter,
 )
 from transformer_lens.model_bridge.supported_architectures.deepseek_v3 import (
     DeepSeekV3ArchitectureAdapter,
@@ -42,20 +48,29 @@ from transformer_lens.model_bridge.supported_architectures.gemma3_multimodal imp
 from transformer_lens.model_bridge.supported_architectures.gemma3n import (
     Gemma3nArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.gemma4 import (
+    Gemma4ArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.glm4_moe import (
+    Glm4MoeArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.gpt2 import (
     GPT2ArchitectureAdapter,
 )
-from transformer_lens.model_bridge.supported_architectures.gpt_bigcode import (
-    GPTBigCodeArchitectureAdapter,
-)
 from transformer_lens.model_bridge.supported_architectures.gpt2_lm_head_custom import (
     Gpt2LmHeadCustomArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.gpt_bigcode import (
+    GPTBigCodeArchitectureAdapter,
 )
 from transformer_lens.model_bridge.supported_architectures.gpt_oss import (
     GPTOSSArchitectureAdapter,
 )
 from transformer_lens.model_bridge.supported_architectures.gptj import (
     GptjArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.glm_moe_dsa import (
+    GlmMoeDsaArchitectureAdapter,
 )
 from transformer_lens.model_bridge.supported_architectures.granite import (
     GraniteArchitectureAdapter,
@@ -69,8 +84,14 @@ from transformer_lens.model_bridge.supported_architectures.granite_moe_hybrid im
 from transformer_lens.model_bridge.supported_architectures.hubert import (
     HubertArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.hunyuan_v1_dense import (
+    HunYuanDenseV1ArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.internlm2 import (
     InternLM2ArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.lfm2_moe import (
+    Lfm2MoeArchitectureAdapter,
 )
 from transformer_lens.model_bridge.supported_architectures.llama import (
     LlamaArchitectureAdapter,
@@ -111,6 +132,9 @@ from transformer_lens.model_bridge.supported_architectures.native import (
 from transformer_lens.model_bridge.supported_architectures.neel_solu_old import (
     NeelSoluOldArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.nemotron_h import (
+    NemotronHArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.neo import (
     NeoArchitectureAdapter,
 )
@@ -141,6 +165,9 @@ from transformer_lens.model_bridge.supported_architectures.phi import (
 from transformer_lens.model_bridge.supported_architectures.phi3 import (
     Phi3ArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.phimoe import (
+    PhiMoEArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.qwen import (
     QwenArchitectureAdapter,
 )
@@ -150,17 +177,17 @@ from transformer_lens.model_bridge.supported_architectures.qwen2 import (
 from transformer_lens.model_bridge.supported_architectures.qwen3 import (
     Qwen3ArchitectureAdapter,
 )
-from transformer_lens.model_bridge.supported_architectures.qwen3_moe import (
-    Qwen3MoeArchitectureAdapter,
-)
-from transformer_lens.model_bridge.supported_architectures.qwen3_next import (
-    Qwen3NextArchitectureAdapter,
-)
 from transformer_lens.model_bridge.supported_architectures.qwen3_5 import (
     Qwen3_5ArchitectureAdapter,
 )
 from transformer_lens.model_bridge.supported_architectures.qwen3_5_multimodal import (
     Qwen3_5MultimodalArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.qwen3_moe import (
+    Qwen3MoeArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.qwen3_next import (
+    Qwen3NextArchitectureAdapter,
 )
 from transformer_lens.model_bridge.supported_architectures.smollm3 import (
     SmolLM3ArchitectureAdapter,
@@ -171,6 +198,9 @@ from transformer_lens.model_bridge.supported_architectures.stablelm import (
 from transformer_lens.model_bridge.supported_architectures.t5 import (
     T5ArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.t5gemma import (
+    T5GemmaArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.xglm import (
     XGLMArchitectureAdapter,
 )
@@ -178,10 +208,12 @@ from transformer_lens.model_bridge.supported_architectures.xglm import (
 __all__ = [
     "ApertusArchitectureAdapter",
     "BaichuanArchitectureAdapter",
+    "BartArchitectureAdapter",
     "BertArchitectureAdapter",
     "BloomArchitectureAdapter",
     "CodeGenArchitectureAdapter",
     "CohereArchitectureAdapter",
+    "DeepSeekV2ArchitectureAdapter",
     "DeepSeekV3ArchitectureAdapter",
     "FalconArchitectureAdapter",
     "Gemma1ArchitectureAdapter",
@@ -189,6 +221,9 @@ __all__ = [
     "Gemma3ArchitectureAdapter",
     "Gemma3nArchitectureAdapter",
     "Gemma3MultimodalArchitectureAdapter",
+    "Gemma4ArchitectureAdapter",
+    "GlmMoeDsaArchitectureAdapter",
+    "Glm4MoeArchitectureAdapter",
     "GraniteArchitectureAdapter",
     "GraniteMoeArchitectureAdapter",
     "GraniteMoeHybridArchitectureAdapter",
@@ -198,11 +233,13 @@ __all__ = [
     "Gpt2LmHeadCustomArchitectureAdapter",
     "GptjArchitectureAdapter",
     "HubertArchitectureAdapter",
+    "HunYuanDenseV1ArchitectureAdapter",
     "InternLM2ArchitectureAdapter",
     "LlamaArchitectureAdapter",
     "LlavaArchitectureAdapter",
     "LlavaNextArchitectureAdapter",
     "LlavaOnevisionArchitectureAdapter",
+    "Lfm2MoeArchitectureAdapter",
     "MambaArchitectureAdapter",
     "Mamba2ArchitectureAdapter",
     "MingptArchitectureAdapter",
@@ -210,8 +247,10 @@ __all__ = [
     "MixtralArchitectureAdapter",
     "MPTArchitectureAdapter",
     "NanogptArchitectureAdapter",
+    "NemotronHArchitectureAdapter",
     "NativeArchitectureAdapter",
     "NeelSoluOldArchitectureAdapter",
+    "NemotronHArchitectureAdapter",
     "NeoArchitectureAdapter",
     "NeoxArchitectureAdapter",
     "OpenElmArchitectureAdapter",
@@ -222,6 +261,7 @@ __all__ = [
     "OptArchitectureAdapter",
     "PhiArchitectureAdapter",
     "Phi3ArchitectureAdapter",
+    "PhiMoEArchitectureAdapter",
     "QwenArchitectureAdapter",
     "Qwen2ArchitectureAdapter",
     "Qwen3ArchitectureAdapter",
@@ -232,5 +272,6 @@ __all__ = [
     "SmolLM3ArchitectureAdapter",
     "StableLmArchitectureAdapter",
     "T5ArchitectureAdapter",
+    "T5GemmaArchitectureAdapter",
     "XGLMArchitectureAdapter",
 ]
