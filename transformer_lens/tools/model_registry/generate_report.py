@@ -63,6 +63,7 @@ ARCHITECTURE_DESCRIPTIONS: dict[str, str] = {
     "T5ForConditionalGeneration": "Google's T5 encoder-decoder model (partial support)",
     "T5GemmaForConditionalGeneration": "Google's T5Gemma encoder-decoder model with Gemma-style RoPE, GQA, and gated MLP",
     "BartForConditionalGeneration": "Facebook's BART encoder-decoder model",
+    "BD3LM": "Kuleshov Group's Block Diffusion Language Model (ICLR 2025) for masked text generation",
     "HunYuanDenseV1ForCausalLM": "Tencent's open source decoder models",
     # Unsupported architectures
     "BertModel": "Google's BERT bidirectional encoder for understanding tasks",

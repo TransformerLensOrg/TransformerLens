@@ -67,6 +67,12 @@ _HF_PASSTHROUGH_ATTRS = [
     "router_jitter_noise",
     "input_jitter_noise",
     "eos_token_id",
+    # BD3LM
+    "model_length",
+    "block_size",
+    "cond_dim",
+    "adaln",
+    "cross_attn",
 ]
 
 

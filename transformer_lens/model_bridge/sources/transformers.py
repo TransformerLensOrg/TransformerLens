@@ -71,6 +71,8 @@ def map_default_transformer_lens_config(hf_config):
         tl_config.d_model = source_config.model_dim
     elif hasattr(source_config, "d_model"):
         tl_config.d_model = source_config.d_model
+    elif hasattr(source_config, "hidden_dim"):
+        tl_config.d_model = source_config.hidden_dim
     if hasattr(source_config, "n_head"):
         tl_config.n_heads = source_config.n_head
     elif hasattr(source_config, "num_attention_heads"):
@@ -128,6 +130,8 @@ def map_default_transformer_lens_config(hf_config):
         tl_config.n_layers = source_config.num_transformer_layers
     elif hasattr(source_config, "num_layers"):
         tl_config.n_layers = source_config.num_layers
+    elif hasattr(source_config, "n_blocks"):
+        tl_config.n_layers = source_config.n_blocks
     if hasattr(source_config, "vocab_size") and isinstance(source_config.vocab_size, int):
         tl_config.d_vocab = source_config.vocab_size
     if hasattr(source_config, "n_positions"):
@@ -562,6 +566,12 @@ def boot(
         "router_jitter_noise",
         "input_jitter_noise",
         "eos_token_id",
+        # BD3LM
+        "model_length",
+        "block_size",
+        "cond_dim",
+        "adaln",
+        "cross_attn",
     ]
     for attr in _HF_PASSTHROUGH_ATTRS:
         val = getattr(hf_config, attr, None)
