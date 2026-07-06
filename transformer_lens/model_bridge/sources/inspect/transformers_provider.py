@@ -46,7 +46,7 @@ _current_call_id: contextvars.ContextVar[str] = contextvars.ContextVar(
 # Decoder ModuleList by architecture family; each block's output is resid_post.
 _LAYER_PATHS = ("model.layers", "transformer.h", "gpt_neox.layers", "model.decoder.layers")
 # Attn/MLP submodule names within a block, by family.
-_ATTN_ATTRS = ("self_attn", "attn", "attention")
+_ATTN_ATTRS = ("self_attn", "attn", "attention", "self_attention")  # self_attention: Falcon
 _MLP_ATTRS = ("mlp", "feed_forward")
 
 
