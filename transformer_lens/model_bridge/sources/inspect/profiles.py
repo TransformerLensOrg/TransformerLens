@@ -13,6 +13,7 @@ provider). It's isolated here so this is the single place to fix once validated.
 """
 from __future__ import annotations
 
+import warnings
 from typing import Any, Mapping
 
 import numpy as np
@@ -55,6 +56,15 @@ class TLBridgeProfile:
         entry = (getattr(output, "metadata", None) or {}).get("tl_logits")
         if entry is not None:
             return wire.decode_array(entry)[np.newaxis, ...]  # full (1, seq, d_vocab)
+        # Absent tl_logits despite a logits request means the forward produced none — warn
+        # rather than silently hand back an all -inf tensor (whose argmax is a bogus token 0).
+        warnings.warn(
+            "tl_bridge provider returned no 'tl_logits' in output metadata; emitting an "
+            "all -inf placeholder (argmax would be token 0). Check the provider/wire path "
+            "rather than trusting these logits.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
         return np.full((1, n_tokens, d_vocab), -np.inf, dtype=np.float32)
 
 

@@ -10,8 +10,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import threading
 import warnings
+from concurrent.futures import TimeoutError as FutureTimeout
 from typing import Any, Mapping
 
 import numpy as np
@@ -25,6 +27,10 @@ from transformer_lens.model_bridge.sources._driver_base import DriverBase
 
 from . import hooks, wire
 from .profiles import TLBridgeProfile
+
+# Cap a single provider call so a hung remote/provider forward unblocks the sync caller
+# instead of stalling it forever. Generous by default; override for slow remote backends.
+_PROVIDER_TIMEOUT_S = float(os.environ.get("TL_INSPECT_TIMEOUT_S", "300"))
 
 
 class InspectDriver(DriverBase):
@@ -160,7 +166,15 @@ class InspectDriver(DriverBase):
 
     def _run_coro(self, coro: Any) -> Any:
         future = asyncio.run_coroutine_threadsafe(coro, self._ensure_loop())
-        return future.result()  # blocks the sync caller; re-raises provider errors
+        try:
+            return future.result(timeout=_PROVIDER_TIMEOUT_S)  # re-raises provider errors
+        except FutureTimeout:
+            future.cancel()
+            raise TimeoutError(
+                f"Inspect provider call exceeded {_PROVIDER_TIMEOUT_S:.0f}s "
+                "(set TL_INSPECT_TIMEOUT_S to change) — the remote/provider forward looks "
+                "hung; unblocking the caller rather than stalling indefinitely."
+            ) from None
 
     def _wire_keys(self, names: list[str]) -> list[str]:
         """Unique ``<layer>:<kind>`` keys for the requested hook names (aliases collapse)."""
