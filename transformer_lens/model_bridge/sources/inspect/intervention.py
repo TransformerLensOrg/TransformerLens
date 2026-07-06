@@ -55,6 +55,15 @@ def build_interventions(
             raise ValueError(
                 f"Intervention {hook_name!r}: op={op!r} requires 'value' (scalar or width-shaped)."
             )
+        pos = spec.get("pos")
+        if pos is not None and not (
+            isinstance(pos, int)
+            or (isinstance(pos, (list, tuple)) and all(isinstance(p, int) for p in pos))
+        ):
+            raise ValueError(
+                f"Intervention {hook_name!r}: 'pos' must be an int or list of ints "
+                f"(sequence positions to patch); got {pos!r}."
+            )
         layer, kind = resolved
         out[hooks.wire_key(layer, kind)] = dict(spec)
     return out

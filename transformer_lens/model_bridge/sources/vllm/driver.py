@@ -402,6 +402,15 @@ class VLLMDriver(DriverBase):
                 raise ValueError(
                     f"Cannot intervene on {hook_name!r}: not in supported_hook_points."
                 )
+            if "pos" in spec:
+                # The compiled-graph affine buffers are (width,) and broadcast across every
+                # position; a 'pos' would be silently ignored. Reject it rather than lie.
+                raise NotImplementedError(
+                    f"Intervention {hook_name!r}: per-position 'pos' is not supported on the "
+                    "vLLM backend (its affine buffers broadcast across all positions). Use the "
+                    "Inspect/HF backend for position-scoped patching, or drop 'pos' for a "
+                    "whole-sequence edit."
+                )
             out[hook_name] = dict(spec)
         return out
 

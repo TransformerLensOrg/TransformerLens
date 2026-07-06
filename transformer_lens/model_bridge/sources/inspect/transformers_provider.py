@@ -378,17 +378,35 @@ def _out_hook(layer, kind, want_capture, spec, raw, call_id):
     return hook
 
 
-def _apply_affine(t: torch.Tensor, spec: Mapping[str, Any]) -> torch.Tensor:
-    """suppress→0, scale→·factor, add→+value, set→value (value scalar or width-shaped)."""
+def _affine_op(sub: torch.Tensor, spec: Mapping[str, Any]) -> torch.Tensor:
+    """One affine op: suppress→0, scale→·factor, add→+value, set→value. ``value`` broadcasts
+    (scalar, width-shaped, or per-position ``(n_pos, width)``)."""
     op = spec["op"]
     if op == "suppress":
-        return torch.zeros_like(t)
+        return torch.zeros_like(sub)
     if op == "scale":
-        return t * float(spec["factor"])
-    value = torch.as_tensor(spec["value"], dtype=t.dtype, device=t.device)
+        return sub * float(spec["factor"])
+    value = torch.as_tensor(spec["value"], dtype=sub.dtype, device=sub.device)
     if op == "add":
-        return t + value
-    return torch.zeros_like(t) + value  # set
+        return sub + value
+    return torch.zeros_like(sub) + value  # set
+
+
+def _apply_affine(t: torch.Tensor, spec: Mapping[str, Any]) -> torch.Tensor:
+    """Affine intervention on a captured tensor ``(..., seq, width)``.
+
+    Without ``pos`` the op spans every position (the original width-broadcast form). With
+    ``pos`` (an int or list of sequence indices) it touches only those positions — the
+    activation-patching primitive — and ``value`` may be per-position ``(len(pos), width)``
+    to transplant a captured activation (path/causal tracing) rather than a single vector.
+    """
+    pos = spec.get("pos")
+    if pos is None:
+        return _affine_op(t, spec)
+    idx = [pos] if isinstance(pos, int) else list(pos)
+    out = t.clone()
+    out[..., idx, :] = _affine_op(t[..., idx, :], spec)
+    return out
 
 
 def _detect_capabilities(model: Any, layers: Any) -> tuple[frozenset, str]:
