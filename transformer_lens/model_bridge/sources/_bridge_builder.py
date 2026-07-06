@@ -75,6 +75,12 @@ _HF_PASSTHROUGH_ATTRS = [
     "cond_dim",
     "adaln",
     "cross_attn",
+    # Zamba2 (Mamba-2 + shared-attention hybrid)
+    "mamba_expand",
+    "mamba_ngroups",
+    "num_mem_blocks",
+    "layers_block_type",
+    "use_shared_attention_adapter",
 ]
 
 

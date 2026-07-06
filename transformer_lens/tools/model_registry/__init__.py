@@ -117,6 +117,7 @@ HF_SUPPORTED_ARCHITECTURES: set[str] = {
     "MT5ForConditionalGeneration",
     "T5GemmaForConditionalGeneration",
     "XGLMForCausalLM",
+    "Zamba2ForCausalLM",
 }
 
 # Foundation-trained orgs per architecture. Source of truth for the scraper's
@@ -194,6 +195,7 @@ CANONICAL_AUTHORS_BY_ARCH: dict[str, list[str]] = {
     "T5ForConditionalGeneration": ["google-t5", "google", "Salesforce", "MBZUAI"],
     "T5GemmaForConditionalGeneration": ["google"],
     "XGLMForCausalLM": ["facebook"],
+    "Zamba2ForCausalLM": ["Zyphra"],
 }
 
 __all__ = [
