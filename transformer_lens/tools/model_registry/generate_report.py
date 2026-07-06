@@ -26,6 +26,7 @@ from .api import (
 # Descriptions of common architectures (both supported and unsupported)
 ARCHITECTURE_DESCRIPTIONS: dict[str, str] = {
     # Supported architectures
+    "ArceeForCausalLM": "Arcee AI's AFM, a Llama-style decoder with an ungated squared-ReLU (ReLU^2) MLP",
     "GPT2LMHeadModel": "OpenAI's GPT-2 decoder-only transformer for causal language modeling",
     "GPTNeoForCausalLM": "EleutherAI's GPT-Neo, an open-source GPT-3-like model",
     "GPTNeoXForCausalLM": "EleutherAI's GPT-NeoX architecture used in Pythia models",
@@ -43,6 +44,7 @@ ARCHITECTURE_DESCRIPTIONS: dict[str, str] = {
     "GlmMoeDsaForCausalLM": "Z.ai's GLM-5 MoE model with DeepSeek Sparse Attention",
     "Glm4MoeForCausalLM": "Z.ai's GLM-4.5/4.6/4.7 sparse Mixture-of-Experts causal LM",
     "Qwen2ForCausalLM": "Alibaba's Qwen2 multilingual model",
+    "Qwen2MoeForCausalLM": "Alibaba's Qwen2 sparse Mixture-of-Experts model with shared experts",
     "Qwen3ForCausalLM": "Alibaba's Qwen3 latest generation",
     "Qwen3_5ForConditionalGeneration": "Alibaba's Qwen3.5 vision-language model",
     "BloomForCausalLM": "BigScience's BLOOM multilingual model",
@@ -51,6 +53,7 @@ ARCHITECTURE_DESCRIPTIONS: dict[str, str] = {
     "Phi3ForCausalLM": "Microsoft's Phi-3 improved small model",
     "PhiMoEForCausalLM": "Microsoft's Phi sparse Mixture of Experts model",
     "FalconForCausalLM": "TII's Falcon model series",
+    "FalconH1ForCausalLM": "TII's Falcon-H1 parallel attention + Mamba-2 hybrid series",
     "OlmoForCausalLM": "Allen AI's OLMo open language model",
     "Olmo2ForCausalLM": "Allen AI's OLMo 2 with improved training",
     "Olmo3ForCausalLM": "Allen AI's OLMo 3 latest generation",
@@ -60,7 +63,9 @@ ARCHITECTURE_DESCRIPTIONS: dict[str, str] = {
     "T5ForConditionalGeneration": "Google's T5 encoder-decoder model (partial support)",
     "T5GemmaForConditionalGeneration": "Google's T5Gemma encoder-decoder model with Gemma-style RoPE, GQA, and gated MLP",
     "BartForConditionalGeneration": "Facebook's BART encoder-decoder model",
+    "BD3LM": "Kuleshov Group's Block Diffusion Language Model (ICLR 2025) for masked text generation",
     "HunYuanDenseV1ForCausalLM": "Tencent's open source decoder models",
+    "Cohere2ForCausalLM": "Cohere's Command-A architecture with interleaved sliding-window RoPE and full-attention NoPE layers",
     "OuroForCausalLM": "ByteDance's Ouro looped language model (LoopLM) with weight-shared iterated depth",
     # Unsupported architectures
     "BertModel": "Google's BERT bidirectional encoder for understanding tasks",
