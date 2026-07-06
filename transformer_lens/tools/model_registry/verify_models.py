@@ -62,6 +62,7 @@ logger = logging.getLogger(__name__)
 # These are not in the legacy NEED_REMOTE_CODE_MODELS tuple (loading_from_pretrained.py).
 _BRIDGE_REMOTE_CODE_PREFIXES: tuple[str, ...] = (
     "baichuan-inc/",  # BaichuanForCausalLM — ships own modeling_baichuan.py
+    "ByteDance/Ouro-",  # OuroForCausalLM — ships own modeling_ouro.py
     "internlm/",  # InternLM2ForCausalLM — ships own modeling_internlm2.py
 )
 

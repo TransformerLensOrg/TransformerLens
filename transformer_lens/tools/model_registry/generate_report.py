@@ -61,6 +61,7 @@ ARCHITECTURE_DESCRIPTIONS: dict[str, str] = {
     "T5GemmaForConditionalGeneration": "Google's T5Gemma encoder-decoder model with Gemma-style RoPE, GQA, and gated MLP",
     "BartForConditionalGeneration": "Facebook's BART encoder-decoder model",
     "HunYuanDenseV1ForCausalLM": "Tencent's open source decoder models",
+    "OuroForCausalLM": "ByteDance's Ouro looped language model (LoopLM) with weight-shared iterated depth",
     # Unsupported architectures
     "BertModel": "Google's BERT bidirectional encoder for understanding tasks",
     "BertForMaskedLM": "BERT with masked language modeling head",
