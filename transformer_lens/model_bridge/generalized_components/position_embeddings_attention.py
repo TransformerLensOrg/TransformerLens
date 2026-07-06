@@ -466,6 +466,12 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
                 q_gate = self.hook_q_gate(q_gate)
             attn_output = attn_output * torch.sigmoid(q_gate)
 
+        # --- Gated attention (HRM-Text: separate gate_proj on hidden_states) ---
+        gate_comp = getattr(self, "gate", None)
+        if gate_comp is not None and gate_comp.original_component is not None and q_gate is None:
+            gate_states = gate_comp(hidden_states)
+            attn_output = attn_output * torch.sigmoid(gate_states)
+
         if (
             bool(getattr(self.config, "use_attn_result", False))
             and hasattr(self, "o")
