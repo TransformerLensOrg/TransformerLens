@@ -69,6 +69,9 @@ from transformer_lens.model_bridge.supported_architectures.gpt_oss import (
 from transformer_lens.model_bridge.supported_architectures.gptj import (
     GptjArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.hrm_text import (
+    HrmTextArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.glm_moe_dsa import (
     GlmMoeDsaArchitectureAdapter,
 )
@@ -232,6 +235,7 @@ __all__ = [
     "GPTOSSArchitectureAdapter",
     "Gpt2LmHeadCustomArchitectureAdapter",
     "GptjArchitectureAdapter",
+    "HrmTextArchitectureAdapter",
     "HubertArchitectureAdapter",
     "HunYuanDenseV1ArchitectureAdapter",
     "InternLM2ArchitectureAdapter",

@@ -49,6 +49,13 @@ _HF_PASSTHROUGH_ATTRS = [
     # Cohere
     "logit_scale",
     "rope_parameters",
+    # HRM-Text
+    "H_cycles",
+    "L_cycles",
+    "L_bp_cycles",
+    "embedding_scale",
+    "prefix_lm",
+    "num_layers_per_stack",
     # Hybrid/MoE architectures
     "layer_types",
     "moe_intermediate_size",
