@@ -12,11 +12,11 @@ from transformer_lens.model_bridge.supported_architectures.arcee import (
 from transformer_lens.model_bridge.supported_architectures.baichuan import (
     BaichuanArchitectureAdapter,
 )
-from transformer_lens.model_bridge.supported_architectures.bd3lm import (
-    BD3LMArchitectureAdapter,
-)
 from transformer_lens.model_bridge.supported_architectures.bart import (
     BartArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.bd3lm import (
+    BD3LMArchitectureAdapter,
 )
 from transformer_lens.model_bridge.supported_architectures.bert import (
     BertArchitectureAdapter,
@@ -63,6 +63,9 @@ from transformer_lens.model_bridge.supported_architectures.gemma4 import (
 from transformer_lens.model_bridge.supported_architectures.glm4_moe import (
     Glm4MoeArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.glm_moe_dsa import (
+    GlmMoeDsaArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.gpt2 import (
     GPT2ArchitectureAdapter,
 )
@@ -77,9 +80,6 @@ from transformer_lens.model_bridge.supported_architectures.gpt_oss import (
 )
 from transformer_lens.model_bridge.supported_architectures.gptj import (
     GptjArchitectureAdapter,
-)
-from transformer_lens.model_bridge.supported_architectures.glm_moe_dsa import (
-    GlmMoeDsaArchitectureAdapter,
 )
 from transformer_lens.model_bridge.supported_architectures.granite import (
     GraniteArchitectureAdapter,
@@ -219,6 +219,9 @@ from transformer_lens.model_bridge.supported_architectures.t5gemma import (
 from transformer_lens.model_bridge.supported_architectures.xglm import (
     XGLMArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.zamba2 import (
+    Zamba2ArchitectureAdapter,
+)
 
 __all__ = [
     "ApertusArchitectureAdapter",
@@ -294,4 +297,5 @@ __all__ = [
     "T5ArchitectureAdapter",
     "T5GemmaArchitectureAdapter",
     "XGLMArchitectureAdapter",
+    "Zamba2ArchitectureAdapter",
 ]

@@ -572,6 +572,12 @@ def boot(
         "cond_dim",
         "adaln",
         "cross_attn",
+        # Zamba2 (Mamba-2 + shared-attention hybrid)
+        "mamba_expand",
+        "mamba_ngroups",
+        "num_mem_blocks",
+        "layers_block_type",
+        "use_shared_attention_adapter",
     ]
     for attr in _HF_PASSTHROUGH_ATTRS:
         val = getattr(hf_config, attr, None)
