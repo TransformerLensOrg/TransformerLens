@@ -1934,6 +1934,9 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                 logits = output
             if return_type == "logits":
                 return logits
+            elif return_type == "logits_and_cache":
+                past_key_values = getattr(output, "past_key_values", None)
+                return (logits, past_key_values)
             elif return_type == "loss":
                 if getattr(self.cfg, "is_audio_model", False):
                     raise ValueError(
