@@ -196,6 +196,9 @@ from transformer_lens.model_bridge.supported_architectures.openelm import (
 from transformer_lens.model_bridge.supported_architectures.opt import (
     OptArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.pegasus import (
+    PegasusArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.phi import (
     PhiArchitectureAdapter,
 )
@@ -317,6 +320,7 @@ __all__ = [
     "NeoxArchitectureAdapter",
     "OpenAIGPTArchitectureAdapter",
     "OpenElmArchitectureAdapter",
+    "PegasusArchitectureAdapter",
     "OlmoArchitectureAdapter",
     "Olmo2ArchitectureAdapter",
     "Olmo3ArchitectureAdapter",
