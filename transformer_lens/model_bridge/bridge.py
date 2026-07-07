@@ -28,8 +28,6 @@ from typing import (
 import einops
 import numpy as np
 import torch
-
-from transformer_lens.utilities.activation_functions import SOFTCAP_DISABLED
 import tqdm
 from torch import nn
 
@@ -52,6 +50,7 @@ from transformer_lens.model_bridge.generalized_components.block import (
     VARIANT_SUBMODULE_NAMES,
 )
 from transformer_lens.model_bridge.get_params_util import get_bridge_params
+from transformer_lens.utilities.activation_functions import SOFTCAP_DISABLED
 from transformer_lens.utilities.aliases import resolve_alias
 from transformer_lens.utilities.devices import move_to_and_update_config
 from transformer_lens.utilities.lm_utils import lm_cross_entropy_loss

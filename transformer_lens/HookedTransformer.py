@@ -72,8 +72,8 @@ from transformer_lens.utilities import (
     init_xavier_normal_,
     init_xavier_uniform_,
 )
-from transformer_lens.utilities.devices import move_to_and_update_config
 from transformer_lens.utilities.activation_functions import apply_softcap
+from transformer_lens.utilities.devices import move_to_and_update_config
 from transformer_lens.weight_processing import ProcessWeights
 
 SingleLoss = Float[torch.Tensor, ""]  # Type alias for a single element tensor
@@ -2184,11 +2184,13 @@ class HookedTransformer(HookedRootModule):
                             top_p=top_p,
                             temperature=temperature,
                             freq_penalty=freq_penalty,
-                            tokens=torch.cat(
-                                (input_tokens, torch.cat(sampled_tokens_list, dim=1)), dim=1
-                            )
-                            if "sampled_tokens" in locals()
-                            else input_tokens,
+                            tokens=(
+                                torch.cat(
+                                    (input_tokens, torch.cat(sampled_tokens_list, dim=1)), dim=1
+                                )
+                                if "sampled_tokens" in locals()
+                                else input_tokens
+                            ),
                         ).to(get_device_for_block_index(0, self.cfg))
                     else:
                         sampled_tokens = utils.sample_logits(

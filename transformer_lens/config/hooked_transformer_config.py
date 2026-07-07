@@ -14,7 +14,10 @@ from typing import Any, Dict, List, Optional, Union
 import numpy as np
 import torch
 
-from transformer_lens.utilities.activation_functions import SOFTCAP_DISABLED, SUPPORTED_ACTIVATIONS
+from transformer_lens.utilities.activation_functions import (
+    SOFTCAP_DISABLED,
+    SUPPORTED_ACTIVATIONS,
+)
 from transformer_lens.utilities.devices import get_device
 
 from .transformer_lens_config import TransformerLensConfig
