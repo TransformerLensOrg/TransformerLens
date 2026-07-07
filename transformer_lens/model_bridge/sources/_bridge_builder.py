@@ -44,6 +44,14 @@ _HF_PASSTHROUGH_ATTRS = [
     # Mamba-2 (additional SSM config)
     "n_groups",
     "chunk_size",
+    # Falcon-H1 (parallel attn + Mamba-2 hybrid SSM config)
+    "mamba_d_ssm",
+    "mamba_n_heads",
+    "mamba_d_head",
+    "mamba_d_state",
+    "mamba_n_groups",
+    "mamba_d_conv",
+    "mamba_chunk_size",
     # Multimodal
     "vision_config",
     # Cohere
@@ -56,15 +64,30 @@ _HF_PASSTHROUGH_ATTRS = [
     "embedding_scale",
     "prefix_lm",
     "num_layers_per_stack",
+    "sliding_window_pattern",
+    "_sliding_window_pattern",
     # Hybrid/MoE architectures
     "layer_types",
     "moe_intermediate_size",
+    "shared_expert_intermediate_size",
     "norm_eps",
     "attention_bias",
     "lm_head_bias",
     "router_jitter_noise",
     "input_jitter_noise",
     "eos_token_id",
+    # BD3LM
+    "model_length",
+    "block_size",
+    "cond_dim",
+    "adaln",
+    "cross_attn",
+    # Zamba2 (Mamba-2 + shared-attention hybrid)
+    "mamba_expand",
+    "mamba_ngroups",
+    "num_mem_blocks",
+    "layers_block_type",
+    "use_shared_attention_adapter",
 ]
 
 
