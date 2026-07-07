@@ -289,6 +289,7 @@ def determine_architecture_from_hf_config(hf_config):
             "qwen": "QwenForCausalLM",
             "qwen2": "Qwen2ForCausalLM",
             "qwen2_5_vl": "Qwen2_5_VLForConditionalGeneration",
+            "qwen3_vl": "Qwen3VLForConditionalGeneration",
             "qwen2_moe": "Qwen2MoeForCausalLM",
             "qwen3": "Qwen3ForCausalLM",
             # qwen3_5 is the top-level multimodal config type; qwen3_5_text is

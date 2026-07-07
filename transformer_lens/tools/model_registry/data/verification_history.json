@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-07-07T11:36:38.257960",
+  "last_updated": "2026-07-07T11:52:28.643627",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -17464,6 +17464,26 @@
     {
       "model_id": "optimum-intel-internal-testing/tiny-random-qwen2.5-vl",
       "architecture_id": "Qwen2_5_VLForConditionalGeneration",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "tiny-random/qwen3-vl",
+      "architecture_id": "Qwen3VLForConditionalGeneration",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Qwen/Qwen3-VL-2B-Instruct",
+      "architecture_id": "Qwen3VLForConditionalGeneration",
       "verified_date": "2026-07-07",
       "verified_by": "verify_models",
       "transformerlens_version": null,
