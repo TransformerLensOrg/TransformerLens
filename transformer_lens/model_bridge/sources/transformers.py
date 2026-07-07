@@ -236,6 +236,7 @@ def determine_architecture_from_hf_config(hf_config):
             "mbart": "MBartForConditionalGeneration",
             "pegasus": "PegasusForConditionalGeneration",
             "seed_oss": "SeedOssForCausalLM",
+            "starcoder2": "Starcoder2ForCausalLM",
             "nemotron": "NemotronForCausalLM",
             "idefics3": "Idefics3ForConditionalGeneration",
             "qwen2_audio": "Qwen2AudioForConditionalGeneration",

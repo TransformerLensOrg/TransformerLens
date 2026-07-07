@@ -257,6 +257,9 @@ from transformer_lens.model_bridge.supported_architectures.recurrent_gemma impor
 from transformer_lens.model_bridge.supported_architectures.seed_oss import (
     SeedOssArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.starcoder2 import (
+    Starcoder2ArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.smollm3 import (
     SmolLM3ArchitectureAdapter,
 )
@@ -365,6 +368,7 @@ __all__ = [
     "SeedOssArchitectureAdapter",
     "SmolLM3ArchitectureAdapter",
     "StableLmArchitectureAdapter",
+    "Starcoder2ArchitectureAdapter",
     "T5ArchitectureAdapter",
     "T5GemmaArchitectureAdapter",
     "XGLMArchitectureAdapter",

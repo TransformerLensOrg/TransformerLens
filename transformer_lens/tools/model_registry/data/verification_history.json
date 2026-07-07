@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-07-07T04:59:35.067471",
+  "last_updated": "2026-07-07T05:09:21.462439",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -17208,6 +17208,16 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "optimum-intel-internal-testing/tiny-random-Starcoder2ForCausalLM",
+      "architecture_id": "Starcoder2ForCausalLM",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues, low text quality",
       "invalidated": false,
       "invalidation_reason": null
     }
