@@ -70,6 +70,7 @@ ARCHITECTURE_DESCRIPTIONS: dict[str, str] = {
     "BartForConditionalGeneration": "Facebook's BART encoder-decoder model",
     "M2M100ForConditionalGeneration": "Meta's M2M100 / NLLB-200 multilingual translation encoder-decoder",
     "MarianMTModel": "Helsinki-NLP's Marian opus-mt translation encoder-decoder",
+    "OpenAIGPTLMHeadModel": "The original OpenAI GPT-1 decoder (post-norm, no final LN)",
     "MiniMaxM2ForCausalLM": "MiniMax's M2 sparse-MoE decoder with sigmoid routing",
     "ExaoneForCausalLM": "LG AI Research's EXAONE-3.x Korean-English decoder (remote code)",
     "FalconMambaForCausalLM": "TII's FalconMamba pure-SSM decoder (Mamba-1 with B/C/dt RMS)",

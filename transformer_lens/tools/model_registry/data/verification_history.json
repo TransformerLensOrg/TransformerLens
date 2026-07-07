@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-07-07T02:37:14.735418",
+  "last_updated": "2026-07-07T02:53:13.777586",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -16998,6 +16998,56 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Full verification completed with issues, low text quality",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "openai-community/openai-gpt",
+      "architecture_id": "OpenAIGPTLMHeadModel",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: all_components) \u2014 12/75 components failed (12 critical)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "openai-community/openai-gpt",
+      "architecture_id": "OpenAIGPTLMHeadModel",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: all_components) \u2014 12/75 components failed (12 critical)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "openai-community/openai-gpt",
+      "architecture_id": "OpenAIGPTLMHeadModel",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: all_components) \u2014 12/75 components failed (12 critical)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "openai-community/openai-gpt",
+      "architecture_id": "OpenAIGPTLMHeadModel",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: all_components) \u2014 12/75 components failed (12 critical)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "openai-community/openai-gpt",
+      "architecture_id": "OpenAIGPTLMHeadModel",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
       "invalidated": false,
       "invalidation_reason": null
     }

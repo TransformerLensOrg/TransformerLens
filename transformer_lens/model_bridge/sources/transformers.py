@@ -224,6 +224,7 @@ def determine_architecture_from_hf_config(hf_config):
         model_type_mappings = {
             "apertus": "ApertusForCausalLM",
             "gpt2": "GPT2LMHeadModel",
+            "openai-gpt": "OpenAIGPTLMHeadModel",
             "hubert": "HubertModel",
             "bamba": "BambaForCausalLM",
             "bart": "BartForConditionalGeneration",

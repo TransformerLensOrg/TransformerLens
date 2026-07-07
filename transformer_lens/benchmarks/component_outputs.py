@@ -656,8 +656,11 @@ class ComponentBenchmarker:
             )
 
             # Extract tensors if outputs are tuples
-            bridge_tensor = bridge_output[0] if isinstance(bridge_output, tuple) else bridge_output
-            hf_tensor = hf_output[0] if isinstance(hf_output, tuple) else hf_output
+            # Legacy modules (e.g. GPT-1's Attention) return lists, not tuples.
+            bridge_tensor = (
+                bridge_output[0] if isinstance(bridge_output, (tuple, list)) else bridge_output
+            )
+            hf_tensor = hf_output[0] if isinstance(hf_output, (tuple, list)) else hf_output
 
             # Ensure both are tensors
             if not isinstance(bridge_tensor, torch.Tensor) or not isinstance(
@@ -782,7 +785,18 @@ class ComponentBenchmarker:
                 return component(*shared_inputs["args"])
             else:
                 # Call with keyword args (e.g., for attention)
-                return component(**shared_inputs)
+                try:
+                    return component(**shared_inputs)
+                except TypeError:
+                    # Pre-kwarg-era modules (e.g. GPT-1's Attention) take the
+                    # input positionally and reject the hidden_states keyword.
+                    hidden = shared_inputs.get("hidden_states")
+                    if hidden is None:
+                        raise
+                    mask = shared_inputs.get("attention_mask")
+                    if mask is not None:
+                        return component(hidden, attention_mask=mask)
+                    return component(hidden)
 
         # Fallback: Use legacy calling conventions for components without get_random_inputs()
         if "attn" in component_path and "attn" == component_path.split(".")[-1]:

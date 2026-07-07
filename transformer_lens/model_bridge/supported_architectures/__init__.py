@@ -187,6 +187,9 @@ from transformer_lens.model_bridge.supported_architectures.olmo3 import (
 from transformer_lens.model_bridge.supported_architectures.olmoe import (
     OlmoeArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.openai_gpt import (
+    OpenAIGPTArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.openelm import (
     OpenElmArchitectureAdapter,
 )
@@ -312,6 +315,7 @@ __all__ = [
     "NemotronHArchitectureAdapter",
     "NeoArchitectureAdapter",
     "NeoxArchitectureAdapter",
+    "OpenAIGPTArchitectureAdapter",
     "OpenElmArchitectureAdapter",
     "OlmoArchitectureAdapter",
     "Olmo2ArchitectureAdapter",
