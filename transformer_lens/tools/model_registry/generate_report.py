@@ -34,6 +34,7 @@ ARCHITECTURE_DESCRIPTIONS: dict[str, str] = {
     "GPTJForCausalLM": "EleutherAI's GPT-J 6B parameter model",
     "LlamaForCausalLM": "Meta's LLaMA architecture, basis for many open models",
     "Llama4ForCausalLM": "Meta's Llama 4 text decoder with interleaved MoE and NoPE layers",
+    "Llama4ForConditionalGeneration": "Meta's Llama 4 Scout/Maverick vision-language model",
     "LongT5ForConditionalGeneration": "Google's LongT5 with local or transient-global encoder attention",
     "LEDForConditionalGeneration": "AllenAI's Longformer Encoder-Decoder for long documents",
     "Florence2ForConditionalGeneration": "Microsoft's Florence-2 vision-language model with DaViT backbone and BART text stack",

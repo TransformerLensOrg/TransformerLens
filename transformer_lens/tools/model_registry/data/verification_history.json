@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-07-07T08:50:47.446349",
+  "last_updated": "2026-07-07T09:01:52.487086",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -17428,6 +17428,16 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "yujiepan/llama-4-tiny-random",
+      "architecture_id": "Llama4ForConditionalGeneration",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Verified on a local snapshot of yujiepan/llama-4-tiny-random with text_config.attn_temperature_tuning coerced to bool \u2014 the upstream config declares it as int 4, which transformers 5.x strict config validation rejects. P7 skipped: the tiny ships no processor files. P3=95 (attention_output_centering worst_mean=0.099 on random weights). Official Scout/Maverick checkpoints registered for big-hardware verification.",
       "invalidated": false,
       "invalidation_reason": null
     }

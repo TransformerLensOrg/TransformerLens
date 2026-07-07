@@ -160,6 +160,9 @@ from transformer_lens.model_bridge.supported_architectures.llama import (
 from transformer_lens.model_bridge.supported_architectures.llama4 import (
     Llama4ArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.llama4_multimodal import (
+    Llama4MultimodalArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.llava import (
     LlavaArchitectureAdapter,
 )
@@ -371,6 +374,7 @@ __all__ = [
     "LEDArchitectureAdapter",
     "LlamaArchitectureAdapter",
     "Llama4ArchitectureAdapter",
+    "Llama4MultimodalArchitectureAdapter",
     "LlavaArchitectureAdapter",
     "LlavaNextArchitectureAdapter",
     "LlavaOnevisionArchitectureAdapter",

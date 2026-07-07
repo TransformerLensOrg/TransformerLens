@@ -251,6 +251,7 @@ def determine_architecture_from_hf_config(hf_config):
             "led": "LEDForConditionalGeneration",
             "llama": "LlamaForCausalLM",
             "llama4_text": "Llama4ForCausalLM",
+            "llama4": "Llama4ForConditionalGeneration",
             "mamba": "MambaForCausalLM",
             "mamba2": "Mamba2ForCausalLM",
             "mistral": "MistralForCausalLM",
