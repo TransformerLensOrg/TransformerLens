@@ -47,6 +47,8 @@ ARCHITECTURE_DESCRIPTIONS: dict[str, str] = {
     "Qwen2MoeForCausalLM": "Alibaba's Qwen2 sparse Mixture-of-Experts model with shared experts",
     "Qwen3ForCausalLM": "Alibaba's Qwen3 latest generation",
     "Qwen3_5ForConditionalGeneration": "Alibaba's Qwen3.5 vision-language model",
+    "Qwen3_5MoeForCausalLM": "Alibaba's Qwen3.5-MoE hybrid linear-attention sparse-MoE text model",
+    "Qwen3_5MoeForConditionalGeneration": "Alibaba's Qwen3.5-MoE vision-language model",
     "BloomForCausalLM": "BigScience's BLOOM multilingual model",
     "OPTForCausalLM": "Meta's Open Pre-trained Transformer",
     "PhiForCausalLM": "Microsoft's Phi small language model",

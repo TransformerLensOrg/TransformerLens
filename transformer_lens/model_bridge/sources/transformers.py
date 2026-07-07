@@ -264,6 +264,9 @@ def determine_architecture_from_hf_config(hf_config):
             # text-only) are routed to Qwen3_5ForCausalLM.
             "qwen3_5": "Qwen3_5ForCausalLM",
             "qwen3_5_text": "Qwen3_5ForCausalLM",
+            # Same routing convention for the MoE variant.
+            "qwen3_5_moe": "Qwen3_5MoeForCausalLM",
+            "qwen3_5_moe_text": "Qwen3_5MoeForCausalLM",
             "smollm3": "SmolLM3ForCausalLM",
             "openelm": "OpenELMForCausalLM",
             "stablelm": "StableLmForCausalLM",

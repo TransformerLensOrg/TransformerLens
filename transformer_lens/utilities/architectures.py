@@ -37,6 +37,7 @@ MULTIMODAL_ARCHITECTURES: set[str] = {
     "Gemma3ForConditionalGeneration",
     "Gemma4ForConditionalGeneration",
     "Qwen3_5ForConditionalGeneration",
+    "Qwen3_5MoeForConditionalGeneration",
 }
 
 # Audio encoder models (HuBERT, wav2vec2, etc.)
