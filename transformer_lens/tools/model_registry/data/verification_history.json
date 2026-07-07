@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-07-07T08:24:51.529542",
+  "last_updated": "2026-07-07T08:38:43.964539",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -17404,6 +17404,16 @@
     {
       "model_id": "tiny-random/mistral-3",
       "architecture_id": "Mistral3ForConditionalGeneration",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "zai-org/GLM-ASR-Nano-2512",
+      "architecture_id": "GlmAsrForConditionalGeneration",
       "verified_date": "2026-07-07",
       "verified_by": "verify_models",
       "transformerlens_version": null,
