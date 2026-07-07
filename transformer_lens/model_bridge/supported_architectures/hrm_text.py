@@ -19,8 +19,8 @@ Architecture notes:
       that produces a per-head sigmoid gate applied to the attention output before
       ``o_proj``. Delegated to HF; hookable via ``L_blocks.{i}.attn.gate.hook_out``.
     - **Embedding scale**: ``inputs_embeds *= embedding_scale`` (default ~39.19 for
-      HRM-Text-1B). Folded into ``embed.weight`` in ``preprocess_weights`` for
-      compat-mode parity.
+      HRM-Text-1B). Applied at runtime by ``HrmTextModel.forward``; must NOT be
+      folded into ``embed.weight`` — same reasoning as ``gemma1.py``.
     - **PrefixLM mask**: instruction tokens attend bidirectionally when
       ``token_type_ids`` is passed to HF forward; delegated, not modeled by bridge.
 
@@ -101,7 +101,7 @@ class HrmTextArchitectureAdapter(ArchitectureAdapter):
             if hasattr(self.cfg, "n_key_value_heads") and self.cfg.n_key_value_heads is not None
             else self.cfg.n_heads
         )
-        self.weight_processing_conversions = self._build_weight_conversions(n_kv_heads)  # type: ignore[assignment]
+        self.weight_processing_conversions = self._build_weight_conversions(n_kv_heads)
 
         def _make_block_submodules():
             return {
@@ -147,7 +147,7 @@ class HrmTextArchitectureAdapter(ArchitectureAdapter):
             "unembed": UnembeddingBridge(name="lm_head", config=self.cfg),
         }
 
-    def _build_weight_conversions(self, n_kv_heads: int) -> dict[str, ParamProcessingConversion]:
+    def _build_weight_conversions(self, n_kv_heads: int) -> dict[str, ParamProcessingConversion | str]:
         """Build weight processing conversions for both L and H block stacks.
 
         Each Q/K/V/O weight under ``L_blocks.{i}`` and ``H_blocks.{i}`` needs
@@ -156,7 +156,7 @@ class HrmTextArchitectureAdapter(ArchitectureAdapter):
         ``H_blocks`` prefix instead of the ``blocks`` prefix.
         """
         block_prefixes = ["L_blocks", "H_blocks"]
-        conversions: dict[str, ParamProcessingConversion] = {}
+        conversions: dict[str, ParamProcessingConversion | str] = {}
         for prefix in block_prefixes:
             conversions.update(
                 {
@@ -183,21 +183,6 @@ class HrmTextArchitectureAdapter(ArchitectureAdapter):
                 }
             )
         return conversions
-
-    def preprocess_weights(self, state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
-        """Fold embedding_scale into embed.weight for compat-mode parity.
-
-        HF's HrmTextModel.forward multiplies inputs_embeds by embedding_scale at
-        runtime. For ProcessWeights / compat-mode to match, we bake the scale into
-        the embedding weight tensor.
-        """
-        scale: float = getattr(self.cfg, "embedding_scale", 1.0)
-        if scale is not None and abs(scale - 1.0) > 1e-6:
-            key = "embed.weight"
-            if key in state_dict:
-                orig_dtype = state_dict[key].dtype
-                state_dict[key] = (state_dict[key].float() * scale).to(orig_dtype)
-        return state_dict
 
     def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
         """Set up rotary embedding references for HRM-Text component testing.

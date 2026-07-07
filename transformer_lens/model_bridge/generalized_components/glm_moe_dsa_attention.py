@@ -12,16 +12,22 @@ from transformer_lens.model_bridge.generalized_components.base import (
 )
 from transformer_lens.model_bridge.generalized_components.mla_attention import (
     MLAAttentionBridge,
-    _rotate_half,
 )
 
 
 def _apply_rotary_pos_emb_single(
     x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor, unsqueeze_dim: int
 ) -> torch.Tensor:
-    cos = cos.unsqueeze(unsqueeze_dim)
-    sin = sin.unsqueeze(unsqueeze_dim)
-    return (x * cos) + (_rotate_half(x) * sin)
+    """Apply interleaved-pair rotary position embeddings (transformers >= 5.13).
+
+    HF 5.13 switched GLM-MoE-DSA from split-half NeoX-style RoPE to interleaved-
+    pair rotation (``apply_rotary_pos_emb_interleave``). Even-dimension elements
+    are paired with the following odd dimension: (d0,d1), (d2,d3), …
+    """
+    cos = cos[..., :cos.shape[-1] // 2].unsqueeze(unsqueeze_dim)
+    sin = sin[..., :sin.shape[-1] // 2].unsqueeze(unsqueeze_dim)
+    x1, x2 = x[..., 0::2], x[..., 1::2]
+    return torch.cat([x1 * cos - x2 * sin, x2 * cos + x1 * sin], dim=-1)
 
 
 def _repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
@@ -153,7 +159,7 @@ class GlmMoeDsaAttentionBridge(MLAAttentionBridge):
                 key_states, value_states, hf_attn.layer_idx
             )
 
-        if not hf_attn.skip_topk or prev_topk_indices is None:
+        if hf_attn.indexer is not None:
             if attention_mask is not None and attention_mask.dim() == 4:
                 indexer_mask = attention_mask[:, 0, :, :]
             elif attention_mask is not None:
@@ -171,6 +177,11 @@ class GlmMoeDsaAttentionBridge(MLAAttentionBridge):
                 past_key_values=past_key_values,
             )
         else:
+            if prev_topk_indices is None:
+                raise ValueError(
+                    "Shared DSA layers require top-k indices from a previous "
+                    "full indexer layer (prev_topk_indices is None)."
+                )
             topk_indices = prev_topk_indices
         topk_indices = self.hook_topk_indices(topk_indices)
 
@@ -190,6 +201,12 @@ class GlmMoeDsaAttentionBridge(MLAAttentionBridge):
                 index_mask == float("-inf"), float("-inf")
             )
         else:
+            causal_mask = torch.arange(
+                total_len, device=hidden_states.device
+            )[None, None, None, :] > torch.arange(
+                q_pe.shape[-2], device=hidden_states.device
+            )[:, None, None]
+            index_mask = index_mask.masked_fill(causal_mask, float("-inf"))
             attn_scores_mask = index_mask
 
         key_states = _repeat_kv(key_states, hf_attn.num_key_value_groups)

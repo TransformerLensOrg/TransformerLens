@@ -308,7 +308,7 @@ class ComponentBenchmarker:
 
         # Block-type components that need to be tested recursively by layer
         # (they are ModuleLists that don't have direct forward methods)
-        block_components = {"blocks", "encoder_blocks", "decoder_blocks"}
+        block_components = {"blocks", "encoder_blocks", "decoder_blocks", "L_blocks", "H_blocks"}
 
         # Test top-level components (embed, pos_embed, ln_final, unembed)
         for comp_name, component in component_mapping.items():

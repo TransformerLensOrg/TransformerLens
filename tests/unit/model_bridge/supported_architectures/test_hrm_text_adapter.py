@@ -224,14 +224,13 @@ class TestHrmTextWeightConversions:
         result = adapter.preprocess_weights(state_dict)
         assert torch.equal(result["embed.weight"], state_dict["embed.weight"])
 
-    def test_preprocess_weights_with_scale(self, adapter):
+    def test_preprocess_weights_with_scale_noop(self, adapter):
         adapter.cfg.embedding_scale = 2.0
         import torch
 
         state_dict = {"embed.weight": torch.ones(100, self.HIDDEN_SIZE, dtype=torch.float32)}
         result = adapter.preprocess_weights(state_dict)
-        expected = torch.full((100, self.HIDDEN_SIZE), 2.0, dtype=torch.float32)
-        assert torch.equal(result["embed.weight"], expected)
+        assert torch.equal(result["embed.weight"], state_dict["embed.weight"])
 
 
 class TestHrmTextConfigPassthrough:

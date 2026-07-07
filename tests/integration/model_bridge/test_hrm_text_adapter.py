@@ -139,8 +139,16 @@ class TestHrmTextBridgeCreation:
 )
 class TestHrmTextForwardPass:
     @pytest.fixture(scope="class")
-    def bridge(self):
-        return _make_bridge(_make_tiny_hf_model())
+    def hf_model(self):
+        """Independent HF model, NOT wrapped by the bridge."""
+        return _make_tiny_hf_model()
+
+    @pytest.fixture(scope="class")
+    def bridge(self, hf_model):
+        """Bridge built from a model copy with the same weights as hf_model."""
+        model_copy = _make_tiny_hf_model()
+        model_copy.load_state_dict(hf_model.state_dict())
+        return _make_bridge(model_copy)
 
     def test_forward_returns_logits(self, bridge):
         tokens = torch.randint(0, 128, (1, 4))
@@ -149,10 +157,10 @@ class TestHrmTextForwardPass:
         assert output.shape == (1, 4, 128)
         assert not torch.isnan(output).any()
 
-    def test_forward_matches_hf(self, bridge):
+    def test_forward_matches_hf(self, bridge, hf_model):
         tokens = torch.randint(0, 128, (1, 4))
         with torch.no_grad():
-            hf_logits = bridge.original_model(tokens, use_cache=False).logits
+            hf_logits = hf_model(tokens, use_cache=False).logits
             bridge_logits = bridge(tokens, use_cache=False)
         assert hf_logits.shape == bridge_logits.shape
         torch.testing.assert_close(hf_logits, bridge_logits, atol=1e-5, rtol=1e-5)
@@ -192,3 +200,43 @@ class TestHrmTextForwardPass:
             )
         # H_blocks fire once per H_cycle (H_cycles=1)
         assert len(captured) == 1, "H_blocks hook must fire"
+
+    def test_gate_hook_fires(self, bridge):
+        firing_count = [0]
+
+        def count_hook(value, hook):
+            firing_count[0] += 1
+            return value
+
+        tokens = torch.randint(0, 128, (1, 4))
+        with torch.no_grad():
+            bridge.run_with_hooks(
+                tokens,
+                fwd_hooks=[("L_blocks.0.attn.hook_gate", count_hook)],
+                use_cache=False,
+            )
+        assert firing_count[0] > 0, (
+            "L_blocks.0.attn.hook_gate did not fire — the gated-attention path "
+            "is dead code and the forward-parity test is tautological."
+        )
+
+    def test_forward_with_cache_does_not_crash(self, bridge):
+        tokens = torch.randint(0, 128, (1, 4))
+        with torch.no_grad():
+            output = bridge(tokens, use_cache=True)
+        assert output.shape == (1, 4, 128)
+        assert not torch.isnan(output).any()
+
+    def test_forward_with_cache_and_past_key_values(self, bridge):
+        tokens = torch.randint(0, 128, (1, 4))
+        with torch.no_grad():
+            output, past_kv = bridge(tokens, use_cache=True, return_type="logits_and_cache")
+        assert output.shape == (1, 4, 128)
+        assert past_kv is not None
+        second_token = torch.randint(0, 128, (1, 1))
+        with torch.no_grad():
+            output2 = bridge(
+                second_token, use_cache=True, past_key_values=past_kv
+            )
+        assert output2.shape == (1, 1, 128)
+        assert not torch.isnan(output2).any()
