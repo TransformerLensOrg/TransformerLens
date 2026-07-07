@@ -117,11 +117,19 @@ class TestVLLMDriverProtocolConformance:
         assert isinstance(driver, Driver)
         validate_driver(driver)
 
-    def test_no_torch_capability_flags(self):
-        """vLLM owns the model in a worker — no torch-specific capability surface."""
+    def test_capability_flags(self):
+        """vLLM owns the model in a worker — no torch module surface (parameters/
+        state_dict/grads), but named-weight reads ARE served via the get_param RPC."""
         driver = _driver()
-        for feature in ("parameters", "state_dict", "gradients", "weight_access"):
+        for feature in ("parameters", "state_dict", "gradients"):
             assert driver.supports(feature) is False, f"vLLM shouldn't support {feature!r}"
+        assert driver.supports("weight_access") is True
+
+    def test_zero_layers_config_fails_loud(self):
+        """A missing/zero num_hidden_layers must raise at boot, not leave a raw '{i}'
+        template in non_fireable_hook_points."""
+        with pytest.raises(ValueError, match="num_hidden_layers"):
+            _driver(hf_config=_hf_config(num_hidden_layers=0))
 
     def test_non_fireable_expanded_per_layer(self):
         """``blocks.{i}.attn.hook_pattern`` template expands to one entry per layer."""
@@ -170,7 +178,7 @@ class TestVLLMDriverForward:
         result = _driver(
             captures={"embed.hook_out": torch.randn(3, 4)},
             top_logprobs={7: 2.5, 3: 1.0, 11: -0.5},
-        ).forward(torch.tensor([[1, 2, 3]]))
+        ).forward(torch.tensor([[1, 2, 3]]), capture=("embed.hook_out",))
         assert isinstance(result, ForwardResult)
         assert tuple(result.captured["embed.hook_out"].shape) == (1, 3, 4)
         assert result.logits is not None and tuple(result.logits.shape) == (1, 3, 16)
@@ -330,6 +338,29 @@ class TestVLLMDriverPositionInterventions:
         with pytest.raises(ValueError, match="exceeds max_num_batched_tokens"):
             _driver(captures={}, max_num_batched_tokens=4).forward(torch.tensor([[1, 2, 3, 4, 5]]))
 
+    def test_zero_capture_skips_worker_read(self):
+        """capture=() must not trigger a GPU→CPU copy: with logits off there is no
+        tl_read_captures RPC at all (an empty tuple used to collapse to None = read
+        every buffer); with logits on, only the forced ln_final is read."""
+        pytest.importorskip("vllm")
+        driver = _driver(captures={"embed.hook_out": torch.zeros(3, 4)})
+        driver.forward(torch.tensor([[1, 2, 3]]), return_logits=False)
+        reads = [
+            c.args
+            for c in driver._llm.collective_rpc.call_args_list
+            if c.args[0] == "tl_read_captures"
+        ]
+        assert reads == [], f"hookless forward still read the buffers: {reads}"
+
+        driver2 = _driver(captures={"ln_final.hook_normalized": torch.zeros(3, 4)})
+        driver2.forward(torch.tensor([[1, 2, 3]]))  # return_logits=True default
+        reads2 = [
+            c.args
+            for c in driver2._llm.collective_rpc.call_args_list
+            if c.args[0] == "tl_read_captures"
+        ]
+        assert len(reads2) == 1 and reads2[0][1][1] == ["ln_final.hook_normalized"]
+
 
 def _batched_request_output(request_id, generated_token=None, top_logprobs=None):
     """RequestOutput-shaped mock carrying a request_id for the accumulator join."""
@@ -401,7 +432,7 @@ class TestBatchedForward:
             "req-A": {"embed.hook_out": torch.full((3, 4), 1.0)},
         }
         result = _batched_driver(outputs=outputs, captures_by_req=captures_by_req).forward(
-            [[1, 2, 3], [4, 5]]
+            [[1, 2, 3], [4, 5]], capture=("embed.hook_out",)
         )
         emb = result.captured["embed.hook_out"]
         assert tuple(emb.shape) == (2, 3, 4)  # (batch, max_seq, width)
@@ -423,7 +454,7 @@ class TestBatchedForward:
             "11-a1b2c3d4": {"embed.hook_out": torch.full((2, 4), 2.0)},
         }
         result = _batched_driver(outputs=outputs, captures_by_req=captures_by_req).forward(
-            [[1, 2, 3], [4, 5]]
+            [[1, 2, 3], [4, 5]], capture=("embed.hook_out",)
         )
         emb = result.captured["embed.hook_out"]
         assert tuple(emb.shape) == (2, 3, 4)
@@ -442,7 +473,7 @@ class TestBatchedForward:
             "10-bbbbbbbb": {"embed.hook_out": torch.full((3, 4), 9.0)},
         }
         result = _batched_driver(outputs=outputs, captures_by_req=captures_by_req).forward(
-            [[1, 2], [1, 2, 3]]
+            [[1, 2], [1, 2, 3]], capture=("embed.hook_out",)
         )
         emb = result.captured["embed.hook_out"]
         assert torch.equal(emb[0, :2], torch.full((2, 4), 1.0))  # req "1"
@@ -459,11 +490,30 @@ class TestBatchedForward:
             "r1": {"embed.hook_out": torch.ones(1, 4)},
         }
         result = _batched_driver(outputs=outputs, captures_by_req=captures_by_req).forward(
-            [[1, 2, 3], [9]]
+            [[1, 2, 3], [9]], capture=("embed.hook_out",)
         )
         emb = result.captured["embed.hook_out"]
         # Row 1 has 1 real token; positions 1,2 are zero pad.
         assert torch.equal(emb[1, 1:], torch.zeros(2, 4))
+
+    def test_zero_capture_skips_batched_join(self):
+        """capture=() with logits off must return empty captures, not crash: _assemble_padded
+        needs one worker key per request, so it can't run on the empty read — mirror the
+        single path. (Regression: the batched join was called unconditionally.)"""
+        pytest.importorskip("vllm")
+        outputs = [
+            _batched_request_output("r0", top_logprobs={1: 1.0}),
+            _batched_request_output("r1", top_logprobs={1: 1.0}),
+        ]
+        driver = _batched_driver(outputs=outputs, captures_by_req={})
+        result = driver.forward([[1, 2, 3], [9]], return_logits=False)  # capture=() default
+        assert result.captured == {}
+        reads = [
+            c.args
+            for c in driver._llm.collective_rpc.call_args_list
+            if c.args[0] == "tl_read_batched_captures"
+        ]
+        assert reads == [], f"batched hookless forward still read captures: {reads}"
 
     def test_logits_at_per_row_last_token(self):
         """Next-token logits land at prompt_len-1 per row, never -1 (a pad row)."""
@@ -477,7 +527,7 @@ class TestBatchedForward:
             "r1": {"embed.hook_out": torch.ones(1, 4)},
         }
         result = _batched_driver(outputs=outputs, captures_by_req=captures_by_req).forward(
-            [[1, 2, 3], [9]]
+            [[1, 2, 3], [9]], capture=("embed.hook_out",)
         )
         logits = result.logits
         assert logits is not None and tuple(logits.shape) == (2, 3, 16)

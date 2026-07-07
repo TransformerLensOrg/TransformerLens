@@ -111,6 +111,11 @@ def verify(model_id: str) -> dict:
                     mism.append(f"{hk} missing")
                     continue
                 a, b = hf_cache[hk].float(), i_cache[hk].float()
+                if a.shape != b.shape and a.numel() == b.numel():
+                    # OPT-style blocks flatten the FFN to (batch·seq, d) and the bridge
+                    # caches that raw 2-D layout; the driver emits the conventional
+                    # (1, seq, d). Same values, pure reshape — normalize to compare.
+                    a = a.reshape(b.shape)
                 if a.shape != b.shape:
                     mism.append(f"{hk} shape {tuple(a.shape)}!={tuple(b.shape)}")
                     continue

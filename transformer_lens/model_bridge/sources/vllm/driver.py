@@ -20,8 +20,10 @@ from .intervention_specs import SUPPORTED_OPS
 class VLLMDriver(DriverBase):
     """Driver wrapping a vLLM ``LLM``; captures via ``collective_rpc``."""
 
-    # vLLM owns the model in a worker — no torch surface (parameters/state_dict/grads).
-    _supported_features = frozenset()
+    # vLLM owns the model in a worker — no torch module surface (parameters/state_dict/
+    # grads). Named-weight reads ARE served: get_param() returns CPU clones via the
+    # tl_get_param RPC (what logit reconstruction and direct-logit-attribution use).
+    _supported_features = frozenset({"weight_access"})
     # Full-sequence logits reconstructed host-side (ln_final @ lm_head.weight.T); vLLM's
     # sampler only hands back the final position, so the driver rebuilds the rest.
     provides_sequence_logits = True
@@ -54,9 +56,16 @@ class VLLMDriver(DriverBase):
         self.supported_hook_points = frozenset(overlay.capture_specs(hf_config).keys())
 
         n_layers = getattr(hf_config, "num_hidden_layers", 0)
+        if not isinstance(n_layers, int) or n_layers <= 0:
+            # A raw "{i}" template would land unexpanded in non_fireable_hook_points —
+            # a broken config should fail at boot, not surface as a garbled hook name.
+            raise ValueError(
+                f"VLLMDriver: hf_config.num_hidden_layers={n_layers!r} — expected a "
+                "positive int; the config is missing or malformed."
+            )
         nonfiring: list[str] = []
         for tmpl in overlay.nonfiring_hooks():
-            if "{i}" in tmpl and isinstance(n_layers, int) and n_layers > 0:
+            if "{i}" in tmpl:
                 nonfiring.extend(tmpl.replace("{i}", str(i)) for i in range(n_layers))
             else:
                 nonfiring.append(tmpl)
@@ -81,9 +90,11 @@ class VLLMDriver(DriverBase):
             )
         intervene_specs = self._validate_interventions(intervene or {})
 
-        # Restrict the GPU→CPU read to these hooks (None = all). run_with_cache
-        # doesn't derive this from names_filter yet — only explicit forward(capture=).
-        names = list(capture) or None
+        # capture is authoritative — the bridge sends exactly the hooked names, so ()
+        # means "capture nothing" and a plain forward(tokens) skips the GPU→CPU copy
+        # entirely. (The worker's None-means-all convention is never triggered from here;
+        # an empty tuple used to collapse to None and silently copy every buffer.)
+        names = list(capture)
 
         if self._enable_batching:
             return self._forward_batched(input_ids, intervene_specs, return_logits, names)
@@ -124,12 +135,15 @@ class VLLMDriver(DriverBase):
         # Reconstructing logits needs ln_final; force it into the read even if the caller
         # didn't request it (dropped from `captured` below so the surface stays as asked).
         read_names = names
-        if return_logits and names is not None and self._LN_FINAL not in names:
+        if return_logits and self._LN_FINAL not in names:
             read_names = names + [self._LN_FINAL]
-        # collective_rpc returns one result per worker; single-rank, so [0].
-        worker_captures = self._llm.collective_rpc(
-            "tl_read_captures", args=([n_tokens], read_names)
-        )[0]
+        # collective_rpc returns one result per worker; single-rank, so [0]. Nothing to
+        # read (no captures, logits off) → skip the crossing altogether.
+        worker_captures = (
+            self._llm.collective_rpc("tl_read_captures", args=([n_tokens], read_names))[0]
+            if read_names
+            else {}
+        )
 
         logits: torch.Tensor | None = None
         if return_logits:
@@ -142,11 +156,7 @@ class VLLMDriver(DriverBase):
             )
 
         # Add batch dim; expose only the caller's requested hooks (drop the forced ln_final).
-        captured = {
-            name: t.unsqueeze(0)
-            for name, t in worker_captures.items()
-            if names is None or name in names
-        }
+        captured = {name: t.unsqueeze(0) for name, t in worker_captures.items() if name in names}
         return ForwardResult(logits=logits, captured=captured, raw_output=outputs[0])
 
     def _forward_batched(
@@ -154,13 +164,13 @@ class VLLMDriver(DriverBase):
         input_ids: TensorLike,
         intervene_specs: dict,
         return_logits: bool,
-        names: list[str] | None = None,
+        names: list[str],
     ) -> ForwardResult:
         """Eager batched path: per-request capture, right-padded to (B, S, W).
 
         No per-prompt length gate — chunked prefill accumulates long prompts
-        across forwards. Interventions are global across the batch. ``names``
-        restricts the returned hooks (``None`` = all).
+        across forwards. Interventions are global across the batch. ``names`` is
+        authoritative: exactly the hooks to return (empty = none).
         """
         from vllm import SamplingParams
         from vllm.inputs import TokensPrompt
@@ -186,14 +196,19 @@ class VLLMDriver(DriverBase):
         # Force ln_final into the read so logits can be reconstructed (dropped below if
         # the caller didn't ask for it).
         read_names = names
-        if return_logits and names is not None and self._LN_FINAL not in names:
+        if return_logits and self._LN_FINAL not in names:
             read_names = names + [self._LN_FINAL]
         # Keyed by req_id (no guaranteed order) — _assemble_padded joins to slot
-        # k via outputs[k].request_id, not by position.
-        worker_captures = self._llm.collective_rpc("tl_read_batched_captures", args=(read_names,))[
-            0
-        ]
-        captured = self._assemble_padded(outputs, worker_captures, prompt_lens)
+        # k via outputs[k].request_id, not by position. Empty read → skip both the
+        # crossing AND the join (_assemble_padded requires one worker key per request,
+        # so it can't run on an empty dict — mirror the single path's empty captured).
+        if read_names:
+            worker_captures = self._llm.collective_rpc(
+                "tl_read_batched_captures", args=(read_names,)
+            )[0]
+            captured = self._assemble_padded(outputs, worker_captures, prompt_lens)
+        else:
+            captured = {}
 
         logits: torch.Tensor | None = None
         if return_logits:
@@ -205,7 +220,7 @@ class VLLMDriver(DriverBase):
                 if recon is not None
                 else self._synthesize_logits_batched(outputs, prompt_lens, d_vocab)
             )
-        if names is not None and self._LN_FINAL not in names:
+        if self._LN_FINAL not in names:
             captured.pop(self._LN_FINAL, None)
 
         return ForwardResult(logits=logits, captured=captured, raw_output=outputs)

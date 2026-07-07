@@ -52,12 +52,15 @@ KIND_SUFFIX = {
 
 # Token-free tiny-random checkpoints, one per structural-check code path: standard
 # sequential (nothing gated), parallel-residual (resid_mid gated by the causal probe),
-# post-norm (resid_mid gated by the linear-identity probe). Pins cross-family behavior
-# so a detector/load-path regression on non-gpt2 archs fails CI instead of shipping silently.
+# post-norm (resid_mid gated by the linear-identity probe), and fc-split FFN (OPT/XGLM:
+# no mlp container — fc1/fc2 on the block; mlp_out must still be located and match). Pins
+# cross-family behavior so a detector/load-path regression on non-gpt2 archs fails CI.
 STRUCTURAL_FAMILIES = [
     ("hf-internal-testing/tiny-random-LlamaForCausalLM", frozenset()),
     ("hf-internal-testing/tiny-random-GPTJForCausalLM", frozenset({"resid_mid"})),
     ("hf-internal-testing/tiny-random-Gemma2ForCausalLM", frozenset({"resid_mid"})),
+    ("hf-internal-testing/tiny-random-OPTForCausalLM", frozenset()),
+    ("hf-internal-testing/tiny-random-XGLMForCausalLM", frozenset()),
 ]
 
 

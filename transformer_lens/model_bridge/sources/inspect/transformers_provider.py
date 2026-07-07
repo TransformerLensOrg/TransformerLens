@@ -48,6 +48,9 @@ _LAYER_PATHS = ("model.layers", "transformer.h", "gpt_neox.layers", "model.decod
 # Attn/MLP submodule names within a block, by family.
 _ATTN_ATTRS = ("self_attn", "attn", "attention", "self_attention")  # self_attention: Falcon
 _MLP_ATTRS = ("mlp", "feed_forward")
+# fc-split blocks (OPT/XGLM) have no mlp container — fc1/fc2 sit on the block directly:
+# mlp_in boundary = fc1's input, mlp_out boundary = fc2's output.
+_MLP_SPLIT_ATTRS = ("fc1", "fc2")
 # Separate q/k/v projections (Llama/Mistral/Qwen/OPT-family). Fused-qkv archs
 # (GPT-2 c_attn, Falcon/GPTNeoX query_key_value) gate q/k/v — their packed layouts
 # vary per family, so slicing them is per-arch work we don't hand-maintain here.
@@ -296,7 +299,7 @@ class TransformerLensTransformersModelAPI(_InspectModelAPIBase):
             if not cap_kinds and not iv_kinds:
                 continue
             attn = _first_attr(block, _ATTN_ATTRS)
-            mlp = _first_attr(block, _MLP_ATTRS)
+            _, mlp_out_mod = _locate_mlp(block)
             if "resid_pre" in cap_kinds or "resid_pre" in iv_kinds:
                 handles.append(
                     block.register_forward_pre_hook(
@@ -323,9 +326,9 @@ class TransformerLensTransformersModelAPI(_InspectModelAPIBase):
                 handles.extend(
                     self._install_head_hooks(layer, attn, cap_kinds, iv_kinds, raw, call_id)
                 )
-            if mlp is not None and ("mlp_out" in cap_kinds or "mlp_out" in iv_kinds):
+            if mlp_out_mod is not None and ("mlp_out" in cap_kinds or "mlp_out" in iv_kinds):
                 handles.append(
-                    mlp.register_forward_hook(
+                    mlp_out_mod.register_forward_hook(
                         _out_hook(
                             layer,
                             "mlp_out",
@@ -468,7 +471,10 @@ def _out_hook(layer, kind, want_capture, spec, raw, call_id):
         if spec is not None:
             hidden = _apply_affine(hidden, spec)
         if want_capture and (layer, kind) not in raw:
-            raw[(layer, kind)] = hidden[0].detach().float().cpu().numpy()
+            # OPT-style blocks flatten the FFN to (batch·seq, d) — with batch_size=1
+            # that IS (seq, d) already; only 3-D (batch, seq, d) needs the batch strip.
+            flat = hidden if hidden.ndim == 2 else hidden[0]
+            raw[(layer, kind)] = flat.detach().float().cpu().numpy()
         if spec is None:
             return None
         return (hidden, *output[1:]) if is_tuple else hidden
@@ -560,18 +566,22 @@ def _detect_capabilities(
     """
     block = layers[0]
     attn = _first_attr(block, _ATTN_ATTRS)
-    mlp = _first_attr(block, _MLP_ATTRS)
+    mlp_in_mod, mlp_out_mod = _locate_mlp(block)
     kinds = {"resid_pre", "resid_post"}
     gated = []
     if attn is not None:
         kinds.add("attn_out")
     else:
         gated.append("attn_out (no attention submodule found)")
-    if mlp is not None:
+    if mlp_out_mod is not None:
         kinds.add("mlp_out")
     else:
         gated.append("mlp_out (no MLP submodule found)")
-    if attn is not None and mlp is not None and _resid_mid_derivable(model, block, attn, mlp):
+    if (
+        attn is not None
+        and mlp_out_mod is not None
+        and _resid_mid_derivable(model, block, attn, mlp_in_mod, mlp_out_mod)
+    ):
         kinds.add("resid_mid")
     else:
         gated.append(
@@ -661,11 +671,14 @@ def _attn_geometry(config: Any) -> tuple[Any, Any, Any]:
     return (int(n_heads), int(n_kv), int(d_head) if d_head is not None else None)
 
 
-def _resid_mid_derivable(model: Any, block: Any, attn: Any, mlp: Any) -> bool:
+def _resid_mid_derivable(
+    model: Any, block: Any, attn: Any, mlp_in_mod: Any, mlp_out_mod: Any
+) -> bool:
     """True iff ``resid_mid = resid_pre + attn_out`` holds, via two tiny probe forwards.
     Requires both the linear identity ``resid_post = resid_pre + attn_out + mlp_out`` (broken
     by post-norm/multiplier blocks — Gemma2/OLMo2/Granite) and attn feeding mlp (broken by
-    parallel blocks — GPTNeoX/GPT-J, where mlp reads resid_pre directly)."""
+    parallel blocks — GPTNeoX/GPT-J, where mlp reads resid_pre directly). ``mlp_in_mod``/
+    ``mlp_out_mod`` are the same module for container archs, (fc1, fc2) for fc-split."""
     cap: dict[str, Any] = {}
 
     def grab(key: str):  # type: ignore[no-untyped-def]
@@ -697,8 +710,8 @@ def _resid_mid_derivable(model: Any, block: Any, attn: Any, mlp: Any) -> bool:
             handles = [
                 block.register_forward_pre_hook(grab_in("resid_pre"), with_kwargs=True),
                 attn.register_forward_hook(grab("attn_out")),
-                mlp.register_forward_hook(grab("mlp_out")),
-                mlp.register_forward_pre_hook(grab_in("mlp_in"), with_kwargs=True),
+                mlp_out_mod.register_forward_hook(grab("mlp_out")),
+                mlp_in_mod.register_forward_pre_hook(grab_in("mlp_in"), with_kwargs=True),
                 block.register_forward_hook(grab("resid_post")),
             ]
             model(ids)
@@ -706,7 +719,7 @@ def _resid_mid_derivable(model: Any, block: Any, attn: Any, mlp: Any) -> bool:
                 h.remove()
             mlp_in_clean = cap.pop("mlp_in", None)
             handles = [
-                mlp.register_forward_pre_hook(grab_in("mlp_in"), with_kwargs=True),
+                mlp_in_mod.register_forward_pre_hook(grab_in("mlp_in"), with_kwargs=True),
                 attn.register_forward_hook(perturb_attn),
             ]
             model(ids)
@@ -724,7 +737,13 @@ def _resid_mid_derivable(model: Any, block: Any, attn: Any, mlp: Any) -> bool:
         return False
     if mlp_in_clean is None or mlp_in_perturbed is None:
         return False
-    if not (rp.shape == ao.shape == mo.shape == rpost.shape == mlp_in_clean.shape):
+    # OPT-style blocks flatten the FFN to (batch·seq, d); with the probe's batch=1 that
+    # is a pure reshape of the block-level (1, seq, d) — normalize before comparing.
+    if mo.shape != rpost.shape and mo.numel() == rpost.numel():
+        mo = mo.reshape(rpost.shape)
+    if not (rp.shape == ao.shape == mo.shape == rpost.shape):
+        return False
+    if mlp_in_clean.shape != mlp_in_perturbed.shape or mlp_in_clean.numel() != rp.numel():
         return False
     # (1) sub-block outputs add to the residual without intervening norm/scale.
     identity = (rpost - rp - ao - mo).abs().max().item()
@@ -746,6 +765,20 @@ def _locate_layers(model: Any) -> Any:
     raise RuntimeError(
         f"Could not locate decoder layers on {type(model).__name__}; tried {_LAYER_PATHS}."
     )
+
+
+def _locate_mlp(block: Any) -> tuple[Any, Any]:
+    """The modules bounding the MLP: ``(in_module, out_module)`` — the mlp_in boundary is
+    in_module's input, mlp_out is out_module's output. Container archs return the mlp
+    module twice; fc-split blocks (OPT/XGLM: fc1/fc2 directly on the block) return
+    ``(fc1, fc2)``. ``(None, None)`` when neither layout is found (mlp_out gated)."""
+    mlp = _first_attr(block, _MLP_ATTRS)
+    if mlp is not None:
+        return mlp, mlp
+    fc1, fc2 = (getattr(block, name, None) for name in _MLP_SPLIT_ATTRS)
+    if fc1 is not None and fc2 is not None:
+        return fc1, fc2
+    return None, None
 
 
 def _projection_host(attn: Any) -> Any:
