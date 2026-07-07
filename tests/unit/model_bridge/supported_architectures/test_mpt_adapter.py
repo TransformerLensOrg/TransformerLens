@@ -384,3 +384,29 @@ class TestMPTArchitectureGuards:
         # ALiBi bias is computed inside the attention bridge: no rotary submodule.
         attn = adapter.component_mapping["blocks"].submodules["attn"]
         assert "rotary_emb" not in attn.submodules
+
+
+class TestMPTHubRouting:
+    """Native-transformers checkpoints declare 'MptForCausalLM' (model_type
+    'mpt'); legacy remote-code repos declare 'MPTForCausalLM'. Both must route
+    to the adapter — the casing gap silently broke every native checkpoint."""
+
+    def test_native_casing_in_factory(self) -> None:
+        from transformer_lens.factories.architecture_adapter_factory import (
+            SUPPORTED_ARCHITECTURES,
+        )
+
+        assert SUPPORTED_ARCHITECTURES["MptForCausalLM"] is MPTArchitectureAdapter
+        assert SUPPORTED_ARCHITECTURES["MPTForCausalLM"] is MPTArchitectureAdapter
+
+    def test_config_driven_routing(self) -> None:
+        from types import SimpleNamespace
+
+        from transformer_lens.model_bridge.sources.transformers import (
+            determine_architecture_from_hf_config,
+        )
+
+        native = SimpleNamespace(model_type="mpt", architectures=["MptForCausalLM"])
+        assert determine_architecture_from_hf_config(native) == "MptForCausalLM"
+        legacy = SimpleNamespace(model_type="mpt", architectures=["MPTForCausalLM"])
+        assert determine_architecture_from_hf_config(legacy) == "MPTForCausalLM"

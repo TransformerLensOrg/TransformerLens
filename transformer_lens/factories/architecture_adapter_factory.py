@@ -201,6 +201,7 @@ SUPPORTED_ARCHITECTURES = {
     "MistralForCausalLM": MistralArchitectureAdapter,
     "Mistral3ForConditionalGeneration": Mistral3ArchitectureAdapter,
     "MPTForCausalLM": MPTArchitectureAdapter,
+    "MptForCausalLM": MPTArchitectureAdapter,
     "NeoForCausalLM": NeoArchitectureAdapter,
     "NeoXForCausalLM": NeoxArchitectureAdapter,
     "NeelSoluOldForCausalLM": NeelSoluOldArchitectureAdapter,

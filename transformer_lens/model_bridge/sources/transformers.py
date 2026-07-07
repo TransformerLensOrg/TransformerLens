@@ -258,6 +258,7 @@ def determine_architecture_from_hf_config(hf_config):
             "olmo_hybrid": "OlmoHybridForCausalLM",
             "mistral3": "Mistral3ForConditionalGeneration",
             "mixtral": "MixtralForCausalLM",
+            "mpt": "MptForCausalLM",
             "gemma": "GemmaForCausalLM",
             "gemma2": "Gemma2ForCausalLM",
             "gemma3": "Gemma3ForCausalLM",
