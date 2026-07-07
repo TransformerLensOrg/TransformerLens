@@ -231,6 +231,7 @@ def determine_architecture_from_hf_config(hf_config):
             "falcon_mamba": "FalconMambaForCausalLM",
             "m2m_100": "M2M100ForConditionalGeneration",
             "marian": "MarianMTModel",
+            "mbart": "MBartForConditionalGeneration",
             "minimax_m2": "MiniMaxM2ForCausalLM",
             "llama": "LlamaForCausalLM",
             "mamba": "MambaForCausalLM",

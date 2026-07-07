@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-07-07T02:22:32.466961",
+  "last_updated": "2026-07-07T02:37:14.735418",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -16968,6 +16968,36 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ai4bharat/IndicBART",
+      "architecture_id": "MBartForConditionalGeneration",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: forward_pass) \u2014 Forward pass failed: Could not infer dtype of NoneType",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ai4bharat/IndicBART",
+      "architecture_id": "MBartForConditionalGeneration",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: forward_pass) \u2014 Forward pass failed: Could not infer dtype of NoneType",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ai4bharat/IndicBART",
+      "architecture_id": "MBartForConditionalGeneration",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues, low text quality",
       "invalidated": false,
       "invalidation_reason": null
     }

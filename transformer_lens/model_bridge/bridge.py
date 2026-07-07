@@ -3044,8 +3044,17 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         if is_encoder_decoder:
             encoder_input = input_tokens.clone()
             decoder_start_token_id = getattr(
-                self.original_model.config, "decoder_start_token_id", 0
+                self.original_model.config, "decoder_start_token_id", None
             )
+            if decoder_start_token_id is None:
+                # HF's fallback chain: bos, then eos (MBart-family checkpoints
+                # like IndicBART leave decoder_start unset and start from EOS).
+                fallback = getattr(self.original_model.config, "bos_token_id", None)
+                if fallback is None:
+                    fallback = getattr(self.original_model.config, "eos_token_id", None)
+                if isinstance(fallback, (list, tuple)):
+                    fallback = fallback[0]
+                decoder_start_token_id = fallback if fallback is not None else 0
             decoder_tokens = torch.full(
                 (batch_size, 1),
                 decoder_start_token_id,

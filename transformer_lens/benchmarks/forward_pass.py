@@ -33,7 +33,17 @@ def _get_decoder_input_ids(model: torch.nn.Module, batch_size: int = 1) -> torch
         Tensor of shape [batch_size, 1] with decoder_start_token_id
     """
     config = getattr(model, "config", None)
-    decoder_start_token_id = getattr(config, "decoder_start_token_id", 0) if config else 0
+    decoder_start_token_id = getattr(config, "decoder_start_token_id", None) if config else None
+    if decoder_start_token_id is None:
+        # HF fallback chain: bos, then eos (MBart-family checkpoints leave
+        # decoder_start unset and start from EOS).
+        decoder_start_token_id = getattr(config, "bos_token_id", None) if config else None
+    if decoder_start_token_id is None:
+        decoder_start_token_id = getattr(config, "eos_token_id", None) if config else None
+    if isinstance(decoder_start_token_id, (list, tuple)):
+        decoder_start_token_id = decoder_start_token_id[0]
+    if decoder_start_token_id is None:
+        decoder_start_token_id = 0
     return torch.tensor([[decoder_start_token_id]] * batch_size)
 
 
