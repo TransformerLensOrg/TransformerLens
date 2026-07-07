@@ -127,6 +127,9 @@ from transformer_lens.model_bridge.supported_architectures.marian import (
 from transformer_lens.model_bridge.supported_architectures.mingpt import (
     MingptArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.minimax_m2 import (
+    MiniMaxM2ArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.mistral import (
     MistralArchitectureAdapter,
 )
@@ -274,6 +277,7 @@ __all__ = [
     "Mamba2ArchitectureAdapter",
     "MarianArchitectureAdapter",
     "MingptArchitectureAdapter",
+    "MiniMaxM2ArchitectureAdapter",
     "MistralArchitectureAdapter",
     "MixtralArchitectureAdapter",
     "MPTArchitectureAdapter",

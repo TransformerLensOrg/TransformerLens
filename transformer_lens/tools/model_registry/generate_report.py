@@ -66,6 +66,7 @@ ARCHITECTURE_DESCRIPTIONS: dict[str, str] = {
     "T5GemmaForConditionalGeneration": "Google's T5Gemma encoder-decoder model with Gemma-style RoPE, GQA, and gated MLP",
     "BartForConditionalGeneration": "Facebook's BART encoder-decoder model",
     "MarianMTModel": "Helsinki-NLP's Marian opus-mt translation encoder-decoder",
+    "MiniMaxM2ForCausalLM": "MiniMax's M2 sparse-MoE decoder with sigmoid routing",
     "BD3LM": "Kuleshov Group's Block Diffusion Language Model (ICLR 2025) for masked text generation",
     "HunYuanDenseV1ForCausalLM": "Tencent's open source decoder models",
     "Cohere2ForCausalLM": "Cohere's Command-A architecture with interleaved sliding-window RoPE and full-attention NoPE layers",
