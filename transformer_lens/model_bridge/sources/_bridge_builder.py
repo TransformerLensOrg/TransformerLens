@@ -18,6 +18,8 @@ from transformer_lens.model_bridge.bridge import TransformerBridge
 _HF_PASSTHROUGH_ATTRS = [
     # OPT
     "is_gated_act",
+    # LongT5
+    "encoder_attention_type",
     "word_embed_proj_dim",
     "do_layer_norm_before",
     # BART

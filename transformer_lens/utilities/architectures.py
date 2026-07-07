@@ -12,6 +12,7 @@ SEQ2SEQ_ARCHITECTURES: set[str] = {
     "MT5ForConditionalGeneration",
     "T5WithLMHeadModel",
     "T5GemmaForConditionalGeneration",
+    "LongT5ForConditionalGeneration",
     "BartForConditionalGeneration",
     "MBartForConditionalGeneration",
     "M2M100ForConditionalGeneration",

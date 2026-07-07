@@ -236,6 +236,7 @@ def determine_architecture_from_hf_config(hf_config):
             "exaone": "ExaoneForCausalLM",
             "exaone4": "Exaone4ForCausalLM",
             "falcon_mamba": "FalconMambaForCausalLM",
+            "longt5": "LongT5ForConditionalGeneration",
             "m2m_100": "M2M100ForConditionalGeneration",
             "marian": "MarianMTModel",
             "mbart": "MBartForConditionalGeneration",
@@ -545,6 +546,8 @@ def boot(
     _HF_PASSTHROUGH_ATTRS = [
         # OPT
         "is_gated_act",
+        # LongT5
+        "encoder_attention_type",
         "word_embed_proj_dim",
         "do_layer_norm_before",
         # BART

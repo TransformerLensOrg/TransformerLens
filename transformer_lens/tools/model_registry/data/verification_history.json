@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-07-07T07:01:22.983456",
+  "last_updated": "2026-07-07T07:18:00.494509",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -17348,6 +17348,26 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Full verification completed with issues, low text quality",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "google/long-t5-tglobal-base",
+      "architecture_id": "LongT5ForConditionalGeneration",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues, low text quality",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "google/long-t5-local-base",
+      "architecture_id": "LongT5ForConditionalGeneration",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Checkpoint ships no lm_head.weight with tie_word_embeddings=false, so HF randomly re-initializes the LM head on every load (Google released it as a pretraining artifact requiring fine-tuning); the nondeterministic unembed is the only P1 failure \u2014 all 233 other components including the local-attention encoder pass. Not an adapter bug.",
       "invalidated": false,
       "invalidation_reason": null
     }

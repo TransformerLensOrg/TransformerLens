@@ -154,6 +154,9 @@ from transformer_lens.model_bridge.supported_architectures.llava_next import (
 from transformer_lens.model_bridge.supported_architectures.llava_onevision import (
     LlavaOnevisionArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.longt5 import (
+    LongT5ArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.m2m100 import (
     M2M100ArchitectureAdapter,
 )
@@ -349,6 +352,7 @@ __all__ = [
     "LlavaNextArchitectureAdapter",
     "LlavaOnevisionArchitectureAdapter",
     "Lfm2MoeArchitectureAdapter",
+    "LongT5ArchitectureAdapter",
     "M2M100ArchitectureAdapter",
     "MambaArchitectureAdapter",
     "Mamba2ArchitectureAdapter",
