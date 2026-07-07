@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-07-07T03:47:34.462053",
+  "last_updated": "2026-07-07T04:29:08.118115",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -17134,6 +17134,36 @@
     {
       "model_id": "nvidia/Minitron-4B-Base",
       "architecture_id": "NemotronForCausalLM",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "trl-internal-testing/tiny-Qwen2AudioForConditionalGeneration",
+      "architecture_id": "Qwen2AudioForConditionalGeneration",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: all_components) \u2014 1/16 components failed (1 critical)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "trl-internal-testing/tiny-Qwen2AudioForConditionalGeneration",
+      "architecture_id": "Qwen2AudioForConditionalGeneration",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: all_components) \u2014 1/16 components failed (1 critical)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "trl-internal-testing/tiny-Qwen2AudioForConditionalGeneration",
+      "architecture_id": "Qwen2AudioForConditionalGeneration",
       "verified_date": "2026-07-07",
       "verified_by": "verify_models",
       "transformerlens_version": null,

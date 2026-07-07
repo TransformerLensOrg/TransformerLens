@@ -43,6 +43,12 @@ MULTIMODAL_ARCHITECTURES: set[str] = {
     "Idefics3ForConditionalGeneration",
 }
 
+# Audio-conditioned text decoders (audio encoder + causal LM); load via
+# AutoModelForSeq2SeqLM but behave as text decoders for classification.
+AUDIO_TEXT_ARCHITECTURES: set[str] = {
+    "Qwen2AudioForConditionalGeneration",
+}
+
 # Audio encoder models (HuBERT, wav2vec2, etc.)
 AUDIO_ARCHITECTURES: set[str] = {
     "HubertForCTC",

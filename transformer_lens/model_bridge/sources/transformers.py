@@ -237,6 +237,7 @@ def determine_architecture_from_hf_config(hf_config):
             "seed_oss": "SeedOssForCausalLM",
             "nemotron": "NemotronForCausalLM",
             "idefics3": "Idefics3ForConditionalGeneration",
+            "qwen2_audio": "Qwen2AudioForConditionalGeneration",
             "minimax_m2": "MiniMaxM2ForCausalLM",
             "llama": "LlamaForCausalLM",
             "mamba": "MambaForCausalLM",
@@ -304,12 +305,13 @@ def get_hf_model_class_for_architecture(architecture: str):
     """
     from transformer_lens.utilities.architectures import (
         AUDIO_ARCHITECTURES,
+        AUDIO_TEXT_ARCHITECTURES,
         MASKED_LM_ARCHITECTURES,
         MULTIMODAL_ARCHITECTURES,
         SEQ2SEQ_ARCHITECTURES,
     )
 
-    if architecture in SEQ2SEQ_ARCHITECTURES:
+    if architecture in SEQ2SEQ_ARCHITECTURES or architecture in AUDIO_TEXT_ARCHITECTURES:
         return AutoModelForSeq2SeqLM
     elif architecture in MASKED_LM_ARCHITECTURES:
         return AutoModelForMaskedLM
