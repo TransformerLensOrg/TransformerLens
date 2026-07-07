@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-07-07T06:18:20.323236",
+  "last_updated": "2026-07-07T06:44:34.445082",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -17328,6 +17328,16 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Full verification completed with issues: P3=90.5% (failed: process_bridge_weights, layer_norm_folding)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "trl-internal-testing/tiny-Llama4ForCausalLM",
+      "architecture_id": "Llama4ForCausalLM",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification (P1=100, P2=100, P3=100, P4=75.7) on a local snapshot with the four feed_forward.experts tensors re-initialized (seed 42); the upstream checkpoint ships uninitialized expert weights (NaN/1e38).",
       "invalidated": false,
       "invalidation_reason": null
     }

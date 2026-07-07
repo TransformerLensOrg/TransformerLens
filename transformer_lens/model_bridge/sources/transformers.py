@@ -246,6 +246,7 @@ def determine_architecture_from_hf_config(hf_config):
             "qwen2_audio": "Qwen2AudioForConditionalGeneration",
             "minimax_m2": "MiniMaxM2ForCausalLM",
             "llama": "LlamaForCausalLM",
+            "llama4_text": "Llama4ForCausalLM",
             "mamba": "MambaForCausalLM",
             "mamba2": "Mamba2ForCausalLM",
             "mistral": "MistralForCausalLM",

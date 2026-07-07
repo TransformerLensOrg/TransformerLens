@@ -139,6 +139,9 @@ from transformer_lens.model_bridge.supported_architectures.lfm2_moe import (
 from transformer_lens.model_bridge.supported_architectures.llama import (
     LlamaArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.llama4 import (
+    Llama4ArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.llava import (
     LlavaArchitectureAdapter,
 )
@@ -337,6 +340,7 @@ __all__ = [
     "Idefics3ArchitectureAdapter",
     "InternLM2ArchitectureAdapter",
     "LlamaArchitectureAdapter",
+    "Llama4ArchitectureAdapter",
     "LlavaArchitectureAdapter",
     "LlavaNextArchitectureAdapter",
     "LlavaOnevisionArchitectureAdapter",
