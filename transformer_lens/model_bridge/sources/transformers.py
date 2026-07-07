@@ -227,6 +227,7 @@ def determine_architecture_from_hf_config(hf_config):
             "hubert": "HubertModel",
             "bart": "BartForConditionalGeneration",
             "exaone": "ExaoneForCausalLM",
+            "m2m_100": "M2M100ForConditionalGeneration",
             "marian": "MarianMTModel",
             "minimax_m2": "MiniMaxM2ForCausalLM",
             "llama": "LlamaForCausalLM",

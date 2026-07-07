@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-07-07T01:10:04.761249",
+  "last_updated": "2026-07-07T01:26:08.802292",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -16928,6 +16928,16 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "facebook/m2m100_418M",
+      "architecture_id": "M2M100ForConditionalGeneration",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues, low text quality",
       "invalidated": false,
       "invalidation_reason": null
     }
