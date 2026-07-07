@@ -238,6 +238,9 @@ from transformer_lens.model_bridge.supported_architectures.olmo2 import (
 from transformer_lens.model_bridge.supported_architectures.olmo3 import (
     Olmo3ArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.olmo_hybrid import (
+    OlmoHybridArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.olmoe import (
     OlmoeArchitectureAdapter,
 )
@@ -404,6 +407,7 @@ __all__ = [
     "OlmoArchitectureAdapter",
     "Olmo2ArchitectureAdapter",
     "Olmo3ArchitectureAdapter",
+    "OlmoHybridArchitectureAdapter",
     "OlmoeArchitectureAdapter",
     "OptArchitectureAdapter",
     "PhiArchitectureAdapter",

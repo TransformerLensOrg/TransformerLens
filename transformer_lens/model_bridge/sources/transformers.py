@@ -255,6 +255,7 @@ def determine_architecture_from_hf_config(hf_config):
             "mamba": "MambaForCausalLM",
             "mamba2": "Mamba2ForCausalLM",
             "mistral": "MistralForCausalLM",
+            "olmo_hybrid": "OlmoHybridForCausalLM",
             "mistral3": "Mistral3ForConditionalGeneration",
             "mixtral": "MixtralForCausalLM",
             "gemma": "GemmaForCausalLM",

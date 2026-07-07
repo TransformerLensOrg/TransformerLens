@@ -69,6 +69,7 @@ ARCHITECTURE_DESCRIPTIONS: dict[str, str] = {
     "Olmo2ForCausalLM": "Allen AI's OLMo 2 with improved training",
     "Olmo3ForCausalLM": "Allen AI's OLMo 3 latest generation",
     "OlmoeForCausalLM": "Allen AI's OLMoE Mixture of Experts model",
+    "OlmoHybridForCausalLM": "Allen AI's OLMo Hybrid (GatedDeltaNet linear attention + full attention)",
     "StableLmForCausalLM": "Stability AI's StableLM model",
     "SmolLM3ForCausalLM": "Hugging Face's SmolLM3 compact open model with NoPE layers",
     "T5ForConditionalGeneration": "Google's T5 encoder-decoder model (partial support)",
