@@ -305,7 +305,7 @@ class VLLMDriver(DriverBase):
         if bias is not None:
             logits = logits + bias.to(device=logits.device, dtype=torch.float32)
         cap = getattr(self.bridge_config, "output_logits_soft_cap", None)
-        if cap:  # Gemma-family final-logit soft cap
+        if cap is not None and cap > 0:  # Gemma-family cap; -1.0 is the "disabled" sentinel
             logits = float(cap) * torch.tanh(logits / float(cap))
         d_vocab = int(self.bridge_config.d_vocab)
         if logits.shape[-1] < d_vocab:  # pad the padded-vocab tail (never predicted)
