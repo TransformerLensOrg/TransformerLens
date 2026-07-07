@@ -84,9 +84,10 @@ def capture_activations(
 
 def turn_activations(sample: Any) -> list[dict[str, np.ndarray]]:
     """Per-turn activations from an eval sample's model events, for a provider booted with
-    ``capture=[...]`` (e.g. ``model_args={"capture": [...]}``). Returns one
-    ``{hook_name: (1, seq, d)}`` dict per model generation, in turn order — the activations
-    of an agentic/multi-turn rollout.
+    ``capture=[...]`` (e.g. ``model_args={"capture": [...]}``). Returns one dict per model
+    generation, in turn order — the activations of an agentic/multi-turn rollout. Every
+    array gets a leading batch dim: boundaries are ``(1, seq, d_model)``, head-split
+    q/k/v/z ``(1, seq, heads, d_head)``.
     """
     turns = []
     for event in getattr(sample, "events", []) or []:
@@ -94,11 +95,15 @@ def turn_activations(sample: Any) -> list[dict[str, np.ndarray]]:
         if not metadata or "activations" not in metadata:
             continue
         decoded = wire.decode_activations(metadata, list(metadata["activations"]))
-        named = {
-            name: arr[np.newaxis, ...] if arr.ndim == 2 else arr
-            for wk, arr in decoded.items()
-            if (name := hooks.name_from_wire_key(wk)) is not None
-        }
+        named = {}
+        for wk, arr in decoded.items():
+            name = hooks.name_from_wire_key(wk)
+            if name is None:
+                continue
+            # Rank-aware batch dim (mirrors driver._assemble_captures): boundary kinds
+            # arrive rank-2, head-split kinds rank-3 — unsqueeze exactly once either way.
+            batchless = hooks.WIRE_BATCHLESS_NDIM.get(wk.partition(":")[2], 2)
+            named[name] = arr[np.newaxis, ...] if arr.ndim == batchless else arr
         if named:
             turns.append(named)
     return turns

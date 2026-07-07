@@ -48,9 +48,11 @@ class InspectDriver(DriverBase):
         # Provider-specific: loss/both allowed only if the provider returns full logits.
         self.provides_sequence_logits = self._profile.provides_sequence_logits
         self.supported_hook_points = self._profile.supported_hooks(self._n_layers)
-        full = hooks.supported_hook_points(self._n_layers)
+        # Everything the registry could serve (boundaries + head-split) that this
+        # provider/model doesn't, plus the never-fireable set (embed, ln_final, scores).
+        universe = hooks.all_hook_points(self._n_layers)
         self.non_fireable_hook_points = hooks.nonfireable_hook_points(self._n_layers) | (
-            full - self.supported_hook_points
+            universe - self.supported_hook_points
         )
         # Background event loop, created lazily on first forward.
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -106,8 +108,9 @@ class InspectDriver(DriverBase):
         return await self._model.generate(prompt, config=config)
 
     def _assemble_captures(self, output: Any, names: list[str]) -> dict[str, np.ndarray]:
-        """Decode the requested boundaries → ``{hook_name: (1, seq, d_model)}``; names the
-        provider didn't return are skipped (and warned once)."""
+        """Decode the requested hooks → ``{hook_name: (1, ...)}`` (batch dim added onto the
+        provider's batchless array — rank 2 for boundaries, 3 for head-split/pattern);
+        names the provider didn't return are skipped (and warned once)."""
         metadata = getattr(output, "metadata", None) or {}
         decoded = wire.decode_activations(metadata, self._wire_keys(names))
         captured: dict[str, np.ndarray] = {}
@@ -120,7 +123,8 @@ class InspectDriver(DriverBase):
             if arr is None:
                 missing.append(name)
                 continue
-            captured[name] = arr[np.newaxis, ...] if arr.ndim == 2 else arr
+            batchless = hooks.WIRE_BATCHLESS_NDIM.get(resolved[1], 2)
+            captured[name] = arr[np.newaxis, ...] if arr.ndim == batchless else arr
         self._warn_missing(missing)
         return captured
 

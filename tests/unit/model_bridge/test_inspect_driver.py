@@ -423,6 +423,124 @@ class TestThroughBridge:
         assert driver._model is None
 
 
+class TestHeadSplitKinds:
+    """Head-split q/k/v/z/pattern: registry entries, driver assembly, intervention gating.
+
+    The provider serves these only when its structural probe finds the projections; here
+    a profile with an explicit kind set stands in for that detection.
+    """
+
+    def _head_profile(self):
+        return profiles.TLBridgeProfile(supported_kinds=hooks.ALL_KINDS | hooks.HEAD_KINDS)
+
+    def test_resolve_head_names(self):
+        assert hooks.resolve("blocks.3.attn.hook_q") == (3, "q")
+        assert hooks.resolve("blocks.0.attn.hook_z") == (0, "z")
+        assert hooks.resolve("blocks.1.attn.hook_pattern") == (1, "pattern")
+        assert hooks.resolve("blocks.0.attn.hook_attn_scores") is None  # never served
+
+    def test_default_supported_excludes_head_kinds(self):
+        """kinds=None stays boundary-only — head kinds are opt-in via detection, so
+        profiles that pass None (vllm-lens, defaults) don't silently claim them."""
+        default = hooks.supported_hook_points(N_LAYERS)
+        assert "blocks.0.attn.hook_q" not in default
+        assert "blocks.0.attn.hook_pattern" not in default
+
+    def test_all_hook_points_is_boundary_plus_head(self):
+        universe = hooks.all_hook_points(N_LAYERS)
+        assert hooks.supported_hook_points(N_LAYERS) < universe
+        assert "blocks.0.attn.hook_q" in universe
+        assert len(universe) == (len(hooks.ALL_KINDS) + len(hooks.HEAD_KINDS)) * N_LAYERS
+
+    def test_interveneable_includes_qkvz_not_pattern(self):
+        assert {"q", "k", "v", "z"} <= hooks.INTERVENEABLE_KINDS
+        assert "pattern" not in hooks.INTERVENEABLE_KINDS
+
+    def test_attn_scores_always_nonfireable(self):
+        driver = InspectDriver(
+            _fake_model(), _adapter(), tokenizer=None, profile=self._head_profile()
+        )
+        assert "blocks.0.attn.hook_attn_scores" in driver.non_fireable_hook_points
+
+    def test_driver_serves_head_kinds_via_profile(self):
+        driver = InspectDriver(
+            _fake_model(), _adapter(), tokenizer=None, profile=self._head_profile()
+        )
+        for name in ("blocks.0.attn.hook_q", "blocks.1.attn.hook_z", "blocks.0.attn.hook_pattern"):
+            assert name in driver.supported_hook_points
+        assert driver.supported_hook_points.isdisjoint(driver.non_fireable_hook_points)
+
+    def test_default_driver_moves_head_kinds_to_nonfireable(self):
+        driver = _driver()  # default profile: boundary kinds only
+        assert "blocks.0.attn.hook_q" in driver.non_fireable_hook_points
+        assert "blocks.0.attn.hook_pattern" in driver.non_fireable_hook_points
+
+    def test_head_captures_get_batch_dim(self):
+        """3-D wire arrays (seq,heads,d_head) / (heads,q,k) unsqueeze to exactly one batch dim."""
+        heads, d_head, seq = 2, 2, 3
+        caps = {
+            "0:q": np.ones((seq, heads, d_head), np.float32),
+            "0:pattern": np.ones((heads, seq, seq), np.float32),
+            "0:resid_post": np.ones((seq, D_MODEL), np.float32),
+        }
+        driver = InspectDriver(
+            _fake_model(captures=caps, logits=np.zeros((seq, D_VOCAB), np.float32)),
+            _adapter(),
+            tokenizer=None,
+            profile=self._head_profile(),
+        )
+        result = driver.forward(
+            torch.tensor([[1, 2, 3]]),
+            capture=("blocks.0.attn.hook_q", "blocks.0.attn.hook_pattern", "blocks.0.hook_out"),
+        )
+        assert tuple(result.captured["blocks.0.attn.hook_q"].shape) == (1, seq, heads, d_head)
+        assert tuple(result.captured["blocks.0.attn.hook_pattern"].shape) == (1, heads, seq, seq)
+        assert tuple(result.captured["blocks.0.hook_out"].shape) == (1, seq, D_MODEL)
+
+    def test_qkvz_intervention_translates_to_wire_key(self):
+        supported = hooks.supported_hook_points(N_LAYERS, hooks.ALL_KINDS | hooks.HEAD_KINDS)
+        out = intervention.build_interventions(
+            {"blocks.0.attn.hook_v": {"op": "suppress"}}, supported
+        )
+        assert out == {"0:v": {"op": "suppress"}}
+
+    def test_pattern_intervention_rejected(self):
+        supported = hooks.supported_hook_points(N_LAYERS, hooks.ALL_KINDS | hooks.HEAD_KINDS)
+        with pytest.raises(ValueError, match="capture-only"):
+            intervention.build_interventions(
+                {"blocks.0.attn.hook_pattern": {"op": "suppress"}}, supported
+            )
+
+    def test_head_hook_rejected_when_gated(self):
+        """A gated head hook (default boundary-only profile) can't be intervened on."""
+        supported = hooks.supported_hook_points(N_LAYERS)  # no head kinds
+        with pytest.raises(ValueError, match="not in supported_hook_points"):
+            intervention.build_interventions(
+                {"blocks.0.attn.hook_q": {"op": "suppress"}}, supported
+            )
+
+    def test_turn_activations_batch_dim_is_rank_aware(self):
+        """Mixed 2-D boundary and 3-D head-split arrays in one turn all get exactly one
+        batch dim — a rank-2-only rule would leave head-split arrays batchless, and a
+        batchless (seq, heads, d_head) is shape-indistinguishable from a batched 2-D."""
+        from transformer_lens.model_bridge.sources.inspect.eval import turn_activations
+
+        payload = wire.encode_activations(
+            {
+                "0:resid_post": np.ones((3, D_MODEL), np.float32),
+                "0:q": np.ones((3, 2, 2), np.float32),
+                "0:pattern": np.ones((2, 3, 3), np.float32),
+            }
+        )
+        sample = SimpleNamespace(
+            events=[SimpleNamespace(output=SimpleNamespace(metadata={"activations": payload}))]
+        )
+        (turn,) = turn_activations(sample)
+        assert turn["blocks.0.hook_out"].shape == (1, 3, D_MODEL)
+        assert turn["blocks.0.attn.hook_q"].shape == (1, 3, 2, 2)
+        assert turn["blocks.0.attn.hook_pattern"].shape == (1, 2, 3, 3)
+
+
 def test_driver_imports_no_torch():
     """The acceptance gate: the driver file must not import torch (data-only boundary)."""
     import transformer_lens.model_bridge.sources.inspect.driver as drv

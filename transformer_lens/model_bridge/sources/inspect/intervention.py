@@ -47,7 +47,7 @@ def build_interventions(
         if resolved is None or resolved[1] not in hooks.INTERVENEABLE_KINDS:
             raise ValueError(
                 f"Cannot intervene on {hook_name!r}: capture-only "
-                f"(intervene on resid_pre/attn_out/mlp_out/resid_post instead)."
+                f"(intervene on resid_pre/attn_out/mlp_out/resid_post or attn q/k/v/z instead)."
             )
         if op == "scale" and "factor" not in spec:
             raise ValueError(f"Intervention {hook_name!r}: op='scale' requires 'factor' (float).")

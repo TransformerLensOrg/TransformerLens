@@ -60,13 +60,21 @@ PROMPT = "The quick brown fox"
 ATOL, RTOL = 1e-3, 1e-3
 
 
-# Boundary kind -> TransformerBridge-native hook suffix.
+# Kind -> TransformerBridge-native hook suffix: the five d_model boundaries plus the
+# head-split kinds (served where the structural probe finds the projections — q/k/v are
+# gated on fused-qkv archs, pattern under non-eager attention; gated kinds show up in
+# the report's `gated=` field, not as failures).
 KIND_SUFFIX = {
     "resid_pre": "hook_in",
     "resid_mid": "ln2.hook_in",
     "resid_post": "hook_out",
     "attn_out": "attn.hook_out",
     "mlp_out": "mlp.hook_out",
+    "q": "attn.hook_q",
+    "k": "attn.hook_k",
+    "v": "attn.hook_v",
+    "z": "attn.hook_z",
+    "pattern": "attn.hook_pattern",
 }
 
 
