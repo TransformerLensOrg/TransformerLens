@@ -19,6 +19,7 @@ from transformer_lens.config.hooked_transformer_config import HookedTransformerC
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.utilities import get_offset_position_ids
+from transformer_lens.utilities.activation_functions import apply_softcap
 from transformer_lens.utilities.attention import complex_attn_linear, simple_attn_linear
 
 if is_bitsandbytes_available():
@@ -522,10 +523,7 @@ class AbstractAttention(ABC, nn.Module):
             k, "batch key_pos head_index d_head -> batch head_index d_head key_pos"
         )
         attn_scores = q_ @ k_ / self.attn_scale
-        if self.cfg.attn_scores_soft_cap > 0:
-            attn_scores = self.cfg.attn_scores_soft_cap * F.tanh(
-                attn_scores / self.cfg.attn_scores_soft_cap
-            )
+        attn_scores = apply_softcap(attn_scores, self.cfg.attn_scores_soft_cap)
         return attn_scores
 
     def calculate_z_scores(

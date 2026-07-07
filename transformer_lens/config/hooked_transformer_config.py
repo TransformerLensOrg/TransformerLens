@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional, Union
 import numpy as np
 import torch
 
-from transformer_lens.utilities.activation_functions import SUPPORTED_ACTIVATIONS
+from transformer_lens.utilities.activation_functions import SOFTCAP_DISABLED, SUPPORTED_ACTIVATIONS
 from transformer_lens.utilities.devices import get_device
 
 from .transformer_lens_config import TransformerLensConfig
@@ -280,8 +280,8 @@ class HookedTransformerConfig(TransformerLensConfig):
     decoder_start_token_id: Optional[int] = None
     tie_word_embeddings: bool = False
     use_normalization_before_and_after: bool = False
-    attn_scores_soft_cap: float = -1.0
-    output_logits_soft_cap: float = -1.0
+    attn_scores_soft_cap: float = SOFTCAP_DISABLED
+    output_logits_soft_cap: float = SOFTCAP_DISABLED
     use_NTK_by_parts_rope: bool = False
     NTK_by_parts_low_freq_factor: float = 1.0
     NTK_by_parts_high_freq_factor: float = 4.0

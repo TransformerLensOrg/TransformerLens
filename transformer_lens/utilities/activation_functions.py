@@ -105,6 +105,27 @@ def xielu(input: Float[torch.Tensor, "batch pos d_mlp"]) -> Float[torch.Tensor, 
     )
 
 
+SOFTCAP_DISABLED: float = -1.0
+
+
+def apply_softcap(x: torch.Tensor, cap: float) -> torch.Tensor:
+    """Apply soft-cap to a tensor using tanh.
+
+    If cap <= 0, returns x unchanged (softcap disabled).
+    Otherwise returns cap * tanh(x / cap).
+
+    Args:
+        x: The tensor to apply soft-cap to.
+        cap: The soft-cap value. If <= 0, softcap is disabled.
+
+    Returns:
+        The soft-capped tensor.
+    """
+    if cap <= 0:
+        return x
+    return cap * torch.tanh(x / cap)
+
+
 # Convenient type for the format of each activation function
 ActivationFunction = Callable[..., torch.Tensor]
 

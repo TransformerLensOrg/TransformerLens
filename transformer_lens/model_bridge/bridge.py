@@ -28,6 +28,8 @@ from typing import (
 import einops
 import numpy as np
 import torch
+
+from transformer_lens.utilities.activation_functions import SOFTCAP_DISABLED
 import tqdm
 from torch import nn
 
@@ -920,7 +922,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             print(f"Processing weights for {self.cfg.model_name}...")
 
         # Soft capping (tanh) is not translation-invariant; centering would change output.
-        if center_unembed and getattr(self.cfg, "output_logits_soft_cap", -1.0) > 0.0:
+        if center_unembed and getattr(self.cfg, "output_logits_soft_cap", SOFTCAP_DISABLED) > 0.0:
             import logging
 
             logging.warning(

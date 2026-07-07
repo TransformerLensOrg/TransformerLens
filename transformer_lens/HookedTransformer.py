@@ -32,7 +32,6 @@ import einops
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import tqdm.auto as tqdm
 from jaxtyping import Float, Int
 from transformers import AutoTokenizer, PreTrainedModel, PreTrainedTokenizerBase
@@ -74,6 +73,7 @@ from transformer_lens.utilities import (
     init_xavier_uniform_,
 )
 from transformer_lens.utilities.devices import move_to_and_update_config
+from transformer_lens.utilities.activation_functions import apply_softcap
 from transformer_lens.weight_processing import ProcessWeights
 
 SingleLoss = Float[torch.Tensor, ""]  # Type alias for a single element tensor
@@ -670,9 +670,7 @@ class HookedTransformer(HookedRootModule):
             else:
                 logits = self.unembed(residual)  # [batch, pos, d_vocab]
                 if self.cfg.output_logits_soft_cap > 0.0:
-                    logits = self.cfg.output_logits_soft_cap * F.tanh(
-                        logits / self.cfg.output_logits_soft_cap
-                    )
+                    logits = apply_softcap(logits, self.cfg.output_logits_soft_cap)
                 if return_type == "logits":
                     return logits
                 else:
