@@ -46,6 +46,7 @@ Rule ([AGENTS.md §10](../AGENTS.md#10-hard-rules)): **never add `xfail` / `skip
 | [`unit/model_bridge/supported_architectures/test_gemma2_adapter.py`:49](unit/model_bridge/supported_architectures/test_gemma2_adapter.py) | "Network/disk fetch of tiny Gemma2" |
 | [`integration/model_bridge/test_bridge_integration.py`:801](integration/model_bridge/test_bridge_integration.py) | "Skip Gemma2 in CI to avoid timeout" |
 | [`acceptance/model_bridge/compatibility/test_hook_completeness.py`:156](acceptance/model_bridge/compatibility/test_hook_completeness.py) | "Gemma2 too large for CI" |
+| [`integration/model_bridge/test_exaone_adapter.py`:19](integration/model_bridge/test_exaone_adapter.py) | "EXAONE 2.4B download too large for CI budget; no working tiny mirror (hyper-accel/tiny-random-exaone ships stale remote code)" |
 
 **Un-skip:** locally with `HF_TOKEN` sourced.
 

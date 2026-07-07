@@ -1,0 +1,105 @@
+"""EXAONE architecture adapter.
+
+Supports LG AI Research's EXAONE-3.0 / 3.5 / Deep families
+(``ExaoneForCausalLM``, trust_remote_code checkpoints). Llama-style RMSNorm +
+RoPE + GQA + gated MLP under GPT-2-flavored module names: ``transformer.wte``,
+``transformer.h[i]``, ``transformer.ln_f``, and a double-nested attention
+(``attn.attention``). EXAONE-4.0 is a separate native-transformers
+architecture (Exaone4ForCausalLM) and is not covered here.
+"""
+
+from typing import Any
+
+from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
+from transformer_lens.model_bridge.generalized_components import (
+    BlockBridge,
+    EmbeddingBridge,
+    GatedMLPBridge,
+    LinearBridge,
+    PositionEmbeddingsAttentionBridge,
+    RMSNormalizationBridge,
+    RotaryEmbeddingBridge,
+    UnembeddingBridge,
+)
+
+
+class ExaoneArchitectureAdapter(ArchitectureAdapter):
+    """Architecture adapter for ExaoneForCausalLM (EXAONE-3.x) models.
+
+    The remote modeling code follows current HF conventions (Cache API,
+    position_embeddings tuples), so the standard bridges delegate cleanly.
+    Naming quirks: attention projections live one level deeper than usual
+    (``attn.attention.q_proj``), the gated MLP uses ``c_fc_0`` (gate) /
+    ``c_fc_1`` (up) / ``c_proj`` (down), and rotary sits at
+    ``transformer.rotary``.
+    """
+
+    def __init__(self, cfg: Any) -> None:
+        """Initialize the EXAONE architecture adapter."""
+        super().__init__(cfg)
+
+        self.cfg.normalization_type = "RMS"
+        self.cfg.positional_embedding_type = "rotary"
+        self.cfg.final_rms = True
+        self.cfg.gated_mlp = True
+        self.cfg.attn_only = False
+        self.cfg.uses_rms_norm = True
+        # Verified against LGAI-EXAONE/EXAONE-3.5-2.4B-Instruct: no BOS prepended.
+        self.cfg.default_prepend_bos = False
+
+        if hasattr(cfg, "n_key_value_heads") and cfg.n_key_value_heads is not None:
+            self.cfg.n_key_value_heads = cfg.n_key_value_heads
+
+        self.weight_processing_conversions = {
+            **self._qkvo_weight_conversions(),
+        }
+
+        self.component_mapping = {
+            "embed": EmbeddingBridge(name="transformer.wte"),
+            "rotary_emb": RotaryEmbeddingBridge(name="transformer.rotary", config=self.cfg),
+            "blocks": BlockBridge(
+                name="transformer.h",
+                submodules={
+                    "ln1": RMSNormalizationBridge(name="ln_1", config=self.cfg),
+                    "ln2": RMSNormalizationBridge(name="ln_2", config=self.cfg),
+                    "attn": PositionEmbeddingsAttentionBridge(
+                        name="attn.attention",
+                        config=self.cfg,
+                        submodules={
+                            "q": LinearBridge(name="q_proj"),
+                            "k": LinearBridge(name="k_proj"),
+                            "v": LinearBridge(name="v_proj"),
+                            "o": LinearBridge(name="out_proj"),
+                        },
+                        requires_attention_mask=True,
+                        requires_position_embeddings=True,
+                    ),
+                    "mlp": GatedMLPBridge(
+                        name="mlp",
+                        config=self.cfg,
+                        submodules={
+                            "gate": LinearBridge(name="c_fc_0"),
+                            "in": LinearBridge(name="c_fc_1"),
+                            "out": LinearBridge(name="c_proj"),
+                        },
+                    ),
+                },
+            ),
+            "ln_final": RMSNormalizationBridge(name="transformer.ln_f", config=self.cfg),
+            "unembed": UnembeddingBridge(name="lm_head", config=self.cfg),
+        }
+
+    def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
+        """Wire rotary embedding references through to the attention bridges."""
+        rotary_emb = hf_model.transformer.rotary
+
+        if hasattr(hf_model, "config") and hasattr(hf_model.config, "_attn_implementation"):
+            hf_model.config._attn_implementation = "eager"
+
+        if bridge_model is not None and hasattr(bridge_model, "blocks"):
+            for block in bridge_model.blocks:
+                if hasattr(block, "attn"):
+                    block.attn.set_rotary_emb(rotary_emb)
+
+        attn_bridge = self.get_generalized_component("blocks.0.attn")
+        attn_bridge.set_rotary_emb(rotary_emb)

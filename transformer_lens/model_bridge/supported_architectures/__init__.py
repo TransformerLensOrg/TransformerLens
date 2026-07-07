@@ -37,6 +37,9 @@ from transformer_lens.model_bridge.supported_architectures.deepseek_v2 import (
 from transformer_lens.model_bridge.supported_architectures.deepseek_v3 import (
     DeepSeekV3ArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.exaone import (
+    ExaoneArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.falcon import (
     FalconArchitectureAdapter,
 )
@@ -250,6 +253,7 @@ __all__ = [
     "CohereArchitectureAdapter",
     "DeepSeekV2ArchitectureAdapter",
     "DeepSeekV3ArchitectureAdapter",
+    "ExaoneArchitectureAdapter",
     "FalconArchitectureAdapter",
     "FalconH1ArchitectureAdapter",
     "Gemma1ArchitectureAdapter",

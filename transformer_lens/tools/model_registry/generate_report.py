@@ -69,6 +69,7 @@ ARCHITECTURE_DESCRIPTIONS: dict[str, str] = {
     "BartForConditionalGeneration": "Facebook's BART encoder-decoder model",
     "MarianMTModel": "Helsinki-NLP's Marian opus-mt translation encoder-decoder",
     "MiniMaxM2ForCausalLM": "MiniMax's M2 sparse-MoE decoder with sigmoid routing",
+    "ExaoneForCausalLM": "LG AI Research's EXAONE-3.x Korean-English decoder (remote code)",
     "BD3LM": "Kuleshov Group's Block Diffusion Language Model (ICLR 2025) for masked text generation",
     "HunYuanDenseV1ForCausalLM": "Tencent's open source decoder models",
     "Cohere2ForCausalLM": "Cohere's Command-A architecture with interleaved sliding-window RoPE and full-attention NoPE layers",
