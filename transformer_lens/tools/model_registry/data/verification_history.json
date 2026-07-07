@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-07-07T11:52:28.643627",
+  "last_updated": "2026-07-07T12:04:19.274150",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -17484,6 +17484,16 @@
     {
       "model_id": "Qwen/Qwen3-VL-2B-Instruct",
       "architecture_id": "Qwen3VLForConditionalGeneration",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "tiny-random/qwen3-vl-moe",
+      "architecture_id": "Qwen3VLMoeForConditionalGeneration",
       "verified_date": "2026-07-07",
       "verified_by": "verify_models",
       "transformerlens_version": null,

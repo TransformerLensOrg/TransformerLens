@@ -56,6 +56,7 @@ ARCHITECTURE_DESCRIPTIONS: dict[str, str] = {
     "Qwen2MoeForCausalLM": "Alibaba's Qwen2 sparse Mixture-of-Experts model with shared experts",
     "Qwen2_5_VLForConditionalGeneration": "Alibaba's Qwen2.5-VL vision-language model (windowed ViT + mRoPE decoder)",
     "Qwen3VLForConditionalGeneration": "Alibaba's Qwen3-VL with DeepStack multi-level visual injection",
+    "Qwen3VLMoeForConditionalGeneration": "Alibaba's Qwen3-VL-MoE (DeepStack + sparse expert routing)",
     "Qwen3ForCausalLM": "Alibaba's Qwen3 latest generation",
     "Qwen3_5ForConditionalGeneration": "Alibaba's Qwen3.5 vision-language model",
     "Qwen3_5MoeForCausalLM": "Alibaba's Qwen3.5-MoE hybrid linear-attention sparse-MoE text model",

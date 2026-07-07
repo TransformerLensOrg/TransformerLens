@@ -106,20 +106,24 @@ class Qwen3VLArchitectureAdapter(ArchitectureAdapter):
                         maintain_native_attention=True,
                         requires_attention_mask=True,
                     ),
-                    "mlp": GatedMLPBridge(
-                        name="mlp",
-                        config=self.cfg,
-                        submodules={
-                            "gate": LinearBridge(name="gate_proj"),
-                            "in": LinearBridge(name="up_proj"),
-                            "out": LinearBridge(name="down_proj"),
-                        },
-                    ),
+                    "mlp": self._build_mlp_bridge(),
                 },
             ),
             "ln_final": RMSNormalizationBridge(name="model.language_model.norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head", config=self.cfg),
         }
+
+    def _build_mlp_bridge(self) -> Any:
+        """Dense gated MLP; the MoE variant overrides this."""
+        return GatedMLPBridge(
+            name="mlp",
+            config=self.cfg,
+            submodules={
+                "gate": LinearBridge(name="gate_proj"),
+                "in": LinearBridge(name="up_proj"),
+                "out": LinearBridge(name="down_proj"),
+            },
+        )
 
     def prepare_loading(self, model_name: str, model_kwargs: dict) -> None:
         """Force eager attention for hookable vision/text attention."""
