@@ -29,7 +29,7 @@ from inspect_ai.model import (
     modelapi,
 )
 
-from . import wire
+from . import hooks, wire
 from ._provider_base import _InspectModelAPIBase, _parse_tool_calls, _require_served
 
 # NOT "transformer_lens" — inspect_ai ships a built-in provider by that name (the
@@ -48,6 +48,17 @@ _LAYER_PATHS = ("model.layers", "transformer.h", "gpt_neox.layers", "model.decod
 # Attn/MLP submodule names within a block, by family.
 _ATTN_ATTRS = ("self_attn", "attn", "attention", "self_attention")  # self_attention: Falcon
 _MLP_ATTRS = ("mlp", "feed_forward")
+# fc-split blocks (OPT/XGLM) have no mlp container — fc1/fc2 sit on the block directly:
+# mlp_in boundary = fc1's input, mlp_out boundary = fc2's output.
+_MLP_SPLIT_ATTRS = ("fc1", "fc2")
+# Separate q/k/v projections (Llama/Mistral/Qwen/OPT-family). Fused-qkv archs
+# (GPT-2 c_attn, Falcon/GPTNeoX query_key_value) gate q/k/v — their packed layouts
+# vary per family, so slicing them is per-arch work we don't hand-maintain here.
+_Q_PROJ_ATTRS = ("q_proj", "query")
+_K_PROJ_ATTRS = ("k_proj", "key")
+_V_PROJ_ATTRS = ("v_proj", "value")
+# Attention out-projection; its input is z (works for fused-qkv archs too).
+_O_PROJ_ATTRS = ("o_proj", "out_proj", "dense", "c_proj")
 
 
 @modelapi(name=PROVIDER_NAME)
@@ -85,10 +96,24 @@ class TransformerLensTransformersModelAPI(_InspectModelAPIBase):
         )
         self._tokenizer = AutoTokenizer.from_pretrained(model_name)
         self._layers = _locate_layers(self._hf)
-        self._kinds, self._capability_note = _detect_capabilities(self._hf, self._layers)
+        # Head-split reshape geometry; None per-field when the config lacks it (head
+        # kinds are then gated by _detect_capabilities' width checks).
+        self._geometry = _attn_geometry(self._hf.config)
+        self._kinds, self._capability_note = _detect_capabilities(
+            self._hf, self._layers, self._geometry
+        )
         # Per-turn capture during plain generation (agent rollouts): every _generate_eval
         # stashes these hooks in ModelOutput.metadata. Gated by the structural self-check.
         self._eval_capture = self._parse_eval_capture(model_args)
+        for key in self._eval_capture:
+            if key.endswith(":pattern"):
+                # pattern rides the forward's output_attentions, which the eval path's
+                # hf.generate doesn't thread — reject rather than silently omit.
+                raise ValueError(
+                    "Per-turn eval capture of attn.hook_pattern is not supported (it needs "
+                    "output_attentions on the forward). Use the driver path "
+                    "(bridge.run_with_cache) for pattern capture."
+                )
 
     def _generate_capture(self, input: Any, extra_args: Mapping[str, Any], config: GenerateConfig):
         """TL-driven single forward: capture residual/attn/mlp boundaries + full logits."""
@@ -101,9 +126,22 @@ class TransformerLensTransformersModelAPI(_InspectModelAPIBase):
             _, _, kind = key.partition(":")
             _require_served(kind, self._kinds, self._capability_note, f"capture {key!r}")
         interventions: Mapping[str, Any] = extra_args.get("interventions", {})
+        # The driver validates before sending, but this direct interface (extra_args) is
+        # documented — validate here too so a gated/capture-only kind fails loud instead
+        # of silently no-op'ing when no hook installs for it.
+        for key in interventions:
+            _, _, kind = key.partition(":")
+            _require_served(kind, self._kinds, self._capability_note, f"intervention {key!r}")
+            if kind not in hooks.INTERVENEABLE_KINDS:
+                raise ValueError(
+                    f"intervention {key!r}: kind {kind!r} is capture-only "
+                    f"(interveneable: {sorted(hooks.INTERVENEABLE_KINDS)})."
+                )
         want_logits = bool(extra_args.get("return_logits", True))
 
         capture, intervene = _plan(capture_keys, interventions)
+        # pattern comes from the forward's output_attentions, not a module hook.
+        pattern_layers = [layer for layer, kinds in capture.items() if "pattern" in kinds]
         raw: dict[tuple[int, str], np.ndarray] = {}
         call_id = uuid.uuid4().hex
         token = _current_call_id.set(call_id)
@@ -111,11 +149,18 @@ class TransformerLensTransformersModelAPI(_InspectModelAPIBase):
         try:
             with torch.no_grad():
                 ids = torch.tensor([list(input_ids)], device=self._device)
-                logits = self._hf(ids).logits  # (1, seq, vocab)
+                outputs = self._hf(ids, output_attentions=bool(pattern_layers))
+                logits = outputs.logits  # (1, seq, vocab)
         finally:
             for handle in handles:
                 handle.remove()
             _current_call_id.reset(token)
+
+        attentions = getattr(outputs, "attentions", None)
+        for layer in pattern_layers:
+            attn_l = attentions[layer] if attentions is not None else None
+            if attn_l is not None:  # None → driver's missing-hook warning handles it
+                raw[(layer, "pattern")] = attn_l[0].detach().float().cpu().numpy()
 
         captured = _assemble(raw, capture_keys)
         metadata: dict[str, Any] = {"activations": wire.encode_activations(captured)}
@@ -254,7 +299,7 @@ class TransformerLensTransformersModelAPI(_InspectModelAPIBase):
             if not cap_kinds and not iv_kinds:
                 continue
             attn = _first_attr(block, _ATTN_ATTRS)
-            mlp = _first_attr(block, _MLP_ATTRS)
+            _, mlp_out_mod = _locate_mlp(block)
             if "resid_pre" in cap_kinds or "resid_pre" in iv_kinds:
                 handles.append(
                     block.register_forward_pre_hook(
@@ -277,9 +322,13 @@ class TransformerLensTransformersModelAPI(_InspectModelAPIBase):
                         )
                     )
                 )
-            if mlp is not None and ("mlp_out" in cap_kinds or "mlp_out" in iv_kinds):
+            if attn is not None:
+                handles.extend(
+                    self._install_head_hooks(layer, attn, cap_kinds, iv_kinds, raw, call_id)
+                )
+            if mlp_out_mod is not None and ("mlp_out" in cap_kinds or "mlp_out" in iv_kinds):
                 handles.append(
-                    mlp.register_forward_hook(
+                    mlp_out_mod.register_forward_hook(
                         _out_hook(
                             layer,
                             "mlp_out",
@@ -301,6 +350,58 @@ class TransformerLensTransformersModelAPI(_InspectModelAPIBase):
                             raw,
                             call_id,
                         )
+                    )
+                )
+        return handles
+
+    def _install_head_hooks(self, layer, attn, cap_kinds, iv_kinds, raw, call_id: str) -> list:
+        """Hooks for the head-split kinds: q/k/v on their projection outputs, z on the
+        out-projection's input. pattern isn't hooked (it rides output_attentions).
+
+        Interventions apply to the module's natural *flat* tensor ``(..., seq,
+        heads·d_head)`` — a spec ``value`` is scalar, ``(heads·d_head,)``, or per-position
+        ``(len(pos), heads·d_head)`` (flatten a captured head-split tensor to build one).
+        Captures are emitted head-split ``(seq, heads, d_head)`` to match the bridge's
+        ``hook_q/k/v/z``.
+        """
+        handles: list = []
+        d_head = self._geometry[2]
+        if d_head is None:  # geometry undetectable → head kinds were gated at detection
+            return handles
+        host = _projection_host(attn)
+        for kind, attrs in (("q", _Q_PROJ_ATTRS), ("k", _K_PROJ_ATTRS), ("v", _V_PROJ_ATTRS)):
+            if kind not in cap_kinds and kind not in iv_kinds:
+                continue
+            proj = _first_attr(host, attrs)
+            if proj is None:
+                # Detection ran on layers[0]; a later layer missing the projection would
+                # silently skip a validated intervention — fail loud (capture-only misses
+                # surface through the driver's missing-hook warning instead).
+                if kind in iv_kinds:
+                    raise RuntimeError(
+                        f"Intervention on blocks.{layer}.attn.hook_{kind} cannot be applied: "
+                        f"layer {layer} has no {kind} projection (heterogeneous layers)."
+                    )
+                continue
+            handles.append(
+                proj.register_forward_hook(
+                    _proj_hook(
+                        layer, kind, d_head, kind in cap_kinds, iv_kinds.get(kind), raw, call_id
+                    )
+                )
+            )
+        if "z" in cap_kinds or "z" in iv_kinds:
+            o_proj = _first_attr(host, _O_PROJ_ATTRS)
+            if o_proj is None and "z" in iv_kinds:
+                raise RuntimeError(
+                    f"Intervention on blocks.{layer}.attn.hook_z cannot be applied: layer "
+                    f"{layer} has no out-projection (heterogeneous layers)."
+                )
+            if o_proj is not None:
+                handles.append(
+                    o_proj.register_forward_pre_hook(
+                        _zin_hook(layer, d_head, "z" in cap_kinds, iv_kinds.get("z"), raw, call_id),
+                        with_kwargs=True,
                     )
                 )
         return handles
@@ -370,7 +471,10 @@ def _out_hook(layer, kind, want_capture, spec, raw, call_id):
         if spec is not None:
             hidden = _apply_affine(hidden, spec)
         if want_capture and (layer, kind) not in raw:
-            raw[(layer, kind)] = hidden[0].detach().float().cpu().numpy()
+            # OPT-style blocks flatten the FFN to (batch·seq, d) — with batch_size=1
+            # that IS (seq, d) already; only 3-D (batch, seq, d) needs the batch strip.
+            flat = hidden if hidden.ndim == 2 else hidden[0]
+            raw[(layer, kind)] = flat.detach().float().cpu().numpy()
         if spec is None:
             return None
         return (hidden, *output[1:]) if is_tuple else hidden
@@ -378,45 +482,114 @@ def _out_hook(layer, kind, want_capture, spec, raw, call_id):
     return hook
 
 
-def _apply_affine(t: torch.Tensor, spec: Mapping[str, Any]) -> torch.Tensor:
-    """suppress→0, scale→·factor, add→+value, set→value (value scalar or width-shaped)."""
+def _proj_hook(layer, kind, d_head, want_capture, spec, raw, call_id):
+    """q/k/v projection output: affine on the flat ``(..., seq, heads·d_head)`` tensor,
+    captured head-split ``(seq, heads, d_head)`` (pre-RoPE — matches the bridge's
+    ``hook_q``/``hook_k``/``hook_v``). Mutations feed the downstream attention math."""
+
+    def hook(_module, _inputs, output):
+        if _current_call_id.get() != call_id:
+            return None  # different concurrent call's hook
+        hidden = output
+        if spec is not None:
+            hidden = _apply_affine(hidden, spec)
+        if want_capture and (layer, kind) not in raw:
+            flat = hidden[0].detach().float().cpu()
+            raw[(layer, kind)] = flat.reshape(flat.shape[0], -1, d_head).numpy()
+        return hidden if spec is not None else None
+
+    return hook
+
+
+def _zin_hook(layer, d_head, want_capture, spec, raw, call_id):
+    """z — the out-projection's *input* (attention-weighted values, all heads): pre-hook,
+    affine on the flat tensor, captured head-split to match the bridge's ``hook_z``."""
+
+    def hook(_module, args, kwargs):
+        if _current_call_id.get() != call_id:
+            return None  # different concurrent call's hook
+        z = args[0]
+        if spec is not None:
+            z = _apply_affine(z, spec)
+        if want_capture and (layer, "z") not in raw:
+            flat = z[0].detach().float().cpu()
+            raw[(layer, "z")] = flat.reshape(flat.shape[0], -1, d_head).numpy()
+        if spec is None:
+            return None
+        return (z, *args[1:]), kwargs
+
+    return hook
+
+
+def _affine_op(sub: torch.Tensor, spec: Mapping[str, Any]) -> torch.Tensor:
+    """One affine op: suppress→0, scale→·factor, add→+value, set→value. ``value`` broadcasts
+    (scalar, width-shaped, or per-position ``(n_pos, width)``)."""
     op = spec["op"]
     if op == "suppress":
-        return torch.zeros_like(t)
+        return torch.zeros_like(sub)
     if op == "scale":
-        return t * float(spec["factor"])
-    value = torch.as_tensor(spec["value"], dtype=t.dtype, device=t.device)
+        return sub * float(spec["factor"])
+    value = torch.as_tensor(spec["value"], dtype=sub.dtype, device=sub.device)
     if op == "add":
-        return t + value
-    return torch.zeros_like(t) + value  # set
+        return sub + value
+    return torch.zeros_like(sub) + value  # set
 
 
-def _detect_capabilities(model: Any, layers: Any) -> tuple[frozenset, str]:
-    """Structural self-check: which boundary kinds this model can serve faithfully.
+def _apply_affine(t: torch.Tensor, spec: Mapping[str, Any]) -> torch.Tensor:
+    """Affine intervention on a captured tensor ``(..., seq, width)``.
+
+    Without ``pos`` the op spans every position (the original width-broadcast form). With
+    ``pos`` (an int or list of sequence indices) it touches only those positions — the
+    activation-patching primitive — and ``value`` may be per-position ``(len(pos), width)``
+    to transplant a captured activation (path/causal tracing) rather than a single vector.
+    """
+    pos = spec.get("pos")
+    if pos is None:
+        return _affine_op(t, spec)
+    idx = [pos] if isinstance(pos, int) else list(pos)
+    out = t.clone()
+    out[..., idx, :] = _affine_op(t[..., idx, :], spec)
+    return out
+
+
+def _detect_capabilities(
+    model: Any, layers: Any, geometry: tuple[Any, Any, Any]
+) -> tuple[frozenset, str]:
+    """Structural self-check: which kinds this model can serve faithfully.
 
     resid_pre/resid_post are the block in/out (always); attn_out/mlp_out need their
     submodules locatable; resid_mid is gated unless its derivation holds (see
-    :func:`_resid_mid_derivable`). Returns (kinds, note); note explains any gating, '' if none.
+    :func:`_resid_mid_derivable`). Head-split kinds: q/k/v need separate projections whose
+    widths match ``heads·d_head``; z needs an out-projection of in-width ``n_heads·d_head``;
+    pattern needs eager attention (output_attentions is a no-op under sdpa/flash).
+    Returns (kinds, note); note explains any gating, '' if none.
     """
     block = layers[0]
     attn = _first_attr(block, _ATTN_ATTRS)
-    mlp = _first_attr(block, _MLP_ATTRS)
+    mlp_in_mod, mlp_out_mod = _locate_mlp(block)
     kinds = {"resid_pre", "resid_post"}
     gated = []
     if attn is not None:
         kinds.add("attn_out")
     else:
         gated.append("attn_out (no attention submodule found)")
-    if mlp is not None:
+    if mlp_out_mod is not None:
         kinds.add("mlp_out")
     else:
         gated.append("mlp_out (no MLP submodule found)")
-    if attn is not None and mlp is not None and _resid_mid_derivable(model, block, attn, mlp):
+    if (
+        attn is not None
+        and mlp_out_mod is not None
+        and _resid_mid_derivable(model, block, attn, mlp_in_mod, mlp_out_mod)
+    ):
         kinds.add("resid_mid")
     else:
         gated.append(
             "resid_mid (resid_pre + attn_out doesn't hold — parallel or norm-variant block)"
         )
+    head_kinds, head_gated = _detect_head_capabilities(model, attn, geometry)
+    kinds |= head_kinds
+    gated += head_gated
     note = (
         ""
         if not gated
@@ -427,11 +600,85 @@ def _detect_capabilities(model: Any, layers: Any) -> tuple[frozenset, str]:
     return frozenset(kinds), note
 
 
-def _resid_mid_derivable(model: Any, block: Any, attn: Any, mlp: Any) -> bool:
+def _detect_head_capabilities(
+    model: Any, attn: Any, geometry: tuple[Any, Any, Any]
+) -> tuple[set, list]:
+    """Head-split kinds this model serves: q/k/v iff separate projections with the
+    expected widths, z iff the out-projection's in-width is ``n_heads·d_head``, pattern
+    iff attention runs eager (otherwise ``output_attentions`` returns None/garbage)."""
+    n_heads, n_kv_heads, d_head = geometry
+    kinds: set = set()
+    gated: list = []
+    if attn is None or d_head is None:
+        gated.append("q/k/v/z/pattern (no attention submodule or head geometry in config)")
+        return kinds, gated
+
+    host = _projection_host(attn)
+    q = _first_attr(host, _Q_PROJ_ATTRS)
+    k = _first_attr(host, _K_PROJ_ATTRS)
+    v = _first_attr(host, _V_PROJ_ATTRS)
+    expected = {"q": n_heads * d_head, "k": n_kv_heads * d_head, "v": n_kv_heads * d_head}
+    if all(
+        proj is not None and _out_width(proj) == expected[kind]
+        for kind, proj in (("q", q), ("k", k), ("v", v))
+    ):
+        kinds |= {"q", "k", "v"}
+    else:
+        gated.append("q/k/v (fused or nonstandard qkv projections)")
+
+    o_proj = _first_attr(host, _O_PROJ_ATTRS)
+    if o_proj is not None and _in_width(o_proj) == n_heads * d_head:
+        kinds.add("z")
+    else:
+        gated.append("z (out-projection missing or nonstandard width)")
+
+    if getattr(model.config, "_attn_implementation", "eager") == "eager":
+        kinds.add("pattern")
+    else:
+        gated.append("pattern (attention implementation is not eager)")
+    return kinds, gated
+
+
+def _out_width(module: Any) -> Any:
+    """Output width of a projection: ``nn.Linear.out_features`` or GPT-2 ``Conv1D.nf``."""
+    out = getattr(module, "out_features", None)
+    if out is not None:
+        return int(out)
+    nf = getattr(module, "nf", None)  # transformers Conv1D
+    return int(nf) if nf is not None else None
+
+
+def _in_width(module: Any) -> Any:
+    """Input width of a projection: ``nn.Linear.in_features`` or Conv1D ``weight.shape[0]``."""
+    in_f = getattr(module, "in_features", None)
+    if in_f is not None:
+        return int(in_f)
+    if getattr(module, "nf", None) is not None and hasattr(module, "weight"):
+        return int(module.weight.shape[0])  # Conv1D stores weight (in, out)
+    return None
+
+
+def _attn_geometry(config: Any) -> tuple[Any, Any, Any]:
+    """(n_heads, n_kv_heads, d_head) from an HF config; (None, None, None) if underivable."""
+    n_heads = getattr(config, "num_attention_heads", None) or getattr(config, "n_head", None)
+    hidden = getattr(config, "hidden_size", None) or getattr(config, "n_embd", None)
+    if n_heads is None:
+        return None, None, None
+    n_kv = getattr(config, "num_key_value_heads", None) or n_heads
+    d_head = getattr(config, "head_dim", None)
+    if d_head is None and hidden is not None:
+        d_head = hidden // n_heads
+    return (int(n_heads), int(n_kv), int(d_head) if d_head is not None else None)
+
+
+def _resid_mid_derivable(
+    model: Any, block: Any, attn: Any, mlp_in_mod: Any, mlp_out_mod: Any
+) -> bool:
     """True iff ``resid_mid = resid_pre + attn_out`` holds, via two tiny probe forwards.
     Requires both the linear identity ``resid_post = resid_pre + attn_out + mlp_out`` (broken
     by post-norm/multiplier blocks — Gemma2/OLMo2/Granite) and attn feeding mlp (broken by
-    parallel blocks — GPTNeoX/GPT-J, where mlp reads resid_pre directly)."""
+    parallel blocks — GPTNeoX/GPT-J, where mlp reads resid_pre directly). ``mlp_in_mod``/
+    ``mlp_out_mod`` are the same module for container archs, (fc1, fc2) for fc-split."""
     cap: dict[str, Any] = {}
 
     def grab(key: str):  # type: ignore[no-untyped-def]
@@ -463,8 +710,8 @@ def _resid_mid_derivable(model: Any, block: Any, attn: Any, mlp: Any) -> bool:
             handles = [
                 block.register_forward_pre_hook(grab_in("resid_pre"), with_kwargs=True),
                 attn.register_forward_hook(grab("attn_out")),
-                mlp.register_forward_hook(grab("mlp_out")),
-                mlp.register_forward_pre_hook(grab_in("mlp_in"), with_kwargs=True),
+                mlp_out_mod.register_forward_hook(grab("mlp_out")),
+                mlp_in_mod.register_forward_pre_hook(grab_in("mlp_in"), with_kwargs=True),
                 block.register_forward_hook(grab("resid_post")),
             ]
             model(ids)
@@ -472,7 +719,7 @@ def _resid_mid_derivable(model: Any, block: Any, attn: Any, mlp: Any) -> bool:
                 h.remove()
             mlp_in_clean = cap.pop("mlp_in", None)
             handles = [
-                mlp.register_forward_pre_hook(grab_in("mlp_in"), with_kwargs=True),
+                mlp_in_mod.register_forward_pre_hook(grab_in("mlp_in"), with_kwargs=True),
                 attn.register_forward_hook(perturb_attn),
             ]
             model(ids)
@@ -490,7 +737,13 @@ def _resid_mid_derivable(model: Any, block: Any, attn: Any, mlp: Any) -> bool:
         return False
     if mlp_in_clean is None or mlp_in_perturbed is None:
         return False
-    if not (rp.shape == ao.shape == mo.shape == rpost.shape == mlp_in_clean.shape):
+    # OPT-style blocks flatten the FFN to (batch·seq, d); with the probe's batch=1 that
+    # is a pure reshape of the block-level (1, seq, d) — normalize before comparing.
+    if mo.shape != rpost.shape and mo.numel() == rpost.numel():
+        mo = mo.reshape(rpost.shape)
+    if not (rp.shape == ao.shape == mo.shape == rpost.shape):
+        return False
+    if mlp_in_clean.shape != mlp_in_perturbed.shape or mlp_in_clean.numel() != rp.numel():
         return False
     # (1) sub-block outputs add to the residual without intervening norm/scale.
     identity = (rpost - rp - ao - mo).abs().max().item()
@@ -512,6 +765,33 @@ def _locate_layers(model: Any) -> Any:
     raise RuntimeError(
         f"Could not locate decoder layers on {type(model).__name__}; tried {_LAYER_PATHS}."
     )
+
+
+def _locate_mlp(block: Any) -> tuple[Any, Any]:
+    """The modules bounding the MLP: ``(in_module, out_module)`` — the mlp_in boundary is
+    in_module's input, mlp_out is out_module's output. Container archs return the mlp
+    module twice; fc-split blocks (OPT/XGLM: fc1/fc2 directly on the block) return
+    ``(fc1, fc2)``. ``(None, None)`` when neither layout is found (mlp_out gated)."""
+    mlp = _first_attr(block, _MLP_ATTRS)
+    if mlp is not None:
+        return mlp, mlp
+    fc1, fc2 = (getattr(block, name, None) for name in _MLP_SPLIT_ATTRS)
+    if fc1 is not None and fc2 is not None:
+        return fc1, fc2
+    return None, None
+
+
+def _projection_host(attn: Any) -> Any:
+    """The module whose direct attrs are the q/k/v/out projections. Usually ``attn``
+    itself; GPT-Neo-style blocks wrap the real attention (with its standard q_proj/
+    out_proj) one level down at ``attn.attention``. Descend only when the located module
+    has neither a q- nor an out-projection — GPTNeoX's ``block.attention`` (fused
+    query_key_value + dense) has ``dense`` directly, so it never descends."""
+    if _first_attr(attn, _Q_PROJ_ATTRS) is None and _first_attr(attn, _O_PROJ_ATTRS) is None:
+        inner = getattr(attn, "attention", None)
+        if inner is not None:
+            return inner
+    return attn
 
 
 def _first_attr(obj: Any, names: tuple[str, ...]) -> Any:

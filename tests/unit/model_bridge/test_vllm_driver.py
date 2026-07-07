@@ -89,6 +89,7 @@ def _driver(
     max_num_batched_tokens=2048,
     generated_token=None,
     top_logprobs=None,
+    enable_position_interventions=False,
 ) -> VLLMDriver:
     """Build a VLLMDriver. ``captures`` populates llm.collective_rpc; ``generated_token``
     and ``top_logprobs`` populate llm.generate's RequestOutput so _synthesize_logits
@@ -104,6 +105,7 @@ def _driver(
         overlay=_overlay(),
         hf_config=hf_config or _hf_config(),
         max_num_batched_tokens=max_num_batched_tokens,
+        enable_position_interventions=enable_position_interventions,
     )
 
 
@@ -115,11 +117,19 @@ class TestVLLMDriverProtocolConformance:
         assert isinstance(driver, Driver)
         validate_driver(driver)
 
-    def test_no_torch_capability_flags(self):
-        """vLLM owns the model in a worker — no torch-specific capability surface."""
+    def test_capability_flags(self):
+        """vLLM owns the model in a worker — no torch module surface (parameters/
+        state_dict/grads), but named-weight reads ARE served via the get_param RPC."""
         driver = _driver()
-        for feature in ("parameters", "state_dict", "gradients", "weight_access"):
+        for feature in ("parameters", "state_dict", "gradients"):
             assert driver.supports(feature) is False, f"vLLM shouldn't support {feature!r}"
+        assert driver.supports("weight_access") is True
+
+    def test_zero_layers_config_fails_loud(self):
+        """A missing/zero num_hidden_layers must raise at boot, not leave a raw '{i}'
+        template in non_fireable_hook_points."""
+        with pytest.raises(ValueError, match="num_hidden_layers"):
+            _driver(hf_config=_hf_config(num_hidden_layers=0))
 
     def test_non_fireable_expanded_per_layer(self):
         """``blocks.{i}.attn.hook_pattern`` template expands to one entry per layer."""
@@ -168,7 +178,7 @@ class TestVLLMDriverForward:
         result = _driver(
             captures={"embed.hook_out": torch.randn(3, 4)},
             top_logprobs={7: 2.5, 3: 1.0, 11: -0.5},
-        ).forward(torch.tensor([[1, 2, 3]]))
+        ).forward(torch.tensor([[1, 2, 3]]), capture=("embed.hook_out",))
         assert isinstance(result, ForwardResult)
         assert tuple(result.captured["embed.hook_out"].shape) == (1, 3, 4)
         assert result.logits is not None and tuple(result.logits.shape) == (1, 3, 16)
@@ -234,6 +244,67 @@ class TestVLLMDriverForward:
                 torch.tensor([[1]]), intervene={"embed.hook_out": {"op": "set"}}
             )
 
+
+class TestVLLMDriverPositionInterventions:
+    """`pos`-scoped interventions require the opt-in (max_n, width) affine buffers."""
+
+    def test_pos_rejected_without_flag(self):
+        with pytest.raises(NotImplementedError, match="enable_position_interventions=True"):
+            _driver()._validate_interventions({"embed.hook_out": {"op": "suppress", "pos": 0}})
+
+    def test_pos_accepted_and_preserved_with_flag(self):
+        driver = _driver(enable_position_interventions=True)
+        out = driver._validate_interventions(
+            {"embed.hook_out": {"op": "add", "value": 1.0, "pos": [0, 2]}}
+        )
+        assert out["embed.hook_out"]["pos"] == [0, 2]
+
+    def test_pos_int_accepted_with_flag(self):
+        driver = _driver(enable_position_interventions=True)
+        out = driver._validate_interventions({"embed.hook_out": {"op": "suppress", "pos": 3}})
+        assert out["embed.hook_out"]["pos"] == 3
+
+    def test_pos_wrong_type_raises(self):
+        driver = _driver(enable_position_interventions=True)
+        with pytest.raises(ValueError, match="must be an int or list of ints"):
+            driver._validate_interventions({"embed.hook_out": {"op": "suppress", "pos": "last"}})
+
+    def test_pos_negative_raises(self):
+        driver = _driver(enable_position_interventions=True)
+        with pytest.raises(ValueError, match="must be non-negative"):
+            driver._validate_interventions({"embed.hook_out": {"op": "suppress", "pos": [-1]}})
+
+    def test_pos_rejected_on_batched_path(self):
+        """The batched/eager path has no affine buffers, so 'pos' is unsupported there."""
+        driver = _driver()
+        driver._enable_batching = True
+        with pytest.raises(NotImplementedError, match="batched/eager path"):
+            driver._validate_interventions({"embed.hook_out": {"op": "suppress", "pos": 0}})
+
+    def test_no_pos_still_works_with_flag(self):
+        """A whole-sequence spec (no pos) is unaffected by the flag."""
+        driver = _driver(enable_position_interventions=True)
+        out = driver._validate_interventions({"embed.hook_out": {"op": "suppress"}})
+        assert "pos" not in out["embed.hook_out"]
+
+    def test_pos_beyond_prompt_length_fails_loud(self):
+        """pos within buffer capacity but past the prompt length must raise, not silently no-op.
+
+        The rejection fires before driver.forward reaches the vllm import, so no install needed.
+        """
+        driver = _driver(captures={}, enable_position_interventions=True)
+        with pytest.raises(ValueError, match="beyond the prompt length"):
+            driver.forward(  # 3-token prompt, pos=50 is unreadable by the hook
+                torch.tensor([[1, 2, 3]]),
+                intervene={"embed.hook_out": {"op": "suppress", "pos": 50}},
+            )
+
+    def test_reject_pos_beyond_seq_bounds_against_actual_length(self):
+        driver = _driver(enable_position_interventions=True)
+        driver._reject_pos_beyond_seq({"embed.hook_out": {"op": "suppress", "pos": [0, 2]}}, 3)
+        with pytest.raises(ValueError, match="beyond the prompt length"):
+            driver._reject_pos_beyond_seq({"embed.hook_out": {"op": "suppress", "pos": 3}}, 3)
+
     def test_forward_pushes_interventions_before_generate(self):
         """The driver pushes spec dicts via collective_rpc('tl_set_interventions', ...)."""
         pytest.importorskip("vllm")
@@ -266,6 +337,29 @@ class TestVLLMDriverForward:
         """Worker buffers silently clamp on overflow — driver must fail loud."""
         with pytest.raises(ValueError, match="exceeds max_num_batched_tokens"):
             _driver(captures={}, max_num_batched_tokens=4).forward(torch.tensor([[1, 2, 3, 4, 5]]))
+
+    def test_zero_capture_skips_worker_read(self):
+        """capture=() must not trigger a GPU→CPU copy: with logits off there is no
+        tl_read_captures RPC at all (an empty tuple used to collapse to None = read
+        every buffer); with logits on, only the forced ln_final is read."""
+        pytest.importorskip("vllm")
+        driver = _driver(captures={"embed.hook_out": torch.zeros(3, 4)})
+        driver.forward(torch.tensor([[1, 2, 3]]), return_logits=False)
+        reads = [
+            c.args
+            for c in driver._llm.collective_rpc.call_args_list
+            if c.args[0] == "tl_read_captures"
+        ]
+        assert reads == [], f"hookless forward still read the buffers: {reads}"
+
+        driver2 = _driver(captures={"ln_final.hook_normalized": torch.zeros(3, 4)})
+        driver2.forward(torch.tensor([[1, 2, 3]]))  # return_logits=True default
+        reads2 = [
+            c.args
+            for c in driver2._llm.collective_rpc.call_args_list
+            if c.args[0] == "tl_read_captures"
+        ]
+        assert len(reads2) == 1 and reads2[0][1][1] == ["ln_final.hook_normalized"]
 
 
 def _batched_request_output(request_id, generated_token=None, top_logprobs=None):
@@ -338,7 +432,7 @@ class TestBatchedForward:
             "req-A": {"embed.hook_out": torch.full((3, 4), 1.0)},
         }
         result = _batched_driver(outputs=outputs, captures_by_req=captures_by_req).forward(
-            [[1, 2, 3], [4, 5]]
+            [[1, 2, 3], [4, 5]], capture=("embed.hook_out",)
         )
         emb = result.captured["embed.hook_out"]
         assert tuple(emb.shape) == (2, 3, 4)  # (batch, max_seq, width)
@@ -360,7 +454,7 @@ class TestBatchedForward:
             "11-a1b2c3d4": {"embed.hook_out": torch.full((2, 4), 2.0)},
         }
         result = _batched_driver(outputs=outputs, captures_by_req=captures_by_req).forward(
-            [[1, 2, 3], [4, 5]]
+            [[1, 2, 3], [4, 5]], capture=("embed.hook_out",)
         )
         emb = result.captured["embed.hook_out"]
         assert tuple(emb.shape) == (2, 3, 4)
@@ -379,7 +473,7 @@ class TestBatchedForward:
             "10-bbbbbbbb": {"embed.hook_out": torch.full((3, 4), 9.0)},
         }
         result = _batched_driver(outputs=outputs, captures_by_req=captures_by_req).forward(
-            [[1, 2], [1, 2, 3]]
+            [[1, 2], [1, 2, 3]], capture=("embed.hook_out",)
         )
         emb = result.captured["embed.hook_out"]
         assert torch.equal(emb[0, :2], torch.full((2, 4), 1.0))  # req "1"
@@ -396,11 +490,30 @@ class TestBatchedForward:
             "r1": {"embed.hook_out": torch.ones(1, 4)},
         }
         result = _batched_driver(outputs=outputs, captures_by_req=captures_by_req).forward(
-            [[1, 2, 3], [9]]
+            [[1, 2, 3], [9]], capture=("embed.hook_out",)
         )
         emb = result.captured["embed.hook_out"]
         # Row 1 has 1 real token; positions 1,2 are zero pad.
         assert torch.equal(emb[1, 1:], torch.zeros(2, 4))
+
+    def test_zero_capture_skips_batched_join(self):
+        """capture=() with logits off must return empty captures, not crash: _assemble_padded
+        needs one worker key per request, so it can't run on the empty read — mirror the
+        single path. (Regression: the batched join was called unconditionally.)"""
+        pytest.importorskip("vllm")
+        outputs = [
+            _batched_request_output("r0", top_logprobs={1: 1.0}),
+            _batched_request_output("r1", top_logprobs={1: 1.0}),
+        ]
+        driver = _batched_driver(outputs=outputs, captures_by_req={})
+        result = driver.forward([[1, 2, 3], [9]], return_logits=False)  # capture=() default
+        assert result.captured == {}
+        reads = [
+            c.args
+            for c in driver._llm.collective_rpc.call_args_list
+            if c.args[0] == "tl_read_batched_captures"
+        ]
+        assert reads == [], f"batched hookless forward still read captures: {reads}"
 
     def test_logits_at_per_row_last_token(self):
         """Next-token logits land at prompt_len-1 per row, never -1 (a pad row)."""
@@ -414,7 +527,7 @@ class TestBatchedForward:
             "r1": {"embed.hook_out": torch.ones(1, 4)},
         }
         result = _batched_driver(outputs=outputs, captures_by_req=captures_by_req).forward(
-            [[1, 2, 3], [9]]
+            [[1, 2, 3], [9]], capture=("embed.hook_out",)
         )
         logits = result.logits
         assert logits is not None and tuple(logits.shape) == (2, 3, 16)
@@ -481,12 +594,18 @@ class TestVLLMDriverThroughBridge:
         assert len(fired) == 1
         assert tuple(fired[0].shape) == (1, 3, 4)
 
-    def test_forward_rejects_loss_return_types(self):
-        """Synthesized logits are last-position-only; loss/both would be nan, so refuse.
+    def test_loss_return_type_gated_on_sequence_logits(self):
+        """The bridge's loss/both guard fires only when the driver lacks full-sequence
+        logits. The vLLM driver now reconstructs them (provides_sequence_logits=True),
+        so loss/both are permitted; a driver without that capability is still refused.
 
-        The guard is the first thing forward() does, so this needs no vllm install.
+        The rejection path fires before driver.forward, so it needs no vllm install.
         """
-        bridge = RemoteBridge(adapter=_adapter(), tokenizer=None, driver=_driver(captures={}))
+        driver = _driver(captures={})
+        assert driver.provides_sequence_logits is True  # reconstruction path is live
+        bridge = RemoteBridge(adapter=_adapter(), tokenizer=None, driver=driver)
+        # Drop the capability → the guard must refuse loss/both (nan over -inf positions).
+        driver.provides_sequence_logits = False
         for rt in ("loss", "both"):
             with pytest.raises(NotImplementedError, match="return_type"):
                 bridge.forward(torch.tensor([[1, 2, 3]]), return_type=rt)

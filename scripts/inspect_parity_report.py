@@ -60,13 +60,21 @@ PROMPT = "The quick brown fox"
 ATOL, RTOL = 1e-3, 1e-3
 
 
-# Boundary kind -> TransformerBridge-native hook suffix.
+# Kind -> TransformerBridge-native hook suffix: the five d_model boundaries plus the
+# head-split kinds (served where the structural probe finds the projections — q/k/v are
+# gated on fused-qkv archs, pattern under non-eager attention; gated kinds show up in
+# the report's `gated=` field, not as failures).
 KIND_SUFFIX = {
     "resid_pre": "hook_in",
     "resid_mid": "ln2.hook_in",
     "resid_post": "hook_out",
     "attn_out": "attn.hook_out",
     "mlp_out": "mlp.hook_out",
+    "q": "attn.hook_q",
+    "k": "attn.hook_k",
+    "v": "attn.hook_v",
+    "z": "attn.hook_z",
+    "pattern": "attn.hook_pattern",
 }
 
 
@@ -103,6 +111,11 @@ def verify(model_id: str) -> dict:
                     mism.append(f"{hk} missing")
                     continue
                 a, b = hf_cache[hk].float(), i_cache[hk].float()
+                if a.shape != b.shape and a.numel() == b.numel():
+                    # OPT-style blocks flatten the FFN to (batch·seq, d) and the bridge
+                    # caches that raw 2-D layout; the driver emits the conventional
+                    # (1, seq, d). Same values, pure reshape — normalize to compare.
+                    a = a.reshape(b.shape)
                 if a.shape != b.shape:
                     mism.append(f"{hk} shape {tuple(a.shape)}!={tuple(b.shape)}")
                     continue

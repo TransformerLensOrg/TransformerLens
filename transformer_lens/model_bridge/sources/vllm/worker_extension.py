@@ -170,37 +170,72 @@ def _apply_op(t: torch.Tensor, spec: Dict[str, Any]) -> torch.Tensor:
     return torch.zeros_like(t) + value  # set
 
 
+def _write_rows(buf: torch.Tensor, idx: Optional[List[int]], value: Any) -> None:
+    """In-place write of ``value`` (Python scalar or ``(width,)`` tensor) into ``buf``.
+
+    ``idx is None`` writes the whole buffer — for a 2-D ``(max_n, width)`` buffer that
+    broadcasts a ``(width,)`` value across every row. ``idx`` (a list of row indices)
+    writes only those rows of a 2-D buffer.
+    """
+    if idx is None:
+        if isinstance(value, torch.Tensor):
+            buf[...] = value  # (width,) broadcasts across rows for a 2-D buffer
+        else:
+            buf.fill_(value)
+    else:
+        buf[idx] = value  # advanced-index rows; scalar or (width,) broadcasts
+
+
 def _apply_intervention(
     scale_buf: torch.Tensor, bias_buf: torch.Tensor, spec: Dict[str, Any]
 ) -> None:
-    """Translate a spec dict to in-place buffer writes."""
+    """Translate a spec dict to in-place buffer writes.
+
+    ``spec['pos']`` (int or list[int]) scopes the edit to those sequence rows and
+    requires 2-D ``(max_n, width)`` affine buffers (position interventions enabled at
+    boot). Absent ``pos`` writes the whole buffer, applying to every position. The
+    caller resets both buffers to identity first, so a ``pos`` edit leaves other rows
+    untouched.
+    """
     op = spec.get("op")
     if op not in SUPPORTED_OPS:
         raise ValueError(f"Unsupported intervention op: {op!r}. Supported: {sorted(SUPPORTED_OPS)}")
+    pos = spec.get("pos")
+    idx: Optional[List[int]] = None
+    if pos is not None:
+        if scale_buf.ndim != 2:
+            raise ValueError(
+                "Per-position 'pos' requires 2-D affine buffers; boot with "
+                "enable_position_interventions=True."
+            )
+        idx = [pos] if isinstance(pos, int) else list(pos)
+        max_n = scale_buf.shape[0]
+        bad = [p for p in idx if p < 0 or p >= max_n]
+        if bad:
+            raise ValueError(f"Intervention 'pos' {bad} out of range [0, {max_n}).")
+
     if op == "suppress":
-        scale_buf.zero_()
-        bias_buf.zero_()
+        _write_rows(scale_buf, idx, 0.0)
+        _write_rows(bias_buf, idx, 0.0)
         return
     if op == "scale":
-        scale_buf.fill_(float(spec["factor"]))
-        bias_buf.zero_()
+        _write_rows(scale_buf, idx, float(spec["factor"]))
+        _write_rows(bias_buf, idx, 0.0)
         return
     value = torch.as_tensor(spec["value"], device=bias_buf.device, dtype=bias_buf.dtype)
+    width = bias_buf.shape[-1]
     # 0-d broadcasts across width (e.g. "shift all dims by 0.5"); width-shaped
     # writes element-wise (e.g. SAE steering vector). Anything else is an error.
-    if value.ndim == 0:
-        bias_buf.fill_(value.item())
-    elif value.shape == bias_buf.shape:
-        bias_buf.copy_(value)
-    else:
+    if value.ndim != 0 and value.shape != (width,):
         raise ValueError(
-            f"Intervention 'value' must be a scalar or shape {tuple(bias_buf.shape)}; "
+            f"Intervention 'value' must be a scalar or shape {(width,)}; "
             f"got shape {tuple(value.shape)}"
         )
+    _write_rows(bias_buf, idx, value.item() if value.ndim == 0 else value)
     if op == "add":
-        scale_buf.fill_(1.0)
+        _write_rows(scale_buf, idx, 1.0)
     elif op == "set":
-        scale_buf.zero_()
+        _write_rows(scale_buf, idx, 0.0)
     else:
         raise RuntimeError(
             f"op {op!r} is in SUPPORTED_OPS but _apply_intervention has no branch for it."

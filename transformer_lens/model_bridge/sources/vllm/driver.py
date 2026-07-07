@@ -20,10 +20,16 @@ from .intervention_specs import SUPPORTED_OPS
 class VLLMDriver(DriverBase):
     """Driver wrapping a vLLM ``LLM``; captures via ``collective_rpc``."""
 
-    # vLLM owns the model in a worker — no torch surface (parameters/state_dict/grads).
-    _supported_features = frozenset()
-    # Logits synthesized for the final position only (sampler bypass).
-    provides_sequence_logits = False
+    # vLLM owns the model in a worker — no torch module surface (parameters/state_dict/
+    # grads). Named-weight reads ARE served: get_param() returns CPU clones via the
+    # tl_get_param RPC (what logit reconstruction and direct-logit-attribution use).
+    _supported_features = frozenset({"weight_access"})
+    # Full-sequence logits reconstructed host-side (ln_final @ lm_head.weight.T); vLLM's
+    # sampler only hands back the final position, so the driver rebuilds the rest.
+    provides_sequence_logits = True
+
+    # Post-weight final-norm capture that lm_head consumes — reconstruction reads it.
+    _LN_FINAL = "ln_final.hook_normalized"
 
     def __init__(
         self,
@@ -34,11 +40,15 @@ class VLLMDriver(DriverBase):
         hf_config: Any,
         max_num_batched_tokens: int,
         enable_batching: bool = False,
+        enable_position_interventions: bool = False,
     ) -> None:
         super().__init__(adapter.cfg, tokenizer)
         self._llm = llm
         self._max_num_batched_tokens = max_num_batched_tokens
         self._enable_batching = enable_batching
+        # Position-scoped 'pos' interventions need (max_n, width) affine buffers,
+        # allocated at boot only when this is set (see plugin.patched_load_model).
+        self._enable_position_interventions = enable_position_interventions
         # Logprobs per forward = real vocab (boot's max_logprobs). d_vocab can be
         # padded larger, which vLLM would reject; the logits tensor stays d_vocab.
         self._n_logprobs = int(getattr(hf_config, "vocab_size", self.bridge_config.d_vocab))
@@ -46,9 +56,16 @@ class VLLMDriver(DriverBase):
         self.supported_hook_points = frozenset(overlay.capture_specs(hf_config).keys())
 
         n_layers = getattr(hf_config, "num_hidden_layers", 0)
+        if not isinstance(n_layers, int) or n_layers <= 0:
+            # A raw "{i}" template would land unexpanded in non_fireable_hook_points —
+            # a broken config should fail at boot, not surface as a garbled hook name.
+            raise ValueError(
+                f"VLLMDriver: hf_config.num_hidden_layers={n_layers!r} — expected a "
+                "positive int; the config is missing or malformed."
+            )
         nonfiring: list[str] = []
         for tmpl in overlay.nonfiring_hooks():
-            if "{i}" in tmpl and isinstance(n_layers, int) and n_layers > 0:
+            if "{i}" in tmpl:
                 nonfiring.extend(tmpl.replace("{i}", str(i)) for i in range(n_layers))
             else:
                 nonfiring.append(tmpl)
@@ -73,9 +90,11 @@ class VLLMDriver(DriverBase):
             )
         intervene_specs = self._validate_interventions(intervene or {})
 
-        # Restrict the GPU→CPU read to these hooks (None = all). run_with_cache
-        # doesn't derive this from names_filter yet — only explicit forward(capture=).
-        names = list(capture) or None
+        # capture is authoritative — the bridge sends exactly the hooked names, so ()
+        # means "capture nothing" and a plain forward(tokens) skips the GPU→CPU copy
+        # entirely. (The worker's None-means-all convention is never triggered from here;
+        # an empty tuple used to collapse to None and silently copy every buffer.)
+        names = list(capture)
 
         if self._enable_batching:
             return self._forward_batched(input_ids, intervene_specs, return_logits, names)
@@ -88,6 +107,9 @@ class VLLMDriver(DriverBase):
                 f"{self._max_num_batched_tokens}; raise the boot_vllm kwarg or "
                 "shorten the prompt."
             )
+        # 'pos'-scoped edits target affine-buffer rows, but the compiled hook only reads
+        # rows [0, len(ids_list)); a pos past the prompt length would be a silent no-op.
+        self._reject_pos_beyond_seq(intervene_specs, len(ids_list))
 
         from vllm import SamplingParams
         from vllm.inputs import TokensPrompt
@@ -110,15 +132,31 @@ class VLLMDriver(DriverBase):
         )
 
         n_tokens = len(ids_list)
-        # collective_rpc returns one result per worker; single-rank, so [0].
-        worker_captures = self._llm.collective_rpc("tl_read_captures", args=([n_tokens], names))[0]
-        # Add batch dim: vLLM hands back (n_tokens, width); bridge expects (1, n_tokens, width).
-        captured = {name: t.unsqueeze(0) for name, t in worker_captures.items()}
+        # Reconstructing logits needs ln_final; force it into the read even if the caller
+        # didn't request it (dropped from `captured` below so the surface stays as asked).
+        read_names = names
+        if return_logits and self._LN_FINAL not in names:
+            read_names = names + [self._LN_FINAL]
+        # collective_rpc returns one result per worker; single-rank, so [0]. Nothing to
+        # read (no captures, logits off) → skip the crossing altogether.
+        worker_captures = (
+            self._llm.collective_rpc("tl_read_captures", args=([n_tokens], read_names))[0]
+            if read_names
+            else {}
+        )
 
         logits: torch.Tensor | None = None
         if return_logits:
-            logits = self._synthesize_logits(outputs[0], n_tokens, self.bridge_config.d_vocab)
+            recon = self._reconstruct_logits(worker_captures.get(self._LN_FINAL))
+            # Fall back to final-position log-probs if the unembedding isn't fetchable.
+            logits = (
+                recon.unsqueeze(0)
+                if recon is not None
+                else self._synthesize_logits(outputs[0], n_tokens, self.bridge_config.d_vocab)
+            )
 
+        # Add batch dim; expose only the caller's requested hooks (drop the forced ln_final).
+        captured = {name: t.unsqueeze(0) for name, t in worker_captures.items() if name in names}
         return ForwardResult(logits=logits, captured=captured, raw_output=outputs[0])
 
     def _forward_batched(
@@ -126,13 +164,13 @@ class VLLMDriver(DriverBase):
         input_ids: TensorLike,
         intervene_specs: dict,
         return_logits: bool,
-        names: list[str] | None = None,
+        names: list[str],
     ) -> ForwardResult:
         """Eager batched path: per-request capture, right-padded to (B, S, W).
 
         No per-prompt length gate — chunked prefill accumulates long prompts
-        across forwards. Interventions are global across the batch. ``names``
-        restricts the returned hooks (``None`` = all).
+        across forwards. Interventions are global across the batch. ``names`` is
+        authoritative: exactly the hooks to return (empty = none).
         """
         from vllm import SamplingParams
         from vllm.inputs import TokensPrompt
@@ -155,14 +193,35 @@ class VLLMDriver(DriverBase):
             ),
         )
 
+        # Force ln_final into the read so logits can be reconstructed (dropped below if
+        # the caller didn't ask for it).
+        read_names = names
+        if return_logits and self._LN_FINAL not in names:
+            read_names = names + [self._LN_FINAL]
         # Keyed by req_id (no guaranteed order) — _assemble_padded joins to slot
-        # k via outputs[k].request_id, not by position.
-        worker_captures = self._llm.collective_rpc("tl_read_batched_captures", args=(names,))[0]
-        captured = self._assemble_padded(outputs, worker_captures, prompt_lens)
+        # k via outputs[k].request_id, not by position. Empty read → skip both the
+        # crossing AND the join (_assemble_padded requires one worker key per request,
+        # so it can't run on an empty dict — mirror the single path's empty captured).
+        if read_names:
+            worker_captures = self._llm.collective_rpc(
+                "tl_read_batched_captures", args=(read_names,)
+            )[0]
+            captured = self._assemble_padded(outputs, worker_captures, prompt_lens)
+        else:
+            captured = {}
 
         logits: torch.Tensor | None = None
         if return_logits:
-            logits = self._synthesize_logits_batched(outputs, prompt_lens, d_vocab)
+            recon = self._reconstruct_logits(
+                captured.get(self._LN_FINAL)
+            )  # (batch, max_seq, d_vocab)
+            logits = (
+                recon
+                if recon is not None
+                else self._synthesize_logits_batched(outputs, prompt_lens, d_vocab)
+            )
+        if self._LN_FINAL not in names:
+            captured.pop(self._LN_FINAL, None)
 
         return ForwardResult(logits=logits, captured=captured, raw_output=outputs)
 
@@ -244,6 +303,37 @@ class VLLMDriver(DriverBase):
         if self._llm is None:
             return None
         return self._llm.collective_rpc("tl_get_param", args=(dotted_name,))[0]
+
+    def _reconstruct_logits(self, ln_final: Any) -> torch.Tensor | None:
+        """Rebuild real logits from the captured post-weight ln_final:
+        ``ln_final @ lm_head.weight.T`` (+ bias, + Gemma-family tanh soft-cap).
+
+        vLLM's ``ln_final.hook_normalized`` is the POST-weight RMSNorm value lm_head
+        consumes (verified empirically: it equals HF's pre-weight value times the norm
+        weight), so no un-fold is needed. Accepts any ``(..., d_model)`` tensor and returns
+        ``(..., d_vocab)`` on CPU. ``None`` if ln_final wasn't captured or no unembedding
+        weight is fetchable — the caller then falls back to the sampler's log-probs.
+        """
+        if ln_final is None:
+            return None
+        weight = self.get_param("lm_head.weight")
+        if weight is None:  # tied embeddings expose no separate lm_head
+            weight = self.get_param("model.embed_tokens.weight")
+        if weight is None:
+            return None
+        lf = ln_final.to(device=weight.device, dtype=torch.float32)
+        logits = lf @ weight.to(torch.float32).T
+        bias = self.get_param("lm_head.bias")
+        if bias is not None:
+            logits = logits + bias.to(device=logits.device, dtype=torch.float32)
+        cap = getattr(self.bridge_config, "output_logits_soft_cap", None)
+        if cap is not None and cap > 0:  # Gemma-family cap; -1.0 is the "disabled" sentinel
+            logits = float(cap) * torch.tanh(logits / float(cap))
+        d_vocab = int(self.bridge_config.d_vocab)
+        if logits.shape[-1] < d_vocab:  # pad the padded-vocab tail (never predicted)
+            pad = logits.new_full((*logits.shape[:-1], d_vocab - logits.shape[-1]), float("-inf"))
+            logits = torch.cat([logits, pad], dim=-1)
+        return logits.cpu()
 
     def close(self) -> None:
         # Detach hooks before dropping the LLM so they don't stay registered on
@@ -334,8 +424,61 @@ class VLLMDriver(DriverBase):
                 raise ValueError(
                     f"Cannot intervene on {hook_name!r}: not in supported_hook_points."
                 )
+            pos = spec.get("pos")
+            if pos is not None:
+                if self._enable_batching:
+                    # The batched/eager path applies ops to the raw tensor, not the
+                    # (max_n, width) affine buffers, so it has no position surface.
+                    raise NotImplementedError(
+                        f"Intervention {hook_name!r}: per-position 'pos' is not supported on the "
+                        "batched/eager path. Boot the compiled path (enable_batching=False) with "
+                        "enable_position_interventions=True."
+                    )
+                if not self._enable_position_interventions:
+                    # Default affine buffers are (width,) and broadcast across every position;
+                    # honoring 'pos' needs the (max_n, width) buffers allocated at boot.
+                    raise NotImplementedError(
+                        f"Intervention {hook_name!r}: per-position 'pos' requires "
+                        "boot_vllm(enable_position_interventions=True) (its default affine "
+                        "buffers broadcast across all positions). Use the Inspect/HF backend for "
+                        "position-scoped patching, or drop 'pos' for a whole-sequence edit."
+                    )
+                if not (
+                    isinstance(pos, int)
+                    or (isinstance(pos, (list, tuple)) and all(isinstance(p, int) for p in pos))
+                ):
+                    raise ValueError(
+                        f"Intervention {hook_name!r}: 'pos' must be an int or list of ints "
+                        f"(sequence positions to patch); got {pos!r}."
+                    )
+                bad = [p for p in ([pos] if isinstance(pos, int) else pos) if p < 0]
+                if bad:
+                    raise ValueError(
+                        f"Intervention {hook_name!r}: 'pos' must be non-negative; got {bad}."
+                    )
             out[hook_name] = dict(spec)
         return out
+
+    @staticmethod
+    def _reject_pos_beyond_seq(specs: Mapping[str, Any], seq_len: int) -> None:
+        """Fail loud if a spec's 'pos' targets a row past the actual prompt length.
+
+        The compiled hook applies the affine over rows ``[0, seq_len)`` only, so a ``pos``
+        in ``[seq_len, max_num_batched_tokens)`` clears the driver's non-negativity check
+        and the worker's buffer-capacity check yet is never read — a silent no-op. Bound it
+        against the real sequence length (known once ``ids_list`` exists) and raise instead.
+        """
+        for hook_name, spec in specs.items():
+            pos = spec.get("pos")
+            if pos is None:
+                continue
+            idx = [pos] if isinstance(pos, int) else list(pos)
+            bad = [p for p in idx if p >= seq_len]
+            if bad:
+                raise ValueError(
+                    f"Intervention {hook_name!r}: 'pos' {bad} is beyond the prompt length "
+                    f"{seq_len} (positions are 0-indexed); the edit would be silently ignored."
+                )
 
     @staticmethod
     def _normalize_input_ids(input_ids: Any) -> list:

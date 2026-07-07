@@ -43,12 +43,16 @@ def boot_inspect(
 
     Fireable hooks (``tl_bridge``, TransformerBridge-native names): ``blocks.{i}.hook_in``
     (resid_pre) / ``ln2.hook_in`` (resid_mid) /
-    ``hook_out`` (resid_post) / ``attn.hook_out`` / ``mlp.hook_out``. The provider runs
-    a structural self-check per model and gates any boundary it can't serve faithfully:
-    ``resid_mid`` for parallel-residual or norm-variant blocks, and ``attn_out``/
-    ``mlp_out`` when their submodule isn't locatable (it warns when it gates one).
-    Head-split hooks (q/k/v/z, pattern), ``embed``, and ``ln_final`` are always
-    non-fireable — use ``boot_transformers()`` for those.
+    ``hook_out`` (resid_post) / ``attn.hook_out`` / ``mlp.hook_out``, plus the head-split
+    attention hooks where the structural probe finds them: ``attn.hook_q/k/v`` (pre-RoPE
+    projection outputs; separate-projection archs only — fused qkv gates them),
+    ``attn.hook_z`` (out-projection input), and ``attn.hook_pattern`` (post-softmax,
+    capture-only, eager attention required). The provider runs a structural self-check per
+    model and gates any boundary it can't serve faithfully: ``resid_mid`` for
+    parallel-residual or norm-variant blocks, ``attn_out``/``mlp_out`` when their submodule
+    isn't locatable (it warns when it gates one). ``embed``, ``ln_final``, and
+    ``attn.hook_attn_scores`` are always non-fireable — use ``boot_transformers()`` for
+    those.
 
     For parity with ``boot_transformers`` the provider loads with the same dtype (fp32 by
     default) and eager attention. Full-sequence logits ride on ``return_logits=True`` (the

@@ -35,6 +35,10 @@ PARITY_HOOKS = [
     "blocks.0.hook_out",  # resid_post
     "blocks.6.attn.hook_out",
     "blocks.11.hook_out",
+    # Head-split kinds gpt2 serves despite its fused c_attn (q/k/v are gated): z reads
+    # the c_proj (Conv1D) input, pattern rides output_attentions under eager.
+    "blocks.0.attn.hook_z",
+    "blocks.0.attn.hook_pattern",
 ]
 
 # Boundary kind -> TransformerBridge-native hook suffix.
@@ -48,12 +52,15 @@ KIND_SUFFIX = {
 
 # Token-free tiny-random checkpoints, one per structural-check code path: standard
 # sequential (nothing gated), parallel-residual (resid_mid gated by the causal probe),
-# post-norm (resid_mid gated by the linear-identity probe). Pins cross-family behavior
-# so a detector/load-path regression on non-gpt2 archs fails CI instead of shipping silently.
+# post-norm (resid_mid gated by the linear-identity probe), and fc-split FFN (OPT/XGLM:
+# no mlp container — fc1/fc2 on the block; mlp_out must still be located and match). Pins
+# cross-family behavior so a detector/load-path regression on non-gpt2 archs fails CI.
 STRUCTURAL_FAMILIES = [
     ("hf-internal-testing/tiny-random-LlamaForCausalLM", frozenset()),
     ("hf-internal-testing/tiny-random-GPTJForCausalLM", frozenset({"resid_mid"})),
     ("hf-internal-testing/tiny-random-Gemma2ForCausalLM", frozenset({"resid_mid"})),
+    ("hf-internal-testing/tiny-random-OPTForCausalLM", frozenset()),
+    ("hf-internal-testing/tiny-random-XGLMForCausalLM", frozenset()),
 ]
 
 
@@ -245,9 +252,11 @@ class TestStructuralProbe:
         )
 
         m = self._toy_model()  # standard sequential, linear residual
-        kinds, note = _detect_capabilities(m, m.layers)
+        kinds, note = _detect_capabilities(m, m.layers, (None, None, None))
         assert "resid_mid" in kinds
-        assert note == ""  # nothing gated
+        # No boundary kind gated. (Head kinds ARE gated — the toy has no head geometry —
+        # so the note mentions only those.)
+        assert "resid_mid" not in note and "attn_out" not in note and "mlp_out" not in note
 
     def test_parallel_gates_resid_mid(self):
         from transformer_lens.model_bridge.sources.inspect.transformers_provider import (
@@ -255,7 +264,7 @@ class TestStructuralProbe:
         )
 
         m = self._toy_model(parallel=True)  # mlp reads block input, not attn output
-        kinds, note = _detect_capabilities(m, m.layers)
+        kinds, note = _detect_capabilities(m, m.layers, (None, None, None))
         assert "resid_mid" not in kinds
         assert {"resid_pre", "resid_post", "attn_out", "mlp_out"} <= kinds  # rest still served
         assert "resid_mid" in note  # note explains the gate
@@ -268,7 +277,7 @@ class TestStructuralProbe:
         # Sequential (attn feeds mlp) but outputs are scaled before the residual add, so
         # resid_post != resid_pre + attn_out + mlp_out — resid_mid must still be gated.
         m = self._toy_model(resid_scale=2.0)
-        kinds, note = _detect_capabilities(m, m.layers)
+        kinds, note = _detect_capabilities(m, m.layers, (None, None, None))
         assert "resid_mid" not in kinds
         assert {"resid_pre", "resid_post", "attn_out", "mlp_out"} <= kinds
         assert "resid_mid" in note
@@ -282,7 +291,7 @@ class TestStructuralProbe:
 
         m = self._toy_model()
         before = torch.get_rng_state()
-        _detect_capabilities(m, m.layers)
+        _detect_capabilities(m, m.layers, (None, None, None))
         assert torch.equal(torch.get_rng_state(), before)
 
 
@@ -325,6 +334,137 @@ class TestStructuralCheckAcrossFamilies:
                     ), f"{model_id} {hk} diverges: {(a - b).abs().max().item():.2e}"
         finally:
             inspect.close()
+
+
+HEAD_MODEL = "hf-internal-testing/tiny-random-LlamaForCausalLM"
+HEAD_HOOKS = [
+    "blocks.0.attn.hook_q",
+    "blocks.0.attn.hook_k",
+    "blocks.0.attn.hook_v",
+    "blocks.0.attn.hook_z",
+    "blocks.0.attn.hook_pattern",
+    "blocks.1.attn.hook_z",
+]
+
+
+class TestHeadSplitHooks:
+    """Head-split q/k/v/z/pattern on a separate-projection arch (tiny-random Llama):
+    capture parity vs boot_transformers, interventions, and the fused-qkv gating path
+    (via the module-scoped gpt2 fixtures)."""
+
+    @pytest.fixture(scope="class")
+    def head_pair(self):
+        from transformer_lens.model_bridge.remote_bridge import RemoteBridge
+        from transformer_lens.model_bridge.transformer_bridge import TransformerBridge
+
+        hf = TransformerBridge.boot_transformers(HEAD_MODEL, device="cpu", dtype=torch.float32)
+        inspect = RemoteBridge.boot_inspect(HEAD_MODEL, dtype=torch.float32)
+        yield hf, inspect
+        inspect.close()
+
+    def test_all_head_hooks_served(self, head_pair):
+        _, inspect = head_pair
+        for hook in HEAD_HOOKS:
+            assert hook in inspect._driver.supported_hook_points, f"{hook} not served"
+
+    def test_head_capture_parity(self, head_pair):
+        hf, inspect = head_pair
+        toks = hf.to_tokens(PROMPT)
+        _, hf_cache = hf.run_with_cache(toks)
+        _, i_cache = inspect.run_with_cache(toks)
+        for hook in HEAD_HOOKS:
+            a, b = hf_cache[hook].float(), i_cache[hook].float()
+            assert a.shape == b.shape, f"{hook}: {tuple(b.shape)} vs bridge {tuple(a.shape)}"
+            assert torch.allclose(
+                a, b, atol=1e-4, rtol=1e-4
+            ), f"{hook} diverges: max {(a - b).abs().max().item():.2e}"
+
+    def test_suppress_v_zeroes_capture_and_moves_logits(self, head_pair):
+        _, inspect = head_pair
+        toks = inspect.to_tokens(PROMPT)
+        base = inspect.forward(toks)
+        logits, cache = inspect.run_with_cache(
+            toks, intervene={"blocks.0.attn.hook_v": {"op": "suppress"}}
+        )
+        assert cache["blocks.0.attn.hook_v"].abs().max().item() == 0.0
+        assert not torch.allclose(base, logits)
+
+    def test_per_position_q_patch_is_position_scoped(self, head_pair):
+        _, inspect = head_pair
+        toks = inspect.to_tokens(PROMPT)
+        _, base_cache = inspect.run_with_cache(toks)
+        _, cache = inspect.run_with_cache(
+            toks, intervene={"blocks.0.attn.hook_q": {"op": "add", "value": 5.0, "pos": 1}}
+        )
+        q_base, q_new = base_cache["blocks.0.attn.hook_q"][0], cache["blocks.0.attn.hook_q"][0]
+        others = [p for p in range(q_base.shape[0]) if p != 1]
+        assert torch.allclose(q_new[1], q_base[1] + 5.0, atol=1e-5)
+        assert torch.equal(q_new[others], q_base[others])
+
+    def test_pattern_intervention_rejected(self, head_pair):
+        _, inspect = head_pair
+        with pytest.raises(ValueError, match="capture-only"):
+            inspect.forward(
+                inspect.to_tokens(PROMPT),
+                intervene={"blocks.0.attn.hook_pattern": {"op": "suppress"}},
+            )
+
+    def test_gpt2_fused_qkv_gated_but_z_pattern_served(self, inspect_bridge):
+        supported = inspect_bridge._driver.supported_hook_points
+        nonfireable = inspect_bridge._driver.non_fireable_hook_points
+        for hook in ("blocks.0.attn.hook_q", "blocks.0.attn.hook_k", "blocks.0.attn.hook_v"):
+            assert hook not in supported and hook in nonfireable
+        assert "blocks.0.attn.hook_z" in supported
+        assert "blocks.0.attn.hook_pattern" in supported
+
+    def test_gptneo_wrapper_attention_serves_head_hooks(self):
+        """GPT-Neo wraps the real attention (standard q_proj/out_proj) at attn.attention —
+        the projection-host descent must find it, and captures must match the bridge."""
+        from transformer_lens.model_bridge.remote_bridge import RemoteBridge
+        from transformer_lens.model_bridge.transformer_bridge import TransformerBridge
+
+        mid = "hf-internal-testing/tiny-random-GPTNeoForCausalLM"
+        hf = TransformerBridge.boot_transformers(mid, device="cpu", dtype=torch.float32)
+        inspect = RemoteBridge.boot_inspect(mid, dtype=torch.float32)
+        try:
+            for kind in ("q", "k", "v", "z", "pattern"):
+                assert f"blocks.0.attn.hook_{kind}" in inspect._driver.supported_hook_points
+            toks = hf.to_tokens(PROMPT)
+            _, hf_cache = hf.run_with_cache(toks)
+            _, i_cache = inspect.run_with_cache(toks)
+            for hook in ("blocks.0.attn.hook_q", "blocks.0.attn.hook_z"):
+                a, b = hf_cache[hook].float(), i_cache[hook].float()
+                assert a.shape == b.shape
+                assert torch.allclose(a, b, atol=1e-4, rtol=1e-4)
+        finally:
+            inspect.close()
+
+    def test_provider_direct_interventions_validated(self, inspect_bridge, tokens):
+        """The provider's documented extra_args interface must reject gated and
+        capture-only intervention kinds instead of silently no-op'ing (the driver path
+        already rejects; this covers callers that speak to the provider directly)."""
+        import asyncio
+
+        from inspect_ai.model import GenerateConfig
+
+        api = inspect_bridge._driver._model.api
+
+        def call(interventions):
+            cfg = GenerateConfig(
+                extra_body={
+                    "extra_args": {
+                        "input_ids": tokens[0].tolist(),
+                        "capture": [],
+                        "interventions": interventions,
+                    }
+                }
+            )
+            return asyncio.run(api.generate("", [], None, cfg))
+
+        with pytest.raises(ValueError, match="gated"):  # q gated on gpt2's fused c_attn
+            call({"0:q": {"op": "suppress"}})
+        with pytest.raises(ValueError, match="capture-only"):
+            call({"0:resid_mid": {"op": "suppress"}})
 
 
 class TestRebootSemantics:

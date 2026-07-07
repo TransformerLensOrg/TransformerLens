@@ -47,13 +47,22 @@ def build_interventions(
         if resolved is None or resolved[1] not in hooks.INTERVENEABLE_KINDS:
             raise ValueError(
                 f"Cannot intervene on {hook_name!r}: capture-only "
-                f"(intervene on resid_pre/attn_out/mlp_out/resid_post instead)."
+                f"(intervene on resid_pre/attn_out/mlp_out/resid_post or attn q/k/v/z instead)."
             )
         if op == "scale" and "factor" not in spec:
             raise ValueError(f"Intervention {hook_name!r}: op='scale' requires 'factor' (float).")
         if op in ("add", "set") and "value" not in spec:
             raise ValueError(
                 f"Intervention {hook_name!r}: op={op!r} requires 'value' (scalar or width-shaped)."
+            )
+        pos = spec.get("pos")
+        if pos is not None and not (
+            isinstance(pos, int)
+            or (isinstance(pos, (list, tuple)) and all(isinstance(p, int) for p in pos))
+        ):
+            raise ValueError(
+                f"Intervention {hook_name!r}: 'pos' must be an int or list of ints "
+                f"(sequence positions to patch); got {pos!r}."
             )
         layer, kind = resolved
         out[hooks.wire_key(layer, kind)] = dict(spec)
