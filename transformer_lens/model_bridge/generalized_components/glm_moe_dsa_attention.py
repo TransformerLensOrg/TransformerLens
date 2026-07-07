@@ -86,6 +86,7 @@ class GlmMoeDsaAttentionBridge(MLAAttentionBridge):
         attention_mask = kwargs.pop("attention_mask", None)
         past_key_values = kwargs.pop("past_key_values", None)
         prev_topk_indices = kwargs.pop("prev_topk_indices", None)
+        position_ids = kwargs.pop("position_ids", None)
 
         hidden_states = self.hook_in(hidden_states)
         batch_size, seq_length = hidden_states.shape[:-1]
@@ -159,12 +160,15 @@ class GlmMoeDsaAttentionBridge(MLAAttentionBridge):
                 indexer_mask = attention_mask.unsqueeze(1)
             else:
                 indexer_mask = None
+            if position_ids is None:
+                position_ids = torch.arange(seq_length, device=hidden_states.device).unsqueeze(0)
             topk_indices = hf_attn.indexer(
                 hidden_states,
                 q_resid,
                 position_embeddings,
                 indexer_mask,
-                use_cache=past_key_values is not None,
+                position_ids,
+                past_key_values=past_key_values,
             )
         else:
             topk_indices = prev_topk_indices
@@ -204,4 +208,4 @@ class GlmMoeDsaAttentionBridge(MLAAttentionBridge):
         attn_output = attn_output.reshape(batch_size, seq_length, -1)
         attn_output = hf_attn.o_proj(attn_output)
         attn_output = self.hook_out(attn_output)
-        return attn_output, attn_weights, topk_indices if hf_attn.next_skip_topk else None
+        return attn_output, attn_weights, topk_indices
