@@ -360,6 +360,10 @@ class GeneralizedComponent(nn.Module):
             "compatibility_mode",
             "disable_warnings",
             "optional",
+            # train()/eval() set self.training; redirecting it to the original
+            # component leaves the wrapper stuck in training mode (dropout at
+            # inference). Recursion still reaches the original via _modules.
+            "training",
         ]:
             super().__setattr__(name, value)
             return

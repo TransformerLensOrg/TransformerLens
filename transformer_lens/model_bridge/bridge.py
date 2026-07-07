@@ -204,6 +204,12 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         self._setup_hook_compatibility()
         self._initialize_hooks_to_cache()
         self.processor = None
+        # Bridge wrappers are inserted into the HF module tree after
+        # from_pretrained's eval(), and nn.Module defaults to training=True —
+        # without re-syncing, reconstruction paths apply dropout at inference.
+        # train() recurses, so this stamps the wrappers with the model's mode.
+        original_model.train(original_model.training)
+        self.train(original_model.training)
 
     @classmethod
     def boot_transformers(

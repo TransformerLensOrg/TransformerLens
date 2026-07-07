@@ -239,6 +239,9 @@ from transformer_lens.model_bridge.supported_architectures.qwen3_next import (
 from transformer_lens.model_bridge.supported_architectures.recurrent_gemma import (
     RecurrentGemmaArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.seed_oss import (
+    SeedOssArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.smollm3 import (
     SmolLM3ArchitectureAdapter,
 )
@@ -340,6 +343,7 @@ __all__ = [
     "Qwen3_5MoeMultimodalArchitectureAdapter",
     "Qwen3_5MultimodalArchitectureAdapter",
     "RecurrentGemmaArchitectureAdapter",
+    "SeedOssArchitectureAdapter",
     "SmolLM3ArchitectureAdapter",
     "StableLmArchitectureAdapter",
     "T5ArchitectureAdapter",

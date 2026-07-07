@@ -234,6 +234,7 @@ def determine_architecture_from_hf_config(hf_config):
             "marian": "MarianMTModel",
             "mbart": "MBartForConditionalGeneration",
             "pegasus": "PegasusForConditionalGeneration",
+            "seed_oss": "SeedOssForCausalLM",
             "minimax_m2": "MiniMaxM2ForCausalLM",
             "llama": "LlamaForCausalLM",
             "mamba": "MambaForCausalLM",

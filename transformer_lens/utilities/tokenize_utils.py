@@ -159,12 +159,19 @@ def get_tokenizer_with_bos(tokenizer: PreTrainedTokenizerBase) -> PreTrainedToke
         tokenizer_with_bos = tokenizer
     else:
         huggingface_token = os.environ.get("HF_TOKEN", "")
-        tokenizer_with_bos = AutoTokenizer.from_pretrained(
-            pretrained_model_name_or_path,
-            add_bos_token=True,
-            token=huggingface_token if len(huggingface_token) > 0 else None,
-            **init_kwargs,
-        )
+        try:
+            tokenizer_with_bos = AutoTokenizer.from_pretrained(
+                pretrained_model_name_or_path,
+                add_bos_token=True,
+                token=huggingface_token if len(huggingface_token) > 0 else None,
+                **init_kwargs,
+            )
+        except ValueError:
+            # tokenizers' TemplateProcessing cannot express special tokens
+            # containing ':' (e.g. Seed-OSS's <seed:bos>), so add_bos_token=True
+            # crashes when rebuilding the post-processor. Keep the original
+            # tokenizer — such models do not auto-prepend BOS anyway.
+            return tokenizer
         # Preserve padding_side from the original tokenizer, since AutoTokenizer.from_pretrained
         # resets it to the HuggingFace default (usually "right"). Without this, callers who
         # explicitly set tokenizer.padding_side = "left" before passing the tokenizer in would
