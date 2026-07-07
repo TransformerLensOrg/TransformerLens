@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-07-07T05:54:44.618387",
+  "last_updated": "2026-07-07T06:07:15.329393",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -17298,6 +17298,26 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Full verification completed with issues: P2=92.3% (failed: generation)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "facebook/blenderbot-400M-distill",
+      "architecture_id": "BlenderbotForConditionalGeneration",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: all_components) \u2014 Error running comprehensive component benchmark: index 2 is out of range",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "facebook/blenderbot-400M-distill",
+      "architecture_id": "BlenderbotForConditionalGeneration",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
       "invalidated": false,
       "invalidation_reason": null
     }

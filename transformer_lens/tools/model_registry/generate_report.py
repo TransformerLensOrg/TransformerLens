@@ -82,6 +82,7 @@ ARCHITECTURE_DESCRIPTIONS: dict[str, str] = {
     "Starcoder2ForCausalLM": "BigCode's StarCoder2 code model (LayerNorm, biased projections)",
     "BitNetForCausalLM": "Microsoft's BitNet b1.58 (llama layout with attn/ffn sub-layer norms)",
     "Exaone4ForCausalLM": "LG AI Research's EXAONE 4.0 (post-norms in residual, per-head QK-norm, hybrid sliding attention)",
+    "BlenderbotForConditionalGeneration": "Meta's Blenderbot dialogue encoder-decoder (asymmetric stacks)",
     "MiniMaxM2ForCausalLM": "MiniMax's M2 sparse-MoE decoder with sigmoid routing",
     "ExaoneForCausalLM": "LG AI Research's EXAONE-3.x Korean-English decoder (remote code)",
     "FalconMambaForCausalLM": "TII's FalconMamba pure-SSM decoder (Mamba-1 with B/C/dt RMS)",

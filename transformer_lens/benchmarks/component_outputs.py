@@ -327,7 +327,11 @@ class ComponentBenchmarker:
         for block_type in block_components:
             if block_type in component_mapping and block_type not in skip_components:
                 blocks_component = component_mapping[block_type]
-                n_layers = self.cfg.n_layers
+                # Derive the length from the actual stack: asymmetric
+                # encoder-decoder models (e.g. Blenderbot's 2/12) have
+                # per-stack counts that cfg.n_layers cannot represent.
+                bound_blocks = getattr(self.bridge_model, block_type)
+                n_layers = len(bound_blocks)
 
                 for layer_idx in range(n_layers):
                     # Get the actual block to check which submodules were bound
