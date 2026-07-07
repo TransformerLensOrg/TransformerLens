@@ -46,6 +46,7 @@ Rule ([AGENTS.md §10](../AGENTS.md#10-hard-rules)): **never add `xfail` / `skip
 | [`unit/model_bridge/supported_architectures/test_gemma2_adapter.py`:49](unit/model_bridge/supported_architectures/test_gemma2_adapter.py) | "Network/disk fetch of tiny Gemma2" |
 | [`integration/model_bridge/test_bridge_integration.py`:801](integration/model_bridge/test_bridge_integration.py) | "Skip Gemma2 in CI to avoid timeout" |
 | [`acceptance/model_bridge/compatibility/test_hook_completeness.py`:156](acceptance/model_bridge/compatibility/test_hook_completeness.py) | "Gemma2 too large for CI" |
+| [`integration/model_bridge/test_exaone4_adapter.py`:16](integration/model_bridge/test_exaone4_adapter.py) | "EXAONE-4.0 1.2B download too large for CI budget" |
 | [`integration/model_bridge/test_bitnet_adapter.py`:16](integration/model_bridge/test_bitnet_adapter.py) | "BitNet 2B download too large for CI budget" |
 | [`integration/model_bridge/test_glm_adapter.py`:13](integration/model_bridge/test_glm_adapter.py) | "glm-edge-1.5b download too large for CI budget" |
 | [`integration/model_bridge/test_pegasus_adapter.py`:17](integration/model_bridge/test_pegasus_adapter.py) | "Pegasus-XSum download too large for CI budget; distilled variants are asymmetric" |

@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-07-07T05:42:14.894413",
+  "last_updated": "2026-07-07T05:54:44.618387",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -17288,6 +17288,16 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "LGAI-EXAONE/EXAONE-4.0-1.2B",
+      "architecture_id": "Exaone4ForCausalLM",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P2=92.3% (failed: generation)",
       "invalidated": false,
       "invalidation_reason": null
     }
