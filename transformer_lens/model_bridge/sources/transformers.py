@@ -266,6 +266,7 @@ def determine_architecture_from_hf_config(hf_config):
             # ForConditionalGeneration (vision/audio referenced but unbridged).
             "gemma4": "Gemma4ForConditionalGeneration",
             "gemma4_unified": "Gemma4UnifiedForConditionalGeneration",
+            "gemma4_text": "Gemma4ForCausalLM",
             "glm": "GlmForCausalLM",
             "glm4": "Glm4ForCausalLM",
             "glmasr": "GlmAsrForConditionalGeneration",

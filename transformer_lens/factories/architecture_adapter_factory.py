@@ -40,6 +40,7 @@ from transformer_lens.model_bridge.supported_architectures import (
     Gemma3MultimodalArchitectureAdapter,
     Gemma3nArchitectureAdapter,
     Gemma4ArchitectureAdapter,
+    Gemma4TextArchitectureAdapter,
     Glm4ArchitectureAdapter,
     Glm4MoeArchitectureAdapter,
     Glm4MoeLiteArchitectureAdapter,
@@ -157,6 +158,7 @@ SUPPORTED_ARCHITECTURES = {
     # subset of gemma4 (no PLE, no MoE — both optional in the adapter), with the
     # same module paths. Requires transformers >= 5.10 to load.
     "Gemma4UnifiedForConditionalGeneration": Gemma4ArchitectureAdapter,
+    "Gemma4ForCausalLM": Gemma4TextArchitectureAdapter,
     "GraniteForCausalLM": GraniteArchitectureAdapter,
     "GraniteMoeForCausalLM": GraniteMoeArchitectureAdapter,
     "GraniteMoeHybridForCausalLM": GraniteMoeHybridArchitectureAdapter,

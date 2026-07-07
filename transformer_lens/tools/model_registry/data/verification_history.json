@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-07-07T08:38:43.964539",
+  "last_updated": "2026-07-07T08:50:47.446349",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -17414,6 +17414,16 @@
     {
       "model_id": "zai-org/GLM-ASR-Nano-2512",
       "architecture_id": "GlmAsrForConditionalGeneration",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "veyra-ai/Kairo-5M-Gemma4-Base",
+      "architecture_id": "Gemma4ForCausalLM",
       "verified_date": "2026-07-07",
       "verified_by": "verify_models",
       "transformerlens_version": null,
