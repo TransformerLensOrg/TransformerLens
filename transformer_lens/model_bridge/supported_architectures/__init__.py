@@ -49,6 +49,9 @@ from transformer_lens.model_bridge.supported_architectures.deepseek_v3 import (
 from transformer_lens.model_bridge.supported_architectures.ernie4_5 import (
     Ernie4_5ArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.ernie4_5_moe import (
+    Ernie4_5_MoeArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.exaone import (
     ExaoneArchitectureAdapter,
 )
@@ -305,6 +308,7 @@ __all__ = [
     "DeepSeekV2ArchitectureAdapter",
     "DeepSeekV3ArchitectureAdapter",
     "Ernie4_5ArchitectureAdapter",
+    "Ernie4_5_MoeArchitectureAdapter",
     "ExaoneArchitectureAdapter",
     "Exaone4ArchitectureAdapter",
     "FalconArchitectureAdapter",

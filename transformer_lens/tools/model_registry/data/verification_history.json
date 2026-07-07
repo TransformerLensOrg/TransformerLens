@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-07-07T06:07:15.329393",
+  "last_updated": "2026-07-07T06:18:20.323236",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -17318,6 +17318,16 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "yujiepan/ernie-4.5-moe-tiny-random",
+      "architecture_id": "Ernie4_5_MoeForCausalLM",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P3=90.5% (failed: process_bridge_weights, layer_norm_folding)",
       "invalidated": false,
       "invalidation_reason": null
     }

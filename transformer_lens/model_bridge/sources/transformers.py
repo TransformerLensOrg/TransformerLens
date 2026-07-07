@@ -231,6 +231,7 @@ def determine_architecture_from_hf_config(hf_config):
             "blenderbot": "BlenderbotForConditionalGeneration",
             "bart": "BartForConditionalGeneration",
             "ernie4_5": "Ernie4_5ForCausalLM",
+            "ernie4_5_moe": "Ernie4_5_MoeForCausalLM",
             "exaone": "ExaoneForCausalLM",
             "exaone4": "Exaone4ForCausalLM",
             "falcon_mamba": "FalconMambaForCausalLM",

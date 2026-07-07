@@ -78,6 +78,7 @@ ARCHITECTURE_DESCRIPTIONS: dict[str, str] = {
     "Idefics3ForConditionalGeneration": "HuggingFace's Idefics3/SmolVLM vision-language model (granite-docling)",
     "Qwen2AudioForConditionalGeneration": "Alibaba's Qwen2-Audio (Whisper-style encoder + Qwen2 decoder)",
     "Ernie4_5ForCausalLM": "Baidu's dense ERNIE 4.5 Llama-layout decoder",
+    "Ernie4_5_MoeForCausalLM": "Baidu's ERNIE 4.5 MoE (shared experts, dense prefix, interleaved RoPE)",
     "GlmForCausalLM": "Z.ai's dense GLM-4 decoder (interleaved partial RoPE, joint gate_up MLP)",
     "Starcoder2ForCausalLM": "BigCode's StarCoder2 code model (LayerNorm, biased projections)",
     "BitNetForCausalLM": "Microsoft's BitNet b1.58 (llama layout with attn/ffn sub-layer norms)",
