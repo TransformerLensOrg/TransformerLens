@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-07-07T08:12:58.586422",
+  "last_updated": "2026-07-07T08:24:51.529542",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -17394,6 +17394,16 @@
     {
       "model_id": "allenai/led-base-16384",
       "architecture_id": "LEDForConditionalGeneration",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "tiny-random/mistral-3",
+      "architecture_id": "Mistral3ForConditionalGeneration",
       "verified_date": "2026-07-07",
       "verified_by": "verify_models",
       "transformerlens_version": null,

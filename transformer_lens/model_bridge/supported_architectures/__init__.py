@@ -190,6 +190,9 @@ from transformer_lens.model_bridge.supported_architectures.minimax_m2 import (
 from transformer_lens.model_bridge.supported_architectures.mistral import (
     MistralArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.mistral3 import (
+    Mistral3ArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.mixtral import (
     MixtralArchitectureAdapter,
 )
@@ -373,6 +376,7 @@ __all__ = [
     "MingptArchitectureAdapter",
     "MiniMaxM2ArchitectureAdapter",
     "MistralArchitectureAdapter",
+    "Mistral3ArchitectureAdapter",
     "MixtralArchitectureAdapter",
     "MPTArchitectureAdapter",
     "NanogptArchitectureAdapter",

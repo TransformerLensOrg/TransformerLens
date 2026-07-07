@@ -39,6 +39,7 @@ ARCHITECTURE_DESCRIPTIONS: dict[str, str] = {
     "Florence2ForConditionalGeneration": "Microsoft's Florence-2 vision-language model with DaViT backbone and BART text stack",
     "Lfm2MoeForCausalLM": "LiquidAI's LFM2 hybrid convolution/attention Mixture of Experts model",
     "MistralForCausalLM": "Mistral AI's efficient 7B parameter model with sliding window attention",
+    "Mistral3ForConditionalGeneration": "Mistral AI's Mistral-Small VLM (Pixtral tower + Mistral decoder)",
     "MixtralForCausalLM": "Mistral AI's Mixture of Experts model",
     "GemmaForCausalLM": "Google's Gemma lightweight open model family",
     "Gemma2ForCausalLM": "Google's Gemma 2 with improved architecture",
