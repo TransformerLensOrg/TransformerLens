@@ -73,6 +73,9 @@ from transformer_lens.model_bridge.supported_architectures.gemma3n import (
 from transformer_lens.model_bridge.supported_architectures.gemma4 import (
     Gemma4ArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.glm import (
+    GlmArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.glm4_moe import (
     Glm4MoeArchitectureAdapter,
 )
@@ -298,6 +301,7 @@ __all__ = [
     "Gemma3nArchitectureAdapter",
     "Gemma3MultimodalArchitectureAdapter",
     "Gemma4ArchitectureAdapter",
+    "GlmArchitectureAdapter",
     "GlmMoeDsaArchitectureAdapter",
     "Glm4MoeArchitectureAdapter",
     "Glm4MoeLiteArchitectureAdapter",

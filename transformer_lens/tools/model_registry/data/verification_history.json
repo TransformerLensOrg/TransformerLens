@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-07-07T04:47:36.260925",
+  "last_updated": "2026-07-07T04:59:35.067471",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -17194,6 +17194,16 @@
     {
       "model_id": "baidu/ERNIE-4.5-0.3B-PT",
       "architecture_id": "Ernie4_5ForCausalLM",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "zai-org/glm-edge-1.5b-chat",
+      "architecture_id": "GlmForCausalLM",
       "verified_date": "2026-07-07",
       "verified_by": "verify_models",
       "transformerlens_version": null,
