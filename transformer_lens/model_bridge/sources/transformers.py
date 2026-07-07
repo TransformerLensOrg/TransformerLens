@@ -226,6 +226,7 @@ def determine_architecture_from_hf_config(hf_config):
             "gpt2": "GPT2LMHeadModel",
             "hubert": "HubertModel",
             "bart": "BartForConditionalGeneration",
+            "marian": "MarianMTModel",
             "llama": "LlamaForCausalLM",
             "mamba": "MambaForCausalLM",
             "mamba2": "Mamba2ForCausalLM",
@@ -527,6 +528,8 @@ def boot(
         "decoder_attention_heads",
         "encoder_ffn_dim",
         "decoder_ffn_dim",
+        # Marian
+        "scale_embedding",
         # Granite
         "position_embedding_type",
         # Falcon

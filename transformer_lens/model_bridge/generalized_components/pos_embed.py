@@ -65,7 +65,9 @@ class PosEmbedBridge(GeneralizedComponent):
             raise RuntimeError(
                 f"Original component not set for {self.name}. Call set_original_component() first."
             )
-        if args:
+        # Sinusoidal variants (e.g. Marian) receive a torch.Size, not a tensor;
+        # there is nothing to hook in that case.
+        if args and isinstance(args[0], torch.Tensor):
             first_arg = self.hook_in(args[0])
             args = (first_arg,) + args[1:]
         output = self.original_component(*args, **kwargs)

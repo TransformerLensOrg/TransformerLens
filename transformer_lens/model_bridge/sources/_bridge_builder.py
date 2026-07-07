@@ -27,6 +27,8 @@ _HF_PASSTHROUGH_ATTRS = [
     "decoder_attention_heads",
     "encoder_ffn_dim",
     "decoder_ffn_dim",
+    # Marian
+    "scale_embedding",
     # Granite
     "position_embedding_type",
     # Falcon

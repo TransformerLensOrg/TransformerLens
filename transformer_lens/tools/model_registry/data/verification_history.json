@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-07-02T02:19:51.172022",
+  "last_updated": "2026-07-06T23:49:17.250299",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -16855,6 +16855,16 @@
       "model_id": "nvidia/NVIDIA-Nemotron-Nano-9B-v2",
       "architecture_id": "NemotronHForCausalLM",
       "verified_date": "2026-07-02",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Helsinki-NLP/opus-mt-en-de",
+      "architecture_id": "MarianMTModel",
+      "verified_date": "2026-07-06",
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Full verification completed",
