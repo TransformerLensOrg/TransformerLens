@@ -84,6 +84,7 @@ ARCHITECTURE_DESCRIPTIONS: dict[str, str] = {
     "Ernie4_5ForCausalLM": "Baidu's dense ERNIE 4.5 Llama-layout decoder",
     "Ernie4_5_MoeForCausalLM": "Baidu's ERNIE 4.5 MoE (shared experts, dense prefix, interleaved RoPE)",
     "GlmForCausalLM": "Z.ai's dense GLM-4 decoder (interleaved partial RoPE, joint gate_up MLP)",
+    "Glm4ForCausalLM": "Z.ai's GLM-4-0414 / GLM-Z1 decoder with sandwich norms",
     "Starcoder2ForCausalLM": "BigCode's StarCoder2 code model (LayerNorm, biased projections)",
     "BitNetForCausalLM": "Microsoft's BitNet b1.58 (llama layout with attn/ffn sub-layer norms)",
     "Exaone4ForCausalLM": "LG AI Research's EXAONE 4.0 (post-norms in residual, per-head QK-norm, hybrid sliding attention)",

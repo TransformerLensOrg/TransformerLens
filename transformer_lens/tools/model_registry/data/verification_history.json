@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-07-07T07:45:26.386908",
+  "last_updated": "2026-07-07T07:59:54.747401",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -17378,6 +17378,16 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Full verification (P1=100, P2=100, P7=100). P4 text_quality=0 is a domain artifact: Florence-2 is a task-prompt captioner (<CAPTION> etc.) and emits EOS immediately on free-text prompts; task-prompt captioning through the bridge works (see integration test).",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "tiny-random/glm-4",
+      "architecture_id": "Glm4ForCausalLM",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
       "invalidated": false,
       "invalidation_reason": null
     }
