@@ -25,6 +25,7 @@ from transformer_lens.model_bridge.supported_architectures import (
     ExaoneArchitectureAdapter,
     FalconArchitectureAdapter,
     FalconH1ArchitectureAdapter,
+    FalconMambaArchitectureAdapter,
     Gemma1ArchitectureAdapter,
     Gemma2ArchitectureAdapter,
     Gemma3ArchitectureAdapter,
@@ -111,6 +112,7 @@ SUPPORTED_ARCHITECTURES = {
     "ExaoneForCausalLM": ExaoneArchitectureAdapter,
     "FalconForCausalLM": FalconArchitectureAdapter,
     "FalconH1ForCausalLM": FalconH1ArchitectureAdapter,
+    "FalconMambaForCausalLM": FalconMambaArchitectureAdapter,
     "GemmaForCausalLM": Gemma1ArchitectureAdapter,  # Default to Gemma1 as it's the original version
     "Gemma1ForCausalLM": Gemma1ArchitectureAdapter,
     "Gemma2ForCausalLM": Gemma2ArchitectureAdapter,

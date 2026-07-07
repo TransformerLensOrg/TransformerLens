@@ -71,6 +71,7 @@ ARCHITECTURE_DESCRIPTIONS: dict[str, str] = {
     "MarianMTModel": "Helsinki-NLP's Marian opus-mt translation encoder-decoder",
     "MiniMaxM2ForCausalLM": "MiniMax's M2 sparse-MoE decoder with sigmoid routing",
     "ExaoneForCausalLM": "LG AI Research's EXAONE-3.x Korean-English decoder (remote code)",
+    "FalconMambaForCausalLM": "TII's FalconMamba pure-SSM decoder (Mamba-1 with B/C/dt RMS)",
     "BD3LM": "Kuleshov Group's Block Diffusion Language Model (ICLR 2025) for masked text generation",
     "HunYuanDenseV1ForCausalLM": "Tencent's open source decoder models",
     "Cohere2ForCausalLM": "Cohere's Command-A architecture with interleaved sliding-window RoPE and full-attention NoPE layers",

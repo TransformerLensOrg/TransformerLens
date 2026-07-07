@@ -43,6 +43,9 @@ from transformer_lens.model_bridge.supported_architectures.exaone import (
 from transformer_lens.model_bridge.supported_architectures.falcon import (
     FalconArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.falcon_mamba import (
+    FalconMambaArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.falcon_h1 import (
     FalconH1ArchitectureAdapter,
 )
@@ -259,6 +262,7 @@ __all__ = [
     "ExaoneArchitectureAdapter",
     "FalconArchitectureAdapter",
     "FalconH1ArchitectureAdapter",
+    "FalconMambaArchitectureAdapter",
     "Gemma1ArchitectureAdapter",
     "Gemma2ArchitectureAdapter",
     "Gemma3ArchitectureAdapter",

@@ -13,6 +13,13 @@ from transformer_lens.model_bridge.generalized_components.ssm_protocol import (
 )
 
 
+def _weightless_rms(x: torch.Tensor, eps: float) -> torch.Tensor:
+    """FalconMamba's parameter-free RMS over the last dim (HF rms_forward)."""
+    dtype = x.dtype
+    x = x.float()
+    return (x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + eps)).to(dtype)
+
+
 class _S6Terms(NamedTuple):
     """S6 intermediates reconstructed from cached Mamba-1 hooks (per-channel)."""
 
@@ -128,6 +135,12 @@ class SSMMixerBridge(SSMStateHookMixin, GeneralizedComponent):
         # 3. x_proj -> dt low-rank / B / C ; dt_proj -> dt (softplus, channel-first).
         ssm_params = oc.x_proj(x.transpose(1, 2))  # [b, seq, dt_rank + 2*state]
         time_step, B, C = ssm_params.split([dt_rank, state, state], dim=-1)  # B, C: [b, seq, state]
+        # FalconMamba applies a parameter-free RMS to B/C/dt before dt_proj.
+        rms_eps = getattr(oc, "rms_eps", None)
+        if rms_eps is not None:
+            B = _weightless_rms(B, rms_eps)
+            C = _weightless_rms(C, rms_eps)
+            time_step = _weightless_rms(time_step, rms_eps)
         dt = torch.nn.functional.softplus(oc.dt_proj(time_step)).transpose(1, 2).float()
         A = -torch.exp(self.A_log.float())  # [d_inner, state]
         x_f, B_f, C_f = x.float(), B.float(), C.float()
@@ -305,6 +318,13 @@ class SSMMixerBridge(SSMStateHookMixin, GeneralizedComponent):
 
         # B, C from x_proj output (shared across channels); first dt_rank cols are dt low-rank.
         _time_step, B, C = x_proj_out.split([dt_rank, state_size, state_size], dim=-1)
+
+        # FalconMamba normalizes B/C after x_proj; dt_proj.hook_out is already
+        # post-RMS (HF applied it before dt_proj), so dt needs no correction.
+        rms_eps = getattr(oc, "rms_eps", None) if oc is not None else None
+        if rms_eps is not None:
+            B = _weightless_rms(B, rms_eps)
+            C = _weightless_rms(C, rms_eps)
 
         dt = torch.nn.functional.softplus(dt_proj_out).transpose(1, 2)  # [batch, channels, seq]
         A = -torch.exp(self.A_log.float())  # [channels, state]
