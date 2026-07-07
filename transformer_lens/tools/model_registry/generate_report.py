@@ -35,6 +35,7 @@ ARCHITECTURE_DESCRIPTIONS: dict[str, str] = {
     "LlamaForCausalLM": "Meta's LLaMA architecture, basis for many open models",
     "Llama4ForCausalLM": "Meta's Llama 4 text decoder with interleaved MoE and NoPE layers",
     "LongT5ForConditionalGeneration": "Google's LongT5 with local or transient-global encoder attention",
+    "LEDForConditionalGeneration": "AllenAI's Longformer Encoder-Decoder for long documents",
     "Florence2ForConditionalGeneration": "Microsoft's Florence-2 vision-language model with DaViT backbone and BART text stack",
     "Lfm2MoeForCausalLM": "LiquidAI's LFM2 hybrid convolution/attention Mixture of Experts model",
     "MistralForCausalLM": "Mistral AI's efficient 7B parameter model with sliding window attention",

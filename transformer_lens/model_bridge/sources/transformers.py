@@ -248,6 +248,7 @@ def determine_architecture_from_hf_config(hf_config):
             "idefics3": "Idefics3ForConditionalGeneration",
             "qwen2_audio": "Qwen2AudioForConditionalGeneration",
             "minimax_m2": "MiniMaxM2ForCausalLM",
+            "led": "LEDForConditionalGeneration",
             "llama": "LlamaForCausalLM",
             "llama4_text": "Llama4ForCausalLM",
             "mamba": "MambaForCausalLM",
