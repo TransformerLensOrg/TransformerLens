@@ -215,3 +215,14 @@ class TestBertWeightConversions:
         for slot in ("q", "k", "v"):
             conv = adapter.weight_processing_conversions[f"blocks.{{i}}.attn.{slot}.bias"]
             assert conv.tensor_conversion.axes_lengths["h"] == 12
+
+
+class TestBertLMHeadAlias:
+    def test_bert_lm_head_model_maps_to_bert_adapter(self) -> None:
+        """BertLMHeadModel (decoder-style BERT with a causal LM head) shares
+        BertForMaskedLM's module tree, so the factory reuses the adapter."""
+        from transformer_lens.factories.architecture_adapter_factory import (
+            SUPPORTED_ARCHITECTURES,
+        )
+
+        assert SUPPORTED_ARCHITECTURES["BertLMHeadModel"] is BertArchitectureAdapter
