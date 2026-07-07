@@ -66,6 +66,7 @@ ARCHITECTURE_DESCRIPTIONS: dict[str, str] = {
     "T5ForConditionalGeneration": "Google's T5 encoder-decoder model (partial support)",
     "T5WithLMHeadModel": "Legacy T5 class name on old google-t5 checkpoints (t5-3b, t5-11b)",
     "T5GemmaForConditionalGeneration": "Google's T5Gemma encoder-decoder model with Gemma-style RoPE, GQA, and gated MLP",
+    "BambaForCausalLM": "IBM's Bamba hybrid Mamba-2 + attention decoder",
     "BartForConditionalGeneration": "Facebook's BART encoder-decoder model",
     "M2M100ForConditionalGeneration": "Meta's M2M100 / NLLB-200 multilingual translation encoder-decoder",
     "MarianMTModel": "Helsinki-NLP's Marian opus-mt translation encoder-decoder",

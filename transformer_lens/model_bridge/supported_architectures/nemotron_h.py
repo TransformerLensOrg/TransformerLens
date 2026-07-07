@@ -151,8 +151,10 @@ class NemotronHArchitectureAdapter(ArchitectureAdapter):
         Transformers ≥ 5.12 ships a unified ``DynamicCache`` that carries both
         KV-cache entries (attention layers) and SSM conv/recurrent states
         (Mamba layers) in a single object, using ``has_previous_state()`` to
-        distinguish which state is available for a given layer index.
+        distinguish which state is available for a given layer index. The
+        config is required so the cache knows each layer's type — matching
+        NemotronHModel's own initialization.
         """
         from transformers.cache_utils import DynamicCache
 
-        return DynamicCache()
+        return DynamicCache(config=hf_model.config)

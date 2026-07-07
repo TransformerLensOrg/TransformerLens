@@ -2479,6 +2479,17 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         # A row may finish via EOS and/or any of the configured stopping criteria.
         any_stop_active = stop_at_eos or stopping_criteria_list is not None
 
+        # Pure-SSM models (Mamba-1/2) take the stateful cache as `cache_params`;
+        # modern hybrids (Bamba, NemotronH, FalconH1) take `past_key_values` and
+        # would receive a duplicate cache_params via **kwargs cascade otherwise.
+        stateful_cache_kwarg = "cache_params"
+        if use_stateful_cache:
+            import inspect
+
+            forward_params = inspect.signature(self.original_model.forward).parameters
+            if "cache_params" not in forward_params:
+                stateful_cache_kwarg = "past_key_values"
+
         for gen_step_idx in tqdm.tqdm(range(max_new_tokens), disable=not verbose):
             with torch.no_grad():
                 if is_encoder_decoder:
@@ -2514,12 +2525,17 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                         if multimodal_kwargs:
                             forward_kwargs.update(multimodal_kwargs)
                     if use_stateful_cache:
-                        forward_kwargs["cache_params"] = mamba_cache
+                        forward_kwargs[stateful_cache_kwarg] = mamba_cache
                         forward_kwargs["use_cache"] = True
                         if gen_step_idx == 0:
-                            cache_position = torch.arange(
-                                0, mamba_conv_kernel, device=self.cfg.device
+                            # Mamba's conv-window warmup positions vs standard
+                            # full-prompt positions for past_key_values hybrids.
+                            prefill_len = (
+                                mamba_conv_kernel
+                                if stateful_cache_kwarg == "cache_params"
+                                else current_tokens.shape[1]
                             )
+                            cache_position = torch.arange(0, prefill_len, device=self.cfg.device)
                             forward_kwargs["cache_position"] = cache_position
                             logits = self(
                                 current_tokens,

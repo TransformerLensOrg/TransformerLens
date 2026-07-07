@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-07-07T01:39:48.872068",
+  "last_updated": "2026-07-07T02:22:32.466961",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -16948,6 +16948,26 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Full verification completed with issues, low text quality",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "hmellor/tiny-random-BambaForCausalLM",
+      "architecture_id": "BambaForCausalLM",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues, low text quality",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "hmellor/tiny-random-BambaForCausalLM",
+      "architecture_id": "BambaForCausalLM",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
       "invalidated": false,
       "invalidation_reason": null
     }

@@ -179,7 +179,9 @@ class TestNemotronHGeneration:
     ) -> None:
         prompt = prompt.to(_device())
         with torch.no_grad():
-            result = nemotron_bridge.generate(prompt, max_new_tokens=5, do_sample=False)
+            result = nemotron_bridge.generate(
+                prompt, max_new_tokens=5, do_sample=False, stop_at_eos=False
+            )
         assert isinstance(result, torch.Tensor)
         assert result.shape == (1, 9)  # 4 prompt + 5 new
 

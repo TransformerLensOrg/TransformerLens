@@ -9,6 +9,9 @@ from transformer_lens.model_bridge.supported_architectures.apertus import (
 from transformer_lens.model_bridge.supported_architectures.arcee import (
     ArceeArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.bamba import (
+    BambaArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.baichuan import (
     BaichuanArchitectureAdapter,
 )
@@ -251,6 +254,7 @@ __all__ = [
     "ArceeArchitectureAdapter",
     "BD3LMArchitectureAdapter",
     "BaichuanArchitectureAdapter",
+    "BambaArchitectureAdapter",
     "BartArchitectureAdapter",
     "BertArchitectureAdapter",
     "BloomArchitectureAdapter",

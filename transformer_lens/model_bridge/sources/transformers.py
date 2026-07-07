@@ -225,6 +225,7 @@ def determine_architecture_from_hf_config(hf_config):
             "apertus": "ApertusForCausalLM",
             "gpt2": "GPT2LMHeadModel",
             "hubert": "HubertModel",
+            "bamba": "BambaForCausalLM",
             "bart": "BartForConditionalGeneration",
             "exaone": "ExaoneForCausalLM",
             "falcon_mamba": "FalconMambaForCausalLM",
