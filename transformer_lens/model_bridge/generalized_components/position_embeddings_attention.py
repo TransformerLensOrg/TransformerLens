@@ -498,6 +498,10 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
                 q_gate = self.hook_q_gate(q_gate)
             attn_output = attn_output * torch.sigmoid(q_gate)
 
+        # Adapter seam: sub-layer transforms between attention output and the
+        # o projection (e.g. BitNet's attn_sub_norm).
+        attn_output = self._pre_output_projection(attn_output)
+
         if (
             bool(getattr(self.config, "use_attn_result", False))
             and hasattr(self, "o")
@@ -520,6 +524,10 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
             attn_output = self.hook_out(attn_output)
 
         return attn_output, attn_weights
+
+    def _pre_output_projection(self, attn_output: torch.Tensor) -> torch.Tensor:
+        """Overridable seam applied before the output projection."""
+        return attn_output
 
     def get_random_inputs(
         self,

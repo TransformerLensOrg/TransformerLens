@@ -24,6 +24,9 @@ from transformer_lens.model_bridge.supported_architectures.bd3lm import (
 from transformer_lens.model_bridge.supported_architectures.bert import (
     BertArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.bitnet import (
+    BitNetArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.bloom import (
     BloomArchitectureAdapter,
 )
@@ -287,6 +290,7 @@ __all__ = [
     "BambaArchitectureAdapter",
     "BartArchitectureAdapter",
     "BertArchitectureAdapter",
+    "BitNetArchitectureAdapter",
     "BloomArchitectureAdapter",
     "CodeGenArchitectureAdapter",
     "Cohere2ArchitectureAdapter",

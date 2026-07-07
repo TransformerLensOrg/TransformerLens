@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-07-07T05:09:21.462439",
+  "last_updated": "2026-07-07T05:42:14.894413",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -17218,6 +17218,76 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Full verification completed with issues, low text quality",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "microsoft/bitnet-b1.58-2B-4T-bf16",
+      "architecture_id": "BitNetForCausalLM",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: all_components, forward_pass_logits); P3=78.9% but requir \u2014 30/184 components failed (30 critical)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "microsoft/bitnet-b1.58-2B-4T-bf16",
+      "architecture_id": "BitNetForCausalLM",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: all_components, forward_pass_logits); P3=78.9% but requir \u2014 30/184 components failed (30 critical)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "microsoft/bitnet-b1.58-2B-4T-bf16",
+      "architecture_id": "BitNetForCausalLM",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: forward_pass_logits); P3=78.9% but required tests failed \u2014 Tensors differ: max_diff=27.805214, mean_rel=17.542879",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "microsoft/bitnet-b1.58-2B-4T-bf16",
+      "architecture_id": "BitNetForCausalLM",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P3=78.9% but required tests failed: logits_equivalence, loss_equivalence \u2014 Attention output weights not well-centered (worst_mean=0.061788)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "microsoft/bitnet-b1.58-2B-4T-bf16",
+      "architecture_id": "BitNetForCausalLM",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P3=78.9% but required tests failed: logits_equivalence, loss_equivalence \u2014 Attention output weights not well-centered (worst_mean=0.061788)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "microsoft/bitnet-b1.58-2B-4T-bf16",
+      "architecture_id": "BitNetForCausalLM",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P3=78.9% but required tests failed: logits_equivalence, loss_equivalence \u2014 Attention output weights not well-centered (worst_mean=0.061788)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "microsoft/bitnet-b1.58-2B-4T-bf16",
+      "architecture_id": "BitNetForCausalLM",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
       "invalidated": false,
       "invalidation_reason": null
     }

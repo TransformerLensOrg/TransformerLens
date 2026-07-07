@@ -227,6 +227,7 @@ def determine_architecture_from_hf_config(hf_config):
             "openai-gpt": "OpenAIGPTLMHeadModel",
             "hubert": "HubertModel",
             "bamba": "BambaForCausalLM",
+            "bitnet": "BitNetForCausalLM",
             "bart": "BartForConditionalGeneration",
             "ernie4_5": "Ernie4_5ForCausalLM",
             "exaone": "ExaoneForCausalLM",
