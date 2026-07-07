@@ -709,7 +709,10 @@ class ArchitectureAdapter:
                                     param = subkey[len(tl_subname) + 1 :]
                                     return f"{bl_tl_name}.{layer_idx}.{tl_subname}.{param}"
                                 if hasattr(subcomponent, "submodules"):
-                                    for tl_nested_name, nested_comp in subcomponent.submodules.items():
+                                    for (
+                                        tl_nested_name,
+                                        nested_comp,
+                                    ) in subcomponent.submodules.items():
                                         if hf_subpath is not None:
                                             hf_nested_path: Optional[
                                                 str

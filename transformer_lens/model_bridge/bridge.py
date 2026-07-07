@@ -880,7 +880,13 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         elif hasattr(self.adapter, "setup_no_processing_hooks"):
             self.adapter.setup_no_processing_hooks(self)
         blocks_to_process = []
-        for block_list_name in ("blocks", "encoder_blocks", "decoder_blocks", "L_blocks", "H_blocks"):
+        for block_list_name in (
+            "blocks",
+            "encoder_blocks",
+            "decoder_blocks",
+            "L_blocks",
+            "H_blocks",
+        ):
             if hasattr(self, block_list_name):
                 blocks_to_process.extend(getattr(self, block_list_name))
         for block in blocks_to_process:
@@ -1757,7 +1763,12 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
 
         # Set stop_at_layer flag on all blocks if requested
         if stop_at_layer is not None:
-            if hasattr(self, "L_blocks") or hasattr(self, "H_blocks") or hasattr(self, "encoder_blocks") or hasattr(self, "decoder_blocks"):
+            if (
+                hasattr(self, "L_blocks")
+                or hasattr(self, "H_blocks")
+                or hasattr(self, "encoder_blocks")
+                or hasattr(self, "decoder_blocks")
+            ):
                 raise NotImplementedError(
                     "stop_at_layer is not supported on non-standard block list "
                     "names (L_blocks, H_blocks, encoder_blocks, decoder_blocks). "
@@ -1985,7 +1996,13 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         finally:
             # Clean up state that may be inconsistent after StopAtLayerException
             if stop_at_layer is not None:
-                for bl_name in ("blocks", "encoder_blocks", "decoder_blocks", "L_blocks", "H_blocks"):
+                for bl_name in (
+                    "blocks",
+                    "encoder_blocks",
+                    "decoder_blocks",
+                    "L_blocks",
+                    "H_blocks",
+                ):
                     if hasattr(self, bl_name):
                         for block in getattr(self, bl_name):
                             block._stop_at_layer_idx = None

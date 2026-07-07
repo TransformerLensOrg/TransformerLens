@@ -38,8 +38,6 @@ Known limitations:
 
 from typing import Any
 
-import torch
-
 from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion
 from transformer_lens.conversion_utils.param_processing_conversion import (
     ParamProcessingConversion,
@@ -147,7 +145,9 @@ class HrmTextArchitectureAdapter(ArchitectureAdapter):
             "unembed": UnembeddingBridge(name="lm_head", config=self.cfg),
         }
 
-    def _build_weight_conversions(self, n_kv_heads: int) -> dict[str, ParamProcessingConversion | str]:
+    def _build_weight_conversions(
+        self, n_kv_heads: int
+    ) -> dict[str, ParamProcessingConversion | str]:
         """Build weight processing conversions for both L and H block stacks.
 
         Each Q/K/V/O weight under ``L_blocks.{i}`` and ``H_blocks.{i}`` needs

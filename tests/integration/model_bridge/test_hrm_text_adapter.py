@@ -235,8 +235,6 @@ class TestHrmTextForwardPass:
         assert past_kv is not None
         second_token = torch.randint(0, 128, (1, 1))
         with torch.no_grad():
-            output2 = bridge(
-                second_token, use_cache=True, past_key_values=past_kv
-            )
+            output2 = bridge(second_token, use_cache=True, past_key_values=past_kv)
         assert output2.shape == (1, 1, 128)
         assert not torch.isnan(output2).any()

@@ -56,8 +56,8 @@ def _apply_rotary_pos_emb_interleave(
     HF's ``apply_rotary_pos_emb_interleave`` (used by GLM-MoE-DSA and DeepSeek-V3
     when ``rope_interleave=True``).
     """
-    cos = cos[..., :cos.shape[-1] // 2].unsqueeze(1)
-    sin = sin[..., :sin.shape[-1] // 2].unsqueeze(1)
+    cos = cos[..., : cos.shape[-1] // 2].unsqueeze(1)
+    sin = sin[..., : sin.shape[-1] // 2].unsqueeze(1)
     q1, q2 = q[..., 0::2], q[..., 1::2]
     k1, k2 = k[..., 0::2], k[..., 1::2]
     q_embed = torch.cat([q1 * cos - q2 * sin, q2 * cos + q1 * sin], dim=-1)

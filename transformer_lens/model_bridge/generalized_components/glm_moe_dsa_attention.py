@@ -24,8 +24,8 @@ def _apply_rotary_pos_emb_single(
     pair rotation (``apply_rotary_pos_emb_interleave``). Even-dimension elements
     are paired with the following odd dimension: (d0,d1), (d2,d3), …
     """
-    cos = cos[..., :cos.shape[-1] // 2].unsqueeze(unsqueeze_dim)
-    sin = sin[..., :sin.shape[-1] // 2].unsqueeze(unsqueeze_dim)
+    cos = cos[..., : cos.shape[-1] // 2].unsqueeze(unsqueeze_dim)
+    sin = sin[..., : sin.shape[-1] // 2].unsqueeze(unsqueeze_dim)
     x1, x2 = x[..., 0::2], x[..., 1::2]
     return torch.cat([x1 * cos - x2 * sin, x2 * cos + x1 * sin], dim=-1)
 
@@ -201,11 +201,10 @@ class GlmMoeDsaAttentionBridge(MLAAttentionBridge):
                 index_mask == float("-inf"), float("-inf")
             )
         else:
-            causal_mask = torch.arange(
-                total_len, device=hidden_states.device
-            )[None, None, None, :] > torch.arange(
-                q_pe.shape[-2], device=hidden_states.device
-            )[:, None, None]
+            causal_mask = (
+                torch.arange(total_len, device=hidden_states.device)[None, None, None, :]
+                > torch.arange(q_pe.shape[-2], device=hidden_states.device)[:, None, None]
+            )
             index_mask = index_mask.masked_fill(causal_mask, float("-inf"))
             attn_scores_mask = index_mask
 
