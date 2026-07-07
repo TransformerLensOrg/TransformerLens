@@ -136,6 +136,9 @@ from transformer_lens.model_bridge.supported_architectures.internlm2 import (
 from transformer_lens.model_bridge.supported_architectures.lfm2_moe import (
     Lfm2MoeArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.afmoe import (
+    AfmoeArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.llama import (
     LlamaArchitectureAdapter,
 )
@@ -295,6 +298,7 @@ from transformer_lens.model_bridge.supported_architectures.zamba2 import (
 )
 
 __all__ = [
+    "AfmoeArchitectureAdapter",
     "ApertusArchitectureAdapter",
     "ArceeArchitectureAdapter",
     "BD3LMArchitectureAdapter",

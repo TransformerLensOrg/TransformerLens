@@ -45,6 +45,7 @@ from .verification import VerificationHistory, VerificationRecord
 # route to canonical adapters but HF reports the canonical names (Gemma, GPTNeo,
 # GPTNeoX) in config.architectures instead.
 HF_SUPPORTED_ARCHITECTURES: set[str] = {
+    "AfmoeForCausalLM",
     "ApertusForCausalLM",
     "ArceeForCausalLM",
     "BaiChuanForCausalLM",
@@ -150,6 +151,7 @@ HF_SUPPORTED_ARCHITECTURES: set[str] = {
 # Foundation-trained orgs per architecture. Source of truth for the scraper's
 # download-threshold bypass and the docs table's "Canonical only" toggle.
 CANONICAL_AUTHORS_BY_ARCH: dict[str, list[str]] = {
+    "AfmoeForCausalLM": ["arcee-ai"],
     "ApertusForCausalLM": ["swiss-ai"],
     "ArceeForCausalLM": ["arcee-ai"],
     "BaiChuanForCausalLM": ["baichuan-inc"],

@@ -10,6 +10,7 @@ from importlib.metadata import entry_points
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.supported_architectures import (
+    AfmoeArchitectureAdapter,
     ApertusArchitectureAdapter,
     ArceeArchitectureAdapter,
     BaichuanArchitectureAdapter,
@@ -112,6 +113,7 @@ from transformer_lens.model_bridge.supported_architectures import (
 
 # Export supported architectures
 SUPPORTED_ARCHITECTURES = {
+    "AfmoeForCausalLM": AfmoeArchitectureAdapter,
     "ApertusForCausalLM": ApertusArchitectureAdapter,
     "ArceeForCausalLM": ArceeArchitectureAdapter,
     "BaiChuanForCausalLM": BaichuanArchitectureAdapter,

@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-07-07T06:44:34.445082",
+  "last_updated": "2026-07-07T07:01:22.983456",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -17338,6 +17338,16 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Full verification (P1=100, P2=100, P3=100, P4=75.7) on a local snapshot with the four feed_forward.experts tensors re-initialized (seed 42); the upstream checkpoint ships uninitialized expert weights (NaN/1e38).",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "onnx-internal-testing/tiny-random-AfmoeForCausalLM",
+      "architecture_id": "AfmoeForCausalLM",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues, low text quality",
       "invalidated": false,
       "invalidation_reason": null
     }
