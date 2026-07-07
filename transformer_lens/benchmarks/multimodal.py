@@ -52,6 +52,20 @@ def _prepare_test_inputs(bridge: TransformerBridge):
     )
     prompt = f"{image_token}\nDescribe this image."
     try:
+        if hasattr(bridge.processor, "post_process_generation"):
+            # Task-prompt captioners (Florence-2 style) map task tokens to
+            # prompts themselves and ignore free-text instructions.
+            prompt = "<CAPTION>"
+        else:
+            # Some processors insert the image placeholders themselves; a
+            # manual placeholder would then double-count. Probe with a plain
+            # prompt first and keep it if image tokens were auto-inserted.
+            image_token_id = getattr(bridge.original_model.config, "image_token_id", None)
+            if image_token_id is not None:
+                plain = "Describe this image."
+                probe = bridge.processor(text=plain, images=image, return_tensors="pt")
+                if (probe["input_ids"] == image_token_id).any():
+                    prompt = plain
         inputs = bridge.processor(text=prompt, images=image, return_tensors="pt")
         input_ids = inputs["input_ids"].to(bridge.cfg.device)
 
@@ -217,7 +231,13 @@ def benchmark_multimodal_generation(
         input_len = input_ids.shape[-1]
         output_len = output.shape[-1]
 
-        if output_len <= input_len:
+        # Encoder-decoder generate() returns decoder tokens only, so any
+        # token beyond the decoder start counts as new output.
+        if getattr(bridge.original_model.config, "is_encoder_decoder", False):
+            produced_new_tokens = output_len > 1
+        else:
+            produced_new_tokens = output_len > input_len
+        if not produced_new_tokens:
             return BenchmarkResult(
                 name="multimodal_generation",
                 severity=BenchmarkSeverity.DANGER,

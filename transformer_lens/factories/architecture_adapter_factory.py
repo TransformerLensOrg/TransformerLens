@@ -33,6 +33,7 @@ from transformer_lens.model_bridge.supported_architectures import (
     FalconArchitectureAdapter,
     FalconH1ArchitectureAdapter,
     FalconMambaArchitectureAdapter,
+    Florence2ArchitectureAdapter,
     Gemma1ArchitectureAdapter,
     Gemma2ArchitectureAdapter,
     Gemma3ArchitectureAdapter,
@@ -140,6 +141,7 @@ SUPPORTED_ARCHITECTURES = {
     "FalconForCausalLM": FalconArchitectureAdapter,
     "FalconH1ForCausalLM": FalconH1ArchitectureAdapter,
     "FalconMambaForCausalLM": FalconMambaArchitectureAdapter,
+    "Florence2ForConditionalGeneration": Florence2ArchitectureAdapter,
     "GemmaForCausalLM": Gemma1ArchitectureAdapter,  # Default to Gemma1 as it's the original version
     "Gemma1ForCausalLM": Gemma1ArchitectureAdapter,
     "Gemma2ForCausalLM": Gemma2ArchitectureAdapter,

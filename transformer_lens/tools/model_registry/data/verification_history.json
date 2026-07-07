@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-07-07T07:18:00.494509",
+  "last_updated": "2026-07-07T07:45:26.386908",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -17368,6 +17368,16 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Checkpoint ships no lm_head.weight with tie_word_embeddings=false, so HF randomly re-initializes the LM head on every load (Google released it as a pretraining artifact requiring fine-tuning); the nondeterministic unembed is the only P1 failure \u2014 all 233 other components including the local-attention encoder pass. Not an adapter bug.",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "florence-community/Florence-2-base-ft",
+      "architecture_id": "Florence2ForConditionalGeneration",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification (P1=100, P2=100, P7=100). P4 text_quality=0 is a domain artifact: Florence-2 is a task-prompt captioner (<CAPTION> etc.) and emits EOS immediately on free-text prompts; task-prompt captioning through the bridge works (see integration test).",
       "invalidated": false,
       "invalidation_reason": null
     }

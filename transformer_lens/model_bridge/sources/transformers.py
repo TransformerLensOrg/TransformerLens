@@ -236,6 +236,7 @@ def determine_architecture_from_hf_config(hf_config):
             "exaone": "ExaoneForCausalLM",
             "exaone4": "Exaone4ForCausalLM",
             "falcon_mamba": "FalconMambaForCausalLM",
+            "florence2": "Florence2ForConditionalGeneration",
             "longt5": "LongT5ForConditionalGeneration",
             "m2m_100": "M2M100ForConditionalGeneration",
             "marian": "MarianMTModel",

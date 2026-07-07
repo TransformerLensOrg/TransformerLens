@@ -315,6 +315,11 @@ class GeneralizedComponent(nn.Module):
         if isinstance(output, tuple):
             hooked_first = self.hook_out(output[0])
             output = (hooked_first,) + output[1:]
+        elif not isinstance(output, torch.Tensor) and isinstance(
+            getattr(output, "last_hidden_state", None), torch.Tensor
+        ):
+            # ModelOutput-returning components (e.g. vision/audio towers).
+            output.last_hidden_state = self.hook_out(output.last_hidden_state)
         else:
             output = self.hook_out(output)
         return output
