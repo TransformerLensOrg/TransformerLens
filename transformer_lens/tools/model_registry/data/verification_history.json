@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-07-07T03:22:47.329744",
+  "last_updated": "2026-07-07T03:47:34.462053",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -17104,6 +17104,36 @@
     {
       "model_id": "tiny-random/seed-oss",
       "architecture_id": "SeedOssForCausalLM",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "badaoui/tiny-random-NemotronForCausalLM",
+      "architecture_id": "NemotronForCausalLM",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: all_components, forward_pass); P2=30.8% < 75.0% (failed:  \u2014 5/12 components failed (5 critical)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "badaoui/tiny-random-NemotronForCausalLM",
+      "architecture_id": "NemotronForCausalLM",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: all_components, forward_pass); P2=30.8% < 75.0% (failed:  \u2014 5/12 components failed (5 critical)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "nvidia/Minitron-4B-Base",
+      "architecture_id": "NemotronForCausalLM",
       "verified_date": "2026-07-07",
       "verified_by": "verify_models",
       "transformerlens_version": null,

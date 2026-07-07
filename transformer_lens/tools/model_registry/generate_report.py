@@ -72,6 +72,7 @@ ARCHITECTURE_DESCRIPTIONS: dict[str, str] = {
     "MarianMTModel": "Helsinki-NLP's Marian opus-mt translation encoder-decoder",
     "OpenAIGPTLMHeadModel": "The original OpenAI GPT-1 decoder (post-norm, no final LN)",
     "SeedOssForCausalLM": "ByteDance's Seed-OSS Llama-layout decoder with config-gated biases",
+    "NemotronForCausalLM": "NVIDIA's dense Nemotron/Minitron decoder (LayerNorm1P, squared-ReLU MLP)",
     "MiniMaxM2ForCausalLM": "MiniMax's M2 sparse-MoE decoder with sigmoid routing",
     "ExaoneForCausalLM": "LG AI Research's EXAONE-3.x Korean-English decoder (remote code)",
     "FalconMambaForCausalLM": "TII's FalconMamba pure-SSM decoder (Mamba-1 with B/C/dt RMS)",
