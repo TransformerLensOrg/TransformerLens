@@ -46,6 +46,7 @@ MULTIMODAL_ARCHITECTURES: set[str] = {
     "Florence2ForConditionalGeneration",
     "Mistral3ForConditionalGeneration",
     "Llama4ForConditionalGeneration",
+    "Qwen2_5_VLForConditionalGeneration",
 }
 
 # Audio-conditioned text decoders (audio encoder + causal LM); load via
