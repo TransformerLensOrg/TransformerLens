@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-07-07T00:26:51.694894",
+  "last_updated": "2026-07-07T00:40:02.800400",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -16874,6 +16874,16 @@
     {
       "model_id": "tiny-random/minimax-m2",
       "architecture_id": "MiniMaxM2ForCausalLM",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "google-t5/t5-3b",
+      "architecture_id": "T5WithLMHeadModel",
       "verified_date": "2026-07-07",
       "verified_by": "verify_models",
       "transformerlens_version": null,

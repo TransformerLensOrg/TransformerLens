@@ -356,6 +356,19 @@ class TestT5FactoryRegistration:
         """MT5 shares the T5 architecture wiring, so the factory reuses the adapter."""
         assert SUPPORTED_ARCHITECTURES["MT5ForConditionalGeneration"] is T5ArchitectureAdapter
 
+    def test_t5_with_lm_head_alias_returns_adapter_class(self) -> None:
+        """Old google-t5 checkpoints (t5-3b, t5-11b) carry the legacy class name."""
+        assert SUPPORTED_ARCHITECTURES["T5WithLMHeadModel"] is T5ArchitectureAdapter
+
+    def test_t5_with_lm_head_alias_loads_as_seq2seq(self) -> None:
+        from transformers import AutoModelForSeq2SeqLM
+
+        from transformer_lens.model_bridge.sources.transformers import (
+            get_hf_model_class_for_architecture,
+        )
+
+        assert get_hf_model_class_for_architecture("T5WithLMHeadModel") is AutoModelForSeq2SeqLM
+
 
 class TestT5ArchitectureGuards:
     """Guards against drift from the T5 encoder-decoder contract."""

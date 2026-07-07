@@ -10,6 +10,7 @@ from typing import Optional
 SEQ2SEQ_ARCHITECTURES: set[str] = {
     "T5ForConditionalGeneration",
     "MT5ForConditionalGeneration",
+    "T5WithLMHeadModel",
     "T5GemmaForConditionalGeneration",
     "BartForConditionalGeneration",
     "MBartForConditionalGeneration",
