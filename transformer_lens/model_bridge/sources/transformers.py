@@ -236,6 +236,7 @@ def determine_architecture_from_hf_config(hf_config):
             "pegasus": "PegasusForConditionalGeneration",
             "seed_oss": "SeedOssForCausalLM",
             "nemotron": "NemotronForCausalLM",
+            "idefics3": "Idefics3ForConditionalGeneration",
             "minimax_m2": "MiniMaxM2ForCausalLM",
             "llama": "LlamaForCausalLM",
             "mamba": "MambaForCausalLM",

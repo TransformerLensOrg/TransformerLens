@@ -109,6 +109,9 @@ from transformer_lens.model_bridge.supported_architectures.hubert import (
 from transformer_lens.model_bridge.supported_architectures.hunyuan_v1_dense import (
     HunYuanDenseV1ArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.idefics3 import (
+    Idefics3ArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.internlm2 import (
     InternLM2ArchitectureAdapter,
 )
@@ -301,6 +304,7 @@ __all__ = [
     "GptjArchitectureAdapter",
     "HubertArchitectureAdapter",
     "HunYuanDenseV1ArchitectureAdapter",
+    "Idefics3ArchitectureAdapter",
     "InternLM2ArchitectureAdapter",
     "LlamaArchitectureAdapter",
     "LlavaArchitectureAdapter",
