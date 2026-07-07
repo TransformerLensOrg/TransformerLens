@@ -228,6 +228,7 @@ def determine_architecture_from_hf_config(hf_config):
             "hubert": "HubertModel",
             "bamba": "BambaForCausalLM",
             "bart": "BartForConditionalGeneration",
+            "ernie4_5": "Ernie4_5ForCausalLM",
             "exaone": "ExaoneForCausalLM",
             "falcon_mamba": "FalconMambaForCausalLM",
             "m2m_100": "M2M100ForConditionalGeneration",

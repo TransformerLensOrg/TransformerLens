@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-07-07T04:29:08.118115",
+  "last_updated": "2026-07-07T04:47:36.260925",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -17164,6 +17164,36 @@
     {
       "model_id": "trl-internal-testing/tiny-Qwen2AudioForConditionalGeneration",
       "architecture_id": "Qwen2AudioForConditionalGeneration",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "baidu/ERNIE-4.5-0.3B-PT",
+      "architecture_id": "Ernie4_5ForCausalLM",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: forward_pass_logits) \u2014 Tensors differ: max_diff=13.567083, mean_rel=3.490963",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "baidu/ERNIE-4.5-0.3B-PT",
+      "architecture_id": "Ernie4_5ForCausalLM",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: forward_pass_logits) \u2014 Tensors differ: max_diff=13.567083, mean_rel=3.490963",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "baidu/ERNIE-4.5-0.3B-PT",
+      "architecture_id": "Ernie4_5ForCausalLM",
       "verified_date": "2026-07-07",
       "verified_by": "verify_models",
       "transformerlens_version": null,

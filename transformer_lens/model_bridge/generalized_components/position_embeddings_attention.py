@@ -34,6 +34,31 @@ _EAGER_ATTENTION_WRAPPED = False
 _ORIGINAL_EAGER_ATTENTION_FORWARD: Optional[Callable] = None
 
 
+def _apply_rotary_pos_emb_adjacent_pairs(
+    q: torch.Tensor, k: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """GLM/ERNIE-style RoPE: rotate adjacent element pairs in full precision.
+
+    cos/sin arrive in the standard half-duplicated layout; this convention
+    takes the first half and expands it by repeat_interleave(2) so rotation
+    pairs are (0,1), (2,3), ... instead of (i, i + d/2).
+    """
+    original_dtype = q.dtype
+    cos = cos.unsqueeze(1)
+    sin = sin.unsqueeze(1)
+    cos = cos[..., : cos.shape[-1] // 2].repeat_interleave(2, dim=-1)
+    sin = sin[..., : sin.shape[-1] // 2].repeat_interleave(2, dim=-1)
+
+    def _rotate(x: torch.Tensor) -> torch.Tensor:
+        x1 = x[..., 0::2]
+        x2 = x[..., 1::2]
+        return torch.stack((-x2, x1), dim=-1).flatten(-2)
+
+    q_embed = (q.float() * cos) + (_rotate(q).float() * sin)
+    k_embed = (k.float() * cos) + (_rotate(k).float() * sin)
+    return q_embed.to(original_dtype), k_embed.to(original_dtype)
+
+
 def _setup_eager_attention_hook_wrapper() -> None:
     """Wrap gemma2's eager_attention_forward to fire hook_rot_q and hook_rot_k.
 
@@ -384,7 +409,14 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
         if position_embeddings is not None:
             position_embeddings = self._apply_position_embedding_hooks(position_embeddings)
             cos, sin = position_embeddings
-            from transformers.models.llama.modeling_llama import apply_rotary_pos_emb
+            if getattr(self.config, "rotary_adjacent_pairs", False):
+                # GLM/ERNIE convention: rotate adjacent element pairs in fp32,
+                # with cos/sin halves expanded by repeat_interleave.
+                apply_rotary_pos_emb = _apply_rotary_pos_emb_adjacent_pairs
+            else:
+                from transformers.models.llama.modeling_llama import (
+                    apply_rotary_pos_emb,
+                )
 
             # Some models use partial rotary (e.g., GPT-OSS) where cos/sin cover only
             # a portion of head_dim. Split Q/K, rotate the partial dims, recombine.
