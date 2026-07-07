@@ -49,12 +49,14 @@ def configure(
     max_num_batched_tokens: int,
     dtype: torch.dtype,
     enable_batching: bool = False,
+    enable_position_interventions: bool = False,
 ) -> None:
     """Set capture specs, buffer length, dtype, and hook flavor before ``LLM(...)``."""
     _config["capture_specs"] = capture_specs
     _config["max_num_batched_tokens"] = max_num_batched_tokens
     _config["dtype"] = dtype
     _config["enable_batching"] = enable_batching
+    _config["enable_position_interventions"] = enable_position_interventions
 
 
 def register() -> None:
@@ -84,6 +86,9 @@ def register() -> None:
         max_n = _config["max_num_batched_tokens"]
         dtype = _config["dtype"]
         enable_batching = _config.get("enable_batching", False)
+        # Per-position affine buffers are (max_n, width) instead of (width,), so each
+        # sequence row can carry a distinct scale/bias (position-scoped patching).
+        per_position = _config.get("enable_position_interventions", False)
         device = next(self.model_runner.model.parameters()).device
 
         # Detach prior handles before reassigning — vLLM doesn't double-load
@@ -124,9 +129,12 @@ def register() -> None:
             else:
                 capture_buf = torch.zeros(max_n, width, device=device, dtype=dtype)
                 # Affine identity at install. Driver swaps via tl_set_interventions
-                # to enable suppress/scale/add/set ops between forwards.
-                scale_buf = torch.ones(width, device=device, dtype=dtype)
-                bias_buf = torch.zeros(width, device=device, dtype=dtype)
+                # to enable suppress/scale/add/set ops between forwards. Shape is
+                # (max_n, width) when position interventions are enabled so each row
+                # can differ; (width,) otherwise (broadcast across all positions).
+                affine_shape = (max_n, width) if per_position else (width,)
+                scale_buf = torch.ones(affine_shape, device=device, dtype=dtype)
+                bias_buf = torch.zeros(affine_shape, device=device, dtype=dtype)
                 # Default closed — opened explicitly by tl_reset_capture_flags for the
                 # next forward(s) that need to capture.
                 capture_flag = torch.ones(1, device=device, dtype=torch.int64)
@@ -142,6 +150,7 @@ def register() -> None:
                         self._tl_fire_counter,
                         capture_flag,
                         materialize=materialize,
+                        per_position=per_position,
                     )
                 )
             self._tl_hook_handles.append(handle)
@@ -158,6 +167,7 @@ def _make_capture_hook(
     capture_flag: torch.Tensor,
     *,
     materialize: bool = False,
+    per_position: bool = False,
 ):
     """GPU-only, dynamic-shape-safe affine + first-write-wins capture into pre-allocated buffers.
 
@@ -174,8 +184,21 @@ def _make_capture_hook(
     steps self-copy (no overwrite). Interventions still apply on every forward
     regardless of the flag — the gate only affects the capture write.
 
+    ``per_position`` (compile-time constant): when set, ``scale_buf``/``bias_buf`` are
+    ``(max_n, width)`` and the affine is row-scoped (``buf.narrow(0, 0, n)``) so a
+    ``pos``-scoped intervention edits only its rows; otherwise they are ``(width,)``
+    and broadcast across every position.
+
     ``fire_counter`` is incremented per call for the fire-once check.
     """
+
+    def _affine(t: torch.Tensor, n: Any) -> torch.Tensor:
+        # per_position is a closure constant → torch.compile specializes this branch.
+        # narrow(0, 0, n) keeps the SymInt dynamic shape (same trick as _gated_capture);
+        # the (width,) path broadcasts across all rows.
+        if per_position:
+            return t * scale_buf.narrow(0, 0, n) + bias_buf.narrow(0, 0, n)
+        return t * scale_buf + bias_buf
 
     @torch.no_grad()
     def hook(_module, _inputs, output):
@@ -183,9 +206,8 @@ def _make_capture_hook(
         if materialize and isinstance(output, tuple) and len(output) == 2:
             hidden, residual = output
             if isinstance(hidden, torch.Tensor) and isinstance(residual, torch.Tensor):
-                t = hidden + residual
-                modified = t * scale_buf + bias_buf
-                n = t.shape[0]
+                n = hidden.shape[0]
+                modified = _affine(hidden + residual, n)
                 _gated_capture(capture_buf, n, modified, capture_flag)
                 # Reconstructs ``modified`` in the next layer's fused norm: exact at
                 # identity, bounded fp16 error under intervention.
@@ -201,10 +223,8 @@ def _make_capture_hook(
             return None
         # Affine transform; default scale=1 / bias=0 means identity. Driver
         # swaps buffer contents to enable interventions.
-        modified = t * scale_buf + bias_buf
-        # narrow() keeps the dynamic shape; [:n] gets erased under fake-tensor
-        # tracing and copy_ then sees the full buffer ("expand s72 -> max_n").
         n = t.shape[0]
+        modified = _affine(t, n)
         _gated_capture(capture_buf, n, modified, capture_flag)
         # Gate on isinstance, not truthy tuple_tail — a 1-tuple has an empty tail.
         if isinstance(output, tuple):

@@ -135,6 +135,71 @@ class TestApplyIntervention:
             _apply_intervention(scale, bias, {"op": "add", "value": [1.0, 2.0]})
 
 
+class TestApplyInterventionPerPosition:
+    """2-D (max_n, width) affine buffers let a spec's 'pos' scope the edit to rows.
+
+    Buffers start at identity (scale=1, bias=0), mirroring tl_set_interventions'
+    reset before each apply, so a pos-scoped edit must leave the other rows untouched.
+    """
+
+    def _buffers(self, max_n=5, width=4):
+        return torch.ones(max_n, width), torch.zeros(max_n, width)
+
+    def test_set_at_single_pos_leaves_others_identity(self):
+        scale, bias = self._buffers()
+        _apply_intervention(scale, bias, {"op": "set", "value": 2.0, "pos": 2})
+        assert torch.equal(scale[2], torch.zeros(4))
+        assert torch.equal(bias[2], torch.full((4,), 2.0))
+        for r in (0, 1, 3, 4):
+            assert torch.equal(scale[r], torch.ones(4))
+            assert torch.equal(bias[r], torch.zeros(4))
+
+    def test_add_vector_at_pos_list(self):
+        scale, bias = self._buffers()
+        vec = [1.0, 2.0, 3.0, 4.0]
+        _apply_intervention(scale, bias, {"op": "add", "value": vec, "pos": [0, 3]})
+        for r in (0, 3):
+            assert torch.equal(scale[r], torch.ones(4))
+            assert torch.equal(bias[r], torch.tensor(vec))
+        for r in (1, 2, 4):
+            assert torch.equal(bias[r], torch.zeros(4))
+
+    def test_suppress_at_pos(self):
+        scale, bias = self._buffers()
+        _apply_intervention(scale, bias, {"op": "suppress", "pos": 1})
+        assert torch.equal(scale[1], torch.zeros(4))
+        assert torch.equal(bias[1], torch.zeros(4))
+        assert torch.equal(scale[0], torch.ones(4))  # untouched
+
+    def test_scale_at_pos(self):
+        scale, bias = self._buffers()
+        _apply_intervention(scale, bias, {"op": "scale", "factor": 0.5, "pos": 4})
+        assert torch.equal(scale[4], torch.full((4,), 0.5))
+        assert torch.equal(scale[0], torch.ones(4))
+
+    def test_no_pos_writes_all_rows(self):
+        """A whole-sequence spec on 2-D buffers broadcasts across every row."""
+        scale, bias = self._buffers()
+        _apply_intervention(scale, bias, {"op": "add", "value": [1.0, 2.0, 3.0, 4.0]})
+        for r in range(5):
+            assert torch.equal(bias[r], torch.tensor([1.0, 2.0, 3.0, 4.0]))
+
+    def test_pos_out_of_range_raises(self):
+        import pytest
+
+        scale, bias = self._buffers(max_n=3)
+        with pytest.raises(ValueError, match="out of range"):
+            _apply_intervention(scale, bias, {"op": "suppress", "pos": 5})
+
+    def test_pos_on_1d_buffer_raises(self):
+        """A 'pos' spec against 1-D buffers (flag off) is a misconfiguration."""
+        import pytest
+
+        scale, bias = torch.ones(4), torch.zeros(4)
+        with pytest.raises(ValueError, match="requires 2-D affine buffers"):
+            _apply_intervention(scale, bias, {"op": "suppress", "pos": 0})
+
+
 class TestApplyOp:
     """_apply_op is the eager batched path's tensor-level intervention."""
 

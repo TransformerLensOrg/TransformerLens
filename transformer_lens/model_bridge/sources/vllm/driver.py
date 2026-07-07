@@ -38,11 +38,15 @@ class VLLMDriver(DriverBase):
         hf_config: Any,
         max_num_batched_tokens: int,
         enable_batching: bool = False,
+        enable_position_interventions: bool = False,
     ) -> None:
         super().__init__(adapter.cfg, tokenizer)
         self._llm = llm
         self._max_num_batched_tokens = max_num_batched_tokens
         self._enable_batching = enable_batching
+        # Position-scoped 'pos' interventions need (max_n, width) affine buffers,
+        # allocated at boot only when this is set (see plugin.patched_load_model).
+        self._enable_position_interventions = enable_position_interventions
         # Logprobs per forward = real vocab (boot's max_logprobs). d_vocab can be
         # padded larger, which vLLM would reject; the logits tensor stays d_vocab.
         self._n_logprobs = int(getattr(hf_config, "vocab_size", self.bridge_config.d_vocab))
@@ -92,6 +96,9 @@ class VLLMDriver(DriverBase):
                 f"{self._max_num_batched_tokens}; raise the boot_vllm kwarg or "
                 "shorten the prompt."
             )
+        # 'pos'-scoped edits target affine-buffer rows, but the compiled hook only reads
+        # rows [0, len(ids_list)); a pos past the prompt length would be a silent no-op.
+        self._reject_pos_beyond_seq(intervene_specs, len(ids_list))
 
         from vllm import SamplingParams
         from vllm.inputs import TokensPrompt
@@ -402,17 +409,61 @@ class VLLMDriver(DriverBase):
                 raise ValueError(
                     f"Cannot intervene on {hook_name!r}: not in supported_hook_points."
                 )
-            if "pos" in spec:
-                # The compiled-graph affine buffers are (width,) and broadcast across every
-                # position; a 'pos' would be silently ignored. Reject it rather than lie.
-                raise NotImplementedError(
-                    f"Intervention {hook_name!r}: per-position 'pos' is not supported on the "
-                    "vLLM backend (its affine buffers broadcast across all positions). Use the "
-                    "Inspect/HF backend for position-scoped patching, or drop 'pos' for a "
-                    "whole-sequence edit."
-                )
+            pos = spec.get("pos")
+            if pos is not None:
+                if self._enable_batching:
+                    # The batched/eager path applies ops to the raw tensor, not the
+                    # (max_n, width) affine buffers, so it has no position surface.
+                    raise NotImplementedError(
+                        f"Intervention {hook_name!r}: per-position 'pos' is not supported on the "
+                        "batched/eager path. Boot the compiled path (enable_batching=False) with "
+                        "enable_position_interventions=True."
+                    )
+                if not self._enable_position_interventions:
+                    # Default affine buffers are (width,) and broadcast across every position;
+                    # honoring 'pos' needs the (max_n, width) buffers allocated at boot.
+                    raise NotImplementedError(
+                        f"Intervention {hook_name!r}: per-position 'pos' requires "
+                        "boot_vllm(enable_position_interventions=True) (its default affine "
+                        "buffers broadcast across all positions). Use the Inspect/HF backend for "
+                        "position-scoped patching, or drop 'pos' for a whole-sequence edit."
+                    )
+                if not (
+                    isinstance(pos, int)
+                    or (isinstance(pos, (list, tuple)) and all(isinstance(p, int) for p in pos))
+                ):
+                    raise ValueError(
+                        f"Intervention {hook_name!r}: 'pos' must be an int or list of ints "
+                        f"(sequence positions to patch); got {pos!r}."
+                    )
+                bad = [p for p in ([pos] if isinstance(pos, int) else pos) if p < 0]
+                if bad:
+                    raise ValueError(
+                        f"Intervention {hook_name!r}: 'pos' must be non-negative; got {bad}."
+                    )
             out[hook_name] = dict(spec)
         return out
+
+    @staticmethod
+    def _reject_pos_beyond_seq(specs: Mapping[str, Any], seq_len: int) -> None:
+        """Fail loud if a spec's 'pos' targets a row past the actual prompt length.
+
+        The compiled hook applies the affine over rows ``[0, seq_len)`` only, so a ``pos``
+        in ``[seq_len, max_num_batched_tokens)`` clears the driver's non-negativity check
+        and the worker's buffer-capacity check yet is never read — a silent no-op. Bound it
+        against the real sequence length (known once ``ids_list`` exists) and raise instead.
+        """
+        for hook_name, spec in specs.items():
+            pos = spec.get("pos")
+            if pos is None:
+                continue
+            idx = [pos] if isinstance(pos, int) else list(pos)
+            bad = [p for p in idx if p >= seq_len]
+            if bad:
+                raise ValueError(
+                    f"Intervention {hook_name!r}: 'pos' {bad} is beyond the prompt length "
+                    f"{seq_len} (positions are 0-indexed); the edit would be silently ignored."
+                )
 
     @staticmethod
     def _normalize_input_ids(input_ids: Any) -> list:

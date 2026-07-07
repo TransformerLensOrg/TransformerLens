@@ -107,6 +107,20 @@ def test_rejects_locked_kwarg_override():
         boot_vllm("any-model", tensor_parallel_size=2)
 
 
+def test_rejects_position_interventions_with_batching():
+    """Position interventions need the compiled path's affine buffers — fails fast."""
+    with pytest.raises(ValueError, match="incompatible with enable_batching"):
+        boot_vllm("any-model", enable_position_interventions=True, enable_batching=True)
+
+
+def test_position_interventions_flag_reaches_driver(mocked_boot):
+    """boot_vllm threads enable_position_interventions through to the driver."""
+    bridge = boot_vllm("any-model", enable_position_interventions=True)
+    assert bridge._driver._enable_position_interventions is True
+    # Default stays off.
+    assert boot_vllm("any-model")._driver._enable_position_interventions is False
+
+
 @pytest.mark.parametrize(
     "raw, expected",
     [

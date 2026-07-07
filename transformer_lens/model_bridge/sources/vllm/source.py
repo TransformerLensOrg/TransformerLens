@@ -39,6 +39,7 @@ def boot_vllm(
     max_model_len: Optional[int] = None,
     max_num_batched_tokens: int = 2048,
     enable_batching: bool = False,
+    enable_position_interventions: bool = False,
     **vllm_kwargs: Any,
 ) -> RemoteBridge:
     """Boot a model via vLLM and wrap it in a :class:`RemoteBridge` via :class:`VLLMDriver`.
@@ -86,7 +87,20 @@ def boot_vllm(
     ``batch_size > 1``) — the throughput path for SAE/probe data collection.
     Default ``False`` keeps the compile-validated single-prompt path. Batched
     caches are right-padded with zeros to the longest sequence.
+
+    ``enable_position_interventions`` widens each hook's affine scale/bias buffers
+    from ``(width,)`` to ``(max_num_batched_tokens, width)`` so an intervention spec
+    can carry a ``pos`` field (int or list[int]) that scopes the edit to specific
+    sequence positions — position-scoped activation patching / tensor injection.
+    Costs ~2× extra resident GPU memory across all hooks (the scale and bias buffers
+    join the already-``(max_n, width)`` capture buffer), so it is opt-in and defaults
+    ``False``. Compiled-path only — incompatible with ``enable_batching``.
     """
+    if enable_position_interventions and enable_batching:
+        raise ValueError(
+            "enable_position_interventions requires the compiled path and is incompatible "
+            "with enable_batching=True (the batched/eager path has no affine buffers)."
+        )
     _reject_locked_overrides(vllm_kwargs)
 
     from transformers import AutoConfig, AutoTokenizer
@@ -104,6 +118,7 @@ def boot_vllm(
         max_num_batched_tokens=max_num_batched_tokens,
         dtype=resolved_dtype,
         enable_batching=enable_batching,
+        enable_position_interventions=enable_position_interventions,
     )
     plugin.register()
 
@@ -177,6 +192,7 @@ def boot_vllm(
         hf_config=hf_config,
         max_num_batched_tokens=max_num_batched_tokens,
         enable_batching=enable_batching,
+        enable_position_interventions=enable_position_interventions,
     )
     bridge = RemoteBridge(adapter=adapter, tokenizer=tokenizer, driver=driver)
     _log_hook_summary(model_name, architecture, driver)

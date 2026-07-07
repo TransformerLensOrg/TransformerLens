@@ -89,6 +89,7 @@ def _driver(
     max_num_batched_tokens=2048,
     generated_token=None,
     top_logprobs=None,
+    enable_position_interventions=False,
 ) -> VLLMDriver:
     """Build a VLLMDriver. ``captures`` populates llm.collective_rpc; ``generated_token``
     and ``top_logprobs`` populate llm.generate's RequestOutput so _synthesize_logits
@@ -104,6 +105,7 @@ def _driver(
         overlay=_overlay(),
         hf_config=hf_config or _hf_config(),
         max_num_batched_tokens=max_num_batched_tokens,
+        enable_position_interventions=enable_position_interventions,
     )
 
 
@@ -233,6 +235,67 @@ class TestVLLMDriverForward:
             _driver(captures={}).forward(
                 torch.tensor([[1]]), intervene={"embed.hook_out": {"op": "set"}}
             )
+
+
+class TestVLLMDriverPositionInterventions:
+    """`pos`-scoped interventions require the opt-in (max_n, width) affine buffers."""
+
+    def test_pos_rejected_without_flag(self):
+        with pytest.raises(NotImplementedError, match="enable_position_interventions=True"):
+            _driver()._validate_interventions({"embed.hook_out": {"op": "suppress", "pos": 0}})
+
+    def test_pos_accepted_and_preserved_with_flag(self):
+        driver = _driver(enable_position_interventions=True)
+        out = driver._validate_interventions(
+            {"embed.hook_out": {"op": "add", "value": 1.0, "pos": [0, 2]}}
+        )
+        assert out["embed.hook_out"]["pos"] == [0, 2]
+
+    def test_pos_int_accepted_with_flag(self):
+        driver = _driver(enable_position_interventions=True)
+        out = driver._validate_interventions({"embed.hook_out": {"op": "suppress", "pos": 3}})
+        assert out["embed.hook_out"]["pos"] == 3
+
+    def test_pos_wrong_type_raises(self):
+        driver = _driver(enable_position_interventions=True)
+        with pytest.raises(ValueError, match="must be an int or list of ints"):
+            driver._validate_interventions({"embed.hook_out": {"op": "suppress", "pos": "last"}})
+
+    def test_pos_negative_raises(self):
+        driver = _driver(enable_position_interventions=True)
+        with pytest.raises(ValueError, match="must be non-negative"):
+            driver._validate_interventions({"embed.hook_out": {"op": "suppress", "pos": [-1]}})
+
+    def test_pos_rejected_on_batched_path(self):
+        """The batched/eager path has no affine buffers, so 'pos' is unsupported there."""
+        driver = _driver()
+        driver._enable_batching = True
+        with pytest.raises(NotImplementedError, match="batched/eager path"):
+            driver._validate_interventions({"embed.hook_out": {"op": "suppress", "pos": 0}})
+
+    def test_no_pos_still_works_with_flag(self):
+        """A whole-sequence spec (no pos) is unaffected by the flag."""
+        driver = _driver(enable_position_interventions=True)
+        out = driver._validate_interventions({"embed.hook_out": {"op": "suppress"}})
+        assert "pos" not in out["embed.hook_out"]
+
+    def test_pos_beyond_prompt_length_fails_loud(self):
+        """pos within buffer capacity but past the prompt length must raise, not silently no-op.
+
+        The rejection fires before driver.forward reaches the vllm import, so no install needed.
+        """
+        driver = _driver(captures={}, enable_position_interventions=True)
+        with pytest.raises(ValueError, match="beyond the prompt length"):
+            driver.forward(  # 3-token prompt, pos=50 is unreadable by the hook
+                torch.tensor([[1, 2, 3]]),
+                intervene={"embed.hook_out": {"op": "suppress", "pos": 50}},
+            )
+
+    def test_reject_pos_beyond_seq_bounds_against_actual_length(self):
+        driver = _driver(enable_position_interventions=True)
+        driver._reject_pos_beyond_seq({"embed.hook_out": {"op": "suppress", "pos": [0, 2]}}, 3)
+        with pytest.raises(ValueError, match="beyond the prompt length"):
+            driver._reject_pos_beyond_seq({"embed.hook_out": {"op": "suppress", "pos": 3}}, 3)
 
     def test_forward_pushes_interventions_before_generate(self):
         """The driver pushes spec dicts via collective_rpc('tl_set_interventions', ...)."""
@@ -481,12 +544,18 @@ class TestVLLMDriverThroughBridge:
         assert len(fired) == 1
         assert tuple(fired[0].shape) == (1, 3, 4)
 
-    def test_forward_rejects_loss_return_types(self):
-        """Synthesized logits are last-position-only; loss/both would be nan, so refuse.
+    def test_loss_return_type_gated_on_sequence_logits(self):
+        """The bridge's loss/both guard fires only when the driver lacks full-sequence
+        logits. The vLLM driver now reconstructs them (provides_sequence_logits=True),
+        so loss/both are permitted; a driver without that capability is still refused.
 
-        The guard is the first thing forward() does, so this needs no vllm install.
+        The rejection path fires before driver.forward, so it needs no vllm install.
         """
-        bridge = RemoteBridge(adapter=_adapter(), tokenizer=None, driver=_driver(captures={}))
+        driver = _driver(captures={})
+        assert driver.provides_sequence_logits is True  # reconstruction path is live
+        bridge = RemoteBridge(adapter=_adapter(), tokenizer=None, driver=driver)
+        # Drop the capability → the guard must refuse loss/both (nan over -inf positions).
+        driver.provides_sequence_logits = False
         for rt in ("loss", "both"):
             with pytest.raises(NotImplementedError, match="return_type"):
                 bridge.forward(torch.tensor([[1, 2, 3]]), return_type=rt)
