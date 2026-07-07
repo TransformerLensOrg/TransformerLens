@@ -272,6 +272,7 @@ def determine_architecture_from_hf_config(hf_config):
             "gemma4_text": "Gemma4ForCausalLM",
             "glm": "GlmForCausalLM",
             "glm4": "Glm4ForCausalLM",
+            "glm4v": "Glm4vForConditionalGeneration",
             "glmasr": "GlmAsrForConditionalGeneration",
             "glm4_moe": "Glm4MoeForCausalLM",
             "glm4_moe_lite": "Glm4MoeLiteForCausalLM",

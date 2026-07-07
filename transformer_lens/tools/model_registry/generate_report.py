@@ -93,6 +93,7 @@ ARCHITECTURE_DESCRIPTIONS: dict[str, str] = {
     "Ernie4_5_MoeForCausalLM": "Baidu's ERNIE 4.5 MoE (shared experts, dense prefix, interleaved RoPE)",
     "GlmForCausalLM": "Z.ai's dense GLM-4 decoder (interleaved partial RoPE, joint gate_up MLP)",
     "Glm4ForCausalLM": "Z.ai's GLM-4-0414 / GLM-Z1 decoder with sandwich norms",
+    "Glm4vForConditionalGeneration": "Z.ai's GLM-4V / GLM-4.1V reasoning vision-language model",
     "GlmAsrForConditionalGeneration": "Z.ai's GLM-ASR speech recognizer (audio encoder + Llama decoder)",
     "Starcoder2ForCausalLM": "BigCode's StarCoder2 code model (LayerNorm, biased projections)",
     "BitNetForCausalLM": "Microsoft's BitNet b1.58 (llama layout with attn/ffn sub-layer norms)",

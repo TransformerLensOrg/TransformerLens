@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-07-07T12:04:19.274150",
+  "last_updated": "2026-07-07T12:29:50.583691",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -17498,6 +17498,16 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "tiny-random/glm-4v",
+      "architecture_id": "Glm4vForConditionalGeneration",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Verified on a local snapshot of tiny-random/glm-4v with lm_head deterministically initialized (seed 42): every public GLM-4V tiny (tiny-random + yujiepan variants) ships no lm_head.weight with tie_word_embeddings=false, so HF randomly re-initializes the head each load. Bridge matches HF exactly through ln_final on the raw checkpoint. P3=89.5: centering checks are informational for joint gate_up models (fold/center disabled).",
       "invalidated": false,
       "invalidation_reason": null
     }
