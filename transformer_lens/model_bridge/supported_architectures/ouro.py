@@ -52,7 +52,10 @@ class OuroArchitectureAdapter(ArchitectureAdapter):
     entirely inside the HF forward, which the bridge delegates to, so logits
     and generation are correct with no loop handling here. ``n_layers`` counts
     the physical layers; each block's hooks fire once per loop step, and a
-    cache records the final step's value.
+    cache records the final step's value. The same holds for ``ln_final``
+    (``model.norm``): it runs after EVERY UT pass, so its hooks fire
+    ``total_ut_steps`` times per forward and ``run_with_cache`` keeps only the
+    last pass.
 
     The backbone is Qwen2/Llama-shaped (RoPE, no-bias q/k/v/o projections,
     SwiGLU gate/up/down MLP, untied lm_head) with one twist: sandwich
@@ -96,6 +99,12 @@ class OuroArchitectureAdapter(ArchitectureAdapter):
         self.cfg.uses_rms_norm = True
         # default_prepend_bos stays at the framework default: the GPT2-style BPE
         # tokenizer (bos == eos == <|endoftext|>) does not prepend BOS itself.
+
+        # ln_final (model.norm) is applied after EVERY UT pass, feeding the next
+        # pass and the early-exit gate, so it is not a final-only norm. Folding
+        # it into W_U resets the live module's norm weight the loop reuses and
+        # corrupts UT passes 1..N-1.
+        self.supports_fold_ln = False
 
         self.weight_processing_conversions = {
             **self._qkvo_weight_conversions(),

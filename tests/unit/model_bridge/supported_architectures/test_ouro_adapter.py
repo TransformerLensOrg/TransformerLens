@@ -106,6 +106,11 @@ class TestOuroAdapterConfig:
         """Ouro's RMSNorm applies the weight directly (no Gemma-style +1.0 offset)."""
         assert not getattr(adapter.cfg, "rmsnorm_uses_offset", False)
 
+    def test_supports_fold_ln_is_false(self, adapter: OuroArchitectureAdapter) -> None:
+        """ln_final runs after every UT pass, feeding the next pass and the exit
+        gate; folding it into W_U would corrupt passes 1..N-1 in the live module."""
+        assert adapter.supports_fold_ln is False
+
 
 class TestOuroComponentMapping:
     """The adapter contract: TL canonical names mapped to Ouro HF module paths."""

@@ -170,7 +170,7 @@ class TestOuroLoopedDepth:
     """Pin the Universal-Transformer loop semantics the adapter documents."""
 
     def test_block_hook_fires_once_per_ut_step(
-        self, bridge: TransformerBridge, hf_eager: torch.nn.Module, tokens: torch.Tensor
+        self, bridge: TransformerBridge, tokens: torch.Tensor
     ) -> None:
         """The same physical block executes total_ut_steps times per forward.
 
@@ -184,7 +184,7 @@ class TestOuroLoopedDepth:
             tokens,
             fwd_hooks=[("blocks.0.hook_out", lambda value, hook: fired.append(True))],
         )
-        assert len(fired) == hf_eager.config.total_ut_steps
+        assert len(fired) == bridge.cfg.total_ut_steps
 
     def test_hook_out_shape_matches_residual_stream(
         self, bridge: TransformerBridge, tokens: torch.Tensor
@@ -219,3 +219,17 @@ class TestOuroLoopedDepth:
             "blocks.0.attn.hook_attn_scores did not fire, so the bridge no longer "
             "runs its own attention reconstruction and the parity test is tautological."
         )
+
+
+class TestOuroConfigPropagation:
+    """Loop-related HF config attrs surface on bridge.cfg via _HF_PASSTHROUGH_ATTRS."""
+
+    def test_total_ut_steps_propagates(
+        self, bridge: TransformerBridge, hf_eager: torch.nn.Module
+    ) -> None:
+        assert bridge.cfg.total_ut_steps == hf_eager.config.total_ut_steps
+
+    def test_early_exit_threshold_propagates(
+        self, bridge: TransformerBridge, hf_eager: torch.nn.Module
+    ) -> None:
+        assert bridge.cfg.early_exit_threshold == hf_eager.config.early_exit_threshold

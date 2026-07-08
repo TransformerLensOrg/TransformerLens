@@ -582,6 +582,9 @@ def boot(
         "num_mem_blocks",
         "layers_block_type",
         "use_shared_attention_adapter",
+        # Ouro (LoopLM)
+        "total_ut_steps",
+        "early_exit_threshold",
     ]
     for attr in _HF_PASSTHROUGH_ATTRS:
         val = getattr(hf_config, attr, None)
