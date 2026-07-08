@@ -132,6 +132,44 @@ class TestModelEntry:
         assert restored.phase2_score == entry.phase2_score
         assert restored.phase3_score is None
 
+    def test_round_trip_preserves_all_phase_scores(self):
+        """P4/P7/P8 (generation, multimodal, audio) must survive round-trip.
+
+        verify_models writes phase1-4 + phase7 + phase8; a ModelEntry that only
+        declared phase1-3 silently dropped the rest on any from_dict/to_dict pass.
+        """
+        from transformer_lens.tools.model_registry.schemas import ModelEntry
+
+        raw = {
+            "architecture_id": "Qwen2_5_VLForConditionalGeneration",
+            "model_id": "Qwen/Qwen2.5-VL-3B-Instruct",
+            "status": 1,
+            "verified_date": "2026-07-07",
+            "metadata": None,
+            "note": "Full verification completed",
+            "phase1_score": 100.0,
+            "phase2_score": 100.0,
+            "phase3_score": 100.0,
+            "phase4_score": 96.3,
+            "phase7_score": 100.0,
+            "phase8_score": None,
+        }
+        restored = ModelEntry.from_dict(raw)
+        assert restored.phase4_score == 96.3
+        assert restored.phase7_score == 100.0
+        assert restored.phase8_score is None
+        # to_dict emits all six phase keys and preserves the values
+        out = restored.to_dict()
+        for phase in (
+            "phase1_score",
+            "phase2_score",
+            "phase3_score",
+            "phase4_score",
+            "phase7_score",
+            "phase8_score",
+        ):
+            assert out[phase] == raw[phase], phase
+
     def test_backwards_compat_verified_bool(self):
         """Old format had 'verified: true' instead of 'status: 1'."""
         from transformer_lens.tools.model_registry.schemas import ModelEntry

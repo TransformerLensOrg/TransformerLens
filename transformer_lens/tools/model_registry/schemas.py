@@ -66,6 +66,9 @@ class ModelEntry:
         phase1_score: Benchmark Phase 1 score (HF vs Bridge), 0-100 or None
         phase2_score: Benchmark Phase 2 score (Bridge vs HT unprocessed), 0-100 or None
         phase3_score: Benchmark Phase 3 score (Bridge vs HT processed), 0-100 or None
+        phase4_score: Benchmark Phase 4 score (generation / text quality), 0-100 or None
+        phase7_score: Benchmark Phase 7 score (multimodal), 0-100 or None
+        phase8_score: Benchmark Phase 8 score (audio), 0-100 or None
     """
 
     architecture_id: str
@@ -77,6 +80,9 @@ class ModelEntry:
     phase1_score: Optional[float] = None
     phase2_score: Optional[float] = None
     phase3_score: Optional[float] = None
+    phase4_score: Optional[float] = None
+    phase7_score: Optional[float] = None
+    phase8_score: Optional[float] = None
 
     def to_dict(self) -> dict:
         """Convert to a JSON-serializable dictionary."""
@@ -90,6 +96,9 @@ class ModelEntry:
             "phase1_score": self.phase1_score,
             "phase2_score": self.phase2_score,
             "phase3_score": self.phase3_score,
+            "phase4_score": self.phase4_score,
+            "phase7_score": self.phase7_score,
+            "phase8_score": self.phase8_score,
         }
 
     @classmethod
@@ -118,6 +127,9 @@ class ModelEntry:
             phase1_score=data.get("phase1_score"),
             phase2_score=data.get("phase2_score"),
             phase3_score=data.get("phase3_score"),
+            phase4_score=data.get("phase4_score"),
+            phase7_score=data.get("phase7_score"),
+            phase8_score=data.get("phase8_score"),
         )
 
 
