@@ -3,7 +3,7 @@
 Utilities for interacting with all supported activation functions.
 """
 
-from typing import Callable, Dict
+from typing import Callable, Dict, Optional, cast
 
 import numpy as np
 import torch
@@ -116,6 +116,22 @@ def relu2(input: Float[torch.Tensor, "batch pos d_mlp"]) -> Float[torch.Tensor, 
     """
     relu_applied = F.relu(input)
     return relu_applied * relu_applied
+
+
+SOFTCAP_DISABLED: float = -1.0
+
+
+def softcap_enabled(cap: Optional[float]) -> bool:
+    """A soft-cap is active only for a strictly positive value; -1.0 / 0 / None mean disabled."""
+    return cap is not None and cap > 0
+
+
+def apply_softcap(x: torch.Tensor, cap: Optional[float]) -> torch.Tensor:
+    """Gemma-style ``cap * tanh(x / cap)`` when enabled, identity otherwise."""
+    if not softcap_enabled(cap):
+        return x
+    cap = cast(float, cap)
+    return cap * torch.tanh(x / cap)
 
 
 # Convenient type for the format of each activation function

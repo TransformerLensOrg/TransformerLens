@@ -4,6 +4,8 @@ from typing import Optional
 
 import torch
 
+from transformer_lens.utilities.activation_functions import SOFTCAP_DISABLED
+
 from .transformer_lens_config import TransformerLensConfig
 
 
@@ -78,8 +80,8 @@ class TransformerBridgeConfig(TransformerLensConfig):
         scale_embedding: Optional[bool] = None,
         tie_word_embeddings: bool = False,
         use_normalization_before_and_after: bool = False,
-        attn_scores_soft_cap: float = -1.0,
-        output_logits_soft_cap: float = -1.0,
+        attn_scores_soft_cap: float = SOFTCAP_DISABLED,
+        output_logits_soft_cap: float = SOFTCAP_DISABLED,
         use_NTK_by_parts_rope: bool = False,
         NTK_by_parts_low_freq_factor: float = 1.0,
         NTK_by_parts_high_freq_factor: float = 4.0,
