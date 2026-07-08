@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-07-08T01:29:03.611090",
+  "last_updated": "2026-07-08T02:41:29.808203",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -18028,6 +18028,16 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: Input must be a List[Union[str, AddedToken]]",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "arcee-ai/Trinity-Nano-Preview",
+      "architecture_id": "AfmoeForCausalLM",
+      "verified_date": "2026-07-08",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
       "invalidated": false,
       "invalidation_reason": null
     }

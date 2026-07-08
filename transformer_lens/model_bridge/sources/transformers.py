@@ -25,6 +25,7 @@ from transformer_lens.factories.architecture_adapter_factory import (
     ArchitectureAdapterFactory,
 )
 from transformer_lens.model_bridge.bridge import TransformerBridge
+from transformer_lens.model_bridge.sources._bridge_builder import _HF_PASSTHROUGH_ATTRS
 from transformer_lens.supported_models import MODEL_ALIASES
 from transformer_lens.utilities import get_device, get_tokenizer_with_bos
 
@@ -554,79 +555,7 @@ def boot(
     bridge_config.model_name = model_name
     bridge_config.dtype = dtype
     # Propagate HF-specific config attributes that adapters may need.
-    # Any attribute present on the HF config and not None is copied to bridge_config.
-    # This is architecture-agnostic — new architectures don't need changes here.
-    _HF_PASSTHROUGH_ATTRS = [
-        # OPT
-        "is_gated_act",
-        # LongT5
-        "encoder_attention_type",
-        "word_embed_proj_dim",
-        "do_layer_norm_before",
-        # BART
-        "encoder_layers",
-        "decoder_layers",
-        "encoder_attention_heads",
-        "decoder_attention_heads",
-        "encoder_ffn_dim",
-        "decoder_ffn_dim",
-        # Marian
-        "scale_embedding",
-        # Granite
-        "position_embedding_type",
-        # Falcon
-        "parallel_attn",
-        "multi_query",
-        "new_decoder_architecture",
-        "alibi",
-        "num_ln_in_parallel_attn",
-        # Mamba (SSM config)
-        "state_size",
-        "conv_kernel",
-        "expand",
-        "time_step_rank",
-        "intermediate_size",
-        # Mamba-2 (additional SSM config)
-        "n_groups",
-        "chunk_size",
-        # Falcon-H1 (parallel attn + Mamba-2 hybrid SSM config)
-        "mamba_d_ssm",
-        "mamba_n_heads",
-        "mamba_d_head",
-        "mamba_d_state",
-        "mamba_n_groups",
-        "mamba_d_conv",
-        "mamba_chunk_size",
-        # Multimodal
-        "vision_config",
-        # Cohere
-        "logit_scale",
-        "rope_parameters",
-        "sliding_window_pattern",
-        "_sliding_window_pattern",
-        # Hybrid/MoE architectures
-        "layer_types",
-        "moe_intermediate_size",
-        "shared_expert_intermediate_size",
-        "norm_eps",
-        "attention_bias",
-        "lm_head_bias",
-        "router_jitter_noise",
-        "input_jitter_noise",
-        "eos_token_id",
-        # BD3LM
-        "model_length",
-        "block_size",
-        "cond_dim",
-        "adaln",
-        "cross_attn",
-        # Zamba2 (Mamba-2 + shared-attention hybrid)
-        "mamba_expand",
-        "mamba_ngroups",
-        "num_mem_blocks",
-        "layers_block_type",
-        "use_shared_attention_adapter",
-    ]
+    # Canonical list lives in sources/_bridge_builder.py (architecture-agnostic).
     for attr in _HF_PASSTHROUGH_ATTRS:
         val = getattr(hf_config, attr, None)
         if val is not None:
