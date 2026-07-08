@@ -66,6 +66,7 @@ ARCHITECTURE_DESCRIPTIONS: dict[str, str] = {
     "BD3LM": "Kuleshov Group's Block Diffusion Language Model (ICLR 2025) for masked text generation",
     "HunYuanDenseV1ForCausalLM": "Tencent's open source decoder models",
     "Cohere2ForCausalLM": "Cohere's Command-A architecture with interleaved sliding-window RoPE and full-attention NoPE layers",
+    "OuroForCausalLM": "ByteDance's Ouro looped language model (LoopLM) with weight-shared iterated depth",
     # Unsupported architectures
     "BertModel": "Google's BERT bidirectional encoder for understanding tasks",
     "BertForMaskedLM": "BERT with masked language modeling head",

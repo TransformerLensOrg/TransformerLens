@@ -81,6 +81,9 @@ _HF_PASSTHROUGH_ATTRS = [
     "num_mem_blocks",
     "layers_block_type",
     "use_shared_attention_adapter",
+    # Ouro (LoopLM)
+    "total_ut_steps",
+    "early_exit_threshold",
 ]
 
 
