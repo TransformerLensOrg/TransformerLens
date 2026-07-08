@@ -683,13 +683,13 @@ class ArchitectureAdapter:
         if self.component_mapping is None:
             return hf_key
         for tl_name, component in self.component_mapping.items():
-            if tl_name in ("blocks", "L_blocks", "H_blocks", "encoder_blocks", "decoder_blocks"):
+            if tl_name in ("blocks", "L_blocks", "H_blocks"):
                 continue
             hf_path = component.name
             if hf_path is not None and hf_key.startswith(hf_path + "."):
                 param = hf_key[len(hf_path) + 1 :]
                 return f"{tl_name}.{param}"
-        for bl_tl_name in ("blocks", "L_blocks", "H_blocks", "encoder_blocks", "decoder_blocks"):
+        for bl_tl_name in ("blocks", "L_blocks", "H_blocks"):
             blocks_component = self.component_mapping.get(bl_tl_name)
             if blocks_component:
                 hf_blocks_prefix = blocks_component.name
