@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-07-07T12:29:50.583691",
+  "last_updated": "2026-07-08T01:29:03.611090",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -17508,6 +17508,526 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Verified on a local snapshot of tiny-random/glm-4v with lm_head deterministically initialized (seed 42): every public GLM-4V tiny (tiny-random + yujiepan variants) ships no lm_head.weight with tie_word_embeddings=false, so HF randomly re-initializes the head each load. Bridge matches HF exactly through ln_final on the raw checkpoint. P3=89.5: centering checks are informational for joint gate_up models (fold/center disabled).",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "arcee-ai/Trinity-Nano-Preview",
+      "architecture_id": "AfmoeForCausalLM",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P3=90.0% but required tests failed: logits_equivalence, loss_equivalence \u2014 Tensors differ: max_diff=30.078743, mean_rel=0.607381",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ibm-ai-platform/Bamba-9B-v1",
+      "architecture_id": "BambaForCausalLM",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "arcee-ai/Trinity-Nano-Preview",
+      "architecture_id": "AfmoeForCausalLM",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P3=90.0% but required tests failed: logits_equivalence, loss_equivalence \u2014 Tensors differ: max_diff=30.078743, mean_rel=0.607381",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ibm-ai-platform/Bamba-9B-v2",
+      "architecture_id": "BambaForCausalLM",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ibm-ai-platform/Bamba-9B-1.8T",
+      "architecture_id": "BambaForCausalLM",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "sagawa/molscaletransfer-chemlm-0.06m",
+      "architecture_id": "BertLMHeadModel",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: forward_pass_logits) \u2014 Tensors differ: max_diff=27.217707, mean_rel=1.057937",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ielab/TILDE",
+      "architecture_id": "BertLMHeadModel",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues, low text quality: P2=76.9% (failed: generation, generation_with_kv_cache, multiple_generation_calls)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "dicta-il/BEREL_3.0",
+      "architecture_id": "BertLMHeadModel",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "microsoft/bitnet-b1.58-2B-4T",
+      "architecture_id": "BitNetForCausalLM",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: all_components, forward_pass); P2=7.7% < 75.0% (failed: g \u2014 90/154 components failed (90 critical)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "facebook/blenderbot-3B",
+      "architecture_id": "BlenderbotForConditionalGeneration",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "facebook/blenderbot-1B-distill",
+      "architecture_id": "BlenderbotForConditionalGeneration",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "bigscience/bigscience-small-testing",
+      "architecture_id": "BloomModel",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P2=84.6% (failed: generation, gated_hooks_fire); P3=95.0% (failed: gated_hooks_fire)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "TurkuNLP/gpt3-finnish-small",
+      "architecture_id": "BloomModel",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P2=92.3% (failed: gated_hooks_fire); P3=95.0% (failed: gated_hooks_fire)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Muennighoff/bloom-tiny-random",
+      "architecture_id": "BloomModel",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P2=92.3% (failed: gated_hooks_fire); P3=95.0% (failed: gated_hooks_fire)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "baidu/ERNIE-4.5-0.3B-Base-PT",
+      "architecture_id": "Ernie4_5ForCausalLM",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "LGAI-EXAONE/EXAONE-3.5-7.8B-Instruct",
+      "architecture_id": "ExaoneForCausalLM",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "tiiuae/falcon-mamba-7b",
+      "architecture_id": "FalconMambaForCausalLM",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "tiiuae/falcon-mamba-7b-instruct",
+      "architecture_id": "FalconMambaForCausalLM",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "trl-internal-testing/tiny-FalconMambaForCausalLM",
+      "architecture_id": "FalconMambaForCausalLM",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues, low text quality",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "zai-org/GLM-4-9B-0414",
+      "architecture_id": "Glm4ForCausalLM",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P3=95.0% (failed: process_bridge_weights)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "zai-org/glm-4-9b-chat-hf",
+      "architecture_id": "GlmForCausalLM",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P3=95.0% (failed: process_bridge_weights)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "zai-org/glm-edge-4b-chat",
+      "architecture_id": "GlmForCausalLM",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "zai-org/glm-4-9b-hf",
+      "architecture_id": "GlmForCausalLM",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P3=95.0% (failed: process_bridge_weights)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "allenai/led-large-16384-arxiv",
+      "architecture_id": "LEDForConditionalGeneration",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "allenai/led-large-16384",
+      "architecture_id": "LEDForConditionalGeneration",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "allenai/PRIMERA",
+      "architecture_id": "LEDForConditionalGeneration",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "pruna-test/test-save-tiny-random-llama4-smashed",
+      "architecture_id": "Llama4ForCausalLM",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: Couldn't instantiate the backend tokenizer from one of: \n(1) a `tokenizers` library serialization file, ",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "google/long-t5-local-large",
+      "architecture_id": "LongT5ForConditionalGeneration",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues, low text quality",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "google/long-t5-tglobal-large",
+      "architecture_id": "LongT5ForConditionalGeneration",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: all_components) \u2014 1/462 components failed (1 critical)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "google/long-t5-tglobal-xl",
+      "architecture_id": "LongT5ForConditionalGeneration",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "facebook/m2m100_1.2B",
+      "architecture_id": "M2M100ForConditionalGeneration",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues, low text quality",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "facebook/nllb-200-distilled-600M",
+      "architecture_id": "M2M100ForConditionalGeneration",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues, low text quality",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "facebook/nllb-200-distilled-1.3B",
+      "architecture_id": "M2M100ForConditionalGeneration",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues, low text quality",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "facebook/mbart-large-50-many-to-many-mmt",
+      "architecture_id": "MBartForConditionalGeneration",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "facebook/mbart-large-50",
+      "architecture_id": "MBartForConditionalGeneration",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "facebook/mbart-large-cc25",
+      "architecture_id": "MBartForConditionalGeneration",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Helsinki-NLP/opus-mt-nl-en",
+      "architecture_id": "MarianMTModel",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues, low text quality",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Helsinki-NLP/opus-mt-fr-en",
+      "architecture_id": "MarianMTModel",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues, low text quality",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Helsinki-NLP/opus-mt-es-en",
+      "architecture_id": "MarianMTModel",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "explosion-testing/mpt-test",
+      "architecture_id": "MptForCausalLM",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P2=69.2% < 75.0% (failed: generation, generation_with_kv_cache, multiple_generation \u2014 Generated text has no new tokens",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "nvidia/Minitron-8B-Base",
+      "architecture_id": "NemotronForCausalLM",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "badaoui/tiny-random-NemotronForCausalLM",
+      "architecture_id": "NemotronForCausalLM",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: forward_pass); P2=30.8% < 75.0% (failed: hook_functional \u2014 Forward pass failed: index out of range in self",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "google/pegasus-large",
+      "architecture_id": "PegasusForConditionalGeneration",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues, low text quality",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "google/pegasus-cnn_dailymail",
+      "architecture_id": "PegasusForConditionalGeneration",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "tuner007/pegasus_paraphrase",
+      "architecture_id": "PegasusForConditionalGeneration",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Qwen/Qwen2-Audio-7B-Instruct",
+      "architecture_id": "Qwen2AudioForConditionalGeneration",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Qwen/Qwen2-Audio-7B",
+      "architecture_id": "Qwen2AudioForConditionalGeneration",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "bigcode/starcoder2-3b",
+      "architecture_id": "Starcoder2ForCausalLM",
+      "verified_date": "2026-07-08",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "bigcode/starcoder2-7b",
+      "architecture_id": "Starcoder2ForCausalLM",
+      "verified_date": "2026-07-08",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues, low text quality",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "google-t5/t5-11b",
+      "architecture_id": "T5WithLMHeadModel",
+      "verified_date": "2026-07-08",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "unicamp-dl/ptt5-base-portuguese-vocab",
+      "architecture_id": "T5WithLMHeadModel",
+      "verified_date": "2026-07-08",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues, low text quality",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Salesforce/codet5-large",
+      "architecture_id": "T5WithLMHeadModel",
+      "verified_date": "2026-07-08",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: Input must be a List[Union[str, AddedToken]]",
       "invalidated": false,
       "invalidation_reason": null
     }
