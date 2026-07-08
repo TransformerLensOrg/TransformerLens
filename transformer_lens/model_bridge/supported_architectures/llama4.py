@@ -23,21 +23,14 @@ from transformer_lens.model_bridge.generalized_components import (
     RMSNormalizationBridge,
     UnembeddingBridge,
 )
+from transformer_lens.model_bridge.generalized_components.base import (
+    CloneOutputUnderGradMixin,
+)
 
 
-class _Llama4SharedExpertBridge(GatedMLPBridge):
-    """GatedMLPBridge whose output survives HF's in-place ``out.add_``.
-
-    Llama4TextMoe accumulates routed-expert output into the shared-expert
-    result in place, which autograd forbids on backward-hook views; clone
-    under grad so the hooked tensor is never the in-place target.
-    """
-
-    def forward(self, *args: Any, **kwargs: Any) -> torch.Tensor:
-        out = super().forward(*args, **kwargs)
-        if torch.is_grad_enabled():
-            out = out.clone()
-        return out
+class _Llama4SharedExpertBridge(CloneOutputUnderGradMixin, GatedMLPBridge):
+    """Llama4TextMoe accumulates routed output into the shared-expert result
+    with an in-place ``add_``; clone under grad (see mixin)."""
 
 
 class _Llama4MoEBridge(MoEBridge):

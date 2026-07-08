@@ -10,8 +10,6 @@ whole stack lives under the ``led.`` prefix instead of ``model.``.
 
 from typing import Any
 
-import torch
-
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     BlockBridge,
@@ -19,24 +17,17 @@ from transformer_lens.model_bridge.generalized_components import (
     NormalizationBridge,
     SymbolicBridge,
 )
+from transformer_lens.model_bridge.generalized_components.base import (
+    CloneOutputUnderGradMixin,
+)
 from transformer_lens.model_bridge.supported_architectures.bart import (
     BartArchitectureAdapter,
 )
 
 
-class _LEDEncoderQueryBridge(LinearBridge):
-    """LinearBridge whose output survives Longformer's in-place ``/=`` scale.
-
-    LEDEncoderSelfAttention divides the query projection in place, which
-    autograd forbids on backward-hook views; clone under grad so the hooked
-    tensor is never the in-place target.
-    """
-
-    def forward(self, *args: Any, **kwargs: Any) -> torch.Tensor:
-        out = super().forward(*args, **kwargs)
-        if torch.is_grad_enabled():
-            out = out.clone()
-        return out
+class _LEDEncoderQueryBridge(CloneOutputUnderGradMixin, LinearBridge):
+    """LEDEncoderSelfAttention scales the query projection with an in-place
+    ``/=``; clone under grad (see mixin)."""
 
 
 class LEDArchitectureAdapter(BartArchitectureAdapter):

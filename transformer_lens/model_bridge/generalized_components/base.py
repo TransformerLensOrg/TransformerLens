@@ -15,6 +15,22 @@ from transformer_lens.conversion_utils.conversion_steps.base_tensor_conversion i
 from transformer_lens.hook_points import HookPoint
 
 
+class CloneOutputUnderGradMixin(nn.Module):
+    """Clone the forward output while grad is enabled.
+
+    For wrapped submodules whose output HF mutates in place (``out.add_``,
+    ``/=``): autograd forbids in-place writes to backward-hook views, so the
+    hooked tensor must never be the in-place target. Inference pays nothing.
+    Mix in ahead of a bridge class: ``class X(CloneOutputUnderGradMixin, LinearBridge)``.
+    """
+
+    def forward(self, *args: Any, **kwargs: Any) -> Any:
+        out = super().forward(*args, **kwargs)
+        if isinstance(out, torch.Tensor) and torch.is_grad_enabled():
+            out = out.clone()
+        return out
+
+
 class GeneralizedComponent(nn.Module):
     """Base class for generalized transformer components.
 
