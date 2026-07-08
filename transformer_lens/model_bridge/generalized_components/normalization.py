@@ -109,6 +109,11 @@ class NormalizationBridge(GeneralizedComponent):
                 ):
                     hidden_states = hidden_states + cast(torch.Tensor, self.original_component.bias)
             result = hidden_states.to(input_dtype)
+            if not uses_rms_norm and not result.is_contiguous():
+                # F.layer_norm materializes a contiguous output while these
+                # pointwise ops preserve the input's strides; downstream HF code
+                # may .view() the result (e.g. Idefics3 pixel_shuffle).
+                result = result.contiguous()
         output = self.hook_out(result)
         return output
 

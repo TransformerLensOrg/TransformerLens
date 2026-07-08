@@ -60,12 +60,18 @@ def _prepare_test_inputs(bridge: TransformerBridge):
             # Some processors insert the image placeholders themselves; a
             # manual placeholder would then double-count. Probe with a plain
             # prompt first and keep it if image tokens were auto-inserted.
+            # Idefics3-style processors RAISE on image inputs without image
+            # tokens in the text — a failed probe just means "not
+            # auto-inserting", so fall back to the placeholder prompt.
             image_token_id = getattr(bridge.original_model.config, "image_token_id", None)
             if image_token_id is not None:
-                plain = "Describe this image."
-                probe = bridge.processor(text=plain, images=image, return_tensors="pt")
-                if (probe["input_ids"] == image_token_id).any():
-                    prompt = plain
+                try:
+                    plain = "Describe this image."
+                    probe = bridge.processor(text=plain, images=image, return_tensors="pt")
+                    if (probe["input_ids"] == image_token_id).any():
+                        prompt = plain
+                except Exception:
+                    pass
         inputs = bridge.processor(text=prompt, images=image, return_tensors="pt")
         input_ids = inputs["input_ids"].to(bridge.cfg.device)
 
