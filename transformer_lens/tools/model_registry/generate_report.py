@@ -109,6 +109,7 @@ ARCHITECTURE_DESCRIPTIONS: dict[str, str] = {
     "MusicFlamingoForConditionalGeneration": "NVIDIA Music Flamingo / Audio Flamingo Next (AF3 + temporal rotary conditioning)",
     "HyenaDNAForCausalLM": "HazyResearch HyenaDNA genomic LM (attention-free Hyena long-conv operator)",
     "LLaDA2MoeModelLM": "Ant Group LLaDA 2.x masked block-diffusion LM on a DeepSeek-V3-style MoE decoder",
+    "LagunaForCausalLM": "poolside Laguna coding MoE (heterogeneous per-layer head counts, softplus attention gating)",
     "NanoChatForCausalLM": "Karpathy's nanochat education-stack decoder (weightless norms, relu^2 MLP, capped logits)",
     "HunYuanDenseV1ForCausalLM": "Tencent's open source decoder models",
     "Cohere2ForCausalLM": "Cohere's Command-A architecture with interleaved sliding-window RoPE and full-attention NoPE layers",

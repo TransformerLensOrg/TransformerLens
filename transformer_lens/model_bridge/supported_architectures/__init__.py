@@ -160,6 +160,9 @@ from transformer_lens.model_bridge.supported_architectures.idefics3 import (
 from transformer_lens.model_bridge.supported_architectures.internlm2 import (
     InternLM2ArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.laguna import (
+    LagunaArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.led import (
     LEDArchitectureAdapter,
 )
@@ -413,6 +416,7 @@ __all__ = [
     "Idefics3ArchitectureAdapter",
     "InternLM2ArchitectureAdapter",
     "LEDArchitectureAdapter",
+    "LagunaArchitectureAdapter",
     "LLaDA2MoeArchitectureAdapter",
     "LlamaArchitectureAdapter",
     "Llama4ArchitectureAdapter",

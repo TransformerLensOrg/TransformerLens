@@ -67,6 +67,7 @@ _BRIDGE_REMOTE_CODE_PREFIXES: tuple[str, ...] = (
     "Dream-org/",  # DreamModel — ships own modeling_dream.py
     "LongSafari/",  # HyenaDNAForCausalLM — ships own modeling_hyena.py
     "inclusionAI/",  # LLaDA2MoeModelLM — ships own modeling_llada2_moe.py
+    "poolside/",  # LagunaForCausalLM — ships own modeling_laguna.py
     "apple/DiffuCoder",  # DreamModel (DiffuCoder) — same remote code family
     "LGAI-EXAONE/",  # ExaoneForCausalLM (EXAONE-3.x) — ships own modeling_exaone.py
 )
