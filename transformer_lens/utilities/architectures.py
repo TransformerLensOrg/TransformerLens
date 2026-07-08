@@ -57,6 +57,8 @@ MULTIMODAL_ARCHITECTURES: set[str] = {
 AUDIO_TEXT_ARCHITECTURES: set[str] = {
     "Qwen2AudioForConditionalGeneration",
     "GlmAsrForConditionalGeneration",
+    "AudioFlamingo3ForConditionalGeneration",
+    "MusicFlamingoForConditionalGeneration",
 }
 
 # Audio encoder models (HuBERT, wav2vec2, etc.)

@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-07-08T05:59:13.916245",
+  "last_updated": "2026-07-08T06:30:07.850908",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -18118,6 +18118,16 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Full verification completed with issues: P3=89.5% (failed: attention_output_centering, unembed_centering)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "nvidia/audio-flamingo-3-hf",
+      "architecture_id": "AudioFlamingo3ForConditionalGeneration",
+      "verified_date": "2026-07-08",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
       "invalidated": false,
       "invalidation_reason": null
     }

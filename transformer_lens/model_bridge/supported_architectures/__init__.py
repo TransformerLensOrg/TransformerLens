@@ -12,6 +12,9 @@ from transformer_lens.model_bridge.supported_architectures.arcee import (
 from transformer_lens.model_bridge.supported_architectures.bamba import (
     BambaArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.audio_flamingo3 import (
+    AudioFlamingo3ArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.baichuan import (
     BaichuanArchitectureAdapter,
 )
@@ -220,6 +223,9 @@ from transformer_lens.model_bridge.supported_architectures.mpt import (
 from transformer_lens.model_bridge.supported_architectures.nanogpt import (
     NanogptArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.music_flamingo import (
+    MusicFlamingoArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.nanochat import (
     NanoChatArchitectureAdapter,
 )
@@ -349,6 +355,7 @@ __all__ = [
     "AfmoeArchitectureAdapter",
     "ApertusArchitectureAdapter",
     "ArceeArchitectureAdapter",
+    "AudioFlamingo3ArchitectureAdapter",
     "BD3LMArchitectureAdapter",
     "BaichuanArchitectureAdapter",
     "BambaArchitectureAdapter",
@@ -418,6 +425,7 @@ __all__ = [
     "Mistral3ArchitectureAdapter",
     "MixtralArchitectureAdapter",
     "MPTArchitectureAdapter",
+    "MusicFlamingoArchitectureAdapter",
     "NanogptArchitectureAdapter",
     "NanoChatArchitectureAdapter",
     "NativeArchitectureAdapter",

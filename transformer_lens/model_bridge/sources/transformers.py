@@ -248,6 +248,8 @@ def determine_architecture_from_hf_config(hf_config):
             "nemotron": "NemotronForCausalLM",
             "idefics3": "Idefics3ForConditionalGeneration",
             "qwen2_audio": "Qwen2AudioForConditionalGeneration",
+            "audioflamingo3": "AudioFlamingo3ForConditionalGeneration",
+            "musicflamingo": "MusicFlamingoForConditionalGeneration",
             "minimax_m2": "MiniMaxM2ForCausalLM",
             "led": "LEDForConditionalGeneration",
             "llama": "LlamaForCausalLM",
