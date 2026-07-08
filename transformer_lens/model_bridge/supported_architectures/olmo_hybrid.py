@@ -55,13 +55,6 @@ class OlmoHybridArchitectureAdapter(ArchitectureAdapter):
             **self._qkvo_weight_conversions(),
         }
 
-        # RMSNormalizationBridge has no optional kwarg; per-layer-type norms
-        # are marked optional post-construction.
-        ln1 = RMSNormalizationBridge(name="input_layernorm", config=self.cfg)
-        ln1.optional = True
-        ln2_post = RMSNormalizationBridge(name="post_feedforward_layernorm", config=self.cfg)
-        ln2_post.optional = True
-
         self.component_mapping = {
             "embed": EmbeddingBridge(name="model.embed_tokens"),
             "blocks": BlockBridge(
@@ -70,9 +63,13 @@ class OlmoHybridArchitectureAdapter(ArchitectureAdapter):
                     # Linear-attention layers are pre-norm (input_layernorm);
                     # full-attention layers are OLMo2 post-norm and have
                     # post_feedforward_layernorm instead.
-                    "ln1": ln1,
+                    "ln1": RMSNormalizationBridge(
+                        name="input_layernorm", config=self.cfg, optional=True
+                    ),
                     "ln2": RMSNormalizationBridge(name="post_attention_layernorm", config=self.cfg),
-                    "ln2_post": ln2_post,
+                    "ln2_post": RMSNormalizationBridge(
+                        name="post_feedforward_layernorm", config=self.cfg, optional=True
+                    ),
                     "attn": AttentionBridge(
                         name="self_attn",
                         config=self.cfg,

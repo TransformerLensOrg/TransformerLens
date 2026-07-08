@@ -24,6 +24,7 @@ class NormalizationBridge(GeneralizedComponent):
         submodules: Optional[Dict[str, GeneralizedComponent]] = {},
         use_native_layernorm_autograd: bool = False,
         uses_rms_norm: Optional[bool] = None,
+        optional: bool = False,
     ):
         """Initialize the normalization bridge.
 
@@ -36,8 +37,9 @@ class NormalizationBridge(GeneralizedComponent):
                                           use custom implementation. Defaults to False.
             uses_rms_norm: Force RMSNorm vs LayerNorm; None defers to introspection
                 then ``config.uses_rms_norm``.
+            optional: If True, setup skips this subtree when absent (hybrid architectures).
         """
-        super().__init__(name, config, submodules=submodules)
+        super().__init__(name, config, submodules=submodules, optional=optional)
         self.hook_normalized = HookPoint()
         self.hook_scale = HookPoint()
         self.use_native_layernorm_autograd = use_native_layernorm_autograd

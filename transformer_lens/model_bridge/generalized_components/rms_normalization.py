@@ -36,6 +36,7 @@ class RMSNormalizationBridge(NormalizationBridge):
         config: Any,
         submodules: Optional[Dict[str, "GeneralizedComponent"]] = None,
         use_native_layernorm_autograd: bool = True,
+        optional: bool = False,
     ):
         """Initialize the RMS normalization bridge.
 
@@ -44,12 +45,14 @@ class RMSNormalizationBridge(NormalizationBridge):
             config: Configuration object
             submodules: Dictionary of GeneralizedComponent submodules to register
             use_native_layernorm_autograd: Use HF's RMSNorm implementation for exact numerical match
+            optional: If True, setup skips this subtree when absent (hybrid architectures)
         """
         super().__init__(
             name,
             config,
             submodules=submodules or {},
             use_native_layernorm_autograd=use_native_layernorm_autograd,
+            optional=optional,
         )
         if self.config is not None and (not hasattr(self.config, "uses_rms_norm")):
             self.config.uses_rms_norm = True
