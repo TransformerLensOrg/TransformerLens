@@ -45,25 +45,8 @@ class GraniteArchitectureAdapter(ArchitectureAdapter):
 
     def _setup_common_config(self, cfg: Any) -> None:
         """Set up config variables shared across all Granite variants."""
-        self.cfg.normalization_type = "RMS"
-        self.cfg.positional_embedding_type = "rotary"
-        self.cfg.final_rms = True
-        self.cfg.gated_mlp = True
-        self.cfg.attn_only = False
-        self.cfg.uses_rms_norm = True
+        self._set_rms_rotary_defaults()
         self.cfg.default_prepend_bos = False
-
-        self.default_config = {
-            "d_model": cfg.d_model,
-            "d_head": cfg.d_model // cfg.n_heads,
-            "n_heads": cfg.n_heads,
-            "n_layers": cfg.n_layers,
-            "d_vocab": cfg.d_vocab,
-        }
-
-        if hasattr(cfg, "n_key_value_heads") and cfg.n_key_value_heads is not None:
-            self.default_config["n_key_value_heads"] = cfg.n_key_value_heads
-            self.cfg.n_key_value_heads = cfg.n_key_value_heads
 
     def _build_attention_bridge(self, optional: bool = False) -> PositionEmbeddingsAttentionBridge:
         """Build the standard Granite attention bridge."""

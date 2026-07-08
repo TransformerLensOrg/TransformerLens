@@ -35,9 +35,6 @@ class NemotronArchitectureAdapter(ArchitectureAdapter):
         self.cfg.gated_mlp = False
         self.cfg.attn_only = False
 
-        if hasattr(cfg, "n_key_value_heads") and cfg.n_key_value_heads is not None:
-            self.cfg.n_key_value_heads = cfg.n_key_value_heads
-
         # LayerNorm1P applies gamma as (weight + 1); standard LN folding would
         # fold the stored weight without the offset. Keep raw weights.
         self.supports_fold_ln = False

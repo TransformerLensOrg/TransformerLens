@@ -35,16 +35,8 @@ class Qwen2AudioArchitectureAdapter(ArchitectureAdapter):
         self.cfg.is_multimodal = True
 
         # Text model is Qwen2 (RMS + RoPE + GQA + gated MLP, attention biases).
-        self.cfg.normalization_type = "RMS"
-        self.cfg.positional_embedding_type = "rotary"
-        self.cfg.final_rms = True
-        self.cfg.gated_mlp = True
-        self.cfg.attn_only = False
-        self.cfg.uses_rms_norm = True
+        self._set_rms_rotary_defaults()
         self.cfg.default_prepend_bos = False
-
-        if hasattr(cfg, "n_key_value_heads") and cfg.n_key_value_heads is not None:
-            self.cfg.n_key_value_heads = cfg.n_key_value_heads
 
         self.weight_processing_conversions = {
             **self._qkvo_weight_conversions(),

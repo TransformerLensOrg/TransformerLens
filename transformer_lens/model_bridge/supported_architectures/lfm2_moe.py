@@ -43,16 +43,8 @@ class Lfm2MoeArchitectureAdapter(ArchitectureAdapter):
         """Initialize the LFM2 MoE architecture adapter."""
         super().__init__(cfg)
 
-        self.cfg.normalization_type = "RMS"
-        self.cfg.positional_embedding_type = "rotary"
-        self.cfg.final_rms = True
-        self.cfg.gated_mlp = True
-        self.cfg.attn_only = False
-        self.cfg.uses_rms_norm = True
+        self._set_rms_rotary_defaults()
         self.cfg.default_prepend_bos = False
-
-        if hasattr(cfg, "n_key_value_heads") and cfg.n_key_value_heads is not None:
-            self.cfg.n_key_value_heads = cfg.n_key_value_heads
 
         if hasattr(cfg, "num_experts"):
             self.cfg.num_experts = cfg.num_experts

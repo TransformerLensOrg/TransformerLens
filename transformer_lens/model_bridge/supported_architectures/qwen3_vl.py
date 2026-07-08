@@ -49,19 +49,11 @@ class Qwen3VLArchitectureAdapter(ArchitectureAdapter):
         super().__init__(cfg)
 
         self.cfg.is_multimodal = True
-        self.cfg.normalization_type = "RMS"
-        self.cfg.positional_embedding_type = "rotary"
-        self.cfg.final_rms = True
-        self.cfg.gated_mlp = True
-        self.cfg.attn_only = False
-        self.cfg.uses_rms_norm = True
+        self._set_rms_rotary_defaults()
         self.cfg.attn_implementation = "eager"
         # Qwen tokenizers have no BOS; the prepend fallback would inject
         # <|im_end|>, which reads as an ended turn.
         self.cfg.default_prepend_bos = False
-
-        if hasattr(cfg, "n_key_value_heads") and cfg.n_key_value_heads is not None:
-            self.cfg.n_key_value_heads = cfg.n_key_value_heads
 
         vision_cfg = getattr(cfg, "vision_config", None)
         if vision_cfg is not None:

@@ -52,15 +52,7 @@ class BitNetArchitectureAdapter(ArchitectureAdapter):
         """Initialize the BitNet architecture adapter."""
         super().__init__(cfg)
 
-        self.cfg.normalization_type = "RMS"
-        self.cfg.positional_embedding_type = "rotary"
-        self.cfg.final_rms = True
-        self.cfg.gated_mlp = True
-        self.cfg.attn_only = False
-        self.cfg.uses_rms_norm = True
-
-        if hasattr(cfg, "n_key_value_heads") and cfg.n_key_value_heads is not None:
-            self.cfg.n_key_value_heads = cfg.n_key_value_heads
+        self._set_rms_rotary_defaults()
 
         # Sub-layer norms sit between activations and output projections;
         # standard LN folding and W_O centering do not model them.

@@ -53,14 +53,7 @@ class Phi3ArchitectureAdapter(ArchitectureAdapter):
         """
         super().__init__(cfg)
 
-        # Set config variables for weight processing
-        self.cfg.normalization_type = "RMS"
-        self.cfg.positional_embedding_type = "rotary"
-        self.cfg.final_rms = True
-        self.cfg.gated_mlp = True
-        self.cfg.attn_only = False
-
-        self.cfg.uses_rms_norm = True
+        self._set_rms_rotary_defaults()
 
         # Standard fold_ln can't handle joint qkv/gate_up projections (shape mismatch).
         # LN folding is handled in preprocess_weights() instead.

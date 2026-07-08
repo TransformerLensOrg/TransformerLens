@@ -32,17 +32,11 @@ class Gemma1ArchitectureAdapter(ArchitectureAdapter):
         """Initialize the Gemma1 architecture adapter."""
         super().__init__(cfg)
 
-        # Set config variables for weight processing
-        self.cfg.normalization_type = "RMS"
-        self.cfg.positional_embedding_type = "rotary"
-        self.cfg.final_rms = True
-        self.cfg.gated_mlp = True
-        self.cfg.attn_only = False
+        self._set_rms_rotary_defaults()
 
         # Gemma models use BOS tokens (tokenizer prepends BOS by default)
         # Matches HookedTransformer behavior (default_prepend_bos = True)
         self.cfg.default_prepend_bos = True
-        self.cfg.uses_rms_norm = True
         # Gemma models use (1.0 + weight) in RMSNorm instead of just weight
         # See: https://github.com/huggingface/transformers/pull/29402
         self.cfg.rmsnorm_uses_offset = True

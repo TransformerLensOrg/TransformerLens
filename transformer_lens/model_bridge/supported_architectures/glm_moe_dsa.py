@@ -32,12 +32,7 @@ class GlmMoeDsaArchitectureAdapter(ArchitectureAdapter):
         super().__init__(cfg)
 
         self.supports_fold_ln = False
-        self.cfg.normalization_type = "RMS"
-        self.cfg.positional_embedding_type = "rotary"
-        self.cfg.gated_mlp = True
-        self.cfg.final_rms = True
-        self.cfg.attn_only = False
-        self.cfg.uses_rms_norm = True
+        self._set_rms_rotary_defaults()
         self.cfg.attn_implementation = "eager"
         self.cfg.default_prepend_bos = False
 

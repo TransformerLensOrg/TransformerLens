@@ -87,19 +87,11 @@ class InternLM2ArchitectureAdapter(ArchitectureAdapter):
     def __init__(self, cfg: Any) -> None:
         super().__init__(cfg)
 
-        self.cfg.normalization_type = "RMS"
-        self.cfg.positional_embedding_type = "rotary"
-        self.cfg.final_rms = True
-        self.cfg.gated_mlp = True
-        self.cfg.attn_only = False
-        self.cfg.uses_rms_norm = True
+        self._set_rms_rotary_defaults()
 
         # Standard fold_ln silently skips attention when wqkv is fused (see class docstring).
         # preprocess_weights() handles it instead — same approach as phi3.py.
         self.supports_fold_ln = False
-
-        if hasattr(cfg, "n_key_value_heads") and cfg.n_key_value_heads is not None:
-            self.cfg.n_key_value_heads = cfg.n_key_value_heads
 
         n_kv_heads = getattr(cfg, "n_key_value_heads", None) or cfg.n_heads
 

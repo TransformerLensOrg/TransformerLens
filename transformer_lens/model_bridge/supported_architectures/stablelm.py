@@ -63,19 +63,6 @@ class StableLmArchitectureAdapter(ArchitectureAdapter):
         # both bridge and reference must use the same implementation
         self.cfg.attn_implementation = "eager"
 
-        self.default_config = {
-            "d_model": cfg.d_model,
-            "d_head": cfg.d_model // cfg.n_heads,
-            "n_heads": cfg.n_heads,
-            "n_layers": cfg.n_layers,
-            "d_vocab": cfg.d_vocab,
-        }
-
-        # GQA support
-        if hasattr(cfg, "n_key_value_heads") and cfg.n_key_value_heads is not None:
-            self.default_config["n_key_value_heads"] = cfg.n_key_value_heads
-            self.cfg.n_key_value_heads = cfg.n_key_value_heads
-
         n_kv_heads = getattr(self.cfg, "n_key_value_heads", None) or self.cfg.n_heads
 
         self.weight_processing_conversions = {

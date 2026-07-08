@@ -36,8 +36,6 @@ class PhiMoEArchitectureAdapter(ArchitectureAdapter):
         self.cfg.attn_implementation = "eager"
         self.cfg.default_prepend_bos = False
 
-        if hasattr(cfg, "n_key_value_heads") and cfg.n_key_value_heads is not None:
-            self.cfg.n_key_value_heads = cfg.n_key_value_heads
         if hasattr(cfg, "num_experts"):
             self.cfg.num_experts = cfg.num_experts
         if hasattr(cfg, "experts_per_token"):

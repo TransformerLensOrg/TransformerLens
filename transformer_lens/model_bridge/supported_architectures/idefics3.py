@@ -34,16 +34,8 @@ class Idefics3ArchitectureAdapter(ArchitectureAdapter):
         self.cfg.is_multimodal = True
 
         # Text model is llama-shaped (SmolLM2 in public checkpoints).
-        self.cfg.gated_mlp = True
-        self.cfg.uses_rms_norm = True
-        self.cfg.normalization_type = "RMS"
-        self.cfg.positional_embedding_type = "rotary"
+        self._set_rms_rotary_defaults()
         self.cfg.attn_implementation = "eager"
-        self.cfg.final_rms = True
-        self.cfg.attn_only = False
-
-        if hasattr(cfg, "n_key_value_heads") and cfg.n_key_value_heads is not None:
-            self.cfg.n_key_value_heads = cfg.n_key_value_heads
 
         if hasattr(cfg, "vision_config"):
             self.cfg.vision_hidden_size = getattr(cfg.vision_config, "hidden_size", None)

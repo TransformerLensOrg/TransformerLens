@@ -112,27 +112,14 @@ class SmolLM3ArchitectureAdapter(ArchitectureAdapter):
         """Initialize the SmolLM3 architecture adapter."""
         super().__init__(cfg)
 
-        # Set config variables for weight processing.
-        self.cfg.normalization_type = "RMS"
-        self.cfg.positional_embedding_type = "rotary"
-        self.cfg.final_rms = True
-        self.cfg.gated_mlp = True
-        self.cfg.attn_only = False
+        self._set_rms_rotary_defaults()
 
         self.cfg.default_prepend_bos = False
-        self.cfg.uses_rms_norm = True
         # The bridge reimplements attention and reads output_attentions, so the
         # HF model must run in eager mode for the scores and pattern hooks to
         # match the reference. Set it on cfg so weight processing and
         # setup_component_testing agree without relying on boot()'s default.
         self.cfg.attn_implementation = "eager"
-
-        # GQA: propagate the KV-head count so _qkvo_weight_conversions splits K
-        # and V by n_key_value_heads. boot() only sets cfg.n_key_value_heads when
-        # it differs from n_heads, so set it explicitly when present to keep the
-        # standalone adapter deterministic.
-        if hasattr(cfg, "n_key_value_heads") and cfg.n_key_value_heads is not None:
-            self.cfg.n_key_value_heads = cfg.n_key_value_heads
 
         # Standard separate q_proj/k_proj/v_proj/o_proj layout, GQA-aware. No
         # biases anywhere (attention_bias=False, mlp_bias=False), so no bias

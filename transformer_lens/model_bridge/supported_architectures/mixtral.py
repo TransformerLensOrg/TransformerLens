@@ -36,13 +36,7 @@ class MixtralArchitectureAdapter(ArchitectureAdapter):
         """Initialize the Mixtral architecture adapter."""
         super().__init__(cfg)
 
-        # Set config variables for weight processing
-        self.cfg.normalization_type = "RMS"
-        self.cfg.positional_embedding_type = "rotary"
-        self.cfg.final_rms = False
-        self.cfg.gated_mlp = True
-        self.cfg.attn_only = False
-        self.cfg.uses_rms_norm = True
+        self._set_rms_rotary_defaults(final_rms=False)
 
         n_kv_heads = (
             self.cfg.n_key_value_heads

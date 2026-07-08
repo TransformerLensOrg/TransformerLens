@@ -55,15 +55,10 @@ class T5GemmaArchitectureAdapter(ArchitectureAdapter):
         self.supports_fold_ln = False
 
         # Config flags used by bridge weight processing
-        self.cfg.normalization_type = "RMS"
-        self.cfg.positional_embedding_type = "rotary"
-        self.cfg.final_rms = True
-        self.cfg.gated_mlp = True
-        self.cfg.attn_only = False
+        self._set_rms_rotary_defaults()
         # Gemma-family GELU; the nested enc/dec config defeats the auto-mapper,
         # which would otherwise leave act_fn at the "relu" default.
         self.cfg.act_fn = "gelu_pytorch_tanh"
-        self.cfg.uses_rms_norm = True
         # T5Gemma uses Gemma-style (1.0 + weight) RMSNorm offset
         self.cfg.rmsnorm_uses_offset = True
 

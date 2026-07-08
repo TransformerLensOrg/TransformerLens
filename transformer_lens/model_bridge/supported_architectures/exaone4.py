@@ -30,17 +30,9 @@ class Exaone4ArchitectureAdapter(ArchitectureAdapter):
         """Initialize the EXAONE 4.0 architecture adapter."""
         super().__init__(cfg)
 
-        self.cfg.normalization_type = "RMS"
-        self.cfg.positional_embedding_type = "rotary"
-        self.cfg.final_rms = True
-        self.cfg.gated_mlp = True
-        self.cfg.attn_only = False
-        self.cfg.uses_rms_norm = True
+        self._set_rms_rotary_defaults()
         # Same tokenizer family as EXAONE-3.x: no BOS prepending.
         self.cfg.default_prepend_bos = False
-
-        if hasattr(cfg, "n_key_value_heads") and cfg.n_key_value_heads is not None:
-            self.cfg.n_key_value_heads = cfg.n_key_value_heads
 
         layer_types = getattr(cfg, "layer_types", None)
         if layer_types:

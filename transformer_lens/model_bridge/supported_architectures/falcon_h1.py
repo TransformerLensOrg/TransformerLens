@@ -88,18 +88,10 @@ class FalconH1ArchitectureAdapter(ArchitectureAdapter):
     def __init__(self, cfg: Any) -> None:
         super().__init__(cfg)
 
-        self.cfg.normalization_type = "RMS"
-        self.cfg.uses_rms_norm = True
-        self.cfg.positional_embedding_type = "rotary"
-        self.cfg.final_rms = True
+        self._set_rms_rotary_defaults()
         # SwiGLU feed-forward (gate_proj / up_proj / down_proj, silu activation).
-        self.cfg.gated_mlp = True
-        self.cfg.attn_only = False
         # FalconH1RMSNorm stores its epsilon as `variance_epsilon` (like Llama).
         setattr(self.cfg, "eps_attr", "variance_epsilon")
-
-        if hasattr(cfg, "n_key_value_heads") and cfg.n_key_value_heads is not None:
-            self.cfg.n_key_value_heads = cfg.n_key_value_heads
 
         # Mamba-2 dimensional config. Falcon-H1 specifies the inner SSM width
         # directly via `mamba_d_ssm` (= mamba_n_heads * mamba_d_head), unlike

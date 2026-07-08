@@ -61,20 +61,6 @@ class ArceeArchitectureAdapter(ArchitectureAdapter):
         # hook_pattern; SDPA does not support output_attentions.
         self.cfg.attn_implementation = "eager"
 
-        self.default_config = {
-            "d_model": cfg.d_model,
-            "d_head": cfg.d_model // cfg.n_heads,
-            "n_heads": cfg.n_heads,
-            "n_layers": cfg.n_layers,
-            "d_vocab": cfg.d_vocab,
-        }
-
-        # GQA support (num_key_value_heads < num_attention_heads). Must set on cfg,
-        # not just default_config, so _qkvo_weight_conversions() picks it up.
-        if hasattr(cfg, "n_key_value_heads") and cfg.n_key_value_heads is not None:
-            self.default_config["n_key_value_heads"] = cfg.n_key_value_heads
-            self.cfg.n_key_value_heads = cfg.n_key_value_heads
-
         self.weight_processing_conversions = {
             **self._qkvo_weight_conversions(),
         }

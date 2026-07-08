@@ -90,6 +90,20 @@ class ArchitectureAdapter:
             if not hasattr(self.cfg, key):
                 setattr(self.cfg, key, value)
 
+    def _set_rms_rotary_defaults(self, *, final_rms: bool = True) -> None:
+        """Set the Llama-family config flags: RMS norms, rotary positions, gated MLP.
+
+        Args:
+            final_rms: Value for cfg.final_rms; kept per-architecture (e.g. the
+                Mistral/Mixtral/OLMoE adapters set False).
+        """
+        self.cfg.normalization_type = "RMS"
+        self.cfg.positional_embedding_type = "rotary"
+        self.cfg.final_rms = final_rms
+        self.cfg.gated_mlp = True
+        self.cfg.attn_only = False
+        self.cfg.uses_rms_norm = True
+
     def _qkvo_weight_conversions(
         self, n_kv_heads: Optional[int] = None, include_biases: bool = False
     ) -> Dict[str, ParamProcessingConversion]:

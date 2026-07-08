@@ -41,28 +41,7 @@ class LlamaArchitectureAdapter(ArchitectureAdapter):
         """Initialize the Llama architecture adapter."""
         super().__init__(cfg)
 
-        # Set config variables for weight processing
-        self.cfg.normalization_type = "RMS"
-        self.cfg.positional_embedding_type = "rotary"
-        self.cfg.final_rms = True
-        self.cfg.gated_mlp = True
-        self.cfg.attn_only = False
-
-        self.default_config = {
-            "d_model": cfg.d_model,
-            "d_head": cfg.d_model // cfg.n_heads,
-            "n_heads": cfg.n_heads,
-            "n_layers": cfg.n_layers,
-            "d_vocab": cfg.d_vocab,
-        }
-
-        # Add GQA support for Llama 3.1, 3.2, and later models
-        # Must set directly on cfg, not just in default_config
-        if hasattr(cfg, "n_key_value_heads") and cfg.n_key_value_heads is not None:
-            self.default_config["n_key_value_heads"] = cfg.n_key_value_heads
-            self.cfg.n_key_value_heads = cfg.n_key_value_heads
-
-        self.cfg.uses_rms_norm = True
+        self._set_rms_rotary_defaults()
 
         self.weight_processing_conversions = {
             **self._qkvo_weight_conversions(),

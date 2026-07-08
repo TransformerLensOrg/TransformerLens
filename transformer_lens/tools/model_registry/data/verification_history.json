@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-07-08T02:41:29.808203",
+  "last_updated": "2026-07-08T03:49:23.428014",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -18034,6 +18034,16 @@
     {
       "model_id": "arcee-ai/Trinity-Nano-Preview",
       "architecture_id": "AfmoeForCausalLM",
+      "verified_date": "2026-07-08",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "LGAI-EXAONE/EXAONE-3.5-2.4B-Instruct",
+      "architecture_id": "ExaoneForCausalLM",
       "verified_date": "2026-07-08",
       "verified_by": "verify_models",
       "transformerlens_version": null,

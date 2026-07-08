@@ -34,17 +34,9 @@ class MiniMaxM2ArchitectureAdapter(ArchitectureAdapter):
         """Initialize the MiniMax-M2 architecture adapter."""
         super().__init__(cfg)
 
-        self.cfg.normalization_type = "RMS"
-        self.cfg.positional_embedding_type = "rotary"
-        self.cfg.final_rms = True
-        self.cfg.gated_mlp = True
-        self.cfg.attn_only = False
-        self.cfg.uses_rms_norm = True
+        self._set_rms_rotary_defaults()
         # Verified against MiniMaxAI/MiniMax-M2: tokenizer does not prepend BOS.
         self.cfg.default_prepend_bos = False
-
-        if hasattr(cfg, "n_key_value_heads") and cfg.n_key_value_heads is not None:
-            self.cfg.n_key_value_heads = cfg.n_key_value_heads
 
         # QKVO rearrangements; MoE expert and router weights pass through unchanged
         self.weight_processing_conversions = {

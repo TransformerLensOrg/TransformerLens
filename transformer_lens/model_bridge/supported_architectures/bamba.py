@@ -39,17 +39,9 @@ class BambaArchitectureAdapter(ArchitectureAdapter):
         """Initialize the Bamba architecture adapter."""
         super().__init__(cfg)
 
-        self.cfg.normalization_type = "RMS"
-        self.cfg.positional_embedding_type = "rotary"
-        self.cfg.final_rms = True
-        self.cfg.gated_mlp = True
-        self.cfg.attn_only = False
-        self.cfg.uses_rms_norm = True
+        self._set_rms_rotary_defaults()
         # Mamba layers require per-step SSM state; generation is stateful.
         self.cfg.is_stateful = True
-
-        if hasattr(cfg, "n_key_value_heads") and cfg.n_key_value_heads is not None:
-            self.cfg.n_key_value_heads = cfg.n_key_value_heads
 
         # Normalize the per-layer mixer-type list as cfg.layers_block_type so
         # analysis tools can find the Mamba layers, as on the hybrid siblings.

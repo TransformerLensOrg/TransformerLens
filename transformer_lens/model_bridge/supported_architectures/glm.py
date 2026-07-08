@@ -31,19 +31,11 @@ class GlmArchitectureAdapter(ArchitectureAdapter):
         """Initialize the GLM architecture adapter."""
         super().__init__(cfg)
 
-        self.cfg.normalization_type = "RMS"
-        self.cfg.positional_embedding_type = "rotary"
-        self.cfg.final_rms = True
-        self.cfg.gated_mlp = True
-        self.cfg.attn_only = False
-        self.cfg.uses_rms_norm = True
+        self._set_rms_rotary_defaults()
         # GLM rotates adjacent element pairs (interleaved RoPE), like ERNIE.
         self.cfg.rotary_adjacent_pairs = True
         # GLM tokenizers carry no BOS token.
         self.cfg.default_prepend_bos = False
-
-        if hasattr(cfg, "n_key_value_heads") and cfg.n_key_value_heads is not None:
-            self.cfg.n_key_value_heads = cfg.n_key_value_heads
 
         # Joint gate_up_proj cannot be folded by the standard LN machinery.
         self.supports_fold_ln = False

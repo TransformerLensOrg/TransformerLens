@@ -45,13 +45,7 @@ class Olmo2ArchitectureAdapter(ArchitectureAdapter):
         """Initialize the OLMo 2 architecture adapter."""
         super().__init__(cfg)
 
-        # Set config variables for weight processing
-        self.cfg.normalization_type = "RMS"
-        self.cfg.positional_embedding_type = "rotary"
-        self.cfg.final_rms = True
-        self.cfg.gated_mlp = True
-        self.cfg.attn_only = False
-        self.cfg.uses_rms_norm = True
+        self._set_rms_rotary_defaults()
         # OLMo-2 uses post-norm (RMSNorm AFTER attention/MLP), so layer norm
         # folding into QKV/MLP weights is incorrect — the norms apply to the
         # output, not the input. Same pattern as BERT and Phi-3.
@@ -60,19 +54,6 @@ class Olmo2ArchitectureAdapter(ArchitectureAdapter):
         # PositionEmbeddingsAttentionBridge delegates to native HF attention, so
         # both bridge and reference must use the same implementation.
         self.cfg.attn_implementation = "eager"
-
-        self.default_config = {
-            "d_model": cfg.d_model,
-            "d_head": cfg.d_model // cfg.n_heads,
-            "n_heads": cfg.n_heads,
-            "n_layers": cfg.n_layers,
-            "d_vocab": cfg.d_vocab,
-        }
-
-        # GQA support
-        if hasattr(cfg, "n_key_value_heads") and cfg.n_key_value_heads is not None:
-            self.default_config["n_key_value_heads"] = cfg.n_key_value_heads
-            self.cfg.n_key_value_heads = cfg.n_key_value_heads
 
         self.weight_processing_conversions = {
             **self._qkvo_weight_conversions(),

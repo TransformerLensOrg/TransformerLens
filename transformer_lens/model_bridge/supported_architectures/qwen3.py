@@ -46,17 +46,9 @@ class Qwen3ArchitectureAdapter(ArchitectureAdapter):
 
     def _setup_qwen3_config(self, cfg: Any) -> None:
         """Config shared across all Qwen3 variants (dense, hybrid, MoE)."""
-        self.cfg.normalization_type = "RMS"
-        self.cfg.positional_embedding_type = "rotary"
-        self.cfg.final_rms = True
-        self.cfg.gated_mlp = True
-        self.cfg.attn_only = False
-        self.cfg.uses_rms_norm = True
+        self._set_rms_rotary_defaults()
         self.cfg.default_prepend_bos = False
         self.cfg.attn_implementation = "eager"
-
-        if hasattr(cfg, "n_key_value_heads") and cfg.n_key_value_heads is not None:
-            self.cfg.n_key_value_heads = cfg.n_key_value_heads
 
     def _build_attention_bridge(self, optional: bool = False) -> PositionEmbeddingsAttentionBridge:
         """Standard Qwen3 attention bridge with Q/K norms."""

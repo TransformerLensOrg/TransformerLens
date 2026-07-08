@@ -139,14 +139,6 @@ def _wire_attention_bridge(
     return attn_bridge
 
 
-class TestOlmoAdapterConfig:
-    """Config mutations performed by OlmoArchitectureAdapter."""
-
-    def test_default_config_propagates_gqa(self, adapter: OlmoArchitectureAdapter) -> None:
-        """Any configured KV-head count should be mirrored into default_config."""
-        assert adapter.default_config["n_key_value_heads"] == adapter.cfg.n_key_value_heads
-
-
 class TestOlmoAdapterComponentMapping:
     """Structural tests for the adapter's component mapping."""
 

@@ -75,16 +75,11 @@ class RecurrentGemmaArchitectureAdapter(ArchitectureAdapter):
         """Initialize the RecurrentGemma architecture adapter."""
         super().__init__(cfg)
 
-        self.cfg.normalization_type = "RMS"
-        self.cfg.uses_rms_norm = True
-        self.cfg.final_rms = True
-        self.cfg.attn_only = False
+        self._set_rms_rotary_defaults()
         # RG-LRU + local attention both use RoPE-style handling internally on the
         # attention layers; there is no model-level rotary module (it lives inside
         # each attention temporal_block), so we do not wire a rotary_emb component.
-        self.cfg.positional_embedding_type = "rotary"
         # Gemma-family gated MLP (gate_proj -> GELU-tanh(up) -> down).
-        self.cfg.gated_mlp = True
         # Gemma RMSNorm uses (1.0 + weight); see
         # https://github.com/huggingface/transformers/pull/29402
         self.cfg.rmsnorm_uses_offset = True
