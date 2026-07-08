@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-07-08T07:16:14.204738",
+  "last_updated": "2026-07-08T09:16:08.195757",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -18174,6 +18174,116 @@
     {
       "model_id": "LongSafari/hyenadna-large-1m-seqlen-hf",
       "architecture_id": "HyenaDNAForCausalLM",
+      "verified_date": "2026-07-08",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "jhu-clsp/ettin-decoder-17m",
+      "architecture_id": "ModernBertDecoderForCausalLM",
+      "verified_date": "2026-07-08",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P3=89.5% but required tests failed: logits_equivalence, loss_equivalence \u2014 Text quality score: 76.4/100 (avg perplexity: 16.6) \u2014 generated text may be incoherent",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "jhu-clsp/ettin-decoder-1b",
+      "architecture_id": "ModernBertDecoderForCausalLM",
+      "verified_date": "2026-07-08",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P3=89.5% but required tests failed: logits_equivalence, loss_equivalence \u2014 Tensors differ: max_diff=0.207234, mean_rel=0.000825",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "jhu-clsp/ettin-decoder-17m",
+      "architecture_id": "ModernBertDecoderForCausalLM",
+      "verified_date": "2026-07-08",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "jhu-clsp/ettin-decoder-1b",
+      "architecture_id": "ModernBertDecoderForCausalLM",
+      "verified_date": "2026-07-08",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "tencent/Youtu-LLM-2B-Base",
+      "architecture_id": "YoutuForCausalLM",
+      "verified_date": "2026-07-08",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P3=76.2% (failed: process_bridge_weights, layer_norm_folding, unembed_centering, value_bias_folding, weight_modification)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "google/vaultgemma-1b",
+      "architecture_id": "VaultGemmaForCausalLM",
+      "verified_date": "2026-07-08",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P3=90.0% but required tests failed: logits_equivalence, loss_equivalence \u2014 Tensors differ: max_diff=19.557707, mean_rel=0.281903",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "yoriis/JAIS2-IT-0.3",
+      "architecture_id": "Jais2ForCausalLM",
+      "verified_date": "2026-07-08",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P2=92.3% (failed: generation)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "google/vaultgemma-1b",
+      "architecture_id": "VaultGemmaForCausalLM",
+      "verified_date": "2026-07-08",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P3=89.5% but required tests failed: logits_equivalence, loss_equivalence \u2014 Tensors differ: max_diff=19.557709, mean_rel=0.281903",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "google/vaultgemma-1b",
+      "architecture_id": "VaultGemmaForCausalLM",
+      "verified_date": "2026-07-08",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P3=90.0% but required tests failed: logits_equivalence, loss_equivalence \u2014 Tensors differ: max_diff=19.557707, mean_rel=0.281903",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "tencent/Youtu-LLM-2B-Base",
+      "architecture_id": "YoutuForCausalLM",
+      "verified_date": "2026-07-08",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P3=90.0% (failed: value_bias_folding, weight_modification)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "google/vaultgemma-1b",
+      "architecture_id": "VaultGemmaForCausalLM",
       "verified_date": "2026-07-08",
       "verified_by": "verify_models",
       "transformerlens_version": null,

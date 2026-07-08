@@ -35,6 +35,7 @@ MASKED_LM_ARCHITECTURES: set[str] = {
 
 # Vision-language multimodal models
 MULTIMODAL_ARCHITECTURES: set[str] = {
+    "Emu3ForConditionalGeneration",
     "LlavaForConditionalGeneration",
     "LlavaNextForConditionalGeneration",
     "LlavaOnevisionForConditionalGeneration",

@@ -89,18 +89,22 @@ class DeepSeekV2ArchitectureAdapter(ArchitectureAdapter):
                     # Note: the gate module is NOT bridged — DeepseekV2Moe.forward()
                     # calls nn.functional.linear(..., self.gate.weight) directly,
                     # bypassing forward(), so no hook can be attached to it.
-                    "mlp": MoEBridge(
-                        name="mlp",
-                        config=self.cfg,
-                        submodules={
-                            "shared_experts": self._gated_mlp(name="shared_experts", optional=True),
-                        },
-                    ),
+                    "mlp": self._build_mlp_bridge(),
                 },
             ),
             "ln_final": RMSNormalizationBridge(name="model.norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head"),
         }
+
+    def _build_mlp_bridge(self):
+        """Routed MoE with optional shared experts; Youtu (all-dense) overrides."""
+        return MoEBridge(
+            name="mlp",
+            config=self.cfg,
+            submodules={
+                "shared_experts": self._gated_mlp(name="shared_experts", optional=True),
+            },
+        )
 
     def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
         """Wire the shared rotary onto attention bridges (attn implementation untouched)."""

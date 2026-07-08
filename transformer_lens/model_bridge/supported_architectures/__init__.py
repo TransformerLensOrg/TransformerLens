@@ -52,6 +52,9 @@ from transformer_lens.model_bridge.supported_architectures.deepseek_v2 import (
 from transformer_lens.model_bridge.supported_architectures.deepseek_v3 import (
     DeepSeekV3ArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.emu3 import (
+    Emu3ArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.ernie4_5 import (
     Ernie4_5ArchitectureAdapter,
 )
@@ -160,6 +163,9 @@ from transformer_lens.model_bridge.supported_architectures.idefics3 import (
 from transformer_lens.model_bridge.supported_architectures.internlm2 import (
     InternLM2ArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.jais2 import (
+    Jais2ArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.laguna import (
     LagunaArchitectureAdapter,
 )
@@ -217,6 +223,9 @@ from transformer_lens.model_bridge.supported_architectures.mingpt import (
 from transformer_lens.model_bridge.supported_architectures.minimax_m2 import (
     MiniMaxM2ArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.ministral3 import (
+    Ministral3ArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.mistral import (
     MistralArchitectureAdapter,
 )
@@ -225,6 +234,9 @@ from transformer_lens.model_bridge.supported_architectures.mistral3 import (
 )
 from transformer_lens.model_bridge.supported_architectures.mixtral import (
     MixtralArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.modernbert_decoder import (
+    ModernBertDecoderArchitectureAdapter,
 )
 from transformer_lens.model_bridge.supported_architectures.mpt import (
     MPTArchitectureAdapter,
@@ -353,6 +365,12 @@ from transformer_lens.model_bridge.supported_architectures.t5 import (
 from transformer_lens.model_bridge.supported_architectures.t5gemma import (
     T5GemmaArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.vaultgemma import (
+    VaultGemmaArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.youtu import (
+    YoutuArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.xglm import (
     XGLMArchitectureAdapter,
 )
@@ -379,6 +397,7 @@ __all__ = [
     "DeepSeekV2ArchitectureAdapter",
     "DeepSeekV3ArchitectureAdapter",
     "DreamArchitectureAdapter",
+    "Emu3ArchitectureAdapter",
     "Ernie4_5ArchitectureAdapter",
     "Ernie4_5_MoeArchitectureAdapter",
     "ExaoneArchitectureAdapter",
@@ -417,6 +436,10 @@ __all__ = [
     "InternLM2ArchitectureAdapter",
     "LEDArchitectureAdapter",
     "LagunaArchitectureAdapter",
+    "Jais2ArchitectureAdapter",
+    "Ministral3ArchitectureAdapter",
+    "VaultGemmaArchitectureAdapter",
+    "YoutuArchitectureAdapter",
     "LLaDA2MoeArchitectureAdapter",
     "LlamaArchitectureAdapter",
     "Llama4ArchitectureAdapter",
@@ -436,6 +459,7 @@ __all__ = [
     "MistralArchitectureAdapter",
     "Mistral3ArchitectureAdapter",
     "MixtralArchitectureAdapter",
+    "ModernBertDecoderArchitectureAdapter",
     "MPTArchitectureAdapter",
     "MusicFlamingoArchitectureAdapter",
     "NanogptArchitectureAdapter",
