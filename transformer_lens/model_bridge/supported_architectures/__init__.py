@@ -40,6 +40,9 @@ from transformer_lens.model_bridge.supported_architectures.cohere import (
     Cohere2ArchitectureAdapter,
     CohereArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.dream import (
+    DreamArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.deepseek_v2 import (
     DeepSeekV2ArchitectureAdapter,
 )
@@ -353,6 +356,7 @@ __all__ = [
     "CohereArchitectureAdapter",
     "DeepSeekV2ArchitectureAdapter",
     "DeepSeekV3ArchitectureAdapter",
+    "DreamArchitectureAdapter",
     "Ernie4_5ArchitectureAdapter",
     "Ernie4_5_MoeArchitectureAdapter",
     "ExaoneArchitectureAdapter",

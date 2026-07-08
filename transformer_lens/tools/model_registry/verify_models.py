@@ -64,6 +64,8 @@ _BRIDGE_REMOTE_CODE_PREFIXES: tuple[str, ...] = (
     "baichuan-inc/",  # BaichuanForCausalLM — ships own modeling_baichuan.py
     "internlm/",  # InternLM2ForCausalLM — ships own modeling_internlm2.py
     "kuleshov-group/",  # BD3LM — ships own custom modeling_d_dit.py
+    "Dream-org/",  # DreamModel — ships own modeling_dream.py
+    "apple/DiffuCoder",  # DreamModel (DiffuCoder) — same remote code family
     "LGAI-EXAONE/",  # ExaoneForCausalLM (EXAONE-3.x) — ships own modeling_exaone.py
 )
 

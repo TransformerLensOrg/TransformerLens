@@ -66,6 +66,12 @@ AUDIO_ARCHITECTURES: set[str] = {
     "HubertForSequenceClassification",
 }
 
+# Text models whose remote code registers only under plain AutoModel
+# (the class itself carries the LM head).
+BASE_AUTOMODEL_ARCHITECTURES: set[str] = {
+    "DreamModel",
+}
+
 # Bridge uses different hook shapes than HookedTransformer by design.
 # Phase 2/3 HT comparisons are skipped; Phase 1 (HF comparison) is the gold standard.
 NO_HT_COMPARISON_ARCHITECTURES: set[str] = (
