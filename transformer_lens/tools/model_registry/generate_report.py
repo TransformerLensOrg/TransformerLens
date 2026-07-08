@@ -107,6 +107,7 @@ ARCHITECTURE_DESCRIPTIONS: dict[str, str] = {
     "AudioFlamingo3ForConditionalGeneration": "NVIDIA Audio Flamingo 3 audio LALM (Whisper tower + Qwen2.5 LM)",
     "FlexOlmoForCausalLM": "AllenAI FlexOlmo federated MoE (merged OLMo-2 experts, inference-time data opt-out)",
     "MusicFlamingoForConditionalGeneration": "NVIDIA Music Flamingo / Audio Flamingo Next (AF3 + temporal rotary conditioning)",
+    "HyenaDNAForCausalLM": "HazyResearch HyenaDNA genomic LM (attention-free Hyena long-conv operator)",
     "NanoChatForCausalLM": "Karpathy's nanochat education-stack decoder (weightless norms, relu^2 MLP, capped logits)",
     "HunYuanDenseV1ForCausalLM": "Tencent's open source decoder models",
     "Cohere2ForCausalLM": "Cohere's Command-A architecture with interleaved sliding-window RoPE and full-attention NoPE layers",

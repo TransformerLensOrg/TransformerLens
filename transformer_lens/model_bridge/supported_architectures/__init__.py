@@ -145,6 +145,9 @@ from transformer_lens.model_bridge.supported_architectures.granite_moe import (
 from transformer_lens.model_bridge.supported_architectures.granite_moe_hybrid import (
     GraniteMoeHybridArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.hyenadna import (
+    HyenaDNAArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.hubert import (
     HubertArchitectureAdapter,
 )
@@ -402,6 +405,7 @@ __all__ = [
     "Gpt2LmHeadCustomArchitectureAdapter",
     "GptjArchitectureAdapter",
     "HubertArchitectureAdapter",
+    "HyenaDNAArchitectureAdapter",
     "HunYuanDenseV1ArchitectureAdapter",
     "Idefics3ArchitectureAdapter",
     "InternLM2ArchitectureAdapter",

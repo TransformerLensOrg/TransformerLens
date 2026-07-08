@@ -4,6 +4,7 @@ This module provides the bridge components that wrap remote model components and
 a consistent interface for accessing their weights and performing operations.
 """
 
+import inspect
 import logging
 import re
 import warnings
@@ -2197,7 +2198,13 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             )
         try:
             if "output_attentions" not in filtered_kwargs:
-                filtered_kwargs["output_attentions"] = True
+                # Attention-free remote models (e.g. HyenaDNA) reject the kwarg
+                # outright; HF natives accept it directly or via **kwargs.
+                fwd_params = inspect.signature(self.original_model.forward).parameters
+                if "output_attentions" in fwd_params or any(
+                    p.kind is inspect.Parameter.VAR_KEYWORD for p in fwd_params.values()
+                ):
+                    filtered_kwargs["output_attentions"] = True
             if processed_args:
                 output = self.forward(processed_args[0], **filtered_kwargs)
             elif "input_ids" in filtered_kwargs:
@@ -2491,8 +2498,6 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         # would receive a duplicate cache_params via **kwargs cascade otherwise.
         stateful_cache_kwarg = "cache_params"
         if use_stateful_cache:
-            import inspect
-
             forward_params = inspect.signature(self.original_model.forward).parameters
             if "cache_params" not in forward_params:
                 stateful_cache_kwarg = "past_key_values"

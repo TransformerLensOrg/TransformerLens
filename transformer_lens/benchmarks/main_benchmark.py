@@ -1222,20 +1222,30 @@ def run_benchmark_suite(
 
         # Generation benchmarks (unprocessed only) - RUN FIRST
         # Skip for encoder-decoder and audio models (no text generation capability)
-        _skip_generation = is_encoder_decoder_model(model_name) or getattr(
-            bridge_unprocessed.cfg, "is_audio_model", False
+        _no_generate = not getattr(
+            getattr(bridge_unprocessed, "adapter", None), "supports_generation", True
+        )
+        _skip_generation = (
+            is_encoder_decoder_model(model_name)
+            or getattr(bridge_unprocessed.cfg, "is_audio_model", False)
+            or _no_generate
+        )
+        _skip_reason = (
+            "Skipped (model does not support generation)"
+            if _no_generate
+            else "Skipped (encoder-decoder model)"
         )
         if verbose:
             print("1. Generation Benchmarks (unprocessed)")
         if _skip_generation:
             if verbose:
-                print("⏭️ Skipped (encoder-decoder model - requires decoder_input_ids)\n")
+                print(f"⏭️ {_skip_reason}\n")
             add_result(
                 BenchmarkResult(
                     name="generation",
                     severity=BenchmarkSeverity.INFO,
                     passed=True,
-                    message="Skipped (encoder-decoder model)",
+                    message=_skip_reason,
                 )
             )
             add_result(
@@ -1243,7 +1253,7 @@ def run_benchmark_suite(
                     name="generation_with_kv_cache",
                     severity=BenchmarkSeverity.INFO,
                     passed=True,
-                    message="Skipped (encoder-decoder model)",
+                    message=_skip_reason,
                 )
             )
             add_result(
@@ -1251,7 +1261,7 @@ def run_benchmark_suite(
                     name="multiple_generation_calls",
                     severity=BenchmarkSeverity.INFO,
                     passed=True,
-                    message="Skipped (encoder-decoder model)",
+                    message=_skip_reason,
                 )
             )
             add_result(
@@ -1259,7 +1269,7 @@ def run_benchmark_suite(
                     name="text_quality",
                     severity=BenchmarkSeverity.INFO,
                     passed=True,
-                    message="Skipped (encoder-decoder model)",
+                    message=_skip_reason,
                 )
             )
         else:

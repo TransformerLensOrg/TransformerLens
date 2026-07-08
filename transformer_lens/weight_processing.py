@@ -1121,7 +1121,7 @@ class ProcessWeights:
                 pos_embed_W_pos_key = (
                     ProcessWeights._get_param_key("pos_embed.W_pos", adapter)
                     if getattr(cfg, "positional_embedding_type", "standard")
-                    not in ("rotary", "alibi")
+                    not in ("rotary", "alibi", "none")
                     else None
                 )
             except ValueError:
@@ -1140,7 +1140,8 @@ class ProcessWeights:
             )
 
             if (
-                getattr(cfg, "positional_embedding_type", "standard") not in ("rotary", "alibi")
+                getattr(cfg, "positional_embedding_type", "standard")
+                not in ("rotary", "alibi", "none")
                 and pos_embed_W_pos_key is not None
             ):
                 if pos_embed_W_pos_key not in state_dict:
