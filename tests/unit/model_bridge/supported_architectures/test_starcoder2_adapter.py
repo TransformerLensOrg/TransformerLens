@@ -49,6 +49,14 @@ class TestStarcoder2AdapterConfig:
         assert adapter.cfg.gated_mlp is False
         assert adapter.cfg.n_key_value_heads == 2
 
+    def test_qkv_bias_conversions_use_kv_head_count(self, adapter):
+        """StarCoder2 biases every q/k/v; compat-mode weight access needs the
+        K/V bias reshapes split by the kv-head count (GQA), not n_heads."""
+        conv = adapter.weight_processing_conversions
+        for key in ("blocks.{i}.attn.k.bias", "blocks.{i}.attn.v.bias"):
+            assert key in conv, f"missing {key}"
+            assert conv[key].tensor_conversion.axes_lengths["h"] == adapter.cfg.n_key_value_heads
+
 
 class TestStarcoder2ComponentMapping:
     def test_norms_are_plain_layernorm(self, adapter):

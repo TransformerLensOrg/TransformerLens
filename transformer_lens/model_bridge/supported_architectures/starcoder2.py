@@ -33,8 +33,10 @@ class Starcoder2ArchitectureAdapter(ArchitectureAdapter):
         self.cfg.gated_mlp = False
         self.cfg.attn_only = False
 
+        # StarCoder2 biases every q/k/v/o projection; the bias reshapes must use
+        # the kv-head count or compat mode mis-shapes (silent) or crashes (GQA).
         self.weight_processing_conversions = {
-            **self._qkvo_weight_conversions(),
+            **self._qkvo_weight_conversions(include_biases=True),
         }
 
         self.component_mapping = {

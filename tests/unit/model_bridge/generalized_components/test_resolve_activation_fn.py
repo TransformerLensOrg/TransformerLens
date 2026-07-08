@@ -70,3 +70,9 @@ class TestResolveActivationFn:
         fn = resolve_activation_fn(_FakeCfg(hidden_act="some_unknown_fn"))
         x = torch.tensor([1.0])
         assert 0.7 < fn(x).item() < 0.8  # silu(1) ~ 0.7311
+
+    def test_relu2_maps_to_squared_relu(self):
+        # NanoChat/BitNet-style ReLU^2; must NOT silently fall through to silu.
+        fn = resolve_activation_fn(_FakeCfg(hidden_act="relu2"))
+        x = torch.tensor([-1.0, 0.0, 2.0, 3.0])
+        assert fn(x).tolist() == [0.0, 0.0, 4.0, 9.0]

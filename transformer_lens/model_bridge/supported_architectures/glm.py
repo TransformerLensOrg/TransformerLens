@@ -39,7 +39,11 @@ class GlmArchitectureAdapter(ArchitectureAdapter):
 
         # Joint gate_up_proj cannot be folded by the standard LN machinery.
         self.supports_fold_ln = False
-        self.weight_processing_conversions = {}
+        # GLM has attention biases on q/k/v; the bias reshapes must use the
+        # kv-head count or compat mode's value-bias fold crashes on GQA.
+        self.weight_processing_conversions = {
+            **self._qkvo_weight_conversions(include_biases=True),
+        }
 
         self.component_mapping = {
             "embed": EmbeddingBridge(name="model.embed_tokens"),

@@ -37,6 +37,12 @@ def resolve_activation_fn(config: Any) -> Callable:
         return gelu_tanh
     if act_fn_name == "relu":
         return torch.nn.functional.relu
+    if act_fn_name in ("relu2", "relu_2", "relu_squared"):
+
+        def relu_squared(x: torch.Tensor) -> torch.Tensor:
+            return torch.nn.functional.relu(x).square()
+
+        return relu_squared
     return torch.nn.functional.silu
 
 
