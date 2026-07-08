@@ -30,11 +30,8 @@ class Llama4MultimodalArchitectureAdapter(Llama4ArchitectureAdapter):
         if hasattr(cfg, "vision_config"):
             self.cfg.vision_hidden_size = getattr(cfg.vision_config, "hidden_size", None)
 
-        for component in self.component_mapping.values():
-            if component.name and component.name.startswith("model."):
-                component.name = "language_model." + component.name
-            elif component.name == "lm_head":
-                component.name = "language_model.lm_head"
+        self._reprefix_components("model.", "language_model.model.")
+        self._reprefix_components("lm_head", "language_model.lm_head")
 
         self.component_mapping["vision_encoder"] = GeneralizedComponent(name="vision_model")
         self.component_mapping["vision_projector"] = GeneralizedComponent(

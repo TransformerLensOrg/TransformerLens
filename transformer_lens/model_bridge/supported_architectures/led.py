@@ -38,9 +38,7 @@ class LEDArchitectureAdapter(BartArchitectureAdapter):
         super().__init__(cfg)
         assert self.component_mapping is not None
 
-        for component in self.component_mapping.values():
-            if component.name and component.name.startswith("model."):
-                component.name = "led." + component.name[len("model.") :]
+        self._reprefix_components("model.", "led.")
 
         self.component_mapping["encoder_blocks"] = BlockBridge(
             name="led.encoder.layers",

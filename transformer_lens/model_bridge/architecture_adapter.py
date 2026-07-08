@@ -141,6 +141,17 @@ class ArchitectureAdapter:
             )
         return conversions
 
+    def _reprefix_components(self, old: str, new: str) -> None:
+        """Rewrite component names starting with ``old`` to start with ``new``.
+
+        For adapters that reuse a parent mapping under a different module
+        nesting (e.g. a multimodal wrapper's ``model.language_model.``).
+        """
+        assert self.component_mapping is not None
+        for component in self.component_mapping.values():
+            if component.name and component.name.startswith(old):
+                component.name = new + component.name[len(old) :]
+
     def preprocess_weights(self, state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
         """Apply architecture-specific weight transformations before ProcessWeights.
 

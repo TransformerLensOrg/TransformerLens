@@ -25,9 +25,7 @@ class Gemma4TextArchitectureAdapter(Gemma4ArchitectureAdapter):
         self.cfg.is_multimodal = False
         self.component_mapping.pop("vision_encoder", None)
         self.component_mapping.pop("vision_projector", None)
-        for component in self.component_mapping.values():
-            if component.name and component.name.startswith(_MM_PREFIX):
-                component.name = "model." + component.name[len(_MM_PREFIX) :]
+        self._reprefix_components(_MM_PREFIX, "model.")
 
     def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
         """Force eager attention so bridge and HF match (sliding/full layer mix)."""
