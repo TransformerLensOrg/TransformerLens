@@ -76,6 +76,9 @@ class RecurrentGemmaArchitectureAdapter(ArchitectureAdapter):
         super().__init__(cfg)
 
         self._set_rms_rotary_defaults()
+        # Hookable attention needs eager; the base prepare hooks force it through
+        # from_pretrained and onto the loaded config.
+        self.cfg.attn_implementation = "eager"
         # RG-LRU + local attention both use RoPE-style handling internally on the
         # attention layers; there is no model-level rotary module (it lives inside
         # each attention temporal_block), so we do not wire a rotary_emb component.
@@ -108,14 +111,3 @@ class RecurrentGemmaArchitectureAdapter(ArchitectureAdapter):
             "ln_final": RMSNormalizationBridge(name="model.final_norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head", config=self.cfg),
         }
-
-    def prepare_loading(self, model_name: str, model_kwargs: dict) -> None:
-        """Force eager attention when the HF config exposes the implementation knob."""
-        config = model_kwargs.get("config")
-        if config is not None and hasattr(config, "_attn_implementation"):
-            config._attn_implementation = "eager"
-
-    def prepare_model(self, hf_model: Any) -> None:
-        """Force eager attention on the loaded HF model when supported."""
-        if hasattr(hf_model, "config") and hasattr(hf_model.config, "_attn_implementation"):
-            hf_model.config._attn_implementation = "eager"

@@ -36,10 +36,7 @@ class Idefics3ArchitectureAdapter(ArchitectureAdapter):
         self._set_rms_rotary_defaults()
         self.cfg.attn_implementation = "eager"
 
-        if hasattr(cfg, "vision_config"):
-            self.cfg.vision_hidden_size = getattr(cfg.vision_config, "hidden_size", None)
-            self.cfg.vision_num_layers = getattr(cfg.vision_config, "num_hidden_layers", None)
-            self.cfg.vision_num_heads = getattr(cfg.vision_config, "num_attention_heads", None)
+        self._extract_vision_dims(cfg)
 
         self.weight_processing_conversions = {
             **self._qkvo_weight_conversions(),

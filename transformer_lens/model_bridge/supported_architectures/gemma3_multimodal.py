@@ -64,10 +64,7 @@ class Gemma3MultimodalArchitectureAdapter(ArchitectureAdapter):
         self.cfg.attn_implementation = "eager"
 
         # Store vision-related config
-        if hasattr(cfg, "vision_config"):
-            self.cfg.vision_hidden_size = getattr(cfg.vision_config, "hidden_size", None)
-            self.cfg.vision_num_layers = getattr(cfg.vision_config, "num_hidden_layers", None)
-            self.cfg.vision_num_heads = getattr(cfg.vision_config, "num_attention_heads", None)
+        self._extract_vision_dims(cfg)
 
         # Store multimodal projection config
         self.cfg.mm_tokens_per_image = getattr(cfg, "mm_tokens_per_image", 256)

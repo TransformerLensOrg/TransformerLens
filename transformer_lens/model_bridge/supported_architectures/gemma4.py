@@ -62,11 +62,8 @@ class Gemma4ArchitectureAdapter(ArchitectureAdapter):
         self._is_unified = "Gemma4Unified" in arch
         self.cfg.is_multimodal = True
 
+        self._extract_vision_dims(cfg)
         if hasattr(cfg, "vision_config"):
-            vcfg = cfg.vision_config
-            self.cfg.vision_hidden_size = getattr(vcfg, "hidden_size", None)
-            self.cfg.vision_num_layers = getattr(vcfg, "num_hidden_layers", None)
-            self.cfg.vision_num_heads = getattr(vcfg, "num_attention_heads", None)
             self.cfg.mm_tokens_per_image = getattr(cfg, "vision_soft_tokens_per_image", 256)
 
         self.cfg.gated_mlp = True

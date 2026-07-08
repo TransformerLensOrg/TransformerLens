@@ -54,11 +54,7 @@ class Qwen3VLArchitectureAdapter(ArchitectureAdapter):
         # <|im_end|>, which reads as an ended turn.
         self.cfg.default_prepend_bos = False
 
-        vision_cfg = getattr(cfg, "vision_config", None)
-        if vision_cfg is not None:
-            self.cfg.vision_hidden_size = getattr(vision_cfg, "hidden_size", None)
-            self.cfg.vision_num_layers = getattr(vision_cfg, "depth", None)
-            self.cfg.vision_num_heads = getattr(vision_cfg, "num_heads", None)
+        self._extract_vision_dims(cfg)
 
         self.weight_processing_conversions = {
             **self._qkvo_weight_conversions(),
@@ -107,14 +103,3 @@ class Qwen3VLArchitectureAdapter(ArchitectureAdapter):
     def _build_mlp_bridge(self) -> Any:
         """Dense gated MLP; the MoE variant overrides this."""
         return self._gated_mlp()
-
-    def prepare_loading(self, model_name: str, model_kwargs: dict) -> None:
-        """Force eager attention for hookable vision/text attention."""
-        config = model_kwargs.get("config")
-        if config is not None and hasattr(config, "_attn_implementation"):
-            config._attn_implementation = "eager"
-
-    def prepare_model(self, hf_model: Any) -> None:
-        """Force eager attention on the loaded HF model."""
-        if hasattr(hf_model, "config"):
-            hf_model.config._attn_implementation = "eager"

@@ -102,17 +102,14 @@ class PhiMoEArchitectureAdapter(ArchitectureAdapter):
         }
 
     def prepare_loading(self, model_name: str, model_kwargs: dict) -> None:
-        """Force eager attention for consistent hookable generation."""
+        """Disable remote code; base hook forces eager attention."""
         # The archived remote PhiMoE code is incompatible with current
         # Transformers cache/generation semantics; always use the native class.
         model_kwargs["trust_remote_code"] = False
-        config = model_kwargs.get("config")
-        if config is not None:
-            config._attn_implementation = "eager"
+        super().prepare_loading(model_name, model_kwargs)
 
     def prepare_model(self, hf_model: Any) -> None:
-        """Force eager attention on the loaded HF model."""
-        if hasattr(hf_model, "config"):
-            hf_model.config._attn_implementation = "eager"
+        """Also force eager on the inner model module (PhiMoE re-derives it there)."""
+        super().prepare_model(hf_model)
         if hasattr(hf_model, "model") and hasattr(hf_model.model, "_attn_implementation"):
             hf_model.model._attn_implementation = "eager"

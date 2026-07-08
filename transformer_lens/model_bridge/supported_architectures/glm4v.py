@@ -47,11 +47,7 @@ class Glm4vArchitectureAdapter(ArchitectureAdapter):
         # GLM tokenizers carry no BOS token.
         self.cfg.default_prepend_bos = False
 
-        vision_cfg = getattr(cfg, "vision_config", None)
-        if vision_cfg is not None:
-            self.cfg.vision_hidden_size = getattr(vision_cfg, "hidden_size", None)
-            self.cfg.vision_num_layers = getattr(vision_cfg, "depth", None)
-            self.cfg.vision_num_heads = getattr(vision_cfg, "num_heads", None)
+        self._extract_vision_dims(cfg)
 
         # Joint gate_up_proj cannot be folded by the standard LN machinery.
         self.supports_fold_ln = False
@@ -102,14 +98,3 @@ class Glm4vArchitectureAdapter(ArchitectureAdapter):
             "ln_final": RMSNormalizationBridge(name="model.language_model.norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head", config=self.cfg),
         }
-
-    def prepare_loading(self, model_name: str, model_kwargs: dict) -> None:
-        """Force eager attention for hookable vision/text attention."""
-        config = model_kwargs.get("config")
-        if config is not None and hasattr(config, "_attn_implementation"):
-            config._attn_implementation = "eager"
-
-    def prepare_model(self, hf_model: Any) -> None:
-        """Force eager attention on the loaded HF model."""
-        if hasattr(hf_model, "config"):
-            hf_model.config._attn_implementation = "eager"

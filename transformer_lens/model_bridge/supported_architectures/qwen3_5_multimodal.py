@@ -31,16 +31,7 @@ class Qwen3_5MultimodalArchitectureAdapter(Qwen3ArchitectureAdapter):
 
         self.cfg.is_multimodal = True
 
-        # Qwen vision config uses depth/num_heads, not num_hidden_layers/num_attention_heads.
-        vision_cfg = getattr(cfg, "vision_config", None)
-        if vision_cfg is not None:
-            self.cfg.vision_hidden_size = getattr(vision_cfg, "hidden_size", None)
-            self.cfg.vision_num_layers = getattr(vision_cfg, "depth", None) or getattr(
-                vision_cfg, "num_hidden_layers", None
-            )
-            self.cfg.vision_num_heads = getattr(vision_cfg, "num_heads", None) or getattr(
-                vision_cfg, "num_attention_heads", None
-            )
+        self._extract_vision_dims(cfg)
 
         assert self.component_mapping is not None  # built by super().__init__
         self.component_mapping["vision_encoder"] = Qwen3_5VisionEncoderBridge(

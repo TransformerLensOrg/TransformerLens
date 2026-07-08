@@ -122,14 +122,3 @@ class Llama4ArchitectureAdapter(ArchitectureAdapter):
             "ln_final": RMSNormalizationBridge(name="model.norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head", config=self.cfg),
         }
-
-    def prepare_loading(self, model_name: str, model_kwargs: dict) -> None:
-        """Force eager attention so chunked-mask handling stays hookable."""
-        config = model_kwargs.get("config")
-        if config is not None and hasattr(config, "_attn_implementation"):
-            config._attn_implementation = "eager"
-
-    def prepare_model(self, hf_model: Any) -> None:
-        """Force eager attention on the loaded HF model."""
-        if hasattr(hf_model, "config"):
-            hf_model.config._attn_implementation = "eager"

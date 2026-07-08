@@ -123,6 +123,20 @@ class ArchitectureAdapter:
             optional=optional,
         )
 
+    def _extract_vision_dims(self, cfg: Any) -> None:
+        """Copy vision-tower dims onto cfg, handling both HF-standard naming
+        (num_hidden_layers/num_attention_heads) and Qwen-style (depth/num_heads)."""
+        vision_cfg = getattr(cfg, "vision_config", None)
+        if vision_cfg is None:
+            return
+        self.cfg.vision_hidden_size = getattr(vision_cfg, "hidden_size", None)
+        self.cfg.vision_num_layers = getattr(
+            vision_cfg, "num_hidden_layers", getattr(vision_cfg, "depth", None)
+        )
+        self.cfg.vision_num_heads = getattr(
+            vision_cfg, "num_attention_heads", getattr(vision_cfg, "num_heads", None)
+        )
+
     def _set_rms_rotary_defaults(self, *, final_rms: bool = True) -> None:
         """Set the Llama-family config flags: RMS norms, rotary positions, gated MLP.
 
@@ -810,24 +824,38 @@ class ArchitectureAdapter:
 
         Override this to patch HF model classes before from_pretrained() is called.
         For example, patching custom model code that is incompatible with transformers v5
-        meta device initialization.
+        meta device initialization. Overrides that also want the base eager-forcing
+        must call super().prepare_loading(...).
+
+        The base implementation forces eager attention on the loading config when
+        cfg.attn_implementation == "eager": composite configs (vision towers) don't
+        reliably inherit the from_pretrained attn_implementation kwarg.
 
         Args:
             model_name: The HuggingFace model name/path
             model_kwargs: The kwargs dict that will be passed to from_pretrained()
         """
-        pass
+        if getattr(self.cfg, "attn_implementation", None) == "eager":
+            config = model_kwargs.get("config")
+            if config is not None and hasattr(config, "_attn_implementation"):
+                config._attn_implementation = "eager"
 
     def prepare_model(self, hf_model: Any) -> None:
         """Called after HuggingFace model loading but before bridge creation.
 
         Override this to fix up the loaded model (e.g., create synthetic modules,
-        re-initialize deferred computations, apply post-load patches).
+        re-initialize deferred computations, apply post-load patches). Overrides
+        that also want the base eager-forcing must call super().prepare_model(...).
+
+        The base implementation mirrors prepare_loading's eager-forcing onto the
+        loaded model's config when cfg.attn_implementation == "eager".
 
         Args:
             hf_model: The loaded HuggingFace model instance
         """
-        pass
+        if getattr(self.cfg, "attn_implementation", None) == "eager":
+            if hasattr(hf_model, "config"):
+                hf_model.config._attn_implementation = "eager"
 
     def create_stateful_cache(
         self,
