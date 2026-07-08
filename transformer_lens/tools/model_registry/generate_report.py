@@ -108,6 +108,7 @@ ARCHITECTURE_DESCRIPTIONS: dict[str, str] = {
     "Emu3ForConditionalGeneration": "BAAI Emu3 unified next-token text+image generation (VQ tokens in a shared vocab)",
     "FlexOlmoForCausalLM": "AllenAI FlexOlmo federated MoE (merged OLMo-2 experts, inference-time data opt-out)",
     "MusicFlamingoForConditionalGeneration": "NVIDIA Music Flamingo / Audio Flamingo Next (AF3 + temporal rotary conditioning)",
+    "GiddForDiffusionLM": "GIDD uniform-noise diffusion LM with self-correction (only open non-masked dLM at scale)",
     "HyenaDNAForCausalLM": "HazyResearch HyenaDNA genomic LM (attention-free Hyena long-conv operator)",
     "LLaDA2MoeModelLM": "Ant Group LLaDA 2.x masked block-diffusion LM on a DeepSeek-V3-style MoE decoder",
     "LagunaForCausalLM": "poolside Laguna coding MoE (heterogeneous per-layer head counts, softplus attention gating)",

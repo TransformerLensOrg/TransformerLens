@@ -65,6 +65,7 @@ _BRIDGE_REMOTE_CODE_PREFIXES: tuple[str, ...] = (
     "internlm/",  # InternLM2ForCausalLM — ships own modeling_internlm2.py
     "kuleshov-group/",  # BD3LM — ships own custom modeling_d_dit.py
     "Dream-org/",  # DreamModel — ships own modeling_dream.py
+    "dvruette/",  # GiddForDiffusionLM — ships own modeling_gidd.py
     "LongSafari/",  # HyenaDNAForCausalLM — ships own modeling_hyena.py
     "inclusionAI/",  # LLaDA2MoeModelLM — ships own modeling_llada2_moe.py
     "poolside/",  # LagunaForCausalLM — ships own modeling_laguna.py
