@@ -90,24 +90,5 @@ class Glm4MoeArchitectureAdapter(ArchitectureAdapter):
         }
 
     def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Set up rotary embedding references for GLM-4 MoE component testing."""
-        rotary_emb = hf_model.model.rotary_emb
-
-        # Force HF attention implementation to eager so bridge and reference agree
-        # on attention-path expectations during eager-only tests.
-        if hasattr(hf_model, "config") and hasattr(hf_model.config, "_attn_implementation"):
-            hf_model.config._attn_implementation = "eager"
-
-        if hasattr(hf_model, "model") and hasattr(hf_model.model, "layers"):
-            for layer in hf_model.model.layers:
-                if hasattr(layer, "self_attn") and hasattr(layer.self_attn, "config"):
-                    layer.self_attn.config._attn_implementation = "eager"
-
-        # Set rotary embeddings on bridge instances if available.
-        if bridge_model is not None and hasattr(bridge_model, "blocks"):
-            for block in bridge_model.blocks:
-                if hasattr(block, "attn"):
-                    block.attn.set_rotary_emb(rotary_emb)
-
-        attn_bridge = self.get_generalized_component("blocks.0.attn")
-        attn_bridge.set_rotary_emb(rotary_emb)
+        """Force eager attention and wire the shared rotary onto attention bridges."""
+        self._wire_rotary_for_testing(hf_model, bridge_model)

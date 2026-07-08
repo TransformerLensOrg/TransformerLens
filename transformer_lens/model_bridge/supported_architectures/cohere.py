@@ -165,25 +165,8 @@ class CohereArchitectureAdapter(ArchitectureAdapter):
         return state_dict
 
     def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Set rotary embedding reference on attention bridges for component testing.
-
-        CohereRotaryEmbedding lives at hf_model.model.rotary_emb. The bridge
-        delegates to it directly, preserving the repeat_interleave RoPE convention
-        without re-implementing it in TL.
-
-        Pattern matches llama.py and qwen2.py.
-        """
-        rotary_emb = hf_model.model.rotary_emb
-
-        # Set on actual bridge instances in the live model (if available)
-        if bridge_model is not None and hasattr(bridge_model, "blocks"):
-            for block in bridge_model.blocks:
-                if hasattr(block, "attn"):
-                    block.attn.set_rotary_emb(rotary_emb)
-
-        # Also set on the template so get_generalized_component() calls work
-        attn_bridge = self.get_generalized_component("blocks.0.attn")
-        attn_bridge.set_rotary_emb(rotary_emb)
+        """Wire the shared rotary onto attention bridges (attn implementation untouched)."""
+        self._wire_rotary_for_testing(hf_model, bridge_model, eager=None)
 
 
 class _Cohere2AttentionBridge(PositionEmbeddingsAttentionBridge):

@@ -156,38 +156,5 @@ class SmolLM3ArchitectureAdapter(ArchitectureAdapter):
         }
 
     def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Wire rotary embeddings and force eager attention for component testing.
-
-        SmolLM3 uses RoPE on most layers (a periodic subset are NoPE, handled by
-        the attention bridge). We set the shared rotary_emb reference on every
-        attention bridge instance and pin eager attention so the bridge's
-        reimplemented forward matches the HF reference numerically. Setting
-        rotary_emb on NoPE-layer bridges is harmless: those bridges suppress
-        position embeddings before the rotary step, so the reference goes unused
-        there.
-
-        Args:
-            hf_model: The HuggingFace SmolLM3 model instance.
-            bridge_model: The TransformerBridge model, when available, so the
-                rotary reference is set on the live attention bridge instances.
-        """
-        rotary_emb = hf_model.model.rotary_emb
-
-        # Pin eager attention on both the top-level config and each layer's
-        # attention config, mirroring qwen3.py / apertus.py.
-        if hasattr(hf_model, "config") and hasattr(hf_model.config, "_attn_implementation"):
-            hf_model.config._attn_implementation = "eager"
-        if hasattr(hf_model, "model") and hasattr(hf_model.model, "layers"):
-            for layer in hf_model.model.layers:
-                if hasattr(layer, "self_attn") and hasattr(layer.self_attn, "config"):
-                    layer.self_attn.config._attn_implementation = "eager"
-
-        # Set rotary_emb on the live bridge attention instances when available.
-        if bridge_model is not None and hasattr(bridge_model, "blocks"):
-            for block in bridge_model.blocks:
-                if hasattr(block, "attn"):
-                    block.attn.set_rotary_emb(rotary_emb)
-
-        # Also set on the template for get_generalized_component() calls.
-        attn_bridge = self.get_generalized_component("blocks.0.attn")
-        attn_bridge.set_rotary_emb(rotary_emb)
+        """Force eager attention and wire the shared rotary onto attention bridges."""
+        self._wire_rotary_for_testing(hf_model, bridge_model)

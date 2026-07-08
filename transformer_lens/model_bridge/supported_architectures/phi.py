@@ -108,26 +108,5 @@ class PhiArchitectureAdapter(ArchitectureAdapter):
         }
 
     def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Set up rotary embedding references for Phi component testing.
-
-        Phi uses RoPE (Rotary Position Embeddings). We set the rotary_emb reference
-        on all attention bridge instances for component testing.
-
-        Args:
-            hf_model: The HuggingFace Phi model instance
-            bridge_model: The TransformerBridge model (if available, set rotary_emb on actual instances)
-        """
-        # Get rotary embedding instance from the model
-        # Phi models have rotary_emb at model.model.rotary_emb
-        rotary_emb = hf_model.model.rotary_emb
-
-        # Set rotary_emb on actual bridge instances in bridge_model if available
-        if bridge_model is not None and hasattr(bridge_model, "blocks"):
-            # Set on each layer's actual attention bridge instance
-            for block in bridge_model.blocks:
-                if hasattr(block, "attn"):
-                    block.attn.set_rotary_emb(rotary_emb)
-
-        # Also set on the template for get_generalized_component() calls
-        attn_bridge = self.get_generalized_component("blocks.0.attn")
-        attn_bridge.set_rotary_emb(rotary_emb)
+        """Wire the shared rotary onto attention bridges (attn implementation untouched)."""
+        self._wire_rotary_for_testing(hf_model, bridge_model, eager=None)

@@ -204,21 +204,8 @@ class Phi3ArchitectureAdapter(ArchitectureAdapter):
         return q_linear, k_linear, v_linear
 
     def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Set up rotary embedding references for Phi-3 component testing.
-
-        Args:
-            hf_model: The HuggingFace Phi-3 model instance
-            bridge_model: The TransformerBridge model (if available)
-        """
-        rotary_emb = hf_model.model.rotary_emb
-
-        if bridge_model is not None and hasattr(bridge_model, "blocks"):
-            for block in bridge_model.blocks:
-                if hasattr(block, "attn"):
-                    block.attn.set_rotary_emb(rotary_emb)
-
-        attn_bridge = self.get_generalized_component("blocks.0.attn")
-        attn_bridge.set_rotary_emb(rotary_emb)
+        """Wire the shared rotary onto attention bridges (attn implementation untouched)."""
+        self._wire_rotary_for_testing(hf_model, bridge_model, eager=None)
 
     def prepare_loading(self, model_name: str, model_kwargs: dict) -> None:
         """Patch cached Phi-3 remote code for transformers v5 compatibility."""

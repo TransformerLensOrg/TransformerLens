@@ -105,19 +105,5 @@ class BambaArchitectureAdapter(ArchitectureAdapter):
         return DynamicCache(config=hf_model.config)
 
     def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Wire rotary references through to attention layers (mamba layers skipped)."""
-        rotary_emb = hf_model.model.rotary_emb
-
-        if hasattr(hf_model, "config") and hasattr(hf_model.config, "_attn_implementation"):
-            hf_model.config._attn_implementation = "eager"
-
-        if bridge_model is not None and hasattr(bridge_model, "blocks"):
-            for block in bridge_model.blocks:
-                if "attn" in block._modules:
-                    block.attn.set_rotary_emb(rotary_emb)
-
-        try:
-            attn_template = self.get_generalized_component("blocks.0.attn")
-            attn_template.set_rotary_emb(rotary_emb)
-        except (ValueError, AttributeError, KeyError):
-            pass
+        """Wire rotary through to attention bridges (mamba layers skipped)."""
+        self._wire_rotary_for_testing(hf_model, bridge_model, hybrid=True, eager="config")

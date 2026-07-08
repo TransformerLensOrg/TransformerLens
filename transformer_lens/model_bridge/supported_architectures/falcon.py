@@ -254,16 +254,7 @@ class FalconArchitectureAdapter(ArchitectureAdapter):
         )
 
     def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Set up rotary embedding references for component testing."""
+        """Wire the shared rotary onto attention bridges (ALiBi variants skip)."""
         if self._is_alibi:
             return  # ALiBi handled by HF natively
-
-        rotary_emb = hf_model.transformer.rotary_emb
-
-        if bridge_model is not None and hasattr(bridge_model, "blocks"):
-            for block in bridge_model.blocks:
-                if hasattr(block, "attn"):
-                    block.attn.set_rotary_emb(rotary_emb)
-
-        attn_bridge = self.get_generalized_component("blocks.0.attn")
-        attn_bridge.set_rotary_emb(rotary_emb)
+        self._wire_rotary_for_testing(hf_model, bridge_model, lm_attr="transformer", eager=None)

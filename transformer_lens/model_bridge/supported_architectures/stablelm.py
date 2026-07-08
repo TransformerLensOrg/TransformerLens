@@ -198,34 +198,5 @@ class StableLmArchitectureAdapter(ArchitectureAdapter):
             )
 
     def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Set up rotary embedding references for StableLM component testing.
-
-        StableLM uses RoPE (Rotary Position Embeddings) with partial rotation.
-        We set the rotary_emb reference on all attention bridge instances and
-        force eager attention for numerical consistency.
-
-        Args:
-            hf_model: The HuggingFace StableLM model instance
-            bridge_model: The TransformerBridge model (if available)
-        """
-        rotary_emb = hf_model.model.rotary_emb
-
-        # Force HF model to use "eager" attention to match bridge implementation
-        # Bridge uses "eager" to support output_attentions for hook compatibility
-        # SDPA and eager are mathematically equivalent but have numerical differences
-        if hasattr(hf_model, "config") and hasattr(hf_model.config, "_attn_implementation"):
-            hf_model.config._attn_implementation = "eager"
-
-        # Also set on all attention layers
-        if hasattr(hf_model, "model") and hasattr(hf_model.model, "layers"):
-            for layer in hf_model.model.layers:
-                if hasattr(layer, "self_attn") and hasattr(layer.self_attn, "config"):
-                    layer.self_attn.config._attn_implementation = "eager"
-
-        if bridge_model is not None and hasattr(bridge_model, "blocks"):
-            for block in bridge_model.blocks:
-                if hasattr(block, "attn"):
-                    block.attn.set_rotary_emb(rotary_emb)
-
-        attn_bridge = self.get_generalized_component("blocks.0.attn")
-        attn_bridge.set_rotary_emb(rotary_emb)
+        """Force eager attention and wire the shared rotary onto attention bridges."""
+        self._wire_rotary_for_testing(hf_model, bridge_model)

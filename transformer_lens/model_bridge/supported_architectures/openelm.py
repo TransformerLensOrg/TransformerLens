@@ -244,12 +244,3 @@ class OpenElmArchitectureAdapter(ArchitectureAdapter):
             lm_head = torch.nn.Linear(embed.embedding_dim, embed.num_embeddings, bias=False)
             lm_head.weight = embed.weight
             hf_model.lm_head = lm_head
-
-    def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Set up references for OpenELM component testing.
-
-        Args:
-            hf_model: The HuggingFace OpenELM model instance
-            bridge_model: The TransformerBridge model (if available)
-        """
-        pass

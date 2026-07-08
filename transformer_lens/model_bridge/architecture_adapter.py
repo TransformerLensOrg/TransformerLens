@@ -911,6 +911,57 @@ class ArchitectureAdapter:
         """
         pass
 
+    def _wire_rotary_for_testing(
+        self,
+        hf_model: Any,
+        bridge_model: Any = None,
+        *,
+        lm_attr: str = "model",
+        hybrid: bool = False,
+        eager: Optional[str] = "layers",
+    ) -> None:
+        """Canonical setup_component_testing body: force eager attention and set
+        the model's shared rotary_emb on every attention bridge and the template.
+
+        Args:
+            hf_model: The HuggingFace model instance
+            bridge_model: Optional live TransformerBridge
+            lm_attr: Attribute holding the decoder stack (e.g. "transformer")
+            hybrid: Some blocks lack attention (Mamba/linear-attn mixes) — guard
+                block wiring by registered submodule and tolerate a template miss
+            eager: None (leave attn implementation alone), "config" (top-level
+                config only), or "layers" (also each layer's self_attn config)
+        """
+        lm = getattr(hf_model, lm_attr, None)
+        if lm is None or not hasattr(lm, "rotary_emb"):
+            return
+        rotary_emb = lm.rotary_emb
+
+        if (
+            eager is not None
+            and hasattr(hf_model, "config")
+            and hasattr(hf_model.config, "_attn_implementation")
+        ):
+            hf_model.config._attn_implementation = "eager"
+        if eager == "layers" and hasattr(lm, "layers"):
+            for layer in lm.layers:
+                if hasattr(layer, "self_attn") and hasattr(layer.self_attn, "config"):
+                    layer.self_attn.config._attn_implementation = "eager"
+
+        if bridge_model is not None and hasattr(bridge_model, "blocks"):
+            for block in bridge_model.blocks:
+                has_attn = ("attn" in block._modules) if hybrid else hasattr(block, "attn")
+                if has_attn:
+                    block.attn.set_rotary_emb(rotary_emb)
+
+        if hybrid:
+            try:
+                self.get_generalized_component("blocks.0.attn").set_rotary_emb(rotary_emb)
+            except (ValueError, AttributeError, KeyError):
+                pass
+        else:
+            self.get_generalized_component("blocks.0.attn").set_rotary_emb(rotary_emb)
+
     def _enable_ht_attention(self, attn_bridge, hf_attn):
         """Enable HT computation for attention (architecture-agnostic).
 

@@ -99,32 +99,8 @@ class Qwen3ArchitectureAdapter(ArchitectureAdapter):
         }
 
     def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Set eager attn on HF model and rotary_emb on attention bridges."""
-        rotary_emb = hf_model.model.rotary_emb
-
-        if hasattr(hf_model, "config") and hasattr(hf_model.config, "_attn_implementation"):
-            hf_model.config._attn_implementation = "eager"
-
-        if hasattr(hf_model, "model") and hasattr(hf_model.model, "layers"):
-            for layer in hf_model.model.layers:
-                if hasattr(layer, "self_attn") and hasattr(layer.self_attn, "config"):
-                    layer.self_attn.config._attn_implementation = "eager"
-
-        if bridge_model is not None and hasattr(bridge_model, "blocks"):
-            for block in bridge_model.blocks:
-                if "attn" in block._modules:
-                    block.attn.set_rotary_emb(rotary_emb)
-
-        # Set on template for get_generalized_component() calls
-        # Set on template — may not exist in hybrid adapters
-        mapping = self.component_mapping or {}
-        blocks_template = mapping.get("blocks") if isinstance(mapping, dict) else None
-        if blocks_template and "attn" in getattr(blocks_template, "submodules", {}):
-            try:
-                attn_template = self.get_generalized_component("blocks.0.attn")
-                attn_template.set_rotary_emb(rotary_emb)
-            except (ValueError, AttributeError, KeyError):
-                pass
+        """Force eager attention and wire the shared rotary (hybrid: linear-attn layers skipped)."""
+        self._wire_rotary_for_testing(hf_model, bridge_model, hybrid=True)
 
     @staticmethod
     def _preprocess_gated_q_proj(

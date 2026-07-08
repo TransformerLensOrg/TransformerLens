@@ -87,24 +87,5 @@ class GraniteArchitectureAdapter(ArchitectureAdapter):
         }
 
     def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Set up rotary embedding references for Granite component testing.
-
-        Args:
-            hf_model: The HuggingFace Granite model instance
-            bridge_model: The TransformerBridge model (if available)
-        """
-        if not hasattr(hf_model.model, "rotary_emb"):
-            return
-
-        rotary_emb = hf_model.model.rotary_emb
-
-        if bridge_model is not None and hasattr(bridge_model, "blocks"):
-            for block in bridge_model.blocks:
-                if "attn" in block._modules:
-                    block.attn.set_rotary_emb(rotary_emb)
-
-        try:
-            attn_bridge = self.get_generalized_component("blocks.0.attn")
-            attn_bridge.set_rotary_emb(rotary_emb)
-        except (AttributeError, KeyError, ValueError):
-            pass
+        """Wire the shared rotary onto attention bridges (attn implementation untouched)."""
+        self._wire_rotary_for_testing(hf_model, bridge_model, hybrid=True, eager=None)
