@@ -85,7 +85,7 @@ class Olmo2ArchitectureAdapter(ArchitectureAdapter):
                         requires_attention_mask=True,
                         requires_position_embeddings=True,
                     ),
-                    "mlp": self._gated_mlp(),
+                    "mlp": self._build_mlp_bridge(),
                 },
                 # Post-norm override: ln2 is post_feedforward_layernorm applied AFTER
                 # MLP, so "ln2.hook_in" captures the MLP output (wrong mid-point).
@@ -97,6 +97,10 @@ class Olmo2ArchitectureAdapter(ArchitectureAdapter):
             "ln_final": RMSNormalizationBridge(name="model.norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head", config=self.cfg),
         }
+
+    def _build_mlp_bridge(self):
+        """MLP bridge seam; FlexOlmo swaps in the MoE variant."""
+        return self._gated_mlp()
 
     def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
         """Force eager attention and wire the shared rotary onto attention bridges."""
