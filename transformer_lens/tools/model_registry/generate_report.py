@@ -104,6 +104,7 @@ ARCHITECTURE_DESCRIPTIONS: dict[str, str] = {
     "FalconMambaForCausalLM": "TII's FalconMamba pure-SSM decoder (Mamba-1 with B/C/dt RMS)",
     "BD3LM": "Kuleshov Group's Block Diffusion Language Model (ICLR 2025) for masked text generation",
     "DreamModel": "HKU-NLP's Dream 7B discrete-diffusion LM (Qwen2.5-based, bidirectional; also Apple DiffuCoder)",
+    "NanoChatForCausalLM": "Karpathy's nanochat education-stack decoder (weightless norms, relu^2 MLP, capped logits)",
     "HunYuanDenseV1ForCausalLM": "Tencent's open source decoder models",
     "Cohere2ForCausalLM": "Cohere's Command-A architecture with interleaved sliding-window RoPE and full-attention NoPE layers",
     # Unsupported architectures

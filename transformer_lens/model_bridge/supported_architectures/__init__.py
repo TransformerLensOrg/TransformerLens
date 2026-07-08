@@ -217,6 +217,9 @@ from transformer_lens.model_bridge.supported_architectures.mpt import (
 from transformer_lens.model_bridge.supported_architectures.nanogpt import (
     NanogptArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.nanochat import (
+    NanoChatArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.native import (
     NativeArchitectureAdapter,
 )
@@ -412,6 +415,7 @@ __all__ = [
     "MixtralArchitectureAdapter",
     "MPTArchitectureAdapter",
     "NanogptArchitectureAdapter",
+    "NanoChatArchitectureAdapter",
     "NativeArchitectureAdapter",
     "NeelSoluOldArchitectureAdapter",
     "NemotronArchitectureAdapter",

@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-07-08T05:47:38.731778",
+  "last_updated": "2026-07-08T05:59:13.916245",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -18108,6 +18108,16 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "nanochat-students/nanochat-d20",
+      "architecture_id": "NanoChatForCausalLM",
+      "verified_date": "2026-07-08",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P3=89.5% (failed: attention_output_centering, unembed_centering)",
       "invalidated": false,
       "invalidation_reason": null
     }
