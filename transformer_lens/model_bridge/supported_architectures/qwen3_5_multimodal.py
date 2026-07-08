@@ -32,14 +32,10 @@ class Qwen3_5MultimodalArchitectureAdapter(Qwen3ArchitectureAdapter):
         self.cfg.is_multimodal = True
 
         self._extract_vision_dims(cfg)
-
-        assert self.component_mapping is not None  # built by super().__init__
-        self.component_mapping["vision_encoder"] = Qwen3_5VisionEncoderBridge(
+        self.components["vision_encoder"] = Qwen3_5VisionEncoderBridge(
             name="model.visual", config=self.cfg
         )
-        self.component_mapping["vision_projector"] = VisionProjectionBridge(
-            name="model.visual.merger"
-        )
+        self.components["vision_projector"] = VisionProjectionBridge(name="model.visual.merger")
 
     def preprocess_weights(self, state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
         """Slice query half from gated q_proj.weight (matcher is path-prefix-agnostic)."""

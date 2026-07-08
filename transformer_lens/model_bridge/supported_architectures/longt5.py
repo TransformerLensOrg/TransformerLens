@@ -35,7 +35,6 @@ class LongT5ArchitectureAdapter(T5ArchitectureAdapter):
     def __init__(self, cfg: Any) -> None:
         """Initialize the LongT5 architecture adapter."""
         super().__init__(cfg)
-        assert self.component_mapping is not None
 
         attn_attr = _ENCODER_ATTN_ATTR[getattr(cfg, "encoder_attention_type", "local")]
 
@@ -55,10 +54,10 @@ class LongT5ArchitectureAdapter(T5ArchitectureAdapter):
 
         # Rebuild the encoder stack around the local/tglobal attention module;
         # the decoder mapping inherited from T5 is unchanged.
-        self.component_mapping["pos_embed"] = PosEmbedBridge(
+        self.components["pos_embed"] = PosEmbedBridge(
             name=f"encoder.block.0.layer.0.{attn_attr}.relative_attention_bias"
         )
-        self.component_mapping["encoder_blocks"] = T5BlockBridge(
+        self.components["encoder_blocks"] = T5BlockBridge(
             name="encoder.block",
             config=self.cfg,
             is_decoder=False,

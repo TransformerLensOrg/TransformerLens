@@ -24,7 +24,6 @@ class Llama4MultimodalArchitectureAdapter(Llama4ArchitectureAdapter):
     def __init__(self, cfg: Any) -> None:
         """Initialize the Llama 4 multimodal architecture adapter."""
         super().__init__(cfg)
-        assert self.component_mapping is not None
 
         self.cfg.is_multimodal = True
         if hasattr(cfg, "vision_config"):
@@ -33,7 +32,5 @@ class Llama4MultimodalArchitectureAdapter(Llama4ArchitectureAdapter):
         self._reprefix_components("model.", "language_model.model.")
         self._reprefix_components("lm_head", "language_model.lm_head")
 
-        self.component_mapping["vision_encoder"] = GeneralizedComponent(name="vision_model")
-        self.component_mapping["vision_projector"] = GeneralizedComponent(
-            name="multi_modal_projector"
-        )
+        self.components["vision_encoder"] = GeneralizedComponent(name="vision_model")
+        self.components["vision_projector"] = GeneralizedComponent(name="multi_modal_projector")

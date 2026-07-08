@@ -36,11 +36,10 @@ class LEDArchitectureAdapter(BartArchitectureAdapter):
     def __init__(self, cfg: Any) -> None:
         """Initialize the LED architecture adapter."""
         super().__init__(cfg)
-        assert self.component_mapping is not None
 
         self._reprefix_components("model.", "led.")
 
-        self.component_mapping["encoder_blocks"] = BlockBridge(
+        self.components["encoder_blocks"] = BlockBridge(
             name="led.encoder.layers",
             hook_alias_overrides={
                 "hook_mlp_in": "mlp.in.hook_in",

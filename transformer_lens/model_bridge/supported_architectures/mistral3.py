@@ -24,12 +24,11 @@ class Mistral3ArchitectureAdapter(LlavaArchitectureAdapter):
     def __init__(self, cfg: Any) -> None:
         """Initialize the Mistral 3 architecture adapter."""
         super().__init__(cfg)
-        assert self.component_mapping is not None
 
-        self.component_mapping["vision_encoder"] = GeneralizedComponent(name="model.vision_tower")
+        self.components["vision_encoder"] = GeneralizedComponent(name="model.vision_tower")
         # The projector norms, patch-merges (spatial_merge_size), then
         # projects; it takes (image_features, image_sizes), which
         # VisionProjectionBridge's single-input forward cannot accept.
-        self.component_mapping["vision_projector"] = GeneralizedComponent(
+        self.components["vision_projector"] = GeneralizedComponent(
             name="model.multi_modal_projector"
         )

@@ -29,12 +29,9 @@ class Glm4ArchitectureAdapter(GlmArchitectureAdapter):
     def __init__(self, cfg: Any) -> None:
         """Initialize the GLM-4-0414 architecture adapter."""
         super().__init__(cfg)
-        assert self.component_mapping is not None
-
-        # GLM-4-0414 keeps GLM naming: post_attention_layernorm is the
         # pre-MLP norm; the sandwich norms are post_self_attn_layernorm and
         # post_mlp_layernorm applied before the residual adds.
-        self.component_mapping["blocks"] = BlockBridge(
+        self.components["blocks"] = BlockBridge(
             name="model.layers",
             submodules={
                 "ln1": RMSNormalizationBridge(name="input_layernorm", config=self.cfg),

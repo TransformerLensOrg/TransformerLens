@@ -267,9 +267,7 @@ class Cohere2ArchitectureAdapter(CohereArchitectureAdapter):
         super().__init__(cfg)
 
         setattr(self.cfg, "layer_types", _cohere2_layer_types(cfg))
-
-        assert self.component_mapping is not None
-        blocks = self.component_mapping["blocks"]
+        blocks = self.components["blocks"]
         assert blocks.submodules is not None
         blocks.submodules["attn"] = _Cohere2AttentionBridge(
             name="self_attn",

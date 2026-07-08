@@ -123,6 +123,13 @@ class ArchitectureAdapter:
             optional=optional,
         )
 
+    @property
+    def components(self) -> ComponentMapping:
+        """component_mapping, asserted built — for subclasses that extend or edit
+        a parent's mapping without per-file None narrowing."""
+        assert self.component_mapping is not None, "component_mapping has not been built"
+        return self.component_mapping
+
     def _extract_vision_dims(self, cfg: Any) -> None:
         """Copy vision-tower dims onto cfg, handling both HF-standard naming
         (num_hidden_layers/num_attention_heads) and Qwen-style (depth/num_heads)."""

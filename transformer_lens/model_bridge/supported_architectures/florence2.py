@@ -26,7 +26,6 @@ class Florence2ArchitectureAdapter(BartArchitectureAdapter):
     def __init__(self, cfg: Any) -> None:
         """Initialize the Florence-2 architecture adapter."""
         super().__init__(cfg)
-        assert self.component_mapping is not None
 
         self.cfg.is_multimodal = True
         if hasattr(cfg, "vision_config"):
@@ -35,7 +34,7 @@ class Florence2ArchitectureAdapter(BartArchitectureAdapter):
         # Re-prefix the BART text stack under model.language_model.
         self._reprefix_components("model.", _TEXT_PREFIX)
 
-        self.component_mapping["vision_encoder"] = GeneralizedComponent(name="model.vision_tower")
-        self.component_mapping["vision_projector"] = GeneralizedComponent(
+        self.components["vision_encoder"] = GeneralizedComponent(name="model.vision_tower")
+        self.components["vision_projector"] = GeneralizedComponent(
             name="model.multi_modal_projector"
         )

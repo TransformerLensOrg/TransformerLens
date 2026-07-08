@@ -20,11 +20,10 @@ class Gemma4TextArchitectureAdapter(Gemma4ArchitectureAdapter):
     def __init__(self, cfg: Any) -> None:
         """Initialize the Gemma 4 text-only architecture adapter."""
         super().__init__(cfg)
-        assert self.component_mapping is not None
 
         self.cfg.is_multimodal = False
-        self.component_mapping.pop("vision_encoder", None)
-        self.component_mapping.pop("vision_projector", None)
+        self.components.pop("vision_encoder", None)
+        self.components.pop("vision_projector", None)
         self._reprefix_components(_MM_PREFIX, "model.")
 
     def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
