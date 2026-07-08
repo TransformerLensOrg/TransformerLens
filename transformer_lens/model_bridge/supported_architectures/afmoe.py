@@ -27,6 +27,11 @@ from transformer_lens.model_bridge.generalized_components import (
 class AfmoeArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for AfmoeForCausalLM models."""
 
+    # Sandwich norms scale sublayer outputs before the residual add; folding
+    # ln1/ln2 into the projections changes the function (Trinity-Nano compat
+    # mode diverged to loss 10.9 vs 2.3 before this was disabled).
+    supports_fold_ln = False
+
     def __init__(self, cfg: Any) -> None:
         """Initialize the AFMoE architecture adapter."""
         super().__init__(cfg)

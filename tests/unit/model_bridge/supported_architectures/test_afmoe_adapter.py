@@ -55,6 +55,11 @@ class TestAfmoeComponentMapping:
         assert blocks["ln2"].name == "pre_mlp_layernorm"
         assert blocks["ln2_post"].name == "post_mlp_layernorm"
 
+    def test_sandwich_norms_not_fold_safe(self, adapter):
+        """Post-norms scale sublayer outputs pre-residual; folding diverges
+        on real weights (Trinity-Nano compat loss 10.9 vs 2.3)."""
+        assert adapter.supports_fold_ln is False
+
     def test_moe_with_optional_router_and_shared_experts(self, adapter):
         """Layers below num_dense_layers hold a plain gated MLP, so router
         and shared experts must be optional."""
