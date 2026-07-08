@@ -113,7 +113,14 @@ class MoEBridge(GeneralizedComponent):
             hidden_states = output[0]
             if len(output) > 1:
                 router_scores = output[1]
-                self.hook_router_scores(router_scores)
+                # Some MoEs pack extras with the logits (LLaDA2 returns
+                # (router_logits, topk_idx)); hook the first tensor.
+                if isinstance(router_scores, tuple):
+                    router_scores = next(
+                        (t for t in router_scores if isinstance(t, torch.Tensor)), None
+                    )
+                if isinstance(router_scores, torch.Tensor):
+                    self.hook_router_scores(router_scores)
             hidden_states = self.hook_out(hidden_states)
             return (hidden_states,) + output[1:]
         else:

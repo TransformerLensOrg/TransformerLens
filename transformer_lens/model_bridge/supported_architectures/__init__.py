@@ -169,6 +169,9 @@ from transformer_lens.model_bridge.supported_architectures.lfm2_moe import (
 from transformer_lens.model_bridge.supported_architectures.afmoe import (
     AfmoeArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.llada2_moe import (
+    LLaDA2MoeArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.llama import (
     LlamaArchitectureAdapter,
 )
@@ -410,6 +413,7 @@ __all__ = [
     "Idefics3ArchitectureAdapter",
     "InternLM2ArchitectureAdapter",
     "LEDArchitectureAdapter",
+    "LLaDA2MoeArchitectureAdapter",
     "LlamaArchitectureAdapter",
     "Llama4ArchitectureAdapter",
     "Llama4MultimodalArchitectureAdapter",
