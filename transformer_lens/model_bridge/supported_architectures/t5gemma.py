@@ -30,7 +30,6 @@ from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     BlockBridge,
     EmbeddingBridge,
-    GatedMLPBridge,
     LinearBridge,
     PositionEmbeddingsAttentionBridge,
     RMSNormalizationBridge,
@@ -202,15 +201,7 @@ class T5GemmaArchitectureAdapter(ArchitectureAdapter):
                     "ln2_post": RMSNormalizationBridge(
                         name="post_feedforward_layernorm", config=self.cfg
                     ),
-                    "mlp": GatedMLPBridge(
-                        name="mlp",
-                        config=self.cfg,
-                        submodules={
-                            "gate": LinearBridge(name="gate_proj"),
-                            "in": LinearBridge(name="up_proj"),
-                            "out": LinearBridge(name="down_proj"),
-                        },
-                    ),
+                    "mlp": self._gated_mlp(),
                 },
             ),
             # Encoder final norm
@@ -263,15 +254,7 @@ class T5GemmaArchitectureAdapter(ArchitectureAdapter):
                     "ln3_post": RMSNormalizationBridge(
                         name="post_feedforward_layernorm", config=self.cfg
                     ),
-                    "mlp": GatedMLPBridge(
-                        name="mlp",
-                        config=self.cfg,
-                        submodules={
-                            "gate": LinearBridge(name="gate_proj"),
-                            "in": LinearBridge(name="up_proj"),
-                            "out": LinearBridge(name="down_proj"),
-                        },
-                    ),
+                    "mlp": self._gated_mlp(),
                 },
             ),
             # Decoder final norm

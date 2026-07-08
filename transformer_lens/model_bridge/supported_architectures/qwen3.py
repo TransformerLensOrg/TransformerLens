@@ -13,7 +13,6 @@ from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapt
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
-    GatedMLPBridge,
     LinearBridge,
     RMSNormalizationBridge,
     RotaryEmbeddingBridge,
@@ -68,15 +67,7 @@ class Qwen3ArchitectureAdapter(ArchitectureAdapter):
 
     def _build_mlp_bridge(self):
         """Dense gated MLP (gate_proj + up_proj -> down_proj). Override for MoE."""
-        return GatedMLPBridge(
-            name="mlp",
-            config=self.cfg,
-            submodules={
-                "gate": LinearBridge(name="gate_proj"),
-                "in": LinearBridge(name="up_proj"),
-                "out": LinearBridge(name="down_proj"),
-            },
-        )
+        return self._gated_mlp()
 
     def _build_linear_attn_bridge(self, optional: bool = False) -> GatedDeltaNetBridge:
         """GatedDeltaNet linear-attention bridge for hybrid variants."""

@@ -18,7 +18,6 @@ from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     BlockBridge,
     EmbeddingBridge,
-    GatedMLPBridge,
     LinearBridge,
     RMSNormalizationBridge,
     UnembeddingBridge,
@@ -107,15 +106,7 @@ class Qwen3VLArchitectureAdapter(ArchitectureAdapter):
 
     def _build_mlp_bridge(self) -> Any:
         """Dense gated MLP; the MoE variant overrides this."""
-        return GatedMLPBridge(
-            name="mlp",
-            config=self.cfg,
-            submodules={
-                "gate": LinearBridge(name="gate_proj"),
-                "in": LinearBridge(name="up_proj"),
-                "out": LinearBridge(name="down_proj"),
-            },
-        )
+        return self._gated_mlp()
 
     def prepare_loading(self, model_name: str, model_kwargs: dict) -> None:
         """Force eager attention for hookable vision/text attention."""

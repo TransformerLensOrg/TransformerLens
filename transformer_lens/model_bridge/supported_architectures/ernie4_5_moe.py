@@ -13,7 +13,6 @@ from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapt
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
-    GatedMLPBridge,
     LinearBridge,
     MoEBridge,
     PositionEmbeddingsAttentionBridge,
@@ -65,16 +64,7 @@ class Ernie4_5_MoeArchitectureAdapter(ArchitectureAdapter):
                         name="mlp",
                         config=self.cfg,
                         submodules={
-                            "shared_experts": GatedMLPBridge(
-                                name="shared_experts",
-                                config=self.cfg,
-                                optional=True,
-                                submodules={
-                                    "gate": LinearBridge(name="gate_proj"),
-                                    "in": LinearBridge(name="up_proj"),
-                                    "out": LinearBridge(name="down_proj"),
-                                },
-                            ),
+                            "shared_experts": self._gated_mlp(name="shared_experts", optional=True),
                         },
                     ),
                 },

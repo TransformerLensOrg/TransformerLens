@@ -4,11 +4,7 @@ from typing import Any
 
 import torch
 
-from transformer_lens.model_bridge.generalized_components import (
-    GatedMLPBridge,
-    LinearBridge,
-    MoEBridge,
-)
+from transformer_lens.model_bridge.generalized_components import LinearBridge, MoEBridge
 from transformer_lens.model_bridge.supported_architectures.qwen2 import (
     Qwen2ArchitectureAdapter,
 )
@@ -53,15 +49,7 @@ class Qwen2MoeArchitectureAdapter(Qwen2ArchitectureAdapter):
             submodules={
                 "gate": Qwen2MoeRouterBridge(name="gate"),
                 "experts": MoEBridge(name="experts", config=self.cfg),
-                "shared_expert": GatedMLPBridge(
-                    name="shared_expert",
-                    config=self.cfg,
-                    submodules={
-                        "gate": LinearBridge(name="gate_proj"),
-                        "in": LinearBridge(name="up_proj"),
-                        "out": LinearBridge(name="down_proj"),
-                    },
-                ),
+                "shared_expert": self._gated_mlp(name="shared_expert"),
                 "shared_expert_gate": LinearBridge(name="shared_expert_gate"),
             },
         )

@@ -17,6 +17,10 @@ from transformer_lens.conversion_utils.param_processing_conversion import (
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
+from transformer_lens.model_bridge.generalized_components.gated_mlp import (
+    GatedMLPBridge,
+)
+from transformer_lens.model_bridge.generalized_components.linear import LinearBridge
 from transformer_lens.model_bridge.types import (
     ComponentMapping,
     RemoteComponent,
@@ -89,6 +93,35 @@ class ArchitectureAdapter:
         for key, value in self.default_cfg.items():
             if not hasattr(self.cfg, key):
                 setattr(self.cfg, key, value)
+
+    def _gated_mlp(
+        self,
+        name: str = "mlp",
+        *,
+        gate: str = "gate_proj",
+        up: str = "up_proj",
+        down: str = "down_proj",
+        optional: bool = False,
+    ) -> GatedMLPBridge:
+        """GatedMLPBridge with the standard gate/in/out LinearBridge submodules.
+
+        Args:
+            name: Container module name (e.g. "mlp", "shared_experts").
+            gate: HF name of the gate projection.
+            up: HF name of the up projection (mapped to "in").
+            down: HF name of the down projection (mapped to "out").
+            optional: Whether the container may be absent (per-layer MoE variants).
+        """
+        return GatedMLPBridge(
+            name=name,
+            config=self.cfg,
+            submodules={
+                "gate": LinearBridge(name=gate),
+                "in": LinearBridge(name=up),
+                "out": LinearBridge(name=down),
+            },
+            optional=optional,
+        )
 
     def _set_rms_rotary_defaults(self, *, final_rms: bool = True) -> None:
         """Set the Llama-family config flags: RMS norms, rotary positions, gated MLP.

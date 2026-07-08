@@ -16,7 +16,6 @@ from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     BlockBridge,
     EmbeddingBridge,
-    GatedMLPBridge,
     LinearBridge,
     MoEBridge,
     RMSNormalizationBridge,
@@ -80,16 +79,7 @@ class AfmoeArchitectureAdapter(ArchitectureAdapter):
                         config=self.cfg,
                         submodules={
                             "router_gate": LinearBridge(name="router.gate", optional=True),
-                            "shared_experts": GatedMLPBridge(
-                                name="shared_experts",
-                                config=self.cfg,
-                                optional=True,
-                                submodules={
-                                    "gate": LinearBridge(name="gate_proj"),
-                                    "in": LinearBridge(name="up_proj"),
-                                    "out": LinearBridge(name="down_proj"),
-                                },
-                            ),
+                            "shared_experts": self._gated_mlp(name="shared_experts", optional=True),
                         },
                     ),
                 },

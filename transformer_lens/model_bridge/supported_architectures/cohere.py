@@ -17,7 +17,6 @@ import torch
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
     EmbeddingBridge,
-    GatedMLPBridge,
     LinearBridge,
     NormalizationBridge,
     ParallelBlockBridge,
@@ -141,15 +140,7 @@ class CohereArchitectureAdapter(ArchitectureAdapter):
                     # GatedMLPBridge: gate/in/out matches Llama's gate_proj/up_proj/down_proj.
                     # Optional use_qk_norm is handled transparently by HF's
                     # CohereAttention.forward delegation (no extra submodules needed).
-                    "mlp": GatedMLPBridge(
-                        name="mlp",
-                        config=self.cfg,
-                        submodules={
-                            "gate": LinearBridge(name="gate_proj"),
-                            "in": LinearBridge(name="up_proj"),
-                            "out": LinearBridge(name="down_proj"),
-                        },
-                    ),
+                    "mlp": self._gated_mlp(),
                 },
             ),
             # Final LayerNorm (CohereLayerNorm, weight-only) at model.norm

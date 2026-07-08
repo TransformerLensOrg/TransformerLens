@@ -13,7 +13,6 @@ from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapt
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
-    GatedMLPBridge,
     GatedRMSNormBridge,
     LinearBridge,
     PositionEmbeddingsAttentionBridge,
@@ -86,15 +85,7 @@ class BambaArchitectureAdapter(ArchitectureAdapter):
                         },
                     ),
                     "ln2": RMSNormalizationBridge(name="pre_ff_layernorm", config=self.cfg),
-                    "mlp": GatedMLPBridge(
-                        name="feed_forward",
-                        config=self.cfg,
-                        submodules={
-                            "gate": LinearBridge(name="gate_proj"),
-                            "in": LinearBridge(name="up_proj"),
-                            "out": LinearBridge(name="down_proj"),
-                        },
-                    ),
+                    "mlp": self._gated_mlp(name="feed_forward"),
                 },
             ),
             "ln_final": RMSNormalizationBridge(name="model.final_layernorm", config=self.cfg),

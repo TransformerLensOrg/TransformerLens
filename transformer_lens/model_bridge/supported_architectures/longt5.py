@@ -41,14 +41,8 @@ class LongT5ArchitectureAdapter(T5ArchitectureAdapter):
 
         encoder_mlp: Union[GatedMLPBridge, MLPBridge]
         if self.cfg.gated_mlp:
-            encoder_mlp = GatedMLPBridge(
-                name="layer.1.DenseReluDense",
-                config=self.cfg,
-                submodules={
-                    "gate": LinearBridge(name="wi_0"),
-                    "in": LinearBridge(name="wi_1"),
-                    "out": LinearBridge(name="wo"),
-                },
+            encoder_mlp = self._gated_mlp(
+                name="layer.1.DenseReluDense", gate="wi_0", up="wi_1", down="wo"
             )
         else:
             encoder_mlp = MLPBridge(

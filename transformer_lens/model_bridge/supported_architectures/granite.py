@@ -66,15 +66,7 @@ class GraniteArchitectureAdapter(ArchitectureAdapter):
 
     def _build_mlp_bridge(self) -> GatedMLPBridge:
         """Build the dense gated MLP bridge."""
-        return GatedMLPBridge(
-            name="mlp",
-            config=self.cfg,
-            submodules={
-                "gate": LinearBridge(name="gate_proj"),
-                "in": LinearBridge(name="up_proj"),
-                "out": LinearBridge(name="down_proj"),
-            },
-        )
+        return self._gated_mlp()
 
     def _build_component_mapping(self) -> dict:
         """Build the full component mapping for dense Granite."""

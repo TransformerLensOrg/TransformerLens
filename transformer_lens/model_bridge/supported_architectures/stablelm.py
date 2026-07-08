@@ -13,7 +13,6 @@ from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapt
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
-    GatedMLPBridge,
     LinearBridge,
     NormalizationBridge,
     ParallelBlockBridge,
@@ -113,15 +112,7 @@ class StableLmArchitectureAdapter(ArchitectureAdapter):
             requires_attention_mask=True,
             requires_position_embeddings=True,
         )
-        block_submodules["mlp"] = GatedMLPBridge(
-            name="mlp",
-            config=self.cfg,
-            submodules={
-                "gate": LinearBridge(name="gate_proj"),
-                "in": LinearBridge(name="up_proj"),
-                "out": LinearBridge(name="down_proj"),
-            },
-        )
+        block_submodules["mlp"] = self._gated_mlp()
 
         # StableLM has both parallel (use_parallel_residual=True) and sequential variants.
         block_cls = ParallelBlockBridge if use_parallel_residual else BlockBridge

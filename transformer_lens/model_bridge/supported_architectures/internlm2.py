@@ -15,7 +15,6 @@ from transformer_lens.model_bridge.compat import patch_dynamic_cache_v5
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
-    GatedMLPBridge,
     JointQKVPositionEmbeddingsAttentionBridge,
     LinearBridge,
     RMSNormalizationBridge,
@@ -126,15 +125,7 @@ class InternLM2ArchitectureAdapter(ArchitectureAdapter):
                             "o": LinearBridge(name="wo"),
                         },
                     ),
-                    "mlp": GatedMLPBridge(
-                        name="feed_forward",
-                        config=self.cfg,
-                        submodules={
-                            "gate": LinearBridge(name="w1"),
-                            "in": LinearBridge(name="w3"),
-                            "out": LinearBridge(name="w2"),
-                        },
-                    ),
+                    "mlp": self._gated_mlp(name="feed_forward", gate="w1", up="w3", down="w2"),
                 },
             ),
             "ln_final": RMSNormalizationBridge(name="model.norm", config=self.cfg),

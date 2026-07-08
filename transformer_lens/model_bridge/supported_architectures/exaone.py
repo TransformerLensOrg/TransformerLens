@@ -14,7 +14,6 @@ from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapt
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
-    GatedMLPBridge,
     LinearBridge,
     PositionEmbeddingsAttentionBridge,
     RMSNormalizationBridge,
@@ -66,15 +65,7 @@ class ExaoneArchitectureAdapter(ArchitectureAdapter):
                         requires_attention_mask=True,
                         requires_position_embeddings=True,
                     ),
-                    "mlp": GatedMLPBridge(
-                        name="mlp",
-                        config=self.cfg,
-                        submodules={
-                            "gate": LinearBridge(name="c_fc_0"),
-                            "in": LinearBridge(name="c_fc_1"),
-                            "out": LinearBridge(name="c_proj"),
-                        },
-                    ),
+                    "mlp": self._gated_mlp(gate="c_fc_0", up="c_fc_1", down="c_proj"),
                 },
             ),
             "ln_final": RMSNormalizationBridge(name="transformer.ln_f", config=self.cfg),
