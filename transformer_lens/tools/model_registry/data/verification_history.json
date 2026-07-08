@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-07-08T09:38:27.098641",
+  "last_updated": "2026-07-08T10:12:44.552160",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -18318,6 +18318,66 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Below threshold: P1=50.0% < 100.0% (failed: forward_pass_logits) \u2014 Tensors differ: max_diff=26.121746, mean_rel=4.879314",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "RWKV/rwkv-4-169m-pile",
+      "architecture_id": "RwkvForCausalLM",
+      "verified_date": "2026-07-08",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: all_components) \u2014 12/136 components failed (12 critical)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "RWKV/rwkv-4-430m-pile",
+      "architecture_id": "RwkvForCausalLM",
+      "verified_date": "2026-07-08",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: all_components) \u2014 24/268 components failed (24 critical)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "RWKV/rwkv-4-169m-pile",
+      "architecture_id": "RwkvForCausalLM",
+      "verified_date": "2026-07-08",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: all_components) \u2014 12/136 components failed (12 critical)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "RWKV/rwkv-4-430m-pile",
+      "architecture_id": "RwkvForCausalLM",
+      "verified_date": "2026-07-08",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: all_components) \u2014 24/268 components failed (24 critical)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "RWKV/rwkv-4-169m-pile",
+      "architecture_id": "RwkvForCausalLM",
+      "verified_date": "2026-07-08",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "RWKV/rwkv-4-430m-pile",
+      "architecture_id": "RwkvForCausalLM",
+      "verified_date": "2026-07-08",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
       "invalidated": false,
       "invalidation_reason": null
     }

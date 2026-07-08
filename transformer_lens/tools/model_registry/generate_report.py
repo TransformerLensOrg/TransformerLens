@@ -117,6 +117,7 @@ ARCHITECTURE_DESCRIPTIONS: dict[str, str] = {
     "Ministral3ForCausalLM": "Mistral AI Ministral 3 edge models (pure Mistral shape)",
     "VaultGemmaForCausalLM": "Google VaultGemma, the only fully DP-SGD-pretrained open LLM (Gemma 2 minus post-norms)",
     "YoutuForCausalLM": "Tencent Youtu-LLM: laptop-scale dense Multi-head Latent Attention (DeepSeek-V2 MLA, all layers dense)",
+    "RwkvForCausalLM": "BlinkDL RWKV-4 WKV linear-attention RNN (Pythia-parallel Pile suite)",
     "NanoChatForCausalLM": "Karpathy's nanochat education-stack decoder (weightless norms, relu^2 MLP, capped logits)",
     "HunYuanDenseV1ForCausalLM": "Tencent's open source decoder models",
     "Cohere2ForCausalLM": "Cohere's Command-A architecture with interleaved sliding-window RoPE and full-attention NoPE layers",
