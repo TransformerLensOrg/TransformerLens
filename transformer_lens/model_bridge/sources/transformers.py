@@ -250,6 +250,7 @@ def determine_architecture_from_hf_config(hf_config):
             "qwen2_audio": "Qwen2AudioForConditionalGeneration",
             "audioflamingo3": "AudioFlamingo3ForConditionalGeneration",
             "musicflamingo": "MusicFlamingoForConditionalGeneration",
+            "jetmoe": "JetMoeForCausalLM",
             "minimax_m2": "MiniMaxM2ForCausalLM",
             "led": "LEDForConditionalGeneration",
             "llama": "LlamaForCausalLM",

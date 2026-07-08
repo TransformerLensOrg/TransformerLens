@@ -21,6 +21,7 @@ SEQ2SEQ_ARCHITECTURES: set[str] = {
     "BlenderbotForConditionalGeneration",
     "BlenderbotSmallForConditionalGeneration",
     "LEDForConditionalGeneration",
+    "SwitchTransformersForConditionalGeneration",
 }
 
 # Masked language models (BERT-style, no text generation)

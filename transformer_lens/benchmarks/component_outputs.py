@@ -298,6 +298,9 @@ class ComponentBenchmarker:
             BenchmarkReport with results for all tested components
         """
         skip_components = skip_components or []
+        # Adapters can exclude subcomponents whose isolated forward cannot run
+        # on synthesized probes (e.g. fused top-k routers) by path suffix.
+        skip_suffixes = tuple(getattr(self.adapter, "component_test_skip_suffixes", ()))
         component_mapping = self.adapter.get_component_mapping()
 
         # Generate test inputs if not provided
@@ -399,6 +402,12 @@ class ComponentBenchmarker:
 
         # Skip if in skip list
         if component_path in skip_components:
+            return
+
+        # Adapter-declared suffix exclusions (isolated forward can't run on
+        # synthesized probes, e.g. fused top-k routers).
+        skip_suffixes = tuple(getattr(self.adapter, "component_test_skip_suffixes", ()))
+        if any(component_path.endswith(suffix) for suffix in skip_suffixes):
             return
 
         # SSM/recurrent mixer internal submodules can't be tested in isolation (see

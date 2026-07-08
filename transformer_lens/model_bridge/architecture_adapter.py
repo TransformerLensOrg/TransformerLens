@@ -51,6 +51,10 @@ class ArchitectureAdapter:
     # Whether this architecture supports text generation via generate().
     # Encoder-only models (e.g. BERT, HuBERT) should set this to False.
     supports_generation: bool = True
+    # Component paths (by suffix) whose isolated forward cannot run on the
+    # component harness's synthesized probes — e.g. fused top-k routers whose
+    # forward sorts/scatters. They stay hookable at runtime.
+    component_test_skip_suffixes: tuple = ()
 
     # Optional libraries this adapter needs at load time (e.g. the multimodal group's timm).
     # Checked at construction so a missing one raises a clear error, not a deep HF failure.

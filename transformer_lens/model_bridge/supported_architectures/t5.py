@@ -1,12 +1,11 @@
 """T5 architecture adapter."""
 
-from typing import Any, Union
+from typing import Any
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     EmbeddingBridge,
-    GatedMLPBridge,
     LinearBridge,
     MLPBridge,
     PosEmbedBridge,
@@ -52,31 +51,9 @@ class T5ArchitectureAdapter(ArchitectureAdapter):
 
         self.weight_processing_conversions = {}
 
-        # Build MLP bridge based on whether the model uses gated FFN
-        encoder_mlp: Union[GatedMLPBridge, MLPBridge]
-        decoder_mlp: Union[GatedMLPBridge, MLPBridge]
-        if is_gated:
-            encoder_mlp = self._gated_mlp(
-                name="layer.1.DenseReluDense", gate="wi_0", up="wi_1", down="wo"
-            )
-            decoder_mlp = self._gated_mlp(
-                name="layer.2.DenseReluDense", gate="wi_0", up="wi_1", down="wo"
-            )
-        else:
-            encoder_mlp = MLPBridge(
-                name="layer.1.DenseReluDense",
-                submodules={
-                    "in": LinearBridge(name="wi"),
-                    "out": LinearBridge(name="wo"),
-                },
-            )
-            decoder_mlp = MLPBridge(
-                name="layer.2.DenseReluDense",
-                submodules={
-                    "in": LinearBridge(name="wi"),
-                    "out": LinearBridge(name="wo"),
-                },
-            )
+        # Build MLP bridges via the seam (Switch swaps in sparse MoE FFs).
+        encoder_mlp = self._build_ff_bridge("layer.1")
+        decoder_mlp = self._build_ff_bridge("layer.2")
 
         self.component_mapping = {
             # Shared embeddings
@@ -157,3 +134,18 @@ class T5ArchitectureAdapter(ArchitectureAdapter):
             # Language modeling head
             "unembed": UnembeddingBridge(name="lm_head"),
         }
+
+    def _build_ff_bridge(self, layer_prefix: str):
+        """Feed-forward bridge for one stack (gated or plain wi/wo); Switch
+        overrides with a sparse MoE variant."""
+        if self.cfg.gated_mlp:
+            return self._gated_mlp(
+                name=f"{layer_prefix}.DenseReluDense", gate="wi_0", up="wi_1", down="wo"
+            )
+        return MLPBridge(
+            name=f"{layer_prefix}.DenseReluDense",
+            submodules={
+                "in": LinearBridge(name="wi"),
+                "out": LinearBridge(name="wo"),
+            },
+        )

@@ -175,6 +175,9 @@ from transformer_lens.model_bridge.supported_architectures.laguna import (
 from transformer_lens.model_bridge.supported_architectures.led import (
     LEDArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.jetmoe import (
+    JetMoeArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.lfm2_moe import (
     Lfm2MoeArchitectureAdapter,
 )
@@ -365,6 +368,9 @@ from transformer_lens.model_bridge.supported_architectures.smollm3 import (
 from transformer_lens.model_bridge.supported_architectures.stablelm import (
     StableLmArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.switch_transformers import (
+    SwitchTransformersArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.t5 import (
     T5ArchitectureAdapter,
 )
@@ -444,6 +450,7 @@ __all__ = [
     "LEDArchitectureAdapter",
     "LagunaArchitectureAdapter",
     "Jais2ArchitectureAdapter",
+    "JetMoeArchitectureAdapter",
     "Ministral3ArchitectureAdapter",
     "VaultGemmaArchitectureAdapter",
     "YoutuArchitectureAdapter",
@@ -508,6 +515,7 @@ __all__ = [
     "SeedOssArchitectureAdapter",
     "SmolLM3ArchitectureAdapter",
     "StableLmArchitectureAdapter",
+    "SwitchTransformersArchitectureAdapter",
     "Starcoder2ArchitectureAdapter",
     "T5ArchitectureAdapter",
     "T5GemmaArchitectureAdapter",
