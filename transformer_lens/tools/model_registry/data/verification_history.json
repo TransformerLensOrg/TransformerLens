@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-07-08T03:49:23.428014",
+  "last_updated": "2026-07-08T04:45:32.911895",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -18044,6 +18044,46 @@
     {
       "model_id": "LGAI-EXAONE/EXAONE-3.5-2.4B-Instruct",
       "architecture_id": "ExaoneForCausalLM",
+      "verified_date": "2026-07-08",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "facebook/m2m100_418M",
+      "architecture_id": "M2M100ForConditionalGeneration",
+      "verified_date": "2026-07-08",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues, low text quality",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "google/pegasus-xsum",
+      "architecture_id": "PegasusForConditionalGeneration",
+      "verified_date": "2026-07-08",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "allenai/led-base-16384",
+      "architecture_id": "LEDForConditionalGeneration",
+      "verified_date": "2026-07-08",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "facebook/bart-large-cnn",
+      "architecture_id": "BartForConditionalGeneration",
       "verified_date": "2026-07-08",
       "verified_by": "verify_models",
       "transformerlens_version": null,

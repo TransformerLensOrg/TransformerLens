@@ -14,6 +14,9 @@ from transformer_lens.factories.architecture_adapter_factory import (
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
+from transformer_lens.model_bridge.generalized_components.vision_projection import (
+    VisionProjectionBridge,
+)
 from transformer_lens.model_bridge.supported_architectures.mistral3 import (
     Mistral3ArchitectureAdapter,
 )
@@ -40,12 +43,13 @@ def adapter() -> Mistral3ArchitectureAdapter:
 
 class TestMistral3ComponentMapping:
     def test_vision_components_delegated(self, adapter):
-        """Pixtral's 2D-RoPE attention has no CLIP/SigLIP-shaped bridge, and
-        the projector takes (image_features, image_sizes)."""
+        """Pixtral's 2D-RoPE attention has no CLIP/SigLIP-shaped bridge; the
+        projector inherits Llava's VisionProjectionBridge, whose *args
+        passthrough carries the extra image_sizes positional."""
         mapping = adapter.component_mapping
         assert type(mapping["vision_encoder"]) is GeneralizedComponent
         assert mapping["vision_encoder"].name == "model.vision_tower"
-        assert type(mapping["vision_projector"]) is GeneralizedComponent
+        assert isinstance(mapping["vision_projector"], VisionProjectionBridge)
         assert mapping["vision_projector"].name == "model.multi_modal_projector"
 
     def test_llava_text_stack(self, adapter):

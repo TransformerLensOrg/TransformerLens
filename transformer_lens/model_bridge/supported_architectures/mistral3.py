@@ -25,10 +25,8 @@ class Mistral3ArchitectureAdapter(LlavaArchitectureAdapter):
         """Initialize the Mistral 3 architecture adapter."""
         super().__init__(cfg)
 
+        # Pixtral's 2D-RoPE block-diagonal attention has no CLIP-shaped bridge.
+        # The projector inherits Llava's VisionProjectionBridge; its extra
+        # (image_features, image_sizes) positional flows through the *args
+        # passthrough.
         self.components["vision_encoder"] = GeneralizedComponent(name="model.vision_tower")
-        # The projector norms, patch-merges (spatial_merge_size), then
-        # projects; it takes (image_features, image_sizes), which
-        # VisionProjectionBridge's single-input forward cannot accept.
-        self.components["vision_projector"] = GeneralizedComponent(
-            name="model.multi_modal_projector"
-        )
