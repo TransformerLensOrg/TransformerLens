@@ -91,7 +91,7 @@ class ArchitectureAdapter:
                 setattr(self.cfg, key, value)
 
     def _qkvo_weight_conversions(
-        self, n_kv_heads: Optional[int] = None
+        self, n_kv_heads: Optional[int] = None, include_biases: bool = False
     ) -> Dict[str, ParamProcessingConversion]:
         """Standard Q/K/V/O weight rearrangement conversions.
 
@@ -100,10 +100,12 @@ class ArchitectureAdapter:
 
         Args:
             n_kv_heads: Number of KV heads for GQA. If None, falls back to n_heads.
+            include_biases: Also emit Q/K/V bias reshapes. K/V use the kv-head
+                count — a hand-rolled n_heads reshape breaks on GQA checkpoints.
         """
         if n_kv_heads is None:
             n_kv_heads = getattr(self.cfg, "n_key_value_heads", None) or self.cfg.n_heads
-        return {
+        conversions = {
             "blocks.{i}.attn.q.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
             ),
@@ -117,6 +119,27 @@ class ArchitectureAdapter:
                 tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=self.cfg.n_heads),
             ),
         }
+        if include_biases:
+            conversions.update(
+                {
+                    "blocks.{i}.attn.q.bias": ParamProcessingConversion(
+                        tensor_conversion=RearrangeTensorConversion(
+                            "(h d_head) -> h d_head", h=self.cfg.n_heads
+                        ),
+                    ),
+                    "blocks.{i}.attn.k.bias": ParamProcessingConversion(
+                        tensor_conversion=RearrangeTensorConversion(
+                            "(h d_head) -> h d_head", h=n_kv_heads
+                        ),
+                    ),
+                    "blocks.{i}.attn.v.bias": ParamProcessingConversion(
+                        tensor_conversion=RearrangeTensorConversion(
+                            "(h d_head) -> h d_head", h=n_kv_heads
+                        ),
+                    ),
+                }
+            )
+        return conversions
 
     def preprocess_weights(self, state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
         """Apply architecture-specific weight transformations before ProcessWeights.

@@ -12,10 +12,6 @@ projector.
 
 from typing import Any
 
-from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion
-from transformer_lens.conversion_utils.param_processing_conversion import (
-    ParamProcessingConversion,
-)
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
@@ -67,21 +63,9 @@ class Glm4vArchitectureAdapter(ArchitectureAdapter):
 
         # Joint gate_up_proj cannot be folded by the standard LN machinery.
         self.supports_fold_ln = False
-        n_kv_heads = getattr(self.cfg, "n_key_value_heads", None) or self.cfg.n_heads
+        # GLM attention carries QKV biases.
         self.weight_processing_conversions = {
-            **self._qkvo_weight_conversions(),
-            # GLM attention carries QKV biases; K/V reshape by kv-head count.
-            "blocks.{i}.attn.q.bias": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion(
-                    "(h d_head) -> h d_head", h=self.cfg.n_heads
-                ),
-            ),
-            "blocks.{i}.attn.k.bias": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion("(h d_head) -> h d_head", h=n_kv_heads),
-            ),
-            "blocks.{i}.attn.v.bias": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion("(h d_head) -> h d_head", h=n_kv_heads),
-            ),
+            **self._qkvo_weight_conversions(include_biases=True),
         }
 
         self.component_mapping = {
