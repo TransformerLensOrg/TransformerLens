@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-06-27T00:21:21.662427",
+  "last_updated": "2026-07-08T04:16:00.084004",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -16388,6 +16388,26 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Below threshold: P1=50.0% < 100.0% (failed: forward_pass_logits) \u2014 Tensors differ: max_diff=0.020484, mean_rel=0.006617",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "google/t5gemma-2-270m-270m",
+      "architecture_id": "T5Gemma2ForConditionalGeneration",
+      "verified_date": "2026-07-08",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: all_components) \u2014 36/475 components failed (36 critical)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "google/t5gemma-2-270m-270m",
+      "architecture_id": "T5Gemma2ForConditionalGeneration",
+      "verified_date": "2026-07-08",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
       "invalidated": false,
       "invalidation_reason": null
     }

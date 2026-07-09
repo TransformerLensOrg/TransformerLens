@@ -110,6 +110,7 @@ HF_SUPPORTED_ARCHITECTURES: set[str] = {
     "T5ForConditionalGeneration",
     "MT5ForConditionalGeneration",
     "T5GemmaForConditionalGeneration",
+    "T5Gemma2ForConditionalGeneration",
     "XGLMForCausalLM",
 }
 
@@ -181,6 +182,7 @@ CANONICAL_AUTHORS_BY_ARCH: dict[str, list[str]] = {
     "StableLmForCausalLM": ["stabilityai"],
     "T5ForConditionalGeneration": ["google-t5", "google", "Salesforce", "MBZUAI"],
     "T5GemmaForConditionalGeneration": ["google"],
+    "T5Gemma2ForConditionalGeneration": ["google"],
     "XGLMForCausalLM": ["facebook"],
 }
 

@@ -201,6 +201,9 @@ from transformer_lens.model_bridge.supported_architectures.t5 import (
 from transformer_lens.model_bridge.supported_architectures.t5gemma import (
     T5GemmaArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.t5gemma2 import (
+    T5Gemma2ArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.xglm import (
     XGLMArchitectureAdapter,
 )
@@ -273,5 +276,6 @@ __all__ = [
     "StableLmArchitectureAdapter",
     "T5ArchitectureAdapter",
     "T5GemmaArchitectureAdapter",
+    "T5Gemma2ArchitectureAdapter",
     "XGLMArchitectureAdapter",
 ]
