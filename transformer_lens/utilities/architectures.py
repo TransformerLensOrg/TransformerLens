@@ -27,6 +27,7 @@ MASKED_LM_ARCHITECTURES: set[str] = {
     "AlbertForMaskedLM",
     "DistilBertForMaskedLM",
     "ElectraForMaskedLM",
+    "BD3LM",
 }
 
 # Vision-language multimodal models

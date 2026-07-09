@@ -1,12 +1,12 @@
 """Integration tests for the NemotronH architecture adapter.
 
-Verifies forward-pass and generation parity against nvidia/Nemotron-H-8B-Base:
+Verifies forward-pass and generation parity against nvidia/NVIDIA-Nemotron-Nano-9B-v2:
 - Forward-pass logits match HF exactly (bridge delegates the full forward to HF)
 - Greedy multi-token generation matches HF bit-for-bit (exercises DynamicCache
   state handling across attention, Mamba-2, MLP, and MoE layers)
 - Sanity checks: config flags, block count, hook coverage
 
-Note: requires ~18 GB RAM (CPU) or ~16 GB VRAM (GPU) to load the 8B checkpoint.
+Note: requires ~36 GB RAM (CPU, fp32) or ~18 GB VRAM (GPU, bf16) to load the 9B checkpoint.
 On a machine with less memory, skip with:
     pytest -m "not slow" tests/integration/model_bridge/test_nemotron_h_adapter.py
 
@@ -28,7 +28,7 @@ from transformer_lens.model_bridge.generalized_components import (
 
 pytestmark = pytest.mark.slow
 
-MODEL = "nvidia/Nemotron-H-8B-Base"
+MODEL = "nvidia/NVIDIA-Nemotron-Nano-9B-v2"
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -82,7 +82,7 @@ class TestNemotronHBridgeCreation:
         assert isinstance(nemotron_bridge.ln_final, RMSNormalizationBridge)
 
     def test_block_count(self, nemotron_bridge: TransformerBridge) -> None:
-        # Nemotron-H-8B has 56 layers
+        # Nemotron-Nano-9B-v2 has 56 layers
         assert len(nemotron_bridge.blocks) == 56
 
     def test_blocks_are_ssm_block_bridge(self, nemotron_bridge: TransformerBridge) -> None:

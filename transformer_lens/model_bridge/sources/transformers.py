@@ -71,6 +71,8 @@ def map_default_transformer_lens_config(hf_config):
         tl_config.d_model = source_config.model_dim
     elif hasattr(source_config, "d_model"):
         tl_config.d_model = source_config.d_model
+    elif hasattr(source_config, "hidden_dim"):
+        tl_config.d_model = source_config.hidden_dim
     if hasattr(source_config, "n_head"):
         tl_config.n_heads = source_config.n_head
     elif hasattr(source_config, "num_attention_heads"):
@@ -128,6 +130,8 @@ def map_default_transformer_lens_config(hf_config):
         tl_config.n_layers = source_config.num_transformer_layers
     elif hasattr(source_config, "num_layers"):
         tl_config.n_layers = source_config.num_layers
+    elif hasattr(source_config, "n_blocks"):
+        tl_config.n_layers = source_config.n_blocks
     if hasattr(source_config, "vocab_size") and isinstance(source_config.vocab_size, int):
         tl_config.d_vocab = source_config.vocab_size
     if hasattr(source_config, "n_positions"):
@@ -180,7 +184,9 @@ def map_default_transformer_lens_config(hf_config):
         tl_config.eps = source_config.layer_norm_epsilon
     elif hasattr(source_config, "norm_eps"):
         tl_config.eps = source_config.norm_eps
-    if hasattr(source_config, "num_local_experts"):
+    if hasattr(source_config, "num_experts"):
+        tl_config.num_experts = source_config.num_experts
+    elif hasattr(source_config, "num_local_experts"):
         tl_config.num_experts = source_config.num_local_experts
     if hasattr(source_config, "num_experts_per_tok"):
         tl_config.experts_per_token = source_config.num_experts_per_tok
@@ -240,6 +246,7 @@ def determine_architecture_from_hf_config(hf_config):
             "bert": "BertForMaskedLM",
             "bloom": "BloomForCausalLM",
             "codegen": "CodeGenForCausalLM",
+            "cohere2": "Cohere2ForCausalLM",
             "gptj": "GPTJForCausalLM",
             "gpt_neo": "GPTNeoForCausalLM",
             "gpt_neox": "GPTNeoXForCausalLM",
@@ -248,6 +255,7 @@ def determine_architecture_from_hf_config(hf_config):
             "phi3": "Phi3ForCausalLM",
             "qwen": "QwenForCausalLM",
             "qwen2": "Qwen2ForCausalLM",
+            "qwen2_moe": "Qwen2MoeForCausalLM",
             "qwen3": "Qwen3ForCausalLM",
             # qwen3_5 is the top-level multimodal config type; qwen3_5_text is
             # the text-only sub-config. Both map to the text-only adapter so
@@ -537,20 +545,43 @@ def boot(
         # Mamba-2 (additional SSM config)
         "n_groups",
         "chunk_size",
+        # Falcon-H1 (parallel attn + Mamba-2 hybrid SSM config)
+        "mamba_d_ssm",
+        "mamba_n_heads",
+        "mamba_d_head",
+        "mamba_d_state",
+        "mamba_n_groups",
+        "mamba_d_conv",
+        "mamba_chunk_size",
         # Multimodal
         "vision_config",
         # Cohere
         "logit_scale",
         "rope_parameters",
+        "sliding_window_pattern",
+        "_sliding_window_pattern",
         # Hybrid/MoE architectures
         "layer_types",
         "moe_intermediate_size",
+        "shared_expert_intermediate_size",
         "norm_eps",
         "attention_bias",
         "lm_head_bias",
         "router_jitter_noise",
         "input_jitter_noise",
         "eos_token_id",
+        # BD3LM
+        "model_length",
+        "block_size",
+        "cond_dim",
+        "adaln",
+        "cross_attn",
+        # Zamba2 (Mamba-2 + shared-attention hybrid)
+        "mamba_expand",
+        "mamba_ngroups",
+        "num_mem_blocks",
+        "layers_block_type",
+        "use_shared_attention_adapter",
     ]
     for attr in _HF_PASSTHROUGH_ATTRS:
         val = getattr(hf_config, attr, None)
