@@ -16862,6 +16862,16 @@
       "invalidation_reason": null
     },
     {
+      "model_id": "ByteDance/Ouro-1.4B",
+      "architecture_id": "OuroForCausalLM",
+      "verified_date": "2026-07-07",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
       "model_id": "google/t5gemma-2-270m-270m",
       "architecture_id": "T5Gemma2ForConditionalGeneration",
       "verified_date": "2026-07-08",

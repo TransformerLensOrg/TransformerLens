@@ -265,6 +265,7 @@ def determine_architecture_from_hf_config(hf_config):
             "qwen3_5_text": "Qwen3_5ForCausalLM",
             "smollm3": "SmolLM3ForCausalLM",
             "openelm": "OpenELMForCausalLM",
+            "ouro": "OuroForCausalLM",
             "stablelm": "StableLmForCausalLM",
             "t5": "T5ForConditionalGeneration",
             "mt5": "MT5ForConditionalGeneration",
@@ -582,6 +583,9 @@ def boot(
         "num_mem_blocks",
         "layers_block_type",
         "use_shared_attention_adapter",
+        # Ouro (LoopLM)
+        "total_ut_steps",
+        "early_exit_threshold",
     ]
     for attr in _HF_PASSTHROUGH_ATTRS:
         val = getattr(hf_config, attr, None)

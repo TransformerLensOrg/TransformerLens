@@ -169,6 +169,9 @@ from transformer_lens.model_bridge.supported_architectures.openelm import (
 from transformer_lens.model_bridge.supported_architectures.opt import (
     OptArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.ouro import (
+    OuroArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.phi import (
     PhiArchitectureAdapter,
 )
@@ -285,6 +288,7 @@ __all__ = [
     "Olmo3ArchitectureAdapter",
     "OlmoeArchitectureAdapter",
     "OptArchitectureAdapter",
+    "OuroArchitectureAdapter",
     "PhiArchitectureAdapter",
     "Phi3ArchitectureAdapter",
     "PhiMoEArchitectureAdapter",
