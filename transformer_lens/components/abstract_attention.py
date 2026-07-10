@@ -446,59 +446,20 @@ class AbstractAttention(ABC, nn.Module):
         )
         if self.cfg.load_in_4bit:
             W_Q_4bit = cast(Params4bit, self.W_Q)
-            q = self.hook_q(
-                # call bitsandbytes method to dequantize and multiply
-                bnb.matmul_4bit(
-                    query_input,
-                    W_Q_4bit.t(),
-                    bias=None,
-                    quant_state=W_Q_4bit.quant_state,
-                ).reshape(
-                    query_input.shape[0],
-                    query_input.shape[1],
-                    self.cfg.n_heads,
-                    self.cfg.d_head,
-                )
-                + self.b_Q
-            )
+            q = self.hook_q(self._project_4bit_qkv(query_input, W_Q_4bit, self.b_Q))
         else:
             q = self.hook_q(attn_fn(query_input, self.W_Q, self.b_Q))
         if self.cfg.load_in_4bit:
             if not isinstance(self.W_K, Params4bit):
                 raise ValueError("W_K must be a Params4bit object if load_in_4bit is True")
-            k = self.hook_k(
-                # call bitsandbytes method to dequantize and multiply
-                bnb.matmul_4bit(
-                    key_input, self.W_K.t(), bias=None, quant_state=self.W_K.quant_state
-                ).reshape(
-                    key_input.shape[0],
-                    key_input.shape[1],
-                    self.cfg.n_heads,
-                    self.cfg.d_head,
-                )
-                + self.b_K
-            )
+            k = self.hook_k(self._project_4bit_qkv(key_input, self.W_K, self.b_K))
         else:
             k = self.hook_k(attn_fn(key_input, self.W_K, self.b_K))
 
         if self.cfg.load_in_4bit:
             if not isinstance(self.W_V, Params4bit):
                 raise ValueError("W_V must be a Params4bit object if load_in_4bit is True")
-            v = self.hook_v(
-                # call bitsandbytes method to dequantize and multiply
-                bnb.matmul_4bit(
-                    value_input,
-                    self.W_V.t(),
-                    bias=None,
-                    quant_state=self.W_V.quant_state,
-                ).reshape(
-                    value_input.shape[0],
-                    value_input.shape[1],
-                    self.cfg.n_heads,
-                    self.cfg.d_head,
-                )
-                + self.b_V
-            )
+            v = self.hook_v(self._project_4bit_qkv(value_input, self.W_V, self.b_V))
         else:
             v = self.hook_v(attn_fn(value_input, self.W_V, self.b_V))
 
@@ -509,6 +470,42 @@ class AbstractAttention(ABC, nn.Module):
             k = self._apply_qk_norm(k, self.k_norm)
 
         return q, k, v
+
+    def _project_4bit_qkv(
+        self,
+        input: Union[
+            Float[torch.Tensor, "batch pos d_model"],
+            Float[torch.Tensor, "batch pos head_index d_model"],
+        ],
+        weight: "Params4bit",
+        bias: Float[torch.Tensor, "head_index d_head"],
+    ) -> Float[torch.Tensor, "batch pos head_index d_head"]:
+        projected = bnb.matmul_4bit(
+            input,
+            weight.t(),
+            bias=None,
+            quant_state=weight.quant_state,
+        )
+        n_heads, d_head = bias.shape
+
+        if input.ndim == 3:
+            return projected.reshape(input.shape[0], input.shape[1], n_heads, d_head) + bias
+
+        if input.ndim == 4:
+            if input.shape[2] != n_heads:
+                raise ValueError(
+                    "4-bit split QKV inputs must have one input slice per attention head; "
+                    f"got {input.shape[2]} input heads for {n_heads} projection heads."
+                )
+            split_projected = projected.reshape(
+                input.shape[0], input.shape[1], input.shape[2], n_heads, d_head
+            )
+            return split_projected.diagonal(dim1=2, dim2=3).movedim(-1, 2) + bias
+
+        raise ValueError(
+            "4-bit QKV projection input must have shape [batch, pos, d_model] or "
+            "[batch, pos, head_index, d_model]."
+        )
 
     def calculate_attention_scores(
         self,
