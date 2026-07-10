@@ -381,7 +381,7 @@ def boot(
     # Use at your own risk, report any issues here: https://github.com/TransformerLensOrg/TransformerLens/issues
     device_map: str | dict[str, str | int] | None = None,
     n_devices: int | None = None,
-    max_memory: dict[str | int, str] | None = None,
+    max_memory: dict[str | int, str | int] | None = None,
 ) -> TransformerBridge:
     """Boot a model from HuggingFace.
 

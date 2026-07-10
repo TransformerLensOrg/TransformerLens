@@ -220,7 +220,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         hf_model: Optional[Any] = None,
         device_map: Optional[Union[str, Dict[str, Union[str, int]]]] = None,
         n_devices: Optional[int] = None,
-        max_memory: Optional[Dict[Union[str, int], str]] = None,
+        max_memory: Optional[Dict[Union[str, int], Union[str, int]]] = None,
         n_ctx: Optional[int] = None,
         revision: Optional[str] = None,
         checkpoint_index: Optional[int] = None,
