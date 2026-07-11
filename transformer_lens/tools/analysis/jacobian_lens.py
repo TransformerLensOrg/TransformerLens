@@ -808,9 +808,14 @@ def _require_unprocessed_weights(model: Any) -> None:
 def _unembed(
     model: Any, residual: Float[torch.Tensor, "pos d_model"]
 ) -> Float[torch.Tensor, "pos d_vocab"]:
-    """Apply the model's own final norm, unembedding, and logit soft cap."""
+    """Apply the model's own final norm, unembedding, and logit soft cap.
+
+    The norm/unembed components contract on ``[batch, pos, d_model]``, so the
+    position rows are passed through with a singleton batch axis.
+    """
     compute_dtype = model.W_U.dtype
-    logits = model.unembed(model.ln_final(residual.to(compute_dtype))).float()
+    batched = residual.to(compute_dtype).unsqueeze(0)
+    logits = model.unembed(model.ln_final(batched)).float().squeeze(0)
     soft_cap = getattr(model.cfg, "output_logits_soft_cap", None)
     return apply_softcap(logits, soft_cap).cpu()
 
