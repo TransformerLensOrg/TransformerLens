@@ -926,6 +926,7 @@ def _jacobian_for_prompt(
             retain_graph=pass_index < n_passes - 1,
         )
         for layer, grad in zip(source_layers, grads):
-            rows = grad[:n_dims, positions_index, :].float().mean(dim=1)
+            # grads land on whatever device each layer lives on (device_map setups).
+            rows = grad[:n_dims, positions_index.to(grad.device), :].float().mean(dim=1)
             jacobians[layer][dim_start : dim_start + n_dims, :] = rows.cpu()
     return jacobians
