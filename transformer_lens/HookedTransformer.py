@@ -2031,6 +2031,11 @@ class HookedTransformer(HookedRootModule):
                     self.tokenizer.padding_side = _orig_padding_side
             device = get_device_for_block_index(0, self.cfg)
             input = input.to(device)
+            if input_tokens is not None:
+                # Re-alias to the moved tensor: input_tokens must live on the model's
+                # device so later concatenations with sampled tokens (freq_penalty
+                # sampling and the final output) don't mix devices.
+                input_tokens = input
             if use_past_kv_cache:
                 past_kv_cache = TransformerLensKeyValueCache.init_cache(
                     self.cfg, self.cfg.device, batch_size
