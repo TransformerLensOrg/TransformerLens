@@ -185,8 +185,9 @@ class JacobianLens:
 
         Args:
             path: Destination ``.pt`` path.
-            dtype: Storage dtype. fp16 halves file size; entries are O(1) so
-                range is not a constraint (the reference default).
+            dtype: Storage dtype. Defaults to fp16 like the reference
+                implementation — Jacobian entries are order-one, so the smaller
+                dtype costs little precision and halves the artifact on disk.
         """
         payload: Dict[str, Any] = {
             "J": {layer: matrix.to(dtype) for layer, matrix in self.jacobians.items()},
@@ -269,6 +270,7 @@ class JacobianLens:
         The per-layer matrices are averaged weighted by each lens's
         ``n_prompts``, matching the reference implementation, so fitting can be
         parallelized across processes or machines and merged afterwards.
+        Provenance ``metadata`` is taken from the first lens only.
 
         Args:
             lenses: Lenses that agree exactly on ``source_layers`` and
@@ -278,11 +280,13 @@ class JacobianLens:
             ValueError: On an empty sequence or mismatched lenses.
         """
         if not lenses:
-            raise ValueError("merge() needs at least one lens")
+            raise ValueError("cannot merge an empty sequence of lenses")
         first = lenses[0]
         for other in lenses[1:]:
             if other.source_layers != first.source_layers or other.d_model != first.d_model:
-                raise ValueError("lenses disagree on source_layers / d_model")
+                raise ValueError(
+                    "all lenses being merged must share the same source_layers and d_model"
+                )
         total = sum(lens.n_prompts for lens in lenses)
         if total <= 0:
             raise ValueError("merge() needs lenses with positive n_prompts")
@@ -403,7 +407,7 @@ class JacobianLens:
         final_layer = n_layers - 1
         if layers is None:
             layers = self.source_layers + [final_layer]
-        layers = [layer + n_layers if layer < 0 else layer for layer in layers]
+        layers = [_normalize_layer(layer, n_layers) for layer in layers]
         for layer in layers:
             if use_jacobian and layer != final_layer and layer not in self.jacobians:
                 raise ValueError(
@@ -416,6 +420,11 @@ class JacobianLens:
             norm_positions = list(range(seq_len))
         else:
             norm_positions = [pos + seq_len if pos < 0 else pos for pos in positions]
+            out_of_range = [pos for pos in norm_positions if not 0 <= pos < seq_len]
+            if out_of_range:
+                raise ValueError(
+                    f"positions {out_of_range} out of range for a {seq_len}-token prompt"
+                )
 
         hook_names = {layer: _resid_post_hook_name(model, layer) for layer in layers}
         wanted = set(hook_names.values())
@@ -485,16 +494,23 @@ class JacobianLens:
     ) -> List[Tuple[str, Any]]:
         """Hooks that steer the residual stream along a token's J-lens vector.
 
-        At each layer the unit-normalized lens vector is added, scaled by the
-        activation's mean residual norm times ``alpha`` (the paper's directed
-        modulation protocol): ``h <- h + alpha * mean||h|| * v̂``.
+        At each layer the unit-normalized lens vector is added, scaled by
+        ``alpha`` times the activation's **median** per-position residual norm:
+        ``h <- h + alpha * median||h|| * v̂``. This norm-matched
+        parameterization follows the steering description in the reference
+        implementation's experiment protocols; the paper's minimal form is
+        the unscaled ``h <- h + alpha * v_t``, recoverable by passing the raw
+        :meth:`lens_vectors` output to your own hook. The median (not mean) is
+        used so attention-sink positions — whose residual norms run orders of
+        magnitude above typical positions — do not inflate the scale.
 
         Args:
             model: The model the hooks will run on.
             token: The concept token to steer toward.
             layers: Layers to intervene at.
-            alpha: Steering strength scalar (0 disables; the paper sweeps
-                small integer strengths).
+            alpha: Steering strength scalar; ``0`` disables. Because of the
+                norm-matched scale, values of order 1 already perturb the
+                stream by roughly its own magnitude.
             positions: Positions to steer. Defaults to all positions.
 
         Returns:
@@ -511,7 +527,7 @@ class JacobianLens:
                 hook: Any,
                 unit: torch.Tensor = unit,
             ) -> Float[torch.Tensor, "batch pos d_model"]:
-                scale = alpha * activation.float().norm(dim=-1).mean()
+                scale = alpha * activation.float().norm(dim=-1).median()
                 delta = (scale * unit).to(activation.dtype)
                 if positions is None:
                     return activation + delta
@@ -736,7 +752,9 @@ class JacobianLens:
                     jacobian_sum[layer] += per_prompt[layer]
                 n_done += 1
         if n_done == 0:
-            raise ValueError("no prompt was long enough to fit on")
+            raise ValueError(
+                "every prompt was too short to contribute valid positions; nothing was fitted"
+            )
 
         full_metadata: Dict[str, Any] = {
             "model_name": getattr(model.cfg, "model_name", None),
@@ -778,12 +796,18 @@ def _resid_post_hook_name(model: Any, layer: int) -> str:
 def _require_unprocessed_weights(model: Any) -> None:
     """Refuse models whose weights may have left the raw HF basis.
 
-    ``fold_ln`` converts the norm type to ``LNPre``/``RMSPre`` on a
-    ``HookedTransformer`` — a reliable marker. A ``TransformerBridge`` keeps no
-    marker: ``enable_compatibility_mode()`` processes weights by default, and a
-    ``no_processing=True`` call cannot be reliably told apart afterwards, so any
+    Three detectable signatures are checked; each raises with an actionable
+    message. ``fold_ln`` converts the norm type to ``LNPre``/``RMSPre`` on a
+    ``HookedTransformer``. A ``TransformerBridge`` keeps no processing marker —
+    ``enable_compatibility_mode()`` processes weights by default and a
+    ``no_processing=True`` call cannot be told apart afterwards — so any
     compatibility-mode bridge is refused (the mirror image of DLA, which
     *requires* compatibility mode because it reasons in the folded basis).
+    Finally, ``center_unembed`` (applied by ``from_pretrained`` even with
+    ``fold_ln=False``) leaves ``W_U`` exactly mean-centered per row, which raw
+    checkpoints never are; centering of *writing* weights alone has no
+    post-hoc signature, so ``from_pretrained_no_processing`` remains the only
+    fully supported HookedTransformer loading path.
     """
     norm_type = getattr(model.cfg, "normalization_type", None) or ""
     if norm_type.endswith(_PROCESSED_NORM_SUFFIX):
@@ -794,15 +818,31 @@ def _require_unprocessed_weights(model: Any) -> None:
             "HookedTransformer.from_pretrained_no_processing(...) or use a raw "
             "TransformerBridge.boot_transformers(...) model."
         )
-    if _is_bridge(model) and getattr(model, "compatibility_mode", False):
-        raise ValueError(
-            "compatibility mode is enabled on this TransformerBridge. "
-            "enable_compatibility_mode() applies HookedTransformer-style weight "
-            "processing by default, which changes the residual basis the lens was "
-            "fitted in, and a no_processing=True call cannot be reliably told apart "
-            "afterwards. Use a freshly booted TransformerBridge.boot_transformers(...) "
-            "model (raw weights) for Jacobian-lens analyses."
-        )
+    if _is_bridge(model):
+        if getattr(model, "compatibility_mode", False):
+            raise ValueError(
+                "compatibility mode is enabled on this TransformerBridge. "
+                "enable_compatibility_mode() applies HookedTransformer-style weight "
+                "processing by default, which changes the residual basis the lens was "
+                "fitted in, and a no_processing=True call cannot be reliably told apart "
+                "afterwards. Use a freshly booted TransformerBridge.boot_transformers(...) "
+                "model (raw weights) for Jacobian-lens analyses."
+            )
+        return
+    unembed_weight = getattr(model, "W_U", None)
+    if unembed_weight is not None:
+        # A 64-row slice is enough: centering zeroes every row mean exactly, while
+        # raw checkpoints sit orders of magnitude above the 0.01 threshold
+        # (measured: gpt2 3.4, gemma-2-2b 17.2; centered gpt2 ~1e-7).
+        rows = unembed_weight[:64].float()
+        if rows.mean(dim=-1).abs().max() < 0.01 * rows.abs().mean():
+            raise ValueError(
+                "this model's unembedding matrix is exactly mean-centered — the "
+                "signature of center_unembed weight processing, which "
+                "from_pretrained applies even with fold_ln=False and which changes "
+                "the basis the J-lens vectors live in. Reload the model with "
+                "HookedTransformer.from_pretrained_no_processing(...)."
+            )
 
 
 def _unembed(
@@ -811,10 +851,11 @@ def _unembed(
     """Apply the model's own final norm, unembedding, and logit soft cap.
 
     The norm/unembed components contract on ``[batch, pos, d_model]``, so the
-    position rows are passed through with a singleton batch axis.
+    position rows are passed through with a singleton batch axis. The residual
+    is moved to the unembedding's device for sharded/multi-GPU models.
     """
     compute_dtype = model.W_U.dtype
-    batched = residual.to(compute_dtype).unsqueeze(0)
+    batched = residual.to(device=model.W_U.device, dtype=compute_dtype).unsqueeze(0)
     logits = model.unembed(model.ln_final(batched)).float().squeeze(0)
     soft_cap = getattr(model.cfg, "output_logits_soft_cap", None)
     return apply_softcap(logits, soft_cap).cpu()
@@ -926,7 +967,7 @@ def _jacobian_for_prompt(
             retain_graph=pass_index < n_passes - 1,
         )
         for layer, grad in zip(source_layers, grads):
-            # grads land on whatever device each layer lives on (device_map setups).
+            # each gradient lives on its layer's device under sharded/device_map setups
             rows = grad[:n_dims, positions_index.to(grad.device), :].float().mean(dim=1)
             jacobians[layer][dim_start : dim_start + n_dims, :] = rows.cpu()
     return jacobians

@@ -119,7 +119,7 @@ def test_steering_raises_target_logit(published_lens, ht_gpt2):
     assert steered > baseline
 
 
-def test_processed_models_are_refused(published_lens, bridge_gpt2):
+def test_processed_models_are_refused(published_lens):
     from transformer_lens import HookedTransformer
     from transformer_lens.tools.analysis import JacobianLens
 
@@ -128,6 +128,11 @@ def test_processed_models_are_refused(published_lens, bridge_gpt2):
         published_lens.validate_model(processed)
     with pytest.raises(ValueError, match="fold_ln"):
         JacobianLens.fit(processed, FIT_PROMPTS, show_progress=False)
+    # fold_ln=False still centers weights (normalization_type stays "LN"), so the
+    # centered-unembed signature is the marker that must catch it.
+    half_processed = HookedTransformer.from_pretrained("gpt2", fold_ln=False, device="cpu")
+    with pytest.raises(ValueError, match="mean-centered"):
+        published_lens.validate_model(half_processed)
 
 
 @pytest.mark.slow

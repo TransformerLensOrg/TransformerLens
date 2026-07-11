@@ -182,9 +182,9 @@ def test_merge_is_n_prompts_weighted():
 def test_merge_rejects_mismatched_lenses():
     lens_a = JacobianLens({0: torch.ones(D_MODEL, D_MODEL)}, n_prompts=1, d_model=D_MODEL)
     lens_b = JacobianLens({1: torch.ones(D_MODEL, D_MODEL)}, n_prompts=1, d_model=D_MODEL)
-    with pytest.raises(ValueError, match="disagree"):
+    with pytest.raises(ValueError, match="must share"):
         JacobianLens.merge([lens_a, lens_b])
-    with pytest.raises(ValueError, match="at least one"):
+    with pytest.raises(ValueError, match="empty sequence"):
         JacobianLens.merge([])
 
 
@@ -208,6 +208,23 @@ def test_folded_layernorm_is_rejected(fitted_lens):
         JacobianLens.fit(processed, ["a toy prompt"], show_progress=False)
 
 
+def test_centered_unembed_is_rejected(fitted_lens):
+    # center_unembed leaves W_U exactly row-mean-centered — the from_pretrained
+    # fold_ln=False escape hatch the guard must still catch.
+    centered = _ToyResidModel()
+    with torch.no_grad():
+        centered.unembed.weight -= centered.unembed.weight.mean(dim=0, keepdim=True)
+    with pytest.raises(ValueError, match="mean-centered"):
+        fitted_lens.validate_model(centered)
+
+
+def test_readout_bounds_checks(toy_model, fitted_lens):
+    with pytest.raises(ValueError, match="out of range"):
+        fitted_lens.readout(toy_model, "a toy prompt", layers=[99], use_jacobian=False)
+    with pytest.raises(ValueError, match="out of range"):
+        fitted_lens.readout(toy_model, "a toy prompt", positions=[-2 * SEQ_LEN])
+
+
 def _mock_bridge(compatibility_mode=False):
     bridge = MagicMock(spec=TransformerBridge)
     bridge.cfg = SimpleNamespace(d_model=D_MODEL, n_layers=N_LAYERS, normalization_type="LN")
@@ -227,7 +244,7 @@ def test_raw_bridge_passes_validation():
 
 
 def test_fit_skips_short_prompts(toy_model):
-    with pytest.raises(ValueError, match="no prompt was long enough"):
+    with pytest.raises(ValueError, match="too short to contribute"):
         with pytest.warns(UserWarning, match="skipping prompt"):
             JacobianLens.fit(
                 toy_model,
