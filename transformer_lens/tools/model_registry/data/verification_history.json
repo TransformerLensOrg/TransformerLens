@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-07-07T23:04:00.376842",
+  "last_updated": "2026-07-12T15:39:25.678527",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -16868,6 +16868,36 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "LiquidAI/LFM2.5-230M",
+      "architecture_id": "Lfm2ForCausalLM",
+      "verified_date": "2026-07-12",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: all_components); P3=90.0% but required tests failed: log \u2014 8/98 components failed (8 critical)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "LiquidAI/LFM2-350M",
+      "architecture_id": "Lfm2ForCausalLM",
+      "verified_date": "2026-07-12",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: all_components); P3=90.0% but required tests failed: log \u2014 10/114 components failed (10 critical)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "LiquidAI/LFM2-1.2B",
+      "architecture_id": "Lfm2ForCausalLM",
+      "verified_date": "2026-07-12",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: all_components); P3=90.0% but required tests failed: log \u2014 10/114 components failed (10 critical)",
       "invalidated": false,
       "invalidation_reason": null
     }
