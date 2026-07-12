@@ -626,6 +626,14 @@ def boot(
         # Ouro (LoopLM)
         "total_ut_steps",
         "early_exit_threshold",
+        # Raven / Huginn (depth-recurrent)
+        "mean_recurrence",
+        "mean_backprop_depth",
+        "n_layers_in_prelude",
+        "n_layers_in_recurrent_block",
+        "n_layers_in_coda",
+        "injection_type",
+        "qk_bias",
     ]
     for attr in _HF_PASSTHROUGH_ATTRS:
         val = getattr(hf_config, attr, None)

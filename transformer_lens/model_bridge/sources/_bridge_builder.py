@@ -113,6 +113,14 @@ _HF_PASSTHROUGH_ATTRS = [
     "index_head_dim",
     "index_topk",
     "q_lora_rank",
+    # Raven / Huginn (depth-recurrent)
+    "mean_recurrence",
+    "mean_backprop_depth",
+    "n_layers_in_prelude",
+    "n_layers_in_recurrent_block",
+    "n_layers_in_coda",
+    "injection_type",
+    "qk_bias",
 ]
 
 
