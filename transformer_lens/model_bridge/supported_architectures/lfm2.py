@@ -77,7 +77,7 @@ class Lfm2ArchitectureAdapter(ArchitectureAdapter):
                             "in": LinearBridge(name="in_proj"),
                             "conv": DepthwiseConv1DBridge(name="conv"),
                             "out": LinearBridge(name="out_proj"),
-                        }
+                        },
                     ),
                     "mlp": GatedMLPBridge(
                         name="feed_forward",

@@ -18,7 +18,7 @@ class Lfm2ShortConvBridge(GeneralizedComponent):
     ``conv.hook_out`` fires only on prefill — see DepthwiseConv1DBridge.
 
     CUDA caveat: Hooks surrounding the conv1D operation only fire on the hf
-    "slow path" i.e. if not on CUDA / fast path not available / torch dynamo 
+    "slow path" i.e. if not on CUDA / fast path not available / torch dynamo
     compiling.
     """
 

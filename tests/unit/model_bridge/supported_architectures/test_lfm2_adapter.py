@@ -46,7 +46,7 @@ def _make_cfg(
     d_mlp: int = 256,
     d_vocab: int = 1000,
     n_ctx: int = 512,
-    layer_types: list[str] = ["conv", "full_attention"]
+    layer_types: list[str] = ["conv", "full_attention"],
 ) -> TransformerBridgeConfig:
     """Return a minimal TransformerBridgeConfig for Lfm2 adapter tests."""
     cfg = TransformerBridgeConfig(
@@ -58,7 +58,6 @@ def _make_cfg(
         n_key_value_heads=n_key_value_heads,
         d_vocab=d_vocab,
         d_mlp=d_mlp,
-
         architecture="Lfm2ForCausalLM",
     )
 
@@ -81,6 +80,7 @@ def adapter(cfg: TransformerBridgeConfig) -> Lfm2ArchitectureAdapter:
 
 layer_types = ["conv", "full_attention"]
 
+
 def _fake_attn(layer_idx: int) -> SimpleNamespace:
     """Per-layer self_attn with a mutable .config so the eager flip is observable."""
     return SimpleNamespace(
@@ -99,7 +99,11 @@ def _fake_hf_model(rotary_emb: object, n_layers: int = 2) -> SimpleNamespace:
         config=SimpleNamespace(_attn_implementation="sdpa"),
         model=SimpleNamespace(
             rotary_emb=rotary_emb,
-            layers=[SimpleNamespace(self_attn=_fake_attn(i)) for i in range(n_layers) if layer_types[i] == "full_attention"],
+            layers=[
+                SimpleNamespace(self_attn=_fake_attn(i))
+                for i in range(n_layers)
+                if layer_types[i] == "full_attention"
+            ],
         ),
     )
 
@@ -152,9 +156,7 @@ class TestLfm2AdapterComponentMapping:
     def test_embed_name(self, adapter: Lfm2ArchitectureAdapter) -> None:
         assert adapter.component_mapping["embed"].name == "model.embed_tokens"
 
-    def test_rotary_emb_is_rotary_embedding_bridge(
-        self, adapter: Lfm2ArchitectureAdapter
-    ) -> None:
+    def test_rotary_emb_is_rotary_embedding_bridge(self, adapter: Lfm2ArchitectureAdapter) -> None:
         assert isinstance(adapter.component_mapping["rotary_emb"], RotaryEmbeddingBridge)
 
     def test_rotary_emb_name(self, adapter: Lfm2ArchitectureAdapter) -> None:
@@ -167,17 +169,13 @@ class TestLfm2AdapterComponentMapping:
     def test_blocks_name(self, adapter: Lfm2ArchitectureAdapter) -> None:
         assert adapter.component_mapping["blocks"].name == "model.layers"
 
-    def test_ln_final_is_rms_normalization_bridge(
-        self, adapter: Lfm2ArchitectureAdapter
-    ) -> None:
+    def test_ln_final_is_rms_normalization_bridge(self, adapter: Lfm2ArchitectureAdapter) -> None:
         assert isinstance(adapter.component_mapping["ln_final"], RMSNormalizationBridge)
 
     def test_ln_final_name(self, adapter: Lfm2ArchitectureAdapter) -> None:
         assert adapter.component_mapping["ln_final"].name == "model.embedding_norm"
 
-    def test_unembed_is_unembedding_bridge(
-        self, adapter: Lfm2ArchitectureAdapter
-    ) -> None:
+    def test_unembed_is_unembedding_bridge(self, adapter: Lfm2ArchitectureAdapter) -> None:
         assert isinstance(adapter.component_mapping["unembed"], UnembeddingBridge)
 
     def test_unembed_name(self, adapter: Lfm2ArchitectureAdapter) -> None:
@@ -185,9 +183,7 @@ class TestLfm2AdapterComponentMapping:
 
     # -- Block submodules --
 
-    def test_blocks_ln1_is_rms_normalization_bridge(
-        self, adapter: Lfm2ArchitectureAdapter
-    ) -> None:
+    def test_blocks_ln1_is_rms_normalization_bridge(self, adapter: Lfm2ArchitectureAdapter) -> None:
         blocks = adapter.component_mapping["blocks"]
         assert isinstance(blocks.submodules["ln1"], RMSNormalizationBridge)
 
@@ -195,9 +191,7 @@ class TestLfm2AdapterComponentMapping:
         blocks = adapter.component_mapping["blocks"]
         assert blocks.submodules["ln1"].name == "operator_norm"
 
-    def test_blocks_ln2_is_rms_normalization_bridge(
-        self, adapter: Lfm2ArchitectureAdapter
-    ) -> None:
+    def test_blocks_ln2_is_rms_normalization_bridge(self, adapter: Lfm2ArchitectureAdapter) -> None:
         blocks = adapter.component_mapping["blocks"]
         assert isinstance(blocks.submodules["ln2"], RMSNormalizationBridge)
 
@@ -215,9 +209,7 @@ class TestLfm2AdapterComponentMapping:
         blocks = adapter.component_mapping["blocks"]
         assert blocks.submodules["attn"].name == "self_attn"
 
-    def test_attn_requires_attention_mask_is_true(
-        self, adapter: Lfm2ArchitectureAdapter
-    ) -> None:
+    def test_attn_requires_attention_mask_is_true(self, adapter: Lfm2ArchitectureAdapter) -> None:
         blocks = adapter.component_mapping["blocks"]
         assert blocks.submodules["attn"].requires_attention_mask is True
 
@@ -226,10 +218,8 @@ class TestLfm2AdapterComponentMapping:
     ) -> None:
         blocks = adapter.component_mapping["blocks"]
         assert blocks.submodules["attn"].requires_position_embeddings is True
-    
-    def test_conv_is_lfm2shortconv_bridge(
-        self, adapter: Lfm2ArchitectureAdapter
-    ) -> None:
+
+    def test_conv_is_lfm2shortconv_bridge(self, adapter: Lfm2ArchitectureAdapter) -> None:
         blocks = adapter.component_mapping["blocks"]
         assert isinstance(blocks.submodules["conv"], Lfm2ShortConvBridge)
 
@@ -283,7 +273,7 @@ class TestLfm2AdapterComponentMapping:
     def test_conv_in_is_linear_bridge(self, adapter: Lfm2ArchitectureAdapter) -> None:
         conv = adapter.component_mapping["blocks"].submodules["conv"]
         assert isinstance(conv.submodules["in"], LinearBridge)
-    
+
     def test_conv_in_name(self, adapter: Lfm2ArchitectureAdapter) -> None:
         conv = adapter.component_mapping["blocks"].submodules["conv"]
         assert conv.submodules["in"].name == "in_proj"
@@ -295,11 +285,11 @@ class TestLfm2AdapterComponentMapping:
     def test_conv_conv_name(self, adapter: Lfm2ArchitectureAdapter) -> None:
         conv = adapter.component_mapping["blocks"].submodules["conv"]
         assert conv.submodules["conv"].name == "conv"
-    
+
     def test_conv_out_is_linear_bridge(self, adapter: Lfm2ArchitectureAdapter) -> None:
         conv = adapter.component_mapping["blocks"].submodules["conv"]
         assert isinstance(conv.submodules["out"], LinearBridge)
-    
+
     def test_conv_out_name(self, adapter: Lfm2ArchitectureAdapter) -> None:
         conv = adapter.component_mapping["blocks"].submodules["conv"]
         assert conv.submodules["out"].name == "out_proj"
@@ -411,9 +401,7 @@ class TestLfm2SetupComponentTesting:
         for layer in hf.model.layers:
             assert layer.self_attn.config._attn_implementation == "eager"
 
-    def test_sets_rotary_emb_on_template_attention(
-        self, adapter: Lfm2ArchitectureAdapter
-    ) -> None:
+    def test_sets_rotary_emb_on_template_attention(self, adapter: Lfm2ArchitectureAdapter) -> None:
         rotary_emb = object()
         attn_template = adapter.get_generalized_component("blocks.0.attn")
         assert isinstance(attn_template, PositionEmbeddingsAttentionBridge)
@@ -434,9 +422,7 @@ class TestLfm2SetupComponentTesting:
         for block in bridge_model.blocks:
             assert block.attn.rotary_emb is rotary_emb
 
-    def test_skips_bridge_blocks_without_attention(
-        self, adapter: Lfm2ArchitectureAdapter
-    ) -> None:
+    def test_skips_bridge_blocks_without_attention(self, adapter: Lfm2ArchitectureAdapter) -> None:
         rotary_emb = object()
         bridge_model = DummyBridgeModel([DummyBlock(), DummyBlock(has_attention=False)])
 
