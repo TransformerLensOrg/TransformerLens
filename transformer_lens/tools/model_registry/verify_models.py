@@ -63,6 +63,7 @@ logger = logging.getLogger(__name__)
 _BRIDGE_REMOTE_CODE_PREFIXES: tuple[str, ...] = (
     "baichuan-inc/",  # BaichuanForCausalLM — ships own modeling_baichuan.py
     "internlm/",  # InternLM2ForCausalLM — ships own modeling_internlm2.py
+    "GSAI-ML/LLaDA",  # LLaDAModelLM — ships configuration_llada.py/modeling_llada.py
 )
 
 # Data directory for registry files

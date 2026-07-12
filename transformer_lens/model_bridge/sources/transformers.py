@@ -80,6 +80,8 @@ def map_default_transformer_lens_config(hf_config):
         tl_config.n_heads = n_heads
     elif hasattr(source_config, "num_heads"):
         tl_config.n_heads = source_config.num_heads
+    elif hasattr(source_config, "n_heads"):
+        tl_config.n_heads = source_config.n_heads
     elif hasattr(source_config, "num_query_heads") and isinstance(
         source_config.num_query_heads, list
     ):
@@ -120,6 +122,13 @@ def map_default_transformer_lens_config(hf_config):
                 tl_config.n_key_value_heads = num_kv_heads
         except (TypeError, ValueError, AttributeError):
             pass
+    elif hasattr(source_config, "n_kv_heads") and source_config.n_kv_heads is not None:
+        try:
+            num_kv_heads = int(source_config.n_kv_heads)
+            if num_kv_heads != getattr(tl_config, "n_heads", None):
+                tl_config.n_key_value_heads = num_kv_heads
+        except (TypeError, ValueError, AttributeError):
+            pass
     if hasattr(source_config, "n_layer"):
         tl_config.n_layers = source_config.n_layer
     elif hasattr(source_config, "num_hidden_layers"):
@@ -128,6 +137,8 @@ def map_default_transformer_lens_config(hf_config):
         tl_config.n_layers = source_config.num_transformer_layers
     elif hasattr(source_config, "num_layers"):
         tl_config.n_layers = source_config.num_layers
+    elif hasattr(source_config, "n_layers"):
+        tl_config.n_layers = source_config.n_layers
     if hasattr(source_config, "vocab_size") and isinstance(source_config.vocab_size, int):
         tl_config.d_vocab = source_config.vocab_size
     if hasattr(source_config, "n_positions"):
@@ -140,6 +151,8 @@ def map_default_transformer_lens_config(hf_config):
         tl_config.n_ctx = source_config.max_length
     elif hasattr(source_config, "seq_length"):
         tl_config.n_ctx = source_config.seq_length
+    elif hasattr(source_config, "max_sequence_length"):
+        tl_config.n_ctx = source_config.max_sequence_length
     else:
         # Models like Bloom use ALiBi (no positional embeddings) and have no
         # context length field. Default to 2048 as a reasonable fallback.
@@ -155,6 +168,8 @@ def map_default_transformer_lens_config(hf_config):
         if isinstance(intermediate_size, (list, tuple)):
             intermediate_size = max(intermediate_size) if intermediate_size else None
         tl_config.d_mlp = intermediate_size
+    elif hasattr(source_config, "mlp_hidden_size"):
+        tl_config.d_mlp = source_config.mlp_hidden_size
     elif hasattr(tl_config, "d_model"):
         tl_config.d_mlp = getattr(source_config, "n_inner", 4 * tl_config.d_model)
     if hasattr(source_config, "head_dim") and source_config.head_dim is not None:
@@ -171,6 +186,13 @@ def map_default_transformer_lens_config(hf_config):
         tl_config.act_fn = source_config.activation_function
     elif hasattr(source_config, "hidden_act"):
         tl_config.act_fn = source_config.hidden_act
+    elif hasattr(source_config, "activation_type"):
+        activation_type = source_config.activation_type
+        tl_config.act_fn = getattr(activation_type, "value", activation_type)
+    if hasattr(source_config, "rope_theta"):
+        tl_config.rotary_base = source_config.rope_theta
+    if hasattr(source_config, "weight_tying"):
+        tl_config.tie_word_embeddings = bool(source_config.weight_tying)
     # Layer norm / RMS norm epsilon — HF uses 3 different field names
     if hasattr(source_config, "rms_norm_eps"):
         tl_config.eps = source_config.rms_norm_eps
@@ -221,6 +243,7 @@ def determine_architecture_from_hf_config(hf_config):
             "hubert": "HubertModel",
             "bart": "BartForConditionalGeneration",
             "llama": "LlamaForCausalLM",
+            "llada": "LLaDAModelLM",
             "mamba": "MambaForCausalLM",
             "mamba2": "Mamba2ForCausalLM",
             "mistral": "MistralForCausalLM",
@@ -403,7 +426,7 @@ def boot(
             the field name. If larger than the model's default, a warning is emitted — quality
             may degrade past the trained length for rotary models.
         revision: Optional HF revision string (branch, tag, or commit). Forwarded to
-            ``AutoConfig.from_pretrained`` and ``AutoModelForCausalLM.from_pretrained``.
+            config, model, and tokenizer loading.
             Mutually exclusive with ``checkpoint_index`` and ``checkpoint_value``.
         checkpoint_index: Index into the available training checkpoints for the model family.
             Convenience over ``revision`` for checkpointed models like EleutherAI/pythia* and
@@ -458,6 +481,7 @@ def boot(
             "max_context_length",
             "max_length",
             "seq_length",
+            "max_sequence_length",
         ):
             if hasattr(hf_config, _field):
                 _n_ctx_field = _field
@@ -504,6 +528,7 @@ def boot(
     bridge_config.architecture = architecture
     bridge_config.model_name = model_name
     bridge_config.dtype = dtype
+    bridge_config.trust_remote_code = trust_remote_code
     # Propagate HF-specific config attributes that adapters may need.
     # Any attribute present on the HF config and not None is copied to bridge_config.
     # This is architecture-agnostic — new architectures don't need changes here.
@@ -550,6 +575,21 @@ def boot(
         "router_jitter_noise",
         "input_jitter_noise",
         "eos_token_id",
+        # LLaDA remote-code model contract and tokenizer metadata
+        "block_type",
+        "block_group_size",
+        "rope",
+        "rope_full_precision",
+        "attention_layer_norm",
+        "include_bias",
+        "include_qkv_bias",
+        "scale_logits",
+        "input_emb_norm",
+        "layer_norm_type",
+        "embedding_size",
+        "mask_token_id",
+        "pad_token_id",
+        "bos_token_id",
     ]
     for attr in _HF_PASSTHROUGH_ATTRS:
         val = getattr(hf_config, attr, None)
@@ -746,6 +786,7 @@ def boot(
                 use_fast=use_fast,
                 token=token_arg,
                 trust_remote_code=trust_remote_code,
+                revision=revision,
             )
         except ValueError:
             # Model doesn't have a BOS token, load without add_bos_token
@@ -754,6 +795,7 @@ def boot(
                 use_fast=use_fast,
                 token=token_arg,
                 trust_remote_code=trust_remote_code,
+                revision=revision,
             )
         tokenizer = setup_tokenizer(
             base_tokenizer,
