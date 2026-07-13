@@ -37,6 +37,9 @@ from transformer_lens.model_bridge.supported_architectures.deepseek_v2 import (
 from transformer_lens.model_bridge.supported_architectures.deepseek_v3 import (
     DeepSeekV3ArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.deepseek_v4 import (
+    DeepSeekV4ArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.falcon import (
     FalconArchitectureAdapter,
 )

@@ -22,6 +22,7 @@ from transformer_lens.model_bridge.supported_architectures import (
     CohereArchitectureAdapter,
     DeepSeekV2ArchitectureAdapter,
     DeepSeekV3ArchitectureAdapter,
+    DeepSeekV4ArchitectureAdapter,
     FalconArchitectureAdapter,
     FalconH1ArchitectureAdapter,
     Gemma1ArchitectureAdapter,
@@ -102,6 +103,7 @@ SUPPORTED_ARCHITECTURES = {
     "CohereForCausalLM": CohereArchitectureAdapter,
     "DeepseekV2ForCausalLM": DeepSeekV2ArchitectureAdapter,
     "DeepseekV3ForCausalLM": DeepSeekV3ArchitectureAdapter,
+    "DeepseekV4ForCausalLM": DeepSeekV4ArchitectureAdapter,
     "FalconForCausalLM": FalconArchitectureAdapter,
     "FalconH1ForCausalLM": FalconH1ArchitectureAdapter,
     "GemmaForCausalLM": Gemma1ArchitectureAdapter,  # Default to Gemma1 as it's the original version

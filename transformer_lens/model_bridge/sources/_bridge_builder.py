@@ -84,6 +84,20 @@ _HF_PASSTHROUGH_ATTRS = [
     # Ouro (LoopLM)
     "total_ut_steps",
     "early_exit_threshold",
+    # DeepSeek V4 (mHC + compressed attention)
+    "compress_rates",
+    "compress_rope_theta",
+    "hc_mult",
+    "hc_sinkhorn_iters",
+    "hc_eps",
+    "mlp_layer_types",
+    "swiglu_limit",
+    "o_groups",
+    "o_lora_rank",
+    "index_n_heads",
+    "index_head_dim",
+    "index_topk",
+    "q_lora_rank",
 ]
 
 
