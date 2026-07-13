@@ -41,7 +41,7 @@ class TestResolveDeviceMap:
         assert mm is None
 
     def test_user_max_memory_passes_through(self):
-        user_mm: Dict[Union[str, int], str] = {0: "20GiB"}
+        user_mm: Dict[Union[str, int], Union[str, int]] = {0: "20GiB"}
         dm, mm = resolve_device_map(None, "auto", None, max_memory=user_mm)
         assert dm == "auto"
         assert mm is user_mm
@@ -73,10 +73,27 @@ class TestResolveDeviceMap:
         assert isinstance(mm, dict)
         assert set(mm.keys()) == {0, 1}
 
+    def test_n_devices_uses_concrete_cuda_memory_caps(self, monkeypatch):
+        free_memory = {0: 11_000_000_000, 1: 22_000_000_000, 2: 33_000_000_000}
+
+        monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+        monkeypatch.setattr(torch.cuda, "device_count", lambda: 3)
+        monkeypatch.setattr(
+            torch.cuda,
+            "mem_get_info",
+            lambda index: (free_memory[index], free_memory[index] + 1_000_000_000),
+        )
+
+        dm, mm = resolve_device_map(2, None, None)
+
+        assert dm == "balanced"
+        assert mm == {0: free_memory[0], 1: free_memory[1]}
+        assert "auto" not in mm.values()
+
     def test_n_devices_respects_user_max_memory(self):
         if not torch.cuda.is_available() or torch.cuda.device_count() < 2:
             pytest.skip("Requires 2+ CUDA devices.")
-        user_mm: Dict[Union[str, int], str] = {0: "10GiB", 1: "10GiB"}
+        user_mm: Dict[Union[str, int], Union[str, int]] = {0: "10GiB", 1: "10GiB"}
         dm, mm = resolve_device_map(2, None, None, max_memory=user_mm)
         assert dm == "balanced"
         assert mm == user_mm

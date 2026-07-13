@@ -26,6 +26,8 @@ The first entry of each tuple will be the device index.
 The second entry will be how much memory is currently available.
 """
 
+MaxMemory = Dict[Union[str, int], Union[str, int]]
+
 
 def calculate_available_device_cuda_memory(i: int) -> int:
     """Calculates how much memory is available at this moment for the device at the indicated index
@@ -39,6 +41,15 @@ def calculate_available_device_cuda_memory(i: int) -> int:
     total = torch.cuda.get_device_properties(i).total_memory
     allocated = torch.cuda.memory_allocated(i)
     return total - allocated
+
+
+def _get_available_cuda_memory_for_device(i: int) -> int:
+    """Return a concrete byte budget accepted by Accelerate's ``max_memory``."""
+    try:
+        free_memory, _ = torch.cuda.mem_get_info(i)
+    except (AttributeError, RuntimeError):
+        return calculate_available_device_cuda_memory(i)
+    return int(free_memory)
 
 
 def determine_available_memory_for_available_devices(max_devices: int) -> AvailableDeviceMemory:
@@ -153,8 +164,8 @@ def resolve_device_map(
     n_devices: Optional[int],
     device_map: Optional[Union[str, Dict[str, Union[str, int]]]],
     device: Optional[Union[str, torch.device]],
-    max_memory: Optional[Dict[Union[str, int], str]] = None,
-) -> Tuple[Optional[Union[str, Dict[str, Union[str, int]]]], Optional[Dict[Union[str, int], str]]]:
+    max_memory: Optional[MaxMemory] = None,
+) -> Tuple[Optional[Union[str, Dict[str, Union[str, int]]]], Optional[MaxMemory]]:
     """Resolve ``n_devices`` / ``device_map`` / ``device`` into HF ``from_pretrained`` kwargs.
 
     Returns ``(device_map, max_memory)`` tuple ready to pass into ``model_kwargs``.
@@ -165,9 +176,9 @@ def resolve_device_map(
           offload targets are still rejected because Bridge component wrappers can bypass
           Accelerate's offload hooks during forward passes.
         - ``n_devices=None`` or ``1``: returns ``(None, None)`` — single-device path.
-        - ``n_devices > 1``: returns ``("balanced", {0: "auto", ..., n-1: "auto"})``.
+        - ``n_devices > 1``: returns ``("balanced", {0: bytes, ..., n-1: bytes})``.
           ``"balanced"`` is accelerate's string directive for balanced layer dispatch;
-          the ``max_memory`` dict caps visibility to exactly ``n_devices`` GPUs.
+          concrete byte budgets cap visibility to exactly ``n_devices`` GPUs.
     """
     if device_map is not None and device is not None:
         raise ValueError("device and device_map are mutually exclusive — pass one.")
@@ -182,8 +193,10 @@ def resolve_device_map(
         raise ValueError(
             f"n_devices={n_devices} but only {torch.cuda.device_count()} CUDA devices present."
         )
-    resolved_max_memory: Dict[Union[str, int], str] = (
-        dict(max_memory) if max_memory else {i: "auto" for i in range(n_devices)}
+    resolved_max_memory: MaxMemory = (
+        dict(max_memory)
+        if max_memory is not None
+        else {i: _get_available_cuda_memory_for_device(i) for i in range(n_devices)}
     )
     return "balanced", resolved_max_memory
 
