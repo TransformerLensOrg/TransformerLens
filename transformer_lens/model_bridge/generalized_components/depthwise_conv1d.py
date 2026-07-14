@@ -34,6 +34,12 @@ class DepthwiseConv1DBridge(GeneralizedComponent):
         output = self.hook_out(output)
         return output
 
+    def get_random_inputs(self, batch_size=2, seq_len=8, device=None, dtype=None):
+        device = device or torch.device("cpu")
+        dtype = dtype or torch.float32
+        channels = self.original_component.in_channels  # exact, from the wrapped Conv1d
+        return {"args": (torch.randn(batch_size, channels, seq_len, device=device, dtype=dtype),)}
+
     def __repr__(self) -> str:
         if self.original_component is not None:
             try:
