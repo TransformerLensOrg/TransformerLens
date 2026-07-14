@@ -102,7 +102,7 @@ jobs:
       - name: Install dependencies
         run: |
           uv lock --check
-          uv sync
+          uv sync --extra inspect
       - name: Authenticate HuggingFace
         if: env.HF_TOKEN != ''
         run: uv run python -c "import os; from huggingface_hub import login; login(token=os.environ['HF_TOKEN'])"
@@ -141,7 +141,7 @@ jobs:
       - name: Install dependencies
         run: |
           uv lock --check
-          uv sync
+          uv sync --extra inspect
       - name: MPS Availability Check
         run: |
           uv run python -c "
@@ -283,7 +283,7 @@ jobs:
       - name: Install dependencies
         run: |
           uv lock --check
-          uv sync
+          uv sync --extra inspect
       - name: Authenticate HuggingFace
         if: env.HF_TOKEN != ''
         run: uv run python -c "import os; from huggingface_hub import login; login(token=os.environ['HF_TOKEN'])"

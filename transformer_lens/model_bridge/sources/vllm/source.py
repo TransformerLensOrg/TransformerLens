@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 import warnings
 from typing import Any, Dict, Optional
 
@@ -14,7 +15,9 @@ from transformer_lens.factories.architecture_adapter_factory import (
 from transformer_lens.model_bridge.remote_bridge import RemoteBridge
 from transformer_lens.model_bridge.sources._bridge_builder import (
     build_bridge_config_from_hf,
+    detect_tokenizer_bos_eos,
 )
+from transformer_lens.model_bridge.sources._hf_format import setup_tokenizer
 from transformer_lens.utilities.hf_utils import get_hf_token
 
 from . import plugin
@@ -23,12 +26,21 @@ from .internals import extract_hf_config
 from .overlays import get_overlay
 
 # Forced LLM(...) kwargs that the capture-hook design depends on. Caller override → ValueError.
+# enable_prefix_caching MUST stay off: a prefix-cache hit makes the prefill compute only the
+# uncached suffix, so hooks fire for a subset of positions — captures land row-misaligned,
+# interventions skip cached positions, and an intervened forward writes poisoned K/V that a
+# later clean forward on the same prompt would silently reuse.
 _LOCKED_KWARGS = {
     "tensor_parallel_size": 1,
     "pipeline_parallel_size": 1,
     "skip_tokenizer_init": True,
     "disable_log_stats": True,
+    "enable_prefix_caching": False,
 }
+
+# Serializes the configure() → LLM(...) → clear() handoff: the spec channel is a module
+# global, so interleaved boots would cross-wire capture specs between engines.
+_BOOT_LOCK = threading.Lock()
 
 
 def boot_vllm(
@@ -54,21 +66,23 @@ def boot_vllm(
     affine transform ``output = output * scale + bias`` (default identity), so
     interventions (``suppress`` / ``scale`` / ``add`` / ``set``) propagate to
     downstream layers. The hook's return value replaces the module output per
-    PyTorch ``register_forward_hook`` semantics. **The mutation path under
-    torch.compile + CUDA graphs is verified end-to-end by**
-    ``demos/vLLM_Bridge_Integration_Test.ipynb``; unit tests cover the dispatch
-    protocol only.
+    PyTorch ``register_forward_hook`` semantics. The mutation path under
+    torch.compile + CUDA graphs is exercised end-to-end by
+    ``demos/vLLM_Bridge_Integration_Test.ipynb`` (a manual GPU run, not CI);
+    unit tests cover the dispatch protocol only.
 
     Some captures use vLLM-native conventions that differ from HF/HT; see
     :mod:`transformer_lens.model_bridge.sources.vllm.overlays.decoder_only` for
     which hooks diverge and the conversion to apply for HT-equivalent values.
 
-    **Returned logits are log-probs, not raw logits.** vLLM bypasses ``lm_head``;
-    the driver fills the final position from the sampler's ``log_softmax`` output.
-    Correct for argmax / next-token, but absolute scale is off — temperature
-    scaling and logit-lens magnitude analysis will be wrong. Only the final
-    position is populated (earlier positions are ``-inf``); ``return_type`` in
-    ``{"loss", "both"}`` is rejected for that reason.
+    **Returned logits are reconstructed full-sequence logits.** vLLM's sampler
+    bypasses ``lm_head``, so the driver rebuilds real logits host-side as
+    ``ln_final @ lm_head.weight.T`` (+ bias, + Gemma soft-cap) from the captured
+    final-norm activation — valid at every position, so ``return_type`` in
+    ``{"loss", "both"}`` works. If the unembedding weight is unreachable the
+    driver falls back to the sampler's final-position log-probs (earlier
+    positions ``-inf``), declares ``provides_sequence_logits=False``, and the
+    bridge then rejects loss.
 
     GPU memory cost: each capture buffer is ``max_num_batched_tokens × width`` at
     the model's dtype. For Llama-3.2-1B at fp16 with ``max_num_batched_tokens=2048``,
@@ -113,14 +127,6 @@ def boot_vllm(
     overlay = get_overlay(architecture)
 
     resolved_dtype = dtype or _dtype_from_hf_config(hf_config_preview)
-    plugin.configure(
-        capture_specs=overlay.capture_specs(hf_config_preview),
-        max_num_batched_tokens=max_num_batched_tokens,
-        dtype=resolved_dtype,
-        enable_batching=enable_batching,
-        enable_position_interventions=enable_position_interventions,
-    )
-    plugin.register()
 
     # The plugin's _config singleton must be visible to the worker, which only
     # holds with single-process execution. Multi-GPU is unsupported. Override
@@ -142,37 +148,51 @@ def boot_vllm(
     # under torch.compile — so the batched path must run eager.
     eager_kwargs: Dict[str, Any] = {"enforce_eager": True} if enable_batching else {}
 
-    llm = LLM(
-        model=model_name,
-        gpu_memory_utilization=gpu_memory_utilization,
-        max_model_len=max_model_len,
-        # Critical: vLLM defaults max_num_batched_tokens to 8192 for chunked prefill.
-        # We size our capture buffer to this same value, so vLLM must compile for
-        # the matching dynamic-shape range — otherwise Dynamo's symbolic-shape
-        # hint exceeds the buffer dim and narrow() fails at compile time.
-        max_num_batched_tokens=max_num_batched_tokens,
-        # Register TLWorkerExtension so its tl_* methods are reachable via
-        # collective_rpc. Passed as a dotted path; vLLM imports the class at
-        # worker construction and mixes it into the Worker via multiple
-        # inheritance (asserts no attribute name collisions — hence the tl_ prefix).
-        worker_extension_cls="transformer_lens.model_bridge.sources.vllm.worker_extension.TLWorkerExtension",
-        # Allow full-vocab logprobs so the driver can synthesize real logits for
-        # the generated position (vLLM caps logprobs to this value; default 20 is
-        # too small for mech-interp). One ~512 KB buffer per call; negligible.
-        max_logprobs=hf_config_preview.vocab_size,
-        dtype=str(resolved_dtype).replace("torch.", "") if dtype is not None else "auto",
-        **eager_kwargs,
-        **_LOCKED_KWARGS,
-        **vllm_kwargs,
-    )
+    with _BOOT_LOCK:
+        plugin.configure(
+            capture_specs=overlay.capture_specs(hf_config_preview),
+            max_num_batched_tokens=max_num_batched_tokens,
+            dtype=resolved_dtype,
+            enable_batching=enable_batching,
+            enable_position_interventions=enable_position_interventions,
+        )
+        plugin.register()
+        try:
+            llm = LLM(
+                model=model_name,
+                gpu_memory_utilization=gpu_memory_utilization,
+                max_model_len=max_model_len,
+                # Critical: vLLM defaults max_num_batched_tokens to 8192 for chunked prefill.
+                # We size our capture buffer to this same value, so vLLM must compile for
+                # the matching dynamic-shape range — otherwise Dynamo's symbolic-shape
+                # hint exceeds the buffer dim and narrow() fails at compile time.
+                max_num_batched_tokens=max_num_batched_tokens,
+                # Register TLWorkerExtension so its tl_* methods are reachable via
+                # collective_rpc. Passed as a dotted path; vLLM imports the class at
+                # worker construction and mixes it into the Worker via multiple
+                # inheritance (asserts no attribute name collisions — hence the tl_ prefix).
+                worker_extension_cls="transformer_lens.model_bridge.sources.vllm.worker_extension.TLWorkerExtension",
+                # Allow full-vocab logprobs so the fallback path can synthesize logits when
+                # host-side reconstruction is unavailable (vLLM caps logprobs to this value;
+                # default 20 is too small for mech-interp).
+                max_logprobs=hf_config_preview.vocab_size,
+                # Always explicit — vLLM's "auto" downcasts fp32 checkpoints to fp16, which
+                # would leave the capture/affine buffers (allocated at resolved_dtype) at a
+                # different dtype than the engine's activations.
+                dtype=str(resolved_dtype).replace("torch.", ""),
+                **eager_kwargs,
+                **_LOCKED_KWARGS,
+                **vllm_kwargs,
+            )
+        finally:
+            # Always clear, even on a failed boot: a stale populated _config would make the
+            # next in-process vllm.LLM(...) walk our dot-paths on a foreign model.
+            plugin._config.clear()
 
     # Capture-path validity is enforced inside patched_load_model during
     # LLM(...) above — any missing dot-path raises AttributeError there. By
     # the time we reach this line every spec has already been walked successfully.
     hf_config = extract_hf_config(llm)
-    # _config has been consumed into per-Worker state; clear so a non-TL
-    # vllm.LLM(...) in the same process doesn't inherit our specs.
-    plugin._config.clear()
     if tokenizer is None:
         tokenizer = AutoTokenizer.from_pretrained(model_name, token=hf_token)
 
@@ -184,6 +204,17 @@ def boot_vllm(
     bridge_config = build_bridge_config_from_hf(hf_config, architecture, model_name, resolved_dtype)
     adapter = ArchitectureAdapterFactory.select_architecture_adapter(bridge_config)
 
+    # Match boot_transformers' tokenizer setup so to_tokens(str) is token-identical —
+    # without the probe, non-BOS-prepending tokenizers (Qwen family) inherit the config
+    # default tokenizer_prepends_bos=True and every activation is position-shifted.
+    tokenizer = setup_tokenizer(
+        tokenizer, default_padding_side=getattr(adapter.cfg, "default_padding_side", None)
+    )
+    (
+        adapter.cfg.tokenizer_prepends_bos,
+        adapter.cfg.tokenizer_appends_eos,
+    ) = detect_tokenizer_bos_eos(tokenizer)
+
     driver = VLLMDriver(
         llm=llm,
         adapter=adapter,
@@ -194,6 +225,9 @@ def boot_vllm(
         enable_batching=enable_batching,
         enable_position_interventions=enable_position_interventions,
     )
+    # One-time unembedding fetch: caches the weight for per-forward reconstruction and
+    # downgrades provides_sequence_logits honestly if no unembedding is reachable.
+    driver.probe_logit_reconstruction()
     bridge = RemoteBridge(adapter=adapter, tokenizer=tokenizer, driver=driver)
     _log_hook_summary(model_name, architecture, driver)
     return bridge
@@ -204,7 +238,8 @@ def _reject_locked_overrides(vllm_kwargs: Dict[str, Any]) -> None:
         if key in vllm_kwargs and vllm_kwargs[key] != locked:
             raise ValueError(
                 f"boot_vllm forces {key}={locked}; caller passed {key}={vllm_kwargs[key]}. "
-                "Multi-device / continuous batching / vLLM-owned tokenizer are unsupported."
+                "Multi-device, prefix caching, continuous batching, and vLLM-owned "
+                "tokenizers are unsupported — each breaks the row=position capture invariant."
             )
 
 

@@ -20,7 +20,7 @@ class MambaArchitectureAdapter(ArchitectureAdapter):
 
     SSM config fields (state_size, conv_kernel, expand, time_step_rank,
     intermediate_size) are propagated from the HF config via
-    ``_HF_PASSTHROUGH_ATTRS`` in sources/transformers.py.
+    ``_HF_PASSTHROUGH_ATTRS`` in sources/_bridge_builder.py.
     """
 
     # verify_models is transformer-shaped today and would need a dedicated

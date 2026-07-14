@@ -309,6 +309,90 @@ class TestValidateDriverCatchesBrokenDrivers:
         with pytest.raises(TypeError, match="empty supported_hook_points AND"):
             validate_driver(driver, after_bridge_construction=True)
 
+    def test_unknown_feature_strings_rejected(self):
+        """A driver declaring a feature string outside KNOWN_FEATURES is a contract bug."""
+        from transformer_lens.model_bridge.sources._driver_base import DriverBase
+
+        class MadeUpFeatures(DriverBase):
+            _supported_features = frozenset({"generate_streaming"})
+
+            def __init__(self, cfg):
+                super().__init__(cfg, tokenizer=None)
+
+            def forward(
+                self,
+                input_ids=None,
+                *,
+                capture=(),
+                intervene=None,
+                max_new_tokens=1,
+                return_logits=True,
+                **kw,
+            ):
+                return ForwardResult()
+
+        driver = MadeUpFeatures(self._cfg())
+        with pytest.raises(TypeError, match="unknown feature strings"):
+            validate_driver(driver)
+
+    def test_non_bool_provides_sequence_logits_rejected(self):
+        """getattr-with-True-default would silently pick the unsafe value."""
+        from transformer_lens.model_bridge.sources._driver_base import DriverBase
+
+        class StringyFlag(DriverBase):
+            provides_sequence_logits = "yes"  # type: ignore[assignment]
+
+            def __init__(self, cfg):
+                super().__init__(cfg, tokenizer=None)
+
+            def forward(
+                self,
+                input_ids=None,
+                *,
+                capture=(),
+                intervene=None,
+                max_new_tokens=1,
+                return_logits=True,
+                **kw,
+            ):
+                return ForwardResult()
+
+        driver = StringyFlag(self._cfg())
+        with pytest.raises(TypeError, match="provides_sequence_logits must be bool"):
+            validate_driver(driver)
+
+    def test_missing_provides_sequence_logits_rejected(self):
+        """Duck-typed drivers (no DriverBase) can't silently default to unsafe True."""
+        cfg = self._cfg()
+
+        class DuckDriver:
+            architecture = "Duck"
+            bridge_config = cfg
+            tokenizer = None
+            supported_hook_points = frozenset({"x"})
+            non_fireable_hook_points = frozenset()
+
+            def forward(
+                self,
+                input_ids=None,
+                *,
+                capture=(),
+                intervene=None,
+                max_new_tokens=1,
+                return_logits=True,
+                **kw,
+            ):
+                return ForwardResult()
+
+            def close(self):
+                pass
+
+            def supports(self, feature):
+                return False
+
+        with pytest.raises(TypeError, match="provides_sequence_logits"):
+            validate_driver(DuckDriver())
+
     def test_bridge_accepts_kw_only_input_ids_driver(self):
         """Bridge passes input_ids by keyword so kw-only drivers don't TypeError."""
         from types import SimpleNamespace
@@ -456,6 +540,113 @@ class TestValidateDriverCatchesBrokenDrivers:
         }
         bridge = TransformerBridge(model, adapter, tokenizer=MagicMock())
         validate_driver(bridge._driver, after_bridge_construction=True)
+
+
+class TestTransformersDriverDialect:
+    """HF backend serves hooks via HookPoints, not driver.forward args —
+    spec-dialect args must fail loud, not silently no-op."""
+
+    def _driver(self):
+        from transformer_lens.model_bridge.sources.transformers_driver import (
+            TransformersDriver,
+        )
+
+        return TransformersDriver(nn.Linear(4, 4), _stub_adapter(), tokenizer=None)
+
+    def test_capture_rejected(self):
+        with pytest.raises(NotImplementedError, match="capture"):
+            self._driver().forward(torch.randn(1, 4), capture=("blocks.0.hook_out",))
+
+    def test_intervene_rejected(self):
+        with pytest.raises(NotImplementedError, match="intervene"):
+            self._driver().forward(
+                torch.randn(1, 4), intervene={"blocks.0.hook_out": {"op": "suppress"}}
+            )
+
+    def test_max_new_tokens_rejected(self):
+        with pytest.raises(NotImplementedError, match="generate"):
+            self._driver().forward(torch.randn(1, 4), max_new_tokens=4)
+
+    def test_plain_forward_still_works(self):
+        result = self._driver().forward(torch.randn(2, 4))
+        assert isinstance(result.logits, torch.Tensor)
+
+
+class TestLossGateOnTorchBridge:
+    """Final-position-only drivers must refuse loss on TransformerBridge too,
+    not just RemoteBridge — silent NaN loss otherwise."""
+
+    def _build_bridge(self, provides_sequence_logits: bool):
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock
+
+        from tests.mocks.architecture_adapter import MockArchitectureAdapter
+        from transformer_lens.model_bridge.bridge import TransformerBridge
+        from transformer_lens.model_bridge.generalized_components import (
+            AttentionBridge,
+            BlockBridge,
+            NormalizationBridge,
+        )
+        from transformer_lens.model_bridge.sources._driver_base import DriverBase
+
+        psl = provides_sequence_logits
+
+        class FinalPositionDriver(DriverBase):
+            provides_sequence_logits = psl
+
+            def __init__(self, model, cfg, tokenizer=None):
+                super().__init__(cfg, tokenizer)
+                # forward()'s encoder-decoder probe reads bridge.original_model.
+                self.underlying_model = model
+
+            def forward(
+                self,
+                input_ids=None,
+                *,
+                capture=(),
+                intervene=None,
+                max_new_tokens=1,
+                return_logits=True,
+                **kw,
+            ):
+                return ForwardResult(logits=torch.randn(1, 3, 16))
+
+        model = nn.Module()
+        model.final_norm = nn.LayerNorm(10)
+        model.encoder = nn.Module()
+        model.encoder.layers = nn.ModuleList([nn.Module() for _ in range(1)])
+        model.encoder.layers[0].norm1 = nn.LayerNorm(10)
+        model.encoder.layers[0].self_attn = nn.Module()
+
+        adapter = MockArchitectureAdapter()
+        adapter.component_mapping = {
+            "ln_final": NormalizationBridge(name="final_norm", config={}),
+            "blocks": BlockBridge(
+                name="encoder.layers",
+                submodules={
+                    "ln1": NormalizationBridge(name="norm1", config={}),
+                    "attn": AttentionBridge(name="self_attn", config=SimpleNamespace(n_heads=1)),
+                },
+            ),
+        }
+        driver = FinalPositionDriver(model, _stub_adapter().cfg, tokenizer=None)
+        return TransformerBridge(model, adapter, tokenizer=MagicMock(), driver=driver)
+
+    def test_loss_refused_when_sequence_logits_unavailable(self):
+        bridge = self._build_bridge(provides_sequence_logits=False)
+        tokens = torch.tensor([[1, 2, 3]])
+        with pytest.raises(NotImplementedError, match="final position only"):
+            bridge.forward(tokens, return_type="loss")
+        with pytest.raises(NotImplementedError, match="final position only"):
+            bridge.forward(tokens, return_type="both")
+        # Logits path is unaffected.
+        logits = bridge.forward(tokens, return_type="logits")
+        assert isinstance(logits, torch.Tensor)
+
+    def test_loss_allowed_when_sequence_logits_available(self):
+        bridge = self._build_bridge(provides_sequence_logits=True)
+        loss = bridge.forward(torch.tensor([[1, 2, 3]]), return_type="loss")
+        assert isinstance(loss, torch.Tensor) and loss.dim() == 0
 
 
 class TestBridgeConsumesCaptures:

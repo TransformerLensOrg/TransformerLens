@@ -19,6 +19,33 @@ Rule ([AGENTS.md §10](../AGENTS.md#10-hard-rules)): **never add `xfail` / `skip
 
 ---
 
+## Optional dependency — gated but installed in CI
+
+`inspect_ai` lives in the `[inspect]` extra. The CI test jobs (`compatibility-checks`, `coverage-test`, `mps-checks`) install it via `uv sync --extra inspect` in [`checks.yml`](../.github/workflows/checks.yml), so these run on every CI push — before that change they silently skipped on every job.
+
+| Path | Marker | Trigger |
+|---|---|---|
+| [`unit/model_bridge/test_inspect_driver.py`:19](unit/model_bridge/test_inspect_driver.py) (whole file) | `importorskip("inspect_ai")` | `uv sync --extra inspect` |
+| [`unit/model_bridge/test_inspect_vllm_provider.py`:19](unit/model_bridge/test_inspect_vllm_provider.py) (whole file) | `importorskip("inspect_ai")` | same |
+| [`acceptance/model_bridge/test_inspect_provider.py`:19](acceptance/model_bridge/test_inspect_provider.py) (whole file) | `pytestmark skipif(inspect_ai missing)` | same |
+| [`../transformer_lens/model_bridge/sources/inspect/conftest.py`](../transformer_lens/model_bridge/sources/inspect/conftest.py) | `collect_ignore_glob` (doctest-modules of the provider files) | same |
+
+**Un-skip:** already un-skipped in CI. A local plain `uv sync` still skips them; install the extra.
+
+---
+
+## ⚠️ Coverage gap — no automated lane (real vLLM)
+
+| Path | Marker | Trigger |
+|---|---|---|
+| [`unit/model_bridge/test_vllm_driver.py`](unit/model_bridge/test_vllm_driver.py) (×15) | `importorskip("vllm")` per-test | local vllm install (validated: `vllm==0.20.2`) |
+
+vllm is in **no** dependency group, extra, or CI step, so these 15 real-vllm tests run **nowhere automated** (the file's other tests mock the LLM and run everywhere). A `[vllm]` extra was attempted and rejected by the resolver: `vllm==0.20.2` requires `numpy>=2` (via `opencv-python-headless>=4.13`) while the `lit` extra's `lit-nlp` caps `numpy<2`. The real-engine execution path is otherwise covered only by the manual GPU run of [`demos/vLLM_Bridge_Integration_Test.ipynb`](../demos/vLLM_Bridge_Integration_Test.ipynb).
+
+**Un-skip:** a GPU CI lane that installs vllm, or locally on a CUDA machine with `vllm==0.20.2` installed alongside the project env.
+
+---
+
 ## Permanent — hardware requirement
 
 | Path | Marker | Required |

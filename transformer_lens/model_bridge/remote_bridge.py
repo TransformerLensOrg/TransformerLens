@@ -88,8 +88,21 @@ class RemoteBridge(BridgeCore, HookIntrospectionMixin):
                 "earlier positions is undefined. Use return_type='logits' and read "
                 "logits[..., -1, :] (or the per-row last token in batched mode)."
             )
+        if kwargs.pop("stop_at_layer", None) is not None:
+            # Remote engines run the whole graph; silently ignoring would lie about cost.
+            raise NotImplementedError(
+                "RemoteBridge does not support stop_at_layer: the remote engine "
+                "always runs the full forward pass."
+            )
         if isinstance(input, str):
             kwargs["input_ids"] = self.to_tokens(input)  # BOS-aware, matches boot_transformers
+        elif isinstance(input, list) and any(isinstance(item, str) for item in input):
+            # Would otherwise be treated as raw input_ids and crash deep in numpy.
+            raise TypeError(
+                "RemoteBridge.forward received a list of strings; batched string "
+                "input is unsupported here. Pass a single str, or tokenize with "
+                "to_tokens() and pass token ids."
+            )
         elif input is not None:
             kwargs["input_ids"] = input
 
@@ -126,7 +139,6 @@ class RemoteBridge(BridgeCore, HookIntrospectionMixin):
         reset_hooks_end: bool = True,
         clear_contexts: bool = False,
         return_type: Optional[str] = "logits",
-        names_filter: Optional[Union[str, List[str], Callable[[str], bool]]] = None,
         stop_at_layer: Optional[int] = None,
         remove_batch_dim: bool = False,
         **kwargs: Any,
@@ -137,6 +149,11 @@ class RemoteBridge(BridgeCore, HookIntrospectionMixin):
         if bwd_hooks:
             raise NotImplementedError(
                 "RemoteBridge has no backward pass; bwd_hooks are unsupported."
+            )
+        if stop_at_layer is not None:
+            raise NotImplementedError(
+                "RemoteBridge does not support stop_at_layer: the remote engine "
+                "always runs the full forward pass."
             )
         if fwd_hooks:
             warnings.warn(
@@ -155,11 +172,18 @@ class RemoteBridge(BridgeCore, HookIntrospectionMixin):
             reset_hooks_end=reset_hooks_end,
             clear_contexts=clear_contexts,
             return_type=return_type,
-            names_filter=names_filter,
-            stop_at_layer=stop_at_layer,
             remove_batch_dim=remove_batch_dim,
             **kwargs,
         )
+
+    def run_with_cache(self, *args: Any, **kwargs: Any) -> Any:
+        """Cache via driver captures; stop_at_layer rejected (full remote forward)."""
+        if kwargs.get("stop_at_layer") is not None:
+            raise NotImplementedError(
+                "RemoteBridge does not support stop_at_layer: the remote engine "
+                "always runs the full forward pass."
+            )
+        return super().run_with_cache(*args, **kwargs)
 
     def to_tokens(self, input: Any, prepend_bos: bool | None = None, truncate: bool = True) -> Any:
         """Tokenize a string with the same BOS handling as ``TransformerBridge``.

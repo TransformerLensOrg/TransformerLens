@@ -637,3 +637,231 @@ class TestVLLMDriverThroughBridge:
                 torch.tensor([[1, 2, 3]]),
                 fwd_hooks=[("embed.hook_out", lambda a, hook: a)],
             )
+
+
+class TestVLLMDriverSpecKeyValidation:
+    """Unknown spec keys and mis-shaped values must fail loud, not silently degrade."""
+
+    def test_unknown_spec_key_rejected(self):
+        """A typo'd 'position' would otherwise become a whole-sequence edit."""
+        with pytest.raises(ValueError, match="unknown spec key"):
+            _driver(enable_position_interventions=True)._validate_interventions(
+                {"embed.hook_out": {"op": "add", "value": 1.0, "position": 3}}
+            )
+
+    def test_known_keys_accepted(self):
+        out = _driver(enable_position_interventions=True)._validate_interventions(
+            {"embed.hook_out": {"op": "add", "value": 1.0, "pos": 2}}
+        )
+        assert out["embed.hook_out"]["pos"] == 2
+
+    def test_value_width_mismatch_rejected(self):
+        """embed.hook_out width is 4 (overlay spec); a 2-element value would broadcast
+        wrong or crash mid-forward."""
+        with pytest.raises(ValueError, match="2 elements"):
+            _driver()._validate_interventions(
+                {"embed.hook_out": {"op": "add", "value": [1.0, 2.0]}}
+            )
+
+    def test_value_width_match_accepted(self):
+        out = _driver()._validate_interventions(
+            {"embed.hook_out": {"op": "set", "value": [1.0, 2.0, 3.0, 4.0]}}
+        )
+        assert out["embed.hook_out"]["value"] == [1.0, 2.0, 3.0, 4.0]
+
+    def test_scalar_value_accepted(self):
+        out = _driver()._validate_interventions({"embed.hook_out": {"op": "add", "value": 2.5}})
+        assert out["embed.hook_out"]["value"] == 2.5
+
+    def test_pos_bool_rejected(self):
+        """bool is an int subclass — pos=True must not pass as position 1."""
+        driver = _driver(enable_position_interventions=True)
+        with pytest.raises(ValueError, match="int or list of ints"):
+            driver._validate_interventions({"embed.hook_out": {"op": "suppress", "pos": True}})
+        with pytest.raises(ValueError, match="int or list of ints"):
+            driver._validate_interventions({"embed.hook_out": {"op": "suppress", "pos": [True]}})
+
+
+class TestVLLMDriverLogitReconstruction:
+    """Boot-time probe caches the unembedding; reconstruction slices padded vocab."""
+
+    def test_probe_unavailable_downgrades_sequence_logits(self):
+        driver = _driver(captures={})
+        driver._llm.collective_rpc = MagicMock(return_value=[None])
+        assert driver.probe_logit_reconstruction() is False
+        assert driver._recon_available is False
+        assert driver.provides_sequence_logits is False
+
+    def test_probe_available_caches_weight(self):
+        driver = _driver(captures={})
+        driver._llm.collective_rpc = MagicMock(return_value=[torch.ones(16, 4)])
+        assert driver.probe_logit_reconstruction() is True
+        assert driver.provides_sequence_logits is True
+        weight32, _bias = driver._unembed
+        assert weight32.dtype == torch.float32
+
+    def test_reconstruct_uses_cached_weight_without_rpc(self):
+        """After the probe, per-forward reconstruction must not re-fetch the weight."""
+        driver = _driver(captures={})
+        driver._unembed = (torch.eye(4, dtype=torch.float32).repeat(4, 1), None)
+        driver._recon_available = True
+        driver._llm.collective_rpc = MagicMock(
+            side_effect=AssertionError("reconstruction must not RPC")
+        )
+        out = driver._reconstruct_logits(torch.ones(3, 4))
+        assert out is not None and out.shape == (3, 16)
+
+    def test_reconstruct_slices_padded_vocab(self):
+        """vLLM pads vocab to a multiple of 64; d_vocab=16 here, weight padded to 24.
+        Un-sliced, the zero-filled pad columns become phantom argmax candidates when
+        every real logit is negative."""
+        driver = _driver(captures={})
+        weight = torch.zeros(24, 4, dtype=torch.float32)
+        weight[:16] = -1.0  # real vocab rows: all-negative logits
+        driver._unembed = (weight, None)
+        driver._recon_available = True
+        out = driver._reconstruct_logits(torch.ones(3, 4))
+        assert out.shape == (3, 16)
+        assert int(out[0].argmax()) < 16
+
+    def test_reconstruct_returns_none_when_probed_unavailable(self):
+        driver = _driver(captures={})
+        driver._recon_available = False
+        assert driver._reconstruct_logits(torch.ones(3, 4)) is None
+
+
+class TestVLLMDriverLnFinalUnfold:
+    """The exposed ln_final capture honors the hook name's pre-weight convention."""
+
+    def test_unfold_divides_by_weight(self):
+        driver = _driver(captures={})
+        driver._lnf_weight = torch.full((4,), 2.0)
+        out = driver._unfold_ln_final(torch.ones(1, 3, 4))
+        assert torch.allclose(out, torch.full((1, 3, 4), 0.5))
+
+    def test_unfold_gemma_uses_one_plus_weight(self):
+        driver = _driver(captures={})
+        driver.architecture = "Gemma2ForCausalLM"
+        driver._lnf_weight = torch.full((4,), 1.0)
+        out = driver._unfold_ln_final(torch.ones(1, 3, 4))
+        assert torch.allclose(out, torch.full((1, 3, 4), 0.5))
+
+    def test_unfold_near_zero_weight_guarded(self):
+        driver = _driver(captures={})
+        driver._lnf_weight = torch.zeros(4)
+        out = driver._unfold_ln_final(torch.ones(1, 3, 4))
+        assert torch.isfinite(out).all()
+
+    def test_unfold_warns_and_returns_raw_when_weight_unreachable(self):
+        driver = _driver(captures={})
+        driver._llm.collective_rpc = MagicMock(return_value=[None])
+        t = torch.ones(1, 3, 4)
+        with pytest.warns(UserWarning, match="POST-weight"):
+            out = driver._unfold_ln_final(t)
+        assert torch.equal(out, t)
+
+    def test_unfold_caches_fetched_weight(self):
+        driver = _driver(captures={})
+        driver._llm.collective_rpc = MagicMock(return_value=[torch.full((4,), 2.0)])
+        driver._unfold_ln_final(torch.ones(1, 3, 4))
+        assert driver._llm.collective_rpc.call_count == 1
+        driver._unfold_ln_final(torch.ones(1, 3, 4))
+        assert driver._llm.collective_rpc.call_count == 1  # cached, no second RPC
+
+
+class TestVLLMDriverCloseRefcount:
+    """close() only tears down vLLM's process-global distributed state when this is
+    the last live driver — a re-bound notebook boot must not break the new engine."""
+
+    def _patch_distributed(self, monkeypatch):
+        import sys as _sys
+
+        dist = MagicMock()
+        monkeypatch.setitem(_sys.modules, "vllm", MagicMock())
+        monkeypatch.setitem(_sys.modules, "vllm.distributed", MagicMock())
+        monkeypatch.setitem(_sys.modules, "vllm.distributed.parallel_state", dist)
+        return dist
+
+    def test_teardown_deferred_until_last_driver(self, monkeypatch):
+        from transformer_lens.model_bridge.sources.vllm import driver as driver_module
+
+        dist = self._patch_distributed(monkeypatch)
+        monkeypatch.setattr(driver_module, "_LIVE_DRIVERS", 0)
+        a, b = _driver(captures={}), _driver(captures={})
+        a.close()
+        dist.destroy_model_parallel.assert_not_called()
+        b.close()
+        dist.destroy_model_parallel.assert_called_once()
+        dist.destroy_distributed_environment.assert_called_once()
+
+    def test_double_close_decrements_once(self, monkeypatch):
+        from transformer_lens.model_bridge.sources.vllm import driver as driver_module
+
+        dist = self._patch_distributed(monkeypatch)
+        monkeypatch.setattr(driver_module, "_LIVE_DRIVERS", 0)
+        a, b = _driver(captures={}), _driver(captures={})
+        a.close()
+        a.close()  # idempotent: must not reach zero while b is live
+        dist.destroy_model_parallel.assert_not_called()
+        b.close()
+        dist.destroy_model_parallel.assert_called_once()
+
+    def test_close_drops_weight_caches(self, monkeypatch):
+        self._patch_distributed(monkeypatch)
+        driver = _driver(captures={})
+        driver._unembed = (torch.ones(16, 4), None)
+        driver._lnf_weight = torch.ones(4)
+        driver.close()
+        assert driver._unembed is None and driver._lnf_weight is None
+
+
+class TestBatchedForwardPaddingSemantics:
+    """Reconstruction pads and attention masks on the batched path."""
+
+    def test_reconstructed_pad_positions_are_neg_inf(self):
+        """Zero-filled ln_final pad rows reconstruct into finite garbage (0 @ W);
+        they must be masked to the -inf convention the fallback path uses."""
+        pytest.importorskip("vllm")
+        outputs = [
+            _batched_request_output("req-A", top_logprobs={7: 2.0}),
+            _batched_request_output("req-B", top_logprobs={3: 2.0}),
+        ]
+        captures_by_req = {
+            "req-A": {"ln_final.hook_normalized": torch.ones(3, 4)},
+            "req-B": {"ln_final.hook_normalized": torch.ones(2, 4)},
+        }
+        driver = _batched_driver(outputs=outputs, captures_by_req=captures_by_req)
+        driver._unembed = (torch.ones(16, 4, dtype=torch.float32), None)
+        driver._recon_available = True
+        result = driver.forward([[1, 2, 3], [4, 5]])
+        assert result.logits.shape == (2, 3, 16)
+        assert torch.isfinite(result.logits[0]).all()  # 3 real rows
+        assert torch.isfinite(result.logits[1, :2]).all()
+        assert torch.isinf(result.logits[1, 2]).all()  # pad row for the 2-token prompt
+
+    def test_attention_mask_trims_padded_rows(self):
+        """A right-padded (B, S) batch + mask must send only real tokens to vLLM."""
+        pytest.importorskip("vllm")
+        outputs = [
+            _batched_request_output("req-A", top_logprobs={7: 2.0}),
+            _batched_request_output("req-B", top_logprobs={3: 2.0}),
+        ]
+        driver = _batched_driver(outputs=outputs, captures_by_req={})
+        driver.forward(
+            torch.tensor([[1, 2, 3], [4, 5, 0]]),
+            attention_mask=torch.tensor([[1, 1, 1], [1, 1, 0]]),
+            return_logits=False,
+        )
+        prompts = driver._llm.generate.call_args.kwargs["prompts"]
+        assert prompts[0]["prompt_token_ids"] == [1, 2, 3]
+        assert prompts[1]["prompt_token_ids"] == [4, 5]  # pad token trimmed
+
+    def test_attention_mask_batch_mismatch_raises(self):
+        pytest.importorskip("vllm")
+        driver = _batched_driver(outputs=[], captures_by_req={})
+        with pytest.raises(ValueError, match="attention_mask batch dim"):
+            driver.forward(
+                torch.tensor([[1, 2], [3, 4]]),
+                attention_mask=torch.tensor([[1, 1]]),
+                return_logits=False,
+            )

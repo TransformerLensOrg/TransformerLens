@@ -30,7 +30,12 @@ from inspect_ai.model import (
 )
 
 from . import hooks, wire
-from ._provider_base import _InspectModelAPIBase, _parse_tool_calls, _require_served
+from ._provider_base import (
+    _InspectModelAPIBase,
+    _parse_tool_calls,
+    _require_served,
+    _warn_unsupported_config,
+)
 
 # NOT "transformer_lens" — inspect_ai ships a built-in provider by that name (the
 # reverse direction: serving a HookedTransformer as an Inspect model for generation).
@@ -189,6 +194,7 @@ class TransformerLensTransformersModelAPI(_InspectModelAPIBase):
         """Plain Inspect generation: HF generate from the chat input (rendering ``tools``
         into the template), honoring max_tokens/sampling, with optional per-token logprobs,
         token usage, parsed tool calls, and per-turn activation capture (agent rollouts)."""
+        _warn_unsupported_config(config, PROVIDER_NAME)
         ids = self._messages_to_ids(input, tools)
         prompt_len = int(ids.shape[1])
         max_new = int(config.max_tokens) if config.max_tokens else 16
@@ -201,6 +207,10 @@ class TransformerLensTransformersModelAPI(_InspectModelAPIBase):
             "output_scores": True,
             "pad_token_id": self._tokenizer.pad_token_id or self._tokenizer.eos_token_id,
         }
+        if config.stop_seqs:
+            # transformers turns stop_strings into a StopStringCriteria; needs the tokenizer.
+            gen["stop_strings"] = list(config.stop_seqs)
+            gen["tokenizer"] = self._tokenizer
         if temperature is not None and temperature > 0:
             gen["temperature"] = float(temperature)
             if config.top_p is not None:
@@ -300,6 +310,8 @@ class TransformerLensTransformersModelAPI(_InspectModelAPIBase):
                 continue
             attn = _first_attr(block, _ATTN_ATTRS)
             _, mlp_out_mod = _locate_mlp(block)
+            # Capabilities were probed on layer 0; hybrid archs can lack the module here.
+            _require_layer_modules(layer, attn, mlp_out_mod, cap_kinds, iv_kinds)
             if "resid_pre" in cap_kinds or "resid_pre" in iv_kinds:
                 handles.append(
                     block.register_forward_pre_hook(
@@ -405,6 +417,26 @@ class TransformerLensTransformersModelAPI(_InspectModelAPIBase):
                     )
                 )
         return handles
+
+
+def _require_layer_modules(
+    layer: int, attn: Any, mlp_out_mod: Any, cap_kinds: Any, iv_kinds: Any
+) -> None:
+    """Fail loud when this layer lacks a targeted submodule — detection ran on layer 0,
+    so hybrid attn/SSM stacks would otherwise install nothing and silently no-op."""
+    wanted = set(cap_kinds) | set(iv_kinds)
+    if attn is None:
+        needs_attn = wanted & ({"attn_out"} | (hooks.HEAD_KINDS - {"pattern"}))
+        if needs_attn:
+            raise RuntimeError(
+                f"blocks.{layer} has no attention submodule: cannot serve "
+                f"{sorted(needs_attn)} at layer {layer} (heterogeneous layers)."
+            )
+    if mlp_out_mod is None and "mlp_out" in wanted:
+        raise RuntimeError(
+            f"blocks.{layer} has no MLP submodule: cannot serve mlp_out at layer "
+            f"{layer} (heterogeneous layers)."
+        )
 
 
 def _plan(capture_keys, interventions):

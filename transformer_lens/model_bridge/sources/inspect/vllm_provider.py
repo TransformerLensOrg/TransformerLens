@@ -36,7 +36,12 @@ from inspect_ai.model import (
 )
 
 from . import hooks, wire
-from ._provider_base import _InspectModelAPIBase, _parse_tool_calls, _require_served
+from ._provider_base import (
+    _InspectModelAPIBase,
+    _parse_tool_calls,
+    _require_served,
+    _warn_unsupported_config,
+)
 
 # Distinct from the HF ``tl_bridge`` provider and from inspect_ai's built-in ``vllm``.
 PROVIDER_NAME = "tl_bridge_vllm"
@@ -218,6 +223,23 @@ class TransformerLensVLLMModelAPI(_InspectModelAPIBase):
         interventions: Mapping[str, Any] = extra_args.get("interventions", {})
         intervention_specs: dict[str, Any] = {}
         for wk, spec in interventions.items():
+            # Same served/interveneable protection the HF provider gives — this direct
+            # interface (extra_args) is documented, so a gated or capture-only kind must
+            # fail loud here instead of dying (or no-op'ing) in the worker.
+            _, _, kind = wk.partition(":")
+            _require_served(kind, self._kinds, self._capability_note, f"intervention {wk!r}")
+            if kind not in hooks.INTERVENEABLE_KINDS:
+                raise ValueError(
+                    f"intervention {wk!r}: kind {kind!r} is capture-only "
+                    f"(interveneable: {sorted(hooks.INTERVENEABLE_KINDS)})."
+                )
+            if isinstance(spec, Mapping) and spec.get("pos") is not None:
+                raise ValueError(
+                    f"intervention {wk!r}: per-position 'pos' is not supported on the "
+                    "tl_bridge_vllm provider (its worker runs without position "
+                    "interventions). Use boot_inspect(provider='tl_bridge') for "
+                    "position-targeted patching."
+                )
             name = hooks.name_from_wire_key(wk)
             if name is None:
                 raise ValueError(f"intervention wire key {wk!r} is not a fireable hook.")
@@ -279,6 +301,8 @@ class TransformerLensVLLMModelAPI(_InspectModelAPIBase):
         from vllm import SamplingParams
         from vllm.inputs import TokensPrompt
 
+        _warn_unsupported_config(config, PROVIDER_NAME)
+
         # Worker-side intervention buffers are persistent: any prior capture-path call that
         # pushed specs (e.g. bridge.forward(intervene=...)) would still be applied here
         # without a reset. The HF provider installs hooks per-call so it's leak-immune.
@@ -296,6 +320,8 @@ class TransformerLensVLLMModelAPI(_InspectModelAPIBase):
         temperature = float(config.temperature) if config.temperature is not None else 0.0
 
         sp_kwargs: dict[str, Any] = {"max_tokens": max_new, "temperature": temperature}
+        if config.stop_seqs:
+            sp_kwargs["stop"] = list(config.stop_seqs)
         if temperature > 0:
             if config.top_p is not None:
                 sp_kwargs["top_p"] = float(config.top_p)

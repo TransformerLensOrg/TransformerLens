@@ -73,7 +73,10 @@ def capture_activations(
             )
         activations = {name_by_wire[wk]: arr for wk, arr in decoded.items()}
         os.makedirs(output_dir, exist_ok=True)
-        path = os.path.join(output_dir, f"{state.sample_id}.npz")
+        # Epoch in the name — multi-epoch runs reuse sample_ids and would overwrite.
+        epoch = getattr(state, "epoch", None)
+        stem = f"{state.sample_id}_epoch{epoch}" if epoch is not None else str(state.sample_id)
+        path = os.path.join(output_dir, f"{stem}.npz")
         np.savez_compressed(path, **activations)
         store().set(store_key, reduce_fn(activations))
         store().set(f"{store_key}_path", path)

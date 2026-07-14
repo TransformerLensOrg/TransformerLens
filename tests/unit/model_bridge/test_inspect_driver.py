@@ -541,6 +541,275 @@ class TestHeadSplitKinds:
         assert turn["blocks.0.attn.hook_pattern"].shape == (1, 2, 3, 3)
 
 
+class TestHeterogeneousLayers:
+    """Hybrid attn/SSM stacks: capability detection probes layer 0 only, so a layer
+    missing the targeted submodule must fail loud instead of installing nothing."""
+
+    def _provider(self):
+        import torch.nn as nn
+
+        from transformer_lens.model_bridge.sources.inspect.transformers_provider import (
+            TransformerLensTransformersModelAPI,
+        )
+
+        class AttnBlock(nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.self_attn = nn.Linear(4, 4)
+                self.mlp = nn.Linear(4, 4)
+
+        class SSMBlock(nn.Module):  # no attention / MLP submodule
+            def __init__(self):
+                super().__init__()
+                self.mixer = nn.Linear(4, 4)
+
+        api = object.__new__(TransformerLensTransformersModelAPI)
+        api._layers = nn.ModuleList([AttnBlock(), SSMBlock()])
+        api._geometry = (2, 2, 2)
+        return api
+
+    def test_capture_on_layer_missing_attn_raises(self):
+        with pytest.raises(RuntimeError, match="no attention submodule"):
+            self._provider()._install_hooks({1: {"attn_out"}}, {}, {}, "cid")
+
+    def test_intervention_on_layer_missing_attn_raises(self):
+        with pytest.raises(RuntimeError, match="no attention submodule"):
+            self._provider()._install_hooks({}, {1: {"attn_out": {"op": "suppress"}}}, {}, "cid")
+
+    def test_capture_on_layer_missing_mlp_raises(self):
+        with pytest.raises(RuntimeError, match="no MLP submodule"):
+            self._provider()._install_hooks({1: {"mlp_out"}}, {}, {}, "cid")
+
+    def test_head_kind_on_layer_missing_attn_raises(self):
+        with pytest.raises(RuntimeError, match="no attention submodule"):
+            self._provider()._install_hooks({1: {"q"}}, {}, {}, "cid")
+
+    def test_layer_with_modules_still_installs(self):
+        handles = self._provider()._install_hooks({0: {"attn_out", "mlp_out"}}, {}, {}, "cid")
+        assert len(handles) == 2
+        for handle in handles:
+            handle.remove()
+
+    def test_resid_kinds_on_ssm_layer_still_install(self):
+        # Block in/out boundaries exist on every layer; no attn/mlp needed.
+        handles = self._provider()._install_hooks({1: {"resid_pre", "resid_post"}}, {}, {}, "cid")
+        assert len(handles) == 2
+        for handle in handles:
+            handle.remove()
+
+
+class TestTimeoutRecovery:
+    def test_timeout_abandons_wedged_loop_and_rebuilds(self, monkeypatch):
+        """A hung provider forward blocks the loop thread; after the TimeoutError the
+        driver must serve later forwards on a fresh loop, not queue behind the wedge."""
+        import threading
+
+        import transformer_lens.model_bridge.sources.inspect.driver as drv_mod
+
+        monkeypatch.setattr(drv_mod, "_PROVIDER_TIMEOUT_S", 0.2)
+
+        release = threading.Event()
+        calls = {"n": 0}
+        metadata = {"tl_logits": wire.encode_array(np.zeros((1, D_VOCAB), np.float32))}
+        output = SimpleNamespace(metadata=metadata)
+
+        async def generate(_input, config=None):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                release.wait(30)  # sync-block the loop thread, like a hung torch forward
+            return output
+
+        driver = _driver(SimpleNamespace(generate=generate))
+        try:
+            with pytest.warns(UserWarning, match="abandon"):
+                with pytest.raises(TimeoutError, match="exceeded"):
+                    driver.forward(torch.tensor([[1]]))
+            wedged = driver._loop is None  # poisoned state cleared for rebuild
+            assert wedged
+            result = driver.forward(torch.tensor([[1]]))  # fresh loop, must not time out
+            assert isinstance(result, ForwardResult)
+            assert calls["n"] == 2
+        finally:
+            release.set()  # let the abandoned daemon thread finish
+
+    def test_ensure_loop_is_thread_safe(self):
+        import threading
+
+        driver = _driver()
+        loops: list = []
+        barrier = threading.Barrier(8)
+
+        def worker():
+            barrier.wait()
+            loops.append(driver._ensure_loop())
+
+        threads = [threading.Thread(target=worker) for _ in range(8)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        assert len({id(loop) for loop in loops}) == 1
+        driver.close()
+
+
+class TestForProvider:
+    def test_known_providers_resolve(self):
+        assert isinstance(profiles.for_provider("vllm-lens"), profiles.VLLMLensProfile)
+        assert isinstance(profiles.for_provider("vllm-lens-v2"), profiles.VLLMLensProfile)
+        assert isinstance(profiles.for_provider("tl_bridge"), profiles.TLBridgeProfile)
+        assert isinstance(profiles.for_provider("tl_bridge_vllm"), profiles.TLBridgeProfile)
+
+    def test_unknown_provider_raises(self):
+        # Falling back to the full-capability codec would boot then NaN downstream.
+        with pytest.raises(ValueError, match="tl_bridge.*vllm-lens"):
+            profiles.for_provider("hf")
+
+
+class TestEvalArtifactEpochs:
+    def test_epoch_in_artifact_filename(self, tmp_path, monkeypatch):
+        """Multi-epoch evals reuse sample_ids; artifacts must not overwrite across epochs."""
+        import asyncio
+
+        from transformer_lens.model_bridge.sources.inspect import eval as eval_mod
+
+        payload = wire.encode_activations({"0:resid_post": np.ones((2, D_MODEL), np.float32)})
+        output = SimpleNamespace(metadata={"activations": payload})
+
+        async def generate(_messages, config=None):
+            return output
+
+        monkeypatch.setattr(eval_mod, "get_model", lambda: SimpleNamespace(generate=generate))
+        stored: dict = {}
+        monkeypatch.setattr(
+            eval_mod,
+            "store",
+            lambda: SimpleNamespace(set=lambda k, v: stored.__setitem__(k, v)),
+        )
+
+        solve = eval_mod.capture_activations(["blocks.0.hook_out"], output_dir=str(tmp_path))
+        for epoch in (1, 2):
+            state = SimpleNamespace(messages=[], sample_id="s1", epoch=epoch)
+            asyncio.run(solve(state, None))
+        assert sorted(p.name for p in tmp_path.iterdir()) == [
+            "s1_epoch1.npz",
+            "s1_epoch2.npz",
+        ]
+        assert stored["tl_activations_path"].endswith("s1_epoch2.npz")
+
+
+class TestHFProviderGenerateConfig:
+    """stop_seqs wiring + warn-once for unsupported GenerateConfig fields (HF provider)."""
+
+    def _api(self):
+        from transformer_lens.model_bridge.sources.inspect.transformers_provider import (
+            TransformerLensTransformersModelAPI,
+        )
+
+        api = object.__new__(TransformerLensTransformersModelAPI)
+        api.model_name = "fake"
+        api._device = "cpu"
+        api._eval_capture = {}
+
+        def tokenize(text, **kw):
+            return SimpleNamespace(input_ids=[ord(c) % 50 for c in text])
+
+        tok = SimpleNamespace(
+            chat_template=None, pad_token_id=0, eos_token_id=1, decode=lambda ids, **kw: "x"
+        )
+        from unittest.mock import MagicMock
+
+        callable_tok = MagicMock(wraps=tok)
+        callable_tok.side_effect = tokenize
+        callable_tok.chat_template = None
+        callable_tok.pad_token_id = 0
+        callable_tok.eos_token_id = 1
+        callable_tok.decode = tok.decode
+        api._tokenizer = callable_tok
+
+        hf = MagicMock()
+        hf.generate.return_value = SimpleNamespace(
+            sequences=torch.tensor([[5, 6, 65]]), scores=None
+        )
+        api._hf = hf
+        return api
+
+    def _config(self, **overrides):
+        from inspect_ai.model import GenerateConfig
+
+        return GenerateConfig(**overrides)
+
+    def test_stop_seqs_wired_to_hf_generate(self):
+        api = self._api()
+        api._generate_eval("hi", self._config(max_tokens=1, stop_seqs=["END"]), [])
+        gen_kwargs = api._hf.generate.call_args.kwargs
+        assert gen_kwargs["stop_strings"] == ["END"]
+        assert gen_kwargs["tokenizer"] is api._tokenizer
+
+    def test_unsupported_config_field_warns_once(self, monkeypatch):
+        import warnings as warnings_mod
+
+        from transformer_lens.model_bridge.sources.inspect import _provider_base
+
+        monkeypatch.setattr(_provider_base, "_WARNED_UNSUPPORTED", set())
+        api = self._api()
+        with pytest.warns(UserWarning, match="frequency_penalty"):
+            api._generate_eval("hi", self._config(max_tokens=1, frequency_penalty=0.5), [])
+        with warnings_mod.catch_warnings(record=True) as rec:
+            warnings_mod.simplefilter("always")
+            api._generate_eval("hi", self._config(max_tokens=1, frequency_penalty=0.5), [])
+        assert not [w for w in rec if "frequency_penalty" in str(w.message)]
+
+
+class TestParityScript:
+    SCRIPT = pathlib.Path(__file__).resolve().parents[3] / "scripts" / "inspect_parity_report.py"
+
+    def _load(self, monkeypatch, env=None):
+        import importlib.util
+        import uuid
+
+        for key, value in (env or {}).items():
+            monkeypatch.setenv(key, value)
+        spec = importlib.util.spec_from_file_location(
+            f"inspect_parity_{uuid.uuid4().hex}", self.SCRIPT
+        )
+        module = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(module)
+        return module
+
+    def test_tolerance_env_overrides(self, monkeypatch):
+        module = self._load(monkeypatch, {"TL_INSPECT_ATOL": "5e-2", "TL_INSPECT_RTOL": "7e-2"})
+        assert module.ATOL == 5e-2 and module.RTOL == 7e-2
+
+    def test_default_tolerances(self, monkeypatch):
+        monkeypatch.delenv("TL_INSPECT_ATOL", raising=False)
+        monkeypatch.delenv("TL_INSPECT_RTOL", raising=False)
+        module = self._load(monkeypatch)
+        assert module.ATOL == 1e-3 and module.RTOL == 1e-3
+
+    def test_exit_code_1_on_fail(self, monkeypatch, capsys):
+        module = self._load(monkeypatch, {"TL_PARITY_MODELS": "m1,m2"})
+        rows = {
+            "m1": {"model": "m1", "arch": "A", "status": "PASS", "detail": ""},
+            "m2": {"model": "m2", "arch": "B", "status": "FAIL", "detail": "diff"},
+        }
+        monkeypatch.setattr(module, "verify", lambda m: rows[m])
+        with pytest.raises(SystemExit) as excinfo:
+            module.main()
+        assert excinfo.value.code == 1
+
+    def test_exit_code_0_on_pass_and_skip(self, monkeypatch, capsys):
+        module = self._load(monkeypatch, {"TL_PARITY_MODELS": "m1,m2"})
+        rows = {
+            "m1": {"model": "m1", "arch": "A", "status": "PASS", "detail": ""},
+            "m2": {"model": "m2", "arch": "B", "status": "SKIP", "detail": "gated"},
+        }
+        monkeypatch.setattr(module, "verify", lambda m: rows[m])
+        with pytest.raises(SystemExit) as excinfo:
+            module.main()
+        assert excinfo.value.code == 0
+
+
 def test_driver_imports_no_torch():
     """The acceptance gate: the driver file must not import torch (data-only boundary)."""
     import transformer_lens.model_bridge.sources.inspect.driver as drv

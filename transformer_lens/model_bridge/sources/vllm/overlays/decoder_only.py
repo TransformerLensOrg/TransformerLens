@@ -15,11 +15,11 @@ Two hooks capture different points than HF/HookedTransformer:
   separately (fused-residual). The plugin's hook materializes the sum so the
   captured value matches HF's "post-MLP residual stream".
 - ``ln_final.hook_normalized``: vLLM exposes ``x * rsqrt(var+eps) * weight``;
-  HF/HT exposes the pre-weight value. They are NOT auto-converted — the cache
-  carries vLLM's post-weight value under this name, so a direct diff against
-  ``boot_transformers`` will mismatch here. To convert, fetch the weight via
-  ``bridge._driver.get_param("model.norm.weight")`` and divide the capture by it
-  (or by ``1 + weight`` for Gemma).
+  HF/HT exposes the pre-weight value. The driver un-folds the user-facing
+  capture (÷ weight, or ÷ (1 + weight) for Gemma) so the cache matches
+  ``boot_transformers``; logit reconstruction consumes the raw post-weight
+  value internally. If the norm weight is unreachable the driver warns and
+  serves the raw post-weight value.
 """
 from __future__ import annotations
 
@@ -58,6 +58,17 @@ class DecoderOnlyOverlay(AdapterOverlay):
             "blocks.{i}.attn.hook_attn_scores",
             "blocks.{i}.attn.hook_rot_q",
             "blocks.{i}.attn.hook_rot_k",
+            # Head-split projections live inside the fused QKVParallelLinear /
+            # RowParallelLinear kernels — unobservable per-head.
+            "blocks.{i}.attn.hook_q",
+            "blocks.{i}.attn.hook_k",
+            "blocks.{i}.attn.hook_v",
+            "blocks.{i}.attn.hook_z",
+            # Block/MLP inputs: vLLM passes (hidden, residual) fused between layers,
+            # so the HF-convention pre-block/pre-MLP stream is never materialized.
+            "blocks.{i}.hook_in",
+            "blocks.{i}.mlp.hook_in",
+            "blocks.{i}.attn.hook_in",
             # vLLM's sampler bypasses lm_head.__call__ — capture-via-forward-hook
             # never fires; driver synthesizes argmax-matching logits from the
             # sampler's returned token.

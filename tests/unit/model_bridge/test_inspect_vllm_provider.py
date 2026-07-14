@@ -259,6 +259,35 @@ class TestGenerateEval:
         assert lp.content[0].logprob == -0.5
         assert len(lp.content[0].top_logprobs) == 2
 
+    def test_generate_eval_stop_seqs_wired_to_sampling_params(self, monkeypatch):
+        llm = MagicMock()
+        llm.generate.return_value = [_make_request_output([65], finish_reason="stop")]
+        provider, _ = _make_provider(monkeypatch, llm)
+        asyncio.run(
+            provider.generate(
+                self._user_msg(), None, None, self._config(max_tokens=4, stop_seqs=["END"])
+            )
+        )
+        sp_kwargs = sys.modules["vllm"].SamplingParams.call_args.kwargs
+        assert sp_kwargs["stop"] == ["END"]
+
+    def test_generate_eval_unsupported_field_warns_once(self, monkeypatch):
+        import warnings as warnings_mod
+
+        from transformer_lens.model_bridge.sources.inspect import _provider_base
+
+        monkeypatch.setattr(_provider_base, "_WARNED_UNSUPPORTED", set())
+        llm = MagicMock()
+        llm.generate.return_value = [_make_request_output([65], finish_reason="stop")]
+        provider, _ = _make_provider(monkeypatch, llm)
+        config = self._config(max_tokens=1, presence_penalty=0.5)
+        with pytest.warns(UserWarning, match="presence_penalty"):
+            asyncio.run(provider.generate(self._user_msg(), None, None, config))
+        with warnings_mod.catch_warnings(record=True) as rec:
+            warnings_mod.simplefilter("always")
+            asyncio.run(provider.generate(self._user_msg(), None, None, config))
+        assert not [w for w in rec if "presence_penalty" in str(w.message)]
+
     def test_generate_eval_passes_temperature_top_p(self, monkeypatch):
         llm = MagicMock()
         llm.generate.return_value = [_make_request_output([65], finish_reason="length")]
@@ -403,6 +432,66 @@ class TestCapturePath:
             )
         )
         assert "tl_logits" not in out.metadata
+
+    def test_intervention_gated_kind_raises_before_rpc(self, monkeypatch):
+        # resid_pre resolves to a hook name but is gated by vLLM's fused execution;
+        # without the served check it would reach the worker and silently no-op.
+        provider, llm, _ = self._make_capture_provider(monkeypatch)
+        with pytest.raises(ValueError, match="resid_pre|gated"):
+            asyncio.run(
+                provider.generate(
+                    [],
+                    None,
+                    None,
+                    self._config_with(
+                        {
+                            "input_ids": [1, 2],
+                            "capture": ["0:resid_post"],
+                            "interventions": {"0:resid_pre": {"op": "suppress"}},
+                        }
+                    ),
+                )
+            )
+        assert llm.collective_rpc.call_count == 0  # validated before any worker RPC
+
+    def test_intervention_capture_only_kind_raises(self, monkeypatch):
+        provider, _, _ = self._make_capture_provider(monkeypatch)
+        with pytest.raises(ValueError, match="gated|capture-only"):
+            asyncio.run(
+                provider.generate(
+                    [],
+                    None,
+                    None,
+                    self._config_with(
+                        {
+                            "input_ids": [1, 2],
+                            "capture": ["0:resid_post"],
+                            "interventions": {"0:resid_mid": {"op": "suppress"}},
+                        }
+                    ),
+                )
+            )
+
+    def test_intervention_pos_rejected_with_remediation(self, monkeypatch):
+        # 'pos' dies in the worker with an unfollowable message; reject up front and
+        # point at the HF provider instead.
+        provider, llm, _ = self._make_capture_provider(monkeypatch)
+        with pytest.raises(ValueError, match="tl_bridge"):
+            asyncio.run(
+                provider.generate(
+                    [],
+                    None,
+                    None,
+                    self._config_with(
+                        {
+                            "input_ids": [1, 2],
+                            "capture": ["0:resid_post"],
+                            "interventions": {"0:resid_post": {"op": "suppress", "pos": 1}},
+                        }
+                    ),
+                )
+            )
+        assert llm.collective_rpc.call_count == 0
 
     def test_capture_gated_kind_raises(self, monkeypatch):
         # resid_pre (blocks.{i}.hook_in) is gated by vLLM's fused execution.
@@ -562,3 +651,83 @@ class TestPerTurnCapture:
         # _make_request_output([65, 66]) ⇒ "AB" via fake tokenizer.
         assert out.choices[0].message.text == "AB"
         assert out.usage.output_tokens == 2
+
+
+class TestBootInspectVLLMDtype:
+    """boot_inspect must forward the resolved dtype to the tl_bridge_vllm provider so
+    bridge_config.dtype matches what the engine loads."""
+
+    def _boot(self, monkeypatch, **boot_kwargs):
+        import inspect_ai.model as inspect_ai_model
+        import torch
+
+        from transformer_lens.config import TransformerBridgeConfig
+        from transformer_lens.model_bridge.architecture_adapter import (
+            ArchitectureAdapter,
+        )
+        from transformer_lens.model_bridge.sources.inspect import source as source_mod
+
+        cfg = TransformerBridgeConfig(
+            d_model=4,
+            d_head=2,
+            n_layers=2,
+            n_ctx=8,
+            n_heads=2,
+            d_vocab=16,
+            d_mlp=8,
+            architecture="LlamaForCausalLM",
+        )
+        adapter = ArchitectureAdapter(cfg)
+        adapter.component_mapping = {}
+
+        captured: dict[str, Any] = {}
+
+        def fake_get_model(name, memoize=False, **kwargs):
+            captured["name"] = name
+            captured.update(kwargs)
+            api = SimpleNamespace(
+                supported_kinds=lambda: frozenset({"resid_post"}),
+                capability_note=lambda: "",
+                provides_sequence_logits=False,
+            )
+            return SimpleNamespace(api=api)
+
+        from transformers import AutoConfig
+
+        monkeypatch.setattr(
+            AutoConfig,
+            "from_pretrained",
+            lambda *a, **kw: SimpleNamespace(architectures=["LlamaForCausalLM"]),
+        )
+        monkeypatch.setattr(inspect_ai_model, "get_model", fake_get_model)
+        monkeypatch.setattr(source_mod, "get_hf_token", lambda: None)
+        monkeypatch.setattr(source_mod, "build_bridge_config_from_hf", lambda *a, **kw: cfg)
+        monkeypatch.setattr(
+            source_mod,
+            "ArchitectureAdapterFactory",
+            SimpleNamespace(select_architecture_adapter=lambda c: adapter),
+        )
+        monkeypatch.setattr(source_mod, "setup_tokenizer", lambda tok, **kw: tok)
+        monkeypatch.setattr(source_mod, "detect_tokenizer_bos_eos", lambda tok: (True, False))
+
+        bridge = source_mod.boot_inspect(
+            "fake/model",
+            tokenizer=SimpleNamespace(),
+            provider="tl_bridge_vllm",
+            **boot_kwargs,
+        )
+        return bridge, captured
+
+    def test_default_dtype_forwarded_as_fp32(self, monkeypatch):
+        import torch
+
+        _, captured = self._boot(monkeypatch)
+        assert captured["name"] == "tl_bridge_vllm/fake/model"
+        # Without forwarding, the provider silently defaults to the HF-config dtype.
+        assert captured["dtype"] is torch.float32
+
+    def test_explicit_dtype_forwarded(self, monkeypatch):
+        import torch
+
+        _, captured = self._boot(monkeypatch, dtype=torch.float16)
+        assert captured["dtype"] is torch.float16

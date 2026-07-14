@@ -93,6 +93,10 @@ def boot_inspect(
         inspect_kwargs["model_kwargs"] = _provider_model_kwargs(
             dict(inspect_kwargs.get("model_kwargs", {})), adapter, resolved_dtype, hf_token
         )
+    elif provider == "tl_bridge_vllm":
+        # Otherwise the provider defaults to the HF-config dtype and bridge_config.dtype
+        # lies about what the engine actually loaded.
+        inspect_kwargs["dtype"] = resolved_dtype
 
     # memoize=False: inspect_ai caches get_model by name, which would (a) return a stale
     # model ignoring a changed dtype/kwargs on re-boot and (b) keep weights resident past
