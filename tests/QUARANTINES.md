@@ -11,7 +11,7 @@ Rule ([AGENTS.md §10](../AGENTS.md#10-hard-rules)): **never add `xfail` / `skip
 | Path | Marker | Trigger |
 |---|---|---|
 | [`unit/test_lit.py`](unit/test_lit.py) (×18) | `skipif(not LIT_AVAILABLE)` | `pip install lit-nlp` (`lit` group) |
-| [`unit/components/test_attention.py`:48](unit/components/test_attention.py) | `skipif(not is_bitsandbytes_available())` | `uv sync --group quantization` |
+| [`unit/components/test_attention.py`:130](unit/components/test_attention.py) | `skipif(not is_bitsandbytes_available())` | `uv sync --group quantization` |
 | [`unit/test_weight_processing.py`:477](unit/test_weight_processing.py) | same | same |
 | [`unit/factories/test_mlp_factory.py`:40](unit/factories/test_mlp_factory.py) | same | same |
 
@@ -25,7 +25,7 @@ Rule ([AGENTS.md §10](../AGENTS.md#10-hard-rules)): **never add `xfail` / `skip
 |---|---|---|
 | [`unit/test_next_sentence_prediction.py`:131](unit/test_next_sentence_prediction.py) | `skipif(not cuda)` | Any CUDA |
 | [`unit/model_bridge/compatibility/test_next_sentence_prediction.py`:95](unit/model_bridge/compatibility/test_next_sentence_prediction.py) | `skipif(not cuda)` | Any CUDA |
-| [`unit/components/test_attention.py`:83](unit/components/test_attention.py) | `skipif(not cuda)` (half/bfloat16) | Any CUDA |
+| [`unit/components/test_attention.py`:165](unit/components/test_attention.py) | `skipif(not cuda)` (half/bfloat16) | Any CUDA |
 | [`acceptance/test_hooked_encoder.py`:227](acceptance/test_hooked_encoder.py) | `skipif(not cuda)` | Any CUDA |
 | [`acceptance/test_hooked_encoder_decoder.py`:421](acceptance/test_hooked_encoder_decoder.py) | `skipif(not cuda)` | Any CUDA |
 | [`acceptance/test_multi_gpu.py`:91,105](acceptance/test_multi_gpu.py) | `skipif(device_count < 2)` | 2+ CUDA |

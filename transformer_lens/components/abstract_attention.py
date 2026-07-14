@@ -445,20 +445,15 @@ class AbstractAttention(ABC, nn.Module):
             else simple_attn_linear
         )
         if self.cfg.load_in_4bit:
-            W_Q_4bit = cast(Params4bit, self.W_Q)
-            q = self.hook_q(self._project_4bit_qkv(query_input, W_Q_4bit, self.b_Q))
+            q = self.hook_q(self._project_4bit_qkv(query_input, self.W_Q, self.b_Q))
         else:
             q = self.hook_q(attn_fn(query_input, self.W_Q, self.b_Q))
         if self.cfg.load_in_4bit:
-            if not isinstance(self.W_K, Params4bit):
-                raise ValueError("W_K must be a Params4bit object if load_in_4bit is True")
             k = self.hook_k(self._project_4bit_qkv(key_input, self.W_K, self.b_K))
         else:
             k = self.hook_k(attn_fn(key_input, self.W_K, self.b_K))
 
         if self.cfg.load_in_4bit:
-            if not isinstance(self.W_V, Params4bit):
-                raise ValueError("W_V must be a Params4bit object if load_in_4bit is True")
             v = self.hook_v(self._project_4bit_qkv(value_input, self.W_V, self.b_V))
         else:
             v = self.hook_v(attn_fn(value_input, self.W_V, self.b_V))
@@ -477,18 +472,25 @@ class AbstractAttention(ABC, nn.Module):
             Float[torch.Tensor, "batch pos d_model"],
             Float[torch.Tensor, "batch pos head_index d_model"],
         ],
-        weight: "Params4bit",
+        weight: Union[nn.Parameter, "Params4bit"],
         bias: Float[torch.Tensor, "head_index d_head"],
     ) -> Float[torch.Tensor, "batch pos head_index d_head"]:
-        projected = bnb.matmul_4bit(
-            input,
-            weight.t(),
-            bias=None,
-            quant_state=weight.quant_state,
-        )
+        """Project Q/K/V inputs with a 4-bit weight.
+
+        Split inputs dequantize once and reuse the head-wise projection path.
+        """
+        if not isinstance(weight, Params4bit):
+            raise ValueError("QKV weights must be Params4bit objects if load_in_4bit is True")
+
         n_heads, d_head = bias.shape
 
         if input.ndim == 3:
+            projected = bnb.matmul_4bit(
+                input,
+                weight.t(),
+                bias=None,
+                quant_state=weight.quant_state,
+            )
             return projected.reshape(input.shape[0], input.shape[1], n_heads, d_head) + bias
 
         if input.ndim == 4:
@@ -497,10 +499,16 @@ class AbstractAttention(ABC, nn.Module):
                     "4-bit split QKV inputs must have one input slice per attention head; "
                     f"got {input.shape[2]} input heads for {n_heads} projection heads."
                 )
-            split_projected = projected.reshape(
-                input.shape[0], input.shape[1], input.shape[2], n_heads, d_head
+            dequantized_weight = bnb.functional.dequantize_4bit(
+                weight.data, quant_state=weight.quant_state
             )
-            return split_projected.diagonal(dim1=2, dim2=3).movedim(-1, 2) + bias
+            split_weight = einops.rearrange(
+                dequantized_weight,
+                "(head_index d_head) d_model -> head_index d_model d_head",
+                head_index=n_heads,
+                d_head=d_head,
+            )
+            return complex_attn_linear(input, split_weight, bias)
 
         raise ValueError(
             "4-bit QKV projection input must have shape [batch, pos, d_model] or "

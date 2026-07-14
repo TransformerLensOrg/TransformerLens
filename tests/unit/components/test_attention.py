@@ -14,23 +14,33 @@ if is_bitsandbytes_available():
 
 
 class FakeParams4bit:
-    def __init__(self, projection: torch.Tensor):
-        self.projection = projection
+    def __init__(self, dequantized: torch.Tensor):
+        self.data = dequantized
         self.quant_state = object()
 
     def t(self):
-        return self.projection
+        return self.data.t()
+
+
+class FakeBnbFunctional:
+    @staticmethod
+    def dequantize_4bit(input, quant_state):
+        return input
 
 
 class FakeBnb:
+    functional = FakeBnbFunctional()
+
     @staticmethod
     def matmul_4bit(input, weight, bias, quant_state):
+        if input.ndim != 3:
+            raise AssertionError("split QKV projection should dequantize once")
         return torch.matmul(input, weight)
 
 
 def fake_4bit_weight(weight: torch.Tensor) -> FakeParams4bit:
-    projection = einops.rearrange(weight, "head d_model d_head -> d_model (head d_head)")
-    return FakeParams4bit(projection)
+    dequantized = einops.rearrange(weight, "head d_model d_head -> (head d_head) d_model")
+    return FakeParams4bit(dequantized)
 
 
 def test_attention_hooked_transformer_config():
