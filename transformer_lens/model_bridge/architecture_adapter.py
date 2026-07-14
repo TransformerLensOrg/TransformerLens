@@ -48,6 +48,14 @@ class ArchitectureAdapter:
     # Encoder-only models (e.g. BERT, HuBERT) should set this to False.
     supports_generation: bool = True
 
+    # Whether run_with_cache should request attention tensors from Hugging Face.
+    # Set False when an adapter reconstructs those tensors but the HF wrapper
+    # rejects output_attentions=True.
+    supports_hf_output_attentions: bool = True
+
+    # Whether Bridge's shifted next-token cross-entropy is meaningful.
+    supports_causal_loss: bool = True
+
     # Optional libraries this adapter needs at load time (e.g. the multimodal group's timm).
     # Checked at construction so a missing one raises a clear error, not a deep HF failure.
     required_libraries: list[str] = []
@@ -453,22 +461,16 @@ class ArchitectureAdapter:
                     subcomponent_bridge = bridge_component.submodules[subcomponent_name]
                     if len(parts) > 3:
                         current_bridge = subcomponent_bridge
-                        subcomponent_name_str = subcomponent_bridge.name
-                        if subcomponent_name_str is None:
-                            raise ValueError(
-                                f"Subcomponent {subcomponent_name} must have a name for path translation"
-                            )
-                        remote_path_parts = [items_path, item_index, subcomponent_name_str]
+                        remote_path_parts = [items_path, item_index]
+                        if subcomponent_bridge.name is not None:
+                            remote_path_parts.append(subcomponent_bridge.name)
                         for i in range(3, len(parts)):
                             deeper_component_name = parts[i]
                             if deeper_component_name in current_bridge.submodules:
                                 current_bridge = current_bridge.submodules[deeper_component_name]
                                 deeper_name = current_bridge.name
-                                if deeper_name is None:
-                                    raise ValueError(
-                                        f"Component {deeper_component_name} must have a name for path translation"
-                                    )
-                                remote_path_parts.append(deeper_name)
+                                if deeper_name is not None:
+                                    remote_path_parts.append(deeper_name)
                             else:
                                 raise ValueError(
                                     f"Component {deeper_component_name} not found in {'.'.join(parts[:i])} components"
@@ -483,7 +485,7 @@ class ArchitectureAdapter:
                         subcomponent_name_str = subcomponent_bridge.name
                         if subcomponent_name_str is None:
                             raise ValueError(
-                                f"Subcomponent {subcomponent_name} must have a name for path translation"  # type: ignore[assignment]
+                                f"Synthetic component {subcomponent_name} has no remote path"
                             )
                         remote_path = f"{items_path}.{item_index}.{subcomponent_name_str}"
                         if param_suffix:

@@ -32,6 +32,7 @@ ARCHITECTURE_DESCRIPTIONS: dict[str, str] = {
     "GPTNeoXForCausalLM": "EleutherAI's GPT-NeoX architecture used in Pythia models",
     "GPTJForCausalLM": "EleutherAI's GPT-J 6B parameter model",
     "LlamaForCausalLM": "Meta's LLaMA architecture, basis for many open models",
+    "LLaDAModelLM": "GSAI's bidirectional masked-diffusion language model (single-forward support)",
     "Lfm2MoeForCausalLM": "LiquidAI's LFM2 hybrid convolution/attention Mixture of Experts model",
     "MistralForCausalLM": "Mistral AI's efficient 7B parameter model with sliding window attention",
     "MixtralForCausalLM": "Mistral AI's Mixture of Experts model",
