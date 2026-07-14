@@ -62,8 +62,10 @@ logger = logging.getLogger(__name__)
 # These are not in the legacy NEED_REMOTE_CODE_MODELS tuple (loading_from_pretrained.py).
 _BRIDGE_REMOTE_CODE_PREFIXES: tuple[str, ...] = (
     "baichuan-inc/",  # BaichuanForCausalLM — ships own modeling_baichuan.py
+    "ByteDance/Ouro-",  # OuroForCausalLM — ships own modeling_ouro.py
     "internlm/",  # InternLM2ForCausalLM — ships own modeling_internlm2.py
     "GSAI-ML/LLaDA",  # LLaDAModelLM — ships configuration_llada.py/modeling_llada.py
+    "kuleshov-group/",  # BD3LM — ships own custom modeling_d_dit.py
 )
 
 # Data directory for registry files
@@ -115,7 +117,8 @@ def _phases_to_run(arch: str, phases: list[int]) -> list[int]:
 
     An adapter's ``applicable_phases`` declares which text phases (1-4) it covers. Phases 7/8
     are gated separately by ``is_multimodal``/``is_audio`` in the benchmark, so they are never
-    filtered out here. An empty result means the architecture is skipped (e.g. SSMs).
+    filtered out here. An empty result means none of the requested phases apply to this
+    architecture (SSM / recurrent families run all four).
     """
     from transformer_lens.factories.architecture_adapter_factory import (
         SUPPORTED_ARCHITECTURES,
@@ -838,11 +841,9 @@ def verify_models(
                 _skip_model(model_id, arch, note, progress, quiet)
                 continue
 
-        # Step 0b: Check adapter-level phase applicability. Architectures
-        # with applicable_phases=[] (e.g. SSMs) skip verify_models entirely
-        # because the benchmark suite has transformer-shaped assumptions that
-        # would need a dedicated refactor to cover them. Verification for
-        # these architectures lives in the integration test suite.
+        # Step 0b: Check adapter-level phase applicability. applicable_phases=[]
+        # means no phase applies (a genuinely unsupported architecture — rare);
+        # SSM / recurrent families run the full [1, 2, 3, 4].
         from transformer_lens.factories.architecture_adapter_factory import (
             SUPPORTED_ARCHITECTURES,
         )

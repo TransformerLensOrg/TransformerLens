@@ -50,6 +50,7 @@ from transformer_lens.model_bridge.generalized_components.block import (
     VARIANT_SUBMODULE_NAMES,
 )
 from transformer_lens.model_bridge.get_params_util import get_bridge_params
+from transformer_lens.utilities.activation_functions import softcap_enabled
 from transformer_lens.utilities.aliases import resolve_alias
 from transformer_lens.utilities.devices import move_to_and_update_config
 from transformer_lens.utilities.lm_utils import lm_cross_entropy_loss
@@ -219,7 +220,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         hf_model: Optional[Any] = None,
         device_map: Optional[Union[str, Dict[str, Union[str, int]]]] = None,
         n_devices: Optional[int] = None,
-        max_memory: Optional[Dict[Union[str, int], str]] = None,
+        max_memory: Optional[Dict[Union[str, int], Union[str, int]]] = None,
         n_ctx: Optional[int] = None,
         revision: Optional[str] = None,
         checkpoint_index: Optional[int] = None,
@@ -920,7 +921,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             print(f"Processing weights for {self.cfg.model_name}...")
 
         # Soft capping (tanh) is not translation-invariant; centering would change output.
-        if center_unembed and getattr(self.cfg, "output_logits_soft_cap", -1.0) > 0.0:
+        if center_unembed and softcap_enabled(getattr(self.cfg, "output_logits_soft_cap", None)):
             import logging
 
             logging.warning(

@@ -703,13 +703,8 @@ class ArchitectureAdapter:
                     if hasattr(blocks_component, "submodules"):
                         for tl_subname, subcomponent in blocks_component.submodules.items():
                             hf_subpath = subcomponent.name
-                            if hf_subpath is not None and subkey.startswith(hf_subpath + "."):
-                                param = subkey[len(hf_subpath) + 1 :]
-                                return f"blocks.{layer_idx}.{tl_subname}.{param}"
-                            # SymbolicBridge (name=None): keys use bridge names directly.
-                            if hf_subpath is None and subkey.startswith(tl_subname + "."):
-                                param = subkey[len(tl_subname) + 1 :]
-                                return f"blocks.{layer_idx}.{tl_subname}.{param}"
+                            # Nested HF paths extend their parent path, so prefer the
+                            # more specific match before falling back to the parent.
                             if hasattr(subcomponent, "submodules"):
                                 for tl_nested_name, nested_comp in subcomponent.submodules.items():
                                     if hf_subpath is not None:
@@ -724,6 +719,13 @@ class ArchitectureAdapter:
                                     ):
                                         param = subkey[len(hf_nested_path) + 1 :]
                                         return f"blocks.{layer_idx}.{tl_subname}.{tl_nested_name}.{param}"
+                            if hf_subpath is not None and subkey.startswith(hf_subpath + "."):
+                                param = subkey[len(hf_subpath) + 1 :]
+                                return f"blocks.{layer_idx}.{tl_subname}.{param}"
+                            # SymbolicBridge (name=None): keys use bridge names directly.
+                            if hf_subpath is None and subkey.startswith(tl_subname + "."):
+                                param = subkey[len(tl_subname) + 1 :]
+                                return f"blocks.{layer_idx}.{tl_subname}.{param}"
         return hf_key
 
     def prepare_loading(self, model_name: str, model_kwargs: dict) -> None:
