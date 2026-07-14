@@ -20,7 +20,7 @@ from typing import Any, Dict, List, Optional
 
 import torch
 
-from .intervention_specs import SUPPORTED_OPS
+from .intervention_specs import SUPPORTED_OPS, validate_spec
 
 
 class TLWorkerExtension:
@@ -69,6 +69,9 @@ class TLWorkerExtension:
         for hook_name, spec in specs.items():
             if hook_name not in scale_bufs:
                 raise KeyError(f"Unknown hook for intervention: {hook_name!r}")
+            # Authoritative validation: producers that bypass VLLMDriver (the Inspect
+            # vLLM provider pushes specs over this same RPC) get identical rejection.
+            validate_spec(hook_name, spec, width=scale_bufs[hook_name].shape[-1])
             _apply_intervention(scale_bufs[hook_name], bias_bufs[hook_name], spec)
 
     def tl_get_param(self, dotted_name: str) -> Optional[torch.Tensor]:
@@ -129,12 +132,8 @@ class TLWorkerExtension:
 
     def tl_set_batched_interventions(self, specs: Dict[str, Dict[str, Any]]) -> None:
         """Store the global spec dict the eager hook reads; ``{}`` clears."""
-        for spec in specs.values():
-            op = spec.get("op")
-            if op not in SUPPORTED_OPS:
-                raise ValueError(
-                    f"Unsupported intervention op: {op!r}. Supported: {sorted(SUPPORTED_OPS)}"
-                )
+        for hook_name, spec in specs.items():
+            validate_spec(hook_name, spec)
         self._tl_intervention_specs = dict(specs)
 
     def tl_remove_hooks(self) -> None:

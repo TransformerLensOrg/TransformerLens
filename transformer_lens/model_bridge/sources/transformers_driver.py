@@ -37,9 +37,8 @@ class TransformersDriver(DriverBase):
         return_logits: bool = True,
         **kwargs: Any,
     ) -> ForwardResult:
-        # This driver speaks the module-replacement dialect: hooks and
-        # interventions run via the bridge's HookPoint system during the real
-        # torch forward, so silently ignoring these args would be a lie.
+        # Module-replacement dialect: these args are served by the bridge's
+        # HookPoints, not here — silently ignoring them would be a lie.
         if capture:
             raise NotImplementedError(
                 "TransformersDriver.forward does not serve capture=: on the HF "

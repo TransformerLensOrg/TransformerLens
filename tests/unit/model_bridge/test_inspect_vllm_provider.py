@@ -707,8 +707,12 @@ class TestBootInspectVLLMDtype:
             "ArchitectureAdapterFactory",
             SimpleNamespace(select_architecture_adapter=lambda c: adapter),
         )
-        monkeypatch.setattr(source_mod, "setup_tokenizer", lambda tok, **kw: tok)
-        monkeypatch.setattr(source_mod, "detect_tokenizer_bos_eos", lambda tok: (True, False))
+
+        def _fake_configure_tokenizer(tok, cfg_):
+            cfg_.tokenizer_prepends_bos, cfg_.tokenizer_appends_eos = (True, False)
+            return tok
+
+        monkeypatch.setattr(source_mod, "configure_tokenizer", _fake_configure_tokenizer)
 
         bridge = source_mod.boot_inspect(
             "fake/model",

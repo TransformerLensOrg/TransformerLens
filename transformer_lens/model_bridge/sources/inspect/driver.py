@@ -163,6 +163,9 @@ class InspectDriver(DriverBase):
         """A private loop on a daemon thread — works even when the caller is already
         inside a running loop (Jupyter), unlike asyncio.run(). Locked: unlocked
         check-then-create would leak loops under concurrent first calls."""
+        loop = self._loop
+        if loop is not None:  # GIL-safe fast path; the lock only guards create/abandon
+            return loop
         with self._loop_lock:
             if self._loop is None:
                 self._loop = asyncio.new_event_loop()

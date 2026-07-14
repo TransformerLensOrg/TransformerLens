@@ -94,15 +94,16 @@ def mocked_boot(monkeypatch):
         "transformer_lens.model_bridge.sources.vllm.source.plugin.register",
         lambda: None,
     )
+
     # Real tokenizer setup/probing can't run on a MagicMock tokenizer.
+    def _fake_configure_tokenizer(tokenizer, cfg_):
+        cfg_.tokenizer_prepends_bos, cfg_.tokenizer_appends_eos = (False, True)
+        return tokenizer
+
+    configure_tok = MagicMock(side_effect=_fake_configure_tokenizer)
     monkeypatch.setattr(
-        "transformer_lens.model_bridge.sources.vllm.source.setup_tokenizer",
-        lambda tokenizer, default_padding_side=None: tokenizer,
-    )
-    detect_bos = MagicMock(return_value=(False, True))
-    monkeypatch.setattr(
-        "transformer_lens.model_bridge.sources.vllm.source.detect_tokenizer_bos_eos",
-        detect_bos,
+        "transformer_lens.model_bridge.sources.vllm.source.configure_tokenizer",
+        configure_tok,
     )
 
     yield {
@@ -111,7 +112,7 @@ def mocked_boot(monkeypatch):
         "vllm_llm": fake_vllm.LLM,
         "hf_config": hf_config,
         "cfg": cfg,
-        "detect_bos": detect_bos,
+        "configure_tok": configure_tok,
     }
 
     plugin._config.clear()
@@ -212,7 +213,7 @@ def test_bos_detection_written_to_config(mocked_boot):
     default (prepends_bos=True) is wrong for Qwen-family tokenizers and shifts
     every activation by one position."""
     bridge = boot_vllm("any-model")
-    assert mocked_boot["detect_bos"].called
+    assert mocked_boot["configure_tok"].called
     assert mocked_boot["cfg"].tokenizer_prepends_bos is False
     assert mocked_boot["cfg"].tokenizer_appends_eos is True
     assert bridge is not None
@@ -221,7 +222,7 @@ def test_bos_detection_written_to_config(mocked_boot):
 def test_logit_reconstruction_probed_at_boot(mocked_boot):
     """The unembedding is fetched once at boot, not re-cloned per forward."""
     bridge = boot_vllm("any-model")
-    assert bridge._driver._recon_available is True
+    assert bridge._driver._unembed_probed is True
     assert bridge._driver._unembed is not None
 
 

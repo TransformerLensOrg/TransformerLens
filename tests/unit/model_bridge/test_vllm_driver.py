@@ -689,7 +689,7 @@ class TestVLLMDriverLogitReconstruction:
         driver = _driver(captures={})
         driver._llm.collective_rpc = MagicMock(return_value=[None])
         assert driver.probe_logit_reconstruction() is False
-        assert driver._recon_available is False
+        assert driver._unembed is None and driver._unembed_probed
         assert driver.provides_sequence_logits is False
 
     def test_probe_available_caches_weight(self):
@@ -699,12 +699,16 @@ class TestVLLMDriverLogitReconstruction:
         assert driver.provides_sequence_logits is True
         weight32, _bias = driver._unembed
         assert weight32.dtype == torch.float32
+        # Idempotent: a second probe answers from the cache, no extra RPC.
+        calls_after_first = driver._llm.collective_rpc.call_count
+        assert driver.probe_logit_reconstruction() is True
+        assert driver._llm.collective_rpc.call_count == calls_after_first
 
     def test_reconstruct_uses_cached_weight_without_rpc(self):
         """After the probe, per-forward reconstruction must not re-fetch the weight."""
         driver = _driver(captures={})
         driver._unembed = (torch.eye(4, dtype=torch.float32).repeat(4, 1), None)
-        driver._recon_available = True
+        driver._unembed_probed = True
         driver._llm.collective_rpc = MagicMock(
             side_effect=AssertionError("reconstruction must not RPC")
         )
@@ -719,14 +723,14 @@ class TestVLLMDriverLogitReconstruction:
         weight = torch.zeros(24, 4, dtype=torch.float32)
         weight[:16] = -1.0  # real vocab rows: all-negative logits
         driver._unembed = (weight, None)
-        driver._recon_available = True
+        driver._unembed_probed = True
         out = driver._reconstruct_logits(torch.ones(3, 4))
         assert out.shape == (3, 16)
         assert int(out[0].argmax()) < 16
 
     def test_reconstruct_returns_none_when_probed_unavailable(self):
         driver = _driver(captures={})
-        driver._recon_available = False
+        driver._unembed_probed = True  # probed, nothing found
         assert driver._reconstruct_logits(torch.ones(3, 4)) is None
 
 
@@ -735,20 +739,20 @@ class TestVLLMDriverLnFinalUnfold:
 
     def test_unfold_divides_by_weight(self):
         driver = _driver(captures={})
-        driver._lnf_weight = torch.full((4,), 2.0)
+        driver._llm.collective_rpc = MagicMock(return_value=[torch.full((4,), 2.0)])
         out = driver._unfold_ln_final(torch.ones(1, 3, 4))
         assert torch.allclose(out, torch.full((1, 3, 4), 0.5))
 
     def test_unfold_gemma_uses_one_plus_weight(self):
         driver = _driver(captures={})
         driver.architecture = "Gemma2ForCausalLM"
-        driver._lnf_weight = torch.full((4,), 1.0)
+        driver._llm.collective_rpc = MagicMock(return_value=[torch.full((4,), 1.0)])
         out = driver._unfold_ln_final(torch.ones(1, 3, 4))
         assert torch.allclose(out, torch.full((1, 3, 4), 0.5))
 
     def test_unfold_near_zero_weight_guarded(self):
         driver = _driver(captures={})
-        driver._lnf_weight = torch.zeros(4)
+        driver._llm.collective_rpc = MagicMock(return_value=[torch.zeros(4)])
         out = driver._unfold_ln_final(torch.ones(1, 3, 4))
         assert torch.isfinite(out).all()
 
@@ -759,6 +763,10 @@ class TestVLLMDriverLnFinalUnfold:
         with pytest.warns(UserWarning, match="POST-weight"):
             out = driver._unfold_ln_final(t)
         assert torch.equal(out, t)
+        # Negative outcome cached: no per-forward RPC retry, no repeat warning.
+        out2 = driver._unfold_ln_final(t)
+        assert torch.equal(out2, t)
+        assert driver._llm.collective_rpc.call_count == 1
 
     def test_unfold_caches_fetched_weight(self):
         driver = _driver(captures={})
@@ -810,9 +818,9 @@ class TestVLLMDriverCloseRefcount:
         self._patch_distributed(monkeypatch)
         driver = _driver(captures={})
         driver._unembed = (torch.ones(16, 4), None)
-        driver._lnf_weight = torch.ones(4)
+        driver._lnf_inv_denom = torch.ones(4)
         driver.close()
-        assert driver._unembed is None and driver._lnf_weight is None
+        assert driver._unembed is None and driver._lnf_inv_denom is None
 
 
 class TestBatchedForwardPaddingSemantics:
@@ -832,7 +840,7 @@ class TestBatchedForwardPaddingSemantics:
         }
         driver = _batched_driver(outputs=outputs, captures_by_req=captures_by_req)
         driver._unembed = (torch.ones(16, 4, dtype=torch.float32), None)
-        driver._recon_available = True
+        driver._unembed_probed = True
         result = driver.forward([[1, 2, 3], [4, 5]])
         assert result.logits.shape == (2, 3, 16)
         assert torch.isfinite(result.logits[0]).all()  # 3 real rows

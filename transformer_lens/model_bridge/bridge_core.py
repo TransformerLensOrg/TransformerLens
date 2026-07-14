@@ -300,16 +300,7 @@ class BridgeCore:
             return logits
         if return_type is None:
             return None
-        if return_type in ("loss", "both") and not getattr(
-            self._driver, "provides_sequence_logits", True
-        ):
-            # Final-position-only logits ⇒ loss over the earlier positions is nan.
-            raise NotImplementedError(
-                f"return_type={return_type!r} is unsupported on this driver: it "
-                "provides next-token logits for the final position only, so loss "
-                "over earlier positions is undefined. Use return_type='logits' "
-                "and read logits[..., -1, :]."
-            )
+        self._check_loss_supported(return_type)
         if return_type == "loss":
             if is_audio_model:
                 raise ValueError(
@@ -359,6 +350,18 @@ class BridgeCore:
                 return preds
         raise ValueError(f"Invalid return_type: {return_type}")
 
+    def _check_loss_supported(self, return_type: Optional[str]) -> None:
+        """Loss needs full-sequence logits; final-position-only drivers would NaN."""
+        if return_type in ("loss", "both") and not getattr(
+            self._driver, "provides_sequence_logits", True
+        ):
+            raise NotImplementedError(
+                f"return_type={return_type!r} is unsupported on this driver: it "
+                "provides next-token logits for the final position only, so loss "
+                "over earlier positions is undefined. Use return_type='logits' "
+                "and read logits[..., -1, :]."
+            )
+
     # ---- hook lookup / mutation ----
 
     def _check_hook_fireable(self, *names: str) -> None:
@@ -371,6 +374,19 @@ class BridgeCore:
                     f"this backend cannot fire {name!r}; use boot_transformers() "
                     "for full hook coverage."
                 )
+
+    def _resolve_hook_point(
+        self, name: str, aliases: Dict[str, str], hook_dict: Dict[str, HookPoint]
+    ) -> Tuple[str, HookPoint]:
+        """Resolve an (aliased) string hook name to its HookPoint, enforcing
+        fireability. A name that resolves to nothing raises — a typo'd name must
+        not run unhooked."""
+        canonical = aliases.get(name, name)
+        self._check_hook_fireable(name, canonical)
+        hook_point = hook_dict.get(canonical)
+        if hook_point is None:
+            raise KeyError(f"Hook name {name!r} does not exist on this model.")
+        return canonical, hook_point
 
     def get_hook_point(self, hook_name: str) -> Optional[HookPoint]:
         """Get a hook point by name from the bridge's hook system."""
@@ -417,13 +433,20 @@ class BridgeCore:
                     hook_point.add_hook(hook_fn, dir=dir, is_permanent=is_permanent)
             return
 
+        # Fast path: canonical registry names skip the alias-map build (hook_dict +
+        # map construction cost ~ms on large models; add_hook is often called per layer).
+        registry_hp = self._hook_registry.get(name)
+        if registry_hp is not None:
+            self._check_hook_fireable(name)
+            registry_hp.add_hook(hook_fn, dir=dir, is_permanent=is_permanent)
+            return
         # Same alias resolution run_with_hooks uses, so HT-style names work here too.
         canonical = build_alias_to_canonical_map(self.hook_dict).get(name, name)
-        self._check_hook_fireable(name, canonical)
-        # Registry-first: works for any bridge (RemoteBridge has no component tree).
-        registry_hp = self._hook_registry.get(name)
-        if registry_hp is None:
-            registry_hp = self._hook_registry.get(canonical)
+        if canonical != name:
+            self._check_hook_fireable(name, canonical)
+        else:
+            self._check_hook_fireable(name)
+        registry_hp = self._hook_registry.get(canonical)
         if registry_hp is not None:
             registry_hp.add_hook(hook_fn, dir=dir, is_permanent=is_permanent)
             return
@@ -515,25 +538,15 @@ class BridgeCore:
 
             def apply_hooks(hook_list: List[Tuple[Any, Callable]], is_fwd: bool) -> None:
                 direction: Literal["fwd", "bwd"] = "fwd" if is_fwd else "bwd"
-                aliases = build_alias_to_canonical_map(self.hook_dict)
+                hook_dict = self.hook_dict
+                aliases = build_alias_to_canonical_map(hook_dict)
                 for hook_name_or_filter, hook_fn in hook_list:
                     if isinstance(hook_name_or_filter, str):
-                        hook_dict = self.hook_dict
-                        actual_hook_name = hook_name_or_filter
-                        if hook_name_or_filter in aliases:
-                            actual_hook_name = aliases[hook_name_or_filter]
-                        self._check_hook_fireable(hook_name_or_filter, actual_hook_name)
-                        if actual_hook_name in hook_dict:
-                            add_hook_to_point(
-                                hook_dict[actual_hook_name], hook_fn, actual_hook_name, direction
-                            )
-                        else:
-                            # Silent skip here meant a typo'd name ran unhooked.
-                            raise KeyError(
-                                f"Hook name {hook_name_or_filter!r} does not exist on this model."
-                            )
+                        actual_hook_name, hook_point = self._resolve_hook_point(
+                            hook_name_or_filter, aliases, hook_dict
+                        )
+                        add_hook_to_point(hook_point, hook_fn, actual_hook_name, direction)
                     else:
-                        hook_dict = self.hook_dict
                         seen_hooks = set()
                         for n, hook_point in hook_dict.items():
                             if hook_name_or_filter(n):
@@ -576,7 +589,7 @@ class BridgeCore:
         the batch dim around hook callbacks (batch_size==1 only).
         """
         if "names_filter" in kwargs:
-            # Was accepted-but-never-read; fail loud instead of absorbing it.
+            # **kwargs would silently absorb it; fail loud.
             raise TypeError(
                 "run_with_hooks() got an unexpected keyword argument 'names_filter'; "
                 "use run_with_cache(names_filter=...) to scope caching."
@@ -630,7 +643,8 @@ class BridgeCore:
             hook_list: List[Tuple[Union[str, Callable], Callable]], is_fwd: bool
         ) -> None:
             direction: Literal["fwd", "bwd"] = "fwd" if is_fwd else "bwd"
-            aliases = build_alias_to_canonical_map(self.hook_dict)
+            hook_dict = self.hook_dict
+            aliases = build_alias_to_canonical_map(hook_dict)
             for hook_name_or_filter, hook_fn in hook_list:
                 if remove_batch_dim:
                     original_hook_fn = hook_fn
@@ -648,22 +662,11 @@ class BridgeCore:
 
                     hook_fn = wrapped_hook_fn
                 if isinstance(hook_name_or_filter, str):
-                    hook_dict = self.hook_dict
-                    actual_hook_name = hook_name_or_filter
-                    if hook_name_or_filter in aliases:
-                        actual_hook_name = aliases[hook_name_or_filter]
-                    self._check_hook_fireable(hook_name_or_filter, actual_hook_name)
-                    if actual_hook_name in hook_dict:
-                        add_hook_to_point(
-                            hook_dict[actual_hook_name], hook_fn, actual_hook_name, direction
-                        )
-                    else:
-                        # Silent skip here meant a typo'd name ran unhooked.
-                        raise KeyError(
-                            f"Hook name {hook_name_or_filter!r} does not exist on this model."
-                        )
+                    actual_hook_name, hook_point = self._resolve_hook_point(
+                        hook_name_or_filter, aliases, hook_dict
+                    )
+                    add_hook_to_point(hook_point, hook_fn, actual_hook_name, direction)
                 else:
-                    hook_dict = self.hook_dict
                     seen_hooks: set = set()
                     for n, hook_point in hook_dict.items():
                         if hook_name_or_filter(n):
@@ -805,8 +808,7 @@ class BridgeCore:
                         except (IndexError, ValueError):
                             pass
                 hooks.append((hook, hook_name))
-        # Explicit string/list filters matching nothing would return (logits, {})
-        # with no signal — the classic silent-empty-cache failure on RemoteBridge.
+        # Explicit string/list filters matching nothing must not return (logits, {}) silently.
         if not matched_any and names_filter and isinstance(names_filter, (str, list)):
             raise KeyError(
                 f"names_filter {names_filter!r} matched no hook points on this model; "

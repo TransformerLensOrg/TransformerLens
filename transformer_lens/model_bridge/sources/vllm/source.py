@@ -15,9 +15,8 @@ from transformer_lens.factories.architecture_adapter_factory import (
 from transformer_lens.model_bridge.remote_bridge import RemoteBridge
 from transformer_lens.model_bridge.sources._bridge_builder import (
     build_bridge_config_from_hf,
-    detect_tokenizer_bos_eos,
+    configure_tokenizer,
 )
-from transformer_lens.model_bridge.sources._hf_format import setup_tokenizer
 from transformer_lens.utilities.hf_utils import get_hf_token
 
 from . import plugin
@@ -204,16 +203,8 @@ def boot_vllm(
     bridge_config = build_bridge_config_from_hf(hf_config, architecture, model_name, resolved_dtype)
     adapter = ArchitectureAdapterFactory.select_architecture_adapter(bridge_config)
 
-    # Match boot_transformers' tokenizer setup so to_tokens(str) is token-identical —
-    # without the probe, non-BOS-prepending tokenizers (Qwen family) inherit the config
-    # default tokenizer_prepends_bos=True and every activation is position-shifted.
-    tokenizer = setup_tokenizer(
-        tokenizer, default_padding_side=getattr(adapter.cfg, "default_padding_side", None)
-    )
-    (
-        adapter.cfg.tokenizer_prepends_bos,
-        adapter.cfg.tokenizer_appends_eos,
-    ) = detect_tokenizer_bos_eos(tokenizer)
+    # Match boot_transformers' tokenizer setup so to_tokens(str) is token-identical.
+    tokenizer = configure_tokenizer(tokenizer, adapter.cfg)
 
     driver = VLLMDriver(
         llm=llm,

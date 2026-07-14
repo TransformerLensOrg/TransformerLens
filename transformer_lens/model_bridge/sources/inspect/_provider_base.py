@@ -118,6 +118,19 @@ def _require_served(kind: str, served: frozenset[str], note: str, context: str) 
         )
 
 
+def _require_interveneable(kind: str, served: frozenset[str], note: str, context: str) -> None:
+    """``_require_served`` plus the capture-only gate — shared by every provider's
+    intervention entry point so gated/capture-only kinds fail identically."""
+    from .hooks import INTERVENEABLE_KINDS
+
+    _require_served(kind, served, note, context)
+    if kind not in INTERVENEABLE_KINDS:
+        raise ValueError(
+            f"{context}: kind {kind!r} is capture-only "
+            f"(interveneable: {sorted(INTERVENEABLE_KINDS)})."
+        )
+
+
 class _InspectModelAPIBase(ModelAPI):
     """Shared Inspect ModelAPI scaffolding for ``tl_bridge``-style providers.
 

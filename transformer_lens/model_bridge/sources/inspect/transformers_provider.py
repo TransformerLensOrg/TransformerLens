@@ -33,6 +33,7 @@ from . import hooks, wire
 from ._provider_base import (
     _InspectModelAPIBase,
     _parse_tool_calls,
+    _require_interveneable,
     _require_served,
     _warn_unsupported_config,
 )
@@ -131,17 +132,13 @@ class TransformerLensTransformersModelAPI(_InspectModelAPIBase):
             _, _, kind = key.partition(":")
             _require_served(kind, self._kinds, self._capability_note, f"capture {key!r}")
         interventions: Mapping[str, Any] = extra_args.get("interventions", {})
-        # The driver validates before sending, but this direct interface (extra_args) is
-        # documented — validate here too so a gated/capture-only kind fails loud instead
-        # of silently no-op'ing when no hook installs for it.
+        # extra_args is a documented surface: gated/capture-only kinds must fail here,
+        # not silently no-op when no hook installs for them.
         for key in interventions:
             _, _, kind = key.partition(":")
-            _require_served(kind, self._kinds, self._capability_note, f"intervention {key!r}")
-            if kind not in hooks.INTERVENEABLE_KINDS:
-                raise ValueError(
-                    f"intervention {key!r}: kind {kind!r} is capture-only "
-                    f"(interveneable: {sorted(hooks.INTERVENEABLE_KINDS)})."
-                )
+            _require_interveneable(
+                kind, self._kinds, self._capability_note, f"intervention {key!r}"
+            )
         want_logits = bool(extra_args.get("return_logits", True))
 
         capture, intervene = _plan(capture_keys, interventions)

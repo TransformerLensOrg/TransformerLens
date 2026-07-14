@@ -161,8 +161,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
 
     # boot_transformers / list_supported_models / check_model_support are
     # attached by sources.transformers.__init__ (setattr on this class) so the
-    # source package owns its own boot entry point. Annotation-only declaration:
-    # the runtime attribute arrives via that setattr on package import.
+    # source package owns its own boot entry point.
     boot_transformers: ClassVar[Callable[..., "TransformerBridge"]]
 
     @property
