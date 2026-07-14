@@ -48,6 +48,14 @@ class ArchitectureAdapter:
     # Encoder-only models (e.g. BERT, HuBERT) should set this to False.
     supports_generation: bool = True
 
+    # Whether run_with_cache should request attention tensors from Hugging Face.
+    # Set False when an adapter reconstructs those tensors but the HF wrapper
+    # rejects output_attentions=True.
+    supports_hf_output_attentions: bool = True
+
+    # Whether Bridge's shifted next-token cross-entropy is meaningful.
+    supports_causal_loss: bool = True
+
     # Optional libraries this adapter needs at load time (e.g. the multimodal group's timm).
     # Checked at construction so a missing one raises a clear error, not a deep HF failure.
     required_libraries: list[str] = []
@@ -453,22 +461,16 @@ class ArchitectureAdapter:
                     subcomponent_bridge = bridge_component.submodules[subcomponent_name]
                     if len(parts) > 3:
                         current_bridge = subcomponent_bridge
-                        subcomponent_name_str = subcomponent_bridge.name
-                        if subcomponent_name_str is None:
-                            raise ValueError(
-                                f"Subcomponent {subcomponent_name} must have a name for path translation"
-                            )
-                        remote_path_parts = [items_path, item_index, subcomponent_name_str]
+                        remote_path_parts = [items_path, item_index]
+                        if subcomponent_bridge.name is not None:
+                            remote_path_parts.append(subcomponent_bridge.name)
                         for i in range(3, len(parts)):
                             deeper_component_name = parts[i]
                             if deeper_component_name in current_bridge.submodules:
                                 current_bridge = current_bridge.submodules[deeper_component_name]
                                 deeper_name = current_bridge.name
-                                if deeper_name is None:
-                                    raise ValueError(
-                                        f"Component {deeper_component_name} must have a name for path translation"
-                                    )
-                                remote_path_parts.append(deeper_name)
+                                if deeper_name is not None:
+                                    remote_path_parts.append(deeper_name)
                             else:
                                 raise ValueError(
                                     f"Component {deeper_component_name} not found in {'.'.join(parts[:i])} components"
@@ -483,7 +485,7 @@ class ArchitectureAdapter:
                         subcomponent_name_str = subcomponent_bridge.name
                         if subcomponent_name_str is None:
                             raise ValueError(
-                                f"Subcomponent {subcomponent_name} must have a name for path translation"  # type: ignore[assignment]
+                                f"Synthetic component {subcomponent_name} has no remote path"
                             )
                         remote_path = f"{items_path}.{item_index}.{subcomponent_name_str}"
                         if param_suffix:
@@ -701,13 +703,8 @@ class ArchitectureAdapter:
                     if hasattr(blocks_component, "submodules"):
                         for tl_subname, subcomponent in blocks_component.submodules.items():
                             hf_subpath = subcomponent.name
-                            if hf_subpath is not None and subkey.startswith(hf_subpath + "."):
-                                param = subkey[len(hf_subpath) + 1 :]
-                                return f"blocks.{layer_idx}.{tl_subname}.{param}"
-                            # SymbolicBridge (name=None): keys use bridge names directly.
-                            if hf_subpath is None and subkey.startswith(tl_subname + "."):
-                                param = subkey[len(tl_subname) + 1 :]
-                                return f"blocks.{layer_idx}.{tl_subname}.{param}"
+                            # Nested HF paths extend their parent path, so prefer the
+                            # more specific match before falling back to the parent.
                             if hasattr(subcomponent, "submodules"):
                                 for tl_nested_name, nested_comp in subcomponent.submodules.items():
                                     if hf_subpath is not None:
@@ -722,6 +719,13 @@ class ArchitectureAdapter:
                                     ):
                                         param = subkey[len(hf_nested_path) + 1 :]
                                         return f"blocks.{layer_idx}.{tl_subname}.{tl_nested_name}.{param}"
+                            if hf_subpath is not None and subkey.startswith(hf_subpath + "."):
+                                param = subkey[len(hf_subpath) + 1 :]
+                                return f"blocks.{layer_idx}.{tl_subname}.{param}"
+                            # SymbolicBridge (name=None): keys use bridge names directly.
+                            if hf_subpath is None and subkey.startswith(tl_subname + "."):
+                                param = subkey[len(tl_subname) + 1 :]
+                                return f"blocks.{layer_idx}.{tl_subname}.{param}"
         return hf_key
 
     def prepare_loading(self, model_name: str, model_kwargs: dict) -> None:

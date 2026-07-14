@@ -69,6 +69,21 @@ _HF_PASSTHROUGH_ATTRS = [
     "router_jitter_noise",
     "input_jitter_noise",
     "eos_token_id",
+    # LLaDA remote-code model contract and tokenizer metadata
+    "block_type",
+    "block_group_size",
+    "rope",
+    "rope_full_precision",
+    "attention_layer_norm",
+    "include_bias",
+    "include_qkv_bias",
+    "scale_logits",
+    "input_emb_norm",
+    "layer_norm_type",
+    "embedding_size",
+    "mask_token_id",
+    "pad_token_id",
+    "bos_token_id",
     # BD3LM
     "model_length",
     "block_size",
@@ -84,6 +99,20 @@ _HF_PASSTHROUGH_ATTRS = [
     # Ouro (LoopLM)
     "total_ut_steps",
     "early_exit_threshold",
+    # DeepSeek V4 (mHC + compressed attention)
+    "compress_rates",
+    "compress_rope_theta",
+    "hc_mult",
+    "hc_sinkhorn_iters",
+    "hc_eps",
+    "mlp_layer_types",
+    "swiglu_limit",
+    "o_groups",
+    "o_lora_rank",
+    "index_n_heads",
+    "index_head_dim",
+    "index_topk",
+    "q_lora_rank",
 ]
 
 

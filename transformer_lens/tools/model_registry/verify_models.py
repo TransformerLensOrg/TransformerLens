@@ -64,6 +64,7 @@ _BRIDGE_REMOTE_CODE_PREFIXES: tuple[str, ...] = (
     "baichuan-inc/",  # BaichuanForCausalLM — ships own modeling_baichuan.py
     "ByteDance/Ouro-",  # OuroForCausalLM — ships own modeling_ouro.py
     "internlm/",  # InternLM2ForCausalLM — ships own modeling_internlm2.py
+    "GSAI-ML/LLaDA",  # LLaDAModelLM — ships configuration_llada.py/modeling_llada.py
     "kuleshov-group/",  # BD3LM — ships own custom modeling_d_dit.py
 )
 
