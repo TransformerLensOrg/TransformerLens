@@ -36,6 +36,13 @@ class TLWorkerExtension:
     # Batched-mode state (eager).
     _tl_accum: Dict[tuple, List[torch.Tensor]]
     _tl_intervention_specs: Dict[str, Dict[str, Any]]
+    # Specs whose module doesn't exist on this rank (PP layer shards).
+    _tl_absent_hooks: set
+
+    def tl_absent_hooks(self) -> List[str]:
+        """Spec names that installed no hook on this rank — the boot site verifies
+        their union across ranks covers every spec."""
+        return sorted(getattr(self, "_tl_absent_hooks", set()))
 
     def tl_read_captures(
         self, prompt_lens: List[int], names: Optional[List[str]] = None
@@ -147,6 +154,7 @@ class TLWorkerExtension:
         self._tl_capture_flags = {}
         self._tl_accum = {}
         self._tl_intervention_specs = {}
+        self._tl_absent_hooks = set()
 
 
 def _apply_op(t: torch.Tensor, spec: Dict[str, Any]) -> torch.Tensor:

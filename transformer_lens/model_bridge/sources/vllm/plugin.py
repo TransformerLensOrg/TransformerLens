@@ -25,8 +25,10 @@ Two hook flavors, selected by ``configure(enable_batching=...)``:
 """
 from __future__ import annotations
 
+import json
+import os
 import re
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 import torch
 
@@ -39,7 +41,13 @@ _DECODER_LAYER_PATH = re.compile(r"^model\.layers\.\d+$")
 
 # Transient signal driver → worker during LLM construction. Per-Worker buffers
 # live on Worker instances so concurrent boot_vllm calls don't collide.
+# ``configure`` mirrors it into the env var so SPAWNED worker processes (TP>1 /
+# VLLM_ENABLE_V1_MULTIPROCESSING=1), which re-import this module and see an empty
+# global, still receive the specs — vLLM runs ``register()`` in every worker, so
+# the patch itself propagates; only this payload needs a cross-process channel.
+# Single-node only: env vars don't reach Ray remote workers.
 _config: Dict[str, Any] = {}
+_ENV_CONFIG_KEY = "TL_VLLM_PLUGIN_CONFIG"
 _install_patched = False
 _orig_load_model = None
 
@@ -57,6 +65,72 @@ def configure(
     _config["dtype"] = dtype
     _config["enable_batching"] = enable_batching
     _config["enable_position_interventions"] = enable_position_interventions
+    os.environ[_ENV_CONFIG_KEY] = _serialize_config(_config)
+
+
+def clear_config() -> None:
+    """Clear both spec channels (module global + env var). Boot sites call this in a
+    ``finally`` after ``LLM(...)`` so a later non-TL engine can't inherit the specs."""
+    _config.clear()
+    os.environ.pop(_ENV_CONFIG_KEY, None)
+
+
+def _serialize_config(config: Dict[str, Any]) -> str:
+    return json.dumps(
+        {
+            "capture_specs": {
+                name: [path, width] for name, (path, width) in config["capture_specs"].items()
+            },
+            "max_num_batched_tokens": config["max_num_batched_tokens"],
+            "dtype": str(config["dtype"]).removeprefix("torch."),
+            "enable_batching": config["enable_batching"],
+            "enable_position_interventions": config["enable_position_interventions"],
+        }
+    )
+
+
+def _deserialize_config(raw: str) -> Dict[str, Any]:
+    data = json.loads(raw)
+    dtype = getattr(torch, data["dtype"], None)
+    if not isinstance(dtype, torch.dtype):
+        raise ValueError(f"{_ENV_CONFIG_KEY}: {data['dtype']!r} is not a torch dtype.")
+    return {
+        "capture_specs": {
+            name: (path, int(width)) for name, (path, width) in data["capture_specs"].items()
+        },
+        "max_num_batched_tokens": int(data["max_num_batched_tokens"]),
+        "dtype": dtype,
+        "enable_batching": bool(data["enable_batching"]),
+        "enable_position_interventions": bool(data["enable_position_interventions"]),
+    }
+
+
+def _active_config() -> Optional[Dict[str, Any]]:
+    """The module global in-process; the env-var fallback in spawned workers."""
+    if _config.get("capture_specs"):
+        return _config
+    raw = os.environ.get(_ENV_CONFIG_KEY)
+    if raw:
+        return _deserialize_config(raw)
+    return None
+
+
+def _resolve_dot_path(root: Any, dot_path: str) -> Any:
+    """Walk a spec's dot-path; ``None`` when any segment is missing. Per-rank absence
+    is legal under pipeline parallelism (each rank owns a layer subset) — the boot
+    site verifies every hook landed on at least one rank."""
+    target = root
+    for seg in dot_path.split("."):
+        if seg.isdigit():
+            try:
+                target = target[int(seg)]
+            except (IndexError, KeyError, TypeError):
+                return None
+        else:
+            target = getattr(target, seg, None)
+        if target is None:
+            return None
+    return target
 
 
 def register() -> None:
@@ -67,9 +141,9 @@ def register() -> None:
     don't double-wrap.
 
     No ``unregister()`` symmetry: the patch stays for process lifetime. Benign
-    because ``patched_load_model`` no-ops when ``_config["capture_specs"]`` is
-    absent — and ``boot_vllm`` clears ``_config`` after each ``LLM(...)``, so
-    any subsequent non-TL ``LLM(...)`` in the same process hits the no-op path.
+    because ``patched_load_model`` no-ops when no spec channel is populated — and
+    boot sites call ``clear_config()`` after each ``LLM(...)``, so any subsequent
+    non-TL ``LLM(...)`` in the same process hits the no-op path.
     """
     global _install_patched, _orig_load_model
     if _install_patched:
@@ -80,15 +154,16 @@ def register() -> None:
 
     def patched_load_model(self):
         _orig_load_model(self)
-        specs = _config.get("capture_specs")
-        if not specs:
+        config = _active_config()
+        if config is None:
             return  # not a TL-driven LLM; no hooks to install
-        max_n = _config["max_num_batched_tokens"]
-        dtype = _config["dtype"]
-        enable_batching = _config.get("enable_batching", False)
+        specs = config["capture_specs"]
+        max_n = config["max_num_batched_tokens"]
+        dtype = config["dtype"]
+        enable_batching = config.get("enable_batching", False)
         # Per-position affine buffers are (max_n, width) instead of (width,), so each
         # sequence row can carry a distinct scale/bias (position-scoped patching).
-        per_position = _config.get("enable_position_interventions", False)
+        per_position = config.get("enable_position_interventions", False)
         device = next(self.model_runner.model.parameters()).device
 
         # Detach prior handles before reassigning — vLLM doesn't double-load
@@ -107,12 +182,16 @@ def register() -> None:
         # Batched-mode per-(req_id, hook) accumulators + global spec dict.
         self._tl_accum = {}
         self._tl_intervention_specs = {}
+        # Specs whose module isn't on this rank (PP layer shards); the boot site
+        # verifies via tl_absent_hooks that every spec landed somewhere.
+        self._tl_absent_hooks = set()
         # Shared counter — surfaces hook double-fire under compile via tl_read_counter.
         self._tl_fire_counter = torch.zeros(1, device=device, dtype=torch.int64)
         for canonical_name, (dot_path, width) in specs.items():
-            target = self.model_runner.model
-            for seg in dot_path.split("."):
-                target = target[int(seg)] if seg.isdigit() else getattr(target, seg)
+            target = _resolve_dot_path(self.model_runner.model, dot_path)
+            if target is None:
+                self._tl_absent_hooks.add(canonical_name)
+                continue
             # Decoder layers return vLLM's (mlp_delta, residual) tuple; the
             # hook materializes their sum so the capture semantically matches
             # HF's full residual stream. Other modules use the default path.

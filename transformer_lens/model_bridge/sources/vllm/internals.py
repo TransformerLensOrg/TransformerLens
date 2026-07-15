@@ -24,6 +24,27 @@ def extract_hf_config(llm: Any) -> Any:
         ) from e
 
 
+def verify_hook_coverage(llm: Any) -> None:
+    """Raise if any configured capture hook installed on NO rank.
+
+    Per-rank absence is legal (pipeline-parallel ranks own layer subsets), so
+    hook installation skips missing modules instead of raising — this boot-time
+    check restores the fail-loud contract: a hook absent everywhere is a broken
+    overlay dot-path and would otherwise read back as silent zeros.
+    """
+    absent_per_rank = llm.collective_rpc("tl_absent_hooks")
+    if not absent_per_rank:
+        return
+    absent_everywhere = set(absent_per_rank[0])
+    for rank_absent in absent_per_rank[1:]:
+        absent_everywhere &= set(rank_absent)
+    if absent_everywhere:
+        raise RuntimeError(
+            f"Capture hooks failed to install on every worker: {sorted(absent_everywhere)}. "
+            "The overlay's dot-paths don't match this model's module tree."
+        )
+
+
 # Cumulative per-request query offsets: FlashAttention/Triton name them
 # query_start_loc, FlashInfer names them qo_indptr. Request i = rows i:i+1.
 _QUERY_OFFSET_ATTRS = ("query_start_loc", "qo_indptr")

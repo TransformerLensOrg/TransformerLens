@@ -873,3 +873,96 @@ class TestBatchedForwardPaddingSemantics:
                 attention_mask=torch.tensor([[1, 1]]),
                 return_logits=False,
             )
+
+
+class TestGatherParam:
+    """Cross-rank param reads: replicated → rank 0; vocab-sharded → rank-order concat."""
+
+    def test_single_rank_returns_shard(self):
+        driver = _driver(captures={})
+        driver._llm.collective_rpc = MagicMock(return_value=[torch.ones(16, 4)])
+        assert torch.equal(driver._gather_param("lm_head.weight"), torch.ones(16, 4))
+
+    def test_replicated_shards_return_rank_zero(self):
+        """Norm weights are identical on every rank — must NOT concatenate."""
+        driver = _driver(captures={})
+        w = torch.full((4,), 2.0)
+        driver._llm.collective_rpc = MagicMock(return_value=[w, w.clone()])
+        assert driver._gather_param("model.norm.weight").shape == (4,)
+
+    def test_sharded_shards_concat_in_rank_order(self):
+        driver = _driver(captures={})
+        shard0, shard1 = torch.zeros(8, 4), torch.ones(8, 4)
+        driver._llm.collective_rpc = MagicMock(return_value=[shard0, shard1])
+        full = driver._gather_param("lm_head.weight")
+        assert full.shape == (16, 4)
+        assert torch.equal(full[:8], shard0) and torch.equal(full[8:], shard1)
+
+    def test_missing_on_all_ranks_returns_none(self):
+        driver = _driver(captures={})
+        driver._llm.collective_rpc = MagicMock(return_value=[None, None])
+        assert driver._gather_param("lm_head.bias") is None
+
+    def test_probe_reconstructs_across_sharded_vocab(self):
+        """End-to-end: a 2-rank sharded unembedding must reassemble so tokens in the
+        UPPER half of the vocab can win argmax (concat-order regression)."""
+        driver = _driver(captures={})
+        # Rank 0 rows favor token 0; rank 1 rows favor the ln_final direction strongly.
+        shard0 = torch.zeros(8, 4)
+        shard1 = torch.zeros(8, 4)
+        shard1[3] = 10.0  # global token id 8 + 3 = 11
+
+        def rpc(method, args=(), **kwargs):
+            if method == "tl_get_param" and args[0] == "lm_head.weight":
+                return [shard0, shard1]
+            if method == "tl_get_param":
+                return [None, None]  # no bias; no tied-embedding fallback needed
+            return [[]]
+
+        driver._llm.collective_rpc = MagicMock(side_effect=rpc)
+        assert driver.probe_logit_reconstruction() is True
+        logits = driver._reconstruct_logits(torch.ones(3, 4))
+        assert logits.shape == (3, 16)
+        assert int(logits[0].argmax()) == 11
+
+
+class TestTPReplicationTripwire:
+    """First capture-bearing forward under TP cross-checks all ranks."""
+
+    def _tp_driver(self):
+        driver = _driver(captures={})
+        driver._tp_size = 2
+        driver._tp_verified = False
+        return driver
+
+    def test_replicated_captures_pass(self):
+        driver = self._tp_driver()
+        t = torch.randn(3, 4)
+        driver._llm.collective_rpc = MagicMock(return_value=[torch.zeros(1), torch.zeros(1)])
+        driver._verify_tp_replication([{"embed.hook_out": t}, {"embed.hook_out": t.clone()}])
+
+    def test_divergent_captures_fail_loud(self):
+        driver = self._tp_driver()
+        with pytest.raises(RuntimeError, match="no longer replicated"):
+            driver._verify_tp_replication(
+                [
+                    {"embed.hook_out": torch.zeros(3, 4)},
+                    {"embed.hook_out": torch.ones(3, 4)},
+                ]
+            )
+
+    def test_missing_hook_on_other_rank_fails_loud(self):
+        driver = self._tp_driver()
+        with pytest.raises(RuntimeError, match="no longer replicated"):
+            driver._verify_tp_replication([{"embed.hook_out": torch.zeros(3, 4)}, {}])
+
+    def test_fire_counter_mismatch_fails_loud(self):
+        driver = self._tp_driver()
+        t = torch.randn(3, 4)
+        driver._llm.collective_rpc = MagicMock(return_value=[torch.tensor([4]), torch.tensor([2])])
+        with pytest.raises(RuntimeError, match="fire-counter mismatch"):
+            driver._verify_tp_replication([{"embed.hook_out": t}, {"embed.hook_out": t.clone()}])
+
+    def test_single_rank_driver_skips_verification(self):
+        driver = _driver(captures={})
+        assert driver._tp_size == 1 and driver._tp_verified is True

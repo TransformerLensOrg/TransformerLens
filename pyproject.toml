@@ -128,6 +128,7 @@
         markers=[
             "slow: marks tests as slow (deselect with '-m \"not slow\"')",
             "inspect: requires inspect_ai (deselect with '-m \"not inspect\"')",
+            "multigpu: requires vllm and >= 2 CUDA devices (select with '-m multigpu')",
         ]
         pythonpath=["."]
         testpaths=["tests", "transformer_lens"] # Only test these directories

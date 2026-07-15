@@ -21,6 +21,8 @@ NOT a CPU/per-PR CI job — it SKIPs cleanly when vLLM or a GPU is unavailable.
 Run:  uv run python scripts/vllm_parity_report.py
 Env:  TL_PARITY_MODELS="id1,id2,..."  overrides the model list.
       TL_VLLM_ATOL / TL_VLLM_RTOL     override tolerance (defaults 2e-2).
+      TL_PARITY_TP=2                  boot vLLM with tensor_parallel_size=2 —
+                                      same PASS bar as TP=1 (needs >= TP GPUs).
 """
 from __future__ import annotations
 
@@ -50,6 +52,7 @@ PROMPT = "The quick brown fox"
 # A wrong hook mapping (e.g. un-un-folded ln_final) diverges by O(1), well outside this.
 ATOL = float(os.environ.get("TL_VLLM_ATOL", "2e-2"))
 RTOL = float(os.environ.get("TL_VLLM_RTOL", "2e-2"))
+TP = int(os.environ.get("TL_PARITY_TP", "1"))
 
 # vLLM capture kind -> TransformerBridge-native hook name (per-layer uses {i}).
 DIRECT_KINDS = {
@@ -100,7 +103,7 @@ def verify(model_id: str) -> dict:
         n_layers = int(hf.cfg.n_layers)
         toks = hf.to_tokens(PROMPT)
 
-        vllm = boot_vllm(model_id, dtype=torch.float32, max_model_len=2048)
+        vllm = boot_vllm(model_id, dtype=torch.float32, max_model_len=2048, tensor_parallel_size=TP)
         offered = vllm._driver.supported_hook_points
 
         hf_logits, hf_cache = hf.run_with_cache(toks)
@@ -183,6 +186,8 @@ def _preflight() -> str | None:
     """Return a human reason to abort (no GPU / no vllm), or None if runnable."""
     if not torch.cuda.is_available():
         return "no CUDA device — vLLM capture only materializes in a real GPU forward"
+    if TP > torch.cuda.device_count():
+        return f"TL_PARITY_TP={TP} but only {torch.cuda.device_count()} CUDA device(s) visible"
     try:
         import vllm  # noqa: F401
     except Exception as e:
@@ -205,7 +210,7 @@ def main() -> None:
         rows.append(r)
         print(f"[{r['status']:4}] {r['arch']:28} {r['model']:40} {r['detail']}", flush=True)
 
-    print("\n================ vLLM PARITY REPORT CARD ================")
+    print(f"\n================ vLLM PARITY REPORT CARD (TP={TP}) ================")
     for status in ("PASS", "FAIL", "SKIP"):
         sel = [r for r in rows if r["status"] == status]
         print(f"\n{status} ({len(sel)}):")

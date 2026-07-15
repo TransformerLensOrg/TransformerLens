@@ -63,9 +63,15 @@ def mocked_boot(monkeypatch):
     monkeypatch.setattr("transformers.AutoTokenizer.from_pretrained", auto_tokenizer)
 
     fake_llm = MagicMock(name="llm")
-    # The boot-time reconstruction probe fetches the unembedding via get_param, whose
-    # return type is beartype-enforced — the RPC must yield a real tensor.
-    fake_llm.collective_rpc = MagicMock(return_value=[torch.ones(16, 4)])
+
+    # tl_absent_hooks feeds the boot-time coverage check (list per rank); the
+    # reconstruction probe's get_param is beartype-enforced to a real tensor.
+    def _fake_rpc(method, *args, **kwargs):
+        if method == "tl_absent_hooks":
+            return [[]]
+        return [torch.ones(16, 4)]
+
+    fake_llm.collective_rpc = MagicMock(side_effect=_fake_rpc)
     fake_vllm = MagicMock()
     fake_vllm.LLM = MagicMock(return_value=fake_llm)
     monkeypatch.setitem(sys.modules, "vllm", fake_vllm)
@@ -119,9 +125,9 @@ def mocked_boot(monkeypatch):
 
 
 def test_rejects_locked_kwarg_override():
-    """tensor_parallel_size != 1 fails fast — before any I/O."""
-    with pytest.raises(ValueError, match="tensor_parallel_size"):
-        boot_vllm("any-model", tensor_parallel_size=2)
+    """Locked kwargs fail fast — before any I/O."""
+    with pytest.raises(ValueError, match="skip_tokenizer_init"):
+        boot_vllm("any-model", skip_tokenizer_init=False)
 
 
 def test_rejects_position_interventions_with_batching():
@@ -188,9 +194,10 @@ def test_env_var_zero_does_not_warn(mocked_boot, monkeypatch):
 
 
 def test_plugin_config_cleared_after_boot(mocked_boot):
-    """No leak to non-TL vllm.LLM users in the same process."""
+    """No leak to non-TL vllm.LLM users in the same process — both channels."""
     boot_vllm("any-model")
     assert plugin._config == {}
+    assert plugin._ENV_CONFIG_KEY not in os.environ
 
 
 def test_plugin_config_cleared_when_llm_construction_fails(mocked_boot):
@@ -200,6 +207,49 @@ def test_plugin_config_cleared_when_llm_construction_fails(mocked_boot):
     with pytest.raises(RuntimeError, match="CUDA out of memory"):
         boot_vllm("any-model")
     assert plugin._config == {}
+    assert plugin._ENV_CONFIG_KEY not in os.environ
+
+
+def test_env_channel_populated_during_llm_construction(mocked_boot):
+    """Spawned workers only see the env var — it must be live while LLM(...) runs."""
+    seen: dict = {}
+
+    def _capture_env(*args, **kwargs):
+        seen["env"] = os.environ.get(plugin._ENV_CONFIG_KEY)
+        return mocked_boot["vllm_llm"].return_value
+
+    mocked_boot["vllm_llm"].side_effect = _capture_env
+    boot_vllm("any-model")
+    assert seen["env"], "env spec channel was empty during worker construction"
+    restored = plugin._deserialize_config(seen["env"])
+    assert "embed.hook_out" in restored["capture_specs"]
+
+
+def test_boot_fails_loud_when_hook_absent_on_all_ranks(mocked_boot):
+    """A spec that installed on no rank is a broken dot-path — silent zeros otherwise."""
+    fake_llm = mocked_boot["vllm_llm"].return_value
+
+    def _rpc(method, *args, **kwargs):
+        if method == "tl_absent_hooks":
+            return [["blocks.0.hook_out"], ["blocks.0.hook_out"]]
+        return [torch.ones(16, 4)]
+
+    fake_llm.collective_rpc = MagicMock(side_effect=_rpc)
+    with pytest.raises(RuntimeError, match="blocks.0.hook_out"):
+        boot_vllm("any-model")
+
+
+def test_boot_accepts_per_rank_absence(mocked_boot):
+    """PP shards legally lack some layers — only absent-everywhere is an error."""
+    fake_llm = mocked_boot["vllm_llm"].return_value
+
+    def _rpc(method, *args, **kwargs):
+        if method == "tl_absent_hooks":
+            return [["blocks.1.hook_out"], ["blocks.0.hook_out"]]  # disjoint per rank
+        return [torch.ones(16, 4)]
+
+    fake_llm.collective_rpc = MagicMock(side_effect=_rpc)
+    assert boot_vllm("any-model") is not None
 
 
 def test_rejects_prefix_caching_override():
@@ -257,3 +307,43 @@ def test_missing_vllm_raises_actionable_import_error(monkeypatch):
     with pytest.raises(ImportError, match=r"transformer-lens\[vllm\]"):
         boot_vllm("any-model")
     assert plugin._config == {}
+
+
+class TestTensorParallelBoot:
+    """TP plumbing: kwarg validation, LLM wiring, env handling. GPU behavior is
+    validated by tests/acceptance/model_bridge/test_vllm_multigpu.py."""
+
+    def test_tp_size_passed_to_llm_and_driver(self, mocked_boot):
+        bridge = boot_vllm("any-model", tensor_parallel_size=2)
+        assert mocked_boot["vllm_llm"].call_args.kwargs["tensor_parallel_size"] == 2
+        assert bridge._driver._tp_size == 2
+        assert bridge._driver._tp_verified is False  # first forward must cross-check
+
+    def test_tp_default_is_single_rank(self, mocked_boot):
+        bridge = boot_vllm("any-model")
+        assert mocked_boot["vllm_llm"].call_args.kwargs["tensor_parallel_size"] == 1
+        assert bridge._driver._tp_verified is True  # nothing to cross-check
+
+    def test_tp_rejects_batching(self):
+        with pytest.raises(ValueError, match="enable_batching.*tensor_parallel_size"):
+            boot_vllm("any-model", tensor_parallel_size=2, enable_batching=True)
+
+    def test_tp_invalid_value_rejected(self):
+        with pytest.raises(ValueError, match="positive int"):
+            boot_vllm("any-model", tensor_parallel_size=0)
+
+    def test_pp_still_locked(self):
+        with pytest.raises(ValueError, match="pipeline_parallel_size"):
+            boot_vllm("any-model", pipeline_parallel_size=2)
+
+    def test_tp_boot_clears_stale_mp_zero(self, mocked_boot, monkeypatch):
+        """A prior single-rank boot leaves '0' in the env; TP must not inherit it —
+        it would force the uni-process executor and TP workers would never spawn."""
+        monkeypatch.setenv("VLLM_ENABLE_V1_MULTIPROCESSING", "0")
+        boot_vllm("any-model", tensor_parallel_size=2)
+        assert "VLLM_ENABLE_V1_MULTIPROCESSING" not in os.environ
+
+    def test_single_rank_still_forces_in_process(self, mocked_boot, monkeypatch):
+        monkeypatch.delenv("VLLM_ENABLE_V1_MULTIPROCESSING", raising=False)
+        boot_vllm("any-model")
+        assert os.environ["VLLM_ENABLE_V1_MULTIPROCESSING"] == "0"

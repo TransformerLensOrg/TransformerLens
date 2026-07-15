@@ -49,11 +49,17 @@ class VLLMDriver(DriverBase):
         max_num_batched_tokens: int,
         enable_batching: bool = False,
         enable_position_interventions: bool = False,
+        tensor_parallel_size: int = 1,
     ) -> None:
         super().__init__(adapter.cfg, tokenizer)
         self._llm = llm
         self._max_num_batched_tokens = max_num_batched_tokens
         self._enable_batching = enable_batching
+        # Every overlay hook point is post-all-reduce (replicated across TP ranks),
+        # so captures read rank 0; the first capture-bearing forward cross-checks
+        # all ranks (see _verify_tp_replication) and then trusts rank 0.
+        self._tp_size = tensor_parallel_size
+        self._tp_verified = tensor_parallel_size <= 1
         # Position-scoped 'pos' interventions need (max_n, width) affine buffers,
         # allocated at boot only when this is set (see plugin.patched_load_model).
         self._enable_position_interventions = enable_position_interventions
@@ -162,13 +168,17 @@ class VLLMDriver(DriverBase):
 
         n_tokens = len(ids_list)
         read_names = self._read_names(names, return_logits)
-        # collective_rpc returns one result per worker; single-rank, so [0]. Nothing to
-        # read (no captures, logits off) → skip the crossing altogether.
-        worker_captures = (
-            self._llm.collective_rpc("tl_read_captures", args=([n_tokens], read_names))[0]
-            if read_names
-            else {}
-        )
+        # collective_rpc returns one result per worker; captures are replicated across
+        # TP ranks (post-all-reduce hook points), so rank 0 is authoritative. Nothing
+        # to read (no captures, logits off) → skip the crossing altogether.
+        if read_names:
+            per_rank = self._llm.collective_rpc("tl_read_captures", args=([n_tokens], read_names))
+            if not self._tp_verified:
+                self._verify_tp_replication(per_rank)
+                self._tp_verified = True
+            worker_captures = per_rank[0]
+        else:
+            worker_captures = {}
 
         logits: torch.Tensor | None = None
         if return_logits:
@@ -362,10 +372,72 @@ class VLLMDriver(DriverBase):
     def get_param(self, dotted_name: str) -> torch.Tensor | None:
         """Fetch a named worker tensor (e.g. ``model.norm.weight``) for conversions
         the bridge can't otherwise do (ln_final post→pre-weight; see the overlay).
-        None if closed or the path is missing."""
+        Rank-0 read — correct for replicated params only; vocab-sharded weights go
+        through ``_gather_param``. None if closed or the path is missing."""
         if self._llm is None:
             return None
         return self._llm.collective_rpc("tl_get_param", args=(dotted_name,))[0]
+
+    def _gather_param(self, dotted_name: str, dim: int = 0) -> torch.Tensor | None:
+        """Fetch a param across all TP ranks: replicated → rank 0; sharded → concat.
+
+        Vocab-parallel weights (``lm_head.weight``, ``embed_tokens.weight``) hold
+        contiguous per-rank slices in rank order, which is also collective_rpc's
+        result order — concatenation along ``dim`` reassembles the full tensor
+        (vocab padding lands in the tail rows, sliced off by reconstruction).
+        """
+        if self._llm is None:
+            return None
+        shards = [
+            s
+            for s in self._llm.collective_rpc("tl_get_param", args=(dotted_name,))
+            if s is not None
+        ]
+        if not shards:
+            return None
+        if len(shards) == 1:
+            return shards[0]
+        if all(s.shape == shards[0].shape and torch.equal(s, shards[0]) for s in shards[1:]):
+            return shards[0]  # replicated (norm weights, biases on some archs)
+        return torch.cat(shards, dim=dim)
+
+    def _verify_tp_replication(self, per_rank_captures: list) -> None:
+        """One-time cross-rank check that captured values really are replicated.
+
+        Every hook point the overlay declares is post-all-reduce today; if a future
+        vLLM moves one pre-all-reduce, rank-0 reads would silently return sharded
+        garbage — compare all ranks on the first capture-bearing forward instead.
+        Also compares per-rank fire counters (a rank whose hooks half-installed
+        would diverge there first).
+        """
+        rank0 = per_rank_captures[0]
+        for rank, captures in enumerate(per_rank_captures[1:], start=1):
+            for name, t0 in rank0.items():
+                t_r = captures.get(name)
+                if (
+                    t_r is None
+                    or t0.shape != t_r.shape
+                    or not torch.allclose(t0.float(), t_r.float(), atol=1e-5, rtol=1e-5)
+                ):
+                    diff = (
+                        (t0.float() - t_r.float()).abs().max().item()
+                        if t_r is not None and t0.shape == t_r.shape
+                        else float("inf")
+                    )
+                    raise RuntimeError(
+                        f"TP replication check failed for {name!r}: rank 0 vs rank {rank} "
+                        f"max abs diff {diff:.3e}. This hook point is no longer replicated "
+                        "across ranks (vLLM may have moved it pre-all-reduce) — rank-0 "
+                        "capture reads would be silently wrong. Use tensor_parallel_size=1 "
+                        "and report this."
+                    )
+        counters = self._llm.collective_rpc("tl_read_counter")
+        if len(set(int(c) for c in counters)) > 1:
+            raise RuntimeError(
+                f"TP fire-counter mismatch across ranks: {counters}. Some rank's capture "
+                "hooks fired a different number of times — per-rank installation is "
+                "inconsistent. Use tensor_parallel_size=1 and report this."
+            )
 
     def probe_logit_reconstruction(self) -> bool:
         """One-time unembedding fetch + cache; downgrades ``provides_sequence_logits``
@@ -375,13 +447,14 @@ class VLLMDriver(DriverBase):
         if self._unembed_probed:
             return self._unembed is not None
         self._unembed_probed = True
-        weight = self.get_param("lm_head.weight")
+        # Gathered reads: under TP the unembedding is vocab-sharded per rank.
+        weight = self._gather_param("lm_head.weight")
         if weight is None:  # tied embeddings expose no separate lm_head
-            weight = self.get_param("model.embed_tokens.weight")
+            weight = self._gather_param("model.embed_tokens.weight")
         if weight is None:
             self.provides_sequence_logits = False
             return False
-        bias = self.get_param("lm_head.bias")
+        bias = self._gather_param("lm_head.bias")
         d_vocab = int(self.bridge_config.d_vocab)
         # Slice vLLM's vocab-pad rows at cache time; fp32 residency (~2× checkpoint
         # dtype on CPU) trades memory for skipping a full-matrix upcast per forward.

@@ -273,3 +273,22 @@ class TestBatchedAccumulators:
         ext = TLWorkerExtension()
         ext.tl_set_batched_interventions({"h": {"op": "suppress"}})
         assert ext._tl_intervention_specs == {"h": {"op": "suppress"}}
+
+
+class TestAbsentHooks:
+    """tl_absent_hooks reports per-rank installation gaps for the boot coverage check."""
+
+    def test_default_empty(self):
+        worker = TLWorkerExtension()
+        assert worker.tl_absent_hooks() == []
+
+    def test_reports_recorded_names_sorted(self):
+        worker = TLWorkerExtension()
+        worker._tl_absent_hooks = {"blocks.1.hook_out", "blocks.0.hook_out"}
+        assert worker.tl_absent_hooks() == ["blocks.0.hook_out", "blocks.1.hook_out"]
+
+    def test_remove_hooks_clears(self):
+        worker = TLWorkerExtension()
+        worker._tl_absent_hooks = {"blocks.0.hook_out"}
+        worker.tl_remove_hooks()
+        assert worker.tl_absent_hooks() == []

@@ -115,7 +115,7 @@ class TransformerLensVLLMModelAPI(_InspectModelAPIBase):
         from transformer_lens.utilities.hf_utils import get_hf_token
 
         from ..vllm import plugin
-        from ..vllm.internals import extract_hf_config
+        from ..vllm.internals import extract_hf_config, verify_hook_coverage
         from ..vllm.overlays import get_overlay
 
         # Caller-overridable LLM kwargs go through ``vllm_kwargs``; the locked set above
@@ -179,8 +179,10 @@ class TransformerLensVLLMModelAPI(_InspectModelAPIBase):
         finally:
             # Always clear, even on a failed boot — stale specs would make the next
             # in-process vllm.LLM(...) walk our dot-paths on a foreign model.
-            plugin._config.clear()
-        # Capture-path validity was enforced inside patched_load_model during LLM(...).
+            plugin.clear_config()
+        # Hook installation skips modules absent on a rank; a spec that landed on
+        # NO rank is a broken dot-path and must fail here, not read zeros.
+        verify_hook_coverage(self._llm)
         hf_config = extract_hf_config(self._llm)
 
         # Capture-relevant constants used by _generate_capture.
