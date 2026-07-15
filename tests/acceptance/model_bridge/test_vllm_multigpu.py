@@ -6,8 +6,9 @@ Run on a multi-GPU box with the ``vllm`` extra installed:
 
 Every test compares tensor_parallel_size=2 against the GPU-validated TP=1 path on
 the same tiny model, so a pass means TP introduces no capture/intervention/logit
-drift beyond kernel-order noise. Engines boot once per size (module fixtures) —
-never boot two engines concurrently on the same devices.
+drift beyond kernel-order noise. Engines boot once per size (module fixtures);
+position-scoped interventions run separately (test_vllm_multigpu_pos.py) so the
+third engine gets a fresh process.
 """
 from __future__ import annotations
 
@@ -119,25 +120,5 @@ class TestTPInterventionParity:
         assert not torch.allclose(clean.float(), edited.float(), atol=1e-4, rtol=1e-4)
 
 
-class TestTPPositionInterventions:
-    @pytest.fixture(scope="class")
-    def pos_bridge(self):
-        bridge = _boot(2, enable_position_interventions=True)
-        yield bridge
-        bridge.close()
-
-    def test_pos_scoped_edit_is_row_scoped(self, pos_bridge):
-        toks = torch.tensor([PROMPT_IDS])
-        _, clean = pos_bridge.run_with_cache(toks)
-        _, edited = pos_bridge.run_with_cache(
-            toks, intervene={"embed.hook_out": {"op": "suppress", "pos": 2}}
-        )
-        name = "embed.hook_out"
-        assert torch.allclose(
-            edited[name][0, 2].float(), torch.zeros_like(edited[name][0, 2].float())
-        )
-        # Off-target rows untouched (row-scoped affine survived TP).
-        for row in (0, 1, 3, 4):
-            assert torch.allclose(
-                clean[name][0, row].float(), edited[name][0, row].float(), atol=1e-5, rtol=1e-5
-            )
+# Position-scoped interventions live in test_vllm_multigpu_pos.py — a third
+# engine boot gets its own process (in-process engines under-release GPU memory).
