@@ -989,12 +989,10 @@ class TestRankLayoutVerification:
         driver._layout_verified = False
         return driver
 
-    def _rpc(self, counters, absents):
+    def _rpc(self, counters):
         def rpc(method, *args, **kwargs):
             if method == "tl_read_counter":
                 return counters
-            if method == "tl_absent_hooks":
-                return absents
             return [[]]
 
         return MagicMock(side_effect=rpc)
@@ -1002,7 +1000,7 @@ class TestRankLayoutVerification:
     def test_tp_replicated_captures_pass(self):
         driver = self._multi_rank_driver(tp=2)
         t = torch.randn(3, 4)
-        driver._llm.collective_rpc = self._rpc([4, 4], [[], []])
+        driver._llm.collective_rpc = self._rpc([4, 4])
         driver._verify_rank_layout([{"embed.hook_out": t}, {"embed.hook_out": t.clone()}])
 
     def test_divergent_replicas_fail_loud(self):
@@ -1022,13 +1020,10 @@ class TestRankLayoutVerification:
             driver._verify_rank_layout([{"embed.hook_out": torch.zeros(3, 4)}, {}])
 
     def test_pp_disjoint_ownership_passes(self):
-        """pp=2, tp=1: each hook on exactly one rank; counters proportional to
-        each rank's installed hook count."""
+        """pp=2, tp=1: each hook on exactly one rank; stage counters differ freely
+        (different hook counts per stage) — only same-stage replicas must agree."""
         driver = self._multi_rank_driver(tp=1, pp=2)
-        # 4 supported hooks total; rank 0 owns 3 (1 absent), rank 1 owns 1 (3 absent).
-        driver._llm.collective_rpc = self._rpc(
-            [3, 1], [["blocks.1.hook_out"], ["embed.hook_out", "a", "b"]]
-        )
+        driver._llm.collective_rpc = self._rpc([3, 1])
         driver._verify_rank_layout(
             [
                 {"embed.hook_out": torch.randn(3, 4)},
@@ -1036,19 +1031,14 @@ class TestRankLayoutVerification:
             ]
         )
 
-    def test_pp_counter_disproportion_fails_loud(self):
-        driver = self._multi_rank_driver(tp=1, pp=2)
-        # Rank 1 owns 1 of 4 hooks but fired as often as rank 0's 3 hooks.
-        driver._llm.collective_rpc = self._rpc(
-            [3, 3], [["blocks.1.hook_out"], ["embed.hook_out", "a", "b"]]
-        )
+    def test_tp_replica_counter_mismatch_fails_loud(self):
+        """Ranks serving the same hook set are TP replicas of one stage; unequal
+        fire counters mean their forwards diverged."""
+        driver = self._multi_rank_driver(tp=2, pp=1)
+        driver._llm.collective_rpc = self._rpc([4, 3])
+        t = torch.randn(3, 4)
         with pytest.raises(RuntimeError, match="Fire-counter mismatch"):
-            driver._verify_rank_layout(
-                [
-                    {"embed.hook_out": torch.randn(3, 4)},
-                    {"blocks.1.hook_out": torch.randn(3, 4)},
-                ]
-            )
+            driver._verify_rank_layout([{"embed.hook_out": t}, {"embed.hook_out": t.clone()}])
 
     def test_single_rank_driver_skips_verification(self):
         driver = _driver(captures={})

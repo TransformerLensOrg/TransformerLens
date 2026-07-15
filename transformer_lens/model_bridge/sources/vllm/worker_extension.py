@@ -93,8 +93,17 @@ class TLWorkerExtension:
         """
         total = sum(prompt_lens)
         buffers: Dict[str, torch.Tensor] = getattr(self, "_tl_buffers", {})
+        # Ownership is dynamic, not structural: a hook can be installed on a module
+        # this rank holds but never runs (PP stages share tied-embedding aliases and
+        # some archs instantiate norm on every rank), so a still-open first-write
+        # flag means the buffer holds no data from this forward — don't serve it.
+        flags: Dict[str, torch.Tensor] = getattr(self, "_tl_capture_flags", {})
         wanted = buffers.keys() if names is None else [n for n in names if n in buffers]
-        return {name: encode_tensor(buffers[name][:total]) for name in wanted}
+        return {
+            name: encode_tensor(buffers[name][:total])
+            for name in wanted
+            if name not in flags or bool(flags[name].item())
+        }
 
     def tl_set_interventions(self, specs: Dict[str, Dict[str, Any]]) -> None:
         """Reset all affine buffers to identity, then apply each spec.

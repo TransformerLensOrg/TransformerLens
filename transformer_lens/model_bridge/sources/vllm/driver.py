@@ -466,9 +466,11 @@ class VLLMDriver(DriverBase):
         that stage's ``tp_size`` ranks (every overlay hook point is post-all-reduce).
         A wrong copy count means installation drift; divergent replicas mean a hook
         point moved pre-all-reduce — either way rank-merged reads would be silently
-        wrong, so fail loud on the first capture-bearing forward. Fire counters must
-        show the same fires-per-installed-hook on every rank (PP ranks own different
-        hook counts, so raw counters are only proportionally comparable).
+        wrong, so fail loud on the first capture-bearing forward. Ranks serving the
+        same hook set are TP replicas of one stage and must report identical fire
+        counters; counters are NOT comparable across stages — per-rank installed
+        counts overcount modules that exist but never run (tied-embedding aliases,
+        archs that instantiate norm on every rank).
         """
         all_names: set[str] = set()
         for captures in per_rank_captures:
@@ -500,17 +502,16 @@ class VLLMDriver(DriverBase):
                         "merged capture reads would be silently wrong. Report this."
                     )
         counters = [int(c) for c in self._llm.collective_rpc("tl_read_counter")]
-        absent_per_rank = self._llm.collective_rpc("tl_absent_hooks")
-        total_specs = len(self.supported_hook_points)
-        installed = [total_specs - len(absent or []) for absent in absent_per_rank]
-        for rank in range(1, len(counters)):
-            # Cross-multiplied fires-per-hook equality — integer-exact, no division.
-            if counters[rank] * installed[0] != counters[0] * installed[rank]:
+        stages: dict = {}
+        for rank, captures in enumerate(per_rank_captures):
+            stages.setdefault(frozenset(captures.keys()), []).append(rank)
+        for ranks in stages.values():
+            group = [counters[r] for r in ranks]
+            if len(set(group)) > 1:
                 raise RuntimeError(
-                    f"Fire-counter mismatch across ranks: counters={counters}, "
-                    f"installed hooks={installed}. Some rank's hooks fired a different "
-                    "number of times per hook — per-rank installation or microbatch "
-                    "scheduling is inconsistent. Report this."
+                    f"Fire-counter mismatch within a TP replica group: ranks {ranks} "
+                    f"serve the same hooks but fired {group} times. Replicated forwards "
+                    "diverged — merged capture reads would be silently wrong. Report this."
                 )
 
     def probe_logit_reconstruction(self) -> bool:

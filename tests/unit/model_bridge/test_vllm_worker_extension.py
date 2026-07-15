@@ -63,6 +63,17 @@ class TestReadCapturesFiltering:
         out = self._ext().tl_read_captures([2])
         assert set(out) == {"a", "b"}
 
+    def test_unfired_hook_not_served(self):
+        """A still-open capture flag means the hook never ran this forward — under PP
+        that's an installed-but-not-owned module (tied-embedding alias, norm on a
+        non-final stage) whose buffer holds no data; serving it would hand dead zeros
+        to the rank merge. No flag entry keeps legacy single-rank behavior."""
+        ext = self._ext()
+        ext._tl_capture_flags = {"a": torch.ones(1), "b": torch.zeros(1)}
+        assert set(ext.tl_read_captures([2])) == {"a"}
+        ext._tl_capture_flags = {"a": torch.ones(1)}  # "b" flagless -> still served
+        assert set(ext.tl_read_captures([2])) == {"a", "b"}
+
     def test_batched_names_filters(self):
         ext = TLWorkerExtension()
         ext._tl_accum = {
