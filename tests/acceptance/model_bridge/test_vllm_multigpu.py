@@ -27,8 +27,15 @@ pytestmark = [
 MODEL = "HuggingFaceTB/SmolLM2-135M"
 PROMPT_IDS = [504, 4674, 1442, 29892, 322]  # fixed ids: no tokenizer variance in scope
 # vLLM kernel scheduling differs with TP (all-reduce order), so exact equality is
-# not expected; the parity band matches scripts/vllm_parity_report.py.
+# not expected; band matches scripts/vllm_parity_report.py, including its
+# scale-aware atol (final-layer streams reach O(1e3) and noise grows with scale).
 ATOL = RTOL = 2e-2
+REL_BAND = 2e-3
+
+
+def _close(t1: torch.Tensor, t2: torch.Tensor) -> bool:
+    atol_eff = max(ATOL, REL_BAND * t2.abs().max().item())
+    return torch.allclose(t1, t2, atol=atol_eff, rtol=RTOL)
 
 
 def _boot(tp: int, **kwargs):
@@ -64,9 +71,10 @@ class TestTPCaptureParity:
         for name in cache1:
             t1, t2 = cache1[name].float(), cache2[name].float()
             assert t1.shape == t2.shape, name
-            assert torch.allclose(
-                t1, t2, atol=ATOL, rtol=RTOL
-            ), f"{name}: max abs diff {(t1 - t2).abs().max().item():.3e}"
+            assert _close(t1, t2), (
+                f"{name}: max abs diff {(t1 - t2).abs().max().item():.3e} "
+                f"(scale {t2.abs().max().item():.1f})"
+            )
 
     def test_logits_argmax_matches_tp1(self, bridges):
         b1, b2 = bridges
@@ -98,7 +106,7 @@ class TestTPInterventionParity:
         l1 = b1.forward(toks, return_type="logits", intervene=spec)
         l2 = b2.forward(toks, return_type="logits", intervene=spec)
         assert torch.equal(l1.argmax(dim=-1), l2.argmax(dim=-1))
-        assert torch.allclose(l1.float(), l2.float(), atol=ATOL, rtol=RTOL)
+        assert _close(l1.float(), l2.float())
 
     def test_intervention_actually_bites_under_tp(self, bridges):
         """Guard against a TP no-op passing the parity test trivially."""
