@@ -710,6 +710,22 @@ def boot(
         # Default to eager (required for output_attentions hooks)
         model_kwargs["attn_implementation"] = "eager"
     adapter.prepare_loading(model_name, model_kwargs)
+    # Meta device_map targets crash at boot when loading weights
+    # (NotImplementedError in HF tie_weights, KeyError in Accelerate offload hooks).
+    # Only accepted with load_weights=False (config inspection; map not applied).
+    if load_weights and isinstance(resolved_device_map, dict):
+        _meta_targets = [
+            k
+            for k, v in resolved_device_map.items()
+            if isinstance(v, str) and v.strip().lower() == "meta"
+        ]
+        if _meta_targets:
+            raise ValueError(
+                f"device_map contains meta target(s): {_meta_targets}. "
+                "Meta device_map values crash at boot when loading weights. "
+                "Set load_weights=False for config inspection only "
+                "(the map is not applied; parameters load on CPU via from_config)."
+            )
     if hf_model is not None:
         # Use the pre-loaded model as-is (e.g., quantized models with custom device_map)
         pass

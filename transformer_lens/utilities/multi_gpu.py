@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 else:
     ConfigType = Any
 
-_UNSUPPORTED_OFFLOAD_DEVICE_MAP_VALUES = {"disk", "meta"}
+_UNSUPPORTED_OFFLOAD_DEVICE_MAP_VALUES = {"disk"}
 
 AvailableDeviceMemory = list[tuple[int, int]]
 """
@@ -204,7 +204,8 @@ def resolve_device_map(
 def _validate_device_map_values(
     device_map: Union[str, Dict[str, Union[str, int]]],
 ) -> None:
-    """Reject explicit disk / meta values in a user-supplied device_map dict."""
+    """Reject explicit disk values in a user-supplied device_map dict.
+    Meta values are passed through (validated at boot against load_weights)."""
     if isinstance(device_map, str):
         return
     for key, value in device_map.items():
