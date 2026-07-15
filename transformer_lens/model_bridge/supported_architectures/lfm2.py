@@ -30,6 +30,7 @@ class Lfm2ArchitectureAdapter(ArchitectureAdapter):
         self.cfg.gated_mlp = True
         self.cfg.attn_only = False
         self.cfg.uses_rms_norm = True
+        self.cfg.act_fn = "silu"
 
         self.cfg.attn_implementation = "eager"
 
