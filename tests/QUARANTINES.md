@@ -46,7 +46,7 @@ A `[vllm]` extra exists (Linux-only marker; declared conflicting with `[lit]` in
 
 ## Multi-GPU tier — `-m multigpu` (no automated lane)
 
-[`acceptance/model_bridge/test_vllm_multigpu.py`](acceptance/model_bridge/test_vllm_multigpu.py) validates the vLLM driver's `tensor_parallel_size=2` path (capture replication, sharded-unembed gather, intervention parity vs TP=1). Gated on `importorskip("vllm")` + `torch.cuda.device_count() >= 2`, so it skips everywhere except a provisioned multi-GPU box.
+[`acceptance/model_bridge/test_vllm_multigpu.py`](acceptance/model_bridge/test_vllm_multigpu.py) validates the vLLM driver's `tensor_parallel_size=2` path (capture replication, sharded-unembed gather, intervention parity vs TP=1). Gated on `importorskip("vllm")` + `torch.cuda.device_count() >= 2`, so it skips everywhere except a provisioned multi-GPU box. **Validated 2026-07-15 on 2×A6000** (vllm 0.20.2, Qwen2.5-0.5B): both multigpu files pass, plus `TL_PARITY_TP=2` parity and the TP=1 parity regression.
 
 **Un-skip:** run on a >= 2-GPU Linux box with the `vllm` extra: `uv run pytest tests/acceptance/model_bridge/test_vllm_multigpu.py -m multigpu -v`, plus `TL_PARITY_TP=2 uv run python scripts/vllm_parity_report.py`.
 
