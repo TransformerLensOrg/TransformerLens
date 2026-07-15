@@ -29,10 +29,7 @@ from .overlays import get_overlay
 # uncached suffix, so hooks fire for a subset of positions — captures land row-misaligned,
 # interventions skip cached positions, and an intervened forward writes poisoned K/V that a
 # later clean forward on the same prompt would silently reuse.
-# pipeline_parallel_size stays locked: PP shards layers across ranks, so capture reads
-# need the per-rank dict merge (plan Phase 4) before it can be unlocked.
 _LOCKED_KWARGS = {
-    "pipeline_parallel_size": 1,
     "skip_tokenizer_init": True,
     "disable_log_stats": True,
     "enable_prefix_caching": False,
@@ -53,6 +50,7 @@ def boot_vllm(
     enable_batching: bool = False,
     enable_position_interventions: bool = False,
     tensor_parallel_size: int = 1,
+    pipeline_parallel_size: int = 1,
     **vllm_kwargs: Any,
 ) -> RemoteBridge:
     """Boot a model via vLLM and wrap it in a :class:`RemoteBridge` via :class:`VLLMDriver`.
@@ -113,26 +111,30 @@ def boot_vllm(
 
     ``tensor_parallel_size`` > 1 enables single-node tensor parallelism. Every
     capture point the overlay hooks is post-all-reduce and therefore replicated
-    across ranks, so captures read from rank 0; the first capture-bearing forward
-    cross-checks all ranks and fails loud if a hook ever moves pre-all-reduce.
-    Vocab-sharded weights (``lm_head``/``embed_tokens``) are gathered across ranks
-    for logit reconstruction. Single-node only (the spec channel is an env var,
-    which never reaches Ray remote workers); incompatible with ``enable_batching``
-    (per-rank chunk boundaries are unvalidated); pipeline parallelism stays locked.
+    across a stage's TP ranks; ``pipeline_parallel_size`` > 1 (experimental until
+    GPU-validated) shards layers across stages, each owning its layers' hooks.
+    Capture reads merge across ranks with a first-forward layout check that fails
+    loud on installation drift or non-replicated hook points; sharded/stage-local
+    weights (``lm_head``, final norm) are gathered for logit reconstruction and the
+    ln_final un-fold. Single-node only (the spec channel is an env var, which never
+    reaches Ray remote workers); both are incompatible with ``enable_batching``
+    (per-rank chunk boundaries are unvalidated).
     """
     if enable_position_interventions and enable_batching:
         raise ValueError(
             "enable_position_interventions requires the compiled path and is incompatible "
             "with enable_batching=True (the batched/eager path has no affine buffers)."
         )
-    if not isinstance(tensor_parallel_size, int) or tensor_parallel_size < 1:
+    for kwarg_name, size in (
+        ("tensor_parallel_size", tensor_parallel_size),
+        ("pipeline_parallel_size", pipeline_parallel_size),
+    ):
+        if not isinstance(size, int) or size < 1:
+            raise ValueError(f"{kwarg_name} must be a positive int; got {size!r}.")
+    if (tensor_parallel_size > 1 or pipeline_parallel_size > 1) and enable_batching:
         raise ValueError(
-            f"tensor_parallel_size must be a positive int; got {tensor_parallel_size!r}."
-        )
-    if tensor_parallel_size > 1 and enable_batching:
-        raise ValueError(
-            "enable_batching=True with tensor_parallel_size > 1 is unsupported: the "
-            "eager batched path's per-rank chunk boundaries are unvalidated under TP. "
+            "enable_batching=True with tensor/pipeline parallelism is unsupported: the "
+            "eager batched path's per-rank chunk boundaries are unvalidated. "
             "Use the compiled single-prompt path."
         )
     _reject_locked_overrides(vllm_kwargs)
@@ -169,7 +171,7 @@ def boot_vllm(
     # TP>1 spawns worker processes, which read the specs via the env channel that
     # plugin.configure mirrors — and must NOT inherit a stale '0' from an earlier
     # single-rank boot in this process (it would force the uni-process executor).
-    if tensor_parallel_size == 1:
+    if tensor_parallel_size == 1 and pipeline_parallel_size == 1:
         existing_mp = os.environ.get("VLLM_ENABLE_V1_MULTIPROCESSING")
         if existing_mp not in (None, "0"):
             warnings.warn(
@@ -219,6 +221,7 @@ def boot_vllm(
                 # different dtype than the engine's activations.
                 dtype=str(resolved_dtype).replace("torch.", ""),
                 tensor_parallel_size=tensor_parallel_size,
+                pipeline_parallel_size=pipeline_parallel_size,
                 **eager_kwargs,
                 **_LOCKED_KWARGS,
                 **vllm_kwargs,
@@ -256,6 +259,7 @@ def boot_vllm(
         enable_batching=enable_batching,
         enable_position_interventions=enable_position_interventions,
         tensor_parallel_size=tensor_parallel_size,
+        pipeline_parallel_size=pipeline_parallel_size,
     )
     # One-time unembedding fetch: caches the weight for per-forward reconstruction and
     # downgrades provides_sequence_logits honestly if no unembedding is reachable.
@@ -270,9 +274,9 @@ def _reject_locked_overrides(vllm_kwargs: Dict[str, Any]) -> None:
         if key in vllm_kwargs and vllm_kwargs[key] != locked:
             raise ValueError(
                 f"boot_vllm forces {key}={locked}; caller passed {key}={vllm_kwargs[key]}. "
-                "Pipeline parallelism, prefix caching, continuous batching, and vLLM-owned "
-                "tokenizers are unsupported — each breaks the capture-read invariants. "
-                "(Tensor parallelism is supported via the tensor_parallel_size kwarg.)"
+                "Prefix caching, continuous batching, and vLLM-owned tokenizers are "
+                "unsupported — each breaks the capture-read invariants. (TP/PP are "
+                "supported via the tensor_parallel_size/pipeline_parallel_size kwargs.)"
             )
 
 

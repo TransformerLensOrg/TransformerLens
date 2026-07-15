@@ -317,24 +317,20 @@ class TestTensorParallelBoot:
         bridge = boot_vllm("any-model", tensor_parallel_size=2)
         assert mocked_boot["vllm_llm"].call_args.kwargs["tensor_parallel_size"] == 2
         assert bridge._driver._tp_size == 2
-        assert bridge._driver._tp_verified is False  # first forward must cross-check
+        assert bridge._driver._layout_verified is False  # first forward cross-checks
 
     def test_tp_default_is_single_rank(self, mocked_boot):
         bridge = boot_vllm("any-model")
         assert mocked_boot["vllm_llm"].call_args.kwargs["tensor_parallel_size"] == 1
-        assert bridge._driver._tp_verified is True  # nothing to cross-check
+        assert bridge._driver._layout_verified is True  # nothing to cross-check
 
     def test_tp_rejects_batching(self):
-        with pytest.raises(ValueError, match="enable_batching.*tensor_parallel_size"):
+        with pytest.raises(ValueError, match="parallelism is unsupported"):
             boot_vllm("any-model", tensor_parallel_size=2, enable_batching=True)
 
     def test_tp_invalid_value_rejected(self):
         with pytest.raises(ValueError, match="positive int"):
             boot_vllm("any-model", tensor_parallel_size=0)
-
-    def test_pp_still_locked(self):
-        with pytest.raises(ValueError, match="pipeline_parallel_size"):
-            boot_vllm("any-model", pipeline_parallel_size=2)
 
     def test_tp_boot_clears_stale_mp_zero(self, mocked_boot, monkeypatch):
         """A prior single-rank boot leaves '0' in the env; TP must not inherit it —
@@ -356,3 +352,39 @@ def test_compile_cache_disabled_for_tl_boots(mocked_boot, monkeypatch):
     monkeypatch.delenv("VLLM_DISABLE_COMPILE_CACHE", raising=False)
     boot_vllm("any-model")
     assert os.environ["VLLM_DISABLE_COMPILE_CACHE"] == "1"
+
+
+class TestPipelineParallelBoot:
+    """PP plumbing: kwarg validation, LLM wiring, env handling. GPU behavior is
+    validated by tests/acceptance/model_bridge/test_vllm_multigpu_pp.py."""
+
+    def test_pp_size_passed_to_llm_and_driver(self, mocked_boot):
+        bridge = boot_vllm("any-model", pipeline_parallel_size=2)
+        assert mocked_boot["vllm_llm"].call_args.kwargs["pipeline_parallel_size"] == 2
+        assert bridge._driver._pp_size == 2
+        assert bridge._driver._layout_verified is False  # first forward cross-checks
+
+    def test_pp_default_is_single_stage(self, mocked_boot):
+        bridge = boot_vllm("any-model")
+        assert mocked_boot["vllm_llm"].call_args.kwargs["pipeline_parallel_size"] == 1
+        assert bridge._driver._layout_verified is True
+
+    def test_pp_rejects_batching(self):
+        with pytest.raises(ValueError, match="parallelism is unsupported"):
+            boot_vllm("any-model", pipeline_parallel_size=2, enable_batching=True)
+
+    def test_pp_invalid_value_rejected(self):
+        with pytest.raises(ValueError, match="positive int"):
+            boot_vllm("any-model", pipeline_parallel_size=0)
+
+    def test_pp_boot_clears_stale_mp_zero(self, mocked_boot, monkeypatch):
+        monkeypatch.setenv("VLLM_ENABLE_V1_MULTIPROCESSING", "0")
+        boot_vllm("any-model", pipeline_parallel_size=2)
+        assert "VLLM_ENABLE_V1_MULTIPROCESSING" not in os.environ
+
+    def test_tp_and_pp_combine(self, mocked_boot):
+        bridge = boot_vllm("any-model", tensor_parallel_size=2, pipeline_parallel_size=2)
+        kwargs = mocked_boot["vllm_llm"].call_args.kwargs
+        assert kwargs["tensor_parallel_size"] == 2
+        assert kwargs["pipeline_parallel_size"] == 2
+        assert bridge._driver._tp_size == 2 and bridge._driver._pp_size == 2

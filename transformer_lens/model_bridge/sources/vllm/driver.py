@@ -51,16 +51,20 @@ class VLLMDriver(DriverBase):
         enable_batching: bool = False,
         enable_position_interventions: bool = False,
         tensor_parallel_size: int = 1,
+        pipeline_parallel_size: int = 1,
     ) -> None:
         super().__init__(adapter.cfg, tokenizer)
         self._llm = llm
         self._max_num_batched_tokens = max_num_batched_tokens
         self._enable_batching = enable_batching
-        # Every overlay hook point is post-all-reduce (replicated across TP ranks),
-        # so captures read rank 0; the first capture-bearing forward cross-checks
-        # all ranks (see _verify_tp_replication) and then trusts rank 0.
+        # Rank layout: PP stages own disjoint layer (hence hook) subsets; the TP
+        # ranks within a stage hold replicas of that stage's post-all-reduce hook
+        # points. Reads merge across stages and take the first replica within one;
+        # the first capture-bearing forward cross-checks the whole layout
+        # (see _verify_rank_layout) and then trusts it.
         self._tp_size = tensor_parallel_size
-        self._tp_verified = tensor_parallel_size <= 1
+        self._pp_size = pipeline_parallel_size
+        self._layout_verified = tensor_parallel_size <= 1 and pipeline_parallel_size <= 1
         # Position-scoped 'pos' interventions need (max_n, width) affine buffers,
         # allocated at boot only when this is set (see plugin.patched_load_model).
         self._enable_position_interventions = enable_position_interventions
@@ -171,9 +175,9 @@ class VLLMDriver(DriverBase):
 
         n_tokens = len(ids_list)
         read_names = self._read_names(names, return_logits)
-        # collective_rpc returns one result per worker; captures are replicated across
-        # TP ranks (post-all-reduce hook points), so rank 0 is authoritative. Nothing
-        # to read (no captures, logits off) → skip the crossing altogether.
+        # collective_rpc returns one result per worker; each returns only the hooks
+        # it owns (PP shards) with TP replicas within a stage — merge across ranks.
+        # Nothing to read (no captures, logits off) → skip the crossing altogether.
         if read_names:
             per_rank = [
                 self._rpc_captures(caps)
@@ -181,10 +185,10 @@ class VLLMDriver(DriverBase):
                     "tl_read_captures", args=([n_tokens], read_names)
                 )
             ]
-            if not self._tp_verified:
-                self._verify_tp_replication(per_rank)
-                self._tp_verified = True
-            worker_captures = per_rank[0]
+            if not self._layout_verified:
+                self._verify_rank_layout(per_rank)
+                self._layout_verified = True
+            worker_captures = self._merge_rank_captures(per_rank, read_names)
         else:
             worker_captures = {}
 
@@ -433,43 +437,81 @@ class VLLMDriver(DriverBase):
             return shards[0]  # replicated (norm weights, biases on some archs)
         return torch.cat(shards, dim=dim)
 
-    def _verify_tp_replication(self, per_rank_captures: list) -> None:
-        """One-time cross-rank check that captured values really are replicated.
+    def _merge_rank_captures(
+        self, per_rank_captures: list, requested: list[str]
+    ) -> dict[str, torch.Tensor]:
+        """Merge per-rank capture dicts into one: PP stages own disjoint hook subsets;
+        TP replicas within a stage agree (verified once by _verify_rank_layout), so the
+        first copy wins. A requested, supported hook served by NO rank fails loud —
+        zero-filling would be silent data loss (same policy as the batched join)."""
+        merged: dict[str, torch.Tensor] = {}
+        for captures in per_rank_captures:
+            for name, tensor in captures.items():
+                if name not in merged:
+                    merged[name] = tensor
+        missing = [
+            name for name in requested if name not in merged and name in self.supported_hook_points
+        ]
+        if missing:
+            raise RuntimeError(
+                f"Capture(s) {missing} returned by no rank — a hook fired nowhere "
+                "despite passing the boot-time coverage check. Report this."
+            )
+        return merged
 
-        Every hook point the overlay declares is post-all-reduce today; if a future
-        vLLM moves one pre-all-reduce, rank-0 reads would silently return sharded
-        garbage — compare all ranks on the first capture-bearing forward instead.
-        Also compares per-rank fire counters (a rank whose hooks half-installed
-        would diverge there first).
+    def _verify_rank_layout(self, per_rank_captures: list) -> None:
+        """One-time cross-rank check of the capture layout under TP/PP.
+
+        Invariant: each hook lives on exactly one PP stage and is replicated across
+        that stage's ``tp_size`` ranks (every overlay hook point is post-all-reduce).
+        A wrong copy count means installation drift; divergent replicas mean a hook
+        point moved pre-all-reduce — either way rank-merged reads would be silently
+        wrong, so fail loud on the first capture-bearing forward. Fire counters must
+        show the same fires-per-installed-hook on every rank (PP ranks own different
+        hook counts, so raw counters are only proportionally comparable).
         """
-        rank0 = per_rank_captures[0]
-        for rank, captures in enumerate(per_rank_captures[1:], start=1):
-            for name, t0 in rank0.items():
-                t_r = captures.get(name)
-                if (
-                    t_r is None
-                    or t0.shape != t_r.shape
-                    or not torch.allclose(t0.float(), t_r.float(), atol=1e-5, rtol=1e-5)
+        all_names: set[str] = set()
+        for captures in per_rank_captures:
+            all_names |= set(captures.keys())
+        for name in sorted(all_names):
+            copies = [
+                (rank, caps[name]) for rank, caps in enumerate(per_rank_captures) if name in caps
+            ]
+            if len(copies) != self._tp_size:
+                raise RuntimeError(
+                    f"Rank-layout check failed for {name!r}: found on {len(copies)} rank(s) "
+                    f"but expected exactly tp_size={self._tp_size} (one PP stage × its TP "
+                    "replicas). Per-rank installation drifted — report this."
+                )
+            rank0, t0 = copies[0]
+            for rank, t_r in copies[1:]:
+                if t0.shape != t_r.shape or not torch.allclose(
+                    t0.float(), t_r.float(), atol=1e-5, rtol=1e-5
                 ):
                     diff = (
                         (t0.float() - t_r.float()).abs().max().item()
-                        if t_r is not None and t0.shape == t_r.shape
+                        if t0.shape == t_r.shape
                         else float("inf")
                     )
                     raise RuntimeError(
-                        f"TP replication check failed for {name!r}: rank 0 vs rank {rank} "
-                        f"max abs diff {diff:.3e}. This hook point is no longer replicated "
-                        "across ranks (vLLM may have moved it pre-all-reduce) — rank-0 "
-                        "capture reads would be silently wrong. Use tensor_parallel_size=1 "
-                        "and report this."
+                        f"TP replication check failed for {name!r}: rank {rank0} vs rank "
+                        f"{rank} max abs diff {diff:.3e}. This hook point is no longer "
+                        "replicated across ranks (vLLM may have moved it pre-all-reduce) — "
+                        "merged capture reads would be silently wrong. Report this."
                     )
-        counters = self._llm.collective_rpc("tl_read_counter")
-        if len(set(int(c) for c in counters)) > 1:
-            raise RuntimeError(
-                f"TP fire-counter mismatch across ranks: {counters}. Some rank's capture "
-                "hooks fired a different number of times — per-rank installation is "
-                "inconsistent. Use tensor_parallel_size=1 and report this."
-            )
+        counters = [int(c) for c in self._llm.collective_rpc("tl_read_counter")]
+        absent_per_rank = self._llm.collective_rpc("tl_absent_hooks")
+        total_specs = len(self.supported_hook_points)
+        installed = [total_specs - len(absent or []) for absent in absent_per_rank]
+        for rank in range(1, len(counters)):
+            # Cross-multiplied fires-per-hook equality — integer-exact, no division.
+            if counters[rank] * installed[0] != counters[0] * installed[rank]:
+                raise RuntimeError(
+                    f"Fire-counter mismatch across ranks: counters={counters}, "
+                    f"installed hooks={installed}. Some rank's hooks fired a different "
+                    "number of times per hook — per-rank installation or microbatch "
+                    "scheduling is inconsistent. Report this."
+                )
 
     def probe_logit_reconstruction(self) -> bool:
         """One-time unembedding fetch + cache; downgrades ``provides_sequence_logits``
@@ -537,9 +579,11 @@ class VLLMDriver(DriverBase):
         beats silent cross-backend mismatch."""
         if not self._lnf_probed:
             self._lnf_probed = True
-            # The overlay's capture spec owns the module path; derive the weight from it.
+            # The overlay's capture spec owns the module path; derive the weight from
+            # it. Gathered read: under PP the final norm lives only on the last stage,
+            # so a rank-0 get_param would miss it.
             path = self._capture_paths.get(self._LN_FINAL, "model.norm")
-            weight = self.get_param(f"{path}.weight")
+            weight = self._gather_param(f"{path}.weight")
             if weight is None:
                 warnings.warn(
                     "ln_final.hook_normalized: norm weight unreachable — the captured "

@@ -16,7 +16,7 @@ Two capture modes, selected at boot:
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 import torch
 
@@ -111,7 +111,12 @@ class TLWorkerExtension:
         for name, sb in scale_bufs.items():
             sb.fill_(1.0)
             bias_bufs[name].zero_()
+        absent: Set[str] = getattr(self, "_tl_absent_hooks", set())
         for hook_name, spec in specs.items():
+            if hook_name in absent:
+                # Another PP stage owns this hook; its rank applies the spec. The
+                # driver's supported_hook_points check already caught real typos.
+                continue
             if hook_name not in scale_bufs:
                 raise KeyError(f"Unknown hook for intervention: {hook_name!r}")
             # Authoritative validation: producers that bypass VLLMDriver (the Inspect

@@ -937,48 +937,6 @@ class TestGatherParam:
         assert int(logits[0].argmax()) == 11
 
 
-class TestTPReplicationTripwire:
-    """First capture-bearing forward under TP cross-checks all ranks."""
-
-    def _tp_driver(self):
-        driver = _driver(captures={})
-        driver._tp_size = 2
-        driver._tp_verified = False
-        return driver
-
-    def test_replicated_captures_pass(self):
-        driver = self._tp_driver()
-        t = torch.randn(3, 4)
-        driver._llm.collective_rpc = MagicMock(return_value=[torch.zeros(1), torch.zeros(1)])
-        driver._verify_tp_replication([{"embed.hook_out": t}, {"embed.hook_out": t.clone()}])
-
-    def test_divergent_captures_fail_loud(self):
-        driver = self._tp_driver()
-        with pytest.raises(RuntimeError, match="no longer replicated"):
-            driver._verify_tp_replication(
-                [
-                    {"embed.hook_out": torch.zeros(3, 4)},
-                    {"embed.hook_out": torch.ones(3, 4)},
-                ]
-            )
-
-    def test_missing_hook_on_other_rank_fails_loud(self):
-        driver = self._tp_driver()
-        with pytest.raises(RuntimeError, match="no longer replicated"):
-            driver._verify_tp_replication([{"embed.hook_out": torch.zeros(3, 4)}, {}])
-
-    def test_fire_counter_mismatch_fails_loud(self):
-        driver = self._tp_driver()
-        t = torch.randn(3, 4)
-        driver._llm.collective_rpc = MagicMock(return_value=[torch.tensor([4]), torch.tensor([2])])
-        with pytest.raises(RuntimeError, match="fire-counter mismatch"):
-            driver._verify_tp_replication([{"embed.hook_out": t}, {"embed.hook_out": t.clone()}])
-
-    def test_single_rank_driver_skips_verification(self):
-        driver = _driver(captures={})
-        assert driver._tp_size == 1 and driver._tp_verified is True
-
-
 class TestRpcTensorCoercion:
     """Multiproc collective_rpc (TP>1) serializes tensors to nested lists —
     every RPC read must coerce back. GPU-verified failure mode on vllm 0.20.2."""
@@ -1019,3 +977,142 @@ class TestRpcTensorCoercion:
         driver = _driver(captures={})
         driver._llm.collective_rpc = MagicMock(return_value=[None])
         assert driver.get_param("no.such.param") is None
+
+
+class TestRankLayoutVerification:
+    """First capture-bearing forward under TP/PP cross-checks the rank layout."""
+
+    def _multi_rank_driver(self, tp=2, pp=1):
+        driver = _driver(captures={})
+        driver._tp_size = tp
+        driver._pp_size = pp
+        driver._layout_verified = False
+        return driver
+
+    def _rpc(self, counters, absents):
+        def rpc(method, *args, **kwargs):
+            if method == "tl_read_counter":
+                return counters
+            if method == "tl_absent_hooks":
+                return absents
+            return [[]]
+
+        return MagicMock(side_effect=rpc)
+
+    def test_tp_replicated_captures_pass(self):
+        driver = self._multi_rank_driver(tp=2)
+        t = torch.randn(3, 4)
+        driver._llm.collective_rpc = self._rpc([4, 4], [[], []])
+        driver._verify_rank_layout([{"embed.hook_out": t}, {"embed.hook_out": t.clone()}])
+
+    def test_divergent_replicas_fail_loud(self):
+        driver = self._multi_rank_driver(tp=2)
+        with pytest.raises(RuntimeError, match="no longer replicated"):
+            driver._verify_rank_layout(
+                [
+                    {"embed.hook_out": torch.zeros(3, 4)},
+                    {"embed.hook_out": torch.ones(3, 4)},
+                ]
+            )
+
+    def test_wrong_copy_count_fails_loud(self):
+        """tp=2 but a hook appears on one rank only — installation drifted."""
+        driver = self._multi_rank_driver(tp=2)
+        with pytest.raises(RuntimeError, match="expected exactly tp_size"):
+            driver._verify_rank_layout([{"embed.hook_out": torch.zeros(3, 4)}, {}])
+
+    def test_pp_disjoint_ownership_passes(self):
+        """pp=2, tp=1: each hook on exactly one rank; counters proportional to
+        each rank's installed hook count."""
+        driver = self._multi_rank_driver(tp=1, pp=2)
+        # 4 supported hooks total; rank 0 owns 3 (1 absent), rank 1 owns 1 (3 absent).
+        driver._llm.collective_rpc = self._rpc(
+            [3, 1], [["blocks.1.hook_out"], ["embed.hook_out", "a", "b"]]
+        )
+        driver._verify_rank_layout(
+            [
+                {"embed.hook_out": torch.randn(3, 4)},
+                {"blocks.1.hook_out": torch.randn(3, 4)},
+            ]
+        )
+
+    def test_pp_counter_disproportion_fails_loud(self):
+        driver = self._multi_rank_driver(tp=1, pp=2)
+        # Rank 1 owns 1 of 4 hooks but fired as often as rank 0's 3 hooks.
+        driver._llm.collective_rpc = self._rpc(
+            [3, 3], [["blocks.1.hook_out"], ["embed.hook_out", "a", "b"]]
+        )
+        with pytest.raises(RuntimeError, match="Fire-counter mismatch"):
+            driver._verify_rank_layout(
+                [
+                    {"embed.hook_out": torch.randn(3, 4)},
+                    {"blocks.1.hook_out": torch.randn(3, 4)},
+                ]
+            )
+
+    def test_single_rank_driver_skips_verification(self):
+        driver = _driver(captures={})
+        assert driver._tp_size == 1 and driver._layout_verified is True
+
+
+class TestMergeRankCaptures:
+    """PP stages own disjoint hook subsets; the merge reassembles the full dict."""
+
+    def test_disjoint_ranks_merge(self):
+        driver = _driver(captures={})
+        merged = driver._merge_rank_captures(
+            [
+                {"embed.hook_out": torch.zeros(3, 4)},
+                {"blocks.0.hook_out": torch.ones(3, 4)},
+            ],
+            ["embed.hook_out", "blocks.0.hook_out"],
+        )
+        assert set(merged) == {"embed.hook_out", "blocks.0.hook_out"}
+        assert torch.equal(merged["blocks.0.hook_out"], torch.ones(3, 4))
+
+    def test_tp_replicas_first_copy_wins(self):
+        driver = _driver(captures={})
+        t = torch.randn(3, 4)
+        merged = driver._merge_rank_captures(
+            [{"embed.hook_out": t}, {"embed.hook_out": t.clone()}], ["embed.hook_out"]
+        )
+        assert merged["embed.hook_out"] is t
+
+    def test_supported_hook_served_by_no_rank_fails_loud(self):
+        driver = _driver(captures={})
+        with pytest.raises(RuntimeError, match="returned by no rank"):
+            driver._merge_rank_captures([{}, {}], ["embed.hook_out"])
+
+    def test_unsupported_requested_name_does_not_false_alarm(self):
+        """The forced ln_final read may be legitimately absent on fallback paths."""
+        driver = _driver(captures={})
+        merged = driver._merge_rank_captures([{}], ["not.a.supported.hook"])
+        assert merged == {}
+
+
+class TestPPWorkerInterventionDispatch:
+    """Specs for hooks another PP stage owns are skipped, not KeyError'd."""
+
+    def test_absent_hook_spec_skipped(self):
+        from transformer_lens.model_bridge.sources.vllm.worker_extension import (
+            TLWorkerExtension,
+        )
+
+        worker = TLWorkerExtension()
+        worker._tl_scale_buffers = {"embed.hook_out": torch.ones(4)}
+        worker._tl_bias_buffers = {"embed.hook_out": torch.zeros(4)}
+        worker._tl_absent_hooks = {"blocks.9.hook_out"}  # owned by another stage
+        worker.tl_set_interventions({"blocks.9.hook_out": {"op": "suppress"}})
+        assert torch.equal(worker._tl_scale_buffers["embed.hook_out"], torch.ones(4))
+
+    def test_truly_unknown_hook_still_raises(self):
+        from transformer_lens.model_bridge.sources.vllm.worker_extension import (
+            TLWorkerExtension,
+        )
+
+        worker = TLWorkerExtension()
+        worker._tl_scale_buffers = {"embed.hook_out": torch.ones(4)}
+        worker._tl_bias_buffers = {"embed.hook_out": torch.zeros(4)}
+        worker._tl_absent_hooks = set()
+        with pytest.raises(KeyError, match="Unknown hook"):
+            worker.tl_set_interventions({"tpyo.hook_out": {"op": "suppress"}})

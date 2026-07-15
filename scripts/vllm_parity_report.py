@@ -23,6 +23,8 @@ Env:  TL_PARITY_MODELS="id1,id2,..."  overrides the model list.
       TL_VLLM_ATOL / TL_VLLM_RTOL     override tolerance (defaults 2e-2).
       TL_PARITY_TP=2                  boot vLLM with tensor_parallel_size=2 —
                                       same PASS bar as TP=1 (needs >= TP GPUs).
+      TL_PARITY_PP=2                  boot vLLM with pipeline_parallel_size=2
+                                      (needs >= TP*PP GPUs).
 """
 from __future__ import annotations
 
@@ -59,6 +61,7 @@ RTOL = float(os.environ.get("TL_VLLM_RTOL", "2e-2"))
 # relative. 2e-3 keeps >3 orders of magnitude of discrimination.
 REL_BAND = float(os.environ.get("TL_VLLM_REL", "2e-3"))
 TP = int(os.environ.get("TL_PARITY_TP", "1"))
+PP = int(os.environ.get("TL_PARITY_PP", "1"))
 
 # vLLM capture kind -> TransformerBridge-native hook name (per-layer uses {i}).
 DIRECT_KINDS = {
@@ -123,7 +126,13 @@ def verify(model_id: str) -> dict:
         n_layers = int(hf.cfg.n_layers)
         toks = hf.to_tokens(PROMPT)
 
-        vllm = boot_vllm(model_id, dtype=torch.float32, max_model_len=2048, tensor_parallel_size=TP)
+        vllm = boot_vllm(
+            model_id,
+            dtype=torch.float32,
+            max_model_len=2048,
+            tensor_parallel_size=TP,
+            pipeline_parallel_size=PP,
+        )
         offered = vllm._driver.supported_hook_points
 
         hf_logits, hf_cache = hf.run_with_cache(toks)
@@ -219,8 +228,11 @@ def _preflight() -> str | None:
     """Return a human reason to abort (no GPU / no vllm), or None if runnable."""
     if not torch.cuda.is_available():
         return "no CUDA device — vLLM capture only materializes in a real GPU forward"
-    if TP > torch.cuda.device_count():
-        return f"TL_PARITY_TP={TP} but only {torch.cuda.device_count()} CUDA device(s) visible"
+    if TP * PP > torch.cuda.device_count():
+        return (
+            f"TL_PARITY_TP={TP} x TL_PARITY_PP={PP} needs {TP * PP} GPUs but only "
+            f"{torch.cuda.device_count()} visible"
+        )
     try:
         import vllm  # noqa: F401
     except Exception as e:
@@ -289,7 +301,7 @@ def main() -> None:
         rows.append(r)
         print(f"[{r['status']:4}] {r['arch']:28} {r['model']:40} {r['detail']}", flush=True)
 
-    print(f"\n================ vLLM PARITY REPORT CARD (TP={TP}) ================")
+    print(f"\n================ vLLM PARITY REPORT CARD (TP={TP}, PP={PP}) ================")
     for status in ("PASS", "FAIL", "SKIP"):
         sel = [r for r in rows if r["status"] == status]
         print(f"\n{status} ({len(sel)}):")
