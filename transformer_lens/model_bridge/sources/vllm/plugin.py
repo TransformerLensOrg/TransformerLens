@@ -115,10 +115,25 @@ def _active_config() -> Optional[Dict[str, Any]]:
     return None
 
 
+def _is_pp_missing_layer(module: Any) -> bool:
+    """vLLM PP keeps full-length module lists on every rank, filling non-owned slots
+    (layers, embed_tokens, norm, lm_head) with PPMissingLayer identity stubs that the
+    forward never calls — a hook installed there would serve its dead zero buffer as
+    a real capture. Name check first so non-vllm test doubles work."""
+    if type(module).__name__ == "PPMissingLayer":
+        return True
+    try:
+        from vllm.model_executor.models.utils import PPMissingLayer
+    except ImportError:
+        return False
+    return isinstance(module, PPMissingLayer)
+
+
 def _resolve_dot_path(root: Any, dot_path: str) -> Any:
-    """Walk a spec's dot-path; ``None`` when any segment is missing. Per-rank absence
-    is legal under pipeline parallelism (each rank owns a layer subset) — the boot
-    site verifies every hook landed on at least one rank."""
+    """Walk a spec's dot-path; ``None`` when any segment is missing or the target is
+    a PPMissingLayer stub. Per-rank absence is legal under pipeline parallelism (each
+    rank owns a layer subset) — the boot site verifies every hook landed on at least
+    one rank."""
     target = root
     for seg in dot_path.split("."):
         if seg.isdigit():
@@ -130,7 +145,7 @@ def _resolve_dot_path(root: Any, dot_path: str) -> Any:
             target = getattr(target, seg, None)
         if target is None:
             return None
-    return target
+    return None if _is_pp_missing_layer(target) else target
 
 
 def register() -> None:

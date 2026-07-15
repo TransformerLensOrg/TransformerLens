@@ -164,6 +164,25 @@ class TestResolveDotPath:
 
         assert _resolve_dot_path(self._model(), "model.layers.7") is None
 
+    def test_pp_missing_layer_stub_treated_as_absent(self):
+        """vLLM PP fills non-owned slots (layers, embed_tokens, norm) with
+        PPMissingLayer identity stubs the forward never calls — resolving one would
+        install a hook that serves its dead zero buffer as a real capture. Caught
+        live by the rank-layout tripwire on 2×GPU (every hook 'found on 2 ranks')."""
+        import torch.nn as nn
+
+        from transformer_lens.model_bridge.sources.vllm.plugin import _resolve_dot_path
+
+        class PPMissingLayer(nn.Module):  # matched by name, as vLLM's real class is
+            pass
+
+        root = self._model()
+        root.model.layers.append(PPMissingLayer())
+        root.model.norm = PPMissingLayer()
+        assert _resolve_dot_path(root, "model.layers.0") is root.model.layers[0]
+        assert _resolve_dot_path(root, "model.layers.1") is None
+        assert _resolve_dot_path(root, "model.norm") is None
+
 
 class TestCompiledHookInstrumentationSafety:
     """Compile-traced hook internals must stay annotation-free: pytest's jaxtyping
