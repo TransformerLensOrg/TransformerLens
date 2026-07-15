@@ -36,7 +36,13 @@ from inspect_ai.model import (
 )
 
 from . import hooks, wire
-from ._provider_base import _InspectModelAPIBase, _parse_tool_calls, _require_served
+from ._provider_base import (
+    _InspectModelAPIBase,
+    _parse_tool_calls,
+    _require_interveneable,
+    _require_served,
+    _warn_unsupported_config,
+)
 
 # Distinct from the HF ``tl_bridge`` provider and from inspect_ai's built-in ``vllm``.
 PROVIDER_NAME = "tl_bridge_vllm"
@@ -96,7 +102,15 @@ class TransformerLensVLLMModelAPI(_InspectModelAPIBase):
     ) -> None:
         super().__init__(model_name, base_url, api_key, [], config)
         from transformers import AutoConfig, AutoTokenizer
-        from vllm import LLM
+
+        try:
+            from vllm import LLM
+        except ImportError as exc:
+            raise ImportError(
+                "The tl_bridge_vllm provider requires vLLM (Linux + CUDA). Install with "
+                'pip install "transformer-lens[vllm]" or uv sync --extra vllm; '
+                "validated against vllm 0.20.x."
+            ) from exc
 
         from transformer_lens.utilities.hf_utils import get_hf_token
 
@@ -146,25 +160,28 @@ class TransformerLensVLLMModelAPI(_InspectModelAPIBase):
         # isn't visible to worker subprocesses and hooks silently fail to install.
         os.environ["VLLM_ENABLE_V1_MULTIPROCESSING"] = "0"
 
-        self._llm = LLM(
-            model=model_name,
-            gpu_memory_utilization=gpu_memory_utilization,
-            max_model_len=max_model_len,
-            max_num_batched_tokens=max_num_batched_tokens,
-            # Worker extension's tl_* methods are reachable via collective_rpc.
-            worker_extension_cls=_WORKER_EXTENSION_CLS,
-            # Full-vocab logprobs so _generate_capture can synthesize logits at the
-            # generated position (vLLM caps logprobs to this value; default 20 is too
-            # small for mech interp).
-            max_logprobs=int(hf_config_preview.vocab_size),
-            dtype=str(resolved_dtype).replace("torch.", "") if dtype is not None else "auto",
-            **_LOCKED_VLLM_KWARGS,
-            **vllm_kwargs,
-        )
+        try:
+            self._llm = LLM(
+                model=model_name,
+                gpu_memory_utilization=gpu_memory_utilization,
+                max_model_len=max_model_len,
+                max_num_batched_tokens=max_num_batched_tokens,
+                # Worker extension's tl_* methods are reachable via collective_rpc.
+                worker_extension_cls=_WORKER_EXTENSION_CLS,
+                # Full-vocab logprobs so _generate_capture can synthesize logits at the
+                # generated position (vLLM caps logprobs to this value; default 20 is too
+                # small for mech interp).
+                max_logprobs=int(hf_config_preview.vocab_size),
+                dtype=str(resolved_dtype).replace("torch.", "") if dtype is not None else "auto",
+                **_LOCKED_VLLM_KWARGS,
+                **vllm_kwargs,
+            )
+        finally:
+            # Always clear, even on a failed boot — stale specs would make the next
+            # in-process vllm.LLM(...) walk our dot-paths on a foreign model.
+            plugin._config.clear()
         # Capture-path validity was enforced inside patched_load_model during LLM(...).
         hf_config = extract_hf_config(self._llm)
-        # Don't leak our specs to a subsequent non-TL vllm.LLM(...) in the same process.
-        plugin._config.clear()
 
         # Capture-relevant constants used by _generate_capture.
         self._d_vocab = int(hf_config.vocab_size)
@@ -218,6 +235,17 @@ class TransformerLensVLLMModelAPI(_InspectModelAPIBase):
         interventions: Mapping[str, Any] = extra_args.get("interventions", {})
         intervention_specs: dict[str, Any] = {}
         for wk, spec in interventions.items():
+            # extra_args is a documented surface: gated/capture-only kinds must fail
+            # here, not deep in the worker.
+            _, _, kind = wk.partition(":")
+            _require_interveneable(kind, self._kinds, self._capability_note, f"intervention {wk!r}")
+            if isinstance(spec, Mapping) and spec.get("pos") is not None:
+                raise ValueError(
+                    f"intervention {wk!r}: per-position 'pos' is not supported on the "
+                    "tl_bridge_vllm provider (its worker runs without position "
+                    "interventions). Use boot_inspect(provider='tl_bridge') for "
+                    "position-targeted patching."
+                )
             name = hooks.name_from_wire_key(wk)
             if name is None:
                 raise ValueError(f"intervention wire key {wk!r} is not a fireable hook.")
@@ -279,6 +307,8 @@ class TransformerLensVLLMModelAPI(_InspectModelAPIBase):
         from vllm import SamplingParams
         from vllm.inputs import TokensPrompt
 
+        _warn_unsupported_config(config, PROVIDER_NAME)
+
         # Worker-side intervention buffers are persistent: any prior capture-path call that
         # pushed specs (e.g. bridge.forward(intervene=...)) would still be applied here
         # without a reset. The HF provider installs hooks per-call so it's leak-immune.
@@ -296,6 +326,8 @@ class TransformerLensVLLMModelAPI(_InspectModelAPIBase):
         temperature = float(config.temperature) if config.temperature is not None else 0.0
 
         sp_kwargs: dict[str, Any] = {"max_tokens": max_new, "temperature": temperature}
+        if config.stop_seqs:
+            sp_kwargs["stop"] = list(config.stop_seqs)
         if temperature > 0:
             if config.top_p is not None:
                 sp_kwargs["top_p"] = float(config.top_p)

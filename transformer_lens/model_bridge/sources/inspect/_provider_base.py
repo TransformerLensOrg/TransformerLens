@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import re
 import uuid
+import warnings
 from typing import Any, Mapping
 
 import torch
@@ -79,6 +80,34 @@ def _parse_tool_calls(text: str) -> list[ToolCall] | None:
     return calls or None
 
 
+# Generation-semantics GenerateConfig fields neither provider maps; warn (once per field
+# per process) instead of silently ignoring them.
+_UNSUPPORTED_GENERATE_FIELDS = (
+    "frequency_penalty",
+    "presence_penalty",
+    "logit_bias",
+    "best_of",
+    "num_choices",
+)
+_WARNED_UNSUPPORTED: set[str] = set()
+
+
+def _warn_unsupported_config(config: GenerateConfig, provider: str) -> None:
+    """Warn once per process per set-but-unsupported GenerateConfig field."""
+    new = [
+        field
+        for field in _UNSUPPORTED_GENERATE_FIELDS
+        if getattr(config, field, None) is not None and field not in _WARNED_UNSUPPORTED
+    ]
+    if new:
+        _WARNED_UNSUPPORTED.update(new)
+        warnings.warn(
+            f"{provider}: ignoring unsupported GenerateConfig field(s) {new}.",
+            UserWarning,
+            stacklevel=3,
+        )
+
+
 def _require_served(kind: str, served: frozenset[str], note: str, context: str) -> None:
     """Raise if ``kind`` was gated by the structural self-check — without this the eval path
     would silently return a derivation (e.g. ``resid_mid``) the driver path excludes."""
@@ -86,6 +115,19 @@ def _require_served(kind: str, served: frozenset[str], note: str, context: str) 
         raise ValueError(
             f"{context} requests kind {kind!r} which this model gated. {note} "
             f"Served kinds: {sorted(served)}."
+        )
+
+
+def _require_interveneable(kind: str, served: frozenset[str], note: str, context: str) -> None:
+    """``_require_served`` plus the capture-only gate — shared by every provider's
+    intervention entry point so gated/capture-only kinds fail identically."""
+    from .hooks import INTERVENEABLE_KINDS
+
+    _require_served(kind, served, note, context)
+    if kind not in INTERVENEABLE_KINDS:
+        raise ValueError(
+            f"{context}: kind {kind!r} is capture-only "
+            f"(interveneable: {sorted(INTERVENEABLE_KINDS)})."
         )
 
 

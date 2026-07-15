@@ -62,8 +62,12 @@ def mocked_boot(monkeypatch):
     monkeypatch.setattr("transformers.AutoConfig.from_pretrained", auto_config)
     monkeypatch.setattr("transformers.AutoTokenizer.from_pretrained", auto_tokenizer)
 
+    fake_llm = MagicMock(name="llm")
+    # The boot-time reconstruction probe fetches the unembedding via get_param, whose
+    # return type is beartype-enforced — the RPC must yield a real tensor.
+    fake_llm.collective_rpc = MagicMock(return_value=[torch.ones(16, 4)])
     fake_vllm = MagicMock()
-    fake_vllm.LLM = MagicMock(return_value=MagicMock(name="llm"))
+    fake_vllm.LLM = MagicMock(return_value=fake_llm)
     monkeypatch.setitem(sys.modules, "vllm", fake_vllm)
 
     monkeypatch.setattr(
@@ -91,11 +95,24 @@ def mocked_boot(monkeypatch):
         lambda: None,
     )
 
+    # Real tokenizer setup/probing can't run on a MagicMock tokenizer.
+    def _fake_configure_tokenizer(tokenizer, cfg_):
+        cfg_.tokenizer_prepends_bos, cfg_.tokenizer_appends_eos = (False, True)
+        return tokenizer
+
+    configure_tok = MagicMock(side_effect=_fake_configure_tokenizer)
+    monkeypatch.setattr(
+        "transformer_lens.model_bridge.sources.vllm.source.configure_tokenizer",
+        configure_tok,
+    )
+
     yield {
         "auto_config": auto_config,
         "auto_tokenizer": auto_tokenizer,
         "vllm_llm": fake_vllm.LLM,
         "hf_config": hf_config,
+        "cfg": cfg,
+        "configure_tok": configure_tok,
     }
 
     plugin._config.clear()
@@ -176,6 +193,39 @@ def test_plugin_config_cleared_after_boot(mocked_boot):
     assert plugin._config == {}
 
 
+def test_plugin_config_cleared_when_llm_construction_fails(mocked_boot):
+    """A failed boot (OOM, gated repo) must not leave stale specs patched in —
+    the next in-process vllm.LLM(...) would walk our dot-paths on a foreign model."""
+    mocked_boot["vllm_llm"].side_effect = RuntimeError("CUDA out of memory")
+    with pytest.raises(RuntimeError, match="CUDA out of memory"):
+        boot_vllm("any-model")
+    assert plugin._config == {}
+
+
+def test_rejects_prefix_caching_override():
+    """Prefix caching breaks the row=position capture invariant — locked off."""
+    with pytest.raises(ValueError, match="enable_prefix_caching"):
+        boot_vllm("any-model", enable_prefix_caching=True)
+
+
+def test_bos_detection_written_to_config(mocked_boot):
+    """boot_vllm must probe the tokenizer like boot_transformers — the dataclass
+    default (prepends_bos=True) is wrong for Qwen-family tokenizers and shifts
+    every activation by one position."""
+    bridge = boot_vllm("any-model")
+    assert mocked_boot["configure_tok"].called
+    assert mocked_boot["cfg"].tokenizer_prepends_bos is False
+    assert mocked_boot["cfg"].tokenizer_appends_eos is True
+    assert bridge is not None
+
+
+def test_logit_reconstruction_probed_at_boot(mocked_boot):
+    """The unembedding is fetched once at boot, not re-cloned per forward."""
+    bridge = boot_vllm("any-model")
+    assert bridge._driver._unembed_probed is True
+    assert bridge._driver._unembed is not None
+
+
 def test_llm_construction_kwargs(mocked_boot):
     """Pin the kwargs boot_vllm passes to vllm.LLM(...). Catches regressions like
     forgetting worker_extension_cls (collective_rpc methods unreachable),
@@ -195,3 +245,15 @@ def test_llm_construction_kwargs(mocked_boot):
     assert kwargs["pipeline_parallel_size"] == 1
     assert kwargs["skip_tokenizer_init"] is True
     assert kwargs["disable_log_stats"] is True
+    assert kwargs["enable_prefix_caching"] is False
+    # Always explicit — "auto" would downcast fp32 checkpoints under the buffers.
+    assert kwargs["dtype"] == "float16"
+
+
+def test_missing_vllm_raises_actionable_import_error(monkeypatch):
+    """Without vllm installed, boot_vllm must name the packaging extra — and fail
+    before any HF network I/O or plugin state mutation."""
+    monkeypatch.setitem(sys.modules, "vllm", None)  # forces ImportError on import
+    with pytest.raises(ImportError, match=r"transformer-lens\[vllm\]"):
+        boot_vllm("any-model")
+    assert plugin._config == {}

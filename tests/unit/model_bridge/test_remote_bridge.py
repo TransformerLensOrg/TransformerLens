@@ -276,6 +276,42 @@ class TestRemoteBridgeForward:
         with pytest.raises(ValueError, match="Invalid return_type"):
             bridge.forward(torch.tensor([[1, 2, 3]]), return_type="nonsense")
 
+    def test_forward_rejects_list_of_strings(self):
+        """list[str] used to be passed through as raw input_ids and crash in numpy."""
+        bridge = RemoteBridge(_stub_adapter(), tokenizer=None, driver=_stub_driver())
+        with pytest.raises(TypeError, match="list of strings"):
+            bridge.forward(["hello", "world"])
+
+    def test_forward_rejects_stop_at_layer(self):
+        """stop_at_layer used to be silently swallowed by **kwargs."""
+        import torch
+
+        bridge = RemoteBridge(_stub_adapter(), tokenizer=None, driver=_stub_driver())
+        with pytest.raises(NotImplementedError, match="stop_at_layer"):
+            bridge.forward(torch.tensor([[1, 2]]), stop_at_layer=1)
+
+    def test_run_with_hooks_rejects_stop_at_layer(self):
+        import torch
+
+        bridge = RemoteBridge(_stub_adapter(), tokenizer=None, driver=_stub_driver())
+        with pytest.raises(NotImplementedError, match="stop_at_layer"):
+            bridge.run_with_hooks(torch.tensor([[1, 2]]), stop_at_layer=1)
+
+    def test_run_with_cache_rejects_stop_at_layer(self):
+        import torch
+
+        bridge = RemoteBridge(_stub_adapter(), tokenizer=None, driver=_stub_driver())
+        with pytest.raises(NotImplementedError, match="stop_at_layer"):
+            bridge.run_with_cache(torch.tensor([[1, 2]]), stop_at_layer=1)
+
+    def test_run_with_hooks_rejects_names_filter_kwarg(self):
+        """The parameter existed in the signature but was never read."""
+        import torch
+
+        bridge = RemoteBridge(_stub_adapter(), tokenizer=None, driver=_stub_driver())
+        with pytest.raises(TypeError, match="names_filter"):
+            bridge.run_with_hooks(torch.tensor([[1, 2]]), names_filter="blocks.0.hook_resid_pre")
+
     def test_forward_replays_captures(self):
         import torch
 
@@ -310,3 +346,88 @@ class TestRemoteBridgeForward:
         bridge.forward(torch.tensor([[1, 2]]))
         assert len(recorded) == 1
         assert tuple(recorded[0].shape) == (2, 3)
+
+
+class TestRemoteBridgeHookSetEnforcement:
+    """Driver-declared hook sets are a contract, not metadata — requests
+    outside them must fail loud instead of yielding empty caches."""
+
+    def test_add_hook_resolves_ht_alias(self):
+        """add_hook accepts the same HT-style aliases run_with_hooks resolves."""
+        driver = _stub_driver(supported_hooks=frozenset({"embed.hook_out"}))
+        bridge = RemoteBridge(_stub_adapter(), tokenizer=None, driver=driver)
+        bridge.add_hook("hook_embed", lambda act, hook: None)
+        assert len(bridge._hook_registry["embed.hook_out"].fwd_hooks) == 1
+
+    def test_run_with_hooks_unknown_hook_name_raises(self):
+        """Unknown string names used to be silently skipped — unhooked forward."""
+        import torch
+
+        bridge = RemoteBridge(_stub_adapter(), tokenizer=None, driver=_stub_driver())
+        with pytest.raises(KeyError, match="does not exist"):
+            with pytest.warns(UserWarning, match="read-only"):
+                bridge.run_with_hooks(
+                    torch.tensor([[1, 2]]),
+                    fwd_hooks=[("blocks.0.attn.hook_z_typo", lambda act, hook: None)],
+                )
+
+    def test_run_with_cache_unmatched_names_filter_raises(self):
+        """A filter outside the driver whitelist used to return (logits, {})."""
+        import torch
+
+        bridge = RemoteBridge(_stub_adapter(), tokenizer=None, driver=_stub_driver())
+        with pytest.raises(KeyError, match="matched no hook points"):
+            bridge.run_with_cache(torch.tensor([[1, 2]]), names_filter="blocks.0.attn.hook_z")
+
+    def test_run_with_cache_unmatched_list_filter_raises(self):
+        import torch
+
+        bridge = RemoteBridge(_stub_adapter(), tokenizer=None, driver=_stub_driver())
+        with pytest.raises(KeyError, match="matched no hook points"):
+            bridge.run_with_cache(
+                torch.tensor([[1, 2]]), names_filter=["nope.hook_a", "nope.hook_b"]
+            )
+
+    def test_run_with_cache_matching_filter_still_works(self):
+        import torch
+
+        bridge = RemoteBridge(_stub_adapter(), tokenizer=None, driver=_stub_driver())
+        _, cache = bridge.run_with_cache(
+            torch.tensor([[1, 2]]), names_filter="blocks.0.hook_resid_pre"
+        )
+        assert cache is not None  # no raise; driver returns no captures here
+
+    def test_non_fireable_hook_raises_backend_message(self):
+        """Hooks the backend declares non-fireable must name the remedy."""
+        import torch
+
+        class PartialDriver(DriverBase):
+            supported_hook_points = frozenset({"blocks.0.hook_resid_pre"})
+            non_fireable_hook_points = frozenset({"blocks.0.attn.hook_pattern"})
+
+            def __init__(self):
+                super().__init__(_cfg(), tokenizer=None)
+
+            def forward(
+                self,
+                input_ids=None,
+                *,
+                capture=(),
+                intervene=None,
+                max_new_tokens=1,
+                return_logits=True,
+                **kw,
+            ):
+                return ForwardResult()
+
+        bridge = RemoteBridge(_stub_adapter(), tokenizer=None, driver=PartialDriver())
+        with pytest.raises(NotImplementedError, match="cannot fire"):
+            bridge.add_hook("blocks.0.attn.hook_pattern", lambda act, hook: None)
+        with pytest.raises(NotImplementedError, match="boot_transformers"):
+            bridge.run_with_cache(torch.tensor([[1, 2]]), names_filter="blocks.0.attn.hook_pattern")
+        with pytest.raises(NotImplementedError, match="cannot fire"):
+            with pytest.warns(UserWarning, match="read-only"):
+                bridge.run_with_hooks(
+                    torch.tensor([[1, 2]]),
+                    fwd_hooks=[("blocks.0.attn.hook_pattern", lambda act, hook: None)],
+                )

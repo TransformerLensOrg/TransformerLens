@@ -141,4 +141,10 @@ def for_provider(provider: str) -> Any:
     """Pick the codec for a provider name (the part before ``/`` in get_model)."""
     if provider.startswith("vllm-lens"):
         return VLLMLensProfile()
-    return TLBridgeProfile()
+    if provider in ("tl_bridge", "tl_bridge_vllm"):
+        return TLBridgeProfile()
+    # An unknown provider would otherwise get full-capability codec and NaN downstream.
+    raise ValueError(
+        f"No Inspect codec for provider {provider!r}. Known providers: 'tl_bridge', "
+        "'tl_bridge_vllm', 'vllm-lens*'."
+    )

@@ -465,6 +465,11 @@ class TestTokenizeAndConcatenate:
             streaming=False,
             max_length=64,
             add_bos_token=False,
+            # Main-process: pytest's jaxtyping import hook instruments the closure,
+            # which datasets>=4.8 dill-ships to pool workers (even for num_proc=1) —
+            # instrumentation state is unpicklable. Plain-shell multiproc works; the
+            # chunking assertion below is what this test is for.
+            num_proc=None,
         )
 
         # Tokenize the same text cleanly in one shot (no chunking)

@@ -13,9 +13,8 @@ from transformer_lens.factories.architecture_adapter_factory import (
 from transformer_lens.model_bridge.remote_bridge import RemoteBridge
 from transformer_lens.model_bridge.sources._bridge_builder import (
     build_bridge_config_from_hf,
-    detect_tokenizer_bos_eos,
+    configure_tokenizer,
 )
-from transformer_lens.model_bridge.sources._hf_format import setup_tokenizer
 from transformer_lens.utilities.hf_utils import get_hf_token
 
 from . import profiles
@@ -78,13 +77,7 @@ def boot_inspect(
     if tokenizer is None:
         tokenizer = AutoTokenizer.from_pretrained(model_name, token=hf_token)
     # Match boot_transformers' tokenizer setup so to_tokens(str) is token-identical.
-    tokenizer = setup_tokenizer(
-        tokenizer, default_padding_side=getattr(adapter.cfg, "default_padding_side", None)
-    )
-    (
-        adapter.cfg.tokenizer_prepends_bos,
-        adapter.cfg.tokenizer_appends_eos,
-    ) = detect_tokenizer_bos_eos(tokenizer)
+    tokenizer = configure_tokenizer(tokenizer, adapter.cfg)
 
     if provider == "tl_bridge":
         # The provider's raw HF forward must match boot_transformers' load: same dtype,
@@ -93,6 +86,10 @@ def boot_inspect(
         inspect_kwargs["model_kwargs"] = _provider_model_kwargs(
             dict(inspect_kwargs.get("model_kwargs", {})), adapter, resolved_dtype, hf_token
         )
+    elif provider == "tl_bridge_vllm":
+        # Otherwise the provider defaults to the HF-config dtype and bridge_config.dtype
+        # lies about what the engine actually loaded.
+        inspect_kwargs["dtype"] = resolved_dtype
 
     # memoize=False: inspect_ai caches get_model by name, which would (a) return a stale
     # model ignoring a changed dtype/kwargs on re-boot and (b) keep weights resident past

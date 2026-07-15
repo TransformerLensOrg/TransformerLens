@@ -5,8 +5,9 @@ structural self-check OFFERS — gated ones (e.g. resid_mid on parallel/norm-var
 are correctly withheld and reported, not compared. Validates that self-check against real
 models: everything offered must match boot_transformers; it is not a per-PR CI job.
 
-Run: uv run python scripts/inspect_parity_report.py
-Override the model list with TL_PARITY_MODELS="id1,id2,...".
+Run:  uv run python scripts/inspect_parity_report.py
+Env:  TL_PARITY_MODELS="id1,id2,..."      overrides the model list.
+      TL_INSPECT_ATOL / TL_INSPECT_RTOL   override tolerance (defaults 1e-3).
 """
 from __future__ import annotations
 
@@ -57,7 +58,8 @@ DEFAULT_MODELS = [
 ]
 
 PROMPT = "The quick brown fox"
-ATOL, RTOL = 1e-3, 1e-3
+ATOL = float(os.environ.get("TL_INSPECT_ATOL", "1e-3"))
+RTOL = float(os.environ.get("TL_INSPECT_RTOL", "1e-3"))
 
 
 # Kind -> TransformerBridge-native hook suffix: the five d_model boundaries plus the
@@ -163,7 +165,8 @@ def main() -> None:
     passed = sorted({r["arch"] for r in rows if r["status"] == "PASS"})
     print("\nPARITY-VERIFIED ARCHITECTURES (measured PASS):")
     print("  " + ", ".join(passed))
-    sys.exit(0)
+    # Non-zero exit if anything actually ran and failed — lets a scripted run gate.
+    sys.exit(1 if any(r["status"] == "FAIL" for r in rows) else 0)
 
 
 if __name__ == "__main__":

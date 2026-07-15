@@ -37,6 +37,25 @@ class TransformersDriver(DriverBase):
         return_logits: bool = True,
         **kwargs: Any,
     ) -> ForwardResult:
+        # Module-replacement dialect: these args are served by the bridge's
+        # HookPoints, not here — silently ignoring them would be a lie.
+        if capture:
+            raise NotImplementedError(
+                "TransformersDriver.forward does not serve capture=: on the HF "
+                "backend activations are captured through the bridge's HookPoint "
+                "system — use run_with_cache()/run_with_hooks() on the bridge."
+            )
+        if intervene is not None:
+            raise NotImplementedError(
+                "TransformersDriver.forward does not serve intervene=: on the HF "
+                "backend interventions are torch hooks — use run_with_hooks() on "
+                "the bridge."
+            )
+        if max_new_tokens != 1:
+            raise NotImplementedError(
+                "TransformersDriver.forward does not generate; use "
+                "bridge.generate() for multi-token decoding."
+            )
         if input_ids is not None:
             raw = self._model(input_ids, **kwargs)
         else:

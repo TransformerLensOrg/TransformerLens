@@ -48,15 +48,38 @@ class ForwardResult:
     raw_output: Any = None
 
 
+# Feature strings ``supports()`` may be queried with. The bridge consumes
+# "parameters" (input-device placement); the rest are informational capability
+# declarations for callers. validate_driver rejects drivers declaring strings
+# outside this set.
+KNOWN_FEATURES = frozenset(
+    {"gradients", "parameters", "state_dict", "weight_access", "intervention_callbacks"}
+)
+
+
 @runtime_checkable
 class Driver(Protocol):
-    """The forward-pass contract. Hook installation is the driver's problem."""
+    """The forward-pass contract. Hook installation is the driver's problem.
+
+    ``forward`` has two dialects:
+
+    - **Module-replacement drivers** (TransformersDriver): hooks fire via the
+      bridge's HookPoint system during the real torch forward, so ``capture``/
+      ``intervene``/``max_new_tokens`` are not served here — conforming drivers
+      raise ``NotImplementedError`` on them rather than silently ignore.
+    - **Spec drivers** (vLLM, Inspect): no local module, so ``capture`` names
+      hook points to record and ``intervene`` carries declarative edit specs;
+      results come back in ``ForwardResult.captured``.
+    """
 
     architecture: str
     bridge_config: TransformerBridgeConfig
     tokenizer: Any
     supported_hook_points: frozenset[str]
     non_fireable_hook_points: frozenset[str]
+    # False when the driver returns logits for the final position only —
+    # the bridge then refuses return_type="loss"/"both" instead of NaN-ing.
+    provides_sequence_logits: bool
 
     def forward(
         self,
@@ -74,8 +97,8 @@ class Driver(Protocol):
         ...
 
     def supports(self, feature: str) -> bool:
-        """Capability flag. Known features: gradients, parameters, state_dict,
-        generate_streaming, weight_access, intervention_callbacks."""
+        """Capability flag over :data:`KNOWN_FEATURES`. The bridge consults
+        "parameters"; the others are caller-facing declarations."""
         ...
 
     # Note: torch-specific surface (parameters, named_parameters, state_dict,
@@ -133,6 +156,18 @@ def validate_driver(driver: Any, *, after_bridge_construction: bool = False) -> 
         raise TypeError("Driver missing required attribute: 'tokenizer'")
     _expect_attr_type(driver, "supported_hook_points", frozenset)
     _expect_attr_type(driver, "non_fireable_hook_points", frozenset)
+    # getattr(..., True) defaults would silently pick the UNSAFE value for
+    # loss gating, so the attribute is mandatory.
+    _expect_attr_type(driver, "provides_sequence_logits", bool)
+
+    declared_features = getattr(driver, "_supported_features", None)
+    if declared_features is not None:
+        unknown = frozenset(declared_features) - KNOWN_FEATURES
+        if unknown:
+            raise TypeError(
+                f"Driver._supported_features contains unknown feature strings "
+                f"{sorted(unknown)}; known features: {sorted(KNOWN_FEATURES)}."
+            )
 
     overlap = driver.supported_hook_points & driver.non_fireable_hook_points
     if overlap:
@@ -183,6 +218,7 @@ def _expect_attr_type(obj: Any, name: str, expected: type) -> None:
 __all__ = [
     "Driver",
     "ForwardResult",
+    "KNOWN_FEATURES",
     "Intervention",
     "InterventionFn",
     "InterventionSpec",

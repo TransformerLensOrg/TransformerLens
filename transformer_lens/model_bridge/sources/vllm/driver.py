@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import gc
 import logging
+import threading
+import warnings
 from typing import Any, Mapping
 
 import torch
@@ -14,7 +16,13 @@ from transformer_lens.model_bridge.driver_protocol import (
 )
 from transformer_lens.model_bridge.sources._driver_base import DriverBase
 
-from .intervention_specs import SUPPORTED_OPS
+from .intervention_specs import validate_spec
+
+# vLLM's distributed teardown operates on process-wide globals, so close() may only run
+# it when no other VLLMDriver-owned engine is alive (notebook re-binding boots B before
+# dropping A; A's __del__ must not destroy the process groups B is using).
+_LIVE_DRIVERS = 0
+_LIVE_DRIVERS_LOCK = threading.Lock()
 
 
 class VLLMDriver(DriverBase):
@@ -52,8 +60,22 @@ class VLLMDriver(DriverBase):
         # Logprobs per forward = real vocab (boot's max_logprobs). d_vocab can be
         # padded larger, which vLLM would reject; the logits tensor stays d_vocab.
         self._n_logprobs = int(getattr(hf_config, "vocab_size", self.bridge_config.d_vocab))
+        # Unembedding cache: (weight_fp32, bias_fp32|None) once probe_logit_reconstruction
+        # runs — a per-forward re-fetch clones a d_vocab×d_model tensor to CPU every call.
+        self._unembed: tuple[torch.Tensor, Any] | None = None
+        self._unembed_probed = False
+        # fp32 reciprocal of the guarded final-norm weight; None after a failed probe.
+        self._lnf_inv_denom: torch.Tensor | None = None
+        self._lnf_probed = False
 
-        self.supported_hook_points = frozenset(overlay.capture_specs(hf_config).keys())
+        capture_specs = overlay.capture_specs(hf_config)
+        self._hook_widths = {name: width for name, (_path, width) in capture_specs.items()}
+        self._capture_paths = {name: path for name, (path, _width) in capture_specs.items()}
+        self.supported_hook_points = frozenset(capture_specs.keys())
+
+        global _LIVE_DRIVERS
+        with _LIVE_DRIVERS_LOCK:
+            _LIVE_DRIVERS += 1
 
         n_layers = getattr(hf_config, "num_hidden_layers", 0)
         if not isinstance(n_layers, int) or n_layers <= 0:
@@ -89,6 +111,9 @@ class VLLMDriver(DriverBase):
                 "overwrite the prefill buffer; multi-step capture is multi-buffer work."
             )
         intervene_specs = self._validate_interventions(intervene or {})
+        # Pad tokens fed to vLLM are real content to it (no mask concept) — honor a
+        # caller-supplied mask by trimming rows to their true lengths, never swallow it.
+        attention_mask = kwargs.pop("attention_mask", None)
 
         # capture is authoritative — the bridge sends exactly the hooked names, so ()
         # means "capture nothing" and a plain forward(tokens) skips the GPU→CPU copy
@@ -97,9 +122,14 @@ class VLLMDriver(DriverBase):
         names = list(capture)
 
         if self._enable_batching:
-            return self._forward_batched(input_ids, intervene_specs, return_logits, names)
+            return self._forward_batched(
+                input_ids, intervene_specs, return_logits, names, attention_mask
+            )
 
         ids_list = self._normalize_input_ids(input_ids)
+        if attention_mask is not None:
+            n_real = int(torch.as_tensor(attention_mask).sum())
+            ids_list = ids_list[:n_real]
         if len(ids_list) > self._max_num_batched_tokens:
             # Worker buffers silently clamp on overflow — fail loud here instead.
             raise ValueError(
@@ -121,22 +151,17 @@ class VLLMDriver(DriverBase):
         # subsequent forwards self-copy. Without this, repeated bridge.forward calls would
         # see the gate closed from the prior call and read stale buffers.
         self._llm.collective_rpc("tl_reset_capture_flags")
-        # Full-vocab logprobs → position -1 of the synthesized logits (see _n_logprobs).
         outputs = self._llm.generate(
             prompts=[TokensPrompt(prompt_token_ids=ids_list)],
             sampling_params=SamplingParams(
                 max_tokens=int(max_new_tokens),
                 temperature=0.0,
-                logprobs=self._n_logprobs if return_logits else None,
+                logprobs=self._sampler_logprobs(return_logits),
             ),
         )
 
         n_tokens = len(ids_list)
-        # Reconstructing logits needs ln_final; force it into the read even if the caller
-        # didn't request it (dropped from `captured` below so the surface stays as asked).
-        read_names = names
-        if return_logits and self._LN_FINAL not in names:
-            read_names = names + [self._LN_FINAL]
+        read_names = self._read_names(names, return_logits)
         # collective_rpc returns one result per worker; single-rank, so [0]. Nothing to
         # read (no captures, logits off) → skip the crossing altogether.
         worker_captures = (
@@ -155,9 +180,33 @@ class VLLMDriver(DriverBase):
                 else self._synthesize_logits(outputs[0], n_tokens, self.bridge_config.d_vocab)
             )
 
-        # Add batch dim; expose only the caller's requested hooks (drop the forced ln_final).
-        captured = {name: t.unsqueeze(0) for name, t in worker_captures.items() if name in names}
+        captured = self._expose_captured(
+            {name: t.unsqueeze(0) for name, t in worker_captures.items()}, names
+        )
         return ForwardResult(logits=logits, captured=captured, raw_output=outputs[0])
+
+    def _sampler_logprobs(self, return_logits: bool) -> int | None:
+        # Sampler logprobs are the reconstruction fallback only; skipping them avoids
+        # marshaling a d_vocab-entry Logprob dict host-side per request.
+        return self._n_logprobs if return_logits and self._unembed is None else None
+
+    def _read_names(self, names: list[str], return_logits: bool) -> list[str]:
+        # Reconstruction needs ln_final even when uncaptured; skip once probed-unavailable.
+        recon_possible = self._unembed is not None or not self._unembed_probed
+        if return_logits and recon_possible and self._LN_FINAL not in names:
+            return names + [self._LN_FINAL]
+        return names
+
+    def _expose_captured(
+        self, captured: Mapping[str, torch.Tensor], names: list[str]
+    ) -> dict[str, torch.Tensor]:
+        """Filter to the caller's requested hooks (dropping any forced ln_final) and
+        convert the exposed ln_final to the pre-weight convention its name promises —
+        reconstruction consumed the raw post-weight value already."""
+        out = {name: t for name, t in captured.items() if name in names}
+        if self._LN_FINAL in out:
+            out[self._LN_FINAL] = self._unfold_ln_final(out[self._LN_FINAL])
+        return out
 
     def _forward_batched(
         self,
@@ -165,6 +214,7 @@ class VLLMDriver(DriverBase):
         intervene_specs: dict,
         return_logits: bool,
         names: list[str],
+        attention_mask: Any = None,
     ) -> ForwardResult:
         """Eager batched path: per-request capture, right-padded to (B, S, W).
 
@@ -176,6 +226,18 @@ class VLLMDriver(DriverBase):
         from vllm.inputs import TokensPrompt
 
         prompts_ids = self._normalize_input_ids_batched(input_ids)
+        if attention_mask is not None:
+            # Right-padded tensor batches carry pad ids vLLM would treat as content;
+            # trim each row to its masked length so per-row final positions are real.
+            mask = torch.as_tensor(attention_mask)
+            if mask.dim() == 1:
+                mask = mask.unsqueeze(0)
+            if mask.shape[0] != len(prompts_ids):
+                raise ValueError(
+                    f"attention_mask batch dim {mask.shape[0]} != number of prompts "
+                    f"{len(prompts_ids)}."
+                )
+            prompts_ids = [ids[: int(row.sum())] for ids, row in zip(prompts_ids, mask)]
         prompt_lens = [len(ids) for ids in prompts_ids]
 
         # Reset accumulators so prior-forward chunks don't leak into the cat.
@@ -189,15 +251,11 @@ class VLLMDriver(DriverBase):
             sampling_params=SamplingParams(
                 max_tokens=1,
                 temperature=0.0,
-                logprobs=self._n_logprobs if return_logits else None,
+                logprobs=self._sampler_logprobs(return_logits),
             ),
         )
 
-        # Force ln_final into the read so logits can be reconstructed (dropped below if
-        # the caller didn't ask for it).
-        read_names = names
-        if return_logits and self._LN_FINAL not in names:
-            read_names = names + [self._LN_FINAL]
+        read_names = self._read_names(names, return_logits)
         # Keyed by req_id (no guaranteed order) — _assemble_padded joins to slot
         # k via outputs[k].request_id, not by position. Empty read → skip both the
         # crossing AND the join (_assemble_padded requires one worker key per request,
@@ -215,13 +273,18 @@ class VLLMDriver(DriverBase):
             recon = self._reconstruct_logits(
                 captured.get(self._LN_FINAL)
             )  # (batch, max_seq, d_vocab)
+            if recon is not None:
+                # Pad rows reconstruct from zero-filled ln_final into finite garbage
+                # (0 @ W = plausible uniform logits) — mask them to the -inf convention
+                # the fallback and per-row consumers rely on.
+                for k, n in enumerate(prompt_lens):
+                    recon[k, n:] = float("-inf")
             logits = (
                 recon
                 if recon is not None
                 else self._synthesize_logits_batched(outputs, prompt_lens, d_vocab)
             )
-        if self._LN_FINAL not in names:
-            captured.pop(self._LN_FINAL, None)
+        captured = self._expose_captured(captured, names)
 
         return ForwardResult(logits=logits, captured=captured, raw_output=outputs)
 
@@ -304,63 +367,126 @@ class VLLMDriver(DriverBase):
             return None
         return self._llm.collective_rpc("tl_get_param", args=(dotted_name,))[0]
 
+    def probe_logit_reconstruction(self) -> bool:
+        """One-time unembedding fetch + cache; downgrades ``provides_sequence_logits``
+        honestly when no unembedding is reachable (the fallback path is final-position
+        log-probs, which cannot back a loss). Idempotent — later calls return the
+        cached availability."""
+        if self._unembed_probed:
+            return self._unembed is not None
+        self._unembed_probed = True
+        weight = self.get_param("lm_head.weight")
+        if weight is None:  # tied embeddings expose no separate lm_head
+            weight = self.get_param("model.embed_tokens.weight")
+        if weight is None:
+            self.provides_sequence_logits = False
+            return False
+        bias = self.get_param("lm_head.bias")
+        d_vocab = int(self.bridge_config.d_vocab)
+        # Slice vLLM's vocab-pad rows at cache time; fp32 residency (~2× checkpoint
+        # dtype on CPU) trades memory for skipping a full-matrix upcast per forward.
+        self._unembed = (
+            weight.to(torch.float32)[:d_vocab],
+            bias.to(torch.float32)[:d_vocab] if bias is not None else None,
+        )
+        self.provides_sequence_logits = True
+        return True
+
     def _reconstruct_logits(self, ln_final: Any) -> torch.Tensor | None:
         """Rebuild real logits from the captured post-weight ln_final:
         ``ln_final @ lm_head.weight.T`` (+ bias, + Gemma-family tanh soft-cap).
 
         vLLM's ``ln_final.hook_normalized`` is the POST-weight RMSNorm value lm_head
         consumes (verified empirically: it equals HF's pre-weight value times the norm
-        weight), so no un-fold is needed. Accepts any ``(..., d_model)`` tensor and returns
-        ``(..., d_vocab)`` on CPU. ``None`` if ln_final wasn't captured or no unembedding
-        weight is fetchable — the caller then falls back to the sampler's log-probs.
+        weight), so no un-fold is needed here — the raw worker value feeds this directly.
+        Accepts any ``(..., d_model)`` tensor and returns ``(..., d_vocab)`` on CPU.
+        ``None`` if ln_final wasn't captured or no unembedding weight is fetchable —
+        the caller then falls back to the sampler's log-probs.
         """
-        if ln_final is None:
+        if ln_final is None or not self.probe_logit_reconstruction():
             return None
-        weight = self.get_param("lm_head.weight")
-        if weight is None:  # tied embeddings expose no separate lm_head
-            weight = self.get_param("model.embed_tokens.weight")
-        if weight is None:
-            return None
-        lf = ln_final.to(device=weight.device, dtype=torch.float32)
-        logits = lf @ weight.to(torch.float32).T
-        bias = self.get_param("lm_head.bias")
-        if bias is not None:
-            logits = logits + bias.to(device=logits.device, dtype=torch.float32)
+        assert self._unembed is not None  # probe returned True
+        weight32, bias32 = self._unembed
+        lf = ln_final.to(device=weight32.device, dtype=torch.float32)
+        logits = lf @ weight32.T
+        if bias32 is not None:
+            logits = logits + bias32.to(device=logits.device)
+        d_vocab = int(self.bridge_config.d_vocab)
+        if logits.shape[-1] > d_vocab:
+            # vLLM pads vocab embeddings to a multiple of 64; its own sampler slices to
+            # org_vocab_size before sampling — mirror that, or pad columns (zero-filled
+            # at load) become phantom argmax candidates and bias softmax denominators.
+            logits = logits[..., :d_vocab]
         cap = getattr(self.bridge_config, "output_logits_soft_cap", None)
         if cap is not None and cap > 0:  # Gemma-family cap; -1.0 is the "disabled" sentinel
             logits = float(cap) * torch.tanh(logits / float(cap))
-        d_vocab = int(self.bridge_config.d_vocab)
         if logits.shape[-1] < d_vocab:  # pad the padded-vocab tail (never predicted)
             pad = logits.new_full((*logits.shape[:-1], d_vocab - logits.shape[-1]), float("-inf"))
             logits = torch.cat([logits, pad], dim=-1)
         return logits.cpu()
 
+    def _unfold_ln_final(self, t: torch.Tensor) -> torch.Tensor:
+        """Convert vLLM's post-weight RMSNorm capture to the pre-weight value the
+        canonical hook name promises (÷ weight; Gemma folds ``1 + weight``). Warns
+        once and serves the raw value when the norm weight is unreachable — loud
+        beats silent cross-backend mismatch."""
+        if not self._lnf_probed:
+            self._lnf_probed = True
+            # The overlay's capture spec owns the module path; derive the weight from it.
+            path = self._capture_paths.get(self._LN_FINAL, "model.norm")
+            weight = self.get_param(f"{path}.weight")
+            if weight is None:
+                warnings.warn(
+                    "ln_final.hook_normalized: norm weight unreachable — the captured "
+                    "value stays POST-weight and will not match boot_transformers.",
+                    UserWarning,
+                    stacklevel=3,
+                )
+            else:
+                w = weight.detach().to(torch.float32)
+                denom = (1.0 + w) if "gemma" in self.architecture.lower() else w
+                # Near-zero weight entries would blow up the division; identity beats inf.
+                denom = torch.where(denom.abs() < 1e-6, torch.ones_like(denom), denom)
+                self._lnf_inv_denom = denom.reciprocal()
+        if self._lnf_inv_denom is None:
+            return t
+        inv = self._lnf_inv_denom.to(device=t.device)
+        return (t.to(torch.float32) * inv).to(t.dtype)
+
     def close(self) -> None:
+        if self._llm is None:  # already closed — keep the refcount single-shot
+            return
         # Detach hooks before dropping the LLM so they don't stay registered on
         # worker modules for the life of the process (long-running notebooks).
         log = logging.getLogger("transformer_lens.vllm")
-        if self._llm is not None:
-            try:
-                self._llm.collective_rpc("tl_remove_hooks")
-            except Exception as e:
-                # Best-effort: engine may already be torn down or the RPC surface
-                # gone. Log so hook-leak debugging has a thread to pull.
-                log.debug("tl_remove_hooks failed during close(): %s", e)
-        self._llm = None
-        # vLLM 0.20.2 has no LLM.shutdown() — model weights and KV cache stay
-        # resident until process exit unless we explicitly tear down the
-        # distributed environment vLLM set up at construction. Both calls are
-        # best-effort: they're no-ops if there's no distributed state.
         try:
-            from vllm.distributed.parallel_state import (
-                destroy_distributed_environment,
-                destroy_model_parallel,
-            )
-
-            destroy_model_parallel()
-            destroy_distributed_environment()
+            self._llm.collective_rpc("tl_remove_hooks")
         except Exception as e:
-            log.debug("vLLM distributed teardown failed during close(): %s", e)
+            # Best-effort: engine may already be torn down or the RPC surface
+            # gone. Log so hook-leak debugging has a thread to pull.
+            log.debug("tl_remove_hooks failed during close(): %s", e)
+        self._llm = None
+        self._unembed = None
+        self._lnf_inv_denom = None
+
+        global _LIVE_DRIVERS
+        with _LIVE_DRIVERS_LOCK:
+            _LIVE_DRIVERS -= 1
+            last_driver = _LIVE_DRIVERS <= 0
+        # vLLM 0.20.2 has no LLM.shutdown(); the distributed teardown below hits
+        # process-global state, so it runs only for the last live driver (see
+        # _LIVE_DRIVERS). Both calls are best-effort no-ops otherwise.
+        if last_driver:
+            try:
+                from vllm.distributed.parallel_state import (
+                    destroy_distributed_environment,
+                    destroy_model_parallel,
+                )
+
+                destroy_model_parallel()
+                destroy_distributed_environment()
+            except Exception as e:
+                log.debug("vLLM distributed teardown failed during close(): %s", e)
         # Free the caching allocator's blocks here so the caller doesn't have to.
         gc.collect()
         try:
@@ -392,40 +518,15 @@ class VLLMDriver(DriverBase):
         return logits
 
     def _validate_interventions(self, intervene: Mapping[str, Any]) -> dict:
-        """Reject callables, validate spec format and hook names; return a plain dict."""
+        """Shared spec validation plus driver-side gating (hook membership, pos support)."""
         out: dict = {}
         for hook_name, spec in intervene.items():
-            if callable(spec):
-                raise NotImplementedError(
-                    "VLLMDriver requires intervention specs (dict), not callables. "
-                    "Supported ops: suppress, scale (factor: float), add (value: scalar or width-shaped), "
-                    "set (value: scalar or width-shaped)."
-                )
-            if not isinstance(spec, Mapping) or "op" not in spec:
-                raise ValueError(
-                    f"Intervention spec for {hook_name!r} must be a dict with 'op' key; got {spec!r}"
-                )
-            op = spec["op"]
-            if op not in SUPPORTED_OPS:
-                raise ValueError(
-                    f"Unsupported intervention op {op!r} for {hook_name!r}. "
-                    f"Supported: {sorted(SUPPORTED_OPS)}."
-                )
-            if op == "scale" and "factor" not in spec:
-                raise ValueError(
-                    f"Intervention {hook_name!r}: op='scale' requires 'factor' (float)."
-                )
-            if op in ("add", "set") and "value" not in spec:
-                raise ValueError(
-                    f"Intervention {hook_name!r}: op={op!r} requires 'value' "
-                    "(scalar or width-shaped tensor/list)."
-                )
+            validated = validate_spec(hook_name, spec, width=self._hook_widths.get(hook_name))
             if hook_name not in self.supported_hook_points:
                 raise ValueError(
                     f"Cannot intervene on {hook_name!r}: not in supported_hook_points."
                 )
-            pos = spec.get("pos")
-            if pos is not None:
+            if validated.get("pos") is not None:
                 if self._enable_batching:
                     # The batched/eager path applies ops to the raw tensor, not the
                     # (max_n, width) affine buffers, so it has no position surface.
@@ -443,20 +544,7 @@ class VLLMDriver(DriverBase):
                         "buffers broadcast across all positions). Use the Inspect/HF backend for "
                         "position-scoped patching, or drop 'pos' for a whole-sequence edit."
                     )
-                if not (
-                    isinstance(pos, int)
-                    or (isinstance(pos, (list, tuple)) and all(isinstance(p, int) for p in pos))
-                ):
-                    raise ValueError(
-                        f"Intervention {hook_name!r}: 'pos' must be an int or list of ints "
-                        f"(sequence positions to patch); got {pos!r}."
-                    )
-                bad = [p for p in ([pos] if isinstance(pos, int) else pos) if p < 0]
-                if bad:
-                    raise ValueError(
-                        f"Intervention {hook_name!r}: 'pos' must be non-negative; got {bad}."
-                    )
-            out[hook_name] = dict(spec)
+            out[hook_name] = validated
         return out
 
     @staticmethod

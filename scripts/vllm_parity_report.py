@@ -7,10 +7,10 @@ the fireable capture points the vLLM driver OFFERS (``driver.supported_hook_poin
 
 - ``embed.hook_out`` and per-layer ``blocks.{i}.hook_out`` / ``attn.hook_out`` /
   ``mlp.hook_out`` are semantically identical to boot_transformers and compared directly.
-- ``ln_final.hook_normalized`` carries vLLM's POST-weight RMSNorm value under a hook
-  whose HT convention is PRE-weight; it is un-folded (÷ weight, or ÷ (1+weight) for
-  Gemma) before comparison. The raw (un-un-folded) diff is also reported so a wrong
-  un-fold direction is visible rather than silent.
+- ``ln_final.hook_normalized`` is un-folded to the pre-weight convention by the driver
+  itself (÷ weight, or ÷ (1+weight) for Gemma), so it is compared directly too; a
+  driver-side un-fold regression shows up as an O(1) mismatch on this hook. The
+  re-folded diff is also reported so a wrong un-fold direction is distinguishable.
 
 Non-fireable points (fused attention pattern/scores/rope, unembed) are withheld and
 reported, not compared. A final-position argmax agreement check sanity-checks logits.
@@ -75,14 +75,13 @@ def _diff(a: torch.Tensor, b: torch.Tensor) -> tuple[float, bool]:
     return d, torch.allclose(a2, b2, atol=ATOL, rtol=RTOL)
 
 
-def _unfold_lnf(vllm_val: torch.Tensor, weight: torch.Tensor, is_gemma: bool) -> torch.Tensor:
-    """vLLM ln_final is post-weight (x·rsqrt(var+eps)·w); recover the pre-weight value HT
-    exposes by dividing out the norm weight (Gemma folds 1 + weight)."""
+def _refold_lnf(vllm_val: torch.Tensor, weight: torch.Tensor, is_gemma: bool) -> torch.Tensor:
+    """Re-apply the norm weight to the driver's (pre-weight) ln_final capture — used only
+    as a diagnostic so a wrong un-fold direction in the driver reads as 'refolded matches'
+    instead of an opaque mismatch."""
     w = weight.detach().to(vllm_val.device, torch.float32)
-    denom = (1.0 + w) if is_gemma else w
-    # Guard against near-zero weight entries producing spurious blow-ups.
-    denom = torch.where(denom.abs() < 1e-6, torch.ones_like(denom), denom)
-    return vllm_val.to(torch.float32) / denom
+    factor = (1.0 + w) if is_gemma else w
+    return vllm_val.to(torch.float32) * factor
 
 
 def verify(model_id: str) -> dict:
@@ -128,24 +127,25 @@ def verify(model_id: str) -> dict:
             if not ok:
                 mism.append(f"{hk} maxdiff={d:.2e}")
 
-        # ln_final: compare un-folded; also report the raw diff so a wrong un-fold shows.
+        # ln_final: the driver already un-folds to the pre-weight convention — compare
+        # directly. The refolded diff is diagnostic: "direct FAIL + refolded ok" means
+        # the driver's un-fold regressed (serving raw post-weight values again).
         if LNF_HOOK in offered and LNF_HOOK in v_cache and LNF_HOOK in hf_cache:
-            raw_d, raw_ok = _diff(hf_cache[LNF_HOOK], v_cache[LNF_HOOK])
-            weight = vllm._driver.get_param("model.norm.weight")
-            if weight is None:
-                notes.append(f"ln_final raw={raw_d:.2e} (no norm weight to un-fold)")
-                if not raw_ok:
-                    mism.append(f"{LNF_HOOK} maxdiff={raw_d:.2e} (un-fold unavailable)")
+            d, ok = _diff(hf_cache[LNF_HOOK], v_cache[LNF_HOOK])
+            worst = max(worst, d if d != float("inf") else worst)
+            if ok:
+                notes.append(f"ln_final direct={d:.2e}")
             else:
-                unfolded = _unfold_lnf(v_cache[LNF_HOOK], weight, is_gemma)
-                uf_d, uf_ok = _diff(hf_cache[LNF_HOOK], unfolded)
-                worst = max(worst, uf_d if uf_d != float("inf") else worst)
-                notes.append(f"ln_final unfold={uf_d:.2e} raw={raw_d:.2e}")
-                if not uf_ok:
-                    mism.append(f"{LNF_HOOK} unfold maxdiff={uf_d:.2e} (raw={raw_d:.2e})")
+                weight = vllm._driver.get_param("model.norm.weight")
+                detail = f"{LNF_HOOK} maxdiff={d:.2e}"
+                if weight is not None:
+                    refolded = _refold_lnf(v_cache[LNF_HOOK], weight, is_gemma)
+                    rf_d, rf_ok = _diff(hf_cache[LNF_HOOK], refolded)
+                    detail += f" (refolded={rf_d:.2e}{', un-fold regressed' if rf_ok else ''})"
+                mism.append(detail)
 
-        # Logit sanity: vLLM synthesizes final-position log-probs only; check top-1 agrees
-        # (reusing the run_with_cache logits above — no second forward).
+        # Logit sanity: the driver reconstructs full-sequence logits host-side; check the
+        # final-position top-1 agrees (reusing the run_with_cache logits — no second forward).
         try:
             hf_top = int(torch.as_tensor(hf_logits)[0, -1].argmax())
             v_top = int(torch.as_tensor(v_logits)[0, -1].argmax())

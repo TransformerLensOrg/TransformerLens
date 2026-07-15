@@ -57,6 +57,7 @@ class InspectDriver(DriverBase):
         # Background event loop, created lazily on first forward.
         self._loop: asyncio.AbstractEventLoop | None = None
         self._loop_thread: threading.Thread | None = None
+        self._loop_lock = threading.Lock()  # guards lazy creation / abandonment
         self._warned_missing: set[str] = set()  # hooks we've already warned were absent
 
     def forward(
@@ -143,37 +144,63 @@ class InspectDriver(DriverBase):
 
     def close(self) -> None:
         log = logging.getLogger("transformer_lens.inspect")
-        if self._loop is not None:
+        with self._loop_lock:
+            loop, self._loop = self._loop, None
+            thread, self._loop_thread = self._loop_thread, None
+        if loop is not None:
             try:
-                self._loop.call_soon_threadsafe(self._loop.stop)
-                if self._loop_thread is not None:
-                    self._loop_thread.join(timeout=5)
-                self._loop.close()
+                loop.call_soon_threadsafe(loop.stop)
+                if thread is not None:
+                    thread.join(timeout=5)
+                loop.close()
             except Exception as e:
                 log.debug("event-loop teardown failed during close(): %s", e)
-        self._loop = None
-        self._loop_thread = None
         self._model = None  # drop the provider reference; the server owns its own lifecycle
 
     # ---- helpers ----
 
     def _ensure_loop(self) -> asyncio.AbstractEventLoop:
         """A private loop on a daemon thread — works even when the caller is already
-        inside a running loop (Jupyter), unlike asyncio.run()."""
-        if self._loop is None:
-            self._loop = asyncio.new_event_loop()
-            self._loop_thread = threading.Thread(
-                target=self._loop.run_forever, daemon=True, name="inspect-driver-loop"
-            )
-            self._loop_thread.start()
-        return self._loop
+        inside a running loop (Jupyter), unlike asyncio.run(). Locked: unlocked
+        check-then-create would leak loops under concurrent first calls."""
+        loop = self._loop
+        if loop is not None:  # GIL-safe fast path; the lock only guards create/abandon
+            return loop
+        with self._loop_lock:
+            if self._loop is None:
+                self._loop = asyncio.new_event_loop()
+                self._loop_thread = threading.Thread(
+                    target=self._loop.run_forever, daemon=True, name="inspect-driver-loop"
+                )
+                self._loop_thread.start()
+            return self._loop
+
+    def _abandon_loop(self) -> None:
+        """After a timeout the loop thread is still occupied by the hung forward (cancel
+        can't interrupt sync work), so every later call would queue behind it and time out.
+        Abandon it — the daemon thread stops once the hung call returns — and rebuild
+        lazily on the next forward."""
+        with self._loop_lock:
+            loop, self._loop, self._loop_thread = self._loop, None, None
+        if loop is not None:
+            try:
+                loop.call_soon_threadsafe(loop.stop)  # takes effect when the hung call ends
+            except Exception:
+                pass
+        warnings.warn(
+            "InspectDriver: abandoning the wedged event-loop thread after a provider "
+            "timeout; a fresh loop will be created on the next forward.",
+            UserWarning,
+            stacklevel=3,
+        )
 
     def _run_coro(self, coro: Any) -> Any:
         future = asyncio.run_coroutine_threadsafe(coro, self._ensure_loop())
         try:
             return future.result(timeout=_PROVIDER_TIMEOUT_S)  # re-raises provider errors
         except FutureTimeout:
-            future.cancel()
+            future.cancel()  # best-effort; can't interrupt a sync forward on the loop thread
+            self._abandon_loop()
             raise TimeoutError(
                 f"Inspect provider call exceeded {_PROVIDER_TIMEOUT_S:.0f}s "
                 "(set TL_INSPECT_TIMEOUT_S to change) — the remote/provider forward looks "

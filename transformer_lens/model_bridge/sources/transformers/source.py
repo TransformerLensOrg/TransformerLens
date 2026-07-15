@@ -57,7 +57,17 @@ def boot(
     n_devices: int | None = None,
     max_memory: dict[str | int, str] | None = None,
 ) -> TransformerBridge:
-    """Boot a model from HuggingFace.
+    """Boot a model from HuggingFace (exposed as ``TransformerBridge.boot_transformers``).
+
+    Returns raw HF weights by default — logits/activations match HF, *not*
+    legacy ``HookedTransformer`` (which folds LayerNorm + centers weights).
+    Call ``enable_compatibility_mode()`` on the result for HookedTransformer-
+    equivalent numerics. Generation, argmax, and CE loss are unaffected.
+
+    Attention implementation is forced to ``"eager"`` so hooks can capture scores
+    and patterns. For an apples-to-apples HF comparison, load the HF model with
+    ``attn_implementation="eager"`` too; comparing against the default ``"sdpa"``
+    shows ~1e-3 fp32 drift from kernel-level op reordering, not a bridge bug.
 
     Args:
         model_name: The name of the model to load.

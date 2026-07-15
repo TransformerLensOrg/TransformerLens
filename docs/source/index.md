@@ -55,6 +55,7 @@ content/tutorials
 content/citation
 content/contributing
 content/hook_system
+content/drivers
 content/compatibility_mode
 content/debugging_numerical_divergence
 generated/demos/Main_Demo

@@ -108,6 +108,19 @@ def detect_tokenizer_bos_eos(tokenizer: Any) -> tuple[bool, bool]:
     return prepends_bos, appends_eos
 
 
+def configure_tokenizer(tokenizer: Any, cfg: Any) -> Any:
+    """Shared boot step: normalize the tokenizer and record its BOS/EOS behavior on cfg.
+
+    Every source must run this — skipping it leaves the dataclass default
+    ``tokenizer_prepends_bos=True``, which position-shifts every activation on
+    non-BOS-prepending tokenizers (Qwen family)."""
+    tokenizer = setup_tokenizer(
+        tokenizer, default_padding_side=getattr(cfg, "default_padding_side", None)
+    )
+    cfg.tokenizer_prepends_bos, cfg.tokenizer_appends_eos = detect_tokenizer_bos_eos(tokenizer)
+    return tokenizer
+
+
 def build_bridge_from_module(
     model: nn.Module,
     architecture: str,
@@ -196,12 +209,7 @@ def build_bridge_from_module(
     adapter.prepare_model(model)
 
     if tokenizer is not None:
-        default_padding_side = getattr(adapter.cfg, "default_padding_side", None)
-        tokenizer = setup_tokenizer(tokenizer, default_padding_side=default_padding_side)
-        (
-            adapter.cfg.tokenizer_prepends_bos,
-            adapter.cfg.tokenizer_appends_eos,
-        ) = detect_tokenizer_bos_eos(tokenizer)
+        tokenizer = configure_tokenizer(tokenizer, adapter.cfg)
 
     from transformer_lens.model_bridge.sources.transformers_driver import (
         TransformersDriver,

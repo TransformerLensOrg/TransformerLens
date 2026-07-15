@@ -11,6 +11,7 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
+    ClassVar,
     Dict,
     Iterator,
     List,
@@ -65,13 +66,6 @@ def _resolve_attr_path(obj: nn.Module, attr_path: str) -> torch.Tensor:
     for attr in attr_path.split("."):
         result = getattr(result, attr)
     return cast(torch.Tensor, result)
-
-
-# build_alias_to_canonical_map lives in bridge_core.py; re-import for the module's
-# internal use (run_with_cache, hooks() context manager in this file).
-from transformer_lens.model_bridge.bridge_core import (  # noqa: E402
-    build_alias_to_canonical_map,
-)
 
 
 class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
@@ -165,97 +159,10 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         validate_driver(self._driver, after_bridge_construction=True)
         self.processor = None
 
-    @classmethod
-    def boot_transformers(
-        cls,
-        model_name: str,
-        hf_config_overrides: Optional[dict] = None,
-        device: Optional[Union[str, torch.device]] = None,
-        dtype: torch.dtype = torch.float32,
-        tokenizer: Optional[Any] = None,
-        load_weights: bool = True,
-        trust_remote_code: bool = False,
-        model_class: Optional[type] = None,
-        hf_model: Optional[Any] = None,
-        device_map: Optional[Union[str, Dict[str, Union[str, int]]]] = None,
-        n_devices: Optional[int] = None,
-        max_memory: Optional[Dict[Union[str, int], str]] = None,
-        n_ctx: Optional[int] = None,
-        revision: Optional[str] = None,
-        checkpoint_index: Optional[int] = None,
-        checkpoint_value: Optional[int] = None,
-    ) -> "TransformerBridge":
-        """Boot a model from HuggingFace (alias for sources.transformers.boot).
-
-        Returns raw HF weights by default — logits/activations match HF, *not*
-        legacy ``HookedTransformer`` (which folds LayerNorm + centers weights).
-        Call ``enable_compatibility_mode()`` on the result for HookedTransformer-
-        equivalent numerics. Generation, argmax, and CE loss are unaffected.
-
-        Attention implementation is forced to ``"eager"`` so hooks can capture scores
-        and patterns. For an apples-to-apples HF comparison, load the HF model with
-        ``attn_implementation="eager"`` too; comparing against the default ``"sdpa"``
-        shows ~1e-3 fp32 drift from kernel-level op reordering, not a bridge bug.
-
-        Args:
-            model_name: The name of the model to load.
-            hf_config_overrides: Optional overrides applied to the HuggingFace config before model load.
-            device: The device to use. If None, will be determined automatically. Mutually exclusive
-                with ``device_map``.
-            dtype: The dtype to use for the model.
-            tokenizer: Optional pre-initialized tokenizer to use; if not provided one will be created.
-            load_weights: If False, load model without weights (on meta device) for config inspection only.
-            trust_remote_code: Whether to trust remote code for custom model architectures.
-            model_class: Optional HuggingFace model class to use instead of the default
-                auto-detected class (e.g., BertForNextSentencePrediction).
-            hf_model: Optional pre-loaded HuggingFace model to use instead of loading one. Useful
-                for models loaded with custom configurations (e.g., quantization via
-                BitsAndBytesConfig). When provided, load_weights is ignored. If the pre-loaded
-                model was built with a ``device_map``, ``cfg.device`` and ``cfg.n_devices`` are
-                derived from its ``hf_device_map`` automatically.
-            device_map: HuggingFace-style device map for multi-GPU inference. Pass ``"auto"``,
-                ``"balanced"``, ``"sequential"``, or an explicit ``{submodule_path: device}`` dict.
-                Mutually exclusive with ``device``.
-            n_devices: Convenience shortcut: split the model across this many CUDA devices.
-                Translated to a ``max_memory`` dict over devices 0..n_devices-1 and passed as
-                ``device_map`` to HF. Requires CUDA with at least this many visible devices.
-            max_memory: Optional per-device memory budget, passed through to HF's dispatcher.
-                Only used when ``device_map`` or ``n_devices`` is in effect.
-            n_ctx: Optional context length override. Writes to the appropriate HF config field
-                for this model automatically (callers don't need to know the field name).
-                Warns if larger than the model's default context length.
-            revision: Optional HF revision (branch, tag, or commit). Forwarded to the underlying
-                ``AutoConfig.from_pretrained`` and ``AutoModelForCausalLM.from_pretrained`` calls.
-                Mutually exclusive with ``checkpoint_index`` / ``checkpoint_value``.
-            checkpoint_index: Index into the available training checkpoints for the model family
-                (currently ``EleutherAI/pythia*`` and ``stanford-crfm/*``). Resolved to a revision
-                string via known per-family naming conventions.
-            checkpoint_value: Training step or token count of the desired checkpoint. Alternative
-                to ``checkpoint_index``; must match an entry in the family's checkpoint label list.
-
-        Returns:
-            The bridge to the loaded model.
-        """
-        from transformer_lens.model_bridge.sources.transformers import boot
-
-        return boot(
-            model_name=model_name,
-            hf_config_overrides=hf_config_overrides,
-            device=device,
-            dtype=dtype,
-            tokenizer=tokenizer,
-            load_weights=load_weights,
-            trust_remote_code=trust_remote_code,
-            model_class=model_class,
-            hf_model=hf_model,
-            device_map=device_map,
-            n_devices=n_devices,
-            max_memory=max_memory,
-            n_ctx=n_ctx,
-            revision=revision,
-            checkpoint_index=checkpoint_index,
-            checkpoint_value=checkpoint_value,
-        )
+    # boot_transformers / list_supported_models / check_model_support are
+    # attached by sources.transformers.__init__ (setattr on this class) so the
+    # source package owns its own boot entry point.
+    boot_transformers: ClassVar[Callable[..., "TransformerBridge"]]
 
     @property
     def original_model(self) -> nn.Module:
@@ -695,39 +602,6 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             state_dict=state_dict,
             component_mapping=self.real_components,
         )
-
-    def _calculate_loss(self, logits, tokens, loss_per_token=False):
-        """Calculate cross-entropy loss."""
-        shift_logits = logits[..., :-1, :].contiguous()
-        shift_labels = tokens[..., 1:].contiguous()
-        loss_fct = torch.nn.CrossEntropyLoss(reduction="none" if loss_per_token else "mean")
-        flat_logits = shift_logits.view(-1, shift_logits.size(-1))
-        flat_labels = shift_labels.view(-1)
-        loss = loss_fct(flat_logits, flat_labels)
-        if loss_per_token:
-            return loss.view(shift_labels.shape)
-        else:
-            return loss
-
-    def _extract_hf_weights(self):
-        """Extract weights from the original HuggingFace model."""
-        hf_state_dict = self.state_dict()
-        for layer_idx in range(self.cfg.n_layers):
-            combined_qkv_key = f"transformer.h.{layer_idx}.attn.c_attn.weight"
-            combined_qkv_bias_key = f"transformer.h.{layer_idx}.attn.c_attn.bias"
-            if combined_qkv_key in hf_state_dict:
-                separate_keys_to_remove = [
-                    f"transformer.h.{layer_idx}.attn.q.weight",
-                    f"transformer.h.{layer_idx}.attn.q.bias",
-                    f"transformer.h.{layer_idx}.attn.k.weight",
-                    f"transformer.h.{layer_idx}.attn.k.bias",
-                    f"transformer.h.{layer_idx}.attn.v.weight",
-                    f"transformer.h.{layer_idx}.attn.v.bias",
-                ]
-                for key_to_remove in separate_keys_to_remove:
-                    if key_to_remove in hf_state_dict:
-                        del hf_state_dict[key_to_remove]
-        return hf_state_dict
 
     def to_tokens(
         self,
