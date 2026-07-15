@@ -22,6 +22,40 @@ import torch
 
 from .intervention_specs import SUPPORTED_OPS, validate_spec
 
+# Explicit tensor wire format for collective_rpc returns. vLLM's multiproc RPC
+# cannot round-trip raw tensors from extension methods — its tensor-aware msgpack
+# encoder's header (['float32', [rows, cols], buf_idx]) leaks through undecoded on
+# the response path (GPU-verified on vllm 0.20.2). dtype/shape/bytes are all
+# msgpack-native, so this survives any executor topology; the in-process executor
+# pays one extra CPU copy.
+_TL_TENSOR_KEY = "__tl_tensor__"
+
+
+def encode_tensor(t: torch.Tensor) -> Dict[str, Any]:
+    """Encode a CPU tensor for the RPC wire. bf16 rides as fp32 bytes (exact)."""
+    t = t.detach().cpu().contiguous()
+    dtype_name = str(t.dtype).removeprefix("torch.")
+    if t.dtype == torch.bfloat16:
+        t = t.to(torch.float32)
+    return {
+        _TL_TENSOR_KEY: True,
+        "dtype": dtype_name,
+        "shape": list(t.shape),
+        "data": t.numpy().tobytes(),
+    }
+
+
+def decode_tensor(payload: Dict[str, Any]) -> torch.Tensor:
+    """Inverse of :func:`encode_tensor`; used driver-side."""
+    import numpy as np
+
+    dtype = getattr(torch, payload["dtype"])
+    wire_dtype = torch.float32 if dtype == torch.bfloat16 else dtype
+    np_dtype = torch.empty(0, dtype=wire_dtype).numpy().dtype
+    array = np.frombuffer(payload["data"], dtype=np_dtype).copy()
+    tensor = torch.from_numpy(array).reshape(payload["shape"])
+    return tensor.to(torch.bfloat16) if dtype == torch.bfloat16 else tensor
+
 
 class TLWorkerExtension:
     """Mixed into vLLM's ``Worker`` via ``worker_extension_cls``."""
@@ -50,8 +84,8 @@ class TLWorkerExtension:
 
     def tl_read_captures(
         self, prompt_lens: List[int], names: Optional[List[str]] = None
-    ) -> Dict[str, torch.Tensor]:
-        """Slice each capture buffer to ``sum(prompt_lens)`` rows; CPU copies.
+    ) -> Dict[str, Dict[str, Any]]:
+        """Slice each capture buffer to ``sum(prompt_lens)`` rows; wire-encoded CPU copies.
 
         ``names`` restricts the read (``None`` = all) — this is the only GPU→CPU
         crossing, so it's where a names_filtered run saves bandwidth. Caller gates
@@ -60,7 +94,7 @@ class TLWorkerExtension:
         total = sum(prompt_lens)
         buffers: Dict[str, torch.Tensor] = getattr(self, "_tl_buffers", {})
         wanted = buffers.keys() if names is None else [n for n in names if n in buffers]
-        return {name: buffers[name][:total].detach().cpu().clone() for name in wanted}
+        return {name: encode_tensor(buffers[name][:total]) for name in wanted}
 
     def tl_set_interventions(self, specs: Dict[str, Dict[str, Any]]) -> None:
         """Reset all affine buffers to identity, then apply each spec.
@@ -85,8 +119,9 @@ class TLWorkerExtension:
             validate_spec(hook_name, spec, width=scale_bufs[hook_name].shape[-1])
             _apply_intervention(scale_bufs[hook_name], bias_bufs[hook_name], spec)
 
-    def tl_get_param(self, dotted_name: str) -> Optional[torch.Tensor]:
-        """Read a named model tensor (e.g. ``model.norm.weight``) as a CPU clone.
+    def tl_get_param(self, dotted_name: str) -> Optional[Dict[str, Any]]:
+        """Read a named model tensor (e.g. ``model.norm.weight``) as a wire-encoded
+        CPU clone.
 
         ``None`` if the path doesn't resolve to a tensor. The bridge has no general
         weight surface, so this is how callers reach e.g. the ln_final weight.
@@ -96,7 +131,7 @@ class TLWorkerExtension:
             target = target[int(seg)] if seg.isdigit() else getattr(target, seg, None)
             if target is None:
                 return None
-        return target.detach().cpu().clone() if isinstance(target, torch.Tensor) else None
+        return encode_tensor(target) if isinstance(target, torch.Tensor) else None
 
     def tl_reset_counter(self) -> None:
         """Zero the shared hook-fire counter before a forward."""
@@ -134,11 +169,11 @@ class TLWorkerExtension:
         """
         accum: Dict[tuple, List[torch.Tensor]] = getattr(self, "_tl_accum", {})
         nameset = None if names is None else set(names)
-        out: Dict[str, Dict[str, torch.Tensor]] = {}
+        out: Dict[str, Dict[str, Any]] = {}
         for (req_id, name), chunks in accum.items():
             if nameset is not None and name not in nameset:
                 continue
-            out.setdefault(req_id, {})[name] = torch.cat(chunks, dim=0)
+            out.setdefault(req_id, {})[name] = encode_tensor(torch.cat(chunks, dim=0))
         return out
 
     def tl_set_batched_interventions(self, specs: Dict[str, Dict[str, Any]]) -> None:

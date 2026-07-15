@@ -17,6 +17,7 @@ from transformer_lens.model_bridge.driver_protocol import (
 from transformer_lens.model_bridge.sources._driver_base import DriverBase
 
 from .intervention_specs import validate_spec
+from .worker_extension import _TL_TENSOR_KEY, decode_tensor
 
 # vLLM's distributed teardown operates on process-wide globals, so close() may only run
 # it when no other VLLMDriver-owned engine is alive (notebook re-binding boots B before
@@ -393,13 +394,16 @@ class VLLMDriver(DriverBase):
 
     @staticmethod
     def _rpc_tensor(value: Any) -> torch.Tensor:
-        """Coerce a non-None collective_rpc payload back to a tensor.
+        """Decode a non-None collective_rpc payload back to a tensor.
 
-        Whether tensors survive the RPC depends on executor topology (GPU-verified
-        on vllm 0.20.2): in-process executors return them as-is, worker processes
-        behind the ZMQ path serialize them into nested Python lists."""
+        Worker methods return the explicit wire format (see
+        ``worker_extension.encode_tensor``) because vLLM's multiproc RPC can't
+        round-trip raw tensors. Raw tensors still pass through for mocks and any
+        legacy in-process payloads; anything else is best-effort coerced."""
         if isinstance(value, torch.Tensor):
             return value
+        if isinstance(value, Mapping) and value.get(_TL_TENSOR_KEY):
+            return decode_tensor(dict(value))
         return torch.as_tensor(value)
 
     @classmethod
