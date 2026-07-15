@@ -977,3 +977,45 @@ class TestTPReplicationTripwire:
     def test_single_rank_driver_skips_verification(self):
         driver = _driver(captures={})
         assert driver._tp_size == 1 and driver._tp_verified is True
+
+
+class TestRpcTensorCoercion:
+    """Multiproc collective_rpc (TP>1) serializes tensors to nested lists —
+    every RPC read must coerce back. GPU-verified failure mode on vllm 0.20.2."""
+
+    def test_get_param_coerces_list_payload(self):
+        driver = _driver(captures={})
+        driver._llm.collective_rpc = MagicMock(return_value=[[[1.0, 2.0], [3.0, 4.0]]])
+        out = driver.get_param("model.norm.weight")
+        assert isinstance(out, torch.Tensor) and out.shape == (2, 2)
+
+    def test_gather_param_concats_list_shards(self):
+        """The exact crash from the box: list shards have no .shape."""
+        driver = _driver(captures={})
+        shard0 = [[0.0] * 4] * 8
+        shard1 = [[1.0] * 4] * 8
+        driver._llm.collective_rpc = MagicMock(return_value=[shard0, shard1])
+        full = driver._gather_param("lm_head.weight")
+        assert isinstance(full, torch.Tensor) and full.shape == (16, 4)
+        assert torch.equal(full[8:], torch.ones(8, 4))
+
+    def test_gather_param_detects_replicated_list_shards(self):
+        driver = _driver(captures={})
+        weight = [2.0, 2.0, 2.0, 2.0]
+        driver._llm.collective_rpc = MagicMock(return_value=[weight, list(weight)])
+        out = driver._gather_param("model.norm.weight")
+        assert out.shape == (4,)
+
+    def test_rpc_captures_coerces_dict_values(self):
+        coerced = VLLMDriver._rpc_captures({"embed.hook_out": [[1.0, 2.0]]})
+        assert isinstance(coerced["embed.hook_out"], torch.Tensor)
+
+    def test_tensor_payloads_pass_through_unchanged(self):
+        t = torch.randn(3, 4)
+        assert VLLMDriver._rpc_tensor(t) is t
+
+    def test_get_param_none_payload_stays_none(self):
+        """None (missing path) is filtered before coercion at the call sites."""
+        driver = _driver(captures={})
+        driver._llm.collective_rpc = MagicMock(return_value=[None])
+        assert driver.get_param("no.such.param") is None

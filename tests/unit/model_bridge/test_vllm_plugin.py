@@ -163,3 +163,30 @@ class TestResolveDotPath:
         from transformer_lens.model_bridge.sources.vllm.plugin import _resolve_dot_path
 
         assert _resolve_dot_path(self._model(), "model.layers.7") is None
+
+
+class TestCompiledHookInstrumentationSafety:
+    """Compile-traced hook internals must stay annotation-free: pytest's jaxtyping
+    hook wraps annotated functions, and dynamo tracing the wrapper corrupts
+    jaxtyping's thread-local memo stack process-wide (GPU-verified)."""
+
+    def test_gated_capture_has_no_annotations(self):
+        from transformer_lens.model_bridge.sources.vllm.plugin import _gated_capture
+
+        assert (
+            _gated_capture.__wrapped__.__annotations__ == {}
+            if hasattr(_gated_capture, "__wrapped__")
+            else _gated_capture.__annotations__ == {}
+        )
+
+
+class TestVllmPluginEntryPoint:
+    def test_general_plugin_entry_point_declared(self):
+        """Spawned TP workers only get the load_model patch via vllm.general_plugins —
+        without this entry point, workers boot hookless and captures are empty."""
+        from importlib.metadata import entry_points
+
+        eps = entry_points(group="vllm.general_plugins")
+        assert any(
+            ep.value == "transformer_lens.model_bridge.sources.vllm.plugin:register" for ep in eps
+        )

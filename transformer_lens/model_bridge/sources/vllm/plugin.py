@@ -271,7 +271,11 @@ def _make_capture_hook(
     ``fire_counter`` is incremented per call for the fire-once check.
     """
 
-    def _affine(t: torch.Tensor, n: Any) -> torch.Tensor:
+    # NO type annotations on _affine: the pytest jaxtyping hook wraps annotated
+    # transformer_lens functions, and dynamo tracing that wrapper into the compiled
+    # graph corrupts jaxtyping's thread-local memo stack for the whole process
+    # (GPU-verified: unrelated outer calls die with 'pop from empty list').
+    def _affine(t, n):
         # per_position is a closure constant → torch.compile specializes this branch.
         # narrow(0, 0, n) keeps the SymInt dynamic shape (same trick as _gated_capture);
         # the (width,) path broadcasts across all rows.
@@ -313,9 +317,8 @@ def _make_capture_hook(
     return hook
 
 
-def _gated_capture(
-    capture_buf: torch.Tensor, n: Any, modified: torch.Tensor, capture_flag: torch.Tensor
-) -> None:
+# NO type annotations: this is traced into the compiled graph — see _affine's note.
+def _gated_capture(capture_buf, n, modified, capture_flag):
     """First-write-wins via torch.where, compile-safe (no Python branching).
 
     When ``capture_flag == 0`` (open), writes ``modified`` to ``capture_buf[:n]``.

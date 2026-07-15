@@ -278,14 +278,21 @@ class TestBatchedAccumulators:
 class TestAbsentHooks:
     """tl_absent_hooks reports per-rank installation gaps for the boot coverage check."""
 
-    def test_default_empty(self):
+    def test_never_installed_returns_none(self):
+        """No _tl_absent_hooks attr = installation never ran — must NOT read as
+        'nothing absent' (that vacuous pass shipped hookless TP workers)."""
         worker = TLWorkerExtension()
-        assert worker.tl_absent_hooks() == []
+        assert worker.tl_absent_hooks() is None
 
     def test_reports_recorded_names_sorted(self):
         worker = TLWorkerExtension()
         worker._tl_absent_hooks = {"blocks.1.hook_out", "blocks.0.hook_out"}
         assert worker.tl_absent_hooks() == ["blocks.0.hook_out", "blocks.1.hook_out"]
+
+    def test_installed_with_no_gaps_returns_empty_list(self):
+        worker = TLWorkerExtension()
+        worker._tl_absent_hooks = set()
+        assert worker.tl_absent_hooks() == []
 
     def test_remove_hooks_clears(self):
         worker = TLWorkerExtension()

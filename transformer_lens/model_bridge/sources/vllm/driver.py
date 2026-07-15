@@ -174,7 +174,12 @@ class VLLMDriver(DriverBase):
         # TP ranks (post-all-reduce hook points), so rank 0 is authoritative. Nothing
         # to read (no captures, logits off) → skip the crossing altogether.
         if read_names:
-            per_rank = self._llm.collective_rpc("tl_read_captures", args=([n_tokens], read_names))
+            per_rank = [
+                self._rpc_captures(caps)
+                for caps in self._llm.collective_rpc(
+                    "tl_read_captures", args=([n_tokens], read_names)
+                )
+            ]
             if not self._tp_verified:
                 self._verify_tp_replication(per_rank)
                 self._tp_verified = True
@@ -276,6 +281,11 @@ class VLLMDriver(DriverBase):
             worker_captures = self._llm.collective_rpc(
                 "tl_read_batched_captures", args=(read_names,)
             )[0]
+            # Batched runs single-rank today, but coerce anyway — multiproc RPC
+            # serializes tensors to lists (see _rpc_tensor).
+            worker_captures = {
+                req_id: self._rpc_captures(caps) for req_id, caps in worker_captures.items()
+            }
             captured = self._assemble_padded(outputs, worker_captures, prompt_lens)
         else:
             captured = {}
@@ -378,7 +388,23 @@ class VLLMDriver(DriverBase):
         through ``_gather_param``. None if closed or the path is missing."""
         if self._llm is None:
             return None
-        return self._llm.collective_rpc("tl_get_param", args=(dotted_name,))[0]
+        value = self._llm.collective_rpc("tl_get_param", args=(dotted_name,))[0]
+        return self._rpc_tensor(value) if value is not None else None
+
+    @staticmethod
+    def _rpc_tensor(value: Any) -> torch.Tensor:
+        """Coerce a non-None collective_rpc payload back to a tensor.
+
+        Whether tensors survive the RPC depends on executor topology (GPU-verified
+        on vllm 0.20.2): in-process executors return them as-is, worker processes
+        behind the ZMQ path serialize them into nested Python lists."""
+        if isinstance(value, torch.Tensor):
+            return value
+        return torch.as_tensor(value)
+
+    @classmethod
+    def _rpc_captures(cls, captures: Mapping[str, Any]) -> dict[str, torch.Tensor]:
+        return {name: cls._rpc_tensor(value) for name, value in captures.items()}
 
     def _gather_param(self, dotted_name: str, dim: int = 0) -> torch.Tensor | None:
         """Fetch a param across all TP ranks: replicated → rank 0; sharded → concat.
@@ -391,7 +417,7 @@ class VLLMDriver(DriverBase):
         if self._llm is None:
             return None
         shards = [
-            s
+            self._rpc_tensor(s)
             for s in self._llm.collective_rpc("tl_get_param", args=(dotted_name,))
             if s is not None
         ]

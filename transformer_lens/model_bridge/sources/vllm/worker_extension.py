@@ -39,10 +39,14 @@ class TLWorkerExtension:
     # Specs whose module doesn't exist on this rank (PP layer shards).
     _tl_absent_hooks: set
 
-    def tl_absent_hooks(self) -> List[str]:
+    def tl_absent_hooks(self) -> Optional[List[str]]:
         """Spec names that installed no hook on this rank — the boot site verifies
-        their union across ranks covers every spec."""
-        return sorted(getattr(self, "_tl_absent_hooks", set()))
+        their union across ranks covers every spec. ``None`` means installation
+        never ran at all (plugin patch absent or spec channel empty), which the
+        coverage check must treat as fatal rather than vacuously complete."""
+        if not hasattr(self, "_tl_absent_hooks"):
+            return None
+        return sorted(self._tl_absent_hooks)
 
     def tl_read_captures(
         self, prompt_lens: List[int], names: Optional[List[str]] = None

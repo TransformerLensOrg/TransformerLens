@@ -35,6 +35,13 @@ def verify_hook_coverage(llm: Any) -> None:
     absent_per_rank = llm.collective_rpc("tl_absent_hooks")
     if not absent_per_rank:
         return
+    never_ran = [rank for rank, absent in enumerate(absent_per_rank) if absent is None]
+    if never_ran:
+        raise RuntimeError(
+            f"Capture-hook installation never ran on rank(s) {never_ran}: the TL vLLM "
+            "plugin did not execute in those worker processes. The vllm.general_plugins "
+            "entry point registers it — if this install predates that, rerun `uv sync`."
+        )
     absent_everywhere = set(absent_per_rank[0])
     for rank_absent in absent_per_rank[1:]:
         absent_everywhere &= set(rank_absent)

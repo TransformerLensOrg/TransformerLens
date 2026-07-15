@@ -76,6 +76,18 @@ class TestVerifyHookCoverage:
 
         verify_hook_coverage(self._llm([["blocks.1.hook_out"], ["blocks.0.hook_out"]]))
 
+    def test_installation_never_ran_raises(self):
+        """A rank returning None never ran installation (plugin patch absent) —
+        the GPU failure mode was hookless workers passing coverage vacuously."""
+        import pytest
+
+        from transformer_lens.model_bridge.sources.vllm.internals import (
+            verify_hook_coverage,
+        )
+
+        with pytest.raises(RuntimeError, match="never ran on rank"):
+            verify_hook_coverage(self._llm([[], None]))
+
     def test_absent_everywhere_raises(self):
         import pytest
 

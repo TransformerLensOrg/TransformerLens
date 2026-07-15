@@ -58,6 +58,14 @@
         tl_bridge="transformer_lens.model_bridge.sources.inspect.transformers_provider"
         tl_bridge_vllm="transformer_lens.model_bridge.sources.inspect.vllm_provider"
 
+    # vLLM loads general_plugins in EVERY process it owns — including spawned TP
+    # worker processes, which is the only way the Worker.load_model capture patch
+    # reaches them (boot_vllm's direct register() call only covers in-process
+    # workers). register() is idempotent and no-ops without a configured spec
+    # channel, so non-TL vllm usage is unaffected.
+    [project.entry-points."vllm.general_plugins"]
+        tl_vllm_capture="transformer_lens.model_bridge.sources.vllm.plugin:register"
+
 [dependency-groups]
     demo=["gradio>=4.0.0", "orjson>=3.11.7,<4.0"]
     dev=[
