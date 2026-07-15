@@ -159,6 +159,9 @@ class TransformerLensVLLMModelAPI(_InspectModelAPIBase):
         # Single-process workers are required — otherwise the plugin's _config singleton
         # isn't visible to worker subprocesses and hooks silently fail to install.
         os.environ["VLLM_ENABLE_V1_MULTIPROCESSING"] = "0"
+        # Hooks are traced into the compiled graph; a cross-process cached artifact
+        # either crashes at AOT load or silently drops the hooks (see boot_vllm).
+        os.environ["VLLM_DISABLE_COMPILE_CACHE"] = "1"
 
         try:
             self._llm = LLM(

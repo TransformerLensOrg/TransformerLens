@@ -347,3 +347,12 @@ class TestTensorParallelBoot:
         monkeypatch.delenv("VLLM_ENABLE_V1_MULTIPROCESSING", raising=False)
         boot_vllm("any-model")
         assert os.environ["VLLM_ENABLE_V1_MULTIPROCESSING"] == "0"
+
+
+def test_compile_cache_disabled_for_tl_boots(mocked_boot, monkeypatch):
+    """Hooks are traced into the compiled graph; a cross-process cached artifact
+    either crashes at AOT load (closure bytecode mismatch) or silently serves a
+    hookless graph — TL boots must never share vLLM's compile cache."""
+    monkeypatch.delenv("VLLM_DISABLE_COMPILE_CACHE", raising=False)
+    boot_vllm("any-model")
+    assert os.environ["VLLM_DISABLE_COMPILE_CACHE"] == "1"

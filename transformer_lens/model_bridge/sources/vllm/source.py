@@ -158,6 +158,13 @@ def boot_vllm(
 
     resolved_dtype = dtype or _dtype_from_hf_config(hf_config_preview)
 
+    # Our capture hooks are traced INTO vLLM's compiled graph, but vLLM's compile
+    # cache is keyed only on its own config — a cached artifact from a hookless (or
+    # differently-instrumented) process either crashes at load (AOT bytecode binds
+    # the hook closures' code objects) or silently serves a graph whose hooks never
+    # fire. TL boots therefore never share the cross-process compile cache.
+    os.environ["VLLM_DISABLE_COMPILE_CACHE"] = "1"
+
     # Single-rank keeps the worker in-process (the historical, GPU-validated path);
     # TP>1 spawns worker processes, which read the specs via the env channel that
     # plugin.configure mirrors — and must NOT inherit a stale '0' from an earlier
