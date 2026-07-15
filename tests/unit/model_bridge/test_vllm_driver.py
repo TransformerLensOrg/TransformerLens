@@ -313,11 +313,10 @@ class TestVLLMDriverPositionInterventions:
             torch.tensor([[1, 2, 3]]),
             intervene={"embed.hook_out": {"op": "suppress"}},
         )
-        rpc_calls = [c.args for c in driver._llm.collective_rpc.call_args_list]
         assert any(
-            args[0] == "tl_set_interventions"
-            and args[1] == ({"embed.hook_out": {"op": "suppress"}},)
-            for args in rpc_calls
+            c.args[0] == "tl_set_interventions"
+            and c.kwargs.get("args") == ({"embed.hook_out": {"op": "suppress"}},)
+            for c in driver._llm.collective_rpc.call_args_list
         )
 
     def test_forward_always_pushes_interventions_for_reset(self):
@@ -325,8 +324,10 @@ class TestVLLMDriverPositionInterventions:
         pytest.importorskip("vllm")
         driver = _driver(captures={"embed.hook_out": torch.zeros(3, 4)})
         driver.forward(torch.tensor([[1, 2, 3]]))
-        rpc_calls = [c.args for c in driver._llm.collective_rpc.call_args_list]
-        assert any(args[0] == "tl_set_interventions" and args[1] == ({},) for args in rpc_calls)
+        assert any(
+            c.args[0] == "tl_set_interventions" and c.kwargs.get("args") == ({},)
+            for c in driver._llm.collective_rpc.call_args_list
+        )
 
     def test_forward_rejects_max_new_tokens_gt_one(self):
         """Decode-step writes overwrite the prefill buffer — silent capture corruption."""
@@ -352,14 +353,25 @@ class TestVLLMDriverPositionInterventions:
         ]
         assert reads == [], f"hookless forward still read the buffers: {reads}"
 
-        driver2 = _driver(captures={"ln_final.hook_normalized": torch.zeros(3, 4)})
+        # Method-aware mock: a blanket return value would hand the reconstruction
+        # probe a captures dict as a "weight".
+        driver2 = _driver(captures={})
+        lnf = {"ln_final.hook_normalized": torch.zeros(3, 4)}
+
+        def rpc2(method, args=(), **kwargs):
+            if method == "tl_read_captures":
+                return [lnf]
+            if method == "tl_get_param":
+                return [None]  # no unembedding -> sampler-logprob fallback
+            return [[]]
+
+        driver2._llm.collective_rpc = MagicMock(side_effect=rpc2)
         driver2.forward(torch.tensor([[1, 2, 3]]))  # return_logits=True default
         reads2 = [
-            c.args
-            for c in driver2._llm.collective_rpc.call_args_list
-            if c.args[0] == "tl_read_captures"
+            c for c in driver2._llm.collective_rpc.call_args_list if c.args[0] == "tl_read_captures"
         ]
-        assert len(reads2) == 1 and reads2[0][1][1] == ["ln_final.hook_normalized"]
+        assert len(reads2) == 1
+        assert reads2[0].kwargs.get("args")[1] == ["ln_final.hook_normalized"]
 
 
 def _batched_request_output(request_id, generated_token=None, top_logprobs=None):
@@ -572,11 +584,10 @@ class TestBatchedForward:
             captures_by_req={"r0": {"embed.hook_out": torch.ones(2, 4)}},
         )
         driver.forward([[1, 2]], intervene={"embed.hook_out": {"op": "suppress"}})
-        calls = [c.args for c in driver._llm.collective_rpc.call_args_list]
         assert any(
-            a[0] == "tl_set_batched_interventions"
-            and a[1] == ({"embed.hook_out": {"op": "suppress"}},)
-            for a in calls
+            c.args[0] == "tl_set_batched_interventions"
+            and c.kwargs.get("args") == ({"embed.hook_out": {"op": "suppress"}},)
+            for c in driver._llm.collective_rpc.call_args_list
         )
 
 

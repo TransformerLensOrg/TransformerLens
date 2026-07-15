@@ -5,7 +5,7 @@ import gc
 import logging
 import threading
 import warnings
-from typing import Any, Mapping
+from typing import Any, Mapping, Optional, Sequence, Union
 
 import torch
 
@@ -101,7 +101,9 @@ class VLLMDriver(DriverBase):
 
     def forward(
         self,
-        input_ids: TensorLike | None = None,
+        # Wider than the protocol's TensorLike: the batched path documents plain
+        # (ragged) list[int] / list[list[int]] prompts, which have no shape/dtype.
+        input_ids: Optional[Union[TensorLike, Sequence[Any]]] = None,
         *,
         capture: tuple[str, ...] = (),
         intervene: Mapping[str, Intervention] | None = None,
@@ -220,7 +222,7 @@ class VLLMDriver(DriverBase):
 
     def _forward_batched(
         self,
-        input_ids: TensorLike,
+        input_ids: Union[TensorLike, Sequence[Any]],
         intervene_specs: dict,
         return_logits: bool,
         names: list[str],
