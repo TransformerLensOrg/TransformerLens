@@ -21,7 +21,10 @@ pytestmark = [
     ),
 ]
 
-MODEL = "HuggingFaceTB/SmolLM2-135M"
+# Qwen2.5-0.5B: 14 attention heads / 2 KV heads — both divisible by TP=2.
+# (SmolLM2-135M has 9 heads and cannot tensor-parallelize; keep any
+# replacement model even-headed.)
+MODEL = "Qwen/Qwen2.5-0.5B"
 PROMPT_IDS = [504, 4674, 1442, 29892, 322]
 
 
