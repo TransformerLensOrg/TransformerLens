@@ -92,10 +92,11 @@ class TestResolveDeviceMap:
         with pytest.raises(ValueError, match="not supported yet"):
             resolve_device_map(None, bad, None)
 
-    def test_meta_value_in_device_map_rejected(self):
-        bad: Dict[str, Union[str, int]] = {"transformer.h.0": "meta"}
-        with pytest.raises(ValueError, match="not supported yet"):
-            resolve_device_map(None, bad, None)
+    def test_meta_value_in_device_map_passes_through(self):
+        device_map: Dict[str, Union[str, int]] = {"transformer.h.0": "meta"}
+        dm, mm = resolve_device_map(None, device_map, None)
+        assert dm is device_map
+        assert mm is None
 
 
 class TestFindEmbeddingDevice:
@@ -230,6 +231,17 @@ class TestBootParamValidation:
             TransformerBridge.boot_transformers(
                 "gpt2", hf_model=gpt2_bridge.original_model, n_devices=2
             )
+
+    def test_meta_device_map_rejected_at_boot(self):
+        with pytest.raises(ValueError, match="meta target"):
+            TransformerBridge.boot_transformers("gpt2", device_map={"": "meta"})
+
+    def test_meta_device_map_allowed_with_load_weights_false(self):
+        bridge = TransformerBridge.boot_transformers(
+            "gpt2", device_map={"": "meta"}, load_weights=False
+        )
+        assert bridge is not None
+        assert bridge.cfg.d_model == 768
 
 
 class TestToMethodGuardsMultiDevice:
