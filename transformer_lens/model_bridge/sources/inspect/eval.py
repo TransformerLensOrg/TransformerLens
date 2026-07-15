@@ -77,7 +77,9 @@ def capture_activations(
         epoch = getattr(state, "epoch", None)
         stem = f"{state.sample_id}_epoch{epoch}" if epoch is not None else str(state.sample_id)
         path = os.path.join(output_dir, f"{stem}.npz")
-        np.savez_compressed(path, **activations)
+        # Explicit allow_pickle: plain float arrays never need pickle, and it keeps
+        # the **activations unpack off numpy 2.3's typed keyword slot.
+        np.savez_compressed(path, allow_pickle=False, **activations)
         store().set(store_key, reduce_fn(activations))
         store().set(f"{store_key}_path", path)
         return state

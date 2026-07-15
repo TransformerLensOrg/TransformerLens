@@ -38,9 +38,9 @@ Rule ([AGENTS.md §10](../AGENTS.md#10-hard-rules)): **never add `xfail` / `skip
 
 | Path | Marker | Trigger |
 |---|---|---|
-| [`unit/model_bridge/test_vllm_driver.py`](unit/model_bridge/test_vllm_driver.py) (×15) | `importorskip("vllm")` per-test | local vllm install (validated: `vllm==0.20.2`) |
+| [`unit/model_bridge/test_vllm_driver.py`](unit/model_bridge/test_vllm_driver.py) (×15) | `importorskip("vllm")` per-test | `uv sync --extra vllm` on a Linux CUDA machine (validated band: `vllm 0.20.x`) |
 
-vllm is in **no** dependency group, extra, or CI step, so these 15 real-vllm tests run **nowhere automated** (the file's other tests mock the LLM and run everywhere). A `[vllm]` extra was attempted and rejected by the resolver: `vllm==0.20.2` requires `numpy>=2` (via `opencv-python-headless>=4.13`) while the `lit` extra's `lit-nlp` caps `numpy<2`. The real-engine execution path is otherwise covered only by the manual GPU run of [`demos/vLLM_Bridge_Integration_Test.ipynb`](../demos/vLLM_Bridge_Integration_Test.ipynb).
+A `[vllm]` extra exists (Linux-only marker; declared conflicting with `[lit]` in `[tool.uv]` — vllm needs `numpy>=2` via `opencv-python-headless` while `lit-nlp` caps `numpy<2`), but CI does not install it: vllm is GPU-only and its 15 real-engine tests would not pass on CPU runners (the file's other tests mock the LLM and run everywhere). Note the extra's `vllm 0.20.x` band exact-pins `torch==2.11.0`, which is what the project lockfile resolves to. The real-engine execution path is otherwise covered only by the manual GPU run of [`demos/vLLM_Bridge_Integration_Test.ipynb`](../demos/vLLM_Bridge_Integration_Test.ipynb).
 
 **Un-skip:** a GPU CI lane that installs vllm, or locally on a CUDA machine with `vllm==0.20.2` installed alongside the project env.
 

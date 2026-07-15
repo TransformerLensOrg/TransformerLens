@@ -248,3 +248,12 @@ def test_llm_construction_kwargs(mocked_boot):
     assert kwargs["enable_prefix_caching"] is False
     # Always explicit — "auto" would downcast fp32 checkpoints under the buffers.
     assert kwargs["dtype"] == "float16"
+
+
+def test_missing_vllm_raises_actionable_import_error(monkeypatch):
+    """Without vllm installed, boot_vllm must name the packaging extra — and fail
+    before any HF network I/O or plugin state mutation."""
+    monkeypatch.setitem(sys.modules, "vllm", None)  # forces ImportError on import
+    with pytest.raises(ImportError, match=r"transformer-lens\[vllm\]"):
+        boot_vllm("any-model")
+    assert plugin._config == {}

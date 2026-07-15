@@ -115,6 +115,16 @@ def boot_vllm(
             "with enable_batching=True (the batched/eager path has no affine buffers)."
         )
     _reject_locked_overrides(vllm_kwargs)
+    # Import-check first: fail with an actionable message before any network I/O
+    # or plugin state mutation.
+    try:
+        from vllm import LLM
+    except ImportError as exc:
+        raise ImportError(
+            "boot_vllm requires vLLM (Linux + CUDA). Install with "
+            'pip install "transformer-lens[vllm]" or uv sync --extra vllm; '
+            "the driver is validated against vllm 0.20.x."
+        ) from exc
 
     from transformers import AutoConfig, AutoTokenizer
 
@@ -140,8 +150,6 @@ def boot_vllm(
             stacklevel=2,
         )
     os.environ["VLLM_ENABLE_V1_MULTIPROCESSING"] = "0"
-
-    from vllm import LLM
 
     # Batched capture reads query_start_loc from the forward context, untraceable
     # under torch.compile — so the batched path must run eager.

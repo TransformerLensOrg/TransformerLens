@@ -102,7 +102,15 @@ class TransformerLensVLLMModelAPI(_InspectModelAPIBase):
     ) -> None:
         super().__init__(model_name, base_url, api_key, [], config)
         from transformers import AutoConfig, AutoTokenizer
-        from vllm import LLM
+
+        try:
+            from vllm import LLM
+        except ImportError as exc:
+            raise ImportError(
+                "The tl_bridge_vllm provider requires vLLM (Linux + CUDA). Install with "
+                'pip install "transformer-lens[vllm]" or uv sync --extra vllm; '
+                "validated against vllm 0.20.x."
+            ) from exc
 
         from transformer_lens.utilities.hf_utils import get_hf_token
 
