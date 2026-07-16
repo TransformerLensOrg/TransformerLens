@@ -36,13 +36,15 @@ def single():
 
 def _explicit_gpt2_map(second_target) -> dict:
     """Split gpt2 by hand: embeddings + first half on cuda:0, the rest on
-    ``second_target`` (cuda:1 or cpu)."""
+    ``second_target`` (cuda:1 or cpu). ``lm_head`` stays with ``wte`` — GPT-2 ties
+    them to one tensor, and accelerate places a tied parameter once, so splitting
+    the pair is an invalid map (boot now rejects it; see the tied-map test)."""
     device_map = {
         "transformer.wte": 0,
         "transformer.wpe": 0,
         "transformer.drop": 0,
+        "lm_head": 0,
         "transformer.ln_f": second_target,
-        "lm_head": second_target,
     }
     for i in range(N_LAYERS):
         device_map[f"transformer.h.{i}"] = 0 if i < N_LAYERS // 2 else second_target
@@ -78,14 +80,23 @@ class TestExplicitMaps:
         assert realized["transformer.h.0"] == 0
         assert_logits_match(single, multi)
 
-    def test_mixed_cpu_gpu_map_matches(self, single):
-        """CPU targets are supported: the second half runs on CPU kernels, so the
-        band is looser than the GPU/GPU split (different matmul kernels, not a
-        placement bug)."""
+    def test_mixed_cpu_gpu_map_offloads_and_matches(self, single):
+        """In a mixed map, "cpu" entries mean accelerate OFFLOAD: weights stored on
+        CPU, the module's params replaced by meta placeholders, execution on the
+        main GPU per-forward (accelerate warns "Some parameters are on the meta
+        device" — expected). Same-GPU execution means the standard band applies."""
         multi = boot_multi(device_map=_explicit_gpt2_map("cpu"))
         param_device_types = {p.device.type for p in multi.original_model.parameters()}
-        assert param_device_types == {"cuda", "cpu"}
-        assert_logits_match(single, multi, atol=1e-3, rtol=1e-3)
+        assert param_device_types == {"cuda", "meta"}
+        assert_logits_match(single, multi)
+
+    def test_tied_weight_split_map_rejected_at_boot(self):
+        """A map that splits GPT-2's tied wte/lm_head pair must fail loud at boot,
+        not crash mid-forward with a cross-device kernel error."""
+        bad_map = _explicit_gpt2_map(1)
+        bad_map["lm_head"] = 1  # wte stays on 0 -> splits the tie group
+        with pytest.raises(ValueError, match="tied"):
+            boot_multi(device_map=bad_map)
 
 
 class TestPreloadedModel:

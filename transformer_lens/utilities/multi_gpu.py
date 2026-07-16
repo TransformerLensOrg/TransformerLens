@@ -276,3 +276,37 @@ def count_unique_devices(hf_model: Any) -> int:
     if not hf_device_map:
         return 1
     return len(set(hf_device_map.values()))
+
+
+def find_misplaced_modules(hf_model: Any) -> list:
+    """``(module_name, mapped, actual)`` for ``hf_device_map`` entries whose loaded
+    parameters sit on a different *real* device than the map requested.
+
+    Accelerate places a tied parameter exactly once, so a map that splits a tie group
+    (e.g. GPT-2's ``wte``/``lm_head`` share one tensor) is silently dispatched with one
+    module's execution device pointing at weights that live elsewhere — the forward then
+    crashes deep inside a kernel. Meta parameters are skipped: they mean CPU/disk offload
+    (accelerate materializes them per-forward) or a weightless ``from_config`` load, both
+    of which are placement-consistent by construction.
+    """
+    hf_device_map = getattr(hf_model, "hf_device_map", None)
+    if not hf_device_map:
+        return []
+    misplaced = []
+    for module_name, target in hf_device_map.items():
+        try:
+            module = hf_model.get_submodule(module_name) if module_name else hf_model
+        except AttributeError:
+            continue
+        param = next(module.parameters(), None)
+        if param is None or param.device.type == "meta":
+            continue
+        expected = (
+            torch.device(f"cuda:{target}") if isinstance(target, int) else torch.device(target)
+        )
+        actual = param.device
+        same_type = actual.type == expected.type
+        same_index = expected.index is None or actual.index == expected.index
+        if not (same_type and same_index):
+            misplaced.append((module_name, str(target), str(actual)))
+    return misplaced

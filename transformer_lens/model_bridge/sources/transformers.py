@@ -670,6 +670,7 @@ def boot(
         cast_floating_params_to_dtype,
         count_unique_devices,
         find_embedding_device,
+        find_misplaced_modules,
         resolve_device_map,
     )
 
@@ -787,6 +788,19 @@ def boot(
             raise ValueError(
                 "hf_device_map contains CPU targets. n_devices is GPU-only; pass device_map "
                 "explicitly for CPU placement."
+            )
+        misplaced = find_misplaced_modules(hf_model)
+        if misplaced:
+            details = "; ".join(
+                f"{name!r} mapped to {mapped} but loaded on {actual}"
+                for name, mapped, actual in misplaced
+            )
+            raise ValueError(
+                f"device_map entries were not honored: {details}. This usually means the "
+                "map splits tied parameters (e.g. GPT-2's wte/lm_head share one tensor) "
+                "across devices — accelerate places a tied parameter once, leaving a module "
+                "executing on a device its weights aren't on, which crashes mid-forward. "
+                "Map tied modules to the same device."
             )
     embedding_device = find_embedding_device(hf_model)
     if embedding_device is not None:

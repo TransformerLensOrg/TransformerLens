@@ -15,6 +15,7 @@ from transformer_lens.utilities.multi_gpu import (
     cast_floating_params_to_dtype,
     count_unique_devices,
     find_embedding_device,
+    find_misplaced_modules,
     resolve_device_map,
 )
 
@@ -115,6 +116,42 @@ class TestResolveDeviceMap:
         dm, mm = resolve_device_map(None, device_map, None)
         assert dm is device_map
         assert mm is None
+
+
+class TestFindMisplacedModules:
+    """Realized-placement check: a map entry whose loaded params sit elsewhere is a
+    split tie group (accelerate places a tied parameter once) — boot must fail loud
+    instead of crashing mid-forward on a cross-device kernel."""
+
+    def _model(self, device_map, param_device="cpu"):
+        import torch.nn as nn
+
+        model = nn.Module()
+        model.emb = nn.Linear(2, 2)
+        model.head = nn.Linear(2, 2)
+        if param_device == "meta":
+            model.head = model.head.to_empty(device="meta")
+        model.hf_device_map = device_map
+        return model
+
+    def test_consistent_map_passes(self):
+        model = self._model({"emb": "cpu", "head": "cpu"})
+        assert find_misplaced_modules(model) == []
+
+    def test_violated_entry_flagged(self):
+        # Params physically on cpu but mapped to cuda:0 — the tied-split signature.
+        model = self._model({"emb": 0, "head": "cpu"})
+        assert find_misplaced_modules(model) == [("emb", "0", "cpu")]
+
+    def test_meta_params_skipped_as_offload(self):
+        # Offloaded modules hold meta placeholders; accelerate manages them.
+        model = self._model({"emb": "cpu", "head": "cpu"}, param_device="meta")
+        assert find_misplaced_modules(model) == []
+
+    def test_no_map_returns_empty(self):
+        import torch.nn as nn
+
+        assert find_misplaced_modules(nn.Linear(2, 2)) == []
 
 
 class TestFindEmbeddingDevice:
