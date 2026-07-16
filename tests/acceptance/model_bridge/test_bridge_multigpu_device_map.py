@@ -80,15 +80,13 @@ class TestExplicitMaps:
         assert realized["transformer.h.0"] == 0
         assert_logits_match(single, multi)
 
-    def test_mixed_cpu_gpu_map_offloads_and_matches(self, single):
-        """In a mixed map, "cpu" entries mean accelerate OFFLOAD: weights stored on
-        CPU, the module's params replaced by meta placeholders, execution on the
-        main GPU per-forward (accelerate warns "Some parameters are on the meta
-        device" — expected). Same-GPU execution means the standard band applies."""
-        multi = boot_multi(device_map=_explicit_gpt2_map("cpu"))
-        param_device_types = {p.device.type for p in multi.original_model.parameters()}
-        assert param_device_types == {"cuda", "meta"}
-        assert_logits_match(single, multi)
+    def test_mixed_cpu_gpu_map_rejected_at_boot(self):
+        """Mixed CPU+GPU maps are accelerate CPU offload — meta placeholders that
+        Bridge components computing from raw params (NormalizationBridge) never
+        materialize, crashing mid-forward. Boot must reject them loudly; all-CPU
+        maps stay supported (no offload, real parameters)."""
+        with pytest.raises(ValueError, match="offload"):
+            boot_multi(device_map=_explicit_gpt2_map("cpu"))
 
     def test_tied_weight_split_map_rejected_at_boot(self):
         """A map that splits GPT-2's tied wte/lm_head pair must fail loud at boot,

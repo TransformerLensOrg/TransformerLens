@@ -118,6 +118,24 @@ class TestResolveDeviceMap:
         assert mm is None
 
 
+class TestMixedCpuGpuMapRejection:
+    """Mixed CPU+GPU maps mean accelerate CPU offload — meta placeholders that
+    param-reading Bridge components never materialize. Rejected at the resolver
+    (explicit dicts) so no weights are downloaded before the error."""
+
+    def test_explicit_mixed_dict_rejected(self):
+        with pytest.raises(ValueError, match="offload"):
+            resolve_device_map(None, {"transformer.wte": 0, "transformer.ln_f": "cpu"}, None)
+
+    def test_all_cpu_dict_passes(self):
+        dm, _ = resolve_device_map(None, {"transformer.wte": "cpu", "lm_head": "cpu"}, None)
+        assert dm == {"transformer.wte": "cpu", "lm_head": "cpu"}
+
+    def test_all_gpu_dict_passes(self):
+        dm, _ = resolve_device_map(None, {"transformer.wte": 0, "lm_head": "cuda:1"}, None)
+        assert dm == {"transformer.wte": 0, "lm_head": "cuda:1"}
+
+
 class TestFindMisplacedModules:
     """Realized-placement check: a map entry whose loaded params sit elsewhere is a
     split tie group (accelerate places a tied parameter once) — boot must fail loud

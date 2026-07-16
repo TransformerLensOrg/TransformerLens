@@ -204,8 +204,9 @@ def resolve_device_map(
 def _validate_device_map_values(
     device_map: Union[str, Dict[str, Union[str, int]]],
 ) -> None:
-    """Reject explicit disk values in a user-supplied device_map dict.
-    Meta values are passed through (validated at boot against load_weights)."""
+    """Reject explicit disk values and mixed CPU+GPU targets in a user-supplied
+    device_map dict. Meta values are passed through (validated at boot against
+    load_weights)."""
     if isinstance(device_map, str):
         return
     for key, value in device_map.items():
@@ -216,6 +217,35 @@ def _validate_device_map_values(
                 "currently supports CPU device_map targets, but disk / meta offload can "
                 "bypass Accelerate hooks inside wrapped Bridge components."
             )
+    if is_mixed_cpu_gpu(device_map.values()):
+        raise ValueError(MIXED_CPU_GPU_ERROR)
+
+
+# In a mixed map, accelerate OFFLOADS the CPU entries: weights live in a CPU state
+# dict, the modules hold meta placeholders, and an AlignDevicesHook on the original
+# module's forward materializes them per-call. Bridge components that compute from raw
+# parameters (e.g. NormalizationBridge reads self.weight to expose hook_normalized)
+# never trigger that hook, so the forward hits meta tensors. All-CPU maps are fine —
+# no offload, real parameters.
+MIXED_CPU_GPU_ERROR = (
+    "device_map mixes CPU and GPU targets, which accelerate implements as CPU offload "
+    "(meta placeholders materialized by forward hooks that Bridge components bypass). "
+    "Use an all-GPU map (or n_devices) for multi-GPU, or an all-CPU map."
+)
+
+
+def is_mixed_cpu_gpu(values: Any) -> bool:
+    has_cpu = has_gpu = False
+    for value in values:
+        if isinstance(value, int):
+            has_gpu = True
+        elif isinstance(value, str):
+            v = value.lower()
+            if v == "cpu":
+                has_cpu = True
+            elif v.startswith("cuda"):
+                has_gpu = True
+    return has_cpu and has_gpu
 
 
 def cast_floating_params_to_dtype(model: nn.Module, dtype: torch.dtype) -> None:
