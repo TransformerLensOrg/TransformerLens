@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-07-16T08:18:58.897756",
+  "last_updated": "2026-07-16T08:45:00.706089",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -16983,6 +16983,26 @@
     },
     {
       "model_id": "LiquidAI/LFM2-1.2B",
+      "architecture_id": "Lfm2ForCausalLM",
+      "verified_date": "2026-07-16",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "LiquidAI/LFM2-350M",
+      "architecture_id": "Lfm2ForCausalLM",
+      "verified_date": "2026-07-16",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "LiquidAI/LFM2.5-230M",
       "architecture_id": "Lfm2ForCausalLM",
       "verified_date": "2026-07-16",
       "verified_by": "verify_models",
