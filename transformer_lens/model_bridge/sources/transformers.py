@@ -401,8 +401,8 @@ def boot(
     revision: str | None = None,
     checkpoint_index: int | None = None,
     checkpoint_value: int | None = None,
-    # Experimental – Have not been fully tested on multi-gpu devices
-    # Use at your own risk, report any issues here: https://github.com/TransformerLensOrg/TransformerLens/issues
+    # Multi-device placement (accelerate-dispatched). GPU-validated 2026-07-16:
+    # tests/acceptance/model_bridge/test_bridge_multigpu*.py + scripts/bridge_multi_device_parity.py.
     device_map: str | dict[str, str | int] | None = None,
     n_devices: int | None = None,
     max_memory: dict[str | int, str | int] | None = None,
@@ -667,9 +667,12 @@ def boot(
     # device_map + max_memory pair here so downstream code only needs to check the
     # resolved values.
     from transformer_lens.utilities.multi_gpu import (
+        MIXED_CPU_GPU_ERROR,
         cast_floating_params_to_dtype,
         count_unique_devices,
         find_embedding_device,
+        find_misplaced_modules,
+        is_mixed_cpu_gpu,
         resolve_device_map,
     )
 
@@ -768,8 +771,10 @@ def boot(
     #   - pre-loaded hf_model that the caller dispatched themselves (e.g., device_map="auto")
     hf_device_map_post = getattr(hf_model, "hf_device_map", None)
     if hf_device_map_post:
-        # CPU placement is supported. Disk / meta offload still needs a separate Bridge
-        # hook-routing pass because wrapped subcomponents can bypass Accelerate hooks.
+        # All-CPU placement is supported (real parameters, no offload). Disk / meta —
+        # and CPU entries in a MIXED map, which accelerate implements as CPU offload —
+        # are rejected: offload materializes weights via forward hooks that wrapped
+        # Bridge components bypass (e.g. NormalizationBridge computes from raw params).
         offload_values = {str(v).lower() for v in hf_device_map_post.values() if isinstance(v, str)}
         unsupported = offload_values & {"disk", "meta"}
         if unsupported:
@@ -778,6 +783,8 @@ def boot(
                 "TransformerBridge currently supports CPU device_map targets, but disk / meta "
                 "offload can bypass Accelerate hooks inside wrapped Bridge components."
             )
+        if is_mixed_cpu_gpu(hf_device_map_post.values()):
+            raise ValueError(f"Realized hf_device_map is unsupported: {MIXED_CPU_GPU_ERROR}")
         if (
             "cpu" in offload_values
             and device_map is None
@@ -787,6 +794,19 @@ def boot(
             raise ValueError(
                 "hf_device_map contains CPU targets. n_devices is GPU-only; pass device_map "
                 "explicitly for CPU placement."
+            )
+        misplaced = find_misplaced_modules(hf_model)
+        if misplaced:
+            details = "; ".join(
+                f"{name!r} mapped to {mapped} but loaded on {actual}"
+                for name, mapped, actual in misplaced
+            )
+            raise ValueError(
+                f"device_map entries were not honored: {details}. This usually means the "
+                "map splits tied parameters (e.g. GPT-2's wte/lm_head share one tensor) "
+                "across devices — accelerate places a tied parameter once, leaving a module "
+                "executing on a device its weights aren't on, which crashes mid-forward. "
+                "Map tied modules to the same device."
             )
     embedding_device = find_embedding_device(hf_model)
     if embedding_device is not None:

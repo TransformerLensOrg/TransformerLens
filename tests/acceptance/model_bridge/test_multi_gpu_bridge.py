@@ -1,7 +1,8 @@
-"""Multi-GPU support tests for TransformerBridge.
+"""Multi-GPU support tests for TransformerBridge — the CPU/mocked tier.
 
-CPU-runnable tests exercise the resolver / param-plumbing / .to() guard /
-validation logic. Tests requiring real multi-GPU hardware are marked skipif.
+Exercises the resolver / param-plumbing / .to() guard / validation logic without
+hardware. Real >= 2-GPU coverage lives in test_bridge_multigpu.py and
+test_bridge_multigpu_device_map.py (`-m multigpu`).
 """
 
 from typing import Dict, Union
@@ -14,6 +15,7 @@ from transformer_lens.utilities.multi_gpu import (
     cast_floating_params_to_dtype,
     count_unique_devices,
     find_embedding_device,
+    find_misplaced_modules,
     resolve_device_map,
 )
 
@@ -114,6 +116,60 @@ class TestResolveDeviceMap:
         dm, mm = resolve_device_map(None, device_map, None)
         assert dm is device_map
         assert mm is None
+
+
+class TestMixedCpuGpuMapRejection:
+    """Mixed CPU+GPU maps mean accelerate CPU offload — meta placeholders that
+    param-reading Bridge components never materialize. Rejected at the resolver
+    (explicit dicts) so no weights are downloaded before the error."""
+
+    def test_explicit_mixed_dict_rejected(self):
+        with pytest.raises(ValueError, match="offload"):
+            resolve_device_map(None, {"transformer.wte": 0, "transformer.ln_f": "cpu"}, None)
+
+    def test_all_cpu_dict_passes(self):
+        dm, _ = resolve_device_map(None, {"transformer.wte": "cpu", "lm_head": "cpu"}, None)
+        assert dm == {"transformer.wte": "cpu", "lm_head": "cpu"}
+
+    def test_all_gpu_dict_passes(self):
+        dm, _ = resolve_device_map(None, {"transformer.wte": 0, "lm_head": "cuda:1"}, None)
+        assert dm == {"transformer.wte": 0, "lm_head": "cuda:1"}
+
+
+class TestFindMisplacedModules:
+    """Realized-placement check: a map entry whose loaded params sit elsewhere is a
+    split tie group (accelerate places a tied parameter once) — boot must fail loud
+    instead of crashing mid-forward on a cross-device kernel."""
+
+    def _model(self, device_map, param_device="cpu"):
+        import torch.nn as nn
+
+        model = nn.Module()
+        model.emb = nn.Linear(2, 2)
+        model.head = nn.Linear(2, 2)
+        if param_device == "meta":
+            model.head = model.head.to_empty(device="meta")
+        model.hf_device_map = device_map
+        return model
+
+    def test_consistent_map_passes(self):
+        model = self._model({"emb": "cpu", "head": "cpu"})
+        assert find_misplaced_modules(model) == []
+
+    def test_violated_entry_flagged(self):
+        # Params physically on cpu but mapped to cuda:0 — the tied-split signature.
+        model = self._model({"emb": 0, "head": "cpu"})
+        assert find_misplaced_modules(model) == [("emb", "0", "cpu")]
+
+    def test_meta_params_skipped_as_offload(self):
+        # Offloaded modules hold meta placeholders; accelerate manages them.
+        model = self._model({"emb": "cpu", "head": "cpu"}, param_device="meta")
+        assert find_misplaced_modules(model) == []
+
+    def test_no_map_returns_empty(self):
+        import torch.nn as nn
+
+        assert find_misplaced_modules(nn.Linear(2, 2)) == []
 
 
 class TestFindEmbeddingDevice:
@@ -329,49 +385,6 @@ class TestStackedWeightsHandleCrossDevice:
             gpt2_bridge.cfg.n_devices = original_n_devices
 
 
-# ---------- Multi-GPU tests (require real hardware) ----------
-
-
-@pytest.mark.skipif(torch.cuda.device_count() < 2, reason="Requires 2+ CUDA devices")
-class TestMultiDeviceIntegration:
-    def test_n_devices_matches_single_device_logits(self):
-        single = TransformerBridge.boot_transformers("gpt2", device="cuda:0")
-        multi = TransformerBridge.boot_transformers("gpt2", n_devices=2)
-
-        assert multi.cfg.n_devices == 2
-        assert single.cfg.n_devices == 1
-
-        tokens = torch.tensor([[1, 2, 3, 4]])
-        logits_single = single(tokens).to("cpu")
-        logits_multi = multi(tokens).to("cpu")
-        assert torch.allclose(logits_single, logits_multi, atol=1e-4, rtol=1e-4)
-
-    def test_parameters_distributed_across_devices(self):
-        bridge = TransformerBridge.boot_transformers("gpt2", n_devices=2)
-        cuda_indices = {
-            p.device.index for p in bridge.original_model.parameters() if p.device.type == "cuda"
-        }
-        assert cuda_indices == {0, 1}
-
-    def test_generate_works_with_multi_device(self):
-        bridge = TransformerBridge.boot_transformers("gpt2", n_devices=2)
-        out = bridge.generate("Hello", max_new_tokens=3, do_sample=False)
-        assert isinstance(out, str)
-        assert len(out) > len("Hello")
-
-    def test_stacked_weights_work_across_devices(self):
-        # Real multi-device exercise of _stack_block_params (no spoofed n_devices).
-        bridge = TransformerBridge.boot_transformers("gpt2", n_devices=2)
-        W_Q = bridge.W_Q
-        assert W_Q.shape[0] == bridge.cfg.n_layers
-        # After stacking, all elements should be on cfg.device (the embedding device).
-        assert bridge.cfg.device is not None
-        assert W_Q.device == torch.device(bridge.cfg.device)
-
-    def test_preloaded_device_map_model(self):
-        from transformers import AutoModelForCausalLM
-
-        hf_model = AutoModelForCausalLM.from_pretrained("gpt2", device_map="auto")
-        bridge = TransformerBridge.boot_transformers("gpt2", hf_model=hf_model)
-        assert bridge.cfg.n_devices >= 1
-        assert bridge.cfg.device is not None
+# Real-hardware multi-GPU coverage lives in test_bridge_multigpu.py and
+# test_bridge_multigpu_device_map.py (`-m multigpu`, >= 2 CUDA devices) — this file
+# is the CPU/mocked tier: resolver, validation gates, and spoofed-n_devices guards.

@@ -204,8 +204,9 @@ def resolve_device_map(
 def _validate_device_map_values(
     device_map: Union[str, Dict[str, Union[str, int]]],
 ) -> None:
-    """Reject explicit disk values in a user-supplied device_map dict.
-    Meta values are passed through (validated at boot against load_weights)."""
+    """Reject explicit disk values and mixed CPU+GPU targets in a user-supplied
+    device_map dict. Meta values are passed through (validated at boot against
+    load_weights)."""
     if isinstance(device_map, str):
         return
     for key, value in device_map.items():
@@ -216,6 +217,35 @@ def _validate_device_map_values(
                 "currently supports CPU device_map targets, but disk / meta offload can "
                 "bypass Accelerate hooks inside wrapped Bridge components."
             )
+    if is_mixed_cpu_gpu(device_map.values()):
+        raise ValueError(MIXED_CPU_GPU_ERROR)
+
+
+# In a mixed map, accelerate OFFLOADS the CPU entries: weights live in a CPU state
+# dict, the modules hold meta placeholders, and an AlignDevicesHook on the original
+# module's forward materializes them per-call. Bridge components that compute from raw
+# parameters (e.g. NormalizationBridge reads self.weight to expose hook_normalized)
+# never trigger that hook, so the forward hits meta tensors. All-CPU maps are fine —
+# no offload, real parameters.
+MIXED_CPU_GPU_ERROR = (
+    "device_map mixes CPU and GPU targets, which accelerate implements as CPU offload "
+    "(meta placeholders materialized by forward hooks that Bridge components bypass). "
+    "Use an all-GPU map (or n_devices) for multi-GPU, or an all-CPU map."
+)
+
+
+def is_mixed_cpu_gpu(values: Any) -> bool:
+    has_cpu = has_gpu = False
+    for value in values:
+        if isinstance(value, int):
+            has_gpu = True
+        elif isinstance(value, str):
+            v = value.lower()
+            if v == "cpu":
+                has_cpu = True
+            elif v.startswith("cuda"):
+                has_gpu = True
+    return has_cpu and has_gpu
 
 
 def cast_floating_params_to_dtype(model: nn.Module, dtype: torch.dtype) -> None:
@@ -276,3 +306,37 @@ def count_unique_devices(hf_model: Any) -> int:
     if not hf_device_map:
         return 1
     return len(set(hf_device_map.values()))
+
+
+def find_misplaced_modules(hf_model: Any) -> list:
+    """``(module_name, mapped, actual)`` for ``hf_device_map`` entries whose loaded
+    parameters sit on a different *real* device than the map requested.
+
+    Accelerate places a tied parameter exactly once, so a map that splits a tie group
+    (e.g. GPT-2's ``wte``/``lm_head`` share one tensor) is silently dispatched with one
+    module's execution device pointing at weights that live elsewhere — the forward then
+    crashes deep inside a kernel. Meta parameters are skipped: they mean CPU/disk offload
+    (accelerate materializes them per-forward) or a weightless ``from_config`` load, both
+    of which are placement-consistent by construction.
+    """
+    hf_device_map = getattr(hf_model, "hf_device_map", None)
+    if not hf_device_map:
+        return []
+    misplaced = []
+    for module_name, target in hf_device_map.items():
+        try:
+            module = hf_model.get_submodule(module_name) if module_name else hf_model
+        except AttributeError:
+            continue
+        param = next(module.parameters(), None)
+        if param is None or param.device.type == "meta":
+            continue
+        expected = (
+            torch.device(f"cuda:{target}") if isinstance(target, int) else torch.device(target)
+        )
+        actual = param.device
+        same_type = actual.type == expected.type
+        same_index = expected.index is None or actual.index == expected.index
+        if not (same_type and same_index):
+            misplaced.append((module_name, str(target), str(actual)))
+    return misplaced
