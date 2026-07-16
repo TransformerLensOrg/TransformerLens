@@ -103,6 +103,9 @@ from transformer_lens.model_bridge.supported_architectures.hunyuan_v1_dense impo
 from transformer_lens.model_bridge.supported_architectures.internlm2 import (
     InternLM2ArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.lfm2 import (
+    Lfm2ArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.lfm2_moe import (
     Lfm2MoeArchitectureAdapter,
 )
@@ -275,6 +278,7 @@ __all__ = [
     "LlavaArchitectureAdapter",
     "LlavaNextArchitectureAdapter",
     "LlavaOnevisionArchitectureAdapter",
+    "Lfm2ArchitectureAdapter",
     "Lfm2MoeArchitectureAdapter",
     "MambaArchitectureAdapter",
     "Mamba2ArchitectureAdapter",

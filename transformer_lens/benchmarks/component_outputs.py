@@ -606,7 +606,12 @@ class ComponentBenchmarker:
             # This is needed for model-specific inputs like position_embeddings or attention_mask
             shared_inputs = None
             if (
-                ("attn" in component_path or "mlp" in component_path or "rotary" in component_path)
+                (
+                    "attn" in component_path
+                    or "mlp" in component_path
+                    or "rotary" in component_path
+                    or "conv" in component_path
+                )
                 and hasattr(bridge_component, "get_random_inputs")
                 and callable(getattr(bridge_component, "get_random_inputs"))
             ):
