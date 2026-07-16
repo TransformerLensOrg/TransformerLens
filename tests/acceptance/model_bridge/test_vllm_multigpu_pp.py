@@ -17,48 +17,18 @@ import torch
 
 pytest.importorskip("vllm")
 
-pytestmark = [
-    pytest.mark.multigpu,
-    pytest.mark.skipif(
-        not torch.cuda.is_available() or torch.cuda.device_count() < 2,
-        reason="needs >= 2 CUDA devices",
-    ),
-]
+from ._vllm_multigpu_common import (
+    MULTIGPU_MARKS,
+    N_LAYERS,
+    PROMPT_IDS,
+    assert_caches_match,
+    bridge_pair_fixture,
+    close,
+)
 
-# Qwen2.5-0.5B: 24 layers -> 12 per PP stage; even-headed (irrelevant for PP but
-# keeps the model shared with the TP suite).
-MODEL = "Qwen/Qwen2.5-0.5B"
-PROMPT_IDS = [504, 4674, 1442, 29892, 322]
-ATOL = RTOL = 2e-2
-REL_BAND = 2e-3
-N_LAYERS = 24
+pytestmark = MULTIGPU_MARKS
 
-
-def _close(t1: torch.Tensor, t2: torch.Tensor) -> bool:
-    atol_eff = max(ATOL, REL_BAND * t2.abs().max().item())
-    return torch.allclose(t1, t2, atol=atol_eff, rtol=RTOL)
-
-
-def _boot(pp: int):
-    from transformer_lens.model_bridge.sources.vllm.source import boot_vllm
-
-    return boot_vllm(
-        MODEL,
-        dtype=torch.float32,
-        max_model_len=2048,
-        gpu_memory_utilization=0.35,
-        pipeline_parallel_size=pp,
-    )
-
-
-@pytest.fixture(scope="module")
-def bridges():
-    """Single-rank reference then PP=2 under test; serial boots, closed in reverse."""
-    b1 = _boot(1)
-    b2 = _boot(2)
-    yield b1, b2
-    b2.close()
-    b1.close()
+bridges = bridge_pair_fixture(pipeline_parallel_size=2)
 
 
 class TestPPCaptureParity:
@@ -67,22 +37,14 @@ class TestPPCaptureParity:
         toks = torch.tensor([PROMPT_IDS])
         _, cache1 = b1.run_with_cache(toks)
         _, cache2 = b2.run_with_cache(toks)
-        # The merge must reassemble the FULL hook set — a missing later-stage hook
+        # Key-set equality doubles as the merge check: a missing later-stage hook
         # means the per-rank read or the merge dropped a stage.
-        assert set(cache1.keys()) == set(cache2.keys())
-        for name in cache1:
-            t1, t2 = cache1[name].float(), cache2[name].float()
-            assert t1.shape == t2.shape, name
-            assert _close(t1, t2), (
-                f"{name}: max abs diff {(t1 - t2).abs().max().item():.3e} "
-                f"(scale {t2.abs().max().item():.1f})"
-            )
+        assert_caches_match(cache1, cache2)
 
     def test_layout_check_ran_clean(self, bridges):
-        """First forward verified per-stage ownership + counter proportionality
-        under PP microbatching without raising."""
+        """First forward verified per-stage ownership + replica fire-counter
+        agreement under PP microbatching without raising."""
         _, b2 = bridges
-        assert b2._driver._pp_size == 2
         assert b2._driver._layout_verified is True
 
     def test_logits_argmax_matches(self, bridges):
@@ -120,4 +82,4 @@ class TestPPInterventionParity:
             clean2.float(), l2.float(), atol=1e-4, rtol=1e-4
         ), f"{hook}: intervention was a no-op under PP"
         assert torch.equal(l1.argmax(dim=-1), l2.argmax(dim=-1))
-        assert _close(l1.float(), l2.float())
+        assert close(l1.float(), l2.float())

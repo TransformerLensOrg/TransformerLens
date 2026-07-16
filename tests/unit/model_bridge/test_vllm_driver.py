@@ -939,7 +939,7 @@ class TestGatherParam:
 
 class TestRpcTensorCoercion:
     """Multiproc collective_rpc (TP>1) serializes tensors to nested lists —
-    every RPC read must coerce back. GPU-verified failure mode on vllm 0.20.2."""
+    every RPC read must coerce back."""
 
     def test_get_param_coerces_list_payload(self):
         driver = _driver(captures={})
@@ -948,7 +948,7 @@ class TestRpcTensorCoercion:
         assert isinstance(out, torch.Tensor) and out.shape == (2, 2)
 
     def test_gather_param_concats_list_shards(self):
-        """The exact crash from the box: list shards have no .shape."""
+        """List shards have no .shape — coercion must precede the replicated-vs-sharded check."""
         driver = _driver(captures={})
         shard0 = [[0.0] * 4] * 8
         shard1 = [[1.0] * 4] * 8

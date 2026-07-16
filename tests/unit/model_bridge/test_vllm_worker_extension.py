@@ -296,7 +296,7 @@ class TestAbsentHooks:
 
     def test_never_installed_returns_none(self):
         """No _tl_absent_hooks attr = installation never ran — must NOT read as
-        'nothing absent' (that vacuous pass shipped hookless TP workers)."""
+        'nothing absent'."""
         worker = TLWorkerExtension()
         assert worker.tl_absent_hooks() is None
 

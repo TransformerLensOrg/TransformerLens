@@ -13,33 +13,14 @@ import torch
 
 pytest.importorskip("vllm")
 
-pytestmark = [
-    pytest.mark.multigpu,
-    pytest.mark.skipif(
-        not torch.cuda.is_available() or torch.cuda.device_count() < 2,
-        reason="needs >= 2 CUDA devices",
-    ),
-]
+from ._vllm_multigpu_common import MULTIGPU_MARKS, PROMPT_IDS, boot_multigpu
 
-# Qwen2.5-0.5B: 14 attention heads / 2 KV heads — both divisible by TP=2.
-# (SmolLM2-135M has 9 heads and cannot tensor-parallelize; keep any
-# replacement model even-headed.)
-MODEL = "Qwen/Qwen2.5-0.5B"
-PROMPT_IDS = [504, 4674, 1442, 29892, 322]
+pytestmark = MULTIGPU_MARKS
 
 
 @pytest.fixture(scope="module")
 def pos_bridge():
-    from transformer_lens.model_bridge.sources.vllm.source import boot_vllm
-
-    bridge = boot_vllm(
-        MODEL,
-        dtype=torch.float32,
-        max_model_len=2048,
-        gpu_memory_utilization=0.35,
-        tensor_parallel_size=2,
-        enable_position_interventions=True,
-    )
+    bridge = boot_multigpu(tensor_parallel_size=2, enable_position_interventions=True)
     yield bridge
     bridge.close()
 

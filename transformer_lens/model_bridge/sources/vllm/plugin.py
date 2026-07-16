@@ -33,20 +33,18 @@ from typing import Any, Dict, Optional, Tuple
 import torch
 
 from .internals import segment_by_request
-from .worker_extension import _apply_op
+from .worker_extension import _apply_op, dtype_name, resolve_dot_path
 
 # Decoder layers return the fused-residual (mlp_delta, residual) 2-tuple, so
 # their hooks materialize the sum (see _make_capture_hook); other modules don't.
 _DECODER_LAYER_PATH = re.compile(r"^model\.layers\.\d+$")
 
-# Transient signal driver → worker during LLM construction. Per-Worker buffers
-# live on Worker instances so concurrent boot_vllm calls don't collide.
-# ``configure`` mirrors it into the env var so SPAWNED worker processes (TP>1 /
-# VLLM_ENABLE_V1_MULTIPROCESSING=1), which re-import this module and see an empty
-# global, still receive the specs — vLLM runs ``register()`` in every worker, so
-# the patch itself propagates; only this payload needs a cross-process channel.
+# Transient signal driver → worker during LLM construction: an env var, because
+# spawned worker processes (TP/PP > 1) re-import this module and would see any
+# module global empty — vLLM runs ``register()`` in every worker, so the patch
+# itself propagates; only this payload needs a cross-process channel. Per-Worker
+# buffers live on Worker instances so concurrent boot_vllm calls don't collide.
 # Single-node only: env vars don't reach Ray remote workers.
-_config: Dict[str, Any] = {}
 _ENV_CONFIG_KEY = "TL_VLLM_PLUGIN_CONFIG"
 _install_patched = False
 _orig_load_model = None
@@ -60,18 +58,20 @@ def configure(
     enable_position_interventions: bool = False,
 ) -> None:
     """Set capture specs, buffer length, dtype, and hook flavor before ``LLM(...)``."""
-    _config["capture_specs"] = capture_specs
-    _config["max_num_batched_tokens"] = max_num_batched_tokens
-    _config["dtype"] = dtype
-    _config["enable_batching"] = enable_batching
-    _config["enable_position_interventions"] = enable_position_interventions
-    os.environ[_ENV_CONFIG_KEY] = _serialize_config(_config)
+    os.environ[_ENV_CONFIG_KEY] = _serialize_config(
+        {
+            "capture_specs": capture_specs,
+            "max_num_batched_tokens": max_num_batched_tokens,
+            "dtype": dtype,
+            "enable_batching": enable_batching,
+            "enable_position_interventions": enable_position_interventions,
+        }
+    )
 
 
 def clear_config() -> None:
-    """Clear both spec channels (module global + env var). Boot sites call this in a
-    ``finally`` after ``LLM(...)`` so a later non-TL engine can't inherit the specs."""
-    _config.clear()
+    """Unset the spec channel. Boot sites call this in a ``finally`` after
+    ``LLM(...)`` so a later non-TL engine can't inherit the specs."""
     os.environ.pop(_ENV_CONFIG_KEY, None)
 
 
@@ -82,7 +82,7 @@ def _serialize_config(config: Dict[str, Any]) -> str:
                 name: [path, width] for name, (path, width) in config["capture_specs"].items()
             },
             "max_num_batched_tokens": config["max_num_batched_tokens"],
-            "dtype": str(config["dtype"]).removeprefix("torch."),
+            "dtype": dtype_name(config["dtype"]),
             "enable_batching": config["enable_batching"],
             "enable_position_interventions": config["enable_position_interventions"],
         }
@@ -106,46 +106,8 @@ def _deserialize_config(raw: str) -> Dict[str, Any]:
 
 
 def _active_config() -> Optional[Dict[str, Any]]:
-    """The module global in-process; the env-var fallback in spawned workers."""
-    if _config.get("capture_specs"):
-        return _config
     raw = os.environ.get(_ENV_CONFIG_KEY)
-    if raw:
-        return _deserialize_config(raw)
-    return None
-
-
-def _is_pp_missing_layer(module: Any) -> bool:
-    """vLLM PP keeps full-length module lists on every rank, filling non-owned slots
-    (layers, embed_tokens, norm, lm_head) with PPMissingLayer identity stubs that the
-    forward never calls — a hook installed there would serve its dead zero buffer as
-    a real capture. Name check first so non-vllm test doubles work."""
-    if type(module).__name__ == "PPMissingLayer":
-        return True
-    try:
-        from vllm.model_executor.models.utils import PPMissingLayer
-    except ImportError:
-        return False
-    return isinstance(module, PPMissingLayer)
-
-
-def _resolve_dot_path(root: Any, dot_path: str) -> Any:
-    """Walk a spec's dot-path; ``None`` when any segment is missing or the target is
-    a PPMissingLayer stub. Per-rank absence is legal under pipeline parallelism (each
-    rank owns a layer subset) — the boot site verifies every hook landed on at least
-    one rank."""
-    target = root
-    for seg in dot_path.split("."):
-        if seg.isdigit():
-            try:
-                target = target[int(seg)]
-            except (IndexError, KeyError, TypeError):
-                return None
-        else:
-            target = getattr(target, seg, None)
-        if target is None:
-            return None
-    return None if _is_pp_missing_layer(target) else target
+    return _deserialize_config(raw) if raw else None
 
 
 def register() -> None:
@@ -203,7 +165,7 @@ def register() -> None:
         # Shared counter — surfaces hook double-fire under compile via tl_read_counter.
         self._tl_fire_counter = torch.zeros(1, device=device, dtype=torch.int64)
         for canonical_name, (dot_path, width) in specs.items():
-            target = _resolve_dot_path(self.model_runner.model, dot_path)
+            target = resolve_dot_path(self.model_runner.model, dot_path)
             if target is None:
                 self._tl_absent_hooks.add(canonical_name)
                 continue

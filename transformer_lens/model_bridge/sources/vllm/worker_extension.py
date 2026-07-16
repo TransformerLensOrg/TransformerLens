@@ -31,15 +31,48 @@ from .intervention_specs import SUPPORTED_OPS, validate_spec
 _TL_TENSOR_KEY = "__tl_tensor__"
 
 
+def dtype_name(dtype: torch.dtype) -> str:
+    """``torch.float32`` → ``"float32"`` — the one spelling for every dtype-string site."""
+    return str(dtype).removeprefix("torch.")
+
+
+def is_pp_missing_layer(module: Any) -> bool:
+    """vLLM PP keeps full-length module lists on every rank, filling non-owned slots
+    (layers, embed_tokens, norm, lm_head) with PPMissingLayer identity stubs that the
+    forward never calls — a hook installed there would serve its dead zero buffer as
+    a real capture. Matched by name so non-vllm test doubles work; the pinned band's
+    class is named exactly this, and a rename fails loud via the rank-layout check."""
+    return type(module).__name__ == "PPMissingLayer"
+
+
+def resolve_dot_path(root: Any, dot_path: str) -> Any:
+    """Walk a dot-path; ``None`` when any segment is missing or the target is a
+    PPMissingLayer stub. Per-rank absence is legal under pipeline parallelism (each
+    rank owns a layer subset) — the boot site verifies every hook landed on at least
+    one rank."""
+    target = root
+    for seg in dot_path.split("."):
+        if seg.isdigit():
+            try:
+                target = target[int(seg)]
+            except (IndexError, KeyError, TypeError):
+                return None
+        else:
+            target = getattr(target, seg, None)
+        if target is None:
+            return None
+    return None if is_pp_missing_layer(target) else target
+
+
 def encode_tensor(t: torch.Tensor) -> Dict[str, Any]:
     """Encode a CPU tensor for the RPC wire. bf16 rides as fp32 bytes (exact)."""
     t = t.detach().cpu().contiguous()
-    dtype_name = str(t.dtype).removeprefix("torch.")
+    name = dtype_name(t.dtype)
     if t.dtype == torch.bfloat16:
         t = t.to(torch.float32)
     return {
         _TL_TENSOR_KEY: True,
-        "dtype": dtype_name,
+        "dtype": name,
         "shape": list(t.shape),
         "data": t.numpy().tobytes(),
     }
@@ -140,11 +173,7 @@ class TLWorkerExtension:
         ``None`` if the path doesn't resolve to a tensor. The bridge has no general
         weight surface, so this is how callers reach e.g. the ln_final weight.
         """
-        target = getattr(self, "model_runner").model
-        for seg in dotted_name.split("."):
-            target = target[int(seg)] if seg.isdigit() else getattr(target, seg, None)
-            if target is None:
-                return None
+        target = resolve_dot_path(getattr(self, "model_runner").model, dotted_name)
         return encode_tensor(target) if isinstance(target, torch.Tensor) else None
 
     def tl_reset_counter(self) -> None:

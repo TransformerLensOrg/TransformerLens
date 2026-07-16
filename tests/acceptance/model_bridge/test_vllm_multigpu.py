@@ -17,52 +17,17 @@ import torch
 
 pytest.importorskip("vllm")
 
-pytestmark = [
-    pytest.mark.multigpu,
-    pytest.mark.skipif(
-        not torch.cuda.is_available() or torch.cuda.device_count() < 2,
-        reason="needs >= 2 CUDA devices",
-    ),
-]
+from ._vllm_multigpu_common import (
+    MULTIGPU_MARKS,
+    PROMPT_IDS,
+    assert_caches_match,
+    bridge_pair_fixture,
+    close,
+)
 
-# Qwen2.5-0.5B: 14 attention heads / 2 KV heads — both divisible by TP=2.
-# (SmolLM2-135M has 9 heads and cannot tensor-parallelize; keep any
-# replacement model even-headed.)
-MODEL = "Qwen/Qwen2.5-0.5B"
-PROMPT_IDS = [504, 4674, 1442, 29892, 322]  # fixed ids: no tokenizer variance in scope
-# vLLM kernel scheduling differs with TP (all-reduce order), so exact equality is
-# not expected; band matches scripts/vllm_parity_report.py, including its
-# scale-aware atol (final-layer streams reach O(1e3) and noise grows with scale).
-ATOL = RTOL = 2e-2
-REL_BAND = 2e-3
+pytestmark = MULTIGPU_MARKS
 
-
-def _close(t1: torch.Tensor, t2: torch.Tensor) -> bool:
-    atol_eff = max(ATOL, REL_BAND * t2.abs().max().item())
-    return torch.allclose(t1, t2, atol=atol_eff, rtol=RTOL)
-
-
-def _boot(tp: int, **kwargs):
-    from transformer_lens.model_bridge.sources.vllm.source import boot_vllm
-
-    return boot_vllm(
-        MODEL,
-        dtype=torch.float32,
-        max_model_len=2048,
-        gpu_memory_utilization=0.35,
-        tensor_parallel_size=tp,
-        **kwargs,
-    )
-
-
-@pytest.fixture(scope="module")
-def bridges():
-    """TP=1 reference then TP=2 under test; serial boots, closed in reverse order."""
-    b1 = _boot(1)
-    b2 = _boot(2)
-    yield b1, b2
-    b2.close()
-    b1.close()
+bridges = bridge_pair_fixture(tensor_parallel_size=2)
 
 
 class TestTPCaptureParity:
@@ -71,14 +36,7 @@ class TestTPCaptureParity:
         toks = torch.tensor([PROMPT_IDS])
         _, cache1 = b1.run_with_cache(toks)
         _, cache2 = b2.run_with_cache(toks)
-        assert set(cache1.keys()) == set(cache2.keys())
-        for name in cache1:
-            t1, t2 = cache1[name].float(), cache2[name].float()
-            assert t1.shape == t2.shape, name
-            assert _close(t1, t2), (
-                f"{name}: max abs diff {(t1 - t2).abs().max().item():.3e} "
-                f"(scale {t2.abs().max().item():.1f})"
-            )
+        assert_caches_match(cache1, cache2)
 
     def test_logits_argmax_matches_tp1(self, bridges):
         b1, b2 = bridges
@@ -95,11 +53,11 @@ class TestTPCaptureParity:
         loss = b2.forward(torch.tensor([PROMPT_IDS]), return_type="loss")
         assert torch.isfinite(loss)
 
-    def test_tp_replication_tripwire_ran_clean(self, bridges):
+    def test_layout_check_ran_clean(self, bridges):
         """The first capture-bearing forward cross-checked ranks without raising."""
         _, b2 = bridges
         assert b2._driver._tp_size == 2
-        assert b2._driver._tp_verified is True
+        assert b2._driver._layout_verified is True
 
 
 class TestTPInterventionParity:
@@ -110,7 +68,7 @@ class TestTPInterventionParity:
         l1 = b1.forward(toks, return_type="logits", intervene=spec)
         l2 = b2.forward(toks, return_type="logits", intervene=spec)
         assert torch.equal(l1.argmax(dim=-1), l2.argmax(dim=-1))
-        assert _close(l1.float(), l2.float())
+        assert close(l1.float(), l2.float())
 
     def test_intervention_actually_bites_under_tp(self, bridges):
         """Guard against a TP no-op passing the parity test trivially."""

@@ -48,10 +48,23 @@ def _cfg() -> TransformerBridgeConfig:
     )
 
 
+def _fake_rpc(absent_per_rank):
+    """Method-dispatch collective_rpc stub: tl_absent_hooks feeds the boot-time
+    coverage check (list per rank); every other method returns a real tensor
+    (the reconstruction probe's get_param is beartype-enforced)."""
+
+    def rpc(method, *args, **kwargs):
+        if method == "tl_absent_hooks":
+            return absent_per_rank
+        return [torch.ones(16, 4)]
+
+    return MagicMock(side_effect=rpc)
+
+
 @pytest.fixture
 def mocked_boot(monkeypatch):
     """Mock every external boundary boot_vllm crosses; yield handles for assertions."""
-    plugin._config.clear()
+    plugin.clear_config()
     hf_config = _hf_config()
     cfg = _cfg()
     adapter = ArchitectureAdapter(cfg)
@@ -63,15 +76,7 @@ def mocked_boot(monkeypatch):
     monkeypatch.setattr("transformers.AutoTokenizer.from_pretrained", auto_tokenizer)
 
     fake_llm = MagicMock(name="llm")
-
-    # tl_absent_hooks feeds the boot-time coverage check (list per rank); the
-    # reconstruction probe's get_param is beartype-enforced to a real tensor.
-    def _fake_rpc(method, *args, **kwargs):
-        if method == "tl_absent_hooks":
-            return [[]]
-        return [torch.ones(16, 4)]
-
-    fake_llm.collective_rpc = MagicMock(side_effect=_fake_rpc)
+    fake_llm.collective_rpc = _fake_rpc([[]])
     fake_vllm = MagicMock()
     fake_vllm.LLM = MagicMock(return_value=fake_llm)
     monkeypatch.setitem(sys.modules, "vllm", fake_vllm)
@@ -121,7 +126,7 @@ def mocked_boot(monkeypatch):
         "configure_tok": configure_tok,
     }
 
-    plugin._config.clear()
+    plugin.clear_config()
 
 
 def test_rejects_locked_kwarg_override():
@@ -194,9 +199,8 @@ def test_env_var_zero_does_not_warn(mocked_boot, monkeypatch):
 
 
 def test_plugin_config_cleared_after_boot(mocked_boot):
-    """No leak to non-TL vllm.LLM users in the same process — both channels."""
+    """No leak to non-TL vllm.LLM users in the same process."""
     boot_vllm("any-model")
-    assert plugin._config == {}
     assert plugin._ENV_CONFIG_KEY not in os.environ
 
 
@@ -206,7 +210,6 @@ def test_plugin_config_cleared_when_llm_construction_fails(mocked_boot):
     mocked_boot["vllm_llm"].side_effect = RuntimeError("CUDA out of memory")
     with pytest.raises(RuntimeError, match="CUDA out of memory"):
         boot_vllm("any-model")
-    assert plugin._config == {}
     assert plugin._ENV_CONFIG_KEY not in os.environ
 
 
@@ -228,13 +231,7 @@ def test_env_channel_populated_during_llm_construction(mocked_boot):
 def test_boot_fails_loud_when_hook_absent_on_all_ranks(mocked_boot):
     """A spec that installed on no rank is a broken dot-path — silent zeros otherwise."""
     fake_llm = mocked_boot["vllm_llm"].return_value
-
-    def _rpc(method, *args, **kwargs):
-        if method == "tl_absent_hooks":
-            return [["blocks.0.hook_out"], ["blocks.0.hook_out"]]
-        return [torch.ones(16, 4)]
-
-    fake_llm.collective_rpc = MagicMock(side_effect=_rpc)
+    fake_llm.collective_rpc = _fake_rpc([["blocks.0.hook_out"], ["blocks.0.hook_out"]])
     with pytest.raises(RuntimeError, match="blocks.0.hook_out"):
         boot_vllm("any-model")
 
@@ -242,13 +239,8 @@ def test_boot_fails_loud_when_hook_absent_on_all_ranks(mocked_boot):
 def test_boot_accepts_per_rank_absence(mocked_boot):
     """PP shards legally lack some layers — only absent-everywhere is an error."""
     fake_llm = mocked_boot["vllm_llm"].return_value
-
-    def _rpc(method, *args, **kwargs):
-        if method == "tl_absent_hooks":
-            return [["blocks.1.hook_out"], ["blocks.0.hook_out"]]  # disjoint per rank
-        return [torch.ones(16, 4)]
-
-    fake_llm.collective_rpc = MagicMock(side_effect=_rpc)
+    # Disjoint per rank — union covers every spec.
+    fake_llm.collective_rpc = _fake_rpc([["blocks.1.hook_out"], ["blocks.0.hook_out"]])
     assert boot_vllm("any-model") is not None
 
 
@@ -306,43 +298,59 @@ def test_missing_vllm_raises_actionable_import_error(monkeypatch):
     monkeypatch.setitem(sys.modules, "vllm", None)  # forces ImportError on import
     with pytest.raises(ImportError, match=r"transformer-lens\[vllm\]"):
         boot_vllm("any-model")
-    assert plugin._config == {}
+    assert plugin._ENV_CONFIG_KEY not in os.environ
 
 
-class TestTensorParallelBoot:
-    """TP plumbing: kwarg validation, LLM wiring, env handling. GPU behavior is
-    validated by tests/acceptance/model_bridge/test_vllm_multigpu.py."""
+class TestParallelBoot:
+    """TP/PP plumbing: kwarg validation, LLM wiring, env handling. GPU behavior is
+    validated by tests/acceptance/model_bridge/test_vllm_multigpu*.py."""
 
-    def test_tp_size_passed_to_llm_and_driver(self, mocked_boot):
-        bridge = boot_vllm("any-model", tensor_parallel_size=2)
-        assert mocked_boot["vllm_llm"].call_args.kwargs["tensor_parallel_size"] == 2
-        assert bridge._driver._tp_size == 2
+    PARALLEL_KWARGS = pytest.mark.parametrize(
+        "kwarg", ["tensor_parallel_size", "pipeline_parallel_size"]
+    )
+
+    @PARALLEL_KWARGS
+    def test_size_passed_to_llm_and_layout_unverified(self, mocked_boot, kwarg):
+        bridge = boot_vllm("any-model", **{kwarg: 2})
+        assert mocked_boot["vllm_llm"].call_args.kwargs[kwarg] == 2
         assert bridge._driver._layout_verified is False  # first forward cross-checks
 
-    def test_tp_default_is_single_rank(self, mocked_boot):
+    @PARALLEL_KWARGS
+    def test_default_is_single_rank(self, mocked_boot, kwarg):
         bridge = boot_vllm("any-model")
-        assert mocked_boot["vllm_llm"].call_args.kwargs["tensor_parallel_size"] == 1
+        assert mocked_boot["vllm_llm"].call_args.kwargs[kwarg] == 1
         assert bridge._driver._layout_verified is True  # nothing to cross-check
 
-    def test_tp_rejects_batching(self):
+    @PARALLEL_KWARGS
+    def test_rejects_batching(self, kwarg):
         with pytest.raises(ValueError, match="parallelism is unsupported"):
-            boot_vllm("any-model", tensor_parallel_size=2, enable_batching=True)
+            boot_vllm("any-model", enable_batching=True, **{kwarg: 2})
 
-    def test_tp_invalid_value_rejected(self):
+    @PARALLEL_KWARGS
+    def test_invalid_value_rejected(self, kwarg):
         with pytest.raises(ValueError, match="positive int"):
-            boot_vllm("any-model", tensor_parallel_size=0)
+            boot_vllm("any-model", **{kwarg: 0})
 
-    def test_tp_boot_clears_stale_mp_zero(self, mocked_boot, monkeypatch):
-        """A prior single-rank boot leaves '0' in the env; TP must not inherit it —
-        it would force the uni-process executor and TP workers would never spawn."""
+    @PARALLEL_KWARGS
+    def test_parallel_boot_clears_stale_mp_zero(self, mocked_boot, monkeypatch, kwarg):
+        """A prior single-rank boot leaves '0' in the env; parallel boots must not
+        inherit it — it would force the uni-process executor and workers never spawn."""
         monkeypatch.setenv("VLLM_ENABLE_V1_MULTIPROCESSING", "0")
-        boot_vllm("any-model", tensor_parallel_size=2)
+        boot_vllm("any-model", **{kwarg: 2})
         assert "VLLM_ENABLE_V1_MULTIPROCESSING" not in os.environ
 
     def test_single_rank_still_forces_in_process(self, mocked_boot, monkeypatch):
         monkeypatch.delenv("VLLM_ENABLE_V1_MULTIPROCESSING", raising=False)
         boot_vllm("any-model")
         assert os.environ["VLLM_ENABLE_V1_MULTIPROCESSING"] == "0"
+
+    def test_tp_and_pp_combine(self, mocked_boot):
+        bridge = boot_vllm("any-model", tensor_parallel_size=2, pipeline_parallel_size=2)
+        kwargs = mocked_boot["vllm_llm"].call_args.kwargs
+        assert kwargs["tensor_parallel_size"] == 2
+        assert kwargs["pipeline_parallel_size"] == 2
+        assert bridge._driver._tp_size == 2
+        assert bridge._driver._layout_verified is False
 
 
 def test_compile_cache_disabled_for_tl_boots(mocked_boot, monkeypatch):
@@ -352,39 +360,3 @@ def test_compile_cache_disabled_for_tl_boots(mocked_boot, monkeypatch):
     monkeypatch.delenv("VLLM_DISABLE_COMPILE_CACHE", raising=False)
     boot_vllm("any-model")
     assert os.environ["VLLM_DISABLE_COMPILE_CACHE"] == "1"
-
-
-class TestPipelineParallelBoot:
-    """PP plumbing: kwarg validation, LLM wiring, env handling. GPU behavior is
-    validated by tests/acceptance/model_bridge/test_vllm_multigpu_pp.py."""
-
-    def test_pp_size_passed_to_llm_and_driver(self, mocked_boot):
-        bridge = boot_vllm("any-model", pipeline_parallel_size=2)
-        assert mocked_boot["vllm_llm"].call_args.kwargs["pipeline_parallel_size"] == 2
-        assert bridge._driver._pp_size == 2
-        assert bridge._driver._layout_verified is False  # first forward cross-checks
-
-    def test_pp_default_is_single_stage(self, mocked_boot):
-        bridge = boot_vllm("any-model")
-        assert mocked_boot["vllm_llm"].call_args.kwargs["pipeline_parallel_size"] == 1
-        assert bridge._driver._layout_verified is True
-
-    def test_pp_rejects_batching(self):
-        with pytest.raises(ValueError, match="parallelism is unsupported"):
-            boot_vllm("any-model", pipeline_parallel_size=2, enable_batching=True)
-
-    def test_pp_invalid_value_rejected(self):
-        with pytest.raises(ValueError, match="positive int"):
-            boot_vllm("any-model", pipeline_parallel_size=0)
-
-    def test_pp_boot_clears_stale_mp_zero(self, mocked_boot, monkeypatch):
-        monkeypatch.setenv("VLLM_ENABLE_V1_MULTIPROCESSING", "0")
-        boot_vllm("any-model", pipeline_parallel_size=2)
-        assert "VLLM_ENABLE_V1_MULTIPROCESSING" not in os.environ
-
-    def test_tp_and_pp_combine(self, mocked_boot):
-        bridge = boot_vllm("any-model", tensor_parallel_size=2, pipeline_parallel_size=2)
-        kwargs = mocked_boot["vllm_llm"].call_args.kwargs
-        assert kwargs["tensor_parallel_size"] == 2
-        assert kwargs["pipeline_parallel_size"] == 2
-        assert bridge._driver._tp_size == 2 and bridge._driver._pp_size == 2
