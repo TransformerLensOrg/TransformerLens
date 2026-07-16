@@ -17,7 +17,6 @@ module imports cleanly in environments without vLLM (matching the HF provider pa
 from __future__ import annotations
 
 import gc
-import os
 from typing import Any, Mapping
 
 import numpy as np
@@ -47,21 +46,16 @@ from ._provider_base import (
 # Distinct from the HF ``tl_bridge`` provider and from inspect_ai's built-in ``vllm``.
 PROVIDER_NAME = "tl_bridge_vllm"
 
-# Forced ``LLM(...)`` kwargs that the capture-hook design depends on (matches the same
-# set in ``sources/vllm/source.py``). Multi-device / vLLM-owned tokenizer break the wire
-# path; we own the tokenizer and the plugin assumes single-process workers.
+# Forced ``LLM(...)`` kwargs the capture-hook design depends on. Multi-device and a
+# vLLM-owned tokenizer break the wire path; prefix caching would misalign capture rows
+# (see ``construct_instrumented_llm``, which supplies the caching/parallelism values).
 _LOCKED_VLLM_KWARGS = {
     "tensor_parallel_size": 1,
     "pipeline_parallel_size": 1,
+    "enable_prefix_caching": False,
     "skip_tokenizer_init": True,
     "disable_log_stats": True,
 }
-
-# Dotted path to the worker extension whose ``tl_*`` methods this provider drives via
-# ``collective_rpc`` (capture reads, intervention specs, hook teardown).
-_WORKER_EXTENSION_CLS = (
-    "transformer_lens.model_bridge.sources.vllm.worker_extension.TLWorkerExtension"
-)
 
 
 def _kinds_from_specs(specs: dict[str, Any]) -> frozenset[str]:
@@ -104,7 +98,7 @@ class TransformerLensVLLMModelAPI(_InspectModelAPIBase):
         from transformers import AutoConfig, AutoTokenizer
 
         try:
-            from vllm import LLM
+            import vllm  # noqa: F401 — import check; construction is in construct_instrumented_llm
         except ImportError as exc:
             raise ImportError(
                 "The tl_bridge_vllm provider requires vLLM (Linux + CUDA). Install with "
@@ -114,9 +108,10 @@ class TransformerLensVLLMModelAPI(_InspectModelAPIBase):
 
         from transformer_lens.utilities.hf_utils import get_hf_token
 
-        from ..vllm import plugin
         from ..vllm.internals import extract_hf_config
         from ..vllm.overlays import get_overlay
+        from ..vllm.source import _dtype_from_hf_config, construct_instrumented_llm
+        from ..vllm.worker_extension import dtype_name
 
         # Caller-overridable LLM kwargs go through ``vllm_kwargs``; the locked set above
         # may not be overridden (multi-device / vLLM-owned tokenizer break our wire path).
@@ -149,38 +144,25 @@ class TransformerLensVLLMModelAPI(_InspectModelAPIBase):
         overlay = get_overlay(architecture)
         resolved_dtype = dtype if dtype is not None else _dtype_from_hf_config(hf_config_preview)
         capture_specs = overlay.capture_specs(hf_config_preview)
-        plugin.configure(
+        self._llm = construct_instrumented_llm(
+            model_name,
             capture_specs=capture_specs,
             max_num_batched_tokens=max_num_batched_tokens,
             dtype=resolved_dtype,
             enable_batching=False,  # eager batched path is a later increment
-        )
-        plugin.register()
-        # Single-process workers are required — otherwise the plugin's _config singleton
-        # isn't visible to worker subprocesses and hooks silently fail to install.
-        os.environ["VLLM_ENABLE_V1_MULTIPROCESSING"] = "0"
-
-        try:
-            self._llm = LLM(
-                model=model_name,
-                gpu_memory_utilization=gpu_memory_utilization,
-                max_model_len=max_model_len,
-                max_num_batched_tokens=max_num_batched_tokens,
-                # Worker extension's tl_* methods are reachable via collective_rpc.
-                worker_extension_cls=_WORKER_EXTENSION_CLS,
+            llm_kwargs={
+                "gpu_memory_utilization": gpu_memory_utilization,
+                "max_model_len": max_model_len,
                 # Full-vocab logprobs so _generate_capture can synthesize logits at the
                 # generated position (vLLM caps logprobs to this value; default 20 is too
                 # small for mech interp).
-                max_logprobs=int(hf_config_preview.vocab_size),
-                dtype=str(resolved_dtype).replace("torch.", "") if dtype is not None else "auto",
-                **_LOCKED_VLLM_KWARGS,
+                "max_logprobs": int(hf_config_preview.vocab_size),
+                "dtype": dtype_name(resolved_dtype) if dtype is not None else "auto",
+                "skip_tokenizer_init": True,
+                "disable_log_stats": True,
                 **vllm_kwargs,
-            )
-        finally:
-            # Always clear, even on a failed boot — stale specs would make the next
-            # in-process vllm.LLM(...) walk our dot-paths on a foreign model.
-            plugin._config.clear()
-        # Capture-path validity was enforced inside patched_load_model during LLM(...).
+            },
+        )
         hf_config = extract_hf_config(self._llm)
 
         # Capture-relevant constants used by _generate_capture.
@@ -439,16 +421,6 @@ class TransformerLensVLLMModelAPI(_InspectModelAPIBase):
                 torch.cuda.empty_cache()
             except Exception:
                 pass
-
-
-def _dtype_from_hf_config(hf_config: Any) -> torch.dtype:
-    """Best-effort dtype from an HF config — vLLM prefers fp16 on GPU."""
-    raw = getattr(hf_config, "torch_dtype", None)
-    if isinstance(raw, torch.dtype):
-        return raw
-    if isinstance(raw, str):
-        return getattr(torch, raw, torch.float16)
-    return torch.float16
 
 
 def _synthesize_logits(request_output: Any, n_tokens: int, d_vocab: int) -> torch.Tensor:

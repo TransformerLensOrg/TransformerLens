@@ -21,8 +21,9 @@ from transformer_lens.utilities.hf_utils import get_hf_token
 
 from . import plugin
 from .driver import VLLMDriver
-from .internals import extract_hf_config
+from .internals import extract_hf_config, verify_hook_coverage
 from .overlays import get_overlay
+from .worker_extension import dtype_name
 
 # Forced LLM(...) kwargs that the capture-hook design depends on. Caller override → ValueError.
 # enable_prefix_caching MUST stay off: a prefix-cache hit makes the prefill compute only the
@@ -30,16 +31,104 @@ from .overlays import get_overlay
 # interventions skip cached positions, and an intervened forward writes poisoned K/V that a
 # later clean forward on the same prompt would silently reuse.
 _LOCKED_KWARGS = {
-    "tensor_parallel_size": 1,
-    "pipeline_parallel_size": 1,
     "skip_tokenizer_init": True,
     "disable_log_stats": True,
     "enable_prefix_caching": False,
 }
 
-# Serializes the configure() → LLM(...) → clear() handoff: the spec channel is a module
-# global, so interleaved boots would cross-wire capture specs between engines.
+# Serializes the configure() → LLM(...) → clear() handoff: the spec channel is a
+# process-wide env var, so interleaved boots would cross-wire capture specs between engines.
 _BOOT_LOCK = threading.Lock()
+
+_WORKER_EXTENSION_CLS = (
+    "transformer_lens.model_bridge.sources.vllm.worker_extension.TLWorkerExtension"
+)
+
+
+def construct_instrumented_llm(
+    model_name: str,
+    *,
+    capture_specs: Dict[str, Any],
+    max_num_batched_tokens: int,
+    dtype: torch.dtype,
+    enable_batching: bool = False,
+    enable_position_interventions: bool = False,
+    tensor_parallel_size: int = 1,
+    pipeline_parallel_size: int = 1,
+    llm_kwargs: Dict[str, Any],
+) -> Any:
+    """The one place a TL-instrumented ``vllm.LLM`` is constructed — shared by
+    ``boot_vllm`` and the Inspect vLLM provider so the capture contract can't drift
+    between them. Owns everything hook correctness depends on:
+
+    - ``VLLM_DISABLE_COMPILE_CACHE=1``: our hooks are traced INTO vLLM's compiled
+      graph, but its compile cache is keyed only on its own config — a cached
+      artifact from a differently-instrumented process either crashes at AOT load
+      (bytecode binds the hook closures) or silently serves a hookless graph.
+    - ``VLLM_ENABLE_V1_MULTIPROCESSING``: forced ``"0"`` single-rank (in-process
+      worker, the historical GPU-validated path); parallel boots spawn workers,
+      which read the specs via the plugin's env channel — and must not inherit a
+      stale ``"0"`` that would force the uni-process executor.
+    - ``enable_prefix_caching=False``: a prefix-cache hit computes only the uncached
+      suffix, so captures land row-misaligned, interventions skip cached positions,
+      and an intervened forward writes poisoned K/V a later clean forward reuses.
+    - configure → register → ``LLM(...)`` → clear under ``_BOOT_LOCK``, then a
+      hook-coverage check so a spec that landed on no rank fails here, not as zeros.
+
+    ``llm_kwargs`` carries the caller's remaining ``LLM(...)`` arguments; restating a
+    contract kwarg is allowed only at the same value (callers validate overrides).
+    """
+    from vllm import LLM
+
+    os.environ["VLLM_DISABLE_COMPILE_CACHE"] = "1"
+    if tensor_parallel_size == 1 and pipeline_parallel_size == 1:
+        existing_mp = os.environ.get("VLLM_ENABLE_V1_MULTIPROCESSING")
+        if existing_mp not in (None, "0"):
+            warnings.warn(
+                f"VLLM_ENABLE_V1_MULTIPROCESSING={existing_mp!r} overridden to '0' — "
+                "single-rank TL boots keep the worker in-process.",
+                UserWarning,
+                stacklevel=3,
+            )
+        os.environ["VLLM_ENABLE_V1_MULTIPROCESSING"] = "0"
+    elif os.environ.get("VLLM_ENABLE_V1_MULTIPROCESSING") == "0":
+        os.environ.pop("VLLM_ENABLE_V1_MULTIPROCESSING")
+
+    with _BOOT_LOCK:
+        plugin.configure(
+            capture_specs=capture_specs,
+            max_num_batched_tokens=max_num_batched_tokens,
+            dtype=dtype,
+            enable_batching=enable_batching,
+            enable_position_interventions=enable_position_interventions,
+        )
+        plugin.register()
+        try:
+            llm = LLM(
+                **{
+                    "model": model_name,
+                    # vLLM defaults this to 8192 for chunked prefill; the capture buffers
+                    # are sized to it, so the compiled dynamic-shape range must match —
+                    # otherwise Dynamo's symbolic hint exceeds the buffer dim at compile.
+                    "max_num_batched_tokens": max_num_batched_tokens,
+                    # Mixes tl_* methods into the Worker for collective_rpc (multiple
+                    # inheritance; the tl_ prefix avoids attribute collisions).
+                    "worker_extension_cls": _WORKER_EXTENSION_CLS,
+                    "enable_prefix_caching": False,
+                    "tensor_parallel_size": tensor_parallel_size,
+                    "pipeline_parallel_size": pipeline_parallel_size,
+                    **llm_kwargs,
+                }
+            )
+        finally:
+            # Always clear, even on a failed boot: stale specs would make the next
+            # in-process vllm.LLM(...) walk our dot-paths on a foreign model.
+            plugin.clear_config()
+
+    # Hook installation skips modules absent on a rank (PP shards); a spec that
+    # landed on NO rank is a broken dot-path and must fail here, not read zeros.
+    verify_hook_coverage(llm)
+    return llm
 
 
 def boot_vllm(
@@ -51,6 +140,8 @@ def boot_vllm(
     max_num_batched_tokens: int = 2048,
     enable_batching: bool = False,
     enable_position_interventions: bool = False,
+    tensor_parallel_size: int = 1,
+    pipeline_parallel_size: int = 1,
     **vllm_kwargs: Any,
 ) -> RemoteBridge:
     """Boot a model via vLLM and wrap it in a :class:`RemoteBridge` via :class:`VLLMDriver`.
@@ -108,11 +199,34 @@ def boot_vllm(
     Costs ~2× extra resident GPU memory across all hooks (the scale and bias buffers
     join the already-``(max_n, width)`` capture buffer), so it is opt-in and defaults
     ``False``. Compiled-path only — incompatible with ``enable_batching``.
+
+    ``tensor_parallel_size`` > 1 enables single-node tensor parallelism. Every
+    capture point the overlay hooks is post-all-reduce and therefore replicated
+    across a stage's TP ranks; ``pipeline_parallel_size`` > 1 shards layers across
+    stages, each owning the hooks that actually fire on it.
+    Capture reads merge across ranks with a first-forward layout check that fails
+    loud on installation drift or non-replicated hook points; sharded/stage-local
+    weights (``lm_head``, final norm) are gathered for logit reconstruction and the
+    ln_final un-fold. Single-node only (the spec channel is an env var, which never
+    reaches Ray remote workers); both are incompatible with ``enable_batching``
+    (per-rank chunk boundaries are unvalidated).
     """
     if enable_position_interventions and enable_batching:
         raise ValueError(
             "enable_position_interventions requires the compiled path and is incompatible "
             "with enable_batching=True (the batched/eager path has no affine buffers)."
+        )
+    for kwarg_name, size in (
+        ("tensor_parallel_size", tensor_parallel_size),
+        ("pipeline_parallel_size", pipeline_parallel_size),
+    ):
+        if not isinstance(size, int) or size < 1:
+            raise ValueError(f"{kwarg_name} must be a positive int; got {size!r}.")
+    if (tensor_parallel_size > 1 or pipeline_parallel_size > 1) and enable_batching:
+        raise ValueError(
+            "enable_batching=True with tensor/pipeline parallelism is unsupported: the "
+            "eager batched path's per-rank chunk boundaries are unvalidated. "
+            "Use the compiled single-prompt path."
         )
     _reject_locked_overrides(vllm_kwargs)
     # Import-check first: fail with an actionable message before any network I/O
@@ -137,68 +251,35 @@ def boot_vllm(
 
     resolved_dtype = dtype or _dtype_from_hf_config(hf_config_preview)
 
-    # The plugin's _config singleton must be visible to the worker, which only
-    # holds with single-process execution. Multi-GPU is unsupported. Override
-    # any user setting — silent capture failure otherwise.
-    existing_mp = os.environ.get("VLLM_ENABLE_V1_MULTIPROCESSING")
-    if existing_mp not in (None, "0"):
-        warnings.warn(
-            f"VLLM_ENABLE_V1_MULTIPROCESSING={existing_mp!r} overridden to '0' — "
-            "boot_vllm needs single-process execution for capture hooks to install. "
-            "Multi-GPU vLLM is unsupported.",
-            UserWarning,
-            stacklevel=2,
-        )
-    os.environ["VLLM_ENABLE_V1_MULTIPROCESSING"] = "0"
-
     # Batched capture reads query_start_loc from the forward context, untraceable
     # under torch.compile — so the batched path must run eager.
     eager_kwargs: Dict[str, Any] = {"enforce_eager": True} if enable_batching else {}
 
-    with _BOOT_LOCK:
-        plugin.configure(
-            capture_specs=overlay.capture_specs(hf_config_preview),
-            max_num_batched_tokens=max_num_batched_tokens,
-            dtype=resolved_dtype,
-            enable_batching=enable_batching,
-            enable_position_interventions=enable_position_interventions,
-        )
-        plugin.register()
-        try:
-            llm = LLM(
-                model=model_name,
-                gpu_memory_utilization=gpu_memory_utilization,
-                max_model_len=max_model_len,
-                # Critical: vLLM defaults max_num_batched_tokens to 8192 for chunked prefill.
-                # We size our capture buffer to this same value, so vLLM must compile for
-                # the matching dynamic-shape range — otherwise Dynamo's symbolic-shape
-                # hint exceeds the buffer dim and narrow() fails at compile time.
-                max_num_batched_tokens=max_num_batched_tokens,
-                # Register TLWorkerExtension so its tl_* methods are reachable via
-                # collective_rpc. Passed as a dotted path; vLLM imports the class at
-                # worker construction and mixes it into the Worker via multiple
-                # inheritance (asserts no attribute name collisions — hence the tl_ prefix).
-                worker_extension_cls="transformer_lens.model_bridge.sources.vllm.worker_extension.TLWorkerExtension",
-                # Allow full-vocab logprobs so the fallback path can synthesize logits when
-                # host-side reconstruction is unavailable (vLLM caps logprobs to this value;
-                # default 20 is too small for mech-interp).
-                max_logprobs=hf_config_preview.vocab_size,
-                # Always explicit — vLLM's "auto" downcasts fp32 checkpoints to fp16, which
-                # would leave the capture/affine buffers (allocated at resolved_dtype) at a
-                # different dtype than the engine's activations.
-                dtype=str(resolved_dtype).replace("torch.", ""),
-                **eager_kwargs,
-                **_LOCKED_KWARGS,
-                **vllm_kwargs,
-            )
-        finally:
-            # Always clear, even on a failed boot: a stale populated _config would make the
-            # next in-process vllm.LLM(...) walk our dot-paths on a foreign model.
-            plugin._config.clear()
-
-    # Capture-path validity is enforced inside patched_load_model during
-    # LLM(...) above — any missing dot-path raises AttributeError there. By
-    # the time we reach this line every spec has already been walked successfully.
+    llm = construct_instrumented_llm(
+        model_name,
+        capture_specs=overlay.capture_specs(hf_config_preview),
+        max_num_batched_tokens=max_num_batched_tokens,
+        dtype=resolved_dtype,
+        enable_batching=enable_batching,
+        enable_position_interventions=enable_position_interventions,
+        tensor_parallel_size=tensor_parallel_size,
+        pipeline_parallel_size=pipeline_parallel_size,
+        llm_kwargs={
+            "gpu_memory_utilization": gpu_memory_utilization,
+            "max_model_len": max_model_len,
+            # Allow full-vocab logprobs so the fallback path can synthesize logits when
+            # host-side reconstruction is unavailable (vLLM caps logprobs to this value;
+            # default 20 is too small for mech-interp).
+            "max_logprobs": hf_config_preview.vocab_size,
+            # Always explicit — vLLM's "auto" downcasts fp32 checkpoints to fp16, which
+            # would leave the capture/affine buffers (allocated at resolved_dtype) at a
+            # different dtype than the engine's activations.
+            "dtype": dtype_name(resolved_dtype),
+            **eager_kwargs,
+            **_LOCKED_KWARGS,
+            **vllm_kwargs,
+        },
+    )
     hf_config = extract_hf_config(llm)
     if tokenizer is None:
         tokenizer = AutoTokenizer.from_pretrained(model_name, token=hf_token)
@@ -223,6 +304,8 @@ def boot_vllm(
         max_num_batched_tokens=max_num_batched_tokens,
         enable_batching=enable_batching,
         enable_position_interventions=enable_position_interventions,
+        tensor_parallel_size=tensor_parallel_size,
+        pipeline_parallel_size=pipeline_parallel_size,
     )
     # One-time unembedding fetch: caches the weight for per-forward reconstruction and
     # downgrades provides_sequence_logits honestly if no unembedding is reachable.
@@ -237,8 +320,9 @@ def _reject_locked_overrides(vllm_kwargs: Dict[str, Any]) -> None:
         if key in vllm_kwargs and vllm_kwargs[key] != locked:
             raise ValueError(
                 f"boot_vllm forces {key}={locked}; caller passed {key}={vllm_kwargs[key]}. "
-                "Multi-device, prefix caching, continuous batching, and vLLM-owned "
-                "tokenizers are unsupported — each breaks the row=position capture invariant."
+                "Prefix caching, continuous batching, and vLLM-owned tokenizers are "
+                "unsupported — each breaks the capture-read invariants. (TP/PP are "
+                "supported via the tensor_parallel_size/pipeline_parallel_size kwargs.)"
             )
 
 
@@ -274,4 +358,4 @@ def _log_hook_summary(model_name: str, architecture: str, driver: VLLMDriver) ->
         )
 
 
-__all__ = ["boot_vllm"]
+__all__ = ["boot_vllm", "construct_instrumented_llm"]

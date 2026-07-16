@@ -5,7 +5,7 @@ import gc
 import logging
 import threading
 import warnings
-from typing import Any, Mapping
+from typing import Any, Mapping, Optional, Sequence, Union
 
 import torch
 
@@ -17,6 +17,7 @@ from transformer_lens.model_bridge.driver_protocol import (
 from transformer_lens.model_bridge.sources._driver_base import DriverBase
 
 from .intervention_specs import validate_spec
+from .worker_extension import _TL_TENSOR_KEY, decode_tensor
 
 # vLLM's distributed teardown operates on process-wide globals, so close() may only run
 # it when no other VLLMDriver-owned engine is alive (notebook re-binding boots B before
@@ -49,11 +50,20 @@ class VLLMDriver(DriverBase):
         max_num_batched_tokens: int,
         enable_batching: bool = False,
         enable_position_interventions: bool = False,
+        tensor_parallel_size: int = 1,
+        pipeline_parallel_size: int = 1,
     ) -> None:
         super().__init__(adapter.cfg, tokenizer)
         self._llm = llm
         self._max_num_batched_tokens = max_num_batched_tokens
         self._enable_batching = enable_batching
+        # Rank layout: PP stages own disjoint layer (hence hook) subsets; the TP
+        # ranks within a stage hold replicas of that stage's post-all-reduce hook
+        # points. Reads merge across stages and take the first replica within one;
+        # the first capture-bearing forward cross-checks the whole layout
+        # (see _verify_rank_layout) and then trusts it.
+        self._tp_size = tensor_parallel_size
+        self._layout_verified = tensor_parallel_size == 1 and pipeline_parallel_size == 1
         # Position-scoped 'pos' interventions need (max_n, width) affine buffers,
         # allocated at boot only when this is set (see plugin.patched_load_model).
         self._enable_position_interventions = enable_position_interventions
@@ -95,7 +105,9 @@ class VLLMDriver(DriverBase):
 
     def forward(
         self,
-        input_ids: TensorLike | None = None,
+        # Wider than the protocol's TensorLike: the batched path documents plain
+        # (ragged) list[int] / list[list[int]] prompts, which have no shape/dtype.
+        input_ids: Optional[Union[TensorLike, Sequence[Any]]] = None,
         *,
         capture: tuple[str, ...] = (),
         intervene: Mapping[str, Intervention] | None = None,
@@ -162,13 +174,23 @@ class VLLMDriver(DriverBase):
 
         n_tokens = len(ids_list)
         read_names = self._read_names(names, return_logits)
-        # collective_rpc returns one result per worker; single-rank, so [0]. Nothing to
-        # read (no captures, logits off) → skip the crossing altogether.
-        worker_captures = (
-            self._llm.collective_rpc("tl_read_captures", args=([n_tokens], read_names))[0]
-            if read_names
-            else {}
-        )
+        # collective_rpc returns one result per worker; each returns only the hooks
+        # it owns (PP shards) with TP replicas within a stage — merge across ranks.
+        # Nothing to read (no captures, logits off) → skip the crossing altogether.
+        if read_names:
+            per_rank_raw = self._llm.collective_rpc(
+                "tl_read_captures", args=([n_tokens], read_names)
+            )
+            if not self._layout_verified:
+                self._verify_rank_layout([self._rpc_captures(caps) for caps in per_rank_raw])
+                self._layout_verified = True
+            # Merge on the wire dicts, decode only the survivors — decoding every TP
+            # replica just to discard all but the first is wasted CPU per forward.
+            worker_captures = self._rpc_captures(
+                self._merge_rank_captures(per_rank_raw, read_names)
+            )
+        else:
+            worker_captures = {}
 
         logits: torch.Tensor | None = None
         if return_logits:
@@ -210,7 +232,7 @@ class VLLMDriver(DriverBase):
 
     def _forward_batched(
         self,
-        input_ids: TensorLike,
+        input_ids: Union[TensorLike, Sequence[Any]],
         intervene_specs: dict,
         return_logits: bool,
         names: list[str],
@@ -242,7 +264,6 @@ class VLLMDriver(DriverBase):
 
         # Reset accumulators so prior-forward chunks don't leak into the cat.
         self._llm.collective_rpc("tl_reset_accumulators")
-        self._llm.collective_rpc("tl_reset_counter")
         self._llm.collective_rpc("tl_set_batched_interventions", args=(intervene_specs,))
 
         d_vocab = self.bridge_config.d_vocab
@@ -264,6 +285,11 @@ class VLLMDriver(DriverBase):
             worker_captures = self._llm.collective_rpc(
                 "tl_read_batched_captures", args=(read_names,)
             )[0]
+            # Batched runs single-rank today, but coerce anyway — multiproc RPC
+            # serializes tensors to lists (see _rpc_tensor).
+            worker_captures = {
+                req_id: self._rpc_captures(caps) for req_id, caps in worker_captures.items()
+            }
             captured = self._assemble_padded(outputs, worker_captures, prompt_lens)
         else:
             captured = {}
@@ -360,12 +386,129 @@ class VLLMDriver(DriverBase):
         return logits
 
     def get_param(self, dotted_name: str) -> torch.Tensor | None:
-        """Fetch a named worker tensor (e.g. ``model.norm.weight``) for conversions
+        """Fetch a named model tensor (e.g. ``model.norm.weight``) for conversions
         the bridge can't otherwise do (ln_final post→pre-weight; see the overlay).
-        None if closed or the path is missing."""
+        Gathered across ranks: replicated params return one copy, vocab-sharded
+        weights concatenate, stage-local params (PP) come from whichever rank owns
+        them. None if closed or the path resolves nowhere."""
+        return self._gather_param(dotted_name)
+
+    @staticmethod
+    def _rpc_tensor(value: Any) -> torch.Tensor:
+        """Decode a non-None collective_rpc payload back to a tensor.
+
+        Worker methods return the explicit wire format (see
+        ``worker_extension.encode_tensor``) because vLLM's multiproc RPC can't
+        round-trip raw tensors. Raw tensors still pass through for mocks and any
+        legacy in-process payloads; anything else is best-effort coerced."""
+        if isinstance(value, torch.Tensor):
+            return value
+        if isinstance(value, Mapping) and value.get(_TL_TENSOR_KEY):
+            return decode_tensor(dict(value))
+        return torch.as_tensor(value)
+
+    @classmethod
+    def _rpc_captures(cls, captures: Mapping[str, Any]) -> dict[str, torch.Tensor]:
+        return {name: cls._rpc_tensor(value) for name, value in captures.items()}
+
+    def _gather_param(self, dotted_name: str, dim: int = 0) -> torch.Tensor | None:
+        """Fetch a param across all TP ranks: replicated → rank 0; sharded → concat.
+
+        Vocab-parallel weights (``lm_head.weight``, ``embed_tokens.weight``) hold
+        contiguous per-rank slices in rank order, which is also collective_rpc's
+        result order — concatenation along ``dim`` reassembles the full tensor
+        (vocab padding lands in the tail rows, sliced off by reconstruction).
+        """
         if self._llm is None:
             return None
-        return self._llm.collective_rpc("tl_get_param", args=(dotted_name,))[0]
+        shards = [
+            self._rpc_tensor(s)
+            for s in self._llm.collective_rpc("tl_get_param", args=(dotted_name,))
+            if s is not None
+        ]
+        if not shards:
+            return None
+        if len(shards) == 1:
+            return shards[0]
+        if all(s.shape == shards[0].shape and torch.equal(s, shards[0]) for s in shards[1:]):
+            return shards[0]  # replicated (norm weights, biases on some archs)
+        return torch.cat(shards, dim=dim)
+
+    def _merge_rank_captures(self, per_rank_captures: list, requested: list[str]) -> dict[str, Any]:
+        """Merge per-rank capture dicts into one (values stay opaque — callers decode):
+        PP stages own disjoint hook subsets; TP replicas within a stage agree (verified
+        once by _verify_rank_layout), so the first copy wins. A requested, supported
+        hook served by NO rank fails loud — zero-filling would be silent data loss
+        (same policy as the batched join)."""
+        merged: dict[str, Any] = {}
+        for captures in per_rank_captures:
+            for name, tensor in captures.items():
+                if name not in merged:
+                    merged[name] = tensor
+        missing = [
+            name for name in requested if name not in merged and name in self.supported_hook_points
+        ]
+        if missing:
+            raise RuntimeError(
+                f"Capture(s) {missing} returned by no rank — a hook fired nowhere "
+                "despite passing the boot-time coverage check. Report this."
+            )
+        return merged
+
+    def _verify_rank_layout(self, per_rank_captures: list) -> None:
+        """One-time cross-rank check of the capture layout under TP/PP.
+
+        Invariant: each hook lives on exactly one PP stage and is replicated across
+        that stage's ``tp_size`` ranks (every overlay hook point is post-all-reduce).
+        A wrong copy count means installation drift; divergent replicas mean a hook
+        point moved pre-all-reduce — either way rank-merged reads would be silently
+        wrong, so fail loud on the first capture-bearing forward. Ranks serving the
+        same hook set are TP replicas of one stage and must report identical fire
+        counters; counters are NOT comparable across stages — per-rank installed
+        counts overcount modules that exist but never run (tied-embedding aliases,
+        archs that instantiate norm on every rank).
+        """
+        all_names: set[str] = set()
+        for captures in per_rank_captures:
+            all_names |= set(captures.keys())
+        for name in sorted(all_names):
+            copies = [
+                (rank, caps[name]) for rank, caps in enumerate(per_rank_captures) if name in caps
+            ]
+            if len(copies) != self._tp_size:
+                raise RuntimeError(
+                    f"Rank-layout check failed for {name!r}: found on {len(copies)} rank(s) "
+                    f"but expected exactly tp_size={self._tp_size} (one PP stage × its TP "
+                    "replicas). Per-rank installation drifted — report this."
+                )
+            rank0, t0 = copies[0]
+            for rank, t_r in copies[1:]:
+                if t0.shape != t_r.shape or not torch.allclose(
+                    t0.float(), t_r.float(), atol=1e-5, rtol=1e-5
+                ):
+                    diff = (
+                        (t0.float() - t_r.float()).abs().max().item()
+                        if t0.shape == t_r.shape
+                        else float("inf")
+                    )
+                    raise RuntimeError(
+                        f"TP replication check failed for {name!r}: rank {rank0} vs rank "
+                        f"{rank} max abs diff {diff:.3e}. This hook point is no longer "
+                        "replicated across ranks (vLLM may have moved it pre-all-reduce) — "
+                        "merged capture reads would be silently wrong. Report this."
+                    )
+        counters = [int(c) for c in self._llm.collective_rpc("tl_read_counter")]
+        stages: dict = {}
+        for rank, captures in enumerate(per_rank_captures):
+            stages.setdefault(frozenset(captures.keys()), []).append(rank)
+        for ranks in stages.values():
+            group = [counters[r] for r in ranks]
+            if len(set(group)) > 1:
+                raise RuntimeError(
+                    f"Fire-counter mismatch within a TP replica group: ranks {ranks} "
+                    f"serve the same hooks but fired {group} times. Replicated forwards "
+                    "diverged — merged capture reads would be silently wrong. Report this."
+                )
 
     def probe_logit_reconstruction(self) -> bool:
         """One-time unembedding fetch + cache; downgrades ``provides_sequence_logits``
@@ -375,13 +518,14 @@ class VLLMDriver(DriverBase):
         if self._unembed_probed:
             return self._unembed is not None
         self._unembed_probed = True
-        weight = self.get_param("lm_head.weight")
+        # Gathered reads: under TP the unembedding is vocab-sharded per rank.
+        weight = self._gather_param("lm_head.weight")
         if weight is None:  # tied embeddings expose no separate lm_head
-            weight = self.get_param("model.embed_tokens.weight")
+            weight = self._gather_param("model.embed_tokens.weight")
         if weight is None:
             self.provides_sequence_logits = False
             return False
-        bias = self.get_param("lm_head.bias")
+        bias = self._gather_param("lm_head.bias")
         d_vocab = int(self.bridge_config.d_vocab)
         # Slice vLLM's vocab-pad rows at cache time; fp32 residency (~2× checkpoint
         # dtype on CPU) trades memory for skipping a full-matrix upcast per forward.
@@ -432,9 +576,11 @@ class VLLMDriver(DriverBase):
         beats silent cross-backend mismatch."""
         if not self._lnf_probed:
             self._lnf_probed = True
-            # The overlay's capture spec owns the module path; derive the weight from it.
+            # The overlay's capture spec owns the module path; derive the weight from
+            # it. Gathered read: under PP the final norm lives only on the last stage,
+            # so a rank-0 get_param would miss it.
             path = self._capture_paths.get(self._LN_FINAL, "model.norm")
-            weight = self.get_param(f"{path}.weight")
+            weight = self._gather_param(f"{path}.weight")
             if weight is None:
                 warnings.warn(
                     "ln_final.hook_normalized: norm weight unreachable — the captured "

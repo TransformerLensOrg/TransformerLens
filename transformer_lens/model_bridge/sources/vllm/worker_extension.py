@@ -16,11 +16,78 @@ Two capture modes, selected at boot:
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 import torch
 
 from .intervention_specs import SUPPORTED_OPS, validate_spec
+
+# Explicit tensor wire format for collective_rpc returns. vLLM's multiproc RPC
+# cannot round-trip raw tensors from extension methods — its tensor-aware msgpack
+# encoder's header (['float32', [rows, cols], buf_idx]) leaks through undecoded on
+# the response path (GPU-verified on vllm 0.20.2). dtype/shape/bytes are all
+# msgpack-native, so this survives any executor topology; the in-process executor
+# pays one extra CPU copy.
+_TL_TENSOR_KEY = "__tl_tensor__"
+
+
+def dtype_name(dtype: torch.dtype) -> str:
+    """``torch.float32`` → ``"float32"`` — the one spelling for every dtype-string site."""
+    return str(dtype).removeprefix("torch.")
+
+
+def is_pp_missing_layer(module: Any) -> bool:
+    """vLLM PP keeps full-length module lists on every rank, filling non-owned slots
+    (layers, embed_tokens, norm, lm_head) with PPMissingLayer identity stubs that the
+    forward never calls — a hook installed there would serve its dead zero buffer as
+    a real capture. Matched by name so non-vllm test doubles work; the pinned band's
+    class is named exactly this, and a rename fails loud via the rank-layout check."""
+    return type(module).__name__ == "PPMissingLayer"
+
+
+def resolve_dot_path(root: Any, dot_path: str) -> Any:
+    """Walk a dot-path; ``None`` when any segment is missing or the target is a
+    PPMissingLayer stub. Per-rank absence is legal under pipeline parallelism (each
+    rank owns a layer subset) — the boot site verifies every hook landed on at least
+    one rank."""
+    target = root
+    for seg in dot_path.split("."):
+        if seg.isdigit():
+            try:
+                target = target[int(seg)]
+            except (IndexError, KeyError, TypeError):
+                return None
+        else:
+            target = getattr(target, seg, None)
+        if target is None:
+            return None
+    return None if is_pp_missing_layer(target) else target
+
+
+def encode_tensor(t: torch.Tensor) -> Dict[str, Any]:
+    """Encode a CPU tensor for the RPC wire. bf16 rides as fp32 bytes (exact)."""
+    t = t.detach().cpu().contiguous()
+    name = dtype_name(t.dtype)
+    if t.dtype == torch.bfloat16:
+        t = t.to(torch.float32)
+    return {
+        _TL_TENSOR_KEY: True,
+        "dtype": name,
+        "shape": list(t.shape),
+        "data": t.numpy().tobytes(),
+    }
+
+
+def decode_tensor(payload: Dict[str, Any]) -> torch.Tensor:
+    """Inverse of :func:`encode_tensor`; used driver-side."""
+    import numpy as np
+
+    dtype = getattr(torch, payload["dtype"])
+    wire_dtype = torch.float32 if dtype == torch.bfloat16 else dtype
+    np_dtype = torch.empty(0, dtype=wire_dtype).numpy().dtype
+    array = np.frombuffer(payload["data"], dtype=np_dtype).copy()
+    tensor = torch.from_numpy(array).reshape(payload["shape"])
+    return tensor.to(torch.bfloat16) if dtype == torch.bfloat16 else tensor
 
 
 class TLWorkerExtension:
@@ -36,11 +103,22 @@ class TLWorkerExtension:
     # Batched-mode state (eager).
     _tl_accum: Dict[tuple, List[torch.Tensor]]
     _tl_intervention_specs: Dict[str, Dict[str, Any]]
+    # Specs whose module doesn't exist on this rank (PP layer shards).
+    _tl_absent_hooks: set
+
+    def tl_absent_hooks(self) -> Optional[List[str]]:
+        """Spec names that installed no hook on this rank — the boot site verifies
+        their union across ranks covers every spec. ``None`` means installation
+        never ran at all (plugin patch absent or spec channel empty), which the
+        coverage check must treat as fatal rather than vacuously complete."""
+        if not hasattr(self, "_tl_absent_hooks"):
+            return None
+        return sorted(self._tl_absent_hooks)
 
     def tl_read_captures(
         self, prompt_lens: List[int], names: Optional[List[str]] = None
-    ) -> Dict[str, torch.Tensor]:
-        """Slice each capture buffer to ``sum(prompt_lens)`` rows; CPU copies.
+    ) -> Dict[str, Dict[str, Any]]:
+        """Slice each capture buffer to ``sum(prompt_lens)`` rows; wire-encoded CPU copies.
 
         ``names`` restricts the read (``None`` = all) — this is the only GPU→CPU
         crossing, so it's where a names_filtered run saves bandwidth. Caller gates
@@ -48,8 +126,17 @@ class TLWorkerExtension:
         """
         total = sum(prompt_lens)
         buffers: Dict[str, torch.Tensor] = getattr(self, "_tl_buffers", {})
+        # Ownership is dynamic, not structural: a hook can be installed on a module
+        # this rank holds but never runs (PP stages share tied-embedding aliases and
+        # some archs instantiate norm on every rank), so a still-open first-write
+        # flag means the buffer holds no data from this forward — don't serve it.
+        flags: Dict[str, torch.Tensor] = getattr(self, "_tl_capture_flags", {})
         wanted = buffers.keys() if names is None else [n for n in names if n in buffers]
-        return {name: buffers[name][:total].detach().cpu().clone() for name in wanted}
+        return {
+            name: encode_tensor(buffers[name][:total])
+            for name in wanted
+            if name not in flags or bool(flags[name].item())
+        }
 
     def tl_set_interventions(self, specs: Dict[str, Dict[str, Any]]) -> None:
         """Reset all affine buffers to identity, then apply each spec.
@@ -66,7 +153,12 @@ class TLWorkerExtension:
         for name, sb in scale_bufs.items():
             sb.fill_(1.0)
             bias_bufs[name].zero_()
+        absent: Set[str] = getattr(self, "_tl_absent_hooks", set())
         for hook_name, spec in specs.items():
+            if hook_name in absent:
+                # Another PP stage owns this hook; its rank applies the spec. The
+                # driver's supported_hook_points check already caught real typos.
+                continue
             if hook_name not in scale_bufs:
                 raise KeyError(f"Unknown hook for intervention: {hook_name!r}")
             # Authoritative validation: producers that bypass VLLMDriver (the Inspect
@@ -74,18 +166,15 @@ class TLWorkerExtension:
             validate_spec(hook_name, spec, width=scale_bufs[hook_name].shape[-1])
             _apply_intervention(scale_bufs[hook_name], bias_bufs[hook_name], spec)
 
-    def tl_get_param(self, dotted_name: str) -> Optional[torch.Tensor]:
-        """Read a named model tensor (e.g. ``model.norm.weight``) as a CPU clone.
+    def tl_get_param(self, dotted_name: str) -> Optional[Dict[str, Any]]:
+        """Read a named model tensor (e.g. ``model.norm.weight``) as a wire-encoded
+        CPU clone.
 
         ``None`` if the path doesn't resolve to a tensor. The bridge has no general
         weight surface, so this is how callers reach e.g. the ln_final weight.
         """
-        target = getattr(self, "model_runner").model
-        for seg in dotted_name.split("."):
-            target = target[int(seg)] if seg.isdigit() else getattr(target, seg, None)
-            if target is None:
-                return None
-        return target.detach().cpu().clone() if isinstance(target, torch.Tensor) else None
+        target = resolve_dot_path(getattr(self, "model_runner").model, dotted_name)
+        return encode_tensor(target) if isinstance(target, torch.Tensor) else None
 
     def tl_reset_counter(self) -> None:
         """Zero the shared hook-fire counter before a forward."""
@@ -123,11 +212,11 @@ class TLWorkerExtension:
         """
         accum: Dict[tuple, List[torch.Tensor]] = getattr(self, "_tl_accum", {})
         nameset = None if names is None else set(names)
-        out: Dict[str, Dict[str, torch.Tensor]] = {}
+        out: Dict[str, Dict[str, Any]] = {}
         for (req_id, name), chunks in accum.items():
             if nameset is not None and name not in nameset:
                 continue
-            out.setdefault(req_id, {})[name] = torch.cat(chunks, dim=0)
+            out.setdefault(req_id, {})[name] = encode_tensor(torch.cat(chunks, dim=0))
         return out
 
     def tl_set_batched_interventions(self, specs: Dict[str, Dict[str, Any]]) -> None:
@@ -147,6 +236,7 @@ class TLWorkerExtension:
         self._tl_capture_flags = {}
         self._tl_accum = {}
         self._tl_intervention_specs = {}
+        self._tl_absent_hooks = set()
 
 
 def _apply_op(t: torch.Tensor, spec: Dict[str, Any]) -> torch.Tensor:

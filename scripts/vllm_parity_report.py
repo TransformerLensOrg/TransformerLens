@@ -21,10 +21,15 @@ NOT a CPU/per-PR CI job — it SKIPs cleanly when vLLM or a GPU is unavailable.
 Run:  uv run python scripts/vllm_parity_report.py
 Env:  TL_PARITY_MODELS="id1,id2,..."  overrides the model list.
       TL_VLLM_ATOL / TL_VLLM_RTOL     override tolerance (defaults 2e-2).
+      TL_PARITY_TP=2                  boot vLLM with tensor_parallel_size=2 —
+                                      same PASS bar as TP=1 (needs >= TP GPUs).
+      TL_PARITY_PP=2                  boot vLLM with pipeline_parallel_size=2
+                                      (needs >= TP*PP GPUs).
 """
 from __future__ import annotations
 
 import gc
+import json
 import os
 import sys
 import warnings
@@ -50,6 +55,14 @@ PROMPT = "The quick brown fox"
 # A wrong hook mapping (e.g. un-un-folded ln_final) diverges by O(1), well outside this.
 ATOL = float(os.environ.get("TL_VLLM_ATOL", "2e-2"))
 RTOL = float(os.environ.get("TL_VLLM_RTOL", "2e-2"))
+# Scale-aware band: final-layer residual streams reach O(1e3) magnitudes ("massive
+# activations") and kernel-order noise grows with scale. Measured across 4 archs
+# (2×A6000, fp32, 2026-07-15): worst relative diff 5.9e-4, always at the final
+# layer, with downstream ln_final back in band — while a mapping bug is O(1)
+# relative. 2e-3 keeps >3 orders of magnitude of discrimination.
+REL_BAND = float(os.environ.get("TL_VLLM_REL", "2e-3"))
+TP = int(os.environ.get("TL_PARITY_TP", "1"))
+PP = int(os.environ.get("TL_PARITY_PP", "1"))
 
 # vLLM capture kind -> TransformerBridge-native hook name (per-layer uses {i}).
 DIRECT_KINDS = {
@@ -67,12 +80,18 @@ def _to2d(t: torch.Tensor) -> torch.Tensor:
     return t.reshape(-1, t.shape[-1])
 
 
-def _diff(a: torch.Tensor, b: torch.Tensor) -> tuple[float, bool]:
+def _diff(a: torch.Tensor, b: torch.Tensor) -> tuple[float, bool, str]:
+    """(max abs diff, in-band?, scale-aware profile line). The profile shows the diff
+    relative to the reference's own magnitude — distinguishes depth-accumulated kernel
+    noise (rel stays small as scale grows) from a structural capture error."""
     a2, b2 = _to2d(a), _to2d(b)
     if a2.shape != b2.shape:
-        return float("inf"), False
+        return float("inf"), False, "shape mismatch"
     d = (a2 - b2).abs().max().item()
-    return d, torch.allclose(a2, b2, atol=ATOL, rtol=RTOL)
+    scale = b2.abs().max().item()
+    # Effective atol scales with the reference tensor's magnitude (see REL_BAND).
+    ok = torch.allclose(a2, b2, atol=max(ATOL, REL_BAND * scale), rtol=RTOL)
+    return d, ok, f"abs={d:.2e} rel={d / max(scale, 1e-9):.2e} scale={scale:.1f}"
 
 
 def _refold_lnf(vllm_val: torch.Tensor, weight: torch.Tensor, is_gemma: bool) -> torch.Tensor:
@@ -100,7 +119,13 @@ def verify(model_id: str) -> dict:
         n_layers = int(hf.cfg.n_layers)
         toks = hf.to_tokens(PROMPT)
 
-        vllm = boot_vllm(model_id, dtype=torch.float32, max_model_len=2048)
+        vllm = boot_vllm(
+            model_id,
+            dtype=torch.float32,
+            max_model_len=2048,
+            tensor_parallel_size=TP,
+            pipeline_parallel_size=PP,
+        )
         offered = vllm._driver.supported_hook_points
 
         hf_logits, hf_cache = hf.run_with_cache(toks)
@@ -110,9 +135,13 @@ def verify(model_id: str) -> dict:
         mism: list[str] = []
         notes: list[str] = []
 
-        # embed + the three per-layer direct boundaries (first & last layer).
+        # embed + the three per-layer direct boundaries. Default checks first & last
+        # layer; TL_PARITY_ALL_LAYERS=1 diffs every layer and prints the depth profile —
+        # gradual growth = kernel-noise accumulation, a cliff at one layer = capture bug.
+        all_layers = bool(os.environ.get("TL_PARITY_ALL_LAYERS"))
+        layer_ids = range(n_layers) if all_layers else sorted({0, n_layers - 1})
         checks = [(EMBED_HOOK, EMBED_HOOK)]
-        for i in sorted({0, n_layers - 1}):
+        for i in layer_ids:
             for name in DIRECT_KINDS.values():
                 hk = name.format(i=i)
                 checks.append((hk, hk))
@@ -122,16 +151,25 @@ def verify(model_id: str) -> dict:
             if hk not in v_cache or hk not in hf_cache:
                 mism.append(f"{hk} missing")
                 continue
-            d, ok = _diff(hf_cache[hk], v_cache[hk])
+            d, ok, profile = _diff(hf_cache[hk], v_cache[hk])
             worst = max(worst, d if d != float("inf") else worst)
             if not ok:
-                mism.append(f"{hk} maxdiff={d:.2e}")
+                mism.append(f"{hk} {profile}")
+        if all_layers:
+            print(f"    depth profile for {model_id} (rel = abs/tensor-scale):", flush=True)
+            for i in layer_ids:
+                cells = []
+                for kind, name in DIRECT_KINDS.items():
+                    hk = name.format(i=i)
+                    if hk in v_cache and hk in hf_cache:
+                        cells.append(f"{kind} {_diff(hf_cache[hk], v_cache[hk])[2]}")
+                print(f"      L{i:>2}: " + " | ".join(cells), flush=True)
 
         # ln_final: the driver already un-folds to the pre-weight convention — compare
         # directly. The refolded diff is diagnostic: "direct FAIL + refolded ok" means
         # the driver's un-fold regressed (serving raw post-weight values again).
         if LNF_HOOK in offered and LNF_HOOK in v_cache and LNF_HOOK in hf_cache:
-            d, ok = _diff(hf_cache[LNF_HOOK], v_cache[LNF_HOOK])
+            d, ok, _profile = _diff(hf_cache[LNF_HOOK], v_cache[LNF_HOOK])
             worst = max(worst, d if d != float("inf") else worst)
             if ok:
                 notes.append(f"ln_final direct={d:.2e}")
@@ -140,7 +178,7 @@ def verify(model_id: str) -> dict:
                 detail = f"{LNF_HOOK} maxdiff={d:.2e}"
                 if weight is not None:
                     refolded = _refold_lnf(v_cache[LNF_HOOK], weight, is_gemma)
-                    rf_d, rf_ok = _diff(hf_cache[LNF_HOOK], refolded)
+                    rf_d, rf_ok, _rf = _diff(hf_cache[LNF_HOOK], refolded)
                     detail += f" (refolded={rf_d:.2e}{', un-fold regressed' if rf_ok else ''})"
                 mism.append(detail)
 
@@ -183,6 +221,11 @@ def _preflight() -> str | None:
     """Return a human reason to abort (no GPU / no vllm), or None if runnable."""
     if not torch.cuda.is_available():
         return "no CUDA device — vLLM capture only materializes in a real GPU forward"
+    if TP * PP > torch.cuda.device_count():
+        return (
+            f"TL_PARITY_TP={TP} x TL_PARITY_PP={PP} needs {TP * PP} GPUs but only "
+            f"{torch.cuda.device_count()} visible"
+        )
     try:
         import vllm  # noqa: F401
     except Exception as e:
@@ -190,7 +233,49 @@ def _preflight() -> str | None:
     return None
 
 
+# Child-process result marker (see main): the parent parses the child's last
+# marker line back into a row dict.
+_ROW_MARKER = "##TL_PARITY_ROW## "
+
+
+def _verify_in_subprocess(model_id: str) -> dict:
+    """One engine per process: an in-process vLLM engine does not reliably release
+    GPU memory before exit, so sequential same-process boots leak until later
+    models can't reserve their budget (observed: 47→18 GiB free across 4 boots).
+    Child stdout streams through; the marker line carries the structured row."""
+    import subprocess
+
+    proc = subprocess.run(
+        [sys.executable, os.path.abspath(__file__), "--one", model_id],
+        capture_output=True,
+        text=True,
+    )
+    row = None
+    for line in proc.stdout.splitlines():
+        if line.startswith(_ROW_MARKER):
+            row = json.loads(line[len(_ROW_MARKER) :])
+        else:
+            print(line, flush=True)
+    if proc.stderr:
+        tail = proc.stderr.strip().splitlines()[-3:]
+        for line in tail:
+            print(f"    [child stderr] {line}", flush=True)
+    if row is None:
+        return {
+            "model": model_id,
+            "arch": "?",
+            "status": "SKIP",
+            "detail": f"child exited {proc.returncode} without a result row",
+        }
+    return row
+
+
 def main() -> None:
+    if len(sys.argv) > 2 and sys.argv[1] == "--one":
+        r = verify(sys.argv[2])
+        print(_ROW_MARKER + json.dumps(r), flush=True)
+        sys.exit(0)
+
     reason = _preflight()
     if reason is not None:
         print(f"SKIP ALL: {reason}", flush=True)
@@ -201,11 +286,11 @@ def main() -> None:
     models = [m.strip() for m in ids.split(",")] if ids else DEFAULT_MODELS
     rows = []
     for m in models:
-        r = verify(m)
+        r = _verify_in_subprocess(m)
         rows.append(r)
         print(f"[{r['status']:4}] {r['arch']:28} {r['model']:40} {r['detail']}", flush=True)
 
-    print("\n================ vLLM PARITY REPORT CARD ================")
+    print(f"\n================ vLLM PARITY REPORT CARD (TP={TP}, PP={PP}) ================")
     for status in ("PASS", "FAIL", "SKIP"):
         sel = [r for r in rows if r["status"] == status]
         print(f"\n{status} ({len(sel)}):")

@@ -25,21 +25,27 @@ Two hook flavors, selected by ``configure(enable_batching=...)``:
 """
 from __future__ import annotations
 
+import json
+import os
 import re
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 import torch
 
 from .internals import segment_by_request
-from .worker_extension import _apply_op
+from .worker_extension import _apply_op, dtype_name, resolve_dot_path
 
 # Decoder layers return the fused-residual (mlp_delta, residual) 2-tuple, so
 # their hooks materialize the sum (see _make_capture_hook); other modules don't.
 _DECODER_LAYER_PATH = re.compile(r"^model\.layers\.\d+$")
 
-# Transient signal driver → worker during LLM construction. Per-Worker buffers
-# live on Worker instances so concurrent boot_vllm calls don't collide.
-_config: Dict[str, Any] = {}
+# Transient signal driver → worker during LLM construction: an env var, because
+# spawned worker processes (TP/PP > 1) re-import this module and would see any
+# module global empty — vLLM runs ``register()`` in every worker, so the patch
+# itself propagates; only this payload needs a cross-process channel. Per-Worker
+# buffers live on Worker instances so concurrent boot_vllm calls don't collide.
+# Single-node only: env vars don't reach Ray remote workers.
+_ENV_CONFIG_KEY = "TL_VLLM_PLUGIN_CONFIG"
 _install_patched = False
 _orig_load_model = None
 
@@ -52,11 +58,56 @@ def configure(
     enable_position_interventions: bool = False,
 ) -> None:
     """Set capture specs, buffer length, dtype, and hook flavor before ``LLM(...)``."""
-    _config["capture_specs"] = capture_specs
-    _config["max_num_batched_tokens"] = max_num_batched_tokens
-    _config["dtype"] = dtype
-    _config["enable_batching"] = enable_batching
-    _config["enable_position_interventions"] = enable_position_interventions
+    os.environ[_ENV_CONFIG_KEY] = _serialize_config(
+        {
+            "capture_specs": capture_specs,
+            "max_num_batched_tokens": max_num_batched_tokens,
+            "dtype": dtype,
+            "enable_batching": enable_batching,
+            "enable_position_interventions": enable_position_interventions,
+        }
+    )
+
+
+def clear_config() -> None:
+    """Unset the spec channel. Boot sites call this in a ``finally`` after
+    ``LLM(...)`` so a later non-TL engine can't inherit the specs."""
+    os.environ.pop(_ENV_CONFIG_KEY, None)
+
+
+def _serialize_config(config: Dict[str, Any]) -> str:
+    return json.dumps(
+        {
+            "capture_specs": {
+                name: [path, width] for name, (path, width) in config["capture_specs"].items()
+            },
+            "max_num_batched_tokens": config["max_num_batched_tokens"],
+            "dtype": dtype_name(config["dtype"]),
+            "enable_batching": config["enable_batching"],
+            "enable_position_interventions": config["enable_position_interventions"],
+        }
+    )
+
+
+def _deserialize_config(raw: str) -> Dict[str, Any]:
+    data = json.loads(raw)
+    dtype = getattr(torch, data["dtype"], None)
+    if not isinstance(dtype, torch.dtype):
+        raise ValueError(f"{_ENV_CONFIG_KEY}: {data['dtype']!r} is not a torch dtype.")
+    return {
+        "capture_specs": {
+            name: (path, int(width)) for name, (path, width) in data["capture_specs"].items()
+        },
+        "max_num_batched_tokens": int(data["max_num_batched_tokens"]),
+        "dtype": dtype,
+        "enable_batching": bool(data["enable_batching"]),
+        "enable_position_interventions": bool(data["enable_position_interventions"]),
+    }
+
+
+def _active_config() -> Optional[Dict[str, Any]]:
+    raw = os.environ.get(_ENV_CONFIG_KEY)
+    return _deserialize_config(raw) if raw else None
 
 
 def register() -> None:
@@ -67,9 +118,9 @@ def register() -> None:
     don't double-wrap.
 
     No ``unregister()`` symmetry: the patch stays for process lifetime. Benign
-    because ``patched_load_model`` no-ops when ``_config["capture_specs"]`` is
-    absent — and ``boot_vllm`` clears ``_config`` after each ``LLM(...)``, so
-    any subsequent non-TL ``LLM(...)`` in the same process hits the no-op path.
+    because ``patched_load_model`` no-ops when no spec channel is populated — and
+    boot sites call ``clear_config()`` after each ``LLM(...)``, so any subsequent
+    non-TL ``LLM(...)`` in the same process hits the no-op path.
     """
     global _install_patched, _orig_load_model
     if _install_patched:
@@ -80,15 +131,16 @@ def register() -> None:
 
     def patched_load_model(self):
         _orig_load_model(self)
-        specs = _config.get("capture_specs")
-        if not specs:
+        config = _active_config()
+        if config is None:
             return  # not a TL-driven LLM; no hooks to install
-        max_n = _config["max_num_batched_tokens"]
-        dtype = _config["dtype"]
-        enable_batching = _config.get("enable_batching", False)
+        specs = config["capture_specs"]
+        max_n = config["max_num_batched_tokens"]
+        dtype = config["dtype"]
+        enable_batching = config.get("enable_batching", False)
         # Per-position affine buffers are (max_n, width) instead of (width,), so each
         # sequence row can carry a distinct scale/bias (position-scoped patching).
-        per_position = _config.get("enable_position_interventions", False)
+        per_position = config.get("enable_position_interventions", False)
         device = next(self.model_runner.model.parameters()).device
 
         # Detach prior handles before reassigning — vLLM doesn't double-load
@@ -107,12 +159,16 @@ def register() -> None:
         # Batched-mode per-(req_id, hook) accumulators + global spec dict.
         self._tl_accum = {}
         self._tl_intervention_specs = {}
+        # Specs whose module isn't on this rank (PP layer shards); the boot site
+        # verifies via tl_absent_hooks that every spec landed somewhere.
+        self._tl_absent_hooks = set()
         # Shared counter — surfaces hook double-fire under compile via tl_read_counter.
         self._tl_fire_counter = torch.zeros(1, device=device, dtype=torch.int64)
         for canonical_name, (dot_path, width) in specs.items():
-            target = self.model_runner.model
-            for seg in dot_path.split("."):
-                target = target[int(seg)] if seg.isdigit() else getattr(target, seg)
+            target = resolve_dot_path(self.model_runner.model, dot_path)
+            if target is None:
+                self._tl_absent_hooks.add(canonical_name)
+                continue
             # Decoder layers return vLLM's (mlp_delta, residual) tuple; the
             # hook materializes their sum so the capture semantically matches
             # HF's full residual stream. Other modules use the default path.
@@ -192,7 +248,11 @@ def _make_capture_hook(
     ``fire_counter`` is incremented per call for the fire-once check.
     """
 
-    def _affine(t: torch.Tensor, n: Any) -> torch.Tensor:
+    # NO type annotations on _affine: the pytest jaxtyping hook wraps annotated
+    # transformer_lens functions, and dynamo tracing that wrapper into the compiled
+    # graph corrupts jaxtyping's thread-local memo stack for the whole process
+    # (GPU-verified: unrelated outer calls die with 'pop from empty list').
+    def _affine(t, n):
         # per_position is a closure constant → torch.compile specializes this branch.
         # narrow(0, 0, n) keeps the SymInt dynamic shape (same trick as _gated_capture);
         # the (width,) path broadcasts across all rows.
@@ -234,9 +294,8 @@ def _make_capture_hook(
     return hook
 
 
-def _gated_capture(
-    capture_buf: torch.Tensor, n: Any, modified: torch.Tensor, capture_flag: torch.Tensor
-) -> None:
+# NO type annotations: this is traced into the compiled graph — see _affine's note.
+def _gated_capture(capture_buf, n, modified, capture_flag):
     """First-write-wins via torch.where, compile-safe (no Python branching).
 
     When ``capture_flag == 0`` (open), writes ``modified`` to ``capture_buf[:n]``.

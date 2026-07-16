@@ -9,9 +9,13 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 import torch
 
-from transformer_lens.model_bridge.sources.vllm.internals import segment_by_request
+from transformer_lens.model_bridge.sources.vllm.internals import (
+    segment_by_request,
+    verify_hook_coverage,
+)
 
 
 def _model_runner(query_start_loc, req_ids):
@@ -49,3 +53,34 @@ class TestSegmentByRequest:
         offsets, req_ids = segment_by_request(mr)
         assert offsets.tolist() == [0, 5]
         assert req_ids == ["only"]
+
+
+class TestVerifyHookCoverage:
+    """Boot-time fail-loud when a spec installed on no rank (broken dot-path)."""
+
+    def _llm(self, absent_per_rank):
+        from unittest.mock import MagicMock
+
+        llm = MagicMock()
+        llm.collective_rpc.return_value = absent_per_rank
+        return llm
+
+    def test_all_installed_passes(self):
+        verify_hook_coverage(self._llm([[], []]))
+
+    def test_disjoint_per_rank_absence_passes(self):
+        """PP shards each lack the other's layers — union coverage is what matters."""
+        verify_hook_coverage(self._llm([["blocks.1.hook_out"], ["blocks.0.hook_out"]]))
+
+    def test_installation_never_ran_raises(self):
+        """A rank returning None never ran installation (plugin patch absent) —
+        must not pass coverage vacuously."""
+
+        with pytest.raises(RuntimeError, match="never ran on rank"):
+            verify_hook_coverage(self._llm([[], None]))
+
+    def test_absent_everywhere_raises(self):
+        with pytest.raises(RuntimeError, match="blocks.9.hook_out"):
+            verify_hook_coverage(
+                self._llm([["blocks.9.hook_out"], ["blocks.9.hook_out", "embed.hook_out"]])
+            )

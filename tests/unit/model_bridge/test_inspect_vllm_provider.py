@@ -24,6 +24,13 @@ def _install_vllm_mocks(monkeypatch, llm_class: Any) -> None:
     in ``sys.modules`` so the provider's lazy ``from vllm import …`` resolves to mocks."""
     vllm = types.ModuleType("vllm")
     vllm.LLM = llm_class
+    # Provider __init__ runs the tl_absent_hooks coverage check; give bare mocks a
+    # passing default (side_effect-configured mocks override this).
+    if (
+        isinstance(llm_class, MagicMock)
+        and llm_class.return_value.collective_rpc.side_effect is None
+    ):
+        llm_class.return_value.collective_rpc.return_value = [[]]
     vllm.SamplingParams = MagicMock(name="SamplingParams")
     vllm_inputs = types.ModuleType("vllm.inputs")
     vllm_inputs.TokensPrompt = MagicMock(name="TokensPrompt")
@@ -108,7 +115,11 @@ def _make_provider(monkeypatch, llm_instance: Any, hf_config: Any | None = None)
         TransformerLensVLLMModelAPI,
     )
 
-    return TransformerLensVLLMModelAPI("any/model", device="cpu"), llm_class
+    provider = TransformerLensVLLMModelAPI("any/model", device="cpu")
+    # Drop __init__-time RPC history (coverage check) so call_count assertions
+    # measure only the generate path.
+    llm_instance.collective_rpc.reset_mock()
+    return provider, llm_class
 
 
 class TestModuleSafety:
@@ -344,7 +355,8 @@ class TestCapturePath:
         )
 
         def rpc(method, args=()):
-            return [captures] if method == "tl_read_captures" else [None]
+            # [[]] default keeps the boot-time tl_absent_hooks coverage check green.
+            return [captures] if method == "tl_read_captures" else [[]]
 
         llm.collective_rpc.side_effect = rpc
         provider, llm_class = _make_provider(monkeypatch, llm)
@@ -586,7 +598,8 @@ class TestPerTurnCapture:
         captures = {"blocks.0.hook_out": torch.zeros(4, 4, dtype=torch.float32)}
 
         def rpc(method, args=()):
-            return [captures] if method == "tl_read_captures" else [None]
+            # [[]] default keeps the boot-time tl_absent_hooks coverage check green.
+            return [captures] if method == "tl_read_captures" else [[]]
 
         llm.collective_rpc.side_effect = rpc
 
@@ -598,7 +611,9 @@ class TestPerTurnCapture:
             TransformerLensVLLMModelAPI,
         )
 
-        return TransformerLensVLLMModelAPI("any/model", device="cpu", capture=capture), llm
+        provider = TransformerLensVLLMModelAPI("any/model", device="cpu", capture=capture)
+        llm.collective_rpc.reset_mock()  # drop the __init__-time coverage check call
+        return provider, llm
 
     def test_eval_capture_during_generate_no_extra_forward(self, monkeypatch):
         from inspect_ai.model import GenerateConfig

@@ -8,12 +8,15 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
 import torch
 
 from transformer_lens.model_bridge.sources.vllm.worker_extension import (
     TLWorkerExtension,
     _apply_intervention,
     _apply_op,
+    decode_tensor,
+    encode_tensor,
 )
 
 
@@ -26,9 +29,9 @@ class TestGetParam:
         ext.model_runner = SimpleNamespace(  # type: ignore[attr-defined]
             model=SimpleNamespace(norm=SimpleNamespace(weight=weight))
         )
-        out = ext.tl_get_param("norm.weight")
+        out = decode_tensor(ext.tl_get_param("norm.weight"))
         assert torch.equal(out, weight)
-        assert out is not weight  # cloned, not a live reference
+        assert out is not weight  # cloned bytes, not a live reference
 
     def test_missing_path_returns_none(self):
         ext = TLWorkerExtension()
@@ -54,11 +57,22 @@ class TestReadCapturesFiltering:
     def test_names_filters(self):
         out = self._ext().tl_read_captures([2], names=["a"])
         assert set(out) == {"a"}
-        assert tuple(out["a"].shape) == (2, 4)
+        assert tuple(decode_tensor(out["a"]).shape) == (2, 4)
 
     def test_none_reads_all(self):
         out = self._ext().tl_read_captures([2])
         assert set(out) == {"a", "b"}
+
+    def test_unfired_hook_not_served(self):
+        """A still-open capture flag means the hook never ran this forward — under PP
+        that's an installed-but-not-owned module (tied-embedding alias, norm on a
+        non-final stage) whose buffer holds no data; serving it would hand dead zeros
+        to the rank merge. No flag entry keeps legacy single-rank behavior."""
+        ext = self._ext()
+        ext._tl_capture_flags = {"a": torch.ones(1), "b": torch.zeros(1)}
+        assert set(ext.tl_read_captures([2])) == {"a"}
+        ext._tl_capture_flags = {"a": torch.ones(1)}  # "b" flagless -> still served
+        assert set(ext.tl_read_captures([2])) == {"a", "b"}
 
     def test_batched_names_filters(self):
         ext = TLWorkerExtension()
@@ -68,6 +82,7 @@ class TestReadCapturesFiltering:
         }
         out = ext.tl_read_batched_captures(names=["a"])
         assert set(out["r"]) == {"a"}
+        assert torch.equal(decode_tensor(out["r"]["a"]), torch.ones(2, 4))
 
 
 class TestFireCounter:
@@ -252,9 +267,10 @@ class TestBatchedAccumulators:
         }
         out = ext.tl_read_batched_captures()
         # req-A's two chunks cat to (3, 4); chunk order is token order.
-        assert tuple(out["req-A"]["embed.hook_out"].shape) == (3, 4)
-        assert torch.equal(out["req-A"]["embed.hook_out"][2], torch.full((4,), 2.0))
-        assert tuple(out["req-B"]["embed.hook_out"].shape) == (3, 4)
+        req_a = decode_tensor(out["req-A"]["embed.hook_out"])
+        assert tuple(req_a.shape) == (3, 4)
+        assert torch.equal(req_a[2], torch.full((4,), 2.0))
+        assert tuple(decode_tensor(out["req-B"]["embed.hook_out"]).shape) == (3, 4)
 
     def test_reset_clears_accumulator(self):
         ext = TLWorkerExtension()
@@ -273,3 +289,53 @@ class TestBatchedAccumulators:
         ext = TLWorkerExtension()
         ext.tl_set_batched_interventions({"h": {"op": "suppress"}})
         assert ext._tl_intervention_specs == {"h": {"op": "suppress"}}
+
+
+class TestAbsentHooks:
+    """tl_absent_hooks reports per-rank installation gaps for the boot coverage check."""
+
+    def test_never_installed_returns_none(self):
+        """No _tl_absent_hooks attr = installation never ran — must NOT read as
+        'nothing absent'."""
+        worker = TLWorkerExtension()
+        assert worker.tl_absent_hooks() is None
+
+    def test_reports_recorded_names_sorted(self):
+        worker = TLWorkerExtension()
+        worker._tl_absent_hooks = {"blocks.1.hook_out", "blocks.0.hook_out"}
+        assert worker.tl_absent_hooks() == ["blocks.0.hook_out", "blocks.1.hook_out"]
+
+    def test_installed_with_no_gaps_returns_empty_list(self):
+        worker = TLWorkerExtension()
+        worker._tl_absent_hooks = set()
+        assert worker.tl_absent_hooks() == []
+
+    def test_remove_hooks_clears(self):
+        worker = TLWorkerExtension()
+        worker._tl_absent_hooks = {"blocks.0.hook_out"}
+        worker.tl_remove_hooks()
+        assert worker.tl_absent_hooks() == []
+
+
+class TestTensorWireFormat:
+    """encode/decode must round-trip exactly — vLLM's multiproc RPC can't carry
+    raw tensors from extension methods (GPU-verified header leak on 0.20.2)."""
+
+    @pytest.mark.parametrize(
+        "dtype",
+        [torch.float32, torch.float16, torch.bfloat16, torch.int64],
+    )
+    def test_round_trip_exact(self, dtype):
+        t = (torch.randn(3, 5) * 4).to(dtype)
+        payload = encode_tensor(t)
+        assert isinstance(payload["data"], bytes)
+        out = decode_tensor(payload)
+        assert out.dtype == dtype and out.shape == t.shape
+        assert torch.equal(out, t)
+
+    def test_payload_is_msgpack_native(self):
+        """Only str/bool/int-list/bytes — nothing vLLM's serializer would mangle."""
+        payload = encode_tensor(torch.ones(2, 2))
+        assert set(payload) == {"__tl_tensor__", "dtype", "shape", "data"}
+        assert isinstance(payload["dtype"], str)
+        assert all(isinstance(d, int) for d in payload["shape"])
