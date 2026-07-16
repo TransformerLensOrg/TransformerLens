@@ -1,7 +1,8 @@
-"""Multi-GPU support tests for TransformerBridge.
+"""Multi-GPU support tests for TransformerBridge — the CPU/mocked tier.
 
-CPU-runnable tests exercise the resolver / param-plumbing / .to() guard /
-validation logic. Tests requiring real multi-GPU hardware are marked skipif.
+Exercises the resolver / param-plumbing / .to() guard / validation logic without
+hardware. Real >= 2-GPU coverage lives in test_bridge_multigpu.py and
+test_bridge_multigpu_device_map.py (`-m multigpu`).
 """
 
 from typing import Dict, Union
@@ -329,49 +330,6 @@ class TestStackedWeightsHandleCrossDevice:
             gpt2_bridge.cfg.n_devices = original_n_devices
 
 
-# ---------- Multi-GPU tests (require real hardware) ----------
-
-
-@pytest.mark.skipif(torch.cuda.device_count() < 2, reason="Requires 2+ CUDA devices")
-class TestMultiDeviceIntegration:
-    def test_n_devices_matches_single_device_logits(self):
-        single = TransformerBridge.boot_transformers("gpt2", device="cuda:0")
-        multi = TransformerBridge.boot_transformers("gpt2", n_devices=2)
-
-        assert multi.cfg.n_devices == 2
-        assert single.cfg.n_devices == 1
-
-        tokens = torch.tensor([[1, 2, 3, 4]])
-        logits_single = single(tokens).to("cpu")
-        logits_multi = multi(tokens).to("cpu")
-        assert torch.allclose(logits_single, logits_multi, atol=1e-4, rtol=1e-4)
-
-    def test_parameters_distributed_across_devices(self):
-        bridge = TransformerBridge.boot_transformers("gpt2", n_devices=2)
-        cuda_indices = {
-            p.device.index for p in bridge.original_model.parameters() if p.device.type == "cuda"
-        }
-        assert cuda_indices == {0, 1}
-
-    def test_generate_works_with_multi_device(self):
-        bridge = TransformerBridge.boot_transformers("gpt2", n_devices=2)
-        out = bridge.generate("Hello", max_new_tokens=3, do_sample=False)
-        assert isinstance(out, str)
-        assert len(out) > len("Hello")
-
-    def test_stacked_weights_work_across_devices(self):
-        # Real multi-device exercise of _stack_block_params (no spoofed n_devices).
-        bridge = TransformerBridge.boot_transformers("gpt2", n_devices=2)
-        W_Q = bridge.W_Q
-        assert W_Q.shape[0] == bridge.cfg.n_layers
-        # After stacking, all elements should be on cfg.device (the embedding device).
-        assert bridge.cfg.device is not None
-        assert W_Q.device == torch.device(bridge.cfg.device)
-
-    def test_preloaded_device_map_model(self):
-        from transformers import AutoModelForCausalLM
-
-        hf_model = AutoModelForCausalLM.from_pretrained("gpt2", device_map="auto")
-        bridge = TransformerBridge.boot_transformers("gpt2", hf_model=hf_model)
-        assert bridge.cfg.n_devices >= 1
-        assert bridge.cfg.device is not None
+# Real-hardware multi-GPU coverage lives in test_bridge_multigpu.py and
+# test_bridge_multigpu_device_map.py (`-m multigpu`, >= 2 CUDA devices) — this file
+# is the CPU/mocked tier: resolver, validation gates, and spoofed-n_devices guards.

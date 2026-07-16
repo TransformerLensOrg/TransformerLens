@@ -30,10 +30,11 @@ Rule ([AGENTS.md §10](../AGENTS.md#10-hard-rules)): **never add `xfail` / `skip
 | [`acceptance/test_hooked_encoder_decoder.py`:421](acceptance/test_hooked_encoder_decoder.py) | `skipif(not cuda)` | Any CUDA |
 | [`acceptance/test_multi_gpu.py`:91,105](acceptance/test_multi_gpu.py) | `skipif(device_count < 2)` | 2+ CUDA |
 | [`acceptance/test_multi_gpu.py`:22](acceptance/test_multi_gpu.py) | `skipif(device_count < 4)` | 4+ CUDA |
-| [`acceptance/model_bridge/test_multi_gpu_bridge.py`:257](acceptance/model_bridge/test_multi_gpu_bridge.py) | `skipif(device_count < 2)` | 2+ CUDA |
+| [`acceptance/model_bridge/test_bridge_multigpu.py`](acceptance/model_bridge/test_bridge_multigpu.py) module-level | `multigpu` marker + `skipif(device_count < 2)` | 2+ CUDA |
+| [`acceptance/model_bridge/test_bridge_multigpu_device_map.py`](acceptance/model_bridge/test_bridge_multigpu_device_map.py) module-level | `multigpu` marker + `skipif(device_count < 2)` | 2+ CUDA |
 | [`mps/test_mps_basic.py`](mps/test_mps_basic.py) module-level | `skipif(not mps)` | Apple Silicon |
 
-**Un-skip:** never. CI provides each tier (CUDA via compatibility-checks → CPU-only in practice; MPS via `mps-checks`; multi-GPU local-only). See [tests/AGENTS.md §MPS rules](AGENTS.md#mps-rules) and the `--ignore=` list in [`checks.yml`](../.github/workflows/checks.yml).
+**Un-skip:** never in CI. The two `test_bridge_multigpu*` suites are the boot_transformers multi-device verification tier — run them manually on a >= 2-GPU box (`-m multigpu`, one file per pytest process) together with `scripts/bridge_multi_device_parity.py` before releases that touch device placement. CI provides the other tiers (CUDA via compatibility-checks → CPU-only in practice; MPS via `mps-checks`). See [tests/AGENTS.md §MPS rules](AGENTS.md#mps-rules) and the `--ignore=` list in [`checks.yml`](../.github/workflows/checks.yml).
 
 ---
 
