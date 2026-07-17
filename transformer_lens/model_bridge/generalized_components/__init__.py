@@ -64,6 +64,9 @@ from transformer_lens.model_bridge.generalized_components.joint_qkv_attention im
 from transformer_lens.model_bridge.generalized_components.joint_qkv_position_embeddings_attention import (
     JointQKVPositionEmbeddingsAttentionBridge,
 )
+from transformer_lens.model_bridge.generalized_components.lfm2_gated_short_conv import (
+    Lfm2ShortConvBridge,
+)
 from transformer_lens.model_bridge.generalized_components.linear import LinearBridge
 from transformer_lens.model_bridge.generalized_components.mla_attention import (
     MLAAttentionBridge,
@@ -109,6 +112,12 @@ from transformer_lens.model_bridge.generalized_components.t5_block import T5Bloc
 from transformer_lens.model_bridge.generalized_components.t5gemma_decoder_block import (
     T5GemmaDecoderBlockBridge,
 )
+from transformer_lens.model_bridge.generalized_components.t5gemma2_decoder_block import (
+    T5Gemma2DecoderBlockBridge,
+)
+from transformer_lens.model_bridge.generalized_components.t5gemma2_merged_attention import (
+    T5Gemma2MergedAttentionBridge,
+)
 from transformer_lens.model_bridge.generalized_components.unembedding import (
     UnembeddingBridge,
 )
@@ -121,6 +130,7 @@ __all__ = [
     "AudioFeatureExtractorBridge",
     "BlockBridge",
     "DelegatedAttentionBlockBridge",
+    "Lfm2ShortConvBridge",
     "MLABlockBridge",
     "ParallelBlockBridge",
     "BloomBlockBridge",
@@ -157,6 +167,8 @@ __all__ = [
     "UnembeddingBridge",
     "T5BlockBridge",
     "T5GemmaDecoderBlockBridge",
+    "T5Gemma2DecoderBlockBridge",
+    "T5Gemma2MergedAttentionBridge",
     "SiglipVisionEncoderBridge",
     "SiglipVisionEncoderLayerBridge",
     "SSM2MixerBridge",

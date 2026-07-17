@@ -27,6 +27,8 @@ class JointQKVAttentionBridge(AttentionBridge):
     the individual activations from the separated q, k, and v matrices are hooked and accessible.
     """
 
+    supports_attn_result: bool = True
+
     # property_aliases inherited from AttentionBridge (W_Q, W_K, W_V, W_O, b_Q, b_K, b_V, b_O)
 
     def __init__(

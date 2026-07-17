@@ -19,6 +19,7 @@ from transformer_lens.config.hooked_transformer_config import HookedTransformerC
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.utilities import get_offset_position_ids
+from transformer_lens.utilities.activation_functions import apply_softcap
 from transformer_lens.utilities.attention import complex_attn_linear, simple_attn_linear
 
 if is_bitsandbytes_available():
@@ -445,60 +446,16 @@ class AbstractAttention(ABC, nn.Module):
             else simple_attn_linear
         )
         if self.cfg.load_in_4bit:
-            W_Q_4bit = cast(Params4bit, self.W_Q)
-            q = self.hook_q(
-                # call bitsandbytes method to dequantize and multiply
-                bnb.matmul_4bit(
-                    query_input,
-                    W_Q_4bit.t(),
-                    bias=None,
-                    quant_state=W_Q_4bit.quant_state,
-                ).reshape(
-                    query_input.shape[0],
-                    query_input.shape[1],
-                    self.cfg.n_heads,
-                    self.cfg.d_head,
-                )
-                + self.b_Q
-            )
+            q = self.hook_q(self._project_4bit_qkv(query_input, self.W_Q, self.b_Q))
         else:
             q = self.hook_q(attn_fn(query_input, self.W_Q, self.b_Q))
         if self.cfg.load_in_4bit:
-            if not isinstance(self.W_K, Params4bit):
-                raise ValueError("W_K must be a Params4bit object if load_in_4bit is True")
-            k = self.hook_k(
-                # call bitsandbytes method to dequantize and multiply
-                bnb.matmul_4bit(
-                    key_input, self.W_K.t(), bias=None, quant_state=self.W_K.quant_state
-                ).reshape(
-                    key_input.shape[0],
-                    key_input.shape[1],
-                    self.cfg.n_heads,
-                    self.cfg.d_head,
-                )
-                + self.b_K
-            )
+            k = self.hook_k(self._project_4bit_qkv(key_input, self.W_K, self.b_K))
         else:
             k = self.hook_k(attn_fn(key_input, self.W_K, self.b_K))
 
         if self.cfg.load_in_4bit:
-            if not isinstance(self.W_V, Params4bit):
-                raise ValueError("W_V must be a Params4bit object if load_in_4bit is True")
-            v = self.hook_v(
-                # call bitsandbytes method to dequantize and multiply
-                bnb.matmul_4bit(
-                    value_input,
-                    self.W_V.t(),
-                    bias=None,
-                    quant_state=self.W_V.quant_state,
-                ).reshape(
-                    value_input.shape[0],
-                    value_input.shape[1],
-                    self.cfg.n_heads,
-                    self.cfg.d_head,
-                )
-                + self.b_V
-            )
+            v = self.hook_v(self._project_4bit_qkv(value_input, self.W_V, self.b_V))
         else:
             v = self.hook_v(attn_fn(value_input, self.W_V, self.b_V))
 
@@ -509,6 +466,55 @@ class AbstractAttention(ABC, nn.Module):
             k = self._apply_qk_norm(k, self.k_norm)
 
         return q, k, v
+
+    def _project_4bit_qkv(
+        self,
+        input: Union[
+            Float[torch.Tensor, "batch pos d_model"],
+            Float[torch.Tensor, "batch pos head_index d_model"],
+        ],
+        weight: Union[nn.Parameter, "Params4bit"],
+        bias: Float[torch.Tensor, "head_index d_head"],
+    ) -> Float[torch.Tensor, "batch pos head_index d_head"]:
+        """Project Q/K/V inputs with a 4-bit weight.
+
+        Split inputs dequantize once and reuse the head-wise projection path.
+        """
+        if not isinstance(weight, Params4bit):
+            raise ValueError("QKV weights must be Params4bit objects if load_in_4bit is True")
+
+        n_heads, d_head = bias.shape
+
+        if input.ndim == 3:
+            projected = bnb.matmul_4bit(
+                input,
+                weight.t(),
+                bias=None,
+                quant_state=weight.quant_state,
+            )
+            return projected.reshape(input.shape[0], input.shape[1], n_heads, d_head) + bias
+
+        if input.ndim == 4:
+            if input.shape[2] != n_heads:
+                raise ValueError(
+                    "4-bit split QKV inputs must have one input slice per attention head; "
+                    f"got {input.shape[2]} input heads for {n_heads} projection heads."
+                )
+            dequantized_weight = bnb.functional.dequantize_4bit(
+                weight.data, quant_state=weight.quant_state
+            )
+            split_weight = einops.rearrange(
+                dequantized_weight,
+                "(head_index d_head) d_model -> head_index d_model d_head",
+                head_index=n_heads,
+                d_head=d_head,
+            )
+            return complex_attn_linear(input, split_weight, bias)
+
+        raise ValueError(
+            "4-bit QKV projection input must have shape [batch, pos, d_model] or "
+            "[batch, pos, head_index, d_model]."
+        )
 
     def calculate_attention_scores(
         self,
@@ -522,10 +528,7 @@ class AbstractAttention(ABC, nn.Module):
             k, "batch key_pos head_index d_head -> batch head_index d_head key_pos"
         )
         attn_scores = q_ @ k_ / self.attn_scale
-        if self.cfg.attn_scores_soft_cap > 0:
-            attn_scores = self.cfg.attn_scores_soft_cap * F.tanh(
-                attn_scores / self.cfg.attn_scores_soft_cap
-            )
+        attn_scores = apply_softcap(attn_scores, self.cfg.attn_scores_soft_cap)
         return attn_scores
 
     def calculate_z_scores(

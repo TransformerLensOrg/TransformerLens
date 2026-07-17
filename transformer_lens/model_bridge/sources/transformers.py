@@ -82,6 +82,8 @@ def map_default_transformer_lens_config(hf_config):
         tl_config.n_heads = n_heads
     elif hasattr(source_config, "num_heads"):
         tl_config.n_heads = source_config.num_heads
+    elif hasattr(source_config, "n_heads"):
+        tl_config.n_heads = source_config.n_heads
     elif hasattr(source_config, "num_query_heads") and isinstance(
         source_config.num_query_heads, list
     ):
@@ -122,6 +124,13 @@ def map_default_transformer_lens_config(hf_config):
                 tl_config.n_key_value_heads = num_kv_heads
         except (TypeError, ValueError, AttributeError):
             pass
+    elif hasattr(source_config, "n_kv_heads") and source_config.n_kv_heads is not None:
+        try:
+            num_kv_heads = int(source_config.n_kv_heads)
+            if num_kv_heads != getattr(tl_config, "n_heads", None):
+                tl_config.n_key_value_heads = num_kv_heads
+        except (TypeError, ValueError, AttributeError):
+            pass
     if hasattr(source_config, "n_layer"):
         tl_config.n_layers = source_config.n_layer
     elif hasattr(source_config, "num_hidden_layers"):
@@ -130,6 +139,8 @@ def map_default_transformer_lens_config(hf_config):
         tl_config.n_layers = source_config.num_transformer_layers
     elif hasattr(source_config, "num_layers"):
         tl_config.n_layers = source_config.num_layers
+    elif hasattr(source_config, "n_layers"):
+        tl_config.n_layers = source_config.n_layers
     elif hasattr(source_config, "n_blocks"):
         tl_config.n_layers = source_config.n_blocks
     if hasattr(source_config, "vocab_size") and isinstance(source_config.vocab_size, int):
@@ -144,6 +155,8 @@ def map_default_transformer_lens_config(hf_config):
         tl_config.n_ctx = source_config.max_length
     elif hasattr(source_config, "seq_length"):
         tl_config.n_ctx = source_config.seq_length
+    elif hasattr(source_config, "max_sequence_length"):
+        tl_config.n_ctx = source_config.max_sequence_length
     else:
         # Models like Bloom use ALiBi (no positional embeddings) and have no
         # context length field. Default to 2048 as a reasonable fallback.
@@ -159,6 +172,8 @@ def map_default_transformer_lens_config(hf_config):
         if isinstance(intermediate_size, (list, tuple)):
             intermediate_size = max(intermediate_size) if intermediate_size else None
         tl_config.d_mlp = intermediate_size
+    elif hasattr(source_config, "mlp_hidden_size"):
+        tl_config.d_mlp = source_config.mlp_hidden_size
     elif hasattr(tl_config, "d_model"):
         tl_config.d_mlp = getattr(source_config, "n_inner", 4 * tl_config.d_model)
     if hasattr(source_config, "head_dim") and source_config.head_dim is not None:
@@ -175,6 +190,13 @@ def map_default_transformer_lens_config(hf_config):
         tl_config.act_fn = source_config.activation_function
     elif hasattr(source_config, "hidden_act"):
         tl_config.act_fn = source_config.hidden_act
+    elif hasattr(source_config, "activation_type"):
+        activation_type = source_config.activation_type
+        tl_config.act_fn = getattr(activation_type, "value", activation_type)
+    if hasattr(source_config, "rope_theta"):
+        tl_config.rotary_base = source_config.rope_theta
+    if hasattr(source_config, "weight_tying"):
+        tl_config.tie_word_embeddings = bool(source_config.weight_tying)
     # Layer norm / RMS norm epsilon — HF uses 3 different field names
     if hasattr(source_config, "rms_norm_eps"):
         tl_config.eps = source_config.rms_norm_eps
@@ -227,6 +249,7 @@ def determine_architecture_from_hf_config(hf_config):
             "hubert": "HubertModel",
             "bart": "BartForConditionalGeneration",
             "llama": "LlamaForCausalLM",
+            "llada": "LLaDAModelLM",
             "mamba": "MambaForCausalLM",
             "mamba2": "Mamba2ForCausalLM",
             "mistral": "MistralForCausalLM",
@@ -265,10 +288,12 @@ def determine_architecture_from_hf_config(hf_config):
             "qwen3_5_text": "Qwen3_5ForCausalLM",
             "smollm3": "SmolLM3ForCausalLM",
             "openelm": "OpenELMForCausalLM",
+            "ouro": "OuroForCausalLM",
             "stablelm": "StableLmForCausalLM",
             "t5": "T5ForConditionalGeneration",
             "mt5": "MT5ForConditionalGeneration",
             "t5gemma": "T5GemmaForConditionalGeneration",
+            "t5gemma2": "T5Gemma2ForConditionalGeneration",
         }
         if model_type in model_type_mappings:
             architectures.append(model_type_mappings[model_type])
@@ -376,11 +401,11 @@ def boot(
     revision: str | None = None,
     checkpoint_index: int | None = None,
     checkpoint_value: int | None = None,
-    # Experimental – Have not been fully tested on multi-gpu devices
-    # Use at your own risk, report any issues here: https://github.com/TransformerLensOrg/TransformerLens/issues
+    # Multi-device placement (accelerate-dispatched). GPU-validated 2026-07-16:
+    # tests/acceptance/model_bridge/test_bridge_multigpu*.py + scripts/bridge_multi_device_parity.py.
     device_map: str | dict[str, str | int] | None = None,
     n_devices: int | None = None,
-    max_memory: dict[str | int, str] | None = None,
+    max_memory: dict[str | int, str | int] | None = None,
 ) -> TransformerBridge:
     """Boot a model from HuggingFace.
 
@@ -411,7 +436,7 @@ def boot(
             the field name. If larger than the model's default, a warning is emitted — quality
             may degrade past the trained length for rotary models.
         revision: Optional HF revision string (branch, tag, or commit). Forwarded to
-            ``AutoConfig.from_pretrained`` and ``AutoModelForCausalLM.from_pretrained``.
+            config, model, and tokenizer loading.
             Mutually exclusive with ``checkpoint_index`` and ``checkpoint_value``.
         checkpoint_index: Index into the available training checkpoints for the model family.
             Convenience over ``revision`` for checkpointed models like EleutherAI/pythia* and
@@ -466,6 +491,7 @@ def boot(
             "max_context_length",
             "max_length",
             "seq_length",
+            "max_sequence_length",
         ):
             if hasattr(hf_config, _field):
                 _n_ctx_field = _field
@@ -512,6 +538,7 @@ def boot(
     bridge_config.architecture = architecture
     bridge_config.model_name = model_name
     bridge_config.dtype = dtype
+    bridge_config.trust_remote_code = trust_remote_code
     # Propagate HF-specific config attributes that adapters may need.
     # Any attribute present on the HF config and not None is copied to bridge_config.
     # This is architecture-agnostic — new architectures don't need changes here.
@@ -576,6 +603,21 @@ def boot(
         "router_jitter_noise",
         "input_jitter_noise",
         "eos_token_id",
+        # LLaDA remote-code model contract and tokenizer metadata
+        "block_type",
+        "block_group_size",
+        "rope",
+        "rope_full_precision",
+        "attention_layer_norm",
+        "include_bias",
+        "include_qkv_bias",
+        "scale_logits",
+        "input_emb_norm",
+        "layer_norm_type",
+        "embedding_size",
+        "mask_token_id",
+        "pad_token_id",
+        "bos_token_id",
         # BD3LM
         "model_length",
         "block_size",
@@ -588,6 +630,9 @@ def boot(
         "num_mem_blocks",
         "layers_block_type",
         "use_shared_attention_adapter",
+        # Ouro (LoopLM)
+        "total_ut_steps",
+        "early_exit_threshold",
     ]
     for attr in _HF_PASSTHROUGH_ATTRS:
         val = getattr(hf_config, attr, None)
@@ -629,9 +674,12 @@ def boot(
     # device_map + max_memory pair here so downstream code only needs to check the
     # resolved values.
     from transformer_lens.utilities.multi_gpu import (
+        MIXED_CPU_GPU_ERROR,
         cast_floating_params_to_dtype,
         count_unique_devices,
         find_embedding_device,
+        find_misplaced_modules,
+        is_mixed_cpu_gpu,
         resolve_device_map,
     )
 
@@ -672,6 +720,22 @@ def boot(
         # Default to eager (required for output_attentions hooks)
         model_kwargs["attn_implementation"] = "eager"
     adapter.prepare_loading(model_name, model_kwargs)
+    # Meta device_map targets crash at boot when loading weights
+    # (NotImplementedError in HF tie_weights, KeyError in Accelerate offload hooks).
+    # Only accepted with load_weights=False (config inspection; map not applied).
+    if load_weights and isinstance(resolved_device_map, dict):
+        _meta_targets = [
+            k
+            for k, v in resolved_device_map.items()
+            if isinstance(v, str) and v.strip().lower() == "meta"
+        ]
+        if _meta_targets:
+            raise ValueError(
+                f"device_map contains meta target(s): {_meta_targets}. "
+                "Meta device_map values crash at boot when loading weights. "
+                "Set load_weights=False for config inspection only "
+                "(the map is not applied; parameters load on CPU via from_config)."
+            )
     if hf_model is not None:
         # Use the pre-loaded model as-is (e.g., quantized models with custom device_map)
         pass
@@ -714,8 +778,10 @@ def boot(
     #   - pre-loaded hf_model that the caller dispatched themselves (e.g., device_map="auto")
     hf_device_map_post = getattr(hf_model, "hf_device_map", None)
     if hf_device_map_post:
-        # CPU placement is supported. Disk / meta offload still needs a separate Bridge
-        # hook-routing pass because wrapped subcomponents can bypass Accelerate hooks.
+        # All-CPU placement is supported (real parameters, no offload). Disk / meta —
+        # and CPU entries in a MIXED map, which accelerate implements as CPU offload —
+        # are rejected: offload materializes weights via forward hooks that wrapped
+        # Bridge components bypass (e.g. NormalizationBridge computes from raw params).
         offload_values = {str(v).lower() for v in hf_device_map_post.values() if isinstance(v, str)}
         unsupported = offload_values & {"disk", "meta"}
         if unsupported:
@@ -724,6 +790,8 @@ def boot(
                 "TransformerBridge currently supports CPU device_map targets, but disk / meta "
                 "offload can bypass Accelerate hooks inside wrapped Bridge components."
             )
+        if is_mixed_cpu_gpu(hf_device_map_post.values()):
+            raise ValueError(f"Realized hf_device_map is unsupported: {MIXED_CPU_GPU_ERROR}")
         if (
             "cpu" in offload_values
             and device_map is None
@@ -733,6 +801,19 @@ def boot(
             raise ValueError(
                 "hf_device_map contains CPU targets. n_devices is GPU-only; pass device_map "
                 "explicitly for CPU placement."
+            )
+        misplaced = find_misplaced_modules(hf_model)
+        if misplaced:
+            details = "; ".join(
+                f"{name!r} mapped to {mapped} but loaded on {actual}"
+                for name, mapped, actual in misplaced
+            )
+            raise ValueError(
+                f"device_map entries were not honored: {details}. This usually means the "
+                "map splits tied parameters (e.g. GPT-2's wte/lm_head share one tensor) "
+                "across devices — accelerate places a tied parameter once, leaving a module "
+                "executing on a device its weights aren't on, which crashes mid-forward. "
+                "Map tied modules to the same device."
             )
     embedding_device = find_embedding_device(hf_model)
     if embedding_device is not None:
@@ -784,6 +865,7 @@ def boot(
                 use_fast=use_fast,
                 token=token_arg,
                 trust_remote_code=trust_remote_code,
+                revision=revision,
             )
         except ValueError:
             # Model doesn't have a BOS token, load without add_bos_token
@@ -792,6 +874,7 @@ def boot(
                 use_fast=use_fast,
                 token=token_arg,
                 trust_remote_code=trust_remote_code,
+                revision=revision,
             )
         tokenizer = setup_tokenizer(
             base_tokenizer,

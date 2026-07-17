@@ -32,7 +32,6 @@ import einops
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import tqdm.auto as tqdm
 from jaxtyping import Float, Int
 from transformers import AutoTokenizer, PreTrainedModel, PreTrainedTokenizerBase
@@ -66,12 +65,14 @@ from transformer_lens.loading_from_pretrained import NON_HF_HOSTED_MODEL_NAMES
 from transformer_lens.utilities import (
     USE_DEFAULT_VALUE,
     TypedModuleList,
+    apply_softcap,
     get_best_available_device,
     get_device_for_block_index,
     init_kaiming_normal_,
     init_kaiming_uniform_,
     init_xavier_normal_,
     init_xavier_uniform_,
+    softcap_enabled,
 )
 from transformer_lens.utilities.devices import move_to_and_update_config
 from transformer_lens.weight_processing import ProcessWeights
@@ -669,10 +670,7 @@ class HookedTransformer(HookedRootModule):
                 return None
             else:
                 logits = self.unembed(residual)  # [batch, pos, d_vocab]
-                if self.cfg.output_logits_soft_cap > 0.0:
-                    logits = self.cfg.output_logits_soft_cap * F.tanh(
-                        logits / self.cfg.output_logits_soft_cap
-                    )
+                logits = apply_softcap(logits, self.cfg.output_logits_soft_cap)
                 if return_type == "logits":
                     return logits
                 else:
@@ -1420,7 +1418,7 @@ class HookedTransformer(HookedRootModule):
                     "architecture. Setting center_writing_weights=False."
                 )
                 center_writing_weights = False
-        if center_unembed and cfg.output_logits_soft_cap > 0.0:
+        if center_unembed and softcap_enabled(cfg.output_logits_soft_cap):
             logging.warning(
                 "You tried to specify center_unembed=True for a model using logit softcap, but this can't be done! Softcapping is not invariant upon adding a constant "
                 "Setting center_unembed=False instead."
@@ -2033,6 +2031,11 @@ class HookedTransformer(HookedRootModule):
                     self.tokenizer.padding_side = _orig_padding_side
             device = get_device_for_block_index(0, self.cfg)
             input = input.to(device)
+            if input_tokens is not None:
+                # Re-alias to the moved tensor: input_tokens must live on the model's
+                # device so later concatenations with sampled tokens (freq_penalty
+                # sampling and the final output) don't mix devices.
+                input_tokens = input
             if use_past_kv_cache:
                 past_kv_cache = TransformerLensKeyValueCache.init_cache(
                     self.cfg, self.cfg.device, batch_size

@@ -73,11 +73,13 @@
         "tabulate>=0.9.0",
     ]
     jupyter=[
+        "ipykernel>=6.30.0",
         "ipython>=8.0.0",
         "ipywidgets>=8.1.1",
         "jupyter>=1.0.0",
-        "jupyterlab>=3.5.0",
-        "notebook>=6.5.7",
+        "jupyter-client>=8.0.0",
+        "jupyterlab>=4.0.0",
+        "notebook>=7.0.0",
     ]
     # Vision/audio deps for multimodal adapters (Gemma 3n's vision tower needs timm; image
     # processors need torchvision). In default-groups so contributor/CI test runs install them,
@@ -106,7 +108,10 @@
             "ignore:distutils Version classes are deprecated:DeprecationWarning",
             "ignore:pkg_resources is deprecated as an API:DeprecationWarning",
         ]
-        markers=["slow: marks tests as slow (deselect with '-m \"not slow\"')"]
+        markers=[
+            "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+            "multigpu: requires >= 2 CUDA devices (run manually on a multi-GPU box)",
+        ]
         pythonpath=["."]
         testpaths=["tests", "transformer_lens"] # Only test these directories
 

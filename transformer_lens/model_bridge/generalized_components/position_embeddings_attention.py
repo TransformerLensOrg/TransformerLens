@@ -112,6 +112,8 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
     component with dummy Q/K tensors and position_ids.
     """
 
+    supports_attn_result: bool = True
+
     def __init__(
         self,
         name: str,

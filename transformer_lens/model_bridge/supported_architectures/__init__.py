@@ -37,6 +37,9 @@ from transformer_lens.model_bridge.supported_architectures.deepseek_v2 import (
 from transformer_lens.model_bridge.supported_architectures.deepseek_v3 import (
     DeepSeekV3ArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.deepseek_v4 import (
+    DeepSeekV4ArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.falcon import (
     FalconArchitectureAdapter,
 )
@@ -103,8 +106,14 @@ from transformer_lens.model_bridge.supported_architectures.hunyuan_v1_dense impo
 from transformer_lens.model_bridge.supported_architectures.internlm2 import (
     InternLM2ArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.lfm2 import (
+    Lfm2ArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.lfm2_moe import (
     Lfm2MoeArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.llada import (
+    LLaDAArchitectureAdapter,
 )
 from transformer_lens.model_bridge.supported_architectures.llama import (
     LlamaArchitectureAdapter,
@@ -172,6 +181,9 @@ from transformer_lens.model_bridge.supported_architectures.openelm import (
 from transformer_lens.model_bridge.supported_architectures.opt import (
     OptArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.ouro import (
+    OuroArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.phi import (
     PhiArchitectureAdapter,
 )
@@ -220,6 +232,9 @@ from transformer_lens.model_bridge.supported_architectures.t5 import (
 from transformer_lens.model_bridge.supported_architectures.t5gemma import (
     T5GemmaArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.t5gemma2 import (
+    T5Gemma2ArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.xglm import (
     XGLMArchitectureAdapter,
 )
@@ -262,10 +277,12 @@ __all__ = [
     "HubertArchitectureAdapter",
     "HunYuanDenseV1ArchitectureAdapter",
     "InternLM2ArchitectureAdapter",
+    "LLaDAArchitectureAdapter",
     "LlamaArchitectureAdapter",
     "LlavaArchitectureAdapter",
     "LlavaNextArchitectureAdapter",
     "LlavaOnevisionArchitectureAdapter",
+    "Lfm2ArchitectureAdapter",
     "Lfm2MoeArchitectureAdapter",
     "MambaArchitectureAdapter",
     "Mamba2ArchitectureAdapter",
@@ -286,6 +303,7 @@ __all__ = [
     "Olmo3ArchitectureAdapter",
     "OlmoeArchitectureAdapter",
     "OptArchitectureAdapter",
+    "OuroArchitectureAdapter",
     "PhiArchitectureAdapter",
     "Phi3ArchitectureAdapter",
     "PhiMoEArchitectureAdapter",
@@ -302,6 +320,7 @@ __all__ = [
     "StableLmArchitectureAdapter",
     "T5ArchitectureAdapter",
     "T5GemmaArchitectureAdapter",
+    "T5Gemma2ArchitectureAdapter",
     "XGLMArchitectureAdapter",
     "Zamba2ArchitectureAdapter",
 ]
