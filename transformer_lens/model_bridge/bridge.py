@@ -50,7 +50,6 @@ from transformer_lens.model_bridge.generalized_components.block import (
     VARIANT_SUBMODULE_NAMES,
 )
 from transformer_lens.model_bridge.get_params_util import get_bridge_params
-from transformer_lens.utilities.activation_functions import softcap_enabled
 from transformer_lens.utilities.aliases import resolve_alias
 from transformer_lens.utilities.devices import move_to_and_update_config
 from transformer_lens.utilities.lm_utils import lm_cross_entropy_loss
@@ -220,7 +219,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         hf_model: Optional[Any] = None,
         device_map: Optional[Union[str, Dict[str, Union[str, int]]]] = None,
         n_devices: Optional[int] = None,
-        max_memory: Optional[Dict[Union[str, int], Union[str, int]]] = None,
+        max_memory: Optional[Dict[Union[str, int], str]] = None,
         n_ctx: Optional[int] = None,
         revision: Optional[str] = None,
         checkpoint_index: Optional[int] = None,
@@ -921,7 +920,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             print(f"Processing weights for {self.cfg.model_name}...")
 
         # Soft capping (tanh) is not translation-invariant; centering would change output.
-        if center_unembed and softcap_enabled(getattr(self.cfg, "output_logits_soft_cap", None)):
+        if center_unembed and getattr(self.cfg, "output_logits_soft_cap", -1.0) > 0.0:
             import logging
 
             logging.warning(
@@ -1747,14 +1746,6 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             Model output based on return_type
         """
 
-        if return_type in ("loss", "both") and not self.adapter.supports_causal_loss:
-            architecture = self.cfg.architecture or type(self.adapter).__name__
-            raise NotImplementedError(
-                f"{architecture} does not support TransformerBridge's shifted causal "
-                "loss. Request return_type='logits' and compute the architecture-specific "
-                "masked-token objective explicitly."
-            )
-
         if start_at_layer is not None:
             raise NotImplementedError(
                 "start_at_layer is not supported in TransformerBridge. "
@@ -2198,10 +2189,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                 stacklevel=2,
             )
         try:
-            if (
-                "output_attentions" not in filtered_kwargs
-                and self.adapter.supports_hf_output_attentions
-            ):
+            if "output_attentions" not in filtered_kwargs:
                 filtered_kwargs["output_attentions"] = True
             if processed_args:
                 output = self.forward(processed_args[0], **filtered_kwargs)
@@ -2683,15 +2671,6 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             if all_finished:
                 return
 
-    def _ensure_generation_supported(self, api_name: str) -> None:
-        """Reject autoregressive generation for forward-only architectures."""
-        if not self.adapter.supports_generation:
-            architecture = self.cfg.architecture or type(self.adapter).__name__
-            raise NotImplementedError(
-                f"TransformerBridge.{api_name}() generation is not supported by "
-                f"the {architecture} architecture."
-            )
-
     def generate(
         self,
         input: Union[str, List[str], torch.Tensor] = "",
@@ -2811,7 +2790,6 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             the tokens that were fed to the model, useful for verifying BOS handling with
             chat templates.
         """
-        self._ensure_generation_supported("generate")
         # padding_side is handled internally: for batched list inputs, left-padding
         # is forced to ensure correct generation. See _is_batched_list logic below.
 
@@ -3228,7 +3206,6 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             max_tokens_per_yield tokens between yields. First yield includes
             the input tokens; subsequent yields contain only new tokens.
         """
-        self._ensure_generation_supported("generate_stream")
         # --- Input parsing (mirrors generate()) ---
         _is_batched_list = isinstance(input, list) and len(input) > 1
 
@@ -3460,7 +3437,6 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             print(result.logits)  # Logits for each generation step
             print(result.attentions)  # Attention weights
         """
-        self._ensure_generation_supported("hf_generate")
         # Handle string input by tokenizing it
         if isinstance(input, str):
             inputs = self.tokenizer(input, return_tensors="pt", padding=False, truncation=False).to(
@@ -3702,6 +3678,33 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             Self for chaining
         """
         return self.to(torch.device("mps"))
+
+    def train(self, mode: bool = True) -> "TransformerBridge":
+        """Set training mode, propagating to the wrapped source model.
+
+        ``nn.Module.train()`` only recurses into *registered* submodules.
+        ``original_model`` is intentionally stored outside the registered
+        module tree (assigned via ``self.__dict__`` rather than
+        ``nn.Module.__setattr__``); consequently, inherited ``train()``
+        does not reach it -- without this override, ``bridge.eval()`` /
+        ``bridge.train()`` silently leave dropout and other mode-dependent
+        layers in whatever mode the source model was in at wrap time.
+
+        ``eval()`` needs no override of its own: ``nn.Module.eval()`` calls
+        ``self.train(False)``, which dispatches here.
+
+        Args:
+            mode:
+                ``True`` for training mode, ``False`` for evaluation mode.
+
+        Returns:
+            The bridge itself (``nn.Module`` chaining convention).
+        """
+        super().train(mode)
+        original = getattr(self, "original_model", None)
+        if isinstance(original, torch.nn.Module):
+            original.train(mode)
+        return self
 
     def add_hook(
         self,
@@ -3966,25 +3969,18 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                 continue
             total_with_attn += 1
             attn_classes.add(type(attn).__name__)
-            supports_flag = (
-                bool(getattr(attn, "supports_attn_result", False))
-                if flag_name == "use_attn_result"
-                else isinstance(attn, supported_classes)
-            )
-            if supports_flag:
+            if isinstance(attn, supported_classes):
                 supporting_layers.append(idx)
         if total_with_attn == 0:
             raise NotImplementedError(f"{flag_name}: no attention bridges found on self.blocks.")
         if not supporting_layers:
-            if flag_name == "use_attn_result":
-                capability_detail = "Per-head result computation is unavailable."
-            else:
-                capability_detail = "No hook point is available before the Q/K/V projections."
             raise NotImplementedError(
                 f"{flag_name}: none of this model's attention bridges support "
-                "the requested fine-grained attention hook. Found attention classes: "
+                "the fine-grained Q/K/V hook fork. Found attention classes: "
                 f"{sorted(attn_classes)}. Supported classes: "
-                f"{[c.__name__ for c in supported_classes]}. {capability_detail}"
+                f"{[c.__name__ for c in supported_classes]}. Plain "
+                "AttentionBridge delegates to HuggingFace and exposes no hook "
+                "point before the Q/K/V projection."
             )
         if len(supporting_layers) < total_with_attn:
             skipped = total_with_attn - len(supporting_layers)

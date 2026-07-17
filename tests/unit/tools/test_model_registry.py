@@ -807,6 +807,7 @@ class TestRegistrySyncedWithFactory:
             "NeelSoluOldForCausalLM",
             "GPT2LMHeadCustomModel",
             "TransformerLensNative",
+            "TransformerLensPretrain",
             # Group 2: factory-internal alias casings (HF emits the canonical name).
             "Gemma1ForCausalLM",  # HF emits: GemmaForCausalLM
             "NeoForCausalLM",  # HF emits: GPTNeoForCausalLM
