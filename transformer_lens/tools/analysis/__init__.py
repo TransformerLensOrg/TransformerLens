@@ -1,8 +1,8 @@
 """Analysis tools for TransformerLens.
 
 This subpackage collects high-level, single-call interpretability analyses that
-sit on top of the hook/cache system. They work with both ``HookedTransformer``
-and the newer ``TransformerBridge`` (the two share the ``ActivationCache`` API).
+sit on top of the hook/cache system. Model support is documented per tool;
+new analyses may target the ``TransformerBridge`` API exclusively.
 
 Tools:
     - direct_logit_attribution: Direct Logit Attribution (DLA) over components,

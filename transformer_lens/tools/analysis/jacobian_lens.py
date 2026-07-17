@@ -6,12 +6,18 @@ For each layer :math:`\\ell` it fits a single :math:`d_{model} \\times d_{model}
 
 .. math::
 
-    J_\\ell = \\mathbb{E}_{\\text{prompt},\\,t,\\,t' \\geq t}
-        \\left[ \\partial h_{\\text{final},t'} / \\partial h_{\\ell,t} \\right]
+    J_\\ell = \\mathbb{E}_{\\text{prompt}}\\left[
+        \\frac{1}{|V|}\\sum_{t \\in V}\\sum_{t' \\in V,\\,t' \\geq t}
+        \\frac{\\partial h_{\\text{final},t'}}{\\partial h_{\\ell,t}}
+        \\right]
+
+where ``V`` is the set of valid positions after the configured leading skip
+and final-position exclusion. Target-position effects are summed for each
+source; only source positions and prompts are averaged.
 
 mapping the output of block :math:`\\ell` to the final block's output (pre final
 norm). Reading the lens applies the model's own final norm and unembedding:
-:math:`\\text{lens}(h_\\ell) = \\mathrm{softmax}(W_U\\,\\mathrm{norm}(J_\\ell h_\\ell))`.
+:math:`\\text{lens}(h_\\ell) = W_U\\,\\mathrm{norm}(J_\\ell h_\\ell)`.
 The logit lens is the special case :math:`J_\\ell = I`. The rows of
 :math:`W_U J_\\ell` ("J-lens vectors") are residual-stream directions associated
 with single vocabulary tokens, and support causal interventions: steering,
@@ -29,12 +35,14 @@ lenses fitted here interoperate with artifacts published on the Hugging Face Hub
 implemented from the paper's Methods section.
 
 Warning:
-    Published lens artifacts are fitted on **raw** HuggingFace activations. Use
-    ``TransformerBridge.boot_transformers`` (raw weights by default) or
-    ``HookedTransformer.from_pretrained_no_processing``. Weight processing
-    (``fold_ln``, ``center_writing_weights``, ``center_unembed``) changes the
-    residual basis, so :class:`JacobianLens` refuses processed models rather
-    than returning silently wrong readouts.
+    Published lens artifacts are fitted on **raw** HuggingFace activations.
+    Jacobian lens supports only a freshly booted
+    ``TransformerBridge.boot_transformers`` model, whose weights are raw by
+    default. Compatibility mode and direct ``process_weights`` calls change the
+    residual basis and are refused rather than returning silently wrong
+    readouts. The model must also be a causal decoder whose adapter supports
+    text generation, use single-stream block outputs, and expose the standard
+    direct ``ln_final -> d_model-width unembed`` output path.
 
 Example::
 
@@ -52,23 +60,26 @@ Example::
     print(result.top_tokens(model.tokenizer, k=5)[8][-1])  # layer 8, final position
 """
 
+import math
 import warnings
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
+from importlib.metadata import version
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 import torch
 from jaxtyping import Float, Int
 from tqdm.auto import tqdm
 
-from transformer_lens.utilities.activation_functions import apply_softcap
+from transformer_lens.utilities.hf_utils import call_hf_with_retry
 
 TokenInput = Union[str, int]
 
 # Fitting excludes early positions (attention sinks with atypical residual statistics)
 # and the final position (no next-token target), matching the reference implementation.
 DEFAULT_SKIP_FIRST_POSITIONS = 16
-
-_PROCESSED_NORM_SUFFIX = "Pre"
+DEFAULT_TOP_K = 10
+_SWAP_WARN_COSINE = 0.99
+_SWAP_ERROR_COSINE = 0.999
 
 
 @dataclass
@@ -76,27 +87,38 @@ class JacobianLensReadout:
     """Result of a :meth:`JacobianLens.readout` call.
 
     Attributes:
+        lens_topk_values:
+            Per-layer retained top-k pre-softmax values, on CPU.
+        lens_topk_indices:
+            Per-layer retained top-k vocabulary ids, on CPU.
+        model_topk_values:
+            The model output's retained top-k pre-softmax values, on CPU.
+        model_topk_indices:
+            The model output's retained top-k vocabulary ids, on CPU.
         lens_logits:
-            Per-layer lens logits, ``{layer: tensor of shape [pos, d_vocab]}``
-            (fp32, on CPU). Entries are pre-softmax scores over the vocabulary;
-            ranks are what the paper reports, so no softmax is applied.
+            Optional full per-layer logits, on CPU. Present only when
+            ``readout(return_full_logits=True)`` was requested.
         model_logits:
-            The model's actual output logits at the same positions,
-            ``[pos, d_vocab]`` (fp32, on CPU).
+            Optional full model logits, on CPU. Present only when
+            ``readout(return_full_logits=True)`` was requested.
         tokens:
             The token ids of the run prompt, ``[seq]``.
         positions:
             The (normalized, non-negative) positions the readout covers, aligned
-            with the ``pos`` axis of ``lens_logits`` / ``model_logits``.
+            with the ``pos`` axis of retained top-k and optional full logits.
         use_jacobian:
             Whether the Jacobian transport was applied (``False`` = logit lens).
     """
 
-    lens_logits: Dict[int, Float[torch.Tensor, "pos d_vocab"]]
-    model_logits: Float[torch.Tensor, "pos d_vocab"]
+    lens_topk_values: Dict[int, Float[torch.Tensor, "pos k"]]
+    lens_topk_indices: Dict[int, Int[torch.Tensor, "pos k"]]
+    model_topk_values: Float[torch.Tensor, "pos k"]
+    model_topk_indices: Int[torch.Tensor, "pos k"]
     tokens: Int[torch.Tensor, "seq"]
     positions: List[int]
     use_jacobian: bool = True
+    lens_logits: Optional[Dict[int, Float[torch.Tensor, "pos d_vocab"]]] = None
+    model_logits: Optional[Float[torch.Tensor, "pos d_vocab"]] = None
 
     def top_tokens(self, tokenizer: Any, k: int = 5) -> Dict[int, List[List[str]]]:
         """Decode the top-``k`` tokens per layer and position.
@@ -110,9 +132,11 @@ class JacobianLensReadout:
             :attr:`positions`.
         """
         out: Dict[int, List[List[str]]] = {}
-        for layer, logits in self.lens_logits.items():
-            ids = logits.topk(k, dim=-1).indices
-            out[layer] = [[tokenizer.decode([t]) for t in row.tolist()] for row in ids]
+        retained = next(iter(self.lens_topk_indices.values())).shape[-1]
+        if not 1 <= k <= retained:
+            raise ValueError(f"k must be between 1 and the retained top_k={retained}, got {k}")
+        for layer, ids in self.lens_topk_indices.items():
+            out[layer] = [[tokenizer.decode([t]) for t in row[:k].tolist()] for row in ids]
         return out
 
 
@@ -120,11 +144,10 @@ class JacobianLens:
     """A fitted Jacobian lens: one transport matrix per source layer.
 
     Layer convention (matching the reference implementation and the published
-    artifacts): index ``l`` refers to the **output of block** ``l`` —
-    ``blocks.{l}.hook_resid_post`` on a ``HookedTransformer``,
-    ``blocks.{l}.hook_out`` on a ``TransformerBridge``. ``J[l]`` maps that
-    activation to the final block's output, pre final norm. The final layer
-    itself is never fitted (its transport is the identity), so
+    artifacts): index ``l`` refers to the **output of block** ``l`` at the
+    Bridge-native hook ``blocks.{l}.hook_out``. ``J[l]`` maps that activation
+    to the final block's output, pre final norm. The final layer itself is never
+    fitted (its transport is the identity), so
     ``source_layers == [0, ..., n_layers - 2]`` for a full fit.
 
     Attributes:
@@ -158,6 +181,7 @@ class JacobianLens:
         self.n_prompts = int(n_prompts)
         self.d_model = int(d_model)
         self.metadata: Dict[str, Any] = dict(metadata or {})
+        self._device_jacobians: Dict[Tuple[int, torch.device], torch.Tensor] = {}
 
     @property
     def source_layers(self) -> List[int]:
@@ -189,6 +213,7 @@ class JacobianLens:
                 implementation — Jacobian entries are order-one, so the smaller
                 dtype costs little precision and halves the artifact on disk.
         """
+        _validate_metadata(self.metadata)
         payload: Dict[str, Any] = {
             "J": {layer: matrix.to(dtype) for layer, matrix in self.jacobians.items()},
             "n_prompts": self.n_prompts,
@@ -242,6 +267,8 @@ class JacobianLens:
                 repos host lenses for many models, e.g.
                 ``"gpt2-small/jlens/Salesforce-wikitext/gpt2_jacobian_lens.pt"``.
             revision: Optional Hub revision (branch, tag, or commit) to pin.
+                When omitted, the Hub repository's mutable default branch is
+                followed; pin a commit hash for reproducible analyses.
             model: If given, :meth:`validate_model` is called so dimension or
                 weight-processing mismatches fail here rather than at first use.
 
@@ -257,7 +284,12 @@ class JacobianLens:
         else:
             from huggingface_hub import hf_hub_download
 
-            local_path = hf_hub_download(name_or_path, filename, revision=revision)
+            local_path = call_hf_with_retry(
+                hf_hub_download,
+                repo_id=name_or_path,
+                filename=filename,
+                revision=revision,
+            )
             lens = cls.load(local_path)
         if model is not None:
             lens.validate_model(model)
@@ -270,7 +302,10 @@ class JacobianLens:
         The per-layer matrices are averaged weighted by each lens's
         ``n_prompts``, matching the reference implementation, so fitting can be
         parallelized across processes or machines and merged afterwards.
-        Provenance ``metadata`` is taken from the first lens only.
+        Provenance must match across shards (apart from ``n_prompts``), so a
+        merge cannot silently relabel matrices fitted with different models,
+        corpora, dtypes, or estimator settings. The merged count replaces the
+        per-shard count.
 
         Args:
             lenses: Lenses that agree exactly on ``source_layers`` and
@@ -281,15 +316,34 @@ class JacobianLens:
         """
         if not lenses:
             raise ValueError("cannot merge an empty sequence of lenses")
+        invalid_counts = [
+            (index, lens.n_prompts) for index, lens in enumerate(lenses) if lens.n_prompts <= 0
+        ]
+        if invalid_counts:
+            raise ValueError(
+                "every lens passed to merge() must have positive n_prompts; "
+                f"invalid shards: {invalid_counts}"
+            )
         first = lenses[0]
+        for lens in lenses:
+            _validate_metadata(lens.metadata)
+        first_provenance = {
+            key: value for key, value in first.metadata.items() if key != "n_prompts"
+        }
         for other in lenses[1:]:
             if other.source_layers != first.source_layers or other.d_model != first.d_model:
                 raise ValueError(
                     "all lenses being merged must share the same source_layers and d_model"
                 )
+            other_provenance = {
+                key: value for key, value in other.metadata.items() if key != "n_prompts"
+            }
+            if other_provenance != first_provenance:
+                raise ValueError(
+                    "all lenses being merged must share the same provenance metadata "
+                    "apart from n_prompts"
+                )
         total = sum(lens.n_prompts for lens in lenses)
-        if total <= 0:
-            raise ValueError("merge() needs lenses with positive n_prompts")
         merged = {
             layer: torch.stack([lens.jacobians[layer] * lens.n_prompts for lens in lenses]).sum(
                 dim=0
@@ -298,6 +352,8 @@ class JacobianLens:
             for layer in first.source_layers
         }
         metadata = dict(first.metadata)
+        if metadata:
+            metadata["n_prompts"] = total
         return cls(merged, n_prompts=total, d_model=first.d_model, metadata=metadata)
 
     # ------------------------------------------------------------------ #
@@ -307,20 +363,38 @@ class JacobianLens:
     def validate_model(self, model: Any) -> "JacobianLens":
         """Check that ``model`` matches this lens; raise loudly if not.
 
-        Verifies the residual width and layer range, and refuses models whose
-        weights have been processed into a different residual basis (see the
-        module warning).
+        Requires a raw causal ``TransformerBridge`` with the standard direct
+        final-norm/unembed path, verifies recorded model provenance, residual
+        width and layer range, and enforces the published final-block target
+        convention.
 
         Args:
-            model: A ``HookedTransformer`` or ``TransformerBridge``.
+            model: A raw ``TransformerBridge``.
 
         Returns:
             ``self``, for chaining.
 
         Raises:
-            ValueError: On ``d_model`` mismatch, out-of-range source layers, or
-                processed weights.
+            TypeError: If model is not a ``TransformerBridge``.
+            ValueError: On model provenance or ``d_model`` mismatch,
+                out-of-range source layers, compatibility mode, unsupported
+                attention/output paths, or a non-final target convention.
         """
+        _require_raw_bridge(model)
+        artifact_model_name = self.metadata.get("model_name")
+        current_model_name = getattr(model.cfg, "model_name", None)
+        if artifact_model_name is not None and artifact_model_name != current_model_name:
+            raise ValueError(
+                f"lens was fitted for model {artifact_model_name!r}, but the supplied "
+                f"model is {current_model_name!r}."
+            )
+        artifact_revision = self.metadata.get("model_revision")
+        current_revision = _get_model_revision(model)
+        if artifact_revision is not None and artifact_revision != current_revision:
+            raise ValueError(
+                f"lens was fitted for model revision {artifact_revision!r}, but the "
+                f"supplied model revision is {current_revision!r}."
+            )
         d_model = model.cfg.d_model
         if d_model != self.d_model:
             raise ValueError(
@@ -328,18 +402,44 @@ class JacobianLens:
                 f"d_model={d_model} — this lens belongs to a different model."
             )
         n_layers = model.cfg.n_layers
-        out_of_range = [layer for layer in self.source_layers if not 0 <= layer < n_layers]
+        final_layer = n_layers - 1
+        out_of_range = [layer for layer in self.source_layers if not 0 <= layer < final_layer]
         if out_of_range:
             raise ValueError(
                 f"lens has source layers {out_of_range} outside the model's "
-                f"0..{n_layers - 1} range — this lens belongs to a different model."
+                f"0..{final_layer - 1} source range — this lens belongs to a different model."
             )
-        _require_unprocessed_weights(model)
+        target_layer = int(self.metadata.get("target_layer", final_layer))
+        if target_layer != final_layer:
+            raise ValueError(
+                f"lens targets layer {target_layer}, but readout supports only the "
+                f"published final-layer convention ({final_layer}); refit without "
+                "a custom target layer."
+            )
         return self
 
     # ------------------------------------------------------------------ #
     # reading                                                            #
     # ------------------------------------------------------------------ #
+
+    def clear_device_cache(self) -> None:
+        """Release lazily cached Jacobian copies on accelerator devices."""
+        self._device_jacobians.clear()
+
+    def _matrix_on(self, layer: int, device: Union[str, torch.device]) -> torch.Tensor:
+        """Return one cached fp32 Jacobian copy for a layer/device pair."""
+        if layer not in self.jacobians:
+            raise ValueError(
+                f"layer {layer} is not in this lens's source layers "
+                f"({self.source_layers[0]}..{self.source_layers[-1]})"
+            )
+        resolved_device = torch.device(device)
+        key = (layer, resolved_device)
+        matrix = self._device_jacobians.get(key)
+        if matrix is None:
+            matrix = self.jacobians[layer].to(device=resolved_device, dtype=torch.float32)
+            self._device_jacobians[key] = matrix
+        return matrix
 
     def transport(
         self,
@@ -354,12 +454,7 @@ class JacobianLens:
             residual: Activations from the output of block ``layer``.
             layer: Source layer index.
         """
-        if layer not in self.jacobians:
-            raise ValueError(
-                f"layer {layer} is not in this lens's source layers "
-                f"({self.source_layers[0]}..{self.source_layers[-1]})"
-            )
-        matrix = self.jacobians[layer].to(residual.device)
+        matrix = self._matrix_on(layer, residual.device)
         return residual.float() @ matrix.T
 
     @torch.no_grad()
@@ -371,17 +466,18 @@ class JacobianLens:
         layers: Optional[Sequence[int]] = None,
         positions: Optional[Sequence[int]] = None,
         use_jacobian: bool = True,
+        top_k: int = DEFAULT_TOP_K,
+        return_full_logits: bool = False,
     ) -> JacobianLensReadout:
         """Read per-layer vocabulary logits for a prompt.
 
         Runs the model once with caching, transports the residual stream at each
         requested layer through ``J[layer]`` (or the identity when
         ``use_jacobian=False`` — the logit lens), and applies the model's own
-        final norm, unembedding, and logit soft cap.
+        final norm, unembedding, architecture logit scaling, and logit soft cap.
 
         Args:
-            model: A ``HookedTransformer`` or ``TransformerBridge`` with raw
-                (unprocessed) weights.
+            model: A raw ``TransformerBridge``.
             input: A prompt string, or a ``[1, seq]`` token tensor.
             layers: Layers to read. Defaults to every fitted layer plus the
                 final layer. The final layer (``n_layers - 1``) is always read
@@ -391,13 +487,19 @@ class JacobianLens:
                 Defaults to all positions.
             use_jacobian: Apply the Jacobian transport. ``False`` gives the
                 logit-lens baseline through the identical code path.
+            top_k: Number of values and vocabulary ids retained per layer and
+                position. Defaults to 10.
+            return_full_logits: Also retain full vocabulary tensors on CPU.
+                This is opt-in because a 64-token Gemma readout across all
+                layers is roughly 1.7 GB.
 
         Returns:
             A :class:`JacobianLensReadout`.
 
         Raises:
             ValueError: If the model fails :meth:`validate_model`, ``input`` is
-                batched, or a requested layer has no transport matrix.
+                batched, ``top_k`` is invalid, or a requested layer has no
+                transport matrix.
         """
         self.validate_model(model)
         tokens = model.to_tokens(input) if isinstance(input, str) else input
@@ -415,36 +517,60 @@ class JacobianLens:
                     f"available: {self.source_layers} (+{final_layer} as identity)"
                 )
 
+        if top_k < 1:
+            raise ValueError(f"top_k must be at least 1, got {top_k}")
         seq_len = tokens.shape[1]
-        if positions is None:
-            norm_positions = list(range(seq_len))
-        else:
-            norm_positions = [pos + seq_len if pos < 0 else pos for pos in positions]
-            out_of_range = [pos for pos in norm_positions if not 0 <= pos < seq_len]
-            if out_of_range:
-                raise ValueError(
-                    f"positions {out_of_range} out of range for a {seq_len}-token prompt"
-                )
+        norm_positions = _normalize_positions(positions, seq_len)
 
-        hook_names = {layer: _resid_post_hook_name(model, layer) for layer in layers}
+        hook_names = {
+            layer: _resid_post_hook_name(layer) for layer in layers if layer != final_layer
+        }
         wanted = set(hook_names.values())
         logits, cache = model.run_with_cache(tokens, names_filter=lambda name: name in wanted)
-
-        lens_logits: Dict[int, torch.Tensor] = {}
-        for layer in layers:
-            residual = cache[hook_names[layer]][0, norm_positions, :]
-            transported = (
-                self.transport(residual, layer)
-                if use_jacobian and layer != final_layer
-                else residual.float()
+        selected_model_logits = logits[0, norm_positions, :].float()
+        if top_k > selected_model_logits.shape[-1]:
+            raise ValueError(
+                f"top_k={top_k} exceeds the model vocabulary size "
+                f"{selected_model_logits.shape[-1]}"
             )
-            lens_logits[layer] = _unembed(model, transported)
+        model_topk = selected_model_logits.topk(top_k, dim=-1)
+        full_model_logits = selected_model_logits.cpu() if return_full_logits else None
+        lens_topk_values: Dict[int, torch.Tensor] = {}
+        lens_topk_indices: Dict[int, torch.Tensor] = {}
+        full_lens_logits: Optional[Dict[int, torch.Tensor]] = {} if return_full_logits else None
+        for layer in layers:
+            if layer == final_layer:
+                layer_logits = selected_model_logits
+                layer_topk = model_topk
+            else:
+                activation = cache[hook_names[layer]]
+                _validate_residual_activation(
+                    activation,
+                    d_model=model.cfg.d_model,
+                    hook_name=hook_names[layer],
+                )
+                residual = activation[0, norm_positions, :]
+                transported = self.transport(residual, layer) if use_jacobian else residual.float()
+                layer_logits = _unembed(model, transported)
+                layer_topk = layer_logits.topk(top_k, dim=-1)
+            lens_topk_values[layer] = layer_topk.values.cpu()
+            lens_topk_indices[layer] = layer_topk.indices.cpu()
+            if full_lens_logits is not None:
+                if layer == final_layer:
+                    assert full_model_logits is not None
+                    full_lens_logits[layer] = full_model_logits
+                else:
+                    full_lens_logits[layer] = layer_logits.cpu()
         return JacobianLensReadout(
-            lens_logits=lens_logits,
-            model_logits=logits[0, norm_positions, :].float().cpu(),
+            lens_topk_values=lens_topk_values,
+            lens_topk_indices=lens_topk_indices,
+            model_topk_values=model_topk.values.cpu(),
+            model_topk_indices=model_topk.indices.cpu(),
             tokens=tokens[0].cpu(),
             positions=norm_positions,
             use_jacobian=use_jacobian,
+            lens_logits=full_lens_logits,
+            model_logits=full_model_logits,
         )
 
     @torch.no_grad()
@@ -469,15 +595,12 @@ class JacobianLens:
         Returns:
             One vector per token, fp32, on the model's device.
         """
+        self.validate_model(model)
+        layer = _normalize_layer(layer, model.cfg.n_layers)
         token_ids = _to_token_ids(model, tokens)
-        matrix = self.jacobians.get(layer)
-        if matrix is None:
-            raise ValueError(
-                f"layer {layer} is not in this lens's source layers "
-                f"({self.source_layers[0]}..{self.source_layers[-1]})"
-            )
         unembed_columns = model.W_U[:, token_ids].float()  # [d_model, n]
-        return (matrix.to(unembed_columns.device).T @ unembed_columns).T
+        matrix = self._matrix_on(layer, unembed_columns.device)
+        return (matrix.T @ unembed_columns).T
 
     # ------------------------------------------------------------------ #
     # interventions                                                      #
@@ -511,30 +634,35 @@ class JacobianLens:
             alpha: Steering strength scalar; ``0`` disables. Because of the
                 norm-matched scale, values of order 1 already perturb the
                 stream by roughly its own magnitude.
-            positions: Positions to steer. Defaults to all positions.
+            positions: Chunk-local positions to steer (negative indices allowed
+                and normalized on every hook invocation). Defaults to all.
 
         Returns:
             ``[(hook_name, fn), ...]`` for ``model.hooks(fwd_hooks=...)`` or
             ``model.run_with_hooks(fwd_hooks=...)``.
         """
+        self.validate_model(model)
         hooks = []
-        for layer in layers:
+        for layer in [_normalize_layer(layer, model.cfg.n_layers) for layer in layers]:
             direction = self.lens_vectors(model, token, layer)[0]
-            unit = direction / direction.norm()
+            unit = _unit_rows(direction.unsqueeze(0), layer=layer)[0]
+            device_units: Dict[torch.device, torch.Tensor] = {}
 
-            def steer_fn(
-                activation: Float[torch.Tensor, "batch pos d_model"],
-                hook: Any,
+            def transform(
+                selected: Float[torch.Tensor, "batch pos d_model"],
                 unit: torch.Tensor = unit,
+                device_units: Dict[torch.device, torch.Tensor] = device_units,
             ) -> Float[torch.Tensor, "batch pos d_model"]:
-                scale = alpha * activation.float().norm(dim=-1).median()
-                delta = (scale * unit).to(activation.dtype)
-                if positions is None:
-                    return activation + delta
-                activation[:, list(positions), :] += delta
-                return activation
+                local_unit = _cached_on_device(unit, device_units, selected.device)
+                scale = alpha * selected.float().norm(dim=-1).median()
+                return selected.float() + scale * local_unit
 
-            hooks.append((_resid_post_hook_name(model, layer), steer_fn))
+            hooks.append(
+                (
+                    _resid_post_hook_name(layer),
+                    _make_intervention_hook(transform, positions, model.cfg.d_model),
+                )
+            )
         return hooks
 
     def ablation_hooks(
@@ -554,33 +682,37 @@ class JacobianLens:
             model: The model the hooks will run on.
             tokens: Concept token(s) to suppress.
             layers: Layers to intervene at.
-            positions: Positions to ablate. Defaults to all positions.
+            positions: Chunk-local positions to ablate (negative indices allowed
+                and normalized on every hook invocation). Defaults to all.
 
         Returns:
             ``[(hook_name, fn), ...]`` for ``model.hooks(fwd_hooks=...)``.
         """
+        self.validate_model(model)
         hooks = []
-        for layer in layers:
+        for layer in [_normalize_layer(layer, model.cfg.n_layers) for layer in layers]:
             vectors = self.lens_vectors(model, tokens, layer)
-            units = vectors / vectors.norm(dim=-1, keepdim=True)
+            units = _unit_rows(vectors, layer=layer)
+            device_units: Dict[torch.device, torch.Tensor] = {}
 
-            def ablate_fn(
-                activation: Float[torch.Tensor, "batch pos d_model"],
-                hook: Any,
+            def transform(
+                selected: Float[torch.Tensor, "batch pos d_model"],
                 units: torch.Tensor = units,
+                device_units: Dict[torch.device, torch.Tensor] = device_units,
             ) -> Float[torch.Tensor, "batch pos d_model"]:
-                sliced = activation if positions is None else activation[:, list(positions), :]
-                result = sliced.float()
-                for unit in units:
+                local_units = _cached_on_device(units, device_units, selected.device)
+                result = selected.float()
+                for unit in local_units:
                     coeff = result @ unit
                     result = result - coeff.unsqueeze(-1) * unit
-                result = result.to(activation.dtype)
-                if positions is None:
-                    return result
-                activation[:, list(positions), :] = result
-                return activation
+                return result
 
-            hooks.append((_resid_post_hook_name(model, layer), ablate_fn))
+            hooks.append(
+                (
+                    _resid_post_hook_name(layer),
+                    _make_intervention_hook(transform, positions, model.cfg.d_model),
+                )
+            )
         return hooks
 
     def swap_hooks(
@@ -609,32 +741,61 @@ class JacobianLens:
             layers: Layers to intervene at (the paper clamps the swap across an
                 intermediate-layer band).
             alpha: Swap strength.
-            positions: Positions to swap. Defaults to all positions.
+            positions: Chunk-local positions to swap (negative indices allowed
+                and normalized on every hook invocation). Defaults to all.
 
         Returns:
             ``[(hook_name, fn), ...]`` for ``model.hooks(fwd_hooks=...)``.
         """
-        hooks = []
-        for layer in layers:
-            basis = self.lens_vectors(model, [source_token, target_token], layer).T  # [d, 2]
-            pinv = torch.linalg.pinv(basis)  # [2, d]
+        self.validate_model(model)
+        source_id, target_id = _to_token_ids(model, [source_token, target_token])
+        if source_id == target_id:
+            raise ValueError(
+                "source_token and target_token resolve to the same token id; "
+                "a coordinate swap would be a silent no-op"
+            )
 
-            def swap_fn(
-                activation: Float[torch.Tensor, "batch pos d_model"],
-                hook: Any,
+        hooks = []
+        for layer in [_normalize_layer(layer, model.cfg.n_layers) for layer in layers]:
+            vectors = self.lens_vectors(model, [source_id, target_id], layer)
+            units = _unit_rows(vectors, layer=layer)
+            cosine = abs(float((units[0] @ units[1]).item()))
+            if not math.isfinite(cosine) or cosine >= _SWAP_ERROR_COSINE:
+                raise ValueError(
+                    f"swap vectors at layer {layer} are numerically near-parallel "
+                    f"(abs cosine={cosine:.6f}); choose better-separated concepts"
+                )
+            if cosine >= _SWAP_WARN_COSINE:
+                warnings.warn(
+                    f"swap vectors at layer {layer} are poorly conditioned "
+                    f"(abs cosine={cosine:.6f}); the intervention may be amplified",
+                    UserWarning,
+                    stacklevel=2,
+                )
+            basis = vectors.T  # [d, 2]
+            pinv = torch.linalg.pinv(basis)  # [2, d]
+            device_basis: Dict[torch.device, torch.Tensor] = {}
+            device_pinv: Dict[torch.device, torch.Tensor] = {}
+
+            def transform(
+                selected: Float[torch.Tensor, "batch pos d_model"],
                 basis: torch.Tensor = basis,
                 pinv: torch.Tensor = pinv,
+                device_basis: Dict[torch.device, torch.Tensor] = device_basis,
+                device_pinv: Dict[torch.device, torch.Tensor] = device_pinv,
             ) -> Float[torch.Tensor, "batch pos d_model"]:
-                sliced = activation if positions is None else activation[:, list(positions), :]
-                coords = sliced.float() @ pinv.T  # [..., 2]
-                delta = alpha * ((coords[..., [1, 0]] - coords) @ basis.T)
-                result = (sliced.float() + delta).to(activation.dtype)
-                if positions is None:
-                    return result
-                activation[:, list(positions), :] = result
-                return activation
+                local_basis = _cached_on_device(basis, device_basis, selected.device)
+                local_pinv = _cached_on_device(pinv, device_pinv, selected.device)
+                coords = selected.float() @ local_pinv.T  # [..., 2]
+                delta = alpha * ((coords[..., [1, 0]] - coords) @ local_basis.T)
+                return selected.float() + delta
 
-            hooks.append((_resid_post_hook_name(model, layer), swap_fn))
+            hooks.append(
+                (
+                    _resid_post_hook_name(layer),
+                    _make_intervention_hook(transform, positions, model.cfg.d_model),
+                )
+            )
         return hooks
 
     # ------------------------------------------------------------------ #
@@ -647,8 +808,8 @@ class JacobianLens:
         model: Any,
         prompts: Sequence[str],
         *,
+        corpus: str,
         source_layers: Optional[Sequence[int]] = None,
-        target_layer: Optional[int] = None,
         dim_batch: int = 8,
         max_seq_len: int = 128,
         skip_first_positions: int = DEFAULT_SKIP_FIRST_POSITIONS,
@@ -675,17 +836,17 @@ class JacobianLens:
         across prompt slices.
 
         Args:
-            model: A ``HookedTransformer`` or ``TransformerBridge`` with raw
-                (unprocessed) weights. Model parameters are temporarily frozen
-                (``requires_grad=False``) during fitting and restored after.
+            model: A raw ``TransformerBridge``. Model parameters are temporarily
+                frozen (``requires_grad=False``) during fitting and restored
+                after. Cotangents and activation gradients use the model dtype;
+                fit with a float32 model for the highest-fidelity estimator.
             prompts: Prompt strings. Prompts too short to contain a valid
                 position (``seq_len <= skip_first_positions + 1``) are skipped
                 with a warning and do not count toward ``n_prompts``.
+            corpus: Stable identifier for the prompt corpus or slice, recorded
+                in artifact provenance.
             source_layers: Layers to fit. Defaults to every layer below
-                ``target_layer``. Negative indices count from ``n_layers``.
-            target_layer: Layer whose output the Jacobians map to. Defaults to
-                the final layer (``n_layers - 1``, the convention of the
-                published artifacts).
+                the final layer. Negative indices count from ``n_layers``.
             dim_batch: Output dimensions per backward pass. Higher is faster
                 but replicates the prompt ``dim_batch`` times in memory; total
                 backward FLOPs are unchanged.
@@ -699,15 +860,16 @@ class JacobianLens:
             The fitted :class:`JacobianLens`.
 
         Raises:
-            ValueError: On processed weights, invalid layer indices, or if no
-                prompt was long enough to fit on.
+            TypeError: If model is not a ``TransformerBridge``.
+            ValueError: On compatibility mode, invalid provenance or layer
+                indices, or if no prompt was long enough to fit on.
         """
-        _require_unprocessed_weights(model)
+        _require_raw_bridge(model)
+        if not isinstance(corpus, str) or not corpus.strip():
+            raise ValueError("corpus must be a non-empty provenance identifier")
         n_layers = model.cfg.n_layers
         d_model = model.cfg.d_model
-        resolved_target = _normalize_layer(
-            n_layers - 1 if target_layer is None else target_layer, n_layers
-        )
+        resolved_target = n_layers - 1
         if source_layers is None:
             resolved_sources = list(range(resolved_target))
         else:
@@ -723,6 +885,16 @@ class JacobianLens:
             )
         if dim_batch < 1:
             raise ValueError(f"dim_batch must be >= 1, got {dim_batch}")
+        if skip_first_positions < 0:
+            raise ValueError(f"skip_first_positions must be >= 0, got {skip_first_positions}")
+        fit_dtype = model.W_U.dtype
+        if fit_dtype in (torch.float16, torch.bfloat16):
+            warnings.warn(
+                f"fitting in {fit_dtype} accumulates Jacobian gradients at reduced "
+                "precision; use a float32 TransformerBridge for the highest-fidelity fit",
+                UserWarning,
+                stacklevel=2,
+            )
 
         jacobian_sum = {
             layer: torch.zeros(d_model, d_model, dtype=torch.float32) for layer in resolved_sources
@@ -744,7 +916,6 @@ class JacobianLens:
                     model,
                     tokens,
                     source_layers=resolved_sources,
-                    target_layer=resolved_target,
                     dim_batch=dim_batch,
                     skip_first_positions=skip_first_positions,
                 )
@@ -756,16 +927,31 @@ class JacobianLens:
                 "every prompt was too short to contribute valid positions; nothing was fitted"
             )
 
-        full_metadata: Dict[str, Any] = {
+        fit_metadata: Dict[str, Any] = {
             "model_name": getattr(model.cfg, "model_name", None),
-            "hook_convention": "resid_post",
+            "model_revision": _get_model_revision(model),
+            "transformer_lens_version": version("transformer-lens"),
+            "model_system": "TransformerBridge",
+            "processing": {
+                "compatibility_mode": False,
+                "weight_basis": "raw_huggingface",
+            },
+            "hook_convention": "blocks.{layer}.hook_out",
+            "corpus": corpus,
+            "n_prompts": n_done,
+            "fit_dtype": str(fit_dtype).removeprefix("torch."),
             "target_layer": resolved_target,
             "dim_batch": dim_batch,
             "max_seq_len": max_seq_len,
             "skip_first_positions": skip_first_positions,
             "transformer_lens_fit": True,
         }
-        full_metadata.update(metadata or {})
+        reserved = sorted(set(fit_metadata).intersection(metadata or {}))
+        if reserved:
+            raise ValueError(f"metadata cannot override fit provenance keys: {reserved}")
+        full_metadata = dict(metadata or {})
+        full_metadata.update(fit_metadata)
+        _validate_metadata(full_metadata)
         return cls(
             {layer: jacobian_sum[layer] / n_done for layer in resolved_sources},
             n_prompts=n_done,
@@ -779,86 +965,202 @@ class JacobianLens:
 # ---------------------------------------------------------------------- #
 
 
-def _is_bridge(model: Any) -> bool:
-    """True when ``model`` is a TransformerBridge (lazy import, DLA pattern)."""
+def _resid_post_hook_name(layer: int) -> str:
+    """Bridge-native hook for the output of block ``layer``."""
+    return f"blocks.{layer}.hook_out"
+
+
+def _get_model_revision(model: Any) -> Optional[str]:
+    """Return the resolved Hugging Face commit recorded on a booted model."""
+    original_model = getattr(model, "original_model", None)
+    hf_config = getattr(original_model, "config", None)
+    revision = getattr(hf_config, "_commit_hash", None)
+    return revision if isinstance(revision, str) and revision else None
+
+
+def _require_raw_bridge(model: Any) -> None:
+    """Require the causal raw-Bridge contract used by fit and readout."""
     from transformer_lens.model_bridge import TransformerBridge
 
-    return isinstance(model, TransformerBridge)
-
-
-def _resid_post_hook_name(model: Any, layer: int) -> str:
-    """Hook name for the output of block ``layer`` on either model class."""
-    if _is_bridge(model):
-        return f"blocks.{layer}.hook_out"
-    return f"blocks.{layer}.hook_resid_post"
-
-
-def _require_unprocessed_weights(model: Any) -> None:
-    """Refuse models whose weights may have left the raw HF basis.
-
-    Three detectable signatures are checked; each raises with an actionable
-    message. ``fold_ln`` converts the norm type to ``LNPre``/``RMSPre`` on a
-    ``HookedTransformer``. A ``TransformerBridge`` keeps no processing marker —
-    ``enable_compatibility_mode()`` processes weights by default and a
-    ``no_processing=True`` call cannot be told apart afterwards — so any
-    compatibility-mode bridge is refused (the mirror image of DLA, which
-    *requires* compatibility mode because it reasons in the folded basis).
-    Finally, ``center_unembed`` (applied by ``from_pretrained`` even with
-    ``fold_ln=False``) leaves ``W_U`` exactly mean-centered per row, which raw
-    checkpoints never are; centering of *writing* weights alone has no
-    post-hoc signature, so ``from_pretrained_no_processing`` remains the only
-    fully supported HookedTransformer loading path.
-    """
-    norm_type = getattr(model.cfg, "normalization_type", None) or ""
-    if norm_type.endswith(_PROCESSED_NORM_SUFFIX):
+    if not isinstance(model, TransformerBridge):
+        raise TypeError(
+            "JacobianLens supports TransformerBridge only; load a fresh model with "
+            "TransformerBridge.boot_transformers(...)."
+        )
+    if getattr(model, "compatibility_mode", False):
         raise ValueError(
-            "this model was loaded with fold_ln weight processing "
-            f"(normalization_type={norm_type!r}), which changes the residual basis "
-            "the lens was fitted in. Reload it with "
-            "HookedTransformer.from_pretrained_no_processing(...) or use a raw "
+            "compatibility mode is enabled on this TransformerBridge and changes "
+            "the residual basis. Use a freshly booted "
+            "TransformerBridge.boot_transformers(...) model with raw weights."
+        )
+    if getattr(model, "_weights_processed", False):
+        raise ValueError(
+            "process_weights was called on this TransformerBridge and changed the "
+            "raw HuggingFace weight basis. Use a freshly booted "
             "TransformerBridge.boot_transformers(...) model."
         )
-    if _is_bridge(model):
-        if getattr(model, "compatibility_mode", False):
+    adapter = model.adapter
+    if not adapter.supports_generation:
+        raise ValueError(
+            "JacobianLens requires a causal decoder-only Bridge whose adapter "
+            f"supports text generation; {type(adapter).__name__} declares "
+            "supports_generation=False."
+        )
+    adapter.validate_output_logits_transform()
+    attention_dir = getattr(model.cfg, "attention_dir", "causal")
+    if attention_dir != "causal":
+        raise ValueError(
+            "JacobianLens requires causal attention because its estimator relies on "
+            "causality to exclude target positions before each source position; "
+            f"got attention_dir={attention_dir!r}."
+        )
+    total_ut_steps = int(getattr(model.cfg, "total_ut_steps", 1) or 1)
+    if total_ut_steps != 1:
+        raise ValueError(
+            "JacobianLens requires each physical block hook to fire once per forward; "
+            f"this looped-depth Bridge runs total_ut_steps={total_ut_steps}."
+        )
+    component_mapping = adapter.get_component_mapping()
+    required_components = ("blocks", "ln_final", "unembed")
+    missing_components = [
+        component
+        for component in required_components
+        if component not in component_mapping or not hasattr(model, component)
+    ]
+    if missing_components:
+        raise ValueError(
+            "JacobianLens requires the standard direct ln_final -> unembed output path; "
+            f"this Bridge is missing {missing_components}."
+        )
+    blocks_component = component_mapping["blocks"]
+    if not getattr(blocks_component, "hook_out_is_single_residual_stream", False):
+        raise ValueError(
+            "JacobianLens requires single-stream [batch, position, d_model] block "
+            f"outputs; {type(blocks_component).__name__} does not provide that contract."
+        )
+    if "project_out" in component_mapping:
+        raise ValueError(
+            "JacobianLens does not yet support a final output projection between "
+            "the residual stream and unembedding."
+        )
+    unembed_width = model.W_U.shape[0]
+    if unembed_width != model.cfg.d_model:
+        raise ValueError(
+            "JacobianLens requires a direct d_model-width unembedding after ln_final; "
+            f"got W_U input width {unembed_width} for d_model={model.cfg.d_model}. "
+            "Architectures with a final output projection are not yet supported."
+        )
+
+
+def _validate_metadata(metadata: Dict[str, Any]) -> None:
+    """Reject values that ``torch.load(weights_only=True)`` cannot reload."""
+
+    def validate(value: Any, path: str) -> None:
+        if value is None or type(value) in (bool, int, float, str):
+            return
+        if type(value) in (list, tuple):
+            for index, item in enumerate(value):
+                validate(item, f"{path}[{index}]")
+            return
+        if type(value) is dict:
+            for key, item in value.items():
+                if type(key) is not str:
+                    raise ValueError(
+                        f"{path} has non-string key {key!r}; metadata keys must be strings"
+                    )
+                validate(item, f"{path}.{key}")
+            return
+        raise ValueError(
+            f"{path} has unsupported type {type(value).__name__}; use only "
+            "None, bool, int, float, str, lists, tuples, and string-keyed dicts"
+        )
+
+    validate(metadata, "metadata")
+
+
+def _normalize_positions(positions: Optional[Sequence[int]], seq_len: int) -> List[int]:
+    """Normalize negative chunk-local positions and raise before indexing."""
+    if positions is None:
+        return list(range(seq_len))
+    normalized = [position + seq_len if position < 0 else position for position in positions]
+    out_of_range = [position for position in normalized if not 0 <= position < seq_len]
+    if out_of_range:
+        raise ValueError(
+            f"positions {out_of_range} out of range for an activation chunk of length {seq_len}"
+        )
+    return normalized
+
+
+def _cached_on_device(
+    tensor: torch.Tensor,
+    cache: Dict[torch.device, torch.Tensor],
+    device: Union[str, torch.device],
+) -> torch.Tensor:
+    """Cache a small fp32 intervention tensor on each activation device."""
+    resolved_device = torch.device(device)
+    local = cache.get(resolved_device)
+    if local is None:
+        local = tensor.to(device=resolved_device, dtype=torch.float32)
+        cache[resolved_device] = local
+    return local
+
+
+def _unit_rows(vectors: torch.Tensor, *, layer: int) -> torch.Tensor:
+    """Normalize intervention vectors and reject zero/non-finite directions."""
+    vectors = vectors.float()
+    norms = vectors.norm(dim=-1, keepdim=True)
+    if (~torch.isfinite(norms) | (norms <= torch.finfo(torch.float32).eps)).any():
+        raise ValueError(f"lens vectors at layer {layer} contain a zero or non-finite direction")
+    return vectors / norms
+
+
+def _make_intervention_hook(
+    transform: Callable[[torch.Tensor], torch.Tensor],
+    positions: Optional[Sequence[int]],
+    d_model: int,
+) -> Callable[..., torch.Tensor]:
+    """Apply a transform with shared position, dtype, and device hardening."""
+    requested = None if positions is None else tuple(positions)
+    if requested == ():
+        raise ValueError("positions must contain at least one index")
+
+    def hook_fn(
+        activation: Float[torch.Tensor, "batch pos d_model"], hook: Any
+    ) -> Float[torch.Tensor, "batch pos d_model"]:
+        hook_name = getattr(hook, "name", "intervention hook")
+        _validate_residual_activation(activation, d_model=d_model, hook_name=hook_name)
+        normalized = _normalize_positions(requested, activation.shape[1])
+        selected = activation if requested is None else activation[:, normalized, :]
+        transformed = transform(selected)
+        if transformed.shape != selected.shape:
             raise ValueError(
-                "compatibility mode is enabled on this TransformerBridge. "
-                "enable_compatibility_mode() applies HookedTransformer-style weight "
-                "processing by default, which changes the residual basis the lens was "
-                "fitted in, and a no_processing=True call cannot be reliably told apart "
-                "afterwards. Use a freshly booted TransformerBridge.boot_transformers(...) "
-                "model (raw weights) for Jacobian-lens analyses."
+                f"intervention returned shape {tuple(transformed.shape)}, "
+                f"expected {tuple(selected.shape)}"
             )
-        return
-    unembed_weight = getattr(model, "W_U", None)
-    if unembed_weight is not None:
-        # A 64-row slice is enough: centering zeroes every row mean exactly, while
-        # raw checkpoints sit orders of magnitude above the 0.01 threshold
-        # (measured: gpt2 3.4, gemma-2-2b 17.2; centered gpt2 ~1e-7).
-        rows = unembed_weight[:64].float()
-        if rows.mean(dim=-1).abs().max() < 0.01 * rows.abs().mean():
-            raise ValueError(
-                "this model's unembedding matrix is exactly mean-centered — the "
-                "signature of center_unembed weight processing, which "
-                "from_pretrained applies even with fold_ln=False and which changes "
-                "the basis the J-lens vectors live in. Reload the model with "
-                "HookedTransformer.from_pretrained_no_processing(...)."
-            )
+        transformed = transformed.to(device=activation.device, dtype=activation.dtype)
+        if requested is None:
+            return transformed
+        output = activation.clone()
+        output[:, normalized, :] = transformed
+        return output
+
+    return hook_fn
 
 
 def _unembed(
     model: Any, residual: Float[torch.Tensor, "pos d_model"]
 ) -> Float[torch.Tensor, "pos d_vocab"]:
-    """Apply the model's own final norm, unembedding, and logit soft cap.
+    """Apply the model's own final norm, unembedding, logit scale, and soft cap.
 
     The norm/unembed components contract on ``[batch, pos, d_model]``, so the
     position rows are passed through with a singleton batch axis. The residual
     is moved to the unembedding's device for sharded/multi-GPU models.
     """
-    compute_dtype = model.W_U.dtype
-    batched = residual.to(device=model.W_U.device, dtype=compute_dtype).unsqueeze(0)
-    logits = model.unembed(model.ln_final(batched)).float().squeeze(0)
-    soft_cap = getattr(model.cfg, "output_logits_soft_cap", None)
-    return apply_softcap(logits, soft_cap).cpu()
+    unembed_weight = model.W_U
+    compute_dtype = unembed_weight.dtype
+    batched = residual.to(device=unembed_weight.device, dtype=compute_dtype).unsqueeze(0)
+    logits = model.unembed(model.ln_final(batched)).squeeze(0)
+    return model.adapter.apply_output_logits_transform(logits).float()
 
 
 def _to_token_ids(model: Any, tokens: Union[TokenInput, Sequence[TokenInput]]) -> List[int]:
@@ -871,7 +1173,27 @@ def _to_token_ids(model: Any, tokens: Union[TokenInput, Sequence[TokenInput]]) -
             ids.append(model.to_single_token(token))
         else:
             ids.append(int(token))
+    if not ids:
+        raise ValueError("tokens must contain at least one token")
+    d_vocab = model.W_U.shape[1]
+    invalid = [token_id for token_id in ids if not 0 <= token_id < d_vocab]
+    if invalid:
+        raise ValueError(f"token ids {invalid} out of range for vocabulary size {d_vocab}")
     return ids
+
+
+def _validate_residual_activation(
+    activation: torch.Tensor,
+    *,
+    d_model: int,
+    hook_name: str,
+) -> None:
+    """Fail before interpreting a non-standard block output as a residual stream."""
+    if activation.ndim != 3 or activation.shape[-1] != d_model:
+        raise ValueError(
+            f"{hook_name} must have shape [batch, position, {d_model}], "
+            f"got {tuple(activation.shape)}"
+        )
 
 
 def _normalize_layer(layer: int, n_layers: int) -> int:
@@ -909,7 +1231,6 @@ def _jacobian_for_prompt(
     tokens: Int[torch.Tensor, "one seq"],
     *,
     source_layers: List[int],
-    target_layer: int,
     dim_batch: int,
     skip_first_positions: int,
 ) -> Dict[int, Float[torch.Tensor, "d_model d_model"]]:
@@ -920,28 +1241,30 @@ def _jacobian_for_prompt(
     graph there.
     """
     d_model = model.cfg.d_model
+    target_layer = model.cfg.n_layers - 1
     seq_len = tokens.shape[1]
     valid_positions = list(range(skip_first_positions, seq_len - 1))
     replicated = tokens.expand(dim_batch, -1)
 
     captured: Dict[str, torch.Tensor] = {}
-    root_name = _resid_post_hook_name(model, min(source_layers))
+    root_name = _resid_post_hook_name(min(source_layers))
     hook_layers = sorted(set(source_layers) | {target_layer})
 
     def capture_fn(
         activation: Float[torch.Tensor, "batch pos d_model"], hook: Any
     ) -> Float[torch.Tensor, "batch pos d_model"]:
+        _validate_residual_activation(activation, d_model=d_model, hook_name=hook.name)
         if hook.name == root_name and not activation.requires_grad:
             activation.requires_grad_(True)
         captured[hook.name] = activation
         return activation
 
-    fwd_hooks = [(_resid_post_hook_name(model, layer), capture_fn) for layer in hook_layers]
+    fwd_hooks = [(_resid_post_hook_name(layer), capture_fn) for layer in hook_layers]
     with torch.enable_grad(), model.hooks(fwd_hooks=fwd_hooks):
         model(replicated, return_type=None)
 
-    target = captured[_resid_post_hook_name(model, target_layer)]
-    sources = [captured[_resid_post_hook_name(model, layer)] for layer in source_layers]
+    target = captured[_resid_post_hook_name(target_layer)]
+    sources = [captured[_resid_post_hook_name(layer)] for layer in source_layers]
     device = target.device
     positions_index = torch.tensor(valid_positions, device=device)
     batch_index = torch.arange(dim_batch, device=device)
@@ -970,4 +1293,5 @@ def _jacobian_for_prompt(
             # each gradient lives on its layer's device under sharded/device_map setups
             rows = grad[:n_dims, positions_index.to(grad.device), :].float().mean(dim=1)
             jacobians[layer][dim_start : dim_start + n_dims, :] = rows.cpu()
+        del grads
     return jacobians
