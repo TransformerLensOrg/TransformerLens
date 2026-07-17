@@ -108,8 +108,6 @@ biases via ``ProcessWeights._safe_get_tensor()``.
 import sys
 from typing import Any
 
-import torch
-
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
     EmbeddingBridge,
@@ -159,13 +157,13 @@ class RavenArchitectureAdapter(ArchitectureAdapter):
         # Surface the recurrence-shape attributes on cfg so they are present on
         # both the HF-boot path (also via _HF_PASSTHROUGH_ATTRS) and the
         # synthetic-config path used by the unit tests.
-        self.cfg.mean_recurrence = getattr(cfg, "mean_recurrence", 32)
-        self.cfg.mean_backprop_depth = getattr(cfg, "mean_backprop_depth", 8)
-        self.cfg.n_layers_in_prelude = getattr(cfg, "n_layers_in_prelude", 2)
-        self.cfg.n_layers_in_recurrent_block = getattr(cfg, "n_layers_in_recurrent_block", 4)
-        self.cfg.n_layers_in_coda = getattr(cfg, "n_layers_in_coda", 2)
-        self.cfg.injection_type = getattr(cfg, "injection_type", "linear")
-        self.cfg.qk_bias = getattr(cfg, "qk_bias", True)
+        setattr(self.cfg, "mean_recurrence", getattr(cfg, "mean_recurrence", 32))
+        setattr(self.cfg, "mean_backprop_depth", getattr(cfg, "mean_backprop_depth", 8))
+        setattr(self.cfg, "n_layers_in_prelude", getattr(cfg, "n_layers_in_prelude", 2))
+        setattr(self.cfg, "n_layers_in_recurrent_block", getattr(cfg, "n_layers_in_recurrent_block", 4))
+        setattr(self.cfg, "n_layers_in_coda", getattr(cfg, "n_layers_in_coda", 2))
+        setattr(self.cfg, "injection_type", getattr(cfg, "injection_type", "linear"))
+        setattr(self.cfg, "qk_bias", getattr(cfg, "qk_bias", True))
 
         # Full delegation to the HF forward — no HT-format weight reshaping.
         self.weight_processing_conversions = {}
