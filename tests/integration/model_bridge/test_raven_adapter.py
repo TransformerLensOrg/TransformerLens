@@ -181,10 +181,9 @@ class TestRavenForwardEquivalence:
     def test_forward_logits_match_hf_eager(
         self, bridge: TransformerBridge, hf_eager: torch.nn.Module, tokens: torch.Tensor
     ) -> None:
-        num_steps = torch.tensor(NUM_STEPS)
         with torch.inference_mode():
-            bridge_logits = _seeded(lambda: bridge(tokens, num_steps=num_steps))
-            hf_logits = _seeded(lambda: hf_eager(tokens, num_steps=num_steps).logits)
+            bridge_logits = _seeded(lambda: bridge(tokens, num_steps=NUM_STEPS))
+            hf_logits = _seeded(lambda: hf_eager(tokens, num_steps=NUM_STEPS).logits)
         max_diff = (bridge_logits - hf_logits).abs().max().item()
         assert max_diff < FP32_NOISE_TOL, (
             f"Raven bridge vs HF eager logit drift={max_diff:.2e} exceeds the "
@@ -209,7 +208,7 @@ class TestRavenRecurrentCore:
         _seeded(
             lambda: bridge.run_with_hooks(
                 tokens,
-                num_steps=torch.tensor(NUM_STEPS),
+                num_steps=NUM_STEPS,
                 fwd_hooks=[("core_block.0.hook_out", lambda value, hook: fired.append(True))],
             )
         )
@@ -221,7 +220,7 @@ class TestRavenRecurrentCore:
         _seeded(
             lambda: bridge.run_with_hooks(
                 tokens,
-                num_steps=torch.tensor(NUM_STEPS),
+                num_steps=NUM_STEPS,
                 fwd_hooks=[("prelude.0.hook_out", lambda value, hook: fired.append(True))],
             )
         )
@@ -244,7 +243,7 @@ class TestRavenHookShapes:
         _seeded(
             lambda: bridge.run_with_hooks(
                 tokens,
-                num_steps=torch.tensor(NUM_STEPS),
+                num_steps=NUM_STEPS,
                 fwd_hooks=[(f"{phase}.0.hook_out", _capture)],
             )
         )
