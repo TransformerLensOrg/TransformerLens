@@ -941,7 +941,7 @@ class HookedTransformer(HookedRootModule):
                     0
                 ]
                 # Gemma tokenizer expects a batch dimension
-                if "gemma" in self.tokenizer.name_or_path and tokens.ndim == 1:
+                if ("gemma" in self.tokenizer.name_or_path or "lapa" in self.tokenizer.name_or_path) and tokens.ndim == 1:
                     tokens = tokens.unsqueeze(1)
             elif isinstance(input, torch.Tensor):
                 tokens = input
