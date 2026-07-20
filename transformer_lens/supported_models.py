@@ -1,3 +1,6 @@
+# HookedTransformers model registry. If you are looking for TransformerBridge's supported models
+# see transformer_lens/tools/model_registry/data/supported_models.json or the docs page at
+# https://transformerlensorg.github.io/TransformerLens/generated/transformer_bridge_models.html
 OFFICIAL_MODEL_NAMES: list[str] = [
     "01-ai/Yi-34B",
     "01-ai/Yi-34B-Chat",
@@ -7,6 +10,8 @@ OFFICIAL_MODEL_NAMES: list[str] = [
     "allenai/OLMo-1B-hf",
     "allenai/OLMo-2-0425-1B",
     "allenai/OLMo-2-1124-7B",
+    "allenai/Olmo-3-1025-7B",
+    "allenai/Olmo-3-1125-32B",
     "allenai/Olmo-3-32B-Think",
     "allenai/Olmo-3-7B-Instruct",
     "allenai/Olmo-3-7B-Think",
@@ -259,6 +264,8 @@ MODEL_ALIASES: dict[str, list[str]] = {
     "allenai/OLMo-1B-hf": ["olmo-1b"],
     "allenai/OLMo-2-0425-1B": ["olmo-2-1b"],
     "allenai/OLMo-2-1124-7B": ["olmo-2-7b"],
+    "allenai/Olmo-3-1025-7B": ["olmo-3-1025-7b"],
+    "allenai/Olmo-3-1125-32B": ["olmo-3-1125-32b"],
     "allenai/Olmo-3-32B-Think": ["olmo-3-32b-think"],
     "allenai/Olmo-3-7B-Instruct": ["olmo-3-7b-instruct"],
     "allenai/Olmo-3-7B-Think": ["olmo-3-7b-think"],

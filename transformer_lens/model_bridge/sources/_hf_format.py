@@ -18,6 +18,16 @@ from transformer_lens.factories.architecture_adapter_factory import (
 from transformer_lens.utilities import get_tokenizer_with_bos
 
 
+def get_effective_text_config(hf_config):
+    """Return the config that owns the language-model forward path."""
+    if getattr(hf_config, "text_config", None) is not None:
+        return hf_config.text_config
+    decoder = getattr(hf_config, "decoder", None)
+    if decoder is not None and hasattr(decoder, "hidden_size"):
+        return decoder
+    return hf_config
+
+
 def map_default_transformer_lens_config(hf_config):
     """Map HuggingFace config fields to TransformerLens config format.
 
@@ -32,16 +42,8 @@ def map_default_transformer_lens_config(hf_config):
     Returns:
         A copy of hf_config with additional TransformerLens fields
     """
-    source_config = hf_config
-    if hasattr(hf_config, "text_config") and hf_config.text_config is not None:
-        source_config = hf_config.text_config
-    # T5Gemma: nested encoder/decoder sub-configs; use decoder (LM head is decoder-side)
-    elif (
-        hasattr(hf_config, "decoder")
-        and hf_config.decoder is not None
-        and hasattr(hf_config.decoder, "hidden_size")
-    ):
-        source_config = hf_config.decoder
+    # Extract language model config from text_config for multimodal models
+    source_config = get_effective_text_config(hf_config)
 
     tl_config = copy.deepcopy(hf_config)
     if hasattr(source_config, "n_embd"):
@@ -52,6 +54,8 @@ def map_default_transformer_lens_config(hf_config):
         tl_config.d_model = source_config.model_dim
     elif hasattr(source_config, "d_model"):
         tl_config.d_model = source_config.d_model
+    elif hasattr(source_config, "hidden_dim"):
+        tl_config.d_model = source_config.hidden_dim
     if hasattr(source_config, "n_head"):
         tl_config.n_heads = source_config.n_head
     elif hasattr(source_config, "num_attention_heads"):
@@ -61,6 +65,8 @@ def map_default_transformer_lens_config(hf_config):
         tl_config.n_heads = n_heads
     elif hasattr(source_config, "num_heads"):
         tl_config.n_heads = source_config.num_heads
+    elif hasattr(source_config, "n_heads"):
+        tl_config.n_heads = source_config.n_heads
     elif hasattr(source_config, "num_query_heads") and isinstance(
         source_config.num_query_heads, list
     ):
@@ -101,6 +107,13 @@ def map_default_transformer_lens_config(hf_config):
                 tl_config.n_key_value_heads = num_kv_heads
         except (TypeError, ValueError, AttributeError):
             pass
+    elif hasattr(source_config, "n_kv_heads") and source_config.n_kv_heads is not None:
+        try:
+            num_kv_heads = int(source_config.n_kv_heads)
+            if num_kv_heads != getattr(tl_config, "n_heads", None):
+                tl_config.n_key_value_heads = num_kv_heads
+        except (TypeError, ValueError, AttributeError):
+            pass
     if hasattr(source_config, "n_layer"):
         tl_config.n_layers = source_config.n_layer
     elif hasattr(source_config, "num_hidden_layers"):
@@ -109,6 +122,10 @@ def map_default_transformer_lens_config(hf_config):
         tl_config.n_layers = source_config.num_transformer_layers
     elif hasattr(source_config, "num_layers"):
         tl_config.n_layers = source_config.num_layers
+    elif hasattr(source_config, "n_layers"):
+        tl_config.n_layers = source_config.n_layers
+    elif hasattr(source_config, "n_blocks"):
+        tl_config.n_layers = source_config.n_blocks
     if hasattr(source_config, "vocab_size") and isinstance(source_config.vocab_size, int):
         tl_config.d_vocab = source_config.vocab_size
     if hasattr(source_config, "n_positions"):
@@ -121,6 +138,8 @@ def map_default_transformer_lens_config(hf_config):
         tl_config.n_ctx = source_config.max_length
     elif hasattr(source_config, "seq_length"):
         tl_config.n_ctx = source_config.seq_length
+    elif hasattr(source_config, "max_sequence_length"):
+        tl_config.n_ctx = source_config.max_sequence_length
     else:
         # ALiBi models (Bloom) have no context length field; 2048 is a safe fallback.
         tl_config.n_ctx = 2048
@@ -135,6 +154,8 @@ def map_default_transformer_lens_config(hf_config):
         if isinstance(intermediate_size, (list, tuple)):
             intermediate_size = max(intermediate_size) if intermediate_size else None
         tl_config.d_mlp = intermediate_size
+    elif hasattr(source_config, "mlp_hidden_size"):
+        tl_config.d_mlp = source_config.mlp_hidden_size
     elif hasattr(tl_config, "d_model"):
         tl_config.d_mlp = getattr(source_config, "n_inner", 4 * tl_config.d_model)
     if hasattr(source_config, "head_dim") and source_config.head_dim is not None:
@@ -149,6 +170,13 @@ def map_default_transformer_lens_config(hf_config):
         tl_config.act_fn = source_config.activation_function
     elif hasattr(source_config, "hidden_act"):
         tl_config.act_fn = source_config.hidden_act
+    elif hasattr(source_config, "activation_type"):
+        activation_type = source_config.activation_type
+        tl_config.act_fn = getattr(activation_type, "value", activation_type)
+    if hasattr(source_config, "rope_theta"):
+        tl_config.rotary_base = source_config.rope_theta
+    if hasattr(source_config, "weight_tying"):
+        tl_config.tie_word_embeddings = bool(source_config.weight_tying)
     # LayerNorm / RMSNorm epsilon — HF uses 3 different field names.
     if hasattr(source_config, "rms_norm_eps"):
         tl_config.eps = source_config.rms_norm_eps
@@ -158,7 +186,9 @@ def map_default_transformer_lens_config(hf_config):
         tl_config.eps = source_config.layer_norm_epsilon
     elif hasattr(source_config, "norm_eps"):
         tl_config.eps = source_config.norm_eps
-    if hasattr(source_config, "num_local_experts"):
+    if hasattr(source_config, "num_experts"):
+        tl_config.num_experts = source_config.num_experts
+    elif hasattr(source_config, "num_local_experts"):
         tl_config.num_experts = source_config.num_local_experts
     if hasattr(source_config, "num_experts_per_tok"):
         tl_config.experts_per_token = source_config.num_experts_per_tok
@@ -194,7 +224,9 @@ def determine_architecture_from_hf_config(hf_config):
             "apertus": "ApertusForCausalLM",
             "gpt2": "GPT2LMHeadModel",
             "hubert": "HubertModel",
+            "bart": "BartForConditionalGeneration",
             "llama": "LlamaForCausalLM",
+            "llada": "LLaDAModelLM",
             "mamba": "MambaForCausalLM",
             "mamba2": "Mamba2ForCausalLM",
             "mistral": "MistralForCausalLM",
@@ -212,9 +244,11 @@ def determine_architecture_from_hf_config(hf_config):
             "glm4_moe": "Glm4MoeForCausalLM",
             "glm_moe_dsa": "GlmMoeDsaForCausalLM",
             "t5gemma": "T5GemmaForConditionalGeneration",
+            "t5gemma2": "T5Gemma2ForConditionalGeneration",
             "bert": "BertForMaskedLM",
             "bloom": "BloomForCausalLM",
             "codegen": "CodeGenForCausalLM",
+            "cohere2": "Cohere2ForCausalLM",
             "gptj": "GPTJForCausalLM",
             "gpt_neo": "GPTNeoForCausalLM",
             "gpt_neox": "GPTNeoXForCausalLM",
@@ -223,6 +257,7 @@ def determine_architecture_from_hf_config(hf_config):
             "phi3": "Phi3ForCausalLM",
             "qwen": "QwenForCausalLM",
             "qwen2": "Qwen2ForCausalLM",
+            "qwen2_moe": "Qwen2MoeForCausalLM",
             "qwen3": "Qwen3ForCausalLM",
             # qwen3_5 is the top-level multimodal config type; qwen3_5_text is
             # the text-only sub-config. Both map to the text-only adapter so
@@ -232,6 +267,7 @@ def determine_architecture_from_hf_config(hf_config):
             "qwen3_5_text": "Qwen3_5ForCausalLM",
             "smollm3": "SmolLM3ForCausalLM",
             "openelm": "OpenELMForCausalLM",
+            "ouro": "OuroForCausalLM",
             "stablelm": "StableLmForCausalLM",
             "t5": "T5ForConditionalGeneration",
             "mt5": "MT5ForConditionalGeneration",

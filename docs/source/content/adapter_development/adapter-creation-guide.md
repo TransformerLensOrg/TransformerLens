@@ -182,7 +182,7 @@ Implement only the ones you need:
 
 ### Registration
 
-Three files to update:
+Four locations to update:
 
 1. `transformer_lens/model_bridge/supported_architectures/__init__.py` — add the import and append to `__all__`.
 2. `transformer_lens/factories/architecture_adapter_factory.py` — add to the import block and to `SUPPORTED_ARCHITECTURES`:
@@ -207,7 +207,16 @@ Three files to update:
 
    The canonical author is the org that originally trains and publishes this model family (e.g., `meta-llama` for Llama, `google` for Gemma, `mistralai` for Mistral). Without this entry, the HF scraper's `min_downloads` threshold can silently drop small canonical variants. For example, a foundation model with only ~20 downloads still belongs in the registry. Multiple canonical orgs are allowed (e.g., Llama is canonical for `meta-llama`, `huggyllama`, `codellama`, and `SimpleStories`).
 
-Forgetting registration is the most common silent failure — the adapter exists but `boot_transformers` can't find it.
+4. `transformer_lens/tools/model_registry/generate_report.py` — add a concise entry to `ARCHITECTURE_DESCRIPTIONS` so generated model-registry reports use an architecture-specific description instead of the generic fallback:
+
+   ```python
+   ARCHITECTURE_DESCRIPTIONS = {
+       ...
+       "<HFArchitectureClass>": "<Short human-readable description>",
+   }
+   ```
+
+Forgetting a registration location is a common silent failure: the adapter may exist while model loading, discovery, or generated reporting remains incomplete.
 
 ### Tests
 
@@ -279,12 +288,12 @@ Both must be clean. Don't paper over mypy errors with `# type: ignore` — fix t
 
 **Don't reach for abstraction prematurely.** If you've added a base class or protocol with only one or two concrete uses, you're probably better off without it. The same goes for config knobs that don't have a current consumer.
 
-**Confirm the boring stuff is done.** Both registration sites (`__init__.py` and `architecture_adapter_factory.py`), `mypy` and format checks clean, tests doing real work rather than asserting mocks return their mock values.
+**Confirm the boring stuff is done.** All four [registration locations](#registration), `mypy` and format checks clean, tests doing real work rather than asserting mocks return their mock values.
 
 ## Common pitfalls
 
 - **Forgetting `n_key_value_heads`.** Without it, GQA models silently reshape weights as if they were MHA — verification fails with cryptic shape errors.
-- **Missing registration.** Adapter exists but the factory can't find it. Update both `__init__.py` and `architecture_adapter_factory.py`.
+- **Missing registration.** Adapter exists, but loading, model discovery, or generated reporting is incomplete. Update all four [registration locations](#registration).
 - **Skipping `setup_component_testing` for RoPE.** Rotary embeddings need to be wired through to each attention bridge or component testing produces nonsense.
 - **Reusing `model.norm` when the path is `model.final_layernorm`.** Module paths look similar across architectures but rarely match exactly — always verify against the actual HF source.
 - **Tautological tests.** "Test that mock returns mock_value" is not a test. Tests should exercise real shapes, real forward passes, real hook resolution.

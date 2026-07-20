@@ -52,6 +52,7 @@ from transformer_lens.model_bridge.generalized_components.block import (
     VARIANT_SUBMODULE_NAMES,
 )
 from transformer_lens.model_bridge.get_params_util import get_bridge_params
+from transformer_lens.utilities.activation_functions import softcap_enabled
 from transformer_lens.utilities.devices import move_to_and_update_config
 
 if TYPE_CHECKING:
@@ -204,9 +205,13 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         n_heads = self.cfg.n_heads
         d_head = self.cfg.d_head
         d_model = self.cfg.d_model
-        if not hasattr(self, "blocks"):
+        blocks_iter = []
+        for bl_name in ("blocks", "encoder_blocks", "decoder_blocks", "L_blocks", "H_blocks"):
+            if hasattr(self, bl_name):
+                blocks_iter.append(getattr(self, bl_name))
+        if not blocks_iter:
             return
-        for block in self.blocks:
+        for block in [b for bl in blocks_iter for b in bl]:
             if "attn" not in block._modules:
                 continue
             attn = block.attn
@@ -487,12 +492,15 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         elif hasattr(self.adapter, "setup_no_processing_hooks"):
             self.adapter.setup_no_processing_hooks(self)
         blocks_to_process = []
-        if hasattr(self, "blocks"):
-            blocks_to_process.extend(self.blocks)
-        if hasattr(self, "encoder_blocks"):
-            blocks_to_process.extend(self.encoder_blocks)
-        if hasattr(self, "decoder_blocks"):
-            blocks_to_process.extend(self.decoder_blocks)
+        for block_list_name in (
+            "blocks",
+            "encoder_blocks",
+            "decoder_blocks",
+            "L_blocks",
+            "H_blocks",
+        ):
+            if hasattr(self, block_list_name):
+                blocks_to_process.extend(getattr(self, block_list_name))
         for block in blocks_to_process:
             for attn_name in ["attn", "self_attn", "cross_attn"]:
                 if hasattr(block, attn_name):
@@ -525,13 +533,16 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             fold_value_biases: Fold value biases into output bias. Default: True
             refactor_factored_attn_matrices: Experimental QK/OV factorization. Default: False
         """
+        # A failed or partial processing attempt is no longer guaranteed to retain
+        # the raw HuggingFace basis, so invalidate that contract before any work.
+        self._weights_processed = True
         from transformer_lens.weight_processing import ProcessWeights
 
         if verbose:
             print(f"Processing weights for {self.cfg.model_name}...")
 
         # Soft capping (tanh) is not translation-invariant; centering would change output.
-        if center_unembed and getattr(self.cfg, "output_logits_soft_cap", -1.0) > 0.0:
+        if center_unembed and softcap_enabled(getattr(self.cfg, "output_logits_soft_cap", None)):
             import logging
 
             logging.warning(
@@ -1324,6 +1335,14 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             Model output based on return_type
         """
 
+        if return_type in ("loss", "both") and not self.adapter.supports_causal_loss:
+            architecture = self.cfg.architecture or type(self.adapter).__name__
+            raise NotImplementedError(
+                f"{architecture} does not support TransformerBridge's shifted causal "
+                "loss. Request return_type='logits' and compute the architecture-specific "
+                "masked-token objective explicitly."
+            )
+
         if start_at_layer is not None:
             raise NotImplementedError(
                 "start_at_layer is not supported in TransformerBridge. "
@@ -1333,9 +1352,21 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             )
 
         # Set stop_at_layer flag on all blocks if requested
-        if stop_at_layer is not None and hasattr(self, "blocks"):
-            for block in self.blocks:
-                block._stop_at_layer_idx = stop_at_layer
+        if stop_at_layer is not None:
+            if (
+                hasattr(self, "L_blocks")
+                or hasattr(self, "H_blocks")
+                or hasattr(self, "encoder_blocks")
+                or hasattr(self, "decoder_blocks")
+            ):
+                raise NotImplementedError(
+                    "stop_at_layer is not supported on non-standard block list "
+                    "names (L_blocks, H_blocks, encoder_blocks, decoder_blocks). "
+                    "The bridge only supports stop_at_layer on 'blocks'."
+                )
+            if hasattr(self, "blocks"):
+                for block in self.blocks:
+                    block._stop_at_layer_idx = stop_at_layer
 
         # Map HookedEncoderDecoder-style kwargs to HF-compatible names
         if "decoder_input" in kwargs:
@@ -1498,6 +1529,9 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             # Stash only the cache object (not the full output) for generate().
             if getattr(self, "_capture_hf_cache", False):
                 self._last_hf_cache = getattr(output, "past_key_values", None)
+            if return_type == "logits_and_cache":
+                past_key_values = getattr(output, "past_key_values", None)
+                return (logits, past_key_values)
             return self._finalize_return(
                 return_type,
                 logits,
@@ -1511,10 +1545,17 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             return e.layer_output
         finally:
             # Clean up state that may be inconsistent after StopAtLayerException
-            if stop_at_layer is not None and hasattr(self, "blocks"):
-                # Reset the stop flag on all blocks
-                for block in self.blocks:
-                    block._stop_at_layer_idx = None
+            if stop_at_layer is not None:
+                for bl_name in (
+                    "blocks",
+                    "encoder_blocks",
+                    "decoder_blocks",
+                    "L_blocks",
+                    "H_blocks",
+                ):
+                    if hasattr(self, bl_name):
+                        for block in getattr(self, bl_name):
+                            block._stop_at_layer_idx = None
 
                 # Clear any stale KV cache — layers after the stop point didn't
                 # execute, so the cache is incomplete and would corrupt subsequent
@@ -1818,6 +1859,15 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             if all_finished:
                 return
 
+    def _ensure_generation_supported(self, api_name: str) -> None:
+        """Reject autoregressive generation for forward-only architectures."""
+        if not self.adapter.supports_generation:
+            architecture = self.cfg.architecture or type(self.adapter).__name__
+            raise NotImplementedError(
+                f"TransformerBridge.{api_name}() generation is not supported by "
+                f"the {architecture} architecture."
+            )
+
     def generate(
         self,
         input: Union[str, List[str], torch.Tensor] = "",
@@ -1837,6 +1887,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         verbose: bool = True,
         output_logits: bool = False,
         return_cache: bool = False,
+        return_input_tokens: bool = False,
         names_filter: Optional[Union[str, List[str], Callable[[str], bool]]] = None,
         device: Optional[Union[str, torch.device]] = None,
         pixel_values: Optional[torch.Tensor] = None,
@@ -1844,7 +1895,12 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         stopping_criteria: Optional[Any] = None,
         **multimodal_kwargs,
     ) -> (
-        str | list[str] | torch.Tensor | Any | tuple[Any, ActivationCache]
+        str
+        | list[str]
+        | torch.Tensor
+        | Any
+        | tuple[Any, ActivationCache]
+        | tuple[Any, torch.Tensor]
     ):  # Any for transformers.utils.ModelOutput
         # Any: beartype forward ref limitation (beartype#546)
         """Sample tokens from the model.
@@ -1866,9 +1922,11 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 repetition by dividing positive logits and multiplying negative logits for
                 previously seen tokens. Default 1.0 (no penalty).
             use_past_kv_cache: If True, use KV caching for faster generation
-            prepend_bos: Accepted for API compatibility but not applied during generation.
-                The HF model expects tokens in its native format (tokenizer defaults).
-                Overriding BOS can silently degrade generation quality.
+            prepend_bos: Whether to prepend a BOS token when tokenizing string inputs.
+                Defaults to None (uses ``cfg.default_prepend_bos``, typically True).
+                Pass ``prepend_bos=False`` when the input is pre-formatted chat-template
+                text that already contains the BOS token to avoid double-BOS.
+                Ignored when input is already a token tensor.
             padding_side: Which side to pad when tokenizing multiple strings of different
                 lengths. For batched list inputs, left-padding is forced internally for
                 correct generation behavior. Defaults to None (tokenizer default).
@@ -1883,6 +1941,11 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 encoder-decoder, SSM, multimodal, batched, and inputs_embeds inputs raise
                 NotImplementedError. The cache spans prompt + max_new_tokens and can be large,
                 use ``names_filter`` to scope it and/or ``device`` to offload it.
+            return_input_tokens: If True, return an ``(output, input_tokens)`` tuple where
+                ``input_tokens`` is the token tensor that was actually fed to the model
+                (after BOS handling). Useful for debugging tokenization, especially when
+                using chat templates where BOS handling can be subtle. Can be combined
+                with ``return_cache`` to get ``(output, cache, input_tokens)``.
             names_filter: Passed to ``run_with_cache`` when ``return_cache=True``; restricts
                 which activations are cached (str, list of str, or callable).
             device: Passed through when ``return_cache=True`` to offload the cached tensors
@@ -1912,25 +1975,19 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             If output_logits=True, returns a ModelOutput-like object with 'sequences' and 'logits' attributes.
             If return_cache=True, returns an ``(output, ActivationCache)`` tuple where ``output`` is the
             value that would otherwise be returned and the cache equals ``run_with_cache(output)``.
+            If return_input_tokens=True, returns an ``(output, input_tokens)`` tuple.
+            If both return_cache and return_input_tokens are True, returns ``(output, cache, input_tokens)``.
 
         Example:
             ``out, cache = model.generate(prompt, max_new_tokens=20, return_cache=True)`` returns a
             normal ActivationCache over the full prompt + generated sequence (equivalent to
             ``run_with_cache(out)``).
-        """
-        # prepend_bos is intentionally not applied during generation.
-        # The HF model expects tokens in its native format. Overriding BOS can silently
-        # degrade quality.
-        if prepend_bos is not None:
-            import warnings
 
-            warnings.warn(
-                "prepend_bos is ignored during TransformerBridge.generate(). "
-                "The HF model expects tokens with the tokenizer's default BOS handling. "
-                "To control BOS, tokenize with to_tokens(prepend_bos=...) and pass the "
-                "resulting tensor to generate().",
-                stacklevel=2,
-            )
+            ``out, input_tokens = model.generate(prompt, return_input_tokens=True)`` returns
+            the tokens that were fed to the model, useful for verifying BOS handling with
+            chat templates.
+        """
+        self._ensure_generation_supported("generate")
         # padding_side is handled internally: for batched list inputs, left-padding
         # is forced to ensure correct generation. See _is_batched_list logic below.
 
@@ -1942,7 +1999,9 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
 
         _generate_from_embeds = False
         if isinstance(input, str):
-            input_tokens = self.to_tokens(input, move_to_device=True, truncate=False)
+            input_tokens = self.to_tokens(
+                input, prepend_bos=prepend_bos, move_to_device=True, truncate=False
+            )
             input_type = "str"
         elif isinstance(input, list):
             # Force left-padding for batched generation so real tokens are
@@ -1950,7 +2009,9 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             if _is_batched_list:
                 _orig_padding_side = self.tokenizer.padding_side
                 self.tokenizer.padding_side = "left"
-            input_tokens = self.to_tokens(input, move_to_device=True, truncate=False)
+            input_tokens = self.to_tokens(
+                input, prepend_bos=prepend_bos, move_to_device=True, truncate=False
+            )
             if _is_batched_list:
                 self.tokenizer.padding_side = _orig_padding_side
             input_type = "list"
@@ -2266,15 +2327,21 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         else:  # return_type == "tokens"
             result = output_tokens
 
-        if not return_cache:
+        if not return_cache and not return_input_tokens:
             return result
 
-        # return_cache: recompute one clean forward over the full generated sequence so the
-        # cache is identical to run_with_cache(output_tokens) - all hook points, including
-        # attention patterns. The guards above restrict this to single-sequence, decoder-only
-        # text generation (see issue #697).
-        _, cache = self.run_with_cache(output_tokens, names_filter=names_filter, device=device)
-        return result, cache
+        if return_cache:
+            # return_cache: recompute one clean forward over the full generated sequence so the
+            # cache is identical to run_with_cache(output_tokens) - all hook points, including
+            # attention patterns. The guards above restrict this to single-sequence, decoder-only
+            # text generation (see issue #697).
+            _, cache = self.run_with_cache(output_tokens, names_filter=names_filter, device=device)
+            if return_input_tokens:
+                return result, cache, input_tokens
+            return result, cache
+
+        # return_input_tokens only (no cache)
+        return result, input_tokens
 
     @torch.no_grad()
     def generate_stream(
@@ -2316,7 +2383,11 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             freq_penalty: Frequency penalty for previous tokens.
             repetition_penalty: HF-style repetition penalty (>1.0 discourages repeats).
             use_past_kv_cache: Use KV caching for faster generation.
-            prepend_bos: Not applied (API compatibility). See generate() docstring.
+            prepend_bos: Whether to prepend a BOS token when tokenizing string inputs.
+                Defaults to None (uses ``cfg.default_prepend_bos``, typically True).
+                Pass ``prepend_bos=False`` when the input is pre-formatted chat-template
+                text that already contains the BOS token to avoid double-BOS.
+                Ignored when input is already a token tensor.
             padding_side: Which side to pad for batched list inputs. Left-padding
                 is forced internally for batched generation.
             return_type: 'input' (match input type), 'str', or 'tokens'.
@@ -2333,25 +2404,23 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             max_tokens_per_yield tokens between yields. First yield includes
             the input tokens; subsequent yields contain only new tokens.
         """
-        if prepend_bos is not None:
-            warnings.warn(
-                "prepend_bos is ignored during TransformerBridge.generate_stream(). "
-                "The HF model expects tokens with the tokenizer's default BOS handling.",
-                stacklevel=2,
-            )
-
+        self._ensure_generation_supported("generate_stream")
         # --- Input parsing (mirrors generate()) ---
         _is_batched_list = isinstance(input, list) and len(input) > 1
 
         if isinstance(input, str):
-            input_tokens = self.to_tokens(input, move_to_device=True, truncate=False)
+            input_tokens = self.to_tokens(
+                input, prepend_bos=prepend_bos, move_to_device=True, truncate=False
+            )
             input_type = "str"
         elif isinstance(input, list):
             if _is_batched_list:
                 _orig_ps = self.tokenizer.padding_side
                 self.tokenizer.padding_side = "left"
             try:
-                input_tokens = self.to_tokens(input, move_to_device=True, truncate=False)
+                input_tokens = self.to_tokens(
+                    input, prepend_bos=prepend_bos, move_to_device=True, truncate=False
+                )
             finally:
                 if _is_batched_list:
                     self.tokenizer.padding_side = _orig_ps
@@ -2567,6 +2636,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             print(result.logits)  # Logits for each generation step
             print(result.attentions)  # Attention weights
         """
+        self._ensure_generation_supported("hf_generate")
         # Handle string input by tokenizing it
         if isinstance(input, str):
             inputs = self.tokenizer(input, return_tensors="pt", padding=False, truncation=False).to(
@@ -2928,18 +2998,25 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 continue
             total_with_attn += 1
             attn_classes.add(type(attn).__name__)
-            if isinstance(attn, supported_classes):
+            supports_flag = (
+                bool(getattr(attn, "supports_attn_result", False))
+                if flag_name == "use_attn_result"
+                else isinstance(attn, supported_classes)
+            )
+            if supports_flag:
                 supporting_layers.append(idx)
         if total_with_attn == 0:
             raise NotImplementedError(f"{flag_name}: no attention bridges found on self.blocks.")
         if not supporting_layers:
+            if flag_name == "use_attn_result":
+                capability_detail = "Per-head result computation is unavailable."
+            else:
+                capability_detail = "No hook point is available before the Q/K/V projections."
             raise NotImplementedError(
                 f"{flag_name}: none of this model's attention bridges support "
-                "the fine-grained Q/K/V hook fork. Found attention classes: "
+                "the requested fine-grained attention hook. Found attention classes: "
                 f"{sorted(attn_classes)}. Supported classes: "
-                f"{[c.__name__ for c in supported_classes]}. Plain "
-                "AttentionBridge delegates to HuggingFace and exposes no hook "
-                "point before the Q/K/V projection."
+                f"{[c.__name__ for c in supported_classes]}. {capability_detail}"
             )
         if len(supporting_layers) < total_with_attn:
             skipped = total_with_attn - len(supporting_layers)
@@ -3052,20 +3129,22 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         attr_to_hf = {}
 
         # Map top-level components
+        block_list_names = {"blocks", "L_blocks", "H_blocks", "encoder_blocks", "decoder_blocks"}
         for tl_name, component in component_mapping.items():
-            if component.name and tl_name != "blocks":
+            if component.name and tl_name not in block_list_names:
                 # Skip if TL name is already a suffix of the HF path (avoids doubling).
                 if tl_name != component.name and not component.name.endswith("." + tl_name):
                     attr_to_hf[tl_name] = component.name
 
-        # Map block-level components (ln1, ln2, attn, mlp)
-        blocks_component = component_mapping.get("blocks")
-        if blocks_component and hasattr(blocks_component, "submodules"):
-            for tl_subname, subcomponent in blocks_component.submodules.items():
-                if subcomponent.name:
-                    # Only map if the names differ (e.g., ln1 -> ln_1, but attn -> attn)
-                    if tl_subname != subcomponent.name:
-                        attr_to_hf[tl_subname] = subcomponent.name
+        # Map block-level components (ln1, ln2, attn, mlp) for all block lists
+        for bl_name in block_list_names:
+            blocks_component = component_mapping.get(bl_name)
+            if blocks_component and hasattr(blocks_component, "submodules"):
+                for tl_subname, subcomponent in blocks_component.submodules.items():
+                    if subcomponent.name:
+                        # Only map if the names differ (e.g., ln1 -> ln_1, but attn -> attn)
+                        if tl_subname != subcomponent.name:
+                            attr_to_hf[tl_subname] = subcomponent.name
 
         # Replace only these specific attribute names in the key
         # We need to be careful to only replace whole path components, not substrings

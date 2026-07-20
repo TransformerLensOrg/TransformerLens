@@ -96,11 +96,11 @@ def _dec_block(adapter: T5GemmaArchitectureAdapter) -> Any:
 
 
 class TestT5GemmaAdapterConfig:
-    def test_normalization_type_is_rms(self, adapter: T5GemmaArchitectureAdapter) -> None:
-        assert adapter.cfg.normalization_type == "RMS"
-
-    def test_positional_embedding_type_is_rotary(self, adapter: T5GemmaArchitectureAdapter) -> None:
-        assert adapter.cfg.positional_embedding_type == "rotary"
+    def test_encoder_attn_has_rotary_hooks(self, adapter: T5GemmaArchitectureAdapter) -> None:
+        """positional_embedding_type='rotary' must make the attention bridge create rot hooks."""
+        attn = _enc_block(adapter).submodules["attn"]
+        assert hasattr(attn, "hook_rot_q")
+        assert hasattr(attn, "hook_rot_k")
 
     def test_gated_mlp_is_true(self, adapter: T5GemmaArchitectureAdapter) -> None:
         assert adapter.cfg.gated_mlp is True
@@ -135,15 +135,6 @@ class TestT5GemmaComponentMapping:
 
     def test_top_level_keys(self, adapter: T5GemmaArchitectureAdapter) -> None:
         assert set(_mapping(adapter).keys()) == self.EXPECTED_KEYS
-
-    def test_standard_block_names_used(self, adapter: T5GemmaArchitectureAdapter) -> None:
-        # Bridge _setup_hook_compatibility only visits encoder_blocks / decoder_blocks.
-        # Using enc_blocks / dec_blocks would silently skip hook setup.
-        keys = set(_mapping(adapter).keys())
-        assert "encoder_blocks" in keys, "must use 'encoder_blocks', not 'enc_blocks'"
-        assert "decoder_blocks" in keys, "must use 'decoder_blocks', not 'dec_blocks'"
-        assert "enc_blocks" not in keys
-        assert "dec_blocks" not in keys
 
     def test_encoder_embed_is_embedding_bridge(self, adapter: T5GemmaArchitectureAdapter) -> None:
         assert isinstance(_mapping(adapter)["encoder_embed"], EmbeddingBridge)

@@ -83,6 +83,7 @@ class BridgeCore:
         if self.cfg.d_vocab_out == -1:
             self.cfg.d_vocab_out = self.cfg.d_vocab
         self.compatibility_mode = False
+        self._weights_processed = False
         self._hook_cache = None
         self._hook_registry: Dict[str, HookPoint] = {}
         self._hook_registry_initialized = False
@@ -864,7 +865,10 @@ class BridgeCore:
                 stacklevel=2,
             )
         try:
-            if "output_attentions" not in filtered_kwargs:
+            if (
+                "output_attentions" not in filtered_kwargs
+                and self.adapter.supports_hf_output_attentions
+            ):
                 filtered_kwargs["output_attentions"] = True
             if processed_args:
                 output = self.forward(processed_args[0], **filtered_kwargs)

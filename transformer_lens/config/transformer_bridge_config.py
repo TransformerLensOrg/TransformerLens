@@ -4,6 +4,8 @@ from typing import Optional
 
 import torch
 
+from transformer_lens.utilities.activation_functions import SOFTCAP_DISABLED
+
 from .transformer_lens_config import TransformerLensConfig
 
 
@@ -48,7 +50,7 @@ class TransformerBridgeConfig(TransformerLensConfig):
         window_size: Optional[int] = None,
         attn_types: Optional[list] = None,
         init_mode: str = "gpt2",
-        normalization_type: str = "LN",
+        normalization_type: Optional[str] = "LN",
         n_devices: int = 1,
         attention_dir: str = "causal",
         attn_only: bool = False,
@@ -77,8 +79,8 @@ class TransformerBridgeConfig(TransformerLensConfig):
         decoder_start_token_id: Optional[int] = None,
         tie_word_embeddings: bool = False,
         use_normalization_before_and_after: bool = False,
-        attn_scores_soft_cap: float = -1.0,
-        output_logits_soft_cap: float = -1.0,
+        attn_scores_soft_cap: float = SOFTCAP_DISABLED,
+        output_logits_soft_cap: float = SOFTCAP_DISABLED,
         use_NTK_by_parts_rope: bool = False,
         NTK_by_parts_low_freq_factor: float = 1.0,
         NTK_by_parts_high_freq_factor: float = 4.0,

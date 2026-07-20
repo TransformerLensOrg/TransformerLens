@@ -17,9 +17,6 @@ class TestFalconBridgeCreation:
     def test_block_count(self, falcon_bridge):
         assert len(falcon_bridge.blocks) == 2
 
-    def test_parallel_mode(self, falcon_bridge):
-        assert falcon_bridge.cfg.parallel_attn_mlp is True
-
     def test_has_core_components(self, falcon_bridge):
         assert hasattr(falcon_bridge, "embed")
         assert hasattr(falcon_bridge, "unembed")

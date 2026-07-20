@@ -14,6 +14,7 @@ from transformer_lens.factories.architecture_adapter_factory import (
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.bridge import TransformerBridge
 from transformer_lens.model_bridge.sources._hf_format import (
+    get_effective_text_config,
     map_default_transformer_lens_config,
     setup_tokenizer,
 )
@@ -24,8 +25,16 @@ _HF_PASSTHROUGH_ATTRS = [
     "is_gated_act",
     "word_embed_proj_dim",
     "do_layer_norm_before",
+    # BART
+    "encoder_layers",
+    "decoder_layers",
+    "encoder_attention_heads",
+    "decoder_attention_heads",
+    "encoder_ffn_dim",
+    "decoder_ffn_dim",
     # Granite
     "position_embedding_type",
+    "logits_scaling",
     # Falcon
     "parallel_attn",
     "multi_query",
@@ -41,20 +50,83 @@ _HF_PASSTHROUGH_ATTRS = [
     # Mamba-2 (additional SSM config)
     "n_groups",
     "chunk_size",
+    # Falcon-H1 (parallel attn + Mamba-2 hybrid SSM config)
+    "mamba_d_ssm",
+    "mamba_n_heads",
+    "mamba_d_head",
+    "mamba_d_state",
+    "mamba_n_groups",
+    "mamba_d_conv",
+    "mamba_chunk_size",
+    "lm_head_multiplier",
     # Multimodal
     "vision_config",
     # Cohere
     "logit_scale",
     "rope_parameters",
+    # HRM-Text
+    "H_cycles",
+    "L_cycles",
+    "L_bp_cycles",
+    "embedding_scale",
+    "prefix_lm",
+    "num_layers_per_stack",
+    "sliding_window_pattern",
+    "_sliding_window_pattern",
     # Hybrid/MoE architectures
     "layer_types",
     "moe_intermediate_size",
+    "shared_expert_intermediate_size",
     "norm_eps",
     "attention_bias",
     "lm_head_bias",
     "router_jitter_noise",
     "input_jitter_noise",
     "eos_token_id",
+    # LLaDA remote-code model contract and tokenizer metadata
+    "block_type",
+    "block_group_size",
+    "rope",
+    "rope_full_precision",
+    "attention_layer_norm",
+    "include_bias",
+    "include_qkv_bias",
+    "scale_logits",
+    "input_emb_norm",
+    "layer_norm_type",
+    "embedding_size",
+    "mask_token_id",
+    "pad_token_id",
+    "bos_token_id",
+    # BD3LM
+    "model_length",
+    "block_size",
+    "cond_dim",
+    "adaln",
+    "cross_attn",
+    # Zamba2 (Mamba-2 + shared-attention hybrid)
+    "mamba_expand",
+    "mamba_ngroups",
+    "num_mem_blocks",
+    "layers_block_type",
+    "use_shared_attention_adapter",
+    # Ouro (LoopLM)
+    "total_ut_steps",
+    "early_exit_threshold",
+    # DeepSeek V4 (mHC + compressed attention)
+    "compress_rates",
+    "compress_rope_theta",
+    "hc_mult",
+    "hc_sinkhorn_iters",
+    "hc_eps",
+    "mlp_layer_types",
+    "swiglu_limit",
+    "o_groups",
+    "o_lora_rank",
+    "index_n_heads",
+    "index_head_dim",
+    "index_topk",
+    "q_lora_rank",
 ]
 
 
@@ -75,16 +147,22 @@ def build_bridge_config_from_hf(
     bridge_config.model_name = model_name
     bridge_config.dtype = dtype
 
+    effective_config = get_effective_text_config(hf_config)
     for attr in _HF_PASSTHROUGH_ATTRS:
-        val = getattr(hf_config, attr, None)
+        val = getattr(effective_config, attr, None)
+        if val is None and effective_config is not hf_config:
+            val = getattr(hf_config, attr, None)
         if val is not None:
             setattr(bridge_config, attr, val)
 
     # Gemma2: HF softcap field names differ from TL's.
-    final_logit_softcapping = getattr(hf_config, "final_logit_softcapping", None)
+    final_logit_softcapping = getattr(effective_config, "final_logit_softcapping", None)
     if final_logit_softcapping is not None:
         bridge_config.output_logits_soft_cap = float(final_logit_softcapping)
-    attn_logit_softcapping = getattr(hf_config, "attn_logit_softcapping", None)
+    logits_soft_cap = getattr(effective_config, "logits_soft_cap", None)
+    if logits_soft_cap is not None:
+        bridge_config.output_logits_soft_cap = float(logits_soft_cap)
+    attn_logit_softcapping = getattr(effective_config, "attn_logit_softcapping", None)
     if attn_logit_softcapping is not None:
         bridge_config.attn_scores_soft_cap = float(attn_logit_softcapping)
 

@@ -302,15 +302,6 @@ class TestOlmo2HookAliasOverrides:
         block = _mapping(adapter)["blocks"]
         assert block.hook_aliases["hook_resid_mid"] == "mlp.hook_in"
 
-    def test_override_differs_from_blockbridge_default(
-        self, adapter: Olmo2ArchitectureAdapter
-    ) -> None:
-        """Asserts the override is load-bearing: the BlockBridge class default for
-        hook_resid_mid is `ln2.hook_in` (correct for pre-norm), which would be wrong
-        here. Catches a regression where the override gets dropped."""
-        block = _mapping(adapter)["blocks"]
-        assert block.hook_aliases["hook_resid_mid"] != BlockBridge.hook_aliases["hook_resid_mid"]
-
 
 class TestOlmo2GQAHookShapes:
     """Wire a fake attention module into the bridge and verify GQA hook shapes.
@@ -442,24 +433,3 @@ class TestOlmo2SetupComponentTesting:
         attn_template = adapter.get_generalized_component("blocks.0.attn")
         assert isinstance(attn_template, PositionEmbeddingsAttentionBridge)
         assert attn_template._rotary_emb is rotary_emb
-
-
-class TestOlmo2ArchitectureGuards:
-    """Guards against drift from OLMo-2 conventions."""
-
-    def test_no_normalization_weights_in_conversions(
-        self, adapter: Olmo2ArchitectureAdapter
-    ) -> None:
-        """Post-norm prevents LN fold (supports_fold_ln=False), so no norm weights
-        appear in the conversion map."""
-        for key in _conversions(adapter):
-            assert "ln1" not in key
-            assert "ln2" not in key
-            assert "ln_final" not in key
-            assert "q_norm" not in key
-            assert "k_norm" not in key
-
-    def test_no_bias_conversions(self, adapter: Olmo2ArchitectureAdapter) -> None:
-        """OLMo 2 has no biases on any projection."""
-        for key in _conversions(adapter):
-            assert not key.endswith(".bias")

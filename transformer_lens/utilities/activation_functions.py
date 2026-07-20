@@ -3,7 +3,7 @@
 Utilities for interacting with all supported activation functions.
 """
 
-from typing import Callable, Dict
+from typing import Callable, Dict, Optional, cast
 
 import numpy as np
 import torch
@@ -105,6 +105,35 @@ def xielu(input: Float[torch.Tensor, "batch pos d_mlp"]) -> Float[torch.Tensor, 
     )
 
 
+def relu2(input: Float[torch.Tensor, "batch pos d_mlp"]) -> Float[torch.Tensor, "batch pos d_mlp"]:
+    """Squared-ReLU (ReLU^2) activation function: ``relu(x) ** 2``.
+
+    Used by Arcee (ArceeForCausalLM / AFM-4.5B) in an ungated MLP. Matches
+    HuggingFace's ``ReLUSquaredActivation`` (registered as ``"relu2"`` in
+    ``transformers`` ACT2FN), so the key here mirrors the HF ``hidden_act`` string.
+    The squaring drives high activation sparsity, which is useful for neuron-level
+    interpretability (https://arxiv.org/abs/2109.08668).
+    """
+    relu_applied = F.relu(input)
+    return relu_applied * relu_applied
+
+
+SOFTCAP_DISABLED: float = -1.0
+
+
+def softcap_enabled(cap: Optional[float]) -> bool:
+    """A soft-cap is active only for a strictly positive value; -1.0 / 0 / None mean disabled."""
+    return cap is not None and cap > 0
+
+
+def apply_softcap(x: torch.Tensor, cap: Optional[float]) -> torch.Tensor:
+    """Gemma-style ``cap * tanh(x / cap)`` when enabled, identity otherwise."""
+    if not softcap_enabled(cap):
+        return x
+    cap = cast(float, cap)
+    return cap * torch.tanh(x / cap)
+
+
 # Convenient type for the format of each activation function
 ActivationFunction = Callable[..., torch.Tensor]
 
@@ -120,4 +149,5 @@ SUPPORTED_ACTIVATIONS: Dict[str, ActivationFunction] = {
     "gelu": F.gelu,
     "gelu_pytorch_tanh": gelu_pytorch_tanh,
     "xielu": xielu,
+    "relu2": relu2,
 }

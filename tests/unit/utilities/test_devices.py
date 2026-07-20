@@ -365,28 +365,3 @@ def test_warn_if_mps_broken_warning_fires_only_once():
             warn_if_mps(torch.device("mps"))
         broken_warnings = [warning for warning in w if "known MPS bug" in str(warning.message)]
         assert len(broken_warnings) == 1
-
-
-def test_torch_mps_has_known_broken_bug_for_2_8():
-    """_torch_mps_has_known_broken_bug should return True for torch 2.8."""
-    from transformer_lens.utilities.devices import _torch_mps_has_known_broken_bug
-
-    with patch(
-        "transformer_lens.utilities.devices._torch_version_tuple",
-        return_value=(2, 8),
-    ):
-        assert _torch_mps_has_known_broken_bug() is True
-
-
-def test_torch_mps_has_known_broken_bug_false_for_other_versions():
-    """_torch_mps_has_known_broken_bug should return False for non-broken torch versions."""
-    from transformer_lens.utilities.devices import _torch_mps_has_known_broken_bug
-
-    for version in [(2, 7), (2, 9), (3, 0)]:
-        with patch(
-            "transformer_lens.utilities.devices._torch_version_tuple",
-            return_value=version,
-        ):
-            assert (
-                _torch_mps_has_known_broken_bug() is False
-            ), f"torch {version} incorrectly flagged as broken"

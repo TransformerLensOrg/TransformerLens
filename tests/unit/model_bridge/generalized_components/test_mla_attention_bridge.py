@@ -16,7 +16,7 @@ def tiny_config():
         intermediate_size=512,
         num_hidden_layers=4,
         num_attention_heads=8,
-        num_key_value_heads=1,
+        num_key_value_heads=8,
         q_lora_rank=64,
         kv_lora_rank=32,
         qk_nope_head_dim=16,

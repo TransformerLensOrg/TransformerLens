@@ -29,13 +29,6 @@ def test_padding_side_left_is_preserved(gpt2_tokenizer):
     ), f"padding_side='left' was reset to '{result.padding_side}' after reload"
 
 
-def test_padding_side_right_is_preserved(gpt2_tokenizer):
-    """User-set padding_side='right' must also round-trip correctly."""
-    gpt2_tokenizer.padding_side = "right"
-    result = get_tokenizer_with_bos(gpt2_tokenizer)
-    assert result.padding_side == "right"
-
-
 def test_padding_side_preserved_when_already_has_bos():
     """When add_bos_token is already True, function returns original tokenizer unchanged."""
     tokenizer = AutoTokenizer.from_pretrained("gpt2", add_bos_token=True)

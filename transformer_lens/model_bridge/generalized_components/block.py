@@ -37,6 +37,7 @@ class BlockBridge(GeneralizedComponent):
     """
 
     is_list_item: bool = True
+    hook_out_is_single_residual_stream: bool = True
     # hook_mlp_in is a direct HookPoint on this class (not aliased) so it can
     # fire pre-ln2; see __init__. The post-ln2 mlp input stays at block.mlp.hook_in.
     hook_aliases = {
@@ -418,6 +419,10 @@ class DelegatedAttentionBlockBridge(BlockBridge):
     Type-level distinction means a reader of the adapter sees
     ``DelegatedAttentionBlockBridge`` and knows those hooks are absent.
     """
+
+    # Tell the component benchmark this block's attention is delegated wholesale
+    # to HF and cannot be tested in isolation (requires model-specific kwargs).
+    maintain_native_attention: bool = True
 
     def __init__(
         self,

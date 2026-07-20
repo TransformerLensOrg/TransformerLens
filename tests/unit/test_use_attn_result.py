@@ -5,7 +5,7 @@ from transformer_lens.config import HookedTransformerConfig
 
 
 def test_atten_result_normal_attn_correct():
-    """Verifies that the attn_result flag does not change the output for models with normal attention."""
+    """Enabling use_attn_result exposes per-head hook_result that sums back to attn output (normal attention)."""
     d_model = 128
     d_head = 8
     n_heads = 16
@@ -29,15 +29,20 @@ def test_atten_result_normal_attn_correct():
     normal_output = model(x)
 
     model.set_use_attn_result(True)
-    assert model.cfg.use_attn_result is True
 
-    split_output = model(x)
+    split_output, cache = model.run_with_cache(x)
 
+    # Switching to the per-head compute branch must not change the output.
     assert torch.allclose(normal_output, split_output, atol=1e-6)
+
+    result = cache["blocks.0.attn.hook_result"]
+    assert result.shape == (x.shape[0], x.shape[1], n_heads, d_model)
+    summed = result.sum(dim=2) + model.blocks[0].attn.b_O
+    assert torch.allclose(summed, cache["blocks.0.hook_attn_out"], atol=1e-5)
 
 
 def test_atten_result_grouped_query_attn_correct():
-    """Verifies that the atten_result flag does not change the output for models with grouped query attention."""
+    """Enabling use_attn_result exposes per-head hook_result that sums back to attn output (grouped-query attention)."""
 
     d_model = 128
     d_head = 8
@@ -64,8 +69,15 @@ def test_atten_result_grouped_query_attn_correct():
     normal_output = model(x)
 
     model.set_use_attn_result(True)
-    assert model.cfg.use_attn_result is True
 
-    split_output = model(x)
+    split_output, cache = model.run_with_cache(x)
 
+    # Switching to the per-head compute branch must not change the output.
     assert torch.allclose(normal_output, split_output, atol=1e-6)
+
+    # fires with shape [batch, pos, n_heads, d_model] (one row per query head even
+    # under GQA), and head-sum (plus b_O) reconstructs the attention block output.
+    result = cache["blocks.0.attn.hook_result"]
+    assert result.shape == (x.shape[0], x.shape[1], n_heads, d_model)
+    summed = result.sum(dim=2) + model.blocks[0].attn.b_O
+    assert torch.allclose(summed, cache["blocks.0.hook_attn_out"], atol=1e-5)

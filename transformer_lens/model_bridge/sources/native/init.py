@@ -8,6 +8,7 @@ go to 1, all biases to 0.
 Determinism uses a scoped ``torch.Generator``, not ``torch.manual_seed``, so
 seeded init does not perturb the caller's global RNG.
 """
+
 from __future__ import annotations
 
 import math
@@ -100,6 +101,8 @@ def _init_norm(norm: nn.Module) -> None:
     elif isinstance(norm, nn.LayerNorm):
         nn.init.ones_(norm.weight)
         nn.init.zeros_(norm.bias)
+    elif isinstance(norm, nn.Identity):
+        pass
     else:
         raise TypeError(f"Unknown normalization type: {type(norm).__name__}")
 

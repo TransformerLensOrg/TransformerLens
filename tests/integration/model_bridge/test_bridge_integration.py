@@ -17,9 +17,6 @@ from transformer_lens.conversion_utils.conversion_steps.rearrange_tensor_convers
     RearrangeTensorConversion,
 )
 from transformer_lens.model_bridge import TransformerBridge
-from transformer_lens.model_bridge.generalized_components.attention import (
-    AttentionBridge,
-)
 from transformer_lens.model_bridge.generalized_components.joint_qkv_attention import (
     JointQKVAttentionBridge,
 )
@@ -242,28 +239,6 @@ def test_joint_qkv_custom_conversion_rule(gpt2_bridge):
     assert (
         test_bridge.qkv_conversion_rule is custom_qkv_conversion_rule
     ), "Custom QKV conversion rule should be set"
-
-
-def test_attention_pattern_hook_shape_custom_conversion(gpt2_bridge):
-    """Test that custom pattern conversion rules can be passed to attention components."""
-    # Create a custom conversion rule (this is just for testing the parameter passing)
-    custom_conversion = RearrangeTensorConversion(
-        "batch n_heads pos_q pos_k -> batch n_heads pos_q pos_k"  # Same as default but explicitly set
-    )
-
-    # Verify that the attention bridge accepts the custom conversion parameter
-    # We can't easily test this with the existing bridge without recreating it,
-    # but we can at least verify the parameter is accepted without error
-
-    # This should not raise an error
-    test_bridge = AttentionBridge(
-        name="test_attn", config=gpt2_bridge.cfg, pattern_conversion_rule=custom_conversion
-    )
-
-    # Verify the conversion rule was set
-    assert (
-        test_bridge.hook_pattern.hook_conversion is custom_conversion
-    ), "Custom conversion rule should be set"
 
 
 def test_attention_pattern_hook_shape(gpt2_bridge_with_eager_attn):

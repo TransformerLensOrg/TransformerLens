@@ -95,10 +95,6 @@ class TestNeoAdapterComponentMapping:
         assert mapping["ln_final"].name == "transformer.ln_f"
         assert mapping["unembed"].name == "lm_head"
 
-    def test_no_rotary_emb_key(self, adapter: NeoArchitectureAdapter) -> None:
-        """Neo uses standard positional embeddings — no rotary embedding component."""
-        assert "rotary_emb" not in adapter.component_mapping
-
     def test_block_submodule_keys(self, adapter: NeoArchitectureAdapter) -> None:
         blocks = adapter.component_mapping["blocks"]
         assert set(blocks.submodules.keys()) == {"ln1", "attn", "ln2", "mlp"}

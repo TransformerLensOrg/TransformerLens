@@ -1,7 +1,8 @@
-"""Multi-GPU support tests for TransformerBridge.
+"""Multi-GPU support tests for TransformerBridge — the CPU/mocked tier.
 
-CPU-runnable tests exercise the resolver / param-plumbing / .to() guard /
-validation logic. Tests requiring real multi-GPU hardware are marked skipif.
+Exercises the resolver / param-plumbing / .to() guard / validation logic without
+hardware. Real >= 2-GPU coverage lives in test_bridge_multigpu.py and
+test_bridge_multigpu_device_map.py (`-m multigpu`).
 """
 
 from typing import Dict, Union
@@ -11,8 +12,10 @@ import torch
 
 from transformer_lens.model_bridge import TransformerBridge
 from transformer_lens.utilities.multi_gpu import (
+    cast_floating_params_to_dtype,
     count_unique_devices,
     find_embedding_device,
+    find_misplaced_modules,
     resolve_device_map,
 )
 
@@ -40,7 +43,7 @@ class TestResolveDeviceMap:
         assert mm is None
 
     def test_user_max_memory_passes_through(self):
-        user_mm: Dict[Union[str, int], str] = {0: "20GiB"}
+        user_mm: Dict[Union[str, int], Union[str, int]] = {0: "20GiB"}
         dm, mm = resolve_device_map(None, "auto", None, max_memory=user_mm)
         assert dm == "auto"
         assert mm is user_mm
@@ -72,23 +75,101 @@ class TestResolveDeviceMap:
         assert isinstance(mm, dict)
         assert set(mm.keys()) == {0, 1}
 
+    def test_n_devices_uses_concrete_cuda_memory_caps(self, monkeypatch):
+        free_memory = {0: 11_000_000_000, 1: 22_000_000_000, 2: 33_000_000_000}
+
+        monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+        monkeypatch.setattr(torch.cuda, "device_count", lambda: 3)
+        monkeypatch.setattr(
+            torch.cuda,
+            "mem_get_info",
+            lambda index: (free_memory[index], free_memory[index] + 1_000_000_000),
+        )
+
+        dm, mm = resolve_device_map(2, None, None)
+
+        assert dm == "balanced"
+        assert mm == {0: free_memory[0], 1: free_memory[1]}
+        assert "auto" not in mm.values()
+
     def test_n_devices_respects_user_max_memory(self):
         if not torch.cuda.is_available() or torch.cuda.device_count() < 2:
             pytest.skip("Requires 2+ CUDA devices.")
-        user_mm: Dict[Union[str, int], str] = {0: "10GiB", 1: "10GiB"}
+        user_mm: Dict[Union[str, int], Union[str, int]] = {0: "10GiB", 1: "10GiB"}
         dm, mm = resolve_device_map(2, None, None, max_memory=user_mm)
         assert dm == "balanced"
         assert mm == user_mm
 
-    def test_cpu_value_in_device_map_rejected(self):
-        bad: Dict[str, Union[str, int]] = {"transformer.h.0": "cpu"}
-        with pytest.raises(ValueError, match="not supported"):
-            resolve_device_map(None, bad, None)
+    def test_cpu_value_in_device_map_passes_through(self):
+        explicit: Dict[str, Union[str, int]] = {"transformer.h.0": "cpu"}
+        dm, mm = resolve_device_map(None, explicit, None)
+        assert dm is explicit
+        assert mm is None
 
     def test_disk_value_in_device_map_rejected(self):
         bad: Dict[str, Union[str, int]] = {"transformer.h.0": "disk"}
-        with pytest.raises(ValueError, match="not supported"):
+        with pytest.raises(ValueError, match="not supported yet"):
             resolve_device_map(None, bad, None)
+
+    def test_meta_value_in_device_map_passes_through(self):
+        device_map: Dict[str, Union[str, int]] = {"transformer.h.0": "meta"}
+        dm, mm = resolve_device_map(None, device_map, None)
+        assert dm is device_map
+        assert mm is None
+
+
+class TestMixedCpuGpuMapRejection:
+    """Mixed CPU+GPU maps mean accelerate CPU offload — meta placeholders that
+    param-reading Bridge components never materialize. Rejected at the resolver
+    (explicit dicts) so no weights are downloaded before the error."""
+
+    def test_explicit_mixed_dict_rejected(self):
+        with pytest.raises(ValueError, match="offload"):
+            resolve_device_map(None, {"transformer.wte": 0, "transformer.ln_f": "cpu"}, None)
+
+    def test_all_cpu_dict_passes(self):
+        dm, _ = resolve_device_map(None, {"transformer.wte": "cpu", "lm_head": "cpu"}, None)
+        assert dm == {"transformer.wte": "cpu", "lm_head": "cpu"}
+
+    def test_all_gpu_dict_passes(self):
+        dm, _ = resolve_device_map(None, {"transformer.wte": 0, "lm_head": "cuda:1"}, None)
+        assert dm == {"transformer.wte": 0, "lm_head": "cuda:1"}
+
+
+class TestFindMisplacedModules:
+    """Realized-placement check: a map entry whose loaded params sit elsewhere is a
+    split tie group (accelerate places a tied parameter once) — boot must fail loud
+    instead of crashing mid-forward on a cross-device kernel."""
+
+    def _model(self, device_map, param_device="cpu"):
+        import torch.nn as nn
+
+        model = nn.Module()
+        model.emb = nn.Linear(2, 2)
+        model.head = nn.Linear(2, 2)
+        if param_device == "meta":
+            model.head = model.head.to_empty(device="meta")
+        model.hf_device_map = device_map
+        return model
+
+    def test_consistent_map_passes(self):
+        model = self._model({"emb": "cpu", "head": "cpu"})
+        assert find_misplaced_modules(model) == []
+
+    def test_violated_entry_flagged(self):
+        # Params physically on cpu but mapped to cuda:0 — the tied-split signature.
+        model = self._model({"emb": 0, "head": "cpu"})
+        assert find_misplaced_modules(model) == [("emb", "0", "cpu")]
+
+    def test_meta_params_skipped_as_offload(self):
+        # Offloaded modules hold meta placeholders; accelerate manages them.
+        model = self._model({"emb": "cpu", "head": "cpu"}, param_device="meta")
+        assert find_misplaced_modules(model) == []
+
+    def test_no_map_returns_empty(self):
+        import torch.nn as nn
+
+        assert find_misplaced_modules(nn.Linear(2, 2)) == []
 
 
 class TestFindEmbeddingDevice:
@@ -155,10 +236,60 @@ class TestCountUniqueDevices:
         assert count_unique_devices(Stub()) == 3
 
 
+class TestCastFloatingParamsToDtype:
+    def test_casts_cpu_and_disk_offloaded_params(self, tmp_path):
+        from accelerate.big_modeling import dispatch_model
+        from accelerate.utils import align_module_device
+
+        class StubModel(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.first = torch.nn.Linear(3, 3, dtype=torch.float32)
+                self.second = torch.nn.Linear(3, 2, dtype=torch.float32)
+
+        model = StubModel()
+        dispatch_model(
+            model,
+            device_map={"first": "cpu", "second": "disk"},
+            offload_dir=str(tmp_path),
+        )
+
+        assert model.first.weight.device.type == "cpu"
+        assert model.second.weight.device.type == "meta"
+
+        cast_floating_params_to_dtype(model, torch.float16)
+
+        assert model.first.weight.dtype == torch.float16
+        assert model.second.weight.device.type == "meta"
+        assert model.second.weight.dtype == torch.float16
+        with align_module_device(model.second):
+            assert model.second.weight.device.type == "cpu"
+            assert model.second.weight.dtype == torch.float16
+
+    def test_skips_plain_meta_params(self):
+        module = torch.nn.Linear(3, 2, device="meta", dtype=torch.float32)
+
+        cast_floating_params_to_dtype(module, torch.float16)
+
+        assert module.weight.device.type == "meta"
+        assert module.weight.dtype == torch.float32
+
+
 class TestBootParamValidation:
     def test_device_and_device_map_mutually_exclusive(self):
         with pytest.raises(ValueError, match="mutually exclusive"):
             TransformerBridge.boot_transformers("gpt2", device="cpu", device_map="auto")
+
+    def test_explicit_cpu_device_map_boots_and_runs(self):
+        bridge = TransformerBridge.boot_transformers("gpt2", device_map={"": "cpu"})
+
+        assert bridge.cfg.device == "cpu"
+        assert bridge.cfg.n_devices == 1
+        tokens = torch.tensor([[bridge.tokenizer.eos_token_id]])
+        with torch.no_grad():
+            logits = bridge(tokens)
+        assert logits.shape == (1, 1, bridge.cfg.d_vocab_out)
+        assert logits.device.type == "cpu"
 
     def test_preloaded_with_device_map_rejected(self, gpt2_bridge):
         # Passing both hf_model= and device_map/n_devices is ambiguous — the device_map
@@ -173,6 +304,17 @@ class TestBootParamValidation:
             TransformerBridge.boot_transformers(
                 "gpt2", hf_model=gpt2_bridge.original_model, n_devices=2
             )
+
+    def test_meta_device_map_rejected_at_boot(self):
+        with pytest.raises(ValueError, match="meta target"):
+            TransformerBridge.boot_transformers("gpt2", device_map={"": "meta"})
+
+    def test_meta_device_map_allowed_with_load_weights_false(self):
+        bridge = TransformerBridge.boot_transformers(
+            "gpt2", device_map={"": "meta"}, load_weights=False
+        )
+        assert bridge is not None
+        assert bridge.cfg.d_model == 768
 
 
 class TestToMethodGuardsMultiDevice:
@@ -243,49 +385,6 @@ class TestStackedWeightsHandleCrossDevice:
             gpt2_bridge.cfg.n_devices = original_n_devices
 
 
-# ---------- Multi-GPU tests (require real hardware) ----------
-
-
-@pytest.mark.skipif(torch.cuda.device_count() < 2, reason="Requires 2+ CUDA devices")
-class TestMultiDeviceIntegration:
-    def test_n_devices_matches_single_device_logits(self):
-        single = TransformerBridge.boot_transformers("gpt2", device="cuda:0")
-        multi = TransformerBridge.boot_transformers("gpt2", n_devices=2)
-
-        assert multi.cfg.n_devices == 2
-        assert single.cfg.n_devices == 1
-
-        tokens = torch.tensor([[1, 2, 3, 4]])
-        logits_single = single(tokens).to("cpu")
-        logits_multi = multi(tokens).to("cpu")
-        assert torch.allclose(logits_single, logits_multi, atol=1e-4, rtol=1e-4)
-
-    def test_parameters_distributed_across_devices(self):
-        bridge = TransformerBridge.boot_transformers("gpt2", n_devices=2)
-        cuda_indices = {
-            p.device.index for p in bridge.original_model.parameters() if p.device.type == "cuda"
-        }
-        assert cuda_indices == {0, 1}
-
-    def test_generate_works_with_multi_device(self):
-        bridge = TransformerBridge.boot_transformers("gpt2", n_devices=2)
-        out = bridge.generate("Hello", max_new_tokens=3, do_sample=False)
-        assert isinstance(out, str)
-        assert len(out) > len("Hello")
-
-    def test_stacked_weights_work_across_devices(self):
-        # Real multi-device exercise of _stack_block_params (no spoofed n_devices).
-        bridge = TransformerBridge.boot_transformers("gpt2", n_devices=2)
-        W_Q = bridge.W_Q
-        assert W_Q.shape[0] == bridge.cfg.n_layers
-        # After stacking, all elements should be on cfg.device (the embedding device).
-        assert bridge.cfg.device is not None
-        assert W_Q.device == torch.device(bridge.cfg.device)
-
-    def test_preloaded_device_map_model(self):
-        from transformers import AutoModelForCausalLM
-
-        hf_model = AutoModelForCausalLM.from_pretrained("gpt2", device_map="auto")
-        bridge = TransformerBridge.boot_transformers("gpt2", hf_model=hf_model)
-        assert bridge.cfg.n_devices >= 1
-        assert bridge.cfg.device is not None
+# Real-hardware multi-GPU coverage lives in test_bridge_multigpu.py and
+# test_bridge_multigpu_device_map.py (`-m multigpu`, >= 2 CUDA devices) — this file
+# is the CPU/mocked tier: resolver, validation gates, and spoofed-n_devices guards.

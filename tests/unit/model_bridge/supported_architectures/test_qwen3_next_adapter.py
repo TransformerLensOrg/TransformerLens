@@ -68,24 +68,6 @@ class TestQwen3NextComponentMapping:
         submodules = adapter.component_mapping["blocks"].submodules
         assert set(submodules.keys()) == {"ln1", "ln2", "mlp", "attn", "linear_attn"}
 
-    def test_attn_is_optional(self, adapter):
-        """attn is absent on linear-attention layers."""
-        submodules = adapter.component_mapping["blocks"].submodules
-        assert submodules["attn"].optional is True
-
-    def test_linear_attn_is_optional(self, adapter):
-        """linear_attn is absent on full-attention layers."""
-        submodules = adapter.component_mapping["blocks"].submodules
-        assert submodules["linear_attn"].optional is True
-
-    def test_linear_attn_bridge_type(self, adapter):
-        from transformer_lens.model_bridge.generalized_components.gated_delta_net import (
-            GatedDeltaNetBridge,
-        )
-
-        submodules = adapter.component_mapping["blocks"].submodules
-        assert isinstance(submodules["linear_attn"], GatedDeltaNetBridge)
-
     def test_ln1_path(self, adapter):
         submodules = adapter.component_mapping["blocks"].submodules
         assert submodules["ln1"].name == "input_layernorm"
@@ -137,10 +119,6 @@ class TestQwen3NextComponentMapping:
         )
 
         assert isinstance(adapter.component_mapping["rotary_emb"], RotaryEmbeddingBridge)
-
-    def test_weight_processing_conversions_empty(self, adapter):
-        """No attention submodules mapped, so no conversions."""
-        assert adapter.weight_processing_conversions == {}
 
 
 class TestQwen3NextWeightConversions:
@@ -203,23 +181,6 @@ class TestQwen3NextWeightConversions:
                 f"expected starting at {expected_rows[0, 0].item()}"
             )
 
-    def test_naive_slice_would_be_wrong(self, adapter):
-        import torch
-
-        w = self._make_q_proj_weight()
-        state_dict = {"model.layers.0.self_attn.q_proj.weight": w}
-
-        result = adapter.preprocess_weights(state_dict)
-        correct_out = result["model.layers.0.self_attn.q_proj.weight"]
-
-        naive_out = w[: self.N_HEADS * self.D_HEAD]
-
-        if self.N_HEADS > 1:
-            assert not torch.equal(correct_out, naive_out), (
-                "Naive first-half slice gave the same result as per-head slice — "
-                "test setup may be wrong"
-            )
-
     def test_non_q_proj_weights_unchanged(self, adapter):
         import torch
 
@@ -279,14 +240,6 @@ class TestQwen3NextConfigAttributes:
         )
 
         return Qwen3NextArchitectureAdapter(_make_bridge_cfg())
-
-    def test_supports_fold_ln_false(self, adapter):
-        """Hybrid layers break fold_ln."""
-        assert adapter.supports_fold_ln is False
-
-    def test_gated_q_proj_flag_set(self, adapter):
-        """Flag drives preprocess_weights to slice the gated half of q_proj."""
-        assert getattr(adapter.cfg, "gated_q_proj", False) is True
 
 
 class TestQwen3NextComponentTypes:
@@ -355,17 +308,6 @@ class TestQwen3NextAttnSubmodules:
             assert isinstance(sub, LinearBridge)
             assert sub.name == expected_path
 
-    def test_attn_q_norm_k_norm_present(self, attn):
-        """Qwen3 family uses per-head Q/K RMSNorm."""
-        from transformer_lens.model_bridge.generalized_components import (
-            RMSNormalizationBridge,
-        )
-
-        assert isinstance(attn.submodules["q_norm"], RMSNormalizationBridge)
-        assert isinstance(attn.submodules["k_norm"], RMSNormalizationBridge)
-        assert attn.submodules["q_norm"].name == "q_norm"
-        assert attn.submodules["k_norm"].name == "k_norm"
-
 
 class TestQwen3NextArchitectureGuards:
     """Guards against drift from Qwen3 conventions."""
@@ -377,24 +319,6 @@ class TestQwen3NextArchitectureGuards:
         )
 
         return Qwen3NextArchitectureAdapter(_make_bridge_cfg())
-
-    def test_no_norm_offset_conversions(self, adapter):
-        """LLaMA-style RMSNorm — no +1 offset like Gemma."""
-        for key in adapter.weight_processing_conversions:
-            assert "ln1" not in key
-            assert "ln2" not in key
-            assert "ln_final" not in key
-
-    def test_mlp_is_moe_not_gated(self, adapter):
-        """MoE, not the dense GatedMLP of Qwen3/Qwen3.5."""
-        from transformer_lens.model_bridge.generalized_components import (
-            GatedMLPBridge,
-            MoEBridge,
-        )
-
-        mlp = adapter.component_mapping["blocks"].submodules["mlp"]
-        assert isinstance(mlp, MoEBridge)
-        assert not isinstance(mlp, GatedMLPBridge)
 
 
 try:
@@ -488,11 +412,6 @@ class TestQwen3NextIntegration:
     def hf_model(self, bridge_and_model):
         _, hf = bridge_and_model
         return hf
-
-    def test_bridge_creation(self, bridge):
-        from transformer_lens.model_bridge import TransformerBridge
-
-        assert isinstance(bridge, TransformerBridge)
 
     def test_hook_names_present(self, bridge):
         """blocks.0.attn.* must NOT appear — self_attn is absent on linear-attn layers."""

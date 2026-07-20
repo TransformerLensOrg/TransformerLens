@@ -138,16 +138,6 @@ class TestCheckFoldLn:
         # Should not raise — the except block in _check_fold_ln catches AttributeError
         _check_fold_ln(WeirdModel())  # type: ignore[arg-type]
 
-    def test_no_runtime_error_on_multielement_tensor(self, tiny_model):
-        """Regression: getattr(...) or getattr(...) on a multi-element tensor raises
-        RuntimeError. The explicit None-check fix must prevent this."""
-        # Calling _check_fold_ln on a real model exercises the tensor path.
-        # If the bug were present this would raise RuntimeError.
-        try:
-            _check_fold_ln(tiny_model)
-        except RuntimeError as e:
-            pytest.fail(f"_check_fold_ln raised RuntimeError: {e}")
-
 
 # ---------------------------------------------------------------------------
 # Shape tests

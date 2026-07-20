@@ -71,22 +71,11 @@ def adapter(cfg: TransformerBridgeConfig) -> GPT2ArchitectureAdapter:
 class TestGPT2AdapterConfig:
     """Tests that the adapter sets required config attributes correctly."""
 
-    def test_normalization_type_is_ln(self, adapter: GPT2ArchitectureAdapter) -> None:
-        assert adapter.cfg.normalization_type == "LN"
-
-    def test_positional_embedding_type_is_standard(self, adapter: GPT2ArchitectureAdapter) -> None:
-        assert adapter.cfg.positional_embedding_type == "standard"
-
-    def test_split_attention_weights_is_true(self, adapter: GPT2ArchitectureAdapter) -> None:
-        assert adapter.cfg.split_attention_weights is True
-
-    def test_uses_combined_qkv_is_true(self, adapter: GPT2ArchitectureAdapter) -> None:
-        """GPT-2 stores Q, K, V in a single combined c_attn matrix."""
-        assert adapter.uses_combined_qkv is True
-
-    def test_default_cfg_uses_split_attention(self, adapter: GPT2ArchitectureAdapter) -> None:
-        """default_cfg flags that GPT-2's combined QKV must be split."""
-        assert adapter.default_cfg["uses_split_attention"] is True
+    def test_attn_has_no_rotary_hooks(self, adapter: GPT2ArchitectureAdapter) -> None:
+        """Standard (non-rotary) pos embedding: the attention bridge has no rotary hooks."""
+        attn = adapter.component_mapping["blocks"].submodules["attn"]
+        assert not hasattr(attn, "hook_rot_q")
+        assert not hasattr(attn, "hook_rot_k")
 
 
 # ---------------------------------------------------------------------------

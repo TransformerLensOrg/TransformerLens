@@ -112,6 +112,8 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
     component with dummy Q/K tensors and position_ids.
     """
 
+    supports_attn_result: bool = True
+
     def __init__(
         self,
         name: str,
@@ -122,6 +124,7 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
         # but always forced to True — this bridge reimplements attention.
         requires_attention_mask: bool = True,
         requires_position_embeddings: bool = True,
+        is_causal: bool = True,
         **kwargs,  # absorb any other AttentionBridge kwargs callers may pass
     ):
         super().__init__(
@@ -131,12 +134,15 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
             requires_position_embeddings=True,
             requires_attention_mask=True,
             maintain_native_attention=True,
+            is_causal=is_causal,
             optional=optional,
         )
         self._init_position_embedding_hooks()
         if getattr(config, "gated_q_proj", False):
             self.hook_q_gate = HookPoint()
         # Gate on adapter intent; HF-vs-adapter mismatches surface in set_original_component.
+        if submodules is not None and "gate" in submodules:
+            self.hook_gate = HookPoint()
         if submodules is not None and "q_norm" in submodules:
             self.hook_q_normed = HookPoint()
         if submodules is not None and "k_norm" in submodules:
@@ -179,7 +185,14 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
         """Dispatch pre/post-reshape norm from weight shape; raise on ambiguity."""
         if "q_norm" not in self.submodules:
             return None
-        q_norm = getattr(hf_attn, "q_norm", None)
+
+        hf_norm_name = self.submodules["q_norm"].name
+
+        if hf_norm_name is None:
+            raise RuntimeError(f"{self.name}: q_norm submodule declared without a name.")
+
+        q_norm = getattr(hf_attn, hf_norm_name, None)
+
         if q_norm is None:
             raise RuntimeError(f"{self.name}: q_norm declared but HF module has none.")
 
@@ -456,6 +469,14 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
             if hasattr(self, "hook_q_gate"):
                 q_gate = self.hook_q_gate(q_gate)
             attn_output = attn_output * torch.sigmoid(q_gate)
+
+        # --- Gated attention (HRM-Text: separate gate_proj on hidden_states) ---
+        gate_comp = self._modules.get("gate")
+        if gate_comp is not None and gate_comp.original_component is not None and q_gate is None:
+            gate_states = gate_comp(hidden_states)
+            if hasattr(self, "hook_gate"):
+                gate_states = self.hook_gate(gate_states)
+            attn_output = attn_output * torch.sigmoid(gate_states)
 
         if (
             bool(getattr(self.config, "use_attn_result", False))

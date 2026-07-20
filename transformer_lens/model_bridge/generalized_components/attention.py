@@ -40,6 +40,8 @@ class AttentionBridge(GeneralizedComponent):
     # Override to False on variants without a pre-LN fork (e.g. MLA); skips
     # the split-qkv HookPoints and the BlockBridge pre-ln1 capture.
     supports_split_qkv_fork: bool = True
+    # Reconstructed variants can opt in independently of Q/K/V input forks.
+    supports_attn_result: bool = False
     property_aliases = {
         "W_Q": "q.weight",
         "W_K": "k.weight",
@@ -53,7 +55,7 @@ class AttentionBridge(GeneralizedComponent):
 
     def __init__(
         self,
-        name: str,
+        name: Optional[str],
         config: Any,
         submodules: Optional[Dict[str, GeneralizedComponent]] = None,
         conversion_rule: Optional[BaseTensorConversion] = None,
@@ -64,12 +66,13 @@ class AttentionBridge(GeneralizedComponent):
         attention_mask_4d: bool = False,
         requires_relative_position_bias: bool = False,
         is_cross_attention: bool = False,
+        is_causal: bool = True,
         optional: bool = False,
     ):
         """Initialize the attention bridge.
 
         Args:
-            name: The name of this component
+            name: The name of this component, or None when projections live on the parent
             config: Model configuration (required for auto-conversion detection)
             submodules: Dictionary of submodules to register (e.g., q_proj, k_proj, etc.)
             conversion_rule: Optional conversion rule. If None, AttentionAutoConversion will be used
@@ -87,6 +90,8 @@ class AttentionBridge(GeneralizedComponent):
             requires_relative_position_bias: T5/mT5-style relative attention; supplies a
                 zero ``position_bias`` so HF's forward skips its ``cache_position[-1]`` fallback.
             is_cross_attention: Encoder-decoder cross-attention; supplies ``key_value_states``.
+            is_causal: If True, apply a causal (lower-triangular) mask when reconstructing
+                attention. Set False for bidirectional encoders (e.g. T5Gemma's encoder).
         """
         if conversion_rule is None:
             conversion_rule = AttentionAutoConversion(config)
@@ -132,6 +137,7 @@ class AttentionBridge(GeneralizedComponent):
         self.attention_mask_4d = attention_mask_4d
         self.requires_relative_position_bias = requires_relative_position_bias
         self.is_cross_attention = is_cross_attention
+        self.is_causal = is_causal
         self._layer_idx: Optional[int] = None
 
     def set_original_component(self, original_component: torch.nn.Module) -> None:
@@ -372,7 +378,11 @@ class AttentionBridge(GeneralizedComponent):
                 self.name,
             )
             return k, v
-        k, v = past_key_values.update(k, v, layer_idx)
+        # Some architectures (e.g. HRM-Text's recurrent stacks) pass a cycle_offset
+        # so each stack invocation writes to a unique cache slot. Non-participating
+        # models simply leave it unset.
+        cycle_offset = kwargs.get("cycle_offset", 0)
+        k, v = past_key_values.update(k, v, layer_idx + cycle_offset)
         return k, v
 
     def _reshape_qkv_to_heads(
@@ -487,7 +497,10 @@ class AttentionBridge(GeneralizedComponent):
             q_seq_len = seq_len
         min_dtype = torch.finfo(attn_scores.dtype).min
         use_direct_hf_mask = attention_mask is not None and attention_mask.ndim >= 4
-        if not use_direct_hf_mask:
+        # Bidirectional attention (encoders) and cross-attention have no causal
+        # structure, so only synthesize the triangular mask for causal self-attention.
+        apply_causal = self.is_causal and not self.is_cross_attention
+        if not use_direct_hf_mask and apply_causal:
             # Rectangular causal mask: query i attends to KV 0..(offset+i)
             # where offset = kv_seq_len - q_seq_len (cached positions).
             causal_mask = torch.ones(

@@ -160,8 +160,14 @@ def setup_submodules(
             if module_name not in component._modules:
                 component.add_module(module_name, submodule)
 
-            # Add to real_components mapping (for non-list components)
-            if not submodule.is_list_item and submodule.name is not None:
+            # Containerless executable bridges still own real child components.
+            # Promote them just like SymbolicBridge so processed weights reach
+            # projections that live directly on the parent block.
+            if not submodule.is_list_item and submodule.name is None:
+                for sub_name, (sub_path, sub_comp) in submodule.real_components.items():
+                    prefixed_key = f"{module_name}.{sub_name}"
+                    component.real_components[prefixed_key] = (sub_path, sub_comp)
+            elif not submodule.is_list_item:
                 component.real_components[module_name] = (submodule.name, submodule)
 
     # Clean up so architecture_adapter traversal won't find stale entries

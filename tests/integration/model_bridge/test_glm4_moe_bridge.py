@@ -7,7 +7,10 @@ import torch
 from transformers import AutoModelForCausalLM
 
 from transformer_lens.model_bridge.bridge import TransformerBridge
-from transformer_lens.model_bridge.generalized_components import MoEBridge
+from transformer_lens.model_bridge.generalized_components import (
+    MoEBridge,
+    RMSNormalizationBridge,
+)
 
 MODEL_ID = "trl-internal-testing/tiny-Glm4MoeForCausalLM"
 
@@ -52,12 +55,24 @@ class TestGlm4MoeBridgeStructure:
         for i, block in enumerate(tiny_glm4_moe_bridge.blocks):
             assert isinstance(block.mlp, MoEBridge), f"blocks.{i}.mlp is not MoEBridge"
 
-    def test_required_top_level_fields(self, tiny_glm4_moe_bridge) -> None:
+    def test_norm_bridges_are_rms(self, tiny_glm4_moe_bridge) -> None:
+        # Effect of normalization_type=="RMS" + final_rms=True: every layernorm
+        # slot the adapter wires up resolves to an RMSNormalizationBridge, not a
+        # plain (LayerNorm) NormalizationBridge. RMSNormalizationBridge subclasses
+        # NormalizationBridge, so this isinstance check fails if any norm regressed
+        # to centered LayerNorm.
         assert hasattr(tiny_glm4_moe_bridge, "embed")
-        assert hasattr(tiny_glm4_moe_bridge, "ln_final")
         assert hasattr(tiny_glm4_moe_bridge, "unembed")
-        assert tiny_glm4_moe_bridge.cfg.final_rms is True
-        assert tiny_glm4_moe_bridge.cfg.normalization_type == "RMS"
+        assert isinstance(
+            tiny_glm4_moe_bridge.ln_final, RMSNormalizationBridge
+        ), "ln_final is not an RMSNormalizationBridge (final_rms effect regressed)"
+        for i, block in enumerate(tiny_glm4_moe_bridge.blocks):
+            assert isinstance(
+                block.ln1, RMSNormalizationBridge
+            ), f"blocks.{i}.ln1 is not an RMSNormalizationBridge"
+            assert isinstance(
+                block.ln2, RMSNormalizationBridge
+            ), f"blocks.{i}.ln2 is not an RMSNormalizationBridge"
 
     def test_block_attn_has_q_norm_and_k_norm(self, tiny_glm4_moe_bridge) -> None:
         block = tiny_glm4_moe_bridge.blocks[0]

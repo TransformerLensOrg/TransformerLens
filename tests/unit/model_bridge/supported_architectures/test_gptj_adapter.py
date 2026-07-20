@@ -14,6 +14,7 @@ from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorCo
 from transformer_lens.conversion_utils.param_processing_conversion import (
     ParamProcessingConversion,
 )
+from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     EmbeddingBridge,
@@ -21,6 +22,7 @@ from transformer_lens.model_bridge.generalized_components import (
     MLPBridge,
     NormalizationBridge,
     ParallelBlockBridge,
+    RMSNormalizationBridge,
     UnembeddingBridge,
 )
 from transformer_lens.model_bridge.supported_architectures.gptj import (
@@ -72,15 +74,20 @@ def adapter(cfg: TransformerBridgeConfig) -> GptjArchitectureAdapter:
 class TestGptjAdapterConfig:
     """Adapter must set all required config flags to the values GPT-J expects."""
 
-    def test_normalization_type_is_ln(self, adapter: GptjArchitectureAdapter) -> None:
-        assert adapter.cfg.normalization_type == "LN"
+    def test_norm_bridges_are_layernorm_not_rmsnorm(self, adapter: GptjArchitectureAdapter) -> None:
+        """GPT-J uses LayerNorm; norm bridges must be plain NormalizationBridge, not RMS."""
+        ln_final = adapter.component_mapping["ln_final"]
+        ln1 = adapter.component_mapping["blocks"].submodules["ln1"]
+        assert isinstance(ln_final, NormalizationBridge)
+        assert isinstance(ln1, NormalizationBridge)
+        assert not isinstance(ln_final, RMSNormalizationBridge)
+        assert not isinstance(ln1, RMSNormalizationBridge)
 
-    def test_positional_embedding_type_is_rotary(self, adapter: GptjArchitectureAdapter) -> None:
-        assert adapter.cfg.positional_embedding_type == "rotary"
-
-    def test_parallel_attn_mlp_is_true(self, adapter: GptjArchitectureAdapter) -> None:
-        """GPT-J runs attention and MLP in parallel within each block."""
-        assert adapter.cfg.parallel_attn_mlp is True
+    def test_attention_bridge_has_rotary_hooks(self, adapter: GptjArchitectureAdapter) -> None:
+        """Rotary positional embedding makes the attention bridge expose hook_rot_q/hook_rot_k."""
+        attn = adapter.component_mapping["blocks"].submodules["attn"]
+        assert isinstance(attn.hook_rot_q, HookPoint)
+        assert isinstance(attn.hook_rot_k, HookPoint)
 
 
 # ---------------------------------------------------------------------------
@@ -189,18 +196,6 @@ class TestGptjAdapterComponentMapping:
 
 class TestGptjAdapterWeightConversions:
     """Adapter must define exactly the four QKVO weight conversions."""
-
-    @pytest.mark.parametrize(
-        "key",
-        [
-            "blocks.{i}.attn.q.weight",
-            "blocks.{i}.attn.k.weight",
-            "blocks.{i}.attn.v.weight",
-            "blocks.{i}.attn.o.weight",
-        ],
-    )
-    def test_conversion_key_present(self, adapter: GptjArchitectureAdapter, key: str) -> None:
-        assert key in adapter.weight_processing_conversions
 
     @pytest.mark.parametrize("slot", ["q", "k", "v"])
     def test_qkv_uses_split_heads_pattern(

@@ -19,6 +19,7 @@ from transformer_lens.config.hooked_transformer_config import HookedTransformerC
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.utilities import get_offset_position_ids
+from transformer_lens.utilities.activation_functions import apply_softcap
 from transformer_lens.utilities.attention import complex_attn_linear, simple_attn_linear
 
 if is_bitsandbytes_available():
@@ -27,6 +28,8 @@ if is_bitsandbytes_available():
 
 
 class AbstractAttention(ABC, nn.Module):
+    ROTARY_INITIAL_CACHE_SIZE = 2048
+
     alibi: Union[torch.Tensor, None]
     q_norm: Optional[RMSNorm]
     k_norm: Optional[RMSNorm]
@@ -115,20 +118,15 @@ class AbstractAttention(ABC, nn.Module):
             self.k_norm = None
 
         self.attn_type = attn_type
-        # Create a max_ctx x max_ctx mask, with True iff that query position
-        # can attend to that key position (query is first axis, key is second axis)
-        causal_mask = torch.tril(torch.ones((self.cfg.n_ctx, self.cfg.n_ctx)).bool())
-        if self.attn_type == "global":
-            # For global attention, this is a lower triangular matrix - key <= query
-            self.register_buffer("mask", causal_mask)
-        elif self.attn_type == "local":
-            # For local, this is banded, query - window_size < key <= query
+        if self.attn_type == "local":
             if not isinstance(self.cfg.window_size, int):
                 raise ValueError("Window size must be an integer for local attention")
-            self.register_buffer("mask", torch.triu(causal_mask, 1 - self.cfg.window_size))
-        else:
+        elif self.attn_type != "global":
             raise ValueError(f"Invalid attention type: {self.attn_type}")
 
+        # Kept as a tiny buffer for state-dict/device compatibility. The actual
+        # causal mask is built at forward time for the current sequence length.
+        self.register_buffer("mask", torch.empty((0, 0), dtype=torch.bool))
         self.register_buffer("IGNORE", torch.tensor(-torch.inf))
 
         self.layer_id = layer_id
@@ -161,15 +159,11 @@ class AbstractAttention(ABC, nn.Module):
             self.hook_rot_q = HookPoint()
             if self.cfg.rotary_dim is None:  # keep mypy happy
                 raise ValueError("Rotary dim must be provided for rotary positional embeddings")
-            # Use per-layer RoPE base if specified (e.g., Gemma 3 uses 10k for local, 1M for global)
-            if self.cfg.rotary_base_local is not None and self.attn_type == "local":
-                rope_base = self.cfg.rotary_base_local
-            else:
-                rope_base = self.cfg.rotary_base
+            rotary_cache_size = min(self.cfg.n_ctx, self.ROTARY_INITIAL_CACHE_SIZE)
             sin, cos = self.calculate_sin_cos_rotary(
                 self.cfg.rotary_dim,
-                self.cfg.n_ctx,
-                base=rope_base,
+                rotary_cache_size,
+                base=self._rotary_base(),
                 dtype=self.cfg.dtype,
             )
             self.register_buffer("rotary_sin", sin)
@@ -452,60 +446,16 @@ class AbstractAttention(ABC, nn.Module):
             else simple_attn_linear
         )
         if self.cfg.load_in_4bit:
-            W_Q_4bit = cast(Params4bit, self.W_Q)
-            q = self.hook_q(
-                # call bitsandbytes method to dequantize and multiply
-                bnb.matmul_4bit(
-                    query_input,
-                    W_Q_4bit.t(),
-                    bias=None,
-                    quant_state=W_Q_4bit.quant_state,
-                ).reshape(
-                    query_input.shape[0],
-                    query_input.shape[1],
-                    self.cfg.n_heads,
-                    self.cfg.d_head,
-                )
-                + self.b_Q
-            )
+            q = self.hook_q(self._project_4bit_qkv(query_input, self.W_Q, self.b_Q))
         else:
             q = self.hook_q(attn_fn(query_input, self.W_Q, self.b_Q))
         if self.cfg.load_in_4bit:
-            if not isinstance(self.W_K, Params4bit):
-                raise ValueError("W_K must be a Params4bit object if load_in_4bit is True")
-            k = self.hook_k(
-                # call bitsandbytes method to dequantize and multiply
-                bnb.matmul_4bit(
-                    key_input, self.W_K.t(), bias=None, quant_state=self.W_K.quant_state
-                ).reshape(
-                    key_input.shape[0],
-                    key_input.shape[1],
-                    self.cfg.n_heads,
-                    self.cfg.d_head,
-                )
-                + self.b_K
-            )
+            k = self.hook_k(self._project_4bit_qkv(key_input, self.W_K, self.b_K))
         else:
             k = self.hook_k(attn_fn(key_input, self.W_K, self.b_K))
 
         if self.cfg.load_in_4bit:
-            if not isinstance(self.W_V, Params4bit):
-                raise ValueError("W_V must be a Params4bit object if load_in_4bit is True")
-            v = self.hook_v(
-                # call bitsandbytes method to dequantize and multiply
-                bnb.matmul_4bit(
-                    value_input,
-                    self.W_V.t(),
-                    bias=None,
-                    quant_state=self.W_V.quant_state,
-                ).reshape(
-                    value_input.shape[0],
-                    value_input.shape[1],
-                    self.cfg.n_heads,
-                    self.cfg.d_head,
-                )
-                + self.b_V
-            )
+            v = self.hook_v(self._project_4bit_qkv(value_input, self.W_V, self.b_V))
         else:
             v = self.hook_v(attn_fn(value_input, self.W_V, self.b_V))
 
@@ -516,6 +466,55 @@ class AbstractAttention(ABC, nn.Module):
             k = self._apply_qk_norm(k, self.k_norm)
 
         return q, k, v
+
+    def _project_4bit_qkv(
+        self,
+        input: Union[
+            Float[torch.Tensor, "batch pos d_model"],
+            Float[torch.Tensor, "batch pos head_index d_model"],
+        ],
+        weight: Union[nn.Parameter, "Params4bit"],
+        bias: Float[torch.Tensor, "head_index d_head"],
+    ) -> Float[torch.Tensor, "batch pos head_index d_head"]:
+        """Project Q/K/V inputs with a 4-bit weight.
+
+        Split inputs dequantize once and reuse the head-wise projection path.
+        """
+        if not isinstance(weight, Params4bit):
+            raise ValueError("QKV weights must be Params4bit objects if load_in_4bit is True")
+
+        n_heads, d_head = bias.shape
+
+        if input.ndim == 3:
+            projected = bnb.matmul_4bit(
+                input,
+                weight.t(),
+                bias=None,
+                quant_state=weight.quant_state,
+            )
+            return projected.reshape(input.shape[0], input.shape[1], n_heads, d_head) + bias
+
+        if input.ndim == 4:
+            if input.shape[2] != n_heads:
+                raise ValueError(
+                    "4-bit split QKV inputs must have one input slice per attention head; "
+                    f"got {input.shape[2]} input heads for {n_heads} projection heads."
+                )
+            dequantized_weight = bnb.functional.dequantize_4bit(
+                weight.data, quant_state=weight.quant_state
+            )
+            split_weight = einops.rearrange(
+                dequantized_weight,
+                "(head_index d_head) d_model -> head_index d_model d_head",
+                head_index=n_heads,
+                d_head=d_head,
+            )
+            return complex_attn_linear(input, split_weight, bias)
+
+        raise ValueError(
+            "4-bit QKV projection input must have shape [batch, pos, d_model] or "
+            "[batch, pos, head_index, d_model]."
+        )
 
     def calculate_attention_scores(
         self,
@@ -529,10 +528,7 @@ class AbstractAttention(ABC, nn.Module):
             k, "batch key_pos head_index d_head -> batch head_index d_head key_pos"
         )
         attn_scores = q_ @ k_ / self.attn_scale
-        if self.cfg.attn_scores_soft_cap > 0:
-            attn_scores = self.cfg.attn_scores_soft_cap * F.tanh(
-                attn_scores / self.cfg.attn_scores_soft_cap
-            )
+        attn_scores = apply_softcap(attn_scores, self.cfg.attn_scores_soft_cap)
         return attn_scores
 
     def calculate_z_scores(
@@ -572,14 +568,13 @@ class AbstractAttention(ABC, nn.Module):
                 f"query_ctx_length {query_ctx_length} + past_kv_pos_offset {past_kv_pos_offset} != key_ctx_length {key_ctx_length} - you likely have a bug."
             )
 
-        # Dynamically extend mask if needed for long context
-        if key_ctx_length > self.mask.shape[0]:
-            self._extend_mask(key_ctx_length)
-
-        # Index back to front to ensure local attention works
-        final_mask = cast(torch.Tensor, self.mask)[
-            None, None, -query_ctx_length:, -key_ctx_length:
-        ]  # [1, 1, pos, pos]
+        mask_device = attention_mask.device if attention_mask is not None else attn_scores.device
+        final_mask = self._make_causal_mask(
+            query_ctx_length=query_ctx_length,
+            key_ctx_length=key_ctx_length,
+            past_kv_pos_offset=past_kv_pos_offset,
+            device=mask_device,
+        )
         if attention_mask is not None:
             # Apply a causal mask to the attention scores considering the padding
 
@@ -588,13 +583,41 @@ class AbstractAttention(ABC, nn.Module):
                 attention_mask, "batch offset_pos -> batch 1 1 offset_pos"
             )
 
-            final_mask = final_mask.to(attention_mask.device)
-
-            # Element-wise multiplication of the final mask and the attention mask and cast to boolean
-            final_mask = (final_mask * attention_mask).bool()  # [batch, head, pos, offset_pos]
+            final_mask = final_mask & attention_mask.bool()  # [batch, head, pos, offset_pos]
 
         attn_scores = attn_scores.to(final_mask.device)
-        return torch.where(final_mask, attn_scores, cast(torch.Tensor, self.IGNORE))
+        ignore = cast(torch.Tensor, self.IGNORE).to(final_mask.device)
+        return torch.where(final_mask, attn_scores, ignore)
+
+    def _make_causal_mask(
+        self,
+        query_ctx_length: int,
+        key_ctx_length: int,
+        past_kv_pos_offset: int,
+        device: torch.device,
+    ) -> torch.Tensor:
+        """Create the causal mask for the current attention-score shape."""
+        query_positions = torch.arange(
+            past_kv_pos_offset,
+            past_kv_pos_offset + query_ctx_length,
+            device=device,
+        )
+        key_positions = torch.arange(key_ctx_length, device=device)
+
+        final_mask = key_positions[None, :] <= query_positions[:, None]
+        if self.attn_type == "local":
+            if not isinstance(self.cfg.window_size, int):
+                raise ValueError("Window size must be an integer for local attention")
+            final_mask = final_mask & (
+                key_positions[None, :] > query_positions[:, None] - self.cfg.window_size
+            )
+
+        return final_mask[None, None, :, :]
+
+    def _rotary_base(self) -> Union[float, int]:
+        if self.cfg.rotary_base_local is not None and self.attn_type == "local":
+            return self.cfg.rotary_base_local
+        return self.cfg.rotary_base
 
     def calculate_sin_cos_rotary(
         self,
@@ -730,7 +753,11 @@ class AbstractAttention(ABC, nn.Module):
         # Dynamically extend rotary embeddings if needed for long context
         max_pos_needed = past_kv_pos_offset + x_pos
         if max_pos_needed > self.rotary_cos.shape[0]:
-            self._extend_rotary_embeddings(max_pos_needed)
+            new_size = min(
+                self.cfg.n_ctx,
+                max(max_pos_needed, 2 * self.rotary_cos.shape[0]),
+            )
+            self._extend_rotary_embeddings(new_size)
 
         if attention_mask is None:
             rotary_cos = cast(torch.Tensor, self.rotary_cos)[
@@ -751,9 +778,6 @@ class AbstractAttention(ABC, nn.Module):
 
     def _extend_rotary_embeddings(self, new_size: int):
         """Extend rotary embeddings to support longer contexts dynamically."""
-        # Get the RoPE base from config or use default
-        rope_base = getattr(self.cfg, "rotary_base", 10000)
-
         # Ensure rotary_dim is set
         assert self.cfg.rotary_dim is not None, "rotary_dim must be set for rotary embeddings"
 
@@ -761,7 +785,7 @@ class AbstractAttention(ABC, nn.Module):
         sin, cos = self.calculate_sin_cos_rotary(
             self.cfg.rotary_dim,
             new_size,
-            base=rope_base,
+            base=self._rotary_base(),
             dtype=self.cfg.dtype,
         )
 
@@ -770,16 +794,39 @@ class AbstractAttention(ABC, nn.Module):
         self.rotary_cos = cos.to(self.rotary_cos.device)
 
     def _extend_mask(self, new_size: int):
-        """Extend causal mask to support longer contexts dynamically."""
-        causal_mask = torch.tril(torch.ones((new_size, new_size), device=self.mask.device).bool())
-        if self.attn_type == "global":
-            self.mask = causal_mask
-        elif self.attn_type == "local":
-            if not isinstance(self.cfg.window_size, int):
-                raise ValueError("Window size must be an integer for local attention")
-            self.mask = torch.triu(causal_mask, 1 - self.cfg.window_size)
-        else:
-            raise ValueError(f"Invalid attention type: {self.attn_type}")
+        """Deprecated no-op kept for external callers."""
+        del new_size
+
+    def _load_from_state_dict(
+        self,
+        state_dict,
+        prefix,
+        local_metadata,
+        strict,
+        missing_keys,
+        unexpected_keys,
+        error_msgs,
+    ):
+        for buffer_name in ("mask", "rotary_sin", "rotary_cos"):
+            buffer_key = prefix + buffer_name
+            saved_buffer = state_dict.get(buffer_key)
+            current_buffer = getattr(self, buffer_name, None)
+            if (
+                isinstance(saved_buffer, torch.Tensor)
+                and isinstance(current_buffer, torch.Tensor)
+                and saved_buffer.shape != current_buffer.shape
+            ):
+                state_dict = state_dict.copy()
+                state_dict[buffer_key] = current_buffer
+        super()._load_from_state_dict(
+            state_dict,
+            prefix,
+            local_metadata,
+            strict,
+            missing_keys,
+            unexpected_keys,
+            error_msgs,
+        )
 
     @staticmethod
     def create_alibi_slope(

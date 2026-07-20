@@ -51,11 +51,11 @@ def boot(
     revision: str | None = None,
     checkpoint_index: int | None = None,
     checkpoint_value: int | None = None,
-    # Experimental – Have not been fully tested on multi-gpu devices
-    # Use at your own risk, report any issues here: https://github.com/TransformerLensOrg/TransformerLens/issues
+    # Multi-device placement (accelerate-dispatched). GPU-validated 2026-07-16:
+    # tests/acceptance/model_bridge/test_bridge_multigpu*.py + scripts/bridge_multi_device_parity.py.
     device_map: str | dict[str, str | int] | None = None,
     n_devices: int | None = None,
-    max_memory: dict[str | int, str] | None = None,
+    max_memory: dict[str | int, str | int] | None = None,
 ) -> TransformerBridge:
     """Boot a model from HuggingFace (exposed as ``TransformerBridge.boot_transformers``).
 
@@ -84,8 +84,9 @@ def boot(
             models loaded with custom configurations (e.g., quantization via BitsAndBytesConfig).
             When provided, load_weights is ignored.
         device_map: HuggingFace-style device map (``"auto"``, ``"balanced"``, dict, etc.) for
-            multi-GPU inference. Passed straight to ``from_pretrained``. Mutually exclusive
-            with ``device``.
+            dispatched inference. Explicit maps may include CPU targets; disk / meta offload
+            targets are still rejected because Bridge component wrappers need additional
+            offload-hook routing work. Mutually exclusive with ``device``.
         n_devices: Convenience: split the model across this many CUDA devices (translated to a
             ``max_memory`` dict internally). Requires CUDA with at least this many visible devices.
         max_memory: Optional per-device memory budget for HF's dispatcher.
@@ -95,7 +96,7 @@ def boot(
             the field name. If larger than the model's default, a warning is emitted — quality
             may degrade past the trained length for rotary models.
         revision: Optional HF revision string (branch, tag, or commit). Forwarded to
-            ``AutoConfig.from_pretrained`` and ``AutoModelForCausalLM.from_pretrained``.
+            config, model, and tokenizer loading.
             Mutually exclusive with ``checkpoint_index`` and ``checkpoint_value``.
         checkpoint_index: Index into the available training checkpoints for the model family.
             Convenience over ``revision`` for checkpointed models like EleutherAI/pythia* and
@@ -148,6 +149,7 @@ def boot(
             "max_context_length",
             "max_length",
             "seq_length",
+            "max_sequence_length",
         ):
             if hasattr(hf_config, _field):
                 _n_ctx_field = _field
@@ -184,6 +186,7 @@ def boot(
         hf_config.__dict__.update(hf_config_overrides)
     architecture = determine_architecture_from_hf_config(hf_config)
     bridge_config = build_bridge_config_from_hf(hf_config, architecture, model_name, dtype)
+    bridge_config.trust_remote_code = trust_remote_code
     adapter = ArchitectureAdapterFactory.select_architecture_adapter(bridge_config)
     # Pre-loaded models carry their own weight placement (possibly set by the caller via
     # device_map). Passing device_map / n_devices / max_memory alongside hf_model= is ambiguous
@@ -210,8 +213,12 @@ def boot(
     # resolver raises on conflict. If n_devices>1 is passed it's translated into a device_map +
     # max_memory pair here so downstream code only needs to check the resolved values.
     from transformer_lens.utilities.multi_gpu import (
+        MIXED_CPU_GPU_ERROR,
+        cast_floating_params_to_dtype,
         count_unique_devices,
         find_embedding_device,
+        find_misplaced_modules,
+        is_mixed_cpu_gpu,
         resolve_device_map,
     )
 
@@ -251,6 +258,22 @@ def boot(
         # Eager is required for output_attentions hooks.
         model_kwargs["attn_implementation"] = "eager"
     adapter.prepare_loading(model_name, model_kwargs)
+    # Meta device_map targets crash at boot when loading weights
+    # (NotImplementedError in HF tie_weights, KeyError in Accelerate offload hooks).
+    # Only accepted with load_weights=False (config inspection; map not applied).
+    if load_weights and isinstance(resolved_device_map, dict):
+        _meta_targets = [
+            k
+            for k, v in resolved_device_map.items()
+            if isinstance(v, str) and v.strip().lower() == "meta"
+        ]
+        if _meta_targets:
+            raise ValueError(
+                f"device_map contains meta target(s): {_meta_targets}. "
+                "Meta device_map values crash at boot when loading weights. "
+                "Set load_weights=False for config inspection only "
+                "(the map is not applied; parameters load on CPU via from_config)."
+            )
     if hf_model is not None:
         # Use the pre-loaded model as-is (quantized models with custom device_map, etc).
         pass
@@ -287,20 +310,49 @@ def boot(
         if resolved_device_map is None and device is not None:
             hf_model = hf_model.to(device)
         # Cast params to dtype; preserve float32 buffers (e.g. RotaryEmbedding.inv_freq).
-        for param in hf_model.parameters():
-            if param.is_floating_point() and param.dtype != dtype:
-                param.data = param.data.to(dtype=dtype)
+        # Use module-level alignment so Accelerate can temporarily materialize offloaded
+        # parameters before we touch them.
+        cast_floating_params_to_dtype(hf_model, dtype)
     # Derive cfg.device / cfg.n_devices from hf_device_map when present. Covers fresh loads
     # with a resolved device_map AND pre-loaded models with caller-dispatched device_map="auto".
     hf_device_map_post = getattr(hf_model, "hf_device_map", None)
     if hf_device_map_post:
-        # Pre-loaded path can smuggle CPU/disk offload in; validate.
+        # All-CPU placement is supported (real parameters, no offload). Disk / meta —
+        # and CPU entries in a MIXED map, which accelerate implements as CPU offload —
+        # are rejected: offload materializes weights via forward hooks that wrapped
+        # Bridge components bypass (e.g. NormalizationBridge computes from raw params).
         offload_values = {str(v).lower() for v in hf_device_map_post.values() if isinstance(v, str)}
-        forbidden = offload_values & {"cpu", "disk", "meta"}
-        if forbidden and ((n_devices is not None and n_devices > 1) or device_map is not None):
+        unsupported = offload_values & {"disk", "meta"}
+        if unsupported:
             raise ValueError(
-                f"hf_device_map contains unsupported offload targets: {sorted(forbidden)}. "
-                "v1 multi-device support is GPU-only."
+                f"hf_device_map contains unsupported offload targets: {sorted(unsupported)}. "
+                "TransformerBridge currently supports CPU device_map targets, but disk / meta "
+                "offload can bypass Accelerate hooks inside wrapped Bridge components."
+            )
+        if is_mixed_cpu_gpu(hf_device_map_post.values()):
+            raise ValueError(f"Realized hf_device_map is unsupported: {MIXED_CPU_GPU_ERROR}")
+        if (
+            "cpu" in offload_values
+            and device_map is None
+            and n_devices is not None
+            and n_devices > 1
+        ):
+            raise ValueError(
+                "hf_device_map contains CPU targets. n_devices is GPU-only; pass device_map "
+                "explicitly for CPU placement."
+            )
+        misplaced = find_misplaced_modules(hf_model)
+        if misplaced:
+            details = "; ".join(
+                f"{name!r} mapped to {mapped} but loaded on {actual}"
+                for name, mapped, actual in misplaced
+            )
+            raise ValueError(
+                f"device_map entries were not honored: {details}. This usually means the "
+                "map splits tied parameters (e.g. GPT-2's wte/lm_head share one tensor) "
+                "across devices — accelerate places a tied parameter once, leaving a module "
+                "executing on a device its weights aren't on, which crashes mid-forward. "
+                "Map tied modules to the same device."
             )
     embedding_device = find_embedding_device(hf_model)
     if embedding_device is not None:
@@ -349,6 +401,7 @@ def boot(
                 use_fast=use_fast,
                 token=token_arg,
                 trust_remote_code=trust_remote_code,
+                revision=revision,
             )
         except ValueError:
             base_tokenizer = AutoTokenizer.from_pretrained(
@@ -356,6 +409,7 @@ def boot(
                 use_fast=use_fast,
                 token=token_arg,
                 trust_remote_code=trust_remote_code,
+                revision=revision,
             )
         tokenizer = setup_tokenizer(
             base_tokenizer,

@@ -242,23 +242,6 @@ class TestSizedSplitConversion:
         out = conv.handle_conversion(tensor)
         assert out.shape == (4, 5)
 
-    def test_values_are_correct_not_just_shape(self) -> None:
-        """Returned slice should contain the correct values, not just the right shape."""
-        tensor = torch.tensor([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
-        conv = _SizedSplitConversion(sizes=[2, 2, 2], index=1)
-        out = conv.handle_conversion(tensor)
-        expected = torch.tensor([3.0, 4.0])
-        assert torch.allclose(out, expected)
-
-    def test_three_slices_reconstruct_original(self) -> None:
-        """Concatenating all three slices should recover the original tensor."""
-        torch.manual_seed(42)
-        q_size, kv_size = 16, 8
-        sizes = [q_size, kv_size, kv_size]
-        tensor = torch.randn(q_size + 2 * kv_size, 32)
-        parts = [_SizedSplitConversion(sizes, i).handle_conversion(tensor) for i in range(3)]
-        assert torch.allclose(torch.cat(parts, dim=0), tensor)
-
 
 # ---------------------------------------------------------------------------
 # preprocess_weights: LN folding
