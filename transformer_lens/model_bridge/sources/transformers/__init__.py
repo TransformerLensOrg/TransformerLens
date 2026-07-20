@@ -2,10 +2,11 @@
 from __future__ import annotations
 
 # Re-exported so external code that patches ``AutoConfig.from_pretrained`` /
-# ``AutoTokenizer.from_pretrained`` via this module path keeps working after the
-# package split. Class-method monkey-patches reach the same class objects that
-# ``source.py`` imports directly, so this re-export keeps tests stable.
-from transformers import AutoConfig, AutoTokenizer
+# ``AutoModelForCausalLM.from_pretrained`` / ``AutoTokenizer.from_pretrained`` via this
+# module path keeps working after the package split. Class-method monkey-patches reach
+# the same class objects that ``source.py`` / ``helpers.py`` use directly, so this
+# re-export keeps tests stable.
+from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 
 from transformer_lens.model_bridge.bridge import TransformerBridge
 
@@ -34,6 +35,7 @@ setattr(TransformerBridge, "check_model_support", staticmethod(check_model_suppo
 
 __all__ = [
     "AutoConfig",
+    "AutoModelForCausalLM",
     "AutoTokenizer",
     "boot",
     "check_model_support",
