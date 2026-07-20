@@ -362,6 +362,17 @@ class HookedAudioEncoder(HookedRootModule):
         **from_pretrained_kwargs: Any,
     ) -> "HookedAudioEncoder":
         """Loads in the pretrained weights from huggingface. Currently supports loading weight from HuggingFace BertForMaskedLM. Unlike HookedTransformer, this does not yet do any preprocessing on the model."""
+        import warnings
+
+        warnings.warn(
+            "HookedAudioEncoder.from_pretrained is deprecated and will be removed in a "
+            "future major release. Use TransformerBridge.boot_transformers(...) instead — "
+            "HuBERT/Wav2Vec2 are supported via the bridge's audio adapter. See "
+            "docs/source/content/migrating_to_v3.md.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
         logging.warning(
             "Support for HuBERT in TransformerLens is currently experimental, until such a time when it has feature "
             "parity with HookedTransformer and has been tested on real research tasks. Until then, backward "
