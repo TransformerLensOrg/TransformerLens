@@ -1,4 +1,5 @@
 """Generic opaque block bridge for non-SSM, non-standard-transformer architectures."""
+
 from __future__ import annotations
 
 import re
@@ -34,6 +35,7 @@ class OpaqueBlockBridge(GeneralizedComponent):
     """
 
     is_list_item: bool = True
+    hook_out_is_single_residual_stream: bool = True
     hook_aliases = {
         "hook_resid_pre": "hook_in",
         "hook_resid_post": "hook_out",
@@ -94,9 +96,7 @@ class OpaqueBlockBridge(GeneralizedComponent):
         if self.name is None:
             return
         # Mamba uses `.layers.{i}`; `blocks.{i}` is the fallback TL convention.
-        match = re.search(r"\.layers\.(\d+)", self.name) or re.search(
-            r"blocks\.(\d+)", self.name
-        )
+        match = re.search(r"\.layers\.(\d+)", self.name) or re.search(r"blocks\.(\d+)", self.name)
         if not match:
             return
         layer_idx = int(match.group(1))

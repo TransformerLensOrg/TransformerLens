@@ -1,4 +1,5 @@
 """Bridge components for transformer architectures."""
+
 from transformer_lens.model_bridge.generalized_components.attention import (
     AttentionBridge,
 )
