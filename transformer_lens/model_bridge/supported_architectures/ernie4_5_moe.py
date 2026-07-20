@@ -34,8 +34,11 @@ class Ernie4_5_MoeArchitectureAdapter(ArchitectureAdapter):
         self.cfg.rotary_adjacent_pairs = True
         self.cfg.default_prepend_bos = False
 
+        # Biases are config-gated (use_bias); reshape them so a use_bias=True
+        # GQA checkpoint gets the (n_kv, d_head) K/V bias layout. No-op when
+        # the checkpoint carries no attention biases.
         self.weight_processing_conversions = {
-            **self._qkvo_weight_conversions(),
+            **self._qkvo_weight_conversions(include_biases=True),
         }
 
         self.component_mapping = {

@@ -67,6 +67,8 @@ class LagunaArchitectureAdapter(ArchitectureAdapter):
                             "v": LinearBridge(name="v_proj"),
                             "o": LinearBridge(name="o_proj"),
                             "gate": LinearBridge(name="g_proj"),
+                            "q_norm": RMSNormalizationBridge(name="q_norm", config=self.cfg),
+                            "k_norm": RMSNormalizationBridge(name="k_norm", config=self.cfg),
                         },
                         maintain_native_attention=True,
                     ),

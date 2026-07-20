@@ -20,3 +20,8 @@ class SeedOssArchitectureAdapter(LlamaArchitectureAdapter):
         super().__init__(cfg)
         # Verified against ByteDance-Seed/Seed-OSS-36B-Instruct's tokenizer.
         self.cfg.default_prepend_bos = False
+        # Seed-OSS ships attention_bias=True with GQA; the Llama parent omits
+        # bias reshapes, so K/V biases would keep the flat (n_kv*d_head,) layout.
+        self.weight_processing_conversions = {
+            **self._qkvo_weight_conversions(include_biases=True),
+        }

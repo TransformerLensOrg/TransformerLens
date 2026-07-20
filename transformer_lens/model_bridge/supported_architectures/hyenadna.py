@@ -56,6 +56,9 @@ class HyenaDNAArchitectureAdapter(ArchitectureAdapter):
 
     applicable_phases: list[int] = [1, 2, 3]
     supports_generation: bool = False
+    # Attention-free (Hyena convolutions): no q/k/v projections to fold into,
+    # matching the other delegated-mixer adapters (rwkv, gidd, llada2_moe).
+    supports_fold_ln: bool = False
 
     def __init__(self, cfg: Any) -> None:
         """Initialize the HyenaDNA architecture adapter."""

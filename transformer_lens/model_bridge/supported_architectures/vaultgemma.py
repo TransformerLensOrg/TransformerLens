@@ -37,6 +37,12 @@ class VaultGemmaArchitectureAdapter(Gemma2ArchitectureAdapter):
         """Initialize the VaultGemma architecture adapter."""
         super().__init__(cfg)
 
+        # Gemma 2 minus the post-norms: drop the inherited RMS-offset
+        # conversions for the ln1_post/ln2_post norms this variant removes.
+        if self.weight_processing_conversions is not None:
+            for dead in ("blocks.{i}.ln1_post.weight", "blocks.{i}.ln2_post.weight"):
+                self.weight_processing_conversions.pop(dead, None)
+
         # Gemma 2 minus the post-norms: only input_layernorm and
         # pre_feedforward_layernorm exist.
         self.components["blocks"] = BlockBridge(

@@ -22,3 +22,9 @@ class Ernie4_5ArchitectureAdapter(LlamaArchitectureAdapter):
         # ERNIE rotates adjacent element pairs (GLM-style interleaved RoPE),
         # unlike llama's half-split convention.
         self.cfg.rotary_adjacent_pairs = True
+        # Biases are config-gated (use_bias); reshape them so a use_bias=True
+        # GQA checkpoint gets the (n_kv, d_head) K/V bias layout. No-op when
+        # the checkpoint carries no attention biases.
+        self.weight_processing_conversions = {
+            **self._qkvo_weight_conversions(include_biases=True),
+        }
