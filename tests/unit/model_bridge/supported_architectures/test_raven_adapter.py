@@ -4,7 +4,7 @@ Synthetic-config only — no HF Hub access, no weight loading. Covers the
 architecture quirks: RMS/rotary/gated flags, ``supports_fold_ln = False``,
 the empty ``applicable_phases`` (off the transformer-shaped verify path),
 recurrence-config propagation, the three separate prelude / core_block / coda
-block lists mapped via ``SSMBlockBridge``, the combined-QKV native attention
+block lists mapped via ``OpaqueBlockBridge``, the combined-QKV native attention
 and combined gate+up MLP submodules, and four-place registration.
 """
 
@@ -19,8 +19,8 @@ from transformer_lens.model_bridge.generalized_components import (
     EmbeddingBridge,
     LinearBridge,
     MLPBridge,
+    OpaqueBlockBridge,
     RMSNormalizationBridge,
-    SSMBlockBridge,
     UnembeddingBridge,
 )
 from transformer_lens.model_bridge.supported_architectures.raven import (
@@ -194,13 +194,13 @@ class TestRavenTopLevelComponents:
         assert adapter.component_mapping["embed"].name == "transformer.wte"
 
     @pytest.mark.parametrize("key", BLOCK_LISTS)
-    def test_block_list_is_ssm_block_bridge(
+    def test_block_list_is_opaque_block_bridge(
         self, adapter: RavenArchitectureAdapter, key: str
     ) -> None:
-        # SSMBlockBridge delegates the whole SandwichBlock so the post-residual
+        # OpaqueBlockBridge delegates the whole SandwichBlock so the post-residual
         # norm placement is preserved (a standard BlockBridge would assume a
         # pre-norm flow).
-        assert isinstance(adapter.component_mapping[key], SSMBlockBridge)
+        assert isinstance(adapter.component_mapping[key], OpaqueBlockBridge)
 
     @pytest.mark.parametrize("key", BLOCK_LISTS)
     def test_block_list_name(self, adapter: RavenArchitectureAdapter, key: str) -> None:
@@ -277,7 +277,7 @@ class TestRavenBlockSubmodules:
 class TestRavenBlockListsAreIndependent:
     """The three block lists must not share bridge instances.
 
-    Each SSMBlockBridge binds to a distinct HF ModuleList, so reusing a single
+    Each OpaqueBlockBridge binds to a distinct HF ModuleList, so reusing a single
     submodule bridge object across lists would cross-wire them.
     """
 

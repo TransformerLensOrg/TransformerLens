@@ -47,15 +47,14 @@ Key adapter decisions
    ``forward`` that the bridge delegates to, so a single forward pass is
    numerically correct with no loop handling here.
 
-2. ``SSMBlockBridge`` for all three block lists (``prelude`` / ``core_block``
-   / ``coda``), for the same reason nemotron_h uses it: ``BlockBridge``'s
-   hook aliases hardcode a standard pre-norm flow (hook_resid_mid, ln1→attn→
-   ln2→mlp) that the post-residual ``SandwichBlock`` does not follow.
-   ``SSMBlockBridge`` delegates the whole block and exposes only ``hook_in`` /
-   ``hook_out`` on the residual stream, which is correct regardless of the
-   internal norm placement. Each block's inner attn / mlp / norms are still
-   declared as submodules so they wrap the live HF modules and their hooks
-   fire.
+2. ``OpaqueBlockBridge`` for all three block lists (``prelude`` / ``core_block``
+   / ``coda``): ``BlockBridge``'s hook aliases hardcode a standard pre-norm flow
+   (hook_resid_mid, ln1→attn→ln2→mlp) that the post-residual ``SandwichBlock``
+   does not follow. ``OpaqueBlockBridge`` delegates the whole block and exposes
+   only ``hook_in`` / ``hook_out`` on the residual stream, which is correct
+   regardless of the internal norm placement. Each block's inner attn / mlp /
+   norms are still declared as submodules so they wrap the live HF modules and
+   their hooks fire.
 
 3. Recurrent core hooks. Because the core loop lives inside the HF forward,
    the four ``core_block`` blocks' ``hook_in`` / ``hook_out`` fire once PER
@@ -113,8 +112,8 @@ from transformer_lens.model_bridge.generalized_components import (
     EmbeddingBridge,
     LinearBridge,
     MLPBridge,
+    OpaqueBlockBridge,
     RMSNormalizationBridge,
-    SSMBlockBridge,
     UnembeddingBridge,
 )
 from transformer_lens.model_bridge.generalized_components.attention import (
@@ -172,19 +171,19 @@ class RavenArchitectureAdapter(ArchitectureAdapter):
 
         self.component_mapping = {
             "embed": EmbeddingBridge(name="transformer.wte"),
-            # Three separate physical block lists. Each uses SSMBlockBridge so
+            # Three separate physical block lists. Each uses OpaqueBlockBridge so
             # the delegated SandwichBlock forward keeps its post-residual norm
             # placement while hook_in / hook_out wrap the residual stream. Fresh
             # submodule instances per list (they bind to distinct HF modules).
-            "prelude": SSMBlockBridge(
+            "prelude": OpaqueBlockBridge(
                 name="transformer.prelude",
                 submodules=self._sandwich_submodules(),
             ),
-            "core_block": SSMBlockBridge(
+            "core_block": OpaqueBlockBridge(
                 name="transformer.core_block",
                 submodules=self._sandwich_submodules(),
             ),
-            "coda": SSMBlockBridge(
+            "coda": OpaqueBlockBridge(
                 name="transformer.coda",
                 submodules=self._sandwich_submodules(),
             ),
