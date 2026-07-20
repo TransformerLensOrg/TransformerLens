@@ -34,6 +34,7 @@ class OpaqueBlockBridge(GeneralizedComponent):
     """
 
     is_list_item: bool = True
+    hook_out_is_single_residual_stream: bool = True
     hook_aliases = {
         "hook_resid_pre": "hook_in",
         "hook_resid_post": "hook_out",
