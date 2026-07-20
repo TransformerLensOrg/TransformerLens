@@ -584,6 +584,13 @@ def boot(
         # Cohere
         "logit_scale",
         "rope_parameters",
+        # HRM-Text
+        "H_cycles",
+        "L_cycles",
+        "L_bp_cycles",
+        "embedding_scale",
+        "prefix_lm",
+        "num_layers_per_stack",
         "sliding_window_pattern",
         "_sliding_window_pattern",
         # Hybrid/MoE architectures

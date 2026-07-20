@@ -145,7 +145,12 @@ def _compressor_bridge(cfg: Any) -> DeepseekV4CompressorBridge:
                     "gate_proj": LinearBridge(name="gate_proj"),
                     "kv_norm": RMSNormalizationBridge(name="kv_norm", config=cfg),
                     "q_b_proj": LinearBridge(name="q_b_proj"),
-                    "weights_proj": LinearBridge(name="weights_proj"),
+                    "scorer": GeneralizedComponent(
+                        name="scorer",
+                        submodules={
+                            "weights_proj": LinearBridge(name="weights_proj"),
+                        },
+                    ),
                     "rotary_emb": RotaryEmbeddingBridge(name="rotary_emb", config=cfg),
                 },
             ),

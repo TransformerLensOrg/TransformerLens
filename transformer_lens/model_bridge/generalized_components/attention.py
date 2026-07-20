@@ -378,7 +378,11 @@ class AttentionBridge(GeneralizedComponent):
                 self.name,
             )
             return k, v
-        k, v = past_key_values.update(k, v, layer_idx)
+        # Some architectures (e.g. HRM-Text's recurrent stacks) pass a cycle_offset
+        # so each stack invocation writes to a unique cache slot. Non-participating
+        # models simply leave it unset.
+        cycle_offset = kwargs.get("cycle_offset", 0)
+        k, v = past_key_values.update(k, v, layer_idx + cycle_offset)
         return k, v
 
     def _reshape_qkv_to_heads(
