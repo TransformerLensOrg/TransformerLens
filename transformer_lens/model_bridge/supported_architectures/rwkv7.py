@@ -48,19 +48,16 @@ Key adapter decisions
    correct regardless of the internal mixing. The block's inner norms / mixers
    are still declared as submodules so they wrap the live HF modules and fire.
 
-3. ``SSM2MixerBridge`` for both the time-mixing (``attn``) and channel-mixing
-   (``ffn``) sublayers. Its forward is a pure wrap-don't-reimplement passthrough
-   that hooks the input (positional or ``hidden_states`` kwarg) and the primary
-   output while preserving the rest of the tuple — exactly what both RWKV-7
-   sublayers need: ``attn`` returns a 4-tuple ``(hidden_states, attentions,
-   past_key_values, v_first)`` (called by keyword) and ``ffn`` returns a 2-tuple
-   ``(hidden_states, state)`` (called positionally). The Mamba-specific analysis
-   methods and ``hook_ssm_*`` points the bridge also carries are inert here
-   (``eager_scan`` defaults off); only ``hook_in`` / ``hook_out`` and the wrapped
-   projections participate. The ``r_proj`` / ``k_proj`` / ``v_proj`` / ``o_proj``
-   (time-mixing) and ``key`` / ``value`` (channel-mixing) projections are exposed
-   as ``LinearBridge`` submodules so their hooks fire; the LoRAs, GroupNorm, and
-   per-channel lerp parameters are deliberately left inside the delegated forward.
+3. ``GeneralizedComponent`` for both the time-mixing (``attn``) and channel-mixing
+   (``ffn``) sublayers. Its forward is a generic I/O-hooked passthrough that
+   delegates to the live HF module and hooks the primary output while preserving
+   the rest of the tuple. ``attn`` returns a 4-tuple ``(hidden_states, attentions,
+   past_key_values, v_first)`` and ``ffn`` returns a 2-tuple
+   ``(hidden_states, state)``; the generic passthrough handles both. The
+   ``r_proj`` / ``k_proj`` / ``v_proj`` / ``o_proj`` (time-mixing) and ``key`` /
+   ``value`` (channel-mixing) projections are exposed as ``LinearBridge``
+   submodules so their hooks fire; the LoRAs, GroupNorm, and per-channel lerp
+   parameters are deliberately left inside the delegated forward.
 
 4. Norms. RWKV-7 uses standard biased LayerNorm, so ``normalization_type = "LN"``
    and the norms are ``NormalizationBridge`` (not ``RMSNormalizationBridge``).
@@ -110,7 +107,6 @@ from transformer_lens.model_bridge.generalized_components import (
     LinearBridge,
     NormalizationBridge,
     OpaqueBlockBridge,
-    SSM2MixerBridge,
     UnembeddingBridge,
 )
 from transformer_lens.model_bridge.generalized_components.base import (
@@ -191,7 +187,7 @@ class RWKV7ArchitectureAdapter(ArchitectureAdapter):
                     # Time-mixing: generalized delta rule. Delegated passthrough;
                     # only the four projections are exposed (LoRAs / GroupNorm /
                     # lerp params stay inside the fla forward).
-                    "attn": SSM2MixerBridge(
+                    "attn": GeneralizedComponent(
                         name="attn",
                         config=self.cfg,
                         submodules={
@@ -210,7 +206,7 @@ class RWKV7ArchitectureAdapter(ArchitectureAdapter):
                     # Channel-mixing: token-shifted squared-ReLU MLP. Delegated
                     # passthrough exposing the up ("key") and down ("value")
                     # projections. HF confusingly names the output proj "value".
-                    "ffn": SSM2MixerBridge(
+                    "ffn": GeneralizedComponent(
                         name="ffn",
                         config=self.cfg,
                         submodules={

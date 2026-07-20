@@ -6,8 +6,8 @@ no positional embeddings, ungated FFN, the empty ``applicable_phases`` (off the
 transformer-shaped verify path), shape-attribute propagation, the single
 ``model.layers`` block list mapped via ``OpaqueBlockBridge``, the delegated
 time-mixing (``attn``) and channel-mixing (``ffn``) sublayers wrapped by
-``SSM2MixerBridge`` with their projection submodules, the fused-signature
-``ffn_norm`` delegated via a plain ``GeneralizedComponent``, and four-place
+``GeneralizedComponent`` with their projection submodules, the fused-signature
+``ffn_norm`` likewise delegated via a plain ``GeneralizedComponent``, and four-place
 registration.
 """
 
@@ -21,7 +21,6 @@ from transformer_lens.model_bridge.generalized_components import (
     EmbeddingBridge,
     LinearBridge,
     NormalizationBridge,
-    SSM2MixerBridge,
     OpaqueBlockBridge,
     UnembeddingBridge,
 )
@@ -234,18 +233,22 @@ class TestRWKV7BlockSubmodules:
         assert not isinstance(ffn_norm, NormalizationBridge)
         assert ffn_norm.name == "ffn_norm"
 
-    def test_attn_is_ssm2_mixer_with_projections(self, adapter: RWKV7ArchitectureAdapter) -> None:
+    def test_attn_is_generalized_component_with_projections(
+        self, adapter: RWKV7ArchitectureAdapter
+    ) -> None:
         attn = adapter.component_mapping["blocks"].submodules["attn"]
-        assert isinstance(attn, SSM2MixerBridge)
+        assert isinstance(attn, GeneralizedComponent)
         assert attn.name == "attn"
         assert set(attn.submodules.keys()) == {"r_proj", "k_proj", "v_proj", "o_proj"}
         for proj in ("r_proj", "k_proj", "v_proj", "o_proj"):
             assert isinstance(attn.submodules[proj], LinearBridge)
             assert attn.submodules[proj].name == proj
 
-    def test_ffn_is_ssm2_mixer_with_projections(self, adapter: RWKV7ArchitectureAdapter) -> None:
+    def test_ffn_is_generalized_component_with_projections(
+        self, adapter: RWKV7ArchitectureAdapter
+    ) -> None:
         ffn = adapter.component_mapping["blocks"].submodules["ffn"]
-        assert isinstance(ffn, SSM2MixerBridge)
+        assert isinstance(ffn, GeneralizedComponent)
         assert ffn.name == "ffn"
         # HF names the up-projection "key" and the (down) output projection "value".
         assert set(ffn.submodules.keys()) == {"key", "value"}
