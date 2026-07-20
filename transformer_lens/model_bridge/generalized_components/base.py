@@ -23,6 +23,7 @@ class GeneralizedComponent(nn.Module):
     """
 
     is_list_item: bool = False
+    hook_out_is_single_residual_stream: bool = False
     compatibility_mode: bool = False
     disable_warnings: bool = False
     hook_aliases: Dict[str, Union[str, List[str]]] = {}
