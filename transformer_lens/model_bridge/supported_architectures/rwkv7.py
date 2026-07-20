@@ -40,10 +40,10 @@ Key adapter decisions
    that the bridge delegates to, so a single forward pass is numerically correct
    with no scan handling here. ``weight_processing_conversions = {}``.
 
-2. ``SSMBlockBridge`` for the block list, for the same reason nemotron_h / raven
+2. ``OpaqueBlockBridge`` for the block list, for the same reason nemotron_h / raven
    use it: ``BlockBridge``'s hook aliases hardcode a standard pre-norm attention
    flow (``hook_resid_mid``, ``ln1 -> attn -> ln2 -> mlp``) that a recurrent
-   RWKV-7 block does not follow. ``SSMBlockBridge`` delegates the whole block and
+   RWKV-7 block does not follow. ``OpaqueBlockBridge`` delegates the whole block and
    exposes only ``hook_in`` / ``hook_out`` on the residual stream, which is
    correct regardless of the internal mixing. The block's inner norms / mixers
    are still declared as submodules so they wrap the live HF modules and fire.
@@ -109,8 +109,8 @@ from transformer_lens.model_bridge.generalized_components import (
     EmbeddingBridge,
     LinearBridge,
     NormalizationBridge,
+    OpaqueBlockBridge,
     SSM2MixerBridge,
-    SSMBlockBridge,
     UnembeddingBridge,
 )
 from transformer_lens.model_bridge.generalized_components.base import (
@@ -181,7 +181,7 @@ class RWKV7ArchitectureAdapter(ArchitectureAdapter):
 
         self.component_mapping = {
             "embed": EmbeddingBridge(name="model.embeddings"),
-            "blocks": SSMBlockBridge(
+            "blocks": OpaqueBlockBridge(
                 name="model.layers",
                 submodules={
                     # Pre-norm before time-mixing (standard single-input LayerNorm).

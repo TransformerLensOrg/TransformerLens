@@ -4,7 +4,7 @@ Synthetic-config only — no HF Hub access, no weight loading. Covers the
 architecture quirks: standard biased LayerNorm (``normalization_type == "LN"``),
 no positional embeddings, ungated FFN, the empty ``applicable_phases`` (off the
 transformer-shaped verify path), shape-attribute propagation, the single
-``model.layers`` block list mapped via ``SSMBlockBridge``, the delegated
+``model.layers`` block list mapped via ``OpaqueBlockBridge``, the delegated
 time-mixing (``attn``) and channel-mixing (``ffn``) sublayers wrapped by
 ``SSM2MixerBridge`` with their projection submodules, the fused-signature
 ``ffn_norm`` delegated via a plain ``GeneralizedComponent``, and four-place
@@ -22,7 +22,7 @@ from transformer_lens.model_bridge.generalized_components import (
     LinearBridge,
     NormalizationBridge,
     SSM2MixerBridge,
-    SSMBlockBridge,
+    OpaqueBlockBridge,
     UnembeddingBridge,
 )
 from transformer_lens.model_bridge.generalized_components.base import (
@@ -192,10 +192,10 @@ class TestRWKV7TopLevelComponents:
         assert adapter.component_mapping["embed"].name == "model.embeddings"
 
     def test_blocks_is_ssm_block_bridge(self, adapter: RWKV7ArchitectureAdapter) -> None:
-        # SSMBlockBridge delegates the whole recurrent block so the internal
+        # OpaqueBlockBridge delegates the whole recurrent block so the internal
         # mixing is preserved (a standard BlockBridge assumes a pre-norm attn flow).
         blocks = adapter.component_mapping["blocks"]
-        assert isinstance(blocks, SSMBlockBridge)
+        assert isinstance(blocks, OpaqueBlockBridge)
         assert blocks.name == "model.layers"
 
     def test_ln_final_is_normalization_bridge(self, adapter: RWKV7ArchitectureAdapter) -> None:
