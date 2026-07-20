@@ -204,18 +204,27 @@ class RavenArchitectureAdapter(ArchitectureAdapter):
         ``qkv`` and output ``o`` projections are exposed. The gated MLP is
         likewise delegated with its combined gate+up ``fc`` and output ``proj``.
         """
+        attn = AttentionBridge(
+            name="attn",
+            config=self.cfg,
+            submodules={
+                "qkv": LinearBridge(name="Wqkv"),
+                "o": LinearBridge(name="proj"),
+            },
+            maintain_native_attention=True,
+            requires_attention_mask=True,
+        )
+        # Raven uses a combined Wqkv projection; no separate q/k/v submodules exist.
+        # Strip the default hook_q/hook_k/hook_v aliases so they don't appear as
+        # dead (unresolvable) aliases in the hook-alias resolution audit.
+        attn.hook_aliases = {
+            k: v
+            for k, v in AttentionBridge.hook_aliases.items()
+            if k not in {"hook_q", "hook_k", "hook_v"}
+        }
         return {
             "norm_1": RMSNormalizationBridge(name="norm_1", config=self.cfg),
-            "attn": AttentionBridge(
-                name="attn",
-                config=self.cfg,
-                submodules={
-                    "qkv": LinearBridge(name="Wqkv"),
-                    "o": LinearBridge(name="proj"),
-                },
-                maintain_native_attention=True,
-                requires_attention_mask=True,
-            ),
+            "attn": attn,
             "norm_2": RMSNormalizationBridge(name="norm_2", config=self.cfg),
             "norm_3": RMSNormalizationBridge(name="norm_3", config=self.cfg),
             "mlp": MLPBridge(
