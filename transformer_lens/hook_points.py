@@ -440,7 +440,7 @@ def __getattr__(name: str):
 
         warnings.warn(
             "Importing HookedRootModule from transformer_lens.hook_points is "
-            "deprecated and will be removed in a future release. Import it from "
+            "deprecated and will be removed in TransformerLens 4.0. Import it from "
             "transformer_lens (preferred) or transformer_lens.HookedRootModule instead.",
             DeprecationWarning,
             stacklevel=2,

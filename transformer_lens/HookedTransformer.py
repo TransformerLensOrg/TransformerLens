@@ -1313,6 +1313,17 @@ class HookedTransformer(HookedRootModule):
                 3. Global default ("right")
             first_n_layers: If specified, only load the first n layers of the model.
         """
+        import warnings
+
+        warnings.warn(
+            "HookedTransformer.from_pretrained is deprecated and will be removed in a "
+            "future major release. Use TransformerBridge.boot_transformers(...) instead, "
+            "then call enable_compatibility_mode() for HookedTransformer-equivalent "
+            "numerics. See docs/source/content/migrating_to_v3.md.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
         if checkpoint_value is not None and checkpoint_label is not None:
             raise ValueError(
                 "Specify checkpoint_value or checkpoint_label, not both — they are aliases."
