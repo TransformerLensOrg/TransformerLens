@@ -1,4 +1,5 @@
 """Generic opaque block bridge for non-SSM, non-standard-transformer architectures."""
+
 from __future__ import annotations
 
 import re
@@ -95,9 +96,7 @@ class OpaqueBlockBridge(GeneralizedComponent):
         if self.name is None:
             return
         # Mamba uses `.layers.{i}`; `blocks.{i}` is the fallback TL convention.
-        match = re.search(r"\.layers\.(\d+)", self.name) or re.search(
-            r"blocks\.(\d+)", self.name
-        )
+        match = re.search(r"\.layers\.(\d+)", self.name) or re.search(r"blocks\.(\d+)", self.name)
         if not match:
             return
         layer_idx = int(match.group(1))

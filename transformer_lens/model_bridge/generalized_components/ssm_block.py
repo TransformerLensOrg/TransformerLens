@@ -1,4 +1,5 @@
 """Block container for State Space Model (Mamba) layers: norm → mixer → residual."""
+
 from __future__ import annotations
 
 from transformer_lens.model_bridge.generalized_components.opaque_block import (
