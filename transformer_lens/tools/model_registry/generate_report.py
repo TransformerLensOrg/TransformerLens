@@ -67,6 +67,7 @@ ARCHITECTURE_DESCRIPTIONS: dict[str, str] = {
     "T5GemmaForConditionalGeneration": "Google's T5Gemma encoder-decoder model with Gemma-style RoPE, GQA, and gated MLP",
     "T5Gemma2ForConditionalGeneration": "Google's T5Gemma2 multimodal encoder-decoder model with merged self+cross decoder attention, QK-norm, and dual RoPE (text-only bridge support)",
     "BartForConditionalGeneration": "Facebook's BART encoder-decoder model",
+    "HrmTextForCausalLM": "Sapient Intelligence's HRM-Text hierarchical two-timescale recurrent model",
     "BD3LM": "Kuleshov Group's Block Diffusion Language Model (ICLR 2025) for masked text generation",
     "HunYuanDenseV1ForCausalLM": "Tencent's open source decoder models",
     "Cohere2ForCausalLM": "Cohere's Command-A architecture with interleaved sliding-window RoPE and full-attention NoPE layers",

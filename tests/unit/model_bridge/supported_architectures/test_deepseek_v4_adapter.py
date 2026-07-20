@@ -91,13 +91,17 @@ def test_attention_mapping_exposes_compression_surfaces(
     assert isinstance(compressor, DeepseekV4CompressorBridge)
     assert compressor.optional
     assert compressor.submodules["indexer"].optional
-    assert set(compressor.submodules["indexer"].submodules) == {
+    indexer = compressor.submodules["indexer"]
+    assert set(indexer.submodules) == {
         "kv_proj",
         "gate_proj",
         "kv_norm",
         "q_b_proj",
-        "weights_proj",
+        "scorer",
         "rotary_emb",
+    }
+    assert set(indexer.submodules["scorer"].submodules) == {
+        "weights_proj",
     }
 
 

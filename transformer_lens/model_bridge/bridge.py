@@ -182,6 +182,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         if self.cfg.d_vocab_out == -1:
             self.cfg.d_vocab_out = self.cfg.d_vocab
         self.compatibility_mode = False
+        self._weights_processed = False
         self._hook_cache = None
         self._hook_registry: Dict[str, HookPoint] = {}
         self._hook_registry_initialized = False
@@ -431,9 +432,13 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         n_heads = self.cfg.n_heads
         d_head = self.cfg.d_head
         d_model = self.cfg.d_model
-        if not hasattr(self, "blocks"):
+        blocks_iter = []
+        for bl_name in ("blocks", "encoder_blocks", "decoder_blocks", "L_blocks", "H_blocks"):
+            if hasattr(self, bl_name):
+                blocks_iter.append(getattr(self, bl_name))
+        if not blocks_iter:
             return
-        for block in self.blocks:
+        for block in [b for bl in blocks_iter for b in bl]:
             if "attn" not in block._modules:
                 continue
             attn = block.attn
@@ -877,12 +882,15 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         elif hasattr(self.adapter, "setup_no_processing_hooks"):
             self.adapter.setup_no_processing_hooks(self)
         blocks_to_process = []
-        if hasattr(self, "blocks"):
-            blocks_to_process.extend(self.blocks)
-        if hasattr(self, "encoder_blocks"):
-            blocks_to_process.extend(self.encoder_blocks)
-        if hasattr(self, "decoder_blocks"):
-            blocks_to_process.extend(self.decoder_blocks)
+        for block_list_name in (
+            "blocks",
+            "encoder_blocks",
+            "decoder_blocks",
+            "L_blocks",
+            "H_blocks",
+        ):
+            if hasattr(self, block_list_name):
+                blocks_to_process.extend(getattr(self, block_list_name))
         for block in blocks_to_process:
             for attn_name in ["attn", "self_attn", "cross_attn"]:
                 if hasattr(block, attn_name):
@@ -915,6 +923,9 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             fold_value_biases: Fold value biases into output bias. Default: True
             refactor_factored_attn_matrices: Experimental QK/OV factorization. Default: False
         """
+        # A failed or partial processing attempt is no longer guaranteed to retain
+        # the raw HuggingFace basis, so invalidate that contract before any work.
+        self._weights_processed = True
         from transformer_lens.weight_processing import ProcessWeights
 
         if verbose:
@@ -1764,9 +1775,21 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             )
 
         # Set stop_at_layer flag on all blocks if requested
-        if stop_at_layer is not None and hasattr(self, "blocks"):
-            for block in self.blocks:
-                block._stop_at_layer_idx = stop_at_layer
+        if stop_at_layer is not None:
+            if (
+                hasattr(self, "L_blocks")
+                or hasattr(self, "H_blocks")
+                or hasattr(self, "encoder_blocks")
+                or hasattr(self, "decoder_blocks")
+            ):
+                raise NotImplementedError(
+                    "stop_at_layer is not supported on non-standard block list "
+                    "names (L_blocks, H_blocks, encoder_blocks, decoder_blocks). "
+                    "The bridge only supports stop_at_layer on 'blocks'."
+                )
+            if hasattr(self, "blocks"):
+                for block in self.blocks:
+                    block._stop_at_layer_idx = stop_at_layer
 
         # Map HookedEncoderDecoder-style kwargs to HF-compatible names
         if "decoder_input" in kwargs:
@@ -1924,6 +1947,9 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                 logits = output
             if return_type == "logits":
                 return logits
+            elif return_type == "logits_and_cache":
+                past_key_values = getattr(output, "past_key_values", None)
+                return (logits, past_key_values)
             elif return_type == "loss":
                 if getattr(self.cfg, "is_audio_model", False):
                     raise ValueError(
@@ -1985,10 +2011,17 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             return e.layer_output
         finally:
             # Clean up state that may be inconsistent after StopAtLayerException
-            if stop_at_layer is not None and hasattr(self, "blocks"):
-                # Reset the stop flag on all blocks
-                for block in self.blocks:
-                    block._stop_at_layer_idx = None
+            if stop_at_layer is not None:
+                for bl_name in (
+                    "blocks",
+                    "encoder_blocks",
+                    "decoder_blocks",
+                    "L_blocks",
+                    "H_blocks",
+                ):
+                    if hasattr(self, bl_name):
+                        for block in getattr(self, bl_name):
+                            block._stop_at_layer_idx = None
 
                 # Clear any stale KV cache — layers after the stop point didn't
                 # execute, so the cache is incomplete and would corrupt subsequent
@@ -4097,20 +4130,22 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         attr_to_hf = {}
 
         # Map top-level components
+        block_list_names = {"blocks", "L_blocks", "H_blocks", "encoder_blocks", "decoder_blocks"}
         for tl_name, component in component_mapping.items():
-            if component.name and tl_name != "blocks":
+            if component.name and tl_name not in block_list_names:
                 # Skip if TL name is already a suffix of the HF path (avoids doubling).
                 if tl_name != component.name and not component.name.endswith("." + tl_name):
                     attr_to_hf[tl_name] = component.name
 
-        # Map block-level components (ln1, ln2, attn, mlp)
-        blocks_component = component_mapping.get("blocks")
-        if blocks_component and hasattr(blocks_component, "submodules"):
-            for tl_subname, subcomponent in blocks_component.submodules.items():
-                if subcomponent.name:
-                    # Only map if the names differ (e.g., ln1 -> ln_1, but attn -> attn)
-                    if tl_subname != subcomponent.name:
-                        attr_to_hf[tl_subname] = subcomponent.name
+        # Map block-level components (ln1, ln2, attn, mlp) for all block lists
+        for bl_name in block_list_names:
+            blocks_component = component_mapping.get(bl_name)
+            if blocks_component and hasattr(blocks_component, "submodules"):
+                for tl_subname, subcomponent in blocks_component.submodules.items():
+                    if subcomponent.name:
+                        # Only map if the names differ (e.g., ln1 -> ln_1, but attn -> attn)
+                        if tl_subname != subcomponent.name:
+                            attr_to_hf[tl_subname] = subcomponent.name
 
         # Replace only these specific attribute names in the key
         # We need to be careful to only replace whole path components, not substrings

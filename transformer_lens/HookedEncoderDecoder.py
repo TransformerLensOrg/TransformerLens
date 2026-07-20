@@ -551,6 +551,17 @@ class HookedEncoderDecoder(HookedRootModule):
         **from_pretrained_kwargs: Any,
     ) -> T:
         """Loads in the pretrained weights from huggingface. Currently supports loading weight from HuggingFace BertForMaskedLM. Unlike HookedTransformer, this does not yet do any preprocessing on the model."""
+        import warnings
+
+        warnings.warn(
+            "HookedEncoderDecoder.from_pretrained is deprecated and will be removed in a "
+            "future major release. Use TransformerBridge.boot_transformers(...) instead — "
+            "the bridge supports T5-style encoder-decoder models. See "
+            "docs/source/content/migrating_to_v3.md.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
         logging.warning(
             "Support for T5 in TransformerLens is currently experimental, until such a time when it has feature "
             "parity with HookedTransformer and has been tested on real research tasks. Until then, backward "

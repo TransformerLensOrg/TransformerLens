@@ -29,6 +29,7 @@ _HF_PASSTHROUGH_ATTRS = [
     "decoder_ffn_dim",
     # Granite
     "position_embedding_type",
+    "logits_scaling",
     # Falcon
     "parallel_attn",
     "multi_query",
@@ -52,11 +53,19 @@ _HF_PASSTHROUGH_ATTRS = [
     "mamba_n_groups",
     "mamba_d_conv",
     "mamba_chunk_size",
+    "lm_head_multiplier",
     # Multimodal
     "vision_config",
     # Cohere
     "logit_scale",
     "rope_parameters",
+    # HRM-Text
+    "H_cycles",
+    "L_cycles",
+    "L_bp_cycles",
+    "embedding_scale",
+    "prefix_lm",
+    "num_layers_per_stack",
     "sliding_window_pattern",
     "_sliding_window_pattern",
     # Hybrid/MoE architectures
@@ -132,6 +141,7 @@ def build_bridge_config_from_hf(
 ) -> TransformerBridgeConfig:
     """Translate an HF config into a :class:`TransformerBridgeConfig`."""
     from transformer_lens.model_bridge.sources.transformers import (
+        get_effective_text_config,
         map_default_transformer_lens_config,
     )
 
@@ -145,16 +155,22 @@ def build_bridge_config_from_hf(
     bridge_config.model_name = model_name
     bridge_config.dtype = dtype
 
+    effective_config = get_effective_text_config(hf_config)
     for attr in _HF_PASSTHROUGH_ATTRS:
-        val = getattr(hf_config, attr, None)
+        val = getattr(effective_config, attr, None)
+        if val is None and effective_config is not hf_config:
+            val = getattr(hf_config, attr, None)
         if val is not None:
             setattr(bridge_config, attr, val)
 
     # Gemma2: HF softcap field names differ from TL's.
-    final_logit_softcapping = getattr(hf_config, "final_logit_softcapping", None)
+    final_logit_softcapping = getattr(effective_config, "final_logit_softcapping", None)
     if final_logit_softcapping is not None:
         bridge_config.output_logits_soft_cap = float(final_logit_softcapping)
-    attn_logit_softcapping = getattr(hf_config, "attn_logit_softcapping", None)
+    logits_soft_cap = getattr(effective_config, "logits_soft_cap", None)
+    if logits_soft_cap is not None:
+        bridge_config.output_logits_soft_cap = float(logits_soft_cap)
+    attn_logit_softcapping = getattr(effective_config, "attn_logit_softcapping", None)
     if attn_logit_softcapping is not None:
         bridge_config.attn_scores_soft_cap = float(attn_logit_softcapping)
 
