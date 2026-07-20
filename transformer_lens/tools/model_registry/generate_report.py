@@ -73,6 +73,7 @@ ARCHITECTURE_DESCRIPTIONS: dict[str, str] = {
     "Cohere2ForCausalLM": "Cohere's Command-A architecture with interleaved sliding-window RoPE and full-attention NoPE layers",
     "OuroForCausalLM": "ByteDance's Ouro looped language model (LoopLM) with weight-shared iterated depth",
     "RavenForCausalLM": "tomg-group-umd's Huginn depth-recurrent decoder (prelude / weight-tied recurrent core / coda) with runtime recurrence count",
+    "RWKV7ForCausalLM": 'fla-hub\'s RWKV-7 ("Goose") attention-free recurrent decoder with generalized-delta-rule time-mixing and squared-ReLU channel-mixing',
     # Unsupported architectures
     "BertModel": "Google's BERT bidirectional encoder for understanding tasks",
     "BertForMaskedLM": "BERT with masked language modeling head",

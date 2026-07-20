@@ -130,6 +130,20 @@ _HF_PASSTHROUGH_ATTRS = [
     "n_layers_in_coda",
     "injection_type",
     "qk_bias",
+    # RWKV-7 (attention-free recurrent, generalized delta-rule time-mixing).
+    # head_dim is intentionally omitted: it is a read-only alias of d_head on
+    # TransformerBridgeConfig, so a passthrough setattr would raise.
+    "num_heads",
+    "value_dim",
+    "decay_low_rank_dim",
+    "gate_low_rank_dim",
+    "a_low_rank_dim",
+    "v_low_rank_dim",
+    "norm_first",
+    "norm_bias",
+    "fuse_norm",
+    "attn_mode",
+    "hidden_act",
 ]
 
 
