@@ -34,6 +34,16 @@ warnings.filterwarnings("ignore", message=".*generation flags.*not valid.*")
 logging.getLogger("transformers").setLevel(logging.ERROR)
 
 
+def get_effective_text_config(hf_config: Any) -> Any:
+    """Return the config that owns the language-model forward path."""
+    if getattr(hf_config, "text_config", None) is not None:
+        return hf_config.text_config
+    decoder = getattr(hf_config, "decoder", None)
+    if decoder is not None and hasattr(decoder, "hidden_size"):
+        return decoder
+    return hf_config
+
+
 def map_default_transformer_lens_config(hf_config):
     """Map HuggingFace config fields to TransformerLens config format.
 
@@ -51,16 +61,7 @@ def map_default_transformer_lens_config(hf_config):
         A copy of hf_config with additional TransformerLens fields
     """
     # Extract language model config from text_config for multimodal models
-    source_config = hf_config
-    if hasattr(hf_config, "text_config") and hf_config.text_config is not None:
-        source_config = hf_config.text_config
-    # T5Gemma: nested encoder/decoder sub-configs; use decoder (LM head is decoder-side)
-    elif (
-        hasattr(hf_config, "decoder")
-        and hf_config.decoder is not None
-        and hasattr(hf_config.decoder, "hidden_size")
-    ):
-        source_config = hf_config.decoder
+    source_config = get_effective_text_config(hf_config)
 
     tl_config = copy.deepcopy(hf_config)
     if hasattr(source_config, "n_embd"):
@@ -556,6 +557,7 @@ def boot(
         "decoder_ffn_dim",
         # Granite
         "position_embedding_type",
+        "logits_scaling",
         # Falcon
         "parallel_attn",
         "multi_query",
@@ -579,6 +581,7 @@ def boot(
         "mamba_n_groups",
         "mamba_d_conv",
         "mamba_chunk_size",
+        "lm_head_multiplier",
         # Multimodal
         "vision_config",
         # Cohere
@@ -634,16 +637,22 @@ def boot(
         "total_ut_steps",
         "early_exit_threshold",
     ]
+    effective_config = get_effective_text_config(hf_config)
     for attr in _HF_PASSTHROUGH_ATTRS:
-        val = getattr(hf_config, attr, None)
+        val = getattr(effective_config, attr, None)
+        if val is None and effective_config is not hf_config:
+            val = getattr(hf_config, attr, None)
         if val is not None:
             setattr(bridge_config, attr, val)
 
     # Gemma2 softcapping: HF names differ from TL names, need explicit mapping
-    final_logit_softcapping = getattr(hf_config, "final_logit_softcapping", None)
+    final_logit_softcapping = getattr(effective_config, "final_logit_softcapping", None)
     if final_logit_softcapping is not None:
         bridge_config.output_logits_soft_cap = float(final_logit_softcapping)
-    attn_logit_softcapping = getattr(hf_config, "attn_logit_softcapping", None)
+    logits_soft_cap = getattr(effective_config, "logits_soft_cap", None)
+    if logits_soft_cap is not None:
+        bridge_config.output_logits_soft_cap = float(logits_soft_cap)
+    attn_logit_softcapping = getattr(effective_config, "attn_logit_softcapping", None)
     if attn_logit_softcapping is not None:
         bridge_config.attn_scores_soft_cap = float(attn_logit_softcapping)
     adapter = ArchitectureAdapterFactory.select_architecture_adapter(bridge_config)

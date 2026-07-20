@@ -182,6 +182,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         if self.cfg.d_vocab_out == -1:
             self.cfg.d_vocab_out = self.cfg.d_vocab
         self.compatibility_mode = False
+        self._weights_processed = False
         self._hook_cache = None
         self._hook_registry: Dict[str, HookPoint] = {}
         self._hook_registry_initialized = False
@@ -922,6 +923,9 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             fold_value_biases: Fold value biases into output bias. Default: True
             refactor_factored_attn_matrices: Experimental QK/OV factorization. Default: False
         """
+        # A failed or partial processing attempt is no longer guaranteed to retain
+        # the raw HuggingFace basis, so invalidate that contract before any work.
+        self._weights_processed = True
         from transformer_lens.weight_processing import ProcessWeights
 
         if verbose:

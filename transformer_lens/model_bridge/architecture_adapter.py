@@ -24,6 +24,7 @@ from transformer_lens.model_bridge.types import (
     RemotePath,
     TransformerLensPath,
 )
+from transformer_lens.utilities.activation_functions import apply_softcap
 
 
 class ArchitectureAdapter:
@@ -97,6 +98,18 @@ class ArchitectureAdapter:
         for key, value in self.default_cfg.items():
             if not hasattr(self.cfg, key):
                 setattr(self.cfg, key, value)
+
+    def apply_output_logits_transform(self, logits: torch.Tensor) -> torch.Tensor:
+        """Apply the architecture's declared post-unembedding transform.
+
+        Most causal decoders only apply the shared optional Gemma-style soft cap.
+        Adapters with additional scaling override this method instead of relying
+        on similarly named configuration fields used by unrelated architectures.
+        """
+        return apply_softcap(logits, getattr(self.cfg, "output_logits_soft_cap", None))
+
+    def validate_output_logits_transform(self) -> None:
+        """Validate that the adapter can reproduce its post-unembedding path."""
 
     def _qkvo_weight_conversions(
         self, n_kv_heads: Optional[int] = None

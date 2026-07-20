@@ -123,6 +123,7 @@ class DeepseekV4BlockBridge(BlockBridge):
     """
 
     hook_aliases: dict[str, str | list[str]] = {}
+    hook_out_is_single_residual_stream: bool = False
     maintain_native_attention: bool = True
 
 
