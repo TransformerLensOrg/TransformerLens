@@ -160,7 +160,9 @@ class RavenArchitectureAdapter(ArchitectureAdapter):
         setattr(self.cfg, "mean_recurrence", getattr(cfg, "mean_recurrence", 32))
         setattr(self.cfg, "mean_backprop_depth", getattr(cfg, "mean_backprop_depth", 8))
         setattr(self.cfg, "n_layers_in_prelude", getattr(cfg, "n_layers_in_prelude", 2))
-        setattr(self.cfg, "n_layers_in_recurrent_block", getattr(cfg, "n_layers_in_recurrent_block", 4))
+        setattr(
+            self.cfg, "n_layers_in_recurrent_block", getattr(cfg, "n_layers_in_recurrent_block", 4)
+        )
         setattr(self.cfg, "n_layers_in_coda", getattr(cfg, "n_layers_in_coda", 2))
         setattr(self.cfg, "injection_type", getattr(cfg, "injection_type", "linear"))
         setattr(self.cfg, "qk_bias", getattr(cfg, "qk_bias", True))
