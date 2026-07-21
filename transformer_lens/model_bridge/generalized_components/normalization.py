@@ -77,7 +77,6 @@ class NormalizationBridge(GeneralizedComponent):
             )
         assert self.config is not None
         hidden_states = self.hook_in(hidden_states)
-        self._last_input_before_norm = hidden_states
         if self.use_native_layernorm_autograd:
             result = self._hf_autograd_forward_with_hooks(hidden_states)
         elif hasattr(self.config, "layer_norm_folding") and self.config.layer_norm_folding:
