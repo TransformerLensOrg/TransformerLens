@@ -1,10 +1,10 @@
 """Qwen2-Audio architecture adapter.
 
 ``Qwen2AudioForConditionalGeneration``: a Whisper-style audio encoder at
-``audio_tower``, a linear projector at ``multi_modal_projector``, and a full
-Qwen2ForCausalLM at ``language_model`` (so text paths live under
-``language_model.model.*`` with ``language_model.lm_head``). Text-only
-forwards work without audio; audio features enter via ``input_features``.
+``model.audio_tower``, a linear projector at ``model.multi_modal_projector``,
+and a Qwen2 text decoder at ``model.language_model`` with a top-level
+``lm_head`` (the transformers >= 5.13 layout). Text-only forwards work without
+audio; audio features enter via ``input_features``.
 """
 
 from typing import Any
@@ -45,14 +45,14 @@ class Qwen2AudioArchitectureAdapter(ArchitectureAdapter):
             # The Whisper-style encoder and projector are wrapped opaquely
             # (hook_in/hook_out only) — audio features are injected by the HF
             # forward when input_features is passed.
-            "audio_encoder": GeneralizedComponent(name="audio_tower"),
-            "audio_projector": GeneralizedComponent(name="multi_modal_projector"),
-            "embed": EmbeddingBridge(name="language_model.model.embed_tokens"),
+            "audio_encoder": GeneralizedComponent(name="model.audio_tower"),
+            "audio_projector": GeneralizedComponent(name="model.multi_modal_projector"),
+            "embed": EmbeddingBridge(name="model.language_model.embed_tokens"),
             "rotary_emb": RotaryEmbeddingBridge(
-                name="language_model.model.rotary_emb", config=self.cfg
+                name="model.language_model.rotary_emb", config=self.cfg
             ),
             "blocks": BlockBridge(
-                name="language_model.model.layers",
+                name="model.language_model.layers",
                 submodules={
                     "ln1": RMSNormalizationBridge(name="input_layernorm", config=self.cfg),
                     "ln2": RMSNormalizationBridge(name="post_attention_layernorm", config=self.cfg),
@@ -71,13 +71,13 @@ class Qwen2AudioArchitectureAdapter(ArchitectureAdapter):
                     "mlp": self._gated_mlp(),
                 },
             ),
-            "ln_final": RMSNormalizationBridge(name="language_model.model.norm", config=self.cfg),
-            "unembed": UnembeddingBridge(name="language_model.lm_head", config=self.cfg),
+            "ln_final": RMSNormalizationBridge(name="model.language_model.norm", config=self.cfg),
+            "unembed": UnembeddingBridge(name="lm_head", config=self.cfg),
         }
 
     def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
         """Wire the text model's rotary embedding through to attention bridges."""
-        rotary_emb = hf_model.language_model.model.rotary_emb
+        rotary_emb = hf_model.model.language_model.rotary_emb
 
         if hasattr(hf_model, "config") and hasattr(hf_model.config, "_attn_implementation"):
             hf_model.config._attn_implementation = "eager"

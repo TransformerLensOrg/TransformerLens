@@ -143,6 +143,16 @@ class ArchitectureAdapter:
         assert self.component_mapping is not None, "component_mapping has not been built"
         return self.component_mapping
 
+    def _canonical_layer_types(self, cfg: Any) -> list[str]:
+        """Per-layer mixer-type list, normalized to canonical TL names.
+
+        transformers >= 5.13 renamed the hybrid layer-type strings
+        ("mamba"/"attention") to ("linear_attention"/"full_attention").
+        """
+        aliases = {"linear_attention": "mamba", "full_attention": "attention"}
+        raw = getattr(cfg, "layers_block_type", None) or getattr(cfg, "layer_types", None) or []
+        return [aliases.get(t, t) for t in raw]
+
     def _extract_vision_dims(self, cfg: Any) -> None:
         """Copy vision-tower dims onto cfg, handling both HF-standard naming
         (num_hidden_layers/num_attention_heads) and Qwen-style (depth/num_heads)."""

@@ -40,10 +40,10 @@ class TestGlmAsrComponentMapping:
         """Same audio_tower / projector / language_model layout as
         Qwen2-Audio; the Llama text stack shares Qwen2's module names."""
         mapping = adapter.component_mapping
-        assert mapping["audio_encoder"].name == "audio_tower"
-        assert mapping["audio_projector"].name == "multi_modal_projector"
-        assert mapping["embed"].name == "language_model.model.embed_tokens"
-        assert mapping["unembed"].name == "language_model.lm_head"
+        assert mapping["audio_encoder"].name == "model.audio_tower"
+        assert mapping["audio_projector"].name == "model.multi_modal_projector"
+        assert mapping["embed"].name == "model.language_model.embed_tokens"
+        assert mapping["unembed"].name == "lm_head"
         assert adapter.cfg.is_multimodal is True
 
 

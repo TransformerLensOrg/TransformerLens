@@ -1,8 +1,8 @@
 """Unit tests for the AudioFlamingo3 and MusicFlamingo adapters.
 
 Both are pure subclasses of the Qwen2-Audio adapter: identical module
-names (audio_tower / multi_modal_projector / language_model.model.*),
-so the tests pin the inheritance and the mapped paths.
+names (model.audio_tower / model.multi_modal_projector /
+model.language_model.*), so the tests pin the inheritance and the mapped paths.
 """
 from typing import Any
 
@@ -43,10 +43,10 @@ class TestAudioFlamingo3:
         assert af3.cfg.is_multimodal is True
         mapping = af3.component_mapping
         assert type(mapping["audio_encoder"]) is GeneralizedComponent
-        assert mapping["audio_encoder"].name == "audio_tower"
-        assert mapping["audio_projector"].name == "multi_modal_projector"
-        assert mapping["embed"].name == "language_model.model.embed_tokens"
-        assert mapping["unembed"].name == "language_model.lm_head"
+        assert mapping["audio_encoder"].name == "model.audio_tower"
+        assert mapping["audio_projector"].name == "model.multi_modal_projector"
+        assert mapping["embed"].name == "model.language_model.embed_tokens"
+        assert mapping["unembed"].name == "lm_head"
 
 
 class TestMusicFlamingo:
@@ -55,7 +55,7 @@ class TestMusicFlamingo:
             _make_cfg("MusicFlamingoForConditionalGeneration")
         )
         assert isinstance(adapter, AudioFlamingo3ArchitectureAdapter)
-        assert adapter.component_mapping["audio_encoder"].name == "audio_tower"
+        assert adapter.component_mapping["audio_encoder"].name == "model.audio_tower"
 
 
 def test_factory_registration():

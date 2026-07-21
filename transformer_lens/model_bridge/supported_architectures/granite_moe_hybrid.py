@@ -33,17 +33,6 @@ from transformer_lens.model_bridge.supported_architectures.granite import (
     GraniteArchitectureAdapter,
 )
 
-# HF ``GraniteMoeHybridConfig`` and ``NemotronHConfig`` normalise canonical TL
-# layer-type names (``"mamba"``, ``"attention"``) to their own internal strings
-# (``"linear_attention"``, ``"full_attention"``).  Map back so
-# ``cfg.layers_block_type`` carries the expected TL names.
-_LAYER_TYPE_TO_TL: dict[str, str] = {
-    "linear_attention": "mamba",
-    "full_attention": "attention",
-    "mamba": "mamba",
-    "attention": "attention",
-}
-
 
 class GraniteMoeHybridArchitectureAdapter(GraniteArchitectureAdapter):
     """Hybrid Mamba2 + Attention with Sparse MoE.
@@ -68,14 +57,7 @@ class GraniteMoeHybridArchitectureAdapter(GraniteArchitectureAdapter):
 
         # Normalize the per-layer mixer-type list as cfg.layers_block_type (HF names
         # it `layer_types`) so analysis tools can find the Mamba layers, as on NemotronH.
-        layers_block_type = (
-            getattr(cfg, "layers_block_type", None) or getattr(cfg, "layer_types", None) or []
-        )
-        setattr(
-            self.cfg,
-            "layers_block_type",
-            [_LAYER_TYPE_TO_TL.get(t, t) for t in layers_block_type],
-        )
+        setattr(self.cfg, "layers_block_type", self._canonical_layer_types(cfg))
 
         self.component_mapping = self._build_component_mapping()
 

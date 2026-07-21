@@ -44,10 +44,7 @@ class BambaArchitectureAdapter(ArchitectureAdapter):
 
         # Normalize the per-layer mixer-type list as cfg.layers_block_type so
         # analysis tools can find the Mamba layers, as on the hybrid siblings.
-        layers_block_type = (
-            getattr(cfg, "layers_block_type", None) or getattr(cfg, "layer_types", None) or []
-        )
-        setattr(self.cfg, "layers_block_type", list(layers_block_type))
+        setattr(self.cfg, "layers_block_type", self._canonical_layer_types(cfg))
 
         # Mixed mamba/attention layers: keep raw HF weight layout.
         self.supports_fold_ln = False

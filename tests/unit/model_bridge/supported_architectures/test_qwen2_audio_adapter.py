@@ -43,18 +43,18 @@ class TestQwen2AudioComponentMapping:
         mapping = adapter.component_mapping
         audio = mapping["audio_encoder"]
         assert isinstance(audio, GeneralizedComponent)
-        assert audio.name == "audio_tower"
+        assert audio.name == "model.audio_tower"
         proj = mapping["audio_projector"]
-        assert proj.name == "multi_modal_projector"
+        assert proj.name == "model.multi_modal_projector"
 
     def test_text_model_paths_are_nested_with_lm_head(self, adapter):
-        """The language model is a full Qwen2ForCausalLM, so paths carry the
-        extra .model segment and lm_head lives under language_model."""
+        """transformers >= 5.13 nests the audio tower, projector and text
+        decoder under ``model.*`` and lifts ``lm_head`` to the top level."""
         mapping = adapter.component_mapping
-        assert mapping["embed"].name == "language_model.model.embed_tokens"
-        assert mapping["blocks"].name == "language_model.model.layers"
-        assert mapping["ln_final"].name == "language_model.model.norm"
-        assert mapping["unembed"].name == "language_model.lm_head"
+        assert mapping["embed"].name == "model.language_model.embed_tokens"
+        assert mapping["blocks"].name == "model.language_model.layers"
+        assert mapping["ln_final"].name == "model.language_model.norm"
+        assert mapping["unembed"].name == "lm_head"
 
     def test_qwen2_text_flags(self, adapter):
         assert adapter.cfg.normalization_type == "RMS"

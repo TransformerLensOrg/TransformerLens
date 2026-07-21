@@ -31,8 +31,8 @@ class TestQwen2AudioBridgeCreation:
 
     def test_audio_tower_is_live(self, audio_bridge):
         hf_model = audio_bridge.original_model
-        assert audio_bridge.audio_encoder is hf_model.audio_tower
-        assert audio_bridge.audio_projector is hf_model.multi_modal_projector
+        assert audio_bridge.audio_encoder is hf_model.model.audio_tower
+        assert audio_bridge.audio_projector is hf_model.model.multi_modal_projector
 
 
 class TestQwen2AudioForwardEquivalence:
