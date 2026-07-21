@@ -8,6 +8,7 @@ VerificationRecord/VerificationHistory dataclasses.
 import json
 import logging
 from datetime import date
+from functools import lru_cache
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -18,6 +19,7 @@ logger = logging.getLogger(__name__)
 _DATA_DIR = Path(__file__).parent / "data"
 _SUPPORTED_MODELS_PATH = _DATA_DIR / "supported_models.json"
 _VERIFICATION_HISTORY_PATH = _DATA_DIR / "verification_history.json"
+_MODEL_ALIASES_PATH = _DATA_DIR / "model_aliases.json"
 
 # Status codes
 STATUS_UNVERIFIED = 0
@@ -134,6 +136,21 @@ def required_quant_library_for_model(model_id: str) -> Optional[str]:
 def is_quantized_model(model_id: str) -> bool:
     """Alias for ``is_incompatible_quantized`` — kept for back-compat with existing call sites."""
     return is_incompatible_quantized(model_id)
+
+
+@lru_cache(maxsize=1)
+def load_model_aliases() -> dict[str, list[str]]:
+    """Load the canonical alias table: official HF model name -> deprecated short aliases."""
+    with open(_MODEL_ALIASES_PATH) as f:
+        return json.load(f)["aliases"]
+
+
+def resolve_model_alias(model_name: str) -> Optional[str]:
+    """Return the official HF name if ``model_name`` is a deprecated alias, else None."""
+    for official_name, aliases in load_model_aliases().items():
+        if model_name in aliases:
+            return official_name
+    return None
 
 
 def load_supported_models_raw() -> dict:

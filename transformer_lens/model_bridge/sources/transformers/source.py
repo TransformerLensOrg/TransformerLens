@@ -23,7 +23,7 @@ from transformer_lens.model_bridge.sources._hf_format import (
     determine_architecture_from_hf_config,
     setup_tokenizer,
 )
-from transformer_lens.supported_models import MODEL_ALIASES
+from transformer_lens.tools.model_registry.registry_io import resolve_model_alias
 from transformer_lens.utilities import get_device
 
 from .helpers import (
@@ -108,13 +108,12 @@ def boot(
     Returns:
         The bridge to the loaded model.
     """
-    for official_name, aliases in MODEL_ALIASES.items():
-        if model_name in aliases:
-            logging.warning(
-                f"DEPRECATED: You are using a deprecated, model_name alias '{model_name}'. TransformerLens will now load the official transformers model name, '{official_name}' instead.\n Please update your code to use the official name by changing model_name from '{model_name}' to '{official_name}'.\nSince TransformerLens v3, all model names should be the official transformers model names.\nThe aliases will be removed in the next version of TransformerLens, so please do the update now."
-            )
-            model_name = official_name
-            break
+    official_name = resolve_model_alias(model_name)
+    if official_name is not None:
+        logging.warning(
+            f"DEPRECATED: You are using a deprecated, model_name alias '{model_name}'. TransformerLens will now load the official transformers model name, '{official_name}' instead.\n Please update your code to use the official name by changing model_name from '{model_name}' to '{official_name}'.\nSince TransformerLens v3, all model names should be the official transformers model names.\nThe aliases will be removed in the next version of TransformerLens, so please do the update now."
+        )
+        model_name = official_name
     if checkpoint_index is not None or checkpoint_value is not None:
         if revision is not None:
             raise ValueError(

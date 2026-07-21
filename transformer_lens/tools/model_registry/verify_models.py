@@ -43,6 +43,7 @@ _EXIT_GRACEFUL_INTERRUPT = 42
 # between models without corrupting state.
 _interrupt_requested = False
 
+from . import REMOTE_CODE_MODEL_PREFIXES
 from .registry_io import (
     QUANTIZED_NOTE,
     STATUS_FAILED,
@@ -57,16 +58,6 @@ from .registry_io import (
 )
 
 logger = logging.getLogger(__name__)
-
-# Architectures added via the TransformerBridge system that need trust_remote_code=True.
-# These are not in the legacy NEED_REMOTE_CODE_MODELS tuple (loading_from_pretrained.py).
-_BRIDGE_REMOTE_CODE_PREFIXES: tuple[str, ...] = (
-    "baichuan-inc/",  # BaichuanForCausalLM — ships own modeling_baichuan.py
-    "ByteDance/Ouro-",  # OuroForCausalLM — ships own modeling_ouro.py
-    "internlm/",  # InternLM2ForCausalLM — ships own modeling_internlm2.py
-    "GSAI-ML/LLaDA",  # LLaDAModelLM — ships configuration_llada.py/modeling_llada.py
-    "kuleshov-group/",  # BD3LM — ships own custom modeling_d_dit.py
-)
 
 # Data directory for registry files
 _DATA_DIR = Path(__file__).parent / "data"
@@ -199,10 +190,7 @@ def estimate_model_params(model_id: str) -> int:
     """
     from transformers import AutoConfig
 
-    from transformer_lens.loading_from_pretrained import NEED_REMOTE_CODE_MODELS
-
-    _all_remote_prefixes = NEED_REMOTE_CODE_MODELS + _BRIDGE_REMOTE_CODE_PREFIXES
-    trust_remote_code = any(model_id.startswith(prefix) for prefix in _all_remote_prefixes)
+    trust_remote_code = any(model_id.startswith(prefix) for prefix in REMOTE_CODE_MODEL_PREFIXES)
     from transformer_lens.utilities.hf_utils import get_hf_token
 
     config = AutoConfig.from_pretrained(
@@ -889,10 +877,9 @@ def verify_models(
         all_results: list = []
         error_msg: Optional[str] = None
 
-        from transformer_lens.loading_from_pretrained import NEED_REMOTE_CODE_MODELS
-
-        _all_remote_prefixes = NEED_REMOTE_CODE_MODELS + _BRIDGE_REMOTE_CODE_PREFIXES
-        needs_remote_code = any(model_id.startswith(prefix) for prefix in _all_remote_prefixes)
+        needs_remote_code = any(
+            model_id.startswith(prefix) for prefix in REMOTE_CODE_MODEL_PREFIXES
+        )
 
         # Convert string dtype to torch.dtype for benchmark suite
         import torch
