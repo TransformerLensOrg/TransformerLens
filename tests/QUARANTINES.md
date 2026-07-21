@@ -11,7 +11,7 @@ Rule ([AGENTS.md §10](../AGENTS.md#10-hard-rules)): **never add `xfail` / `skip
 | Path | Marker | Trigger |
 |---|---|---|
 | [`unit/test_lit.py`](unit/test_lit.py) (×18) | `skipif(not LIT_AVAILABLE)` | `pip install lit-nlp` (`lit` group) |
-| [`unit/components/test_attention.py`:48](unit/components/test_attention.py) | `skipif(not is_bitsandbytes_available())` | `uv sync --group quantization` |
+| [`unit/components/test_attention.py`:130](unit/components/test_attention.py) | `skipif(not is_bitsandbytes_available())` | `uv sync --group quantization` |
 | [`unit/test_weight_processing.py`:477](unit/test_weight_processing.py) | same | same |
 | [`unit/factories/test_mlp_factory.py`:40](unit/factories/test_mlp_factory.py) | same | same |
 
@@ -25,15 +25,16 @@ Rule ([AGENTS.md §10](../AGENTS.md#10-hard-rules)): **never add `xfail` / `skip
 |---|---|---|
 | [`unit/test_next_sentence_prediction.py`:131](unit/test_next_sentence_prediction.py) | `skipif(not cuda)` | Any CUDA |
 | [`unit/model_bridge/compatibility/test_next_sentence_prediction.py`:95](unit/model_bridge/compatibility/test_next_sentence_prediction.py) | `skipif(not cuda)` | Any CUDA |
-| [`unit/components/test_attention.py`:83](unit/components/test_attention.py) | `skipif(not cuda)` (half/bfloat16) | Any CUDA |
+| [`unit/components/test_attention.py`:165](unit/components/test_attention.py) | `skipif(not cuda)` (half/bfloat16) | Any CUDA |
 | [`acceptance/test_hooked_encoder.py`:227](acceptance/test_hooked_encoder.py) | `skipif(not cuda)` | Any CUDA |
 | [`acceptance/test_hooked_encoder_decoder.py`:421](acceptance/test_hooked_encoder_decoder.py) | `skipif(not cuda)` | Any CUDA |
 | [`acceptance/test_multi_gpu.py`:91,105](acceptance/test_multi_gpu.py) | `skipif(device_count < 2)` | 2+ CUDA |
 | [`acceptance/test_multi_gpu.py`:22](acceptance/test_multi_gpu.py) | `skipif(device_count < 4)` | 4+ CUDA |
-| [`acceptance/model_bridge/test_multi_gpu_bridge.py`:257](acceptance/model_bridge/test_multi_gpu_bridge.py) | `skipif(device_count < 2)` | 2+ CUDA |
+| [`acceptance/model_bridge/test_bridge_multigpu.py`](acceptance/model_bridge/test_bridge_multigpu.py) module-level | `multigpu` marker + `skipif(device_count < 2)` | 2+ CUDA |
+| [`acceptance/model_bridge/test_bridge_multigpu_device_map.py`](acceptance/model_bridge/test_bridge_multigpu_device_map.py) module-level | `multigpu` marker + `skipif(device_count < 2)` | 2+ CUDA |
 | [`mps/test_mps_basic.py`](mps/test_mps_basic.py) module-level | `skipif(not mps)` | Apple Silicon |
 
-**Un-skip:** never. CI provides each tier (CUDA via compatibility-checks → CPU-only in practice; MPS via `mps-checks`; multi-GPU local-only). See [tests/AGENTS.md §MPS rules](AGENTS.md#mps-rules) and the `--ignore=` list in [`checks.yml`](../.github/workflows/checks.yml).
+**Un-skip:** never in CI. The two `test_bridge_multigpu*` suites are the boot_transformers multi-device verification tier — run them manually on a >= 2-GPU box (`-m multigpu`, one file per pytest process) together with `scripts/bridge_multi_device_parity.py` before releases that touch device placement. **Validated 2026-07-16 on a 2-GPU box**: both suites pass, and the parity sweep (5 architectures, `n_devices=2` and `device_map=balanced`) reported bitwise-identical activations vs single-device (worst diff 0.0 across every cached hook); HookedTransformer's legacy `test_multi_gpu.py` 2-GPU subset also passed. The box debugging added two fail-loud boot guards: tied-weight pairs split across map entries, and mixed CPU+GPU maps (accelerate CPU offload, whose materialization hooks param-reading Bridge components bypass). CI provides the other tiers (CUDA via compatibility-checks → CPU-only in practice; MPS via `mps-checks`). See [tests/AGENTS.md §MPS rules](AGENTS.md#mps-rules) and the `--ignore=` list in [`checks.yml`](../.github/workflows/checks.yml).
 
 ---
 
@@ -51,6 +52,7 @@ Rule ([AGENTS.md §10](../AGENTS.md#10-hard-rules)): **never add `xfail` / `skip
 | [`integration/model_bridge/test_glm_adapter.py`:13](integration/model_bridge/test_glm_adapter.py) | "glm-edge-1.5b download too large for CI budget" |
 | [`integration/model_bridge/test_pegasus_adapter.py`:17](integration/model_bridge/test_pegasus_adapter.py) | "Pegasus-XSum download too large for CI budget; distilled variants are asymmetric" |
 | [`integration/model_bridge/test_exaone_adapter.py`:19](integration/model_bridge/test_exaone_adapter.py) | "EXAONE 2.4B download too large for CI budget; no working tiny mirror (hyper-accel/tiny-random-exaone ships stale remote code)" |
+| [`integration/model_bridge/test_ouro_adapter.py`:35](integration/model_bridge/test_ouro_adapter.py) module-level (+ `slow` marker) | "ByteDance/Ouro-1.4B: 2.8GB download + ~11GB RAM, too large for CI" |
 
 **Un-skip:** locally with `HF_TOKEN` sourced.
 

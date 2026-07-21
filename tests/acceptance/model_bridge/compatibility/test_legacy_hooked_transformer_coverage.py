@@ -185,21 +185,24 @@ class TestLegacyHookedTransformerCoverage:
     def test_device_compatibility(self, bridge_model):
         """Test that device handling works correctly."""
         prompt = "Test device compatibility."
+        original_device = next(bridge_model.parameters()).device
+        try:
+            # Test CPU
+            model_cpu = bridge_model.cpu()
+            tokens_cpu = model_cpu.to_tokens(prompt)
+            assert tokens_cpu.device.type == "cpu"
 
-        # Test CPU
-        model_cpu = bridge_model.cpu()
-        tokens_cpu = model_cpu.to_tokens(prompt)
-        assert tokens_cpu.device.type == "cpu"
-
-        # Test moving between devices if CUDA is available
-        if torch.cuda.is_available():
-            try:
-                model_cuda = bridge_model.cuda()
-                tokens_cuda = model_cuda.to_tokens(prompt)
-                assert tokens_cuda.device.type == "cuda"
-            except Exception:
-                # CUDA might not work in test environment
-                pass
+            # Test moving between devices if CUDA is available
+            if torch.cuda.is_available():
+                try:
+                    model_cuda = bridge_model.cuda()
+                    tokens_cuda = model_cuda.to_tokens(prompt)
+                    assert tokens_cuda.device.type == "cuda"
+                except Exception:
+                    # CUDA might not work in test environment
+                    pass
+        finally:
+            bridge_model.to(original_device)
 
     def test_generation_functionality(self, bridge_model):
         """Test that generation works if implemented."""

@@ -5,11 +5,42 @@ import torch.nn as nn
 from transformers.utils import is_bitsandbytes_available
 
 from transformer_lens.components import Attention
+from transformer_lens.components import abstract_attention as abstract_attention_module
 from transformer_lens.config import HookedTransformerConfig
-from transformer_lens.utilities.attention import complex_attn_linear
+from transformer_lens.utilities.attention import complex_attn_linear, simple_attn_linear
 
 if is_bitsandbytes_available():
     from bitsandbytes.nn.modules import Params4bit
+
+
+class FakeParams4bit:
+    def __init__(self, dequantized: torch.Tensor):
+        self.data = dequantized
+        self.quant_state = object()
+
+    def t(self):
+        return self.data.t()
+
+
+class FakeBnbFunctional:
+    @staticmethod
+    def dequantize_4bit(input, quant_state):
+        return input
+
+
+class FakeBnb:
+    functional = FakeBnbFunctional()
+
+    @staticmethod
+    def matmul_4bit(input, weight, bias, quant_state):
+        if input.ndim != 3:
+            raise AssertionError("split QKV projection should dequantize once")
+        return torch.matmul(input, weight)
+
+
+def fake_4bit_weight(weight: torch.Tensor) -> FakeParams4bit:
+    dequantized = einops.rearrange(weight, "head d_model d_head -> (head d_head) d_model")
+    return FakeParams4bit(dequantized)
 
 
 def test_attention_hooked_transformer_config():
@@ -43,6 +74,57 @@ def test_attention_hooked_transformer_config():
     assert attn.b_V.shape == (cfg.n_heads, cfg.d_head)
     assert torch.all(attn.b_K == 0)
     assert torch.all(attn.b_V == 0)
+
+
+@pytest.mark.parametrize("use_split_qkv_input", [False, True])
+def test_attention_4bit_qkv_projection_matches_unquantized(monkeypatch, use_split_qkv_input):
+    monkeypatch.setattr(abstract_attention_module, "Params4bit", FakeParams4bit, raising=False)
+    monkeypatch.setattr(abstract_attention_module, "bnb", FakeBnb, raising=False)
+
+    torch.manual_seed(0)
+    cfg = HookedTransformerConfig(
+        n_layers=1,
+        d_model=6,
+        n_ctx=4,
+        d_head=2,
+        n_heads=3,
+        load_in_4bit=False,
+        use_split_qkv_input=use_split_qkv_input,
+        dtype=torch.float32,
+        act_fn="relu",
+    )
+    attn = Attention(cfg)
+    attn.cfg.load_in_4bit = True
+
+    W_Q = torch.randn(cfg.n_heads, cfg.d_model, cfg.d_head)
+    W_K = torch.randn(cfg.n_heads, cfg.d_model, cfg.d_head)
+    W_V = torch.randn(cfg.n_heads, cfg.d_model, cfg.d_head)
+
+    for name, weight in (("W_Q", W_Q), ("W_K", W_K), ("W_V", W_V)):
+        del attn._parameters[name]
+        setattr(attn, name, fake_4bit_weight(weight))
+
+    with torch.no_grad():
+        attn.b_Q.copy_(torch.randn_like(attn.b_Q))
+        attn.b_K.copy_(torch.randn_like(attn.b_K))
+        attn.b_V.copy_(torch.randn_like(attn.b_V))
+
+    if use_split_qkv_input:
+        query_input = torch.randn(2, 4, cfg.n_heads, cfg.d_model)
+        key_input = torch.randn(2, 4, cfg.n_heads, cfg.d_model)
+        value_input = torch.randn(2, 4, cfg.n_heads, cfg.d_model)
+        expected_fn = complex_attn_linear
+    else:
+        query_input = torch.randn(2, 4, cfg.d_model)
+        key_input = torch.randn(2, 4, cfg.d_model)
+        value_input = torch.randn(2, 4, cfg.d_model)
+        expected_fn = simple_attn_linear
+
+    q, k, v = attn.calculate_qkv_matrices(query_input, key_input, value_input)
+
+    assert torch.allclose(q, expected_fn(query_input, W_Q, attn.b_Q))
+    assert torch.allclose(k, expected_fn(key_input, W_K, attn.b_K))
+    assert torch.allclose(v, expected_fn(value_input, W_V, attn.b_V))
 
 
 @pytest.mark.skipif(not is_bitsandbytes_available(), reason="bitsandbytes is not available")

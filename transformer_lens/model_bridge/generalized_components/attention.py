@@ -40,6 +40,8 @@ class AttentionBridge(GeneralizedComponent):
     # Override to False on variants without a pre-LN fork (e.g. MLA); skips
     # the split-qkv HookPoints and the BlockBridge pre-ln1 capture.
     supports_split_qkv_fork: bool = True
+    # Reconstructed variants can opt in independently of Q/K/V input forks.
+    supports_attn_result: bool = False
     property_aliases = {
         "W_Q": "q.weight",
         "W_K": "k.weight",
@@ -53,7 +55,7 @@ class AttentionBridge(GeneralizedComponent):
 
     def __init__(
         self,
-        name: str,
+        name: Optional[str],
         config: Any,
         submodules: Optional[Dict[str, GeneralizedComponent]] = None,
         conversion_rule: Optional[BaseTensorConversion] = None,
@@ -70,7 +72,7 @@ class AttentionBridge(GeneralizedComponent):
         """Initialize the attention bridge.
 
         Args:
-            name: The name of this component
+            name: The name of this component, or None when projections live on the parent
             config: Model configuration (required for auto-conversion detection)
             submodules: Dictionary of submodules to register (e.g., q_proj, k_proj, etc.)
             conversion_rule: Optional conversion rule. If None, AttentionAutoConversion will be used
@@ -376,7 +378,11 @@ class AttentionBridge(GeneralizedComponent):
                 self.name,
             )
             return k, v
-        k, v = past_key_values.update(k, v, layer_idx)
+        # Some architectures (e.g. HRM-Text's recurrent stacks) pass a cycle_offset
+        # so each stack invocation writes to a unique cache slot. Non-participating
+        # models simply leave it unset.
+        cycle_offset = kwargs.get("cycle_offset", 0)
+        k, v = past_key_values.update(k, v, layer_idx + cycle_offset)
         return k, v
 
     def _reshape_qkv_to_heads(

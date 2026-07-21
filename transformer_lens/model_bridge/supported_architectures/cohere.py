@@ -164,6 +164,11 @@ class CohereArchitectureAdapter(ArchitectureAdapter):
                     state_dict[key] = (state_dict[key].float() * scale).to(orig_dtype)
         return state_dict
 
+    def apply_output_logits_transform(self, logits: torch.Tensor) -> torch.Tensor:
+        """Match Cohere's ``lm_head -> logit_scale -> optional softcap`` path."""
+        scale: float = getattr(self.cfg, "logit_scale")
+        return super().apply_output_logits_transform(logits * scale)
+
     def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
         """Wire the shared rotary onto attention bridges (attn implementation untouched)."""
         self._wire_rotary_for_testing(hf_model, bridge_model, eager=None)

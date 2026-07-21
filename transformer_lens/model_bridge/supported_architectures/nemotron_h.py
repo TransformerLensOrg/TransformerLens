@@ -47,6 +47,17 @@ from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
 
+# HF ``NemotronHConfig`` normalises canonical TL layer-type names
+# (``"mamba"``, ``"attention"``) to its own internal strings
+# (``"linear_attention"``, ``"full_attention"``).  Map back so
+# ``cfg.layers_block_type`` carries the expected TL names.
+_LAYER_TYPE_TO_TL: dict[str, str] = {
+    "linear_attention": "mamba",
+    "full_attention": "attention",
+    "mamba": "mamba",
+    "attention": "attention",
+}
+
 
 def _make_optional(component: "GeneralizedComponent") -> "GeneralizedComponent":
     """Mark a GeneralizedComponent submodule as optional.
@@ -93,7 +104,11 @@ class NemotronHArchitectureAdapter(ArchitectureAdapter):
         layers_block_type = (
             getattr(cfg, "layers_block_type", None) or getattr(cfg, "layer_types", None) or []
         )
-        setattr(self.cfg, "layers_block_type", list(layers_block_type))
+        setattr(
+            self.cfg,
+            "layers_block_type",
+            [_LAYER_TYPE_TO_TL.get(t, t) for t in layers_block_type],
+        )
 
         # Mamba-2 dimensional config (mirrors Mamba2ArchitectureAdapter).
         mamba_num_heads = getattr(cfg, "mamba_num_heads", 128)

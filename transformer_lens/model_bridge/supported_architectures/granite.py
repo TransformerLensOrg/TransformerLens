@@ -6,6 +6,8 @@ helper methods used by GraniteMoe and GraniteMoeHybrid variants.
 
 from typing import Any
 
+import torch
+
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
@@ -85,6 +87,11 @@ class GraniteArchitectureAdapter(ArchitectureAdapter):
             "ln_final": RMSNormalizationBridge(name="model.norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head", config=self.cfg),
         }
+
+    def apply_output_logits_transform(self, logits: torch.Tensor) -> torch.Tensor:
+        """Match Granite's ``lm_head / logits_scaling`` output path."""
+        scaling = float(getattr(self.cfg, "logits_scaling", 1.0))
+        return super().apply_output_logits_transform(logits / scaling)
 
     def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
         """Wire the shared rotary onto attention bridges (attn implementation untouched)."""

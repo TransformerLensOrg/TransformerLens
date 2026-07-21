@@ -1313,6 +1313,17 @@ class HookedTransformer(HookedRootModule):
                 3. Global default ("right")
             first_n_layers: If specified, only load the first n layers of the model.
         """
+        import warnings
+
+        warnings.warn(
+            "HookedTransformer.from_pretrained is deprecated and will be removed in a "
+            "future major release. Use TransformerBridge.boot_transformers(...) instead, "
+            "then call enable_compatibility_mode() for HookedTransformer-equivalent "
+            "numerics. See docs/source/content/migrating_to_v3.md.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
         if checkpoint_value is not None and checkpoint_label is not None:
             raise ValueError(
                 "Specify checkpoint_value or checkpoint_label, not both — they are aliases."
@@ -2031,6 +2042,11 @@ class HookedTransformer(HookedRootModule):
                     self.tokenizer.padding_side = _orig_padding_side
             device = get_device_for_block_index(0, self.cfg)
             input = input.to(device)
+            if input_tokens is not None:
+                # Re-alias to the moved tensor: input_tokens must live on the model's
+                # device so later concatenations with sampled tokens (freq_penalty
+                # sampling and the final output) don't mix devices.
+                input_tokens = input
             if use_past_kv_cache:
                 past_kv_cache = TransformerLensKeyValueCache.init_cache(
                     self.cfg, self.cfg.device, batch_size

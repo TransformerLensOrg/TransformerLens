@@ -639,7 +639,8 @@ class TestMamba2SSMState:
         S = mixer.compute_ssm_state(cache, layer_idx=0)
         S_t = mixer.compute_ssm_state(cache, layer_idx=0, time_step=3)
         assert S_t.shape == (S.shape[0], S.shape[1], S.shape[3], S.shape[4])
-        assert torch.equal(S_t, S[:, :, 3])
+        # The full and single-step einsums differ only in fp reduction order.
+        assert torch.allclose(S_t, S[:, :, 3], rtol=0, atol=torch.finfo(S.dtype).eps)
 
     def test_cache_method_matches_mixer(self, cache, mamba2_bridge):
         S_mixer = mamba2_bridge.blocks[0].mixer.compute_ssm_state(cache, layer_idx=0)

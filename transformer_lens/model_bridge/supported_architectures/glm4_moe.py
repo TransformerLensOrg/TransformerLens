@@ -16,6 +16,8 @@ Optional Parameters (may not exist in state_dict):
 
 from typing import Any
 
+import torch
+
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
@@ -27,6 +29,28 @@ from transformer_lens.model_bridge.generalized_components import (
     RotaryEmbeddingBridge,
     UnembeddingBridge,
 )
+
+
+class Glm4MoeRouterBridge(LinearBridge):
+    """Bridge GLM-4 MoE router logits while preserving HF's tuple return.
+
+    ``Glm4MoeTopkRouter.forward()`` returns a 3-tuple
+    ``(router_logits, topk_weights, topk_indices)``.  The base
+    ``LinearBridge.forward`` would pass the tuple to ``hook_out``, which expects
+    a single ``torch.Tensor``, causing a ``beartype`` runtime error.
+    """
+
+    def forward(self, input: torch.Tensor, *args: Any, **kwargs: Any) -> Any:
+        if self.original_component is None:
+            raise RuntimeError(
+                f"Original component not set for {self.name}. Call set_original_component() first."
+            )
+        input = self.hook_in(input)
+        output = self.original_component(input, *args, **kwargs)
+        if not isinstance(output, tuple) or len(output) == 0:
+            return self.hook_out(output)
+        router_logits = self.hook_out(output[0])
+        return (router_logits,) + output[1:]
 
 
 class Glm4MoeArchitectureAdapter(ArchitectureAdapter):
@@ -80,7 +104,7 @@ class Glm4MoeArchitectureAdapter(ArchitectureAdapter):
                         name="mlp",
                         config=self.cfg,
                         submodules={
-                            "gate": LinearBridge(name="gate", optional=True),
+                            "gate": Glm4MoeRouterBridge(name="gate", optional=True),
                         },
                     ),
                 },

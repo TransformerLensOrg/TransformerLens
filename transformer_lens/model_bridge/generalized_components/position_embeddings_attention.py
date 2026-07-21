@@ -137,6 +137,8 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
     component with dummy Q/K tensors and position_ids.
     """
 
+    supports_attn_result: bool = True
+
     def __init__(
         self,
         name: str,
@@ -164,6 +166,8 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
         if getattr(config, "gated_q_proj", False):
             self.hook_q_gate = HookPoint()
         # Gate on adapter intent; HF-vs-adapter mismatches surface in set_original_component.
+        if submodules is not None and "gate" in submodules:
+            self.hook_gate = HookPoint()
         if submodules is not None and "q_norm" in submodules:
             self.hook_q_normed = HookPoint()
         if submodules is not None and "k_norm" in submodules:
@@ -497,6 +501,14 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
             if hasattr(self, "hook_q_gate"):
                 q_gate = self.hook_q_gate(q_gate)
             attn_output = attn_output * torch.sigmoid(q_gate)
+
+        # --- Gated attention (HRM-Text: separate gate_proj on hidden_states) ---
+        gate_comp = self._modules.get("gate")
+        if gate_comp is not None and gate_comp.original_component is not None and q_gate is None:
+            gate_states = gate_comp(hidden_states)
+            if hasattr(self, "hook_gate"):
+                gate_states = self.hook_gate(gate_states)
+            attn_output = attn_output * torch.sigmoid(gate_states)
 
         # Adapter seam: sub-layer transforms between attention output and the
         # o projection (e.g. BitNet's attn_sub_norm).

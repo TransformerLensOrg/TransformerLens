@@ -50,19 +50,18 @@ def _apply_rotary_pos_emb(
 def _apply_rotary_pos_emb_interleave(
     q: torch.Tensor, k: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """Apply RoPE to interleaved-layout weights (config.rope_interleave=True).
+    """Apply interleaved-pair rotary position embedding (transformers >= 5.13).
 
-    DeepSeek-V3 and GLM-4.7-Flash store rope dims interleaved per pair; HF
-    de-interleaves via view/transpose before the standard rotation.
+    Pairs even-dimension elements with the following odd dimension, matching
+    HF's ``apply_rotary_pos_emb_interleave`` (used by GLM-MoE-DSA and DeepSeek-V3
+    when ``rope_interleave=True``).
     """
-    cos = cos.unsqueeze(1)
-    sin = sin.unsqueeze(1)
-    b, h, s, d = q.shape
-    q = q.view(b, h, s, d // 2, 2).transpose(4, 3).reshape(b, h, s, d)
-    b, h, s, d = k.shape
-    k = k.view(b, h, s, d // 2, 2).transpose(4, 3).reshape(b, h, s, d)
-    q_embed = (q * cos) + (_rotate_half(q) * sin)
-    k_embed = (k * cos) + (_rotate_half(k) * sin)
+    cos = cos[..., : cos.shape[-1] // 2].unsqueeze(1)
+    sin = sin[..., : sin.shape[-1] // 2].unsqueeze(1)
+    q1, q2 = q[..., 0::2], q[..., 1::2]
+    k1, k2 = k[..., 0::2], k[..., 1::2]
+    q_embed = torch.cat([q1 * cos - q2 * sin, q2 * cos + q1 * sin], dim=-1)
+    k_embed = torch.cat([k1 * cos - k2 * sin, k2 * cos + k1 * sin], dim=-1)
     return q_embed, k_embed
 
 
@@ -233,7 +232,10 @@ class MLAAttentionBridge(PositionEmbeddingHooksMixin, AttentionBridge):
                 q_rot, k_rot = _apply_rotary_pos_emb_interleave(q_rot, k_rot, cos, sin)
             else:
                 cos, sin = position_embeddings
-                q_rot, k_rot = _apply_rotary_pos_emb(q_rot, k_rot, cos, sin)
+                if self._rope_interleave:
+                    q_rot, k_rot = _apply_rotary_pos_emb_interleave(q_rot, k_rot, cos, sin)
+                else:
+                    q_rot, k_rot = _apply_rotary_pos_emb(q_rot, k_rot, cos, sin)
         elif self._rotary_emb is not None:
             # Fallback: compute from rotary_emb if position_embeddings not passed
             position_ids = torch.arange(seq_length, device=hidden_states.device).unsqueeze(0)
@@ -245,7 +247,10 @@ class MLAAttentionBridge(PositionEmbeddingHooksMixin, AttentionBridge):
                 q_rot, k_rot = _apply_rotary_pos_emb_interleave(q_rot, k_rot, cos, sin)
             else:
                 cos, sin = emb
-                q_rot, k_rot = _apply_rotary_pos_emb(q_rot, k_rot, cos, sin)
+                if self._rope_interleave:
+                    q_rot, k_rot = _apply_rotary_pos_emb_interleave(q_rot, k_rot, cos, sin)
+                else:
+                    q_rot, k_rot = _apply_rotary_pos_emb(q_rot, k_rot, cos, sin)
         else:
             raise ValueError(
                 "MLAAttentionBridge requires position_embeddings or set_rotary_emb() "

@@ -183,6 +183,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         if self.cfg.d_vocab_out == -1:
             self.cfg.d_vocab_out = self.cfg.d_vocab
         self.compatibility_mode = False
+        self._weights_processed = False
         self._hook_cache = None
         self._hook_registry: Dict[str, HookPoint] = {}
         self._hook_registry_initialized = False
@@ -227,7 +228,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         hf_model: Optional[Any] = None,
         device_map: Optional[Union[str, Dict[str, Union[str, int]]]] = None,
         n_devices: Optional[int] = None,
-        max_memory: Optional[Dict[Union[str, int], str]] = None,
+        max_memory: Optional[Dict[Union[str, int], Union[str, int]]] = None,
         n_ctx: Optional[int] = None,
         revision: Optional[str] = None,
         checkpoint_index: Optional[int] = None,
@@ -438,9 +439,13 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         n_heads = self.cfg.n_heads
         d_head = self.cfg.d_head
         d_model = self.cfg.d_model
-        if not hasattr(self, "blocks"):
+        blocks_iter = []
+        for bl_name in ("blocks", "encoder_blocks", "decoder_blocks", "L_blocks", "H_blocks"):
+            if hasattr(self, bl_name):
+                blocks_iter.append(getattr(self, bl_name))
+        if not blocks_iter:
             return
-        for block in self.blocks:
+        for block in [b for bl in blocks_iter for b in bl]:
             if "attn" not in block._modules:
                 continue
             attn = block.attn
@@ -884,12 +889,15 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         elif hasattr(self.adapter, "setup_no_processing_hooks"):
             self.adapter.setup_no_processing_hooks(self)
         blocks_to_process = []
-        if hasattr(self, "blocks"):
-            blocks_to_process.extend(self.blocks)
-        if hasattr(self, "encoder_blocks"):
-            blocks_to_process.extend(self.encoder_blocks)
-        if hasattr(self, "decoder_blocks"):
-            blocks_to_process.extend(self.decoder_blocks)
+        for block_list_name in (
+            "blocks",
+            "encoder_blocks",
+            "decoder_blocks",
+            "L_blocks",
+            "H_blocks",
+        ):
+            if hasattr(self, block_list_name):
+                blocks_to_process.extend(getattr(self, block_list_name))
         for block in blocks_to_process:
             for attn_name in ["attn", "self_attn", "cross_attn"]:
                 if hasattr(block, attn_name):
@@ -922,6 +930,9 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             fold_value_biases: Fold value biases into output bias. Default: True
             refactor_factored_attn_matrices: Experimental QK/OV factorization. Default: False
         """
+        # A failed or partial processing attempt is no longer guaranteed to retain
+        # the raw HuggingFace basis, so invalidate that contract before any work.
+        self._weights_processed = True
         from transformer_lens.weight_processing import ProcessWeights
 
         if verbose:
@@ -1754,6 +1765,14 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             Model output based on return_type
         """
 
+        if return_type in ("loss", "both") and not self.adapter.supports_causal_loss:
+            architecture = self.cfg.architecture or type(self.adapter).__name__
+            raise NotImplementedError(
+                f"{architecture} does not support TransformerBridge's shifted causal "
+                "loss. Request return_type='logits' and compute the architecture-specific "
+                "masked-token objective explicitly."
+            )
+
         if start_at_layer is not None:
             raise NotImplementedError(
                 "start_at_layer is not supported in TransformerBridge. "
@@ -1763,9 +1782,21 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             )
 
         # Set stop_at_layer flag on all blocks if requested
-        if stop_at_layer is not None and hasattr(self, "blocks"):
-            for block in self.blocks:
-                block._stop_at_layer_idx = stop_at_layer
+        if stop_at_layer is not None:
+            if (
+                hasattr(self, "L_blocks")
+                or hasattr(self, "H_blocks")
+                or hasattr(self, "encoder_blocks")
+                or hasattr(self, "decoder_blocks")
+            ):
+                raise NotImplementedError(
+                    "stop_at_layer is not supported on non-standard block list "
+                    "names (L_blocks, H_blocks, encoder_blocks, decoder_blocks). "
+                    "The bridge only supports stop_at_layer on 'blocks'."
+                )
+            if hasattr(self, "blocks"):
+                for block in self.blocks:
+                    block._stop_at_layer_idx = stop_at_layer
 
         # Map HookedEncoderDecoder-style kwargs to HF-compatible names
         if "decoder_input" in kwargs:
@@ -1923,6 +1954,9 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                 logits = output
             if return_type == "logits":
                 return logits
+            elif return_type == "logits_and_cache":
+                past_key_values = getattr(output, "past_key_values", None)
+                return (logits, past_key_values)
             elif return_type == "loss":
                 if getattr(self.cfg, "is_audio_model", False):
                     raise ValueError(
@@ -1984,10 +2018,17 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             return e.layer_output
         finally:
             # Clean up state that may be inconsistent after StopAtLayerException
-            if stop_at_layer is not None and hasattr(self, "blocks"):
-                # Reset the stop flag on all blocks
-                for block in self.blocks:
-                    block._stop_at_layer_idx = None
+            if stop_at_layer is not None:
+                for bl_name in (
+                    "blocks",
+                    "encoder_blocks",
+                    "decoder_blocks",
+                    "L_blocks",
+                    "H_blocks",
+                ):
+                    if hasattr(self, bl_name):
+                        for block in getattr(self, bl_name):
+                            block._stop_at_layer_idx = None
 
                 # Clear any stale KV cache — layers after the stop point didn't
                 # execute, so the cache is incomplete and would corrupt subsequent
@@ -2197,9 +2238,12 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                 stacklevel=2,
             )
         try:
-            if "output_attentions" not in filtered_kwargs:
+            if (
+                "output_attentions" not in filtered_kwargs
+                and self.adapter.supports_hf_output_attentions
+            ):
                 # Attention-free remote models (e.g. HyenaDNA) reject the kwarg
-                # outright; HF natives accept it directly or via **kwargs.
+                # outright; only pass it when the HF forward actually accepts it.
                 fwd_params = inspect.signature(self.original_model.forward).parameters
                 if "output_attentions" in fwd_params or any(
                     p.kind is inspect.Parameter.VAR_KEYWORD for p in fwd_params.values()
@@ -2699,6 +2743,15 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             if all_finished:
                 return
 
+    def _ensure_generation_supported(self, api_name: str) -> None:
+        """Reject autoregressive generation for forward-only architectures."""
+        if not self.adapter.supports_generation:
+            architecture = self.cfg.architecture or type(self.adapter).__name__
+            raise NotImplementedError(
+                f"TransformerBridge.{api_name}() generation is not supported by "
+                f"the {architecture} architecture."
+            )
+
     def generate(
         self,
         input: Union[str, List[str], torch.Tensor] = "",
@@ -2818,6 +2871,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             the tokens that were fed to the model, useful for verifying BOS handling with
             chat templates.
         """
+        self._ensure_generation_supported("generate")
         # padding_side is handled internally: for batched list inputs, left-padding
         # is forced to ensure correct generation. See _is_batched_list logic below.
 
@@ -3243,6 +3297,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             max_tokens_per_yield tokens between yields. First yield includes
             the input tokens; subsequent yields contain only new tokens.
         """
+        self._ensure_generation_supported("generate_stream")
         # --- Input parsing (mirrors generate()) ---
         _is_batched_list = isinstance(input, list) and len(input) > 1
 
@@ -3474,6 +3529,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             print(result.logits)  # Logits for each generation step
             print(result.attentions)  # Attention weights
         """
+        self._ensure_generation_supported("hf_generate")
         # Handle string input by tokenizing it
         if isinstance(input, str):
             inputs = self.tokenizer(input, return_tensors="pt", padding=False, truncation=False).to(
@@ -3979,18 +4035,25 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                 continue
             total_with_attn += 1
             attn_classes.add(type(attn).__name__)
-            if isinstance(attn, supported_classes):
+            supports_flag = (
+                bool(getattr(attn, "supports_attn_result", False))
+                if flag_name == "use_attn_result"
+                else isinstance(attn, supported_classes)
+            )
+            if supports_flag:
                 supporting_layers.append(idx)
         if total_with_attn == 0:
             raise NotImplementedError(f"{flag_name}: no attention bridges found on self.blocks.")
         if not supporting_layers:
+            if flag_name == "use_attn_result":
+                capability_detail = "Per-head result computation is unavailable."
+            else:
+                capability_detail = "No hook point is available before the Q/K/V projections."
             raise NotImplementedError(
                 f"{flag_name}: none of this model's attention bridges support "
-                "the fine-grained Q/K/V hook fork. Found attention classes: "
+                "the requested fine-grained attention hook. Found attention classes: "
                 f"{sorted(attn_classes)}. Supported classes: "
-                f"{[c.__name__ for c in supported_classes]}. Plain "
-                "AttentionBridge delegates to HuggingFace and exposes no hook "
-                "point before the Q/K/V projection."
+                f"{[c.__name__ for c in supported_classes]}. {capability_detail}"
             )
         if len(supporting_layers) < total_with_attn:
             skipped = total_with_attn - len(supporting_layers)
@@ -4103,20 +4166,22 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         attr_to_hf = {}
 
         # Map top-level components
+        block_list_names = {"blocks", "L_blocks", "H_blocks", "encoder_blocks", "decoder_blocks"}
         for tl_name, component in component_mapping.items():
-            if component.name and tl_name != "blocks":
+            if component.name and tl_name not in block_list_names:
                 # Skip if TL name is already a suffix of the HF path (avoids doubling).
                 if tl_name != component.name and not component.name.endswith("." + tl_name):
                     attr_to_hf[tl_name] = component.name
 
-        # Map block-level components (ln1, ln2, attn, mlp)
-        blocks_component = component_mapping.get("blocks")
-        if blocks_component and hasattr(blocks_component, "submodules"):
-            for tl_subname, subcomponent in blocks_component.submodules.items():
-                if subcomponent.name:
-                    # Only map if the names differ (e.g., ln1 -> ln_1, but attn -> attn)
-                    if tl_subname != subcomponent.name:
-                        attr_to_hf[tl_subname] = subcomponent.name
+        # Map block-level components (ln1, ln2, attn, mlp) for all block lists
+        for bl_name in block_list_names:
+            blocks_component = component_mapping.get(bl_name)
+            if blocks_component and hasattr(blocks_component, "submodules"):
+                for tl_subname, subcomponent in blocks_component.submodules.items():
+                    if subcomponent.name:
+                        # Only map if the names differ (e.g., ln1 -> ln_1, but attn -> attn)
+                        if tl_subname != subcomponent.name:
+                            attr_to_hf[tl_subname] = subcomponent.name
 
         # Replace only these specific attribute names in the key
         # We need to be careful to only replace whole path components, not substrings
