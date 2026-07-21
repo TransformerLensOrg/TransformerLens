@@ -193,6 +193,9 @@ from transformer_lens.model_bridge.supported_architectures.phi3 import (
 from transformer_lens.model_bridge.supported_architectures.phimoe import (
     PhiMoEArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.pretrain import (
+    PretrainArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.qwen import (
     QwenArchitectureAdapter,
 )
@@ -313,6 +316,7 @@ __all__ = [
     "PhiArchitectureAdapter",
     "Phi3ArchitectureAdapter",
     "PhiMoEArchitectureAdapter",
+    "PretrainArchitectureAdapter",
     "QwenArchitectureAdapter",
     "Qwen2ArchitectureAdapter",
     "Qwen2MoeArchitectureAdapter",

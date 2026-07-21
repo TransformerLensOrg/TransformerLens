@@ -3736,6 +3736,14 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         """
         return self.to(torch.device("mps"))
 
+    def train(self, mode: bool = True) -> "TransformerBridge":
+        """Set training mode, propagating to the wrapped source model."""
+        super().train(mode)
+        original = getattr(self, "original_model", None)
+        if isinstance(original, torch.nn.Module):
+            original.train(mode)
+        return self
+
     def add_hook(
         self,
         name: Union[str, Callable[[str], bool]],
