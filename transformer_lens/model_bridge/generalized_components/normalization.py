@@ -1,11 +1,27 @@
 """Normalization bridge component implementation."""
-from typing import Any, Dict, Optional, cast
+import contextlib
+import warnings
+from typing import Any, ContextManager, Dict, Optional, cast
 
 import torch
 
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
+)
+
+# The native-autograd path returns HF's own output, so hook edits and backward hooks
+# can only be honored by switching to the python-norm computation, whose numerics
+# differ from HF's at float-rounding scale.
+NATIVE_PATH_BWD_FALLBACK_WARNING = (
+    "Backward hooks on hook_scale/hook_normalized require grad-connected hook tensors; "
+    "falling back from the native-autograd path to the python-norm path. Output numerics "
+    "may differ from the unhooked forward at float-rounding scale."
+)
+NATIVE_PATH_EDIT_FALLBACK_WARNING = (
+    "A forward hook edited hook_scale/hook_normalized on the native-autograd path; the "
+    "output is reconstructed from the hooked values instead of HF's native forward. "
+    "Output numerics may differ from the unhooked forward at float-rounding scale."
 )
 
 
@@ -83,48 +99,69 @@ class NormalizationBridge(GeneralizedComponent):
         elif hasattr(self.config, "layer_norm_folding") and self.config.layer_norm_folding:
             result = self._hf_autograd_forward_with_hooks(hidden_states)
         else:
-            uses_rms_norm = self.uses_rms_norm
-            # Upcast to float32 for normalization precision (matches HT's RMSNorm behavior)
-            input_dtype = hidden_states.dtype
-            if input_dtype not in (torch.float32, torch.float64):
-                hidden_states = hidden_states.float()
-            if not uses_rms_norm:
-                hidden_states = hidden_states - hidden_states.mean(-1, keepdim=True)
-            scale = self.hook_scale(
-                (
-                    hidden_states.pow(2).mean(-1, keepdim=True) + getattr(self.config, "eps", 1e-05)
-                ).sqrt()
-            )
-            hidden_states = self.hook_normalized(hidden_states / scale)
-            # Apply weight/bias in float32 before casting back (matches HF precision).
-            if uses_rms_norm:
-                hidden_states = hidden_states * self.weight
-            else:
-                hidden_states = hidden_states * self.weight
-                if (
-                    hasattr(self.original_component, "bias")
-                    and self.original_component.bias is not None
-                ):
-                    hidden_states = hidden_states + cast(torch.Tensor, self.original_component.bias)
-            result = hidden_states.to(input_dtype)
+            result = self._python_norm_forward(hidden_states)
         output = self.hook_out(result)
         return output
+
+    def _python_norm_forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        """From-scratch normalization with live hooks: edits propagate, gradients flow."""
+        # Upcast to float32 for normalization precision (matches HT's RMSNorm behavior)
+        input_dtype = hidden_states.dtype
+        if input_dtype not in (torch.float32, torch.float64):
+            hidden_states = hidden_states.float()
+        if not self.uses_rms_norm:
+            hidden_states = hidden_states - hidden_states.mean(-1, keepdim=True)
+        scale = self.hook_scale(
+            (
+                hidden_states.pow(2).mean(-1, keepdim=True) + getattr(self.config, "eps", 1e-05)
+            ).sqrt()
+        )
+        hidden_states = self.hook_normalized(hidden_states / scale)
+        return self._apply_weight_and_bias(hidden_states, input_dtype)
+
+    def _apply_weight_and_bias(
+        self, hidden_states: torch.Tensor, input_dtype: torch.dtype
+    ) -> torch.Tensor:
+        """Apply weight/bias in float32 before casting back (matches HF precision)."""
+        hidden_states = hidden_states * self.weight
+        component = self.original_component
+        if (
+            not self.uses_rms_norm
+            and component is not None
+            and hasattr(component, "bias")
+            and component.bias is not None
+        ):
+            hidden_states = hidden_states + cast(torch.Tensor, component.bias)
+        return hidden_states.to(input_dtype)
 
     def _hf_autograd_forward_with_hooks(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass that preserves HF's autograd while firing intermediate hooks.
 
-        This method calls HF's LayerNorm for the final result (to preserve exact gradients),
-        but also computes intermediate values to fire hook_scale and hook_normalized.
+        When hooks only observe (return ``None``, e.g. ``run_with_cache``), the result is
+        HF's own forward — bit-identical numerics and exact autograd. When a forward hook
+        edits ``hook_scale`` / ``hook_normalized``, the output is reconstructed from the
+        hooked values so the edit propagates; when backward hooks are attached, the whole
+        computation takes the python-norm path so hook tensors stay in the autograd graph.
+        Both fallbacks warn, since their numerics differ from HF's at rounding scale.
 
         Args:
             x: Input tensor
 
         Returns:
-            Normalized output tensor from HF's LayerNorm
+            Normalized output tensor
         """
         if self.original_component is None:
             raise RuntimeError(f"Original component not set for {self.name}")
-        with torch.no_grad():
+        if self.hook_scale.bwd_hooks or self.hook_normalized.bwd_hooks:
+            warnings.warn(NATIVE_PATH_BWD_FALLBACK_WARNING)
+            return self._python_norm_forward(x)
+        has_fwd_hooks = bool(self.hook_scale.fwd_hooks or self.hook_normalized.fwd_hooks)
+        # No hooks: skip building a graph for observation-only intermediates. With hooks,
+        # keep grad so an edited value stays connected to the input.
+        grad_ctx: ContextManager[Any] = (
+            contextlib.nullcontext() if has_fwd_hooks else torch.no_grad()
+        )
+        with grad_ctx:
             # Upcast to float32 for hook precision (matches HT's RMSNorm/LayerNorm behavior)
             x_float = x.float() if x.dtype not in (torch.float32, torch.float64) else x
             if not self.uses_rms_norm:
@@ -149,10 +186,20 @@ class NormalizationBridge(GeneralizedComponent):
             # (LlamaRMSNorm uses x * rsqrt(variance + eps)). Keep scale as sqrt
             # for hook_scale (denominator convention used by HookedTransformer).
             x_normalized = x_centered * inv_rms
-        _ = self.hook_scale(scale)
-        _ = self.hook_normalized(x_normalized)
+            hooked_scale = self.hook_scale(scale)
+            if hooked_scale is not scale:
+                # Edited scale: recompute with the denominator convention so the edit
+                # feeds hook_normalized, mirroring the python-norm path's ordering.
+                x_normalized = x_centered / hooked_scale
+            hooked_normalized = self.hook_normalized(x_normalized)
         input_dtype = x.dtype
-        result = self.original_component(x)
-        if result.dtype != input_dtype:
-            result = result.to(input_dtype)
-        return result
+        # A hook returning None keeps the original tensor object (see HookPoint), so
+        # identity is the edit signal. Note in-place mutation of the hook value without
+        # returning it is NOT detected — return the tensor from the hook to edit.
+        if hooked_scale is scale and hooked_normalized is x_normalized:
+            result = self.original_component(x)
+            if result.dtype != input_dtype:
+                result = result.to(input_dtype)
+            return result
+        warnings.warn(NATIVE_PATH_EDIT_FALLBACK_WARNING)
+        return self._apply_weight_and_bias(hooked_normalized, input_dtype)
