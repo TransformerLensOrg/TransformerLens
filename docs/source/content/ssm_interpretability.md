@@ -2,10 +2,16 @@
 
 TransformerBridge exposes a family-agnostic interpretability surface for state-space
 and linear-attention models — Mamba-1, Mamba-2, gated-delta-net (Qwen3.5 / Qwen3-Next),
-and the SSM hybrids (NemotronH, GraniteMoeHybrid). The same three `ActivationCache`
-methods work across every family, dispatching to each block's SSM mixer regardless of
-which slot it occupies (`.mixer` for Mamba, `.linear_attn` for gated-delta-net) and
-skipping a hybrid's passthrough (attention / MLP / MoE) layers automatically.
+and the SSM hybrids (NemotronH, GraniteMoeHybrid, Jamba, Zamba2, Falcon-H1). The same
+three `ActivationCache` methods work across every family, dispatching to each block's
+SSM mixer regardless of which slot it occupies (`.mixer` for Mamba, `.linear_attn` for
+gated-delta-net) and skipping a hybrid's passthrough (attention / MLP / MoE) layers
+automatically.
+
+Jamba is Mamba-1 with selective-param RMSNorms (`dt_layernorm` / `b_layernorm` /
+`c_layernorm`) after `x_proj`. `SSMMixerBridge` detects those norms for
+`compute_ssm_*` reconstruction and the opt-in `eager_scan` path; stock Mamba-1 is
+unchanged.
 
 > These features are **bridge-only** — there is no `HookedTransformer` counterpart for
 > SSM models. Load with `TransformerBridge.boot_transformers(...)`.

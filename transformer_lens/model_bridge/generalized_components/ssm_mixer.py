@@ -101,6 +101,10 @@ class SSMMixerBridge(SSMStateHookMixin, GeneralizedComponent):
         changes only the same-position output y_t = C_t·S_t — patch hook_ssm_write
         for a propagating state edit.
 
+        When the wrapped mixer exposes ``dt_layernorm`` / ``b_layernorm`` /
+        ``c_layernorm`` (Jamba), those norms run after ``x_proj`` so the scan
+        matches HF's selective-param path.
+
         Kernel-divergence caveat: reproduces HF's scan only to fp tolerance
         (≈1e-6 fp32), never bit-for-bit. O(seq) Python; materializes an
         O(b·channels·seq·state) write/state tensor. Prefill only.
@@ -126,8 +130,10 @@ class SSMMixerBridge(SSMStateHookMixin, GeneralizedComponent):
         x = _mask_cf(x)
 
         # 3. x_proj -> dt low-rank / B / C ; dt_proj -> dt (softplus, channel-first).
+        # Jamba (and forks) apply RMSNorm to dt/B/C after x_proj; stock Mamba-1 does not.
         ssm_params = oc.x_proj(x.transpose(1, 2))  # [b, seq, dt_rank + 2*state]
         time_step, B, C = ssm_params.split([dt_rank, state, state], dim=-1)  # B, C: [b, seq, state]
+        time_step, B, C = self._apply_selective_param_norms(oc, time_step, B, C)
         dt = torch.nn.functional.softplus(oc.dt_proj(time_step)).transpose(1, 2).float()
         A = -torch.exp(self.A_log.float())  # [d_inner, state]
         x_f, B_f, C_f = x.float(), B.float(), C.float()
@@ -172,9 +178,10 @@ class SSMMixerBridge(SSMStateHookMixin, GeneralizedComponent):
 
             M[c, i, j] = sum_n C[i, n] · prod_{k=j+1..i} exp(A[c,n]·dt[c,k]) · B[j, n]
 
-        Reads B/C from ``x_proj.hook_out`` and dt from ``dt_proj.hook_out``
-        (dt = softplus of that output); A from the module via ``__getattr__``.
-        Read-only: no ``forward()`` re-run.
+        Reads B/C from ``x_proj.hook_out`` (or post-norm
+        ``b_layernorm`` / ``c_layernorm`` hooks when present, as on Jamba) and
+        dt from ``dt_proj.hook_out`` (softplus of that output); A via
+        ``__getattr__``. Read-only: no ``forward()`` re-run.
 
         Args:
             cache: ActivationCache from ``run_with_cache`` with this layer's
@@ -266,13 +273,39 @@ class SSMMixerBridge(SSMStateHookMixin, GeneralizedComponent):
             return torch.einsum("bcsj,bcj,bjs->bcs", t.decay[:, :, :, time_step, :], dtx, t.B)
         return torch.einsum("bcsij,bcj,bjs->bcis", t.decay, dtx, t.B)
 
+    @staticmethod
+    def _apply_selective_param_norms(
+        oc: Any,
+        time_step: torch.Tensor,
+        B: torch.Tensor,
+        C: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Apply Jamba-style RMSNorms on dt/B/C when the HF mixer exposes them.
+
+        Stock Mamba-1 has no ``dt_layernorm`` / ``b_layernorm`` / ``c_layernorm``;
+        Jamba's ``JambaMambaMixer`` does. Calling through the (possibly bridged)
+        attributes keeps their hooks firing on the eager-scan path.
+        """
+        dt_ln = getattr(oc, "dt_layernorm", None)
+        if dt_ln is not None:
+            time_step = dt_ln(time_step)
+        b_ln = getattr(oc, "b_layernorm", None)
+        if b_ln is not None:
+            B = b_ln(B)
+        c_ln = getattr(oc, "c_layernorm", None)
+        if c_ln is not None:
+            C = c_ln(C)
+        return time_step, B, C
+
     def _s6_terms(self, cache: ActivationCache, layer_idx: int) -> _S6Terms:
         """Reconstruct the shared S6 intermediates (dt, per-(channel,state) decay, B, C).
 
         Reused by ``compute_effective_attention`` and ``compute_ssm_state``. Reads
-        B/C from ``x_proj.hook_out`` (shared across channels), dt from
-        ``dt_proj.hook_out`` (softplus), and A via ``__getattr__``. Dims come from
-        the wrapped HF mixer, cfg is the fallback (mirrors the Mamba-2 bridge).
+        B/C from ``x_proj.hook_out`` (shared across channels), or — when present —
+        from Jamba's post-norm ``b_layernorm`` / ``c_layernorm`` hooks. ``dt`` comes
+        from ``dt_proj.hook_out`` (softplus); that already sits after Jamba's
+        ``dt_layernorm``. A via ``__getattr__``. Dims come from the wrapped HF
+        mixer; cfg is the fallback (mirrors the Mamba-2 bridge).
         """
         if self.config is None:
             raise RuntimeError("SSMMixerBridge.config must be set")
@@ -303,8 +336,15 @@ class SSMMixerBridge(SSMStateHookMixin, GeneralizedComponent):
         dt_proj_out = cache[dt_proj_key].float()  # [batch, seq, channels]
         seq_len = dt_proj_out.shape[1]
 
-        # B, C from x_proj output (shared across channels); first dt_rank cols are dt low-rank.
-        _time_step, B, C = x_proj_out.split([dt_rank, state_size, state_size], dim=-1)
+        # Prefer post-norm B/C when the adapter mapped Jamba's selective-param LNs.
+        b_ln_key = f"blocks.{layer_idx}.mixer.b_layernorm.hook_out"
+        c_ln_key = f"blocks.{layer_idx}.mixer.c_layernorm.hook_out"
+        if b_ln_key in cache and c_ln_key in cache:
+            B = cache[b_ln_key].float()
+            C = cache[c_ln_key].float()
+        else:
+            # Stock Mamba-1: B, C are the raw x_proj tails (shared across channels).
+            _time_step, B, C = x_proj_out.split([dt_rank, state_size, state_size], dim=-1)
 
         dt = torch.nn.functional.softplus(dt_proj_out).transpose(1, 2)  # [batch, channels, seq]
         A = -torch.exp(self.A_log.float())  # [channels, state]

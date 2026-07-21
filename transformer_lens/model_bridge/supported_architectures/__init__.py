@@ -106,6 +106,9 @@ from transformer_lens.model_bridge.supported_architectures.hunyuan_v1_dense impo
 from transformer_lens.model_bridge.supported_architectures.internlm2 import (
     InternLM2ArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.jamba import (
+    JambaArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.lfm2 import (
     Lfm2ArchitectureAdapter,
 )
@@ -280,6 +283,7 @@ __all__ = [
     "HubertArchitectureAdapter",
     "HunYuanDenseV1ArchitectureAdapter",
     "InternLM2ArchitectureAdapter",
+    "JambaArchitectureAdapter",
     "LLaDAArchitectureAdapter",
     "LlamaArchitectureAdapter",
     "LlavaArchitectureAdapter",

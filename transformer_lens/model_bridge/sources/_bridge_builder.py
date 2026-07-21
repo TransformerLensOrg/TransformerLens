@@ -105,6 +105,12 @@ _HF_PASSTHROUGH_ATTRS = [
     "num_mem_blocks",
     "layers_block_type",
     "use_shared_attention_adapter",
+    # Jamba (attention + Mamba-1 hybrid; MoE schedule knobs)
+    "mamba_dt_rank",
+    "attn_layer_period",
+    "attn_layer_offset",
+    "expert_layer_period",
+    "expert_layer_offset",
     # Ouro (LoopLM)
     "total_ut_steps",
     "early_exit_threshold",
