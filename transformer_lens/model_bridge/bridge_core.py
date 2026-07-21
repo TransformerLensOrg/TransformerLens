@@ -385,6 +385,19 @@ class BridgeCore:
 
     # ---- hook lookup / mutation ----
 
+    @staticmethod
+    def _is_embedding_stage_hook(name: str) -> bool:
+        """Hooks belonging to the pre-block token/positional embedding stage.
+
+        Excluded from ``start_at_layer`` output: the caller's residual already
+        carries the embedding, so the embedding stage is logically skipped even
+        though HF still computes (and discards) it. ``unembed``/``hook_unembed``
+        are the output stage and deliberately not matched.
+        """
+        return name in ("hook_embed", "hook_pos_embed", "hook_tokens") or name.startswith(
+            ("embed.", "pos_embed.")
+        )
+
     def _check_hook_fireable(self, *names: str) -> None:
         """Fail loud when the driver declares it can't fire a requested hook —
         attaching anyway would yield a silently-unhooked forward / empty cache."""
@@ -650,14 +663,17 @@ class BridgeCore:
         clear_contexts: bool = False,
         return_type: Optional[str] = "logits",
         stop_at_layer: Optional[int] = None,
+        start_at_layer: Optional[int] = None,
         remove_batch_dim: bool = False,
         **kwargs: Any,
     ) -> Any:
         """Run the model with specified forward and backward hooks.
 
         ``stop_at_layer`` raises :class:`StopAtLayerException` to stop early
-        (KV cache cleaned up on stop). ``remove_batch_dim`` squeezes/unsqueezes
-        the batch dim around hook callbacks (batch_size==1 only).
+        (KV cache cleaned up on stop). ``start_at_layer`` treats ``input`` as the
+        residual entering block ``k`` (see :meth:`forward`); hooks on blocks below
+        ``k`` are skipped to match HookedTransformer. ``remove_batch_dim``
+        squeezes/unsqueezes the batch dim around hook callbacks (batch_size==1 only).
         """
         if "names_filter" in kwargs:
             # **kwargs would silently absorb it; fail loud.
@@ -672,6 +688,11 @@ class BridgeCore:
                 effective_stop_layer = len(self.blocks) + stop_at_layer
             else:
                 effective_stop_layer = stop_at_layer
+        effective_start_layer = None
+        if start_at_layer is not None and hasattr(self, "blocks"):
+            effective_start_layer = (
+                len(self.blocks) + start_at_layer if start_at_layer < 0 else start_at_layer
+            )
 
         def add_hook_to_point(
             hook_point: HookPoint,
@@ -679,13 +700,18 @@ class BridgeCore:
             name: str,
             dir: Literal["fwd", "bwd"] = "fwd",
         ) -> None:
-            if effective_stop_layer is not None and name.startswith("blocks."):
+            if effective_start_layer is not None and self._is_embedding_stage_hook(name):
+                return
+            if name.startswith("blocks."):
                 try:
-                    layer_num = int(name.split(".")[1])
-                    if layer_num >= effective_stop_layer:
-                        return
+                    layer_num: Optional[int] = int(name.split(".")[1])
                 except (IndexError, ValueError):
-                    pass
+                    layer_num = None
+                if layer_num is not None:
+                    if effective_stop_layer is not None and layer_num >= effective_stop_layer:
+                        return
+                    if effective_start_layer is not None and layer_num < effective_start_layer:
+                        return
             if self.compatibility_mode and name != hook_point.name:
                 alias_names_list: list = []
                 if hook_point.name is not None:
@@ -751,6 +777,8 @@ class BridgeCore:
         try:
             apply_hooks(fwd_hooks, True)
             apply_hooks(bwd_hooks, False)
+            if start_at_layer is not None:
+                kwargs["start_at_layer"] = start_at_layer
             try:
                 output = self.forward(
                     input, return_type=return_type, stop_at_layer=stop_at_layer, **kwargs
@@ -794,13 +822,16 @@ class BridgeCore:
         remove_batch_dim: bool = False,
         names_filter: Optional[Union[str, List[str], Callable[[str], bool]]] = None,
         stop_at_layer: Optional[int] = None,
+        start_at_layer: Optional[int] = None,
         **kwargs,
     ) -> Tuple[Any, Union[ActivationCache, Dict[str, torch.Tensor]]]:
         """Run the model and cache activations. Returns ``(output, cache)``.
 
         ``stop_at_layer`` raises :class:`StopAtLayerException` to stop early.
-        ``device`` offloads cached activations (matches ``ActivationCache.to``); the
-        model and inputs stay where the caller put them.
+        ``start_at_layer`` treats ``input`` as the residual entering block ``k``
+        (see :meth:`forward`); blocks below ``k`` are excluded from the cache to
+        match HookedTransformer. ``device`` offloads cached activations (matches
+        ``ActivationCache.to``); the model and inputs stay where the caller put them.
         """
         aliases = build_alias_to_canonical_map(self.hook_dict)
 
@@ -866,18 +897,30 @@ class BridgeCore:
                 effective_stop_layer = len(self.blocks) + stop_at_layer
             else:
                 effective_stop_layer = stop_at_layer
+        effective_start_layer = None
+        if start_at_layer is not None and hasattr(self, "blocks"):
+            effective_start_layer = (
+                len(self.blocks) + start_at_layer if start_at_layer < 0 else start_at_layer
+            )
         matched_any = False
         for hook_name, hook in hook_dict.items():
             if names_filter_fn(hook_name):
                 matched_any = True
-                if effective_stop_layer is not None:
-                    if hook_name.startswith("blocks."):
-                        try:
-                            layer_num = int(hook_name.split(".")[1])
-                            if layer_num >= effective_stop_layer:
-                                continue
-                        except (IndexError, ValueError):
-                            pass
+                if effective_start_layer is not None and self._is_embedding_stage_hook(hook_name):
+                    continue
+                if hook_name.startswith("blocks."):
+                    try:
+                        layer_num = int(hook_name.split(".")[1])
+                    except (IndexError, ValueError):
+                        layer_num = None
+                    if layer_num is not None:
+                        # stop/start bound the executed range; blocks outside it
+                        # either don't run (stop) or run on discarded input (start),
+                        # so their activations must not enter the cache.
+                        if effective_stop_layer is not None and layer_num >= effective_stop_layer:
+                            continue
+                        if effective_start_layer is not None and layer_num < effective_start_layer:
+                            continue
                 hooks.append((hook, hook_name))
         # Explicit string/list filters matching nothing must not return (logits, {}) silently.
         if not matched_any and names_filter and isinstance(names_filter, (str, list)):
@@ -934,6 +977,8 @@ class BridgeCore:
                 "will remain on their per-layer devices.",
                 stacklevel=2,
             )
+        if start_at_layer is not None:
+            filtered_kwargs["start_at_layer"] = start_at_layer
         try:
             if (
                 "output_attentions" not in filtered_kwargs
