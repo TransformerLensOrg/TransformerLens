@@ -282,8 +282,12 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
     def _scan_existing_hooks(self, module: nn.Module, prefix: str = "") -> None:
         """Scan existing modules for hooks and add them to registry."""
         visited = set()
-        # Protect canonical HookPoint names from alias overwrites
-        named_hook_ids: set = set()
+        # Protect canonical HookPoint names from alias overwrites. Seeded with
+        # already-registered hooks so the post-alias-registration re-scan adds
+        # alias registry entries without renaming shared HookPoint instances
+        # (dir() sorts alphabetically, so block-level alias attributes like
+        # hook_mlp_out are visited before the mlp child they point into).
+        named_hook_ids: set = {id(hp) for hp in self._hook_registry.values() if hp.name is not None}
 
         def scan_module(mod: nn.Module, path: str = "") -> None:
             obj_id = id(mod)
@@ -2878,6 +2882,19 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             Self for chaining
         """
         return self.to(torch.device("mps"))
+
+    def train(self, mode: bool = True) -> "TransformerBridge":
+        """Set training mode, propagating to the wrapped source model.
+
+        ``original_model`` lives in ``__dict__`` rather than the registered
+        module tree, so the inherited ``nn.Module.train()`` recursion does not
+        reach it.
+        """
+        super().train(mode)
+        original = getattr(self, "original_model", None)
+        if isinstance(original, torch.nn.Module):
+            original.train(mode)
+        return self
 
     def set_use_attn_result(self, use_attn_result: bool):
         """Toggle whether to explicitly calculate and expose the result for each attention head.
