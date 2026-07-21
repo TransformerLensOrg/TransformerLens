@@ -2,6 +2,7 @@
 
 This module contains the bridge component for Mixture of Experts layers.
 """
+
 from __future__ import annotations
 
 from typing import Any, Dict, Optional
@@ -110,10 +111,24 @@ class MoEBridge(GeneralizedComponent):
             kwargs = {**kwargs, "hidden_states": hooked}
         output = self.original_component(*args, **kwargs)
         if isinstance(output, tuple):
+            if not output:
+                raise TypeError(
+                    f"{self.name}: expected a non-empty tuple whose first "
+                    "element is a torch.Tensor from the wrapped MoE component, "
+                    "got an empty tuple."
+                )
+
             hidden_states = output[0]
+            if not isinstance(hidden_states, torch.Tensor):
+                raise TypeError(
+                    f"{self.name}: expected the first tuple element from the "
+                    f"wrapped MoE component to be a torch.Tensor, got "
+                    f"{type(hidden_states).__name__}."
+                )
             if len(output) > 1:
                 router_scores = output[1]
-                self.hook_router_scores(router_scores)
+                if isinstance(router_scores, torch.Tensor):
+                    self.hook_router_scores(router_scores)
             hidden_states = self.hook_out(hidden_states)
             return (hidden_states,) + output[1:]
         else:
