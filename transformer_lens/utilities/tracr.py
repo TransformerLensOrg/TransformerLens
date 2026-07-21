@@ -19,7 +19,7 @@ from transformer_lens.config.transformer_bridge_config import TransformerBridgeC
 def infer_tracr_output_label(model: Any) -> str:
     """Infer the RASP output label used in ``model.residual_labels``.
 
-    Tracr stores residual basis labels as strings like ``"reverse:3"`` while
+    Tracr stores residual basis labels as strings like ``"reverse_1:3"`` while
     its categorical output encoder stores only values and output-column ids.
     The output label is the unique residual-label prefix whose value set exactly
     matches the output encoder's categorical value set.
