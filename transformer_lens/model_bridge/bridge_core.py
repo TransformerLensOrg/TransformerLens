@@ -9,6 +9,7 @@ from typing import (
     Any,
     Callable,
     Dict,
+    Iterable,
     Iterator,
     List,
     Literal,
@@ -16,6 +17,7 @@ from typing import (
     Optional,
     Tuple,
     Union,
+    cast,
     overload,
 )
 
@@ -120,6 +122,24 @@ class BridgeCore:
         hooks = self._hook_registry.copy()
         self._add_aliases_to_hooks(hooks)
         return hooks
+
+    @property
+    def mod_dict(self) -> Dict[str, Any]:
+        """Module/hook name -> object, HookedRootModule-compatible.
+
+        Union of the named-module tree and the aliased hook view, so both
+        canonical (``blocks.0.mlp.hook_out``) and HT-style
+        (``blocks.0.hook_mlp_out``) names resolve to the same HookPoint.
+        """
+        # BridgeCore is a mixin; concrete bridges (TransformerBridge/RemoteBridge)
+        # are nn.Modules, so named_modules() is always present at runtime.
+        mods: Dict[str, Any] = {
+            name: module
+            for name, module in cast(torch.nn.Module, self).named_modules()
+            if name != ""
+        }
+        mods.update(self.hook_dict)
+        return mods
 
     # ---- alias registry ----
 
@@ -404,6 +424,33 @@ class BridgeCore:
             pass
         return None
 
+    def check_hooks_to_add(
+        self,
+        hook_point: HookPoint,
+        hook_point_name: str,
+        hook: Callable,
+        dir: Literal["fwd", "bwd"] = "fwd",
+        is_permanent: bool = False,
+        prepend: bool = False,
+    ) -> None:
+        """Validate a hook before it is added; override to add checks.
+
+        No-op by default (mirrors ``HookedRootModule.check_hooks_to_add``).
+        Driver-fireability is enforced separately in ``_check_hook_fireable``.
+        """
+
+    def _add_fn_to_hook_point(
+        self,
+        hook_point: HookPoint,
+        name: str,
+        hook_fn: Callable,
+        dir: Literal["fwd", "bwd"],
+        is_permanent: bool,
+    ) -> None:
+        """Run the extension-point check, then attach the hook function."""
+        self.check_hooks_to_add(hook_point, name, hook_fn, dir=dir, is_permanent=is_permanent)
+        hook_point.add_hook(hook_fn, dir=dir, is_permanent=is_permanent)
+
     def add_hook(
         self,
         name: Union[str, Callable[[str], bool]],
@@ -431,7 +478,7 @@ class BridgeCore:
                     if hook_id in seen_hooks:
                         continue
                     seen_hooks.add(hook_id)
-                    hook_point.add_hook(hook_fn, dir=dir, is_permanent=is_permanent)
+                    self._add_fn_to_hook_point(hook_point, hook_name, hook_fn, dir, is_permanent)
             return
 
         # Fast path: canonical registry names skip the alias-map build (hook_dict +
@@ -439,7 +486,7 @@ class BridgeCore:
         registry_hp = self._hook_registry.get(name)
         if registry_hp is not None:
             self._check_hook_fireable(name)
-            registry_hp.add_hook(hook_fn, dir=dir, is_permanent=is_permanent)
+            self._add_fn_to_hook_point(registry_hp, name, hook_fn, dir, is_permanent)
             return
         # Same alias resolution run_with_hooks uses, so HT-style names work here too.
         canonical = build_alias_to_canonical_map(self.hook_dict).get(name, name)
@@ -449,7 +496,7 @@ class BridgeCore:
             self._check_hook_fireable(name)
         registry_hp = self._hook_registry.get(canonical)
         if registry_hp is not None:
-            registry_hp.add_hook(hook_fn, dir=dir, is_permanent=is_permanent)
+            self._add_fn_to_hook_point(registry_hp, canonical, hook_fn, dir, is_permanent)
             return
 
         component: Any = self
@@ -463,7 +510,7 @@ class BridgeCore:
         if hasattr(component, hook_name):
             hook_point = getattr(component, hook_name)
             if isinstance(hook_point, HookPoint):
-                hook_point.add_hook(hook_fn, dir=dir, is_permanent=is_permanent)
+                self._add_fn_to_hook_point(hook_point, name, hook_fn, dir, is_permanent)
             else:
                 raise AttributeError(
                     f"'{hook_name}' is not a hook point. Found object of type: {type(hook_point)} with value: {hook_point}"
@@ -485,23 +532,46 @@ class BridgeCore:
         """
         self.add_hook(name, hook_fn, dir=dir, is_permanent=True)
 
-    def reset_hooks(self, clear_contexts: bool = True) -> None:
-        """Remove all hooks. Registry is canonical; nn.Module children walked additively."""
+    def hook_points(self) -> Iterable[HookPoint]:
+        """All :class:`HookPoint` instances (registry is canonical and complete)."""
+        return self._hook_registry.values()
+
+    def clear_contexts(self) -> None:
+        """Clear the stored ``ctx`` on every hook point."""
         for hp in self._hook_registry.values():
-            hp.remove_hooks()
-        if hasattr(self, "children"):
-            from transformer_lens.model_bridge.generalized_components.base import (
-                GeneralizedComponent,
-            )
+            hp.clear_context()
 
-            def remove_hooks_recursive(module: Any) -> None:
-                if isinstance(module, GeneralizedComponent):
-                    module.remove_hooks()
-                if hasattr(module, "children"):
-                    for child in module.children():
-                        remove_hooks_recursive(child)
+    def remove_all_hook_fns(
+        self,
+        direction: Literal["fwd", "bwd", "both"] = "both",
+        including_permanent: bool = False,
+        level: Optional[int] = None,
+    ) -> None:
+        """Remove hook functions from every hook point."""
+        for hp in self._hook_registry.values():
+            hp.remove_hooks(direction, including_permanent=including_permanent, level=level)
 
-            remove_hooks_recursive(self)
+    def reset_hooks(
+        self,
+        clear_contexts: bool = True,
+        direction: Literal["fwd", "bwd", "both"] = "both",
+        including_permanent: bool = False,
+        level: Optional[int] = None,
+    ) -> None:
+        """Remove hooks from every hook point; mirrors ``HookedRootModule.reset_hooks``.
+
+        The hook registry is canonical and complete (every component's HookPoint
+        is registered), so a single pass covers the whole model.
+
+        Args:
+            clear_contexts: Also clear each hook point's stored ``ctx``.
+            direction: Which direction(s) to remove — ``"fwd"``, ``"bwd"``, or ``"both"``.
+            including_permanent: If True, also remove hooks added via ``add_perma_hook``.
+            level: If set, only remove hooks registered at this context level.
+        """
+        if clear_contexts:
+            self.clear_contexts()
+        self.remove_all_hook_fns(direction, including_permanent=including_permanent, level=level)
 
     def hooks(
         self,
