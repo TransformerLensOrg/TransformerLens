@@ -246,7 +246,7 @@ class TestMixtralComponentMapping:
         assert isinstance(subs["ln2"], RMSNormalizationBridge)
 
     def test_mlp_has_only_gate_submodule(self, adapter: MixtralArchitectureAdapter) -> None:
-        """Experts are batched tensors inside block_sparse_moe; only the router is mapped."""
+        """Experts are batched tensors inside the sparse block; only the router is mapped."""
         mlp = _mapping(adapter)["blocks"].submodules["mlp"]
         assert set(mlp.submodules.keys()) == {"gate"}
 
@@ -261,7 +261,8 @@ class TestMixtralComponentMapping:
         assert subs["ln1"].name == "input_layernorm"
         assert subs["ln2"].name == "post_attention_layernorm"
         assert subs["attn"].name == "self_attn"
-        assert subs["mlp"].name == "block_sparse_moe"
+        # transformers >= 5.13 renamed the decoder-layer attr block_sparse_moe -> mlp.
+        assert subs["mlp"].name == "mlp"
         assert subs["mlp"].submodules["gate"].name == "gate"
 
 

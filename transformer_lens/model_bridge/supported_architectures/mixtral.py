@@ -12,6 +12,7 @@ from transformer_lens.model_bridge.generalized_components import (
     EmbeddingBridge,
     LinearBridge,
     MoEBridge,
+    MoERouterBridge,
     PositionEmbeddingsAttentionBridge,
     RMSNormalizationBridge,
     RotaryEmbeddingBridge,
@@ -97,12 +98,15 @@ class MixtralArchitectureAdapter(ArchitectureAdapter):
                     # as 3D tensors) rather than a ModuleList of individual experts.
                     # MoEBridge wraps the entire MLP module and delegates to HF's
                     # native forward pass. The gate (router) is mapped as a submodule
-                    # for hook access.
+                    # for hook access. transformers >= 5.13 holds the sparse block
+                    # at layer.mlp (formerly layer.block_sparse_moe).
                     "mlp": MoEBridge(
-                        name="block_sparse_moe",
+                        name="mlp",
                         config=self.cfg,
                         submodules={
-                            "gate": LinearBridge(name="gate"),
+                            # MixtralTopKRouter returns a 3-tuple on 5.13; the
+                            # router bridge hooks the logits and re-packs it.
+                            "gate": MoERouterBridge(name="gate"),
                         },
                     ),
                 },

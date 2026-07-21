@@ -12,6 +12,7 @@ from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
+from transformer_lens.model_bridge.generalized_components.linear import LinearBridge
 
 
 class MoEBridge(GeneralizedComponent):
@@ -126,3 +127,26 @@ class MoEBridge(GeneralizedComponent):
         else:
             hidden_states = self.hook_out(output)
             return hidden_states
+
+
+class MoERouterBridge(LinearBridge):
+    """Bridge MoE router logits while preserving HF's tuple return.
+
+    transformers >= 5.13 TopKRouters return ``(router_logits, topk_weights,
+    topk_indices)``. The base ``LinearBridge.forward`` would pass the tuple to
+    ``hook_out``, which expects a single ``torch.Tensor``, causing a beartype
+    runtime error. ``hook_out`` fires on the router logits; the tuple is
+    re-packed so the HF sparse block's unpacking is undisturbed.
+    """
+
+    def forward(self, input: torch.Tensor, *args: Any, **kwargs: Any) -> Any:
+        if self.original_component is None:
+            raise RuntimeError(
+                f"Original component not set for {self.name}. Call set_original_component() first."
+            )
+        input = self.hook_in(input)
+        output = self.original_component(input, *args, **kwargs)
+        if not isinstance(output, tuple) or len(output) == 0:
+            return self.hook_out(output)
+        router_logits = self.hook_out(output[0])
+        return (router_logits,) + output[1:]

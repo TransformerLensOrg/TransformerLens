@@ -2,28 +2,18 @@
 
 from typing import Any
 
-import torch
-
-from transformer_lens.model_bridge.generalized_components import LinearBridge, MoEBridge
+from transformer_lens.model_bridge.generalized_components import (
+    LinearBridge,
+    MoEBridge,
+    MoERouterBridge,
+)
 from transformer_lens.model_bridge.supported_architectures.qwen2 import (
     Qwen2ArchitectureAdapter,
 )
 
 
-class Qwen2MoeRouterBridge(LinearBridge):
-    """Bridge Qwen2-MoE router logits while preserving HF's tuple return."""
-
-    def forward(self, input: torch.Tensor, *args: Any, **kwargs: Any) -> Any:
-        if self.original_component is None:
-            raise RuntimeError(
-                f"Original component not set for {self.name}. Call set_original_component() first."
-            )
-        input = self.hook_in(input)
-        output = self.original_component(input, *args, **kwargs)
-        if not isinstance(output, tuple) or len(output) == 0:
-            return self.hook_out(output)
-        router_logits = self.hook_out(output[0])
-        return (router_logits,) + output[1:]
+class Qwen2MoeRouterBridge(MoERouterBridge):
+    """Tuple-preserving router bridge for ``Qwen2MoeTopKRouter``."""
 
 
 class Qwen2MoeArchitectureAdapter(Qwen2ArchitectureAdapter):

@@ -10,6 +10,8 @@ after the MLP) with no pre-norms.
 
 from typing import Any
 
+import torch
+
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
@@ -20,6 +22,36 @@ from transformer_lens.model_bridge.generalized_components import (
     RotaryEmbeddingBridge,
     UnembeddingBridge,
 )
+
+
+class _Exaone4AttentionBridge(PositionEmbeddingsAttentionBridge):
+    """Attention bridge that honours EXAONE-4.0's hybrid NoPE gating.
+
+    Hybrid checkpoints (sliding_window set, e.g. the 32B LLLG pattern) apply
+    RoPE only on sliding-window layers; full-attention layers are global NoPE.
+    HF gates the rotation on ``self.sliding_window is None or self.is_sliding``
+    inside Exaone4Attention.forward, but the base bridge reimplements attention
+    and rotates whenever position_embeddings is present, so NoPE layers must
+    suppress the argument before delegating. Non-hybrid checkpoints (1.2B,
+    sliding_window=None) rotate on every layer and are unaffected.
+    """
+
+    def forward(self, *args: Any, **kwargs: Any) -> Any:
+        """Drop position_embeddings on hybrid full-attention NoPE layers."""
+        if self._is_nope_layer():
+            kwargs["position_embeddings"] = None
+            if len(args) >= 2 and not isinstance(args[1], torch.Tensor):
+                args = (args[0], None) + args[2:]
+        return super().forward(*args, **kwargs)
+
+    def _is_nope_layer(self) -> bool:
+        """Return True when the wrapped attention is a hybrid model's full-attention layer."""
+        hf_attn = self.original_component
+        if hf_attn is None:
+            return False
+        if getattr(hf_attn, "sliding_window", None) is None:
+            return False
+        return not getattr(hf_attn, "is_sliding", True)
 
 
 class Exaone4ArchitectureAdapter(ArchitectureAdapter):
@@ -52,7 +84,7 @@ class Exaone4ArchitectureAdapter(ArchitectureAdapter):
             "blocks": BlockBridge(
                 name="model.layers",
                 submodules={
-                    "attn": PositionEmbeddingsAttentionBridge(
+                    "attn": _Exaone4AttentionBridge(
                         name="self_attn",
                         config=self.cfg,
                         submodules={
