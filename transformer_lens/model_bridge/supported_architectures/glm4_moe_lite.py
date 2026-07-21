@@ -23,6 +23,9 @@ from transformer_lens.model_bridge.generalized_components import (
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
+from transformer_lens.model_bridge.supported_architectures.glm4_moe import (
+    Glm4MoeRouterBridge,
+)
 
 
 class Glm4MoeLiteArchitectureAdapter(ArchitectureAdapter):
@@ -83,7 +86,7 @@ class Glm4MoeLiteArchitectureAdapter(ArchitectureAdapter):
                         name="mlp",
                         config=self.cfg,
                         submodules={
-                            "gate": LinearBridge(name="gate", optional=True),
+                            "gate": Glm4MoeRouterBridge(name="gate", optional=True),
                             "shared_experts": self._gated_mlp(name="shared_experts", optional=True),
                         },
                     ),
