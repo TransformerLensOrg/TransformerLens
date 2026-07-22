@@ -37,7 +37,7 @@ import transformer_lens.utilities as utils
 from transformer_lens.utilities import Slice, SliceInput, warn_if_mps
 
 if TYPE_CHECKING:
-    from transformer_lens.HookedTransformer import HookedTransformer
+    from transformer_lens.model_protocol import TransformerLensModelWithWeights
 
 
 def _normalize_projection_to_2d(
@@ -144,8 +144,9 @@ class ActivationCache:
         has_batch_dim: bool = True,
     ):
         self.cache_dict = cache_dict
-        # Helper methods require HT-internal structure; bridge users only use cache_dict.
-        self.model = cast("HookedTransformer", model)
+        # Advanced helpers (LN folding, residual-direction projection) need the
+        # weight-processing surface; both HookedTransformer and TransformerBridge expose it.
+        self.model = cast("TransformerLensModelWithWeights", model)
         self.has_batch_dim = has_batch_dim
         self.has_embed = "hook_embed" in self.cache_dict
         self.has_pos_embed = "hook_pos_embed" in self.cache_dict

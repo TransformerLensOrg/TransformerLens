@@ -127,6 +127,7 @@ class RemoteBridge(BridgeCore, HookIntrospectionMixin):
         clear_contexts: bool = False,
         return_type: Optional[str] = "logits",
         stop_at_layer: Optional[int] = None,
+        start_at_layer: Optional[int] = None,
         remove_batch_dim: bool = False,
         **kwargs: Any,
     ) -> Any:
@@ -138,6 +139,7 @@ class RemoteBridge(BridgeCore, HookIntrospectionMixin):
                 "RemoteBridge has no backward pass; bwd_hooks are unsupported."
             )
         self._reject_stop_at_layer(stop_at_layer)
+        self._reject_start_at_layer(start_at_layer)
         if fwd_hooks:
             warnings.warn(
                 "RemoteBridge fwd_hooks fire on already-captured activations (read-only): "
@@ -169,9 +171,20 @@ class RemoteBridge(BridgeCore, HookIntrospectionMixin):
                 "always runs the full forward pass."
             )
 
+    @staticmethod
+    def _reject_start_at_layer(start_at_layer: Any) -> None:
+        # Residual-stream injection needs a local `blocks` tree; the remote engine
+        # only runs a full forward from tokens.
+        if start_at_layer is not None:
+            raise NotImplementedError(
+                "RemoteBridge does not support start_at_layer: the remote engine "
+                "always runs the full forward pass from tokens."
+            )
+
     def run_with_cache(self, *args: Any, **kwargs: Any) -> Any:
-        """Cache via driver captures; stop_at_layer rejected (full remote forward)."""
+        """Cache via driver captures; stop/start_at_layer rejected (full remote forward)."""
         self._reject_stop_at_layer(kwargs.get("stop_at_layer"))
+        self._reject_start_at_layer(kwargs.get("start_at_layer"))
         return super().run_with_cache(*args, **kwargs)
 
     def to_tokens(self, input: Any, prepend_bos: bool | None = None, truncate: bool = True) -> Any:

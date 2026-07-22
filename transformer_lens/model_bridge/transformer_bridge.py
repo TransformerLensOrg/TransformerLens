@@ -1345,16 +1345,26 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         stop_at_layer: Optional[int] = None,
         pixel_values: Optional[torch.Tensor] = None,
         input_values: Optional[torch.Tensor] = None,
+        past_key_values: Optional[Any] = None,
         **kwargs,
     ) -> Any:
         """Forward pass through the model.
 
         Args:
             input: Input to the model
-            return_type: Type of output to return ('logits', 'loss', 'both', 'predictions', None)
+            return_type: Type of output to return ('logits', 'loss', 'both', 'predictions',
+                'logits_and_cache', None). 'logits_and_cache' returns
+                ``(logits, past_key_values)`` — the HuggingFace cache after this step, to
+                feed back on the next call for incremental decoding.
             loss_per_token: Whether to return loss per token
             prepend_bos: Whether to prepend BOS token
             padding_side: Which side to pad on
+            past_key_values: HuggingFace KV cache from a prior ``use_cache=True`` step
+                (e.g. the second element of a ``return_type='logits_and_cache'`` return).
+                When provided, KV caching is enabled automatically and only the new
+                tokens' keys/values are computed; HF derives the position offset from the
+                cache length. This is the bridge's manual KV-cache entry point — it uses
+                HF's native cache object rather than a TransformerLens cache.
             start_at_layer: Resume the forward from block ``k``, treating ``input`` as
                 the residual-stream tensor ``[batch, pos, d_model]`` entering that block
                 (mirrors HookedTransformer). Blocks 0..k-1 still execute internally (their
@@ -1486,6 +1496,11 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
 
             if attention_mask is not None:
                 kwargs["attention_mask"] = attention_mask
+            if past_key_values is not None:
+                # Manual KV-cache injection: hand HF its own cache back and let it
+                # extend it, computing only the new tokens' keys/values.
+                kwargs["past_key_values"] = past_key_values
+                kwargs["use_cache"] = True
             if kwargs.pop("use_past_kv_cache", False) or kwargs.get("use_cache", False):
                 kwargs["use_cache"] = True
             # Auto-generate decoder_input_ids for encoder-decoder models

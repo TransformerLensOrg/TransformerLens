@@ -60,7 +60,6 @@ def check_drift(verified_only: bool = True) -> DriftReport:
     """
     # Import at call time to avoid circular imports
     from transformer_lens.supported_models import MODEL_ALIASES, OFFICIAL_MODEL_NAMES
-    from transformer_lens.tools.model_registry.registry_io import resolve_model_alias
 
     report = DriftReport()
 

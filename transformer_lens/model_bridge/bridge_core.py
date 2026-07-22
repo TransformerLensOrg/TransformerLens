@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import re
 import warnings
-from contextlib import contextmanager
-from functools import lru_cache
+from contextlib import contextmanager, nullcontext
+from functools import lru_cache, partial
 from typing import (
     Any,
     Callable,
@@ -587,6 +587,137 @@ class BridgeCore:
             self.clear_contexts()
         self.remove_all_hook_fns(direction, including_permanent=including_permanent, level=level)
 
+    @staticmethod
+    def _normalize_names_filter(
+        names_filter: Optional[Union[str, List[str], Callable[[str], bool]]],
+    ) -> Callable[[str], bool]:
+        """Turn None / str / list / callable into a name predicate."""
+        if names_filter is None:
+            return lambda name: True
+        if isinstance(names_filter, str):
+            return lambda name: name == names_filter
+        if isinstance(names_filter, list):
+            return lambda name: name in names_filter
+        if callable(names_filter):
+            return names_filter
+        raise ValueError("names_filter must be None, a string, a list of strings, or a callable")
+
+    @staticmethod
+    def _pos_slice_dim(name: str) -> int:
+        """Position dimension for a hook's activation (see ``run_with_cache``)."""
+        return -2 if name.endswith(("hook_pattern", "hook_attn_scores")) else 1
+
+    def get_caching_hooks(
+        self,
+        names_filter: Optional[Union[str, List[str], Callable[[str], bool]]] = None,
+        incl_bwd: bool = False,
+        device: Any = None,
+        remove_batch_dim: bool = False,
+        cache: Optional[dict] = None,
+        pos_slice: Optional[Union[Slice, SliceInput]] = None,
+    ) -> Tuple[dict, list, list]:
+        """Build caching hooks without adding them. Mirrors ``HookedRootModule.get_caching_hooks``.
+
+        Returns ``(cache, fwd_hooks, bwd_hooks)`` where each hook is a
+        ``(name, hook_fn)`` pair suitable for ``hooks()`` / ``run_with_hooks``.
+        Activations are keyed by the HookPoint's canonical name; backward hooks
+        append ``"_grad"``. ``bwd_hooks`` is empty unless ``incl_bwd``.
+        """
+        if cache is None:
+            cache = {}
+        pos_slice_obj = Slice.unwrap(pos_slice)
+        filter_fn = self._normalize_names_filter(names_filter)
+
+        def save_hook(tensor: Any, hook: Any, is_backward: bool = False) -> None:
+            assert hook.name is not None
+            key = hook.name + "_grad" if is_backward else hook.name
+            stored = tensor.detach().to(device)
+            if remove_batch_dim:
+                stored = stored[0]
+            if pos_slice_obj is not None and stored.dim() >= 2:
+                stored = pos_slice_obj.apply(stored, dim=self._pos_slice_dim(hook.name))
+            cache[key] = stored
+
+        fwd_hooks: list = []
+        bwd_hooks: list = []
+        seen: set = set()
+        for name, hook_point in self.hook_dict.items():
+            if filter_fn(name) and id(hook_point) not in seen:
+                seen.add(id(hook_point))
+                fwd_hooks.append((name, partial(save_hook, is_backward=False)))
+                if incl_bwd:
+                    bwd_hooks.append((name, partial(save_hook, is_backward=True)))
+        return cache, fwd_hooks, bwd_hooks
+
+    def add_caching_hooks(
+        self,
+        names_filter: Optional[Union[str, List[str], Callable[[str], bool]]] = None,
+        incl_bwd: bool = False,
+        device: Any = None,
+        remove_batch_dim: bool = False,
+        cache: Optional[dict] = None,
+    ) -> dict:
+        """Attach caching hooks to the model (does not run it). Returns the cache dict.
+
+        Mirrors ``HookedRootModule.add_caching_hooks``. The hooks persist until
+        ``reset_hooks()``.
+        """
+        cache, fwd_hooks, bwd_hooks = self.get_caching_hooks(
+            names_filter,
+            incl_bwd=incl_bwd,
+            device=device,
+            remove_batch_dim=remove_batch_dim,
+            cache=cache,
+        )
+        for name, hook_fn in fwd_hooks:
+            self.add_hook(name, hook_fn, dir="fwd")
+        for name, hook_fn in bwd_hooks:
+            self.add_hook(name, hook_fn, dir="bwd")
+        return cache
+
+    def cache_all(
+        self,
+        cache: Optional[dict],
+        incl_bwd: bool = False,
+        device: Any = None,
+        remove_batch_dim: bool = False,
+    ) -> None:
+        """Deprecated: cache every activation. Use ``run_with_cache`` / ``add_caching_hooks``."""
+        warnings.warn(
+            "cache_all is deprecated; use run_with_cache or add_caching_hooks.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.add_caching_hooks(
+            names_filter=None,
+            cache=cache,
+            incl_bwd=incl_bwd,
+            device=device,
+            remove_batch_dim=remove_batch_dim,
+        )
+
+    def cache_some(
+        self,
+        cache: Optional[dict],
+        names: Callable[[str], bool],
+        incl_bwd: bool = False,
+        device: Any = None,
+        remove_batch_dim: bool = False,
+    ) -> None:
+        """Deprecated: cache activations matching ``names``. Use ``run_with_cache``."""
+        warnings.warn(
+            "cache_some is deprecated; use run_with_cache or add_caching_hooks.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.add_caching_hooks(
+            names_filter=names,
+            cache=cache,
+            incl_bwd=incl_bwd,
+            device=device,
+            remove_batch_dim=remove_batch_dim,
+        )
+
     def hooks(
         self,
         fwd_hooks: List = [],
@@ -827,6 +958,7 @@ class BridgeCore:
         stop_at_layer: Optional[int] = None,
         start_at_layer: Optional[int] = None,
         pos_slice: Optional[Union[Slice, SliceInput]] = None,
+        incl_bwd: bool = False,
         **kwargs,
     ) -> Tuple[Any, Union[ActivationCache, Dict[str, torch.Tensor]]]:
         """Run the model and cache activations. Returns ``(output, cache)``.
@@ -835,9 +967,13 @@ class BridgeCore:
         ``start_at_layer`` treats ``input`` as the residual entering block ``k``
         (see :meth:`forward`); blocks below ``k`` are excluded from the cache to
         match HookedTransformer. ``pos_slice`` slices each cached activation along
-        its position dimension (``-3`` for per-head q/k/v/z/result, ``-2`` otherwise).
-        ``device`` offloads cached activations (matches ``ActivationCache.to``); the
-        model and inputs stay where the caller put them.
+        its position dimension (dim 1 for resid/per-head/token-id activations; the
+        query position ``-2`` for attention patterns/scores). ``incl_bwd`` also
+        caches gradients under ``"<name>_grad"`` by running ``output.backward()``;
+        the caller must request a scalar output (``return_type="loss"``) and the
+        model must be on the gradients-capable transformers driver. ``device``
+        offloads cached activations (matches ``ActivationCache.to``); the model and
+        inputs stay where the caller put them.
         """
         pos_slice_obj = Slice.unwrap(pos_slice)
         aliases = build_alias_to_canonical_map(self.hook_dict)
@@ -879,12 +1015,10 @@ class BridgeCore:
         def _store(name: str, value: torch.Tensor) -> None:
             stored = value.detach().to(cache_device)
             if pos_slice_obj is not None and stored.dim() >= 2:
-                # Every bridge activation lays out position at dim 1 (batch is dim 0):
-                # resid [b,p,d], per-head [b,p,h,d], token ids [b,p]. The exception is
-                # attention patterns/scores [b,head,q_pos,k_pos] — slice the query
-                # (destination) position at -2, matching HookedTransformer.
-                pos_dim = -2 if name.endswith(("hook_pattern", "hook_attn_scores")) else 1
-                stored = pos_slice_obj.apply(stored, dim=pos_dim)
+                # Position is dim 1 for every bridge activation (resid [b,p,d], per-head
+                # [b,p,h,d], token ids [b,p]) except attention patterns/scores, which
+                # slice the query position at -2 — see _pos_slice_dim.
+                stored = pos_slice_obj.apply(stored, dim=self._pos_slice_dim(name))
             cache[name] = stored
 
         def make_cache_hook(name: str):
@@ -946,8 +1080,19 @@ class BridgeCore:
                 f"names_filter {names_filter!r} matched no hook points on this model; "
                 "check the name against model.hook_dict (this backend may not serve it)."
             )
+
+        def make_grad_cache_hook(name: str):
+            def grad_hook(tensor: torch.Tensor, *, hook: Any) -> torch.Tensor:
+                if isinstance(tensor, torch.Tensor):
+                    _store(name + "_grad", tensor)
+                return tensor
+
+            return grad_hook
+
         for hp, name in hooks:
             hp.add_hook(make_cache_hook(name))
+            if incl_bwd:
+                hp.add_hook(make_grad_cache_hook(name), dir="bwd")
         processed_args = [input]
         # Driver-aware input placement: torch drivers move input_ids to the model's
         # device; remote drivers (no local parameters) leave them as-is.
@@ -1003,24 +1148,29 @@ class BridgeCore:
                 and self.adapter.supports_hf_output_attentions
             ):
                 filtered_kwargs["output_attentions"] = True
-            if processed_args:
-                output = self.forward(processed_args[0], **filtered_kwargs)
-            elif "input_ids" in filtered_kwargs:
-                output = self.forward(
-                    filtered_kwargs["input_ids"],
-                    **{k: v for k, v in filtered_kwargs.items() if k != "input_ids"},
-                )
-            else:
-                output = self.forward(**filtered_kwargs)
-            if hasattr(output, "logits"):
-                output = output.logits
+            # incl_bwd needs grad to build the graph and run backward while the
+            # bwd cache hooks are still attached (i.e. before the finally below).
+            with torch.enable_grad() if incl_bwd else nullcontext():
+                if processed_args:
+                    output = self.forward(processed_args[0], **filtered_kwargs)
+                elif "input_ids" in filtered_kwargs:
+                    output = self.forward(
+                        filtered_kwargs["input_ids"],
+                        **{k: v for k, v in filtered_kwargs.items() if k != "input_ids"},
+                    )
+                else:
+                    output = self.forward(**filtered_kwargs)
+                if hasattr(output, "logits"):
+                    output = output.logits
+                if incl_bwd:
+                    output.backward()
         except StopAtLayerException as e:
             output = e.layer_output
         except Exception as e:
             raise e
         finally:
             for hp, _ in hooks:
-                hp.remove_hooks(dir="fwd")
+                hp.remove_hooks(dir="both" if incl_bwd else "fwd")
         if self.compatibility_mode == True:
             reverse_aliases = {}
             for old_name, new_name in aliases.items():

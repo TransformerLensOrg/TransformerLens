@@ -446,7 +446,7 @@ def ioi_eval(model, dataset=None, batch_size=8, num_samples=1000, tokenizer=None
     """Evaluate the Model on the Indirect Object Identification Task.
 
     Args:
-        model: HookedTransformer model.
+        model: A HookedTransformer or TransformerBridge model.
         dataset: PyTorch Dataset that returns a dict with keys "prompt", "IO", and "S".
         batch_size: Batch size to use.
         num_samples: Number of samples to use.
@@ -533,7 +533,7 @@ def mmlu_eval(
     Paper: https://arxiv.org/abs/2009.03300
 
     Args:
-        model: HookedTransformer model to evaluate.
+        model: A HookedTransformer or TransformerBridge model to evaluate.
         tokenizer: Tokenizer to use. If None, uses model.tokenizer.
         subjects: Subject(s) to evaluate on. Can be None (all 57 subjects), a single subject
             string, or a list of subjects. See :const:`MMLU_SUBJECTS` for valid names.
