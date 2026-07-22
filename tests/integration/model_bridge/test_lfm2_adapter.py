@@ -3,19 +3,8 @@
 Verifies forward-pass and generation parity against LiquidAI/LFM2.5-230M:
 - Forward-pass logits match HF exactly (bridge delegates the full forward to HF)
 - Greedy multi-token generation matches HF bit-for-bit (exercises DynamicCache
-  state handling across attention, conv and MLP layers)
+  state handling across attention and conv layers)
 - Sanity checks: config flags, block count, hook coverage
-
-
-
-TODO:
-Add model to lists
-Dtype considerations
-Check 2nd class forward pass comment
-MLP as layer type check?
-Greedy matches hf exact removed pad token id??
-Change/remove nemo specific tests
-Add lfm2 specific tests
 """
 
 import pytest
@@ -65,7 +54,7 @@ class TestLfm2BridgeCreation:
 
     def test_conv_is_lfm2_short_conv_bridge(self, lfm2_bridge: TransformerBridge) -> None:
         assert isinstance(lfm2_bridge.blocks[0].conv, Lfm2ShortConvBridge)
-    
+
     def test_conv_conv_is_depthwise_conv_bridge(self, lfm2_bridge: TransformerBridge) -> None:
         assert isinstance(lfm2_bridge.blocks[0].conv.conv, DepthwiseConv1DBridge)
 
@@ -85,9 +74,9 @@ class TestLfm2BridgeCreation:
 class TestLfm2ForwardPass:
     """Bridge logits must match HF logits exactly.
 
-    Lfm2 uses Lfm2ShortConvBridge with a pure passthrough
-    forward (original_component(*args, **kwargs)), so the bridge never
-    reimplements any computation. Parity with HF should be exact (diff == 0),
+    Lfm2 uses Lfm2ShortConvBridge delegating forward (original_component(*args, **kwargs))
+    to HF model, so the bridge never reimplements any computation.
+    Parity with HF should be exact (diff == 0),
     not just close.
     """
 
@@ -114,7 +103,7 @@ class TestLfm2ForwardPass:
         max_diff = (bridge_out.float() - hf_out.float()).abs().max().item()
         assert max_diff == 0.0, (
             f"Bridge vs HF forward max diff = {max_diff:.2e}. "
-            "Expected 0 because Lfm2ShortConvBridge.forward() is a pure passthrough."
+            "Expected 0 because Lfm2ShortConvBridge.forward() is delegates to HF."
         )
 
     def test_forward_no_nan_on_longer_sequence(self, lfm2_bridge: TransformerBridge) -> None:
@@ -135,7 +124,7 @@ class TestLfm2Generation:
     This exercises the DynamicCache stateful loop: attention layers write KV
     entries, conv layers write conv1D states, all via the same
     unified cache object. Token-level equality with HF confirms the state
-    threading is correct across all layer types (conv / attention / mlp).
+    threading is correct across both layer types (conv / attention).
     """
 
     @pytest.fixture(scope="class")
@@ -198,10 +187,10 @@ class TestLfm2HookCoverage:
     def test_lfm2_short_conv_submodule_hooks_fire(
         self, cache, lfm2_bridge: TransformerBridge
     ) -> None:
-        """Lfm2ShortConv layers should expose in_proj / conv1d / out_proj hooks. """
+        """Lfm2ShortConv layers should expose in / conv / out hooks."""
         lt = getattr(lfm2_bridge.cfg, "layer_types", [])
         conv_indices = [i for i, t in enumerate(lt) if t == "conv"]
-        assert conv_indices, "No mamba layers found in layers_block_type"
+        assert conv_indices, "No conv layers found in layer_types"
         # Check a few conv layers
         for i in conv_indices[:3]:
             for submod in ("in", "conv", "out"):
