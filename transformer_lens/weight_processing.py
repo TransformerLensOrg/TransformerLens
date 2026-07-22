@@ -1579,6 +1579,13 @@ class ProcessWeights:
         # Skip fold_ln for adapters that don't support it (e.g., post-LN architectures
         # like BERT where LN placement means folding goes into the wrong sublayer).
         if fold_ln and adapter and not getattr(adapter, "supports_fold_ln", True):
+            import warnings
+
+            warnings.warn(
+                f"{type(adapter).__name__} does not support fold_ln; norm weights "
+                "stay unfolded and analyses assuming folded LN will be off.",
+                UserWarning,
+            )
             fold_ln = False
         if fold_ln:
             if getattr(cfg, "normalization_type", "LN") in ["LN", "LNPre"]:
@@ -1601,6 +1608,13 @@ class ProcessWeights:
             and adapter
             and not getattr(adapter, "supports_center_writing_weights", True)
         ):
+            import warnings
+
+            warnings.warn(
+                f"{type(adapter).__name__} does not support center_writing_weights; "
+                "writing weights stay uncentered.",
+                UserWarning,
+            )
             center_writing_weights = False
         if center_writing_weights:
             if getattr(cfg, "normalization_type", "LN") in ["LN", "LNPre"] and (

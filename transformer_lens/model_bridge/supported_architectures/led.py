@@ -6,6 +6,12 @@ Longformer's sliding-window + global attention (separate query/key/value
 and *_global projections behind an ``output`` projection). The encoder
 attention stays delegated to HF; the decoder is plain BART attention. The
 whole stack lives under the ``led.`` prefix instead of ``model.``.
+
+Encoder caveats: HF pads inputs to a multiple of config.attention_window
+inside LEDEncoder.forward, so encoder-block hooks fire on window-padded
+sequence lengths (only the final hidden state is unpadded). hook_q/k/v
+cover the sliding-window projections; the global path is hookable at
+q_global/k_global/v_global when global attention is requested.
 """
 
 from typing import Any
@@ -55,6 +61,10 @@ class LEDArchitectureAdapter(BartArchitectureAdapter):
                         "q": _LEDEncoderQueryBridge(name="longformer_self_attn.query"),
                         "k": LinearBridge(name="longformer_self_attn.key"),
                         "v": LinearBridge(name="longformer_self_attn.value"),
+                        # Global-attention projections, used at global positions.
+                        "q_global": LinearBridge(name="longformer_self_attn.query_global"),
+                        "k_global": LinearBridge(name="longformer_self_attn.key_global"),
+                        "v_global": LinearBridge(name="longformer_self_attn.value_global"),
                         "o": LinearBridge(name="output"),
                     },
                     maintain_native_attention=True,

@@ -61,22 +61,26 @@ class T5GemmaArchitectureAdapter(ArchitectureAdapter):
         # T5Gemma uses Gemma-style (1.0 + weight) RMSNorm offset
         self.cfg.rmsnorm_uses_offset = True
 
+        # n_heads/n_kv are decoder-effective; unbalanced pairs (t5gemma-9b-2b)
+        # set different encoder counts, surfaced by the builder.
         n_heads = self.cfg.n_heads
         n_kv = getattr(self.cfg, "n_key_value_heads", None) or n_heads
+        enc_heads = getattr(self.cfg, "encoder_attention_heads", None) or n_heads
+        enc_kv = getattr(self.cfg, "encoder_key_value_heads", None) or n_kv
 
         self.weight_processing_conversions = {
             # Encoder self-attention
             "encoder_blocks.{i}.self_attn.q_proj.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=n_heads),
+                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=enc_heads),
             ),
             "encoder_blocks.{i}.self_attn.k_proj.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=n_kv),
+                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=enc_kv),
             ),
             "encoder_blocks.{i}.self_attn.v_proj.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=n_kv),
+                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=enc_kv),
             ),
             "encoder_blocks.{i}.self_attn.o_proj.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=n_heads),
+                tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=enc_heads),
             ),
             # Encoder RMSNorm offset - HF stores raw weight; Gemma applies weight+1
             "encoder_blocks.{i}.pre_self_attn_layernorm.weight": ParamProcessingConversion(

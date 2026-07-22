@@ -20,6 +20,9 @@ from transformer_lens.model_bridge.generalized_components import (
     RotaryEmbeddingBridge,
     UnembeddingBridge,
 )
+from transformer_lens.model_bridge.generalized_components.base import (
+    GeneralizedComponent,
+)
 
 
 class Ernie4_5_MoeArchitectureAdapter(ArchitectureAdapter):
@@ -67,6 +70,8 @@ class Ernie4_5_MoeArchitectureAdapter(ArchitectureAdapter):
                         name="mlp",
                         config=self.cfg,
                         submodules={
+                            # Raw-Parameter router; tuple-safe hook via base.
+                            "gate": GeneralizedComponent(name="gate", optional=True),
                             "shared_experts": self._gated_mlp(name="shared_experts", optional=True),
                         },
                     ),

@@ -14,7 +14,9 @@ HookedTransformer-format weight conversions, so LN folding is disabled.
 
 The remote forward validates attention_mask strictly: it must be the 4D
 block-diffusion form (batch, 1, seq, seq) — full-ones for full
-bidirectional visibility — not a 2D padding mask.
+bidirectional visibility — not a 2D padding mask. A forward pre-hook
+drops all-ones 2D masks (informationless) and rejects padded ones with a
+clear error instead of the remote validator's opaque failure.
 """
 
 from typing import Any
@@ -111,6 +113,30 @@ class LLaDA2MoeArchitectureAdapter(ArchitectureAdapter):
         """Restore the v4 'default' rope init the remote code looks up (Dream shim)."""
         _register_default_rope_init()
         super().prepare_loading(model_name, model_kwargs)
+
+    def setup_hook_compatibility(self, bridge: Any) -> None:
+        """Guard the remote forward against auto-passed 2D padding masks."""
+        model = getattr(bridge, "original_model", None)
+        if model is None or getattr(model, "_llada2_mask_guard", False):
+            return
+
+        def _mask_guard(module: Any, args: Any, kwargs: Any) -> Any:
+            import torch
+
+            mask = kwargs.get("attention_mask")
+            if isinstance(mask, torch.Tensor) and mask.ndim == 2:
+                if not bool(mask.all()):
+                    raise NotImplementedError(
+                        "LLaDA2's remote forward rejects 2D padding masks; "
+                        "batched padded inputs are unsupported — pass "
+                        "equal-length sequences."
+                    )
+                batch, seq = mask.shape
+                kwargs["attention_mask"] = torch.ones(batch, 1, seq, seq, device=mask.device)
+            return args, kwargs
+
+        model.register_forward_pre_hook(_mask_guard, with_kwargs=True)
+        model._llada2_mask_guard = True
 
     def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
         """Delegated attention computes rotary inside HF; nothing to wire."""

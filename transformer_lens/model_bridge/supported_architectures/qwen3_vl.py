@@ -7,8 +7,12 @@ mergers on early vision blocks whose features the text model injects
 into the residual stream at visual token positions during the first
 decoder layers. The injection itself is a tensor add inside the HF text
 loop (not a module call); the per-level DeepStack mergers are wrapped so
-their features are hookable at the source. Text attention is Qwen3-style
-(per-head QK RMS-norm) with interleaved mRoPE, so it stays HF-native.
+their features are hookable at the source. Because the injection happens
+BETWEEN block calls, blocks.{i}.hook_out omits it while blocks.{i+1}'s
+input contains it on image runs — resid_post[i] != resid_pre[i+1] at
+visual positions for the first DeepStack layers, and patching resid_post
+there drops the injection (prefer blocks.{i+1}.hook_in). Text attention
+is Qwen3-style (per-head QK RMS-norm) with interleaved mRoPE, HF-native.
 """
 
 from typing import Any

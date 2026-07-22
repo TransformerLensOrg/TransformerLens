@@ -8,6 +8,7 @@ from transformer_lens.model_bridge.generalized_components import (
     EmbeddingBridge,
     LinearBridge,
     MoEBridge,
+    MoERouterBridge,
     PositionEmbeddingsAttentionBridge,
     RMSNormalizationBridge,
     RotaryEmbeddingBridge,
@@ -24,9 +25,8 @@ class MiniMaxM2ArchitectureAdapter(ArchitectureAdapter):
     - Q/K normalization is applied over the FULL projection width (all heads
       concatenated) before the head reshape, not per-head.
     - The router scores experts with sigmoid + a trained e_score_correction_bias
-      buffer (DeepSeek-V3 style) instead of softmax, and is a custom module
-      holding a raw weight parameter — not an nn.Linear — so the MoE block is
-      fully delegated with no gate submodule mapping.
+      buffer (DeepSeek-V3 style) instead of softmax; its logits are hookable at
+      mlp.gate.hook_out.
     - Explicit head_dim (128) larger than hidden_size / num_heads.
     """
 
@@ -66,7 +66,13 @@ class MiniMaxM2ArchitectureAdapter(ArchitectureAdapter):
                         requires_attention_mask=True,
                         requires_position_embeddings=True,
                     ),
-                    "mlp": MoEBridge(name="mlp", config=self.cfg),
+                    "mlp": MoEBridge(
+                        name="mlp",
+                        config=self.cfg,
+                        submodules={
+                            "gate": MoERouterBridge(name="gate"),
+                        },
+                    ),
                 },
             ),
             "ln_final": RMSNormalizationBridge(name="model.norm", config=self.cfg),

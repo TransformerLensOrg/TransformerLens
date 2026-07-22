@@ -1075,6 +1075,12 @@ def verify_models(
                     phase_scores=filtered_scores,
                     note=partial_note,
                 )
+                add_verification_record(
+                    model_id,
+                    arch,
+                    notes=partial_note,
+                    sanitize_fn=_sanitize_note,
+                )
                 if partial_status == STATUS_FAILED:
                     progress.failed.append(model_id)
                 else:

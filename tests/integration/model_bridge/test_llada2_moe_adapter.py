@@ -78,3 +78,19 @@ class TestLLaDA2MoeBridge:
             _, cache = bridge.run_with_cache(ids, attention_mask=mask)
         assert any("gate" in k for k in cache.keys())
         assert any("shared_experts" in k for k in cache.keys())
+
+    def test_2d_mask_guard(self) -> None:
+        """All-ones 2D masks translate to the 4D form; padded ones reject clearly."""
+        import pytest
+
+        bridge, ref = _tiny_llada2_pair()
+        ids = torch.randint(0, 128, (2, 8))
+        with torch.no_grad():
+            out = bridge(ids, attention_mask=torch.ones(2, 8, dtype=torch.long))
+            expected = ref(input_ids=ids, attention_mask=torch.ones(2, 1, 8, 8)).logits
+        assert (out - expected).abs().max().item() < 1e-4
+        padded = torch.ones(2, 8, dtype=torch.long)
+        padded[0, :3] = 0
+        with pytest.raises(NotImplementedError, match="padding masks"):
+            with torch.no_grad():
+                bridge(ids, attention_mask=padded)

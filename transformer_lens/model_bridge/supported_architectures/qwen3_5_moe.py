@@ -13,13 +13,31 @@ from typing import Any
 
 import torch
 
-from transformer_lens.model_bridge.generalized_components import MoEBridge
+from transformer_lens.model_bridge.generalized_components import (
+    LinearBridge,
+    MoEBridge,
+    MoERouterBridge,
+)
 from transformer_lens.model_bridge.supported_architectures.qwen3 import (
     Qwen3ArchitectureAdapter,
 )
 from transformer_lens.model_bridge.supported_architectures.qwen3_5_multimodal import (
     Qwen3_5MultimodalArchitectureAdapter,
 )
+
+
+def _sparse_moe_mlp(adapter):
+    """Qwen3.5 sparse MoE block: 3-tuple router, batched experts, shared expert."""
+    return MoEBridge(
+        name="mlp",
+        config=adapter.cfg,
+        submodules={
+            "gate": MoERouterBridge(name="gate"),
+            "experts": MoEBridge(name="experts", config=adapter.cfg),
+            "shared_expert": adapter._gated_mlp(name="shared_expert"),
+            "shared_expert_gate": LinearBridge(name="shared_expert_gate"),
+        },
+    )
 
 
 class Qwen3_5MoeArchitectureAdapter(Qwen3ArchitectureAdapter):
@@ -31,7 +49,7 @@ class Qwen3_5MoeArchitectureAdapter(Qwen3ArchitectureAdapter):
 
     def _build_mlp_bridge(self):
         """Sparse MoE MLP (router + batched experts + shared expert)."""
-        return MoEBridge(name="mlp", config=self.cfg)
+        return _sparse_moe_mlp(self)
 
     def prepare_loading(self, model_name: str, model_kwargs: dict) -> None:
         """Swap multimodal Qwen3_5MoeConfig for text-only Qwen3_5MoeTextConfig.
@@ -77,4 +95,4 @@ class Qwen3_5MoeMultimodalArchitectureAdapter(Qwen3_5MultimodalArchitectureAdapt
 
     def _build_mlp_bridge(self):
         """Sparse MoE MLP (router + batched experts + shared expert)."""
-        return MoEBridge(name="mlp", config=self.cfg)
+        return _sparse_moe_mlp(self)

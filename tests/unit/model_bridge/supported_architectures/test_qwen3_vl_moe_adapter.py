@@ -38,12 +38,16 @@ def adapter() -> Qwen3VLMoeArchitectureAdapter:
 
 class TestQwen3VLMoeComponentMapping:
     def test_moe_mlp(self, adapter):
-        """Router is a parameter-only module returning a 3-tuple; MoEBridge
-        delegates the whole sparse block (dense mlp_only_layers share the
-        name)."""
+        """Router logits hook via MoERouterBridge; gate/experts optional since
+        dense mlp_only_layers share the name."""
+        from transformer_lens.model_bridge.generalized_components import MoERouterBridge
+
         mlp = adapter.component_mapping["blocks"].submodules["mlp"]
         assert isinstance(mlp, MoEBridge)
-        assert mlp.submodules == {}
+        assert set(mlp.submodules) == {"gate", "experts"}
+        assert isinstance(mlp.submodules["gate"], MoERouterBridge)
+        assert mlp.submodules["gate"].optional is True
+        assert mlp.submodules["experts"].optional is True
 
     def test_inherits_qwen3_vl_layout(self, adapter):
         tower = adapter.component_mapping["vision_encoder"]

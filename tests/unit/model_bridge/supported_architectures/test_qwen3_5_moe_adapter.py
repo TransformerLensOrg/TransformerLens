@@ -165,11 +165,14 @@ class TestQwen3_5MoeComponentMapping:
         from transformer_lens.model_bridge.generalized_components import (
             GatedMLPBridge,
             MoEBridge,
+            MoERouterBridge,
         )
 
         mlp = adapter.component_mapping["blocks"].submodules["mlp"]
         assert isinstance(mlp, MoEBridge)
         assert not isinstance(mlp, GatedMLPBridge)
+        assert set(mlp.submodules) == {"gate", "experts", "shared_expert", "shared_expert_gate"}
+        assert isinstance(mlp.submodules["gate"], MoERouterBridge)
 
     def test_gated_q_proj_flag_set(self, adapter):
         assert getattr(adapter.cfg, "gated_q_proj", False) is True

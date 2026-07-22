@@ -131,6 +131,12 @@ class NormalizationBridge(GeneralizedComponent):
         """
         if self.original_component is None:
             raise RuntimeError(f"Original component not set for {self.name}")
+        if isinstance(self.original_component, torch.nn.Identity):
+            # Non-normalizing slot (ModernBertDecoder layer 0): fire hooks with
+            # pass-through values instead of fabricated LN stats.
+            _ = self.hook_scale(torch.ones_like(x[..., :1]))
+            _ = self.hook_normalized(x)
+            return x
         with torch.no_grad():
             # Upcast to float32 for hook precision (matches HT's RMSNorm/LayerNorm behavior)
             x_float = x.float() if x.dtype not in (torch.float32, torch.float64) else x

@@ -62,23 +62,26 @@ class TestMarianForwardEquivalence:
         max_diff = (bridge_out - hf_out).abs().max().item()
         assert max_diff < 1e-5, f"Bridge vs HF max diff = {max_diff}"
 
-    def test_forward_includes_final_logits_bias(self, marian_bridge, sample_inputs):
-        """HF adds a trained final_logits_bias after lm_head; the bridge output must include it."""
+    def test_final_logits_bias_folded_into_unembed(self, marian_bridge, sample_inputs):
+        """The trained final_logits_bias is folded into lm_head.bias at boot, so
+        b_U and unembed.hook_out include it and the HF buffer is zeroed."""
         input_ids, attention_mask, decoder_input_ids = sample_inputs
         hf_model = marian_bridge.original_model
-        bias = hf_model.final_logits_bias
-        assert bias.abs().max().item() > 0, "opus-mt checkpoints carry a trained bias"
+        assert hf_model.final_logits_bias.abs().max().item() == 0.0
+        assert (
+            marian_bridge.unembed.b_U.abs().max().item() > 0
+        ), "opus-mt checkpoints carry a trained bias"
         with torch.no_grad():
             decoder_hidden = hf_model.model(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
                 decoder_input_ids=decoder_input_ids,
             ).last_hidden_state
-            unbiased = hf_model.lm_head(decoder_hidden)
+            biased = hf_model.lm_head(decoder_hidden)
             bridge_out = marian_bridge(
                 input_ids, attention_mask=attention_mask, decoder_input_ids=decoder_input_ids
             )
-        max_diff = (bridge_out - (unbiased + bias)).abs().max().item()
+        max_diff = (bridge_out - biased).abs().max().item()
         assert max_diff < 1e-5, f"Bridge output missing final_logits_bias, diff = {max_diff}"
 
 
@@ -183,3 +186,57 @@ class TestMarianGeneration:
         )
         assert isinstance(out, str)
         assert len(out.strip()) > 0
+
+
+def _tiny_marian_pair():
+    """Seeded tiny Marian with a trained-style nonzero final_logits_bias."""
+    import copy
+
+    from transformers import MarianConfig, MarianMTModel
+
+    from transformer_lens.model_bridge.sources._bridge_builder import (
+        build_bridge_from_module,
+    )
+
+    cfg = MarianConfig(
+        vocab_size=128,
+        d_model=64,
+        encoder_layers=2,
+        decoder_layers=2,
+        encoder_attention_heads=4,
+        decoder_attention_heads=4,
+        encoder_ffn_dim=128,
+        decoder_ffn_dim=128,
+        max_position_embeddings=128,
+        pad_token_id=0,
+        bos_token_id=1,
+        eos_token_id=2,
+        decoder_start_token_id=2,
+    )
+    cfg._attn_implementation = "eager"
+    torch.manual_seed(42)
+    ref = MarianMTModel(cfg).eval()
+    with torch.no_grad():
+        ref.final_logits_bias.normal_()
+    hf = MarianMTModel(copy.deepcopy(cfg)).eval()
+    hf.load_state_dict(ref.state_dict())
+    bridge = build_bridge_from_module(
+        hf, "MarianMTModel", hf_config=copy.deepcopy(cfg), tokenizer=None, device="cpu"
+    ).eval()
+    return bridge, ref
+
+
+class TestMarianBiasFoldTiny:
+    """Hub-free pin of the final_logits_bias fold (b_U truthful, forward identity)."""
+
+    def test_fold_is_identity_and_b_U_truthful(self) -> None:
+        bridge, ref = _tiny_marian_pair()
+        g = torch.Generator().manual_seed(0)
+        ids = torch.randint(3, 128, (1, 10), generator=g)
+        dec_ids = torch.randint(3, 128, (1, 6), generator=g)
+        with torch.no_grad():
+            out = bridge(ids, decoder_input_ids=dec_ids)
+            expected = ref(input_ids=ids, decoder_input_ids=dec_ids).logits
+        assert (out - expected).abs().max().item() < 1e-5
+        assert torch.allclose(bridge.unembed.b_U.detach(), ref.final_logits_bias.reshape(-1))
+        assert bridge.original_model.final_logits_bias.abs().max().item() == 0.0

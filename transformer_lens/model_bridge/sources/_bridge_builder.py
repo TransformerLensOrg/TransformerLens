@@ -184,6 +184,20 @@ def build_bridge_config_from_hf(
     if attn_logit_softcapping is not None:
         bridge_config.attn_scores_soft_cap = float(attn_logit_softcapping)
 
+    # Nested encoder sub-configs (T5Gemma family): n_heads/n_key_value_heads are
+    # decoder-effective, so expose encoder head counts for per-side conversions.
+    # T5Gemma2 nests them one level deeper (encoder.text_config).
+    encoder_subconfig = getattr(hf_config, "encoder", None)
+    if encoder_subconfig is not None and not hasattr(encoder_subconfig, "num_attention_heads"):
+        encoder_subconfig = getattr(encoder_subconfig, "text_config", None)
+    if encoder_subconfig is not None:
+        enc_heads = getattr(encoder_subconfig, "num_attention_heads", None)
+        if enc_heads is not None:
+            bridge_config.encoder_attention_heads = enc_heads
+        enc_kv = getattr(encoder_subconfig, "num_key_value_heads", None)
+        if enc_kv is not None:
+            bridge_config.encoder_key_value_heads = enc_kv
+
     return bridge_config
 
 

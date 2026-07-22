@@ -173,6 +173,25 @@ class BartFamilyArchitectureAdapter(ArchitectureAdapter):
         mapping["unembed"] = UnembeddingBridge(name="lm_head")
         return mapping
 
+    def setup_hook_compatibility(self, bridge: Any) -> None:
+        """Fold the trained final_logits_bias into the unembed bias.
+
+        HF adds the buffer after lm_head, so b_U would read fabricated zeros
+        and unembed.hook_out would fire pre-bias (Marian opus-mt trains it).
+        Moving it into the bias UnembeddingBridge injects is numerically
+        identity; zeroing the buffer keeps the (re-run) fold idempotent.
+        """
+        import torch
+
+        model = getattr(bridge, "original_model", None)
+        buf = getattr(model, "final_logits_bias", None)
+        lm_head = getattr(model, "lm_head", None)
+        if buf is None or lm_head is None or getattr(lm_head, "bias", None) is None:
+            return
+        with torch.no_grad():
+            lm_head.bias.add_(buf.reshape(-1).to(lm_head.bias.dtype))
+            buf.zero_()
+
 
 class BartArchitectureAdapter(BartFamilyArchitectureAdapter):
     """Architecture adapter for BartForConditionalGeneration models.

@@ -69,3 +69,33 @@ def test_factory_registration():
         SUPPORTED_ARCHITECTURES["ModernBertDecoderForCausalLM"]
         is ModernBertDecoderArchitectureAdapter
     )
+
+
+class TestLayerZeroIdentityNormHooks:
+    """Layer 0's attn_norm is nn.Identity; ln hooks must report pass-through
+    values, not fabricated LayerNorm stats."""
+
+    def test_identity_norm_hooks_pass_through(self) -> None:
+        from types import SimpleNamespace
+
+        import torch
+        import torch.nn as nn
+
+        from transformer_lens.model_bridge.generalized_components import (
+            NormalizationBridge,
+        )
+
+        nb = NormalizationBridge(
+            name="attn_norm",
+            config=SimpleNamespace(eps=1e-5, uses_rms_norm=False),
+            use_native_layernorm_autograd=True,
+        )
+        nb.set_original_component(nn.Identity())
+        captured = {}
+        nb.hook_normalized.add_hook(lambda t, hook: captured.update(n=t.detach().clone()))
+        nb.hook_scale.add_hook(lambda t, hook: captured.update(s=t.detach().clone()))
+        x = torch.randn(2, 4, 8)
+        out = nb(x)
+        assert torch.equal(out, x)
+        assert torch.equal(captured["n"], x)
+        assert torch.equal(captured["s"], torch.ones(2, 4, 1))

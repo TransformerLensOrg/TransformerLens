@@ -10,7 +10,10 @@ unwrapped and MoEBridge delegates the block. Layers listed in
 
 from typing import Any
 
-from transformer_lens.model_bridge.generalized_components import MoEBridge
+from transformer_lens.model_bridge.generalized_components import (
+    MoEBridge,
+    MoERouterBridge,
+)
 from transformer_lens.model_bridge.supported_architectures.qwen3_vl import (
     Qwen3VLArchitectureAdapter,
 )
@@ -20,5 +23,12 @@ class Qwen3VLMoeArchitectureAdapter(Qwen3VLArchitectureAdapter):
     """Architecture adapter for Qwen3VLMoeForConditionalGeneration models."""
 
     def _build_mlp_bridge(self) -> Any:
-        """Sparse MoE block (batched experts; router is not a Linear)."""
-        return MoEBridge(name="mlp", config=self.cfg)
+        """Sparse MoE block; gate/experts absent on dense mlp_only_layers."""
+        return MoEBridge(
+            name="mlp",
+            config=self.cfg,
+            submodules={
+                "gate": MoERouterBridge(name="gate", optional=True),
+                "experts": MoEBridge(name="experts", config=self.cfg, optional=True),
+            },
+        )

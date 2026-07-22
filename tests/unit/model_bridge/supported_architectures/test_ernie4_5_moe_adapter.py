@@ -53,7 +53,8 @@ class TestErnie4_5MoeComponentMapping:
         sigmoid router is fully delegated."""
         mlp = adapter.component_mapping["blocks"].submodules["mlp"]
         assert isinstance(mlp, MoEBridge)
-        assert set(mlp.submodules) == {"shared_experts"}
+        assert set(mlp.submodules) == {"gate", "shared_experts"}
+        assert mlp.submodules["gate"].optional is True
         shared = mlp.submodules["shared_experts"]
         assert isinstance(shared, GatedMLPBridge)
         assert shared.optional is True

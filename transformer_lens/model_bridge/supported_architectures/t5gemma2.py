@@ -73,26 +73,26 @@ class T5Gemma2ArchitectureAdapter(ArchitectureAdapter):
         # T5Gemma2 uses Gemma-style (1.0 + weight) RMSNorm offset
         self.cfg.rmsnorm_uses_offset = True
 
-        # self.cfg is built from the decoder sub-config; these head counts drive the
-        # encoder weight reshaping too. Valid only for dimension-matched (balanced)
-        # encoder/decoder pairs — true for t5gemma-2-270m-270m. An unbalanced pairing
-        # (e.g. a hypothetical 9b-2b) would need per-side head counts here.
+        # n_heads/n_kv are decoder-effective; the builder surfaces the encoder
+        # text stack's own counts for unbalanced pairs.
         n_heads = self.cfg.n_heads
         n_kv = getattr(self.cfg, "n_key_value_heads", None) or n_heads
+        enc_heads = getattr(self.cfg, "encoder_attention_heads", None) or n_heads
+        enc_kv = getattr(self.cfg, "encoder_key_value_heads", None) or n_kv
 
         self.weight_processing_conversions = {
             # Encoder self-attention
             "encoder_blocks.{i}.self_attn.q_proj.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=n_heads),
+                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=enc_heads),
             ),
             "encoder_blocks.{i}.self_attn.k_proj.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=n_kv),
+                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=enc_kv),
             ),
             "encoder_blocks.{i}.self_attn.v_proj.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=n_kv),
+                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=enc_kv),
             ),
             "encoder_blocks.{i}.self_attn.o_proj.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=n_heads),
+                tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=enc_heads),
             ),
             # Encoder QK-norm (Gemma-style +1 offset)
             "encoder_blocks.{i}.self_attn.q_norm.weight": ParamProcessingConversion(

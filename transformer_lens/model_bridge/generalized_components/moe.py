@@ -21,8 +21,10 @@ class MoEBridge(GeneralizedComponent):
     This component wraps a Mixture of Experts layer from a remote model and provides a consistent interface
     for accessing its weights and performing MoE operations.
 
-    MoE models often return tuples of (hidden_states, router_scores). This bridge handles that pattern
-    and provides a hook for capturing router scores.
+    hook_router_scores fires only when the wrapped block returns a tuple
+    (gpt_oss, LLaDA2 remote); 5.13-native SparseMoeBlocks return a plain
+    tensor, so router observability comes from the ``gate`` submodule's
+    hook_out instead.
     """
 
     hook_aliases = {"hook_pre": "hook_in", "hook_post": "hook_out"}
@@ -32,6 +34,7 @@ class MoEBridge(GeneralizedComponent):
         name: str,
         config: Optional[Any] = None,
         submodules: Optional[Dict[str, GeneralizedComponent]] = {},
+        optional: bool = False,
     ):
         """Initialize the MoE bridge.
 
@@ -39,8 +42,9 @@ class MoEBridge(GeneralizedComponent):
             name: The name of the component in the model
             config: Optional configuration (unused for MoEBridge)
             submodules: Dictionary of GeneralizedComponent submodules to register
+            optional: If True, setup skips this subtree when absent (dense layers)
         """
-        super().__init__(name, config, submodules=submodules)
+        super().__init__(name, config, submodules=submodules, optional=optional)
         self.hook_router_scores = HookPoint()
 
     def get_random_inputs(

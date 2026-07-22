@@ -109,12 +109,15 @@ class TestMiniMaxM2ComponentMapping:
             assert isinstance(sub, LinearBridge)
             assert sub.name == path
 
-    def test_moe_block_fully_delegated(self, adapter):
-        """The sigmoid router holds a raw weight parameter, not an nn.Linear —
-        the whole MoE block delegates with no gate submodule."""
+    def test_moe_router_hookable(self, adapter):
+        """Sigmoid router logits are hookable at mlp.gate.hook_out; the tuple
+        (logits, scores, indices) is re-packed for the block's unpack."""
+        from transformer_lens.model_bridge.generalized_components import MoERouterBridge
+
         mlp = adapter.component_mapping["blocks"].submodules["mlp"]
         assert isinstance(mlp, MoEBridge)
-        assert mlp.submodules == {}
+        assert set(mlp.submodules) == {"gate"}
+        assert isinstance(mlp.submodules["gate"], MoERouterBridge)
 
 
 class TestMiniMaxM2Registration:
