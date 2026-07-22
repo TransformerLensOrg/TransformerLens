@@ -103,7 +103,7 @@ class TestLfm2ForwardPass:
         max_diff = (bridge_out.float() - hf_out.float()).abs().max().item()
         assert max_diff == 0.0, (
             f"Bridge vs HF forward max diff = {max_diff:.2e}. "
-            "Expected 0 because Lfm2ShortConvBridge.forward() is delegates to HF."
+            "Expected 0 because Lfm2ShortConvBridge.forward() delegates to HF."
         )
 
     def test_forward_no_nan_on_longer_sequence(self, lfm2_bridge: TransformerBridge) -> None:
