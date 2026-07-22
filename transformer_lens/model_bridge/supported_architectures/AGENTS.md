@@ -348,7 +348,12 @@ def bridge():
     )
 ```
 
-If the reference model OOMs CI, gate with `@pytest.mark.skipif(bool(os.getenv("CI")), ...)` and add a row to [`QUARANTINES.md`](../../../tests/QUARANTINES.md) under "CI cost / network budget."
+**CI coverage — two layers.** The integration job runs `pytest tests/integration -m "not slow"` ([checks.yml](../../../.github/workflows/checks.yml)), so a real-checkpoint test only guards the adapter *in CI* when its model is small and in the [cache allowlist](../../../tests/AGENTS.md#cached-model-allowlist). Anything heavier splits into two files:
+
+- **Real-checkpoint parity test** (the file above) — the numerical-fidelity check against real pretrained weights. For a non-cached or heavy model, keep it out of CI with a module-level `pytestmark = pytest.mark.slow` (deselected by the CI job's `-m "not slow"`); or, if it should still run in local `make integration-test`, `@pytest.mark.skipif(bool(os.getenv("CI")), ...)` plus a [`QUARANTINES.md`](../../../tests/QUARANTINES.md) row under "CI cost / network budget." Either way it no longer forces a Hub download in CI.
+- **Tiny `from_config` test** — `tests/integration/model_bridge/test_<arch>_tiny.py`. Builds a shrunk model (a few layers, small `hidden_size`; include both layer kinds for hybrids) via `AutoModelForCausalLM.from_config(cfg)` — random CPU weights, **no Hub download** — so it runs in CI in ~1–2 s and still asserts wiring, hook coverage, and bridge-vs-HF forward parity on identical weights. This is what actually catches `transformers`-bump and bridge-core regressions in CI when the real-weights test is slow/skipped. Template: [`test_nemotron_h_tiny.py`](../../../tests/integration/model_bridge/test_nemotron_h_tiny.py).
+
+Exotic/hybrid adapters (SSM, conv, linear-attention) especially need the tiny layer — their distinctive paths aren't exercised by CI's mainstream cached models, so a slow-only real-checkpoint test leaves the adapter CI-invisible.
 
 ### End-to-end registry verification
 
