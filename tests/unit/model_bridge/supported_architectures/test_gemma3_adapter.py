@@ -191,10 +191,10 @@ class TestGemma3GQASupport:
     """n_key_value_heads must propagate to K/V conversions only."""
 
     def test_no_gqa_when_not_set(self):
-        # Unset n_key_value_heads leaves K/V axis-length n=None (no coercion to n_heads).
+        # Unset n_key_value_heads falls back to n_heads (the shared helper's contract).
         adapter = Gemma3ArchitectureAdapter(_make_gemma3_cfg())
         kv_conv = adapter.weight_processing_conversions["blocks.{i}.attn.k.weight"]
-        assert kv_conv.tensor_conversion.axes_lengths["n"] is None
+        assert kv_conv.tensor_conversion.axes_lengths["n"] == 4
         q_conv = adapter.weight_processing_conversions["blocks.{i}.attn.q.weight"]
         assert q_conv.tensor_conversion.axes_lengths["n"] == 4
 

@@ -1,56 +1,83 @@
-"""Integration tests for the Gemma 4 text-only architecture adapter."""
+"""Integration tests for the Gemma 4 text-only architecture adapter.
 
-import pytest
+No tiny Gemma4ForCausalLM exists on the Hub (all tiny gemma4 uploads are the
+multimodal class), so parity is proven on a seeded tiny from a local config
+with the hybrid sliding/full attention mix exercised (window < seq).
+"""
+
+import copy
+
 import torch
 
-from transformer_lens.model_bridge.bridge import TransformerBridge
-
-MODEL = "veyra-ai/Kairo-5M-Gemma4-Base"
+VOCAB = 256
 
 
-@pytest.fixture(scope="module")
-def gemma4_bridge():
-    return TransformerBridge.boot_transformers(MODEL, device="cpu", dtype=torch.float32)
+def _tiny_gemma4_text_pair():
+    from transformers import Gemma4TextConfig
+    from transformers.models.gemma4.modeling_gemma4 import Gemma4ForCausalLM
+
+    from transformer_lens.model_bridge.sources._bridge_builder import (
+        build_bridge_from_module,
+    )
+
+    cfg = Gemma4TextConfig(
+        vocab_size=VOCAB,
+        hidden_size=64,
+        intermediate_size=128,
+        num_hidden_layers=4,
+        num_attention_heads=4,
+        num_key_value_heads=2,
+        head_dim=16,
+        max_position_embeddings=256,
+        sliding_window=8,
+        vocab_size_per_layer_input=VOCAB,
+        hidden_size_per_layer_input=16,
+        pad_token_id=0,
+        eos_token_id=1,
+        bos_token_id=2,
+    )
+    cfg._attn_implementation = "eager"
+
+    torch.manual_seed(42)
+    ref = Gemma4ForCausalLM(cfg).eval()
+    hf = Gemma4ForCausalLM(copy.deepcopy(cfg)).eval()
+    hf.load_state_dict(ref.state_dict())
+    bridge = build_bridge_from_module(
+        hf, "Gemma4ForCausalLM", hf_config=copy.deepcopy(cfg), tokenizer=None, device="cpu"
+    ).eval()
+    return bridge, ref
 
 
-@pytest.fixture(scope="module")
-def sample_tokens(gemma4_bridge):
-    torch.manual_seed(0)
-    return torch.randint(0, gemma4_bridge.cfg.d_vocab - 10, (1, 12))
-
-
-class TestGemma4TextBridgeCreation:
-    def test_adapter_selected(self, gemma4_bridge):
+class TestGemma4TextBridge:
+    def test_adapter_selected_and_hybrid_layers(self) -> None:
         from transformer_lens.model_bridge.supported_architectures.gemma4_text import (
             Gemma4TextArchitectureAdapter,
         )
 
-        assert isinstance(gemma4_bridge.adapter, Gemma4TextArchitectureAdapter)
+        bridge, ref = _tiny_gemma4_text_pair()
+        assert isinstance(bridge.adapter, Gemma4TextArchitectureAdapter)
+        assert ref.config.layer_types == ["sliding_attention"] * 3 + ["full_attention"]
 
-
-class TestGemma4TextForwardEquivalence:
-    def test_forward_matches_fresh_hf(self, gemma4_bridge, sample_tokens):
-        from transformers import AutoModelForCausalLM
-
-        fresh = AutoModelForCausalLM.from_pretrained(
-            MODEL, dtype=torch.float32, attn_implementation="eager"
-        )
-        fresh.eval()
+    def test_forward_matches_hf(self) -> None:
+        """Sliding window (8) < seq (12), so the sliding mask genuinely differs
+        from causal on three of four layers."""
+        bridge, ref = _tiny_gemma4_text_pair()
+        torch.manual_seed(0)
+        ids = torch.randint(3, VOCAB, (1, 12))
         with torch.no_grad():
-            bridge_out = gemma4_bridge(sample_tokens)
-            hf_out = fresh(input_ids=sample_tokens).logits
-        max_diff = (bridge_out - hf_out).abs().max().item()
-        assert max_diff < 1e-5, f"Bridge vs fresh HF max diff = {max_diff}"
+            out = bridge(ids)
+            expected = ref(input_ids=ids).logits
+        max_diff = (out - expected).abs().max().item()
+        assert max_diff < 1e-5, f"Bridge vs HF max diff = {max_diff}"
 
-
-class TestGemma4TextHooks:
-    def test_hooks_fire(self, gemma4_bridge, sample_tokens):
-        d_model = gemma4_bridge.cfg.d_model
-        seq = sample_tokens.shape[1]
+    def test_hooks_fire(self) -> None:
+        bridge, _ = _tiny_gemma4_text_pair()
+        torch.manual_seed(0)
+        ids = torch.randint(3, VOCAB, (1, 8))
         expected = {
-            "blocks.0.attn.hook_out": (1, seq, d_model),
-            "blocks.0.mlp.hook_out": (1, seq, d_model),
-            "blocks.0.ln1_post.hook_out": (1, seq, d_model),
+            "blocks.0.attn.hook_out": (1, 8, 64),
+            "blocks.0.mlp.hook_out": (1, 8, 64),
+            "blocks.0.ln1_post.hook_out": (1, 8, 64),
         }
         captured = {}
 
@@ -58,15 +85,6 @@ class TestGemma4TextHooks:
             captured[hook.name] = tuple(tensor.shape)
 
         with torch.no_grad():
-            gemma4_bridge.run_with_hooks(
-                sample_tokens, fwd_hooks=[(name, grab) for name in expected]
-            )
+            bridge.run_with_hooks(ids, fwd_hooks=[(name, grab) for name in expected])
         for name, shape in expected.items():
             assert captured.get(name) == shape, f"{name}: {captured.get(name)}"
-
-
-class TestGemma4TextGeneration:
-    def test_generate(self, gemma4_bridge):
-        text = gemma4_bridge.generate("Hello", max_new_tokens=5, do_sample=False, verbose=False)
-        assert isinstance(text, str)
-        assert text.startswith("Hello")

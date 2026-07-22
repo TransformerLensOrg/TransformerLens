@@ -4,7 +4,6 @@ from typing import Any
 
 from transformer_lens.conversion_utils.conversion_steps import (
     ArithmeticTensorConversion,
-    RearrangeTensorConversion,
     TransposeTensorConversion,
 )
 from transformer_lens.conversion_utils.conversion_steps.arithmetic_tensor_conversion import (
@@ -56,24 +55,7 @@ class Gemma2ArchitectureAdapter(ArchitectureAdapter):
             # captures the scaled value — matching HookedTransformer's hook_embed
             # (which uses pre-scaled W_E). We must NOT pre-scale weights here and
             # we must NOT install a runtime hook_conversion that re-scales.
-            "blocks.{i}.attn.q.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
-            ),
-            "blocks.{i}.attn.k.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion(
-                    "(n h) m -> n m h",
-                    n=getattr(self.cfg, "n_key_value_heads", None) or self.cfg.n_heads,
-                ),
-            ),
-            "blocks.{i}.attn.v.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion(
-                    "(n h) m -> n m h",
-                    n=getattr(self.cfg, "n_key_value_heads", None) or self.cfg.n_heads,
-                ),
-            ),
-            "blocks.{i}.attn.o.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=self.cfg.n_heads),
-            ),
+            **self._qkvo_weight_conversions(),
             # RMSNorm weight conversions - Gemma adds 1.0 to weights before applying
             # See: https://github.com/huggingface/transformers/pull/29402
             "blocks.{i}.ln1.weight": ParamProcessingConversion(

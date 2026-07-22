@@ -105,5 +105,8 @@ class SwitchTransformersArchitectureAdapter(T5ArchitectureAdapter):
             config=self.cfg,
             submodules={
                 "gate": GeneralizedComponent(name="router", optional=True),
+                # Dense-layer projections (absent on sparse layers).
+                "dense_in": LinearBridge(name="wi", optional=True),
+                "dense_out": LinearBridge(name="wo", optional=True),
             },
         )

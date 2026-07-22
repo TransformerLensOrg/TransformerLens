@@ -8,7 +8,6 @@ from typing import Any
 
 from transformer_lens.conversion_utils.conversion_steps import (
     ArithmeticTensorConversion,
-    RearrangeTensorConversion,
     TransposeTensorConversion,
 )
 from transformer_lens.conversion_utils.conversion_steps.arithmetic_tensor_conversion import (
@@ -73,24 +72,7 @@ class Gemma3MultimodalArchitectureAdapter(ArchitectureAdapter):
         # Note: The language model weights are under "model.language_model.*"
         self.weight_processing_conversions = {
             # Q/K/V weight conversions for language model
-            "blocks.{i}.attn.q.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
-            ),
-            "blocks.{i}.attn.k.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion(
-                    "(n h) m -> n m h",
-                    n=getattr(self.cfg, "n_key_value_heads", None) or self.cfg.n_heads,
-                ),
-            ),
-            "blocks.{i}.attn.v.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion(
-                    "(n h) m -> n m h",
-                    n=getattr(self.cfg, "n_key_value_heads", None) or self.cfg.n_heads,
-                ),
-            ),
-            "blocks.{i}.attn.o.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=self.cfg.n_heads),
-            ),
+            **self._qkvo_weight_conversions(),
             # RMSNorm weight conversions - Gemma adds 1.0 to weights
             "blocks.{i}.ln1.weight": ParamProcessingConversion(
                 tensor_conversion=ArithmeticTensorConversion(OperationTypes.ADDITION, 1.0),

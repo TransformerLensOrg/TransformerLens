@@ -101,6 +101,10 @@ class LLaDA2MoeArchitectureAdapter(ArchitectureAdapter):
                         submodules={
                             "gate": GeneralizedComponent(name="gate", optional=True),
                             "shared_experts": self._gated_mlp(name="shared_experts", optional=True),
+                            # Dense-layer projections (absent on MoE layers).
+                            "dense_gate": LinearBridge(name="gate_proj", optional=True),
+                            "dense_in": LinearBridge(name="up_proj", optional=True),
+                            "dense_out": LinearBridge(name="down_proj", optional=True),
                         },
                     ),
                 },

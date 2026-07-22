@@ -150,10 +150,12 @@ class ArchitectureAdapter:
     def _canonical_layer_types(self, cfg: Any) -> list[str]:
         """Per-layer mixer-type list, normalized to canonical TL names.
 
-        transformers >= 5.13 renamed the hybrid layer-type strings
-        ("mamba"/"attention") to ("linear_attention"/"full_attention").
+        Canonical vocabulary follows transformers >= 5.13 hybrids
+        ("linear_attention"/"full_attention"); legacy family spellings
+        ("mamba"/"attention") normalize forward, and collision-free
+        family-specific values ("recurrent", "hybrid") pass through.
         """
-        aliases = {"linear_attention": "mamba", "full_attention": "attention"}
+        aliases = {"mamba": "linear_attention", "attention": "full_attention"}
         raw = getattr(cfg, "layers_block_type", None) or getattr(cfg, "layer_types", None) or []
         return [aliases.get(t, t) for t in raw]
 

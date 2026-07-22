@@ -100,11 +100,16 @@ class Llama4ArchitectureAdapter(ArchitectureAdapter):
                     ),
                     # The router returns a (scores, logits) tuple, so it stays
                     # unwrapped; MoEBridge.hook_router_scores captures logits.
-                    # Non-MoE layers hold a dense gated MLP under the same name.
+                    # Non-MoE layers hold a dense gated MLP under the same name;
+                    # its projections map as optional dense_* submodules.
                     "mlp": _Llama4MoEBridge(
                         name="feed_forward",
                         config=self.cfg,
                         submodules={
+                            # Dense-layer projections (absent on MoE layers).
+                            "dense_gate": LinearBridge(name="gate_proj", optional=True),
+                            "dense_in": LinearBridge(name="up_proj", optional=True),
+                            "dense_out": LinearBridge(name="down_proj", optional=True),
                             "shared_expert": _Llama4SharedExpertBridge(
                                 name="shared_expert",
                                 config=self.cfg,

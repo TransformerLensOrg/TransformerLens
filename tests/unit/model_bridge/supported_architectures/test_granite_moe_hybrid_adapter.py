@@ -33,6 +33,7 @@ N_LAYERS = 3
 N_CTX = 256
 D_VOCAB = 1000
 LAYER_TYPES = ["mamba", "attention", "mamba"]
+CANONICAL_LAYER_TYPES = ["linear_attention", "full_attention", "linear_attention"]
 
 
 def _make_cfg(
@@ -93,7 +94,7 @@ class TestGraniteMoeHybridAdapterConfig:
     def test_layers_block_type_surfaced(self, adapter: GraniteMoeHybridArchitectureAdapter) -> None:
         # Sourced from HF's `layer_types`; exposed uniformly as `layers_block_type`
         # (matching NemotronH) so analysis tools can find the Mamba layers.
-        assert getattr(adapter.cfg, "layers_block_type", None) == LAYER_TYPES
+        assert getattr(adapter.cfg, "layers_block_type", None) == CANONICAL_LAYER_TYPES
 
     def test_non_rope_position_embedding_disables_rotary_mapping(self) -> None:
         adapter = GraniteMoeHybridArchitectureAdapter(

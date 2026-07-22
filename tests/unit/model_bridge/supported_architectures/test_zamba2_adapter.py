@@ -76,9 +76,9 @@ class TestZamba2AdapterConfig:
 
     def test_hybrid_metadata_is_propagated(self, adapter: Zamba2ArchitectureAdapter) -> None:
         assert getattr(adapter.cfg, "layers_block_type") == [
-            "mamba",
+            "linear_attention",
             "hybrid",
-            "mamba",
+            "linear_attention",
             "hybrid",
         ]
         assert getattr(adapter.cfg, "num_mem_blocks") == 2
@@ -88,7 +88,8 @@ class TestZamba2AdapterConfig:
         layer_types = ["mamba", "hybrid"]
         adapter = Zamba2ArchitectureAdapter(_make_cfg(layers_block_type=layer_types))
 
-        assert getattr(adapter.cfg, "layers_block_type") == layer_types
+        # HF "mamba" normalizes to the canonical name; "hybrid" passes through.
+        assert getattr(adapter.cfg, "layers_block_type") == ["linear_attention", "hybrid"]
         assert getattr(adapter.cfg, "layers_block_type") is not layer_types
 
     def test_mamba_dimensions_are_derived_from_hf_config(

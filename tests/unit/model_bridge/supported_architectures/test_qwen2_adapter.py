@@ -20,8 +20,8 @@ from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
+    GatedMLPBridge,
     LinearBridge,
-    MLPBridge,
     PositionEmbeddingsAttentionBridge,
     RMSNormalizationBridge,
     RotaryEmbeddingBridge,
@@ -166,7 +166,7 @@ class TestQwen2ComponentMapping:
         assert isinstance(blocks.submodules["ln1"], RMSNormalizationBridge)
         assert isinstance(blocks.submodules["ln2"], RMSNormalizationBridge)
         assert isinstance(blocks.submodules["attn"], PositionEmbeddingsAttentionBridge)
-        assert isinstance(blocks.submodules["mlp"], MLPBridge)
+        assert isinstance(blocks.submodules["mlp"], GatedMLPBridge)
 
     def test_attention_hf_paths(self, adapter: Qwen2ArchitectureAdapter) -> None:
         attn = adapter.component_mapping["blocks"].submodules["attn"]

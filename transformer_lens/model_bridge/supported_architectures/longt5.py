@@ -8,13 +8,11 @@ position bias has a [1, 1, heads, block, 3*block] shape the generic
 reconstruction cannot supply.
 """
 
-from typing import Any, Union
+from typing import Any
 
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
-    GatedMLPBridge,
     LinearBridge,
-    MLPBridge,
     PosEmbedBridge,
     RMSNormalizationBridge,
     T5BlockBridge,
@@ -38,19 +36,7 @@ class LongT5ArchitectureAdapter(T5ArchitectureAdapter):
 
         attn_attr = _ENCODER_ATTN_ATTR[getattr(cfg, "encoder_attention_type", "local")]
 
-        encoder_mlp: Union[GatedMLPBridge, MLPBridge]
-        if self.cfg.gated_mlp:
-            encoder_mlp = self._gated_mlp(
-                name="layer.1.DenseReluDense", gate="wi_0", up="wi_1", down="wo"
-            )
-        else:
-            encoder_mlp = MLPBridge(
-                name="layer.1.DenseReluDense",
-                submodules={
-                    "in": LinearBridge(name="wi"),
-                    "out": LinearBridge(name="wo"),
-                },
-            )
+        encoder_mlp = self._build_ff_bridge("layer.1")
 
         # Rebuild the encoder stack around the local/tglobal attention module;
         # the decoder mapping inherited from T5 is unchanged.

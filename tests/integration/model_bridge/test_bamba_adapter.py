@@ -27,13 +27,13 @@ class TestBambaBridgeCreation:
 
         assert isinstance(bamba_bridge.adapter, BambaArchitectureAdapter)
         # The tiny checkpoint covers both mixer types.
-        assert set(bamba_bridge.cfg.layers_block_type) == {"mamba", "attention"}
+        assert set(bamba_bridge.cfg.layers_block_type) == {"linear_attention", "full_attention"}
 
     def test_layer_type_module_presence(self, bamba_bridge):
         types = bamba_bridge.cfg.layers_block_type
         for i, layer_type in enumerate(types):
             block = bamba_bridge.blocks[i]
-            if layer_type == "mamba":
+            if layer_type == "linear_attention":
                 assert "mixer" in block._modules
                 assert "attn" not in block._modules
             else:
@@ -54,8 +54,8 @@ class TestBambaForwardEquivalence:
 class TestBambaHooks:
     def test_hooks_fire_on_both_layer_types(self, bamba_bridge, sample_tokens):
         types = bamba_bridge.cfg.layers_block_type
-        mamba_i = types.index("mamba")
-        attn_i = types.index("attention")
+        mamba_i = types.index("linear_attention")
+        attn_i = types.index("full_attention")
         d_model = bamba_bridge.cfg.d_model
         captured = {}
 
@@ -91,8 +91,8 @@ class TestBambaStatefulGeneration:
 class TestBambaHFDelegation:
     def test_components_are_shared_wrappers(self, bamba_bridge):
         types = bamba_bridge.cfg.layers_block_type
-        mamba_i = types.index("mamba")
-        attn_i = types.index("attention")
+        mamba_i = types.index("linear_attention")
+        attn_i = types.index("full_attention")
         hf_model = bamba_bridge.original_model
         assert bamba_bridge.blocks[mamba_i].mixer is hf_model.model.layers[mamba_i].mamba
         assert bamba_bridge.blocks[attn_i].attn.q is hf_model.model.layers[attn_i].self_attn.q_proj

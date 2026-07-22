@@ -7,8 +7,8 @@ Verifies forward-pass and generation parity against Zyphra/Zamba2-1.2B:
   shared global-attention layers)
 - Sanity checks: config flags, block count, hook coverage on both layer types
 
-Zamba2 has two layer types in ``config.layers_block_type``:
-  - ``"mamba"`` — pure Mamba-2 SSM (Zamba2MambaDecoderLayer)
+Zamba2 has two layer types, surfaced canonically in ``cfg.layers_block_type``:
+  - ``"linear_attention"`` — pure Mamba-2 SSM (HF ``"mamba"``)
   - ``"hybrid"`` — Mamba-2 + shared global-attention (Zamba2HybridLayer)
 
 Run with GPU acceleration:
@@ -82,12 +82,12 @@ class TestZamba2BridgeCreation:
         adapter wires the wrong normalization component.
         """
         lbt = getattr(zamba2_bridge.cfg, "layers_block_type", [])
-        first_mamba = next(i for i, t in enumerate(lbt) if t == "mamba")
+        first_mamba = next(i for i, t in enumerate(lbt) if t == "linear_attention")
         assert isinstance(zamba2_bridge.blocks[first_mamba].norm, RMSNormalizationBridge)
         assert isinstance(zamba2_bridge.ln_final, RMSNormalizationBridge)
 
     def test_block_count(self, zamba2_bridge: TransformerBridge) -> None:
-        # Zamba2-1.2B has 38 layers (32 "mamba" + 6 "hybrid"); the block count
+        # Zamba2-1.2B has 38 layers (32 linear_attention + 6 hybrid); the block count
         # must match the per-layer type list rather than a hard-coded magic
         # number so the test tracks the checkpoint's actual config.
         lbt = getattr(zamba2_bridge.cfg, "layers_block_type", [])
@@ -99,7 +99,7 @@ class TestZamba2BridgeCreation:
     def test_mamba_layers_have_mixer(self, zamba2_bridge: TransformerBridge) -> None:
         """Mamba (mamba) layers should expose SSM2MixerBridge as .mixer."""
         lbt = getattr(zamba2_bridge.cfg, "layers_block_type", [])
-        first_mamba = next(i for i, t in enumerate(lbt) if t == "mamba")
+        first_mamba = next(i for i, t in enumerate(lbt) if t == "linear_attention")
         assert isinstance(zamba2_bridge.blocks[first_mamba].mixer, SSM2MixerBridge)
 
     def test_hybrid_layers_have_no_mixer(self, zamba2_bridge: TransformerBridge) -> None:
@@ -116,7 +116,7 @@ class TestZamba2BridgeCreation:
         lbt = getattr(zamba2_bridge.cfg, "layers_block_type", [])
         assert len(lbt) == len(zamba2_bridge.blocks)
         # Both layer types must appear
-        assert "mamba" in lbt, "No mamba (Mamba) layers found"
+        assert "linear_attention" in lbt, "No linear_attention (Mamba) layers found"
         assert "hybrid" in lbt, "No hybrid (Mamba + attention) layers found"
 
     def test_mamba_intermediate_size_positive(self, zamba2_bridge: TransformerBridge) -> None:
@@ -270,7 +270,7 @@ class TestZamba2HookCoverage:
     ) -> None:
         """Mamba (mamba) layers must expose in_proj / conv1d / out_proj hooks."""
         lbt = getattr(zamba2_bridge.cfg, "layers_block_type", [])
-        mamba_indices = [i for i, t in enumerate(lbt) if t == "mamba"]
+        mamba_indices = [i for i, t in enumerate(lbt) if t == "linear_attention"]
         assert mamba_indices, "No mamba layers found in layers_block_type"
         for i in mamba_indices[:3]:
             for submod in ("in_proj", "conv1d", "out_proj"):

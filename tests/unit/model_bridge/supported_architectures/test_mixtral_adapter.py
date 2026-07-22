@@ -3,7 +3,7 @@ plus small synthetic tensors and a fake attention module, no real checkpoints).
 
 Covered:
 - Adapter config defaults (RMSNorm, rotary, gated MoE MLP).
-- Weight conversions: QKVO weights plus Q/K/V biases, with GQA-aware head counts.
+- Weight conversions: QKVO weights with GQA-aware head counts.
 - Component-mapping structure, bridge types, and HF module paths.
 - Factory registration and dispatch.
 - GQA forward hook shapes (Q uses n_heads, K/V use n_key_value_heads).
@@ -144,12 +144,7 @@ class DummyBridgeModel:
 
 
 class FakeMixtralAttention(nn.Module):
-    """Minimal Mixtral-style attention module for adapter hook-shape tests.
-
-    Stock Mixtral has no attention bias, so the projections are bias-free here;
-    the adapter still declares Q/K/V bias conversions for variants that enable
-    them, which the conversion-metadata tests assert separately.
-    """
+    """Minimal Mixtral-style attention module for adapter hook-shape tests."""
 
     def __init__(self, cfg: TransformerBridgeConfig) -> None:
         super().__init__()
@@ -172,18 +167,14 @@ class TestMixtralAdapterConfig:
 
 
 class TestMixtralWeightConversions:
-    """Mixtral uses QKVO weight conversions plus Q/K/V biases, with GQA head counts."""
+    """Mixtral uses QKVO weight conversions with GQA head counts."""
 
-    def test_conversion_keys_are_exactly_qkvo_and_biases(
-        self, adapter: MixtralArchitectureAdapter
-    ) -> None:
+    def test_conversion_keys_are_exactly_qkvo(self, adapter: MixtralArchitectureAdapter) -> None:
+        """Mixtral has no attention biases; only the four projections convert."""
         assert set(_conversions(adapter).keys()) == {
             "blocks.{i}.attn.q.weight",
             "blocks.{i}.attn.k.weight",
             "blocks.{i}.attn.v.weight",
-            "blocks.{i}.attn.q.bias",
-            "blocks.{i}.attn.k.bias",
-            "blocks.{i}.attn.v.bias",
             "blocks.{i}.attn.o.weight",
         }
 
@@ -204,23 +195,11 @@ class TestMixtralWeightConversions:
         assert rearrange.pattern == "m (n h) -> n h m"
         assert rearrange.axes_lengths.get("n") == 4
 
-    def test_q_bias_rearrange_uses_n_heads(self, adapter: MixtralArchitectureAdapter) -> None:
-        rearrange = _rearrange(adapter, "blocks.{i}.attn.q.bias")
-        assert rearrange.pattern == "(h d_head) -> h d_head"
-        assert rearrange.axes_lengths.get("h") == 4
-
-    def test_kv_bias_rearrange_uses_n_kv_heads(self, adapter: MixtralArchitectureAdapter) -> None:
-        for slot in ("k", "v"):
-            rearrange = _rearrange(adapter, f"blocks.{{i}}.attn.{slot}.bias")
-            assert rearrange.pattern == "(h d_head) -> h d_head"
-            assert rearrange.axes_lengths.get("h") == 2
-
     def test_gqa_fallback_to_n_heads_without_kv_heads(self) -> None:
-        """Without n_key_value_heads, K/V fall back to n_heads for both weight and bias."""
+        """Without n_key_value_heads, K/V fall back to n_heads."""
         adapter = MixtralArchitectureAdapter(_cfg(n_key_value_heads=None))
         for slot in ("k", "v"):
             assert _rearrange(adapter, f"blocks.{{i}}.attn.{slot}.weight").axes_lengths["n"] == 4
-            assert _rearrange(adapter, f"blocks.{{i}}.attn.{slot}.bias").axes_lengths["h"] == 4
 
 
 class TestMixtralComponentMapping:

@@ -76,7 +76,8 @@ class TestRecurrentGemmaAdapterConfig:
     ) -> None:
         # Canonical name used by Nemotron-H / Granite tooling, preserved from
         # the builder-provided per-layer list (not clobbered by block_types).
-        assert adapter.cfg.layers_block_type == ["recurrent", "recurrent", "attention"]
+        # "attention" normalizes to the canonical name; "recurrent" passes through.
+        assert adapter.cfg.layers_block_type == ["recurrent", "recurrent", "full_attention"]
 
     def test_applicable_phases_is_generation_only(
         self, adapter: RecurrentGemmaArchitectureAdapter

@@ -95,8 +95,8 @@ class TestNemotronHBridgeCreation:
         lbt = getattr(nemotron_bridge.cfg, "layers_block_type", [])
         assert len(lbt) == len(nemotron_bridge.blocks)
         # Should contain at least one attention and one mamba layer
-        assert "attention" in lbt
-        assert "mamba" in lbt
+        assert "full_attention" in lbt
+        assert "linear_attention" in lbt
 
     def test_mamba_intermediate_size_positive(self, nemotron_bridge: TransformerBridge) -> None:
         assert getattr(nemotron_bridge.cfg, "mamba_intermediate_size", 0) > 0
@@ -237,8 +237,8 @@ class TestNemotronHHookCoverage:
     ) -> None:
         """Mamba layers should expose in_proj / conv1d / out_proj hooks."""
         lbt = getattr(nemotron_bridge.cfg, "layers_block_type", [])
-        mamba_indices = [i for i, t in enumerate(lbt) if t == "mamba"]
-        assert mamba_indices, "No mamba layers found in layers_block_type"
+        mamba_indices = [i for i, t in enumerate(lbt) if t == "linear_attention"]
+        assert mamba_indices, "No linear_attention layers found in layers_block_type"
         # Check a few mamba layers
         for i in mamba_indices[:3]:
             for submod in ("in_proj", "conv1d", "out_proj"):

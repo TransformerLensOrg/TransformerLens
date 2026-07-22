@@ -5,7 +5,6 @@ from typing import Any
 
 from transformer_lens.conversion_utils.conversion_steps import (
     ArithmeticTensorConversion,
-    RearrangeTensorConversion,
     TransposeTensorConversion,
 )
 from transformer_lens.conversion_utils.conversion_steps.arithmetic_tensor_conversion import (
@@ -57,32 +56,7 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
             # hook_conversion needed (setup_hook_compatibility is a no-op).
             #
             # Q/K/V weight conversions
-            "blocks.{i}.attn.q.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
-            ),
-            "blocks.{i}.attn.k.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion(
-                    "(n h) m -> n m h",
-                    n=getattr(
-                        self.cfg,
-                        "n_key_value_heads",
-                        self.cfg.n_heads,
-                    ),
-                ),
-            ),
-            "blocks.{i}.attn.v.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion(
-                    "(n h) m -> n m h",
-                    n=getattr(
-                        self.cfg,
-                        "n_key_value_heads",
-                        self.cfg.n_heads,
-                    ),
-                ),
-            ),
-            "blocks.{i}.attn.o.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=self.cfg.n_heads),
-            ),
+            **self._qkvo_weight_conversions(),
             # RMSNorm weight conversions - Gemma adds 1.0 to weights before applying
             # See: https://github.com/huggingface/transformers/pull/29402
             "blocks.{i}.ln1.weight": ParamProcessingConversion(

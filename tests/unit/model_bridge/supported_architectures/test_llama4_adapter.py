@@ -51,7 +51,9 @@ class TestLlama4ComponentMapping:
         mlp = adapter.component_mapping["blocks"].submodules["mlp"]
         assert isinstance(mlp, _Llama4MoEBridge)
         assert mlp.name == "feed_forward"
-        assert set(mlp.submodules) == {"shared_expert"}
+        assert set(mlp.submodules) == {"shared_expert", "dense_gate", "dense_in", "dense_out"}
+        for key in ("dense_gate", "dense_in", "dense_out"):
+            assert mlp.submodules[key].optional is True
         shared = mlp.submodules["shared_expert"]
         assert isinstance(shared, _Llama4SharedExpertBridge)
         assert shared.optional is True

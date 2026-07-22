@@ -55,7 +55,8 @@ class TestBambaAdapterConfig:
         assert adapter.cfg.is_stateful is True
 
     def test_layers_block_type_normalized(self, adapter):
-        assert adapter.cfg.layers_block_type == ["mamba", "attention"]
+        # Legacy input normalized to the canonical vocabulary.
+        assert adapter.cfg.layers_block_type == ["linear_attention", "full_attention"]
 
     def test_hybrid_keeps_raw_weights(self, adapter):
         assert adapter.supports_fold_ln is False
