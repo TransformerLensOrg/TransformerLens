@@ -235,6 +235,9 @@ from transformer_lens.model_bridge.supported_architectures.smollm3 import (
 from transformer_lens.model_bridge.supported_architectures.stablelm import (
     StableLmArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.starcoder2 import (
+    Starcoder2ArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.t5 import (
     T5ArchitectureAdapter,
 )
@@ -330,6 +333,7 @@ __all__ = [
     "RWKV7ArchitectureAdapter",
     "SmolLM3ArchitectureAdapter",
     "StableLmArchitectureAdapter",
+    "Starcoder2ArchitectureAdapter",
     "T5ArchitectureAdapter",
     "T5GemmaArchitectureAdapter",
     "T5Gemma2ArchitectureAdapter",
