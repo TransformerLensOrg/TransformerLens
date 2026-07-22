@@ -932,21 +932,36 @@ class ArchitectureAdapter:
             "HF cache object."
         )
 
-    def setup_component_testing(self, hf_model: RemoteModel, bridge_model: Any = None) -> None:
+    # setup_component_testing knobs; adapters override these one-line class
+    # attributes instead of re-declaring the standard wiring method.
+    _testing_lm_attr: str = "model"
+    _testing_eager: Optional[str] = "layers"
+    _testing_hybrid: bool = False
+    _testing_rotary_attr: str = "rotary_emb"
+    _testing_wire_rotary: bool = True
+
+    def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
         """Set up model-specific references needed for component testing.
 
-        This hook is called after the adapter is created and has access to the HF model.
-        Subclasses can override this to configure bridges with model-specific components
-        (e.g., rotary embeddings, normalization parameters) needed for get_random_inputs().
+        Called after the adapter is created, with the HF model available. The
+        base runs the canonical eager-forcing + rotary wiring, parameterized by
+        the ``_testing_*`` class attributes; adapters with extra needs override
+        the method (calling super() where the standard wiring still applies).
+        Wiring is a no-op for delegated-attention bridges (no set_rotary_emb).
 
         Args:
             hf_model: The HuggingFace model instance
             bridge_model: Optional TransformerBridge model instance (for configuring actual bridges)
-
-        Note:
-            This is a no-op in the base class. Override in subclasses as needed.
         """
-        pass
+        self._wire_rotary_for_testing(
+            hf_model,
+            bridge_model,
+            lm_attr=self._testing_lm_attr,
+            hybrid=self._testing_hybrid,
+            eager=self._testing_eager,
+            rotary_attr=self._testing_rotary_attr,
+            wire_rotary=self._testing_wire_rotary,
+        )
 
     def _wire_rotary_for_testing(
         self,
@@ -956,6 +971,8 @@ class ArchitectureAdapter:
         lm_attr: str = "model",
         hybrid: bool = False,
         eager: Optional[str] = "layers",
+        rotary_attr: str = "rotary_emb",
+        wire_rotary: bool = True,
     ) -> None:
         """Canonical setup_component_testing body: force eager attention and set
         the model's shared rotary_emb on every attention bridge and the template.
@@ -963,16 +980,21 @@ class ArchitectureAdapter:
         Args:
             hf_model: The HuggingFace model instance
             bridge_model: Optional live TransformerBridge
-            lm_attr: Attribute holding the decoder stack (e.g. "transformer")
+            lm_attr: Attribute path to the decoder stack; dotted for nested
+                multimodal stacks (e.g. "model.language_model")
             hybrid: Some blocks lack attention (Mamba/linear-attn mixes) — guard
                 block wiring by registered submodule and tolerate a template miss
             eager: None (leave attn implementation alone), "config" (top-level
                 config only), or "layers" (also each layer's self_attn config)
+            rotary_attr: Name of the rotary module on the decoder stack
+            wire_rotary: False for delegated-attention adapters that only need
+                the eager forcing (plain AttentionBridge has no set_rotary_emb)
         """
-        lm = getattr(hf_model, lm_attr, None)
-        if lm is None or not hasattr(lm, "rotary_emb"):
-            return
-        rotary_emb = lm.rotary_emb
+        lm = hf_model
+        for segment in lm_attr.split("."):
+            lm = getattr(lm, segment, None)
+            if lm is None:
+                break
 
         if (
             eager is not None
@@ -980,24 +1002,33 @@ class ArchitectureAdapter:
             and hasattr(hf_model.config, "_attn_implementation")
         ):
             hf_model.config._attn_implementation = "eager"
-        if eager == "layers" and hasattr(lm, "layers"):
+            # Nested multimodal configs carry their own attn implementation.
+            text_config = getattr(hf_model.config, "text_config", None)
+            if text_config is not None:
+                text_config._attn_implementation = "eager"
+        if eager == "layers" and lm is not None and hasattr(lm, "layers"):
             for layer in lm.layers:
                 if hasattr(layer, "self_attn") and hasattr(layer.self_attn, "config"):
                     layer.self_attn.config._attn_implementation = "eager"
 
+        if not wire_rotary or lm is None or not hasattr(lm, rotary_attr):
+            return
+        rotary_emb = getattr(lm, rotary_attr)
+
         if bridge_model is not None and hasattr(bridge_model, "blocks"):
             for block in bridge_model.blocks:
                 has_attn = ("attn" in block._modules) if hybrid else hasattr(block, "attn")
-                if has_attn:
+                if has_attn and hasattr(block.attn, "set_rotary_emb"):
                     block.attn.set_rotary_emb(rotary_emb)
 
-        if hybrid:
-            try:
-                self.get_generalized_component("blocks.0.attn").set_rotary_emb(rotary_emb)
-            except (ValueError, AttributeError, KeyError):
-                pass
-        else:
-            self.get_generalized_component("blocks.0.attn").set_rotary_emb(rotary_emb)
+        try:
+            template = self.get_generalized_component("blocks.0.attn")
+        except (ValueError, AttributeError, KeyError):
+            if not hybrid:
+                raise
+            template = None
+        if template is not None and hasattr(template, "set_rotary_emb"):
+            template.set_rotary_emb(rotary_emb)
 
     def _enable_ht_attention(self, attn_bridge, hf_attn):
         """Enable HT computation for attention (architecture-agnostic).

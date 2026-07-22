@@ -23,6 +23,8 @@ from transformer_lens.model_bridge.generalized_components import (
 class Starcoder2ArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for Starcoder2ForCausalLM models."""
 
+    _testing_eager = "config"
+
     def __init__(self, cfg: Any) -> None:
         """Initialize the Starcoder2 architecture adapter."""
         super().__init__(cfg)
@@ -71,7 +73,3 @@ class Starcoder2ArchitectureAdapter(ArchitectureAdapter):
             "ln_final": NormalizationBridge(name="model.norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head", config=self.cfg),
         }
-
-    def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Force eager attention and wire the shared rotary onto attention bridges."""
-        self._wire_rotary_for_testing(hf_model, bridge_model, eager="config")

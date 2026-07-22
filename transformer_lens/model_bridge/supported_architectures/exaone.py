@@ -33,6 +33,10 @@ class ExaoneArchitectureAdapter(ArchitectureAdapter):
     ``transformer.rotary``.
     """
 
+    _testing_lm_attr = "transformer"
+    _testing_rotary_attr = "rotary"
+    _testing_eager = "config"
+
     def __init__(self, cfg: Any) -> None:
         """Initialize the EXAONE architecture adapter."""
         super().__init__(cfg)
@@ -72,17 +76,29 @@ class ExaoneArchitectureAdapter(ArchitectureAdapter):
             "unembed": UnembeddingBridge(name="lm_head", config=self.cfg),
         }
 
-    def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Wire rotary embedding references through to the attention bridges."""
-        rotary_emb = hf_model.transformer.rotary
+    def prepare_model(self, hf_model: Any) -> Any:
+        """Shim the remote module for transformers >= 5.13.
 
-        if hasattr(hf_model, "config") and hasattr(hf_model.config, "_attn_implementation"):
-            hf_model.config._attn_implementation = "eager"
+        The EXAONE-3.x remote code calls create_causal_mask(input_embeds=...,
+        cache_position=...); 5.13 renamed the kwarg to inputs_embeds and
+        derives query positions from position_ids. Patch only the remote
+        module's reference.
+        """
+        result = super().prepare_model(hf_model)
+        model = result if result is not None else hf_model
 
-        if bridge_model is not None and hasattr(bridge_model, "blocks"):
-            for block in bridge_model.blocks:
-                if hasattr(block, "attn"):
-                    block.attn.set_rotary_emb(rotary_emb)
+        import sys
 
-        attn_bridge = self.get_generalized_component("blocks.0.attn")
-        attn_bridge.set_rotary_emb(rotary_emb)
+        from transformers.masking_utils import create_causal_mask
+
+        module = sys.modules.get(type(model).__module__)
+        if module is not None and hasattr(module, "create_causal_mask"):
+
+            def _shim(*args: Any, **kwargs: Any) -> Any:
+                if "input_embeds" in kwargs:
+                    kwargs["inputs_embeds"] = kwargs.pop("input_embeds")
+                kwargs.pop("cache_position", None)
+                return create_causal_mask(*args, **kwargs)
+
+            setattr(module, "create_causal_mask", _shim)
+        return result

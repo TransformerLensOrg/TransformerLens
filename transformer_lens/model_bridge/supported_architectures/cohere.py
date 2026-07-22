@@ -45,6 +45,8 @@ class CohereArchitectureAdapter(ArchitectureAdapter):
     - ln_final.b                         — CohereLayerNorm has no bias
     """
 
+    _testing_eager = None
+
     def __init__(self, cfg: Any) -> None:
         """Initialize the Cohere architecture adapter."""
         super().__init__(cfg)
@@ -168,10 +170,6 @@ class CohereArchitectureAdapter(ArchitectureAdapter):
         """Match Cohere's ``lm_head -> logit_scale -> optional softcap`` path."""
         scale: float = getattr(self.cfg, "logit_scale")
         return super().apply_output_logits_transform(logits * scale)
-
-    def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Wire the shared rotary onto attention bridges (attn implementation untouched)."""
-        self._wire_rotary_for_testing(hf_model, bridge_model, eager=None)
 
 
 class _Cohere2AttentionBridge(PositionEmbeddingsAttentionBridge):

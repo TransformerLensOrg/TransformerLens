@@ -142,7 +142,7 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
         Gemma-3 uses dual RoPE (global + local); component tests share the local
         instance across all layers (layers on global RoPE accept the tradeoff).
         """
-        self._wire_rotary_for_testing(hf_model, bridge_model)
+        super().setup_component_testing(hf_model, bridge_model)
         if bridge_model is not None and hasattr(bridge_model, "blocks"):
             for block in bridge_model.blocks:
                 hf_attn = getattr(block, "attn", None) and getattr(

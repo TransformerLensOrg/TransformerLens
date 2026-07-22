@@ -37,6 +37,9 @@ class GraniteArchitectureAdapter(ArchitectureAdapter):
     - blocks.{i}.ln1.b, blocks.{i}.ln2.b, ln_final.b - RMSNorm has no bias
     """
 
+    _testing_hybrid = True
+    _testing_eager = None
+
     def __init__(self, cfg: Any) -> None:
         """Initialize the Granite architecture adapter."""
         super().__init__(cfg)
@@ -92,7 +95,3 @@ class GraniteArchitectureAdapter(ArchitectureAdapter):
         """Match Granite's ``lm_head / logits_scaling`` output path."""
         scaling = float(getattr(self.cfg, "logits_scaling", 1.0))
         return super().apply_output_logits_transform(logits / scaling)
-
-    def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Wire the shared rotary onto attention bridges (attn implementation untouched)."""
-        self._wire_rotary_for_testing(hf_model, bridge_model, hybrid=True, eager=None)

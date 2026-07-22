@@ -25,6 +25,8 @@ from transformer_lens.model_bridge.generalized_components import (
 class NemotronArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for NemotronForCausalLM models."""
 
+    _testing_eager = "config"
+
     def __init__(self, cfg: Any) -> None:
         """Initialize the Nemotron architecture adapter."""
         super().__init__(cfg)
@@ -88,7 +90,3 @@ class NemotronArchitectureAdapter(ArchitectureAdapter):
             ),
             "unembed": UnembeddingBridge(name="lm_head", config=self.cfg),
         }
-
-    def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Force eager attention and wire the shared rotary onto attention bridges."""
-        self._wire_rotary_for_testing(hf_model, bridge_model, eager="config")

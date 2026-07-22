@@ -100,7 +100,3 @@ class Qwen3MoeArchitectureAdapter(ArchitectureAdapter):
             "ln_final": RMSNormalizationBridge(name="model.norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head", config=self.cfg),
         }
-
-    def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Force eager attention and wire the shared rotary onto attention bridges."""
-        self._wire_rotary_for_testing(hf_model, bridge_model)

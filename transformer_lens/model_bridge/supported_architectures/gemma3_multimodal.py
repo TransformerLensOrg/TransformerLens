@@ -45,6 +45,8 @@ class Gemma3MultimodalArchitectureAdapter(ArchitectureAdapter):
     The language model component follows the same patterns as Gemma3ArchitectureAdapter.
     """
 
+    _testing_lm_attr = "model.language_model"
+
     def __init__(self, cfg: Any) -> None:
         """Initialize the Gemma3 multimodal architecture adapter."""
         super().__init__(cfg)
@@ -155,46 +157,14 @@ class Gemma3MultimodalArchitectureAdapter(ArchitectureAdapter):
         }
 
     def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Set up rotary embedding references for Gemma-3 multimodal component testing.
-
-        The language model uses dual RoPE (global + local) like text-only Gemma 3.
-
-        Args:
-            hf_model: The HuggingFace Gemma-3 multimodal model instance
-            bridge_model: The TransformerBridge model (if available)
-        """
-        # Get rotary embedding from the language model
-        language_model = hf_model.model.language_model
-        rotary_emb = language_model.rotary_emb
-
-        # Force HF model to use "eager" attention
-        if hasattr(hf_model, "config") and hasattr(hf_model.config, "_attn_implementation"):
-            hf_model.config._attn_implementation = "eager"
-
-        # Also set on text config
-        if hasattr(hf_model.config, "text_config"):
-            hf_model.config.text_config._attn_implementation = "eager"
-
-        # Set on all language model attention layers
-        if hasattr(language_model, "layers"):
-            for layer in language_model.layers:
-                if hasattr(layer, "self_attn") and hasattr(layer.self_attn, "config"):
-                    layer.self_attn.config._attn_implementation = "eager"
-
-        # Set rotary_emb on actual bridge instances if available
+        """Wire rotary + eager, then enable native autograd on the Q/K norms."""
+        super().setup_component_testing(hf_model, bridge_model)
         if bridge_model is not None and hasattr(bridge_model, "blocks"):
             for block in bridge_model.blocks:
-                if hasattr(block, "attn"):
-                    block.attn.set_rotary_emb(rotary_emb)
-
-                    # Enable native autograd for q_norm/k_norm
-                    if hasattr(block.attn, "original_component"):
-                        hf_attn = block.attn.original_component
-                        if hasattr(hf_attn, "q_norm"):
-                            hf_attn.q_norm.use_native_layernorm_autograd = True
-                        if hasattr(hf_attn, "k_norm"):
-                            hf_attn.k_norm.use_native_layernorm_autograd = True
-
-        # Also set on the template for get_generalized_component() calls
-        attn_bridge = self.get_generalized_component("blocks.0.attn")
-        attn_bridge.set_rotary_emb(rotary_emb)
+                hf_attn = getattr(getattr(block, "attn", None), "original_component", None)
+                if hf_attn is None:
+                    continue
+                if hasattr(hf_attn, "q_norm"):
+                    hf_attn.q_norm.use_native_layernorm_autograd = True
+                if hasattr(hf_attn, "k_norm"):
+                    hf_attn.k_norm.use_native_layernorm_autograd = True

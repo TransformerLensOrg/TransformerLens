@@ -46,6 +46,9 @@ class Gemma4ArchitectureAdapter(ArchitectureAdapter):
     """Adapter for Gemma 4 (`Gemma4ForConditionalGeneration` — multimodal, or
     `Gemma4UnifiedForConditionalGeneration` — text-only 12B)."""
 
+    _testing_lm_attr = "model.language_model"
+    _testing_wire_rotary = False
+
     # Phase 3 (processed/compatibility mode) folds LN into a single residual stream,
     # which the PLE residual mix, per-layer `layer_scalar` buffers, and the MoE branch
     # can't represent. Phases 1 (HF parity), 2 (hooks), and 4 (text quality) apply.
@@ -155,13 +158,3 @@ class Gemma4ArchitectureAdapter(ArchitectureAdapter):
             "ln_final": GeneralizedComponent(name="model.language_model.norm"),
             "unembed": UnembeddingBridge(name="lm_head"),
         }
-
-    def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Force eager attention so bridge and HF match (sliding/full layer mix)."""
-        if hasattr(hf_model, "config") and hasattr(hf_model.config, "_attn_implementation"):
-            hf_model.config._attn_implementation = "eager"
-        language_model = getattr(getattr(hf_model, "model", None), "language_model", None)
-        if language_model is not None and hasattr(language_model, "layers"):
-            for layer in language_model.layers:
-                if hasattr(layer, "self_attn") and hasattr(layer.self_attn, "config"):
-                    layer.self_attn.config._attn_implementation = "eager"

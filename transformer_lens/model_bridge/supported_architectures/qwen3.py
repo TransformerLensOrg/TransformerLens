@@ -33,6 +33,8 @@ class Qwen3ArchitectureAdapter(ArchitectureAdapter):
     Serves as base class for Qwen3.5 and Qwen3Next hybrid variants.
     """
 
+    _testing_hybrid = True
+
     def __init__(self, cfg: Any, *, hybrid: bool = False, lm_prefix: str = "model") -> None:
         super().__init__(cfg)
         self._setup_qwen3_config(cfg)
@@ -97,10 +99,6 @@ class Qwen3ArchitectureAdapter(ArchitectureAdapter):
             "ln_final": RMSNormalizationBridge(name=f"{lm_prefix}.norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head"),
         }
-
-    def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Force eager attention and wire the shared rotary (hybrid: linear-attn layers skipped)."""
-        self._wire_rotary_for_testing(hf_model, bridge_model, hybrid=True)
 
     @staticmethod
     def _preprocess_gated_q_proj(

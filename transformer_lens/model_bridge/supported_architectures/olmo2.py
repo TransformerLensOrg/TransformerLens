@@ -101,7 +101,3 @@ class Olmo2ArchitectureAdapter(ArchitectureAdapter):
     def _build_mlp_bridge(self):
         """MLP bridge seam; FlexOlmo swaps in the MoE variant."""
         return self._gated_mlp()
-
-    def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Force eager attention and wire the shared rotary onto attention bridges."""
-        self._wire_rotary_for_testing(hf_model, bridge_model)

@@ -34,6 +34,9 @@ class BambaArchitectureAdapter(ArchitectureAdapter):
     ``.mamba``) so SSM analyses reach it as on GraniteMoeHybrid / NemotronH.
     """
 
+    _testing_hybrid = True
+    _testing_eager = "config"
+
     def __init__(self, cfg: Any) -> None:
         """Initialize the Bamba architecture adapter."""
         super().__init__(cfg)
@@ -100,7 +103,3 @@ class BambaArchitectureAdapter(ArchitectureAdapter):
         from transformers.cache_utils import DynamicCache
 
         return DynamicCache(config=hf_model.config)
-
-    def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Wire rotary through to attention bridges (mamba layers skipped)."""
-        self._wire_rotary_for_testing(hf_model, bridge_model, hybrid=True, eager="config")

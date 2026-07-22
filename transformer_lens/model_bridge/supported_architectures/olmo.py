@@ -119,10 +119,6 @@ class OlmoArchitectureAdapter(ArchitectureAdapter):
         """
         _patch_olmo_inplace_clamp(hf_model)
 
-    def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Force eager attention and wire the shared rotary onto attention bridges."""
-        self._wire_rotary_for_testing(hf_model, bridge_model)
-
 
 def _patch_olmo_inplace_clamp(hf_model: Any) -> None:
     """Patch OLMo attention to avoid in-place clamp_ that conflicts with backward hooks.

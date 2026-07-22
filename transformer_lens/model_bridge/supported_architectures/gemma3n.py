@@ -25,6 +25,9 @@ from transformer_lens.model_bridge.generalized_components.base import (
 class Gemma3nArchitectureAdapter(ArchitectureAdapter):
     """Text-only adapter for Gemma 3n (`Gemma3nForConditionalGeneration`)."""
 
+    _testing_lm_attr = "model.language_model"
+    _testing_wire_rotary = False
+
     # The full model includes a timm-based vision tower (TimmWrapperModel), so timm is needed
     # even for text-only use (the towers stay referenced).
     required_libraries: list[str] = ["timm"]
@@ -100,13 +103,3 @@ class Gemma3nArchitectureAdapter(ArchitectureAdapter):
             "ln_final": GeneralizedComponent(name="model.language_model.norm"),
             "unembed": UnembeddingBridge(name="lm_head"),
         }
-
-    def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Force eager attention so bridge and HF match (sliding/full layer mix)."""
-        if hasattr(hf_model, "config") and hasattr(hf_model.config, "_attn_implementation"):
-            hf_model.config._attn_implementation = "eager"
-        language_model = getattr(getattr(hf_model, "model", None), "language_model", None)
-        if language_model is not None and hasattr(language_model, "layers"):
-            for layer in language_model.layers:
-                if hasattr(layer, "self_attn") and hasattr(layer.self_attn, "config"):
-                    layer.self_attn.config._attn_implementation = "eager"

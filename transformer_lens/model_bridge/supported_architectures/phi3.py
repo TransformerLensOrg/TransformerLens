@@ -45,6 +45,8 @@ class _SizedSplitConversion(BaseTensorConversion):
 class Phi3ArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for Phi-3 models."""
 
+    _testing_eager = None
+
     def __init__(self, cfg: Any) -> None:
         """Initialize the Phi-3 architecture adapter.
 
@@ -202,10 +204,6 @@ class Phi3ArchitectureAdapter(ArchitectureAdapter):
             v_linear.bias = torch.nn.Parameter(v_bias)
 
         return q_linear, k_linear, v_linear
-
-    def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Wire the shared rotary onto attention bridges (attn implementation untouched)."""
-        self._wire_rotary_for_testing(hf_model, bridge_model, eager=None)
 
     def prepare_loading(self, model_name: str, model_kwargs: dict) -> None:
         """Patch cached Phi-3 remote code for transformers v5 compatibility."""

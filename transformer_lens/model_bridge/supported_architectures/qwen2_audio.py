@@ -27,6 +27,9 @@ from transformer_lens.model_bridge.generalized_components.base import (
 class Qwen2AudioArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for Qwen2AudioForConditionalGeneration models."""
 
+    _testing_lm_attr = "model.language_model"
+    _testing_eager = "config"
+
     def __init__(self, cfg: Any) -> None:
         """Initialize the Qwen2-Audio architecture adapter."""
         super().__init__(cfg)
@@ -75,20 +78,3 @@ class Qwen2AudioArchitectureAdapter(ArchitectureAdapter):
             "ln_final": RMSNormalizationBridge(name="model.language_model.norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head", config=self.cfg),
         }
-
-    def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Wire the text model's rotary embedding through to attention bridges."""
-        rotary_emb = hf_model.model.language_model.rotary_emb
-
-        if hasattr(hf_model, "config") and hasattr(hf_model.config, "_attn_implementation"):
-            hf_model.config._attn_implementation = "eager"
-        if hasattr(hf_model.config, "text_config"):
-            hf_model.config.text_config._attn_implementation = "eager"
-
-        if bridge_model is not None and hasattr(bridge_model, "blocks"):
-            for block in bridge_model.blocks:
-                if hasattr(block, "attn"):
-                    block.attn.set_rotary_emb(rotary_emb)
-
-        attn_bridge = self.get_generalized_component("blocks.0.attn")
-        attn_bridge.set_rotary_emb(rotary_emb)

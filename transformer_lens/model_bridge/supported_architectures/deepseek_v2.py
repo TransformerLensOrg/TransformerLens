@@ -37,6 +37,8 @@ class DeepSeekV2ArchitectureAdapter(ArchitectureAdapter):
     first few), and no biases.
     """
 
+    _testing_eager = None
+
     def __init__(self, cfg: Any) -> None:
         super().__init__(cfg)
 
@@ -107,7 +109,3 @@ class DeepSeekV2ArchitectureAdapter(ArchitectureAdapter):
                 "shared_experts": self._gated_mlp(name="shared_experts", optional=True),
             },
         )
-
-    def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Wire the shared rotary onto attention bridges (attn implementation untouched)."""
-        self._wire_rotary_for_testing(hf_model, bridge_model, eager=None)

@@ -22,6 +22,8 @@ from transformer_lens.model_bridge.generalized_components import (
 class PhiArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for Phi models."""
 
+    _testing_eager = None
+
     default_cfg = {"use_fast": False}
 
     def __init__(self, cfg: Any) -> None:
@@ -106,7 +108,3 @@ class PhiArchitectureAdapter(ArchitectureAdapter):
             ),
             "unembed": UnembeddingBridge(name="lm_head"),
         }
-
-    def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Wire the shared rotary onto attention bridges (attn implementation untouched)."""
-        self._wire_rotary_for_testing(hf_model, bridge_model, eager=None)

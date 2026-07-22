@@ -42,6 +42,8 @@ class LlavaArchitectureAdapter(ArchitectureAdapter):
     The language model component follows the same patterns as LlamaArchitectureAdapter.
     """
 
+    _testing_lm_attr = "model.language_model"
+
     def __init__(self, cfg: Any) -> None:
         """Initialize the LLava architecture adapter."""
         super().__init__(cfg)
@@ -106,41 +108,3 @@ class LlavaArchitectureAdapter(ArchitectureAdapter):
             "ln_final": RMSNormalizationBridge(name="model.language_model.norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head", config=self.cfg),
         }
-
-    def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Set up rotary embedding references for LLava component testing.
-
-        LLava uses a LLaMA language backbone with RoPE. We set the rotary_emb
-        reference on all attention bridge instances for component testing.
-
-        Args:
-            hf_model: The HuggingFace LLava model instance
-            bridge_model: The TransformerBridge model (if available)
-        """
-        # Get rotary embedding instance from the language model
-        language_model = hf_model.model.language_model
-        rotary_emb = language_model.rotary_emb
-
-        # Force HF model to use "eager" attention
-        if hasattr(hf_model, "config") and hasattr(hf_model.config, "_attn_implementation"):
-            hf_model.config._attn_implementation = "eager"
-
-        # Also set on text config
-        if hasattr(hf_model.config, "text_config"):
-            hf_model.config.text_config._attn_implementation = "eager"
-
-        # Set on all language model attention layers
-        if hasattr(language_model, "layers"):
-            for layer in language_model.layers:
-                if hasattr(layer, "self_attn") and hasattr(layer.self_attn, "config"):
-                    layer.self_attn.config._attn_implementation = "eager"
-
-        # Set rotary_emb on actual bridge instances if available
-        if bridge_model is not None and hasattr(bridge_model, "blocks"):
-            for block in bridge_model.blocks:
-                if hasattr(block, "attn"):
-                    block.attn.set_rotary_emb(rotary_emb)
-
-        # Also set on the template for get_generalized_component() calls
-        attn_bridge = self.get_generalized_component("blocks.0.attn")
-        attn_bridge.set_rotary_emb(rotary_emb)

@@ -43,6 +43,8 @@ class _BitNetAttentionBridge(PositionEmbeddingsAttentionBridge):
 class BitNetArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for BitNetForCausalLM models."""
 
+    _testing_eager = "config"
+
     # Sub-layer norms are incompatible with HT-style processed-weight
     # attention, so compatibility-mode equivalence (Phase 3) is out of scope.
     applicable_phases: list[int] = [1, 2, 4]
@@ -87,7 +89,3 @@ class BitNetArchitectureAdapter(ArchitectureAdapter):
             "ln_final": RMSNormalizationBridge(name="model.norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head", config=self.cfg),
         }
-
-    def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Force eager attention and wire the shared rotary onto attention bridges."""
-        self._wire_rotary_for_testing(hf_model, bridge_model, eager="config")

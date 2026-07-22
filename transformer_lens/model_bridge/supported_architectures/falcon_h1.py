@@ -81,6 +81,9 @@ class FalconH1ArchitectureAdapter(ArchitectureAdapter):
     sub-path is independently hookable for ablation studies.
     """
 
+    _testing_hybrid = True
+    _testing_eager = None
+
     # verify_models is transformer-shaped and would need a dedicated refactor to
     # cover SSM hybrids. Forward-pass correctness lives in the integration test:
     # tests/integration/model_bridge/test_falcon_h1_adapter.py
@@ -160,7 +163,3 @@ class FalconH1ArchitectureAdapter(ArchitectureAdapter):
         """Match Falcon-H1's post-unembedding multiplier."""
         multiplier = float(getattr(self.cfg, "lm_head_multiplier", 1.0))
         return super().apply_output_logits_transform(logits * multiplier)
-
-    def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Wire the shared rotary onto attention bridges (hybrid: mamba layers skipped)."""
-        self._wire_rotary_for_testing(hf_model, bridge_model, hybrid=True, eager=None)
