@@ -12,6 +12,7 @@ Tests cover:
 from types import SimpleNamespace
 
 import pytest
+import torch
 import torch.nn as nn
 from torch import ones, randn, zeros
 
@@ -77,10 +78,11 @@ class FakeQwen2Attention(nn.Module):
         self.attention_dropout = 0.0
 
         # Qwen2 uses GQA: Q has n_heads, while K/V have n_key_value_heads.
+        # HF hardcodes bias=True on q/k/v (o_proj is bias-free).
         kv_width = (cfg.n_key_value_heads or cfg.n_heads) * cfg.d_head
-        self.q_proj = nn.Linear(cfg.d_model, cfg.n_heads * cfg.d_head, bias=False)
-        self.k_proj = nn.Linear(cfg.d_model, kv_width, bias=False)
-        self.v_proj = nn.Linear(cfg.d_model, kv_width, bias=False)
+        self.q_proj = nn.Linear(cfg.d_model, cfg.n_heads * cfg.d_head, bias=True)
+        self.k_proj = nn.Linear(cfg.d_model, kv_width, bias=True)
+        self.v_proj = nn.Linear(cfg.d_model, kv_width, bias=True)
         self.o_proj = nn.Linear(cfg.n_heads * cfg.d_head, cfg.d_model, bias=False)
 
 
@@ -302,3 +304,28 @@ class TestQwen2SetupComponentTesting:
         adapter.setup_component_testing(_fake_hf_model(rotary_emb), bridge_model=bridge_model)
 
         assert bridge_model.blocks[0].attn.rotary_emb is rotary_emb
+
+
+class TestQwen2BiasConversions:
+    """HF hardcodes q/k/v bias=True; GQA K/V biases must reshape with the
+    kv-head count, not n_heads (flat layout breaks fold_value_biases)."""
+
+    def test_kv_bias_reshapes_with_kv_head_count(self, adapter: Qwen2ArchitectureAdapter) -> None:
+        n_kv = adapter.cfg.n_key_value_heads
+        d_head = adapter.cfg.d_head
+        conversion = adapter.weight_processing_conversions[
+            "blocks.{i}.attn.k.bias"
+        ].tensor_conversion
+        flat = torch.arange(n_kv * d_head, dtype=torch.float32)
+        converted = conversion.convert(flat)
+        assert converted.shape == (n_kv, d_head)
+        assert torch.equal(conversion.revert(converted), flat)
+
+    def test_q_bias_reshapes_with_n_heads(self, adapter: Qwen2ArchitectureAdapter) -> None:
+        n_heads = adapter.cfg.n_heads
+        d_head = adapter.cfg.d_head
+        conversion = adapter.weight_processing_conversions[
+            "blocks.{i}.attn.q.bias"
+        ].tensor_conversion
+        converted = conversion.convert(torch.zeros(n_heads * d_head))
+        assert converted.shape == (n_heads, d_head)

@@ -1,9 +1,10 @@
 """Unit tests for the four Tier-2 thin-subclass adapters.
 
-Each wraps an architecture that is byte-identical (module names and block
-shape) to an already-verified parent: Youtu = dense-MLA DeepSeek-V2,
-Jais2 = Nemotron, Ministral3 = Mistral, VaultGemma = Gemma 2 minus the
-post-norms.
+Each wraps an architecture whose module tree matches an already-verified
+parent: Youtu = dense-MLA DeepSeek-V2, Jais2 = Nemotron (plain LayerNorm,
+so folding stays enabled), Ministral3 = Mistral (plus a llama-4 positional
+query scale the attention bridge applies from rope_parameters), VaultGemma
+= Gemma 2 minus the post-norms.
 """
 from typing import Any
 

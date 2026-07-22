@@ -18,6 +18,7 @@ from transformer_lens.model_bridge.generalized_components import (
     EmbeddingBridge,
     LinearBridge,
     MoEBridge,
+    MoERouterBridge,
     RMSNormalizationBridge,
     RotaryEmbeddingBridge,
     UnembeddingBridge,
@@ -72,7 +73,8 @@ class JetMoeArchitectureAdapter(ArchitectureAdapter):
                             "experts": GeneralizedComponent(
                                 name="experts",
                                 submodules={
-                                    "router": GeneralizedComponent(name="router"),
+                                    # JetMoeTopKGating puts logits last in its 5-tuple.
+                                    "router": MoERouterBridge(name="router", logits_index=-1),
                                 },
                             ),
                         },
@@ -82,7 +84,7 @@ class JetMoeArchitectureAdapter(ArchitectureAdapter):
                         name="mlp",
                         config=self.cfg,
                         submodules={
-                            "gate": GeneralizedComponent(name="router"),
+                            "gate": MoERouterBridge(name="router", logits_index=-1),
                         },
                     ),
                 },

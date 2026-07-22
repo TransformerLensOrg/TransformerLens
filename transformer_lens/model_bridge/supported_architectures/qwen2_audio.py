@@ -37,8 +37,9 @@ class Qwen2AudioArchitectureAdapter(ArchitectureAdapter):
         self._set_rms_rotary_defaults()
         self.cfg.default_prepend_bos = False
 
+        # include_biases is inert for GlmAsr's bias-free Llama stack (absent keys never match).
         self.weight_processing_conversions = {
-            **self._qkvo_weight_conversions(),
+            **self._qkvo_weight_conversions(include_biases=True),
         }
 
         self.component_mapping = {

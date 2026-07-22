@@ -78,6 +78,11 @@ class OpenAIGPTArchitectureAdapter(ArchitectureAdapter):
                     ),
                     "ln2": NormalizationBridge(name="ln_2", config=self.cfg),
                 },
+                # Post-norm: ln2.hook_in is the post-MLP sum n+m; the true
+                # attn->MLP mid-point n = ln_1(x+a) is mlp.hook_in.
+                hook_alias_overrides={
+                    "hook_resid_mid": "mlp.hook_in",
+                },
             ),
             "unembed": UnembeddingBridge(name="lm_head"),
         }

@@ -1,9 +1,10 @@
 """Ministral 3 architecture adapter.
 
 Mistral AI's Ministral 3 (``Ministral3ForCausalLM``, native in
-transformers): the edge-scale Mistral — identical GQA q/k/v/o attention,
-gated SiLU MLP, RMS pre-norms, and module names, so this is a pure
-subclass of the Mistral adapter.
+transformers): same module tree as Mistral, so the mapping subclasses the
+Mistral adapter — but not identical math: Ministral3Attention adds a
+llama-4 positional query scale after RoPE, run natively on the delegating
+text route and by PositionEmbeddingsAttentionBridge on the VLM route.
 """
 
 from transformer_lens.model_bridge.supported_architectures.mistral import (

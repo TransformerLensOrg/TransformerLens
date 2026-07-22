@@ -15,6 +15,7 @@ from transformer_lens.model_bridge.generalized_components import (
     GatedMLPBridge,
     LinearBridge,
     MoEBridge,
+    MoERouterBridge,
     PositionEmbeddingsAttentionBridge,
     RMSNormalizationBridge,
     RotaryEmbeddingBridge,
@@ -179,7 +180,7 @@ class TestQwen3MoeBlockSubmodules:
     def test_mlp_gate_submodule_type(self, adapter: Qwen3MoeArchitectureAdapter) -> None:
         """Router is a LinearBridge so the routing logits can be hooked."""
         mlp = adapter.component_mapping["blocks"].submodules["mlp"]
-        assert isinstance(mlp.submodules["gate"], LinearBridge)
+        assert isinstance(mlp.submodules["gate"], MoERouterBridge)
 
 
 class TestQwen3MoeGQA:

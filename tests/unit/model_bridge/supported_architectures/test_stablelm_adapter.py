@@ -11,8 +11,8 @@ Covered:
 - Block submodules across both `parallel_attn_mlp` branches (with and without `ln2`).
 - GQA forward hook shapes: a fake attention module confirms Q uses `n_heads` while
   K/V use `n_key_value_heads`.
-- `setup_hook_compatibility`: QK-LayerNorm hook injection on StableLM v2 models, including
-  the no-op-when-absent path and defensive guards.
+- QK-LayerNorm handling: q_norm/k_norm declared as optional submodules so the
+  reimplemented attention applies the per-head norms on qk_layernorm=True models
 - `setup_component_testing`: rotary embedding wiring on the template attention bridge and
   on each bridge-model block, plus forcing eager attention on the HF model and per-layer
   self-attention configs.
@@ -23,7 +23,6 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
-import torch
 import torch.nn as nn
 from torch import ones, randn, zeros
 
@@ -34,7 +33,6 @@ from transformer_lens.conversion_utils.conversion_steps.rearrange_tensor_convers
 from transformer_lens.conversion_utils.param_processing_conversion import (
     ParamProcessingConversion,
 )
-from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
@@ -178,49 +176,6 @@ class FakeStableLMAttention(nn.Module):
         self.k_proj = nn.Linear(cfg.d_model, kv_width, bias=False)
         self.v_proj = nn.Linear(cfg.d_model, kv_width, bias=False)
         self.o_proj = nn.Linear(cfg.n_heads * cfg.d_head, cfg.d_model, bias=False)
-
-
-class _DummyHFAttn(nn.Module):
-    """HF attention stand-in for the QK-LayerNorm setup_hook_compatibility tests.
-
-    `qk_layernorm` is read as a bool flag. `q_layernorm` and `k_layernorm` are
-    nn.Modules whose `forward` the adapter wraps to fire the new hook points.
-    """
-
-    def __init__(self, qk_layernorm: bool = True) -> None:
-        super().__init__()
-        self.qk_layernorm = qk_layernorm
-        self.q_layernorm = nn.Identity()
-        self.k_layernorm = nn.Identity()
-
-
-class _DummyAttnBridge(nn.Module):
-    """nn.Module stand-in for the attention bridge.
-
-    The adapter calls `add_module` on the bridge to register HookPoints, which
-    only works on nn.Modules.
-    """
-
-    def __init__(self, original_component: Any | None = None) -> None:
-        super().__init__()
-        self.original_component = original_component
-
-
-class _DummyBlockWithAttn:
-    def __init__(self, attn: Any) -> None:
-        self.attn = attn
-
-
-class _DummyBlockNoAttn:
-    pass
-
-
-class _DummyHookBridge:
-    """Stand-in for a built TransformerBridge: exposes `blocks` and a `_hook_registry` dict."""
-
-    def __init__(self, blocks: list[Any]) -> None:
-        self.blocks = blocks
-        self._hook_registry: dict[str, HookPoint] = {}
 
 
 class TestStableLMAdapterConfig:
@@ -467,159 +422,26 @@ class TestStableLMGQAHookShapes:
         assert v.shape == (self.BATCH, self.SEQ, self.N_KV_HEADS, self.D_HEAD)
 
 
-class TestStableLMSetupHookCompatibility:
-    """`setup_hook_compatibility` injects `hook_q_layernorm` and `hook_k_layernorm` HookPoints
-    onto every attention bridge whose underlying HF attention has `qk_layernorm=True`
-    (StableLM v2 models like stablelm-2-12b). The hooks are added as bridge submodules,
-    registered in `bridge._hook_registry` with canonical TL-style names, and the HF
-    q_layernorm/k_layernorm forward methods are wrapped to fire them.
+class TestStableLMQKLayerNormDeclaration:
+    """qk_layernorm models (stablelm-2-12b) carry per-head Q/K LayerNorms that
+    the reimplemented attention must apply; the submodules are optional since
+    most checkpoints set qk_layernorm=False."""
 
-    Coverage: every branch of the override, including the no-op-when-disabled path and
-    each defensive guard.
-    """
+    def test_q_k_norm_submodules_declared_optional(self) -> None:
+        adapter = StableLmArchitectureAdapter(_cfg())
+        attn = _mapping(adapter)["blocks"].submodules["attn"]
+        assert attn.submodules["q_norm"].name == "q_layernorm"
+        assert attn.submodules["k_norm"].name == "k_layernorm"
+        assert attn.submodules["q_norm"].optional is True
+        assert attn.submodules["k_norm"].optional is True
 
-    @pytest.fixture
-    def adapter_only(self) -> StableLmArchitectureAdapter:
-        return StableLmArchitectureAdapter(_cfg())
-
-    def _hook_bridge(self, blocks: list[Any]) -> _DummyHookBridge:
-        return _DummyHookBridge(blocks)
-
-    def test_no_op_when_bridge_has_no_blocks(
-        self, adapter_only: StableLmArchitectureAdapter
-    ) -> None:
-        """Guard branch: a bridge without `.blocks` must not raise."""
-        bridge = SimpleNamespace()  # no blocks attribute at all
-        adapter_only.setup_hook_compatibility(bridge)
-
-    def test_no_op_when_qk_layernorm_disabled(
-        self, adapter_only: StableLmArchitectureAdapter
-    ) -> None:
-        """Stock StableLM (v1) has qk_layernorm=False, so no hooks are injected."""
-        hf_attn = _DummyHFAttn(qk_layernorm=False)
-        attn_bridge = _DummyAttnBridge(original_component=hf_attn)
-        bridge = self._hook_bridge([_DummyBlockWithAttn(attn_bridge)])
-
-        adapter_only.setup_hook_compatibility(bridge)
-
-        assert not hasattr(attn_bridge, "hook_q_layernorm")
-        assert not hasattr(attn_bridge, "hook_k_layernorm")
-        assert bridge._hook_registry == {}
-
-    def test_skips_block_without_attn(self, adapter_only: StableLmArchitectureAdapter) -> None:
-        """A block with no `attn` attribute must be silently skipped."""
-        hf_attn = _DummyHFAttn(qk_layernorm=True)
-        attn_bridge_with = _DummyAttnBridge(original_component=hf_attn)
-        bridge = self._hook_bridge([_DummyBlockNoAttn(), _DummyBlockWithAttn(attn_bridge_with)])
-
-        adapter_only.setup_hook_compatibility(bridge)
-
-        # Block 1 still received hooks, block 0 had no attn and was skipped without error.
-        assert hasattr(attn_bridge_with, "hook_q_layernorm")
-        assert "blocks.1.attn.hook_q_layernorm" in bridge._hook_registry
-
-    def test_skips_block_with_none_original_component(
-        self, adapter_only: StableLmArchitectureAdapter
-    ) -> None:
-        """When the attention bridge has no original_component (not yet built), skip
-        rather than raise."""
-        attn_bridge = _DummyAttnBridge(original_component=None)
-        bridge = self._hook_bridge([_DummyBlockWithAttn(attn_bridge)])
-
-        adapter_only.setup_hook_compatibility(bridge)
-
-        assert not hasattr(attn_bridge, "hook_q_layernorm")
-        assert bridge._hook_registry == {}
-
-    def test_adds_hook_modules_to_attn_bridge(
-        self, adapter_only: StableLmArchitectureAdapter
-    ) -> None:
-        """Happy path: HookPoints are added as submodules of the attention bridge."""
-        hf_attn = _DummyHFAttn(qk_layernorm=True)
-        attn_bridge = _DummyAttnBridge(original_component=hf_attn)
-        bridge = self._hook_bridge([_DummyBlockWithAttn(attn_bridge)])
-
-        adapter_only.setup_hook_compatibility(bridge)
-
-        assert isinstance(attn_bridge.hook_q_layernorm, HookPoint)
-        assert isinstance(attn_bridge.hook_k_layernorm, HookPoint)
-
-    def test_registers_hooks_in_bridge_hook_registry_with_canonical_names(
-        self, adapter_only: StableLmArchitectureAdapter
-    ) -> None:
-        """Hooks are registered under TL-canonical names so the registry scanner can find them
-        (the scanner skips _original_component subtrees, so the adapter wires registry entries
-        directly)."""
-        blocks = []
-        for _ in range(3):
-            hf_attn = _DummyHFAttn(qk_layernorm=True)
-            attn_bridge = _DummyAttnBridge(original_component=hf_attn)
-            blocks.append(_DummyBlockWithAttn(attn_bridge))
-        bridge = self._hook_bridge(blocks)
-
-        adapter_only.setup_hook_compatibility(bridge)
-
-        expected = set()
-        for i in range(3):
-            expected.add(f"blocks.{i}.attn.hook_q_layernorm")
-            expected.add(f"blocks.{i}.attn.hook_k_layernorm")
-        assert set(bridge._hook_registry.keys()) == expected
-        # And every registry entry points at the same HookPoint object on the bridge.
-        for i, block in enumerate(blocks):
-            assert (
-                bridge._hook_registry[f"blocks.{i}.attn.hook_q_layernorm"]
-                is block.attn.hook_q_layernorm
-            )
-            assert (
-                bridge._hook_registry[f"blocks.{i}.attn.hook_k_layernorm"]
-                is block.attn.hook_k_layernorm
-            )
-
-    def test_q_layernorm_forward_wrap_fires_hook(
-        self, adapter_only: StableLmArchitectureAdapter
-    ) -> None:
-        """Behavioral assertion: calling the HF q_layernorm.forward fires the new hook
-        with the layernorm output. Without the wrap, the hook would never run."""
-        hf_attn = _DummyHFAttn(qk_layernorm=True)
-        attn_bridge = _DummyAttnBridge(original_component=hf_attn)
-        bridge = self._hook_bridge([_DummyBlockWithAttn(attn_bridge)])
-        adapter_only.setup_hook_compatibility(bridge)
-
-        captured: dict[str, torch.Tensor] = {}
-
-        def _capture(x: torch.Tensor, hook: HookPoint) -> torch.Tensor:
-            captured["q"] = x.detach()
-            return x
-
-        attn_bridge.hook_q_layernorm.add_hook(_capture)
-        x = randn(2, 4, 16)
-        out = hf_attn.q_layernorm.forward(x)
-        # nn.Identity passes through, so the hook saw exactly x.
-        assert "q" in captured
-        assert torch.equal(captured["q"], x)
-        assert torch.equal(out, x)
-
-    def test_k_layernorm_forward_wrap_fires_hook(
-        self, adapter_only: StableLmArchitectureAdapter
-    ) -> None:
-        """Same behavioral assertion for the K-side wrap."""
-        hf_attn = _DummyHFAttn(qk_layernorm=True)
-        attn_bridge = _DummyAttnBridge(original_component=hf_attn)
-        bridge = self._hook_bridge([_DummyBlockWithAttn(attn_bridge)])
-        adapter_only.setup_hook_compatibility(bridge)
-
-        captured: dict[str, torch.Tensor] = {}
-
-        def _capture(x: torch.Tensor, hook: HookPoint) -> torch.Tensor:
-            captured["k"] = x.detach()
-            return x
-
-        attn_bridge.hook_k_layernorm.add_hook(_capture)
-        x = randn(2, 4, 16)
-        out = hf_attn.k_layernorm.forward(x)
-        assert "k" in captured
-        assert torch.equal(captured["k"], x)
-        assert torch.equal(out, x)
+    def test_norm_phase_none_when_absent(self) -> None:
+        """qk_layernorm=False modules must not trip the declared-but-absent check."""
+        adapter = StableLmArchitectureAdapter(_cfg())
+        attn = _mapping(adapter)["blocks"].submodules["attn"]
+        fake = FakeStableLMAttention(adapter.cfg)
+        attn.set_original_component(fake)
+        assert attn._qk_norm_phase is None
 
 
 class TestStableLMSetupComponentTesting:

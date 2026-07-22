@@ -25,15 +25,11 @@ from transformer_lens.model_bridge.generalized_components import (
 
 
 class _Exaone4AttentionBridge(PositionEmbeddingsAttentionBridge):
-    """Attention bridge that honours EXAONE-4.0's hybrid NoPE gating.
+    """Suppress RoPE on hybrid full-attention (global NoPE) layers.
 
-    Hybrid checkpoints (sliding_window set, e.g. the 32B LLLG pattern) apply
-    RoPE only on sliding-window layers; full-attention layers are global NoPE.
-    HF gates the rotation on ``self.sliding_window is None or self.is_sliding``
-    inside Exaone4Attention.forward, but the base bridge reimplements attention
-    and rotates whenever position_embeddings is present, so NoPE layers must
-    suppress the argument before delegating. Non-hybrid checkpoints (1.2B,
-    sliding_window=None) rotate on every layer and are unaffected.
+    HF gates rotation on ``sliding_window is None or is_sliding``; the base
+    bridge rotates whenever position_embeddings is present, so NoPE layers
+    null the argument first. Non-hybrid checkpoints rotate everywhere.
     """
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
@@ -104,6 +100,12 @@ class Exaone4ArchitectureAdapter(ArchitectureAdapter):
                     "ln2": RMSNormalizationBridge(
                         name="post_feedforward_layernorm", config=self.cfg
                     ),
+                },
+                # Post-norm override: ln2 is post_feedforward_layernorm applied AFTER
+                # MLP, so "ln2.hook_in" captures the MLP output (wrong mid-point).
+                # The true residual mid-point (between attention and MLP) is mlp.hook_in.
+                hook_alias_overrides={
+                    "hook_resid_mid": "mlp.hook_in",
                 },
             ),
             "ln_final": RMSNormalizationBridge(name="model.norm", config=self.cfg),

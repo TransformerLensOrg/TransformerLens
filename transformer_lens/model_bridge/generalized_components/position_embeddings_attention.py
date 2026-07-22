@@ -196,14 +196,19 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
                 f"'o': LinearBridge(name='o_proj')}}."
             )
         # Reverse mismatch (adapter declares, HF lacks) surfaces at norm forward.
-        for norm_name in ("q_norm", "k_norm"):
-            if getattr(hf_attn, norm_name, None) is not None and norm_name not in self.submodules:
+        # HF spells the per-head variants q_layernorm/k_layernorm (StableLM).
+        for declared, hf_names in (
+            ("q_norm", ("q_norm", "q_layernorm")),
+            ("k_norm", ("k_norm", "k_layernorm")),
+        ):
+            hf_present = next((n for n in hf_names if getattr(hf_attn, n, None) is not None), None)
+            if hf_present is not None and declared not in self.submodules:
                 raise RuntimeError(
                     f"{type(self).__name__} at '{self.name}': HF module has "
-                    f"'{norm_name}' but adapter did not declare it. Forward would "
-                    f"skip the norm, producing wrong logits vs HF. Add "
-                    f"'{norm_name}': RMSNormalizationBridge(name='{norm_name}', "
-                    f"config=self.cfg) to the attention submodules."
+                    f"'{hf_present}' but adapter did not declare '{declared}'. "
+                    f"Forward would skip the norm, producing wrong logits vs HF. "
+                    f"Add '{declared}' (name='{hf_present}') to the attention "
+                    f"submodules."
                 )
 
     def _decide_qk_norm_phase(self, hf_attn: torch.nn.Module) -> Optional[str]:
@@ -219,6 +224,10 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
         q_norm = getattr(hf_attn, hf_norm_name, None)
 
         if q_norm is None:
+            # Config-gated norms (use_qk_norm, qk_layernorm) declare optional;
+            # setup pops them after this runs.
+            if getattr(self.submodules["q_norm"], "optional", False):
+                return None
             raise RuntimeError(f"{self.name}: q_norm declared but HF module has none.")
 
         weight = getattr(q_norm, "weight", None)
@@ -433,6 +442,25 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
                 key_states = torch.cat([k_rot, k_pass], dim=-1)
             else:
                 query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
+
+        # Ministral-3's llama-4 query scale: HF multiplies Q by
+        # 1 + beta*log(1 + floor(pos/original_max)) right after RoPE.
+        rope_params = getattr(getattr(hf_attn, "config", None), "rope_parameters", None)
+        if isinstance(rope_params, dict) and rope_params.get("llama_4_scaling_beta") is not None:
+            from transformers.models.ministral3.modeling_ministral3 import (
+                get_llama_4_attn_scale,
+            )
+
+            position_ids = kwargs.get("position_ids")
+            if position_ids is None:
+                position_ids = torch.arange(
+                    query_states.shape[-2], device=query_states.device
+                ).unsqueeze(0)
+            query_states = query_states * get_llama_4_attn_scale(
+                position_ids,
+                rope_params["llama_4_scaling_beta"],
+                int(rope_params["original_max_position_embeddings"]),
+            ).to(query_states.dtype)
 
         # Fire hook_rot_q/hook_rot_k (post-rotation)
         if hasattr(self, "hook_rot_q"):

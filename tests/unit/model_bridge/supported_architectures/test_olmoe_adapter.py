@@ -32,6 +32,7 @@ from transformer_lens.model_bridge.generalized_components import (
     GatedMLPBridge,
     LinearBridge,
     MoEBridge,
+    MoERouterBridge,
     PositionEmbeddingsAttentionBridge,
     RMSNormalizationBridge,
     RotaryEmbeddingBridge,
@@ -325,7 +326,7 @@ class TestOlmoeBlockSubmodules:
     def test_mlp_gate_submodule_type(self, adapter: OlmoeArchitectureAdapter) -> None:
         """Router is a LinearBridge so the routing logits can be hooked."""
         mlp = _mapping(adapter)["blocks"].submodules["mlp"]
-        assert isinstance(mlp.submodules["gate"], LinearBridge)
+        assert isinstance(mlp.submodules["gate"], MoERouterBridge)
 
 
 class TestOlmoeMoEStructure:

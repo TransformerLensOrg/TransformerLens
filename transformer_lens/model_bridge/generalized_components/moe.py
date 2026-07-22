@@ -132,12 +132,14 @@ class MoEBridge(GeneralizedComponent):
 class MoERouterBridge(LinearBridge):
     """Bridge MoE router logits while preserving HF's tuple return.
 
-    transformers >= 5.13 TopKRouters return ``(router_logits, topk_weights,
-    topk_indices)``. The base ``LinearBridge.forward`` would pass the tuple to
-    ``hook_out``, which expects a single ``torch.Tensor``, causing a beartype
-    runtime error. ``hook_out`` fires on the router logits; the tuple is
-    re-packed so the HF sparse block's unpacking is undisturbed.
+    5.13 TopKRouters return ``(router_logits, topk_weights, topk_indices)``;
+    hook_out fires on the logits (element ``logits_index`` — JetMoe puts them
+    last) and the tuple is re-packed so HF's unpacking is undisturbed.
     """
+
+    def __init__(self, *args: Any, logits_index: int = 0, **kwargs: Any):
+        super().__init__(*args, **kwargs)
+        self.logits_index = logits_index
 
     def forward(self, input: torch.Tensor, *args: Any, **kwargs: Any) -> Any:
         if self.original_component is None:
@@ -148,5 +150,6 @@ class MoERouterBridge(LinearBridge):
         output = self.original_component(input, *args, **kwargs)
         if not isinstance(output, tuple) or len(output) == 0:
             return self.hook_out(output)
-        router_logits = self.hook_out(output[0])
-        return (router_logits,) + output[1:]
+        idx = self.logits_index % len(output)
+        router_logits = self.hook_out(output[idx])
+        return output[:idx] + (router_logits,) + output[idx + 1 :]

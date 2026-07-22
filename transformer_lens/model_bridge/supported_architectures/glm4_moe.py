@@ -73,8 +73,13 @@ class Glm4MoeArchitectureAdapter(ArchitectureAdapter):
                             "k": LinearBridge(name="k_proj"),
                             "v": LinearBridge(name="v_proj"),
                             "o": LinearBridge(name="o_proj"),
-                            "q_norm": RMSNormalizationBridge(name="q_norm", config=self.cfg),
-                            "k_norm": RMSNormalizationBridge(name="k_norm", config=self.cfg),
+                            # Present only when use_qk_norm=True (config default False).
+                            "q_norm": RMSNormalizationBridge(
+                                name="q_norm", config=self.cfg, optional=True
+                            ),
+                            "k_norm": RMSNormalizationBridge(
+                                name="k_norm", config=self.cfg, optional=True
+                            ),
                         },
                         requires_attention_mask=True,
                         requires_position_embeddings=True,

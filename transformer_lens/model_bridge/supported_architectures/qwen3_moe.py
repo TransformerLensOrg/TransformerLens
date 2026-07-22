@@ -8,6 +8,7 @@ from transformer_lens.model_bridge.generalized_components import (
     EmbeddingBridge,
     LinearBridge,
     MoEBridge,
+    MoERouterBridge,
     PositionEmbeddingsAttentionBridge,
     RMSNormalizationBridge,
     RotaryEmbeddingBridge,
@@ -86,13 +87,12 @@ class Qwen3MoeArchitectureAdapter(ArchitectureAdapter):
                     ),
                     # Qwen3MoeSparseMoeBlock stores experts as batched 3D tensors
                     # rather than a ModuleList. MoEBridge wraps the entire block and
-                    # delegates to HF's native forward. The gate (router) is mapped
-                    # as a submodule for hook access — same pattern as OLMoE.
+                    # delegates to HF's native forward — same pattern as OLMoE.
                     "mlp": MoEBridge(
                         name="mlp",
                         config=self.cfg,
                         submodules={
-                            "gate": LinearBridge(name="gate"),
+                            "gate": MoERouterBridge(name="gate"),
                         },
                     ),
                 },

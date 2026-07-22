@@ -43,6 +43,9 @@ class DeepSeekV3ArchitectureAdapter(ArchitectureAdapter):
         # HF defaults to SDPA which handles MLA correctly.
         # HF's eager attention crashes on MLA's asymmetric Q/K dimensions.
 
+        # MLA has no per-head q/k/v to fold into; skip LN folding.
+        self.supports_fold_ln = False
+
         self.weight_processing_conversions = {}
 
         self.component_mapping = {

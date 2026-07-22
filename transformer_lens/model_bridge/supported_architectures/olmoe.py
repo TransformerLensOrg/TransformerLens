@@ -12,6 +12,7 @@ from transformer_lens.model_bridge.generalized_components import (
     EmbeddingBridge,
     LinearBridge,
     MoEBridge,
+    MoERouterBridge,
     PositionEmbeddingsAttentionBridge,
     RMSNormalizationBridge,
     RotaryEmbeddingBridge,
@@ -101,13 +102,12 @@ class OlmoeArchitectureAdapter(ArchitectureAdapter):
                     # OLMoE uses batched expert parameters (gate_up_proj, down_proj
                     # as 3D tensors) rather than a ModuleList of individual experts.
                     # MoEBridge wraps the entire MLP module and delegates to HF's
-                    # native forward pass. The gate (router) is mapped as a submodule
-                    # for hook access.
+                    # native forward pass.
                     "mlp": MoEBridge(
                         name="mlp",
                         config=self.cfg,
                         submodules={
-                            "gate": LinearBridge(name="gate"),
+                            "gate": MoERouterBridge(name="gate"),
                         },
                     ),
                 },

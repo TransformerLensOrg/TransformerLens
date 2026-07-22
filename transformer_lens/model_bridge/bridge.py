@@ -841,6 +841,13 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             apply_fn_to_all_components,
         )
 
+        if not getattr(self.adapter, "supports_compatibility_mode", True):
+            raise RuntimeError(
+                f"{type(self.adapter).__name__} does not support compatibility mode: "
+                "its stored-processed-weights forward is known to diverge from the "
+                "reference model. Use the default bridge forward instead."
+            )
+
         self.compatibility_mode = True
 
         def set_compatibility_mode(component: Any) -> None:

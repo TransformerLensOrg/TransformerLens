@@ -16,9 +16,7 @@ from transformer_lens.factories.architecture_adapter_factory import (
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     MoEBridge,
-)
-from transformer_lens.model_bridge.generalized_components.base import (
-    GeneralizedComponent,
+    MoERouterBridge,
 )
 from transformer_lens.model_bridge.supported_architectures.jetmoe import (
     JetMoeArchitectureAdapter,
@@ -53,7 +51,8 @@ class TestJetMoeMapping:
     def test_moe_mlp_router_hookable(self, adapter):
         mlp = adapter.component_mapping["blocks"].submodules["mlp"]
         assert isinstance(mlp, MoEBridge)
-        assert type(mlp.submodules["gate"]) is GeneralizedComponent
+        assert isinstance(mlp.submodules["gate"], MoERouterBridge)
+        assert mlp.submodules["gate"].logits_index == -1
         assert mlp.submodules["gate"].name == "router"
 
     def test_no_fold_target(self, adapter):

@@ -99,11 +99,10 @@ class RecurrentGemmaArchitectureAdapter(ArchitectureAdapter):
         if logits_soft_cap is not None:
             self.cfg.output_logits_soft_cap = logits_soft_cap
 
-        # Expose the per-layer temporal-block pattern for analysis tools, using the
-        # canonical `layers_block_type` name as on Nemotron-H / Granite.
-        block_types = list(getattr(cfg, "block_types", None) or [])
-        setattr(self.cfg, "block_types", block_types)
-        setattr(self.cfg, "layers_block_type", block_types)
+        # Canonical per-layer pattern (as on Nemotron-H). Read the builder's
+        # expanded layers_block_type; the raw block_types pattern is not
+        # propagated and would clobber it with [] on real boots.
+        setattr(self.cfg, "layers_block_type", self._canonical_layer_types(cfg))
 
         self.component_mapping = {
             "embed": EmbeddingBridge(name="model.embed_tokens"),

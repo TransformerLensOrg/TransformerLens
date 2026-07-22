@@ -92,3 +92,12 @@ class TestOpenAIGPTRegistration:
 
         cfg = SimpleNamespace(model_type="openai-gpt", architectures=[])
         assert determine_architecture_from_hf_config(cfg) == "OpenAIGPTLMHeadModel"
+
+
+class TestOpenAIGPTPostNormResidMid:
+    """ln_2 sees the post-MLP sum, so hook_resid_mid must point at mlp.hook_in
+    (the true attn->MLP mid-point n = ln_1(x+a))."""
+
+    def test_hook_resid_mid_points_at_mlp_hook_in(self, adapter) -> None:
+        block = adapter.component_mapping["blocks"]
+        assert block.hook_aliases["hook_resid_mid"] == "mlp.hook_in"

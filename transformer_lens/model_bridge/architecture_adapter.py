@@ -52,6 +52,10 @@ class ArchitectureAdapter:
     # Whether this architecture supports text generation via generate().
     # Encoder-only models (e.g. BERT, HuBERT) should set this to False.
     supports_generation: bool = True
+
+    # Runtime gate for enable_compatibility_mode(): set False when the stored-
+    # processed-weights forward is known to diverge (e.g. VaultGemma).
+    supports_compatibility_mode: bool = True
     # Component paths (by suffix) whose isolated forward cannot run on the
     # component harness's synthesized probes — e.g. fused top-k routers whose
     # forward sorts/scatters. They stay hookable at runtime.

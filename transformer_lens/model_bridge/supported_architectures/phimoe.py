@@ -9,6 +9,7 @@ from transformer_lens.model_bridge.generalized_components import (
     EmbeddingBridge,
     LinearBridge,
     MoEBridge,
+    MoERouterBridge,
     NormalizationBridge,
     UnembeddingBridge,
 )
@@ -92,7 +93,7 @@ class PhiMoEArchitectureAdapter(ArchitectureAdapter):
                         name="mlp",
                         config=self.cfg,
                         submodules={
-                            "gate": LinearBridge(name="router"),
+                            "gate": MoERouterBridge(name="router"),
                         },
                     ),
                 },

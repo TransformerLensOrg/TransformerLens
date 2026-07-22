@@ -49,8 +49,9 @@ class Qwen2_5_VLArchitectureAdapter(ArchitectureAdapter):
 
         self._extract_vision_dims(cfg)
 
+        # Qwen2.5-VL's text decoder keeps Qwen2's hardcoded q/k/v biases.
         self.weight_processing_conversions = {
-            **self._qkvo_weight_conversions(),
+            **self._qkvo_weight_conversions(include_biases=True),
         }
 
         self.component_mapping = {

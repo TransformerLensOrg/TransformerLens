@@ -27,6 +27,21 @@ from transformer_lens.model_bridge.generalized_components.base import (
 )
 
 
+class _OlmoHybridBlockBridge(BlockBridge):
+    """BlockBridge without the hook_resid_mid alias.
+
+    No single target fits both layer types (ln2.hook_in is the mid-point on
+    linear-attention layers but the raw attn-branch output on full-attention
+    layers); dropped type-visibly, as on ParallelBlockBridge.
+    """
+
+    def __init__(self, *args: Any, **kwargs: Any):
+        super().__init__(*args, **kwargs)
+        if self.hook_aliases is BlockBridge.hook_aliases:
+            self.hook_aliases = dict(self.hook_aliases)
+        self.hook_aliases.pop("hook_resid_mid", None)
+
+
 class OlmoHybridArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for OlmoHybridForCausalLM models."""
 
@@ -48,7 +63,7 @@ class OlmoHybridArchitectureAdapter(ArchitectureAdapter):
 
         self.component_mapping = {
             "embed": EmbeddingBridge(name="model.embed_tokens"),
-            "blocks": BlockBridge(
+            "blocks": _OlmoHybridBlockBridge(
                 name="model.layers",
                 submodules={
                     # Linear-attention layers are pre-norm (input_layernorm);

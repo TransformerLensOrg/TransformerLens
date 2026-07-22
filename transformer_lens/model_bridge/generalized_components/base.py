@@ -16,17 +16,16 @@ from transformer_lens.hook_points import HookPoint
 
 
 class CloneOutputUnderGradMixin(nn.Module):
-    """Clone the forward output while grad is enabled.
+    """Clone the forward output so HF's in-place mutation cannot corrupt it.
 
-    For wrapped submodules whose output HF mutates in place (``out.add_``,
-    ``/=``): autograd forbids in-place writes to backward-hook views, so the
-    hooked tensor must never be the in-place target. Inference pays nothing.
+    Under grad, autograd forbids in-place writes to backward-hook views; under
+    no_grad, cached hook_out tensors alias the storage HF then rewrites.
     Mix in ahead of a bridge class: ``class X(CloneOutputUnderGradMixin, LinearBridge)``.
     """
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         out = super().forward(*args, **kwargs)
-        if isinstance(out, torch.Tensor) and torch.is_grad_enabled():
+        if isinstance(out, torch.Tensor):
             out = out.clone()
         return out
 

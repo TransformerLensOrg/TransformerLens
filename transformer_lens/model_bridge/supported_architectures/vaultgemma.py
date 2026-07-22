@@ -30,8 +30,10 @@ class VaultGemmaArchitectureAdapter(Gemma2ArchitectureAdapter):
     # logits shift 9.6 with zero state-dict changes; 19.56 with defaults) —
     # the pipeline's gemma path assumes the post-norm sandwich this variant
     # removed. P3 excluded until the compat path handles offset-RMS without
-    # post-norms; P1/P2/P4 verify clean.
+    # post-norms; P1/P2/P4 verify clean. Gated at runtime so
+    # enable_compatibility_mode() raises instead of silently diverging.
     applicable_phases: list[int] = [1, 2, 4]
+    supports_compatibility_mode: bool = False
 
     def __init__(self, cfg: Any) -> None:
         """Initialize the VaultGemma architecture adapter."""

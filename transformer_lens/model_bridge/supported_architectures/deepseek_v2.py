@@ -46,6 +46,9 @@ class DeepSeekV2ArchitectureAdapter(ArchitectureAdapter):
         self.cfg.final_rms = True
         self.cfg.uses_rms_norm = True
 
+        # MLA has no per-head q/k/v to fold into; skip LN folding.
+        self.supports_fold_ln = False
+
         self.weight_processing_conversions = {}
 
         self.component_mapping = {
@@ -83,12 +86,9 @@ class DeepSeekV2ArchitectureAdapter(ArchitectureAdapter):
                             "o": LinearBridge(name="o_proj"),
                         },
                     ),
-                    # On dense layers (idx < first_k_dense_replace), shared_experts
-                    # are absent — marked optional so setup gracefully skips them when
-                    # the layer is DeepseekV2MLP instead of MoE.
-                    # Note: the gate module is NOT bridged — DeepseekV2Moe.forward()
-                    # calls nn.functional.linear(..., self.gate.weight) directly,
-                    # bypassing forward(), so no hook can be attached to it.
+                    # On dense layers (idx < first_k_dense_replace), gate and
+                    # shared_experts are absent — marked optional so setup gracefully
+                    # skips them when the layer is DeepseekV2MLP instead of MoE.
                     "mlp": self._build_mlp_bridge(),
                 },
             ),
@@ -102,6 +102,8 @@ class DeepSeekV2ArchitectureAdapter(ArchitectureAdapter):
             name="mlp",
             config=self.cfg,
             submodules={
+                # Router is a custom Module, not nn.Linear.
+                "gate": GeneralizedComponent(name="gate", optional=True),
                 "shared_experts": self._gated_mlp(name="shared_experts", optional=True),
             },
         )

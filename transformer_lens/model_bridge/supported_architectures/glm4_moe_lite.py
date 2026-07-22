@@ -48,6 +48,9 @@ class Glm4MoeLiteArchitectureAdapter(ArchitectureAdapter):
         # Verified against zai-org/GLM-4.7-Flash: tokenizer has no BOS token.
         self.cfg.default_prepend_bos = False
 
+        # MLA has no per-head q/k/v to fold into; skip LN folding.
+        self.supports_fold_ln = False
+
         # MLA weights keep their HF layout; no QKVO rearrangements apply.
         self.weight_processing_conversions = {}
 

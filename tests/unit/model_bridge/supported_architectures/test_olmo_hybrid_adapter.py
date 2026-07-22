@@ -63,3 +63,12 @@ class TestOlmoHybridRegistration:
 
         cfg = SimpleNamespace(model_type="olmo_hybrid", architectures=[])
         assert determine_architecture_from_hf_config(cfg) == "OlmoHybridForCausalLM"
+
+
+class TestOlmoHybridResidMidDropped:
+    """No single hook_resid_mid target is correct for both layer types, so the
+    block drops the alias type-visibly (ParallelBlockBridge precedent)."""
+
+    def test_hook_resid_mid_alias_absent(self, adapter) -> None:
+        block = adapter.component_mapping["blocks"]
+        assert "hook_resid_mid" not in block.hook_aliases

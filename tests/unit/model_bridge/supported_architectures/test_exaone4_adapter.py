@@ -86,3 +86,41 @@ class TestExaone4Registration:
 
         cfg = SimpleNamespace(model_type="exaone4", architectures=[])
         assert determine_architecture_from_hf_config(cfg) == "Exaone4ForCausalLM"
+
+
+class TestExaone4PostNormResidMid:
+    """Post-norm layout: ln2.hook_in is the MLP-branch output, so the adapter
+    must override hook_resid_mid to mlp.hook_in (olmo2 precedent)."""
+
+    def test_hook_resid_mid_points_at_mlp_hook_in(self, adapter) -> None:
+        block = adapter.component_mapping["blocks"]
+        assert block.hook_aliases["hook_resid_mid"] == "mlp.hook_in"
+
+
+class TestExaone4NoPEGating:
+    """Hybrid checkpoints skip RoPE on full-attention layers."""
+
+    @staticmethod
+    def _stub_attn(sliding_window, is_sliding):
+        import torch.nn as nn
+
+        stub = nn.Module()
+        stub.sliding_window = sliding_window
+        stub.is_sliding = is_sliding
+        # The bridge validates declared q_norm/k_norm submodules and reads
+        # head_dim at attach time.
+        stub.q_norm = nn.Identity()
+        stub.k_norm = nn.Identity()
+        stub.head_dim = 16
+        return stub
+
+    def test_attention_bridge_gates_nope(self, adapter) -> None:
+        attn = adapter.component_mapping["blocks"].submodules["attn"]
+        # Hybrid full-attention layer: NoPE.
+        attn.set_original_component(self._stub_attn(4096, False))
+        assert attn._is_nope_layer() is True
+        # Hybrid sliding layer and non-hybrid checkpoints: RoPE.
+        attn.set_original_component(self._stub_attn(4096, True))
+        assert attn._is_nope_layer() is False
+        attn.set_original_component(self._stub_attn(None, False))
+        assert attn._is_nope_layer() is False

@@ -13,8 +13,8 @@ from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     BlockBridge,
     EmbeddingBridge,
-    LinearBridge,
     MoEBridge,
+    MoERouterBridge,
     NormalizationBridge,
     UnembeddingBridge,
 )
@@ -111,5 +111,5 @@ class TestPhiMoEComponentMapping:
         assert isinstance(subs["ln2"], NormalizationBridge)
         assert isinstance(subs["attn"], AttentionBridge)
         assert isinstance(subs["mlp"], MoEBridge)
-        assert isinstance(subs["mlp"].submodules["gate"], LinearBridge)
+        assert isinstance(subs["mlp"].submodules["gate"], MoERouterBridge)
         assert subs["mlp"].submodules["gate"].name == "router"
