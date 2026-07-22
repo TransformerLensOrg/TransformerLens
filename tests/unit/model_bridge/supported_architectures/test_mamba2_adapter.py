@@ -289,17 +289,13 @@ class TestMamba2ArchitectureGuards:
         self, adapter: Mamba2ArchitectureAdapter
     ) -> None:
         """Mamba2 uses SSMBlockBridge, not the transformer BlockBridge."""
-        from transformer_lens.model_bridge.generalized_components import BlockBridge
-
         blocks = _mapping(adapter)["blocks"]
         assert isinstance(blocks, SSMBlockBridge)
-        assert not type(blocks).__name__ == "BlockBridge"
+        assert type(blocks) is SSMBlockBridge
 
     def test_mixer_uses_ssm2_not_ssm1(self, adapter: Mamba2ArchitectureAdapter) -> None:
         """Mamba2 uses SSM2MixerBridge, not SSMMixerBridge."""
-        from transformer_lens.model_bridge.generalized_components import SSMMixerBridge
-
         blocks = _mapping(adapter)["blocks"]
         mixer = blocks.submodules["mixer"]
         assert isinstance(mixer, SSM2MixerBridge)
-        assert type(mixer).__name__ != "SSMMixerBridge"
+        assert type(mixer) is SSM2MixerBridge

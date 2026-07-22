@@ -245,8 +245,6 @@ class TestMambaArchitectureGuards:
         self, adapter: MambaArchitectureAdapter
     ) -> None:
         """Mamba uses SSMBlockBridge, not the transformer BlockBridge."""
-        from transformer_lens.model_bridge.generalized_components import BlockBridge
-
         blocks = _mapping(adapter)["blocks"]
         assert isinstance(blocks, SSMBlockBridge)
-        assert not type(blocks).__name__ == "BlockBridge"
+        assert type(blocks) is SSMBlockBridge
