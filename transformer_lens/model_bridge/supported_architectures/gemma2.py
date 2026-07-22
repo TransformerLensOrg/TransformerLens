@@ -97,16 +97,7 @@ class Gemma2ArchitectureAdapter(ArchitectureAdapter):
                 config=self.cfg,
                 submodules={
                     # Gemma 2 uses RMSNorm for all normalization layers
-                    "ln1": RMSNormalizationBridge(name="input_layernorm", config=self.cfg),
-                    "ln1_post": RMSNormalizationBridge(
-                        name="post_attention_layernorm", config=self.cfg
-                    ),
-                    "ln2": RMSNormalizationBridge(
-                        name="pre_feedforward_layernorm", config=self.cfg
-                    ),
-                    "ln2_post": RMSNormalizationBridge(
-                        name="post_feedforward_layernorm", config=self.cfg
-                    ),
+                    **self._block_norms(),
                     # Gemma 2 uses PositionEmbeddingsAttentionBridge like Gemma 3
                     "attn": PositionEmbeddingsAttentionBridge(
                         name="self_attn",
@@ -125,4 +116,13 @@ class Gemma2ArchitectureAdapter(ArchitectureAdapter):
             ),
             "ln_final": RMSNormalizationBridge(name="model.norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head", config=self.cfg),
+        }
+
+    def _block_norms(self):
+        """Norm-layout seam; VaultGemma drops the two post-norms."""
+        return {
+            "ln1": RMSNormalizationBridge(name="input_layernorm", config=self.cfg),
+            "ln1_post": RMSNormalizationBridge(name="post_attention_layernorm", config=self.cfg),
+            "ln2": RMSNormalizationBridge(name="pre_feedforward_layernorm", config=self.cfg),
+            "ln2_post": RMSNormalizationBridge(name="post_feedforward_layernorm", config=self.cfg),
         }

@@ -14,7 +14,6 @@ from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
     LinearBridge,
-    MLPBridge,
     NormalizationBridge,
     PositionEmbeddingsAttentionBridge,
     RotaryEmbeddingBridge,
@@ -76,13 +75,7 @@ class NemotronArchitectureAdapter(ArchitectureAdapter):
                         config=self.cfg,
                         use_native_layernorm_autograd=True,
                     ),
-                    "mlp": MLPBridge(
-                        name="mlp",
-                        submodules={
-                            "in": LinearBridge(name="up_proj"),
-                            "out": LinearBridge(name="down_proj"),
-                        },
-                    ),
+                    "mlp": self._ungated_mlp(),
                 },
             ),
             "ln_final": NormalizationBridge(

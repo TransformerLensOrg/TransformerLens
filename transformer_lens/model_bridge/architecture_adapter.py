@@ -21,6 +21,7 @@ from transformer_lens.model_bridge.generalized_components.gated_mlp import (
     GatedMLPBridge,
 )
 from transformer_lens.model_bridge.generalized_components.linear import LinearBridge
+from transformer_lens.model_bridge.generalized_components.mlp import MLPBridge
 from transformer_lens.model_bridge.types import (
     ComponentMapping,
     RemoteComponent,
@@ -146,6 +147,32 @@ class ArchitectureAdapter:
         a parent's mapping without per-file None narrowing."""
         assert self.component_mapping is not None, "component_mapping has not been built"
         return self.component_mapping
+
+    def _ungated_mlp(
+        self,
+        name: str = "mlp",
+        *,
+        up: str = "up_proj",
+        down: str = "down_proj",
+        optional: bool = False,
+    ) -> MLPBridge:
+        """MLPBridge with the standard in/out LinearBridge submodules.
+
+        Args:
+            name: Container module name.
+            up: HF name of the input projection (mapped to "in").
+            down: HF name of the output projection (mapped to "out").
+            optional: Whether the container may be absent.
+        """
+        return MLPBridge(
+            name=name,
+            config=self.cfg,
+            submodules={
+                "in": LinearBridge(name=up),
+                "out": LinearBridge(name=down),
+            },
+            optional=optional,
+        )
 
     def _canonical_layer_types(self, cfg: Any) -> list[str]:
         """Per-layer mixer-type list, normalized to canonical TL names.

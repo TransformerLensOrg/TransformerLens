@@ -6,6 +6,7 @@ from typing import Any
 import pytest
 import torch
 
+from tests.unit.model_bridge.supported_architectures.helpers import make_bridge_cfg
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion
 from transformer_lens.conversion_utils.param_processing_conversion import (
@@ -294,7 +295,8 @@ def test_unsupported_dense_variants_fail_clearly(
 
 
 def test_existing_causal_attention_default_remains_triangular() -> None:
-    config = TransformerBridgeConfig(
+    config = make_bridge_cfg(
+        "TransformerLensNative",
         d_model=16,
         d_head=4,
         n_heads=4,
@@ -306,7 +308,6 @@ def test_existing_causal_attention_default_remains_triangular() -> None:
         normalization_type="RMS",
         final_rms=True,
         gated_mlp=True,
-        architecture="TransformerLensNative",
         attention_dir="causal",
         default_prepend_bos=False,
         seed=0,

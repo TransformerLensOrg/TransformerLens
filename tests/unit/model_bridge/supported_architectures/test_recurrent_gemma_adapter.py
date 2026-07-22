@@ -13,6 +13,7 @@ LFM2. These tests pin the architecture-specific quirks:
 
 import pytest
 
+from tests.unit.model_bridge.supported_architectures.helpers import make_bridge_cfg
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.model_bridge.generalized_components import (
     EmbeddingBridge,
@@ -27,7 +28,8 @@ from transformer_lens.model_bridge.supported_architectures.recurrent_gemma impor
 
 @pytest.fixture(scope="class")
 def cfg() -> TransformerBridgeConfig:
-    bridge_cfg = TransformerBridgeConfig(
+    bridge_cfg = make_bridge_cfg(
+        "RecurrentGemmaForCausalLM",
         d_model=64,
         d_head=16,
         n_layers=6,
@@ -36,7 +38,7 @@ def cfg() -> TransformerBridgeConfig:
         n_key_value_heads=1,
         d_vocab=256,
         d_mlp=128,
-        architecture="RecurrentGemmaForCausalLM",
+        default_prepend_bos=True,
     )
     # Mirror the real pipeline: the builder passes through HF's expanded
     # layers_block_type property, not the raw block_types pattern.

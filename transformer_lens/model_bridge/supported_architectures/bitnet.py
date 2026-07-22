@@ -13,15 +13,11 @@ from typing import Any
 
 import torch
 
-from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
-    BlockBridge,
-    EmbeddingBridge,
-    LinearBridge,
     PositionEmbeddingsAttentionBridge,
-    RMSNormalizationBridge,
-    RotaryEmbeddingBridge,
-    UnembeddingBridge,
+)
+from transformer_lens.model_bridge.supported_architectures.llama import (
+    LlamaArchitectureAdapter,
 )
 
 
@@ -40,9 +36,10 @@ class _BitNetAttentionBridge(PositionEmbeddingsAttentionBridge):
         return attn_output
 
 
-class BitNetArchitectureAdapter(ArchitectureAdapter):
+class BitNetArchitectureAdapter(LlamaArchitectureAdapter):
     """Architecture adapter for BitNetForCausalLM models."""
 
+    _attention_bridge_cls = _BitNetAttentionBridge
     _testing_eager = "config"
 
     # Sub-layer norms are incompatible with HT-style processed-weight
@@ -53,39 +50,7 @@ class BitNetArchitectureAdapter(ArchitectureAdapter):
         """Initialize the BitNet architecture adapter."""
         super().__init__(cfg)
 
-        self._set_rms_rotary_defaults()
-
         # Sub-layer norms sit between activations and output projections;
         # standard LN folding and W_O centering do not model them.
         self.supports_fold_ln = False
         self.supports_center_writing_weights = False
-        self.weight_processing_conversions = {
-            **self._qkvo_weight_conversions(),
-        }
-
-        self.component_mapping = {
-            "embed": EmbeddingBridge(name="model.embed_tokens"),
-            "rotary_emb": RotaryEmbeddingBridge(name="model.rotary_emb", config=self.cfg),
-            "blocks": BlockBridge(
-                name="model.layers",
-                submodules={
-                    "ln1": RMSNormalizationBridge(name="input_layernorm", config=self.cfg),
-                    "ln2": RMSNormalizationBridge(name="post_attention_layernorm", config=self.cfg),
-                    "attn": _BitNetAttentionBridge(
-                        name="self_attn",
-                        config=self.cfg,
-                        submodules={
-                            "q": LinearBridge(name="q_proj"),
-                            "k": LinearBridge(name="k_proj"),
-                            "v": LinearBridge(name="v_proj"),
-                            "o": LinearBridge(name="o_proj"),
-                        },
-                        requires_attention_mask=True,
-                        requires_position_embeddings=True,
-                    ),
-                    "mlp": self._gated_mlp(),
-                },
-            ),
-            "ln_final": RMSNormalizationBridge(name="model.norm", config=self.cfg),
-            "unembed": UnembeddingBridge(name="lm_head", config=self.cfg),
-        }

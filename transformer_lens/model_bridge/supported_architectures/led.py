@@ -18,10 +18,7 @@ from typing import Any
 
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
-    BlockBridge,
     LinearBridge,
-    NormalizationBridge,
-    SymbolicBridge,
 )
 from transformer_lens.model_bridge.generalized_components.base import (
     CloneOutputUnderGradMixin,
@@ -45,45 +42,21 @@ class LEDArchitectureAdapter(BartArchitectureAdapter):
 
         self._reprefix_components("model.", "led.")
 
-        self.components["encoder_blocks"] = BlockBridge(
-            name="led.encoder.layers",
-            hook_alias_overrides={
-                "hook_mlp_in": "mlp.in.hook_in",
-                "hook_mlp_out": "mlp.out.hook_out",
-            },
+    def _encoder_attention(self) -> AttentionBridge:
+        """Sliding-window + global attention; window chunking and the global
+        projections have no generic reconstruction, so the module delegates."""
+        return AttentionBridge(
+            name="self_attn",
+            config=self.cfg,
             submodules={
-                # Sliding-window + global attention; window chunking and the
-                # global projections have no generic reconstruction.
-                "attn": AttentionBridge(
-                    name="self_attn",
-                    config=self.cfg,
-                    submodules={
-                        "q": _LEDEncoderQueryBridge(name="longformer_self_attn.query"),
-                        "k": LinearBridge(name="longformer_self_attn.key"),
-                        "v": LinearBridge(name="longformer_self_attn.value"),
-                        # Global-attention projections, used at global positions.
-                        "q_global": LinearBridge(name="longformer_self_attn.query_global"),
-                        "k_global": LinearBridge(name="longformer_self_attn.key_global"),
-                        "v_global": LinearBridge(name="longformer_self_attn.value_global"),
-                        "o": LinearBridge(name="output"),
-                    },
-                    maintain_native_attention=True,
-                ),
-                "ln1": NormalizationBridge(
-                    name="self_attn_layer_norm",
-                    config=self.cfg,
-                    use_native_layernorm_autograd=True,
-                ),
-                "ln2": NormalizationBridge(
-                    name="final_layer_norm",
-                    config=self.cfg,
-                    use_native_layernorm_autograd=True,
-                ),
-                "mlp": SymbolicBridge(
-                    submodules={
-                        "in": LinearBridge(name="fc1"),
-                        "out": LinearBridge(name="fc2"),
-                    },
-                ),
+                "q": _LEDEncoderQueryBridge(name="longformer_self_attn.query"),
+                "k": LinearBridge(name="longformer_self_attn.key"),
+                "v": LinearBridge(name="longformer_self_attn.value"),
+                # Global-attention projections, used at global positions.
+                "q_global": LinearBridge(name="longformer_self_attn.query_global"),
+                "k_global": LinearBridge(name="longformer_self_attn.key_global"),
+                "v_global": LinearBridge(name="longformer_self_attn.value_global"),
+                "o": LinearBridge(name="output"),
             },
+            maintain_native_attention=True,
         )

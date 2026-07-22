@@ -22,9 +22,7 @@ import torch
 
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
-    BlockBridge,
     LinearBridge,
-    RMSNormalizationBridge,
 )
 from transformer_lens.model_bridge.supported_architectures.qwen2 import (
     Qwen2ArchitectureAdapter,
@@ -63,31 +61,19 @@ class DreamArchitectureAdapter(Qwen2ArchitectureAdapter):
     applicable_phases: list[int] = [1, 2, 3]
     supports_generation: bool = False
 
-    def __init__(self, cfg: Any) -> None:
-        """Initialize the Dream architecture adapter."""
-        super().__init__(cfg)
-
-        self.components["blocks"] = BlockBridge(
-            name="model.layers",
+    def _build_attention_bridge(self):
+        """Bidirectional diffusion attention; the bridge reimplementation
+        assumes causal masking, so delegate to HF."""
+        return AttentionBridge(
+            name="self_attn",
             config=self.cfg,
             submodules={
-                "ln1": RMSNormalizationBridge(name="input_layernorm", config=self.cfg),
-                "ln2": RMSNormalizationBridge(name="post_attention_layernorm", config=self.cfg),
-                # Bidirectional diffusion attention; the bridge reimplementation
-                # assumes causal masking, so delegate to HF.
-                "attn": AttentionBridge(
-                    name="self_attn",
-                    config=self.cfg,
-                    submodules={
-                        "q": LinearBridge(name="q_proj"),
-                        "k": LinearBridge(name="k_proj"),
-                        "v": LinearBridge(name="v_proj"),
-                        "o": LinearBridge(name="o_proj"),
-                    },
-                    maintain_native_attention=True,
-                ),
-                "mlp": self._gated_mlp(),
+                "q": LinearBridge(name="q_proj"),
+                "k": LinearBridge(name="k_proj"),
+                "v": LinearBridge(name="v_proj"),
+                "o": LinearBridge(name="o_proj"),
             },
+            maintain_native_attention=True,
         )
 
     def prepare_loading(self, model_name: str, model_kwargs: dict) -> None:

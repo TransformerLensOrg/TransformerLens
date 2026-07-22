@@ -2,7 +2,7 @@
 
 import pytest
 
-from transformer_lens.config import TransformerBridgeConfig
+from tests.unit.model_bridge.supported_architectures.helpers import make_bridge_cfg
 from transformer_lens.model_bridge.generalized_components import (
     EmbeddingBridge,
     MoEBridge,
@@ -22,7 +22,8 @@ from transformer_lens.model_bridge.supported_architectures.deepseek_v4 import (
 
 @pytest.fixture
 def adapter() -> DeepSeekV4ArchitectureAdapter:
-    cfg = TransformerBridgeConfig(
+    cfg = make_bridge_cfg(
+        "DeepseekV4ForCausalLM",
         d_model=32,
         d_head=8,
         n_heads=4,
@@ -31,7 +32,7 @@ def adapter() -> DeepSeekV4ArchitectureAdapter:
         d_vocab=64,
         d_mlp=16,
         n_key_value_heads=1,
-        architecture="DeepseekV4ForCausalLM",
+        default_prepend_bos=True,
     )
     return DeepSeekV4ArchitectureAdapter(cfg)
 

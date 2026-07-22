@@ -21,7 +21,6 @@ from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
     LinearBridge,
-    MLPBridge,
     NormalizationBridge,
     RotaryEmbeddingBridge,
     UnembeddingBridge,
@@ -88,14 +87,7 @@ class ModernBertDecoderArchitectureAdapter(ArchitectureAdapter):
                         config=self.cfg,
                         use_native_layernorm_autograd=True,
                     ),
-                    "mlp": MLPBridge(
-                        name="mlp",
-                        config=self.cfg,
-                        submodules={
-                            "in": LinearBridge(name="Wi"),
-                            "out": LinearBridge(name="Wo"),
-                        },
-                    ),
+                    "mlp": self._ungated_mlp(up="Wi", down="Wo"),
                 },
             ),
             "ln_final": NormalizationBridge(

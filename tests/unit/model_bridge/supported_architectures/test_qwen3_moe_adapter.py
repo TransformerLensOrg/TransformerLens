@@ -2,6 +2,7 @@
 
 import pytest
 
+from tests.unit.model_bridge.supported_architectures.helpers import make_bridge_cfg
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.conversion_utils.conversion_steps.rearrange_tensor_conversion import (
     RearrangeTensorConversion,
@@ -28,7 +29,8 @@ from transformer_lens.model_bridge.supported_architectures.qwen3_moe import (
 
 @pytest.fixture(scope="class")
 def cfg() -> TransformerBridgeConfig:
-    return TransformerBridgeConfig(
+    return make_bridge_cfg(
+        "Qwen3MoeForCausalLM",
         d_model=64,
         d_head=16,
         n_layers=2,
@@ -36,7 +38,7 @@ def cfg() -> TransformerBridgeConfig:
         n_heads=4,
         n_key_value_heads=2,
         d_vocab=256,
-        architecture="Qwen3MoeForCausalLM",
+        default_prepend_bos=True,
     )
 
 
@@ -188,14 +190,15 @@ class TestQwen3MoeGQA:
 
     def test_no_gqa_fallback_to_n_heads(self) -> None:
         """Without n_key_value_heads, K/V fall back to n_heads."""
-        cfg = TransformerBridgeConfig(
+        cfg = make_bridge_cfg(
+            "Qwen3MoeForCausalLM",
             d_model=64,
             d_head=16,
             n_layers=2,
             n_ctx=128,
             n_heads=4,
             d_vocab=256,
-            architecture="Qwen3MoeForCausalLM",
+            default_prepend_bos=True,
         )
         adapter = Qwen3MoeArchitectureAdapter(cfg)
         for slot in ("k", "v"):

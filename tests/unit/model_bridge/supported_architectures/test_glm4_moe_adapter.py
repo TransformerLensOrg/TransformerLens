@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from tests.unit.model_bridge.supported_architectures.helpers import make_bridge_cfg
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion
 from transformer_lens.conversion_utils.conversion_steps.rearrange_tensor_conversion import (
@@ -77,7 +78,8 @@ class DummyBridgeModel:
 
 @pytest.fixture(scope="class")
 def cfg() -> TransformerBridgeConfig:
-    return TransformerBridgeConfig(
+    return make_bridge_cfg(
+        "Glm4MoeForCausalLM",
         d_model=64,
         d_head=16,
         n_layers=2,
@@ -85,7 +87,7 @@ def cfg() -> TransformerBridgeConfig:
         n_heads=4,
         n_key_value_heads=2,
         d_vocab=256,
-        architecture="Glm4MoeForCausalLM",
+        default_prepend_bos=True,
     )
 
 
@@ -140,14 +142,15 @@ class TestGlm4MoeWeightConversions:
 
     def test_qkv_rearrange_with_no_kv_heads_falls_back_to_n_heads(self) -> None:
         minimal = Glm4MoeArchitectureAdapter(
-            TransformerBridgeConfig(
+            make_bridge_cfg(
+                "Glm4MoeForCausalLM",
                 d_model=64,
                 d_head=16,
                 n_layers=2,
                 n_ctx=128,
                 n_heads=4,
                 d_vocab=256,
-                architecture="Glm4MoeForCausalLM",
+                default_prepend_bos=True,
             )
         )
         assert _rearrange(minimal, "blocks.{i}.attn.k.weight").axes_lengths["n"] == 4

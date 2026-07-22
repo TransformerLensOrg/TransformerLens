@@ -15,7 +15,6 @@ from transformer_lens.model_bridge.generalized_components import (
     EmbeddingBridge,
     JointQKVAttentionBridge,
     LinearBridge,
-    MLPBridge,
     NormalizationBridge,
     PosEmbedBridge,
     UnembeddingBridge,
@@ -69,13 +68,7 @@ class OpenAIGPTArchitectureAdapter(ArchitectureAdapter):
                     ),
                     # Post-norm: ln_1 follows attention, ln_2 follows the MLP.
                     "ln1": NormalizationBridge(name="ln_1", config=self.cfg),
-                    "mlp": MLPBridge(
-                        name="mlp",
-                        submodules={
-                            "in": LinearBridge(name="c_fc"),
-                            "out": LinearBridge(name="c_proj"),
-                        },
-                    ),
+                    "mlp": self._ungated_mlp(up="c_fc", down="c_proj"),
                     "ln2": NormalizationBridge(name="ln_2", config=self.cfg),
                 },
                 # Post-norm: ln2.hook_in is the post-MLP sum n+m; the true

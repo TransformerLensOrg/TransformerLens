@@ -19,7 +19,6 @@ from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
     LinearBridge,
-    MLPBridge,
     RMSNormalizationBridge,
     RotaryEmbeddingBridge,
     UnembeddingBridge,
@@ -76,14 +75,7 @@ class NanoChatArchitectureAdapter(ArchitectureAdapter):
                         },
                         maintain_native_attention=True,
                     ),
-                    "mlp": MLPBridge(
-                        name="mlp",
-                        config=self.cfg,
-                        submodules={
-                            "in": LinearBridge(name="fc1"),
-                            "out": LinearBridge(name="fc2"),
-                        },
-                    ),
+                    "mlp": self._ungated_mlp(up="fc1", down="fc2"),
                 },
             ),
             "ln_final": RMSNormalizationBridge(name="model.norm", config=self.cfg),

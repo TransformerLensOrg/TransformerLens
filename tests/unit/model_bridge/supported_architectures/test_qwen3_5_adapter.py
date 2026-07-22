@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.factories.architecture_adapter_factory import (
     SUPPORTED_ARCHITECTURES,
 )

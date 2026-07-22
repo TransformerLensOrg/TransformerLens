@@ -12,7 +12,6 @@ from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
     LinearBridge,
-    MLPBridge,
     NormalizationBridge,
     PositionEmbeddingsAttentionBridge,
     RotaryEmbeddingBridge,
@@ -61,13 +60,7 @@ class Starcoder2ArchitectureAdapter(ArchitectureAdapter):
                         requires_position_embeddings=True,
                     ),
                     "ln2": NormalizationBridge(name="post_attention_layernorm", config=self.cfg),
-                    "mlp": MLPBridge(
-                        name="mlp",
-                        submodules={
-                            "in": LinearBridge(name="c_fc"),
-                            "out": LinearBridge(name="c_proj"),
-                        },
-                    ),
+                    "mlp": self._ungated_mlp(up="c_fc", down="c_proj"),
                 },
             ),
             "ln_final": NormalizationBridge(name="model.norm", config=self.cfg),

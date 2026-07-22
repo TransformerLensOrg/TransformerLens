@@ -108,6 +108,10 @@ class BartFamilyArchitectureAdapter(ArchitectureAdapter):
             is_cross_attention=is_cross_attention,
         )
 
+    def _encoder_attention(self) -> AttentionBridge:
+        """Encoder self-attention seam; LED swaps in its Longformer variant."""
+        return self._attention("self_attn")
+
     def _mlp(self) -> SymbolicBridge:
         return SymbolicBridge(
             submodules={
@@ -124,7 +128,7 @@ class BartFamilyArchitectureAdapter(ArchitectureAdapter):
                 "hook_mlp_out": "mlp.out.hook_out",
             },
             submodules={
-                "attn": self._attention("self_attn"),
+                "attn": self._encoder_attention(),
                 "ln1": self._norm("self_attn_layer_norm"),
                 "ln2": self._norm("final_layer_norm"),
                 "mlp": self._mlp(),

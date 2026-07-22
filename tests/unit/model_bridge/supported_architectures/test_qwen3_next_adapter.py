@@ -7,6 +7,8 @@ transformer_lens.loading_from_pretrained, so no convert_hf_model_config tests he
 
 import pytest
 
+from transformer_lens.config import TransformerBridgeConfig
+
 
 def _make_bridge_cfg(**overrides):
     """Minimal TransformerBridgeConfig for Qwen3Next adapter tests."""

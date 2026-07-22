@@ -1,5 +1,6 @@
 """Unit tests for the GLM-MoE-DSA architecture adapter."""
 
+from tests.unit.model_bridge.supported_architectures.helpers import make_bridge_cfg
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.factories.architecture_adapter_factory import (
     SUPPORTED_ARCHITECTURES,
@@ -22,14 +23,15 @@ from transformer_lens.tools.model_registry import (
 
 
 def make_cfg() -> TransformerBridgeConfig:
-    return TransformerBridgeConfig(
+    return make_bridge_cfg(
+        "GlmMoeDsaForCausalLM",
         d_model=64,
         d_head=16,
         n_layers=3,
         n_ctx=32,
         n_heads=4,
         d_vocab=128,
-        architecture="GlmMoeDsaForCausalLM",
+        default_prepend_bos=True,
     )
 
 

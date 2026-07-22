@@ -11,12 +11,7 @@ ln1_post/ln2_post.
 
 from typing import Any
 
-from transformer_lens.model_bridge.generalized_components import (
-    BlockBridge,
-    LinearBridge,
-    PositionEmbeddingsAttentionBridge,
-    RMSNormalizationBridge,
-)
+from transformer_lens.model_bridge.generalized_components import RMSNormalizationBridge
 from transformer_lens.model_bridge.supported_architectures.gemma2 import (
     Gemma2ArchitectureAdapter,
 )
@@ -45,26 +40,9 @@ class VaultGemmaArchitectureAdapter(Gemma2ArchitectureAdapter):
             for dead in ("blocks.{i}.ln1_post.weight", "blocks.{i}.ln2_post.weight"):
                 self.weight_processing_conversions.pop(dead, None)
 
-        # Gemma 2 minus the post-norms: only input_layernorm and
-        # pre_feedforward_layernorm exist.
-        self.components["blocks"] = BlockBridge(
-            name="model.layers",
-            config=self.cfg,
-            submodules={
-                "ln1": RMSNormalizationBridge(name="input_layernorm", config=self.cfg),
-                "ln2": RMSNormalizationBridge(name="pre_feedforward_layernorm", config=self.cfg),
-                "attn": PositionEmbeddingsAttentionBridge(
-                    name="self_attn",
-                    config=self.cfg,
-                    submodules={
-                        "q": LinearBridge(name="q_proj"),
-                        "k": LinearBridge(name="k_proj"),
-                        "v": LinearBridge(name="v_proj"),
-                        "o": LinearBridge(name="o_proj"),
-                    },
-                    requires_attention_mask=True,
-                    requires_position_embeddings=True,
-                ),
-                "mlp": self._gated_mlp(),
-            },
-        )
+    def _block_norms(self):
+        """Gemma 2 minus the post-norms: only input and pre-feedforward norms."""
+        return {
+            "ln1": RMSNormalizationBridge(name="input_layernorm", config=self.cfg),
+            "ln2": RMSNormalizationBridge(name="pre_feedforward_layernorm", config=self.cfg),
+        }

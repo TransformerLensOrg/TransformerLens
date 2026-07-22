@@ -23,7 +23,6 @@ from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
     LinearBridge,
-    MLPBridge,
     RMSNormalizationBridge,
     UnembeddingBridge,
 )
@@ -78,14 +77,7 @@ class GiddArchitectureAdapter(ArchitectureAdapter):
                         },
                         maintain_native_attention=True,
                     ),
-                    "mlp": MLPBridge(
-                        name="mlp",
-                        config=self.cfg,
-                        submodules={
-                            "in": LinearBridge(name="up_proj"),
-                            "out": LinearBridge(name="down_proj"),
-                        },
-                    ),
+                    "mlp": self._ungated_mlp(),
                 },
             ),
             "ln_final": RMSNormalizationBridge(name="model.norm", config=self.cfg),

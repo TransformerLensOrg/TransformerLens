@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from tests.unit.model_bridge.supported_architectures.helpers import make_bridge_cfg
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.factories.architecture_adapter_factory import (
     SUPPORTED_ARCHITECTURES,
@@ -24,7 +25,8 @@ from transformer_lens.model_bridge.supported_architectures.exaone4 import (
 
 
 def _make_cfg() -> TransformerBridgeConfig:
-    cfg = TransformerBridgeConfig(
+    cfg = make_bridge_cfg(
+        "Exaone4ForCausalLM",
         d_model=64,
         d_head=16,
         n_layers=2,
@@ -33,7 +35,7 @@ def _make_cfg() -> TransformerBridgeConfig:
         d_mlp=128,
         d_vocab=512,
         n_key_value_heads=2,
-        architecture="Exaone4ForCausalLM",
+        default_prepend_bos=True,
     )
     cfg.layer_types = ["sliding_attention", "full_attention"]
     return cfg

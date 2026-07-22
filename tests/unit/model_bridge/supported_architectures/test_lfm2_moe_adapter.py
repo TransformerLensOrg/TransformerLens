@@ -2,6 +2,7 @@
 
 import pytest
 
+from tests.unit.model_bridge.supported_architectures.helpers import make_bridge_cfg
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.model_bridge.generalized_components import (
     EmbeddingBridge,
@@ -16,7 +17,8 @@ from transformer_lens.model_bridge.supported_architectures.lfm2_moe import (
 
 @pytest.fixture(scope="class")
 def cfg() -> TransformerBridgeConfig:
-    bridge_cfg = TransformerBridgeConfig(
+    bridge_cfg = make_bridge_cfg(
+        "Lfm2MoeForCausalLM",
         d_model=64,
         d_head=16,
         n_layers=4,
@@ -25,7 +27,7 @@ def cfg() -> TransformerBridgeConfig:
         n_key_value_heads=2,
         d_vocab=256,
         d_mlp=224,
-        architecture="Lfm2MoeForCausalLM",
+        default_prepend_bos=True,
     )
     bridge_cfg.layer_types = ["conv", "conv", "full_attention", "conv"]
     bridge_cfg.moe_intermediate_size = 56

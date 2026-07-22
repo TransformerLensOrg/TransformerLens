@@ -55,6 +55,7 @@ class GlmArchitectureAdapter(ArchitectureAdapter):
                 submodules={
                     "ln1": RMSNormalizationBridge(name="input_layernorm", config=self.cfg),
                     "ln2": RMSNormalizationBridge(name="post_attention_layernorm", config=self.cfg),
+                    **self._block_extra_norms(),
                     "attn": PositionEmbeddingsAttentionBridge(
                         name="self_attn",
                         config=self.cfg,
@@ -82,3 +83,7 @@ class GlmArchitectureAdapter(ArchitectureAdapter):
             "ln_final": RMSNormalizationBridge(name="model.norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head", config=self.cfg),
         }
+
+    def _block_extra_norms(self):
+        """Sandwich-norms seam; GLM-4-0414 adds post_self_attn/post_mlp norms."""
+        return {}

@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from tests.unit.model_bridge.supported_architectures.helpers import make_bridge_cfg
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.factories.architecture_adapter_factory import (
     SUPPORTED_ARCHITECTURES,
@@ -17,7 +18,8 @@ from transformer_lens.model_bridge.supported_architectures.llama4_multimodal imp
 
 
 def _make_cfg() -> TransformerBridgeConfig:
-    return TransformerBridgeConfig(
+    return make_bridge_cfg(
+        "Llama4ForConditionalGeneration",
         d_model=32,
         d_head=16,
         n_layers=2,
@@ -26,7 +28,7 @@ def _make_cfg() -> TransformerBridgeConfig:
         d_mlp=64,
         d_vocab=512,
         n_key_value_heads=2,
-        architecture="Llama4ForConditionalGeneration",
+        default_prepend_bos=True,
     )
 
 

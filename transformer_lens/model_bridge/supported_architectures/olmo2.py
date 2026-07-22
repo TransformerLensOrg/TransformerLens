@@ -40,6 +40,9 @@ class Olmo2ArchitectureAdapter(ArchitectureAdapter):
     - ln_final.b - RMSNorm has no bias
     """
 
+    # Attention bridge seam; EXAONE-4 swaps in its NoPE-gating variant.
+    _attention_bridge_cls = PositionEmbeddingsAttentionBridge
+
     def __init__(self, cfg: Any) -> None:
         """Initialize the OLMo 2 architecture adapter."""
         super().__init__(cfg)
@@ -71,7 +74,7 @@ class Olmo2ArchitectureAdapter(ArchitectureAdapter):
                     "ln2": RMSNormalizationBridge(
                         name="post_feedforward_layernorm", config=self.cfg
                     ),
-                    "attn": PositionEmbeddingsAttentionBridge(
+                    "attn": self._attention_bridge_cls(
                         name="self_attn",
                         config=self.cfg,
                         submodules={

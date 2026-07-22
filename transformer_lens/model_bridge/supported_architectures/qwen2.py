@@ -1,6 +1,6 @@
 """Qwen2 architecture adapter."""
 
-from typing import Any
+from typing import Any, Optional
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
@@ -22,7 +22,9 @@ class Qwen2ArchitectureAdapter(ArchitectureAdapter):
     (n_kv_heads, d_head) layout weight processing expects.
     """
 
-    _testing_eager = None
+    _testing_eager: Optional[str] = None
+
+    _attention_bridge_cls = PositionEmbeddingsAttentionBridge
 
     def __init__(self, cfg: Any) -> None:
         """Initialize the Qwen2 architecture adapter."""
@@ -44,18 +46,7 @@ class Qwen2ArchitectureAdapter(ArchitectureAdapter):
                 submodules={
                     "ln1": RMSNormalizationBridge(name="input_layernorm", config=self.cfg),
                     "ln2": RMSNormalizationBridge(name="post_attention_layernorm", config=self.cfg),
-                    "attn": PositionEmbeddingsAttentionBridge(
-                        name="self_attn",
-                        config=self.cfg,
-                        submodules={
-                            "q": LinearBridge(name="q_proj"),
-                            "k": LinearBridge(name="k_proj"),
-                            "v": LinearBridge(name="v_proj"),
-                            "o": LinearBridge(name="o_proj"),
-                        },
-                        requires_attention_mask=True,
-                        requires_position_embeddings=True,
-                    ),
+                    "attn": self._build_attention_bridge(),
                     # GatedMLPBridge: hook_pre = gate pre-activation (HT GatedMLP
                     # semantics) + compat reconstruction; plain MLPBridge pointed
                     # hook_pre at the up-projection.
@@ -65,3 +56,18 @@ class Qwen2ArchitectureAdapter(ArchitectureAdapter):
             "ln_final": RMSNormalizationBridge(name="model.norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head", config=self.cfg),
         }
+
+    def _build_attention_bridge(self):
+        """Attention bridge seam; subclasses swap the class or the construction."""
+        return self._attention_bridge_cls(
+            name="self_attn",
+            config=self.cfg,
+            submodules={
+                "q": LinearBridge(name="q_proj"),
+                "k": LinearBridge(name="k_proj"),
+                "v": LinearBridge(name="v_proj"),
+                "o": LinearBridge(name="o_proj"),
+            },
+            requires_attention_mask=True,
+            requires_position_embeddings=True,
+        )
