@@ -20,9 +20,15 @@ from transformer_lens.model_bridge.generalized_components.normalization import (
 
 
 class _Cfg:
-    def __init__(self, uses_rms_norm: bool = False, eps: float = 1e-5):
+    def __init__(
+        self,
+        uses_rms_norm: bool = False,
+        eps: float = 1e-5,
+        rmsnorm_uses_offset: bool = False,
+    ):
         self.uses_rms_norm = uses_rms_norm
         self.eps = eps
+        self.rmsnorm_uses_offset = rmsnorm_uses_offset
 
 
 class _TinyRMSNorm(nn.Module):
@@ -38,6 +44,20 @@ class _TinyRMSNorm(nn.Module):
         return self.weight * x * torch.rsqrt(variance + self.variance_epsilon)
 
 
+class _TinyGemmaRMSNorm(nn.Module):
+    """Minimal Gemma-style RMSNorm: weight is stored as an offset from 1."""
+
+    def __init__(self, d: int, eps: float = 1e-5):
+        super().__init__()
+        self.weight = nn.Parameter(torch.full((d,), 0.5))
+        self.variance_epsilon = eps
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        variance = x.pow(2).mean(-1, keepdim=True)
+        x_normed = x * torch.rsqrt(variance + self.variance_epsilon)
+        return x_normed * (1.0 + self.weight)
+
+
 def _layernorm(d: int) -> nn.LayerNorm:
     layer = nn.LayerNorm(d, eps=1e-5)
     nn.init.normal_(layer.weight, std=0.1)
@@ -46,11 +66,19 @@ def _layernorm(d: int) -> nn.LayerNorm:
     return layer
 
 
-def _make_bridge(native: bool, rms: bool = False, d: int = 16) -> NormalizationBridge:
-    layer: nn.Module = _TinyRMSNorm(d) if rms else _layernorm(d)
+def _make_bridge(
+    native: bool, rms: bool = False, d: int = 16, offset: bool = False
+) -> NormalizationBridge:
+    layer: nn.Module
+    if offset:
+        layer = _TinyGemmaRMSNorm(d)
+    elif rms:
+        layer = _TinyRMSNorm(d)
+    else:
+        layer = _layernorm(d)
     bridge = NormalizationBridge(
         name="ln",
-        config=_Cfg(uses_rms_norm=rms),
+        config=_Cfg(uses_rms_norm=rms or offset, rmsnorm_uses_offset=offset),
         use_native_layernorm_autograd=native,
     )
     bridge.set_original_component(layer)
@@ -143,6 +171,29 @@ def test_native_path_no_hooks_matches_original_component():
     bridge = _make_bridge(native=True)
     x = torch.randn(2, 5, 16)
     assert torch.equal(bridge(x), bridge.original_component(x))
+
+
+def test_native_path_edit_fallback_applies_rmsnorm_offset():
+    """Gemma-family RMSNorm multiplies by (1 + weight); the edit fallback must too."""
+    bridge = _make_bridge(native=True, offset=True)
+    x = torch.randn(2, 5, 16)
+    bridge.hook_normalized.add_hook(lambda t, hook=None: torch.ones_like(t))
+    with pytest.warns(UserWarning, match="reconstructed from the hooked values"):
+        patched = bridge(x)
+    bridge.hook_normalized.remove_hooks()
+    expected = torch.ones(2, 5, 16) * (1.0 + bridge.original_component.weight)
+    assert torch.allclose(patched, expected)
+
+
+def test_native_path_bwd_fallback_applies_rmsnorm_offset():
+    """The python-norm fallback for backward hooks must match Gemma-style output."""
+    bridge = _make_bridge(native=True, offset=True)
+    x = torch.randn(2, 5, 16, requires_grad=True)
+    bridge.hook_normalized.add_hook(lambda grad, hook=None: grad, dir="bwd")
+    with pytest.warns(UserWarning, match="Backward hooks"):
+        out = bridge(x)
+    bridge.hook_normalized.remove_hooks()
+    assert torch.allclose(out, bridge.original_component(x), atol=1e-6)
 
 
 def test_default_path_edit_still_propagates():

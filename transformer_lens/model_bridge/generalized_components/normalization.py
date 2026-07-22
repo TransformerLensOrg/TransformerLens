@@ -123,7 +123,13 @@ class NormalizationBridge(GeneralizedComponent):
         self, hidden_states: torch.Tensor, input_dtype: torch.dtype
     ) -> torch.Tensor:
         """Apply weight/bias in float32 before casting back (matches HF precision)."""
-        hidden_states = hidden_states * self.weight
+        # Gemma-family RMSNorm stores weight as an offset from 1 (output uses 1 + weight).
+        weight = (
+            (1.0 + self.weight)
+            if getattr(self.config, "rmsnorm_uses_offset", False)
+            else self.weight
+        )
+        hidden_states = hidden_states * weight
         component = self.original_component
         if (
             not self.uses_rms_norm
