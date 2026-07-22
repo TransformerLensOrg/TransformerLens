@@ -1299,6 +1299,40 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         """
         return iter(self.get_params().items())
 
+    def input_to_embed(
+        self,
+        input: Union[str, List[str], torch.Tensor],
+        prepend_bos: Optional[bool] = None,
+        padding_side: Optional[str] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+    ) -> Tuple[torch.Tensor, torch.Tensor, None, Optional[torch.Tensor]]:
+        """Convert input to the residual stream entering block 0 (``resid_pre[0]``).
+
+        Bridge analog of :meth:`HookedTransformer.input_to_embed`. Returns
+        ``(residual, tokens, shortformer_pos_embed, attention_mask)``; feed the
+        residual to ``forward(..., start_at_layer=0)`` to resume the pass.
+
+        ``shortformer_pos_embed`` is always ``None``: for the models the bridge
+        supports the residual already carries positional information, so there is
+        no separate positional stream to return.
+        """
+        if isinstance(input, (str, list)):
+            assert self.tokenizer is not None, "Must provide a tokenizer for string input."
+            tokens = self.to_tokens(input, prepend_bos=prepend_bos, padding_side=padding_side)
+        else:
+            tokens = input
+            if isinstance(tokens, torch.Tensor) and tokens.ndim == 1:
+                tokens = tokens.unsqueeze(0)
+        if (
+            attention_mask is None
+            and self.tokenizer is not None
+            and self.tokenizer.padding_side == "left"
+        ):
+            _prepend = self.cfg.default_prepend_bos if prepend_bos is None else prepend_bos
+            attention_mask = utils.get_attention_mask(self.tokenizer, tokens, _prepend)
+        residual = self.forward(tokens, stop_at_layer=0, attention_mask=attention_mask)
+        return residual, tokens, None, attention_mask
+
     def forward(
         self,
         input: Union[str, List[str], torch.Tensor],

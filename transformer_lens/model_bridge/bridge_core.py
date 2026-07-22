@@ -30,6 +30,7 @@ from transformer_lens.model_bridge.driver_protocol import to_torch
 from transformer_lens.model_bridge.exceptions import StopAtLayerException
 from transformer_lens.utilities.aliases import resolve_alias
 from transformer_lens.utilities.lm_utils import lm_cross_entropy_loss
+from transformer_lens.utilities.slice import Slice, SliceInput
 
 _BLOCK_PATTERN = re.compile("blocks\\.(\\d+)")
 
@@ -823,6 +824,7 @@ class BridgeCore:
         names_filter: Optional[Union[str, List[str], Callable[[str], bool]]] = None,
         stop_at_layer: Optional[int] = None,
         start_at_layer: Optional[int] = None,
+        pos_slice: Optional[Union[Slice, SliceInput]] = None,
         **kwargs,
     ) -> Tuple[Any, Union[ActivationCache, Dict[str, torch.Tensor]]]:
         """Run the model and cache activations. Returns ``(output, cache)``.
@@ -830,9 +832,12 @@ class BridgeCore:
         ``stop_at_layer`` raises :class:`StopAtLayerException` to stop early.
         ``start_at_layer`` treats ``input`` as the residual entering block ``k``
         (see :meth:`forward`); blocks below ``k`` are excluded from the cache to
-        match HookedTransformer. ``device`` offloads cached activations (matches
-        ``ActivationCache.to``); the model and inputs stay where the caller put them.
+        match HookedTransformer. ``pos_slice`` slices each cached activation along
+        its position dimension (``-3`` for per-head q/k/v/z/result, ``-2`` otherwise).
+        ``device`` offloads cached activations (matches ``ActivationCache.to``); the
+        model and inputs stay where the caller put them.
         """
+        pos_slice_obj = Slice.unwrap(pos_slice)
         aliases = build_alias_to_canonical_map(self.hook_dict)
 
         def create_names_filter_fn(filter_input):
@@ -869,21 +874,32 @@ class BridgeCore:
         # None → no-op .to(None), tensors stay on their current device.
         cache_device = kwargs.pop("device", None)
 
+        def _store(name: str, value: torch.Tensor) -> None:
+            stored = value.detach().to(cache_device)
+            if pos_slice_obj is not None and stored.dim() >= 2:
+                # Every bridge activation lays out position at dim 1 (batch is dim 0):
+                # resid [b,p,d], per-head [b,p,h,d], token ids [b,p]. The exception is
+                # attention patterns/scores [b,head,q_pos,k_pos] — slice the query
+                # (destination) position at -2, matching HookedTransformer.
+                pos_dim = -2 if name.endswith(("hook_pattern", "hook_attn_scores")) else 1
+                stored = pos_slice_obj.apply(stored, dim=pos_dim)
+            cache[name] = stored
+
         def make_cache_hook(name: str):
             def cache_hook(tensor: torch.Tensor, *, hook: Any) -> torch.Tensor:
                 if tensor is None:
                     cache[name] = None
                 elif isinstance(tensor, torch.Tensor):
-                    cache[name] = tensor.detach().to(cache_device)
+                    _store(name, tensor)
                 elif isinstance(tensor, tuple):
                     if len(tensor) > 0 and isinstance(tensor[0], torch.Tensor):
-                        cache[name] = tensor[0].detach().to(cache_device)
+                        _store(name, tensor[0])
                     else:
                         pass
                 else:
                     try:
                         if hasattr(tensor, "detach"):
-                            cache[name] = tensor.detach().to(cache_device)
+                            _store(name, tensor)
                     except:
                         pass
                 return tensor
