@@ -300,7 +300,7 @@ The `TestRegistrySyncedWithFactory` class bidirectionally asserts that `SUPPORTE
 Two test layers:
 
 1. **Unit adapter test** at `tests/unit/model_bridge/supported_architectures/test_<arch>_adapter.py`. ~26 of these exist; copy the closest sibling. The pattern: a `_make_cfg()` factory, an `adapter` fixture, and one test per architecture-specific quirk. Unit adapter tests instantiate the adapter from a synthetic config and assert structural properties — they don't load weights and don't hit HF Hub.
-2. **Integration parity test** at `tests/integration/model_bridge/test_<arch>_adapter.py`. Loads a real cached HF model and asserts logit parity vs HuggingFace at fp32 + eager attention. If there are no small cached models available, make a note of the missing test in the creation PR.
+2. **Integration parity test** at `tests/integration/model_bridge/test_<arch>_adapter.py`. Loads a real cached HF model and asserts logit parity vs HuggingFace at fp32 + eager attention. The CI integration job runs `-m "not slow"`, so if the model isn't small and cached, mark the real-weights test `@pytest.mark.slow` and add a tiny `from_config` companion at `test_<arch>_tiny.py` (random CPU weights, no Hub download) to keep CI regression coverage — see [supported_architectures/AGENTS.md §Integration parity test](../../../transformer_lens/model_bridge/supported_architectures/AGENTS.md).
 
 ### Common adapter gotchas
 
