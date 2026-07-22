@@ -148,3 +148,33 @@ class TestCheckHooksToAdd:
         with pytest.raises(AssertionError, match="rejected"):
             bridge.add_hook("blocks.0.hook_out", _noop)
         assert not hp.has_hooks(dir="fwd")
+
+    def test_invoked_by_run_with_hooks(self, monkeypatch):
+        """The extension point must fire for run_with_hooks too, not just
+        add_hook -- run_with_hooks is the common hooking path (matches HT)."""
+        bridge = _build()
+        seen: list[str] = []
+
+        def recording(
+            self, hook_point, hook_point_name, hook, dir="fwd", is_permanent=False, prepend=False
+        ):
+            seen.append(hook_point_name)
+
+        monkeypatch.setattr(type(bridge), "check_hooks_to_add", recording)
+        tokens = torch.randint(0, 64, (1, 4))
+        bridge.run_with_hooks(tokens, fwd_hooks=[("blocks.0.hook_out", _noop)])
+        assert "blocks.0.hook_out" in seen
+
+    def test_invoked_by_hooks_context_manager(self, monkeypatch):
+        bridge = _build()
+        seen: list[str] = []
+
+        def recording(
+            self, hook_point, hook_point_name, hook, dir="fwd", is_permanent=False, prepend=False
+        ):
+            seen.append(hook_point_name)
+
+        monkeypatch.setattr(type(bridge), "check_hooks_to_add", recording)
+        with bridge.hooks(fwd_hooks=[("blocks.0.hook_out", _noop)]):
+            pass
+        assert "blocks.0.hook_out" in seen

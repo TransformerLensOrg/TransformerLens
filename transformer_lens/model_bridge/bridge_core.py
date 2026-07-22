@@ -611,6 +611,7 @@ class BridgeCore:
                 name: str,
                 dir: Literal["fwd", "bwd"] = "fwd",
             ) -> None:
+                self.check_hooks_to_add(hook_point, name, hook_fn, dir=dir)
                 if self.compatibility_mode and name != hook_point.name:
                     alias_names_list: list = []
                     if hook_point.name is not None:
@@ -713,6 +714,7 @@ class BridgeCore:
                         return
                     if effective_start_layer is not None and layer_num < effective_start_layer:
                         return
+            self.check_hooks_to_add(hook_point, name, hook_fn, dir=dir)
             if self.compatibility_mode and name != hook_point.name:
                 alias_names_list: list = []
                 if hook_point.name is not None:

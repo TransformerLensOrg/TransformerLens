@@ -1628,9 +1628,13 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             start_at_layer += n_blocks
         if not 0 <= start_at_layer < n_blocks:
             raise ValueError(f"start_at_layer={start_at_layer} out of range [0, {n_blocks}).")
+        # The returned tensor is fed to HF as inputs_embeds; stash a clone so an
+        # architecture that mutates inputs_embeds in place can't corrupt the value
+        # block ``start_at_layer`` swaps back in.
+        injected = residual.clone()
         for block in self.blocks:
             block._start_at_layer_idx = start_at_layer
-            block._start_residual = residual
+            block._start_residual = injected
         return residual
 
     def _teardown_start_at_layer(self) -> None:
