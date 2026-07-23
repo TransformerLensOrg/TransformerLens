@@ -990,9 +990,9 @@ class TestRegistry:
                 continue
             assert "repo_id" in entry, f"Missing repo_id in entry '{key}'"
             assert "filename" in entry, f"Missing filename in entry '{key}'"
-            assert entry["filename"].endswith(".pt"), (
-                f"filename in '{key}' does not end with .pt: {entry['filename']}"
-            )
+            assert entry["filename"].endswith(
+                ".pt"
+            ), f"filename in '{key}' does not end with .pt: {entry['filename']}"
             assert "aliases" in entry, f"Missing aliases list in entry '{key}'"
 
     def test_resolve_registry_entry_by_short_name(self) -> None:
@@ -1152,7 +1152,5 @@ class TestRegistry:
         for name in ("gpt2-small", "gpt2", "openai-community/gpt2"):
             JacobianLens.from_pretrained(name)
 
-        assert len(set(filenames)) == 1, (
-            "All three aliases should resolve to the same filename"
-        )
+        assert len(set(filenames)) == 1, "All three aliases should resolve to the same filename"
         assert filenames[0].endswith("gpt2_jacobian_lens.pt")

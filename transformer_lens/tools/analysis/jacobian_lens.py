@@ -113,6 +113,7 @@ def _resolve_registry_entry(name_or_path: str) -> Optional[Tuple[str, str]]:
             return entry["repo_id"], entry["filename"]
     return None
 
+
 # Fitting excludes early positions (attention sinks with atypical residual statistics)
 # and the final position (no next-token target), matching the reference implementation.
 DEFAULT_SKIP_FIRST_POSITIONS = 16
