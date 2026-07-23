@@ -18,6 +18,8 @@ from transformer_lens.model_bridge.generalized_components import (
     RMSNormalizationBridge,
 )
 
+pytestmark = pytest.mark.slow
+
 MODEL = "LiquidAI/LFM2.5-230M"
 
 
