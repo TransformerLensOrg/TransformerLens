@@ -1345,10 +1345,14 @@ class ProcessWeights:
         vocab_dim = -1  # Default: TL format [d_model, d_vocab]
         if cfg is not None:
             d_vocab = getattr(cfg, "d_vocab", None)
-            if d_vocab is not None:
-                if W_U.shape[0] == d_vocab and W_U.shape[-1] != d_vocab:
-                    # HF format [d_vocab, d_model] — center along dim=0
-                    vocab_dim = 0
+            d_model = getattr(cfg, "d_model", None)
+            if d_vocab is not None and W_U.shape[0] == d_vocab and W_U.shape[-1] != d_vocab:
+                # HF format [d_vocab, d_model] — center along dim=0
+                vocab_dim = 0
+            elif d_model is not None and W_U.shape[-1] == d_model and W_U.shape[0] != d_model:
+                # Padded-vocab checkpoints (e.g. HyenaDNA pads 12→16 rows) defeat
+                # the d_vocab match; the d_model axis is unambiguous.
+                vocab_dim = 0
         W_U = W_U - W_U.mean(vocab_dim, keepdim=True)
         state_dict[unembed_W_U_key] = ProcessWeights.convert_tensor_to_hf_format(
             unembed_W_U_key, W_U, None, adapter, None

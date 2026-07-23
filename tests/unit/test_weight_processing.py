@@ -1024,3 +1024,24 @@ class TestProcessWeights:
             state_dict["blocks.0.ln2.w"], torch.ones_like(state_dict["blocks.0.ln2.w"])
         )
         assert "blocks.0.ln2.b" in state_dict  # Should still be present when fold_biases=False
+
+
+def test_center_unembed_padded_vocab_orientation():
+    """Padded-vocab unembeds (rows > cfg.d_vocab, e.g. HyenaDNA's 12->16) must
+    still center along the vocab axis — the d_vocab shape match fails, so
+    orientation falls back to the unambiguous d_model axis."""
+    from types import SimpleNamespace
+
+    import torch
+
+    from transformer_lens.weight_processing import ProcessWeights
+
+    torch.manual_seed(0)
+    w = torch.randn(16, 128)  # HF orientation [padded_vocab, d_model]
+    cfg = SimpleNamespace(d_vocab=12, d_model=128)
+    out = ProcessWeights.center_unembed({"unembed.W_U": w.clone()}, cfg=cfg, adapter=None)
+    centered = out["unembed.W_U"]
+    # Vocab-axis means (per d_model column) must be ~0; a wrong-axis center
+    # would zero dim-1 means instead and change the predictive distribution.
+    assert centered.mean(dim=0).abs().max().item() < 1e-6
+    assert centered.shape == w.shape

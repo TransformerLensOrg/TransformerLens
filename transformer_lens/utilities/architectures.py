@@ -82,6 +82,9 @@ BASE_AUTOMODEL_ARCHITECTURES: set[str] = {
 NO_HT_COMPARISON_ARCHITECTURES: set[str] = (
     MULTIMODAL_ARCHITECTURES
     | AUDIO_ARCHITECTURES
+    # Encoder-decoder: HookedTransformer cannot represent them (T5 repos under
+    # org-prefixed names slip past HT's legacy name guard and crash at forward).
+    | SEQ2SEQ_ARCHITECTURES
     | {
         "Gemma3ForCausalLM",
     }

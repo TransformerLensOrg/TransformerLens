@@ -164,3 +164,21 @@ def test_run_with_cache_fires_attention_pattern_hook():
     key = "blocks.0.attn.hook_pattern"
     assert key in cache
     assert cache[key].shape == (1, cfg.n_heads, cfg.n_ctx, cfg.n_ctx)
+
+
+def test_hidden_activation_translates_to_act_fn():
+    """transformers 5.x Gemma configs expose only hidden_activation; the
+    translation must not fall through to the relu default (compat-mode MLP
+    reconstruction reads cfg.act_fn)."""
+    from transformers import Gemma3TextConfig
+
+    from transformer_lens.model_bridge.sources._bridge_builder import (
+        build_bridge_config_from_hf,
+    )
+
+    hf_cfg = Gemma3TextConfig(
+        vocab_size=64, hidden_size=32, intermediate_size=64, num_hidden_layers=1,
+        num_attention_heads=2, num_key_value_heads=1, head_dim=16,
+    )
+    cfg = build_bridge_config_from_hf(hf_cfg, "Gemma3ForCausalLM", "tiny", torch.float32)
+    assert cfg.act_fn == "gelu_pytorch_tanh"

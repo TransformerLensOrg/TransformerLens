@@ -1042,6 +1042,12 @@ class ArchitectureAdapter:
             return
         rotary_emb = getattr(lm, rotary_attr)
 
+        # No attn submodule in the blocks template (fully delegated attention,
+        # e.g. Zamba2's shared blocks): wiring is inapplicable, not an error.
+        blocks_template = (self.component_mapping or {}).get("blocks")
+        if blocks_template is not None and "attn" not in getattr(blocks_template, "submodules", {}):
+            return
+
         if bridge_model is not None and hasattr(bridge_model, "blocks"):
             for block in bridge_model.blocks:
                 has_attn = ("attn" in block._modules) if hybrid else hasattr(block, "attn")

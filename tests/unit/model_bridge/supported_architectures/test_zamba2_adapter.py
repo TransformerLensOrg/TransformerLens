@@ -180,3 +180,13 @@ class TestZamba2FactoryRegistration:
         )
 
         assert isinstance(adapter, Zamba2ArchitectureAdapter)
+
+
+def test_setup_component_testing_tolerates_missing_attn_template() -> None:
+    """HF model exposes rotary_emb but the bridge maps no attn submodule
+    (shared attention is fully delegated) — setup must no-op, not raise."""
+    from types import SimpleNamespace
+
+    adapter = Zamba2ArchitectureAdapter(_make_cfg())
+    hf_model = SimpleNamespace(model=SimpleNamespace(rotary_emb=object(), layers=[]))
+    adapter.setup_component_testing(hf_model)

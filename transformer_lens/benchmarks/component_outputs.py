@@ -492,8 +492,9 @@ class ComponentBenchmarker:
 
             # Skip attention output projection (expects concatenated attn output)
             # Skip MLP output projection (expects MLP intermediate activations)
+            # — including *_out variants (dense_out on MoE shared/dense paths).
             # Note: q_norm/k_norm are handled specially in _run_component
-            if last_part in ["o", "out"]:
+            if last_part in ["o", "out"] or last_part.endswith("_out"):
                 return
 
             # Skip MLA intermediates (expect compressed-dim inputs, not hidden_states)

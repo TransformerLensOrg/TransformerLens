@@ -94,3 +94,13 @@ class TestLLaDA2MoeBridge:
         with pytest.raises(NotImplementedError, match="padding masks"):
             with torch.no_grad():
                 bridge(ids, attention_mask=padded)
+
+    def test_no_mask_forward(self) -> None:
+        """Mask-less calls synthesize the 4D full-visibility mask (the remote
+        forward dereferences attention_mask unconditionally)."""
+        bridge, ref = _tiny_llada2_pair()
+        ids = torch.randint(0, 128, (1, 8))
+        with torch.no_grad():
+            out = bridge(ids)
+            expected = ref(input_ids=ids, attention_mask=torch.ones(1, 1, 8, 8)).logits
+        assert (out - expected).abs().max().item() < 1e-4

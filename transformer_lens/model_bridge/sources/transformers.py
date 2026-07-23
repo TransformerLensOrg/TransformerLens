@@ -190,6 +190,10 @@ def map_default_transformer_lens_config(hf_config):
         tl_config.d_head = tl_config.d_model
     if hasattr(source_config, "activation_function"):
         tl_config.act_fn = source_config.activation_function
+    # Gemma family: transformers 5.x exposes only hidden_activation (hidden_act
+    # was removed); it is authoritative over hidden_act when both exist.
+    elif getattr(source_config, "hidden_activation", None) is not None:
+        tl_config.act_fn = source_config.hidden_activation
     elif hasattr(source_config, "hidden_act"):
         tl_config.act_fn = source_config.hidden_act
     elif hasattr(source_config, "activation_type"):

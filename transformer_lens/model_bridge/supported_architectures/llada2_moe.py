@@ -128,6 +128,14 @@ class LLaDA2MoeArchitectureAdapter(ArchitectureAdapter):
             import torch
 
             mask = kwargs.get("attention_mask")
+            if mask is None:
+                # Remote forward calls attention_mask.size() unconditionally;
+                # synthesize the full-visibility 4D mask from the input shape.
+                ids = kwargs.get("input_ids", args[0] if args else None)
+                if isinstance(ids, torch.Tensor) and ids.ndim == 2:
+                    batch, seq = ids.shape
+                    kwargs["attention_mask"] = torch.ones(batch, 1, seq, seq, device=ids.device)
+                return args, kwargs
             if isinstance(mask, torch.Tensor) and mask.ndim == 2:
                 if not bool(mask.all()):
                     raise NotImplementedError(
