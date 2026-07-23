@@ -74,6 +74,45 @@ from transformer_lens.utilities.hf_utils import call_hf_with_retry
 
 TokenInput = Union[str, int]
 
+# ---------------------------------------------------------------------------
+# Registry helpers
+# ---------------------------------------------------------------------------
+
+_REGISTRY_CACHE: Optional[Dict[str, Any]] = None
+
+
+def _load_registry() -> Dict[str, Any]:
+    """Return the bundled artifact registry, loading it once on first call."""
+    global _REGISTRY_CACHE
+    if _REGISTRY_CACHE is None:
+        import json
+        import pathlib
+
+        registry_path = pathlib.Path(__file__).with_name("jacobian_lens_registry.json")
+        with registry_path.open() as fh:
+            _REGISTRY_CACHE = json.load(fh)
+    return _REGISTRY_CACHE
+
+
+def _resolve_registry_entry(name_or_path: str) -> Optional[Tuple[str, str]]:
+    """Return ``(repo_id, filename)`` if *name_or_path* matches the registry.
+
+    Matching is tried in two passes:
+    1. Direct key match against short model names (e.g. ``"gemma-2-2b"``).
+    2. Alias match against Hugging Face model IDs (e.g. ``"google/gemma-2-2b"``).
+
+    Returns ``None`` when there is no match so callers can fall through to the
+    generic Hub download path.
+    """
+    registry = _load_registry()
+    if name_or_path in registry:
+        entry = registry[name_or_path]
+        return entry["repo_id"], entry["filename"]
+    for entry in registry.values():
+        if isinstance(entry, dict) and name_or_path in entry.get("aliases", []):
+            return entry["repo_id"], entry["filename"]
+    return None
+
 # Fitting excludes early positions (attention sinks with atypical residual statistics)
 # and the final position (no next-token target), matching the reference implementation.
 DEFAULT_SKIP_FIRST_POSITIONS = 16
@@ -257,15 +296,33 @@ class JacobianLens:
         revision: Optional[str] = None,
         model: Any = None,
     ) -> "JacobianLens":
-        """Load a lens from a local path or a Hugging Face Hub repository.
+        """Load a lens from a local path, a short model name, or a Hub repo.
+
+        Resolution order
+        ----------------
+        1. **Local file** — if *name_or_path* is an existing ``.pt`` file,
+           load it directly.
+        2. **Local directory** — if *name_or_path* is a directory, load
+           ``<name_or_path>/<filename>``.
+        3. **Registry short name or HF model ID** — if *name_or_path* matches
+           a key or alias in the bundled ``jacobian_lens_registry.json`` (e.g.
+           ``"gemma-2-2b"`` or ``"google/gemma-2-2b"``), the corresponding
+           artifact in ``neuronpedia/jacobian-lens`` is fetched automatically.
+           The *filename* argument is ignored in this case because the registry
+           already encodes the correct subpath.
+        4. **Explicit Hub repo** — otherwise *name_or_path* is treated as a Hub
+           repo id and *filename* is used as-is, preserving full backward
+           compatibility (e.g. ``from_pretrained("neuronpedia/jacobian-lens",
+           filename="gpt2-small/jlens/...")``).
 
         Args:
-            name_or_path: A local ``.pt`` file, a local directory containing
-                ``filename``, or a Hub repo id such as
-                ``"neuronpedia/jacobian-lens"``.
-            filename: File (or subpath) inside the directory / Hub repo. Hub
-                repos host lenses for many models, e.g.
-                ``"gpt2-small/jlens/Salesforce-wikitext/gpt2_jacobian_lens.pt"``.
+            name_or_path: A local ``.pt`` file, a local directory, a short
+                model name such as ``"gemma-2-2b"`` or ``"llama3.1-8b"``, a
+                Hugging Face model ID such as ``"google/gemma-2-2b"``, or an
+                explicit Hub repo id paired with *filename*.
+            filename: File (or subpath) inside a local directory or an explicit
+                Hub repo.  Ignored when *name_or_path* resolves via the
+                registry.
             revision: Optional Hub revision (branch, tag, or commit) to pin.
                 When omitted, the Hub repository's mutable default branch is
                 followed; pin a commit hash for reproducible analyses.
@@ -274,6 +331,21 @@ class JacobianLens:
 
         Returns:
             The loaded (and, if ``model`` was given, validated) lens.
+
+        Examples::
+
+            # Short model name — no need to remember the HF subpath
+            lens = JacobianLens.from_pretrained("gemma-2-2b", model=model)
+
+            # HF model ID also works
+            lens = JacobianLens.from_pretrained("google/gemma-2-2b", model=model)
+
+            # Explicit Hub repo + subpath (backward-compatible)
+            lens = JacobianLens.from_pretrained(
+                "neuronpedia/jacobian-lens",
+                filename="gpt2-small/jlens/Salesforce-wikitext/gpt2_jacobian_lens.pt",
+                model=model,
+            )
         """
         import os
 
@@ -284,10 +356,16 @@ class JacobianLens:
         else:
             from huggingface_hub import hf_hub_download
 
+            resolved = _resolve_registry_entry(name_or_path)
+            if resolved is not None:
+                repo_id, resolved_filename = resolved
+            else:
+                repo_id, resolved_filename = name_or_path, filename
+
             local_path = call_hf_with_retry(
                 hf_hub_download,
-                repo_id=name_or_path,
-                filename=filename,
+                repo_id=repo_id,
+                filename=resolved_filename,
                 revision=revision,
             )
             lens = cls.load(local_path)
