@@ -54,6 +54,22 @@ class ArchitectureAdapter:
     # Encoder-only models (e.g. BERT, HuBERT) should set this to False.
     supports_generation: bool = True
 
+    # Whether the wrapped forward speaks the HF KV-cache protocol. False for
+    # recurrent/convolutional decoders (RWKV's bespoke `state`, HyenaDNA's
+    # kwarg-less FFT forward): generation then recomputes the full prefix each
+    # step, which is exact but O(n^2).
+    supports_kv_cache: bool = True
+
+    # Whether batched generation is sound. False where the wrapped forward
+    # ignores attention_mask (RWKV) or rejects it (HyenaDNA), so left-padding
+    # would silently corrupt results rather than be masked out.
+    supports_batched_generation: bool = True
+
+    # Name of a native non-autoregressive sampler on the wrapped model, exposed
+    # via bridge.diffusion_generate() (e.g. Dream's "diffusion_generate",
+    # LLaDA2's/Gidd's "generate"). None means the architecture has none.
+    native_sampler: Optional[str] = None
+
     # Runtime gate for enable_compatibility_mode(): set False when the stored-
     # processed-weights forward is known to diverge (e.g. VaultGemma).
     supports_compatibility_mode: bool = True

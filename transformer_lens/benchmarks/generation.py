@@ -117,6 +117,15 @@ def benchmark_generation_with_kv_cache(
                 message="Skipped for tiny/test model (random weights produce degenerate generation)",
             )
 
+        # Cache-free architectures (RWKV, HyenaDNA) would "pass" this vacuously —
+        # the recompute path produces output while exercising no cache at all.
+        if not getattr(bridge.adapter, "supports_kv_cache", True):
+            return BenchmarkResult(
+                name="generation_with_kv_cache",
+                severity=BenchmarkSeverity.INFO,
+                message="Skipped: architecture has no KV cache (generation recomputes each step)",
+            )
+
         # Generate with KV cache (should be enabled by default for max_new_tokens > 1)
         output = bridge.generate(
             test_text,

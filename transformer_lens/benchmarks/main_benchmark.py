@@ -168,6 +168,13 @@ def _fixup_custom_model(hf_model) -> None:
             lm_head.weight = embed.weight
             hf_model.lm_head = lm_head
 
+    if type(hf_model).__name__ == "GiddForDiffusionLM":
+        from transformer_lens.model_bridge.supported_architectures.gidd import (
+            restore_frequencies,
+        )
+
+        restore_frequencies(hf_model)
+
 
 def run_comparison_benchmarks(
     bridge_model: TransformerBridge,
@@ -1382,6 +1389,9 @@ def run_benchmark_suite(
     if (
         should_run_phase(4)
         and bridge_unprocessed is not None
+        # applicable_phases and supports_generation are independent switches;
+        # without this check a disagreement surfaces as an ERROR, not a skip.
+        and getattr(bridge_unprocessed.adapter, "supports_generation", True)
         and not is_masked_lm_model(model_name, trust_remote_code=trust_remote_code)
         and not is_audio_model(model_name, trust_remote_code=trust_remote_code)
     ):

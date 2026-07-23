@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-07-22T22:30:13.466889",
+  "last_updated": "2026-07-22T22:53:49.380863",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -19634,6 +19634,56 @@
     {
       "model_id": "RWKV/rwkv-4-169m-pile",
       "architecture_id": "RwkvForCausalLM",
+      "verified_date": "2026-07-22",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Zyphra/Zamba2-1.2B",
+      "architecture_id": "Zamba2ForCausalLM",
+      "verified_date": "2026-07-22",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "google/gemma-2-2b",
+      "architecture_id": "Gemma2ForCausalLM",
+      "verified_date": "2026-07-22",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P3=95.5% (failed: unembed_centering)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Dream-org/Dream-v0-Instruct-7B",
+      "architecture_id": "DreamModel",
+      "verified_date": "2026-07-22",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "dvruette/gidd-mask-3b",
+      "architecture_id": "GiddForDiffusionLM",
+      "verified_date": "2026-07-22",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "dvruette/gidd-unif-3b",
+      "architecture_id": "GiddForDiffusionLM",
       "verified_date": "2026-07-22",
       "verified_by": "verify_models",
       "transformerlens_version": null,

@@ -2750,6 +2750,24 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             if all_finished:
                 return
 
+    def _resolve_generation_caching(self, use_past_kv_cache: bool, batched: bool) -> bool:
+        """Honor adapter caching/batching limits; returns the effective cache flag.
+
+        Recurrent and convolutional decoders speak no KV-cache protocol, so the
+        full-prefix recompute path is the only correct one. Batching is rejected
+        rather than silently mis-generated where padding cannot be masked.
+        """
+        if batched and not getattr(self.adapter, "supports_batched_generation", True):
+            architecture = self.cfg.architecture or type(self.adapter).__name__
+            raise NotImplementedError(
+                f"Batched generation is not supported by {architecture}: its forward does not "
+                "apply an attention mask, so padded rows would corrupt the output. Generate one "
+                "sequence at a time, or pass equal-length inputs as a tensor."
+            )
+        if not getattr(self.adapter, "supports_kv_cache", True):
+            return False
+        return use_past_kv_cache
+
     def _ensure_generation_supported(self, api_name: str) -> None:
         """Reject autoregressive generation for forward-only architectures."""
         if not self.adapter.supports_generation:
@@ -2887,6 +2905,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         is_stateful_model = getattr(self.cfg, "is_stateful", False)
 
         _is_batched_list = isinstance(input, list) and len(input) > 1
+        use_past_kv_cache = self._resolve_generation_caching(use_past_kv_cache, _is_batched_list)
 
         _generate_from_embeds = False
         if isinstance(input, str):
@@ -3307,6 +3326,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         self._ensure_generation_supported("generate_stream")
         # --- Input parsing (mirrors generate()) ---
         _is_batched_list = isinstance(input, list) and len(input) > 1
+        use_past_kv_cache = self._resolve_generation_caching(use_past_kv_cache, _is_batched_list)
 
         if isinstance(input, str):
             input_tokens = self.to_tokens(

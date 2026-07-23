@@ -54,8 +54,14 @@ class _RwkvBlockBridge(BlockBridge):
 class RwkvArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for RwkvForCausalLM models."""
 
-    applicable_phases: list[int] = [1, 2, 3]
-    supports_generation: bool = False
+    applicable_phases: list[int] = [1, 2, 3, 4]
+    supports_generation: bool = True
+    # HF threads recurrence through a bespoke `state` kwarg, not past_key_values;
+    # generation recomputes the full prefix per step (exact, O(n^2)).
+    supports_kv_cache: bool = False
+    # RwkvModel ignores attention_mask entirely, so left-padding would silently
+    # poison the recurrent state instead of being masked out.
+    supports_batched_generation: bool = False
     # Pre-LNs feed the mixers, but the recurrent WKV kernel consumes raw and
     # time-shifted inputs — no fold target exists.
     supports_fold_ln = False

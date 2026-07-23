@@ -63,3 +63,49 @@ class TestGiddMapping:
 
 def test_factory_registration():
     assert SUPPORTED_ARCHITECTURES["GiddForDiffusionLM"] is GiddArchitectureAdapter
+
+
+def test_restore_frequencies_recomputes_buffer():
+    """The non-persistent rotary table materializes as garbage under v5 meta-device
+    loading; restore_frequencies must overwrite it with the config-derived table."""
+    import sys
+    from types import SimpleNamespace
+
+    import torch
+
+    from transformer_lens.model_bridge.supported_architectures.gidd import (
+        restore_frequencies,
+    )
+
+    expected = torch.arange(12, dtype=torch.float32).reshape(3, 4)
+    sys.modules["_fake_gidd_module"] = SimpleNamespace(
+        compute_basic_frequencies=lambda **kw: expected.clone()
+    )
+
+    class _Inner:
+        __module__ = "_fake_gidd_module"
+
+        def __init__(self):
+            self.frequencies = torch.full((3, 4), float("nan"))
+
+    inner = _Inner()
+    hf_model = SimpleNamespace(
+        model=inner,
+        config=SimpleNamespace(
+            rope_theta=10000.0, hidden_size=8, num_attention_heads=2, max_position_embeddings=3
+        ),
+    )
+    assert restore_frequencies(hf_model) is True
+    assert torch.equal(inner.frequencies, expected)
+    del sys.modules["_fake_gidd_module"]
+
+
+def test_restore_frequencies_no_op_without_buffer():
+    """Models lacking the buffer (or the remote helper) are left untouched."""
+    from types import SimpleNamespace
+
+    from transformer_lens.model_bridge.supported_architectures.gidd import (
+        restore_frequencies,
+    )
+
+    assert restore_frequencies(SimpleNamespace(model=SimpleNamespace(), config=None)) is False

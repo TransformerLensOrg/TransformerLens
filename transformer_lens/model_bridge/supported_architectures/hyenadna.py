@@ -53,8 +53,13 @@ class _HyenaBlockBridge(BlockBridge):
 class HyenaDNAArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for HyenaDNAForCausalLM models."""
 
-    applicable_phases: list[int] = [1, 2, 3]
-    supports_generation: bool = False
+    applicable_phases: list[int] = [1, 2, 3, 4]
+    supports_generation: bool = True
+    # The Hyena FFT convolution has no incremental form (none upstream either);
+    # generation recomputes the full prefix per step.
+    supports_kv_cache: bool = False
+    # The remote forward takes no attention_mask/position_ids kwargs at all.
+    supports_batched_generation: bool = False
     # Attention-free (Hyena convolutions): no q/k/v projections to fold into,
     # matching the other delegated-mixer adapters (rwkv, gidd, llada2_moe).
     supports_fold_ln: bool = False

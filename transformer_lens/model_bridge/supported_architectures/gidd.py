@@ -28,6 +28,35 @@ from transformer_lens.model_bridge.generalized_components import (
 )
 
 
+def restore_frequencies(hf_model: Any) -> bool:
+    """Recompute GIDD's ``frequencies`` rotary table on a loaded model.
+
+    The buffer is non-persistent (absent from the checkpoint) and built in
+    ``GiddModel.__init__``; under v5's meta-device load it materializes as
+    uninitialized memory — different garbage per load, sometimes NaN — which
+    silently corrupts every forward. Recomputing from config is exact.
+    Shared with the benchmark so bridge and HF reference agree.
+    """
+    import sys
+
+    inner = getattr(hf_model, "model", None)
+    old = getattr(inner, "frequencies", None)
+    if inner is None or old is None:
+        return False
+    module = sys.modules.get(type(inner).__module__)
+    compute = getattr(module, "compute_basic_frequencies", None)
+    if compute is None:
+        return False
+    config = hf_model.config
+    freqs = compute(
+        base=config.rope_theta,
+        rotary_dim=config.hidden_size // config.num_attention_heads,
+        max_position_embeddings=config.max_position_embeddings,
+    )
+    inner.frequencies = freqs.to(device=old.device, dtype=old.dtype)
+    return True
+
+
 class GiddArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for GiddForDiffusionLM models."""
 
@@ -116,6 +145,11 @@ class GiddArchitectureAdapter(ArchitectureAdapter):
         except Exception:
             pass
         super().prepare_loading(model_name, model_kwargs)
+
+    def prepare_model(self, hf_model: Any) -> None:
+        """Restore the rotary table lost to meta-device loading."""
+        super().prepare_model(hf_model)
+        restore_frequencies(hf_model)
 
     def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
         """Delegated attention reads the rotary buffer inside HF; nothing to wire."""
