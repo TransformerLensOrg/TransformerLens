@@ -35,9 +35,13 @@ def adapter() -> RwkvArchitectureAdapter:
 
 class TestRwkvPhases:
     def test_recurrent_treatment(self, adapter):
-        """State-kwarg generation isn't wired; WKV has no fold target."""
-        assert adapter.applicable_phases == [1, 2, 3]
-        assert adapter.supports_generation is False
+        """Generation recomputes the full prefix (HF threads recurrence through a
+        bespoke `state` kwarg, not past_key_values); WKV has no fold target."""
+        assert adapter.applicable_phases == [1, 2, 3, 4]
+        assert adapter.supports_generation is True
+        assert adapter.supports_kv_cache is False
+        # RwkvModel ignores attention_mask, so left-padding corrupts the state.
+        assert adapter.supports_batched_generation is False
         assert adapter.supports_fold_ln is False
 
 

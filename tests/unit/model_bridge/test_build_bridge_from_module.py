@@ -177,8 +177,13 @@ def test_hidden_activation_translates_to_act_fn():
     )
 
     hf_cfg = Gemma3TextConfig(
-        vocab_size=64, hidden_size=32, intermediate_size=64, num_hidden_layers=1,
-        num_attention_heads=2, num_key_value_heads=1, head_dim=16,
+        vocab_size=64,
+        hidden_size=32,
+        intermediate_size=64,
+        num_hidden_layers=1,
+        num_attention_heads=2,
+        num_key_value_heads=1,
+        head_dim=16,
     )
     cfg = build_bridge_config_from_hf(hf_cfg, "Gemma3ForCausalLM", "tiny", torch.float32)
     assert cfg.act_fn == "gelu_pytorch_tanh"

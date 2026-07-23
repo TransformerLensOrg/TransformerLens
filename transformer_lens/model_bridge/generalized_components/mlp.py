@@ -4,8 +4,6 @@ This module contains the bridge component for MLP layers.
 """
 from typing import Any, Dict, Optional
 
-import torch
-
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
@@ -45,8 +43,11 @@ class MLPBridge(GeneralizedComponent):
         """
         super().__init__(name, config, submodules=submodules, optional=optional)
 
-    def forward(self, *args, **kwargs) -> torch.Tensor:
+    def forward(self, *args, **kwargs) -> Any:
         """Forward pass through the MLP bridge.
+
+        Returns a tensor, or the component's own (hidden, ...) tuple re-packed
+        with hooked hidden states for recurrent MLPs.
 
         Args:
             *args: Positional arguments for the original component
@@ -67,6 +68,14 @@ class MLPBridge(GeneralizedComponent):
                 f"Original component not set for {self.name}. Call set_original_component() first."
             )
         output = original_component(*new_args, **kwargs)
+        # Recurrent MLPs (RWKV's channel-mix) return (hidden, state). Hook the
+        # hidden states and re-pack, or hook_out would hand users a tuple and
+        # interventions on it would be silently dropped.
+        if isinstance(output, tuple):
+            hidden = self.hook_out(output[0])
+            if hasattr(self, "out") and hasattr(self.out, "hook_out"):
+                hidden = self.out.hook_out(hidden)
+            return (hidden,) + output[1:]
         output = self.hook_out(output)
         if hasattr(self, "out") and hasattr(self.out, "hook_out"):
             output = self.out.hook_out(output)

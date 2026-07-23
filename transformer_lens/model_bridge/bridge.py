@@ -2772,9 +2772,15 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         """Reject autoregressive generation for forward-only architectures."""
         if not self.adapter.supports_generation:
             architecture = self.cfg.architecture or type(self.adapter).__name__
+            hint = (
+                " Use diffusion_generate() — this architecture samples by iterative denoising, "
+                "not left-to-right."
+                if getattr(self.adapter, "native_sampler", None)
+                else ""
+            )
             raise NotImplementedError(
                 f"TransformerBridge.{api_name}() generation is not supported by "
-                f"the {architecture} architecture."
+                f"the {architecture} architecture.{hint}"
             )
 
     def generate(
@@ -3261,6 +3267,74 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
 
         # return_input_tokens only (no cache)
         return result, input_tokens
+
+    @torch.no_grad()
+    def diffusion_generate(
+        self,
+        input: Union[str, List[str], torch.Tensor],
+        max_new_tokens: int = 32,
+        prepend_bos: Optional[bool] = None,
+        **kwargs: Any,
+    ) -> Union[str, torch.Tensor]:
+        """Sample from a non-autoregressive (diffusion) architecture.
+
+        Delegates to the model's own sampler — iterative full-sequence denoising
+        has no left-to-right loop to reuse, and the published schedules are what
+        make these checkpoints produce sane text. The sampler calls the model
+        through ``__call__``, so bridge hooks fire on every denoising step.
+
+        Args:
+            input: Prompt string, or token ids.
+            max_new_tokens: Token budget, translated to the sampler's own
+                parameter names by the adapter.
+            **kwargs: Passed to the native sampler, overriding the defaults.
+
+        Returns:
+            Decoded string for string input, else token ids.
+        """
+        sampler_name = getattr(self.adapter, "native_sampler", None)
+        architecture = self.cfg.architecture or type(self.adapter).__name__
+        if sampler_name is None:
+            raise NotImplementedError(
+                f"{architecture} has no native sampler; use generate() for autoregressive "
+                "architectures."
+            )
+        sampler = getattr(self.original_model, sampler_name, None)
+        if sampler is None:
+            raise NotImplementedError(
+                f"{architecture} declares native_sampler={sampler_name!r} but the loaded model "
+                "has no such method."
+            )
+
+        was_string = isinstance(input, str)
+        if isinstance(input, torch.Tensor):
+            tokens = input.to(self.cfg.device)
+        else:
+            # Tokenization is the bridge's concern, not the sampler's — absorb
+            # prepend_bos here rather than forwarding it into native kwargs.
+            tokens = self.to_tokens(
+                input, prepend_bos=prepend_bos, move_to_device=True, truncate=False
+            )
+
+        sampler_kwargs = self.adapter.native_sampler_kwargs(max_new_tokens, tokens.shape[-1])
+        sampler_kwargs.update(kwargs)
+        output = sampler(tokens, **sampler_kwargs)
+        # Samplers return either bare ids or a generation output object.
+        sequences = getattr(output, "sequences", output)
+        # They also disagree on whether the prompt is included: Dream and Gidd
+        # return the whole canvas, LLaDA2 slices it off. Normalize to
+        # generate()'s contract (prompt + continuation).
+        if isinstance(sequences, torch.Tensor) and sequences.ndim == tokens.ndim:
+            prompt_len = tokens.shape[-1]
+            includes_prompt = sequences.shape[-1] >= prompt_len and torch.equal(
+                sequences[..., :prompt_len], tokens
+            )
+            if not includes_prompt:
+                sequences = torch.cat([tokens, sequences.to(tokens.device)], dim=-1)
+
+        if was_string and self.tokenizer is not None:
+            return self.tokenizer.decode(sequences[0], skip_special_tokens=True)
+        return sequences
 
     @torch.no_grad()
     def generate_stream(

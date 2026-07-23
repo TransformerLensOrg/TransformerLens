@@ -10,9 +10,9 @@ held as a model-level buffer rather than a module.
 
 Everything nonstandard lives inside delegated modules: attention delegates
 wholesale (softcap + bidirectional), ScaledLinear wraps as plain hookable
-Linears, and generation is the model's own diffusion sampler — so the
-Dream/bd3lm treatment applies (phases 1-3, no autoregressive generation,
-no folding into scaled projections).
+Linears, and generation is the model's own diffusion sampler, reached via
+``bridge.diffusion_generate`` — no autoregressive generation, no folding
+into scaled projections.
 """
 
 from typing import Any
@@ -60,11 +60,22 @@ def restore_frequencies(hf_model: Any) -> bool:
 class GiddArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for GiddForDiffusionLM models."""
 
-    applicable_phases: list[int] = [1, 2, 3]
+    applicable_phases: list[int] = [1, 2, 3, 4]
     supports_generation: bool = False
+    # Block-wise denoising with self-correction, shipped on the model class.
+    native_sampler: str = "generate"
     # ScaledLinear applies a runtime weight scale; folding norms into those
     # projections (or centering through scaled residual adds) is unsound.
     supports_fold_ln = False
+
+    def native_sampler_kwargs(self, max_new_tokens: int, prompt_len: int) -> dict:
+        """Gidd's max_length is the whole canvas, prompt included."""
+        total = prompt_len + max_new_tokens
+        return {
+            "max_length": total,
+            "block_length": min(128, total),
+            "steps": max_new_tokens,
+        }
 
     def __init__(self, cfg: Any) -> None:
         """Initialize the Gidd architecture adapter."""

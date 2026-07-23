@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-07-22T22:53:49.380863",
+  "last_updated": "2026-07-23T00:09:43.264800",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -19685,6 +19685,66 @@
       "model_id": "dvruette/gidd-unif-3b",
       "architecture_id": "GiddForDiffusionLM",
       "verified_date": "2026-07-22",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "LongSafari/hyenadna-tiny-1k-seqlen-hf",
+      "architecture_id": "HyenaDNAForCausalLM",
+      "verified_date": "2026-07-22",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P2=92.3% (failed: generation)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "RWKV/rwkv-4-169m-pile",
+      "architecture_id": "RwkvForCausalLM",
+      "verified_date": "2026-07-22",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "dvruette/gidd-mask-3b",
+      "architecture_id": "GiddForDiffusionLM",
+      "verified_date": "2026-07-22",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P2=92.3% (failed: multiple_generation_calls)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Dream-org/Dream-v0-Instruct-7B",
+      "architecture_id": "DreamModel",
+      "verified_date": "2026-07-22",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "inclusionAI/LLaDA2.0-mini",
+      "architecture_id": "LLaDA2MoeModelLM",
+      "verified_date": "2026-07-22",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": null,
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "LongSafari/hyenadna-tiny-1k-seqlen-hf",
+      "architecture_id": "HyenaDNAForCausalLM",
+      "verified_date": "2026-07-23",
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Full verification completed",

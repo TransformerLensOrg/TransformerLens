@@ -33,7 +33,7 @@ def adapter() -> GiddArchitectureAdapter:
 
 class TestGiddPhases:
     def test_diffusion_treatment(self, adapter):
-        assert adapter.applicable_phases == [1, 2, 3]
+        assert adapter.applicable_phases == [1, 2, 3, 4]
         assert adapter.supports_generation is False
         assert adapter.supports_fold_ln is False
 

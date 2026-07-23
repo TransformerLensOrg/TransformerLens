@@ -133,3 +133,15 @@ class RwkvArchitectureAdapter(ArchitectureAdapter):
         if config is not None:
             config.use_cache = False
         super().prepare_loading(model_name, model_kwargs)
+
+    def prepare_model(self, hf_model: Any) -> None:
+        """Re-assert use_cache=False on the loaded model.
+
+        prepare_loading only fires on the boot path; modules wrapped directly
+        keep the config default, and the returned state tuples then reach hook
+        points that require tensors.
+        """
+        super().prepare_model(hf_model)
+        config = getattr(hf_model, "config", None)
+        if config is not None:
+            config.use_cache = False

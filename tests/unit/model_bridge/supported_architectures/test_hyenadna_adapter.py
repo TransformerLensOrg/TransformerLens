@@ -35,10 +35,15 @@ def adapter() -> HyenaDNAArchitectureAdapter:
 
 
 class TestHyenaDNAPhases:
-    def test_no_generation(self, adapter):
-        """The HF port ships no generate() (not a GenerationMixin)."""
-        assert adapter.applicable_phases == [1, 2, 3]
-        assert adapter.supports_generation is False
+    def test_generation_without_kv_cache(self, adapter):
+        """The HF port ships no generate() (not a GenerationMixin) and its FFT
+        convolution has no incremental form, so the bridge generates by
+        recomputing the full prefix each step."""
+        assert adapter.applicable_phases == [1, 2, 3, 4]
+        assert adapter.supports_generation is True
+        assert adapter.supports_kv_cache is False
+        # The remote forward takes no attention_mask kwarg, so padding is unsound.
+        assert adapter.supports_batched_generation is False
 
 
 class TestHyenaDNAMapping:

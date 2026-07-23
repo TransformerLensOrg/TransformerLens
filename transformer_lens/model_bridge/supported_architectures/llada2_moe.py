@@ -7,9 +7,9 @@ per-expert routed MLPs behind a bias-corrected router plus shared
 experts, and dense MLPs on the first ``first_k_dense_replace`` layers.
 
 Attention is bidirectional (``is_causal = False``) and generation is
-block-diffusion sampling via the model's own ``generate``, so attention
-delegates to HF, the bridge's autoregressive generation is disabled, and
-phases 1-3 apply (the Dream/bd3lm treatment). The fused QKV ships no
+block-diffusion sampling via the model's own ``generate``, reached through
+``bridge.diffusion_generate``; attention delegates to HF and the bridge's
+autoregressive generation stays off. The fused QKV ships no
 HookedTransformer-format weight conversions, so LN folding is disabled.
 
 The remote forward validates attention_mask strictly: it must be the 4D
@@ -53,10 +53,22 @@ class _LLaDA2FusedAttentionBridge(AttentionBridge):
 class LLaDA2MoeArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for LLaDA2MoeModelLM models."""
 
-    applicable_phases: list[int] = [1, 2, 3]
+    applicable_phases: list[int] = [1, 2, 3, 4]
     supports_generation: bool = False
+    # Semi-autoregressive block remasking, shipped on the model class.
+    native_sampler: str = "generate"
     # Fused query_key_value with no per-projection conversions to fold into.
     supports_fold_ln = False
+
+    def native_sampler_kwargs(self, max_new_tokens: int, prompt_len: int) -> dict:
+        """gen_length must cover whole blocks; block_length caps at the budget."""
+        block_length = min(32, max_new_tokens)
+        blocks = max(1, -(-max_new_tokens // block_length))
+        return {
+            "gen_length": blocks * block_length,
+            "block_length": block_length,
+            "steps": max_new_tokens,
+        }
 
     def __init__(self, cfg: Any) -> None:
         """Initialize the LLaDA 2.0 MoE architecture adapter."""

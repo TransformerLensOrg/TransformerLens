@@ -187,15 +187,26 @@ def benchmark_text_quality(
         # Seed for reproducibility
         torch.manual_seed(42)
 
+        # Diffusion LMs produce text through their native sampler; scoring that
+        # text is as meaningful as scoring autoregressive output.
+        from transformer_lens.benchmarks.generation import resolve_text_generator
+
+        generator = resolve_text_generator(bridge)
+        if generator is None:
+            return BenchmarkResult(
+                name="text_quality",
+                severity=BenchmarkSeverity.INFO,
+                message="Skipped: architecture supports no text generation",
+            )
+
         # Generate text for each prompt
         generations: List[Tuple[str, str]] = []  # (prompt, full_text)
         primary_generated = ""
         for i, prompt in enumerate(prompts):
-            generated = bridge.generate(
+            generated = generator(
                 prompt,
                 max_new_tokens=max_new_tokens,
                 temperature=0.7,
-                do_sample=True,
             )
             if not isinstance(generated, str) or len(generated.strip()) == 0:
                 continue

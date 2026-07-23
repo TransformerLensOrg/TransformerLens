@@ -1229,8 +1229,11 @@ def run_benchmark_suite(
 
         # Generation benchmarks (unprocessed only) - RUN FIRST
         # Skip for encoder-decoder and audio models (no text generation capability)
-        _no_generate = not getattr(
-            getattr(bridge_unprocessed, "adapter", None), "supports_generation", True
+        # Diffusion LMs generate through a native sampler; the benchmarks route
+        # to it, so only architectures with neither path are skipped.
+        _adapter = getattr(bridge_unprocessed, "adapter", None)
+        _no_generate = not getattr(_adapter, "supports_generation", True) and not getattr(
+            _adapter, "native_sampler", None
         )
         _skip_generation = (
             is_encoder_decoder_model(model_name)
@@ -1391,7 +1394,11 @@ def run_benchmark_suite(
         and bridge_unprocessed is not None
         # applicable_phases and supports_generation are independent switches;
         # without this check a disagreement surfaces as an ERROR, not a skip.
-        and getattr(bridge_unprocessed.adapter, "supports_generation", True)
+        # Native-sampler architectures generate too, just not autoregressively.
+        and (
+            getattr(bridge_unprocessed.adapter, "supports_generation", True)
+            or getattr(bridge_unprocessed.adapter, "native_sampler", None) is not None
+        )
         and not is_masked_lm_model(model_name, trust_remote_code=trust_remote_code)
         and not is_audio_model(model_name, trust_remote_code=trust_remote_code)
     ):

@@ -70,6 +70,15 @@ class ArchitectureAdapter:
     # LLaDA2's/Gidd's "generate"). None means the architecture has none.
     native_sampler: Optional[str] = None
 
+    def native_sampler_kwargs(self, max_new_tokens: int, prompt_len: int) -> Dict[str, Any]:
+        """Map a token budget onto the native sampler's own parameter names.
+
+        Diffusion samplers each spell the budget differently (max_new_tokens vs
+        gen_length vs total max_length) and need a denoising-step count, so
+        adapters translate rather than callers.
+        """
+        return {"max_new_tokens": max_new_tokens}
+
     # Runtime gate for enable_compatibility_mode(): set False when the stored-
     # processed-weights forward is known to diverge (e.g. VaultGemma).
     supports_compatibility_mode: bool = True

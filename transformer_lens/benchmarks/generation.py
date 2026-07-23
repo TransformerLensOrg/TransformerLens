@@ -1,6 +1,6 @@
 """Generation and KV cache benchmarks for TransformerBridge."""
 
-from typing import Optional
+from typing import Any, Optional
 
 from transformer_lens import HookedTransformer
 from transformer_lens.benchmarks.utils import (
@@ -9,6 +9,20 @@ from transformer_lens.benchmarks.utils import (
     is_tiny_test_model,
 )
 from transformer_lens.model_bridge import TransformerBridge
+
+
+def resolve_text_generator(bridge: Any):
+    """Return the callable that produces text for this architecture, or None.
+
+    Diffusion LMs sample by iterative denoising through their own sampler; that
+    is still generation for verification purposes, so the benchmarks exercise it
+    rather than skipping these architectures.
+    """
+    if getattr(bridge.adapter, "supports_generation", True):
+        return bridge.generate
+    if getattr(bridge.adapter, "native_sampler", None):
+        return bridge.diffusion_generate
+    return None
 
 
 def benchmark_generation(
@@ -35,7 +49,14 @@ def benchmark_generation(
                 severity=BenchmarkSeverity.INFO,
                 message="Skipped for tiny/test model (random weights produce degenerate generation)",
             )
-        output = bridge.generate(test_text, max_new_tokens=max_new_tokens)
+        generator = resolve_text_generator(bridge)
+        if generator is None:
+            return BenchmarkResult(
+                name="generation",
+                severity=BenchmarkSeverity.INFO,
+                message="Skipped: architecture supports no text generation",
+            )
+        output = generator(test_text, max_new_tokens=max_new_tokens)
 
         if not isinstance(output, str):
             return BenchmarkResult(
@@ -53,7 +74,15 @@ def benchmark_generation(
         input_len = input_tokens.shape[-1]
         output_len = output_tokens.shape[-1]
 
-        if output_len <= input_len:
+        # Compare like with like. decode->re-tokenize is lossy when the prompt
+        # holds out-of-vocabulary characters (a DNA model given English drops
+        # them as [UNK]), which reads as "no new tokens" though generation ran.
+        prompt_roundtrip = test_text
+        if bridge.tokenizer is not None:
+            prompt_roundtrip = bridge.tokenizer.decode(
+                input_tokens[0], skip_special_tokens=True
+            )
+        if output_len <= input_len and len(output) <= len(prompt_roundtrip):
             return BenchmarkResult(
                 name="generation",
                 severity=BenchmarkSeverity.DANGER,
@@ -119,7 +148,10 @@ def benchmark_generation_with_kv_cache(
 
         # Cache-free architectures (RWKV, HyenaDNA) would "pass" this vacuously —
         # the recompute path produces output while exercising no cache at all.
-        if not getattr(bridge.adapter, "supports_kv_cache", True):
+        # Diffusion samplers have no KV cache concept either.
+        if not getattr(bridge.adapter, "supports_kv_cache", True) or not getattr(
+            bridge.adapter, "supports_generation", True
+        ):
             return BenchmarkResult(
                 name="generation_with_kv_cache",
                 severity=BenchmarkSeverity.INFO,
@@ -183,9 +215,17 @@ def benchmark_multiple_generation_calls(
                 message="Skipped for tiny/test model (random weights produce degenerate generation)",
             )
 
+        generator = resolve_text_generator(bridge)
+        if generator is None:
+            return BenchmarkResult(
+                name="multiple_generation_calls",
+                severity=BenchmarkSeverity.INFO,
+                message="Skipped: architecture supports no text generation",
+            )
+
         outputs = []
         for prompt in test_prompts:
-            output = bridge.generate(
+            output = generator(
                 prompt,
                 max_new_tokens=max_new_tokens,
                 temperature=0.7,
