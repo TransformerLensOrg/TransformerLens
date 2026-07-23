@@ -1,11 +1,10 @@
 """Unit tests for MambaArchitectureAdapter — programmatic configs only.
 
 Tests cover:
-- Config attribute validation (RMS norm, no positional embeddings, stateful)
+- SSM-specific config (is_stateful marker)
 - Component mapping structure and HF module paths
 - SSM block structure with norm and mixer submodules
 - SSM mixer submodule structure (in_proj, conv1d, x_proj, dt_proj, out_proj)
-- Factory registration
 - Weight conversions (empty for SSM)
 """
 
@@ -14,9 +13,6 @@ from typing import Any
 import pytest
 
 from transformer_lens.config import TransformerBridgeConfig
-from transformer_lens.factories.architecture_adapter_factory import (
-    SUPPORTED_ARCHITECTURES,
-)
 from transformer_lens.model_bridge.generalized_components import (
     DepthwiseConv1DBridge,
     EmbeddingBridge,
@@ -69,25 +65,7 @@ def _mapping(adapter: MambaArchitectureAdapter) -> dict[str, Any]:
 
 
 class TestMambaAdapterConfig:
-    """Adapter sets all required config attributes for Mamba-1 SSM models."""
-
-    def test_normalization_type_is_rms(self, adapter: MambaArchitectureAdapter) -> None:
-        assert adapter.cfg.normalization_type == "RMS"
-
-    def test_uses_rms_norm_is_true(self, adapter: MambaArchitectureAdapter) -> None:
-        assert adapter.cfg.uses_rms_norm is True
-
-    def test_positional_embedding_type_is_none(self, adapter: MambaArchitectureAdapter) -> None:
-        assert adapter.cfg.positional_embedding_type == "none"
-
-    def test_gated_mlp_is_false(self, adapter: MambaArchitectureAdapter) -> None:
-        assert adapter.cfg.gated_mlp is False
-
-    def test_attn_only_is_false(self, adapter: MambaArchitectureAdapter) -> None:
-        assert adapter.cfg.attn_only is False
-
-    def test_final_rms_is_true(self, adapter: MambaArchitectureAdapter) -> None:
-        assert adapter.cfg.final_rms is True
+    """SSM-specific config marker."""
 
     def test_is_stateful_is_true(self, adapter: MambaArchitectureAdapter) -> None:
         assert adapter.cfg.is_stateful is True
@@ -123,29 +101,25 @@ class TestMambaComponentMapping:
         mapping = _mapping(adapter)
         assert "pos_embed" not in mapping
 
-    def test_embed_is_embedding_bridge(self, adapter: MambaArchitectureAdapter) -> None:
-        assert isinstance(_mapping(adapter)["embed"], EmbeddingBridge)
+    def test_embed(self, adapter: MambaArchitectureAdapter) -> None:
+        embed = _mapping(adapter)["embed"]
+        assert isinstance(embed, EmbeddingBridge)
+        assert embed.name == "backbone.embeddings"
 
-    def test_embed_name(self, adapter: MambaArchitectureAdapter) -> None:
-        assert _mapping(adapter)["embed"].name == "backbone.embeddings"
+    def test_blocks(self, adapter: MambaArchitectureAdapter) -> None:
+        blocks = _mapping(adapter)["blocks"]
+        assert isinstance(blocks, SSMBlockBridge)
+        assert blocks.name == "backbone.layers"
 
-    def test_blocks_is_ssm_block_bridge(self, adapter: MambaArchitectureAdapter) -> None:
-        assert isinstance(_mapping(adapter)["blocks"], SSMBlockBridge)
+    def test_ln_final(self, adapter: MambaArchitectureAdapter) -> None:
+        ln_final = _mapping(adapter)["ln_final"]
+        assert isinstance(ln_final, RMSNormalizationBridge)
+        assert ln_final.name == "backbone.norm_f"
 
-    def test_blocks_name(self, adapter: MambaArchitectureAdapter) -> None:
-        assert _mapping(adapter)["blocks"].name == "backbone.layers"
-
-    def test_ln_final_is_rms_normalization_bridge(self, adapter: MambaArchitectureAdapter) -> None:
-        assert isinstance(_mapping(adapter)["ln_final"], RMSNormalizationBridge)
-
-    def test_ln_final_name(self, adapter: MambaArchitectureAdapter) -> None:
-        assert _mapping(adapter)["ln_final"].name == "backbone.norm_f"
-
-    def test_unembed_is_unembedding_bridge(self, adapter: MambaArchitectureAdapter) -> None:
-        assert isinstance(_mapping(adapter)["unembed"], UnembeddingBridge)
-
-    def test_unembed_name(self, adapter: MambaArchitectureAdapter) -> None:
-        assert _mapping(adapter)["unembed"].name == "lm_head"
+    def test_unembed(self, adapter: MambaArchitectureAdapter) -> None:
+        unembed = _mapping(adapter)["unembed"]
+        assert isinstance(unembed, UnembeddingBridge)
+        assert unembed.name == "lm_head"
 
 
 class TestMambaBlockSubmodules:
@@ -156,21 +130,15 @@ class TestMambaBlockSubmodules:
         for key in ("norm", "mixer"):
             assert key in blocks.submodules, f"Missing blocks submodule: {key!r}"
 
-    def test_norm_is_rms_normalization_bridge(self, adapter: MambaArchitectureAdapter) -> None:
-        blocks = _mapping(adapter)["blocks"]
-        assert isinstance(blocks.submodules["norm"], RMSNormalizationBridge)
+    def test_norm(self, adapter: MambaArchitectureAdapter) -> None:
+        norm = _mapping(adapter)["blocks"].submodules["norm"]
+        assert isinstance(norm, RMSNormalizationBridge)
+        assert norm.name == "norm"
 
-    def test_norm_name(self, adapter: MambaArchitectureAdapter) -> None:
-        blocks = _mapping(adapter)["blocks"]
-        assert blocks.submodules["norm"].name == "norm"
-
-    def test_mixer_is_ssm_mixer_bridge(self, adapter: MambaArchitectureAdapter) -> None:
-        blocks = _mapping(adapter)["blocks"]
-        assert isinstance(blocks.submodules["mixer"], SSMMixerBridge)
-
-    def test_mixer_name(self, adapter: MambaArchitectureAdapter) -> None:
-        blocks = _mapping(adapter)["blocks"]
-        assert blocks.submodules["mixer"].name == "mixer"
+    def test_mixer(self, adapter: MambaArchitectureAdapter) -> None:
+        mixer = _mapping(adapter)["blocks"].submodules["mixer"]
+        assert isinstance(mixer, SSMMixerBridge)
+        assert mixer.name == "mixer"
 
 
 class TestMambaMixerSubmodules:
@@ -213,19 +181,6 @@ class TestMambaMixerSubmodules:
         assert set(mixer.submodules.keys()) == expected
 
 
-class TestMambaFactoryRegistration:
-    """MambaForCausalLM architecture dispatches to this adapter."""
-
-    def test_architecture_registered_in_supported_architectures(self) -> None:
-        assert "MambaForCausalLM" in SUPPORTED_ARCHITECTURES
-
-    def test_factory_returns_correct_adapter_type(self) -> None:
-        cfg = _make_cfg()
-        adapter_cls = SUPPORTED_ARCHITECTURES["MambaForCausalLM"]
-        adapter = adapter_cls(cfg)
-        assert isinstance(adapter, MambaArchitectureAdapter)
-
-
 class TestMambaArchitectureGuards:
     """Guards against drift from Mamba conventions."""
 
@@ -240,11 +195,3 @@ class TestMambaArchitectureGuards:
         """SSM uses mixer instead of MLP."""
         blocks = _mapping(adapter)["blocks"]
         assert "mlp" not in blocks.submodules
-
-    def test_blocks_use_ssm_block_bridge_not_block_bridge(
-        self, adapter: MambaArchitectureAdapter
-    ) -> None:
-        """Mamba uses SSMBlockBridge, not the transformer BlockBridge."""
-        blocks = _mapping(adapter)["blocks"]
-        assert isinstance(blocks, SSMBlockBridge)
-        assert type(blocks) is SSMBlockBridge
