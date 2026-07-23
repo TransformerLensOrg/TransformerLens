@@ -996,7 +996,9 @@ class TestRegistry:
             assert "aliases" in entry, f"Missing aliases list in entry '{key}'"
 
     def test_resolve_registry_entry_by_short_name(self) -> None:
-        from transformer_lens.tools.analysis.jacobian_lens import _resolve_registry_entry
+        from transformer_lens.tools.analysis.jacobian_lens import (
+            _resolve_registry_entry,
+        )
 
         result = _resolve_registry_entry("gemma-2-2b")
         assert result is not None
@@ -1006,7 +1008,9 @@ class TestRegistry:
         assert filename.endswith(".pt")
 
     def test_resolve_registry_entry_by_hf_model_id(self) -> None:
-        from transformer_lens.tools.analysis.jacobian_lens import _resolve_registry_entry
+        from transformer_lens.tools.analysis.jacobian_lens import (
+            _resolve_registry_entry,
+        )
 
         result = _resolve_registry_entry("google/gemma-2-2b")
         assert result is not None
@@ -1015,7 +1019,9 @@ class TestRegistry:
         assert "gemma-2-2b" in filename
 
     def test_resolve_registry_entry_unknown_returns_none(self) -> None:
-        from transformer_lens.tools.analysis.jacobian_lens import _resolve_registry_entry
+        from transformer_lens.tools.analysis.jacobian_lens import (
+            _resolve_registry_entry,
+        )
 
         assert _resolve_registry_entry("not-a-real-model") is None
         assert _resolve_registry_entry("some/unknown-repo") is None
