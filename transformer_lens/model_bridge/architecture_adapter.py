@@ -24,6 +24,7 @@ from transformer_lens.model_bridge.types import (
     RemotePath,
     TransformerLensPath,
 )
+from transformer_lens.utilities.activation_functions import apply_softcap
 
 
 class ArchitectureAdapter:
@@ -47,6 +48,14 @@ class ArchitectureAdapter:
     # Whether this architecture supports text generation via generate().
     # Encoder-only models (e.g. BERT, HuBERT) should set this to False.
     supports_generation: bool = True
+
+    # Whether run_with_cache should request attention tensors from Hugging Face.
+    # Set False when an adapter reconstructs those tensors but the HF wrapper
+    # rejects output_attentions=True.
+    supports_hf_output_attentions: bool = True
+
+    # Whether Bridge's shifted next-token cross-entropy is meaningful.
+    supports_causal_loss: bool = True
 
     # Optional libraries this adapter needs at load time (e.g. the multimodal group's timm).
     # Checked at construction so a missing one raises a clear error, not a deep HF failure.
@@ -89,6 +98,18 @@ class ArchitectureAdapter:
         for key, value in self.default_cfg.items():
             if not hasattr(self.cfg, key):
                 setattr(self.cfg, key, value)
+
+    def apply_output_logits_transform(self, logits: torch.Tensor) -> torch.Tensor:
+        """Apply the architecture's declared post-unembedding transform.
+
+        Most causal decoders only apply the shared optional Gemma-style soft cap.
+        Adapters with additional scaling override this method instead of relying
+        on similarly named configuration fields used by unrelated architectures.
+        """
+        return apply_softcap(logits, getattr(self.cfg, "output_logits_soft_cap", None))
+
+    def validate_output_logits_transform(self) -> None:
+        """Validate that the adapter can reproduce its post-unembedding path."""
 
     def _qkvo_weight_conversions(
         self, n_kv_heads: Optional[int] = None
@@ -453,22 +474,16 @@ class ArchitectureAdapter:
                     subcomponent_bridge = bridge_component.submodules[subcomponent_name]
                     if len(parts) > 3:
                         current_bridge = subcomponent_bridge
-                        subcomponent_name_str = subcomponent_bridge.name
-                        if subcomponent_name_str is None:
-                            raise ValueError(
-                                f"Subcomponent {subcomponent_name} must have a name for path translation"
-                            )
-                        remote_path_parts = [items_path, item_index, subcomponent_name_str]
+                        remote_path_parts = [items_path, item_index]
+                        if subcomponent_bridge.name is not None:
+                            remote_path_parts.append(subcomponent_bridge.name)
                         for i in range(3, len(parts)):
                             deeper_component_name = parts[i]
                             if deeper_component_name in current_bridge.submodules:
                                 current_bridge = current_bridge.submodules[deeper_component_name]
                                 deeper_name = current_bridge.name
-                                if deeper_name is None:
-                                    raise ValueError(
-                                        f"Component {deeper_component_name} must have a name for path translation"
-                                    )
-                                remote_path_parts.append(deeper_name)
+                                if deeper_name is not None:
+                                    remote_path_parts.append(deeper_name)
                             else:
                                 raise ValueError(
                                     f"Component {deeper_component_name} not found in {'.'.join(parts[:i])} components"
@@ -483,7 +498,7 @@ class ArchitectureAdapter:
                         subcomponent_name_str = subcomponent_bridge.name
                         if subcomponent_name_str is None:
                             raise ValueError(
-                                f"Subcomponent {subcomponent_name} must have a name for path translation"  # type: ignore[assignment]
+                                f"Synthetic component {subcomponent_name} has no remote path"
                             )
                         remote_path = f"{items_path}.{item_index}.{subcomponent_name_str}"
                         if param_suffix:
@@ -683,45 +698,47 @@ class ArchitectureAdapter:
         if self.component_mapping is None:
             return hf_key
         for tl_name, component in self.component_mapping.items():
-            if tl_name == "blocks":
+            if tl_name in ("blocks", "L_blocks", "H_blocks"):
                 continue
             hf_path = component.name
             if hf_path is not None and hf_key.startswith(hf_path + "."):
                 param = hf_key[len(hf_path) + 1 :]
                 return f"{tl_name}.{param}"
-        blocks_component = self.component_mapping.get("blocks")
-        if blocks_component:
-            hf_blocks_prefix = blocks_component.name
-            if hf_blocks_prefix is not None and hf_key.startswith(hf_blocks_prefix + "."):
-                rest = hf_key[len(hf_blocks_prefix) + 1 :]
-                parts = rest.split(".", 1)
-                if len(parts) >= 2 and parts[0].isdigit():
-                    layer_idx = parts[0]
-                    subkey = parts[1]
-                    if hasattr(blocks_component, "submodules"):
-                        for tl_subname, subcomponent in blocks_component.submodules.items():
-                            hf_subpath = subcomponent.name
-                            if hf_subpath is not None and subkey.startswith(hf_subpath + "."):
-                                param = subkey[len(hf_subpath) + 1 :]
-                                return f"blocks.{layer_idx}.{tl_subname}.{param}"
-                            # SymbolicBridge (name=None): keys use bridge names directly.
-                            if hf_subpath is None and subkey.startswith(tl_subname + "."):
-                                param = subkey[len(tl_subname) + 1 :]
-                                return f"blocks.{layer_idx}.{tl_subname}.{param}"
-                            if hasattr(subcomponent, "submodules"):
-                                for tl_nested_name, nested_comp in subcomponent.submodules.items():
-                                    if hf_subpath is not None:
-                                        hf_nested_path: Optional[
-                                            str
-                                        ] = f"{hf_subpath}.{nested_comp.name}"
-                                    else:
-                                        # SymbolicBridge: no container prefix
-                                        hf_nested_path = nested_comp.name
-                                    if hf_nested_path is not None and subkey.startswith(
-                                        hf_nested_path + "."
-                                    ):
-                                        param = subkey[len(hf_nested_path) + 1 :]
-                                        return f"blocks.{layer_idx}.{tl_subname}.{tl_nested_name}.{param}"
+        for bl_tl_name in ("blocks", "L_blocks", "H_blocks"):
+            blocks_component = self.component_mapping.get(bl_tl_name)
+            if blocks_component:
+                hf_blocks_prefix = blocks_component.name
+                if hf_blocks_prefix is not None and hf_key.startswith(hf_blocks_prefix + "."):
+                    rest = hf_key[len(hf_blocks_prefix) + 1 :]
+                    parts = rest.split(".", 1)
+                    if len(parts) >= 2 and parts[0].isdigit():
+                        layer_idx = parts[0]
+                        subkey = parts[1]
+                        if hasattr(blocks_component, "submodules"):
+                            for tl_subname, subcomponent in blocks_component.submodules.items():
+                                hf_subpath = subcomponent.name
+                                if hasattr(subcomponent, "submodules"):
+                                    for (
+                                        tl_nested_name,
+                                        nested_comp,
+                                    ) in subcomponent.submodules.items():
+                                        if hf_subpath is not None:
+                                            hf_nested_path: Optional[
+                                                str
+                                            ] = f"{hf_subpath}.{nested_comp.name}"
+                                        else:
+                                            hf_nested_path = nested_comp.name
+                                        if hf_nested_path is not None and subkey.startswith(
+                                            hf_nested_path + "."
+                                        ):
+                                            param = subkey[len(hf_nested_path) + 1 :]
+                                            return f"{bl_tl_name}.{layer_idx}.{tl_subname}.{tl_nested_name}.{param}"
+                                if hf_subpath is not None and subkey.startswith(hf_subpath + "."):
+                                    param = subkey[len(hf_subpath) + 1 :]
+                                    return f"{bl_tl_name}.{layer_idx}.{tl_subname}.{param}"
+                                if hf_subpath is None and subkey.startswith(tl_subname + "."):
+                                    param = subkey[len(tl_subname) + 1 :]
+                                    return f"{bl_tl_name}.{layer_idx}.{tl_subname}.{param}"
         return hf_key
 
     def prepare_loading(self, model_name: str, model_kwargs: dict) -> None:

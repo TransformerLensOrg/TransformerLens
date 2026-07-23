@@ -7,11 +7,10 @@ because it has a significantly different architecture to e.g. GPT style transfor
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional, Tuple, TypeVar, Union, overload
+from typing import Any, Dict, List, Optional, Tuple, TypeVar, Union, cast, overload
 
 import numpy as np
 import torch
-import torch.nn as nn
 from einops import repeat
 from jaxtyping import Float, Int
 from transformers import AutoFeatureExtractor, HubertModel, Wav2Vec2Model
@@ -19,11 +18,11 @@ from typing_extensions import Literal
 
 from transformer_lens import loading_from_pretrained as loading
 from transformer_lens.ActivationCache import ActivationCache
-from transformer_lens.components import MLP, Attention, BertBlock
+from transformer_lens.components import MLP, BertBlock
 from transformer_lens.config.hooked_transformer_config import HookedTransformerConfig
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.HookedRootModule import HookedRootModule
-from transformer_lens.utilities import devices
+from transformer_lens.utilities import TypedModuleList, devices
 
 T = TypeVar("T", bound="HookedAudioEncoder")
 
@@ -41,6 +40,7 @@ class HookedAudioEncoder(HookedRootModule):
 
     processor: Any  # AutoFeatureExtractor — HF auto class, not typed as callable in stubs
     hubert_model: Union[HubertModel, Wav2Vec2Model]
+    blocks: TypedModuleList[BertBlock]
 
     def __init__(
         self,
@@ -60,7 +60,7 @@ class HookedAudioEncoder(HookedRootModule):
 
         assert self.cfg.n_devices == 1, "Multiple devices not supported for HookedEncoder"
 
-        self.blocks = nn.ModuleList([BertBlock(self.cfg) for _ in range(self.cfg.n_layers)])
+        self.blocks = TypedModuleList([BertBlock(self.cfg) for _ in range(self.cfg.n_layers)])
 
         if move_to_device:
             if self.cfg.device is None:
@@ -362,6 +362,17 @@ class HookedAudioEncoder(HookedRootModule):
         **from_pretrained_kwargs: Any,
     ) -> "HookedAudioEncoder":
         """Loads in the pretrained weights from huggingface. Currently supports loading weight from HuggingFace BertForMaskedLM. Unlike HookedTransformer, this does not yet do any preprocessing on the model."""
+        import warnings
+
+        warnings.warn(
+            "HookedAudioEncoder.from_pretrained is deprecated and will be removed in a "
+            "future major release. Use TransformerBridge.boot_transformers(...) instead — "
+            "HuBERT/Wav2Vec2 are supported via the bridge's audio adapter. See "
+            "docs/source/content/migrating_to_v3.md.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
         logging.warning(
             "Support for HuBERT in TransformerLens is currently experimental, until such a time when it has feature "
             "parity with HookedTransformer and has been tested on real research tasks. Until then, backward "
@@ -426,86 +437,62 @@ class HookedAudioEncoder(HookedRootModule):
     @property
     def W_K(self) -> Float[torch.Tensor, "n_layers n_heads d_model d_head"]:
         """Stacks the key weights across all layers"""
-        for block in self.blocks:
-            assert isinstance(block.attn, Attention)
         return torch.stack([block.attn.W_K for block in self.blocks], dim=0)
 
     @property
     def W_Q(self) -> Float[torch.Tensor, "n_layers n_heads d_model d_head"]:
         """Stacks the query weights across all layers"""
-        for block in self.blocks:
-            assert isinstance(block.attn, Attention)
         return torch.stack([block.attn.W_Q for block in self.blocks], dim=0)
 
     @property
     def W_V(self) -> Float[torch.Tensor, "n_layers n_heads d_model d_head"]:
         """Stacks the value weights across all layers"""
-        for block in self.blocks:
-            assert isinstance(block.attn, Attention)
         return torch.stack([block.attn.W_V for block in self.blocks], dim=0)
 
     @property
     def W_O(self) -> Float[torch.Tensor, "n_layers n_heads d_head d_model"]:
         """Stacks the attn output weights across all layers"""
-        for block in self.blocks:
-            assert isinstance(block.attn, Attention)
         return torch.stack([block.attn.W_O for block in self.blocks], dim=0)
 
     @property
     def W_in(self) -> Float[torch.Tensor, "n_layers d_model d_mlp"]:
         """Stacks the MLP input weights across all layers"""
-        for block in self.blocks:
-            assert isinstance(block.mlp, MLP)
         return torch.stack([block.mlp.W_in for block in self.blocks], dim=0)
 
     @property
     def W_out(self) -> Float[torch.Tensor, "n_layers d_mlp d_model"]:
         """Stacks the MLP output weights across all layers"""
-        for block in self.blocks:
-            assert isinstance(block.mlp, MLP)
         return torch.stack([block.mlp.W_out for block in self.blocks], dim=0)
 
     @property
     def b_K(self) -> Float[torch.Tensor, "n_layers n_heads d_head"]:
         """Stacks the key biases across all layers"""
-        for block in self.blocks:
-            assert isinstance(block.attn, Attention)
         return torch.stack([block.attn.b_K for block in self.blocks], dim=0)
 
     @property
     def b_Q(self) -> Float[torch.Tensor, "n_layers n_heads d_head"]:
         """Stacks the query biases across all layers"""
-        for block in self.blocks:
-            assert isinstance(block.attn, Attention)
         return torch.stack([block.attn.b_Q for block in self.blocks], dim=0)
 
     @property
     def b_V(self) -> Float[torch.Tensor, "n_layers n_heads d_head"]:
         """Stacks the value biases across all layers"""
-        for block in self.blocks:
-            assert isinstance(block.attn, Attention)
         return torch.stack([block.attn.b_V for block in self.blocks], dim=0)
 
     @property
     def b_O(self) -> Float[torch.Tensor, "n_layers d_model"]:
         """Stacks the attn output biases across all layers"""
-        for block in self.blocks:
-            assert isinstance(block.attn, Attention)
         return torch.stack([block.attn.b_O for block in self.blocks], dim=0)
 
     @property
     def b_in(self) -> Float[torch.Tensor, "n_layers d_mlp"]:
         """Stacks the MLP input biases across all layers"""
-        for block in self.blocks:
-            assert isinstance(block.mlp, MLP)
-        return torch.stack([block.mlp.b_in for block in self.blocks], dim=0)
+        return torch.stack([cast(MLP, block.mlp).b_in for block in self.blocks], dim=0)
 
     @property
     def b_out(self) -> Float[torch.Tensor, "n_layers d_model"]:
         """Stacks the MLP output biases across all layers"""
-        for block in self.blocks:
-            assert isinstance(block.mlp, MLP)
-        return torch.stack([block.mlp.b_out for block in self.blocks], dim=0)
+        return torch.stack([cast(MLP, block.mlp).b_out for block in self.blocks], dim=0)
 
     @property
     def QK(self) -> FactoredMatrix:  # [n_layers, n_heads, d_model, d_model]

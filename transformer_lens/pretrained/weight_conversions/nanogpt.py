@@ -45,9 +45,6 @@ def convert_nanogpt_weights(old_state_dict, cfg: HookedTransformerConfig):
             old_state_dict[f"{layer_key}.ln_2.weight"]
         )
 
-        new_state_dict[f"blocks.{layer}.attn.mask"] = torch.tril(
-            torch.ones((cfg.n_ctx, cfg.n_ctx)).bool()
-        )
         new_state_dict[f"blocks.{layer}.attn.IGNORE"] = torch.tensor(-torch.inf)
 
         W = old_state_dict[f"{layer_key}.attn.c_attn.weight"]

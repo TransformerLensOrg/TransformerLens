@@ -6,23 +6,36 @@ field unlocks (gated MLP, RMS norm, GQA, soft-cap, rotary, attn_only) — these
 features make boot_native useful as a regression target for the bridge's
 real machinery, not just a flat GPT-2 toy.
 """
+
 from __future__ import annotations
 
+from unittest.mock import patch
+
+import pytest
 import torch
 
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.model_bridge import TransformerBridge
 from transformer_lens.model_bridge.generalized_components import (
+    AttentionBridge,
     GatedMLPBridge,
     MLPBridge,
     NormalizationBridge,
     RMSNormalizationBridge,
+)
+from transformer_lens.model_bridge.generalized_components.base import (
+    GeneralizedComponent,
 )
 from transformer_lens.model_bridge.sources.native.model import (
     NativeGatedMLP,
     NativeMLP,
     NativeRMSNorm,
 )
+
+
+class _ResultOnlyAttentionBridge(AttentionBridge):
+    supports_split_qkv_fork = False
+    supports_attn_result = True
 
 
 def _cfg(**overrides) -> TransformerBridgeConfig:
@@ -45,6 +58,61 @@ def _cfg(**overrides) -> TransformerBridgeConfig:
 def _forward(bridge: TransformerBridge) -> torch.Tensor:
     inputs = torch.randint(0, bridge.cfg.d_vocab, (2, bridge.cfg.n_ctx))
     return bridge(inputs, return_type="logits")
+
+
+def test_result_hook_capability_is_independent_of_qkv_input_forks() -> None:
+    bridge = TransformerBridge.boot_native(_cfg())
+    bridge.blocks[0]._modules["attn"] = _ResultOnlyAttentionBridge(
+        name="result_only",
+        config=bridge.cfg,
+    )
+
+    bridge.set_use_attn_result(True)
+    assert bridge.cfg.use_attn_result is True
+    with pytest.raises(NotImplementedError, match="use_split_qkv_input"):
+        bridge.set_use_split_qkv_input(True)
+
+
+def test_forward_only_capabilities_reject_generation_and_causal_loss() -> None:
+    bridge = TransformerBridge.boot_native(_cfg())
+    bridge.adapter.supports_generation = False
+    bridge.adapter.supports_causal_loss = False
+    tokens = torch.randint(0, bridge.cfg.d_vocab, (1, 4))
+
+    with pytest.raises(NotImplementedError, match="generation is not supported"):
+        bridge.generate(tokens, max_new_tokens=1)
+    with pytest.raises(NotImplementedError, match="shifted causal loss"):
+        bridge(tokens, return_type="loss")
+
+
+def test_output_attention_capability_controls_only_the_implicit_request() -> None:
+    bridge = TransformerBridge.boot_native(_cfg())
+    tokens = torch.randint(0, bridge.cfg.d_vocab, (1, 4))
+
+    with patch.object(
+        bridge.original_model,
+        "forward",
+        wraps=bridge.original_model.forward,
+    ) as forward:
+        bridge.run_with_cache(tokens)
+    assert forward.call_args.kwargs["output_attentions"] is True
+
+    bridge.adapter.supports_hf_output_attentions = False
+    with patch.object(
+        bridge.original_model,
+        "forward",
+        wraps=bridge.original_model.forward,
+    ) as forward:
+        bridge.run_with_cache(tokens)
+    assert "output_attentions" not in forward.call_args.kwargs
+
+    with patch.object(
+        bridge.original_model,
+        "forward",
+        wraps=bridge.original_model.forward,
+    ) as forward:
+        bridge.run_with_cache(tokens, output_attentions=True)
+    assert forward.call_args.kwargs["output_attentions"] is True
 
 
 # -- soft-cap -----------------------------------------------------------------
@@ -235,6 +303,22 @@ def test_final_rms_only_swaps_the_final_norm():
     assert isinstance(ln_final_bridge, RMSNormalizationBridge)
     assert isinstance(ln_final_bridge.original_component, NativeRMSNorm)
     _ = _forward(bridge)
+
+
+def test_no_norm_uses_identity_modules_with_hooks():
+    cfg = _cfg(normalization_type=None)
+    bridge = TransformerBridge.boot_native(cfg)
+
+    assert isinstance(bridge.blocks[0].ln1, GeneralizedComponent)
+    assert not isinstance(bridge.blocks[0].ln1, NormalizationBridge)
+    assert isinstance(bridge.blocks[0].ln1.original_component, torch.nn.Identity)
+    assert isinstance(bridge.blocks[0].ln2.original_component, torch.nn.Identity)
+    assert isinstance(bridge.ln_final.original_component, torch.nn.Identity)
+
+    inputs = torch.randint(0, cfg.d_vocab, (2, cfg.n_ctx))
+    _, cache = bridge.run_with_cache(inputs, return_type="logits")
+    assert torch.equal(cache["blocks.0.ln1.hook_in"], cache["blocks.0.ln1.hook_out"])
+    assert torch.equal(cache["ln_final.hook_in"], cache["ln_final.hook_out"])
 
 
 def test_ln_default_uses_layernorm():
@@ -514,9 +598,6 @@ def test_rotary_pattern_differs_from_absolute():
 # -- init modes ---------------------------------------------------------------
 
 
-import pytest
-
-
 @pytest.mark.parametrize(
     "init_mode",
     ["gpt2", "xavier_uniform", "xavier_normal", "kaiming_uniform", "kaiming_normal"],
@@ -571,6 +652,34 @@ def test_init_modes_diverge_from_each_other():
 
 
 # -- attention_mask -----------------------------------------------------------
+
+
+def test_attention_dir_causal_masks_future_tokens():
+    cfg = _cfg(attention_dir="causal")
+    bridge = TransformerBridge.boot_native(cfg)
+    inputs = torch.randint(0, cfg.d_vocab, (2, cfg.n_ctx))
+
+    _, cache = bridge.run_with_cache(inputs, return_type="logits")
+    pattern = cache["blocks.0.attn.hook_pattern"]
+    future_mask = torch.triu(torch.ones(cfg.n_ctx, cfg.n_ctx, dtype=torch.bool), diagonal=1)
+
+    assert torch.allclose(
+        pattern[:, :, future_mask],
+        torch.zeros_like(pattern[:, :, future_mask]),
+        atol=1e-6,
+    )
+
+
+def test_attention_dir_bidirectional_allows_future_tokens():
+    cfg = _cfg(attention_dir="bidirectional")
+    bridge = TransformerBridge.boot_native(cfg)
+    inputs = torch.randint(0, cfg.d_vocab, (2, cfg.n_ctx))
+
+    _, cache = bridge.run_with_cache(inputs, return_type="logits")
+    pattern = cache["blocks.0.attn.hook_pattern"]
+
+    assert pattern[:, :, 0, 1:].gt(0).all()
+    assert torch.allclose(pattern.sum(dim=-1), torch.ones_like(pattern.sum(dim=-1)), atol=1e-6)
 
 
 def test_attention_mask_2d_padding_changes_output():

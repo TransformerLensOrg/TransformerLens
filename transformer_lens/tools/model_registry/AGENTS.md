@@ -116,6 +116,8 @@ Never edit manually.
 | 7 | Multimodal (vision/text alignment) — only Llava / Gemma3-multimodal |
 | 8 | Audio — only Hubert |
 
+SSM / recurrent families and the hybrids (Mamba-1/2, gated-delta-net, NemotronH, GraniteMoeHybrid, Jamba, Qwen3.5/Qwen3-Next) declare `applicable_phases = [1, 2, 3, 4]` — all four apply. P2/P3 run but skip their HookedTransformer-comparison sub-tests (SSMs have no HT), which is scored as a pass.
+
 ### Phase-score thresholds
 
 `verify_models` enforces hard pass/fail at the thresholds in `_MIN_PHASE_SCORES` ([`verify_models.py:508`](verify_models.py)). Below threshold OR a required-test failure → `STATUS_FAILED`. The contract:

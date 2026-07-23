@@ -1,4 +1,11 @@
 """Bridge components for transformer architectures."""
+
+from transformer_lens.model_bridge.generalized_components.alibi_joint_qkv_attention import (
+    ALiBiJointQKVAttentionBridge,
+)
+from transformer_lens.model_bridge.generalized_components.altup_block import (
+    AltUpBlockBridge,
+)
 from transformer_lens.model_bridge.generalized_components.attention import (
     AttentionBridge,
 )
@@ -7,14 +14,12 @@ from transformer_lens.model_bridge.generalized_components.audio_feature_extracto
 )
 from transformer_lens.model_bridge.generalized_components.block import (
     BlockBridge,
+    DelegatedAttentionBlockBridge,
     MLABlockBridge,
     ParallelBlockBridge,
 )
 from transformer_lens.model_bridge.generalized_components.bloom_attention import (
     BloomAttentionBridge,
-)
-from transformer_lens.model_bridge.generalized_components.codegen_attention import (
-    CodeGenAttentionBridge,
 )
 from transformer_lens.model_bridge.generalized_components.bloom_block import (
     BloomBlockBridge,
@@ -26,6 +31,9 @@ from transformer_lens.model_bridge.generalized_components.clip_vision_encoder im
     CLIPVisionEncoderBridge,
     CLIPVisionEncoderLayerBridge,
 )
+from transformer_lens.model_bridge.generalized_components.codegen_attention import (
+    CodeGenAttentionBridge,
+)
 from transformer_lens.model_bridge.generalized_components.conv1d import Conv1DBridge
 from transformer_lens.model_bridge.generalized_components.conv_pos_embed import (
     ConvPosEmbedBridge,
@@ -36,20 +44,17 @@ from transformer_lens.model_bridge.generalized_components.depthwise_conv1d impor
 from transformer_lens.model_bridge.generalized_components.embedding import (
     EmbeddingBridge,
 )
-from transformer_lens.model_bridge.generalized_components.alibi_joint_qkv_attention import (
-    ALiBiJointQKVAttentionBridge,
-)
 from transformer_lens.model_bridge.generalized_components.gated_delta_net import (
     GatedDeltaNetBridge,
-)
-from transformer_lens.model_bridge.generalized_components.altup_block import (
-    AltUpBlockBridge,
 )
 from transformer_lens.model_bridge.generalized_components.gated_mlp import (
     GatedMLPBridge,
 )
 from transformer_lens.model_bridge.generalized_components.gated_rms_norm import (
     GatedRMSNormBridge,
+)
+from transformer_lens.model_bridge.generalized_components.glm_moe_dsa_attention import (
+    GlmMoeDsaAttentionBridge,
 )
 from transformer_lens.model_bridge.generalized_components.joint_gate_up_mlp import (
     JointGateUpMLPBridge,
@@ -60,27 +65,33 @@ from transformer_lens.model_bridge.generalized_components.joint_qkv_attention im
 from transformer_lens.model_bridge.generalized_components.joint_qkv_position_embeddings_attention import (
     JointQKVPositionEmbeddingsAttentionBridge,
 )
+from transformer_lens.model_bridge.generalized_components.lfm2_gated_short_conv import (
+    Lfm2ShortConvBridge,
+)
 from transformer_lens.model_bridge.generalized_components.linear import LinearBridge
 from transformer_lens.model_bridge.generalized_components.mla_attention import (
     MLAAttentionBridge,
 )
 from transformer_lens.model_bridge.generalized_components.mlp import MLPBridge
+from transformer_lens.model_bridge.generalized_components.moe import MoEBridge
 from transformer_lens.model_bridge.generalized_components.mpt_alibi_attention import (
     MPTALiBiAttentionBridge,
 )
-from transformer_lens.model_bridge.generalized_components.moe import MoEBridge
 from transformer_lens.model_bridge.generalized_components.normalization import (
     NormalizationBridge,
+)
+from transformer_lens.model_bridge.generalized_components.opaque_block import (
+    OpaqueBlockBridge,
 )
 from transformer_lens.model_bridge.generalized_components.pos_embed import (
     PosEmbedBridge,
 )
+from transformer_lens.model_bridge.generalized_components.position_embeddings_attention import (
+    PositionEmbeddingsAttentionBridge,
+)
 from transformer_lens.model_bridge.generalized_components.qwen3_5_vision_encoder import (
     Qwen3_5VisionBlockBridge,
     Qwen3_5VisionEncoderBridge,
-)
-from transformer_lens.model_bridge.generalized_components.position_embeddings_attention import (
-    PositionEmbeddingsAttentionBridge,
 )
 from transformer_lens.model_bridge.generalized_components.rms_normalization import (
     RMSNormalizationBridge,
@@ -92,11 +103,31 @@ from transformer_lens.model_bridge.generalized_components.siglip_vision_encoder 
     SiglipVisionEncoderBridge,
     SiglipVisionEncoderLayerBridge,
 )
-from transformer_lens.model_bridge.generalized_components.ssm2_mixer import SSM2MixerBridge
-from transformer_lens.model_bridge.generalized_components.ssm_block import SSMBlockBridge
-from transformer_lens.model_bridge.generalized_components.ssm_mixer import SSMMixerBridge
+from transformer_lens.model_bridge.generalized_components.ssm2_mixer import (
+    SSM2MixerBridge,
+)
+from transformer_lens.model_bridge.generalized_components.ssm_block import (
+    SSMBlockBridge,
+)
+from transformer_lens.model_bridge.generalized_components.ssm_mixer import (
+    SSMMixerBridge,
+)
+from transformer_lens.model_bridge.generalized_components.ssm_protocol import (
+    SSMMixerProtocol,
+    SSMStateHookMixin,
+    find_ssm_mixer,
+)
 from transformer_lens.model_bridge.generalized_components.symbolic import SymbolicBridge
 from transformer_lens.model_bridge.generalized_components.t5_block import T5BlockBridge
+from transformer_lens.model_bridge.generalized_components.t5gemma2_decoder_block import (
+    T5Gemma2DecoderBlockBridge,
+)
+from transformer_lens.model_bridge.generalized_components.t5gemma2_merged_attention import (
+    T5Gemma2MergedAttentionBridge,
+)
+from transformer_lens.model_bridge.generalized_components.t5gemma_decoder_block import (
+    T5GemmaDecoderBlockBridge,
+)
 from transformer_lens.model_bridge.generalized_components.unembedding import (
     UnembeddingBridge,
 )
@@ -108,6 +139,8 @@ __all__ = [
     "AttentionBridge",
     "AudioFeatureExtractorBridge",
     "BlockBridge",
+    "DelegatedAttentionBlockBridge",
+    "Lfm2ShortConvBridge",
     "MLABlockBridge",
     "ParallelBlockBridge",
     "BloomBlockBridge",
@@ -133,6 +166,7 @@ __all__ = [
     "MPTALiBiAttentionBridge",
     "AltUpBlockBridge",
     "GatedMLPBridge",
+    "GlmMoeDsaAttentionBridge",
     "MLAAttentionBridge",
     "GatedRMSNormBridge",
     "MoEBridge",
@@ -142,9 +176,16 @@ __all__ = [
     "SymbolicBridge",
     "UnembeddingBridge",
     "T5BlockBridge",
+    "T5GemmaDecoderBlockBridge",
+    "T5Gemma2DecoderBlockBridge",
+    "T5Gemma2MergedAttentionBridge",
     "SiglipVisionEncoderBridge",
     "SiglipVisionEncoderLayerBridge",
     "SSM2MixerBridge",
+    "SSMMixerProtocol",
+    "SSMStateHookMixin",
+    "find_ssm_mixer",
+    "OpaqueBlockBridge",
     "SSMBlockBridge",
     "SSMMixerBridge",
     "VisionProjectionBridge",

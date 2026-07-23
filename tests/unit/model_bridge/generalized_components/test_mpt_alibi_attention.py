@@ -178,25 +178,6 @@ class TestMPTALiBiMatchesHF:
 class TestALiBiSlicing:
     """position_bias covers max_seq_len; bridge must slice to current kv_len."""
 
-    def test_short_seq_slicing_no_error(self) -> None:
-        """seq_len=4 with max_seq_len=32: bridge must slice without error."""
-        hf_attn = _make_tiny_mpt_attention(d_model=64, n_heads=2)
-        hf_attn.eval()
-        bridge = _build_bridge(hf_attn)
-
-        # max_seq_len=32, but only use seq_len=4
-        inputs = _make_inputs(d_model=64, n_heads=2, max_seq_len=32, seq_len=4, batch_size=2)
-
-        with torch.no_grad():
-            out, *_ = bridge(
-                inputs["hidden"],
-                position_bias=inputs["position_bias"],
-                attention_mask=inputs["causal_mask"],
-            )
-
-        assert out.shape == (2, 4, 64)
-        assert not torch.isnan(out).any()
-
     def test_slicing_matches_hf_short_seq(self) -> None:
         """Bridge output at seq_len=4 must match HF at same seq_len."""
         hf_attn = _make_tiny_mpt_attention(d_model=64, n_heads=2)

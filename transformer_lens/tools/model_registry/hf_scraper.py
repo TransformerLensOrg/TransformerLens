@@ -651,6 +651,10 @@ def scrape_all_models(
     deduped: list[dict] = []
     for g in gaps:
         arch_id = g["architecture_id"]
+        if arch_id in HF_SUPPORTED_ARCHITECTURES:
+            # Gained an adapter since a prior scrape; the merge above carries the
+            # stale entry forward, so drop it here — it's no longer a gap.
+            continue
         if arch_id in seen_archs:
             logger.warning(f"Dropping duplicate gap entry for architecture {arch_id!r}")
             continue

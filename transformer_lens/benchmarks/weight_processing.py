@@ -77,11 +77,11 @@ def benchmark_weight_processing(
                 )
             _mlp_idx, mlp_block = mlp_blocks[0]
             bridge_w_out = mlp_block.mlp.W_out
-            reference_w_out = reference_model.blocks[_mlp_idx].mlp.W_out  # type: ignore[union-attr]
+            reference_w_out = reference_model.blocks[_mlp_idx].mlp.W_out
 
             bridge_mean = torch.mean(torch.abs(torch.mean(bridge_w_out, dim=-1, keepdim=True)))
             reference_mean = torch.mean(
-                torch.abs(torch.mean(reference_w_out, dim=-1, keepdim=True))  # type: ignore[arg-type]
+                torch.abs(torch.mean(reference_w_out, dim=-1, keepdim=True))
             )
 
             if bridge_mean.item() > 1e-3:
@@ -161,7 +161,7 @@ def benchmark_weight_sharing(
             # Verify weights are identical before modification
             bridge_W_V = torch.clone(cast(torch.Tensor, bridge_attn_block.attn.W_V))
             reference_W_V = torch.clone(
-                cast(torch.Tensor, reference_model.blocks[bridge_attn_idx].attn.W_V)  # type: ignore[union-attr]
+                cast(torch.Tensor, reference_model.blocks[bridge_attn_idx].attn.W_V)
             )
 
             # Check if models have GQA (different head counts for K/V vs Q)
@@ -206,7 +206,7 @@ def benchmark_weight_sharing(
             # Modify weights in both models
             with torch.no_grad():
                 bridge_attn_block.attn.W_V[0, :, :] = 0  # type: ignore[union-attr,operator]
-                reference_model.blocks[bridge_attn_idx].attn.W_V[0, :, :] = 0  # type: ignore[union-attr,operator]
+                reference_model.blocks[bridge_attn_idx].attn.W_V[0, :, :] = 0
 
             # Test modified losses
             bridge_modified = bridge(test_text, return_type="loss")
@@ -218,7 +218,7 @@ def benchmark_weight_sharing(
             # Restore weights
             with torch.no_grad():
                 bridge_attn_block.attn.W_V.copy_(bridge_W_V)  # type: ignore[union-attr,operator,arg-type]
-                reference_model.blocks[bridge_attn_idx].attn.W_V.copy_(reference_W_V)  # type: ignore[union-attr,operator,arg-type]
+                reference_model.blocks[bridge_attn_idx].attn.W_V.copy_(reference_W_V)
 
             diff = abs(bridge_change - reference_change)
             if diff < atol:
@@ -559,11 +559,12 @@ def benchmark_attention_output_centering(
 
         attn_blocks = bridge.blocks_with("attn")
         if not attn_blocks:
+            # Attention-less (pure SSM) or hybrids whose attention lives inside a
+            # passthrough mixer (NemotronH): nothing to center — skip, don't fail.
             return BenchmarkResult(
                 name="attention_output_centering",
-                severity=BenchmarkSeverity.WARNING,
-                message="No blocks have attention submodule",
-                passed=False,
+                severity=BenchmarkSeverity.SKIPPED,
+                message="No blocks expose an attention submodule (SSM / passthrough-mixer hybrid)",
             )
 
         # Check W_O accessibility on first attention block
@@ -642,17 +643,20 @@ def benchmark_mlp_output_centering(
         from transformer_lens.model_bridge.generalized_components.moe import MoEBridge
 
         mlp_module = None
-        block = bridge.blocks[0]
-        for name in ("mlp", "shared_mlp"):
-            if name in block._modules:
-                mlp_module = block._modules[name]
+        for block in bridge.blocks:
+            for name in ("mlp", "shared_mlp"):
+                if name in block._modules:
+                    mlp_module = block._modules[name]
+                    break
+            if mlp_module is not None:
                 break
         if mlp_module is None:
+            # Pure SSM, or a hybrid whose MLP lives inside a passthrough mixer:
+            # no standalone MLP to center — skip, don't fail.
             return BenchmarkResult(
                 name="mlp_output_centering",
-                severity=BenchmarkSeverity.WARNING,
-                message="No MLP submodule found on block 0",
-                passed=False,
+                severity=BenchmarkSeverity.SKIPPED,
+                message="No block exposes an MLP submodule (SSM / passthrough-mixer hybrid)",
             )
 
         if isinstance(mlp_module, MoEBridge):

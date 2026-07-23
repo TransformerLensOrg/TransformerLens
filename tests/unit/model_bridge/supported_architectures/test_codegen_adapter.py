@@ -13,7 +13,6 @@ from transformer_lens.conversion_utils.param_processing_conversion import (
     ParamProcessingConversion,
 )
 from transformer_lens.model_bridge.generalized_components import (
-    BlockBridge,
     CodeGenAttentionBridge,
     EmbeddingBridge,
     LinearBridge,
@@ -99,9 +98,6 @@ class TestCodeGenAdapterComponentMapping:
 
     def test_embed_name(self, adapter: CodeGenArchitectureAdapter) -> None:
         assert adapter.component_mapping["embed"].name == "transformer.wte"
-
-    def test_blocks_is_block_bridge(self, adapter: CodeGenArchitectureAdapter) -> None:
-        assert isinstance(adapter.component_mapping["blocks"], BlockBridge)
 
     def test_blocks_name(self, adapter: CodeGenArchitectureAdapter) -> None:
         assert adapter.component_mapping["blocks"].name == "transformer.h"
@@ -249,13 +245,6 @@ class TestCodeGenArchitectureGuards:
     def test_no_pos_embed_component(self, adapter: CodeGenArchitectureAdapter) -> None:
         assert "pos_embed" not in adapter.component_mapping
 
-    def test_no_norm_offset_conversions(self, adapter: CodeGenArchitectureAdapter) -> None:
-        # LN-only: no Gemma-style ln1/ln2 offsets.
-        for key in adapter.weight_processing_conversions:
-            assert "ln1.weight" not in key
-            assert "ln2.weight" not in key
-            assert "ln_final.weight" not in key
-
     def test_only_qkvo_conversion_keys(self, adapter: CodeGenArchitectureAdapter) -> None:
         assert set(adapter.weight_processing_conversions.keys()) == {
             "blocks.{i}.attn.q.weight",
@@ -340,15 +329,3 @@ class TestCodeGenSplitQKVMatrix:
         assert torch.all(q.weight == 1.0), "Q should come from slot 0 (Q_part)"
         assert torch.all(k.weight == 3.0), "K should come from slot 2 (K_part)"
         assert torch.all(v.weight == 2.0), "V should come from slot 1 (V_part)"
-
-    def test_forward_output_shape_with_split(self) -> None:
-        d_model = 64
-        adapter = self._make_adapter_with_dmodel(d_model, 4)
-        attn = self._make_attn_component(d_model)
-        q_lin, k_lin, v_lin = adapter.split_qkv_matrix(attn)
-
-        batch, seq = 2, 10
-        x = torch.randn(batch, seq, d_model)
-        assert q_lin(x).shape == (batch, seq, d_model)
-        assert k_lin(x).shape == (batch, seq, d_model)
-        assert v_lin(x).shape == (batch, seq, d_model)

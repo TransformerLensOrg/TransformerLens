@@ -78,9 +78,24 @@ def test_falls_back_to_config_when_component_unset():
 
 
 def test_override_takes_precedence_over_config():
-    layer = nn.LayerNorm(8)
-    assert _make_bridge(layer, _Cfg(uses_rms_norm=True), uses_rms_norm=False).uses_rms_norm is False
-    assert _make_bridge(layer, _Cfg(uses_rms_norm=False), uses_rms_norm=True).uses_rms_norm is True
+    # Override forces the *math path*, beating both config and introspection.
+    d = 16
+    layer = _layernorm(d)  # a real nn.LayerNorm: introspection would say uses_rms_norm=False
+    x = torch.randn(2, 5, d)
+
+    # uses_rms_norm=False override over config=True -> LayerNorm math (mean-centred + bias).
+    ln_bridge = _make_bridge(layer, _Cfg(uses_rms_norm=True), uses_rms_norm=False)
+    torch.testing.assert_close(ln_bridge(x), layer(x), rtol=1e-5, atol=1e-5)
+
+    # uses_rms_norm=True override over config=False AND over the LayerNorm introspection
+    # -> RMSNorm math: no mean-centring, no bias.
+    rms_bridge = _make_bridge(layer, _Cfg(uses_rms_norm=False), uses_rms_norm=True)
+    rms = (x.pow(2).mean(-1, keepdim=True) + layer.eps).sqrt()
+    expected_rms = x / rms * layer.weight
+    out = rms_bridge(x)
+    torch.testing.assert_close(out, expected_rms, rtol=1e-5, atol=1e-5)
+    # And it must diverge from the LayerNorm output (otherwise the override did nothing).
+    assert not torch.allclose(out, layer(x), rtol=1e-3, atol=1e-3)
 
 
 def test_siglip_post_layernorm_resolves_to_layernorm_under_rmsnorm_config():

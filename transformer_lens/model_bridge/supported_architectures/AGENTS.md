@@ -98,7 +98,6 @@ HF raw config attributes are invisible to TL-side consumers unless propagated to
 | `query_pre_attn_scalar` | `self.cfg.query_pre_attn_scalar` | Gemma2/3 — query scaling override |
 | `sliding_window` | `self.cfg.sliding_window` | Mistral, Qwen2, Gemma2 — local-attention layers |
 | `layer_types` | `self.cfg.layer_types` | Hybrid models with per-layer attention type lists |
-| Non-standard RMSNorm eps key | `self.cfg.eps_attr = "<attribute_name>"` | Llama uses `"variance_epsilon"` instead of `"eps"` |
 
 **Weight-fold attributes** (need BOTH surface-on-cfg AND fold-into-weight via `preprocess_weights` — see [the next section](#when-to-override-preprocess_weights)):
 
@@ -238,7 +237,6 @@ Failure message names the missing set. (`INTENTIONAL_EXCLUDES` in the test handl
 | RoPE (rotary positional embeddings) | `llama.py`, `mistral.py`, `qwen2.py`+ | `RotaryEmbeddingBridge(name="model.rotary_emb")` + `cfg.positional_embedding_type = "rotary"` |
 | GQA / MQA (`n_key_value_heads < n_heads`) | `llama.py`, `mistral.py`, `falcon.py`, `cohere.py` | Set `cfg.n_key_value_heads`; pass `n_kv_heads=` to `_qkvo_weight_conversions()` |
 | RMSNorm with offset | `gemma1.py`, `gemma2.py`, `gemma3.py` | `cfg.rmsnorm_uses_offset = True` + `ArithmeticTensorConversion(ADDITION, 1.0)` |
-| Custom RMSNorm eps attribute | `llama.py` | `cfg.eps_attr = "variance_epsilon"` (Llama uses this instead of `eps`) |
 | Standard LayerNorm | `gpt2.py`, `bloom.py` | `cfg.normalization_type = "LN"` |
 | Gated MLP (`gate_proj`, `up_proj`, `down_proj`) | `llama.py`, `mistral.py`, `gemma1.py`, `qwen2.py`+ | `GatedMLPBridge` with submodules `{gate, in, out}` |
 | Combined QKV (`c_attn`) | `gpt2.py`, `bloom.py` | `QKVSplitRearrangeConversion` to split + rearrange |
@@ -324,7 +322,7 @@ class TestMyArchHookCompatibility:
 
 No weight load, no HF Hub access — synthetic cfg + structural assertions only. Runs in default `make unit-test`.
 
-Add one test per architecture quirk (softcaps, RMSNorm offsets, sliding window, custom `eps_attr`, MoE routing). Gemma1's "must NOT override `setup_hook_compatibility`" is a good one-quirk-one-test example.
+Add one test per architecture quirk (softcaps, RMSNorm offsets, sliding window, MoE routing). Gemma1's "must NOT override `setup_hook_compatibility`" is a good one-quirk-one-test example.
 
 ### 2. Integration parity test — `tests/integration/model_bridge/test_<arch>_adapter.py`
 
@@ -350,7 +348,12 @@ def bridge():
     )
 ```
 
-If the reference model OOMs CI, gate with `@pytest.mark.skipif(bool(os.getenv("CI")), ...)` and add a row to [`QUARANTINES.md`](../../../tests/QUARANTINES.md) under "CI cost / network budget."
+**CI coverage — two layers.** The integration job runs `pytest tests/integration -m "not slow"` ([checks.yml](../../../.github/workflows/checks.yml)), so a real-checkpoint test only guards the adapter *in CI* when its model is small and in the [cache allowlist](../../../tests/AGENTS.md#cached-model-allowlist). Anything heavier splits into two files:
+
+- **Real-checkpoint parity test** (the file above) — the numerical-fidelity check against real pretrained weights. For a non-cached or heavy model, keep it out of CI with a module-level `pytestmark = pytest.mark.slow` (deselected by the CI job's `-m "not slow"`); or, if it should still run in local `make integration-test`, `@pytest.mark.skipif(bool(os.getenv("CI")), ...)` plus a [`QUARANTINES.md`](../../../tests/QUARANTINES.md) row under "CI cost / network budget." Either way it no longer forces a Hub download in CI.
+- **Tiny `from_config` test** — `tests/integration/model_bridge/test_<arch>_tiny.py`. Builds a shrunk model (a few layers, small `hidden_size`; include both layer kinds for hybrids) via `AutoModelForCausalLM.from_config(cfg)` — random CPU weights, **no Hub download** — so it runs in CI in ~1–2 s and still asserts wiring, hook coverage, and bridge-vs-HF forward parity on identical weights. This is what actually catches `transformers`-bump and bridge-core regressions in CI when the real-weights test is slow/skipped. Template: [`test_nemotron_h_tiny.py`](../../../tests/integration/model_bridge/test_nemotron_h_tiny.py).
+
+Exotic/hybrid adapters (SSM, conv, linear-attention) especially need the tiny layer — their distinctive paths aren't exercised by CI's mainstream cached models, so a slow-only real-checkpoint test leaves the adapter CI-invisible.
 
 ### End-to-end registry verification
 

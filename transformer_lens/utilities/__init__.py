@@ -1,8 +1,11 @@
 from .activation_functions import (
+    SOFTCAP_DISABLED,
     SUPPORTED_ACTIVATIONS,
     ActivationFunction,
+    apply_softcap,
     gelu_fast,
     gelu_new,
+    softcap_enabled,
     solu,
 )
 from .attribute_utils import get_nested_attr, set_nested_attr
@@ -80,3 +83,4 @@ from .tokenize_utils import (
     get_tokens_with_bos_removed,
     tokenize_and_concatenate,
 )
+from .typed_module_list import TypedModuleList

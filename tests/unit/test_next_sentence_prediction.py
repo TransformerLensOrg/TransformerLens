@@ -4,7 +4,7 @@ import pytest
 import torch
 from transformers import AutoTokenizer, BertForNextSentencePrediction
 
-from transformer_lens import BertNextSentencePrediction, HookedEncoder
+from transformer_lens import ActivationCache, BertNextSentencePrediction, HookedEncoder
 
 
 @pytest.fixture
@@ -234,34 +234,45 @@ def test_to_tokens_validation(bert_nsp):
 
 
 def test_run_with_cache(bert_nsp, mock_hooked_encoder):
-    """Test run_with_cache for correct handling of cache"""
-    # Set up mock returns
-    mock_resid = torch.randn(1, 3, 768)
-    mock_cache = {"resid_pre": torch.randn(1, 3, 768), "attn_output": torch.randn(1, 3, 768)}
-    mock_hooked_encoder.run_with_cache.return_value = (
-        torch.tensor([[0.6, 0.4]]),  # Mock logits
-        mock_cache,
-    )
+    """run_with_cache must wrap the dict in an ActivationCache and restore model.forward."""
+    # Sentinel forward that must be restored after the cache run.
+    original_forward = Mock(name="original_forward")
+    mock_hooked_encoder.forward = original_forward
+
+    mock_cache = {
+        "resid_pre": torch.randn(1, 3, 768),
+        "attn_output": torch.randn(1, 3, 768),
+    }
+    captured = {}
+
+    def fake_run_with_cache(*args, **kwargs):
+        # While inside the wrapper, model.forward must point at the NSP forward, not the original.
+        captured["forward_during"] = mock_hooked_encoder.forward
+        return (torch.tensor([[0.6, 0.4]]), mock_cache)
+
+    mock_hooked_encoder.run_with_cache.side_effect = fake_run_with_cache
 
     input_data = ["First sentence.", "Second sentence."]
 
-    # Run with cache
     output, cache = bert_nsp.run_with_cache(
         input_data, return_type="logits", return_cache_object=True
     )
 
-    # Verify output shape and values
+    # Effect 1: return_cache_object=True wraps the raw dict in an ActivationCache object,
+    # it is NOT the plain dict the encoder returned.
+    assert isinstance(cache, ActivationCache)
+    assert not isinstance(cache, dict)
+    assert cache.model is bert_nsp
+
+    assert cache["resid_pre"].shape == (1, 3, 768)
+    assert cache["attn_output"].shape == (1, 3, 768)
+
+    # Effect 3: ForwardWrapper swaps model.forward to the NSP forward during the run...
+    assert captured["forward_during"] is not original_forward
+    # ...and restores the original forward afterwards.
+    assert mock_hooked_encoder.forward is original_forward
+
     assert output.shape == (1, 2)
-    assert isinstance(cache, dict) or hasattr(cache, "cache_dict")
-
-    # Verify the cache contains expected keys
-    if hasattr(cache, "cache_dict"):
-        cache_dict = cache.cache_dict
-    else:
-        cache_dict = cache
-
-    assert "resid_pre" in cache_dict
-    assert "attn_output" in cache_dict
 
 
 def test_return_type_consistency(bert_nsp, mock_hooked_encoder):

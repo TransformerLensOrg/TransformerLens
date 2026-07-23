@@ -62,7 +62,10 @@ logger = logging.getLogger(__name__)
 # These are not in the legacy NEED_REMOTE_CODE_MODELS tuple (loading_from_pretrained.py).
 _BRIDGE_REMOTE_CODE_PREFIXES: tuple[str, ...] = (
     "baichuan-inc/",  # BaichuanForCausalLM — ships own modeling_baichuan.py
+    "ByteDance/Ouro-",  # OuroForCausalLM — ships own modeling_ouro.py
     "internlm/",  # InternLM2ForCausalLM — ships own modeling_internlm2.py
+    "GSAI-ML/LLaDA",  # LLaDAModelLM — ships configuration_llada.py/modeling_llada.py
+    "kuleshov-group/",  # BD3LM — ships own custom modeling_d_dit.py
 )
 
 # Data directory for registry files
@@ -114,7 +117,8 @@ def _phases_to_run(arch: str, phases: list[int]) -> list[int]:
 
     An adapter's ``applicable_phases`` declares which text phases (1-4) it covers. Phases 7/8
     are gated separately by ``is_multimodal``/``is_audio`` in the benchmark, so they are never
-    filtered out here. An empty result means the architecture is skipped (e.g. SSMs).
+    filtered out here. An empty result means none of the requested phases apply to this
+    architecture (SSM / recurrent families run all four).
     """
     from transformer_lens.factories.architecture_adapter_factory import (
         SUPPORTED_ARCHITECTURES,
@@ -209,6 +213,17 @@ def estimate_model_params(model_id: str) -> int:
     # is nested under text_config. Fall through to the top-level config otherwise.
     lang_config = getattr(config, "text_config", config)
 
+    # Encoder-decoder models (e.g. T5Gemma) nest dimensions under decoder/encoder
+    # subconfigs rather than the top level; prefer the decoder for the estimate.
+    if not (hasattr(lang_config, "hidden_size") or hasattr(lang_config, "d_model")):
+        for _sub in ("decoder", "encoder"):
+            _subcfg = getattr(config, _sub, None)
+            if _subcfg is not None and (
+                hasattr(_subcfg, "hidden_size") or hasattr(_subcfg, "d_model")
+            ):
+                lang_config = _subcfg
+                break
+
     # Extract dimensions from config (different models use different attribute names)
     d_model = (
         getattr(lang_config, "hidden_size", None)
@@ -298,8 +313,10 @@ def estimate_model_params(model_id: str) -> int:
         n_params += n_layers * (d_model * d_mlp * mlp_multiplier)
 
         # MoE expert scaling
-        num_experts = getattr(lang_config, "num_local_experts", None) or getattr(
-            lang_config, "num_experts", None
+        num_experts = (
+            getattr(lang_config, "num_local_experts", None)
+            or getattr(lang_config, "num_experts", None)
+            or getattr(lang_config, "n_routed_experts", None)  # DeepSeek-V2/V3
         )
         if num_experts and num_experts > 1:
             # Qwen3MoE and similar store per-expert hidden size in moe_intermediate_size;
@@ -824,11 +841,9 @@ def verify_models(
                 _skip_model(model_id, arch, note, progress, quiet)
                 continue
 
-        # Step 0b: Check adapter-level phase applicability. Architectures
-        # with applicable_phases=[] (e.g. SSMs) skip verify_models entirely
-        # because the benchmark suite has transformer-shaped assumptions that
-        # would need a dedicated refactor to cover them. Verification for
-        # these architectures lives in the integration test suite.
+        # Step 0b: Check adapter-level phase applicability. applicable_phases=[]
+        # means no phase applies (a genuinely unsupported architecture — rare);
+        # SSM / recurrent families run the full [1, 2, 3, 4].
         from transformer_lens.factories.architecture_adapter_factory import (
             SUPPORTED_ARCHITECTURES,
         )
@@ -1116,7 +1131,7 @@ def verify_models(
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
                 torch.cuda.synchronize()
-            if hasattr(torch, "mps") and hasattr(torch.mps, "empty_cache"):
+            if device == "mps" and hasattr(torch, "mps") and torch.backends.mps.is_available():
                 torch.mps.synchronize()
                 torch.mps.empty_cache()
 

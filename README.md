@@ -184,12 +184,12 @@ cover:
 
 Verification lives in the integration tests at
 `tests/integration/model_bridge/test_mamba_adapter.py` and
-`tests/integration/model_bridge/test_mamba2_adapter.py` (81 tests total). The
-`verify_models` benchmark suite does not currently cover SSM architectures — the
-benchmark has transformer-shaped assumptions (hook path patterns, layer norm
-folding, block submodule dispatch) that would need a dedicated refactor. SSM
-benchmark coverage will be revisited if hybrid architectures like Jamba or
-Falcon-H1 become priority or a user explicitly requests it.
+`tests/integration/model_bridge/test_mamba2_adapter.py` (81 tests total), and the
+`verify_models` benchmark suite now covers the SSM and hybrid families. Mamba-1,
+Mamba-2, gated-delta-net (Qwen3.5 / Qwen3-Next), NemotronH, and GraniteMoeHybrid
+all declare `applicable_phases = [1, 2, 3, 4]`, so their forward parity (P1, vs raw
+HF), hook/cache coverage (P2/P3, which skip the HookedTransformer comparison SSMs
+lack), and generation quality (P4) are benchmarked like any transformer.
 
 ## Credits
 
@@ -202,7 +202,7 @@ exploratory research!
 
 ### Creator's Note (Neel Nanda)
 
-I (Neel Nanda) used to work for the [Anthropic interpretability team](transformer-circuits.pub), and
+I (Neel Nanda) used to work for the [Anthropic interpretability team](https://transformer-circuits.pub), and
 I wrote this library because after I left and tried doing independent research, I got extremely
 frustrated by the state of open source tooling. There's a lot of excellent infrastructure like
 HuggingFace and DeepSpeed to _use_ or _train_ models, but very little to dig into their internals

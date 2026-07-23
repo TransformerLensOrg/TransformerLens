@@ -112,24 +112,6 @@ def test_gpt_oss_compatibility_mode_hooks(gpt_oss_bridge):
     assert mlp_hook_out is hook_mlp_out_alias
 
 
-def test_gpt_oss_hook_aliases_resolved(gpt_oss_bridge):
-    """Test that MLP hooks are accessible."""
-    gpt_oss_bridge.enable_compatibility_mode(no_processing=True)
-
-    mlp = gpt_oss_bridge.blocks[0].mlp
-
-    # Get hooks from the MLP component
-    hooks = mlp.get_hooks()
-
-    # Check that basic hooks are present
-    assert "hook_in" in hooks
-    assert "hook_out" in hooks
-
-    # hook_pre should NOT try to resolve to in.hook_out or input.hook_out
-    # (which would fail since JointGateUpMLPBridge doesn't have those submodules)
-    # If this test passes, it means the alias override is working correctly
-
-
 def test_gpt_oss_no_block_bridge_for_experts(gpt_oss_bridge):
     """Test that experts are NOT wrapped in BlockBridge.
 

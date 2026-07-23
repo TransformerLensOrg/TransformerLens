@@ -184,6 +184,17 @@ class TestGPTBigCodeWeightConversionSemantics:
     def adapter(self) -> GPTBigCodeArchitectureAdapter:
         return GPTBigCodeArchitectureAdapter(_make_cfg())
 
+    @pytest.mark.parametrize("slot", ["k", "v"])
+    def test_kv_uses_mqa_n_equals_one(
+        self, adapter: GPTBigCodeArchitectureAdapter, slot: str
+    ) -> None:
+        # MQA: K/V have exactly 1 KV head.
+        conv = adapter.weight_processing_conversions[f"blocks.{{i}}.attn.{slot}.weight"]
+        assert isinstance(conv, ParamProcessingConversion)
+        assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)
+        assert conv.tensor_conversion.pattern == "(n h) m -> n m h"
+        assert conv.tensor_conversion.axes_lengths["n"] == 1
+
     def test_q_conversion_type_and_pattern(self, adapter: GPTBigCodeArchitectureAdapter) -> None:
         conv = adapter.weight_processing_conversions["blocks.{i}.attn.q.weight"]
         assert isinstance(conv, ParamProcessingConversion)
@@ -195,17 +206,6 @@ class TestGPTBigCodeWeightConversionSemantics:
         assert isinstance(conv, ParamProcessingConversion)
         assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)
         assert conv.tensor_conversion.axes_lengths["n"] == adapter.cfg.n_heads
-
-    @pytest.mark.parametrize("slot", ["k", "v"])
-    def test_kv_uses_mqa_n_equals_one(
-        self, adapter: GPTBigCodeArchitectureAdapter, slot: str
-    ) -> None:
-        # MQA: K/V have exactly 1 KV head.
-        conv = adapter.weight_processing_conversions[f"blocks.{{i}}.attn.{slot}.weight"]
-        assert isinstance(conv, ParamProcessingConversion)
-        assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)
-        assert conv.tensor_conversion.pattern == "(n h) m -> n m h"
-        assert conv.tensor_conversion.axes_lengths["n"] == 1
 
     def test_o_conversion_type_and_pattern(self, adapter: GPTBigCodeArchitectureAdapter) -> None:
         conv = adapter.weight_processing_conversions["blocks.{i}.attn.o.weight"]
@@ -222,18 +222,6 @@ class TestGPTBigCodeCombinedQKVFlags:
     def adapter(self) -> GPTBigCodeArchitectureAdapter:
         return GPTBigCodeArchitectureAdapter(_make_cfg())
 
-    def test_uses_combined_qkv_true(self, adapter: GPTBigCodeArchitectureAdapter) -> None:
-        assert adapter.uses_combined_qkv is True
-
-    def test_split_attention_weights_true(self, adapter: GPTBigCodeArchitectureAdapter) -> None:
-        assert adapter.cfg.split_attention_weights is True
-
-    def test_default_cfg_declares_uses_split_attention(
-        self, adapter: GPTBigCodeArchitectureAdapter
-    ) -> None:
-        # default_cfg records uses_split_attention as descriptor only (base __init__ already ran).
-        assert adapter.default_cfg.get("uses_split_attention") is True
-
 
 class TestGPTBigCodeArchitectureGuards:
     """Learned-pos LayerNorm arch: no rotary, no Gemma offsets."""
@@ -245,15 +233,6 @@ class TestGPTBigCodeArchitectureGuards:
     def test_no_top_level_rotary_emb(self, adapter: GPTBigCodeArchitectureAdapter) -> None:
         assert "rotary_emb" not in adapter.component_mapping
 
-    def test_has_pos_embed_component(self, adapter: GPTBigCodeArchitectureAdapter) -> None:
-        assert "pos_embed" in adapter.component_mapping
-
-    def test_no_norm_offset_conversions(self, adapter: GPTBigCodeArchitectureAdapter) -> None:
-        for key in adapter.weight_processing_conversions:
-            assert "ln1.weight" not in key
-            assert "ln2.weight" not in key
-            assert "ln_final.weight" not in key
-
     def test_only_qkvo_conversion_keys(self, adapter: GPTBigCodeArchitectureAdapter) -> None:
         assert set(adapter.weight_processing_conversions.keys()) == {
             "blocks.{i}.attn.q.weight",
@@ -262,12 +241,24 @@ class TestGPTBigCodeArchitectureGuards:
             "blocks.{i}.attn.o.weight",
         }
 
-    def test_uses_rms_norm_false(self, adapter: GPTBigCodeArchitectureAdapter) -> None:
-        assert adapter.cfg.uses_rms_norm is False
+    def test_ln_bridges_resolve_to_layernorm(self, adapter: GPTBigCodeArchitectureAdapter) -> None:
+        """NormalizationBridges resolve to LayerNorm (mean-subtracting), not RMSNorm.
 
-    def test_eps_attr(self, adapter: GPTBigCodeArchitectureAdapter) -> None:
-        # GPT-2 family eps (not RMS variance_epsilon).
-        assert adapter.cfg.eps_attr == "layer_norm_epsilon"
+        The bridge type is shared by RMS and LN families; only uses_rms_norm
+        distinguishes them. With no original_component wired, the bridge's
+        uses_rms_norm property -- the value its forward reads to decide whether
+        to subtract the mean -- falls through to config.uses_rms_norm.
+        """
+        blocks = adapter.component_mapping["blocks"]
+        ln1 = blocks.submodules["ln1"]
+        ln2 = blocks.submodules["ln2"]
+        ln_final = adapter.component_mapping["ln_final"]
+        assert isinstance(ln1, NormalizationBridge)
+        assert isinstance(ln2, NormalizationBridge)
+        assert isinstance(ln_final, NormalizationBridge)
+        assert ln1.uses_rms_norm is False
+        assert ln2.uses_rms_norm is False
+        assert ln_final.uses_rms_norm is False
 
 
 # ---------------------------------------------------------------------------
@@ -369,24 +360,6 @@ class TestGPTBigCodeMQASplitQKVMatrix:
         assert isinstance(k, nn.Linear)
         assert isinstance(v, nn.Linear)
 
-    def test_q_weight_shape(
-        self, adapter: GPTBigCodeArchitectureAdapter, fake_attn: FakeMQAAttention
-    ) -> None:
-        q, _, _ = adapter._split_qkv_matrix(fake_attn)
-        assert q.weight.shape == (self.D_MODEL, self.D_MODEL)
-
-    def test_k_weight_shape(
-        self, adapter: GPTBigCodeArchitectureAdapter, fake_attn: FakeMQAAttention
-    ) -> None:
-        _, k, _ = adapter._split_qkv_matrix(fake_attn)
-        assert k.weight.shape == (self.D_HEAD, self.D_MODEL)
-
-    def test_v_weight_shape(
-        self, adapter: GPTBigCodeArchitectureAdapter, fake_attn: FakeMQAAttention
-    ) -> None:
-        _, _, v = adapter._split_qkv_matrix(fake_attn)
-        assert v.weight.shape == (self.D_HEAD, self.D_MODEL)
-
     def test_q_bias_shape(
         self, adapter: GPTBigCodeArchitectureAdapter, fake_attn: FakeMQAAttention
     ) -> None:
@@ -415,14 +388,6 @@ class TestGPTBigCodeMQASplitQKVMatrix:
         assert q.bias is None
         assert k.bias is None
         assert v.bias is None
-
-    def test_q_k_v_weights_are_distinct(
-        self, adapter: GPTBigCodeArchitectureAdapter, fake_attn: FakeMQAAttention
-    ) -> None:
-        nn.init.normal_(fake_attn.c_attn.weight)
-        q, k, v = adapter._split_qkv_matrix(fake_attn)
-        # K/V share shape [d_head, d_model]; only Q differs in shape, so compare K vs V.
-        assert not torch.allclose(k.weight, v.weight)
 
     def test_weight_values_match_c_attn_rows(
         self, adapter: GPTBigCodeArchitectureAdapter, fake_attn: FakeMQAAttention

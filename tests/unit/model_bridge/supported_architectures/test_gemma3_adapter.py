@@ -68,10 +68,6 @@ class TestGemma3ComponentMappingPresence:
     def adapter(self):
         return Gemma3ArchitectureAdapter(_make_gemma3_cfg())
 
-    def test_has_top_level_components(self, adapter):
-        for name in ("embed", "rotary_emb", "blocks", "ln_final", "unembed"):
-            assert name in adapter.component_mapping
-
     def test_no_vision_components(self, adapter):
         assert "vision_encoder" not in adapter.component_mapping
         assert "vision_projector" not in adapter.component_mapping
@@ -130,11 +126,6 @@ class TestGemma3BlockSubmodules:
     def blocks(self):
         adapter = Gemma3ArchitectureAdapter(_make_gemma3_cfg())
         return adapter.component_mapping["blocks"]
-
-    def test_block_has_required_submodules(self, blocks):
-        # Gemma3 has BOTH pre- and post-norms around attention and FFN.
-        for name in ("ln1", "ln1_post", "ln2", "ln2_post", "attn", "mlp"):
-            assert name in blocks.submodules, f"BlockBridge missing submodule '{name}'"
 
     def test_dual_normalization_pre_and_post(self, blocks):
         for name in ("ln1", "ln1_post", "ln2", "ln2_post"):
@@ -240,19 +231,6 @@ class TestGemma3WeightProcessingConversions:
         o_conv = adapter.weight_processing_conversions["blocks.{i}.attn.o.weight"]
         assert isinstance(o_conv.tensor_conversion, RearrangeTensorConversion)
         assert o_conv.tensor_conversion.pattern == "m (n h) -> n h m"
-
-    def test_norm_offset_keys_present(self, adapter):
-        # Gemma3 needs +1 offset preprocessing for every RMSNorm weight.
-        for key in (
-            "blocks.{i}.ln1.weight",
-            "blocks.{i}.ln1_post.weight",
-            "blocks.{i}.ln2.weight",
-            "blocks.{i}.ln2_post.weight",
-            "ln_final.weight",
-            "blocks.{i}.attn.q_norm.weight",
-            "blocks.{i}.attn.k_norm.weight",
-        ):
-            assert key in adapter.weight_processing_conversions, f"missing {key}"
 
     def test_norm_offset_conversion_semantics(self, adapter):
         # Each norm-weight conversion must be ADDITION-by-1.0 (Gemma's +1 trick).

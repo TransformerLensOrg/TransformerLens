@@ -17,6 +17,7 @@ import logging
 from typing import (
     TYPE_CHECKING,
     Any,
+    Callable,
     Dict,
     Iterator,
     List,
@@ -36,7 +37,6 @@ import transformer_lens.utilities as utils
 from transformer_lens.utilities import Slice, SliceInput, warn_if_mps
 
 if TYPE_CHECKING:
-    from transformer_lens.components import TransformerBlock
     from transformer_lens.HookedTransformer import HookedTransformer
 
 
@@ -748,12 +748,192 @@ class ActivationCache:
             )
 
             # Element-wise multiplication of z and W_O (with shape [head_index, d_head, d_model])
-            # nn.ModuleList[T][i] is typed Tensor|Module upstream; cast restores T.
-            block = cast("TransformerBlock", self.model.blocks[layer])
+            block = self.model.blocks[layer]
             result = z * block.attn.W_O
 
             # Sum over d_head to get the contribution of each head to the residual stream
             self.cache_dict[f"blocks.{layer}.attn.hook_result"] = result.sum(dim=-2)
+
+    def ssm_layers(self, mixer_type: Optional[Union[type, Tuple[type, ...]]] = None) -> List[int]:
+        """Return the block indices whose mixer is an SSM / recurrent mixer.
+
+        Family-agnostic and purely structural: finds each block's *realized* SSM
+        mixer in its variant slot (``.mixer`` / ``.linear_attn`` / …) via
+        ``find_ssm_mixer``, which excludes a hybrid's passthrough ``.mixer`` on
+        non-SSM layers (e.g. NemotronH attention/MLP/MoE) — no dependence on
+        ``cfg.layers_block_type``.
+
+        Args:
+            mixer_type: Optional concrete bridge class to filter to (e.g.
+                ``SSM2MixerBridge`` for only Mamba-2 layers).
+
+        Returns:
+            Ascending list of SSM block indices.
+        """
+        from transformer_lens.model_bridge.generalized_components.ssm_protocol import (
+            find_ssm_mixer,
+        )
+
+        bridge = self.model
+        layers: List[int] = []
+        for i, block in enumerate(bridge.blocks):
+            mixer = find_ssm_mixer(block)
+            if mixer is None:
+                continue
+            if mixer_type is not None and not isinstance(mixer, mixer_type):
+                continue
+            layers.append(i)
+        return layers
+
+    def _over_ssm_layers(
+        self,
+        fn: Callable[[Any, int], torch.Tensor],
+        mixer_type: Optional[Union[type, Tuple[type, ...]]] = None,
+    ) -> Union[torch.Tensor, Dict[int, torch.Tensor]]:
+        """Apply ``fn(mixer, layer_idx)`` over every SSM layer; stack or dict.
+
+        The single SSM layer-enumeration used by both ``compute_ssm_state`` and
+        ``compute_ssm_effective_attention``. Returns a stacked tensor (dim 0 =
+        layer) when *every* block is an SSM layer, else a ``{layer_idx: result}``
+        dict over the SSM layers (heterogeneous hybrids).
+        """
+        from transformer_lens.model_bridge.generalized_components.ssm_protocol import (
+            find_ssm_mixer,
+        )
+
+        bridge = self.model
+        indices = self.ssm_layers(mixer_type=mixer_type)
+        if not indices:
+            raise RuntimeError(
+                "No SSM mixer layers found. Use an SSM / hybrid bridge and "
+                "run_with_cache first (gated-delta-net needs use_cache=False)."
+            )
+        results: Dict[int, torch.Tensor] = {
+            i: fn(cast(Any, find_ssm_mixer(bridge.blocks[i])), i) for i in indices
+        }
+        if indices == list(range(len(bridge.blocks))):
+            return torch.stack([results[i] for i in indices], dim=0)
+        return results
+
+    def compute_ssm_effective_attention(
+        self,
+        layer: Optional[int] = None,
+        include_dt_scaling: bool = False,
+        per_state_coord: bool = False,
+    ) -> Union[torch.Tensor, Dict[int, torch.Tensor]]:
+        """Materialize SSM effective attention for one or all SSM layers, any family.
+
+        The single discovery surface for effective attention across Mamba-1,
+        Mamba-2, and gated-delta-net layers; dispatches to each layer's mixer
+        ``compute_effective_attention`` regardless of family. Family-specific
+        options are forwarded only to mixers whose signature accepts them.
+
+        Args:
+            layer: Specific block index, or None for every SSM layer.
+            include_dt_scaling: Forwarded to Mamba-1/Mamba-2 mixers (the
+                reconstruction form); gated-delta-net does not accept it.
+            per_state_coord: Forwarded to Mamba-1 only (per-state-coordinate
+                matrices). Setting it True for another family raises ValueError.
+
+        Returns:
+            A per-layer matrix for a single ``layer``; for ``layer=None`` a
+            stacked tensor (dim 0 = layer) when every block is an SSM layer, else
+            a ``{layer_idx: matrix}`` dict over the SSM layers.
+
+        Raises:
+            TypeError: If the requested ``layer`` has no SSM mixer.
+            ValueError: If an option is set that the target mixer does not support.
+            RuntimeError: If ``layer=None`` finds no SSM layers.
+        """
+        import inspect
+
+        from transformer_lens.model_bridge.generalized_components.ssm_protocol import (
+            find_ssm_mixer,
+        )
+
+        def _call(mixer: Any, layer_idx: int) -> torch.Tensor:
+            fn = cast(Any, mixer).compute_effective_attention
+            params = inspect.signature(fn).parameters
+            kwargs: Dict[str, Any] = {}
+            for name, value in (
+                ("include_dt_scaling", include_dt_scaling),
+                ("per_state_coord", per_state_coord),
+            ):
+                if name in params:
+                    kwargs[name] = value
+                elif value:
+                    raise ValueError(
+                        f"{type(mixer).__name__}.compute_effective_attention does not "
+                        f"support {name}=True."
+                    )
+            result: torch.Tensor = fn(cache=self, layer_idx=layer_idx, **kwargs)
+            return result
+
+        if layer is not None:
+            single = find_ssm_mixer(self.model.blocks[layer])
+            if single is None:
+                raise TypeError(f"Block {layer} has no SSM mixer (no compute_effective_attention).")
+            return _call(single, layer)
+        return self._over_ssm_layers(_call)
+
+    def compute_ssm_state(
+        self,
+        layer: Optional[int] = None,
+        time_step: Optional[int] = None,
+    ) -> Union[torch.Tensor, Dict[int, torch.Tensor]]:
+        """Reconstruct the recurrent SSM state ``S`` from this cache.
+
+        The single discovery surface for recurrent state across families —
+        ``SSMMixerBridge`` (Mamba-1), ``SSM2MixerBridge`` (Mamba-2) and
+        ``GatedDeltaNetBridge`` (gated delta rule) each reconstruct it — mirroring
+        ``compute_head_results``. Read-only post-hoc reconstruction from cached
+        hooks (no forward re-run); requires an SSM / SSM-hybrid bridge cached via
+        ``run_with_cache`` (gated-delta-net additionally needs ``use_cache=False``
+        so its interior hooks fire). See the mixer's ``compute_ssm_state`` for the
+        recurrence, shapes, and the ``time_step`` memory bound; state shape is
+        family-specific, so ``layer=None`` returns a dict except when every block
+        shares one mixer type.
+
+        Args:
+            layer: Specific block index, or None for every SSM-state layer.
+            time_step: Optional single position (memory-bounded); None for all.
+
+        Returns:
+            A per-layer state tensor for a single ``layer``; for ``layer=None`` a
+            stacked tensor (dim 0 = layer) when every block is an SSM-state layer,
+            else a ``{layer_idx: state}`` dict over those layers.
+
+        Raises:
+            TypeError: If the requested ``layer`` has no state-reconstructing mixer.
+            RuntimeError: If ``layer=None`` finds no such layers.
+        """
+        from transformer_lens.model_bridge.generalized_components import (
+            GatedDeltaNetBridge,
+            SSM2MixerBridge,
+            SSMMixerBridge,
+        )
+        from transformer_lens.model_bridge.generalized_components.ssm_protocol import (
+            find_ssm_mixer,
+        )
+
+        # Every recurrent family reconstructs S_t from its cached interior hooks.
+        state_mixers = (SSMMixerBridge, SSM2MixerBridge, GatedDeltaNetBridge)
+
+        def _call(mixer: Any, layer_idx: int) -> torch.Tensor:
+            state: torch.Tensor = cast(Any, mixer).compute_ssm_state(
+                self, layer_idx=layer_idx, time_step=time_step
+            )
+            return state
+
+        if layer is not None:
+            single = find_ssm_mixer(self.model.blocks[layer])
+            if not isinstance(single, state_mixers):
+                raise TypeError(
+                    f"Block {layer} has no state-reconstructing SSM mixer; "
+                    "compute_ssm_state supports Mamba-1 / Mamba-2 / gated-delta-net."
+                )
+            return _call(single, layer)
+        return self._over_ssm_layers(_call, mixer_type=state_mixers)
 
     def stack_head_results(
         self,
@@ -906,8 +1086,7 @@ class ActivationCache:
             pos_slice = Slice(pos_slice)
 
         neuron_acts = self[("post", layer, "mlp")]
-        # ModuleList[T] indexing is typed `Tensor | Module` upstream; cast restores T.
-        block = cast("TransformerBlock", self.model.blocks[layer])
+        block = self.model.blocks[layer]
         W_out = block.mlp.W_out
         if pos_slice is not None:
             # Note - order is important, as Slice.apply *may* collapse a dimension, so this ensures
@@ -974,8 +1153,7 @@ class ActivationCache:
 
         components: list = []
         for l in range(layer):
-            # nn.ModuleList[T][i] is typed Tensor|Module upstream; cast restores T.
-            block = cast("TransformerBlock", self.model.blocks[l])
+            block = self.model.blocks[l]
             W_out_l = block.mlp.W_out  # [d_mlp, d_model]
             W_out_l_sliced = neuron_slice.apply(W_out_l, dim=0)
             W_proj_l = W_out_l_sliced @ project_2d  # [d_mlp, n_outs]

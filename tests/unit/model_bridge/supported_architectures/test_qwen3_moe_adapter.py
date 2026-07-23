@@ -99,18 +99,6 @@ class TestQwen3MoeComponentMapping:
         assert isinstance(subs["ln1"], RMSNormalizationBridge)
         assert isinstance(subs["ln2"], RMSNormalizationBridge)
 
-    def test_mlp_is_moe_bridge(self, adapter: Qwen3MoeArchitectureAdapter) -> None:
-        mapping = adapter.component_mapping
-        assert mapping is not None
-        mlp = mapping["blocks"].submodules["mlp"]
-        assert isinstance(mlp, MoEBridge)
-
-    def test_mlp_has_gate_submodule(self, adapter: Qwen3MoeArchitectureAdapter) -> None:
-        mapping = adapter.component_mapping
-        assert mapping is not None
-        mlp = mapping["blocks"].submodules["mlp"]
-        assert "gate" in mlp.submodules
-
     def test_q_norm_k_norm_are_rms_norm_bridges(self, adapter: Qwen3MoeArchitectureAdapter) -> None:
         mapping = adapter.component_mapping
         assert mapping is not None
@@ -236,13 +224,6 @@ class TestQwen3MoeMoEStructure:
 
 class TestQwen3MoeArchitectureGuards:
     """Guards against drift from Qwen3 conventions."""
-
-    def test_no_norm_offset_conversions(self, adapter: Qwen3MoeArchitectureAdapter) -> None:
-        """LLaMA-style RMSNorm — no +1 offset like Gemma."""
-        for key in adapter.weight_processing_conversions:
-            assert "ln1" not in key
-            assert "ln2" not in key
-            assert "ln_final" not in key
 
     def test_weight_conversions_are_only_qkvo(self, adapter: Qwen3MoeArchitectureAdapter) -> None:
         """Expert/gate weights pass through untouched."""

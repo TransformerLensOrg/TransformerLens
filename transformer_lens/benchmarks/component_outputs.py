@@ -196,8 +196,27 @@ class BenchmarkReport:
         print("=" * 80 + "\n")
 
 
+def _is_ssm_mixer_internal(component_path: str) -> bool:
+    """True for a submodule *inside* an SSM/recurrent mixer slot (``.mixer``/``.linear_attn``).
+
+    Such submodules wrap the identical HF module (parity is covered by forward_pass_logits)
+    and take SSM-internal shapes, not the ``[b, seq, d_model]`` residual the isolated harness
+    feeds — so they are skipped. The mixer node itself (path ending in the slot) is not.
+    """
+    return any(slot in component_path.split(".")[:-1] for slot in ("mixer", "linear_attn"))
+
+
 class ComponentBenchmarker:
     """Benchmarking utility for testing TransformerBridge components against HuggingFace."""
+
+    def _is_delegated_block(self) -> bool:
+        """Return True if the blocks component has maintain_native_attention set."""
+        blocks = (
+            getattr(self.adapter, "component_mapping", {}).get("blocks")
+            if self.adapter is not None
+            else None
+        )
+        return getattr(blocks, "maintain_native_attention", False)
 
     def __init__(
         self,
@@ -289,7 +308,7 @@ class ComponentBenchmarker:
 
         # Block-type components that need to be tested recursively by layer
         # (they are ModuleLists that don't have direct forward methods)
-        block_components = {"blocks", "encoder_blocks", "decoder_blocks"}
+        block_components = {"blocks", "encoder_blocks", "decoder_blocks", "L_blocks", "H_blocks"}
 
         # Test top-level components (embed, pos_embed, ln_final, unembed)
         for comp_name, component in component_mapping.items():
@@ -378,6 +397,11 @@ class ComponentBenchmarker:
         if component_path in skip_components:
             return
 
+        # SSM/recurrent mixer internal submodules can't be tested in isolation (see
+        # _is_ssm_mixer_internal); the mixer node itself is still tested against HF.
+        if _is_ssm_mixer_internal(component_path):
+            return
+
         # Skip MLP components that don't exist as separate modules in HF (name=None)
         # These are virtual components where fc1/fc2 are directly on the layer
         # Component testing doesn't work for these because get_component returns the parent layer
@@ -416,6 +440,23 @@ class ComponentBenchmarker:
             "attn" in component_path
             and hasattr(component, "maintain_native_attention")
             and component.maintain_native_attention
+        ):
+            return
+
+        # Skip attention and PLE submodules when using DelegatedAttentionBlockBridge.
+        # These architectures delegate all math to HF; the benchmark can't call the HF
+        # attention in isolation (missing position_embeddings, attention_mask, etc.) and
+        # PLE submodules receive per-layer inputs at a different dimension than hidden_states.
+        _is_delegated = self._is_delegated_block()
+        if _is_delegated and "attn" in component_path:
+            return
+        if _is_delegated and any(
+            name in component_path
+            for name in (
+                "per_layer_input_gate",
+                "per_layer_projection",
+                "post_per_layer_input_norm",
+            )
         ):
             return
 
@@ -526,6 +567,12 @@ class ComponentBenchmarker:
             ComponentTestResult or None if the component cannot be tested
         """
         try:
+            # Skip rotary_emb for DelegatedAttentionBlockBridge architectures.
+            # Gemma4's RotaryEmbeddingBridge wraps a rotary that returns a set-like
+            # structure which the benchmark comparison can't subscript.
+            if self._is_delegated_block() and component_path == "rotary_emb":
+                return None
+
             # Get bridge component
             # The adapter returns nn.Module, but for bridge models it's actually GeneralizedComponent
             bridge_component = cast(
@@ -549,7 +596,7 @@ class ComponentBenchmarker:
 
             # For embedding components, generate token indices once
             shared_token_indices = None
-            if component_path == "embed":
+            if component_path in ("embed", "encoder_embed", "decoder_embed"):
                 batch, seq_len, _ = test_input.shape
                 shared_token_indices = torch.randint(
                     0, self.cfg.d_vocab, (batch, seq_len), device=test_input.device
@@ -559,7 +606,12 @@ class ComponentBenchmarker:
             # This is needed for model-specific inputs like position_embeddings or attention_mask
             shared_inputs = None
             if (
-                ("attn" in component_path or "mlp" in component_path or "rotary" in component_path)
+                (
+                    "attn" in component_path
+                    or "mlp" in component_path
+                    or "rotary" in component_path
+                    or "conv" in component_path
+                )
                 and hasattr(bridge_component, "get_random_inputs")
                 and callable(getattr(bridge_component, "get_random_inputs"))
             ):
@@ -756,7 +808,7 @@ class ComponentBenchmarker:
                 except TypeError:
                     # Try simple call
                     return component(test_input)
-        elif component_path == "embed":
+        elif component_path in ("embed", "encoder_embed", "decoder_embed"):
             # Main embedding component expects integer indices
             # Use shared token indices if provided, otherwise generate new ones
             if shared_token_indices is not None:

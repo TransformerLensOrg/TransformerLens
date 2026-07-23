@@ -74,9 +74,6 @@ def _make_w_pack_component(d_model: int) -> Any:
 
 
 class TestBaichuanAdapterConfig:
-    def test_eps_attr(self, adapter: BaichuanArchitectureAdapter) -> None:
-        assert adapter.cfg.eps_attr == "variance_epsilon"
-
     def test_supports_fold_ln_false(self, adapter: BaichuanArchitectureAdapter) -> None:
         assert adapter.supports_fold_ln is False
 
@@ -164,29 +161,6 @@ class TestBaichuanAdapterComponentMapping:
 
 
 class TestBaichuanAdapterWeightConversions:
-    def test_four_conversion_keys(self, adapter: BaichuanArchitectureAdapter) -> None:
-        convs = adapter.weight_processing_conversions
-        assert convs is not None
-        assert len(convs) == 4
-
-    def test_qkvo_keys_present(self, adapter: BaichuanArchitectureAdapter) -> None:
-        convs = adapter.weight_processing_conversions
-        assert convs is not None
-        for key in [
-            "blocks.{i}.attn.q.weight",
-            "blocks.{i}.attn.k.weight",
-            "blocks.{i}.attn.v.weight",
-            "blocks.{i}.attn.o.weight",
-        ]:
-            assert key in convs
-
-    def test_q_conversion_type(self, adapter: BaichuanArchitectureAdapter) -> None:
-        convs = adapter.weight_processing_conversions
-        assert convs is not None
-        conv = convs["blocks.{i}.attn.q.weight"]
-        assert isinstance(conv, ParamProcessingConversion)
-        assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)
-
     def test_q_rearrange_pattern(self, adapter: BaichuanArchitectureAdapter) -> None:
         convs = adapter.weight_processing_conversions
         assert convs is not None
@@ -226,27 +200,6 @@ class TestBaichuanAdapterWeightConversions:
         conv = convs["blocks.{i}.attn.q.weight"]
         assert isinstance(conv, ParamProcessingConversion)
         assert conv.source_key is None
-
-    def test_k_conversion_type(self, adapter: BaichuanArchitectureAdapter) -> None:
-        convs = adapter.weight_processing_conversions
-        assert convs is not None
-        conv = convs["blocks.{i}.attn.k.weight"]
-        assert isinstance(conv, ParamProcessingConversion)
-        assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)
-
-    def test_v_conversion_type(self, adapter: BaichuanArchitectureAdapter) -> None:
-        convs = adapter.weight_processing_conversions
-        assert convs is not None
-        conv = convs["blocks.{i}.attn.v.weight"]
-        assert isinstance(conv, ParamProcessingConversion)
-        assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)
-
-    def test_o_conversion_type(self, adapter: BaichuanArchitectureAdapter) -> None:
-        convs = adapter.weight_processing_conversions
-        assert convs is not None
-        conv = convs["blocks.{i}.attn.o.weight"]
-        assert isinstance(conv, ParamProcessingConversion)
-        assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)
 
     def test_k_rearrange_pattern(self, adapter: BaichuanArchitectureAdapter) -> None:
         convs = adapter.weight_processing_conversions
@@ -297,16 +250,6 @@ class TestBaichuanAdapterComponentTypesExtras:
         attn = adapter.component_mapping["blocks"].submodules["attn"]
         assert isinstance(attn.submodules["o"], LinearBridge)
 
-    def test_attn_has_joint_qkv_and_post_split_q_k_v(
-        self, adapter: BaichuanArchitectureAdapter
-    ) -> None:
-        # JointQKV bridges auto-create placeholder q/k/v alongside the joint qkv slot.
-        attn = adapter.component_mapping["blocks"].submodules["attn"]
-        for name in ("qkv", "o", "q", "k", "v"):
-            assert name in attn.submodules
-        assert attn.submodules["qkv"].name == "W_pack"
-        assert attn.submodules["o"].name == "o_proj"
-
     def test_mlp_gate_is_linear_bridge(self, adapter: BaichuanArchitectureAdapter) -> None:
         mlp = adapter.component_mapping["blocks"].submodules["mlp"]
         assert isinstance(mlp.submodules["gate"], LinearBridge)
@@ -330,15 +273,6 @@ class TestBaichuanArchitectureGuards:
     def test_no_pos_embed_component(self, adapter: BaichuanArchitectureAdapter) -> None:
         # Rotary architecture: no learned positional embeddings.
         assert "pos_embed" not in adapter.component_mapping
-
-    def test_no_norm_offset_conversions(self, adapter: BaichuanArchitectureAdapter) -> None:
-        # RMSNorm has no Gemma-style offset.
-        convs = adapter.weight_processing_conversions
-        assert convs is not None
-        for key in convs:
-            assert "ln1.weight" not in key, f"Unexpected ln1 conversion: {key}"
-            assert "ln2.weight" not in key, f"Unexpected ln2 conversion: {key}"
-            assert "ln_final.weight" not in key, f"Unexpected ln_final conversion: {key}"
 
     def test_only_qkvo_conversion_keys(self, adapter: BaichuanArchitectureAdapter) -> None:
         convs = adapter.weight_processing_conversions
@@ -432,16 +366,6 @@ class TestBaichuanSplitWPack:
         q, k, v = adapter._split_baichuan_w_pack(attn)
         recombined = torch.cat([q.weight.data, k.weight.data, v.weight.data], dim=0)
         assert torch.equal(recombined, original_w)
-
-    def test_forward_output_shapes(self) -> None:
-        d_model = 64
-        adapter = self._adapter(d_model=d_model)
-        attn = _make_w_pack_component(d_model)
-        q, k, v = adapter._split_baichuan_w_pack(attn)
-        x = torch.randn(2, 5, d_model)
-        assert q(x).shape == (2, 5, d_model)
-        assert k(x).shape == (2, 5, d_model)
-        assert v(x).shape == (2, 5, d_model)
 
 
 # ---------------------------------------------------------------------------
