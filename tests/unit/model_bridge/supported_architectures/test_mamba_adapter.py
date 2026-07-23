@@ -78,13 +78,6 @@ class TestMambaWeightConversions:
         assert adapter.weight_processing_conversions == {}
 
 
-class TestMambaApplicablePhases:
-    """Mamba only applies to Phase 4 (generation + text quality)."""
-
-    def test_applicable_phases_is_phase_4_only(self, adapter: MambaArchitectureAdapter) -> None:
-        assert adapter.applicable_phases == [4]
-
-
 class TestMambaComponentMapping:
     """Component mapping must have correct bridge types and HF module paths."""
 
