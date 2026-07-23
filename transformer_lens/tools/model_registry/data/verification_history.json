@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-07-16T14:47:39.342596",
+  "last_updated": "2026-07-21T11:02:07.391611",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -17018,6 +17018,26 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ai21labs/Jamba-tiny-random",
+      "architecture_id": "JambaForCausalLM",
+      "verified_date": "2026-07-21",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues, low text quality: P3=95.2% (failed: process_bridge_weights)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ai21labs/Jamba-tiny-random",
+      "architecture_id": "JambaForCausalLM",
+      "verified_date": "2026-07-21",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues, low text quality",
       "invalidated": false,
       "invalidation_reason": null
     }
