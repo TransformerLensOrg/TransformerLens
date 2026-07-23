@@ -274,12 +274,17 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
         # Apply input hook
         hidden_states = self.hook_in(hidden_states)
 
-        # Match dtype of HF module
+        # Match dtype of HF module. Skip non-fp params: quantized weights (bnb
+        # uint8/int8, GPTQ/AWQ int32, HQQ, torchao) are stored in integer dtypes
+        # and dequantized internally during matmul. The compute dtype must come
+        # from a fp parameter; casting fp inputs to an integer storage dtype
+        # destroys precision.
         target_dtype = None
-        try:
-            target_dtype = next(hf_attn.parameters()).dtype
-        except StopIteration:
-            pass
+        for p in hf_attn.parameters():
+            if not p.dtype.is_floating_point:
+                continue
+            target_dtype = p.dtype
+            break
         if target_dtype is not None and hidden_states.is_floating_point():
             hidden_states = hidden_states.to(dtype=target_dtype)
 

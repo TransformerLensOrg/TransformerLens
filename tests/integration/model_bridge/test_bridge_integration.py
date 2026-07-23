@@ -704,22 +704,18 @@ def test_AttentionBridge_preserves_fp_input_when_first_param_is_quantized():
     producing gibberish logits on every quantized model.
 
     Fakes a "quantized first parameter" by replacing q_proj.weight with a
-    uint8 tensor, then runs a forward and asserts the input the original
-    component receives is still floating-point.
+    uint8 tensor, then runs a forward and asserts the hidden states reaching
+    q_proj are still floating-point.
     """
     from transformer_lens.model_bridge.generalized_components.attention import (
         AttentionBridge,
     )
 
-    # Use tiny Mistral — it's a plain AttentionBridge (not JointQKV).
     bridge: TransformerBridge = TransformerBridge.boot_transformers(  # type: ignore
         "trl-internal-testing/tiny-MistralForCausalLM-0.2", device="cpu"
     )
 
     attn_bridge = bridge.blocks[0].attn  # type: ignore[attr-defined]
-    assert (
-        type(attn_bridge).__name__ == "AttentionBridge"
-    ), f"Expected plain AttentionBridge, got {type(attn_bridge).__name__}"
     assert isinstance(attn_bridge, AttentionBridge)
 
     original = attn_bridge.original_component
@@ -734,42 +730,32 @@ def test_AttentionBridge_preserves_fp_input_when_first_param_is_quantized():
         next(original.parameters()).dtype == torch.uint8
     ), "Test setup: first param should be uint8 to trigger the bug condition"
 
-    # Capture what dtype reaches the original component's forward.
+    # Capture what dtype reaches q_proj. The uint8 weight makes the matmul
+    # itself fail, which is fine: the pre-hook already recorded the dtype.
     received_dtype: list = []
-    orig_forward = original.forward
 
-    def capture(*args, **kwargs):
-        if "hidden_states" in kwargs:
-            received_dtype.append(kwargs["hidden_states"].dtype)
-        elif args:
-            received_dtype.append(args[0].dtype)
-        # Don't actually run forward — fake-quantized weight would error.
-        # Return a shape-compatible dummy. HF Mistral attention returns a tuple.
-        bsz, seq, d_model = (kwargs.get("hidden_states", args[0] if args else None)).shape
-        n_heads = bridge.cfg.n_heads  # type: ignore[attr-defined]
-        return (
-            torch.zeros(bsz, seq, d_model, dtype=torch.float32),
-            torch.zeros(bsz, n_heads, seq, seq, dtype=torch.float32),
-        )
+    def capture(module, inputs):
+        if inputs and isinstance(inputs[0], torch.Tensor):
+            received_dtype.append(inputs[0].dtype)
 
-    original.forward = capture  # type: ignore[method-assign]
+    handle = original.q_proj.register_forward_pre_hook(capture)
     try:
         test_input = torch.tensor([[1, 2, 3, 4, 5]])
         with torch.no_grad():
             try:
                 bridge(test_input)
             except Exception:
-                pass  # downstream may fail; we only care what reached attn forward
+                pass  # downstream may fail; we only care what reached q_proj
     finally:
-        original.forward = orig_forward  # type: ignore[method-assign]
+        handle.remove()
         original.q_proj.weight = fp_weight
 
-    assert len(received_dtype) > 0, "Original attention forward never called"
+    assert len(received_dtype) > 0, "q_proj was never called"
     for dt in received_dtype:
         assert dt.is_floating_point, (
-            f"Bridge passed dtype={dt} to original attention forward, but it must be "
-            f"floating point. Regression of the AttentionBridge dtype-cast bug — "
-            f"target_dtype must skip non-fp (quantized-storage) parameters."
+            f"Bridge passed dtype={dt} into q_proj, but it must be floating point. "
+            f"Regression of the AttentionBridge dtype-cast bug: target_dtype must "
+            f"skip non-fp (quantized-storage) parameters."
         )
 
 
