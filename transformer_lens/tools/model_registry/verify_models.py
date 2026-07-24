@@ -144,11 +144,19 @@ def _full_and_core_phases(arch: str) -> tuple[set[int], set[int]]:
     verified: the default text set omitted phase 7, so every run wrote scores,
     found phase 7 missing, and left the status untouched.
     """
+    from transformer_lens.utilities.architectures import AUDIO_TEXT_ARCHITECTURES
+
     kind = classify_architecture(arch)
     if kind == "audio":
         return {1, 8}, {1, 8}
     if kind == "multimodal":
         return {1, 2, 3, 4, 7}, {1, 4, 7}
+    if arch in AUDIO_TEXT_ARCHITECTURES:
+        # Audio-text decoders verify their text path (1-4) and additionally exercise
+        # the audio-conditioned forward (Phase 8). Phase 8 stays out of the core set
+        # so a partial {1,4} run still verifies; a full run records + gates P8 via
+        # _check_phase_scores.
+        return {1, 2, 3, 4, 8}, {1, 4}
     return {1, 2, 3, 4}, {1, 4}
 
 
@@ -614,7 +622,7 @@ _REQUIRED_PHASE_TESTS: dict[int, list[str]] = {
     2: ["logits_equivalence", "loss_equivalence"],
     3: ["logits_equivalence", "loss_equivalence"],
     7: ["multimodal_forward"],
-    8: ["audio_forward"],
+    8: ["audio_forward", "audio_text_forward"],
 }
 
 

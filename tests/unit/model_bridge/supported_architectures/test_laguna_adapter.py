@@ -54,3 +54,21 @@ class TestLagunaMapping:
 
 def test_factory_registration():
     assert SUPPORTED_ARCHITECTURES["LagunaForCausalLM"] is LagunaArchitectureAdapter
+
+
+def test_prepare_loading_registers_conversion_mapping(adapter):
+    """Laguna ships remote code, so transformers skips its native per-expert->batched
+    expert conversion for the custom-code class unless the model type is user-registered.
+    Without this the batched experts.gate_up_proj/down_proj stay at random init (30,108
+    unexpected + 234 missing checkpoint keys) and the experts are noise. prepare_loading
+    must user-register the mapping so the conversion runs under remote code."""
+    conv = pytest.importorskip("transformers.conversion_mapping")
+    if conv.get_checkpoint_conversion_mapping("laguna") is None:
+        pytest.skip("transformers build has no native laguna conversion mapping")
+
+    conv.USER_REGISTERED_MAPPINGS.discard("laguna")  # clean precondition
+    assert "laguna" not in conv.USER_REGISTERED_MAPPINGS
+
+    adapter.prepare_loading("poolside/Laguna-XS.2", {})
+
+    assert "laguna" in conv.USER_REGISTERED_MAPPINGS

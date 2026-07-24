@@ -49,6 +49,7 @@ def test_model_requiring_4d_mask_gets_it() -> None:
 
 def test_unrelated_error_still_propagates() -> None:
     """The fallback must not swallow a genuine forward failure."""
+
     def model(tokens, attention_mask=None):
         raise ValueError("real bug unrelated to masking")
 

@@ -175,6 +175,13 @@ class GeneralizedComponent(nn.Module):
             original_component: The original transformer component to wrap
         """
         self.add_module("_original_component", original_component)
+        # An opaque wrapper (created with config=None) shadows the wrapped
+        # module's own config. HF forwards sometimes read a submodule's config
+        # directly (e.g. Qwen2Audio's forward does create_bidirectional_mask(
+        # config=self.audio_tower.config)), so inherit the real config to avoid
+        # exposing None. Components given an explicit config keep it.
+        if self.config is None:
+            self.config = getattr(original_component, "config", None)
 
     @property
     def original_component(self) -> Optional[nn.Module]:

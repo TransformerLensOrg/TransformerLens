@@ -645,9 +645,7 @@ class TestRegistryIO:
         assert data["total_verified"] == 2
         assert data["total_provisional"] == 1
 
-    def test_update_model_status_adds_provisional_if_missing(
-        self, registry_data_dir, monkeypatch
-    ):
+    def test_update_model_status_adds_provisional_if_missing(self, registry_data_dir, monkeypatch):
         """A structural-only pass on a new model is recorded (not dropped)."""
         from transformer_lens.tools.model_registry import registry_io
 

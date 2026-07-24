@@ -1063,9 +1063,10 @@ def test_resolve_state_dict_key_dense_mlp_fallback():
     # standard absent, dense present -> dense variant (in/gate/out)
     for name in ("in", "gate", "out"):
         sd2 = {f"blocks.0.mlp.dense_{name}.weight": 2}
-        assert ProcessWeights._resolve_state_dict_key(
-            sd2, f"blocks.0.mlp.{name}.weight", 0
-        ) == f"blocks.0.mlp.dense_{name}.weight"
+        assert (
+            ProcessWeights._resolve_state_dict_key(sd2, f"blocks.0.mlp.{name}.weight", 0)
+            == f"blocks.0.mlp.dense_{name}.weight"
+        )
 
     # neither present -> original key unchanged (does not invent a dense key)
     sd3 = {"blocks.0.attn.q.weight": 1}
@@ -1083,6 +1084,7 @@ def test_resolve_state_dict_key_dense_mlp_fallback():
     # nested mlp paths (e.g. a shared_expert's own projections) are NOT rewritten
     # — the fallback is anchored to a block's top-level MLP.
     sd5 = {"blocks.0.mlp.shared_expert.dense_in.weight": 1}
-    assert ProcessWeights._resolve_state_dict_key(
-        sd5, "blocks.0.mlp.shared_expert.in.weight", 0
-    ) == "blocks.0.mlp.shared_expert.in.weight"
+    assert (
+        ProcessWeights._resolve_state_dict_key(sd5, "blocks.0.mlp.shared_expert.in.weight", 0)
+        == "blocks.0.mlp.shared_expert.in.weight"
+    )

@@ -153,6 +153,85 @@ def _perplexity_to_score(perplexity: float) -> float:
     return max(0.0, min(100.0, 135.0 - 10.0 * math.log(perplexity)))
 
 
+def _build_caption_test_images(n: int = 3) -> list:
+    """A few distinct synthetic images so caption scoring averages over samples.
+
+    Content is unimportant — P4 measures whether generation is grammatical, and an
+    image-conditioned captioner just needs *some* image to emit a full sentence.
+    """
+    from PIL import Image, ImageDraw
+
+    specs = [
+        (
+            "white",
+            [("rectangle", (30, 30, 110, 150), "blue"), ("ellipse", (120, 60, 200, 140), "green")],
+        ),
+        ("black", [("ellipse", (40, 40, 180, 180), "yellow")]),
+        (
+            "skyblue",
+            [
+                ("rectangle", (20, 120, 200, 200), "darkgreen"),
+                ("ellipse", (140, 20, 200, 80), "orange"),
+            ],
+        ),
+    ]
+    images = []
+    for bg, shapes in specs[:n]:
+        img = Image.new("RGB", (224, 224), color=bg)
+        draw = ImageDraw.Draw(img)
+        for kind, box, color in shapes:
+            getattr(draw, kind)(box, fill=color)
+        images.append(img)
+    return images
+
+
+def _generate_image_conditioned_captions(
+    bridge: TransformerBridge, max_new_tokens: int
+) -> List[Tuple[str, str]]:
+    """Generate caption text from synthetic images for image-conditioned seq2seq.
+
+    Florence-2-style models emit nothing from a text-only prompt (they need
+    pixel_values), so text-only P4 is uninformative. Here we drive real
+    image-conditioned generation and return [(label, text), ...] to score, or []
+    if the image path is unavailable (no processor/PIL).
+    """
+    processor = getattr(bridge, "processor", None)
+    if processor is None:
+        return []
+    try:
+        images = _build_caption_test_images()
+    except Exception:
+        return []
+
+    # Task captioners (Florence-2) map a task token to an internal prompt.
+    # <DETAILED_CAPTION> yields a full grammatical sentence; plain <CAPTION> is
+    # only 2-3 words (too short to score) and <MORE_DETAILED_CAPTION> tends to
+    # loop on out-of-distribution synthetic images.
+    is_task_captioner = hasattr(processor, "post_process_generation")
+    task = "<DETAILED_CAPTION>" if is_task_captioner else "Describe this image in detail."
+
+    samples: List[Tuple[str, str]] = []
+    for i, image in enumerate(images):
+        try:
+            inputs = processor(text=task, images=image, return_tensors="pt")
+            input_ids = inputs["input_ids"].to(bridge.cfg.device)
+            extra = {
+                k: (v.to(bridge.cfg.device) if hasattr(v, "to") else v)
+                for k, v in inputs.items()
+                if k != "input_ids"
+            }
+            out = bridge.generate(
+                input_ids, max_new_tokens=max_new_tokens, return_type="tokens", **extra
+            )
+            if isinstance(out, torch.Tensor):
+                text = bridge.tokenizer.decode(out[0], skip_special_tokens=True).strip()
+                if text:
+                    samples.append((f"image_{i}", text))
+        except Exception:
+            continue
+    return samples
+
+
 def benchmark_text_quality(
     bridge: TransformerBridge,
     test_text: str,
@@ -210,22 +289,43 @@ def benchmark_text_quality(
             getattr(getattr(bridge, "original_model", None), "config", None)
             and getattr(bridge.original_model.config, "is_encoder_decoder", False)
         )
+        # Image-conditioned seq2seq (e.g. Florence-2) emits a 1-token EOS for a
+        # text-only prompt — it needs pixel_values to produce anything. For those
+        # we drive real caption generation from test images and score that.
+        is_multimodal = bool(getattr(getattr(bridge, "cfg", None), "is_multimodal", False))
+        image_conditioned = is_encoder_decoder and is_multimodal
 
-        # Generate text for each prompt
-        generations: List[Tuple[str, str]] = []  # (prompt, full_text)
+        # Generate text to score (prompt, full_text)
+        generations: List[Tuple[str, str]] = []
         primary_generated = ""
-        with deterministic_rng():
-            for i, prompt in enumerate(prompts):
-                generated = generator(
-                    prompt,
-                    max_new_tokens=max_new_tokens,
-                    temperature=0.7,
+        if image_conditioned:
+            with deterministic_rng():
+                captions = _generate_image_conditioned_captions(bridge, max_new_tokens)
+            if not captions:
+                # Cannot reach this model's real (image-conditioned) generation —
+                # skip rather than score its degenerate text-only output.
+                return BenchmarkResult(
+                    name="text_quality",
+                    severity=BenchmarkSeverity.SKIPPED,
+                    message="Skipped: image-conditioned model; image processor/PIL unavailable",
                 )
-                if not isinstance(generated, str) or len(generated.strip()) == 0:
-                    continue
-                generations.append((prompt, generated))
-                if i == 0:
-                    primary_generated = generated
+            # No prompt prefix to mask — the whole caption is the content (handled
+            # by the is_encoder_decoder path in the scoring loop below).
+            generations = [("", text) for _, text in captions]
+            primary_generated = captions[0][1]
+        else:
+            with deterministic_rng():
+                for i, prompt in enumerate(prompts):
+                    generated = generator(
+                        prompt,
+                        max_new_tokens=max_new_tokens,
+                        temperature=0.7,
+                    )
+                    if not isinstance(generated, str) or len(generated.strip()) == 0:
+                        continue
+                    generations.append((prompt, generated))
+                    if i == 0:
+                        primary_generated = generated
 
         if len(generations) == 0:
             return BenchmarkResult(

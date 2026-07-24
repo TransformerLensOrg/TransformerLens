@@ -198,8 +198,10 @@ def _hf_forward_with_mask_fallback(hf_model, tokens):
         return hf_model(tokens)
     except (AttributeError, ValueError):
         b, s = tokens.shape[0], tokens.shape[-1]
-        for mask in (torch.ones(b, s, dtype=torch.long, device=tokens.device),
-                     torch.ones(b, 1, s, s, dtype=torch.long, device=tokens.device)):
+        for mask in (
+            torch.ones(b, s, dtype=torch.long, device=tokens.device),
+            torch.ones(b, 1, s, s, dtype=torch.long, device=tokens.device),
+        ):
             try:
                 return hf_model(tokens, attention_mask=mask)
             except (AttributeError, ValueError):
@@ -1559,6 +1561,28 @@ def run_benchmark_suite(
                     phase=8,
                 )
             )
+
+    # ========================================================================
+    # PHASE 8 (audio-text): audio-conditioned forward for audio decoders
+    # (Qwen2Audio etc.) — is_multimodal with an audio processor, not an encoder.
+    # Image Phase 7 feeds pixel_values and encoder Phase 8 feeds a raw waveform;
+    # neither exercises these models' processed-feature audio path.
+    # ========================================================================
+    _audio_text = (
+        bridge_unprocessed is not None
+        and getattr(bridge_unprocessed.cfg, "is_multimodal", False)
+        and not getattr(bridge_unprocessed.cfg, "is_audio_model", False)
+        and getattr(getattr(bridge_unprocessed, "processor", None), "audio_token", None) is not None
+    )
+    if _audio_text and should_run_phase(8):
+        current_phase[0] = 8
+        if verbose:
+            print("\n" + "=" * 80 + "\nPHASE 8: AUDIO-TEXT FORWARD\n" + "=" * 80 + "\n")
+        from transformer_lens.benchmarks.audio import benchmark_audio_text_forward
+
+        result = benchmark_audio_text_forward(bridge_unprocessed)
+        result.phase = 8
+        add_result(result)
 
     # ========================================================================
     # PHASE 3: Bridge (processed) + HookedTransformer (processed)

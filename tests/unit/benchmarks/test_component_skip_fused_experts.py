@@ -44,6 +44,8 @@ def test_plain_mlp_is_still_tested() -> None:
     isolatable and must remain under test (guards against over-skipping)."""
     report = _report("openai-community/gpt2")
 
-    mlp_tested = [r.component_path for r in report.component_results if r.component_path.endswith(".mlp")]
+    mlp_tested = [
+        r.component_path for r in report.component_results if r.component_path.endswith(".mlp")
+    ]
     assert mlp_tested, "gpt2's plain MLPs must still be isolation-tested"
     assert all(r.passed for r in report.component_results), "gpt2 components must all pass"
