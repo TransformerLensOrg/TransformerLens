@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-07-24T10:01:39.971492",
+  "last_updated": "2026-07-24T10:45:51.487633",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -20648,6 +20648,46 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Full verification completed with issues, low text quality",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "openai-community/gpt2",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-07-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": null,
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "facebook/MobileLLM-R1.5-950M",
+      "architecture_id": "Llama4ForCausalLM",
+      "verified_date": "2026-07-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": null,
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Helsinki-NLP/opus-mt-nl-en",
+      "architecture_id": "MarianMTModel",
+      "verified_date": "2026-07-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Core verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "facebook/MobileLLM-R1.5-950M",
+      "architecture_id": "Llama4ForCausalLM",
+      "verified_date": "2026-07-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": null,
       "invalidated": false,
       "invalidation_reason": null
     }

@@ -139,6 +139,25 @@ class ProcessWeights:
                 if sd_key.endswith(f".{component_suffix}") and f".{layer_idx}." in sd_key:
                     return sd_key
 
+        # Mixed MoE/dense adapters (Llama4, Laguna, LLaDA2-MoE) put a non-MoE
+        # layer's gated MLP in the MoE slot under dense_gate/dense_in/dense_out
+        # so it coexists with the router/experts. When the standard block-level
+        # mlp.{gate,in,out} key is absent, fall back to that dense_ variant.
+        # Fails closed: the standard resolution above already ran (so a real
+        # mlp.gate router is never shadowed), the match is anchored to a block's
+        # top-level MLP (not any nested `.mlp.`), and the dense key is returned
+        # only if it exists — models without the convention are untouched.
+        proj_match = re.match(r"(blocks\.\d+\.mlp\.)(in|gate|out)(\..+)$", key)
+        if proj_match:
+            dense_key = f"{proj_match.group(1)}dense_{proj_match.group(2)}{proj_match.group(3)}"
+            if dense_key in state_dict:
+                return dense_key
+            dm = re.match(r"blocks\.(\d+)\.(.*)", dense_key)
+            if dm:
+                for sd_key in state_dict:
+                    if sd_key.endswith(f".{dm.group(2)}") and f".{dm.group(1)}." in sd_key:
+                        return sd_key
+
         return key
 
     @staticmethod

@@ -200,6 +200,17 @@ def benchmark_text_quality(
                 message="Skipped: architecture supports no text generation",
             )
 
+        # Encoder-decoder models (T5/Marian/BART) emit a standalone decoder
+        # output (translation, summary), not a continuation of the prompt, so
+        # there is no prompt prefix to mask out — the whole generated text is the
+        # content to score. (An en-in→en translation whose output ~= the prompt
+        # length otherwise trips the "continuation too short" guard for every
+        # prompt and scores 0.)
+        is_encoder_decoder = bool(
+            getattr(getattr(bridge, "original_model", None), "config", None)
+            and getattr(bridge.original_model.config, "is_encoder_decoder", False)
+        )
+
         # Generate text for each prompt
         generations: List[Tuple[str, str]] = []  # (prompt, full_text)
         primary_generated = ""
@@ -236,8 +247,11 @@ def benchmark_text_quality(
         prompt_details_parts = []
 
         for prompt, full_text in generations:
+            # For encoder-decoder output there is no prompt-in-continuation to
+            # mask; score the entire generated sequence.
+            score_prompt = "" if is_encoder_decoder else prompt
             perplexity, error = _compute_continuation_perplexity(
-                prompt, full_text, tokenizer, scoring_model, device
+                score_prompt, full_text, tokenizer, scoring_model, device
             )
             if error is not None:
                 continue
@@ -245,7 +259,7 @@ def benchmark_text_quality(
             raw_score = _perplexity_to_score(perplexity)
 
             # Repetition penalty on continuation only
-            continuation = full_text[len(prompt) :]
+            continuation = full_text[len(score_prompt) :]
             rep_penalty = _compute_repetition_penalty(continuation)
             adjusted_score = raw_score * rep_penalty
 
