@@ -247,7 +247,9 @@ jobs:
   coverage-test:
     name: Full Code Coverage Test
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    # Suite runs under pytest-xdist (~30 min); 60 catches a real hang ~30 min
+    # sooner than the old 90 while leaving margin for the -n 2 OOM fallback.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - name: Install uv
@@ -293,6 +295,12 @@ jobs:
         run: make coverage-report-test
         env:
           HF_TOKEN:  ${{ secrets.HF_TOKEN }}
+          # One BLAS thread per worker: N xdist workers each spawning ncores
+          # OMP threads would oversubscribe the 4-vCPU runner and erase the gain.
+          OMP_NUM_THREADS: "1"
+          MKL_NUM_THREADS: "1"
+          # Worker count knob — drop to "-n 2 --dist loadscope" if a runner OOMs.
+          XDIST_ARGS: "-n auto --dist loadscope"
       - name: Build check
         run: uv build
       - name: Upload Coverage Report Artifact
