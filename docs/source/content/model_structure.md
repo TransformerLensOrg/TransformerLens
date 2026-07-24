@@ -17,7 +17,15 @@ from transformer_lens.model_bridge import TransformerBridge
 bridge = TransformerBridge.boot_transformers("gpt2", device="cpu")
 ```
 
-You can then call the familiar APIs: `to_tokens`, `to_string`, `generate`, `run_with_hooks`, `run_with_cache`.
+You can then call the familiar APIs: `to_tokens`, `to_string`, `generate`, `generate_stream`, `run_with_hooks`, `run_with_cache`.
+
+## Architecture diagram
+
+The diagram below maps weight matrices and activation tensors to their TransformerLens names. Hook points sit on the activation arrows — the canonical hook names in the rest of this document correspond directly to the labeled tensors here.
+
+![TransformerLens architecture diagram with weight matrices and activation tensors labeled](../_static/TransformerLens_Diagram.svg)
+
+*Diagram by [Austin Kozlowski](https://github.com/akozlo). Click for full resolution.*
 
 ## Top-Level Components
 

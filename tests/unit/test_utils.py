@@ -483,6 +483,92 @@ class TestTokenizeAndConcatenate:
                 f"This indicates a word was split across chunk boundaries."
             )
 
+    def test_no_split_tokens_in_no_whitespace_text(self):
+        """No-whitespace multi-doc input — the prior whitespace-lookahead fix
+        fell through to character cuts here. streaming=True keeps all docs in
+        one tokenize_function call so EOS markers actually exist to split on.
+        """
+        from datasets import Dataset
+        from transformers import AutoTokenizer
+
+        tokenizer = AutoTokenizer.from_pretrained("gpt2")
+
+        docs = ["a" * 200 + "MilitaryVehicleEngine" * 100] * 10
+        dataset = Dataset.from_dict({"text": docs})
+
+        result = utils.tokenize_and_concatenate(
+            dataset,
+            tokenizer,
+            streaming=True,
+            max_length=128,
+            add_bos_token=False,
+        )
+
+        full_text = tokenizer.eos_token.join(docs)
+        clean_tokens = tokenizer(full_text, return_tensors="np")["input_ids"].flatten()
+        clean_pairs = set(zip(clean_tokens[:-1], clean_tokens[1:]))
+
+        output_tokens = np.concatenate([np.array(row["tokens"]) for row in result])
+        for i in range(len(output_tokens) - 1):
+            pair = (int(output_tokens[i]), int(output_tokens[i + 1]))
+            assert pair in clean_pairs, (
+                f"Token pair {pair} appears in tokenize_and_concatenate output "
+                f"but never occurs in natural tokenization. The chunker must "
+                f"have cut a token in half."
+            )
+
+    def test_single_document_batch_does_not_crash(self):
+        """Single-doc batch has no EOS to split on — fallback to one chunk should be correct."""
+        from datasets import Dataset
+        from transformers import AutoTokenizer
+
+        tokenizer = AutoTokenizer.from_pretrained("gpt2")
+        dataset = Dataset.from_dict({"text": ["abcdefghij" * 200]})
+
+        result = utils.tokenize_and_concatenate(
+            dataset,
+            tokenizer,
+            streaming=True,
+            max_length=64,
+            add_bos_token=False,
+        )
+
+        clean = tokenizer("abcdefghij" * 200, return_tensors="np")["input_ids"].flatten()
+        output = np.concatenate([np.array(row["tokens"]) for row in result])
+        n = len(output)
+        assert (output == clean[:n]).all()
+
+    def test_iterable_dataset_with_set_format_false(self, gpt2_tokenizer):
+        """``IterableDataset`` input + ``set_format=False`` returns a usable iterable.
+
+        Regression test for the path requested in #473: ``set_format(type="torch")``
+        is unsupported on iterable datasets, so callers streaming a corpus must be
+        able to opt out of that final step.
+        """
+        from datasets import Dataset
+        from datasets.iterable_dataset import IterableDataset
+
+        tokenizer = gpt2_tokenizer
+        source = Dataset.from_dict({"text": ["hello world"] * 4})
+        iterable = source.to_iterable_dataset()
+        assert isinstance(iterable, IterableDataset)
+
+        result = utils.tokenize_and_concatenate(
+            iterable,
+            tokenizer,
+            streaming=True,
+            max_length=8,
+            add_bos_token=False,
+            set_format=False,
+        )
+
+        # Result is iterable and yields token rows of the requested length.
+        rows = list(result)
+        assert len(rows) > 0
+        for row in rows:
+            assert "tokens" in row
+            assert len(row["tokens"]) == 8
+
 
 def test_tokenize_and_concatenate_no_spurious_sequence_length_warning():
     """Test that tokenize_and_concatenate does not emit the HF 'sequence length longer than maximum' warning."""
@@ -523,9 +609,9 @@ def test_tokenize_and_concatenate_no_spurious_sequence_length_warning():
 
 
 def test_tokenize_and_concatenate_short_sequence_no_invalid_tokens():
-    """
-    When the tokenizer has no pad token, output should only contain token IDs in the model's vocab.
-    """
+    """When the tokenizer has no pad token, output should only contain token IDs in the model's vocab."""
+    # Fresh tokenizer (not gpt2_tokenizer fixture): the function mutates pad_token
+    # and we assert pad_token is None at the start.
     from datasets import Dataset
     from transformers import AutoTokenizer
 

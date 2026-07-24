@@ -1,6 +1,6 @@
 import einops
 
-from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.config.hooked_transformer_config import HookedTransformerConfig
 
 
 def convert_phi_weights(phi, cfg: HookedTransformerConfig):

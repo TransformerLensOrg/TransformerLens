@@ -28,8 +28,8 @@ from transformers import (
     DeiTForImageClassification,
 )
 
-import transformer_lens.utils as utils
-from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
+import transformer_lens.utilities as utils
+from transformer_lens.config.hooked_transformer_config import HookedTransformerConfig
 from transformer_lens.pretrained.weight_conversions import (
     convert_apertus_weights,
     convert_bert_weights,
@@ -747,7 +747,8 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "n_heads": hf_config.num_attention_heads,
             "d_mlp": hf_config.intermediate_size // 2,
             "n_layers": hf_config.num_hidden_layers,
-            "n_ctx": 2048,  # Capped bc the actual ctx length is 30k and the attn mask would be too big
+            # QWenLMHeadModel uses seq_length in its remote-code attention/rotary logic.
+            "n_ctx": hf_config.seq_length,
             "eps": hf_config.layer_norm_epsilon,
             "d_vocab": hf_config.vocab_size,
             "act_fn": "silu",
@@ -772,7 +773,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "n_key_value_heads": hf_config.num_key_value_heads,
             "d_mlp": hf_config.intermediate_size,
             "n_layers": hf_config.num_hidden_layers,
-            "n_ctx": 2048,  # Capped bc the actual ctx length is 30k and the attn mask would be too big
+            "n_ctx": hf_config.max_position_embeddings,
             "eps": hf_config.rms_norm_eps,
             "d_vocab": hf_config.vocab_size,
             "act_fn": hf_config.hidden_act,
@@ -976,7 +977,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "n_key_value_heads": 4,
             "window_size": 4096,
             "use_local_attn": True,
-            "attn_types": ["global", "local"] * 21,  # Alternate global and local attn
+            "attn_types": ["global", "local"] * 13,  # Alternate global and local attn
             "attn_scores_soft_cap": 50.0,
             "output_logits_soft_cap": 30.0,
             "gated_mlp": True,
@@ -1376,133 +1377,6 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
                 "local",
             ],
         }
-    elif official_model_name.startswith("google/gemma-2b"):
-        # Architecture for Gemma 2b and Gemma 2b Instruct models
-        cfg_dict = {
-            "d_model": 2048,
-            "d_head": 256,
-            "n_heads": 8,
-            "d_mlp": 16384,
-            "n_layers": 18,
-            "n_ctx": 8192,
-            "eps": 1e-06,
-            "d_vocab": 256000,
-            "act_fn": "gelu",
-            "initializer_range": 0.02,
-            "normalization_type": "RMS",
-            "rotary_base": 10000,
-            "rotary_dim": 256,
-            "positional_embedding_type": "rotary",
-            "use_attn_scale": True,
-            "n_key_value_heads": 1,
-            "gated_mlp": True,
-            "final_rms": True,
-        }
-    elif official_model_name.startswith("google/gemma-7b"):
-        # Architecture for Gemma 7b and Gemma 7b Instruct models
-        cfg_dict = {
-            "d_model": 3072,
-            "d_head": 256,
-            "n_heads": 16,
-            "d_mlp": 24576,
-            "n_layers": 28,
-            "n_ctx": 8192,
-            "eps": 1e-06,
-            "d_vocab": 256000,
-            "act_fn": "gelu",
-            "initializer_range": 0.02,
-            "normalization_type": "RMS",
-            "rotary_base": 10000.0,
-            "rotary_dim": 256,
-            "positional_embedding_type": "rotary",
-            "use_attn_scale": True,
-            "n_key_value_heads": 16,
-            "gated_mlp": True,
-            "final_rms": True,
-        }
-    elif official_model_name.startswith("google/gemma-2-2b"):
-        # Architecture for Gemma-2 2b and Gemma-2 2b Instruct models
-        cfg_dict = {
-            "d_model": 2304,
-            "d_head": 256,
-            "n_heads": 8,
-            "d_mlp": 9216,
-            "n_layers": 26,
-            "n_ctx": 8192,
-            "eps": 1e-06,
-            "d_vocab": 256000,
-            "act_fn": "gelu_pytorch_tanh",
-            "initializer_range": 0.02,
-            "normalization_type": "RMS",
-            "rotary_base": 10000.0,
-            "positional_embedding_type": "rotary",
-            "use_attn_scale": True,
-            "n_key_value_heads": 4,
-            "window_size": 4096,
-            "use_local_attn": True,
-            "attn_types": ["global", "local"] * 13,  # Alternate global and local attn
-            "attn_scores_soft_cap": 50.0,
-            "output_logits_soft_cap": 30.0,
-            "gated_mlp": True,
-            "final_rms": True,
-            "use_normalization_before_and_after": True,
-        }
-    elif official_model_name.startswith("google/gemma-2-9b"):
-        # Architecture for Gemma-2 9b and Gemma-2 9b Instruct models
-        cfg_dict = {
-            "d_model": 3584,
-            "d_head": 256,
-            "n_heads": 16,
-            "d_mlp": 14336,
-            "n_layers": 42,
-            "n_ctx": 8192,
-            "eps": 1e-06,
-            "d_vocab": 256000,
-            "act_fn": "gelu_pytorch_tanh",
-            "initializer_range": 0.02,
-            "normalization_type": "RMS",
-            "rotary_base": 10000.0,
-            "positional_embedding_type": "rotary",
-            "use_attn_scale": True,
-            "n_key_value_heads": 8,
-            "window_size": 4096,
-            "use_local_attn": True,
-            "attn_types": ["global", "local"] * 21,  # Alternate global and local attn
-            "attn_scores_soft_cap": 50.0,
-            "output_logits_soft_cap": 30.0,
-            "gated_mlp": True,
-            "final_rms": True,
-            "use_normalization_before_and_after": True,
-        }
-    elif official_model_name.startswith("google/gemma-2-27b"):
-        # Architecture for Gemma-2 27b and Gemma-2 27b Instruct models
-        cfg_dict = {
-            "d_model": 4608,
-            "d_head": 128,
-            "n_heads": 32,
-            "d_mlp": 36864,
-            "n_layers": 46,
-            "n_ctx": 8192,
-            "eps": 1e-06,
-            "d_vocab": 256000,
-            "act_fn": "gelu_pytorch_tanh",
-            "initializer_range": 0.02,
-            "normalization_type": "RMS",
-            "rotary_base": 10000.0,
-            "positional_embedding_type": "rotary",
-            "use_attn_scale": True,
-            "attn_scale": 12.0,
-            "n_key_value_heads": 16,
-            "window_size": 4096,
-            "use_local_attn": True,
-            "attn_types": ["global", "local"] * 23,  # Alternate global and local attn
-            "attn_scores_soft_cap": 50.0,
-            "output_logits_soft_cap": 30.0,
-            "gated_mlp": True,
-            "final_rms": True,
-            "use_normalization_before_and_after": True,
-        }
-
     elif architecture == "ViTForImageClassification" or architecture == "ViTModel" or architecture == "DeiTForImageClassificationWithTeacher" or architecture == "DeiTForImageClassification":
         cfg_dict = {
             # core transformer sizes

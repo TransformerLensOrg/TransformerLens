@@ -36,13 +36,14 @@ Weight-processing flags (`fold_ln`, `center_writing_weights`, `center_unembed`, 
 
 ### Parameters that were removed
 
-`n_devices`, `move_to_device`, `first_n_layers`, and `n_ctx` are not part of `boot_transformers`. If you relied on any of these, file an issue describing your use case — the right pattern for multi-GPU loads under the bridge is still being worked out.
+`n_devices`, `move_to_device`, and `first_n_layers` are not part of `boot_transformers`. If you relied on any of these, file an issue describing your use case — the right pattern for multi-GPU loads under the bridge is still being worked out.
 
 ### Parameters that are new
 
 - `load_weights: bool = True` — set to `False` to construct the bridge with just the config (useful for shape-checking without paying the weight-load cost).
 - `trust_remote_code: bool = False` — pass through to HuggingFace for models that ship custom modeling code.
 - `hf_config_overrides: dict | None = None` — override specific fields of the HF config before the model is constructed.
+- `n_ctx: int | None = None` — override the model's context length. The bridge writes to whichever HF config field this architecture uses (`n_positions` / `max_position_embeddings` / etc.) so callers don't need to know the field name. Warns if larger than the model's default.
 - `hf_model` / `model_class` — advanced: pass in a pre-loaded HF model or a specific model class.
 
 ## Weight processing is now opt-in
@@ -74,6 +75,31 @@ bridge.enable_compatibility_mode(
 
 If you want no processing at all — the bridge's native default — you can skip `enable_compatibility_mode` entirely, or call it with `no_processing=True` if you still want the hook/component compatibility layer without the weight transforms.
 
+### Will my numbers match HookedTransformer?
+
+| Computing | Without `enable_compatibility_mode` | With it |
+| --- | --- | --- |
+| Generated text, CE loss, argmax / top-k | Identical | Identical |
+| Raw logits | Differ by per-row constant | Match |
+| Logit lens, direct logit attribution | Differ | Match |
+| KL divergence vs another model | Differ | Match |
+| Residual-stream norms, cached `hook_resid_*` | Differ (grows with depth) | Match |
+
+Bottom-half analyses → call `enable_compatibility_mode()` after booting.
+
+## Dependency changes in 3.0
+
+TransformerLens 3.0 raises its minimum supported `transformers` to **5.4.0** (previously 4.56). This is enforced automatically, fresh installs and `pip install -U transformer_lens` will pull in a compatible release with no action on your part.
+
+If your code calls `transformers` directly alongside TransformerLens (e.g. manual `AutoModel.from_pretrained` calls in notebooks, or a downstream library that imports both), the v4 → v5 jump may surface breaking changes outside TransformerLens's surface area. See HuggingFace's Transformers v5 release notes for what changed there.
+
+A few v5-driven internal adjustments worth knowing about:
+
+- **Gemma embedding scaling.** Transformers v5 changed how Gemma applies embedding scaling; `enable_compatibility_mode()` compensates so legacy `HookedTransformer` numerics are preserved.
+- **MPT block unpack arity.** `MptBlock` returns a 2-tuple on v5 vs a 3-tuple on v4; the bridge adapts.
+- **Qwen3.5.** Requires a v5 release exposing `Qwen3_5ForCausalLM`; see [Special Cases](special_cases.md).
+
+
 ## Hook names
 
 The canonical hook names on the bridge use a uniform `hook_in` / `hook_out` convention. The old TransformerLens names are preserved through an alias layer, so existing code keeps working without changes:
@@ -86,19 +112,44 @@ cache["blocks.0.hook_in"]          # canonical name — preferred for new code
 
 For the full mapping of legacy → canonical names and the expected tensor shape at each hook point, see the [Model Structure](model_structure.md) page.
 
+### Hook semantic notes
+
+Two semantic differences inside `enable_compatibility_mode()` worth knowing if you are porting activation-patching, DLA, or attribution-patching code:
+
+- **`blocks.{i}.hook_mlp_in` fires pre-ln2** (matching legacy `HookedTransformer`). Use `bridge.set_use_hook_mlp_in(True)` to enable it — setting `cfg.use_hook_mlp_in = True` directly is honored when blocks share the bridge's `cfg`, but the setter is the supported entry point. The pre-ln2 placement means cached values from one run can be patched into another and re-flow through `ln2 → mlp` consistently across the bridge and `HookedTransformer`.
+- **`hook_q_input` / `hook_k_input` / `hook_v_input` / `hook_attn_in`** also fire pre-ln1 in compat mode. On the per-head LN application that follows, the bridge routes through the raw HF norm rather than the `NormalizationBridge` wrapper, so `ln1`'s sub-hooks (`hook_in`, `hook_normalized`, `hook_scale`) do **not** fire once per head the way legacy `LayerNormPre` would. Q/K/V projections downstream still match legacy numerically; only the intermediate LN sub-hook firing is suppressed.
+
+Post-norm architectures (OLMo 2, BERT-style encoders) and MLA blocks (DeepSeek V2/V3/R1) do not participate in the pre-ln1 capture — `MLABlockBridge` does not expose those aliases, and post-norm models would read the post-attention residual instead of the block input.
+
+Additionally, **HookedRootModule** has been moved to its own module. Prefer `from transformer_lens import HookedRootModule`. The legacy `from transformer_lens.hook_points import HookedRootModule` still works in 3.x, but emits a `DeprecationWarning`. This import path will be removed in 4.0.
+
 ## APIs that are unchanged
 
 These work identically on `TransformerBridge` and need no migration:
 
 - `to_tokens`, `to_string`
 - `generate`
-- `run_with_hooks`
-- `run_with_cache`
-- `__call__` / `forward`
+- `run_with_hooks`, `run_with_cache` — including batched-list inputs (parity fixed in 3.x)
+- `__call__` / `forward` — accepts both 1D `[seq]` and 2D `[batch, seq]` token tensors
 - `cfg.*` — the bridge exposes a `.cfg` with the same fields (`n_layers`, `n_heads`, `d_model`, `d_vocab`, `n_ctx`, ...)
 - `W_Q`, `W_K`, `W_V`, `W_O`, `b_Q`, `b_K`, `b_V`, `b_O` — attention weights are exposed with the same `[n_heads, d_model, d_head]` shape conventions
 
 If your code only touches these APIs, the migration is genuinely just the loading call and (optionally) `enable_compatibility_mode`.
+
+### BERT Next Sentence Prediction
+
+`BertNextSentencePrediction` is not ported to `TransformerBridge`. Keep using `HookedEncoder` + `BertNextSentencePrediction` for NSP workflows. The bridge's BERT adapter does load NSP HuggingFace checkpoints (it rewires the unembed to `cls.seq_relationship`), but the high-level NSP API – sentence-pair tokenization, `[CLS]` pooling, "sequential"/"not sequential" decoding — is not exposed. If this is feature is something you'd like added to TransformerBridge, please file an issue.
+
+### New in 3.x: streaming generation
+
+Both `HookedTransformer` and `TransformerBridge` now expose `generate_stream`, which yields tokens progressively instead of returning the full completion at once:
+
+```python
+for chunk in bridge.generate_stream("The quick brown fox", max_new_tokens=50):
+    print(chunk, end="", flush=True)
+```
+
+Same sampling kwargs as `generate` (`temperature`, `top_k`, `top_p`, `do_sample`, etc.).
 
 ## Model name aliases are deprecated
 

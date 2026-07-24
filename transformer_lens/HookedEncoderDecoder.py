@@ -27,18 +27,18 @@ import torch
 import tqdm
 from einops import repeat
 from jaxtyping import Float, Int
-from torch import nn
 from transformers import AutoTokenizer, PreTrainedTokenizerBase
 from typing_extensions import Literal
 
 import transformer_lens.loading_from_pretrained as loading
 from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.components import MLP, Embed, GatedMLP, RMSNorm, T5Block, Unembed
-from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.config.hooked_transformer_config import HookedTransformerConfig
 from transformer_lens.FactoredMatrix import FactoredMatrix
-from transformer_lens.hook_points import HookedRootModule, HookPoint
+from transformer_lens.hook_points import HookPoint
+from transformer_lens.HookedRootModule import HookedRootModule
+from transformer_lens.utilities import TypedModuleList, sample_logits, warn_if_mps
 from transformer_lens.utilities.multi_gpu import get_device_for_block_index
-from transformer_lens.utils import sample_logits, warn_if_mps
 
 T = TypeVar("T", bound="HookedEncoderDecoder")
 
@@ -56,6 +56,8 @@ class HookedEncoderDecoder(HookedRootModule):
     """
 
     tokenizer: Optional[PreTrainedTokenizerBase]
+    encoder: TypedModuleList[T5Block]
+    decoder: TypedModuleList[T5Block]
 
     def __init__(
         self,
@@ -96,14 +98,14 @@ class HookedEncoderDecoder(HookedRootModule):
             self.cfg.d_vocab_out = self.cfg.d_vocab
 
         self.embed = Embed(self.cfg)
-        self.encoder = nn.ModuleList(
+        self.encoder = TypedModuleList(
             [
                 T5Block(self.cfg, num_layer, is_decoder=False)
                 for num_layer in range(self.cfg.n_layers)
             ]
         )
         self.encoder_final_ln = RMSNorm(self.cfg)
-        self.decoder = nn.ModuleList(
+        self.decoder = TypedModuleList(
             [
                 T5Block(self.cfg, num_layer, is_decoder=True)
                 for num_layer in range(self.cfg.n_layers)
@@ -257,9 +259,9 @@ class HookedEncoderDecoder(HookedRootModule):
 
         query_len = key_len = tokens.shape[1]
 
-        encoder_positional_bias = cast(
-            T5Block, self.encoder[0]
-        ).attn.compute_relative_attention_bias(query_len, key_len, device=self.cfg.device)
+        encoder_positional_bias = self.encoder[0].attn.compute_relative_attention_bias(
+            query_len, key_len, device=self.cfg.device
+        )
 
         for encoder_block in self.encoder:
             resid = encoder_block(
@@ -274,9 +276,7 @@ class HookedEncoderDecoder(HookedRootModule):
             raise ValueError("decoder_input cannot be None when input is not a string")
         decoder_resid = self.embed(decoder_input)
         decoder_query_len = decoder_key_len = decoder_input.shape[1]
-        decoder_positional_bias = cast(
-            T5Block, self.decoder[0]
-        ).attn.compute_relative_attention_bias(
+        decoder_positional_bias = self.decoder[0].attn.compute_relative_attention_bias(
             decoder_query_len, decoder_key_len, device=self.cfg.device
         )
 
@@ -484,13 +484,13 @@ class HookedEncoderDecoder(HookedRootModule):
         else:
             return decoder_input
 
-    @overload
+    @overload  # type: ignore[overload-overlap]
     def run_with_cache(
         self, *model_args: Any, return_cache_object: Literal[True] = True, **kwargs: Any
     ) -> Tuple[Float[torch.Tensor, "batch pos d_vocab"], ActivationCache]:
         ...
 
-    @overload
+    @overload  # type: ignore[overload-overlap]
     def run_with_cache(
         self, *model_args: Any, return_cache_object: Literal[False] = False, **kwargs: Any
     ) -> Tuple[Float[torch.Tensor, "batch pos d_vocab"], Dict[str, torch.Tensor]]:
@@ -637,7 +637,7 @@ class HookedEncoderDecoder(HookedRootModule):
     def W_K(self) -> Float[torch.Tensor, "n_layers n_heads d_model d_head"]:
         """Stacks the key weights across all layers"""
         return torch.stack(
-            [cast(T5Block, block).attn.W_K for block in chain(self.encoder, self.decoder)],
+            [block.attn.W_K for block in chain(self.encoder, self.decoder)],
             dim=0,
         )
 
@@ -645,7 +645,7 @@ class HookedEncoderDecoder(HookedRootModule):
     def W_Q(self) -> Float[torch.Tensor, "n_layers n_heads d_model d_head"]:
         """Stacks the query weights across all layers"""
         return torch.stack(
-            [cast(T5Block, block).attn.W_Q for block in chain(self.encoder, self.decoder)],
+            [block.attn.W_Q for block in chain(self.encoder, self.decoder)],
             dim=0,
         )
 
@@ -653,7 +653,7 @@ class HookedEncoderDecoder(HookedRootModule):
     def W_V(self) -> Float[torch.Tensor, "n_layers n_heads d_model d_head"]:
         """Stacks the value weights across all layers"""
         return torch.stack(
-            [cast(T5Block, block).attn.W_V for block in chain(self.encoder, self.decoder)],
+            [block.attn.W_V for block in chain(self.encoder, self.decoder)],
             dim=0,
         )
 
@@ -661,7 +661,7 @@ class HookedEncoderDecoder(HookedRootModule):
     def W_O(self) -> Float[torch.Tensor, "n_layers n_heads d_head d_model"]:
         """Stacks the attn output weights across all layers"""
         return torch.stack(
-            [cast(T5Block, block).attn.W_O for block in chain(self.encoder, self.decoder)],
+            [block.attn.W_O for block in chain(self.encoder, self.decoder)],
             dim=0,
         )
 
@@ -670,7 +670,7 @@ class HookedEncoderDecoder(HookedRootModule):
         """Stacks the MLP input weights across all layers"""
         weights: List[torch.Tensor] = []
         for block in chain(self.encoder, self.decoder):
-            mlp = cast(T5Block, block).mlp
+            mlp = block.mlp
             if isinstance(mlp, (MLP, GatedMLP)):
                 weights.append(mlp.W_in)
             else:
@@ -684,7 +684,7 @@ class HookedEncoderDecoder(HookedRootModule):
         """Stacks the MLP output weights across all layers"""
         weights: List[torch.Tensor] = []
         for block in chain(self.encoder, self.decoder):
-            mlp = cast(T5Block, block).mlp
+            mlp = block.mlp
             if isinstance(mlp, (MLP, GatedMLP)):
                 weights.append(mlp.W_out)
             else:
@@ -697,7 +697,7 @@ class HookedEncoderDecoder(HookedRootModule):
     def b_K(self) -> Float[torch.Tensor, "n_layers n_heads d_head"]:
         """Stacks the key biases across all layers"""
         return torch.stack(
-            [cast(T5Block, block).attn.b_K for block in chain(self.encoder, self.decoder)],
+            [block.attn.b_K for block in chain(self.encoder, self.decoder)],
             dim=0,
         )
 
@@ -705,7 +705,7 @@ class HookedEncoderDecoder(HookedRootModule):
     def b_Q(self) -> Float[torch.Tensor, "n_layers n_heads d_head"]:
         """Stacks the query biases across all layers"""
         return torch.stack(
-            [cast(T5Block, block).attn.b_Q for block in chain(self.encoder, self.decoder)],
+            [block.attn.b_Q for block in chain(self.encoder, self.decoder)],
             dim=0,
         )
 
@@ -713,7 +713,7 @@ class HookedEncoderDecoder(HookedRootModule):
     def b_V(self) -> Float[torch.Tensor, "n_layers n_heads d_head"]:
         """Stacks the value biases across all layers"""
         return torch.stack(
-            [cast(T5Block, block).attn.b_V for block in chain(self.encoder, self.decoder)],
+            [block.attn.b_V for block in chain(self.encoder, self.decoder)],
             dim=0,
         )
 
@@ -721,7 +721,7 @@ class HookedEncoderDecoder(HookedRootModule):
     def b_O(self) -> Float[torch.Tensor, "n_layers d_model"]:
         """Stacks the attn output biases across all layers"""
         return torch.stack(
-            [cast(T5Block, block).attn.b_O for block in chain(self.encoder, self.decoder)],
+            [block.attn.b_O for block in chain(self.encoder, self.decoder)],
             dim=0,
         )
 
@@ -730,7 +730,7 @@ class HookedEncoderDecoder(HookedRootModule):
         """Stacks the MLP input biases across all layers"""
         biases: List[torch.Tensor] = []
         for block in chain(self.encoder, self.decoder):
-            mlp = cast(T5Block, block).mlp
+            mlp = block.mlp
             if isinstance(mlp, (MLP, GatedMLP)):
                 biases.append(mlp.b_in)
             else:
@@ -744,7 +744,7 @@ class HookedEncoderDecoder(HookedRootModule):
         """Stacks the MLP output biases across all layers"""
         biases: List[torch.Tensor] = []
         for block in chain(self.encoder, self.decoder):
-            mlp = cast(T5Block, block).mlp
+            mlp = block.mlp
             if isinstance(mlp, (MLP, GatedMLP)):
                 biases.append(mlp.b_out)
             else:

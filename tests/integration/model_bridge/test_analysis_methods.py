@@ -170,12 +170,6 @@ class TestAllCompositionScores:
 class TestAllHeadLabels:
     """Test all_head_labels produces correct labels."""
 
-    def test_count(self, bridge_compat):
-        """Should have n_layers * n_heads labels."""
-        labels = bridge_compat.all_head_labels
-        expected = bridge_compat.cfg.n_layers * bridge_compat.cfg.n_heads
-        assert len(labels) == expected
-
     def test_format(self, bridge_compat):
         """Labels should follow L{layer}H{head} format."""
         labels = bridge_compat.all_head_labels

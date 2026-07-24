@@ -43,28 +43,17 @@ def test_get_device_cuda_available():
     with patch("torch.cuda.is_available", return_value=True):
         with patch("torch.backends.mps.is_available", return_value=False):
             device = get_device()
-            assert device == torch.device("cuda")
+            assert device == "cuda"
 
 
 @patch.dict("os.environ", {"TRANSFORMERLENS_ALLOW_MPS": "1"})
 def test_get_device_mps_available():
-    """Test get_device when MPS is available, PyTorch version >= 2.0, and env var set."""
+    """Test get_device when MPS is available and env var set."""
     with patch("torch.cuda.is_available", return_value=False):
         with patch("torch.backends.mps.is_available", return_value=True):
             with patch("torch.backends.mps.is_built", return_value=True):
-                with patch("torch.__version__", "2.0.0"):
-                    device = get_device()
-                    assert device == torch.device("mps")
-
-
-def test_get_device_mps_pytorch_1x():
-    """Test get_device when MPS is available but PyTorch version < 2.0."""
-    with patch("torch.cuda.is_available", return_value=False):
-        with patch("torch.backends.mps.is_available", return_value=True):
-            with patch("torch.backends.mps.is_built", return_value=True):
-                with patch("torch.__version__", "1.13.0"):
-                    device = get_device()
-                    assert device == torch.device("cpu")
+                device = get_device()
+                assert device == "mps"
 
 
 def test_get_device_cpu_fallback():
@@ -72,7 +61,7 @@ def test_get_device_cpu_fallback():
     with patch("torch.cuda.is_available", return_value=False):
         with patch("torch.backends.mps.is_available", return_value=False):
             device = get_device()
-            assert device == torch.device("cpu")
+            assert device == "cpu"
 
 
 def test_model_with_cfg_protocol():
@@ -158,12 +147,14 @@ def test_move_to_and_update_config_print_details_false():
 
 @pytest.fixture(autouse=True)
 def reset_mps_warned():
-    """Reset the _mps_warned flag before each test."""
+    """Reset the _mps_warned and _mps_broken_torch_warned flags before each test."""
     import transformer_lens.utilities.devices as devices_module
 
     devices_module._mps_warned = False
+    devices_module._mps_broken_torch_warned = False
     yield
     devices_module._mps_warned = False
+    devices_module._mps_broken_torch_warned = False
 
 
 @patch.dict("os.environ", {}, clear=False)
@@ -176,7 +167,7 @@ def test_get_device_returns_cpu_when_mps_available(mock_built, mock_avail, mock_
 
     os.environ.pop("TRANSFORMERLENS_ALLOW_MPS", None)
     result = get_device()
-    assert result == torch.device("cpu")
+    assert result == "cpu"
 
 
 @patch.dict("os.environ", {"TRANSFORMERLENS_ALLOW_MPS": "1"})
@@ -186,7 +177,7 @@ def test_get_device_returns_cpu_when_mps_available(mock_built, mock_avail, mock_
 def test_get_device_returns_mps_when_env_var_set(mock_built, mock_avail, mock_cuda):
     """get_device() should return MPS when TRANSFORMERLENS_ALLOW_MPS=1 is set."""
     result = get_device()
-    assert result == torch.device("mps")
+    assert result == "mps"
 
 
 @patch.dict("os.environ", {}, clear=False)
@@ -291,3 +282,86 @@ def test_warn_if_mps_active_when_torch_version_below_safe():
             assert len(w) == 1
     finally:
         devices_module._MPS_MIN_SAFE_TORCH_VERSION = original
+
+
+# --- Known-broken-torch-on-MPS warning tests (issue #1062, torch 2.8.0) ---
+
+
+@patch.dict("os.environ", {}, clear=False)
+def test_warn_if_mps_warns_about_broken_torch_version():
+    """When torch is in _MPS_BROKEN_TORCH_VERSIONS, warn_if_mps emits the broken-version warning."""
+    import os
+
+    import transformer_lens.utilities.devices as devices_module
+
+    os.environ.pop("TRANSFORMERLENS_ALLOW_MPS", None)
+    with patch(
+        "transformer_lens.utilities.devices._torch_version_tuple",
+        return_value=(2, 8),
+    ):
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            warn_if_mps("mps")
+        messages = [str(warning.message) for warning in w]
+        assert any(
+            "known MPS bug that produces silently incorrect results" in m for m in messages
+        ), f"Expected broken-torch warning in {messages}"
+        assert any("issues/1062" in m for m in messages)
+
+
+@patch.dict("os.environ", {"TRANSFORMERLENS_ALLOW_MPS": "1"})
+def test_warn_if_mps_broken_torch_warning_fires_even_when_opted_in():
+    """The broken-torch warning must fire even with TRANSFORMERLENS_ALLOW_MPS=1,
+    because the bug produces silently wrong output regardless of opt-in."""
+    with patch(
+        "transformer_lens.utilities.devices._torch_version_tuple",
+        return_value=(2, 8),
+    ):
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            warn_if_mps("mps")
+        messages = [str(warning.message) for warning in w]
+        assert any("known MPS bug" in m for m in messages)
+
+
+@patch.dict("os.environ", {}, clear=False)
+def test_warn_if_mps_no_broken_warning_on_safe_torch_version():
+    """Non-broken torch versions should not emit the broken-torch warning."""
+    import os
+
+    os.environ.pop("TRANSFORMERLENS_ALLOW_MPS", None)
+    for version in [(2, 7), (2, 9), (3, 0)]:
+        with patch(
+            "transformer_lens.utilities.devices._torch_version_tuple",
+            return_value=version,
+        ):
+            # Reset the broken-warn flag for each iteration
+            import transformer_lens.utilities.devices as devices_module
+
+            devices_module._mps_broken_torch_warned = False
+            with warnings.catch_warnings(record=True) as w:
+                warnings.simplefilter("always")
+                warn_if_mps("mps")
+            messages = [str(warning.message) for warning in w]
+            assert not any(
+                "known MPS bug" in m for m in messages
+            ), f"Unexpected broken-torch warning on torch {version}: {messages}"
+
+
+@patch.dict("os.environ", {}, clear=False)
+def test_warn_if_mps_broken_warning_fires_only_once():
+    """The broken-torch warning should only fire once per process."""
+    import os
+
+    os.environ.pop("TRANSFORMERLENS_ALLOW_MPS", None)
+    with patch(
+        "transformer_lens.utilities.devices._torch_version_tuple",
+        return_value=(2, 8),
+    ):
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            warn_if_mps("mps")
+            warn_if_mps("mps")
+            warn_if_mps(torch.device("mps"))
+        broken_warnings = [warning for warning in w if "known MPS bug" in str(warning.message)]
+        assert len(broken_warnings) == 1

@@ -8,18 +8,112 @@ from __future__ import annotations
 import errno
 import inspect
 import json
+import logging
 import os
+import random
 import shutil
 import stat
-from typing import Any, Callable, Dict
+import time
+from typing import Any, Callable, Dict, TypeVar
 
 import torch
 from datasets.arrow_dataset import Dataset
+from datasets.iterable_dataset import IterableDataset
 from datasets.load import load_dataset
 from huggingface_hub import hf_hub_download
 from huggingface_hub.constants import HF_HUB_CACHE
 
 CACHE_DIR = HF_HUB_CACHE
+logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
+
+_HF_RETRY_MAX_ATTEMPTS = 3
+_HF_RETRY_BASE_DELAY_SECONDS = 10.0
+_HF_RETRY_MAX_DELAY_SECONDS = 120.0
+
+
+def _is_hf_rate_limit_error(exc: BaseException) -> bool:
+    """Duck-typed check for HTTP 429 — covers HfHubHTTPError, requests.HTTPError, and subclasses."""
+    response = getattr(exc, "response", None)
+    return response is not None and getattr(response, "status_code", None) == 429
+
+
+def _retry_after_seconds(exc: BaseException) -> float | None:
+    """Parse the Retry-After header from a 429 response, if present and numeric."""
+    response = getattr(exc, "response", None)
+    if response is None:
+        return None
+    headers = getattr(response, "headers", None) or {}
+    raw = headers.get("Retry-After") if hasattr(headers, "get") else None
+    if raw is None:
+        return None
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+_TL_RETRY_WRAPPED_ATTR = "_tl_hf_retry_wrapped"
+
+
+def enable_hf_retry() -> None:
+    """Globally wrap transformers ``Auto*.from_pretrained`` with retry-on-429.
+
+    Opt-in via ``TRANSFORMERLENS_HF_RETRY=1`` or by calling this function.
+    Idempotent. See :func:`call_hf_with_retry`.
+    """
+    from transformers import (
+        AutoConfig,
+        AutoFeatureExtractor,
+        AutoModel,
+        AutoProcessor,
+        AutoTokenizer,
+    )
+
+    for cls in (AutoConfig, AutoModel, AutoTokenizer, AutoProcessor, AutoFeatureExtractor):
+        original = cls.from_pretrained
+        if getattr(original, _TL_RETRY_WRAPPED_ATTR, False):
+            continue
+        underlying = original.__func__ if hasattr(original, "__func__") else original
+
+        def _wrapped(klass, *args: Any, _orig: Any = underlying, **kwargs: Any) -> Any:
+            return call_hf_with_retry(_orig, klass, *args, **kwargs)
+
+        setattr(_wrapped, _TL_RETRY_WRAPPED_ATTR, True)
+        cls.from_pretrained = classmethod(_wrapped)  # type: ignore[method-assign,assignment]
+
+
+def call_hf_with_retry(
+    func: Callable[..., T],
+    *args: Any,
+    max_attempts: int = _HF_RETRY_MAX_ATTEMPTS,
+    base_delay: float = _HF_RETRY_BASE_DELAY_SECONDS,
+    **kwargs: Any,
+) -> T:
+    """Retry ``func(*args, **kwargs)`` on HTTP 429, honoring ``Retry-After``.
+
+    Exponential backoff with ±20% jitter, capped at ``_HF_RETRY_MAX_DELAY_SECONDS``.
+    Non-429 exceptions propagate immediately.
+    """
+    for attempt in range(max_attempts):
+        try:
+            return func(*args, **kwargs)
+        except Exception as exc:
+            if not _is_hf_rate_limit_error(exc) or attempt == max_attempts - 1:
+                raise
+            wait = _retry_after_seconds(exc)
+            if wait is None:
+                wait = min(base_delay * (2**attempt), _HF_RETRY_MAX_DELAY_SECONDS)
+                wait *= 0.8 + 0.4 * random.random()
+            logger.warning(
+                "HuggingFace Hub rate-limited (HTTP 429); retrying in %.1fs (attempt %d/%d)",
+                wait,
+                attempt + 1,
+                max_attempts,
+            )
+            time.sleep(wait)
+    raise RuntimeError("call_hf_with_retry exited loop without returning or raising")
 
 
 def get_hf_token() -> str | None:
@@ -74,7 +168,8 @@ def download_file_from_hf(
 
     If it's a Torch file without the ".pth" extension, set force_is_torch=True to load it as a Torch object.
     """
-    file_path = hf_hub_download(
+    file_path = call_hf_with_retry(
+        hf_hub_download,
         repo_id=repo_name,
         filename=file_name,
         subfolder=subfolder,
@@ -148,7 +243,7 @@ def clear_huggingface_cache():
             print(f"Warning: Could not fully clear cache: {e}")
 
 
-def keep_single_column(dataset: Dataset, col_name: str):
+def keep_single_column(dataset: Dataset | IterableDataset, col_name: str):
     """
     Acts on a HuggingFace dataset to delete all columns apart from a single column name - useful when we want to tokenize and mix together different strings
     """

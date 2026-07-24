@@ -47,6 +47,31 @@ def _apply_rotary_pos_emb(
     return q_embed, k_embed
 
 
+def _apply_rotary_complex(
+    q: torch.Tensor, k: torch.Tensor, freqs_cis: torch.Tensor
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Apply rotary position embedding via complex multiplication (DeepSeek-V2 style).
+
+    DeepSeek-V2 uses ``freqs_cis = torch.polar(ones, freqs)`` (complex exponentials)
+    instead of the standard (cos, sin) pair. This matches the V2 HF implementation of
+    ``apply_rotary_emb``.
+
+    Args:
+        q: Query rope portion [batch, heads, seq, rope_dim].
+        k: Key rope portion [batch, 1, seq, rope_dim].
+        freqs_cis: Complex rotary frequencies [batch, seq, rope_dim // 2].
+
+    Returns:
+        Tuple of rotated (q, k) tensors with same dtype and shape as inputs.
+    """
+    freqs = freqs_cis.unsqueeze(1)  # [batch, 1, seq, rope_dim // 2]
+    q_c = torch.view_as_complex(q.float().reshape(*q.shape[:-1], -1, 2))
+    k_c = torch.view_as_complex(k.float().reshape(*k.shape[:-1], -1, 2))
+    q_rot = torch.view_as_real(q_c * freqs.to(q_c.device)).flatten(3).type_as(q)
+    k_rot = torch.view_as_real(k_c * freqs.to(k_c.device)).flatten(3).type_as(k)
+    return q_rot, k_rot
+
+
 class MLAAttentionBridge(PositionEmbeddingHooksMixin, AttentionBridge):
     """Bridge for DeepSeek's Multi-Head Latent Attention (MLA).
 
@@ -62,6 +87,9 @@ class MLAAttentionBridge(PositionEmbeddingHooksMixin, AttentionBridge):
         "hook_result": "hook_out",
         "hook_z": "o.hook_in",
     }
+
+    # MLA's forward never forks the residual pre-LN; suppress dead HookPoints.
+    supports_split_qkv_fork: bool = False
 
     def __init__(
         self,
@@ -173,20 +201,31 @@ class MLAAttentionBridge(PositionEmbeddingHooksMixin, AttentionBridge):
         k_rot = k_rot.view(batch_size, 1, seq_length, self._qk_rope_head_dim)
 
         # --- RoPE ---
+        # DeepSeek-V2 passes a complex freqs_cis tensor; V3 passes a (cos, sin) tuple.
+        # Detect the format and apply the appropriate rotation.
+        cos = sin = None
         if position_embeddings is not None:
             position_embeddings = self._apply_position_embedding_hooks(position_embeddings)
-            cos, sin = position_embeddings
+            if isinstance(position_embeddings, torch.Tensor) and position_embeddings.is_complex():
+                # V2-style: complex exponential freqs_cis
+                q_rot, k_rot = _apply_rotary_complex(q_rot, k_rot, position_embeddings)
+            else:
+                cos, sin = position_embeddings
+                q_rot, k_rot = _apply_rotary_pos_emb(q_rot, k_rot, cos, sin)
         elif self._rotary_emb is not None:
             # Fallback: compute from rotary_emb if position_embeddings not passed
             position_ids = torch.arange(seq_length, device=hidden_states.device).unsqueeze(0)
-            cos, sin = self._rotary_emb(hidden_states, position_ids)
+            emb = self._rotary_emb(hidden_states, position_ids)
+            if isinstance(emb, torch.Tensor) and emb.is_complex():
+                q_rot, k_rot = _apply_rotary_complex(q_rot, k_rot, emb)
+            else:
+                cos, sin = emb
+                q_rot, k_rot = _apply_rotary_pos_emb(q_rot, k_rot, cos, sin)
         else:
             raise ValueError(
                 "MLAAttentionBridge requires position_embeddings or set_rotary_emb() "
                 "to be called before forward."
             )
-
-        q_rot, k_rot = _apply_rotary_pos_emb(q_rot, k_rot, cos, sin)
         q_rot = self.hook_rot_q(q_rot)
         k_rot = self.hook_rot_k(k_rot)
 
@@ -206,7 +245,11 @@ class MLAAttentionBridge(PositionEmbeddingHooksMixin, AttentionBridge):
         past_key_values = kwargs.pop("past_key_values", None)
         cache_position = kwargs.pop("cache_position", None)
         if past_key_values is not None:
-            cache_kwargs = {"sin": sin, "cos": cos, "cache_position": cache_position}
+            cache_kwargs: dict = {"cache_position": cache_position}
+            if cos is not None:
+                cache_kwargs["cos"] = cos
+            if sin is not None:
+                cache_kwargs["sin"] = sin
             key_states, value_states = past_key_values.update(
                 key_states, value_states, hf_attn.layer_idx, cache_kwargs
             )

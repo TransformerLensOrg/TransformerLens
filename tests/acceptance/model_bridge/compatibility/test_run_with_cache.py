@@ -61,3 +61,37 @@ class TestRunWithCacheCompatibility:
             f"TransformerBridge run_with_cache should match manual hooks. "
             f"Max difference: {cache_diff:.6f}"
         )
+
+    def test_run_with_cache_accepts_1d_tensor(self, gpt2_bridge_compat_no_processing):
+        """1D token tensors should be auto-promoted to [1, seq], matching HookedTransformer."""
+        bridge_model = gpt2_bridge_compat_no_processing
+
+        tokens_1d = torch.tensor([1, 2, 3])
+        tokens_2d = tokens_1d.unsqueeze(0)
+
+        logits_1d, cache_1d = bridge_model.run_with_cache(tokens_1d)
+        logits_2d, cache_2d = bridge_model.run_with_cache(tokens_2d)
+
+        assert logits_1d.shape == logits_2d.shape
+        assert torch.allclose(logits_1d, logits_2d, atol=1e-5)
+        assert torch.allclose(
+            cache_1d["blocks.0.hook_mlp_out"], cache_2d["blocks.0.hook_mlp_out"], atol=1e-5
+        )
+
+
+def test_transformer_bridge_run_with_cache_preserves_existing_backward_hooks(
+    gpt2_bridge_compat_no_processing,
+):
+    """run_with_cache should not remove unrelated backward hooks on the same HookPoint."""
+    bridge_model = gpt2_bridge_compat_no_processing
+    target_hook = bridge_model.blocks[0].hook_resid_post
+
+    target_hook.add_hook(lambda grad, hook=None: None, dir="bwd")
+
+    assert target_hook.has_hooks(dir="bwd", including_permanent=False)
+
+    bridge_model.run_with_cache(torch.tensor([[1, 2, 3]]), names_filter="blocks.0.hook_resid_post")
+
+    assert target_hook.has_hooks(dir="bwd", including_permanent=False)
+
+    bridge_model.reset_hooks()

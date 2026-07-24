@@ -21,25 +21,26 @@ check-format:
 	$(RUN) black --check .
 
 unit-test:
-	$(RUN) pytest tests/unit $(RERUN_ARGS)
+	$(RUN) pytest tests/unit -m "not slow" $(RERUN_ARGS)
 
 integration-test:
-	$(RUN) pytest tests/integration $(RERUN_ARGS)
+	$(RUN) pytest tests/integration -m "not slow" $(RERUN_ARGS)
 
 acceptance-test:
-	$(RUN) pytest tests/acceptance $(RERUN_ARGS)
+	$(RUN) pytest tests/acceptance -m "not slow" $(RERUN_ARGS)
 
 benchmark-test:
 	$(RUN) pytest tests/benchmarks $(RERUN_ARGS)
 
 coverage-report-test:
-	$(RUN) pytest --cov=transformer_lens/ --cov-report=html --cov-branch tests/integration tests/benchmarks tests/unit tests/acceptance $(RERUN_ARGS)
+	$(RUN) pytest --cov=transformer_lens/ --cov-report=html --cov-branch -m "not slow" tests/integration tests/unit tests/acceptance $(RERUN_ARGS)
 
 docstring-test:
 	$(RUN) pytest transformer_lens/ $(RERUN_ARGS)
 
 notebook-test:
 	$(RUN) pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/BERT.ipynb $(RERUN_ARGS)
+	$(RUN) pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/Bridge_Evals_Demo.ipynb $(RERUN_ARGS)
 	$(RUN) pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/Exploratory_Analysis_Demo.ipynb $(RERUN_ARGS)
 	$(RUN) pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/Main_Demo.ipynb $(RERUN_ARGS)
 
@@ -60,6 +61,12 @@ notebook-test:
 	$(RUN) pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/Activation_Patching_in_TL_Demo.ipynb $(RERUN_ARGS)
 	$(RUN) pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/Attribution_Patching_Demo.ipynb $(RERUN_ARGS)
 	$(RUN) pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/Grokking_Demo.ipynb $(RERUN_ARGS)
+
+test-pr:
+	$(MAKE) unit-test
+	$(MAKE) docstring-test
+	$(MAKE) acceptance-test
+	$(MAKE) integration-test
 
 test:
 	$(MAKE) unit-test

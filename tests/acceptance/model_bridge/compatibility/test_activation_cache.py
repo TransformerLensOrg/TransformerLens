@@ -58,36 +58,6 @@ class TestActivationCacheCompatibility:
             if value is not None:
                 assert isinstance(value, torch.Tensor), f"Cache value for {key} is not a tensor"
 
-    def test_cache_key_patterns(self, sample_cache):
-        """Test that cache keys follow expected patterns."""
-        if hasattr(sample_cache, "cache_dict"):
-            cache_dict = sample_cache.cache_dict
-        else:
-            cache_dict = sample_cache
-
-        cache_keys = list(cache_dict.keys())
-        assert len(cache_keys) > 0
-        patterns_found = []
-        common_patterns = [
-            "embed",
-            "pos_embed",
-            "blocks",
-            "ln_final",
-            "unembed",
-            "hook_",
-            "attn",
-            "mlp",
-            "resid",
-        ]
-
-        for pattern in common_patterns:
-            if any(pattern in key for key in cache_keys):
-                patterns_found.append(pattern)
-
-        print(f"Cache key patterns found: {patterns_found}")
-        print(f"Total cache keys: {len(cache_keys)}")
-        print(f"Sample keys: {cache_keys[:5]}")
-
     def test_cache_tensor_shapes(self, sample_cache, bridge_model):
         """Test that cached tensors have reasonable shapes."""
         if hasattr(sample_cache, "cache_dict"):

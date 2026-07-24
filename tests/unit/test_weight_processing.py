@@ -11,7 +11,7 @@ import einops
 import pytest
 import torch
 
-from transformer_lens.config.TransformerLensConfig import TransformerLensConfig
+from transformer_lens.config.transformer_lens_config import TransformerLensConfig
 from transformer_lens.weight_processing import ProcessWeights
 
 # from typing import Dict  # Unused import
@@ -474,6 +474,35 @@ class TestProcessWeights:
             b_v = processed_dict[f"blocks.{l}.attn._b_V"]
             assert torch.allclose(b_v, torch.zeros_like(b_v), atol=1e-6)
 
+    @pytest.mark.skipif(
+        not (torch.cuda.is_available() or torch.backends.mps.is_available()),
+        reason="Cross-device test requires a non-CPU accelerator (CUDA or MPS)",
+    )
+    def test_fold_value_biases_cross_device_state_dict(self, basic_config, basic_state_dict):
+        """fold_value_biases must align tensors when state_dict has mixed devices.
+
+        Regression for #904: an HF model loaded on GPU could end up with state_dict
+        tensors on different devices (b_V on GPU, b_O on CPU because a downstream
+        converter created it without an explicit device=). The b_V * W_O multiply
+        then failed with a cross-device RuntimeError.
+        """
+        accelerator = "cuda" if torch.cuda.is_available() else "mps"
+        cross_device_dict = deep_copy_state_dict(basic_state_dict)
+        for l in range(basic_config.n_layers):
+            cross_device_dict[f"blocks.{l}.attn.b_V"] = cross_device_dict[
+                f"blocks.{l}.attn.b_V"
+            ].to(accelerator)
+            cross_device_dict[f"blocks.{l}.attn.W_V"] = cross_device_dict[
+                f"blocks.{l}.attn.W_V"
+            ].to(accelerator)
+            # W_O and b_O stay on CPU — mirrors the #904 mismatch pattern.
+
+        processed_dict = ProcessWeights.fold_value_biases(cross_device_dict, basic_config)
+
+        for l in range(basic_config.n_layers):
+            b_v = processed_dict[f"blocks.{l}.attn.b_V"]
+            assert torch.allclose(b_v, torch.zeros_like(b_v), atol=1e-6)
+
     def test_refactor_factored_attn_matrices(self, basic_config, basic_state_dict):
         """Test attention matrix refactoring."""
         original_dict = deep_copy_state_dict(basic_state_dict)
@@ -704,39 +733,6 @@ class TestProcessWeights:
         except KeyError:
             # Expected behavior for missing keys
             pass
-
-    def test_config_attribute_access(self):
-        """Test that config attribute access works with getattr defaults."""
-        minimal_config = create_test_config(n_layers=1)
-        # TransformerLensConfig is a dataclass with all attributes defined,
-        # so we can't delete attributes to test getattr defaults.
-        # The test still validates that the processing works with minimal config.
-
-        state_dict = {
-            "blocks.0.ln1.w": torch.ones(8),
-            "blocks.0.ln1.b": torch.zeros(8),
-            "blocks.0.ln2.w": torch.ones(8),
-            "blocks.0.ln2.b": torch.zeros(8),
-            "blocks.0.attn.W_Q": torch.ones(4, 8, 2),
-            "blocks.0.attn.W_K": torch.ones(4, 8, 2),
-            "blocks.0.attn.W_V": torch.ones(4, 8, 2),
-            "blocks.0.attn.b_Q": torch.zeros(4, 2),
-            "blocks.0.attn.b_K": torch.zeros(4, 2),
-            "blocks.0.attn.b_V": torch.zeros(4, 2),
-            "blocks.0.mlp.W_in": torch.ones(8, 16),
-            "blocks.0.mlp.b_in": torch.zeros(16),
-            "ln_final.w": torch.ones(8),
-            "ln_final.b": torch.zeros(8),
-            "unembed.W_U": torch.ones(8, 100),
-            "unembed.b_U": torch.zeros(100),
-        }
-
-        # Should work with getattr defaults
-        processed_dict = ProcessWeights.fold_layer_norm(state_dict, minimal_config)
-        assert "blocks.0.ln1.w" in processed_dict
-        assert torch.allclose(
-            processed_dict["blocks.0.ln1.w"], torch.ones_like(processed_dict["blocks.0.ln1.w"])
-        )
 
     def test_fold_layer_no_adapter_transformer_lens_format(self, basic_config):
         """Test _fold_layer function with no adapter (TransformerLens format).

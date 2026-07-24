@@ -17,9 +17,6 @@ from transformer_lens.conversion_utils.conversion_steps.rearrange_tensor_convers
     RearrangeTensorConversion,
 )
 from transformer_lens.model_bridge import TransformerBridge
-from transformer_lens.model_bridge.generalized_components.attention import (
-    AttentionBridge,
-)
 from transformer_lens.model_bridge.generalized_components.joint_qkv_attention import (
     JointQKVAttentionBridge,
 )
@@ -242,28 +239,6 @@ def test_joint_qkv_custom_conversion_rule(gpt2_bridge):
     assert (
         test_bridge.qkv_conversion_rule is custom_qkv_conversion_rule
     ), "Custom QKV conversion rule should be set"
-
-
-def test_attention_pattern_hook_shape_custom_conversion(gpt2_bridge):
-    """Test that custom pattern conversion rules can be passed to attention components."""
-    # Create a custom conversion rule (this is just for testing the parameter passing)
-    custom_conversion = RearrangeTensorConversion(
-        "batch n_heads pos_q pos_k -> batch n_heads pos_q pos_k"  # Same as default but explicitly set
-    )
-
-    # Verify that the attention bridge accepts the custom conversion parameter
-    # We can't easily test this with the existing bridge without recreating it,
-    # but we can at least verify the parameter is accepted without error
-
-    # This should not raise an error
-    test_bridge = AttentionBridge(
-        name="test_attn", config=gpt2_bridge.cfg, pattern_conversion_rule=custom_conversion
-    )
-
-    # Verify the conversion rule was set
-    assert (
-        test_bridge.hook_pattern.hook_conversion is custom_conversion
-    ), "Custom conversion rule should be set"
 
 
 def test_attention_pattern_hook_shape(gpt2_bridge_with_eager_attn):
@@ -716,6 +691,86 @@ def test_TransformerBridge_hooks_backward_hooks():
     # Verify the hooks were called appropriately
     assert hook_called["hooked"], "HookedTransformer backward hook should have been called"
     assert hook_called["bridge"], "TransformerBridge backward hook should now be called correctly"
+
+
+def test_AttentionBridge_preserves_fp_input_when_first_param_is_quantized():
+    """Bridge must not cast fp inputs to integer storage dtype.
+
+    Regression for an AttentionBridge / GeneralizedComponent bug where
+    `target_dtype = next(parameters()).dtype` returned the storage dtype of
+    quantized weights (uint8 for BnB Params4bit, int32 for GPTQ, etc.). When
+    the first parameter happened to be quantized, bridge cast fp32 hidden_states
+    to that integer dtype before passing them to HF — destroying precision and
+    producing gibberish logits on every quantized model.
+
+    Fakes a "quantized first parameter" by replacing q_proj.weight with a
+    uint8 tensor, then runs a forward and asserts the input the original
+    component receives is still floating-point.
+    """
+    from transformer_lens.model_bridge.generalized_components.attention import (
+        AttentionBridge,
+    )
+
+    # Use tiny Mistral — it's a plain AttentionBridge (not JointQKV).
+    bridge: TransformerBridge = TransformerBridge.boot_transformers(  # type: ignore
+        "trl-internal-testing/tiny-MistralForCausalLM-0.2", device="cpu"
+    )
+
+    attn_bridge = bridge.blocks[0].attn  # type: ignore[attr-defined]
+    assert (
+        type(attn_bridge).__name__ == "AttentionBridge"
+    ), f"Expected plain AttentionBridge, got {type(attn_bridge).__name__}"
+    assert isinstance(attn_bridge, AttentionBridge)
+
+    original = attn_bridge.original_component
+    assert original is not None, "AttentionBridge.original_component not set"
+
+    # Fake-quantize q_proj to uint8 storage — mirrors BnB Params4bit.
+    fp_weight = original.q_proj.weight
+    original.q_proj.weight = torch.nn.Parameter(
+        torch.zeros(fp_weight.shape, dtype=torch.uint8), requires_grad=False
+    )
+    assert (
+        next(original.parameters()).dtype == torch.uint8
+    ), "Test setup: first param should be uint8 to trigger the bug condition"
+
+    # Capture what dtype reaches the original component's forward.
+    received_dtype: list = []
+    orig_forward = original.forward
+
+    def capture(*args, **kwargs):
+        if "hidden_states" in kwargs:
+            received_dtype.append(kwargs["hidden_states"].dtype)
+        elif args:
+            received_dtype.append(args[0].dtype)
+        # Don't actually run forward — fake-quantized weight would error.
+        # Return a shape-compatible dummy. HF Mistral attention returns a tuple.
+        bsz, seq, d_model = (kwargs.get("hidden_states", args[0] if args else None)).shape
+        n_heads = bridge.cfg.n_heads  # type: ignore[attr-defined]
+        return (
+            torch.zeros(bsz, seq, d_model, dtype=torch.float32),
+            torch.zeros(bsz, n_heads, seq, seq, dtype=torch.float32),
+        )
+
+    original.forward = capture  # type: ignore[method-assign]
+    try:
+        test_input = torch.tensor([[1, 2, 3, 4, 5]])
+        with torch.no_grad():
+            try:
+                bridge(test_input)
+            except Exception:
+                pass  # downstream may fail; we only care what reached attn forward
+    finally:
+        original.forward = orig_forward  # type: ignore[method-assign]
+        original.q_proj.weight = fp_weight
+
+    assert len(received_dtype) > 0, "Original attention forward never called"
+    for dt in received_dtype:
+        assert dt.is_floating_point, (
+            f"Bridge passed dtype={dt} to original attention forward, but it must be "
+            f"floating point. Regression of the AttentionBridge dtype-cast bug — "
+            f"target_dtype must skip non-fp (quantized-storage) parameters."
+        )
 
 
 @pytest.mark.skipif(bool(os.getenv("CI")), reason="Skip Gemma2 test in CI to avoid timeout")

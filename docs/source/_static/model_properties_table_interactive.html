@@ -55,7 +55,7 @@
 
 		async function fetchVersion() {
 			try {
-				const response = await fetch('model_table.version');
+				const response = await fetch('model_properties_table.version');
 				// load the contents of the file as json
 				return response.json().then(json => json.version);
 			} catch (error) {
@@ -131,8 +131,8 @@
 			const version = await fetchVersion();
 			document.querySelector('header').innerHTML = `Interactive Model table for <a href="https://github.com/neelnanda-io/TransformerLens">TransformerLens</a> v${version}.  Hover a cell with [${CLICK_TO_COPY_EMOJI}] to view full text, left click to copy to clipboard, right click to open contents in new tab.`;
 
-			// read the data
-			const rowData = await fetchJsonlData('model_table/data.jsonl');
+			// read the data (co-located in _static/, see fetchVersion comment)
+			const rowData = await fetchJsonlData('model_properties_table.jsonl');
 			const columnGroups = {};
 
 			// create the column definitions

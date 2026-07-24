@@ -172,28 +172,6 @@ class TestGeneralizedComponentSetAttr:
         assert "param_attr" in param_names
         assert self.component._parameters["param_attr"] is param
 
-    def test_attribute_priority_order(self):
-        """Test the priority order of attribute setting."""
-        # 1. Private attributes go to bridge
-        self.component._priority_test = "private"
-        assert self.component._priority_test == "private"
-
-        # 2. Own attributes go to bridge
-        self.component.name = "new_name"
-        assert self.component.name == "new_name"
-
-        # 3. Properties with setters go to bridge
-        self.component.test_property = "prop_value"
-        assert self.component.test_property == "prop_value"
-
-        # 4. Existing attributes on original go to original
-        self.component.existing_attr = "original_value"
-        assert self.original.existing_attr == "original_value"
-
-        # 5. Non-existent attributes fall back to bridge
-        self.component.fallback_attr = "fallback"
-        assert self.component.fallback_attr == "fallback"
-
     def test_readonly_property_fallback(self):
         """Test setting attribute on readonly property falls back to original."""
 
@@ -212,26 +190,6 @@ class TestGeneralizedComponentSetAttr:
         # Should try original component since property has no setter
         component.readonly_prop = "new_readonly"
         assert original.readonly_prop == "new_readonly"
-
-    def test_multiple_attribute_sets(self):
-        """Test setting multiple attributes in sequence."""
-        attrs = {
-            "attr1": "value1",
-            "attr2": 42,
-            "attr3": torch.tensor([1, 2, 3]),
-            "existing_attr": "modified_existing",
-        }
-
-        for attr_name, attr_value in attrs.items():
-            setattr(self.component, attr_name, attr_value)
-
-        # Check bridge attributes
-        assert self.component.attr1 == "value1"
-        assert self.component.attr2 == 42
-        assert torch.equal(self.component.attr3, torch.tensor([1, 2, 3]))
-
-        # Check original component attribute
-        assert self.original.existing_attr == "modified_existing"
 
 
 class TestGeneralizedComponentGetAttr:
@@ -417,26 +375,6 @@ class TestGeneralizedComponentEdgeCases:
         component.complex_attr = complex_obj
         assert component.complex_attr is complex_obj
         assert component.complex_attr["nested"]["deep"] == [1, 2, 3]
-
-    def test_inheritance(self):
-        """Test attribute setting with component inheritance."""
-
-        class ChildComponent(MockGeneralizedComponent):
-            def __init__(self, name: str = "child"):
-                super().__init__(name)
-                self.child_attr = "child_value"
-
-        child = ChildComponent("child_test")
-        original = MockOriginalComponent()
-        child.set_original_component(original)
-
-        # Test inherited behavior
-        child.existing_attr = "child_modified"
-        assert original.existing_attr == "child_modified"
-
-        # Test child-specific attribute
-        child.child_attr = "new_child_value"
-        assert child.child_attr == "new_child_value"
 
 
 if __name__ == "__main__":

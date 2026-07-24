@@ -112,42 +112,6 @@ def test_gpt_oss_compatibility_mode_hooks(gpt_oss_bridge):
     assert mlp_hook_out is hook_mlp_out_alias
 
 
-def test_gpt_oss_moe_experts_not_iterable(gpt_oss_model_meta):
-    """Test that GPT-OSS experts are stored as batched tensors, not iterable modules.
-
-    This test verifies our architecture fix: GPT-OSS MoE stores experts as batched
-    weight tensors [num_experts, ...], not as separate iterable modules.
-    """
-    layer0_mlp = gpt_oss_model_meta.model.layers[0].mlp
-    experts = layer0_mlp.experts
-
-    # Experts module exists but is NOT iterable
-    assert hasattr(layer0_mlp, "experts")
-    assert not hasattr(experts, "__iter__")
-
-    # Experts has batched weight tensors as parameters
-    assert hasattr(experts, "gate_up_proj")
-    assert hasattr(experts, "down_proj")
-
-
-def test_gpt_oss_hook_aliases_resolved(gpt_oss_bridge):
-    """Test that MLP hooks are accessible."""
-    gpt_oss_bridge.enable_compatibility_mode(no_processing=True)
-
-    mlp = gpt_oss_bridge.blocks[0].mlp
-
-    # Get hooks from the MLP component
-    hooks = mlp.get_hooks()
-
-    # Check that basic hooks are present
-    assert "hook_in" in hooks
-    assert "hook_out" in hooks
-
-    # hook_pre should NOT try to resolve to in.hook_out or input.hook_out
-    # (which would fail since JointGateUpMLPBridge doesn't have those submodules)
-    # If this test passes, it means the alias override is working correctly
-
-
 def test_gpt_oss_no_block_bridge_for_experts(gpt_oss_bridge):
     """Test that experts are NOT wrapped in BlockBridge.
 

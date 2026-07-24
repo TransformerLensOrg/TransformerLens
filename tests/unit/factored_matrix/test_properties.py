@@ -78,19 +78,52 @@ class TestFactoredMatrixProperties:
 
     def test_svd_property(self, factored_matrices):
         for factored_matrix in factored_matrices:
-            U, S, Vh = factored_matrix.svd()
-            assert torch.allclose(factored_matrix.AB, U @ torch.diag_embed(S) @ Vh.T, atol=1e-5)
-            # test that U and Vh are unitary
+            U, S, V = factored_matrix.svd()
+            assert torch.allclose(factored_matrix.AB, U @ torch.diag_embed(S) @ V.T, atol=1e-5)
+            # test that U and V are unitary
             assert torch.allclose(U.T @ U, torch.eye(U.shape[-1]), atol=1e-5)
-            assert torch.allclose(Vh.T @ Vh, torch.eye(Vh.shape[-1]), atol=1e-5)
+            assert torch.allclose(V.T @ V, torch.eye(V.shape[-1]), atol=1e-5)
 
     def test_svd_property_leading_ones(self, factored_matrices_leading_ones):
         for factored_matrix in factored_matrices_leading_ones:
-            U, S, Vh = factored_matrix.svd()
-            assert torch.allclose(factored_matrix.AB, U @ torch.diag_embed(S) @ Vh.mT, atol=1e-5)
-            # test that U and Vh are unitary
+            U, S, V = factored_matrix.svd()
+            assert torch.allclose(factored_matrix.AB, U @ torch.diag_embed(S) @ V.mT, atol=1e-5)
+            # test that U and V are unitary
             assert torch.allclose(U.mT @ U, torch.eye(U.shape[-1]), atol=1e-5)
-            assert torch.allclose(Vh.mT @ Vh, torch.eye(Vh.shape[-1]), atol=1e-5)
+            assert torch.allclose(V.mT @ V, torch.eye(V.shape[-1]), atol=1e-5)
+
+    def test_V_and_Vh_alias_match(self, factored_matrices):
+        import warnings
+
+        for factored_matrix in factored_matrices:
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                vh_value = factored_matrix.Vh
+            assert any(issubclass(w.category, DeprecationWarning) for w in caught)
+            assert torch.equal(vh_value, factored_matrix.V)
+
+    def test_svd_caches_per_instance(self):
+        """svd() should cache its result on the instance — repeated calls return the same tensors."""
+        m = FactoredMatrix(randn(4, 3), randn(3, 4))
+        first_U, first_S, first_V = m.svd()
+        second_U, second_S, second_V = m.svd()
+        assert first_U is second_U
+        assert first_S is second_S
+        assert first_V is second_V
+
+    def test_svd_does_not_prevent_gc(self):
+        """svd's cache must not hold a strong reference that prevents the instance from being GC'd"""
+        import gc
+        import weakref
+
+        m = FactoredMatrix(randn(4, 3), randn(3, 4))
+        _ = m.svd()  # populate the cache
+        ref = weakref.ref(m)
+        del m
+        gc.collect()
+        assert (
+            ref() is None
+        ), "FactoredMatrix instance survived deletion — svd cache is leaking references."
 
     def test_eigenvalues_property(self, factored_matrices):
         for factored_matrix in factored_matrices:
@@ -126,40 +159,28 @@ class TestFactoredMatrixProperties:
         for factored_matrix in factored_matrices:
             k = 3
             result = factored_matrix.get_corner(k)
-            expected = utils.get_corner(
-                factored_matrix.A[..., :k, :] @ factored_matrix.B[..., :, :k], k
-            )
-            assert torch.allclose(result, expected)
-
-    def test_ndim(self, factored_matrices):
-        for factored_matrix in factored_matrices:
-            assert factored_matrix.ndim == len(factored_matrix.shape)
+            # Effect: get_corner(k) returns the top-left k x k corner of the
+            # full product AB, computed without materializing all of AB.
+            full_product = factored_matrix.AB
+            expected = full_product[tuple(slice(k) for _ in range(full_product.ndim))]
+            assert result.shape == expected.shape
+            assert torch.allclose(result, expected, atol=1e-5)
 
     def test_collapse_l(self, factored_matrices):
         for factored_matrix in factored_matrices:
             result = factored_matrix.collapse_l()
-            expected = factored_matrix.S[..., :, None] * utils.transpose(factored_matrix.Vh)
-            assert torch.allclose(result, expected)
+            # Effect: collapse_l drops only the orthogonal left factor U, so
+            # re-applying U must reconstruct the full product AB.
+            reconstructed = factored_matrix.U @ result
+            assert torch.allclose(reconstructed, factored_matrix.AB, atol=1e-4)
 
     def test_collapse_r(self, factored_matrices):
         for factored_matrix in factored_matrices:
             result = factored_matrix.collapse_r()
-            expected = factored_matrix.U * factored_matrix.S[..., None, :]
-            assert torch.allclose(result, expected)
-
-    def test_unsqueeze(self, factored_matrices_leading_ones):
-        for factored_matrix in factored_matrices_leading_ones:
-            k = 0
-            unsqueezed_A = factored_matrix.A.unsqueeze(k)
-            unsqueezed_B = factored_matrix.B.unsqueeze(k)
-            inner_dim_A = unsqueezed_A.size(-1)
-            inner_dim_B = unsqueezed_B.size(-2)
-
-            if inner_dim_A == inner_dim_B:
-                result = FactoredMatrix(unsqueezed_A, unsqueezed_B)
-                assert isinstance(result, FactoredMatrix)
-                assert torch.allclose(result.A, unsqueezed_A)
-                assert torch.allclose(result.B, unsqueezed_B)
+            # Effect: collapse_r drops only the orthogonal right factor V, so
+            # re-applying V.T must reconstruct the full product AB.
+            reconstructed = result @ utils.transpose(factored_matrix.V)
+            assert torch.allclose(reconstructed, factored_matrix.AB, atol=1e-4)
 
     def test_eigenvalues_bfloat16_support(self, factored_matrices_bf16):
         """

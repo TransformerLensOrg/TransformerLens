@@ -935,13 +935,14 @@ def run_benchmark_suite(
             # Use appropriate AutoModel class (e.g., AutoModelForSeq2SeqLM for T5)
             auto_model_class = get_auto_model_class(model_name, trust_remote_code=trust_remote_code)
             if verbose and auto_model_class != AutoModelForCausalLM:
-                print(f"Using {auto_model_class.__name__} for encoder-decoder model")
+                print(f"Using {auto_model_class.__name__}")
             # Ensure pad_token_id exists (some models crash without it during init).
             hf_config = AutoConfig.from_pretrained(
                 model_name, trust_remote_code=trust_remote_code, token=_hf_token()
             )
             if not hasattr(hf_config, "pad_token_id") or "pad_token_id" not in hf_config.__dict__:
-                hf_config.pad_token_id = getattr(hf_config, "eos_token_id", None)
+                eos = getattr(hf_config, "eos_token_id", None)
+                hf_config.pad_token_id = eos[0] if isinstance(eos, (list, tuple)) else eos
                 hf_kwargs["config"] = hf_config
             if trust_remote_code:
                 hf_kwargs["trust_remote_code"] = True
@@ -1208,14 +1209,14 @@ def run_benchmark_suite(
     # PHASE 2: Bridge (unprocessed) + HookedTransformer (unprocessed)
     # ========================================================================
     current_phase[0] = 2
-    if verbose:
-        print(f"\n{'='*80}")
-        print("PHASE 2: TransformerBridge (unprocessed) + HookedTransformer (unprocessed)")
-        print(f"{'='*80}\n")
 
     # OPTIMIZATION: Run generation benchmarks first (only bridge in memory)
     # Then cleanup bridge before loading HT to reduce peak memory
     if should_run_phase(2) and bridge_unprocessed:
+        if verbose:
+            print(f"\n{'='*80}")
+            print("PHASE 2: TransformerBridge (unprocessed) + HookedTransformer (unprocessed)")
+            print(f"{'='*80}\n")
         if verbose:
             print("Running Phase 2 benchmarks...\n")
 

@@ -15,11 +15,11 @@ from transformer_lens.cache.key_value_cache_entry import (
     TransformerLensKeyValueCacheEntry,
 )
 from transformer_lens.components.rms_norm import RMSNorm
-from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.config.hooked_transformer_config import HookedTransformerConfig
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookPoint
+from transformer_lens.utilities import get_offset_position_ids
 from transformer_lens.utilities.attention import complex_attn_linear, simple_attn_linear
-from transformer_lens.utils import get_offset_position_ids
 
 if is_bitsandbytes_available():
     import bitsandbytes as bnb
@@ -27,6 +27,8 @@ if is_bitsandbytes_available():
 
 
 class AbstractAttention(ABC, nn.Module):
+    ROTARY_INITIAL_CACHE_SIZE = 2048
+
     alibi: Union[torch.Tensor, None]
     q_norm: Optional[RMSNorm]
     k_norm: Optional[RMSNorm]
@@ -115,20 +117,15 @@ class AbstractAttention(ABC, nn.Module):
             self.k_norm = None
 
         self.attn_type = attn_type
-        # Create a max_ctx x max_ctx mask, with True iff that query position
-        # can attend to that key position (query is first axis, key is second axis)
-        causal_mask = torch.tril(torch.ones((self.cfg.n_ctx, self.cfg.n_ctx)).bool())
-        if self.attn_type == "global":
-            # For global attention, this is a lower triangular matrix - key <= query
-            self.register_buffer("mask", causal_mask)
-        elif self.attn_type == "local":
-            # For local, this is banded, query - window_size < key <= query
+        if self.attn_type == "local":
             if not isinstance(self.cfg.window_size, int):
                 raise ValueError("Window size must be an integer for local attention")
-            self.register_buffer("mask", torch.triu(causal_mask, 1 - self.cfg.window_size))
-        else:
+        elif self.attn_type != "global":
             raise ValueError(f"Invalid attention type: {self.attn_type}")
 
+        # Kept as a tiny buffer for state-dict/device compatibility. The actual
+        # causal mask is built at forward time for the current sequence length.
+        self.register_buffer("mask", torch.empty((0, 0), dtype=torch.bool))
         self.register_buffer("IGNORE", torch.tensor(-torch.inf))
 
         self.layer_id = layer_id
@@ -161,21 +158,17 @@ class AbstractAttention(ABC, nn.Module):
             self.hook_rot_q = HookPoint()
             if self.cfg.rotary_dim is None:  # keep mypy happy
                 raise ValueError("Rotary dim must be provided for rotary positional embeddings")
-            # Use per-layer RoPE base if specified (e.g., Gemma 3 uses 10k for local, 1M for global)
-            if self.cfg.rotary_base_local is not None and self.attn_type == "local":
-                rope_base = self.cfg.rotary_base_local
-            else:
-                rope_base = self.cfg.rotary_base
+            rotary_cache_size = min(self.cfg.n_ctx, self.ROTARY_INITIAL_CACHE_SIZE)
             sin, cos = self.calculate_sin_cos_rotary(
                 self.cfg.rotary_dim,
-                self.cfg.n_ctx,
-                base=rope_base,
+                rotary_cache_size,
+                base=self._rotary_base(),
                 dtype=self.cfg.dtype,
             )
             self.register_buffer("rotary_sin", sin)
             self.register_buffer("rotary_cos", cos)
         elif self.cfg.positional_embedding_type == "alibi":
-            # ALiBi bias wil be constructed on the first forward pass.
+            # ALiBi bias will be constructed on the first forward pass.
             # Note: While computationally efficient, initializing an bias with max n_ctx (16, 1024, 1024) of float32 will occupy ~256MiB of contiguous GPU memory, which may not be optimal for memory usage.
             self.alibi = None
 
@@ -572,14 +565,13 @@ class AbstractAttention(ABC, nn.Module):
                 f"query_ctx_length {query_ctx_length} + past_kv_pos_offset {past_kv_pos_offset} != key_ctx_length {key_ctx_length} - you likely have a bug."
             )
 
-        # Dynamically extend mask if needed for long context
-        if key_ctx_length > self.mask.shape[0]:
-            self._extend_mask(key_ctx_length)
-
-        # Index back to front to ensure local attention works
-        final_mask = cast(torch.Tensor, self.mask)[
-            None, None, -query_ctx_length:, -key_ctx_length:
-        ]  # [1, 1, pos, pos]
+        mask_device = attention_mask.device if attention_mask is not None else attn_scores.device
+        final_mask = self._make_causal_mask(
+            query_ctx_length=query_ctx_length,
+            key_ctx_length=key_ctx_length,
+            past_kv_pos_offset=past_kv_pos_offset,
+            device=mask_device,
+        )
         if attention_mask is not None:
             # Apply a causal mask to the attention scores considering the padding
 
@@ -588,19 +580,47 @@ class AbstractAttention(ABC, nn.Module):
                 attention_mask, "batch offset_pos -> batch 1 1 offset_pos"
             )
 
-            final_mask = final_mask.to(attention_mask.device)
-
-            # Element-wise multiplication of the final mask and the attention mask and cast to boolean
-            final_mask = (final_mask * attention_mask).bool()  # [batch, head, pos, offset_pos]
+            final_mask = final_mask & attention_mask.bool()  # [batch, head, pos, offset_pos]
 
         attn_scores = attn_scores.to(final_mask.device)
-        return torch.where(final_mask, attn_scores, cast(torch.Tensor, self.IGNORE))
+        ignore = cast(torch.Tensor, self.IGNORE).to(final_mask.device)
+        return torch.where(final_mask, attn_scores, ignore)
+
+    def _make_causal_mask(
+        self,
+        query_ctx_length: int,
+        key_ctx_length: int,
+        past_kv_pos_offset: int,
+        device: torch.device,
+    ) -> torch.Tensor:
+        """Create the causal mask for the current attention-score shape."""
+        query_positions = torch.arange(
+            past_kv_pos_offset,
+            past_kv_pos_offset + query_ctx_length,
+            device=device,
+        )
+        key_positions = torch.arange(key_ctx_length, device=device)
+
+        final_mask = key_positions[None, :] <= query_positions[:, None]
+        if self.attn_type == "local":
+            if not isinstance(self.cfg.window_size, int):
+                raise ValueError("Window size must be an integer for local attention")
+            final_mask = final_mask & (
+                key_positions[None, :] > query_positions[:, None] - self.cfg.window_size
+            )
+
+        return final_mask[None, None, :, :]
+
+    def _rotary_base(self) -> Union[float, int]:
+        if self.cfg.rotary_base_local is not None and self.attn_type == "local":
+            return self.cfg.rotary_base_local
+        return self.cfg.rotary_base
 
     def calculate_sin_cos_rotary(
         self,
         rotary_dim: int,
         n_ctx: int,
-        base: int = 10000,
+        base: Union[float, int] = 10000,
         dtype: torch.dtype = torch.float32,
     ) -> Tuple[Float[torch.Tensor, "n_ctx rotary_dim"], Float[torch.Tensor, "n_ctx rotary_dim"]]:
         """
@@ -730,7 +750,11 @@ class AbstractAttention(ABC, nn.Module):
         # Dynamically extend rotary embeddings if needed for long context
         max_pos_needed = past_kv_pos_offset + x_pos
         if max_pos_needed > self.rotary_cos.shape[0]:
-            self._extend_rotary_embeddings(max_pos_needed)
+            new_size = min(
+                self.cfg.n_ctx,
+                max(max_pos_needed, 2 * self.rotary_cos.shape[0]),
+            )
+            self._extend_rotary_embeddings(new_size)
 
         if attention_mask is None:
             rotary_cos = cast(torch.Tensor, self.rotary_cos)[
@@ -751,9 +775,6 @@ class AbstractAttention(ABC, nn.Module):
 
     def _extend_rotary_embeddings(self, new_size: int):
         """Extend rotary embeddings to support longer contexts dynamically."""
-        # Get the RoPE base from config or use default
-        rope_base = getattr(self.cfg, "rotary_base", 10000)
-
         # Ensure rotary_dim is set
         assert self.cfg.rotary_dim is not None, "rotary_dim must be set for rotary embeddings"
 
@@ -761,7 +782,7 @@ class AbstractAttention(ABC, nn.Module):
         sin, cos = self.calculate_sin_cos_rotary(
             self.cfg.rotary_dim,
             new_size,
-            base=rope_base,
+            base=self._rotary_base(),
             dtype=self.cfg.dtype,
         )
 
@@ -770,16 +791,39 @@ class AbstractAttention(ABC, nn.Module):
         self.rotary_cos = cos.to(self.rotary_cos.device)
 
     def _extend_mask(self, new_size: int):
-        """Extend causal mask to support longer contexts dynamically."""
-        causal_mask = torch.tril(torch.ones((new_size, new_size), device=self.mask.device).bool())
-        if self.attn_type == "global":
-            self.mask = causal_mask
-        elif self.attn_type == "local":
-            if not isinstance(self.cfg.window_size, int):
-                raise ValueError("Window size must be an integer for local attention")
-            self.mask = torch.triu(causal_mask, 1 - self.cfg.window_size)
-        else:
-            raise ValueError(f"Invalid attention type: {self.attn_type}")
+        """Deprecated no-op kept for external callers."""
+        del new_size
+
+    def _load_from_state_dict(
+        self,
+        state_dict,
+        prefix,
+        local_metadata,
+        strict,
+        missing_keys,
+        unexpected_keys,
+        error_msgs,
+    ):
+        for buffer_name in ("mask", "rotary_sin", "rotary_cos"):
+            buffer_key = prefix + buffer_name
+            saved_buffer = state_dict.get(buffer_key)
+            current_buffer = getattr(self, buffer_name, None)
+            if (
+                isinstance(saved_buffer, torch.Tensor)
+                and isinstance(current_buffer, torch.Tensor)
+                and saved_buffer.shape != current_buffer.shape
+            ):
+                state_dict = state_dict.copy()
+                state_dict[buffer_key] = current_buffer
+        super()._load_from_state_dict(
+            state_dict,
+            prefix,
+            local_metadata,
+            strict,
+            missing_keys,
+            unexpected_keys,
+            error_msgs,
+        )
 
     @staticmethod
     def create_alibi_slope(

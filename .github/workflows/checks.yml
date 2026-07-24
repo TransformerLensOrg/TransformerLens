@@ -1,6 +1,7 @@
 name: Checks
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
@@ -42,6 +43,19 @@ permissions:
   actions: write
   contents: write
 
+# Cancel in-progress PR runs on new push; non-PR events (release, tags) are exempt.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Retry HF 429s in non-pytest invocations; pytest enables via tests/conftest.py.
+env:
+  TRANSFORMERLENS_HF_RETRY: "1"
+  # A native dep leaves non-daemon threads alive that hang the process at
+  # interpreter shutdown after the suite has already passed. Let conftest report
+  # the lingering threads and hard-exit with the real status once tests finish.
+  TL_FORCE_EXIT_AFTER_TESTS: "1"
+
 jobs:
   compatibility-checks:
     name: Compatibility Checks
@@ -54,15 +68,15 @@ jobs:
           - "3.11"
           - "3.12"
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Install uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v7
         with:
           python-version: ${{ matrix.python-version }}
           activate-environment: true
           enable-cache: true
       - name: Cache Models used with Tests
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cache/huggingface/hub/models--gpt2
@@ -103,14 +117,84 @@ jobs:
       - name: Build check
         run: uv build
 
+  mps-checks:
+    name: MPS Checks
+    runs-on: macos-latest
+    # Only run on PRs merging to main or pushes directly to main
+    if: >
+      (github.event_name == 'pull_request' && github.base_ref == 'main') ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.11"
+          activate-environment: true
+          enable-cache: true
+      - name: MPS Cache Models
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/huggingface/hub/models--roneneldan--TinyStories-1M*
+          key: ${{ runner.os }}-huggingface-models-mps-v1
+      - name: Install dependencies
+        run: |
+          uv lock --check
+          uv sync
+      - name: MPS Availability Check
+        run: |
+          uv run python -c "
+          import torch
+          print(f'PyTorch: {torch.__version__}')
+          print(f'MPS available: {torch.backends.mps.is_available()}')
+          print(f'MPS built: {torch.backends.mps.is_built()}')
+          assert torch.backends.mps.is_available(), 'MPS not available on this runner!'
+          "
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      - name: MPS Unit Tests
+        run: >
+          uv run pytest tests/unit -v
+          --ignore=tests/unit/model_bridge/test_optimizer_compatibility.py
+          --ignore=tests/unit/model_bridge/test_gpt_oss_moe.py
+          --ignore=tests/unit/model_bridge/test_component_inspection.py
+          --ignore=tests/unit/model_bridge/test_key_analysis.py
+          --ignore=tests/unit/model_bridge/test_benchmark_gated_hooks_fire.py
+          --ignore=tests/unit/model_bridge/test_weight_processing_adapter_paths.py
+          --ignore=tests/unit/model_bridge/test_bridge_generate_kv_cache.py
+          --ignore=tests/unit/model_bridge/test_bridge_vs_hooked_transformer_patching.py
+          --ignore=tests/unit/model_bridge/compatibility/
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      - name: MPS Integration Tests
+        run: >
+          uv run pytest tests/integration -v -m "not slow"
+          --ignore=tests/integration/model_bridge/test_optimizer_compatibility.py
+          --ignore=tests/integration/model_bridge/test_bridge_generation.py
+          --ignore=tests/integration/model_bridge/test_bridge_integration.py
+          --ignore=tests/integration/model_bridge/compatibility/
+          --ignore=tests/integration/test_prepend_bos.py
+          --ignore=tests/integration/test_generation_compatibility.py
+          --ignore=tests/integration/test_match_huggingface.py
+          --ignore=tests/integration/test_fold_layer_integration.py
+          --ignore=tests/integration/test_centralized_weight_processing.py
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      - name: MPS Smoke Tests
+        run: uv run pytest tests/mps -v
+        env:
+          TRANSFORMERLENS_ALLOW_MPS: "1"
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+
   format-check:
     name: Format Check
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Install uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
           activate-environment: true
@@ -127,9 +211,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Install uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
           activate-environment: true
@@ -146,9 +230,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Install uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
           activate-environment: true
@@ -163,17 +247,17 @@ jobs:
   coverage-test:
     name: Full Code Coverage Test
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Install uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
           activate-environment: true
           enable-cache: true
       - name: Cache Models used with Tests
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cache/huggingface/hub/models--gpt2
@@ -212,15 +296,53 @@ jobs:
       - name: Build check
         run: uv build
       - name: Upload Coverage Report Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-coverage
           path: htmlcov
+
+  benchmark-checks:
+    name: Benchmark Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.12"
+          activate-environment: true
+          enable-cache: true
+      - name: Cache Models used with Tests
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/huggingface/hub/models--gpt2
+          key: ${{ runner.os }}-huggingface-models-v4
+          restore-keys: |
+            ${{ runner.os }}-huggingface-models-v2
+            ${{ runner.os }}-huggingface-models-v1
+            ${{ runner.os }}-huggingface-models
+      - name: Install dependencies
+        run: |
+          uv lock --check
+          uv sync
+      - name: Authenticate HuggingFace
+        if: env.HF_TOKEN != ''
+        run: uv run python -c "import os; from huggingface_hub import login; login(token=os.environ['HF_TOKEN'])"
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      - name: Benchmark Test
+        run: make benchmark-test
+        env:
+          HF_TOKEN:  ${{ secrets.HF_TOKEN }}
 
   notebook-checks:
     name: Notebook Checks
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      HAS_HF_TOKEN: ${{ secrets.HF_TOKEN != '' }}
     strategy:
       fail-fast: false
       matrix:
@@ -229,12 +351,11 @@ jobs:
           - "Activation_Patching_in_TL_Demo"
           - "ARENA_Content"
           - "BERT"
+          - "Bridge_Evals_Demo"
           - "Exploratory_Analysis_Demo"
           # - "Grokking_Demo"
           - "Head_Detector_Demo"
           # - "Interactive_Neuroscope"
-          - "LLaMA"
-          - "LLaMA2_GPU_Quantized"  # Requires quantization libs + too slow for CI timeout
           - "Main_Demo"
           # - "No_Position_Experiment"
           - "Othello_GPT"
@@ -242,8 +363,14 @@ jobs:
           - "Santa_Coder"
           # - "stable_lm"
           - "T5"
+        requires_hf_token: [false]
+        include:
+          - notebook: "LLaMA"
+            requires_hf_token: true
+          - notebook: "LLaMA_GPU_Quantized"
+            requires_hf_token: true
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Add swap space
         run: |
           sudo swapoff /swapfile 2>/dev/null || true
@@ -253,20 +380,20 @@ jobs:
           sudo mkswap /swapfile
           sudo swapon /swapfile
       - name: Install uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.11"
           activate-environment: true
           enable-cache: true
       - name: Re-use HuggingFace models cache
-        uses: actions/cache/restore@v3
+        uses: actions/cache/restore@v4
         with:
           path: ~/.cache/huggingface/hub
           key: ${{ runner.os }}-huggingface-models
       - name: Install dependencies
         run: |
           uv lock --check
-          uv sync --group quantization
+          uv sync --group quantization --extra evals
       - name: Install pandoc
         uses: awalsh128/cache-apt-pkgs-action@latest
         with:
@@ -278,10 +405,13 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
       - name: Check Notebook Output Consistency
-        # Note: currently only checks notebooks we have specifically setup for this
+        if: ${{ !matrix.requires_hf_token || env.HAS_HF_TOKEN == 'true' }}
         run: pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/${{ matrix.notebook }}.ipynb
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      - name: Skip (HF_TOKEN not available)
+        if: ${{ matrix.requires_hf_token && env.HAS_HF_TOKEN != 'true' }}
+        run: echo "Skipping ${{ matrix.notebook }} — requires HF_TOKEN for gated model access"
 
 
   build-docs:
@@ -294,7 +424,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.11"
           activate-environment: true
@@ -309,7 +439,7 @@ jobs:
           uv lock --check
           uv sync
       - name: Download Test Coverage Artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: test-coverage
           path: docs/source/_static/coverage
@@ -323,7 +453,7 @@ jobs:
         env:
           HF_TOKEN:  ${{ secrets.HF_TOKEN }}
       - name: Upload Docs Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: documentation
           path: docs/build
@@ -337,7 +467,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Download Docs Artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: documentation
           path: docs/build

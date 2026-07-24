@@ -153,7 +153,7 @@ class BertNextSentencePrediction:
                 "[CLS] Sentence A [SEP] Sentence B [SEP]", token_type_ids would be
                 [0, 0, ..., 0, 1, ..., 1, 1]. `0` represents tokens from Sentence A,
                 `1` from Sentence B. If not provided, BERT assumes a single sequence input.
-                This parameter gets inferred from the the tokenizer if input is a string or list of strings.
+                This parameter gets inferred from the tokenizer if input is a string or list of strings.
                 Shape is (batch_size, sequence_length).
             one_zero_attention_mask: Optional[torch.Tensor]: A binary mask which indicates
                 which tokens should be attended to (1) and which should be ignored (0).

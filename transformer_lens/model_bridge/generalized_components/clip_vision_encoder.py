@@ -175,3 +175,17 @@ class CLIPVisionEncoderBridge(GeneralizedComponent):
             output = self.hook_out(output)
 
         return output
+
+    def set_original_component(self, original_component: torch.nn.Module) -> None:
+        """Set the original component that this bridge wraps.
+        Note that CLIPVisionModel used to wrap a inner object as .vision_model before
+        transformers version 5.6.0, but after that it must directly be used.
+        This is a temporary hack to fix that till the transformers version is bumped.
+
+        Args:
+            original_component: The original transformer component to wrap
+        """
+        if not hasattr(original_component, "vision_model"):
+            # We should bypass any pytorch module registration.
+            object.__setattr__(original_component, "vision_model", original_component)
+        super().set_original_component(original_component)

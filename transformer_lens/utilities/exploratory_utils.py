@@ -31,13 +31,13 @@ def test_prompt(
 
     Examples:
 
-    >>> from transformer_lens import HookedTransformer, utils
+    >>> from transformer_lens import HookedTransformer, utilities
     >>> model = HookedTransformer.from_pretrained("tiny-stories-1M")
     Loaded pretrained model tiny-stories-1M into HookedTransformer
 
     >>> prompt = "Why did the elephant cross the"
     >>> answer = "road"
-    >>> utils.test_prompt(prompt, answer, model)
+    >>> utilities.test_prompt(prompt, answer, model)
     Tokenized prompt: ['<|endoftext|>', 'Why', ' did', ' the', ' elephant', ' cross', ' the']
     Tokenized answer: [' road']
     Performance on answer token:

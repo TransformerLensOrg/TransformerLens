@@ -5,10 +5,47 @@ This module contains utility functions related to logits
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Optional
 
 import torch
 from jaxtyping import Float, Int
+
+
+def logits_to_df(
+    logits: Float[torch.Tensor, "d_vocab"],
+    tokenizer: Optional[Any] = None,
+    top_k: Optional[int] = None,
+) -> Any:  # pandas.DataFrame; left as Any so beartype doesn't resolve a lazy import at runtime.
+    """Convert a 1-D logit vector into a sortable DataFrame for inspection.
+
+    Returns a frame with columns ``token_index``, ``token_string`` (when
+    ``tokenizer`` is given), ``logit``, ``log_prob``, ``probability``, sorted by
+    descending probability. ``top_k`` truncates to the highest-probability rows.
+
+    Args:
+        logits: 1-D tensor of shape [d_vocab]; raw model logits for one position.
+        tokenizer: Optional HF tokenizer used to materialise ``token_string``;
+            when ``None``, the column is omitted.
+        top_k: Optional cap on the number of returned rows.
+    """
+    # Lazy import — keeps `import transformer_lens` free of pandas's
+    # warnings unless logits_to_df is actually called.
+    import pandas as pd
+
+    log_probs = torch.log_softmax(logits.float(), dim=-1)
+    probs = log_probs.exp()
+    order = torch.argsort(probs, descending=True)
+    if top_k is not None:
+        order = order[:top_k]
+
+    indices = order.cpu().tolist()
+    data: dict = {"token_index": indices}
+    if tokenizer is not None:
+        data["token_string"] = [tokenizer.decode([i]) for i in indices]
+    data["logit"] = logits[order].detach().cpu().tolist()
+    data["log_prob"] = log_probs[order].detach().cpu().tolist()
+    data["probability"] = probs[order].detach().cpu().tolist()
+    return pd.DataFrame(data)
 
 
 def _apply_repetition_penalty(
@@ -59,10 +96,7 @@ def sample_logits(
 
     Repetition penalty (HuggingFace-style) divides positive logits by the penalty value and multiplies negative logits by it for any token that has appeared in the sequence. A value of 1.0 means no penalty. Values > 1.0 discourage repetition. This is applied before temperature scaling.
 
-    #! TODO: Finish testing all the edge cases here. Useful testing code:
-    logits = torch.randn(4)
-    print(logits)
-    np.unique(np.array([sample_logits(logits, top_k=2).item() for i in range(1000)]), return_counts=True)
+    When ``top_k`` exceeds the vocabulary size it is clamped to the vocabulary size (matching HuggingFace), rather than raising an error.
     """
     if temperature == 0.0:
         # Greedy sampling - still apply repetition penalty before argmax
@@ -83,7 +117,7 @@ def sample_logits(
                 len(tokens.shape) == 2
             ), "Frequency penalty do not support input in the form of embeddings"
             for batch_index in range(final_logits.shape[0]):
-                # torch.bincount returns a tensor of length d_vocab, with the number of occurences of each token in the tokens.
+                # torch.bincount returns a tensor of length d_vocab, with the number of occurrences of each token in the tokens.
                 final_logits[batch_index] = final_logits[
                     batch_index
                 ] - freq_penalty * torch.bincount(
@@ -91,6 +125,10 @@ def sample_logits(
                 )
         if top_k is not None:
             assert top_k > 0, "top_k has to be greater than 0"
+            # Clamp top_k to the vocab size so a large value does not raise
+            # "selected index k out of range" (matches HuggingFace's
+            # TopKLogitsWarper, which does top_k = min(top_k, logits.size(-1))).
+            top_k = min(top_k, final_logits.shape[-1])
             top_logits, top_idx = final_logits.topk(top_k, dim=-1)
             indices_to_remove = final_logits < top_logits[..., -1].unsqueeze(-1)
             final_logits = final_logits.masked_fill(indices_to_remove, -float("inf"))

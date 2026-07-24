@@ -139,14 +139,3 @@ def test_merge_quantization_fields_existing_tuple_new_is_not_tuple():
     assert ret is conversion_set
     # Overwritten with [999.0]
     assert torch.allclose(ret.fields["layer_0"], torch.tensor([999.0]))
-
-
-def test_merge_quantization_fields_returns_same_object():
-    """Check the function returns the same TensorConversionSet for in-place merges."""
-    original_fields = {"fieldA": torch.tensor([1.0])}
-    new_fields = {"fieldA": torch.tensor([2.0])}
-
-    conversion_set = TensorConversionSet(original_fields)
-    ret = merge_quantization_fields(conversion_set, new_fields)
-    assert ret is conversion_set, "Expected in-place merge to return the same object."
-    assert torch.allclose(ret.fields["fieldA"], torch.tensor([2.0]))

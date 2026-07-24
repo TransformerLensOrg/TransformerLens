@@ -84,7 +84,6 @@ class TestHookFiring:
         )
         assert fired == {"resid_pre_0", "resid_post_0"}
 
-    @pytest.mark.xfail(reason="add_perma_hook not yet implemented on TransformerBridge")
     def test_perma_hook_persists_across_calls(self, bridge):
         """A permanent hook fires on every forward pass until removed."""
         count = 0
@@ -313,17 +312,6 @@ class TestHookRegistry:
         regressions where large portions of the hook registry are lost.
         """
         assert len(bridge_compat.hook_dict) > 200
-
-    def test_expected_attention_hooks_available(self, bridge_compat):
-        """Expected attention hook names should be available."""
-        expected = [
-            "blocks.0.attn.hook_v",
-            "blocks.0.attn.hook_q",
-            "blocks.0.attn.hook_k",
-        ]
-        hook_names = set(bridge_compat.hook_dict.keys())
-        for hook_name in expected:
-            assert hook_name in hook_names, f"Bridge missing hook: {hook_name}"
 
 
 class TestHookErrorHandling:

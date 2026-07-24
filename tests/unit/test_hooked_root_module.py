@@ -1,8 +1,37 @@
+import warnings
 from unittest.mock import Mock
 
-from transformer_lens.hook_points import HookedRootModule, HookPoint
+from transformer_lens.hook_points import HookPoint
+from transformer_lens.HookedRootModule import HookedRootModule
 
 MODEL_NAME = "solu-2l"
+
+
+def test_legacy_hook_points_import_still_works():
+    """Back-compat: pre-3.0 code imported HookedRootModule from transformer_lens.hook_points.
+
+    The class moved to its own module; the shim re-exports it with a DeprecationWarning.
+    """
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        from transformer_lens.hook_points import HookedRootModule as Legacy
+
+    assert Legacy is HookedRootModule
+    deprecations = [w for w in caught if issubclass(w.category, DeprecationWarning)]
+    assert deprecations, "expected a DeprecationWarning from the legacy import path"
+    assert "transformer_lens.HookedRootModule" in str(deprecations[0].message)
+
+
+def test_legacy_hook_points_attribute_error_for_unknown_names():
+    """The shim only re-exports HookedRootModule — other missing attrs should raise."""
+    import transformer_lens.hook_points as hp
+
+    try:
+        hp.DefinitelyNotARealSymbol  # noqa: B018
+    except AttributeError as exc:
+        assert "DefinitelyNotARealSymbol" in str(exc)
+    else:
+        raise AssertionError("expected AttributeError for unknown attribute")
 
 
 def test_enable_hook_with_name():

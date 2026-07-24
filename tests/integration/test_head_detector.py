@@ -419,7 +419,7 @@ class Test_specific_heads:
             test_regular_sequence,
             "previous_token_head",
             heads=[(0, 0)],
-            error_measure="abs",
+            error_measure="mul",
         )
         match_abs = detect_head(
             model,
@@ -432,7 +432,7 @@ class Test_specific_heads:
         def test_allclose_mul(self):
             assert torch.allclose(
                 self.match_mul[0, 0],
-                expected_regular_sequence_previous_match_abs[0, 0],
+                expected_regular_sequence_previous_match_mul[0, 0],
                 atol=ATOL,
             )
 
@@ -445,7 +445,7 @@ class Test_specific_heads:
 
         def test_isclose_mul(self):
             assert math.isclose(
-                torch.sum(self.match_abs),
+                torch.sum(self.match_mul),
                 self.match_mul[0, 0].item() - (model.cfg.n_layers * model.cfg.n_heads - 1),
                 abs_tol=ATOL,
             )

@@ -50,8 +50,9 @@ from .registry_io import (
     STATUS_UNVERIFIED,
     STATUS_VERIFIED,
     add_verification_record,
-    is_quantized_model,
+    is_incompatible_quantized,
     load_supported_models_raw,
+    required_quant_library_for_model,
     update_model_status,
 )
 
@@ -60,6 +61,7 @@ logger = logging.getLogger(__name__)
 # Architectures added via the TransformerBridge system that need trust_remote_code=True.
 # These are not in the legacy NEED_REMOTE_CODE_MODELS tuple (loading_from_pretrained.py).
 _BRIDGE_REMOTE_CODE_PREFIXES: tuple[str, ...] = (
+    "baichuan-inc/",  # BaichuanForCausalLM — ships own modeling_baichuan.py
     "internlm/",  # InternLM2ForCausalLM — ships own modeling_internlm2.py
 )
 
@@ -105,6 +107,21 @@ def _sanitize_note(note: Optional[str]) -> Optional[str]:
         model_ref = url_match.group(1) if url_match else "unknown"
         return f"Config unavailable: Gated repo ({model_ref})"
     return note
+
+
+def _phases_to_run(arch: str, phases: list[int]) -> list[int]:
+    """Restrict requested phases to those the adapter supports.
+
+    An adapter's ``applicable_phases`` declares which text phases (1-4) it covers. Phases 7/8
+    are gated separately by ``is_multimodal``/``is_audio`` in the benchmark, so they are never
+    filtered out here. An empty result means the architecture is skipped (e.g. SSMs).
+    """
+    from transformer_lens.factories.architecture_adapter_factory import (
+        SUPPORTED_ARCHITECTURES,
+    )
+
+    applicable = getattr(SUPPORTED_ARCHITECTURES.get(arch), "applicable_phases", [1, 2, 3, 4])
+    return [p for p in phases if p in applicable or p in (7, 8)]
 
 
 def _get_current_model_status(model_id: str, arch_id: str) -> int:
@@ -192,6 +209,17 @@ def estimate_model_params(model_id: str) -> int:
     # is nested under text_config. Fall through to the top-level config otherwise.
     lang_config = getattr(config, "text_config", config)
 
+    # Encoder-decoder models (e.g. T5Gemma) nest dimensions under decoder/encoder
+    # subconfigs rather than the top level; prefer the decoder for the estimate.
+    if not (hasattr(lang_config, "hidden_size") or hasattr(lang_config, "d_model")):
+        for _sub in ("decoder", "encoder"):
+            _subcfg = getattr(config, _sub, None)
+            if _subcfg is not None and (
+                hasattr(_subcfg, "hidden_size") or hasattr(_subcfg, "d_model")
+            ):
+                lang_config = _subcfg
+                break
+
     # Extract dimensions from config (different models use different attribute names)
     d_model = (
         getattr(lang_config, "hidden_size", None)
@@ -221,6 +249,10 @@ def estimate_model_params(model_id: str) -> int:
         or getattr(lang_config, "ffn_dim", None)  # OPT
         or getattr(lang_config, "d_ff", None)  # T5
     )
+    # Gemma 3n exposes a per-layer intermediate_size list (uniform in all released
+    # checkpoints); collapse to max for the scalar param estimate.
+    if isinstance(d_mlp, (list, tuple)):
+        d_mlp = max(d_mlp) if d_mlp else None
     # OpenELM uses per-layer ffn_multipliers instead of a fixed intermediate_size
     if not d_mlp and d_model:
         ffn_multipliers = getattr(lang_config, "ffn_multipliers", None)
@@ -277,8 +309,10 @@ def estimate_model_params(model_id: str) -> int:
         n_params += n_layers * (d_model * d_mlp * mlp_multiplier)
 
         # MoE expert scaling
-        num_experts = getattr(lang_config, "num_local_experts", None) or getattr(
-            lang_config, "num_experts", None
+        num_experts = (
+            getattr(lang_config, "num_local_experts", None)
+            or getattr(lang_config, "num_experts", None)
+            or getattr(lang_config, "n_routed_experts", None)  # DeepSeek-V2/V3
         )
         if num_experts and num_experts > 1:
             # Qwen3MoE and similar store per-expert hidden size in moe_intermediate_size;
@@ -685,6 +719,22 @@ def _save_checkpoint(progress: VerificationProgress) -> None:
         f.write("\n")
 
 
+def _skip_model(
+    model_id: str, arch: str, note: str, progress: VerificationProgress, quiet: bool
+) -> None:
+    """Record a model as skipped with ``note``, preserving an existing verified status, and
+    checkpoint. Callers ``continue`` the loop afterwards.
+    """
+    if not quiet:
+        print(f"  SKIP: {note}")
+    if _get_current_model_status(model_id, arch) != STATUS_VERIFIED:
+        update_model_status(model_id, arch, STATUS_SKIPPED, note=note, sanitize_fn=_sanitize_note)
+    elif not quiet:
+        print("  (preserving existing verified status)")
+    progress.skipped.append(model_id)
+    _save_checkpoint(progress)
+
+
 def _load_checkpoint() -> Optional[VerificationProgress]:
     """Load verification progress from checkpoint file."""
     if not _CHECKPOINT_PATH.exists():
@@ -772,18 +822,20 @@ def verify_models(
 
         progress.tested.append(model_id)
 
-        # Step 0: Check for quantized models (fundamentally incompatible)
-        if is_quantized_model(model_id):
-            if not quiet:
-                print(f"  SKIP: {QUANTIZED_NOTE}")
-            current_status = _get_current_model_status(model_id, arch)
-            if current_status != STATUS_VERIFIED:
-                update_model_status(model_id, arch, STATUS_SKIPPED, note=QUANTIZED_NOTE)
-            elif not quiet:
-                print(f"  (preserving existing verified status)")
-            progress.skipped.append(model_id)
-            _save_checkpoint(progress)
+        # Step 0: Skip formats with no HF loader path (GGUF / MLX / FP4 / FP8).
+        if is_incompatible_quantized(model_id):
+            _skip_model(model_id, arch, QUANTIZED_NOTE, progress, quiet)
             continue
+
+        # Step 0a: skip HF-loadable quantized models when their loader lib is missing.
+        required_lib = required_quant_library_for_model(model_id)
+        if required_lib is not None:
+            import importlib.util
+
+            if importlib.util.find_spec(required_lib) is None:
+                note = f"Skipped: {required_lib} not installed (required to load this quantized format)"
+                _skip_model(model_id, arch, note, progress, quiet)
+                continue
 
         # Step 0b: Check adapter-level phase applicability. Architectures
         # with applicable_phases=[] (e.g. SSMs) skip verify_models entirely
@@ -795,27 +847,16 @@ def verify_models(
         )
 
         adapter_cls = SUPPORTED_ARCHITECTURES.get(arch)
-        if adapter_cls is not None:
+        phases_to_run = _phases_to_run(arch, phases)
+        if adapter_cls is not None and not phases_to_run:
             applicable = getattr(adapter_cls, "applicable_phases", [1, 2, 3, 4])
-            phases_to_run = [p for p in phases if p in applicable]
-            if not phases_to_run:
-                note = (
-                    f"Architecture {arch} has applicable_phases={applicable}; "
-                    f"verify_models coverage is deferred. Verification lives "
-                    f"in integration tests."
-                )
-                if not quiet:
-                    print(f"  SKIP: {note}")
-                current_status = _get_current_model_status(model_id, arch)
-                if current_status != STATUS_VERIFIED:
-                    update_model_status(
-                        model_id, arch, STATUS_SKIPPED, note=note, sanitize_fn=_sanitize_note
-                    )
-                elif not quiet:
-                    print(f"  (preserving existing verified status)")
-                progress.skipped.append(model_id)
-                _save_checkpoint(progress)
-                continue
+            note = (
+                f"Architecture {arch} has applicable_phases={applicable}; "
+                f"verify_models coverage is deferred. Verification lives "
+                f"in integration tests."
+            )
+            _skip_model(model_id, arch, note, progress, quiet)
+            continue
 
         # Step 1: Estimate parameters
         try:
@@ -824,26 +865,12 @@ def verify_models(
             if not quiet:
                 print(f"  Estimated parameters: {n_params:,}")
         except Exception as e:
-            note = f"Config unavailable: {str(e)[:200]}"
-            if not quiet:
-                print(f"  SKIP: {note}")
-            # Don't downgrade previously verified models to SKIPPED
-            # If a model is verified, we assume it still runs even though
-            # it is below the memory limit of the current run
-            current_status = _get_current_model_status(model_id, arch)
-            if current_status != STATUS_VERIFIED:
-                update_model_status(
-                    model_id, arch, STATUS_SKIPPED, note=note, sanitize_fn=_sanitize_note
-                )
-            elif not quiet:
-                print(f"  (preserving existing verified status)")
-            progress.skipped.append(model_id)
-            _save_checkpoint(progress)
+            _skip_model(model_id, arch, f"Config unavailable: {str(e)[:200]}", progress, quiet)
             continue
 
         # Step 2: Check memory
         estimated_mem = estimate_benchmark_memory_gb(
-            n_params, dtype, phases=phases, use_hf_reference=use_hf_reference
+            n_params, dtype, phases=phases_to_run, use_hf_reference=use_hf_reference
         )
         candidate.estimated_memory_gb = estimated_mem
         if not quiet:
@@ -853,20 +880,7 @@ def verify_models(
 
         if estimated_mem > max_memory_gb:
             note = f"Estimated {estimated_mem:.1f} GB exceeds {max_memory_gb:.1f} GB limit"
-            if not quiet:
-                print(f"  SKIP: {note}")
-            # Don't downgrade previously verified models to SKIPPED
-            # If a model is verified, we assume it still runs even though
-            # it is below the memory limit of the current run
-            current_status = _get_current_model_status(model_id, arch)
-            if current_status != STATUS_VERIFIED:
-                update_model_status(
-                    model_id, arch, STATUS_SKIPPED, note=note, sanitize_fn=_sanitize_note
-                )
-            elif not quiet:
-                print(f"  (preserving existing verified status)")
-            progress.skipped.append(model_id)
-            _save_checkpoint(progress)
+            _skip_model(model_id, arch, note, progress, quiet)
             continue
 
         # Step 3: Run benchmarks (all phases in a single call to share models)
@@ -898,7 +912,7 @@ def verify_models(
                 use_hf_reference=use_hf_reference,
                 use_ht_reference=use_ht_reference,
                 verbose=not quiet,
-                phases=phases,
+                phases=phases_to_run,
                 trust_remote_code=needs_remote_code,
                 scoring_model=_scoring_model,
                 scoring_tokenizer=_scoring_tokenizer,
@@ -1115,7 +1129,7 @@ def verify_models(
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
                 torch.cuda.synchronize()
-            if hasattr(torch, "mps") and hasattr(torch.mps, "empty_cache"):
+            if device == "mps" and hasattr(torch, "mps") and torch.backends.mps.is_available():
                 torch.mps.synchronize()
                 torch.mps.empty_cache()
 
@@ -1166,14 +1180,16 @@ def _print_dry_run(
     skippable = 0
     testable = 0
 
+    eff_phases = phases if phases is not None else [1, 2, 3, 4]
     for arch in sorted(by_arch.keys()):
         models = by_arch[arch]
+        phases_to_run = _phases_to_run(arch, eff_phases)
         print(f"  {arch} ({len(models)} models):")
         for c in models:
             try:
                 n_params = estimate_model_params(c.model_id)
                 mem = estimate_benchmark_memory_gb(
-                    n_params, dtype, phases=phases, use_hf_reference=use_hf_reference
+                    n_params, dtype, phases=phases_to_run, use_hf_reference=use_hf_reference
                 )
                 status = "OK" if mem <= max_memory_gb else "SKIP (too large)"
                 if mem > max_memory_gb:

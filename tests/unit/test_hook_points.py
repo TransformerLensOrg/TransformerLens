@@ -60,10 +60,11 @@ def test_add_hook_prepend(mock_handle, mock_lens_handle):
 
     # Make LensHandle constructor return a simple container capturing the pt_handle ('hook')
     class _LensHandleBox:
-        def __init__(self, handle, is_permanent, context_level):
+        def __init__(self, handle, is_permanent, context_level, user_hook=None):
             self.hook = handle
             self.is_permanent = is_permanent
             self.context_level = context_level
+            self.user_hook = user_hook
 
     mock_lens_handle.side_effect = _LensHandleBox
 

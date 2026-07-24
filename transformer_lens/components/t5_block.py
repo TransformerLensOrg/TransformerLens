@@ -8,15 +8,15 @@ from transformer_lens.cache.key_value_cache_entry import (
     TransformerLensKeyValueCacheEntry,
 )
 from transformer_lens.components import RMSNorm, T5Attention
-from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.config.hooked_transformer_config import HookedTransformerConfig
 from transformer_lens.factories.mlp_factory import MLPFactory
 from transformer_lens.hook_points import HookPoint
-from transformer_lens.utils import repeat_along_head_dimension
+from transformer_lens.utilities import repeat_along_head_dimension
 
 
 class T5Block(nn.Module):
     """
-    T5 decoder Block. Uses T5Layernorm, and T5attention insted of usual ones.
+    T5 decoder Block. Uses T5Layernorm, and T5attention instead of usual ones.
     Also uses cross attention if is_decoder is True.
     """
 

@@ -17,6 +17,10 @@ Usage:
     # Full scan of all HuggingFace models (recommended)
     python -m transformer_lens.tools.model_registry.hf_scraper --full-scan
 
+    # Targeted scrape: only models of a specific architecture
+    python -m transformer_lens.tools.model_registry.hf_scraper \\
+        --architecture LlamaForCausalLM --full-scan
+
     # Quick scan (top N models by downloads)
     python -m transformer_lens.tools.model_registry.hf_scraper --limit 10000
 
@@ -130,6 +134,30 @@ def _load_existing_models(output_dir: Path) -> tuple[set[str], list[dict]]:
     return existing_ids, existing_models
 
 
+def _load_existing_gaps(output_dir: Path) -> dict[str, dict]:
+    """Load existing per-architecture gap entries keyed by architecture_id.
+
+    Lets a new scrape merge instead of overwrite — without this, the second of two
+    sequential scrapes (e.g. text-generation then text2text-generation) wipes the
+    first run's gap data.
+    """
+    gaps_path = output_dir / "architecture_gaps.json"
+    by_arch: dict[str, dict] = {}
+    if not gaps_path.exists():
+        return by_arch
+    try:
+        data = json.loads(gaps_path.read_text())
+    except (json.JSONDecodeError, OSError) as e:
+        logger.warning(f"Could not load existing gaps: {e}")
+        return by_arch
+    for entry in data.get("gaps", []):
+        if isinstance(entry, dict) and "architecture_id" in entry:
+            by_arch[entry["architecture_id"]] = entry
+    if by_arch:
+        logger.info(f"Loaded {len(by_arch)} existing architecture gaps from {gaps_path}")
+    return by_arch
+
+
 def _build_model_entry(model_id: str, architecture_id: str) -> dict:
     """Build a model entry dict matching the ModelEntry schema."""
     return {
@@ -148,6 +176,62 @@ def _build_model_entry(model_id: str, architecture_id: str) -> dict:
     }
 
 
+def _canonical_author_sweep(
+    api,  # type: ignore[no-untyped-def]
+    supported_models: list[dict],
+    seen_models: set[str],
+    architecture: Optional[str] = None,
+) -> int:
+    """Admit canonical-org supported-arch models regardless of downloads. Returns count added.
+
+    When ``architecture`` is set, only sweep authors canonical for that architecture and
+    only admit models whose extracted arch matches it.
+    """
+    from . import CANONICAL_AUTHORS_BY_ARCH, HF_SUPPORTED_ARCHITECTURES
+
+    # Same author can be canonical for multiple archs (e.g. google: T5 + MT5 + Gemma).
+    authors_to_archs: dict[str, set[str]] = {}
+    for arch, authors in CANONICAL_AUTHORS_BY_ARCH.items():
+        for author in authors:
+            authors_to_archs.setdefault(author, set()).add(arch)
+
+    added = 0
+    for author, expected_archs in sorted(authors_to_archs.items()):
+        if architecture is not None and architecture not in expected_archs:
+            continue
+        try:
+            models_iter = api.list_models(author=author, expand=["config", "safetensors"])
+        except Exception as exc:  # pragma: no cover — network/transient
+            logger.warning(f"Canonical sweep: list_models(author={author!r}) failed: {exc}")
+            continue
+
+        # Iterate paginated results; a single timeout shouldn't lose every prior author.
+        try:
+            for model in models_iter:
+                if model.id in seen_models:
+                    continue
+                if is_quantized_model(model.id):
+                    continue
+                model_arch: Optional[str] = _extract_architecture(model)
+                if model_arch is None or model_arch not in HF_SUPPORTED_ARCHITECTURES:
+                    continue
+                if architecture is not None and model_arch != architecture:
+                    continue
+                # Reject e.g. mistralai's non-Mistral checkpoints.
+                if model_arch not in expected_archs:
+                    continue
+                supported_models.append(_build_model_entry(model.id, model_arch))
+                seen_models.add(model.id)
+                added += 1
+                logger.info(f"Canonical sweep added: {model.id} ({model_arch})")
+        except Exception as exc:  # pragma: no cover — network/transient
+            logger.warning(
+                f"Canonical sweep: pagination for {author!r} failed mid-iteration: {exc}"
+            )
+            continue
+    return added
+
+
 def scrape_all_models(
     output_dir: Path,
     max_models: Optional[int] = None,
@@ -155,6 +239,8 @@ def scrape_all_models(
     batch_size: int = 1000,
     checkpoint_interval: int = 5000,
     min_downloads: int = 500,
+    canonical_sweep: bool = True,
+    architecture: Optional[str] = None,
 ) -> tuple[dict, dict]:
     """Scrape ALL models from HuggingFace and categorize by architecture.
 
@@ -176,6 +262,12 @@ def scrape_all_models(
         batch_size: Log progress every N models
         checkpoint_interval: Save checkpoint every N models
         min_downloads: Minimum download count to include a model (default: 500)
+        canonical_sweep: If True, run the post-scrape pass that admits canonical-org models
+            below the download threshold (default: True).
+        architecture: If set, only include models whose ``config.architectures[0]`` matches
+            this class (e.g. ``"LlamaForCausalLM"``). Applies to both the main scan and
+            the canonical-author sweep. Useful for populating the registry after adding
+            a single new adapter without rescanning every architecture.
 
     Returns:
         Tuple of (supported_models_dict, architecture_gaps_dict)
@@ -215,7 +307,30 @@ def scrape_all_models(
     checkpoint_path = output_dir / "scrape_checkpoint.json"
     seen_models: set[str] = set(existing_model_ids)  # Include existing as "seen"
 
-    if checkpoint_path.exists():
+    # When `architecture` is set AND we have canonical orgs for it, skip the global
+    # text-generation scan: the canonical sweep already exhausts those orgs and is
+    # exact (`author=` is a server-side filter). The main scan would only add
+    # community fine-tunes of that arch, which are rarely worth verifying. For
+    # archs with no canonical orgs registered, fall back to the main scan +
+    # client-side filter.
+    from . import CANONICAL_AUTHORS_BY_ARCH
+
+    skip_main_scan = architecture is not None and architecture in CANONICAL_AUTHORS_BY_ARCH
+    if skip_main_scan:
+        assert architecture is not None  # narrowed by skip_main_scan
+        logger.info(
+            f"Targeted scrape for architecture={architecture!r}: skipping the global "
+            f"'{task}' scan; relying on canonical-author sweep over "
+            f"{sorted(CANONICAL_AUTHORS_BY_ARCH[architecture])}."
+        )
+        if not canonical_sweep:
+            logger.warning(
+                "skip_main_scan is set but --no-canonical-sweep was passed. No HF "
+                "queries will run. Re-run without --no-canonical-sweep to actually "
+                "discover models."
+            )
+
+    if not skip_main_scan and checkpoint_path.exists():
         logger.info(f"Found checkpoint at {checkpoint_path}, loading...")
         with open(checkpoint_path) as f:
             checkpoint = json.load(f)
@@ -234,22 +349,28 @@ def scrape_all_models(
         skipped = checkpoint.get("skipped", 0)
         logger.info(f"Resumed from checkpoint: {scanned} models already scanned")
 
-    logger.info(f"Starting comprehensive HuggingFace scan for task='{task}'...")
-    logger.info(f"Skipping {len(existing_model_ids)} models already in supported_models.json")
-    logger.info(f"Supported architectures: {len(HF_SUPPORTED_ARCHITECTURES)}")
-    logger.info(f"Minimum downloads threshold: {min_downloads:,}")
-    if max_models:
-        logger.info(f"Will scan up to {max_models} NEW models")
-    else:
-        logger.info("Will scan ALL new models (this may take a while)")
+    if not skip_main_scan:
+        logger.info(f"Starting comprehensive HuggingFace scan for task='{task}'...")
+        logger.info(f"Skipping {len(existing_model_ids)} models already in supported_models.json")
+        logger.info(f"Supported architectures: {len(HF_SUPPORTED_ARCHITECTURES)}")
+        logger.info(f"Minimum downloads threshold: {min_downloads:,}")
+        if max_models:
+            logger.info(f"Will scan up to {max_models} NEW models")
+        else:
+            logger.info("Will scan ALL new models (this may take a while)")
 
     try:
         # Use expand=['config', 'safetensors'] to get architecture and parameter
         # count data inline with the listing, avoiding per-model API calls.
         # With ~1000 models per page, a full scan of 200K+ models needs only
         # ~200 paginated requests (well within the 1000 req / 5 min limit).
+        # Use ``filter`` rather than ``pipeline_tag`` so encoder-decoder models
+        # are discoverable: HF assigns T5/mT5 a primary pipeline_tag of
+        # "translation" (or None for mT5) and only lists "text2text-generation"
+        # in the broader tag list. ``filter`` matches against tags, ``pipeline_tag``
+        # only against the canonical primary tag.
         list_kwargs: dict = {
-            "pipeline_tag": task,
+            "filter": task,
             "sort": "downloads",
             "expand": ["config", "safetensors"],
         }
@@ -260,6 +381,12 @@ def scrape_all_models(
         # and restart iteration. Already-seen models are skipped automatically.
         max_retries = 10
         for attempt in range(max_retries + 1):
+            if skip_main_scan:
+                # Targeted scrape with canonical orgs available — the sweep below is
+                # exhaustive within those orgs and exact (server-side `author=`), so
+                # the global text-generation pagination would only add community
+                # fine-tunes for the same arch.
+                break
             try:
                 for model in api.list_models(**list_kwargs):
                     # Skip if already in our JSON or processed in this run
@@ -292,6 +419,12 @@ def scrape_all_models(
 
                     # Extract architecture from inline config (no extra API call)
                     arch = _extract_architecture(model)
+
+                    # Targeted scrape: drop everything that isn't the requested arch.
+                    # Applied before classification so the unsupported counters reflect
+                    # only the architecture under inspection.
+                    if architecture is not None and arch != architecture:
+                        continue
 
                     if arch is None:
                         errors += 1
@@ -398,6 +531,18 @@ def scrape_all_models(
         )
         raise
 
+    if canonical_sweep:
+        logger.info("\nRunning canonical-author sweep (bypasses download threshold)...")
+        # Don't lose the main-scan registry on a sweep-time failure.
+        try:
+            canonical_added = _canonical_author_sweep(
+                api, supported_models, seen_models, architecture=architecture
+            )
+            new_supported += canonical_added
+            logger.info(f"Canonical sweep added {canonical_added} models.")
+        except Exception as exc:
+            logger.warning(f"Canonical sweep aborted: {exc}. Main-scan results preserved.")
+
     # Build final reports (matching schemas.py exactly)
     elapsed = time.time() - start_time
     logger.info(f"\nScan complete in {elapsed:.1f}s")
@@ -454,14 +599,77 @@ def scrape_all_models(
         for arch, count in unsupported_arch_counts.items()
     ]
 
+    # Merge with gaps from prior scrapes so a sequential text-generation +
+    # text2text-generation run doesn't lose the first pass's data. For overlapping
+    # architectures, sum counts/downloads, take the smaller min_param_count, and
+    # union sample_models (capped at 10).
+    existing_gaps = _load_existing_gaps(output_dir)
+    if existing_gaps:
+        new_by_arch = {g["architecture_id"]: g for g in gaps}
+        merged: list[dict] = []
+        for arch in set(existing_gaps) | set(new_by_arch):
+            o = existing_gaps.get(arch)
+            n = new_by_arch.get(arch)
+            if o is None and n is not None:
+                merged.append(n)
+                continue
+            if n is None and o is not None:
+                merged.append(o)
+                continue
+            assert o is not None and n is not None
+            # Both present: combine counts/downloads, dedupe samples (cap 10).
+            merged_samples: list[str] = []
+            seen_samples: set[str] = set()
+            for s in o.get("sample_models", []) + n.get("sample_models", []):
+                if s not in seen_samples:
+                    merged_samples.append(s)
+                    seen_samples.add(s)
+                if len(merged_samples) >= 10:
+                    break
+            min_p = [
+                p for p in (o.get("min_param_count"), n.get("min_param_count")) if p is not None
+            ]
+            merged.append(
+                {
+                    "architecture_id": arch,
+                    "total_models": o["total_models"] + n["total_models"],
+                    "total_downloads": o["total_downloads"] + n["total_downloads"],
+                    "min_param_count": min(min_p) if min_p else None,
+                    "sample_models": merged_samples,
+                }
+            )
+        gaps = merged
+
     # Compute relevancy scores and sort by score descending
     compute_scores_for_gaps(gaps)
+
+    # Guard the load-bearing invariant: each architecture appears at most once in
+    # the gaps list. The merge above produces unique-by-arch entries by
+    # construction, but the report header reads from this list — so an explicit
+    # dedup keeps the header consistent if the merge ever drifts.
+    seen_archs: set[str] = set()
+    deduped: list[dict] = []
+    for g in gaps:
+        arch_id = g["architecture_id"]
+        if arch_id in HF_SUPPORTED_ARCHITECTURES:
+            # Gained an adapter since a prior scrape; the merge above carries the
+            # stale entry forward, so drop it here — it's no longer a gap.
+            continue
+        if arch_id in seen_archs:
+            logger.warning(f"Dropping duplicate gap entry for architecture {arch_id!r}")
+            continue
+        seen_archs.add(arch_id)
+        deduped.append(g)
+    gaps = deduped
 
     gaps_report = {
         "generated_at": date.today().isoformat(),
         "scan_info": scan_info,
         "total_unsupported_architectures": len(gaps),
-        "total_unsupported_models": sum(unsupported_arch_counts.values()),
+        # Sum from the merged+deduped list so the header stays consistent with
+        # its own gaps[*].total_models — the prior `sum(unsupported_arch_counts...)`
+        # only reflected this run, while the list also carried prior-scrape data.
+        "total_unsupported_models": sum(g["total_models"] for g in gaps),
         "gaps": gaps,
     }
 
@@ -553,6 +761,10 @@ Examples:
     # Full scan of ALL text-generation models (recommended)
     python -m transformer_lens.tools.model_registry.hf_scraper --full-scan
 
+    # Targeted scrape: only one architecture (e.g. after adding a new adapter)
+    python -m transformer_lens.tools.model_registry.hf_scraper \\
+        --architecture LlamaForCausalLM --full-scan
+
     # Quick scan of top 10,000 models by downloads
     python -m transformer_lens.tools.model_registry.hf_scraper --limit 10000
 
@@ -599,6 +811,20 @@ Examples:
         default=500,
         help="Minimum download count to include a model (default: 500)",
     )
+    parser.add_argument(
+        "--no-canonical-sweep",
+        action="store_true",
+        help="Skip the per-author sweep that admits canonical-org models below the "
+        "download threshold (default: sweep is on)",
+    )
+    parser.add_argument(
+        "--architecture",
+        type=str,
+        default=None,
+        help="Only include models whose config.architectures[0] matches this class "
+        "(e.g. 'LlamaForCausalLM'). Use after adding a new adapter to populate the "
+        "registry with that architecture's models without rescanning everything.",
+    )
 
     args = parser.parse_args()
 
@@ -610,6 +836,8 @@ Examples:
         task=args.task,
         checkpoint_interval=args.checkpoint_interval,
         min_downloads=args.min_downloads,
+        canonical_sweep=not args.no_canonical_sweep,
+        architecture=args.architecture,
     )
 
 

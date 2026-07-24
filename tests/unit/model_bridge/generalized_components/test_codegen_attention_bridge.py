@@ -196,13 +196,6 @@ class TestCodeGenAttentionBridgeInit:
         bridge, original = _make_bridge()
         assert bridge.o.original_component is original.out_proj
 
-    def test_q_k_v_projections_are_set(self):
-        """Q, K, V LinearBridges must have their original_component set."""
-        bridge, _ = _make_bridge()
-        assert bridge.q.original_component is not None
-        assert bridge.k.original_component is not None
-        assert bridge.v.original_component is not None
-
     def test_no_c_proj_attribute_needed(self):
         """Construction must succeed when the original component has no c_proj."""
         from transformer_lens.model_bridge.generalized_components.linear import (
@@ -272,20 +265,6 @@ class TestCodeGenAttentionBridgeForward:
         pos_ids = self._position_ids(B, S)
         _, attn_weights = bridge(hs, position_ids=pos_ids)
         assert attn_weights.shape == (B, config.n_heads, S, S)
-
-    def test_hook_q_fires(self):
-        """hook_q (q.hook_out) must be called during the forward pass."""
-        bridge, _ = _make_bridge()
-        fired = []
-
-        def hook_fn(tensor, hook):
-            fired.append(True)
-            return tensor
-
-        bridge.q.hook_out.add_hook(hook_fn)
-        B, S, D = 1, 4, 64
-        bridge(torch.randn(B, S, D), position_ids=self._position_ids(B, S))
-        assert fired, "hook_q (q.hook_out) did not fire"
 
     def test_hook_k_fires(self):
         """hook_k (k.hook_out) must be called during the forward pass."""

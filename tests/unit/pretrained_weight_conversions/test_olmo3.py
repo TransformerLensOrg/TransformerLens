@@ -12,7 +12,7 @@ Tests cover:
 import torch
 import torch.nn as nn
 
-from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.config.hooked_transformer_config import HookedTransformerConfig
 from transformer_lens.pretrained.weight_conversions.olmo3 import convert_olmo3_weights
 
 
@@ -179,20 +179,6 @@ class TestOlmo3QKNorm:
 class TestOlmo3GQA:
     """Test Grouped Query Attention (GQA) handling."""
 
-    def test_gqa_underscore_prefix(self):
-        """Test that GQA models have underscore prefix for K/V weights."""
-        cfg = get_olmo3_config(n_key_value_heads=1)  # GQA
-        model = MockOlmo3Model(cfg)
-
-        state_dict = convert_olmo3_weights(model, cfg)
-
-        for layer in range(cfg.n_layers):
-            # GQA should have underscore prefix in key names
-            assert f"blocks.{layer}.attn._W_K" in state_dict
-            assert f"blocks.{layer}.attn._W_V" in state_dict
-            assert f"blocks.{layer}.attn._b_K" in state_dict
-            assert f"blocks.{layer}.attn._b_V" in state_dict
-
     def test_no_gqa_no_underscore_prefix(self):
         """Test that non-GQA models don't have underscore prefix."""
         # Note: OLMo 3 always uses GQA (n_key_value_heads < n_heads)
@@ -229,18 +215,6 @@ class TestOlmo3DeviceConsistency:
                 f"Tensor {key} is on {value.device} but should be on "
                 f"{model.model.embed_tokens.weight.device}"
             )
-
-    def test_bias_tensors_use_correct_device(self):
-        """Test that zero bias tensors use device from source weights."""
-        cfg = get_olmo3_config()
-        model = MockOlmo3Model(cfg)
-
-        state_dict = convert_olmo3_weights(model, cfg)
-
-        # Check that bias tensors use the device from source weights
-        expected_device = model.model.layers[0].self_attn.q_proj.weight.device
-        assert state_dict["blocks.0.attn.b_Q"].device == expected_device
-        assert state_dict["blocks.0.attn._b_K"].device == expected_device
 
 
 # ============================================================================

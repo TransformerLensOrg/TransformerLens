@@ -23,7 +23,13 @@ def to_numpy(tensor):
         array = np.array(tensor)
         return array
     elif isinstance(tensor, (torch.Tensor, torch.nn.parameter.Parameter)):
-        return tensor.detach().cpu().numpy()
+        tensor = tensor.detach().cpu()
+        # NumPy has no bfloat16 dtype, so calling .numpy() directly on a bfloat16
+        # tensor raises a TypeError. Upcast to float32 first (bfloat16 is common in
+        # TransformerLens since many pretrained models are loaded in reduced precision).
+        if tensor.dtype == torch.bfloat16:
+            tensor = tensor.to(torch.float32)
+        return tensor.numpy()
     elif isinstance(tensor, (int, float, bool, str)):
         return np.array(tensor)
     else:
@@ -115,7 +121,7 @@ def get_offset_position_ids(
     """
     Returns the indices of non-padded tokens, offset by the position of the first attended token.
     """
-    # shift the position ids so that the id at the the first attended token position becomes zero.
+    # shift the position ids so that the id at the first attended token position becomes zero.
     # The position ids of the prepending pad tokens are shifted to -1.
     shifted_position_ids = attention_mask.cumsum(dim=1) - 1  # [batch, tokens_length]
 

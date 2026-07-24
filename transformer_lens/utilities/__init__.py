@@ -41,7 +41,7 @@ from .initialization_utils import (
 )
 from .library_utils import is_library_available
 from .lm_utils import lm_accuracy, lm_cross_entropy_loss
-from .logits_utils import sample_logits
+from .logits_utils import logits_to_df, sample_logits
 from .matrix import (
     composition_scores,
     get_matrix_corner,
@@ -50,10 +50,13 @@ from .matrix import (
 # Re-export multi-GPU helpers here (devices.py must not import multi_gpu directly)
 from .multi_gpu import (
     calculate_available_device_cuda_memory,
+    count_unique_devices,
     determine_available_memory_for_available_devices,
+    find_embedding_device,
     get_best_available_cuda_device,
     get_best_available_device,
     get_device_for_block_index,
+    resolve_device_map,
     sort_devices_based_on_available_memory,
 )
 from .slice import Slice, SliceInput
@@ -77,3 +80,4 @@ from .tokenize_utils import (
     get_tokens_with_bos_removed,
     tokenize_and_concatenate,
 )
+from .typed_module_list import TypedModuleList

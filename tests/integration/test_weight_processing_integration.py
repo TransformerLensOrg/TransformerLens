@@ -62,84 +62,126 @@ class TestWeightProcessingIntegration:
         }
 
     def test_fold_layer_norm_biases_consistency(self, sample_tensors):
-        """Test that fold_layer_norm_biases produces consistent results."""
+        """Folding LN bias adds the W-projected LN bias to each attention bias."""
         wq_tensor, wk_tensor, wv_tensor = sample_tensors["weights"]
         bq_tensor, bk_tensor, bv_tensor = sample_tensors["biases"]
         ln_bias = sample_tensors["ln_bias"]
 
-        # Test the function
         new_bq, new_bk, new_bv = ProcessWeights.fold_layer_norm_biases(
             wq_tensor, wk_tensor, wv_tensor, bq_tensor, bk_tensor, bv_tensor, ln_bias
         )
 
-        # Verify shapes are preserved
         assert new_bq.shape == bq_tensor.shape
         assert new_bk.shape == bk_tensor.shape
         assert new_bv.shape == bv_tensor.shape
 
-        # Verify the mathematical correctness
-        expected_bq = bq_tensor + (wq_tensor * ln_bias[None, :, None]).sum(-2)
-        expected_bk = bk_tensor + (wk_tensor * ln_bias[None, :, None]).sum(-2)
-        expected_bv = bv_tensor + (wv_tensor * ln_bias[None, :, None]).sum(-2)
+        # Effect: new_b[h, j] == b[h, j] + sum_i W[h, i, j] * ln_bias[i].
+        # Use einsum as an independent reference (different op + axis spec than the
+        # implementation's (w * ln_bias[None, :, None]).sum(-2)), so a wrong axis or
+        # broadcast in the impl diverges from this expected value.
+        for w_tensor, b_tensor, new_b in (
+            (wq_tensor, bq_tensor, new_bq),
+            (wk_tensor, bk_tensor, new_bk),
+            (wv_tensor, bv_tensor, new_bv),
+        ):
+            expected = b_tensor + torch.einsum("hij,i->hj", w_tensor, ln_bias)
+            # The einsum reduces the d_model sum in a different order than the impl's
+            # .sum(-2), so allow fp32 summation-order slack (a wrong axis is order-1 off).
+            torch.testing.assert_close(new_b, expected, atol=1e-4, rtol=1e-3)
 
-        torch.testing.assert_close(new_bq, expected_bq)
-        torch.testing.assert_close(new_bk, expected_bk)
-        torch.testing.assert_close(new_bv, expected_bv)
+        # Independent scalar spot-check on one (head, d_head) entry: a plain dot product
+        # over d_model, no broadcasting, to pin down the contraction axis.
+        h, j = 3, 7
+        manual = bq_tensor[h, j] + (wq_tensor[h, :, j] * ln_bias).sum()
+        torch.testing.assert_close(new_bq[h, j], manual, atol=1e-4, rtol=1e-3)
+
+        # Centering/zero-bias guard: with zero LN bias the attention biases are unchanged.
+        zero_bq, zero_bk, zero_bv = ProcessWeights.fold_layer_norm_biases(
+            wq_tensor,
+            wk_tensor,
+            wv_tensor,
+            bq_tensor,
+            bk_tensor,
+            bv_tensor,
+            torch.zeros_like(ln_bias),
+        )
+        torch.testing.assert_close(zero_bq, bq_tensor)
+        torch.testing.assert_close(zero_bk, bk_tensor)
+        torch.testing.assert_close(zero_bv, bv_tensor)
 
     def test_fold_layer_norm_weights_consistency(self, sample_tensors):
-        """Test that fold_layer_norm_weights produces consistent results."""
+        """Folding LN weight scales each d_model input row of W by ln_weight[i]."""
         wq_tensor, wk_tensor, wv_tensor = sample_tensors["weights"]
         ln_weight = sample_tensors["ln_weight"]
 
-        # Test the function
         new_wq, new_wk, new_wv = ProcessWeights.fold_layer_norm_weights(
             wq_tensor, wk_tensor, wv_tensor, ln_weight
         )
 
-        # Verify shapes are preserved
         assert new_wq.shape == wq_tensor.shape
         assert new_wk.shape == wk_tensor.shape
         assert new_wv.shape == wv_tensor.shape
 
-        # Verify the mathematical correctness
-        expected_wq = wq_tensor * ln_weight[None, :, None]
-        expected_wk = wk_tensor * ln_weight[None, :, None]
-        expected_wv = wv_tensor * ln_weight[None, :, None]
+        # Effect: new_W[h, i, j] == W[h, i, j] * ln_weight[i], i.e. the scaling indexes
+        # the d_model axis (axis 1), NOT d_head. Use einsum as an independent reference
+        # (different op than the impl's ln_weight[None, :, None] broadcast); a wrong
+        # broadcast index (e.g. scaling d_head) diverges from this expected value.
+        for w_tensor, new_w in (
+            (wq_tensor, new_wq),
+            (wk_tensor, new_wk),
+            (wv_tensor, new_wv),
+        ):
+            expected = torch.einsum("hij,i->hij", w_tensor, ln_weight)
+            torch.testing.assert_close(new_w, expected)
 
-        torch.testing.assert_close(new_wq, expected_wq)
-        torch.testing.assert_close(new_wk, expected_wk)
-        torch.testing.assert_close(new_wv, expected_wv)
+        # Independent guard distinguishing the d_model axis from d_head: scaling a single
+        # d_model row by ln_weight[i] must multiply that whole row, leaving others intact.
+        i = 5
+        torch.testing.assert_close(new_wq[:, i, :], wq_tensor[:, i, :] * ln_weight[i])
+
+        # Unit LN weight is the identity on W.
+        ident_wq, _, _ = ProcessWeights.fold_layer_norm_weights(
+            wq_tensor, wk_tensor, wv_tensor, torch.ones_like(ln_weight)
+        )
+        torch.testing.assert_close(ident_wq, wq_tensor)
 
     def test_center_attention_weights_consistency(self, sample_tensors):
-        """Test that center_attention_weights produces consistent results."""
+        """Centering subtracts the per-(head, d_head) mean over d_model, making it zero."""
         wq_tensor, wk_tensor, wv_tensor = sample_tensors["weights"]
 
-        # Test the function
         centered_wq, centered_wk, centered_wv = ProcessWeights.center_attention_weights(
             wq_tensor, wk_tensor, wv_tensor
         )
 
-        # Verify shapes are preserved
         assert centered_wq.shape == wq_tensor.shape
         assert centered_wk.shape == wk_tensor.shape
         assert centered_wv.shape == wv_tensor.shape
 
-        # Verify the mathematical correctness
-        import einops
+        for w_tensor, centered in (
+            (wq_tensor, centered_wq),
+            (wk_tensor, centered_wk),
+            (wv_tensor, centered_wv),
+        ):
+            # Defining effect: mean over d_model (axis 1) is zero for every (head, d_head).
+            # This is computed without einops.reduce, so a wrong reduction axis in the
+            # impl leaves a nonzero mean here and fails. A bug collapsing d_head instead
+            # would also fail this.
+            torch.testing.assert_close(
+                centered.mean(dim=1),
+                torch.zeros(w_tensor.shape[0], w_tensor.shape[2]),
+                atol=1e-6,
+                rtol=0,
+            )
+            # The removed component is constant across d_model (a pure column mean), so
+            # the residual w - centered equals the broadcast per-(head, d_head) mean.
+            expected_mean = w_tensor.mean(dim=1, keepdim=True)
+            torch.testing.assert_close(w_tensor - centered, expected_mean.expand_as(w_tensor))
 
-        expected_wq = wq_tensor - einops.reduce(
-            wq_tensor, "head_index d_model d_head -> head_index 1 d_head", "mean"
+        # Centering is idempotent: re-centering an already-centered weight is a no-op.
+        recentered_wq, _, _ = ProcessWeights.center_attention_weights(
+            centered_wq, centered_wk, centered_wv
         )
-        expected_wk = wk_tensor - einops.reduce(
-            wk_tensor, "head_index d_model d_head -> head_index 1 d_head", "mean"
-        )
-        expected_wv = wv_tensor - einops.reduce(
-            wv_tensor, "head_index d_model d_head -> head_index 1 d_head", "mean"
-        )
-
-        torch.testing.assert_close(centered_wq, expected_wq)
-        torch.testing.assert_close(centered_wk, expected_wk)
-        torch.testing.assert_close(centered_wv, expected_wv)
+        torch.testing.assert_close(recentered_wq, centered_wq)
 
     def test_extract_attention_tensors_with_hooked_transformer(self, gpt2_small_model):
         """Test tensor extraction with HookedTransformer model."""
@@ -165,68 +207,6 @@ class TestWeightProcessingIntegration:
         assert wv_tensor.shape == expected_shape
 
         expected_bias_shape = (cfg.n_heads, cfg.d_head)
-        assert bq_tensor.shape == expected_bias_shape
-        assert bk_tensor.shape == expected_bias_shape
-        assert bv_tensor.shape == expected_bias_shape
-
-        # Verify tensors are properly extracted
-        assert wq_tensor is not None
-        assert wk_tensor is not None
-        assert wv_tensor is not None
-
-    @pytest.mark.skip(reason="Test is no longer needed for new architecture")
-    def test_extract_attention_tensors_with_adapter(self, gpt2_small_adapter):
-        """Test tensor extraction with HuggingFace adapter."""
-        # Create a mock state dict with HuggingFace format
-        d_model = 768
-        n_heads = 12
-        d_head = 64
-
-        # Combined QKV weight: [d_model, 3*d_model]
-        combined_qkv_weight = torch.randn(d_model, 3 * d_model)
-        # Combined QKV bias: [3*d_model]
-        combined_qkv_bias = torch.randn(3 * d_model)
-
-        # Mock state dict
-        state_dict = {
-            "transformer.h.0.attn.c_attn.weight": combined_qkv_weight,
-            "transformer.h.0.attn.c_attn.bias": combined_qkv_bias,
-        }
-
-        # Mock config - define as function to avoid variable scope issue
-        def create_mock_config():
-            class MockConfig:
-                pass
-
-            config = MockConfig()
-            config.n_heads = n_heads
-            config.d_head = d_head
-            config.d_model = d_model
-            return config
-
-        cfg = create_mock_config()
-        layer = 0
-        adapter = gpt2_small_adapter
-
-        # Extract tensors
-        tensors = ProcessWeights.extract_attention_tensors_for_folding(
-            state_dict, cfg, layer, adapter
-        )
-
-        wq_tensor = tensors["wq"]
-        wk_tensor = tensors["wk"]
-        wv_tensor = tensors["wv"]
-        bq_tensor = tensors["bq"]
-        bk_tensor = tensors["bk"]
-        bv_tensor = tensors["bv"]
-
-        # Verify shapes (should be in TransformerLens format)
-        expected_shape = (n_heads, d_model, d_head)
-        assert wq_tensor.shape == expected_shape
-        assert wk_tensor.shape == expected_shape
-        assert wv_tensor.shape == expected_shape
-
-        expected_bias_shape = (n_heads, d_head)
         assert bq_tensor.shape == expected_bias_shape
         assert bk_tensor.shape == expected_bias_shape
         assert bv_tensor.shape == expected_bias_shape

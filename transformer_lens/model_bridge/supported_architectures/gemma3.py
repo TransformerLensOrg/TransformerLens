@@ -52,10 +52,10 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
         self.cfg.attn_implementation = "eager"
 
         self.weight_processing_conversions = {
-            # Note: Gemma3 scales embeddings by sqrt(d_model) in the forward pass.
-            # This is handled in setup_hook_compatibility() which applies the scaling
-            # to hook_embed output at runtime, matching HuggingFace's behavior.
-            # We do NOT scale the stored weights here.
+            # Note: Gemma3TextScaledWordEmbedding scales by sqrt(d_model) inside
+            # its own forward(). Bridge.embed wraps that layer, so embed.hook_out
+            # already captures the scaled value — no weight pre-scaling and no
+            # hook_conversion needed (setup_hook_compatibility is a no-op).
             #
             # Q/K/V weight conversions
             "blocks.{i}.attn.q.weight": ParamProcessingConversion(
@@ -170,24 +170,6 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
             "ln_final": RMSNormalizationBridge(name="model.norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head"),
         }
-
-    def setup_hook_compatibility(self, bridge: Any) -> None:
-        """Setup hook compatibility for Gemma3 models.
-
-        Unlike Gemma1/Gemma2, Gemma3 uses Gemma3TextScaledWordEmbedding which
-        scales embeddings by sqrt(d_model) INSIDE the embedding layer's forward().
-        Therefore we do NOT need a hook_conversion — the embed.hook_out already
-        captures the scaled output. Adding a conversion would double-scale.
-
-        (Gemma1/Gemma2 scale in GemmaModel.forward() AFTER the embedding layer,
-        so their adapters correctly use EmbeddingScaleConversion to match HT.)
-
-        Args:
-            bridge: The TransformerBridge instance
-        """
-        # No embed scaling conversion needed — Gemma3TextScaledWordEmbedding
-        # already applies sqrt(d_model) scaling in its forward() method.
-        pass
 
     def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
         """Set up rotary embedding references and native autograd for Gemma-3 component testing.

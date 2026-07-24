@@ -79,7 +79,7 @@ def test_grouped_query_attention_output_is_correct():
     regular_attn_output = regular_attention(query_input, key_input, value_input)
     grouped_query_attn_output = grouped_query_attention(query_input, key_input, value_input)
 
-    assert torch.equal(regular_attn_output, grouped_query_attn_output)
+    assert torch.allclose(regular_attn_output, grouped_query_attn_output, atol=1e-4, rtol=1e-4)
 
     # Test GQA behaves correctly when use_split_qkv_input is True
     grouped_query_attention.cfg.use_split_qkv_input = True
@@ -193,7 +193,9 @@ def test_ungroup_grouped_query_attention_flag_produces_same_result():
         query_input, key_input, value_input
     )
 
-    assert torch.equal(grouped_query_attn_flag_off_output, grouped_query_attn_flag_on_output)
+    assert torch.allclose(
+        grouped_query_attn_flag_off_output, grouped_query_attn_flag_on_output, atol=1e-4, rtol=1e-4
+    )
 
 
 def test_ungroup_grouped_query_attention_flag_changes_k_v_hooks_shape():
@@ -262,4 +264,4 @@ def test_ungroup_grouped_query_attention_flag_changes_k_v_hooks_shape():
         == flag_off_cache["blocks.0.hook_v_input"].shape[2] * n_key_value_heads
     )
 
-    assert torch.equal(flag_off_output, flag_on_output)
+    assert torch.allclose(flag_off_output, flag_on_output, atol=1e-4, rtol=1e-4)

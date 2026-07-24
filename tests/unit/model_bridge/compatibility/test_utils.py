@@ -93,29 +93,8 @@ class TestUtilsWithTransformerBridge:
 
     def test_generation_compatibility(self, model):
         """Test that generation works correctly with TransformerBridge."""
+        if not model.adapter.supports_generation:
+            pytest.skip("Generation not supported for this architecture")
         prompt = "Once upon a time"
-
-        # Test basic generation if supported
-        try:
-            generated = model.generate(prompt, max_new_tokens=5)
-            assert isinstance(generated, (str, list, torch.Tensor))
-        except (AttributeError, RuntimeError):
-            # Generation might not be implemented yet for all bridge models
-            pytest.skip("Generation not supported for this TransformerBridge model")
-
-    @pytest.mark.parametrize("method", ["to_tokens", "to_string", "to_str_tokens"])
-    def test_tokenization_methods(self, model, method):
-        """Test various tokenization methods work with TransformerBridge."""
-        prompt = "Test tokenization"
-
-        if method == "to_tokens":
-            result = model.to_tokens(prompt)
-            assert isinstance(result, torch.Tensor)
-        elif method == "to_string":
-            tokens = model.to_tokens(prompt)
-            result = model.to_string(tokens)
-            assert isinstance(result, (str, list))
-        elif method == "to_str_tokens":
-            result = model.to_str_tokens(prompt)
-            assert isinstance(result, list)
-            assert all(isinstance(token, str) for token in result)
+        generated = model.generate(prompt, max_new_tokens=5)
+        assert isinstance(generated, (str, list, torch.Tensor))

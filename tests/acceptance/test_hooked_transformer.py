@@ -216,12 +216,12 @@ def test_from_pretrained_revision():
         raise AssertionError("Should have raised an error")
 
 
-def test_bloom_similarity_with_hf_model_with_kv_cache_activated():
-    tf_model = HookedTransformer.from_pretrained(
-        "bigscience/bloom-560m", default_prepend_bos=False, device="cpu"
-    )
-    hf_model = AutoModelForCausalLM.from_pretrained("bigscience/bloom-560m")
-    hf_tokenizer = AutoTokenizer.from_pretrained("bigscience/bloom-560m")
+def test_bloom_similarity_with_hf_model_with_kv_cache_activated(
+    bloom_560m_hooked, bloom_560m_hf_model, bloom_560m_hf_tokenizer
+):
+    tf_model = bloom_560m_hooked
+    hf_model = bloom_560m_hf_model
+    hf_tokenizer = bloom_560m_hf_tokenizer
 
     output_tf = tf_model.generate(
         text, do_sample=False, use_past_kv_cache=True, verbose=False, max_new_tokens=10
@@ -234,6 +234,37 @@ def test_bloom_similarity_with_hf_model_with_kv_cache_activated():
     output_hf_str = hf_tokenizer.decode(output_hf_tokens[0], skip_special_tokens=True)
 
     assert output_tf == output_hf_str
+
+
+def test_bloom_similarity_with_hf_model_with_kv_cache_activated_stream(
+    bloom_560m_hooked, bloom_560m_hf_model, bloom_560m_hf_tokenizer
+):
+    tf_model = bloom_560m_hooked
+    hf_model = bloom_560m_hf_model
+    hf_tokenizer = bloom_560m_hf_tokenizer
+
+    final_output = ""
+    for result in tf_model.generate_stream(
+        text,
+        do_sample=False,
+        use_past_kv_cache=True,
+        verbose=False,
+        max_new_tokens=10,
+        max_tokens_per_yield=10,
+    ):
+        final_output += tf_model.to_string(result[0])
+
+    hf_input_ids = hf_tokenizer(text, return_tensors="pt").input_ids
+    output_hf_tokens = hf_model.generate(
+        hf_input_ids,
+        do_sample=False,
+        max_new_tokens=10,
+    )
+    output_hf_str = hf_tokenizer.decode(output_hf_tokens[0], skip_special_tokens=True)
+
+    assert (
+        final_output == output_hf_str
+    ), f"\nStreaming output: {final_output}\nHF output: {output_hf_str}"
 
 
 def check_norm_folding(

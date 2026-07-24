@@ -1,3 +1,6 @@
+# HookedTransformers model registry. If you are looking for TransformerBridge's supported models
+# see transformer_lens/tools/model_registry/data/supported_models.json or the docs page at
+# https://transformerlensorg.github.io/TransformerLens/generated/transformer_bridge_models.html
 OFFICIAL_MODEL_NAMES: list[str] = [
     "01-ai/Yi-34B",
     "01-ai/Yi-34B-Chat",

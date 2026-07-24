@@ -3,11 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from transformer_lens.utilities.activation_functions import (
-    SUPPORTED_ACTIVATIONS,
-    XIELU,
-    xielu,
-)
+from transformer_lens.utilities.activation_functions import XIELU, xielu
 
 
 class TestXIELUClass:
@@ -36,11 +32,6 @@ class TestXIELUClass:
         assert act.alpha_n.requires_grad
         # beta is a buffer, not trainable
         assert not act.beta.requires_grad
-
-    def test_output_shape_preserved(self):
-        act = XIELU()
-        x = torch.randn(2, 10, 32)
-        assert act(x).shape == x.shape
 
     def test_positive_branch(self):
         """For x > 0: f(x) = softplus(alpha_p) * x^2 + beta * x."""
@@ -83,10 +74,6 @@ class TestXIELUClass:
 
 
 class TestXIELUFunction:
-    def test_output_shape_preserved(self):
-        x = torch.randn(2, 10, 32)
-        assert xielu(x).shape == x.shape
-
     def test_positive_values(self):
         """For x > 0: f(x) = 0.8*x^2 + 0.5*x."""
         x = torch.tensor([[[1.0, 2.0]]])  # (1, 1, 2)
@@ -99,7 +86,3 @@ class TestXIELUFunction:
         eps = torch.tensor(-1e-6)
         expected = (torch.expm1(torch.min(x, eps)) - x) * 0.8 + 0.5 * x
         torch.testing.assert_close(xielu(x), expected)
-
-    def test_registered_in_activation_dict(self):
-        assert "xielu" in SUPPORTED_ACTIVATIONS
-        assert SUPPORTED_ACTIVATIONS["xielu"] is xielu

@@ -24,10 +24,28 @@ _mps_warned = False
 # Bump this when a PyTorch release ships verified MPS fixes.
 _MPS_MIN_SAFE_TORCH_VERSION: tuple[int, ...] | None = None
 
+# torch 2.8.0 on MPS has an upstream bug where torch.nn.functional.linear
+# produces incorrect results for non-contiguous tensors. This silently
+# corrupts generate() output and attention computations. Fixed in 2.9.0.
+# See: https://github.com/pytorch/pytorch/issues/161640
+# See: https://github.com/TransformerLensOrg/TransformerLens/issues/1062
+_MPS_BROKEN_TORCH_VERSIONS: tuple[tuple[int, ...], ...] = ((2, 8),)
+
+_mps_broken_torch_warned = False
+
 
 def _torch_version_tuple() -> tuple[int, ...]:
     """Parse torch.__version__ into a comparable tuple, ignoring pre-release suffixes."""
     return tuple(int(x) for x in torch.__version__.split("+")[0].split(".")[:2])
+
+
+def _torch_mps_has_known_broken_bug() -> bool:
+    """True if the installed torch version has a known-broken MPS path.
+
+    Distinct from the generic MPS-may-be-unreliable warning: these are specific,
+    upstream-fixed bugs where output is silently wrong regardless of opt-in.
+    """
+    return _torch_version_tuple() in _MPS_BROKEN_TORCH_VERSIONS
 
 
 # ---------------------------------------------------------------------------
@@ -35,62 +53,80 @@ def _torch_version_tuple() -> tuple[int, ...]:
 # ---------------------------------------------------------------------------
 
 
-def get_device() -> torch.device:
+def get_device() -> str:
     """Get the best available device, with MPS safety checks.
 
     MPS is only auto-selected when the environment variable
-    ``TRANSFORMERLENS_ALLOW_MPS=1`` is set **and** the installed PyTorch
-    version meets or exceeds ``_MPS_MIN_SAFE_TORCH_VERSION``.
+    ``TRANSFORMERLENS_ALLOW_MPS=1`` is set.
 
     Returns:
-        torch.device: The best available device (cuda, mps, or cpu)
+        str: The best available device name (cuda, mps, or cpu)
     """
     if torch.cuda.is_available():
-        return torch.device("cuda")
+        return "cuda"
 
     if torch.backends.mps.is_available() and torch.backends.mps.is_built():
-        major_version = int(torch.__version__.split(".")[0])
-        if major_version >= 2:
-            # Only auto-select MPS when explicitly opted-in via env var
-            if os.environ.get("TRANSFORMERLENS_ALLOW_MPS", "") == "1":
-                return torch.device("mps")
-            logging.info(
-                "MPS device available but not auto-selected due to known correctness issues "
-                "(PyTorch %s). Set TRANSFORMERLENS_ALLOW_MPS=1 to override. See: "
-                "https://github.com/TransformerLensOrg/TransformerLens/issues/1178",
-                torch.__version__,
-            )
+        # Only auto-select MPS when explicitly opted-in via env var
+        if os.environ.get("TRANSFORMERLENS_ALLOW_MPS", "") == "1":
+            return "mps"
+        logging.info(
+            "MPS device available but not auto-selected due to known correctness issues "
+            "(PyTorch %s). Set TRANSFORMERLENS_ALLOW_MPS=1 to override. See: "
+            "https://github.com/TransformerLensOrg/TransformerLens/issues/1178",
+            torch.__version__,
+        )
 
-    return torch.device("cpu")
+    return "cpu"
 
 
-def warn_if_mps(device):
+def warn_if_mps(device: Union[str, torch.device]) -> None:
     """Emit a one-time warning if device is MPS and TRANSFORMERLENS_ALLOW_MPS is not set.
 
     Automatically suppressed when the installed PyTorch version meets or exceeds
     _MPS_MIN_SAFE_TORCH_VERSION (currently unset — no version is considered safe yet).
+
+    Also emits a separate, stronger warning for known-broken torch versions on MPS
+    (see _MPS_BROKEN_TORCH_VERSIONS). This warning fires even when the user has
+    opted in via TRANSFORMERLENS_ALLOW_MPS=1, because the affected operations
+    produce silently wrong outputs regardless of opt-in.
     """
-    global _mps_warned
-    if _mps_warned:
-        return
+    global _mps_warned, _mps_broken_torch_warned
     if isinstance(device, torch.device):
         device = device.type
-    if isinstance(device, str) and device == "mps":
-        if (
-            _MPS_MIN_SAFE_TORCH_VERSION is not None
-            and _torch_version_tuple() >= _MPS_MIN_SAFE_TORCH_VERSION
-        ):
-            return
-        if os.environ.get("TRANSFORMERLENS_ALLOW_MPS", "") != "1":
-            _mps_warned = True
-            warnings.warn(
-                "MPS backend may produce silently incorrect results (PyTorch "
-                f"{torch.__version__}). "
-                "Set TRANSFORMERLENS_ALLOW_MPS=1 to suppress this warning. "
-                "See: https://github.com/TransformerLensOrg/TransformerLens/issues/1178",
-                UserWarning,
-                stacklevel=2,
-            )
+    if not (isinstance(device, str) and device == "mps"):
+        return
+
+    # Known-broken torch versions always warn (can't be opted-out of).
+    if _torch_mps_has_known_broken_bug() and not _mps_broken_torch_warned:
+        _mps_broken_torch_warned = True
+        warnings.warn(
+            f"PyTorch {torch.__version__} has a known MPS bug that produces "
+            "silently incorrect results (torch.nn.functional.linear on "
+            "non-contiguous tensors). This corrupts generate() output and "
+            "attention computations. Upgrade to torch >= 2.9.0. "
+            "See: https://github.com/TransformerLensOrg/TransformerLens/issues/1062 "
+            "and https://github.com/pytorch/pytorch/issues/161640",
+            UserWarning,
+            stacklevel=2,
+        )
+
+    if _mps_warned:
+        return
+    if (
+        _MPS_MIN_SAFE_TORCH_VERSION is not None
+        and _torch_version_tuple() >= _MPS_MIN_SAFE_TORCH_VERSION
+    ):
+        return
+    if os.environ.get("TRANSFORMERLENS_ALLOW_MPS", "") != "1":
+        _mps_warned = True
+        warnings.warn(
+            "MPS backend may produce silently incorrect results (PyTorch "
+            f"{torch.__version__}). "
+            "Set TRANSFORMERLENS_ALLOW_MPS=1 to suppress this warning. "
+            "See: https://github.com/TransformerLensOrg/TransformerLens/issues/1178",
+            UserWarning,
+            stacklevel=2,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -129,7 +165,7 @@ def move_to_and_update_config(
     Returns:
         The model after the operation
     """
-    from transformer_lens.utils import warn_if_mps
+    from transformer_lens.utilities import warn_if_mps
 
     if isinstance(device_or_dtype, torch.device):
         warn_if_mps(device_or_dtype)

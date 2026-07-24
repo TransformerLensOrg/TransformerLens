@@ -53,57 +53,6 @@ def bert_nsp(mock_transformer_bridge):
     return BertNextSentencePrediction(mock_transformer_bridge)
 
 
-def test_init(mock_transformer_bridge):
-    """Test initialization of BertNextSentencePrediction with TransformerBridge"""
-    bert_nsp = BertNextSentencePrediction(mock_transformer_bridge)
-    assert bert_nsp.model == mock_transformer_bridge
-
-
-def test_call_chain(bert_nsp, mock_transformer_bridge):
-    """Test that the call chain works with TransformerBridge"""
-    input_tensor = torch.tensor([[1, 2, 3]])
-    token_type_ids = torch.tensor([[0, 0, 1]])
-    attention_mask = torch.tensor([[1, 1, 1]])
-
-    # Set up specific mock returns
-    mock_resid = torch.randn(1, 3, 768)
-
-    # For TransformerBridge, we might need to adapt the encoder_output call
-    # This depends on how BERT models are implemented in the bridge
-    if hasattr(mock_transformer_bridge, "encoder_output"):
-        mock_transformer_bridge.encoder_output.return_value = mock_resid
-    else:
-        # Fallback: mock the forward call directly
-        mock_transformer_bridge.return_value = mock_resid
-
-    mock_pooled = torch.randn(1, 768)
-    mock_transformer_bridge.pooler.return_value = mock_pooled
-
-    mock_nsp_output = torch.tensor([[0.7, 0.3]])
-    mock_transformer_bridge.nsp_head.return_value = mock_nsp_output
-
-    # Call forward
-    try:
-        output = bert_nsp.forward(
-            input_tensor, token_type_ids=token_type_ids, one_zero_attention_mask=attention_mask
-        )
-
-        # Verify the chain of calls (adapted for TransformerBridge)
-        if hasattr(mock_transformer_bridge, "encoder_output"):
-            mock_transformer_bridge.encoder_output.assert_called_once_with(
-                input_tensor, token_type_ids, attention_mask
-            )
-
-        mock_transformer_bridge.pooler.assert_called_once()
-        mock_transformer_bridge.nsp_head.assert_called_once_with(mock_pooled)
-
-        # Verify output matches the mock NSP head output
-        assert torch.equal(output, mock_nsp_output)
-    except AttributeError as e:
-        # If TransformerBridge doesn't support the required methods yet, skip the test
-        pytest.skip(f"TransformerBridge doesn't support required method: {e}")
-
-
 def test_tokenizer_integration(bert_nsp, mock_transformer_bridge):
     """Test that tokenizer integration works with TransformerBridge"""
     input_sentences = ["First sentence.", "Second sentence."]

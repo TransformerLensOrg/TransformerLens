@@ -499,7 +499,7 @@ hide-toc: true
 ---
 # HookedTransformer Model Properties
 
-also see the [interactive model table](../_static/model_properties_table_interactive.html)
+also see the <a href="../_static/model_properties_table_interactive.html" target="_blank" rel="noopener">interactive model table</a>
 """
 
 
@@ -625,6 +625,16 @@ def get_model_table(
             abridged_table: pd.DataFrame = abridge_model_table(model_table)
             write_model_table(abridged_table, model_table_path, format="csv")
             write_model_table(abridged_table, model_table_path, format="md")
+            # The interactive table HTML (docs/source/_static/...) fetches
+            # `model_properties_table.{jsonl,version}` from its own dir.
+            # Sphinx auto-copies _static/ into the build, so co-locating the
+            # data there is the simplest way to expose it to the browser.
+            import shutil
+
+            for ext in ("jsonl", "version"):
+                src = model_table_path.with_suffix(f".{ext}")
+                if src.exists():
+                    shutil.copy(src, STATIC_DIR / src.name)
     else:
         # read the table from jsonl
         model_table = pd.read_json(model_table_path, orient="records", lines=True)
@@ -842,6 +852,25 @@ for English, and may not be the same for other languages.
 #bt-root .bt-detail-grid dd {
     margin: 0 0 6px 0; font-family: monospace; font-size: 13px;
 }
+#bt-root .bt-detail-section {
+    margin-top: 16px; padding-top: 12px;
+    border-top: 1px solid var(--color-foreground-border, #ddd);
+    font-size: 13px; font-weight: 600;
+    color: var(--color-foreground-primary, #333);
+    letter-spacing: 0.02em;
+}
+#bt-root .bt-detail-section-note {
+    font-size: 11px; font-weight: 400;
+    color: var(--color-foreground-muted, #999); margin-left: 8px;
+}
+#bt-root .bt-detail-suffix {
+    font-size: 11px; font-style: italic;
+    color: var(--color-foreground-muted, #999); margin-left: 4px;
+    font-family: sans-serif;
+}
+#bt-root .bt-detail-grid dd.bt-detail-absent {
+    color: var(--color-foreground-muted, #999); font-style: italic;
+}
 #bt-root .bt-detail-loading { color: var(--color-foreground-muted, #999); font-style: italic; }
 #bt-root .bt-detail-error { color: #dc3545; font-style: italic; }
 #bt-root .bt-pag {
@@ -874,6 +903,7 @@ for English, and may not be the same for other languages.
     <select id="btArch"><option value="">All Architectures</option></select>
     <select id="btPrefix"><option value="">All Organizations</option></select>
     <select id="btStatus"><option value="">All Statuses</option><option value="1">Verified</option><option value="0">Unverified</option><option value="3">Failed</option></select>
+    <label class="bt-canonical-toggle"><input type="checkbox" id="btCanonical"> Canonical only</label>
     <span class="bt-count" id="btCount"></span>
   </div>
   <div class="bt-wrap">
@@ -899,55 +929,8 @@ for English, and may not be the same for other languages.
 (function() {
     const PS = 25, COLS = 9;
     const SM = {0:'Unverified',1:'Verified',2:'Unverified',3:'Failed'};
-    // Canonical org per supported architecture. Pinned to top of the Organizations filter.
-    const OFFICIAL_ORGS = {
-        ApertusForCausalLM: ['swiss-ai'],
-        BloomForCausalLM: ['bigscience'],
-        CodeGenForCausalLM: ['Salesforce'],
-        CohereForCausalLM: ['CohereLabs'],
-        DeepseekV3ForCausalLM: ['deepseek-ai'],
-        FalconForCausalLM: ['tiiuae'],
-        GPT2LMHeadModel: ['openai-community'],
-        GPTBigCodeForCausalLM: ['bigcode'],
-        GPTJForCausalLM: ['EleutherAI'],
-        GPTNeoForCausalLM: ['EleutherAI'],
-        GPTNeoXForCausalLM: ['EleutherAI'],
-        Gemma2ForCausalLM: ['google'],
-        Gemma3ForCausalLM: ['google'],
-        Gemma3ForConditionalGeneration: ['google'],
-        GemmaForCausalLM: ['google'],
-        GptOssForCausalLM: ['openai'],
-        GraniteForCausalLM: ['ibm-granite'],
-        GraniteMoeForCausalLM: ['ibm-granite'],
-        GraniteMoeHybridForCausalLM: ['ibm-granite'],
-        HubertForCTC: ['facebook'],
-        HubertModel: ['facebook'],
-        InternLM2ForCausalLM: ['internlm'],
-        LlamaForCausalLM: ['meta-llama'],
-        LlavaForConditionalGeneration: ['llava-hf'],
-        LlavaNextForConditionalGeneration: ['llava-hf'],
-        LlavaOnevisionForConditionalGeneration: ['llava-hf'],
-        MPTForCausalLM: ['mosaicml'],
-        Mamba2ForCausalLM: ['state-spaces'],
-        MambaForCausalLM: ['state-spaces'],
-        MistralForCausalLM: ['mistralai'],
-        MixtralForCausalLM: ['mistralai'],
-        OPTForCausalLM: ['facebook'],
-        Olmo2ForCausalLM: ['allenai'],
-        Olmo3ForCausalLM: ['allenai'],
-        OlmoForCausalLM: ['allenai'],
-        OlmoeForCausalLM: ['allenai'],
-        OpenELMForCausalLM: ['apple'],
-        Phi3ForCausalLM: ['microsoft'],
-        PhiForCausalLM: ['microsoft'],
-        Qwen2ForCausalLM: ['Qwen'],
-        Qwen3ForCausalLM: ['Qwen'],
-        Qwen3MoeForCausalLM: ['Qwen'],
-        Qwen3NextForCausalLM: ['Qwen'],
-        Qwen3_5ForCausalLM: ['Qwen'],
-        StableLmForCausalLM: ['stabilityai'],
-        XGLMForCausalLM: ['facebook'],
-    };
+    // Interpolated from CANONICAL_AUTHORS_BY_ARCH (Python, registry __init__).
+    const OFFICIAL_ORGS = __OFFICIAL_ORGS_JSON__;
     const cfgCache = {};
     let all=[], filt=[], pg=1, dt=null, sortCol='', sortDir='asc';
 
@@ -972,8 +955,20 @@ for English, and may not be the same for other languages.
         ['Parallel Attn & MLP', '_parallel_attn_mlp'],
         ['Gated MLP',           '_gated_mlp'],
         ['Tie Embeddings',      'tie_word_embeddings'],
-        /* Tokenizer */
-        ['Tokenizer',           '_tokenizer'],
+    ];
+
+    /* Fields extracted from HuggingFace tokenizer_config.json. Same shape as CFG_FIELDS:
+       [label, ...candidate keys]. Keys starting with _ are computed via extractTokenField(). */
+    const TOKENIZER_FIELDS = [
+        ['Class',           'tokenizer_class'],
+        ['Max Length',      'model_max_length'],
+        ['BOS Token',       '_bos_token'],
+        ['EOS Token',       '_eos_token'],
+        ['Pad Token',       '_pad_token'],
+        ['Unk Token',       '_unk_token'],
+        ['Padding Side',    'padding_side'],
+        ['Add BOS Default', 'add_bos_token'],
+        ['Has Chat Template', '_has_chat_template'],
     ];
 
     function fmtParam(n) {
@@ -1049,8 +1044,93 @@ for English, and may not be the same for other languages.
         return null;
     }
 
-    function inferTokenizer(cfg) {
-        return cfg.tokenizer_class || null;
+    function tokenAsString(t) {
+        // tokenizer_config.json stores special tokens as either a plain string or
+        // an AddedToken-like dict {content: "...", lstrip, rstrip, ...}.
+        if (t === null || t === undefined) return null;
+        if (typeof t === 'string') return t;
+        if (typeof t === 'object' && typeof t.content === 'string') return t.content;
+        return null;
+    }
+
+    /* Class-level defaults from the transformers source. tokenizer_config.json
+       only serializes values that override these — so a missing key means
+       "uses the class default", NOT "unset". Lookup table covers the major
+       bridge-supported classes; unlisted classes fall through to base
+       PreTrainedTokenizer defaults. */
+    const TOKENIZER_CLASS_DEFAULTS = {
+        'GPT2Tokenizer':         { add_bos_token: false, padding_side: 'right' },
+        'GPT2TokenizerFast':     { add_bos_token: false, padding_side: 'right' },
+        'LlamaTokenizer':        { add_bos_token: true,  add_eos_token: false, padding_side: 'right' },
+        'LlamaTokenizerFast':    { add_bos_token: true,  add_eos_token: false, padding_side: 'right' },
+        'GemmaTokenizer':        { add_bos_token: true,  add_eos_token: false, padding_side: 'right' },
+        'GemmaTokenizerFast':    { add_bos_token: true,  add_eos_token: false, padding_side: 'right' },
+        'GPTNeoXTokenizerFast':  { add_bos_token: false, padding_side: 'right' },
+        'BloomTokenizerFast':    { add_bos_token: false, padding_side: 'left' },
+        'Qwen2Tokenizer':        { add_bos_token: false, padding_side: 'left' },
+        'Qwen2TokenizerFast':    { add_bos_token: false, padding_side: 'left' },
+        'CodeGenTokenizer':      { add_bos_token: false, padding_side: 'right' },
+        'CodeGenTokenizerFast':  { add_bos_token: false, padding_side: 'right' },
+        'CodeLlamaTokenizer':    { add_bos_token: true,  add_eos_token: false, padding_side: 'right' },
+        'CodeLlamaTokenizerFast':{ add_bos_token: true,  add_eos_token: false, padding_side: 'right' },
+        'XGLMTokenizer':         { add_bos_token: true,  padding_side: 'right' },
+        'XGLMTokenizerFast':     { add_bos_token: true,  padding_side: 'right' },
+        'CohereTokenizerFast':   { add_bos_token: true,  padding_side: 'left' },
+        'BertTokenizer':         { padding_side: 'right' },
+        'BertTokenizerFast':     { padding_side: 'right' },
+        'T5Tokenizer':           { add_eos_token: true,  padding_side: 'right' },
+        'T5TokenizerFast':       { add_eos_token: true,  padding_side: 'right' },
+        'PreTrainedTokenizerFast': { padding_side: 'right' },
+    };
+
+    /* Fallback when tokenizer class isn't in the lookup. Matches HF's base
+       PreTrainedTokenizer defaults. */
+    const TOKENIZER_BASE_DEFAULTS = {
+        add_bos_token: false,
+        add_eos_token: false,
+        padding_side: 'right',
+    };
+
+    function getClassDefault(tok, key) {
+        const cls = tok.tokenizer_class;
+        const classDefaults = (cls && TOKENIZER_CLASS_DEFAULTS[cls]) || {};
+        if (key in classDefaults) return { value: classDefaults[key], fromDefault: true };
+        if (key in TOKENIZER_BASE_DEFAULTS) {
+            return { value: TOKENIZER_BASE_DEFAULTS[key], fromDefault: true, generic: true };
+        }
+        return null;
+    }
+
+    function extractTokenField(tok, keys) {
+        for (const k of keys) {
+            // Special tokens: show "None" (muted) when absent rather than
+            // hiding the row — absence of a pad_token is a real property of
+            // the tokenizer, not a docs gap.
+            if (k === '_bos_token' || k === '_eos_token' ||
+                k === '_pad_token' || k === '_unk_token') {
+                const fieldName = k.slice(1);  // strip leading "_"
+                const v = tokenAsString(tok[fieldName]);
+                return v !== null ? v : { value: 'None', absent: true };
+            }
+            if (k === '_has_chat_template') {
+                return tok.chat_template ? 'Yes' : 'No';
+            }
+            if (tok[k] !== undefined && tok[k] !== null) {
+                // Some tokenizers ship `model_max_length=int(1e30)` as an
+                // "unlimited" sentinel. Show that explicitly rather than the
+                // raw garbage number.
+                if (k === 'model_max_length' && tok[k] > 1e9) {
+                    return { value: 'Unlimited', absent: true };
+                }
+                return tok[k];
+            }
+            // Fall through to class default if the field is omitted from
+            // tokenizer_config.json. HF only serializes overrides, so "missing"
+            // means "class default applies", not "unset".
+            const def = getClassDefault(tok, k);
+            if (def !== null) return def;
+        }
+        return null;
     }
 
     function extractField(cfg, keys) {
@@ -1079,7 +1159,21 @@ for English, and may not be the same for other languages.
         return cfg;
     }
 
-    function renderDetail(cfg) {
+    const tokCache = {};
+    async function fetchTokenizerConfig(modelId) {
+        // Many bridge models share a tokenizer (e.g., the entire Llama family).
+        // Caching dedupes per session. Tokenizer may not exist for every model;
+        // callers handle the rejection.
+        if (tokCache[modelId]) return tokCache[modelId];
+        const url = 'https://huggingface.co/' + modelId + '/resolve/main/tokenizer_config.json';
+        const r = await fetch(url);
+        if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
+        const tok = await r.json();
+        tokCache[modelId] = tok;
+        return tok;
+    }
+
+    function renderConfigFields(cfg) {
         let html = '<dl class="bt-detail-grid">';
         for (const [label, ...keys] of CFG_FIELDS) {
             let val = extractField(cfg, keys);
@@ -1089,6 +1183,51 @@ for English, and may not be the same for other languages.
             html += '<div><dt>' + esc(label) + '</dt><dd>' + esc(String(val)) + '</dd></div>';
         }
         html += '</dl>';
+        return html;
+    }
+
+    function renderTokenizerFields(tok) {
+        let html = '<dl class="bt-detail-grid">';
+        for (const [label, ...keys] of TOKENIZER_FIELDS) {
+            let raw = extractTokenField(tok, keys);
+            if (raw === null || raw === undefined) continue;
+            // raw can be:
+            //   plain value                                  → explicit setting
+            //   {value, fromDefault, generic?}               → class default fallback
+            //   {value, absent: true}                        → "None" / "Unlimited" markers
+            let val, suffix = '', ddClass = '';
+            if (raw && typeof raw === 'object') {
+                val = raw.value;
+                if (raw.absent) {
+                    ddClass = ' class="bt-detail-absent"';
+                } else if (raw.fromDefault) {
+                    suffix = raw.generic
+                        ? ' <span class="bt-detail-suffix">(default)</span>'
+                        : ' <span class="bt-detail-suffix">(class default)</span>';
+                }
+            } else {
+                val = raw;
+            }
+            if (typeof val === 'boolean') val = val ? 'Yes' : 'No';
+            if (typeof val === 'number') val = val.toLocaleString();
+            html += '<div><dt>' + esc(label) + '</dt><dd' + ddClass + '>' + esc(String(val)) + suffix + '</dd></div>';
+        }
+        html += '</dl>';
+        return html;
+    }
+
+    function renderDetail(cfg, tok, tokError) {
+        let html = renderConfigFields(cfg);
+        // Tokenizer subsection: shown only when tokenizer_config.json fetched, or when
+        // the fetch failed for a non-404 reason worth surfacing.
+        if (tok) {
+            html += '<div class="bt-detail-section">Tokenizer</div>';
+            html += renderTokenizerFields(tok);
+        } else if (tokError) {
+            html += '<div class="bt-detail-section">Tokenizer'
+                  + '<span class="bt-detail-section-note">(tokenizer_config.json unavailable)</span>'
+                  + '</div>';
+        }
         return html;
     }
 
@@ -1105,8 +1244,16 @@ for English, and may not be the same for other languages.
         rowEl.after(detailRow);
         rowEl.querySelector('.bt-detail-link').textContent = 'Hide';
         try {
-            const cfg = await fetchDetail(modelId);
-            detailRow.querySelector('.bt-detail').innerHTML = renderDetail(cfg);
+            // Fetch model + tokenizer config in parallel. tokenizer_config.json is
+            // optional (some models ship without it); a missing one shouldn't fail
+            // the whole detail render.
+            const [cfg, tokResult] = await Promise.all([
+                fetchDetail(modelId),
+                fetchTokenizerConfig(modelId).then(t => ({ok: true, tok: t}), e => ({ok: false, error: e})),
+            ]);
+            const tok = tokResult.ok ? tokResult.tok : null;
+            const tokError = tokResult.ok ? null : tokResult.error;
+            detailRow.querySelector('.bt-detail').innerHTML = renderDetail(cfg, tok, tokError);
         } catch(e) {
             detailRow.querySelector('.bt-detail').innerHTML = '<span class="bt-detail-error">Could not load config: ' + esc(String(e.message)) + '</span>';
         }
@@ -1174,6 +1321,7 @@ for English, and may not be the same for other languages.
             if (up.get('arch')) document.getElementById('btArch').value = up.get('arch');
             if (up.get('org')) { populatePrefixFilter(); document.getElementById('btPrefix').value = up.get('org'); }
             if (up.has('status')) document.getElementById('btStatus').value = up.get('status');
+            if (up.get('canonical') === '1') document.getElementById('btCanonical').checked = true;
             if (up.get('sort')) { sortCol = up.get('sort'); sortDir = up.get('dir') || 'asc'; updateSortHeaders(); }
             apply();
         } catch(e) {
@@ -1187,11 +1335,16 @@ for English, and may not be the same for other languages.
         const a = document.getElementById('btArch').value;
         const pf = document.getElementById('btPrefix').value;
         const sv = document.getElementById('btStatus').value;
+        const canonOnly = document.getElementById('btCanonical').checked;
         filt = all.filter(m => {
             if (s && !m.model_id.toLowerCase().includes(s)) return false;
             if (a && m.architecture_id !== a) return false;
             if (pf && getPrefix(m.model_id) !== pf) return false;
             if (sv !== '' && m.status !== +sv) return false;
+            if (canonOnly) {
+                const orgs = OFFICIAL_ORGS[m.architecture_id];
+                if (!orgs || !orgs.includes(getPrefix(m.model_id))) return false;
+            }
             return true;
         });
         sortFilt();
@@ -1241,10 +1394,12 @@ for English, and may not be the same for other languages.
         const a = document.getElementById('btArch').value;
         const pf = document.getElementById('btPrefix').value;
         const sv = document.getElementById('btStatus').value;
+        const canonOnly = document.getElementById('btCanonical').checked;
         if (s) p.set('q', s);
         if (a) p.set('arch', a);
         if (pf) p.set('org', pf);
         if (sv !== '') p.set('status', sv);
+        if (canonOnly) p.set('canonical', '1');
         if (sortCol) { p.set('sort', sortCol); p.set('dir', sortDir); }
         const qs = p.toString();
         history.replaceState(null, '', qs ? '?' + qs : location.pathname);
@@ -1339,6 +1494,7 @@ for English, and may not be the same for other languages.
     document.getElementById('btArch').addEventListener('change', () => { populatePrefixFilter(); apply(); });
     document.getElementById('btPrefix').addEventListener('change', apply);
     document.getElementById('btStatus').addEventListener('change', apply);
+    document.getElementById('btCanonical').addEventListener('change', apply);
     document.querySelectorAll('#bt-root th[data-sort]').forEach(th => {
         th.addEventListener('click', () => {
             const key = th.dataset.sort;
@@ -1355,15 +1511,16 @@ for English, and may not be the same for other languages.
 
 
 def generate_bridge_models_page():
-    """Generate the TransformerBridge models markdown page.
+    """Generate the TransformerBridge models markdown page."""
+    import json as _json
 
-    The page fetches supported_models.json from _static/, which is a symlink
-    to the canonical source at transformer_lens/tools/model_registry/data/.
-    """
+    from transformer_lens.tools.model_registry import CANONICAL_AUTHORS_BY_ARCH
+
     GENERATED_DIR.mkdir(exist_ok=True)
-    (GENERATED_DIR / "transformer_bridge_models.md").write_text(
-        BRIDGE_MODELS_PAGE, encoding="utf-8"
+    rendered = BRIDGE_MODELS_PAGE.replace(
+        "__OFFICIAL_ORGS_JSON__", _json.dumps(CANONICAL_AUTHORS_BY_ARCH, sort_keys=True)
     )
+    (GENERATED_DIR / "transformer_bridge_models.md").write_text(rendered, encoding="utf-8")
 
 
 def docs_hot_reload():
@@ -1375,6 +1532,12 @@ def docs_hot_reload():
     generate_bridge_models_page()
 
     # Ignore docs/source/generated/: run_apidoc rewrites it on every build, which would otherwise trigger an infinite rebuild loop.
+    # --pre-build re-runs generate_bridge_models_page() before each build so edits to
+    # the BRIDGE_MODELS_PAGE template in this file propagate without needing to restart.
+    pre_build_cmd = (
+        f"{sys.executable} -c 'from docs.make_docs import generate_bridge_models_page;"
+        " generate_bridge_models_page()'"
+    )
     subprocess.run(
         [
             "sphinx-autobuild",
@@ -1382,8 +1545,12 @@ def docs_hot_reload():
             str(PACKAGE_DIR),
             "--watch",
             str(DEMOS_DIR),
+            "--watch",
+            __file__,  # so template edits in BRIDGE_MODELS_PAGE trigger a rebuild
             "--ignore",
             str(GENERATED_DIR / "*"),
+            "--pre-build",
+            pre_build_cmd,
             "--open-browser",
             SOURCE_PATH,
             BUILD_PATH,

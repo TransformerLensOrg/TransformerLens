@@ -5,7 +5,7 @@ from beartype.roar import BeartypeCallHintParamViolation
 from transformer_lens import SVDInterpreter
 from transformer_lens.model_bridge import TransformerBridge
 
-MODEL = "gpt2"  # Use a model that works with TransformerBridge
+MODEL = "Intel/tiny-random-gpt2"  # Use a model that works with TransformerBridge
 VECTOR_TYPES = ["OV", "w_in", "w_out"]
 ATOL = 2e-4  # Absolute tolerance - how far does a float have to be before we consider it no longer equal?
 
@@ -16,22 +16,8 @@ def model():
 
 
 @pytest.fixture(scope="module")
-def unfolded_model():
-    # Note: TransformerBridge may not support fold_ln parameter directly
-    # We'll use the same model for now, but this test may need adjustment
-    return TransformerBridge.boot_transformers(MODEL, device="cpu")
-
-
-@pytest.fixture(scope="module")
 def second_model():
-    # Use a different model architecture if available, otherwise same model
-    # Note: If gpt2-medium fails to load, tests that need different models will be skipped
-    try:
-        return TransformerBridge.boot_transformers("gpt2-medium", device="cpu")
-    except Exception:
-        # Fallback to same model if gpt2-medium is not available
-        # The test will skip if both models end up being the same
-        return TransformerBridge.boot_transformers(MODEL, device="cpu")
+    return TransformerBridge.boot_transformers("hyper-accel/tiny-random-gpt2", device="cpu")
 
 
 def test_svd_interpreter_returns_meaningful_values(model):
@@ -62,21 +48,7 @@ def test_svd_interpreter_returns_meaningful_values(model):
         assert top2 > bot2, f"{name}: top singular values should exceed bottom values"
 
 
-def test_w_in_unfolded_produces_nonzero_values(unfolded_model):
-    """SVDInterpreter w_in should produce non-zero results on an unfolded model."""
-    svd_interpreter = SVDInterpreter(unfolded_model)
-    w_in = svd_interpreter.get_singular_vectors(
-        "w_in", num_vectors=4, layer_index=0, head_index=0
-    ).abs()
-
-    assert w_in.abs().sum() > 0
-
-
 def test_svd_interpreter_returns_different_answers_for_different_layers(model):
-    # Only test if model has multiple layers
-    if model.cfg.n_layers < 2:
-        pytest.skip("Model only has one layer")
-
     svd_interpreter = SVDInterpreter(model)
 
     # Layer 0 results
@@ -108,10 +80,6 @@ def test_svd_interpreter_returns_different_answers_for_different_layers(model):
 
 
 def test_svd_interpreter_returns_different_answers_for_different_models(model, second_model):
-    # Skip if both models are the same (check model name/config, not just object ID)
-    if id(model) == id(second_model) or model.cfg.model_name == second_model.cfg.model_name:
-        pytest.skip("Same model used for both fixtures")
-
     # Get results from first model
     svd_interpreter_1 = SVDInterpreter(model)
     ov_1 = svd_interpreter_1.get_singular_vectors(

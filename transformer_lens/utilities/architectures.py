@@ -10,6 +10,7 @@ from typing import Optional
 SEQ2SEQ_ARCHITECTURES: set[str] = {
     "T5ForConditionalGeneration",
     "MT5ForConditionalGeneration",
+    "T5GemmaForConditionalGeneration",
     "BartForConditionalGeneration",
     "MBartForConditionalGeneration",
     "MarianMTModel",
@@ -33,6 +34,8 @@ MULTIMODAL_ARCHITECTURES: set[str] = {
     "LlavaNextForConditionalGeneration",
     "LlavaOnevisionForConditionalGeneration",
     "Gemma3ForConditionalGeneration",
+    "Gemma4ForConditionalGeneration",
+    "Qwen3_5ForConditionalGeneration",
 }
 
 # Audio encoder models (HuBERT, wav2vec2, etc.)

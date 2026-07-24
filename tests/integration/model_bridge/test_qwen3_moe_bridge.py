@@ -12,7 +12,12 @@ from transformers import AutoConfig, AutoModelForCausalLM
 
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.model_bridge.bridge import TransformerBridge
-from transformer_lens.model_bridge.generalized_components import MoEBridge
+from transformer_lens.model_bridge.generalized_components import (
+    MoEBridge,
+    PositionEmbeddingsAttentionBridge,
+    RMSNormalizationBridge,
+    RotaryEmbeddingBridge,
+)
 from transformer_lens.model_bridge.sources.transformers import (
     map_default_transformer_lens_config,
 )
@@ -80,31 +85,6 @@ def tiny_qwen3moe_bridge(tiny_qwen3moe_config, tiny_qwen3moe_model_meta):
     )
 
 
-class TestQwen3MoeModelStructure:
-    def test_model_has_layers(self, tiny_qwen3moe_model_meta) -> None:
-        assert hasattr(tiny_qwen3moe_model_meta, "model")
-        assert hasattr(tiny_qwen3moe_model_meta.model, "layers")
-        assert len(tiny_qwen3moe_model_meta.model.layers) == 2
-
-    def test_layer_has_sparse_moe_block(self, tiny_qwen3moe_model_meta) -> None:
-        # Qwen3MoeSparseMoeBlock stores experts as batched 3D tensors, not a ModuleList
-        layer0_mlp = tiny_qwen3moe_model_meta.model.layers[0].mlp
-        assert hasattr(layer0_mlp, "experts")
-        experts = layer0_mlp.experts
-        assert hasattr(experts, "gate_up_proj")
-        assert hasattr(experts, "down_proj")
-        assert not hasattr(experts, "__iter__")
-
-    def test_layer_has_gate_router(self, tiny_qwen3moe_model_meta) -> None:
-        layer0_mlp = tiny_qwen3moe_model_meta.model.layers[0].mlp
-        assert hasattr(layer0_mlp, "gate")
-
-    def test_attention_has_q_norm_k_norm(self, tiny_qwen3moe_model_meta) -> None:
-        attn = tiny_qwen3moe_model_meta.model.layers[0].self_attn
-        assert hasattr(attn, "q_norm")
-        assert hasattr(attn, "k_norm")
-
-
 class TestQwen3MoeBridgeStructure:
     def test_block_count(self, tiny_qwen3moe_bridge) -> None:
         assert len(tiny_qwen3moe_bridge.blocks) == 2
@@ -121,11 +101,18 @@ class TestQwen3MoeBridgeStructure:
     def test_cfg_n_kv_heads(self, tiny_qwen3moe_bridge) -> None:
         assert tiny_qwen3moe_bridge.cfg.n_key_value_heads == 2
 
-    def test_cfg_positional_embedding_type(self, tiny_qwen3moe_bridge) -> None:
-        assert tiny_qwen3moe_bridge.cfg.positional_embedding_type == "rotary"
+    def test_rotary_pos_embed_structure(self, tiny_qwen3moe_bridge) -> None:
+        """positional_embedding_type='rotary' must select RoPE attention + a rotary_emb bridge."""
+        attn = tiny_qwen3moe_bridge.blocks[0].attn
+        assert isinstance(attn, PositionEmbeddingsAttentionBridge)
+        assert isinstance(tiny_qwen3moe_bridge.rotary_emb, RotaryEmbeddingBridge)
 
-    def test_cfg_normalization_type(self, tiny_qwen3moe_bridge) -> None:
-        assert tiny_qwen3moe_bridge.cfg.normalization_type == "RMS"
+    def test_norm_components_are_rms(self, tiny_qwen3moe_bridge) -> None:
+        """normalization_type='RMS' must select RMSNormalizationBridge for every norm."""
+        block = tiny_qwen3moe_bridge.blocks[0]
+        assert isinstance(block.ln1, RMSNormalizationBridge)
+        assert isinstance(block.ln2, RMSNormalizationBridge)
+        assert isinstance(tiny_qwen3moe_bridge.ln_final, RMSNormalizationBridge)
 
     def test_mlp_blocks_are_moe_bridge(self, tiny_qwen3moe_bridge) -> None:
         for i, block in enumerate(tiny_qwen3moe_bridge.blocks):
