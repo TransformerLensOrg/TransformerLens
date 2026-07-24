@@ -51,7 +51,6 @@ class LlavaArchitectureAdapter(ArchitectureAdapter):
         """Initialize the LLava architecture adapter."""
         super().__init__(cfg)
 
-        # Mark this as a multimodal model
         self.cfg.is_multimodal = True
 
         # Language model configuration (same as LLaMA)

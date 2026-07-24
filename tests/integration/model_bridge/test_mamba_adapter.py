@@ -7,15 +7,8 @@ Verifies wrap-don't-reimplement behavior against state-spaces/mamba-130m-hf:
 - SSM blocks correctly exclude transformer-specific hook_resid_mid
 - Parameter access via __getattr__ fallback (A_log, D)
 
-Note on cache clone safety: The Mamba adapter plan flagged in-place MambaCache
-mutation as a risk — hooks that capture `ssm_states` would see corrupted values
-on subsequent decode steps because HF mutates the cache in place. Phase 1 avoids
-this risk entirely by design: the wrap-don't-reimplement approach keeps the
-MambaMixer opaque, so `ssm_states` is never exposed through a hook. Phase 1
-hooks only observe projection inputs/outputs (in_proj, conv1d, x_proj, dt_proj,
-out_proj), which are per-step tensors and are never mutated by the cache
-machinery. If a future phase adds per-step SSM state hooks (compatibility mode),
-those hooks MUST `.clone()` captured state tensors.
+Cache-clone safety: hooks never expose HF's in-place-mutated `ssm_states`; any
+future per-step SSM-state hook MUST `.clone()` captured state.
 """
 
 import contextlib
@@ -109,7 +102,7 @@ class TestMambaHookCoverage:
                 assert f"blocks.{i}.mixer.{submod}.hook_out" in cache
 
     def test_projection_shapes(self, cache, mamba_bridge):
-        """Hook tensor shapes match the plan's Step 1.5 shape summary."""
+        """Hook tensor shapes match the expected projection shapes."""
         d_model = mamba_bridge.cfg.d_model  # 768
         intermediate = mamba_bridge.cfg.intermediate_size  # 1536
         conv_kernel = mamba_bridge.cfg.conv_kernel  # 4
@@ -219,7 +212,7 @@ class TestMambaStopAtLayer:
 
 
 class TestMambaStatefulGeneration:
-    """Phase 3: bridge.generate() runs a proper stateful loop instead of
+    """bridge.generate() runs a proper stateful loop instead of
     delegating to hf_generate(). This gives hook integration during generation.
     """
 
@@ -449,7 +442,7 @@ class TestMamba1EffectiveAttention:
 
 
 class TestMamba1SSMState:
-    """Mamba-1 recurrent-state reconstruction (Phase 4.5): read-parity with Mamba-2.
+    """Mamba-1 recurrent-state reconstruction: read-parity with Mamba-2.
 
     The vectorized state must match a naive fp64 step-by-step S6 scan, and
     ``y = C·S + D·x`` reconstructed through gate + out_proj must match HF's cached
@@ -566,7 +559,7 @@ def _eager_scan(bridge):
 
 
 class TestMamba1EagerScanIntervention:
-    """Phase 4 (Mamba-1): opt-in eager S6 scan exposes hook_ssm_write / hook_ssm_state
+    """Opt-in eager S6 scan exposes hook_ssm_write / hook_ssm_state
     for interventions that propagate to logits, while the default path is untouched.
     Eager scan needs use_cache=False (prefill; cache_params is None)."""
 

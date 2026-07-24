@@ -2372,7 +2372,6 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             if hasattr(self, "_last_hf_cache"):
                 del self._last_hf_cache
 
-        # Concatenate all sampled tokens
         sampled_tokens = torch.cat(sampled_tokens_list, dim=1)
         if is_encoder_decoder:
             # Reconstruct full decoder sequence: start token + generated tokens
@@ -2796,7 +2795,6 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         if any_flag_set:
             generation_kwargs.setdefault("return_dict_in_generate", True)
 
-        # Generate using the original HuggingFace model
         with torch.no_grad():
             outputs = self.original_model.generate(input_ids, **generation_kwargs)  # type: ignore[operator]
 
@@ -3149,7 +3147,6 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         Returns:
             True if the path is valid, False if it contains nested HF components
         """
-        # Split the path into parts
         parts = hf_path.split(".")
 
         # Get the component mapping for validation

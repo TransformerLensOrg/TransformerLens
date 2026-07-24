@@ -184,4 +184,3 @@ def setup(app):
     """Sphinx setup overrides."""
     # Connect functions to run when watch detects a file change
     app.connect("builder-inited", run_apidoc)
-    # app.connect("builder-inited", copy_demos) # Don't run as too slow

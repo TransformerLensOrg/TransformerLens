@@ -41,7 +41,6 @@ def test_rearrange_tensor_conversion_input_filter():
     """
 
     def input_filter(tensor):
-        # E.g., multiply by 2
         return tensor * 2
 
     conversion = RearrangeTensorConversion("(n h) m->n m h", input_filter=input_filter, n=8)
@@ -67,7 +66,6 @@ def test_rearrange_tensor_conversion_output_filter():
     """
 
     def output_filter(tensor):
-        # E.g., add 10
         return tensor + 10
 
     conversion = RearrangeTensorConversion("(n h) m->n m h", output_filter=output_filter, n=8)
@@ -96,10 +94,10 @@ def test_rearrange_tensor_conversion_input_output_filters():
     """
 
     def input_filter(tensor):
-        return tensor * 2  # Double
+        return tensor * 2
 
     def output_filter(tensor):
-        return tensor + 3  # Then add 3
+        return tensor + 3
 
     conversion = RearrangeTensorConversion(
         "(n h) m->n m h", input_filter=input_filter, output_filter=output_filter, n=8

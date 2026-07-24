@@ -40,8 +40,6 @@ class Gemma2ArchitectureAdapter(ArchitectureAdapter):
         self.cfg.gated_mlp = True
         self.cfg.attn_only = False
 
-        # Gemma models were not trained with BOS tokens
-        # self.cfg.default_prepend_bos = False
         self.cfg.uses_rms_norm = True
         # Gemma models use (1.0 + weight) in RMSNorm instead of just weight
         # See: https://github.com/huggingface/transformers/pull/29402

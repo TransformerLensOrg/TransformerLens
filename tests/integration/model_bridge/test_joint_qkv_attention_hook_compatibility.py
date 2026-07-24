@@ -13,7 +13,6 @@ class TestJointQKVAttentionHookCompatibility:
         # Load DistilGPT-2 in TransformerBridge (faster for testing)
         bridge = TransformerBridge.boot_transformers("distilgpt2", device="cpu")
 
-        # Turn on compatibility mode
         bridge.enable_compatibility_mode(disable_warnings=True)
 
         # Create test input

@@ -100,12 +100,10 @@ class Qwen2ArchitectureAdapter(ArchitectureAdapter):
             hf_model: The HuggingFace Qwen2 model instance
             bridge_model: The TransformerBridge model (if available, set rotary_emb on actual instances)
         """
-        # Get rotary embedding instance from the model
         rotary_emb = hf_model.model.rotary_emb
 
         # Set rotary_emb on actual bridge instances in bridge_model if available
         if bridge_model is not None and hasattr(bridge_model, "blocks"):
-            # Set on each layer's actual attention bridge instance
             for block in bridge_model.blocks:
                 if hasattr(block, "attn"):
                     block.attn.set_rotary_emb(rotary_emb)

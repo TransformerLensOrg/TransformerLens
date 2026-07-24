@@ -2037,11 +2037,8 @@ def fill_missing_keys(
     Returns:
         dict: State dict with missing keys filled in
     """
-    # Get the default state dict
     default_state_dict = model.state_dict()
-    # Get the keys that are missing from the pretrained model
     missing_keys = set(default_state_dict.keys()) - set(state_dict.keys())
-    # Fill in the missing keys with the default initialization
     for key in missing_keys:
         if "hf_model" in key:
             # Skip keys that are from the HuggingFace model, if loading from HF.
@@ -2070,7 +2067,6 @@ class Config:
     n_layers: int = 12
 
 
-# Returns the configuration parameters of the model as a basic Config dataclass
 def get_basic_config(model_name: str, **kwargs: Any) -> Config:
     """Returns the configuration parameters of the model as a basic Config dataclass."""
     return Config(

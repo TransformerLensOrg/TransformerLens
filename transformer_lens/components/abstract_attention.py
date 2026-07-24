@@ -867,7 +867,6 @@ class AbstractAttention(ABC, nn.Module):
         # Use broadcasting to create the desired lower triangular part of the matrix
         slope_matrix = rows - cols
 
-        # Use the clamp method to set all positive values (upper right triangle) to
         return slope_matrix.clamp(max=0).to(torch.float32)
 
     @staticmethod
@@ -898,10 +897,8 @@ class AbstractAttention(ABC, nn.Module):
         Returns:
             A tensor of shape (n_heads,) containing the scalar multiplier for each head.
         """
-        # Calculate the starting value
         start = 2 ** (-8 / n_heads)
 
-        # Generate the indices [0, 1, ..., n_heads-1]
         indices = torch.arange(n_heads, device=device)
 
         # Compute the multipliers, with the starting value being the same as the ratio
@@ -943,12 +940,10 @@ class AbstractAttention(ABC, nn.Module):
         Returns:
             The ALiBi bias that should be added to the attention scores before the softmax.
         """
-        # Create the slope matrix
         slope: Float[torch.Tensor, "query key"] = AbstractAttention.create_alibi_slope(
             n_ctx, device
         )
 
-        # Create the scalar multiplier for each head.
         multipliers: Float[torch.Tensor, "head_idx"] = AbstractAttention.create_alibi_multipliers(
             n_heads, device
         )
@@ -957,7 +952,6 @@ class AbstractAttention(ABC, nn.Module):
         slope = einops.rearrange(slope, "query key -> 1 query key")
         multipliers = einops.rearrange(multipliers, "head_idx -> head_idx 1 1")
 
-        # Element-wise multiplication of the slope and multipliers
         alibi_bias = multipliers * slope
 
         return alibi_bias

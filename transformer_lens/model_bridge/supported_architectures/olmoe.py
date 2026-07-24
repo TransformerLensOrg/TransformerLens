@@ -156,7 +156,6 @@ class OlmoeArchitectureAdapter(ArchitectureAdapter):
             hf_model: The HuggingFace OLMoE model instance
             bridge_model: The TransformerBridge model (if available)
         """
-        # Get rotary embedding instance from the model
         rotary_emb = hf_model.model.rotary_emb
 
         # Force HF model to use "eager" attention to match bridge implementation

@@ -102,9 +102,7 @@ class T5Block(nn.Module):
             value_input = attn_in
 
         attn_out = self.hook_attn_out(
-            # hook the residual stream states that are used to calculate the
-            # queries, keys and values, independently.
-            # Then take the layer norm of these inputs, and pass these to the attention module.
+            # ln1 applied per Q/K/V input so split-QKV hooks stay independent
             self.attn(
                 query_input=self.ln1(query_input),
                 key_input=self.ln1(key_input),

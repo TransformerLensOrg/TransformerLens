@@ -15,13 +15,8 @@ decomposition via `run_with_cache`; a forward-hook intervention
 cross-checked against an independent way of expressing the same edit; and
 float64 construction-time preservation.
 
-Note on scope: since the adapter delegates the whole forward to the
-source model rather than reimplementing attention/RoPE, exact logit
-parity mainly demonstrates that wrapping and output normalization don't
-alter an unhooked forward, not that the RoPE convention itself is
-correct (the same implementation runs on both sides of the comparison).
-`TestResidualStreamDecomposition` and `TestHookIntervention` are the
-stronger evidence for correct intervention points.
+Scope: parity only checks that wrapping doesn't alter an unhooked forward;
+`TestResidualStreamDecomposition`/`TestHookIntervention` verify intervention points.
 """
 
 from __future__ import annotations

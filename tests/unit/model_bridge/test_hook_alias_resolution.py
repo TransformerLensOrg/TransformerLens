@@ -66,7 +66,7 @@ def _resolve(component: GeneralizedComponent, target: str) -> Any:
 
 
 # xfail(strict=True) so future fixes XPASS and force the marker to be removed.
-# Each entry maps to a specific audit finding deferred from the C1+C15 PR.
+# Each entry marks an adapter with known-dead hook aliases; xfail until fixed.
 _KNOWN_DEAD_ALIASES = {
     "GPT2LMHeadCustomModel": "audit H27 — stale adapter, delete candidate",
     "NanoGPTForCausalLM": "audit H28 — broken weight conversion, delete candidate",

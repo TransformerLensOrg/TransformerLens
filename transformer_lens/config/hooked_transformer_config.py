@@ -299,7 +299,6 @@ class HookedTransformerConfig(TransformerLensConfig):
     norm_topk_prob: bool = False
 
     def __post_init__(self):
-        # Call parent's post_init first
         super().__post_init__()
 
         if self.seed is not None:

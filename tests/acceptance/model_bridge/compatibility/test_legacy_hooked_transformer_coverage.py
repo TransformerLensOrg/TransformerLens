@@ -229,7 +229,7 @@ class TestLegacyHookedTransformerCoverage:
         # Run multiple forward passes
         for _ in range(5):
             output = bridge_model(prompt)
-            del output  # Explicitly delete
+            del output  # release tensor so the leak probe below is meaningful
 
         # Clean up
         gc.collect()

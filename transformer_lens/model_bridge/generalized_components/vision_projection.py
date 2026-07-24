@@ -66,13 +66,10 @@ class VisionProjectionBridge(GeneralizedComponent):
                 f"Original component not set for {self.name}. Call set_original_component() first."
             )
 
-        # Apply input hook
         vision_features = self.hook_in(vision_features)
 
-        # Forward through the projection layer
         output = self.original_component(vision_features, **kwargs)
 
-        # Apply output hook
         if isinstance(output, tuple):
             output = (self.hook_out(output[0]),) + output[1:]
         else:

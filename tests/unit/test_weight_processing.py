@@ -14,8 +14,6 @@ import torch
 from transformer_lens.config.transformer_lens_config import TransformerLensConfig
 from transformer_lens.weight_processing import ProcessWeights
 
-# from typing import Dict  # Unused import
-
 
 def deep_copy_state_dict(state_dict):
     """Create a deep copy of a state dict with cloned tensors.

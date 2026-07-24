@@ -132,8 +132,7 @@ class Qwen3ArchitectureAdapter(ArchitectureAdapter):
                 if "attn" in block._modules:
                     block.attn.set_rotary_emb(rotary_emb)
 
-        # Set on template for get_generalized_component() calls
-        # Set on template — may not exist in hybrid adapters
+        # Set on template for get_generalized_component(); may be absent in hybrid adapters
         mapping = self.component_mapping or {}
         blocks_template = mapping.get("blocks") if isinstance(mapping, dict) else None
         if blocks_template and "attn" in getattr(blocks_template, "submodules", {}):

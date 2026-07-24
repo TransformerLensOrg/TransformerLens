@@ -70,7 +70,6 @@ class GeneralizedComponent(nn.Module):
 
         # Copy class-level hook_aliases and apply any overrides
         if hook_alias_overrides is not None:
-            # Make a copy of class-level aliases and update with overrides
             self.hook_aliases = self.__class__.hook_aliases.copy()
             self.hook_aliases.update(hook_alias_overrides)
 
@@ -234,7 +233,6 @@ class GeneralizedComponent(nn.Module):
                     if hasattr(self.original_component, key):
                         param = getattr(self.original_component, key)
                         if param is not None and isinstance(param, torch.nn.Parameter):
-                            # Check that shapes match
                             if param.shape != weight_tensor.shape:
                                 raise ValueError(
                                     f"Shape mismatch when setting weight '{key}' in {type(self.original_component).__name__}: "

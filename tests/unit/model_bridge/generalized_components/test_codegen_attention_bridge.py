@@ -467,9 +467,7 @@ class TestCodeGenAttentionBridgeRoPE:
             q_after_rope.append(tensor.clone())
             return tensor
 
-        # We patch _reconstruct_attention to intercept Q after RoPE.
-        # Simpler: capture attn_scores and back-compute is complex.
-        # Instead, we patch the module-level function with a wrapper.
+        # Patch the module-level _apply_rotary_pos_emb to capture Q/K post-RoPE.
         import transformer_lens.model_bridge.generalized_components.codegen_attention as codegen_attn_mod
 
         original_fn = codegen_attn_mod._apply_rotary_pos_emb

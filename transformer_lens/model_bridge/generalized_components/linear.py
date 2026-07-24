@@ -39,7 +39,6 @@ class LinearBridge(GeneralizedComponent):
         return output
 
     def __repr__(self) -> str:
-        """String representation of the LinearBridge."""
         if self.original_component is not None:
             try:
                 in_features = self.original_component.in_features

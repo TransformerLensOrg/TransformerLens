@@ -53,7 +53,7 @@ class TestCentralizedWeightProcessing:
         processed_without_adapter = ProcessWeights.process_weights(
             state_dict=raw_state_dict,
             cfg=cfg,
-            adapter=None,  # No adapter
+            adapter=None,
             fold_ln=False,
             center_writing_weights=False,
             center_unembed=False,

@@ -19,13 +19,13 @@ pytestmark = pytest.mark.slow
 
 # Diverse architectures for hook completeness testing.
 # Constraint: these tests compare bridge vs legacy HookedTransformer, so each
-# entry must be in HookedTransformer's OFFICIAL_MODEL_NAMES. Tiny C1-affected
-# families (Llama/Qwen/Gemma under ~150M) aren't registered with HT; for those,
+# entry must be in HookedTransformer's OFFICIAL_MODEL_NAMES. Tiny Llama/Qwen/Gemma
+# families (under ~150M) aren't registered with HT; for those,
 # tests/unit/model_bridge/test_component_hooks_fire.py (Tier 2) provides
 # direct per-adapter hook-firing coverage without needing an HT counterpart.
 MODELS_TO_TEST = [
     "gpt2",  # JointQKVAttentionBridge (standard decoder-only)
-    "EleutherAI/pythia-14m",  # ParallelBlockBridge (C15 regression guard)
+    "EleutherAI/pythia-14m",  # ParallelBlockBridge regression guard
 ]
 
 # Gemma2: local only (too large for CI)

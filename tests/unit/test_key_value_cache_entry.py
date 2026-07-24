@@ -1,19 +1,4 @@
-"""Tests for TransformerLensKeyValueCacheEntry.init_cache_entry dtype behaviour.
-
-The buggy pre-fix code used ``torch.get_default_dtype()`` to initialise
-``past_keys`` and ``past_values``. PyTorch's default is ``torch.float32``,
-so the bug silently produced the correct dtype for fp32 models but the
-wrong dtype (fp32 instead of fp16/bf16) for reduced-precision ones. Of
-the tests below, ``test_init_cache_entry_uses_cfg_dtype_float32`` is
-therefore a baseline sanity check that passes against both the buggy
-and fixed code — it verifies the common case works, not that the bug is
-absent. The real regression guards are
-``test_init_cache_entry_uses_cfg_dtype_float16``,
-``..._bfloat16``, ``..._dtype_independent_of_global_default``, and
-``test_append_preserves_cfg_dtype``, which all fail against the buggy
-code (the fp16 cache was getting promoted to fp32 by the bug, breaking
-the downstream attention-score matmul).
-"""
+"""Tests that KeyValueCacheEntry.init_cache_entry buffers follow cfg.dtype, not torch's global default."""
 
 import torch
 
@@ -36,15 +21,7 @@ def _make_cfg(dtype: torch.dtype, n_heads: int = 4, d_head: int = 8, n_key_value
 
 
 def test_init_cache_entry_uses_cfg_dtype_float32():
-    """Baseline: cfg.dtype=float32 produces fp32 buffers.
-
-    Note: this test passes against both the buggy and fixed implementations
-    because torch's default dtype is also float32. It is a sanity check
-    that the common case works, not a regression guard for the specific
-    bug this module was added to prevent. See module docstring and
-    ``test_init_cache_entry_dtype_independent_of_global_default`` for the
-    tests that discriminate fix vs bug.
-    """
+    """Baseline: cfg.dtype=float32 produces fp32 buffers."""
     cfg = _make_cfg(dtype=torch.float32)
     entry = TransformerLensKeyValueCacheEntry.init_cache_entry(cfg, device="cpu")
     assert entry.past_keys.dtype == torch.float32
@@ -66,13 +43,7 @@ def test_init_cache_entry_uses_cfg_dtype_bfloat16():
 
 
 def test_init_cache_entry_dtype_independent_of_global_default():
-    """Regression guard: cache dtype follows cfg.dtype, not the global default.
-
-    Also covers the fp32 case indirectly: if someone reintroduces the old
-    ``torch.get_default_dtype()`` behaviour, this test plus the fp16 /
-    bfloat16 / append / GQA tests catch it; the fp32-only baseline above
-    would not, since fp32 happens to be torch's global default.
-    """
+    """Regression guard: cache dtype follows cfg.dtype, not the global default."""
     cfg = _make_cfg(dtype=torch.float16)
     original_default = torch.get_default_dtype()
     try:

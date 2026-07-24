@@ -173,8 +173,7 @@ def test_output_logits_soft_cap_bounds_logits():
     """Logits must be bounded by ±cap when output_logits_soft_cap > 0."""
     cap = 5.0
     cfg = _cfg(output_logits_soft_cap=cap, seed=0)
-    # Force-large outputs by skipping the soft-cap → then re-enabling. Easier:
-    # just pick a cap and assert |logits| <= cap. tanh-cap math guarantees it.
+    # tanh soft-cap guarantees |logits| <= cap.
     bridge = TransformerBridge.boot_native(cfg)
     logits = _forward(bridge)
     assert logits.abs().max().item() <= cap + 1e-5

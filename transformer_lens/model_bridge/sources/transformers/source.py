@@ -51,8 +51,7 @@ def boot(
     revision: str | None = None,
     checkpoint_index: int | None = None,
     checkpoint_value: int | None = None,
-    # Multi-device placement (accelerate-dispatched). GPU-validated 2026-07-16:
-    # tests/acceptance/model_bridge/test_bridge_multigpu*.py + scripts/bridge_multi_device_parity.py.
+    # Multi-device placement (accelerate-dispatched). Mutually exclusive with device.
     device_map: str | dict[str, str | int] | None = None,
     n_devices: int | None = None,
     max_memory: dict[str | int, str | int] | None = None,

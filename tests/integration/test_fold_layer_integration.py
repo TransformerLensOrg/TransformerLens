@@ -39,7 +39,6 @@ class TestFoldLayerIntegration:
         tl_model = HookedTransformer.from_pretrained(model_name, device=device)
 
         # Create architecture adapter
-        # Convert HookedTransformerConfig to TransformerBridgeConfig
         bridge_config = TransformerBridgeConfig.from_dict(tl_model.cfg.__dict__)
         bridge_config.architecture = "gpt2"
         adapter = GPT2ArchitectureAdapter(bridge_config)

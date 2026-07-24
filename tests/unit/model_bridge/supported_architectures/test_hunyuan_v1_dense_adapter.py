@@ -123,7 +123,7 @@ class TestHunYuanDenseV1AdapterConfig:
     """Adapter must set all required config flags to the values HunYuanDenseV1 expects."""
 
     def test_attn_implementation_is_eager(self, adapter: HunYuanDenseV1ArchitectureAdapter) -> None:
-        """Set to eager."""
+        """Adapter forces eager attention so component-level activations are hookable."""
         assert adapter.cfg.attn_implementation == "eager"
 
 
