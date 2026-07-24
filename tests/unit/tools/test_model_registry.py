@@ -535,8 +535,18 @@ class TestValidate:
             {"architecture_id": "", "model_id": "ok", "status": 5},
             "test",
         )
-        # architecture_id too short and status > 3
+        # architecture_id too short and status > 4
         assert len(errors) >= 2
+
+    def test_validate_provisional_status_is_valid(self):
+        """status=4 (PROVISIONAL) must pass validation — it is a real status."""
+        from transformer_lens.tools.model_registry.validate import _validate_model_entry
+
+        errors = _validate_model_entry(
+            {"architecture_id": "GPT2LMHeadModel", "model_id": "ok", "status": 4},
+            "test",
+        )
+        assert not any("status" in e.path for e in errors), errors
 
 
 # ============================================================
@@ -604,6 +614,61 @@ class TestRegistryIO:
         assert entry["status"] == 1
         assert entry["phase1_score"] == 100.0
         assert data["total_verified"] == 3  # was 2 verified, now 3
+
+    def test_update_model_status_provisional_excluded_from_verified(
+        self, registry_data_dir, monkeypatch
+    ):
+        """A provisional (--no-hf-reference) result is recorded but must NOT be
+        counted in total_verified — the core guarantee of the feature."""
+        from transformer_lens.tools.model_registry import registry_io
+
+        monkeypatch.setattr(
+            registry_io,
+            "_SUPPORTED_MODELS_PATH",
+            registry_data_dir / "supported_models.json",
+        )
+
+        result = registry_io.update_model_status(
+            model_id="sshleifer/tiny-gpt2",
+            arch_id="GPT2LMHeadModel",
+            status=registry_io.STATUS_PROVISIONAL,
+            phase_scores={1: 100.0},
+        )
+        assert result is True
+
+        with open(registry_data_dir / "supported_models.json") as f:
+            data = json.load(f)
+        entry = next(m for m in data["models"] if m["model_id"] == "sshleifer/tiny-gpt2")
+        assert entry["status"] == registry_io.STATUS_PROVISIONAL
+        # The two real verified entries (gpt2, Llama) stay verified; provisional
+        # is counted separately and never folded into total_verified.
+        assert data["total_verified"] == 2
+        assert data["total_provisional"] == 1
+
+    def test_update_model_status_adds_provisional_if_missing(
+        self, registry_data_dir, monkeypatch
+    ):
+        """A structural-only pass on a new model is recorded (not dropped)."""
+        from transformer_lens.tools.model_registry import registry_io
+
+        monkeypatch.setattr(
+            registry_io,
+            "_SUPPORTED_MODELS_PATH",
+            registry_data_dir / "supported_models.json",
+        )
+
+        result = registry_io.update_model_status(
+            model_id="brand-new/provisional-model",
+            arch_id="GPT2LMHeadModel",
+            status=registry_io.STATUS_PROVISIONAL,
+            phase_scores={1: 100.0},
+        )
+        assert result is True
+        with open(registry_data_dir / "supported_models.json") as f:
+            data = json.load(f)
+        assert data["total_models"] == 4
+        assert data["total_provisional"] == 1
+        assert data["total_verified"] == 2  # unchanged
 
     def test_update_model_status_not_found_non_verified(self, registry_data_dir, monkeypatch):
         from transformer_lens.tools.model_registry import registry_io

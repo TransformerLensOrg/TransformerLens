@@ -46,6 +46,7 @@ _interrupt_requested = False
 from .registry_io import (
     QUANTIZED_NOTE,
     STATUS_FAILED,
+    STATUS_PROVISIONAL,
     STATUS_SKIPPED,
     STATUS_UNVERIFIED,
     STATUS_VERIFIED,
@@ -156,6 +157,14 @@ def _default_phases_for_architecture(arch: str) -> list[int]:
     return sorted(_full_and_core_phases(arch)[0])
 
 
+def _pass_status(use_hf_reference: bool) -> int:
+    """Status for a passing run: VERIFIED only when it was numerically compared
+    to an HF reference. A --no-hf-reference (structural-only) pass is
+    PROVISIONAL — recorded, but not counted as verified.
+    """
+    return STATUS_VERIFIED if use_hf_reference else STATUS_PROVISIONAL
+
+
 def _get_current_model_status(model_id: str, arch_id: str) -> int:
     """Look up a model's current status in the registry.
 
@@ -188,6 +197,8 @@ class VerificationProgress:
     skipped: list[str] = field(default_factory=list)
     failed: list[str] = field(default_factory=list)
     verified: list[str] = field(default_factory=list)
+    # Structural-only (--no-hf-reference) passes; kept out of the verified tally.
+    provisional: list[str] = field(default_factory=list)
     start_time: Optional[str] = None
 
     def to_dict(self) -> dict:
@@ -196,6 +207,7 @@ class VerificationProgress:
             "skipped": self.skipped,
             "failed": self.failed,
             "verified": self.verified,
+            "provisional": self.provisional,
             "start_time": self.start_time,
         }
 
@@ -206,6 +218,7 @@ class VerificationProgress:
             skipped=data.get("skipped", []),
             failed=data.get("failed", []),
             verified=data.get("verified", []),
+            provisional=data.get("provisional", []),
             start_time=data.get("start_time"),
         )
 
@@ -754,15 +767,15 @@ def _save_checkpoint(progress: VerificationProgress) -> None:
 def _skip_model(
     model_id: str, arch: str, note: str, progress: VerificationProgress, quiet: bool
 ) -> None:
-    """Record a model as skipped with ``note``, preserving an existing verified status, and
-    checkpoint. Callers ``continue`` the loop afterwards.
+    """Record a model as skipped with ``note``, preserving an existing verified or provisional
+    status, and checkpoint. Callers ``continue`` the loop afterwards.
     """
     if not quiet:
         print(f"  SKIP: {note}")
-    if _get_current_model_status(model_id, arch) != STATUS_VERIFIED:
+    if _get_current_model_status(model_id, arch) not in (STATUS_VERIFIED, STATUS_PROVISIONAL):
         update_model_status(model_id, arch, STATUS_SKIPPED, note=note, sanitize_fn=_sanitize_note)
     elif not quiet:
-        print("  (preserving existing verified status)")
+        print("  (preserving existing verified/provisional status)")
     progress.skipped.append(model_id)
     _save_checkpoint(progress)
 
@@ -839,7 +852,11 @@ def verify_models(
         # Check for graceful interrupt between models
         if _interrupt_requested:
             if not quiet:
-                print(f"\nStopping gracefully. Progress saved ({len(progress.verified)} verified).")
+                print(
+                    f"\nStopping gracefully. Progress saved "
+                    f"({len(progress.verified)} verified, "
+                    f"{len(progress.provisional)} provisional)."
+                )
             _save_checkpoint(progress)
             raise SystemExit(_EXIT_GRACEFUL_INTERRUPT)
 
@@ -1078,6 +1095,12 @@ def verify_models(
                             tests_str = ", ".join(failed_tests) if failed_tests else "unknown"
                             partial_note = f"CORE FAILED: P1={p1}% (failed: {tests_str})"
 
+                    # A structural-only core pass (--no-hf-reference) is provisional,
+                    # never numerically compared to HF, so it must not count as verified.
+                    if partial_status == STATUS_VERIFIED and not use_hf_reference:
+                        partial_status = STATUS_PROVISIONAL
+                        partial_note = f"Structural only (no HF reference): {partial_note}"
+
                     if not quiet:
                         print(f"  {partial_note}")
 
@@ -1088,14 +1111,20 @@ def verify_models(
                     phase_scores=filtered_scores,
                     note=partial_note,
                 )
-                add_verification_record(
-                    model_id,
-                    arch,
-                    notes=partial_note,
-                    sanitize_fn=_sanitize_note,
-                )
+                # A provisional run was not numerically verified; do not write a
+                # verification-history record (VerificationHistory.is_verified()
+                # treats any record as verified — a second "counts as verified" path).
+                if partial_status != STATUS_PROVISIONAL:
+                    add_verification_record(
+                        model_id,
+                        arch,
+                        notes=partial_note,
+                        sanitize_fn=_sanitize_note,
+                    )
                 if partial_status == STATUS_FAILED:
                     progress.failed.append(model_id)
+                elif partial_status == STATUS_PROVISIONAL:
+                    progress.provisional.append(model_id)
                 elif partial_status is None:
                     # Scores were written but the status deliberately was not:
                     # this phase set cannot establish core verification for
@@ -1115,9 +1144,16 @@ def verify_models(
                     print(f"  No results for requested phases {eff_phases} — skipping update")
                 progress.skipped.append(model_id)
         elif final_status == STATUS_VERIFIED:
+            # A passing run is VERIFIED only if it was numerically compared to an
+            # HF reference; a --no-hf-reference (structural-only) pass is PROVISIONAL.
+            written_status = _pass_status(use_hf_reference)
+            is_provisional = written_status == STATUS_PROVISIONAL
+            if is_provisional:
+                note = f"Structural only (no HF reference): {note}"
             if not quiet:
+                label = "PROVISIONAL" if is_provisional else "VERIFIED"
                 print(
-                    f"  VERIFIED: P1={phase_scores.get(1)}%, "
+                    f"  {label}: P1={phase_scores.get(1)}%, "
                     f"P2={phase_scores.get(2)}%, P3={phase_scores.get(3)}%, "
                     f"P4={phase_scores.get(4)}%, P7={phase_scores.get(7)}%, "
                     f"P8={phase_scores.get(8)}%"
@@ -1125,16 +1161,22 @@ def verify_models(
             update_model_status(
                 model_id,
                 arch,
-                STATUS_VERIFIED,
+                written_status,
                 phase_scores=phase_scores,
                 note=note,
             )
-            add_verification_record(
-                model_id,
-                arch,
-                notes=note,
-            )
-            progress.verified.append(model_id)
+            # Provisional runs are not numerically verified — no history record
+            # (is_verified() would otherwise report them as verified).
+            if not is_provisional:
+                add_verification_record(
+                    model_id,
+                    arch,
+                    notes=note,
+                )
+            if is_provisional:
+                progress.provisional.append(model_id)
+            else:
+                progress.verified.append(model_id)
         else:
             if not quiet:
                 print(f"  FAILED: {note}")
@@ -1255,12 +1297,18 @@ def _print_summary(progress: VerificationProgress) -> None:
     print(f"{'='*70}")
     print(f"  Total tested:  {total}")
     print(f"  Verified:      {len(progress.verified)}")
+    print(f"  Provisional:   {len(progress.provisional)}")
     print(f"  Skipped:       {len(progress.skipped)}")
     print(f"  Failed:        {len(progress.failed)}")
 
     if progress.verified:
         print(f"\n  Verified models:")
         for m in progress.verified:
+            print(f"    - {m}")
+
+    if progress.provisional:
+        print(f"\n  Provisional models (structural only, no HF reference):")
+        for m in progress.provisional:
             print(f"    - {m}")
 
     if progress.failed:
@@ -1335,7 +1383,11 @@ Examples:
     parser.add_argument(
         "--no-hf-reference",
         action="store_true",
-        help="Skip HuggingFace reference comparison",
+        help=(
+            "Skip HuggingFace reference comparison (Phase 1 is structural-only). "
+            "A passing run is recorded as PROVISIONAL, not verified — re-run without "
+            "this flag for a real HF-compared verification."
+        ),
     )
     parser.add_argument(
         "--no-ht-reference",

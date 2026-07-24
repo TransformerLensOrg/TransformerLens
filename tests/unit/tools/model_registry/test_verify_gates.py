@@ -12,8 +12,13 @@ from types import SimpleNamespace
 
 from transformer_lens.benchmarks.component_outputs import _is_ssm_mixer_internal
 from transformer_lens.benchmarks.utils import BenchmarkSeverity
+from transformer_lens.tools.model_registry.registry_io import (
+    STATUS_PROVISIONAL,
+    STATUS_VERIFIED,
+)
 from transformer_lens.tools.model_registry.verify_models import (
     _extract_phase_scores,
+    _pass_status,
     _phases_to_run,
 )
 
@@ -98,3 +103,17 @@ class TestIsSSMMixerInternal:
     def test_transformer_components_untouched(self):
         for path in ("blocks.0.attn.q", "blocks.0.mlp.out", "embed", "unembed", "ln_final"):
             assert not _is_ssm_mixer_internal(path)
+
+
+class TestPassStatus:
+    """A passing run is VERIFIED only when numerically compared to HF; a
+    --no-hf-reference (structural-only) pass is PROVISIONAL, not verified."""
+
+    def test_hf_reference_passes_verify(self):
+        assert _pass_status(use_hf_reference=True) == STATUS_VERIFIED
+
+    def test_no_hf_reference_is_provisional(self):
+        assert _pass_status(use_hf_reference=False) == STATUS_PROVISIONAL
+
+    def test_provisional_is_not_verified(self):
+        assert STATUS_PROVISIONAL != STATUS_VERIFIED

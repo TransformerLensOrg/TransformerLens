@@ -277,13 +277,13 @@ def _validate_model_entry(data: dict, path: str) -> list[ValidationError]:
     # model_id (required string)
     errors.extend(_validate_string(data.get("model_id"), f"{path}.model_id", min_length=1))
 
-    # status (optional int 0-3, defaults to 0)
+    # status (optional int 0-4, defaults to 0)
     if "status" in data:
         errors.extend(_validate_int(data["status"], f"{path}.status", required=False, min_value=0))
         if isinstance(data["status"], int) and not isinstance(data["status"], bool):
-            if data["status"] > 3:
+            if data["status"] > 4:
                 errors.append(
-                    ValidationError(f"{path}.status", "value must be 0-3", data["status"])
+                    ValidationError(f"{path}.status", "value must be 0-4", data["status"])
                 )
 
     # note (optional string)
@@ -442,6 +442,12 @@ def validate_supported_models_report(data: dict) -> ValidationResult:
 
     # total_verified (required int >= 0)
     errors.extend(_validate_int(data.get("total_verified"), "total_verified", min_value=0))
+
+    # total_provisional (optional int >= 0; structural-only passes)
+    if "total_provisional" in data:
+        errors.extend(
+            _validate_int(data.get("total_provisional"), "total_provisional", min_value=0)
+        )
 
     # models (required list of ModelEntry)
     models = data.get("models")

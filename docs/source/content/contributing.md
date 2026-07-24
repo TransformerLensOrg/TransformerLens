@@ -330,6 +330,8 @@ uv run python -m transformer_lens.tools.model_registry.verify_models --model <hf
 
 `verify_models` runs phases 1–4 (forward correctness vs HF, hook firing + gradients, weight processing, generation quality) and updates `data/supported_models.json` with the resulting status and per-phase scores. We recommend running `--dry-run` first to project memory and parameter count without loading the model, and verifying one model at a time — concurrent loads tend to OOM a single device.
 
+Running with `--no-hf-reference` skips the HuggingFace numerical comparison (Phase 1 becomes structural-only). A passing run is then recorded as **provisional** (status 4), which does *not* count as verified — re-run without the flag for a real HF-compared verification.
+
 A note on entry points: `verify_models` is the script that writes the registry. `main_benchmark` runs the same underlying benchmarks but defaults to *not* writing the registry (it requires `--update-registry`, and even then it doesn't record Phase 7 / 8 scores or the resume checkpoint). If you want the registry updated after your run, use `verify_models`.
 
 It's worth reading the per-phase scores in addition to the final status — the verifier enforces hard pass/fail thresholds, and a model that just clears the bar tells you something different than one that breezes through. The current thresholds:

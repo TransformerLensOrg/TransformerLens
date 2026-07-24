@@ -59,7 +59,8 @@ class ModelEntry:
     Attributes:
         architecture_id: The architecture type (e.g., "GPT2LMHeadModel")
         model_id: The HuggingFace model ID (e.g., "gpt2", "openai-community/gpt2")
-        status: Verification status (0=unverified, 1=verified, 2=skipped, 3=failed)
+        status: Verification status (0=unverified, 1=verified, 2=skipped, 3=failed,
+            4=provisional — structural-only pass via --no-hf-reference, not counted as verified)
         verified_date: Date when verification was performed
         metadata: Optional metadata from HuggingFace
         note: Optional note (skip/fail reason, e.g. "Estimated 48 GB exceeds 16 GB limit")
@@ -231,6 +232,8 @@ class SupportedModelsReport:
     scan_info: Optional[ScanInfo] = None
     total_architectures: int = 0
     total_verified: int = 0
+    # Structural-only (--no-hf-reference) passes; not counted as verified.
+    total_provisional: int = 0
 
     def to_dict(self) -> dict:
         """Convert to a JSON-serializable dictionary."""
@@ -240,6 +243,7 @@ class SupportedModelsReport:
             "total_architectures": self.total_architectures,
             "total_models": self.total_models,
             "total_verified": self.total_verified,
+            "total_provisional": self.total_provisional,
             "models": [m.to_dict() for m in self.models],
         }
         return d
@@ -256,6 +260,7 @@ class SupportedModelsReport:
             total_architectures=data.get("total_architectures", 0),
             total_models=data.get("total_models", len(data.get("models", []))),
             total_verified=data.get("total_verified", 0),
+            total_provisional=data.get("total_provisional", 0),
             models=[ModelEntry.from_dict(m) for m in data["models"]],
         )
 

@@ -826,6 +826,7 @@ for English, and may not be the same for other languages.
 #bt-root .bt-s1 { background: #d4edda; color: #155724; }
 #bt-root .bt-s2 { background: #fff3cd; color: #856404; }
 #bt-root .bt-s3 { background: #f8d7da; color: #721c24; }
+#bt-root .bt-s4 { background: #d1ecf1; color: #0c5460; }
 #bt-root .bt-muted { color: var(--color-foreground-muted, #999); }
 #bt-root .bt-score { font-weight: 600; font-size: 12px; }
 #bt-root .bt-score-high { color: #155724; }
@@ -902,7 +903,7 @@ for English, and may not be the same for other languages.
     <input type="text" id="btSearch" placeholder="Search by model name or organization...">
     <select id="btArch"><option value="">All Architectures</option></select>
     <select id="btPrefix"><option value="">All Organizations</option></select>
-    <select id="btStatus"><option value="">All Statuses</option><option value="1">Verified</option><option value="0">Unverified</option><option value="3">Failed</option></select>
+    <select id="btStatus"><option value="">All Statuses</option><option value="1">Verified</option><option value="4">Provisional</option><option value="0">Unverified</option><option value="3">Failed</option></select>
     <label class="bt-canonical-toggle"><input type="checkbox" id="btCanonical"> Canonical only</label>
     <span class="bt-count" id="btCount"></span>
   </div>
@@ -928,7 +929,7 @@ for English, and may not be the same for other languages.
 <script>
 (function() {
     const PS = 25, COLS = 9;
-    const SM = {0:'Unverified',1:'Verified',2:'Unverified',3:'Failed'};
+    const SM = {0:'Unverified',1:'Verified',2:'Unverified',3:'Failed',4:'Provisional'};
     // Interpolated from CANONICAL_AUTHORS_BY_ARCH (Python, registry __init__).
     const OFFICIAL_ORGS = __OFFICIAL_ORGS_JSON__;
     const cfgCache = {};

@@ -156,6 +156,7 @@ def discover_architectures(
             "total_architectures": len(arch_ids),
             "total_models": len(supported_models),
             "total_verified": 0,
+            "total_provisional": 0,
             "models": supported_models,
         }
 

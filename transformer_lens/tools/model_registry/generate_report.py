@@ -250,6 +250,7 @@ def generate_report(output_path: Path | None = None) -> str:
     lines.append(f"| Supported Models | {total_supported:,} |")
     lines.append(f"| Supported Architectures | {len(architectures)} |")
     lines.append(f"| Verified Models | {stats['total_verified']} |")
+    lines.append(f"| Provisional Models | {stats.get('total_provisional', 0)} |")
     lines.append(f"| Unsupported Architectures | {len(gaps)} |")
     lines.append(f"| Models in Unsupported Architectures | {total_unsupported:,} |")
     lines.append(f"| **Total Potential Models** | **{total_all:,}** |")
@@ -273,10 +274,15 @@ def generate_report(output_path: Path | None = None) -> str:
         lines.append(f"**{len(model_list)} models:**")
         lines.append("")
         for model_id in model_list:
-            # Check if verified
+            # Verified (✓) vs provisional / structural-only (⚠) vs neither.
             model_entry = next((m for m in models if m.model_id == model_id), None)
-            verified_badge = " ✓" if model_entry and model_entry.status == 1 else ""
-            lines.append(f"- `{model_id}`{verified_badge}")
+            if model_entry and model_entry.status == 1:
+                badge = " ✓"
+            elif model_entry and model_entry.status == 4:
+                badge = " ⚠"
+            else:
+                badge = ""
+            lines.append(f"- `{model_id}`{badge}")
         lines.append("")
 
     # Unsupported architectures section
@@ -304,6 +310,9 @@ def generate_report(output_path: Path | None = None) -> str:
     )
     lines.append("")
     lines.append("✓ = Verified to work with TransformerLens")
+    lines.append(
+        "⚠ = Provisional (structural check only; not numerically verified against HuggingFace)"
+    )
 
     report = "\n".join(lines)
 

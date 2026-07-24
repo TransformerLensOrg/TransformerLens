@@ -552,13 +552,16 @@ def scrape_all_models(
     logger.info(f"Total supported models: {len(supported_models)}")
     logger.info(f"Unsupported architectures found: {len(unsupported_arch_counts)}")
 
-    # Count unique supported architectures and verified models
+    # Count unique supported architectures and verified/provisional models
     supported_arch_ids: set[str] = set()
     total_verified = 0
+    total_provisional = 0
     for model in supported_models:
         supported_arch_ids.add(model["architecture_id"])
         if model.get("status", 0) == 1:
             total_verified += 1
+        elif model.get("status", 0) == 4:
+            total_provisional += 1
 
     # Build scan info (shared by both reports)
     scan_info = {
@@ -575,6 +578,7 @@ def scrape_all_models(
         "total_architectures": len(supported_arch_ids),
         "total_models": len(supported_models),
         "total_verified": total_verified,
+        "total_provisional": total_provisional,
         "models": supported_models,
     }
 

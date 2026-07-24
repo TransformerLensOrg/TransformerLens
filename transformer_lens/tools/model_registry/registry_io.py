@@ -24,6 +24,10 @@ STATUS_UNVERIFIED = 0
 STATUS_VERIFIED = 1
 STATUS_SKIPPED = 2
 STATUS_FAILED = 3
+# Structural-only pass (--no-hf-reference): Phase 1 ran without an HF reference,
+# so the forward was never numerically compared to HuggingFace. Recorded as a
+# real result but deliberately NOT counted as verified.
+STATUS_PROVISIONAL = 4
 
 # HF-loadable quantization formats. Admitted to the registry; verification gates
 # on `required_quant_library_for_model()` at run time.
@@ -185,8 +189,8 @@ def update_model_status(
 ) -> bool:
     """Update a single model entry in supported_models.json.
 
-    If the model is not found in the registry and status == STATUS_VERIFIED,
-    a new entry is appended.
+    If the model is not found in the registry and status is STATUS_VERIFIED or
+    STATUS_PROVISIONAL, a new entry is appended.
 
     When status is None (partial-phase update), only the provided phase_scores
     are updated — status, note, and other scores are preserved.
@@ -194,7 +198,7 @@ def update_model_status(
     Args:
         model_id: The model to update
         arch_id: Architecture of the model
-        status: New status code (0-3), or None for score-only updates
+        status: New status code (0-4), or None for score-only updates
         note: Optional note for skip/fail reason
         phase_scores: Phase score dict {1: float, 2: float, 3: float, 4: float}
         sanitize_fn: Optional callable to sanitize note strings
@@ -255,8 +259,10 @@ def update_model_status(
             updated = True
             break
 
-    if not updated and status == STATUS_VERIFIED:
-        # Model not in registry -- add it
+    if not updated and status in (STATUS_VERIFIED, STATUS_PROVISIONAL):
+        # Model not in registry -- add it. A structural-only (provisional) pass
+        # is a real result worth recording; skipped/failed on a missing model
+        # are not, so they still fall through.
         data.get("models", []).append(
             {
                 "model_id": model_id,
@@ -278,6 +284,9 @@ def update_model_status(
     if updated:
         models = data.get("models", [])
         data["total_verified"] = sum(1 for m in models if m.get("status", 0) == STATUS_VERIFIED)
+        data["total_provisional"] = sum(
+            1 for m in models if m.get("status", 0) == STATUS_PROVISIONAL
+        )
         data["total_models"] = len(models)
         data["total_architectures"] = len(set(m["architecture_id"] for m in models))
         save_supported_models_raw(data)
