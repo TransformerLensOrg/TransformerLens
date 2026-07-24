@@ -1,17 +1,6 @@
-"""ModernBERT Decoder architecture adapter.
-
-JHU CLSP's Ettin decoder suite (``ModernBertDecoderForCausalLM``, native
-in transformers): the ModernBERT recipe run causally — alternating
-sliding-window/global attention (``layer_types``), fused-GLU MLPs
-(``Wi`` produces input and gate halves, ``Wo`` projects back), an
-embedding LayerNorm, an Identity attention norm on layer 0, and a
-BERT-style prediction head (dense + act + norm) before the untied
-``decoder`` vocab projection.
-
-Attention delegates to HF (per-layer sliding windows have no uniform
-reconstruction); the layer-0 Identity norm also makes LN folding
-unsound, so it is disabled.
-"""
+"""ModernBERT Decoder (``ModernBertDecoderForCausalLM``) adapter: ModernBERT run
+causally. Attention delegates (per-layer sliding windows) and LN folding is disabled
+(layer-0 Identity attention norm)."""
 
 from typing import Any
 

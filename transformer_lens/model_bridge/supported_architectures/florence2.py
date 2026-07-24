@@ -31,7 +31,6 @@ class Florence2ArchitectureAdapter(BartArchitectureAdapter):
         if hasattr(cfg, "vision_config"):
             self.cfg.vision_hidden_size = getattr(cfg.vision_config, "hidden_size", None)
 
-        # Re-prefix the BART text stack under model.language_model.
         self._reprefix_components("model.", _TEXT_PREFIX)
 
         self.components["vision_encoder"] = GeneralizedComponent(name="model.vision_tower")

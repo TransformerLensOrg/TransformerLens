@@ -52,12 +52,8 @@ class Qwen3_5MoeArchitectureAdapter(Qwen3ArchitectureAdapter):
         return _sparse_moe_mlp(self)
 
     def prepare_loading(self, model_name: str, model_kwargs: dict) -> None:
-        """Swap multimodal Qwen3_5MoeConfig for text-only Qwen3_5MoeTextConfig.
-
-        Published checkpoints carry architectures=['Qwen3_5MoeForConditionalGeneration'].
-        We replace config with text_config so AutoModelForCausalLM loads the
-        text-only Qwen3_5MoeForCausalLM.
-        """
+        """Swap to ``text_config`` so AutoModelForCausalLM loads the text-only model
+        (checkpoints ship the ConditionalGeneration architecture)."""
         config = model_kwargs.get("config")
         if config is not None and hasattr(config, "text_config"):
             model_kwargs["config"] = config.text_config

@@ -31,13 +31,8 @@ class _InternLM2AttentionBridge(JointQKVPositionEmbeddingsAttentionBridge):
     """
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
-        """Supply position_embeddings from this layer's own rotary module.
-
-        InternLM2 keeps a rotary_emb per attention module instead of a shared
-        model-level one, so its decoder layer never passes position_embeddings
-        down. The reconstruction applies RoPE only when they are present, so
-        without this the bridge silently runs with no positional encoding.
-        """
+        """Supply position_embeddings from this layer's own rotary module -- InternLM2
+        has per-attention rotary and never passes them down, so RoPE is otherwise skipped."""
         if kwargs.get("position_embeddings") is None:
             rotary = getattr(self.original_component, "rotary_emb", None)
             hidden_states = kwargs.get("hidden_states")
@@ -215,13 +210,9 @@ class InternLM2ArchitectureAdapter(ArchitectureAdapter):
         attn_bridge.set_rotary_emb(rotary_emb)
 
     def prepare_model(self, hf_model: Any) -> None:
-        """Restore the per-layer rotary tables lost to meta-device loading.
-
-        ``inv_freq`` is non-persistent, so v5 replaces it with uninitialized
-        memory; HF only auto-restores rotary buffers on modules exposing
-        ``original_inv_freq``, which this remote code predates. Left alone the
-        model rotates positions by random values on every load.
-        """
+        """Restore per-layer rotary ``inv_freq`` lost to meta-device loading -- this
+        remote code predates HF's ``original_inv_freq`` auto-restore, so positions
+        would otherwise rotate by random values."""
         super().prepare_model(hf_model)
         restore_rotary_inv_freq(hf_model)
 

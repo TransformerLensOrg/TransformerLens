@@ -2751,12 +2751,8 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                 return
 
     def _resolve_generation_caching(self, use_past_kv_cache: bool, batched: bool) -> bool:
-        """Honor adapter caching/batching limits; returns the effective cache flag.
-
-        Recurrent and convolutional decoders speak no KV-cache protocol, so the
-        full-prefix recompute path is the only correct one. Batching is rejected
-        rather than silently mis-generated where padding cannot be masked.
-        """
+        """Honor adapter caching/batching limits (recurrent/conv decoders have no KV
+        cache; batching is rejected where padding can't be masked, not mis-generated)."""
         if batched and not getattr(self.adapter, "supports_batched_generation", True):
             architecture = self.cfg.architecture or type(self.adapter).__name__
             raise NotImplementedError(
@@ -3278,19 +3274,8 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
     ) -> Union[str, torch.Tensor]:
         """Sample from a non-autoregressive (diffusion) architecture.
 
-        Delegates to the model's own sampler — iterative full-sequence denoising
-        has no left-to-right loop to reuse, and the published schedules are what
-        make these checkpoints produce sane text. The sampler calls the model
-        through ``__call__``, so bridge hooks fire on every denoising step.
-
-        Args:
-            input: Prompt string, or token ids.
-            max_new_tokens: Token budget, translated to the sampler's own
-                parameter names by the adapter.
-            **kwargs: Passed to the native sampler, overriding the defaults.
-
-        Returns:
-            Decoded string for string input, else token ids.
+        Delegates to the model's own sampler, which calls the model through
+        ``__call__`` so bridge hooks fire on every denoising step.
         """
         sampler_name = getattr(self.adapter, "native_sampler", None)
         architecture = self.cfg.architecture or type(self.adapter).__name__

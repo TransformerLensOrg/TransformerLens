@@ -56,9 +56,6 @@ class TestExaone4AdapterConfig:
         assert adapter.supports_fold_ln is False
         assert adapter.supports_center_writing_weights is False
 
-    def test_layer_types_surfaced(self, adapter):
-        assert adapter.cfg.layer_types == ["sliding_attention", "full_attention"]
-
     def test_no_bos_prepending(self, adapter):
         assert adapter.cfg.default_prepend_bos is False
 

@@ -29,11 +29,8 @@ from transformer_lens.model_bridge.generalized_components.base import (
 
 
 class _HyenaBlockBridge(BlockBridge):
-    """HyenaBlock takes and returns a bare tensor, and the backbone's minimal
-    ``layer(hidden_states)`` call looks exactly like a standalone block call —
-    the tuple-normalizing heuristic would feed block 1 a one-element tuple.
-    The alias set drops BlockBridge's attention names (no attention here) and
-    exposes the mixer instead; hook_resid_mid is ln2's input (pre-norm block)."""
+    """Bare-tensor block whose backbone call mimics a standalone call, so
+    tuple-normalization is disabled; aliases drop attention (none here) and expose the mixer."""
 
     hook_aliases = {
         "hook_resid_pre": "hook_in",

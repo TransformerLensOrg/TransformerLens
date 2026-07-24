@@ -57,10 +57,10 @@ class TestFlorence2ForwardEquivalence:
         torch.manual_seed(0)
         px = torch.randn(1, 3, 768, 768)
         with torch.no_grad():
-            bridge_out = florence2_bridge.original_model(
-                input_ids=ids, pixel_values=px, decoder_input_ids=dec_ids
-            ).logits
+            bridge_out = florence2_bridge(ids, pixel_values=px, decoder_input_ids=dec_ids)
             hf_out = fresh(input_ids=ids, pixel_values=px, decoder_input_ids=dec_ids).logits
+        if isinstance(bridge_out, tuple):
+            bridge_out = bridge_out[0]
         max_diff = (bridge_out - hf_out).abs().max().item()
         assert max_diff < 1e-4, f"Bridge vs fresh HF max diff = {max_diff}"
 

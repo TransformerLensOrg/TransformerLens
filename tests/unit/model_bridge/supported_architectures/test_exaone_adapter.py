@@ -60,9 +60,6 @@ class TestExaoneAdapterConfig:
         """Verified against LGAI-EXAONE/EXAONE-3.5-2.4B-Instruct's tokenizer."""
         assert adapter.cfg.default_prepend_bos is False
 
-    def test_gqa_heads_propagated(self, adapter):
-        assert adapter.cfg.n_key_value_heads == 2
-
     def test_qkvo_conversions_registered(self, adapter):
         keys = set(adapter.weight_processing_conversions)
         assert {

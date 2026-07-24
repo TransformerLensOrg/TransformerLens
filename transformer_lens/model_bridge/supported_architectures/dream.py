@@ -30,13 +30,8 @@ from transformer_lens.model_bridge.supported_architectures.qwen2 import (
 
 
 def _patch_eager_attention_mask(attn_cls: Any) -> None:
-    """Teach Dream's eager attention the ``"full"`` mask sentinel.
-
-    Its sampler passes the string ``"full"`` when no padding is present. The
-    SDPA path guards with ``isinstance(..., torch.Tensor)``; the eager path
-    indexes the mask directly and raises. The bridge forces eager for hook
-    fidelity, so normalize the sentinel to None as SDPA does.
-    """
+    """Teach Dream's eager attention the ``"full"`` mask sentinel -- the bridge forces
+    eager, whose path (unlike SDPA) raises on the non-tensor sentinel, so normalize it to None."""
     if getattr(attn_cls, "_tl_mask_sentinel_patched", False):
         return
 
@@ -56,14 +51,8 @@ def _patch_eager_attention_mask(attn_cls: Any) -> None:
 
 
 def _patch_from_model_config(gen_cfg_cls: Any) -> None:
-    """Rebuild DreamGenerationConfig from the model config without v5's attr diff.
-
-    v5's ``GenerationConfig.from_model_config`` compares every attribute against
-    a base instance, which has none of Dream's diffusion fields (eps/steps/alg)
-    — an AttributeError before sampling starts. Rebuilding directly also keeps
-    ``mask_token_id``, which the shipped generation_config.json leaves null and
-    denoising cannot run without.
-    """
+    """Rebuild DreamGenerationConfig directly -- v5's from_model_config raises on Dream's
+    diffusion fields, and rebuilding preserves the null-by-default ``mask_token_id``."""
     if getattr(gen_cfg_cls, "_tl_from_model_config_patched", False):
         return
 

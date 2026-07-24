@@ -185,15 +185,9 @@ def _fixup_custom_model(hf_model) -> None:
 
 
 def _hf_forward_with_mask_fallback(hf_model, tokens):
-    """Run an HF decoder forward, supplying an attention mask if it demands one.
-
-    Most decoders accept a bare ``input_ids`` call and build the causal mask
-    internally, but some remote-code models dereference ``attention_mask``
-    unconditionally (LLaDA2's diffusion block attention needs a 4D
-    ``(b,1,s,s)`` mask). Without this, the Phase-1 HF-logit capture raised
-    ``'NoneType' has no attribute 'size'``, the benchmark swallowed it, and the
-    forward check silently degraded to shape-only — hiding real parity.
-    """
+    """Run an HF decoder forward, retrying with a 2D then 4D mask for models that
+    dereference ``attention_mask`` unconditionally (e.g. LLaDA2) -- else the Phase-1
+    capture raises, gets swallowed, and silently degrades to a shape-only check."""
     try:
         return hf_model(tokens)
     except (AttributeError, ValueError):

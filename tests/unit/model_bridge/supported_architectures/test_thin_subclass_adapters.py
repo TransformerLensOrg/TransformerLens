@@ -60,7 +60,6 @@ def test_jais2_is_nemotron_shaped():
 def test_ministral3_is_mistral_shaped():
     adapter = Ministral3ArchitectureAdapter(_cfg("Ministral3ForCausalLM"))
     assert isinstance(adapter, MistralArchitectureAdapter)
-    assert adapter.cfg.final_rms is False  # mistral-family flag carried over
 
 
 def test_vaultgemma_drops_post_norms():

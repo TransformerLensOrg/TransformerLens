@@ -1,11 +1,5 @@
-"""Bamba architecture adapter.
-
-IBM's Bamba (``BambaForCausalLM``): a Jamba-lineage hybrid where every layer
-carries a dense gated MLP and two RMSNorms, and the token mixer alternates
-between Mamba-2 (``.mamba``) and llama-style GQA attention (``.self_attn``)
-per ``config.layers_block_type``. Attention layers use partial RoPE from a
-model-level rotary embedding.
-"""
+"""Bamba (``BambaForCausalLM``) adapter: Jamba-lineage hybrid alternating Mamba-2
+and llama-style GQA attention mixers per ``config.layers_block_type``."""
 
 from typing import Any
 

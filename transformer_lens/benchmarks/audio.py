@@ -19,15 +19,8 @@ from transformer_lens.model_bridge import TransformerBridge
 
 
 def _prepare_audio_text_inputs(bridge: TransformerBridge):
-    """Build audio-conditioned inputs for an audio-text decoder (Qwen2Audio etc.).
-
-    Feeds a synthetic 1s 16 kHz waveform through the model's own processor (which
-    emits ``input_features`` + a feature mask) alongside the audio placeholder
-    token. Returns ``(input_ids, extra_kwargs)`` or ``(None, None)`` if the audio
-    path is unavailable. Synthetic audio is used (not real speech) because a
-    non-NaN forward is the goal, not transcription accuracy — and it avoids the
-    optional ``torchcodec`` decode dependency.
-    """
+    """Build audio-conditioned inputs (synthetic waveform + audio token) for an
+    audio-text decoder; ``(None, None)`` if the processor has no audio path."""
     processor = getattr(bridge, "processor", None)
     audio_token = getattr(processor, "audio_token", None) if processor is not None else None
     if processor is None or audio_token is None:
@@ -52,12 +45,8 @@ def _prepare_audio_text_inputs(bridge: TransformerBridge):
 
 
 def benchmark_audio_text_forward(bridge: TransformerBridge) -> BenchmarkResult:
-    """Benchmark the audio-conditioned forward of an audio-text decoder.
-
-    Confirms the bridge plumbs processed ``input_features`` through the audio
-    tower + projector to finite, correctly-shaped logits — the audio path that
-    the image (Phase 7) and encoder-waveform (Phase 8 encoder) benchmarks miss.
-    """
+    """Benchmark the audio-conditioned forward (input_features -> finite logits) of
+    an audio-text decoder -- the audio path Phase 7 (image) and Phase 8 (encoder) miss."""
     if not getattr(bridge.cfg, "is_multimodal", False):
         return BenchmarkResult(
             name="audio_text_forward",

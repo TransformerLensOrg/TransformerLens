@@ -1,11 +1,5 @@
-"""Audio Flamingo 3 architecture adapter.
-
-NVIDIA's Audio Flamingo 3 (``AudioFlamingo3ForConditionalGeneration``):
-a fine-tuned Whisper encoder at ``audio_tower``, a two-layer projector at
-``multi_modal_projector``, and a full Qwen2ForCausalLM at
-``language_model`` — the identical layout the Qwen2-Audio adapter maps,
-under the same module names, so this is a pure subclass.
-"""
+"""Audio Flamingo 3 (``AudioFlamingo3ForConditionalGeneration``) adapter: identical
+module layout to Qwen2-Audio, so a pure subclass."""
 
 from transformer_lens.model_bridge.supported_architectures.qwen2_audio import (
     Qwen2AudioArchitectureAdapter,

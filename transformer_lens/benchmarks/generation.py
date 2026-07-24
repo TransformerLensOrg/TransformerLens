@@ -13,12 +13,8 @@ from transformer_lens.model_bridge import TransformerBridge
 
 
 def resolve_text_generator(bridge: Any):
-    """Return the callable that produces text for this architecture, or None.
-
-    Diffusion LMs sample by iterative denoising through their own sampler; that
-    is still generation for verification purposes, so the benchmarks exercise it
-    rather than skipping these architectures.
-    """
+    """Return the callable that produces text for this architecture, or None
+    (diffusion LMs delegate to their native sampler)."""
     if getattr(bridge.adapter, "supports_generation", True):
         return bridge.generate
     if getattr(bridge.adapter, "native_sampler", None):
@@ -32,17 +28,7 @@ def benchmark_generation(
     max_new_tokens: int = 10,
     reference_model: Optional[HookedTransformer] = None,
 ) -> BenchmarkResult:
-    """Benchmark basic text generation.
-
-    Args:
-        bridge: TransformerBridge model to test
-        test_text: Input text for generation
-        max_new_tokens: Number of tokens to generate
-        reference_model: Optional HookedTransformer reference model (not used)
-
-    Returns:
-        BenchmarkResult with generation details
-    """
+    """Benchmark basic text generation."""
     try:
         if is_tiny_test_model(getattr(bridge.cfg, "model_name", "") or ""):
             return BenchmarkResult(
@@ -57,17 +43,11 @@ def benchmark_generation(
                 severity=BenchmarkSeverity.INFO,
                 message="Skipped: architecture supports no text generation",
             )
-        # Greedy: this benchmark tests the generation loop's mechanics, not
-        # sampling quality. Sampling makes the verdict depend on whether the
-        # drawn trajectory happens to hit EOS first, which says nothing about
-        # the bridge. Greedy is deterministic by construction — no seeding.
-        #
-        # stop_at_eos=False for the same reason. Some models score EOS as the
-        # argmax continuation of a bare test prompt (EXAONE-4 does, and so does
-        # raw HF), which is the model choosing to stop, not a stalled loop.
-        # Tokenization is left alone deliberately: forcing a BOS would override
-        # adapters that set default_prepend_bos=False on purpose, and would
-        # derail checkpoints whose BOS token is their EOS.
+        # Greedy (deterministic, no seeding): tests the loop's mechanics, not
+        # sampling quality. stop_at_eos=False because some models argmax EOS on a
+        # bare prompt (EXAONE-4, raw HF) — a choice to stop, not a stall. BOS is
+        # left alone: forcing it would override default_prepend_bos=False adapters
+        # and derail checkpoints whose BOS token is their EOS.
         gen_kwargs: dict[str, Any] = {"max_new_tokens": max_new_tokens, "temperature": 0.0}
         if getattr(bridge.adapter, "supports_generation", True):
             # Native diffusion samplers take neither kwarg through **kwargs.

@@ -67,8 +67,11 @@ class TestQwen3VLForwardEquivalence:
         fresh.eval()
         proc = AutoProcessor.from_pretrained(MODEL)
         inputs = _image_inputs(proc)
+        # Drive the bridge's own forward (input_ids positional, pixel_values/attention_mask
+        # as kwargs) so the multimodal path — not just the wrapped HF model — is exercised.
+        bridge_inputs = {k: v for k, v in inputs.items() if k != "input_ids"}
         with torch.no_grad():
-            bridge_out = qwen3vl_bridge.original_model(**inputs).logits
+            bridge_out = qwen3vl_bridge(inputs["input_ids"], **bridge_inputs)
             hf_out = fresh(**inputs).logits
         max_diff = (bridge_out - hf_out).abs().max().item()
         assert max_diff < 1e-5, f"Bridge vs fresh HF max diff = {max_diff}"

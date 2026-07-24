@@ -1,11 +1,5 @@
-"""Music Flamingo architecture adapter.
-
-NVIDIA's Music Flamingo / Audio Flamingo Next
-(``MusicFlamingoForConditionalGeneration``): Audio Flamingo 3's layout
-plus a rotary temporal embedding inside the conditioning path
-(``pos_emb``), which rides along opaquely with the delegated audio tower
-and projector.
-"""
+"""Music Flamingo (``MusicFlamingoForConditionalGeneration``) adapter: Audio Flamingo 3
+layout plus a delegated rotary temporal embedding in the conditioning path."""
 
 from transformer_lens.model_bridge.supported_architectures.audio_flamingo3 import (
     AudioFlamingo3ArchitectureAdapter,

@@ -1,13 +1,6 @@
-"""AFMoE (Arcee Foundation MoE) architecture adapter.
-
-Arcee's Trinity family (``AfmoeForCausalLM``): sandwich-normalized decoder
-blocks (pre + post norms around both attention and MLP), attention with
-per-head QK RMS-norm, sigmoid output gating, and RoPE only on
-sliding-window layers (full-attention layers are NoPE) — so attention
-stays delegated to HF. Layers below ``num_dense_layers`` hold a dense
-gated MLP; the rest hold a sparse MoE with shared experts, batched 3D
-routed experts, and a token-choice sigmoid router with a bias buffer.
-"""
+"""AFMoE (Arcee Trinity, ``AfmoeForCausalLM``) adapter: sandwich norms, QK-norm
+attention with sigmoid gating and NoPE/sliding RoPE (so attention delegates to HF),
+dense + sparse-MoE MLP layers split at ``num_dense_layers``."""
 
 from typing import Any
 

@@ -137,13 +137,8 @@ def _phases_to_run(arch: str, phases: list[int]) -> list[int]:
 
 
 def _full_and_core_phases(arch: str) -> tuple[set[int], set[int]]:
-    """``(full verification set, core subset)`` for this architecture.
-
-    One source for both the default phase selection and the status-writing
-    decision. While they were separate, vision families could never reach
-    verified: the default text set omitted phase 7, so every run wrote scores,
-    found phase 7 missing, and left the status untouched.
-    """
+    """``(full verification set, core subset)`` for this architecture -- the single
+    source for both default phase selection and the status-writing decision."""
     from transformer_lens.utilities.architectures import AUDIO_TEXT_ARCHITECTURES
 
     kind = classify_architecture(arch)
@@ -152,10 +147,8 @@ def _full_and_core_phases(arch: str) -> tuple[set[int], set[int]]:
     if kind == "multimodal":
         return {1, 2, 3, 4, 7}, {1, 4, 7}
     if arch in AUDIO_TEXT_ARCHITECTURES:
-        # Audio-text decoders verify their text path (1-4) and additionally exercise
-        # the audio-conditioned forward (Phase 8). Phase 8 stays out of the core set
-        # so a partial {1,4} run still verifies; a full run records + gates P8 via
-        # _check_phase_scores.
+        # Phase 8 (audio-conditioned forward) out of the core set so a partial {1,4}
+        # run still verifies; a full run records and gates it via _check_phase_scores.
         return {1, 2, 3, 4, 8}, {1, 4}
     return {1, 2, 3, 4}, {1, 4}
 
@@ -166,10 +159,8 @@ def _default_phases_for_architecture(arch: str) -> list[int]:
 
 
 def _pass_status(use_hf_reference: bool) -> int:
-    """Status for a passing run: VERIFIED only when it was numerically compared
-    to an HF reference. A --no-hf-reference (structural-only) pass is
-    PROVISIONAL — recorded, but not counted as verified.
-    """
+    """Status for a passing run: VERIFIED with an HF reference, else PROVISIONAL
+    (a --no-hf-reference structural-only pass is recorded but not counted verified)."""
     return STATUS_VERIFIED if use_hf_reference else STATUS_PROVISIONAL
 
 

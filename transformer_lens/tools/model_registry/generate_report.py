@@ -274,7 +274,6 @@ def generate_report(output_path: Path | None = None) -> str:
         lines.append(f"**{len(model_list)} models:**")
         lines.append("")
         for model_id in model_list:
-            # Verified (✓) vs provisional / structural-only (⚠) vs neither.
             model_entry = next((m for m in models if m.model_id == model_id), None)
             if model_entry and model_entry.status == 1:
                 badge = " ✓"

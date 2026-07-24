@@ -1,12 +1,5 @@
-"""Mistral 3 (Mistral-Small-3.x VLM) architecture adapter.
-
-Mistral AI's Mistral3 (``Mistral3ForConditionalGeneration``,
-Mistral-Small-3.1/3.2): a Pixtral vision tower and a patch-merging
-projector feeding a Mistral text decoder — the same Llava layout, so the
-Llava adapter applies with the vision tower swapped to an opaque
-delegated component (Pixtral's 2D-RoPE block-diagonal attention has no
-CLIP/SigLIP-shaped bridge).
-"""
+"""Mistral 3 VLM (``Mistral3ForConditionalGeneration``) adapter: Llava layout with
+the Pixtral vision tower delegated opaquely."""
 
 from typing import Any
 
@@ -25,8 +18,6 @@ class Mistral3ArchitectureAdapter(LlavaArchitectureAdapter):
         """Initialize the Mistral 3 architecture adapter."""
         super().__init__(cfg)
 
-        # Pixtral's 2D-RoPE block-diagonal attention has no CLIP-shaped bridge.
-        # The projector inherits Llava's VisionProjectionBridge; its extra
-        # (image_features, image_sizes) positional flows through the *args
-        # passthrough.
+        # Pixtral's 2D-RoPE block-diagonal attention has no CLIP-shaped bridge, so
+        # the vision tower is delegated opaquely.
         self.components["vision_encoder"] = GeneralizedComponent(name="model.vision_tower")

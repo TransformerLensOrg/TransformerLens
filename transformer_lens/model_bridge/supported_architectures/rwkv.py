@@ -17,7 +17,7 @@ so their weights match exactly. use_cache is forced off: the recurrent
 state buffers are written in-place per layer, which breaks autograd under
 backward hooks — and generation (the only state consumer) runs on a
 bespoke ``state`` kwarg the bridge's loop doesn't speak, so generation
-phases are excluded for now.
+phases are excluded.
 """
 
 from typing import Any
@@ -135,12 +135,8 @@ class RwkvArchitectureAdapter(ArchitectureAdapter):
         super().prepare_loading(model_name, model_kwargs)
 
     def prepare_model(self, hf_model: Any) -> None:
-        """Re-assert use_cache=False on the loaded model.
-
-        prepare_loading only fires on the boot path; modules wrapped directly
-        keep the config default, and the returned state tuples then reach hook
-        points that require tensors.
-        """
+        """Re-assert use_cache=False -- prepare_loading only fires on the boot path, so
+        directly-wrapped modules keep the default and leak state tuples into tensor-only hooks."""
         super().prepare_model(hf_model)
         config = getattr(hf_model, "config", None)
         if config is not None:

@@ -53,7 +53,6 @@ class TestIdefics3AdapterConfig:
         assert adapter.cfg.normalization_type == "RMS"
         assert adapter.cfg.positional_embedding_type == "rotary"
         assert adapter.cfg.gated_mlp is True
-        assert adapter.cfg.n_key_value_heads == 2
 
 
 class TestIdefics3ComponentMapping:

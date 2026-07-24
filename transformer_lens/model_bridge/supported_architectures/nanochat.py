@@ -1,15 +1,6 @@
-"""NanoChat architecture adapter.
-
-Karpathy's nanochat (``NanoChatForCausalLM``, native in transformers v5):
-a Llama-style decoder with three deliberate simplifications — every RMSNorm
-is weightless (no scale parameter), the MLP is an ungated fc1 -> relu^2 ->
-fc2, and logits are tanh-soft-capped (final_logit_softcapping). Attention
-is MHA with full-width q/k norms applied AFTER rope (the reverse of Qwen3's
-order), so attention stays delegated to HF rather than reimplemented.
-
-Weightless norms also mean there is nothing for fold_ln to fold, so
-compatibility processing runs unfolded.
-"""
+"""NanoChat (``NanoChatForCausalLM``) adapter: Llama-style decoder with weightless
+RMSNorm (so nothing for fold_ln to fold), ungated relu^2 MLP, and soft-capped logits;
+attention delegated (full-width q/k norm after RoPE)."""
 
 from typing import Any
 

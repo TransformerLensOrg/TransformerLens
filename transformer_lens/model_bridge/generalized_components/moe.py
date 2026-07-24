@@ -161,14 +161,8 @@ class MoERouterBridge(LinearBridge):
     def set_processed_weights(
         self, weights: Mapping[str, Optional[torch.Tensor]], verbose: bool = False
     ) -> None:
-        """Accept routers whose Linear is nested inside a gating module.
-
-        JetMoe's TopKGating holds its projection at ``router.layer.weight``, so
-        this bridge receives ``{"layer.weight": ...}`` and the wrapped module has
-        no ``.weight`` for the base writer. Weight processing never transforms
-        router weights, so copy nested tensors back onto the wrapped module's
-        own parameters by dotted path.
-        """
+        """Copy router weights onto nested params by dotted path (JetMoe nests its
+        Linear at ``router.layer.weight``); router weights are never processed."""
         if "weight" in weights:
             super().set_processed_weights(weights, verbose=verbose)
             return

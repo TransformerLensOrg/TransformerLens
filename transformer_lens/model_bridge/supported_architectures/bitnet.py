@@ -1,13 +1,5 @@
-"""BitNet architecture adapter.
-
-Microsoft's BitNet b1.58 (``BitNetForCausalLM``): llama-layout decoder whose
-distinguishing feature is sub-layer normalization — an extra RMSNorm applied
-to the attention output before ``o_proj`` (``attn_sub_norm``) and to the MLP
-activation before ``down_proj`` (``ffn_sub_norm``). Both are applied by the
-delegated HF modules; the attention reconstruction applies attn_sub_norm via
-an adapter-local bridge. The bf16 master-weight checkpoints load through
-standard nn.Linear paths.
-"""
+"""BitNet b1.58 (``BitNetForCausalLM``) adapter: llama layout plus attn/ffn
+sub-layer RMSNorms (attn_sub_norm reapplied by an adapter-local attention bridge)."""
 
 from typing import Any
 

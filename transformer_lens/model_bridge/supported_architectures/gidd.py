@@ -29,14 +29,9 @@ from transformer_lens.model_bridge.generalized_components import (
 
 
 def restore_frequencies(hf_model: Any) -> bool:
-    """Recompute GIDD's ``frequencies`` rotary table on a loaded model.
-
-    The buffer is non-persistent (absent from the checkpoint) and built in
-    ``GiddModel.__init__``; under v5's meta-device load it materializes as
-    uninitialized memory — different garbage per load, sometimes NaN — which
-    silently corrupts every forward. Recomputing from config is exact.
-    Shared with the benchmark so bridge and HF reference agree.
-    """
+    """Recompute GIDD's non-persistent ``frequencies`` rotary table; under v5's
+    meta-device load it materializes as uninitialized memory that silently corrupts
+    every forward (applied to both bridge and HF reference so they agree)."""
     import sys
 
     inner = getattr(hf_model, "model", None)

@@ -1,19 +1,6 @@
-"""Switch Transformers architecture adapter.
-
-Google's Switch Transformer (``SwitchTransformersForConditionalGeneration``,
-native in transformers): the foundational sparse MoE — T5's encoder-decoder
-skeleton with every other feed-forward layer replaced by a top-1
-capacity-constrained router over expert MLPs (dropped tokens pass through
-the residual untouched). The only encoder-decoder MoE in the registry.
-
-v5 modernized Switch blocks to a plain tensor-in/tensor-out protocol
-(unlike T5's tuple chain that T5BlockBridge's patched forward speaks), so
-the blocks delegate wholesale here: a plain BlockBridge with the
-tuple-normalizing standalone-call heuristic disabled, T5-named sublayers
-hookable, and the FF as a delegated MoEBridge whose router is optional
-(dense on even layers, sparse on odd). Expert MLPs and the top-1 routing
-stay inside the delegated modules.
-"""
+"""Switch Transformers (``SwitchTransformersForConditionalGeneration``) adapter:
+T5 encoder-decoder with top-1-routed sparse-MoE feed-forwards. Blocks delegate
+wholesale (v5's plain tensor protocol), FF is a delegated MoEBridge with an optional router."""
 
 from typing import Any
 

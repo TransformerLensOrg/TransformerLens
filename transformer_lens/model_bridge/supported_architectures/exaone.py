@@ -77,13 +77,8 @@ class ExaoneArchitectureAdapter(ArchitectureAdapter):
         }
 
     def prepare_model(self, hf_model: Any) -> Any:
-        """Shim the remote module for transformers >= 5.13.
-
-        The EXAONE-3.x remote code calls create_causal_mask(input_embeds=...,
-        cache_position=...); 5.13 renamed the kwarg to inputs_embeds and
-        derives query positions from position_ids. Patch only the remote
-        module's reference.
-        """
+        """Shim the EXAONE-3.x remote module for transformers >= 5.13, which renamed
+        create_causal_mask's ``input_embeds`` kwarg to ``inputs_embeds``."""
         result = super().prepare_model(hf_model)
         model = result if result is not None else hf_model
 

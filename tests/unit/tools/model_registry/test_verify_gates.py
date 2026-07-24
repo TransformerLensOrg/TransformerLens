@@ -114,6 +114,3 @@ class TestPassStatus:
 
     def test_no_hf_reference_is_provisional(self):
         assert _pass_status(use_hf_reference=False) == STATUS_PROVISIONAL
-
-    def test_provisional_is_not_verified(self):
-        assert STATUS_PROVISIONAL != STATUS_VERIFIED

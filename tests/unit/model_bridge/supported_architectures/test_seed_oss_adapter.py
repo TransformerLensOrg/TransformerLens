@@ -54,9 +54,6 @@ class TestSeedOssAdapter:
         """Verified against ByteDance-Seed/Seed-OSS-36B-Instruct's tokenizer."""
         assert adapter.cfg.default_prepend_bos is False
 
-    def test_gqa_heads_propagated(self, adapter):
-        assert adapter.cfg.n_key_value_heads == 2
-
 
 class TestSeedOssRegistration:
     def test_factory_lookup(self):

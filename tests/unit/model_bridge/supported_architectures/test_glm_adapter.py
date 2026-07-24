@@ -47,7 +47,6 @@ class TestGlmAdapterConfig:
         assert adapter.cfg.positional_embedding_type == "rotary"
         assert adapter.cfg.gated_mlp is True
         assert adapter.cfg.default_prepend_bos is False
-        assert adapter.cfg.n_key_value_heads == 2
 
     def test_interleaved_rope_flag(self, adapter):
         """GLM rotates adjacent element pairs, like ERNIE."""

@@ -29,13 +29,8 @@ from transformer_lens.model_bridge.supported_architectures.glm4_moe import (
 
 
 class Glm4MoeLiteArchitectureAdapter(ArchitectureAdapter):
-    """Architecture adapter for GLM-4.7-Flash (Glm4MoeLiteForCausalLM) models.
-
-    Structurally DeepSeek-V2 MLA + GLM-4-MoE routing: RMSNorm pre-norm, MLA
-    with q_lora_rank set on public checkpoints (q_proj fallback kept optional),
-    dense MLP on layers marked "dense" in mlp_layer_types, sparse MoE with a
-    shared expert elsewhere.
-    """
+    """GLM-4.7-Flash (Glm4MoeLiteForCausalLM) adapter: DeepSeek-V2 MLA + GLM-4-MoE
+    routing (dense/sparse per mlp_layer_types)."""
 
     _testing_eager = None
 

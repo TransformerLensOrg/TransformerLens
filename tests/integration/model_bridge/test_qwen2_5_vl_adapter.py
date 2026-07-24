@@ -62,8 +62,11 @@ class TestQwen2_5_VLForwardEquivalence:
         ]
         text = proc.apply_chat_template(messages, add_generation_prompt=True)
         inputs = proc(text=[text], images=[img], return_tensors="pt")
+        # Drive the bridge's own forward (input_ids positional, the rest — pixel_values,
+        # attention_mask, image_grid_thw — as kwargs) so the vision path is exercised.
+        bridge_inputs = {k: v for k, v in inputs.items() if k != "input_ids"}
         with torch.no_grad():
-            bridge_out = qwen25vl_bridge.original_model(**inputs).logits
+            bridge_out = qwen25vl_bridge(inputs["input_ids"], **bridge_inputs)
             hf_out = fresh(**inputs).logits
         max_diff = (bridge_out - hf_out).abs().max().item()
         assert max_diff < 1e-5, f"Bridge vs fresh HF max diff = {max_diff}"

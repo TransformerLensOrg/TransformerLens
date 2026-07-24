@@ -154,11 +154,8 @@ def _perplexity_to_score(perplexity: float) -> float:
 
 
 def _build_caption_test_images(n: int = 3) -> list:
-    """A few distinct synthetic images so caption scoring averages over samples.
-
-    Content is unimportant — P4 measures whether generation is grammatical, and an
-    image-conditioned captioner just needs *some* image to emit a full sentence.
-    """
+    """A few distinct synthetic images so caption scoring averages over samples
+    (content is unimportant — P4 only measures whether generation is grammatical)."""
     from PIL import Image, ImageDraw
 
     specs = [
@@ -188,13 +185,8 @@ def _build_caption_test_images(n: int = 3) -> list:
 def _generate_image_conditioned_captions(
     bridge: TransformerBridge, max_new_tokens: int
 ) -> List[Tuple[str, str]]:
-    """Generate caption text from synthetic images for image-conditioned seq2seq.
-
-    Florence-2-style models emit nothing from a text-only prompt (they need
-    pixel_values), so text-only P4 is uninformative. Here we drive real
-    image-conditioned generation and return [(label, text), ...] to score, or []
-    if the image path is unavailable (no processor/PIL).
-    """
+    """Caption synthetic images for image-conditioned seq2seq (Florence-2 emits
+    nothing text-only, so text-only P4 is uninformative); [] if no processor/PIL."""
     processor = getattr(bridge, "processor", None)
     if processor is None:
         return []

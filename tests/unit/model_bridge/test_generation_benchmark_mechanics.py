@@ -73,7 +73,7 @@ def _bridge(*, stalls_regardless: bool = False) -> TransformerBridge:
 
 
 def test_eos_at_step_zero_is_not_reported_as_a_stalled_loop() -> None:
-    """The EXAONE-4 case: P2 carried a penalty for a healthy generation loop."""
+    """The EXAONE-4 case: an EOS at step 0 is the model choosing to stop, not a stalled loop."""
     result = benchmark_generation(_bridge(), PROMPT)
     assert result.passed, f"{result.message} / {result.details}"
     assert result.details is not None
@@ -82,14 +82,22 @@ def test_eos_at_step_zero_is_not_reported_as_a_stalled_loop() -> None:
 
 def test_model_tokenization_is_not_overridden() -> None:
     """The StarCoder2 case: forcing a BOS overrides adapters that set
-    default_prepend_bos=False on purpose, and derails BOS==EOS checkpoints."""
+    default_prepend_bos=False on purpose, and derails BOS==EOS checkpoints —
+    so benchmark_generation must never inject prepend_bos into generate()."""
     bridge = _bridge()
+    stub_generate = bridge.generate
+    seen: dict = {}
+
+    def recording_generate(text, **kwargs):
+        seen.update(kwargs)
+        return stub_generate(text, **kwargs)
+
+    bridge.generate = recording_generate
     result = benchmark_generation(bridge, PROMPT)
-    assert DEGENERATE.strip() not in (result.details or {}).get("generated", "")
-    # The degenerate branch also grows the text, so passing is not enough —
-    # confirm the benchmark drove the model on its own tokenization terms.
-    output = bridge.generate(PROMPT, stop_at_eos=False)
-    assert output.endswith(CONTINUATION)
+    assert result.passed, f"{result.message} / {result.details}"
+    # Had the benchmark forced a BOS the stub would emit the degenerate
+    # trajectory; the decisive check is that no prepend_bos was injected.
+    assert not seen.get("prepend_bos")
 
 
 def test_a_genuinely_stalled_model_still_fails() -> None:

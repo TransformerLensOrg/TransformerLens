@@ -71,12 +71,8 @@ class ArchitectureAdapter:
     native_sampler: Optional[str] = None
 
     def native_sampler_kwargs(self, max_new_tokens: int, prompt_len: int) -> Dict[str, Any]:
-        """Map a token budget onto the native sampler's own parameter names.
-
-        Diffusion samplers each spell the budget differently (max_new_tokens vs
-        gen_length vs total max_length) and need a denoising-step count, so
-        adapters translate rather than callers.
-        """
+        """Map a token budget onto the native sampler's own parameter names
+        (diffusion samplers each spell the budget differently)."""
         return {"max_new_tokens": max_new_tokens}
 
     # Runtime gate for enable_compatibility_mode(): set False when the stored-
@@ -146,15 +142,8 @@ class ArchitectureAdapter:
         down: str = "down_proj",
         optional: bool = False,
     ) -> GatedMLPBridge:
-        """GatedMLPBridge with the standard gate/in/out LinearBridge submodules.
-
-        Args:
-            name: Container module name (e.g. "mlp", "shared_experts").
-            gate: HF name of the gate projection.
-            up: HF name of the up projection (mapped to "in").
-            down: HF name of the down projection (mapped to "out").
-            optional: Whether the container may be absent (per-layer MoE variants).
-        """
+        """GatedMLPBridge with the standard gate/in/out LinearBridge submodules
+        (up->in, down->out)."""
         return GatedMLPBridge(
             name=name,
             config=self.cfg,
@@ -181,14 +170,7 @@ class ArchitectureAdapter:
         down: str = "down_proj",
         optional: bool = False,
     ) -> MLPBridge:
-        """MLPBridge with the standard in/out LinearBridge submodules.
-
-        Args:
-            name: Container module name.
-            up: HF name of the input projection (mapped to "in").
-            down: HF name of the output projection (mapped to "out").
-            optional: Whether the container may be absent.
-        """
+        """MLPBridge with the standard in/out LinearBridge submodules (up->in, down->out)."""
         return MLPBridge(
             name=name,
             config=self.cfg,
@@ -200,13 +182,8 @@ class ArchitectureAdapter:
         )
 
     def _canonical_layer_types(self, cfg: Any) -> list[str]:
-        """Per-layer mixer-type list, normalized to canonical TL names.
-
-        Canonical vocabulary follows transformers >= 5.13 hybrids
-        ("linear_attention"/"full_attention"); legacy family spellings
-        ("mamba"/"attention") normalize forward, and collision-free
-        family-specific values ("recurrent", "hybrid") pass through.
-        """
+        """Per-layer mixer-type list, normalized to canonical TL names
+        (mamba->linear_attention, attention->full_attention; others pass through)."""
         aliases = {"mamba": "linear_attention", "attention": "full_attention"}
         raw = getattr(cfg, "layers_block_type", None) or getattr(cfg, "layer_types", None) or []
         return [aliases.get(t, t) for t in raw]
@@ -226,12 +203,8 @@ class ArchitectureAdapter:
         )
 
     def _set_rms_rotary_defaults(self, *, final_rms: bool = True) -> None:
-        """Set the Llama-family config flags: RMS norms, rotary positions, gated MLP.
-
-        Args:
-            final_rms: Value for cfg.final_rms; kept per-architecture (e.g. the
-                Mistral/Mixtral/OLMoE adapters set False).
-        """
+        """Set the Llama-family config flags: RMS norms, rotary positions, gated MLP
+        (final_rms is per-architecture -- Mistral/Mixtral/OLMoE set False)."""
         self.cfg.normalization_type = "RMS"
         self.cfg.positional_embedding_type = "rotary"
         self.cfg.final_rms = final_rms
@@ -993,18 +966,8 @@ class ArchitectureAdapter:
     _testing_wire_rotary: bool = True
 
     def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Set up model-specific references needed for component testing.
-
-        Called after the adapter is created, with the HF model available. The
-        base runs the canonical eager-forcing + rotary wiring, parameterized by
-        the ``_testing_*`` class attributes; adapters with extra needs override
-        the method (calling super() where the standard wiring still applies).
-        Wiring is a no-op for delegated-attention bridges (no set_rotary_emb).
-
-        Args:
-            hf_model: The HuggingFace model instance
-            bridge_model: Optional TransformerBridge model instance (for configuring actual bridges)
-        """
+        """Wire model-specific references for component testing (eager-forcing + rotary
+        per the ``_testing_*`` attributes); override and call super() for extra needs."""
         self._wire_rotary_for_testing(
             hf_model,
             bridge_model,
@@ -1026,22 +989,9 @@ class ArchitectureAdapter:
         rotary_attr: str = "rotary_emb",
         wire_rotary: bool = True,
     ) -> None:
-        """Canonical setup_component_testing body: force eager attention and set
-        the model's shared rotary_emb on every attention bridge and the template.
-
-        Args:
-            hf_model: The HuggingFace model instance
-            bridge_model: Optional live TransformerBridge
-            lm_attr: Attribute path to the decoder stack; dotted for nested
-                multimodal stacks (e.g. "model.language_model")
-            hybrid: Some blocks lack attention (Mamba/linear-attn mixes) — guard
-                block wiring by registered submodule and tolerate a template miss
-            eager: None (leave attn implementation alone), "config" (top-level
-                config only), or "layers" (also each layer's self_attn config)
-            rotary_attr: Name of the rotary module on the decoder stack
-            wire_rotary: False for delegated-attention adapters that only need
-                the eager forcing (plain AttentionBridge has no set_rotary_emb)
-        """
+        """Force eager attention and set the model's shared rotary_emb on each attention
+        bridge and the template (``wire_rotary=False`` for delegated attention, which has
+        no set_rotary_emb; ``hybrid`` tolerates attention-less blocks)."""
         lm = hf_model
         for segment in lm_attr.split("."):
             lm = getattr(lm, segment, None)

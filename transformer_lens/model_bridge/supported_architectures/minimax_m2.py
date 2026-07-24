@@ -17,18 +17,8 @@ from transformer_lens.model_bridge.generalized_components import (
 
 
 class MiniMaxM2ArchitectureAdapter(ArchitectureAdapter):
-    """Architecture adapter for MiniMaxM2ForCausalLM models.
-
-    Pre-norm RMSNorm decoder with RoPE (partial rotary factor 0.5), GQA, and a
-    sparse MoE MLP. MiniMax-M2 quirks vs the structurally-closest Qwen3-MoE:
-
-    - Q/K normalization is applied over the FULL projection width (all heads
-      concatenated) before the head reshape, not per-head.
-    - The router scores experts with sigmoid + a trained e_score_correction_bias
-      buffer (DeepSeek-V3 style) instead of softmax; its logits are hookable at
-      mlp.gate.hook_out.
-    - Explicit head_dim (128) larger than hidden_size / num_heads.
-    """
+    """Architecture adapter for MiniMaxM2ForCausalLM models -- Qwen3-MoE-like, but with
+    full-width (not per-head) Q/K norm and a sigmoid + e_score_correction_bias router."""
 
     def __init__(self, cfg: Any) -> None:
         """Initialize the MiniMax-M2 architecture adapter."""

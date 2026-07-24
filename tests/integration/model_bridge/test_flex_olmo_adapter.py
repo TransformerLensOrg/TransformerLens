@@ -1,8 +1,7 @@
 """Integration tests for the FlexOlmo architecture adapter.
 
 All published FlexOlmo checkpoints are 2x7B+ (over the local fp32 ceiling),
-so parity is proven on a seeded tiny FlexOlmoForCausalLM built from config —
-the audit's 'local tiny FlexOlmoConfig for CI' plan.
+so parity is proven on a seeded tiny FlexOlmoForCausalLM built from config.
 """
 
 import copy

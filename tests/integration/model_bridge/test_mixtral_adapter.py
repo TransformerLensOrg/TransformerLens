@@ -53,7 +53,7 @@ class TestMixtralBridge:
         from transformers.models.mixtral.modeling_mixtral import MixtralSparseMoeBlock
 
         assert isinstance(ref.model.layers[0].mlp, MixtralSparseMoeBlock)
-        assert bridge.blocks[0].mlp.original_component is not None
+        assert isinstance(bridge.blocks[0].mlp.original_component, MixtralSparseMoeBlock)
 
     def test_forward_matches_hf(self) -> None:
         bridge, ref = _tiny_mixtral_pair()

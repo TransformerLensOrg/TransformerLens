@@ -421,16 +421,10 @@ class ComponentBenchmarker:
         if "mlp" in component_path and hasattr(component, "name") and component.name is None:
             return
 
-        # Skip MLP components whose wrapped forward needs more than the single
-        # hidden-state probe: BLOOM MLPs require residual, and transformers 5.x
-        # fused grouped-mm experts (Qwen3.5-MoE) require the router's top_k_index
-        # and top_k_weights. The isolated harness can't synthesize those, and the
-        # full-model forward_pass_logits already covers their parity. Inspect
-        # original_component (bridge components expose that, never hf_component,
-        # so the prior check here was permanently dead).
-        # `component` here is the per-block TEMPLATE, whose original_component is
-        # unbound (None); fetch the layer-bound component to see the real HF
-        # module, exactly as _test_component does below.
+        # Skip MLPs whose forward needs more than a hidden_states probe (BLOOM
+        # residual; transformers 5.x fused MoE experts need router indices/weights);
+        # full-model forward_pass_logits already covers their parity. Fetch the
+        # layer-bound component since the per-block template's original_component is None.
         if "mlp" in component_path:
             import inspect
 

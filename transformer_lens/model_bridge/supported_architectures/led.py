@@ -52,7 +52,6 @@ class LEDArchitectureAdapter(BartArchitectureAdapter):
                 "q": _LEDEncoderQueryBridge(name="longformer_self_attn.query"),
                 "k": LinearBridge(name="longformer_self_attn.key"),
                 "v": LinearBridge(name="longformer_self_attn.value"),
-                # Global-attention projections, used at global positions.
                 "q_global": LinearBridge(name="longformer_self_attn.query_global"),
                 "k_global": LinearBridge(name="longformer_self_attn.key_global"),
                 "v_global": LinearBridge(name="longformer_self_attn.value_global"),

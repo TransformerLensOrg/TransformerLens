@@ -1,13 +1,5 @@
-"""BART architecture adapter and the shared BART-family base.
-
-The BART lineage (BART, Marian, MBart, Pegasus, Blenderbot, M2M100/NLLB) shares
-one encoder-decoder layout: q/k/v/out_proj attention, fc1/fc2 MLP behind a
-SymbolicBridge, and per-sublayer LayerNorms with the same HF names in both the
-post-LN (BART, Marian) and pre-LN (the rest) variants — HF's native forward owns
-the ordering. Everything that differs between the six is declarative:
-which optional norm entries exist, whether scale_embedding defaults on, and
-Blenderbot's asymmetric stacks.
-"""
+"""BART adapter and the shared BART-family encoder-decoder base (BART, Marian,
+MBart, Pegasus, Blenderbot, M2M100/NLLB); per-member differences are declarative."""
 
 from typing import Any, Dict
 

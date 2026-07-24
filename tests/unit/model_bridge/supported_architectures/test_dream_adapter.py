@@ -41,7 +41,7 @@ def adapter() -> DreamArchitectureAdapter:
 
 class TestDreamAdapterPhases:
     def test_diffusion_phases_and_no_generation(self, adapter):
-        """Iterative denoising: no autoregressive generation, no P4."""
+        """Diffusion LM: covers text phases 1-4 but declares no autoregressive generation."""
         assert adapter.applicable_phases == [1, 2, 3, 4]
         assert adapter.supports_generation is False
 

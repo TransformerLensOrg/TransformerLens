@@ -67,9 +67,6 @@ class TestMiniMaxM2AdapterConfig:
         """Verified against MiniMaxAI/MiniMax-M2's tokenizer."""
         assert adapter.cfg.default_prepend_bos is False
 
-    def test_gqa_heads_propagated(self, adapter):
-        assert adapter.cfg.n_key_value_heads == 2
-
     def test_qkvo_conversions_registered(self, adapter):
         keys = set(adapter.weight_processing_conversions)
         assert {

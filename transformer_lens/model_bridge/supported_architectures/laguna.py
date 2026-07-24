@@ -96,18 +96,9 @@ class LagunaArchitectureAdapter(ArchitectureAdapter):
         """Delegated attention computes rotary inside HF; nothing to wire."""
 
     def prepare_loading(self, model_name: str, model_kwargs: dict) -> None:
-        """Admit the per-expert→batched expert conversion under Laguna's remote code.
-
-        Laguna ships its own modeling code, so ``from_pretrained`` loads a custom-code
-        class. transformers skips its native ``mapping['laguna']`` weight conversion for
-        custom-code modules unless the model type is *user*-registered
-        (``get_model_conversion_mapping``'s ``is_custom_code`` guard). Without it the
-        checkpoint's per-expert ``experts.{i}.gate_proj/up_proj/down_proj`` never merge
-        into the batched ``experts.gate_up_proj``/``down_proj`` the model expects, so the
-        batched params stay at random init (30,108 unexpected + 234 missing keys) and the
-        experts are noise. Registering the existing native mapping here lets the
-        conversion run under remote code so the experts load correctly.
-        """
+        """User-register Laguna's native conversion mapping so the per-expert->batched
+        expert merge runs under remote code (transformers skips it for custom-code
+        modules, leaving the batched experts at random init)."""
         try:
             from transformers.conversion_mapping import (
                 USER_REGISTERED_MAPPINGS,
