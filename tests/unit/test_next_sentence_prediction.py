@@ -255,7 +255,7 @@ def test_run_with_cache(bert_nsp, mock_hooked_encoder):
     input_data = ["First sentence.", "Second sentence."]
 
     output, cache = bert_nsp.run_with_cache(
-        input_data, return_type="logits", return_cache_object=True
+        input=input_data, return_type="logits", return_cache_object=True
     )
 
     # Effect 1: return_cache_object=True wraps the raw dict in an ActivationCache object,

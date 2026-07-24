@@ -703,18 +703,18 @@ class HookedTransformer(HookedRootModule):
 
     @overload
     def run_with_cache(
-        self, *model_args, return_cache_object: Literal[True] = True, **kwargs
+        self, return_cache_object: Literal[True] = True, **kwargs
     ) -> Tuple[Output, ActivationCache]:
         ...
 
     @overload
     def run_with_cache(
-        self, *model_args, return_cache_object: Literal[False], **kwargs
+        self, return_cache_object: Literal[False], **kwargs
     ) -> Tuple[Output, Dict[str, torch.Tensor]]:
         ...
 
     def run_with_cache(
-        self, *model_args, return_cache_object=True, remove_batch_dim=False, **kwargs
+        self, return_cache_object=True, remove_batch_dim=False, **kwargs
     ) -> Tuple[
         Union[
             None,
@@ -731,7 +731,7 @@ class HookedTransformer(HookedRootModule):
         activations as in HookedRootModule.
         """
         out, cache_dict = super().run_with_cache(
-            *model_args, remove_batch_dim=remove_batch_dim, **kwargs
+            remove_batch_dim=remove_batch_dim, **kwargs
         )
         if return_cache_object:
             cache = ActivationCache(cache_dict, self, has_batch_dim=not remove_batch_dim)

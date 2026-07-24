@@ -585,7 +585,7 @@ def test_pos_embed_hook():
         z[:] = 0.0
         return z
 
-    _ = model.run_with_hooks("Hello, world", fwd_hooks=[("hook_pos_embed", remove_pos_embed)])
+    _ = model.run_with_hooks(input="Hello, world", fwd_hooks=[("hook_pos_embed", remove_pos_embed)])
 
     # Check that pos embed has not been permanently changed
     assert (model.W_pos == initial_W_pos).all()
@@ -600,7 +600,7 @@ def test_pos_embed_hook():
         return z
 
     _ = model.run_with_hooks(
-        ["Hello, world", "Goodbye, world"],
+        input=["Hello, world", "Goodbye, world"],
         fwd_hooks=[("hook_pos_embed", edit_pos_embed)],
     )
 

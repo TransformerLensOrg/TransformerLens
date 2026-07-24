@@ -90,11 +90,11 @@ def test_perfect_ablation_match():
     hook_name = utils.get_act_name("v", layer_to_ablate)
 
     hooked_ablated = hooked_processed.run_with_hooks(
-        tokens, return_type="loss", fwd_hooks=[(hook_name, head_ablation_hook)]
+        input=tokens, return_type="loss", fwd_hooks=[(hook_name, head_ablation_hook)]
     )
 
     corrected_ablated = corrected_processed.run_with_hooks(
-        tokens, return_type="loss", fwd_hooks=[(hook_name, head_ablation_hook)]
+        input=tokens, return_type="loss", fwd_hooks=[(hook_name, head_ablation_hook)]
     )
 
     print(f"HookedTransformer:     {hooked_ablated.item():.6f}")

@@ -39,7 +39,7 @@ def test_patch_tokens():
 
     # Run with hooks
     out_from_hook = model.run_with_hooks(
-        prompt,
+        input=prompt,
         prepend_bos=False,
         fwd_hooks=[("hook_tokens", functools.partial(hook_fn, new_first_token=new_first_token))],
     )
