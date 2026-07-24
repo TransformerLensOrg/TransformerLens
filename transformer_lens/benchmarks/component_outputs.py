@@ -697,6 +697,20 @@ class ComponentBenchmarker:
             )
             hf_tensor = hf_output[0] if isinstance(hf_output, (tuple, list)) else hf_output
 
+            # Marian/Bart apply a trained final_logits_bias AFTER lm_head inside the
+            # model forward. The bridge folds it into the unembed bias (b_U), so the
+            # isolated HF lm_head must add it too for a fair comparison — otherwise
+            # the two diverge by exactly the bias (a false failure; the assembled
+            # unembed+bias path is already covered by forward_pass_logits).
+            if "unembed" in component_path or "lm_head" in component_path:
+                flb = getattr(self.hf_model, "final_logits_bias", None)
+                if (
+                    flb is not None
+                    and isinstance(hf_tensor, torch.Tensor)
+                    and hf_tensor.shape[-1] == flb.shape[-1]
+                ):
+                    hf_tensor = hf_tensor + flb.to(hf_tensor.dtype)
+
             # Ensure both are tensors
             if not isinstance(bridge_tensor, torch.Tensor) or not isinstance(
                 hf_tensor, torch.Tensor

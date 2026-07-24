@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-07-23T19:32:29.843697",
+  "last_updated": "2026-07-24T10:01:39.971492",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -20558,6 +20558,96 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "facebook/MobileLLM-R1.5-950M",
+      "architecture_id": "Llama4ForCausalLM",
+      "verified_date": "2026-07-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P3=90.5% (failed: process_bridge_weights, layer_norm_folding)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "google/long-t5-tglobal-base",
+      "architecture_id": "LongT5ForConditionalGeneration",
+      "verified_date": "2026-07-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues, low text quality",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "allenai/led-base-16384",
+      "architecture_id": "LEDForConditionalGeneration",
+      "verified_date": "2026-07-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "google/pegasus-xsum",
+      "architecture_id": "PegasusForConditionalGeneration",
+      "verified_date": "2026-07-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Helsinki-NLP/opus-mt-nl-en",
+      "architecture_id": "MarianMTModel",
+      "verified_date": "2026-07-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: all_components) \u2014 1/107 components failed (1 critical)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "facebook/mbart-large-50-many-to-many-mmt",
+      "architecture_id": "MBartForConditionalGeneration",
+      "verified_date": "2026-07-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "facebook/m2m100_418M",
+      "architecture_id": "M2M100ForConditionalGeneration",
+      "verified_date": "2026-07-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues, low text quality",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "facebook/blenderbot-400M-distill",
+      "architecture_id": "BlenderbotForConditionalGeneration",
+      "verified_date": "2026-07-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Helsinki-NLP/opus-mt-nl-en",
+      "architecture_id": "MarianMTModel",
+      "verified_date": "2026-07-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues, low text quality",
       "invalidated": false,
       "invalidation_reason": null
     }
