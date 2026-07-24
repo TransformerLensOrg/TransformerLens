@@ -208,6 +208,18 @@ pattern = cache["blocks.0.attn.hook_pattern"]
 
 The cache, hook, and config APIs are the same. The only lines that had to change are the import, the load call, and — if you want the old weight-processing behavior — one extra call to `enable_compatibility_mode`.
 
-## When to stay on HookedTransformer
+## Migrating specific `HookedTransformer` APIs
 
-If your code runs unchanged on TransformerLens 3 via the compatibility layer and you don't need architectures beyond what `HookedTransformer` already supported, there is no hard deadline to migrate. But new architectures, weight-processing controls, and hook refinements are landing on the bridge side — new work should target the bridge, and migrating existing projects is the long-term supported path.
+`HookedTransformer` is deprecated and will be removed in a future major release. The compatibility layer keeps existing code running in the meantime, but new work should target `TransformerBridge`, and migrating existing projects is the long-term supported path.
+
+Most `HookedTransformer` methods and properties exist on `TransformerBridge` under the same name — see [APIs that are unchanged](#apis-that-are-unchanged). The table below covers the cases where the name or access path differs.
+
+> If you hit a `HookedTransformer` API whose bridge equivalent isn't obvious and isn't listed here, [open an issue](https://github.com/TransformerLensOrg/TransformerLens/issues); when you (or we) work out the equivalent, add a row below.
+
+Weight-matrix rows return **raw** HuggingFace weights by default. `HookedTransformer.from_pretrained` applies weight processing (LayerNorm folding, `center_writing_weights`, `center_unembed`) at load, so those properties differ numerically from the bridge's unless the bridge is in compatibility mode — see [Will my numbers match HookedTransformer?](#will-my-numbers-match-hookedtransformer).
+
+| `HookedTransformer` | `TransformerBridge` equivalent | Notes |
+|---|---|---|
+| `model.W_pos` | `bridge.pos_embed.W_pos` | Raw weight (also `bridge.pos_embed.weight`). `center_writing_weights` centers `W_pos` in default HT loads, so it matches HT's only under matching processing (`enable_compatibility_mode()`, or HT loaded with no processing). |
+| `model.W_E_pos` | `torch.cat([bridge.W_E, bridge.pos_embed.W_pos], dim=0)` | No single accessor — concatenate the token + positional matrices. Same weight-processing caveat as `W_pos` (both `W_E` and `W_pos` are centered writing-weights). |
+| `HookedTransformer.from_pretrained_no_processing(name)` | `TransformerBridge.boot_transformers(name, no_processing=True)` | Both load raw weights, so these match. |
