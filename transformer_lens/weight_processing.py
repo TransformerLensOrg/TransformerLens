@@ -1778,7 +1778,6 @@ class ProcessWeights:
             # Add singleton dimension for broadcasting
             b_V_expanded = einops.rearrange(b_V, "head_index d_head -> head_index d_head 1")
 
-            # Element-wise multiplication of b_V and W_O
             b_V_times_W_O = b_V_expanded * W_O
 
             # Sum over d_head and head_index dimensions

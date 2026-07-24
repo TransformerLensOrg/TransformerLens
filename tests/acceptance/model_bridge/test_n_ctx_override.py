@@ -51,24 +51,20 @@ def test_n_ctx_combined_with_hf_config_overrides():
     assert bridge.cfg.n_ctx == 256
 
 
-# --- Coverage for code-review items #2, #4, #5, #7 ---
-
-
 def test_n_ctx_zero_raises_value_error():
-    """#2: n_ctx must be positive; zero should raise ValueError."""
+    """n_ctx must be positive; zero should raise ValueError."""
     with pytest.raises(ValueError, match="positive integer"):
         TransformerBridge.boot_transformers("gpt2", device="cpu", n_ctx=0, load_weights=False)
 
 
 def test_n_ctx_negative_raises_value_error():
-    """#2: n_ctx must be positive; negative should raise ValueError."""
+    """n_ctx must be positive; negative should raise ValueError."""
     with pytest.raises(ValueError, match="positive integer"):
         TransformerBridge.boot_transformers("gpt2", device="cpu", n_ctx=-1, load_weights=False)
 
 
 def test_n_ctx_conflict_with_hf_config_overrides_warns(caplog):
-    """#4: When both n_ctx and the same hf_config_overrides field are set with different values,
-    a warning should be emitted explaining that n_ctx wins."""
+    """When both n_ctx and the same hf_config_overrides field are set with different values, a warning should be emitted explaining that n_ctx wins."""
     with caplog.at_level(logging.WARNING):
         TransformerBridge.boot_transformers(
             "gpt2",
@@ -85,7 +81,7 @@ def test_n_ctx_conflict_with_hf_config_overrides_warns(caplog):
 
 
 def test_n_ctx_no_conflict_when_values_match(caplog):
-    """#4: If n_ctx and hf_config_overrides agree on the value, no conflict warning is emitted."""
+    """If n_ctx and hf_config_overrides agree on the value, no conflict warning is emitted."""
     with caplog.at_level(logging.WARNING):
         TransformerBridge.boot_transformers(
             "gpt2",
@@ -98,8 +94,7 @@ def test_n_ctx_no_conflict_when_values_match(caplog):
 
 
 def test_n_ctx_shrink_with_load_weights_gives_clear_error():
-    """#5: Shrinking a learned-pos-embed model's n_ctx at weight-load time should raise
-    with a message explaining the cause and suggesting alternatives."""
+    """Shrinking a learned-pos-embed model's n_ctx at weight-load time should raise with a message explaining the cause and suggesting alternatives."""
     with pytest.raises(RuntimeError) as exc_info:
         TransformerBridge.boot_transformers("gpt2", device="cpu", n_ctx=256, load_weights=True)
     err = str(exc_info.value)
@@ -108,8 +103,7 @@ def test_n_ctx_shrink_with_load_weights_gives_clear_error():
 
 
 def test_n_ctx_override_verified_on_loaded_model():
-    """#7: After load, the override should be visible on hf_model.config so users
-    can trust that the longer/shorter context is actually in effect."""
+    """After load, the override should be visible on hf_model.config so users can trust that the longer/shorter context is actually in effect."""
     bridge = TransformerBridge.boot_transformers(
         "gpt2", device="cpu", n_ctx=2048, load_weights=False
     )

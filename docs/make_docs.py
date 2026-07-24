@@ -217,7 +217,7 @@ def tokenizer_vocab_hash(tokenizer: PreTrainedTokenizer) -> str:
     # convert to base64
     return base64.b64encode(
         hash_obj.digest(),
-        altchars=b"-_",  # - and _ as altchars
+        altchars=b"-_",
     ).decode("UTF-8")
 
 

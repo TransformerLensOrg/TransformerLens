@@ -136,7 +136,7 @@ class TestLfm2AdapterConfig:
     """Adapter must set all required config flags to the values Lfm2 expects."""
 
     def test_attn_implementation_is_eager(self, adapter: Lfm2ArchitectureAdapter) -> None:
-        """Set to eager."""
+        """Adapter forces eager attention so component-level activations are hookable."""
         assert adapter.cfg.attn_implementation == "eager"
 
 

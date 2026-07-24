@@ -67,27 +67,10 @@ _BRIDGE_COMPAT_KWARGS = frozenset({"output_attentions"})
 
 
 class DenseOrMoEFeedForwardBridge(GeneralizedComponent):
-    """Wraps either a dense SwiGLU MLP or a sparse MoE layer behind a
-    common interface. Dispatch is determined by structural inspection
-    (`router`/`experts` vs `gate`/`up`/`down`) rather than configuration,
-    so dense, MoE, and mixed architectures all use the same component
-    mapping. This identifies the supported protocol -- it does not
-    validate that a module merely sharing those attribute names actually
-    implements the matching forward behavior.
-
-    `hasattr` alone would let a module with, say, both `router`/`experts`
-    and `gate`/`up`/`down` (or `router`/`experts` of the wrong types) win
-    the MoE branch by attribute-name coincidence and fail later with a
-    confusing error from deep inside `MoEBridge`, or not fail until
-    forward time. `set_original_component` therefore also checks the
-    basic shape of whichever protocol wins: `router`/`gate`/`up`/`down`
-    must themselves be modules, and `experts` must be a *registered*
-    module collection (`nn.ModuleList`/`nn.ModuleDict`) -- a plain Python
-    list/tuple of `nn.Module` experts is rejected even though every
-    element is itself a valid module, because modules held in an
-    ordinary list aren't registered as children and would silently drop
-    out of `parameters()`/`state_dict()`/`.to(...)`/`train()`/`eval()`,
-    contradicting this adapter's lifecycle guarantees.
+    """Wraps a dense SwiGLU MLP or sparse MoE layer behind one interface.
+    Dispatch is by structural inspection (`router`/`experts` vs
+    `gate`/`up`/`down`), not config, so dense/MoE/mixed architectures all
+    share the same component mapping.
     """
 
     def __init__(self, name: str, config: Any):
@@ -101,6 +84,10 @@ class DenseOrMoEFeedForwardBridge(GeneralizedComponent):
         # attribute is typed `str | None`, which is all mypy sees without this
         # narrowing. MoEBridge/GatedMLPBridge both require a plain `str` name.
         assert self.name is not None
+        # hasattr can match by attribute-name coincidence, so verify the
+        # protocol's shape too: router/gate/up/down must be modules, and
+        # experts a *registered* ModuleList/ModuleDict -- a plain list of
+        # experts drops out of parameters()/state_dict()/.to()/train()/eval().
         if hasattr(component, "router") and hasattr(component, "experts"):
             if not isinstance(component.router, torch.nn.Module):
                 raise TypeError(
@@ -203,35 +190,11 @@ class _LogitsAttrDict(dict):
 
 
 class PretrainModelContainer(torch.nn.Module):
-    """Internal detail -- `build_pretrain_bridge` applies this
-    automatically. Three responsibilities, all in this container's own
-    `forward`:
-
-    1. Avoids a `TransformerBridge.__getattr__` collision: a source
-       model's own `self.embed`/`self.blocks` clashes with identically
-       named component_mapping keys. Wrapping one level deeper
-       (`container.inner.embed`) fixes this without touching the source
-       model.
-    2. Normalizes the return value to the `.logits` contract
-       `TransformerBridge` expects: a plain `"logits"` dict (the target
-       architecture's actual shape) is wrapped in `_LogitsAttrDict`; a bare
-       tensor, tensor-first tuple, or object already exposing `.logits`
-       passes through after validating the tensor is present and is a
-       tensor; anything else raises immediately with a clear message.
-    3. Strips `_BRIDGE_COMPAT_KWARGS` from kwargs before calling the
-       wrapped model (see that constant's comment).
-
-    Also sidesteps a `BlockBridge` convention where a bare-tensor block
-    output gets wrapped in a 1-tuple for "standalone hidden_states calls":
-    since this target's blocks take `cos`/`sin` too, that path never
-    triggers, so the source forward loop needs no changes to be bridged.
-
-    `self.inner` is a regular registered submodule, so
-    `container.train()`/`.eval()` already recurse into it via the normal
-    `nn.Module` traversal -- no override needed here. The propagation gap
-    lives one level up, at `TransformerBridge` itself (see
-    `build_pretrain_bridge`), whose `.train()`/`.eval()` do not walk down
-    to `original_model`.
+    """Wraps the source model one level deeper (`container.inner`) so its
+    own `embed`/`blocks` attrs don't collide with `TransformerBridge`
+    component_mapping keys, normalizes the forward return to the `.logits`
+    contract, and strips `_BRIDGE_COMPAT_KWARGS`. Applied automatically by
+    `build_pretrain_bridge`.
     """
 
     def __init__(self, model: torch.nn.Module) -> None:
@@ -334,35 +297,10 @@ class PretrainArchitectureAdapter(ArchitectureAdapter):
     """Adapter for a decoder-only transformer using RoPE, RMSNorm, gated
     SwiGLU MLPs, and optional sparse MoE feed-forward layers.
 
-    Uses an opaque `NativeForwardAttentionBridge` with no attention
-    projection submodules, not `JointQKVAttentionBridge`/
-    `PositionEmbeddingsAttentionBridge`: those reimplement RoPE via HF's
-    rotate-half convention, wrong for a source model using the
-    adjacent-pair convention. The opaque bridge delegates unchanged to
-    `Attention.forward`, so RoPE runs as written -- at the cost of no
-    per-head hooks, only block-level
-    `resid_pre`/`resid_mid`/`resid_post`.
-
-    Blocks use `DelegatedAttentionBlockBridge` rather than plain
-    `BlockBridge`: that existing abstraction already exists for
-    architectures where attention is delegated wholesale and the
-    split-qkv-fork block-level aliases (`hook_attn_in`/`hook_q_input`/
-    `hook_k_input`/`hook_v_input`) don't apply. It complements
-    `NativeForwardAttentionBridge.supports_split_qkv_fork = False` (which
-    prevents the split-QKV-fork machinery and its associated HookPoints
-    from being exposed for this attention component) by also removing the
-    now-dangling block-level aliases that would otherwise point at them.
-    `hook_attn_out` is untouched by either change, since the attention
-    component still fires its own `hook_out` normally.
-
-    `self.cfg` is mutated in place, not copied (matches `nanogpt.py`'s
-    convention) -- callers holding another reference to the same config
-    will see these fields change.
-
-    Bridges built through `build_pretrain_bridge` are given a
-    mode-propagating subclass so `.train()`/`.eval()` reach the wrapped
-    source model (see that function's docstring) -- this adapter class
-    itself has no lifecycle behavior of its own.
+    Uses an opaque `NativeForwardAttentionBridge` (delegates to
+    `Attention.forward`) so RoPE runs under the source's adjacent-pair
+    convention rather than HF's rotate-half -- at the cost of only
+    block-level hooks, no per-head hooks.
     """
 
     def __init__(self, cfg: Any) -> None:

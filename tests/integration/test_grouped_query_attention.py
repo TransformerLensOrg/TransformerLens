@@ -92,12 +92,7 @@ def test_grouped_query_attention_output_is_correct():
         split_query_input, split_key_input, split_value_input
     )
 
-    # Use both relative and absolute tolerances for numerical stability
-    # Different code paths (split vs non-split) can have tiny floating point differences
-    # rtol=5e-5 allows 0.005% relative error, atol=0.5 handles absolute differences
-    # CI shows max absolute diff: ~0.39, max relative diff: ~1.3e-5 (0.0013%)
-    # Local shows max absolute diff: ~0.008, max relative diff: ~2e-7
-    # Variation due to different hardware/compiler optimizations - relative error is what matters
+    # split vs non-split paths differ in fp; loose atol/rtol needed across hardware
 
     # Calculate differences for debugging
     abs_diff = torch.abs(regular_attn_output - split_grouped_query_attn_output)

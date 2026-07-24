@@ -609,7 +609,6 @@ def mmlu_eval(
         # Tokenize the prompt
         tokens = tokenizer.encode(prompt, return_tensors="pt").to(model.cfg.device)
 
-        # Get logits
         logits = model(tokens, return_type="logits")
 
         # Get log probabilities at the last position (predicting the answer letter)
@@ -624,7 +623,6 @@ def mmlu_eval(
         # Select the choice with highest log probability
         predicted_answer = choice_log_probs.index(max(choice_log_probs))
 
-        # Check if correct
         is_correct = predicted_answer == correct_answer
         num_correct += int(is_correct)
         num_total += 1

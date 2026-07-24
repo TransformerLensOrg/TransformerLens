@@ -133,7 +133,6 @@ class RotaryEmbeddingBridge(GeneralizedComponent):
             # Apply hooks to match HookedTransformer's rotary_cos/rotary_sin pattern
             cos = self.hook_cos(cos)
             sin = self.hook_sin(sin)
-            # Return the hooked cos and sin as a tuple
             # Note: Don't pass tuple through hook_out as it expects a tensor
             return (cos, sin)
         else:

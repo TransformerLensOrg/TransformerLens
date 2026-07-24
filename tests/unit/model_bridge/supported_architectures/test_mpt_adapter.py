@@ -66,7 +66,7 @@ class TestMPTAdapterWeightConversions:
 
 
 # ---------------------------------------------------------------------------
-# Component mapping structure tests (Phase B-1)
+# Component mapping structure tests
 # ---------------------------------------------------------------------------
 
 
@@ -100,7 +100,7 @@ class TestMPTComponentMappingKeys:
 
 
 # ---------------------------------------------------------------------------
-# _split_mpt_qkv tests (Phase B-1)
+# _split_mpt_qkv tests
 # ---------------------------------------------------------------------------
 
 

@@ -264,7 +264,6 @@ class HookedAudioEncoder(HookedRootModule):
         # ---------- 1) Normalize input: get (frames, frame_mask) ----------
         frames = None
         frame_mask = None  # one_zero_attention_mask: 1 = valid, 0 = padding
-        # print(type(inputs))
         # If user passed (frames, mask) tuple
         if isinstance(inputs, tuple) and len(inputs) == 2 and isinstance(inputs[0], torch.Tensor):
             frames, frame_mask = inputs

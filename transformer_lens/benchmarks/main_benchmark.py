@@ -880,7 +880,7 @@ def run_benchmark_suite(
             print(f"✓ Detected attn_implementation={attn_implementation}")
         # Clean up config-only bridge immediately to free memory
         del bridge_config_only
-        gc.collect()  # Force garbage collection immediately
+        gc.collect()
     except Exception as e:
         if verbose:
             print(f"⚠ Could not detect config (will use defaults): {str(e)}")

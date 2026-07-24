@@ -60,7 +60,6 @@ def test_run_with_hooks(setup_data: Dict[str, Any]):
             ("blocks.1.mlp.hook_pre", count_hook),
             ("blocks.2.attn.hook_k", count_hook),
             ("blocks.2.mlp.hook_pre", count_hook)
-            # ("blocks.2.mlp.hook_mid", count_hook),
         ],
     )
 

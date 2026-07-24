@@ -155,7 +155,6 @@ class SiglipVisionEncoderBridge(GeneralizedComponent):
                 f"Original component not set for {self.name}. Call set_original_component() first."
             )
 
-        # Apply input hook to pixel values
         pixel_values = self.hook_in(pixel_values)
 
         # Forward through the vision tower

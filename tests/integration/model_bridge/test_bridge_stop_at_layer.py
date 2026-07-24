@@ -200,7 +200,6 @@ def test_stop_at_embed_processed(bridge_with_processed_weights):
     """Test stop_at_layer=0 with processed weights."""
     rand_input = torch.randint(0, 100, (2, 10))
 
-    # Run with stop_at_layer=0
     output, cache = bridge_with_processed_weights.run_with_cache(rand_input, stop_at_layer=0)
 
     # Verify output shape
@@ -245,7 +244,6 @@ def test_no_stop_processed(bridge_with_processed_weights):
     """Test stop_at_layer=None with processed weights (full forward pass)."""
     rand_input = torch.randint(0, 100, (2, 10))
 
-    # Run with stop_at_layer=None
     output, cache = bridge_with_processed_weights.run_with_cache(rand_input, stop_at_layer=None)
 
     # Verify output shape is correct (logits)
@@ -328,7 +326,6 @@ def test_stop_at_final_compat_no_processing(bridge_with_compat_no_processing):
     """Test stop_at_layer=-1 with compatibility mode (no processing)."""
     rand_input = torch.randint(0, 100, (2, 10))
 
-    # Run with stop_at_layer=-1
     output, cache = bridge_with_compat_no_processing.run_with_cache(rand_input, stop_at_layer=-1)
 
     # Verify output shape

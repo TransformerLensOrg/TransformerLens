@@ -129,7 +129,6 @@ class Gemma1ArchitectureAdapter(ArchitectureAdapter):
             hf_model: The HuggingFace Gemma1 model instance
             bridge_model: The TransformerBridge model (if available, set rotary_emb on actual instances)
         """
-        # Get rotary embedding instance from the model
         rotary_emb = hf_model.model.rotary_emb
 
         # Force HF model to use "eager" attention to match bridge implementation

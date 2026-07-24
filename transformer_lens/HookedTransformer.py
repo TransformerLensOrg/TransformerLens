@@ -1508,27 +1508,6 @@ class HookedTransformer(HookedRootModule):
         weights! Note that this function assumes that weight names being with `W_`.
 
         Set seed here to ensure determinism.
-
-        This does NOT follow the PyTorch scheme, which as far as I can tell is super out of date but
-        no one has gotten round to updating it? https://github.com/pytorch/pytorch/issues/18182
-
-        The default PyTorch scheme is the following: all linear layers use uniform(-1/sqrt(fan_in),
-        1/sqrt(fan_in)) for weights, and uniform(-1/sqrt(fan_in), 1/sqrt(fan_in)) for biases. For
-        biases, fan_in is computed using the fan_in for the weight matrix of the linear layer. Note
-        that it *does not actually* use Kaiming initialization, despite the fact that it calls the
-        function.
-
-        However, for Transformer blocks, it instead initializes biases to zero and weights using Xavier uniform, that
-        is: uniform(-sqrt(6 / (fan_in + fan_out)), sqrt(6 / (fan_in + fan_out))) for weights.
-
-        PyTorch Transformers are especially bad - TransformerEncoder initializes all layers to the
-        exact same weights?! https://github.com/pytorch/pytorch/issues/72253.
-
-        The best paper I've found on transformer initialization is the muP paper, but haven't
-        integrated those ideas yet: https://arxiv.org/abs/2203.03466
-
-        We split off the initialization into separate functions because muP initialization handles
-        different parts of the model differently.
         """
 
         if self.cfg.seed is not None:
@@ -2257,7 +2236,6 @@ class HookedTransformer(HookedRootModule):
 
                 def _logits_to_tuple(logits_list: list[torch.Tensor]) -> tuple[torch.Tensor, ...]:
                     assert logits_list is not None
-                    # Convert to tuple of tensors
                     return tuple(logits_list)
 
                 try:

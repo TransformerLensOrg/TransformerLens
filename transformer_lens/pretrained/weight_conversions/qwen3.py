@@ -35,7 +35,6 @@ def convert_qwen3_weights(qwen: Any, cfg: HookedTransformerConfig):
         state_dict[f"blocks.{l}.attn.{gqa_uscore}W_K"] = W_K
         state_dict[f"blocks.{l}.attn.{gqa_uscore}W_V"] = W_V
 
-        # Load weights into RMSNorm modules
         state_dict[f"blocks.{l}.attn.q_norm.w"] = qwen.model.layers[l].self_attn.q_norm.weight
         state_dict[f"blocks.{l}.attn.k_norm.w"] = qwen.model.layers[l].self_attn.k_norm.weight
 

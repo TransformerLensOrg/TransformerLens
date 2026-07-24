@@ -23,7 +23,6 @@ ioi_names = [
 
 
 def get_ioi_tokens_and_answer_tokens(model):
-    # List of prompts
     prompts = []
     # List of answers, in the format (correct, incorrect)
     answers = []
@@ -62,15 +61,12 @@ def load_model(name):
 
 @torch.no_grad
 def test_logit_attrs_matches_reference_code():
-    # Load solu-2l
     model = load_model("solu-2l")
 
     tokens, answer_tokens = get_ioi_tokens_and_answer_tokens(model)
 
-    # Run the model and cache all activations
     _, cache = model.run_with_cache(tokens)
 
-    # Get accumulated resid
     accumulated_residual = cache.accumulated_resid(layer=-1, incl_mid=True, pos_slice=-1)
 
     # Get ref ave logit diffs (cribbed notebook code)
@@ -745,7 +741,6 @@ def test_compute_test_head_results_does_not_compute_results_twice():
     cache.compute_head_results()
     assert "blocks.0.attn.hook_result" in cache.cache_dict
 
-    # set infinity to the first element of the head results
     assert cache.cache_dict["blocks.0.attn.hook_result"][0, 0, 0, 0] != float("inf")
     cache.cache_dict["blocks.0.attn.hook_result"][0, 0, 0, 0] = float("inf")
     cache.compute_head_results()

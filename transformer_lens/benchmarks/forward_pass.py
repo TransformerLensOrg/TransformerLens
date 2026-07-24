@@ -131,8 +131,7 @@ def benchmark_forward_pass(
                 else:
                     reference_output = hf_output.last_hidden_state
         else:
-            # HuggingFace model (reference_model is guaranteed non-None here
-            # because we returned early at line 80 when both are None)
+            # reference_model is non-None here: the both-None case returns early above
             assert reference_model is not None
             assert isinstance(test_input, str), "Text model requires string input"
             tokens = bridge.to_tokens(test_input)

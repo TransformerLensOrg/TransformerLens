@@ -52,13 +52,7 @@ def model_info_cfg(cfg):
     """
 
     # TODO: WeightConversionFactory import needs to be updated or removed
-    # from transformer_lens.factories.weight_conversion_factory import (
-    #     WeightConversionFactory,
-    # )
-
-    # weight_conversion = WeightConversionFactory.select_weight_conversion_config(cfg)
     print(f"Hook conversion details for architecture {cfg.original_architecture}:")
-    # print(weight_conversion.__repr__())
     print("Hook conversion factory not yet implemented")
 
 

@@ -44,7 +44,6 @@ class TestParametersAreLeafTensors:
 
         For optimization, use parameters() which returns only leaf tensors.
         """
-        # Get TL-style parameters
         tl_params = small_bridge_model.tl_parameters()
 
         # Check that we have TL-style names (blocks.X.attn.W_Y format)
@@ -63,7 +62,6 @@ class TestParametersAreLeafTensors:
         This method provides the same content as tl_parameters() but as an iterator,
         maintaining consistency with PyTorch's named_parameters() API pattern.
         """
-        # Get TL-style parameters as iterator
         tl_named_params = list(small_bridge_model.tl_named_parameters())
         tl_params_dict = small_bridge_model.tl_parameters()
 

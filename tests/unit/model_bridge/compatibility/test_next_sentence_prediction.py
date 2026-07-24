@@ -67,7 +67,6 @@ def test_tokenizer_integration(bert_nsp, mock_transformer_bridge):
     }
     mock_transformer_bridge.tokenizer.return_value = mock_encodings
 
-    # Call to_tokens
     tokens, type_ids, mask = bert_nsp.to_tokens(input_sentences)
 
     # Verify tokenizer was called correctly
@@ -101,14 +100,12 @@ def test_device_handling_to_tokens(bert_nsp, mock_transformer_bridge):
     }
     mock_transformer_bridge.tokenizer.return_value = mock_encodings
 
-    # Call to_tokens with move_to_device=True
     tokens, type_ids, mask = bert_nsp.to_tokens(input_data, move_to_device=True)
 
     # Verify each tensor was moved to the correct device
     for tensor in [tokens, type_ids, mask]:
         assert tensor.device.type == mock_transformer_bridge.cfg.device
 
-    # Call with move_to_device=False
     tokens, type_ids, mask = bert_nsp.to_tokens(input_data, move_to_device=False)
 
     # Verify tensors remained on CPU
@@ -177,7 +174,6 @@ def test_run_with_cache(bert_nsp, mock_transformer_bridge):
 
     input_data = ["First sentence.", "Second sentence."]
 
-    # Run with cache
     output, cache = bert_nsp.run_with_cache(
         input_data, return_type="logits", return_cache_object=True
     )

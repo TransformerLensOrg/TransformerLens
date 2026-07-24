@@ -113,7 +113,6 @@ class LlamaArchitectureAdapter(ArchitectureAdapter):
             hf_model: The HuggingFace Llama model instance
             bridge_model: The TransformerBridge model (if available, set rotary_emb on actual instances)
         """
-        # Get rotary embedding instance from the model
         rotary_emb = hf_model.model.rotary_emb
 
         # Set rotary_emb on actual bridge instances in bridge_model if available

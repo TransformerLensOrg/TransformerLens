@@ -112,7 +112,6 @@ class HookedEncoderDecoder(HookedRootModule):
             ]
         )
         self.decoder_final_ln = RMSNorm(self.cfg)
-        # self.lm_head = nn.Linear(self.cfg.d_model, self.cfg.d_vocab_out)
         self.unembed = Unembed(self.cfg)
 
         self.hook_embed = HookPoint()
@@ -470,7 +469,6 @@ class HookedEncoderDecoder(HookedRootModule):
                     )
                 )
 
-            # Append new token to the decoder input
             decoder_input = torch.cat([decoder_input, sampled_tokens.unsqueeze(-1)], dim=-1)
 
             if stop_at_eos and finished_sequences.all():
@@ -478,7 +476,6 @@ class HookedEncoderDecoder(HookedRootModule):
 
         if return_type == "str":
             assert self.tokenizer is not None
-            # Convert tokens to string
             return cast(str, self.tokenizer.decode(decoder_input[0], skip_special_tokens=True))
 
         else:

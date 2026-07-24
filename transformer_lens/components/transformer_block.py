@@ -27,7 +27,6 @@ from transformer_lens.hook_points import HookPoint
 from transformer_lens.utilities import repeat_along_head_dimension
 
 
-# Transformer Block
 class TransformerBlock(nn.Module):
     ln1: nn.Module
     ln2: nn.Module

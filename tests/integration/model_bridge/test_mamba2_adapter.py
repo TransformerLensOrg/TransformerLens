@@ -10,10 +10,10 @@ Verifies wrap-don't-reimplement behavior against AntonV/mamba2-130m-hf
 - Generation via is_stateful fallback delegates to hf_generate
 - d_mlp == 0 assertion: in_proj output features match the 3-way split formula
 
-Cache clone safety: Same guarantee as Phase 1 — the wrap-don't-reimplement
-design keeps Mamba2Mixer opaque, so `ssm_states` is never hooked. The only
-hooked tensors are projection inputs/outputs, which are per-step and not
-mutated by the cache machinery.
+Cache clone safety: the wrap-don't-reimplement design keeps Mamba2Mixer
+opaque, so `ssm_states` is never hooked. The only hooked tensors are
+projection inputs/outputs, which are per-step and not mutated by the cache
+machinery.
 """
 
 import contextlib
@@ -81,7 +81,7 @@ class TestMamba2BridgeCreation:
         assert not hasattr(hf_mixer, "dt_proj")
 
     def test_d_mlp_is_zero(self, mamba2_bridge):
-        """Plan's assertion: projection_size = intermediate + conv_dim + num_heads.
+        """projection_size = intermediate + conv_dim + num_heads.
 
         If a future HF release introduces non-zero d_mlp, this test will fail,
         signaling that the 3-way in_proj split assumption no longer holds.
@@ -462,7 +462,7 @@ class TestMamba2ParameterAccess:
 
 
 class TestMamba2StatefulGeneration:
-    """Phase 3: bridge.generate() runs a dedicated stateful loop with
+    """bridge.generate() runs a dedicated stateful loop with
     Mamba2Cache. Tokens match HF's native generate() exactly, and projection
     hooks fire on every step so interventions are possible.
     """
@@ -683,7 +683,7 @@ def _eager_scan(bridge):
 
 
 class TestMamba2EagerScanIntervention:
-    """Phase 4: opt-in eager-scan path exposes hook_ssm_write / hook_ssm_state for
+    """opt-in eager-scan path exposes hook_ssm_write / hook_ssm_state for
     interventions (write-knockout, state-patch) that propagate to logits, while the
     default run_with_cache path is untouched. Eager scan requires use_cache=False
     (so cache_params is None — prefill only)."""

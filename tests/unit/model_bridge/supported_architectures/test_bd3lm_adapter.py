@@ -92,7 +92,6 @@ class TestBD3LMArchitectureAdapterConfig:
         assert adapter.cfg.final_rms is False
 
     def test_applicable_phases(self, adapter: BD3LMArchitectureAdapter) -> None:
-        # BD3LM now supports all phases correctly
         assert adapter.applicable_phases == [1, 2, 3]
 
     def test_supports_generation(self, adapter: BD3LMArchitectureAdapter) -> None:

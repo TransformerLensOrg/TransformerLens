@@ -245,7 +245,7 @@ def get_attention_mask(
         torch.Tensor: The attention mask for the input.
     """
 
-    # Initialize the attention mask with ones (indicating all tokens should be attended to)
+    # Default to attending every token; pad positions are zeroed below.
     attention_mask = torch.ones_like(tokens)
     if tokenizer is None:
         return attention_mask

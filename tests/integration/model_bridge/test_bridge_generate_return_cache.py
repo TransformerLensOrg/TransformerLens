@@ -78,7 +78,7 @@ class TestGenerateReturnCache:
             assert torch.allclose(g, r, atol=1e-5, rtol=1e-4), f"{name} differs from run_with_cache"
 
     def test_includes_attention_patterns(self, bridge):
-        """The cache includes full [batch, heads, q, k] attention patterns (an Option B benefit)."""
+        """The cache includes full [batch, heads, q, k] attention patterns."""
         tokens = bridge.to_tokens("The quick brown")
         with torch.no_grad():
             out, cache = bridge.generate(

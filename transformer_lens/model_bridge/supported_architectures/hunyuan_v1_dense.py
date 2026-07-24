@@ -19,7 +19,6 @@ class HunYuanDenseV1ArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for HunYuanDenseV1 models."""
 
     def __init__(self, cfg: Any) -> None:
-        """Initialize the HunYuanDenseV1 architecture adapter."""
         super().__init__(cfg)
 
         self.cfg.normalization_type = "RMS"
@@ -85,7 +84,6 @@ class HunYuanDenseV1ArchitectureAdapter(ArchitectureAdapter):
 
     def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
         """Set up model-specific references for component testing."""
-        # Get rotary embedding instance from the HF model
         rotary_emb = hf_model.model.rotary_emb
 
         # Set attention implementation on HF model to eager (vs sdpa default)

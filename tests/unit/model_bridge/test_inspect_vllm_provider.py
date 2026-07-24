@@ -183,7 +183,7 @@ class TestConstruction:
         assert kwargs["tensor_parallel_size"] == 1
         assert kwargs["skip_tokenizer_init"] is True
         assert kwargs["disable_log_stats"] is True
-        # Inc 2: capture wiring requires worker_extension_cls + full-vocab logprobs.
+        # Capture wiring requires worker_extension_cls + full-vocab logprobs.
         assert kwargs["worker_extension_cls"].endswith("TLWorkerExtension")
         assert kwargs["max_logprobs"] == 128  # _fake_hf_config().vocab_size
         assert kwargs["max_num_batched_tokens"] == 2048  # default

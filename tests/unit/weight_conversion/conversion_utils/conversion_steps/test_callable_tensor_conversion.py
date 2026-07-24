@@ -12,7 +12,6 @@ def test_callable_tensor_conversion_basic():
     """
 
     def my_callable(tensor_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
-        # Example transformation: add 1 to each tensor value
         new_dict = {}
         for k, v in tensor_dict.items():
             new_dict[k] = v + 1
@@ -52,7 +51,6 @@ def test_callable_tensor_conversion_input_filter():
         return new_dict
 
     def my_input_filter(tensor_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
-        # Multiply each tensor by 2
         filtered_dict = {}
         for k, v in tensor_dict.items():
             filtered_dict[k] = v * 2
@@ -86,7 +84,6 @@ def test_callable_tensor_conversion_output_filter():
         return new_dict
 
     def my_output_filter(tensor_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
-        # Subtract 5 from each element
         filtered_dict = {}
         for k, v in tensor_dict.items():
             filtered_dict[k] = v - 5

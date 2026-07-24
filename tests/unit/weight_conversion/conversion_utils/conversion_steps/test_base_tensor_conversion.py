@@ -26,11 +26,7 @@ def test_mock_weight_conversion_adds_five():
     output_tensor = weight_conversion.convert(input_tensor)
     expected_tensor = torch.full((1, 4), 5.0, dtype=torch.float32)
 
-    # Option 1: simple equality check
     assert torch.equal(output_tensor, expected_tensor)
-
-    # Option 2: more robust approximate check
-    # torch.testing.assert_close(output_tensor, expected_tensor)
 
 
 @pytest.mark.parametrize("shape", [(1, 4), (2, 2), (3,)])

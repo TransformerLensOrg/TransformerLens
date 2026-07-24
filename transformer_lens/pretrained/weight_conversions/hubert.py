@@ -26,7 +26,6 @@ def convert_hubert_weights(hf_model, cfg: HookedTransformerConfig):
     # Use cfg dims for reshaping
     d_model = cfg.d_model
     n_heads = cfg.n_heads
-    # d_head = d_model // n_heads  # implicit if needed
 
     for l, layer in enumerate(encoder_layers):
         # --- Attention module ---

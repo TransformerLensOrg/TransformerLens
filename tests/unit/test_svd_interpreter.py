@@ -12,7 +12,7 @@ if TypeCheckError is None:
 
 MODEL = "solu-2l"
 VECTOR_TYPES = ["OV", "w_in", "w_out"]
-ATOL = 2e-4  # Absolute tolerance - how far does a float have to be before we consider it no longer equal?
+ATOL = 2e-4  # absolute tolerance for float comparison
 
 
 @pytest.fixture(scope="module")

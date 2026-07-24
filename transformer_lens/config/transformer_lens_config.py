@@ -74,10 +74,8 @@ class TransformerLensConfig:
     # GQA configuration
     n_key_value_heads: Optional[int] = None
 
-    # Attention only model
     attn_only: bool = False
 
-    # Gated MLP
     gated_mlp: bool = False
 
     # Normalization configuration
@@ -86,22 +84,16 @@ class TransformerLensConfig:
     # Epsilon for normalization
     eps: float = 1e-5
 
-    # Layer norm folding activated
     layer_norm_folding: bool = False
 
-    # Activation function
     act_fn: str = "relu"
 
-    # Normalization type
     normalization_type: Optional[str] = "LN"
 
-    # Number of experts
     num_experts: Optional[int] = None
 
-    # Number of experts per token
     experts_per_token: Optional[int] = None
 
-    # Final RMS norm
     final_rms: bool = False
 
     # Model dtype for LayerNormPre compatibility

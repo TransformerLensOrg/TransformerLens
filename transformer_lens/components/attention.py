@@ -16,7 +16,6 @@ if is_bitsandbytes_available():
     from bitsandbytes.nn.modules import Params4bit
 
 
-# Attention
 class Attention(AbstractAttention):
     def __init__(
         self,

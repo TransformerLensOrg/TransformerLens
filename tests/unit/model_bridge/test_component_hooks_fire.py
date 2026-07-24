@@ -1,7 +1,7 @@
-"""Regression test: attention hooks fire on forward (C1 guard).
+"""Regression test: attention hooks fire on forward.
 
 Complements the alias-resolution test: aliases can resolve yet the HookPoint
-may never fire if forward bypasses the LinearBridge (the original C1 bug).
+may never fire if forward bypasses the LinearBridge (the original bug).
 Isolates blocks.0.attn per PositionEmbeddingsAttentionBridge adapter with a
 synthetic HF module and asserts hook_q/k/v/z all fire.
 """
@@ -121,7 +121,7 @@ _CRITICAL_HOOKS = {"hook_q", "hook_k", "hook_v", "hook_z"}
 
 @pytest.mark.parametrize("architecture", _position_embeddings_adapters())
 def test_attention_critical_hooks_fire_on_forward(architecture: str) -> None:
-    """Assert hook_q/k/v/z fire during attention forward (C1 regression guard)."""
+    """Assert hook_q/k/v/z fire during attention forward (regression guard)."""
     adapter_cls = SUPPORTED_ARCHITECTURES[architecture]
     adapter = adapter_cls(_stub_cfg(architecture))
     attn = adapter.component_mapping["blocks"].submodules["attn"]

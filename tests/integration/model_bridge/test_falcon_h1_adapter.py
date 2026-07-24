@@ -2,7 +2,7 @@
 
 Verifies wrap-don't-reimplement behaviour against Falcon-H1 checkpoints:
 
-- ``tiiuae/Falcon-H1-Tiny-90M-Instruct`` — smallest variant (issue #1403 verify-first).
+- ``tiiuae/Falcon-H1-Tiny-90M-Instruct`` — smallest variant.
 - ``tiiuae/Falcon-H1-0.5B-Base`` — primary parity suite.
 - Forward-pass logits match HF **exactly** (the bridge delegates the whole block
   to HF, which applies Falcon-H1's ~12 scalar multipliers natively).

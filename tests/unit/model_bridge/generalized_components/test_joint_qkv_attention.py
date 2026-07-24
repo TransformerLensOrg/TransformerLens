@@ -143,13 +143,11 @@ class TestJointQKVAttention:
         def q_hook_id_fn(q_output, hook):
             return q_output
 
-        # Add the hook to q.hook_out
         qkv_bridge.q.hook_out.add_hook(q_hook_id_fn)
 
         # Run forward pass with identity hook to get baseline
         baseline_output, _ = qkv_bridge(test_input)
 
-        # Remove the identity hook
         qkv_bridge.q.hook_out.remove_hooks()
 
         # Add a hook to q.hook_out that modifies the output
@@ -159,10 +157,8 @@ class TestJointQKVAttention:
         def q_hook_fn(q_output, hook):
             nonlocal q_mutation_applied
             q_mutation_applied = True
-            # Modify the q output by adding a distinct value
             return q_output + q_mutated_value
 
-        # Add the hook to q.hook_out
         qkv_bridge.q.hook_out.add_hook(q_hook_fn)
 
         # Run forward pass with hook
@@ -230,13 +226,11 @@ class TestJointQKVAttention:
         def k_hook_id_fn(k_output, hook):
             return k_output
 
-        # Add the hook to k.hook_out
         qkv_bridge.k.hook_out.add_hook(k_hook_id_fn)
 
         # Run forward pass with identity hook to get baseline
         baseline_output, _ = qkv_bridge(test_input)
 
-        # Remove the identity hook
         qkv_bridge.k.hook_out.remove_hooks()
 
         # Add a hook to k.hook_out that modifies the output
@@ -246,10 +240,8 @@ class TestJointQKVAttention:
         def k_hook_fn(k_output, hook):
             nonlocal k_mutation_applied
             k_mutation_applied = True
-            # Modify the k output by adding a distinct value
             return k_output + k_mutated_value
 
-        # Add the hook to k_hook_out
         qkv_bridge.k.hook_out.add_hook(k_hook_fn)
 
         # Run forward pass with hook
@@ -317,13 +309,11 @@ class TestJointQKVAttention:
         def v_hook_id_fn(v_output, hook):
             return v_output
 
-        # Add the hook to v.hook_out
         qkv_bridge.v.hook_out.add_hook(v_hook_id_fn)
 
         # Run forward pass with identity hook to get baseline
         baseline_output, _ = qkv_bridge(test_input)
 
-        # Remove the identity hook
         qkv_bridge.v.hook_out.remove_hooks()
 
         # Add a hook to v.hook_out that modifies the output
@@ -333,10 +323,8 @@ class TestJointQKVAttention:
         def v_hook_fn(v_output, hook):
             nonlocal v_mutation_applied
             v_mutation_applied = True
-            # Modify the v output by adding a distinct value
             return v_output + v_mutated_value
 
-        # Add the hook to v.hook_out
         qkv_bridge.v.hook_out.add_hook(v_hook_fn)
 
         # Run forward pass with hook
