@@ -42,7 +42,6 @@ def composition_scores(
 
 
 def get_matrix_corner(matrix: FactoredMatrix, n=3):
-    # Prints the top left corner of the tensor
     result = get_corner(matrix[tuple(slice(n) for _ in range(matrix.ndim))])
 
     return result.AB

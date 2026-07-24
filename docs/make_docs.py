@@ -279,7 +279,6 @@ def get_model_info(
         "model_type": None,
     }
 
-    # Split the model name into parts
     parts: list[str] = model_name.split("-")
 
     # identify model type by known types

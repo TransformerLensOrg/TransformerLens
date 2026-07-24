@@ -20,7 +20,6 @@ class Gemma4TextArchitectureAdapter(Gemma4ArchitectureAdapter):
     _testing_wire_rotary = False
 
     def __init__(self, cfg: Any) -> None:
-        """Initialize the Gemma 4 text-only architecture adapter."""
         super().__init__(cfg)
 
         self.cfg.is_multimodal = False

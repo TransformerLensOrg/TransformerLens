@@ -41,10 +41,8 @@ class TensorConversionSet(BaseTensorConversion):
         else:
             field_name, conversion_step = field_info
 
-        # Get the component from the model
         component = find_property(field_name, model)
 
-        # Apply conversion step if specified
         if conversion_step is not None:
             component = conversion_step(component)
 

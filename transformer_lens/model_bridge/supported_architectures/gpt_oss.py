@@ -58,7 +58,7 @@ class GPTOSSArchitectureAdapter(ArchitectureAdapter):
                         name="self_attn",
                         config=self.cfg,
                         requires_position_embeddings=True,  # GPT-OSS requires position_embeddings (rotary)
-                        requires_attention_mask=True,  # GPT-OSS requires attention_mask
+                        requires_attention_mask=True,
                         submodules={
                             "q": LinearBridge(name="q_proj"),
                             "k": LinearBridge(name="k_proj"),
@@ -102,7 +102,6 @@ class GPTOSSArchitectureAdapter(ArchitectureAdapter):
         # Get the actual HF rotary_emb from the bridge's rotary_emb component
         rotary_emb = bridge_model.rotary_emb.original_component
 
-        # Set rotary_emb on all attention bridge instances
         if hasattr(bridge_model, "blocks"):
             for block in bridge_model.blocks:
                 if hasattr(block, "attn"):

@@ -131,7 +131,6 @@ class TestJointQKVAttention:
             split_qkv_matrix=split_qkv_matrix,
         )
 
-        # Set the original component for the attention layer
         qkv_bridge.set_original_component(MockAttention())
 
         # Create test input
@@ -143,7 +142,6 @@ class TestJointQKVAttention:
         def q_hook_id_fn(q_output, hook):
             return q_output
 
-        # Add the hook to q.hook_out
         qkv_bridge.q.hook_out.add_hook(q_hook_id_fn)
 
         # Run forward pass with identity hook to get baseline
@@ -159,7 +157,6 @@ class TestJointQKVAttention:
         def q_hook_fn(q_output, hook):
             nonlocal q_mutation_applied
             q_mutation_applied = True
-            # Modify the q output by adding a distinct value
             return q_output + q_mutated_value
 
         # Add the hook to q.hook_out

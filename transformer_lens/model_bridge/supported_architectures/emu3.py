@@ -23,7 +23,6 @@ class Emu3ArchitectureAdapter(LlamaArchitectureAdapter):
     _testing_eager = "config"
 
     def __init__(self, cfg: Any) -> None:
-        """Initialize the Emu3 architecture adapter."""
         super().__init__(cfg)
 
         self.cfg.is_multimodal = True

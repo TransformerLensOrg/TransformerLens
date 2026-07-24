@@ -72,7 +72,6 @@ def benchmark_forward_pass(
     try:
         _is_audio = getattr(bridge.cfg, "is_audio_model", False)
 
-        # Check if this is an encoder-decoder model
         is_enc_dec = _is_encoder_decoder(bridge.original_model)
 
         # Prepare extra kwargs for encoder-decoder models
@@ -194,7 +193,6 @@ def benchmark_loss_equivalence(
         BenchmarkResult with comparison details
     """
     try:
-        # Run bridge loss computation
         bridge_loss = bridge(test_text, return_type="loss")
 
         if reference_model is None and reference_loss is None:
@@ -273,7 +271,6 @@ def benchmark_logits_equivalence(
         BenchmarkResult with comparison details
     """
     try:
-        # Run bridge forward pass
         bridge_logits = bridge(test_text, return_type="logits")
 
         if reference_model is None and reference_logits is None:

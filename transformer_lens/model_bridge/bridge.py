@@ -381,14 +381,14 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
 
     @property
     def original_model(self) -> nn.Module:
-        """Get the original model."""
+        """Return the wrapped underlying model; raises AttributeError if it was never set."""
         if "original_model" not in self.__dict__:
             raise AttributeError("original_model has not been set")
         return self.__dict__["original_model"]
 
     @original_model.setter
     def original_model(self, value: nn.Module) -> None:
-        """Set the original model."""
+        """Store the model in __dict__ so nn.Module does not register it as a submodule."""
         self.__dict__["original_model"] = value
 
     def _register_aliases(self) -> None:

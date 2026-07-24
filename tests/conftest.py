@@ -27,7 +27,6 @@ def cleanup_memory():
         torch.cuda.empty_cache()
     if torch.backends.mps.is_available():
         torch.mps.empty_cache()
-    # Force garbage collection for cleanup
     gc.collect()
 
 

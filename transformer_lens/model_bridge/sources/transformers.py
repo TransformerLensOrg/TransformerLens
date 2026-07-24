@@ -534,7 +534,7 @@ def boot(
         )
     _n_ctx_field: str | None = None
     if n_ctx is not None:
-        # Validation (#2): reject non-positive values before doing anything else.
+        # Reject non-positive values before doing anything else.
         if n_ctx <= 0:
             raise ValueError(f"n_ctx must be a positive integer, got n_ctx={n_ctx}.")
         # Resolve n_ctx to whichever HF config field this model uses. Mirrors
@@ -566,8 +566,7 @@ def boot(
                 n_ctx,
                 _default_n_ctx,
             )
-        # Conflict detection (#4): warn if the caller also set the same field
-        # via hf_config_overrides — explicit n_ctx wins but users should know.
+        # Warn if the caller also set the same field via hf_config_overrides -- explicit n_ctx wins but users should know.
         if hf_config_overrides and _n_ctx_field in hf_config_overrides:
             _conflicting_value = hf_config_overrides[_n_ctx_field]
             if _conflicting_value != n_ctx:
@@ -718,7 +717,7 @@ def boot(
         try:
             hf_model = model_class.from_pretrained(model_name, **model_kwargs)
         except RuntimeError as e:
-            # #5: HF refuses to load when positional-weight shapes don't match.
+            # HF refuses to load when positional-weight shapes don't match.
             # If the user requested an n_ctx that conflicts with the saved weights
             # (common for learned-pos-embed models like GPT-2), re-raise with a
             # clearer message pointing them at the likely cause.
@@ -793,7 +792,7 @@ def boot(
             adapter.cfg.device = str(next(hf_model.parameters()).device)
         except StopIteration:
             adapter.cfg.device = "cpu"
-    # #7: Verify the n_ctx override actually took effect on the loaded model.
+    # Verify the n_ctx override actually took effect on the loaded model.
     # If HF's config class silently dropped or normalized the value, warn so
     # the user doesn't get misled into thinking longer sequences are supported.
     if n_ctx is not None and _n_ctx_field is not None and hf_model is not None:

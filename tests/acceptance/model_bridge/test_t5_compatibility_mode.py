@@ -20,7 +20,6 @@ class TestT5CompatibilityMode:
     def cleanup_after_test(self):
         """Clean up memory after each test."""
         yield
-        # Force garbage collection and clear CUDA cache
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
         for _ in range(3):

@@ -46,7 +46,7 @@ def _prepare_audio_text_inputs(bridge: TransformerBridge):
 
 def benchmark_audio_text_forward(bridge: TransformerBridge) -> BenchmarkResult:
     """Benchmark the audio-conditioned forward (input_features -> finite logits) of
-    an audio-text decoder -- the audio path Phase 7 (image) and Phase 8 (encoder) miss."""
+    an audio-text decoder -- the audio path that the image and encoder benchmarks do not cover."""
     if not getattr(bridge.cfg, "is_multimodal", False):
         return BenchmarkResult(
             name="audio_text_forward",

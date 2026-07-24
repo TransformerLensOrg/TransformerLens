@@ -423,7 +423,6 @@ def get_all_architectures_with_stats() -> list[ArchitectureStats]:
                 example_models=[],
             )
 
-    # Sort by model count descending
     result = sorted(arch_stats.values(), key=lambda x: x.model_count, reverse=True)
     return result
 

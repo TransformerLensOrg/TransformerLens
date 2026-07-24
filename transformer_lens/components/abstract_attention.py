@@ -394,7 +394,6 @@ class AbstractAttention(ABC, nn.Module):
                     z, "batch pos head_index d_head -> batch pos head_index d_head 1"
                 )
 
-                # Multiply the z tensor by the W_O tensor, summing over the d_head dimension
                 unhooked_result = (z * w).sum(-2)
 
                 result = self.hook_result(unhooked_result)  # [batch, pos, head_index, d_model]

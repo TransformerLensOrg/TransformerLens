@@ -26,9 +26,7 @@ def _report(model_id: str):
 
 
 def test_fused_experts_are_skipped_not_failed() -> None:
-    """The fused ``mlp.experts`` nodes must be skipped, so every tested
-    component passes — pre-fix they errored with a missing-router-args
-    TypeError and P1 cratered to 50%."""
+    """Fused mlp.experts are skipped and every remaining isolated component passes."""
     report = _report("hyper-accel/ci-random-qwen2-moe-a3b")
 
     tested = {r.component_path for r in report.component_results}

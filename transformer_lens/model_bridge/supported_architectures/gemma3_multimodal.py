@@ -51,7 +51,6 @@ class Gemma3MultimodalArchitectureAdapter(ArchitectureAdapter):
         """Initialize the Gemma3 multimodal architecture adapter."""
         super().__init__(cfg)
 
-        # Mark this as a multimodal model
         self.cfg.is_multimodal = True
 
         # Language model configuration (same as text-only Gemma 3)
