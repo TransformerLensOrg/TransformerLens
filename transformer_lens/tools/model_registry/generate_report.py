@@ -71,6 +71,7 @@ ARCHITECTURE_DESCRIPTIONS: dict[str, str] = {
     "PhiMoEForCausalLM": "Microsoft's Phi sparse Mixture of Experts model",
     "FalconForCausalLM": "TII's Falcon model series",
     "FalconH1ForCausalLM": "TII's Falcon-H1 parallel attention + Mamba-2 hybrid series",
+    "JambaForCausalLM": "AI21's Jamba interleaved attention + Mamba-1 hybrid with optional MoE",
     "OlmoForCausalLM": "Allen AI's OLMo open language model",
     "Olmo2ForCausalLM": "Allen AI's OLMo 2 with improved training",
     "Olmo3ForCausalLM": "Allen AI's OLMo 3 latest generation",
@@ -129,6 +130,7 @@ ARCHITECTURE_DESCRIPTIONS: dict[str, str] = {
     "HunYuanDenseV1ForCausalLM": "Tencent's open source decoder models",
     "Cohere2ForCausalLM": "Cohere's Command-A architecture with interleaved sliding-window RoPE and full-attention NoPE layers",
     "OuroForCausalLM": "ByteDance's Ouro looped language model (LoopLM) with weight-shared iterated depth",
+    "RavenForCausalLM": "tomg-group-umd's Huginn depth-recurrent decoder (prelude / weight-tied recurrent core / coda) with runtime recurrence count",
     "RWKV7ForCausalLM": 'fla-hub\'s RWKV-7 ("Goose") attention-free recurrent decoder with generalized-delta-rule time-mixing and squared-ReLU channel-mixing',
     # Unsupported architectures
     "BertModel": "Google's BERT bidirectional encoder for understanding tasks",

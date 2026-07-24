@@ -116,6 +116,7 @@ from transformer_lens.model_bridge.supported_architectures.internlm2 import (
     InternLM2ArchitectureAdapter,
 )
 from transformer_lens.model_bridge.supported_architectures.jais2 import Jais2ArchitectureAdapter
+from transformer_lens.model_bridge.supported_architectures.jamba import JambaArchitectureAdapter
 from transformer_lens.model_bridge.supported_architectures.jetmoe import JetMoeArchitectureAdapter
 from transformer_lens.model_bridge.supported_architectures.laguna import LagunaArchitectureAdapter
 from transformer_lens.model_bridge.supported_architectures.led import LEDArchitectureAdapter
@@ -197,6 +198,7 @@ from transformer_lens.model_bridge.supported_architectures.pegasus import Pegasu
 from transformer_lens.model_bridge.supported_architectures.phi import PhiArchitectureAdapter
 from transformer_lens.model_bridge.supported_architectures.phi3 import Phi3ArchitectureAdapter
 from transformer_lens.model_bridge.supported_architectures.phimoe import PhiMoEArchitectureAdapter
+from transformer_lens.model_bridge.supported_architectures.pretrain import PretrainArchitectureAdapter
 from transformer_lens.model_bridge.supported_architectures.qwen import QwenArchitectureAdapter
 from transformer_lens.model_bridge.supported_architectures.qwen2 import Qwen2ArchitectureAdapter
 from transformer_lens.model_bridge.supported_architectures.qwen2_5_vl import (
@@ -229,6 +231,7 @@ from transformer_lens.model_bridge.supported_architectures.qwen3_vl import (
 from transformer_lens.model_bridge.supported_architectures.qwen3_vl_moe import (
     Qwen3VLMoeArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.raven import RavenArchitectureAdapter
 from transformer_lens.model_bridge.supported_architectures.recurrent_gemma import (
     RecurrentGemmaArchitectureAdapter,
 )
@@ -319,6 +322,7 @@ __all__ = [
     "LEDArchitectureAdapter",
     "LagunaArchitectureAdapter",
     "Jais2ArchitectureAdapter",
+    "JambaArchitectureAdapter",
     "JetMoeArchitectureAdapter",
     "Ministral3ArchitectureAdapter",
     "VaultGemmaArchitectureAdapter",
@@ -365,6 +369,7 @@ __all__ = [
     "PhiArchitectureAdapter",
     "Phi3ArchitectureAdapter",
     "PhiMoEArchitectureAdapter",
+    "PretrainArchitectureAdapter",
     "QwenArchitectureAdapter",
     "Qwen2ArchitectureAdapter",
     "Qwen2_5_VLArchitectureAdapter",
@@ -373,6 +378,7 @@ __all__ = [
     "Qwen3ArchitectureAdapter",
     "Qwen3VLArchitectureAdapter",
     "Qwen3VLMoeArchitectureAdapter",
+    "RavenArchitectureAdapter",
     "RwkvArchitectureAdapter",
     "Qwen3MoeArchitectureAdapter",
     "Qwen3NextArchitectureAdapter",

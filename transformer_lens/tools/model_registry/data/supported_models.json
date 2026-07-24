@@ -6,10 +6,10 @@
     "min_downloads": 500,
     "scan_duration_seconds": 8.7
   },
-  "total_architectures": 138,
-  "total_models": 15661,
+  "total_architectures": 140,
+  "total_models": 15664,
   "total_provisional": 7,
-  "total_verified": 1195,
+  "total_verified": 1197,
   "models": [
     {
       "architecture_id": "FalconH1ForCausalLM",
@@ -217873,6 +217873,48 @@
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "RavenForCausalLM",
+      "model_id": "tomg-group-umd/huginn-0125",
+      "status": 0,
+      "verified_date": null,
+      "metadata": null,
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "JambaForCausalLM",
+      "model_id": "ai21labs/Jamba-tiny-random",
+      "status": 1,
+      "verified_date": "2026-07-21",
+      "metadata": null,
+      "note": "Full verification completed with issues, low text quality",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 41.6,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "JambaForCausalLM",
+      "model_id": "ai21labs/AI21-Jamba-Reasoning-3B",
+      "status": 1,
+      "verified_date": "2026-07-21",
+      "metadata": null,
+      "note": "Core verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 88.2,
+      "phase4_score": 97.3,
       "phase7_score": null,
       "phase8_score": null
     }

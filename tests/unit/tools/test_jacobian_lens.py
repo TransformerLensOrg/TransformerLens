@@ -945,3 +945,212 @@ def test_exports() -> None:
 
     assert analysis.JacobianLens is JacobianLens
     assert hasattr(analysis, "JacobianLensReadout")
+
+
+# ---------------------------------------------------------------------------
+# Registry / from_pretrained short-name resolution tests
+# ---------------------------------------------------------------------------
+
+
+class TestRegistry:
+    """Tests for the bundled jacobian_lens_registry.json and its resolution helpers."""
+
+    def test_registry_is_valid_json_and_nonempty(self) -> None:
+        import json
+        import pathlib
+
+        path = (
+            pathlib.Path(__file__).parents[3]
+            / "transformer_lens"
+            / "tools"
+            / "analysis"
+            / "jacobian_lens_registry.json"
+        )
+        assert path.is_file(), f"Registry not found at {path}"
+        with path.open() as fh:
+            registry = json.load(fh)
+        model_entries = {k: v for k, v in registry.items() if not k.startswith("_")}
+        assert len(model_entries) >= 30, "Expected at least 30 model entries"
+
+    def test_registry_entries_have_required_fields(self) -> None:
+        import json
+        import pathlib
+
+        path = (
+            pathlib.Path(__file__).parents[3]
+            / "transformer_lens"
+            / "tools"
+            / "analysis"
+            / "jacobian_lens_registry.json"
+        )
+        with path.open() as fh:
+            registry = json.load(fh)
+        for key, entry in registry.items():
+            if key.startswith("_"):
+                continue
+            assert "repo_id" in entry, f"Missing repo_id in entry '{key}'"
+            assert "filename" in entry, f"Missing filename in entry '{key}'"
+            assert entry["filename"].endswith(
+                ".pt"
+            ), f"filename in '{key}' does not end with .pt: {entry['filename']}"
+            assert "aliases" in entry, f"Missing aliases list in entry '{key}'"
+
+    def test_resolve_registry_entry_by_short_name(self) -> None:
+        from transformer_lens.tools.analysis.jacobian_lens import (
+            _resolve_registry_entry,
+        )
+
+        result = _resolve_registry_entry("gemma-2-2b")
+        assert result is not None
+        repo_id, filename = result
+        assert repo_id == "neuronpedia/jacobian-lens"
+        assert "gemma-2-2b" in filename
+        assert filename.endswith(".pt")
+
+    def test_resolve_registry_entry_by_hf_model_id(self) -> None:
+        from transformer_lens.tools.analysis.jacobian_lens import (
+            _resolve_registry_entry,
+        )
+
+        result = _resolve_registry_entry("google/gemma-2-2b")
+        assert result is not None
+        repo_id, filename = result
+        assert repo_id == "neuronpedia/jacobian-lens"
+        assert "gemma-2-2b" in filename
+
+    def test_resolve_registry_entry_unknown_returns_none(self) -> None:
+        from transformer_lens.tools.analysis.jacobian_lens import (
+            _resolve_registry_entry,
+        )
+
+        assert _resolve_registry_entry("not-a-real-model") is None
+        assert _resolve_registry_entry("some/unknown-repo") is None
+
+    def test_from_pretrained_resolves_short_name_via_registry(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+    ) -> None:
+        """Short model name resolves to the registry's repo_id and filename."""
+        import huggingface_hub
+
+        path = tmp_path / "lens.pt"
+        _lens().save(str(path))
+        calls: dict[str, Any] = {}
+
+        def fake_download(**kwargs: Any) -> str:
+            raise AssertionError("Must use retry wrapper")
+
+        def fake_retry(function: Any, **kwargs: Any) -> str:
+            calls["kwargs"] = kwargs
+            return str(path)
+
+        monkeypatch.setattr(huggingface_hub, "hf_hub_download", fake_download)
+        monkeypatch.setattr(jacobian_lens_module, "call_hf_with_retry", fake_retry)
+
+        JacobianLens.from_pretrained("gemma-2-2b")
+
+        assert calls["kwargs"]["repo_id"] == "neuronpedia/jacobian-lens"
+        assert "gemma-2-2b" in calls["kwargs"]["filename"]
+        assert calls["kwargs"]["filename"].endswith(".pt")
+
+    def test_from_pretrained_resolves_hf_model_id_via_registry(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+    ) -> None:
+        """HF model ID alias resolves to the same artifact as the short name."""
+        import huggingface_hub
+
+        path = tmp_path / "lens.pt"
+        _lens().save(str(path))
+
+        short_calls: dict[str, Any] = {}
+        alias_calls: dict[str, Any] = {}
+
+        def make_fake_retry(store: dict[str, Any]):
+            def fake_retry(function: Any, **kwargs: Any) -> str:
+                store["kwargs"] = kwargs
+                return str(path)
+
+            return fake_retry
+
+        monkeypatch.setattr(huggingface_hub, "hf_hub_download", lambda **kw: None)
+
+        monkeypatch.setattr(
+            jacobian_lens_module, "call_hf_with_retry", make_fake_retry(short_calls)
+        )
+        JacobianLens.from_pretrained("gemma-2-2b")
+
+        monkeypatch.setattr(
+            jacobian_lens_module, "call_hf_with_retry", make_fake_retry(alias_calls)
+        )
+        JacobianLens.from_pretrained("google/gemma-2-2b")
+
+        assert short_calls["kwargs"]["filename"] == alias_calls["kwargs"]["filename"]
+        assert short_calls["kwargs"]["repo_id"] == alias_calls["kwargs"]["repo_id"]
+
+    def test_from_pretrained_unknown_name_falls_through_to_hub(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+    ) -> None:
+        """An unrecognised name is forwarded to Hub as the repo_id (backward compat)."""
+        import huggingface_hub
+
+        path = tmp_path / "lens.pt"
+        _lens().save(str(path))
+        calls: dict[str, Any] = {}
+
+        def fake_retry(function: Any, **kwargs: Any) -> str:
+            calls["kwargs"] = kwargs
+            return str(path)
+
+        monkeypatch.setattr(huggingface_hub, "hf_hub_download", lambda **kw: None)
+        monkeypatch.setattr(jacobian_lens_module, "call_hf_with_retry", fake_retry)
+
+        custom_filename = "custom/path/lens.pt"
+        JacobianLens.from_pretrained("my-org/my-repo", filename=custom_filename)
+
+        assert calls["kwargs"]["repo_id"] == "my-org/my-repo"
+        assert calls["kwargs"]["filename"] == custom_filename
+
+    def test_from_pretrained_registry_ignores_explicit_filename_kwarg(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+    ) -> None:
+        """When the registry resolves a name, the registry filename wins over the kwarg."""
+        import huggingface_hub
+
+        path = tmp_path / "lens.pt"
+        _lens().save(str(path))
+        calls: dict[str, Any] = {}
+
+        def fake_retry(function: Any, **kwargs: Any) -> str:
+            calls["kwargs"] = kwargs
+            return str(path)
+
+        monkeypatch.setattr(huggingface_hub, "hf_hub_download", lambda **kw: None)
+        monkeypatch.setattr(jacobian_lens_module, "call_hf_with_retry", fake_retry)
+
+        JacobianLens.from_pretrained("gemma-2-2b", filename="should-be-ignored.pt")
+
+        assert calls["kwargs"]["filename"] != "should-be-ignored.pt"
+        assert "gemma-2-2b" in calls["kwargs"]["filename"]
+
+    def test_gpt2_small_alias_resolves(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+    ) -> None:
+        """Both 'gpt2' and 'openai-community/gpt2' are aliases for gpt2-small."""
+        import huggingface_hub
+
+        path = tmp_path / "lens.pt"
+        _lens().save(str(path))
+
+        filenames: list[str] = []
+
+        def fake_retry(function: Any, **kwargs: Any) -> str:
+            filenames.append(kwargs["filename"])
+            return str(path)
+
+        monkeypatch.setattr(huggingface_hub, "hf_hub_download", lambda **kw: None)
+        monkeypatch.setattr(jacobian_lens_module, "call_hf_with_retry", fake_retry)
+
+        for name in ("gpt2-small", "gpt2", "openai-community/gpt2"):
+            JacobianLens.from_pretrained(name)
+
+        assert len(set(filenames)) == 1, "All three aliases should resolve to the same filename"
+        assert filenames[0].endswith("gpt2_jacobian_lens.pt")
