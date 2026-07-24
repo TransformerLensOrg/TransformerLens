@@ -282,8 +282,12 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
     def _scan_existing_hooks(self, module: nn.Module, prefix: str = "") -> None:
         """Scan existing modules for hooks and add them to registry."""
         visited = set()
-        # Protect canonical HookPoint names from alias overwrites
-        named_hook_ids: set = set()
+        # Protect canonical HookPoint names from alias overwrites. Seeded with
+        # already-registered hooks so the post-alias-registration re-scan adds
+        # alias registry entries without renaming shared HookPoint instances
+        # (dir() sorts alphabetically, so block-level alias attributes like
+        # hook_mlp_out are visited before the mlp child they point into).
+        named_hook_ids: set = {id(hp) for hp in self._hook_registry.values() if hp.name is not None}
 
         def scan_module(mod: nn.Module, path: str = "") -> None:
             obj_id = id(mod)
@@ -1295,6 +1299,40 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         """
         return iter(self.get_params().items())
 
+    def input_to_embed(
+        self,
+        input: Union[str, List[str], torch.Tensor],
+        prepend_bos: Optional[bool] = None,
+        padding_side: Optional[str] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+    ) -> Tuple[torch.Tensor, torch.Tensor, None, Optional[torch.Tensor]]:
+        """Convert input to the residual stream entering block 0 (``resid_pre[0]``).
+
+        Bridge analog of :meth:`HookedTransformer.input_to_embed`. Returns
+        ``(residual, tokens, shortformer_pos_embed, attention_mask)``; feed the
+        residual to ``forward(..., start_at_layer=0)`` to resume the pass.
+
+        ``shortformer_pos_embed`` is always ``None``: for the models the bridge
+        supports the residual already carries positional information, so there is
+        no separate positional stream to return.
+        """
+        if isinstance(input, (str, list)):
+            assert self.tokenizer is not None, "Must provide a tokenizer for string input."
+            tokens = self.to_tokens(input, prepend_bos=prepend_bos, padding_side=padding_side)
+        else:
+            tokens = input
+            if isinstance(tokens, torch.Tensor) and tokens.ndim == 1:
+                tokens = tokens.unsqueeze(0)
+        if (
+            attention_mask is None
+            and self.tokenizer is not None
+            and self.tokenizer.padding_side == "left"
+        ):
+            _prepend = self.cfg.default_prepend_bos if prepend_bos is None else prepend_bos
+            attention_mask = utils.get_attention_mask(self.tokenizer, tokens, _prepend)
+        residual = self.forward(tokens, stop_at_layer=0, attention_mask=attention_mask)
+        return residual, tokens, None, attention_mask
+
     def forward(
         self,
         input: Union[str, List[str], torch.Tensor],
@@ -1307,21 +1345,32 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         stop_at_layer: Optional[int] = None,
         pixel_values: Optional[torch.Tensor] = None,
         input_values: Optional[torch.Tensor] = None,
+        past_key_values: Optional[Any] = None,
         **kwargs,
     ) -> Any:
         """Forward pass through the model.
 
         Args:
             input: Input to the model
-            return_type: Type of output to return ('logits', 'loss', 'both', 'predictions', None)
+            return_type: Type of output to return ('logits', 'loss', 'both', 'predictions',
+                'logits_and_cache', None). 'logits_and_cache' returns
+                ``(logits, past_key_values)`` — the HuggingFace cache after this step, to
+                feed back on the next call for incremental decoding.
             loss_per_token: Whether to return loss per token
             prepend_bos: Whether to prepend BOS token
             padding_side: Which side to pad on
-            start_at_layer: Not implemented in TransformerBridge. The bridge delegates
-                to HuggingFace's model.forward() which owns the layer iteration loop,
-                making start_at_layer infeasible without monkey-patching HF internals
-                (fragile across HF versions) or exception-based layer skipping (corrupts
-                model state). Raises NotImplementedError if a non-None value is passed.
+            past_key_values: HuggingFace KV cache from a prior ``use_cache=True`` step
+                (e.g. the second element of a ``return_type='logits_and_cache'`` return).
+                When provided, KV caching is enabled automatically and only the new
+                tokens' keys/values are computed; HF derives the position offset from the
+                cache length. This is the bridge's manual KV-cache entry point — it uses
+                HF's native cache object rather than a TransformerLens cache.
+            start_at_layer: Resume the forward from block ``k``, treating ``input`` as
+                the residual-stream tensor ``[batch, pos, d_model]`` entering that block
+                (mirrors HookedTransformer). Blocks 0..k-1 still execute internally (their
+                output is discarded when block k swaps in the residual) but are excluded
+                from ``run_with_cache`` output. Requires an HF model that accepts
+                ``inputs_embeds``; only supported on the standard ``blocks`` stack.
             stop_at_layer: Layer to stop forward pass at
             pixel_values: Optional image tensor for multimodal models (e.g., LLaVA, Gemma3).
                 The tensor is passed directly to the underlying HuggingFace model.
@@ -1344,12 +1393,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             )
 
         if start_at_layer is not None:
-            raise NotImplementedError(
-                "start_at_layer is not supported in TransformerBridge. "
-                "The bridge delegates to HuggingFace's model.forward() which controls "
-                "the layer iteration loop. See the TransformerBridge review plan for a "
-                "detailed analysis of implementation approaches and their tradeoffs."
-            )
+            input = self._setup_start_at_layer(input, start_at_layer)
 
         # Set stop_at_layer flag on all blocks if requested
         if stop_at_layer is not None:
@@ -1452,6 +1496,11 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
 
             if attention_mask is not None:
                 kwargs["attention_mask"] = attention_mask
+            if past_key_values is not None:
+                # Manual KV-cache injection: hand HF its own cache back and let it
+                # extend it, computing only the new tokens' keys/values.
+                kwargs["past_key_values"] = past_key_values
+                kwargs["use_cache"] = True
             if kwargs.pop("use_past_kv_cache", False) or kwargs.get("use_cache", False):
                 kwargs["use_cache"] = True
             # Auto-generate decoder_input_ids for encoder-decoder models
@@ -1562,6 +1611,53 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 # generate() calls that expect a full cache.
                 if hasattr(self, "_last_hf_cache"):
                     del self._last_hf_cache
+
+            if start_at_layer is not None:
+                self._teardown_start_at_layer()
+
+    def _setup_start_at_layer(self, input: Any, start_at_layer: int) -> torch.Tensor:
+        """Arm residual-stream injection at block ``start_at_layer``.
+
+        ``input`` is the residual entering that block. It is returned (batch-promoted)
+        to drive the HF forward as ``inputs_embeds`` so position ids / attention mask
+        are computed for the right sequence length; block ``start_at_layer`` then swaps
+        it back in for its own input, discarding whatever blocks 0..k-1 produced.
+        """
+        for alt in ("encoder_blocks", "decoder_blocks", "L_blocks", "H_blocks"):
+            if hasattr(self, alt):
+                raise NotImplementedError(
+                    "start_at_layer is only supported on the standard 'blocks' stack, "
+                    f"not {alt!r}."
+                )
+        if not hasattr(self, "blocks"):
+            raise NotImplementedError("start_at_layer requires a 'blocks' stack.")
+        if not (isinstance(input, torch.Tensor) and input.is_floating_point()):
+            raise ValueError(
+                "start_at_layer requires a residual-stream tensor [batch, pos, d_model]; "
+                f"got {type(input).__name__}. Capture it from a prior run_with_cache "
+                "(e.g. cache['blocks.k.hook_in'])."
+            )
+        residual = input if input.ndim == 3 else input.unsqueeze(0)
+        n_blocks = len(self.blocks)
+        if start_at_layer < 0:
+            start_at_layer += n_blocks
+        if not 0 <= start_at_layer < n_blocks:
+            raise ValueError(f"start_at_layer={start_at_layer} out of range [0, {n_blocks}).")
+        # The returned tensor is fed to HF as inputs_embeds; stash a clone so an
+        # architecture that mutates inputs_embeds in place can't corrupt the value
+        # block ``start_at_layer`` swaps back in.
+        injected = residual.clone()
+        for block in self.blocks:
+            block._start_at_layer_idx = start_at_layer
+            block._start_residual = injected
+        return residual
+
+    def _teardown_start_at_layer(self) -> None:
+        """Clear the residual-injection state set by ``_setup_start_at_layer``."""
+        if hasattr(self, "blocks"):
+            for block in self.blocks:
+                block._start_at_layer_idx = None
+                block._start_residual = None
 
     # loss_fn inherited from BridgeCore
 
@@ -2878,6 +2974,19 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             Self for chaining
         """
         return self.to(torch.device("mps"))
+
+    def train(self, mode: bool = True) -> "TransformerBridge":
+        """Set training mode, propagating to the wrapped source model.
+
+        ``original_model`` lives in ``__dict__`` rather than the registered
+        module tree, so the inherited ``nn.Module.train()`` recursion does not
+        reach it.
+        """
+        super().train(mode)
+        original = getattr(self, "original_model", None)
+        if isinstance(original, torch.nn.Module):
+            original.train(mode)
+        return self
 
     def set_use_attn_result(self, use_attn_result: bool):
         """Toggle whether to explicitly calculate and expose the result for each attention head.

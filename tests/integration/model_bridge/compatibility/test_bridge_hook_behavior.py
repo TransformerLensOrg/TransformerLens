@@ -101,7 +101,9 @@ class TestHookFiring:
                 bridge("World")
                 assert count == 2
         finally:
-            bridge.reset_hooks()
+            # Session-scoped fixture: plain reset_hooks() keeps permanent hooks,
+            # leaking this one onto blocks.0.hook_in for every later test.
+            bridge.reset_hooks(including_permanent=True)
 
 
 class TestHookModification:

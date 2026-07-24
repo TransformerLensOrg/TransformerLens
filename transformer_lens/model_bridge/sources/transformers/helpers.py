@@ -7,6 +7,8 @@ from transformers import (
     AutoModelForSeq2SeqLM,
 )
 
+from transformer_lens.tools.model_registry.checkpoints import get_checkpoint_labels
+
 
 def get_hf_model_class_for_architecture(architecture: str):
     """Pick the correct HuggingFace ``AutoModel*`` class for the architecture."""
@@ -64,8 +66,6 @@ def _resolve_checkpoint_to_revision(
             f"Pass revision= directly if your model uses HF revisions. Known checkpoint "
             f"families: {list(_CHECKPOINT_REVISION_FORMATS.keys())}."
         )
-
-    from transformer_lens.loading_from_pretrained import get_checkpoint_labels
 
     labels, _ = get_checkpoint_labels(model_name)
     if checkpoint_value is not None:

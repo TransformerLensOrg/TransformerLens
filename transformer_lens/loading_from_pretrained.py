@@ -56,6 +56,11 @@ from transformer_lens.pretrained.weight_conversions import (
     convert_t5_weights,
 )
 from transformer_lens.supported_models import MODEL_ALIASES, OFFICIAL_MODEL_NAMES
+from transformer_lens.tools.model_registry.checkpoints import (
+    PYTHIA_CHECKPOINTS,
+    PYTHIA_V0_CHECKPOINTS,
+    STANFORD_CRFM_CHECKPOINTS,
+)
 from transformer_lens.utilities.hf_utils import get_rotary_pct_from_config
 
 NON_HF_HOSTED_MODEL_NAMES = [
@@ -1756,21 +1761,9 @@ def get_num_params_of_pretrained(model_name: str) -> int:
 
 
 # %% Load checkpointed model state dicts
-# The steps for which there are checkpoints in the stanford crfm models
-STANFORD_CRFM_CHECKPOINTS = (
-    list(range(0, 100, 10))
-    + list(range(100, 2000, 50))
-    + list(range(2000, 20000, 100))
-    + list(range(20000, 400000 + 1, 1000))
-)
-
-# Linearly spaced checkpoints for Pythia models, taken every 1000 steps.
-# Batch size 2,097,152 tokens, so checkpoints every 2.1B tokens
-PYTHIA_CHECKPOINTS = [0, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512] + list(
-    range(1000, 143000 + 1, 1000)
-)
-# Pythia V1 has log-spaced early checkpoints (see line above), but V0 doesn't
-PYTHIA_V0_CHECKPOINTS = list(range(1000, 143000 + 1, 1000))
+# Checkpoint schedules (STANFORD_CRFM_CHECKPOINTS, PYTHIA_CHECKPOINTS,
+# PYTHIA_V0_CHECKPOINTS) are imported from tools/model_registry/checkpoints.py,
+# their canonical home.
 
 
 def get_checkpoint_labels(model_name: str, **kwargs: Any) -> tuple[list[int], str]:

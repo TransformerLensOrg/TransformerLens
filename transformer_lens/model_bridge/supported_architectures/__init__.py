@@ -193,6 +193,9 @@ from transformer_lens.model_bridge.supported_architectures.phi3 import (
 from transformer_lens.model_bridge.supported_architectures.phimoe import (
     PhiMoEArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.pretrain import (
+    PretrainArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.qwen import (
     QwenArchitectureAdapter,
 )
@@ -217,8 +220,14 @@ from transformer_lens.model_bridge.supported_architectures.qwen3_moe import (
 from transformer_lens.model_bridge.supported_architectures.qwen3_next import (
     Qwen3NextArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.raven import (
+    RavenArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.recurrent_gemma import (
     RecurrentGemmaArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.rwkv7 import (
+    RWKV7ArchitectureAdapter,
 )
 from transformer_lens.model_bridge.supported_architectures.smollm3 import (
     SmolLM3ArchitectureAdapter,
@@ -307,6 +316,7 @@ __all__ = [
     "PhiArchitectureAdapter",
     "Phi3ArchitectureAdapter",
     "PhiMoEArchitectureAdapter",
+    "PretrainArchitectureAdapter",
     "QwenArchitectureAdapter",
     "Qwen2ArchitectureAdapter",
     "Qwen2MoeArchitectureAdapter",
@@ -315,7 +325,9 @@ __all__ = [
     "Qwen3NextArchitectureAdapter",
     "Qwen3_5ArchitectureAdapter",
     "Qwen3_5MultimodalArchitectureAdapter",
+    "RavenArchitectureAdapter",
     "RecurrentGemmaArchitectureAdapter",
+    "RWKV7ArchitectureAdapter",
     "SmolLM3ArchitectureAdapter",
     "StableLmArchitectureAdapter",
     "T5ArchitectureAdapter",

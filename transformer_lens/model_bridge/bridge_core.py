@@ -3,12 +3,13 @@ from __future__ import annotations
 
 import re
 import warnings
-from contextlib import contextmanager
-from functools import lru_cache
+from contextlib import contextmanager, nullcontext
+from functools import lru_cache, partial
 from typing import (
     Any,
     Callable,
     Dict,
+    Iterable,
     Iterator,
     List,
     Literal,
@@ -16,6 +17,7 @@ from typing import (
     Optional,
     Tuple,
     Union,
+    cast,
     overload,
 )
 
@@ -28,6 +30,7 @@ from transformer_lens.model_bridge.driver_protocol import to_torch
 from transformer_lens.model_bridge.exceptions import StopAtLayerException
 from transformer_lens.utilities.aliases import resolve_alias
 from transformer_lens.utilities.lm_utils import lm_cross_entropy_loss
+from transformer_lens.utilities.slice import Slice, SliceInput
 
 _BLOCK_PATTERN = re.compile("blocks\\.(\\d+)")
 
@@ -120,6 +123,24 @@ class BridgeCore:
         hooks = self._hook_registry.copy()
         self._add_aliases_to_hooks(hooks)
         return hooks
+
+    @property
+    def mod_dict(self) -> Dict[str, Any]:
+        """Module/hook name -> object, HookedRootModule-compatible.
+
+        Union of the named-module tree and the aliased hook view, so both
+        canonical (``blocks.0.mlp.hook_out``) and HT-style
+        (``blocks.0.hook_mlp_out``) names resolve to the same HookPoint.
+        """
+        # BridgeCore is a mixin; concrete bridges (TransformerBridge/RemoteBridge)
+        # are nn.Modules, so named_modules() is always present at runtime.
+        mods: Dict[str, Any] = {
+            name: module
+            for name, module in cast(torch.nn.Module, self).named_modules()
+            if name != ""
+        }
+        mods.update(self.hook_dict)
+        return mods
 
     # ---- alias registry ----
 
@@ -365,6 +386,19 @@ class BridgeCore:
 
     # ---- hook lookup / mutation ----
 
+    @staticmethod
+    def _is_embedding_stage_hook(name: str) -> bool:
+        """Hooks belonging to the pre-block token/positional embedding stage.
+
+        Excluded from ``start_at_layer`` output: the caller's residual already
+        carries the embedding, so the embedding stage is logically skipped even
+        though HF still computes (and discards) it. ``unembed``/``hook_unembed``
+        are the output stage and deliberately not matched.
+        """
+        return name in ("hook_embed", "hook_pos_embed", "hook_tokens") or name.startswith(
+            ("embed.", "pos_embed.")
+        )
+
     def _check_hook_fireable(self, *names: str) -> None:
         """Fail loud when the driver declares it can't fire a requested hook —
         attaching anyway would yield a silently-unhooked forward / empty cache."""
@@ -404,6 +438,33 @@ class BridgeCore:
             pass
         return None
 
+    def check_hooks_to_add(
+        self,
+        hook_point: HookPoint,
+        hook_point_name: str,
+        hook: Callable,
+        dir: Literal["fwd", "bwd"] = "fwd",
+        is_permanent: bool = False,
+        prepend: bool = False,
+    ) -> None:
+        """Validate a hook before it is added; override to add checks.
+
+        No-op by default (mirrors ``HookedRootModule.check_hooks_to_add``).
+        Driver-fireability is enforced separately in ``_check_hook_fireable``.
+        """
+
+    def _add_fn_to_hook_point(
+        self,
+        hook_point: HookPoint,
+        name: str,
+        hook_fn: Callable,
+        dir: Literal["fwd", "bwd"],
+        is_permanent: bool,
+    ) -> None:
+        """Run the extension-point check, then attach the hook function."""
+        self.check_hooks_to_add(hook_point, name, hook_fn, dir=dir, is_permanent=is_permanent)
+        hook_point.add_hook(hook_fn, dir=dir, is_permanent=is_permanent)
+
     def add_hook(
         self,
         name: Union[str, Callable[[str], bool]],
@@ -431,7 +492,7 @@ class BridgeCore:
                     if hook_id in seen_hooks:
                         continue
                     seen_hooks.add(hook_id)
-                    hook_point.add_hook(hook_fn, dir=dir, is_permanent=is_permanent)
+                    self._add_fn_to_hook_point(hook_point, hook_name, hook_fn, dir, is_permanent)
             return
 
         # Fast path: canonical registry names skip the alias-map build (hook_dict +
@@ -439,7 +500,7 @@ class BridgeCore:
         registry_hp = self._hook_registry.get(name)
         if registry_hp is not None:
             self._check_hook_fireable(name)
-            registry_hp.add_hook(hook_fn, dir=dir, is_permanent=is_permanent)
+            self._add_fn_to_hook_point(registry_hp, name, hook_fn, dir, is_permanent)
             return
         # Same alias resolution run_with_hooks uses, so HT-style names work here too.
         canonical = build_alias_to_canonical_map(self.hook_dict).get(name, name)
@@ -449,7 +510,7 @@ class BridgeCore:
             self._check_hook_fireable(name)
         registry_hp = self._hook_registry.get(canonical)
         if registry_hp is not None:
-            registry_hp.add_hook(hook_fn, dir=dir, is_permanent=is_permanent)
+            self._add_fn_to_hook_point(registry_hp, canonical, hook_fn, dir, is_permanent)
             return
 
         component: Any = self
@@ -463,7 +524,7 @@ class BridgeCore:
         if hasattr(component, hook_name):
             hook_point = getattr(component, hook_name)
             if isinstance(hook_point, HookPoint):
-                hook_point.add_hook(hook_fn, dir=dir, is_permanent=is_permanent)
+                self._add_fn_to_hook_point(hook_point, name, hook_fn, dir, is_permanent)
             else:
                 raise AttributeError(
                     f"'{hook_name}' is not a hook point. Found object of type: {type(hook_point)} with value: {hook_point}"
@@ -485,23 +546,177 @@ class BridgeCore:
         """
         self.add_hook(name, hook_fn, dir=dir, is_permanent=True)
 
-    def reset_hooks(self, clear_contexts: bool = True) -> None:
-        """Remove all hooks. Registry is canonical; nn.Module children walked additively."""
+    def hook_points(self) -> Iterable[HookPoint]:
+        """All :class:`HookPoint` instances (registry is canonical and complete)."""
+        return self._hook_registry.values()
+
+    def clear_contexts(self) -> None:
+        """Clear the stored ``ctx`` on every hook point."""
         for hp in self._hook_registry.values():
-            hp.remove_hooks()
-        if hasattr(self, "children"):
-            from transformer_lens.model_bridge.generalized_components.base import (
-                GeneralizedComponent,
-            )
+            hp.clear_context()
 
-            def remove_hooks_recursive(module: Any) -> None:
-                if isinstance(module, GeneralizedComponent):
-                    module.remove_hooks()
-                if hasattr(module, "children"):
-                    for child in module.children():
-                        remove_hooks_recursive(child)
+    def remove_all_hook_fns(
+        self,
+        direction: Literal["fwd", "bwd", "both"] = "both",
+        including_permanent: bool = False,
+        level: Optional[int] = None,
+    ) -> None:
+        """Remove hook functions from every hook point."""
+        for hp in self._hook_registry.values():
+            hp.remove_hooks(direction, including_permanent=including_permanent, level=level)
 
-            remove_hooks_recursive(self)
+    def reset_hooks(
+        self,
+        clear_contexts: bool = True,
+        direction: Literal["fwd", "bwd", "both"] = "both",
+        including_permanent: bool = False,
+        level: Optional[int] = None,
+    ) -> None:
+        """Remove hooks from every hook point; mirrors ``HookedRootModule.reset_hooks``.
+
+        The hook registry is canonical and complete (every component's HookPoint
+        is registered), so a single pass covers the whole model.
+
+        Args:
+            clear_contexts: Also clear each hook point's stored ``ctx``.
+            direction: Which direction(s) to remove — ``"fwd"``, ``"bwd"``, or ``"both"``.
+            including_permanent: If True, also remove hooks added via ``add_perma_hook``.
+            level: If set, only remove hooks registered at this context level.
+        """
+        if clear_contexts:
+            self.clear_contexts()
+        self.remove_all_hook_fns(direction, including_permanent=including_permanent, level=level)
+
+    @staticmethod
+    def _normalize_names_filter(
+        names_filter: Optional[Union[str, List[str], Callable[[str], bool]]],
+    ) -> Callable[[str], bool]:
+        """Turn None / str / list / callable into a name predicate."""
+        if names_filter is None:
+            return lambda name: True
+        if isinstance(names_filter, str):
+            return lambda name: name == names_filter
+        if isinstance(names_filter, list):
+            return lambda name: name in names_filter
+        if callable(names_filter):
+            return names_filter
+        raise ValueError("names_filter must be None, a string, a list of strings, or a callable")
+
+    @staticmethod
+    def _pos_slice_dim(name: str) -> int:
+        """Position dimension for a hook's activation (see ``run_with_cache``)."""
+        return -2 if name.endswith(("hook_pattern", "hook_attn_scores")) else 1
+
+    def get_caching_hooks(
+        self,
+        names_filter: Optional[Union[str, List[str], Callable[[str], bool]]] = None,
+        incl_bwd: bool = False,
+        device: Any = None,
+        remove_batch_dim: bool = False,
+        cache: Optional[dict] = None,
+        pos_slice: Optional[Union[Slice, SliceInput]] = None,
+    ) -> Tuple[dict, list, list]:
+        """Build caching hooks without adding them. Mirrors ``HookedRootModule.get_caching_hooks``.
+
+        Returns ``(cache, fwd_hooks, bwd_hooks)`` where each hook is a
+        ``(name, hook_fn)`` pair suitable for ``hooks()`` / ``run_with_hooks``.
+        Activations are keyed by the HookPoint's canonical name; backward hooks
+        append ``"_grad"``. ``bwd_hooks`` is empty unless ``incl_bwd``.
+        """
+        if cache is None:
+            cache = {}
+        pos_slice_obj = Slice.unwrap(pos_slice)
+        filter_fn = self._normalize_names_filter(names_filter)
+
+        def save_hook(tensor: Any, hook: Any, is_backward: bool = False) -> None:
+            assert hook.name is not None
+            key = hook.name + "_grad" if is_backward else hook.name
+            stored = tensor.detach().to(device)
+            if remove_batch_dim:
+                stored = stored[0]
+            if pos_slice_obj is not None and stored.dim() >= 2:
+                stored = pos_slice_obj.apply(stored, dim=self._pos_slice_dim(hook.name))
+            cache[key] = stored
+
+        fwd_hooks: list = []
+        bwd_hooks: list = []
+        seen: set = set()
+        for name, hook_point in self.hook_dict.items():
+            if filter_fn(name) and id(hook_point) not in seen:
+                seen.add(id(hook_point))
+                fwd_hooks.append((name, partial(save_hook, is_backward=False)))
+                if incl_bwd:
+                    bwd_hooks.append((name, partial(save_hook, is_backward=True)))
+        return cache, fwd_hooks, bwd_hooks
+
+    def add_caching_hooks(
+        self,
+        names_filter: Optional[Union[str, List[str], Callable[[str], bool]]] = None,
+        incl_bwd: bool = False,
+        device: Any = None,
+        remove_batch_dim: bool = False,
+        cache: Optional[dict] = None,
+    ) -> dict:
+        """Attach caching hooks to the model (does not run it). Returns the cache dict.
+
+        Mirrors ``HookedRootModule.add_caching_hooks``. The hooks persist until
+        ``reset_hooks()``.
+        """
+        cache, fwd_hooks, bwd_hooks = self.get_caching_hooks(
+            names_filter,
+            incl_bwd=incl_bwd,
+            device=device,
+            remove_batch_dim=remove_batch_dim,
+            cache=cache,
+        )
+        for name, hook_fn in fwd_hooks:
+            self.add_hook(name, hook_fn, dir="fwd")
+        for name, hook_fn in bwd_hooks:
+            self.add_hook(name, hook_fn, dir="bwd")
+        return cache
+
+    def cache_all(
+        self,
+        cache: Optional[dict],
+        incl_bwd: bool = False,
+        device: Any = None,
+        remove_batch_dim: bool = False,
+    ) -> None:
+        """Deprecated: cache every activation. Use ``run_with_cache`` / ``add_caching_hooks``."""
+        warnings.warn(
+            "cache_all is deprecated; use run_with_cache or add_caching_hooks.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.add_caching_hooks(
+            names_filter=None,
+            cache=cache,
+            incl_bwd=incl_bwd,
+            device=device,
+            remove_batch_dim=remove_batch_dim,
+        )
+
+    def cache_some(
+        self,
+        cache: Optional[dict],
+        names: Callable[[str], bool],
+        incl_bwd: bool = False,
+        device: Any = None,
+        remove_batch_dim: bool = False,
+    ) -> None:
+        """Deprecated: cache activations matching ``names``. Use ``run_with_cache``."""
+        warnings.warn(
+            "cache_some is deprecated; use run_with_cache or add_caching_hooks.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.add_caching_hooks(
+            names_filter=names,
+            cache=cache,
+            incl_bwd=incl_bwd,
+            device=device,
+            remove_batch_dim=remove_batch_dim,
+        )
 
     def hooks(
         self,
@@ -527,6 +742,7 @@ class BridgeCore:
                 name: str,
                 dir: Literal["fwd", "bwd"] = "fwd",
             ) -> None:
+                self.check_hooks_to_add(hook_point, name, hook_fn, dir=dir)
                 if self.compatibility_mode and name != hook_point.name:
                     alias_names_list: list = []
                     if hook_point.name is not None:
@@ -580,14 +796,17 @@ class BridgeCore:
         clear_contexts: bool = False,
         return_type: Optional[str] = "logits",
         stop_at_layer: Optional[int] = None,
+        start_at_layer: Optional[int] = None,
         remove_batch_dim: bool = False,
         **kwargs: Any,
     ) -> Any:
         """Run the model with specified forward and backward hooks.
 
         ``stop_at_layer`` raises :class:`StopAtLayerException` to stop early
-        (KV cache cleaned up on stop). ``remove_batch_dim`` squeezes/unsqueezes
-        the batch dim around hook callbacks (batch_size==1 only).
+        (KV cache cleaned up on stop). ``start_at_layer`` treats ``input`` as the
+        residual entering block ``k`` (see :meth:`forward`); hooks on blocks below
+        ``k`` are skipped to match HookedTransformer. ``remove_batch_dim``
+        squeezes/unsqueezes the batch dim around hook callbacks (batch_size==1 only).
         """
         if "names_filter" in kwargs:
             # **kwargs would silently absorb it; fail loud.
@@ -602,6 +821,11 @@ class BridgeCore:
                 effective_stop_layer = len(self.blocks) + stop_at_layer
             else:
                 effective_stop_layer = stop_at_layer
+        effective_start_layer = None
+        if start_at_layer is not None and hasattr(self, "blocks"):
+            effective_start_layer = (
+                len(self.blocks) + start_at_layer if start_at_layer < 0 else start_at_layer
+            )
 
         def add_hook_to_point(
             hook_point: HookPoint,
@@ -609,13 +833,19 @@ class BridgeCore:
             name: str,
             dir: Literal["fwd", "bwd"] = "fwd",
         ) -> None:
-            if effective_stop_layer is not None and name.startswith("blocks."):
+            if effective_start_layer is not None and self._is_embedding_stage_hook(name):
+                return
+            if name.startswith("blocks."):
                 try:
-                    layer_num = int(name.split(".")[1])
-                    if layer_num >= effective_stop_layer:
-                        return
+                    layer_num: Optional[int] = int(name.split(".")[1])
                 except (IndexError, ValueError):
-                    pass
+                    layer_num = None
+                if layer_num is not None:
+                    if effective_stop_layer is not None and layer_num >= effective_stop_layer:
+                        return
+                    if effective_start_layer is not None and layer_num < effective_start_layer:
+                        return
+            self.check_hooks_to_add(hook_point, name, hook_fn, dir=dir)
             if self.compatibility_mode and name != hook_point.name:
                 alias_names_list: list = []
                 if hook_point.name is not None:
@@ -681,6 +911,8 @@ class BridgeCore:
         try:
             apply_hooks(fwd_hooks, True)
             apply_hooks(bwd_hooks, False)
+            if start_at_layer is not None:
+                kwargs["start_at_layer"] = start_at_layer
             try:
                 output = self.forward(
                     input, return_type=return_type, stop_at_layer=stop_at_layer, **kwargs
@@ -724,14 +956,26 @@ class BridgeCore:
         remove_batch_dim: bool = False,
         names_filter: Optional[Union[str, List[str], Callable[[str], bool]]] = None,
         stop_at_layer: Optional[int] = None,
+        start_at_layer: Optional[int] = None,
+        pos_slice: Optional[Union[Slice, SliceInput]] = None,
+        incl_bwd: bool = False,
         **kwargs,
     ) -> Tuple[Any, Union[ActivationCache, Dict[str, torch.Tensor]]]:
         """Run the model and cache activations. Returns ``(output, cache)``.
 
         ``stop_at_layer`` raises :class:`StopAtLayerException` to stop early.
-        ``device`` offloads cached activations (matches ``ActivationCache.to``); the
-        model and inputs stay where the caller put them.
+        ``start_at_layer`` treats ``input`` as the residual entering block ``k``
+        (see :meth:`forward`); blocks below ``k`` are excluded from the cache to
+        match HookedTransformer. ``pos_slice`` slices each cached activation along
+        its position dimension (dim 1 for resid/per-head/token-id activations; the
+        query position ``-2`` for attention patterns/scores). ``incl_bwd`` also
+        caches gradients under ``"<name>_grad"`` by running ``output.backward()``;
+        the caller must request a scalar output (``return_type="loss"``) and the
+        model must be on the gradients-capable transformers driver. ``device``
+        offloads cached activations (matches ``ActivationCache.to``); the model and
+        inputs stay where the caller put them.
         """
+        pos_slice_obj = Slice.unwrap(pos_slice)
         aliases = build_alias_to_canonical_map(self.hook_dict)
 
         def create_names_filter_fn(filter_input):
@@ -768,21 +1012,30 @@ class BridgeCore:
         # None → no-op .to(None), tensors stay on their current device.
         cache_device = kwargs.pop("device", None)
 
+        def _store(name: str, value: torch.Tensor) -> None:
+            stored = value.detach().to(cache_device)
+            if pos_slice_obj is not None and stored.dim() >= 2:
+                # Position is dim 1 for every bridge activation (resid [b,p,d], per-head
+                # [b,p,h,d], token ids [b,p]) except attention patterns/scores, which
+                # slice the query position at -2 — see _pos_slice_dim.
+                stored = pos_slice_obj.apply(stored, dim=self._pos_slice_dim(name))
+            cache[name] = stored
+
         def make_cache_hook(name: str):
             def cache_hook(tensor: torch.Tensor, *, hook: Any) -> torch.Tensor:
                 if tensor is None:
                     cache[name] = None
                 elif isinstance(tensor, torch.Tensor):
-                    cache[name] = tensor.detach().to(cache_device)
+                    _store(name, tensor)
                 elif isinstance(tensor, tuple):
                     if len(tensor) > 0 and isinstance(tensor[0], torch.Tensor):
-                        cache[name] = tensor[0].detach().to(cache_device)
+                        _store(name, tensor[0])
                     else:
                         pass
                 else:
                     try:
                         if hasattr(tensor, "detach"):
-                            cache[name] = tensor.detach().to(cache_device)
+                            _store(name, tensor)
                     except:
                         pass
                 return tensor
@@ -796,18 +1049,30 @@ class BridgeCore:
                 effective_stop_layer = len(self.blocks) + stop_at_layer
             else:
                 effective_stop_layer = stop_at_layer
+        effective_start_layer = None
+        if start_at_layer is not None and hasattr(self, "blocks"):
+            effective_start_layer = (
+                len(self.blocks) + start_at_layer if start_at_layer < 0 else start_at_layer
+            )
         matched_any = False
         for hook_name, hook in hook_dict.items():
             if names_filter_fn(hook_name):
                 matched_any = True
-                if effective_stop_layer is not None:
-                    if hook_name.startswith("blocks."):
-                        try:
-                            layer_num = int(hook_name.split(".")[1])
-                            if layer_num >= effective_stop_layer:
-                                continue
-                        except (IndexError, ValueError):
-                            pass
+                if effective_start_layer is not None and self._is_embedding_stage_hook(hook_name):
+                    continue
+                if hook_name.startswith("blocks."):
+                    try:
+                        layer_num = int(hook_name.split(".")[1])
+                    except (IndexError, ValueError):
+                        layer_num = None
+                    if layer_num is not None:
+                        # stop/start bound the executed range; blocks outside it
+                        # either don't run (stop) or run on discarded input (start),
+                        # so their activations must not enter the cache.
+                        if effective_stop_layer is not None and layer_num >= effective_stop_layer:
+                            continue
+                        if effective_start_layer is not None and layer_num < effective_start_layer:
+                            continue
                 hooks.append((hook, hook_name))
         # Explicit string/list filters matching nothing must not return (logits, {}) silently.
         if not matched_any and names_filter and isinstance(names_filter, (str, list)):
@@ -815,8 +1080,19 @@ class BridgeCore:
                 f"names_filter {names_filter!r} matched no hook points on this model; "
                 "check the name against model.hook_dict (this backend may not serve it)."
             )
+
+        def make_grad_cache_hook(name: str):
+            def grad_hook(tensor: torch.Tensor, *, hook: Any) -> torch.Tensor:
+                if isinstance(tensor, torch.Tensor):
+                    _store(name + "_grad", tensor)
+                return tensor
+
+            return grad_hook
+
         for hp, name in hooks:
             hp.add_hook(make_cache_hook(name))
+            if incl_bwd:
+                hp.add_hook(make_grad_cache_hook(name), dir="bwd")
         processed_args = [input]
         # Driver-aware input placement: torch drivers move input_ids to the model's
         # device; remote drivers (no local parameters) leave them as-is.
@@ -864,30 +1140,37 @@ class BridgeCore:
                 "will remain on their per-layer devices.",
                 stacklevel=2,
             )
+        if start_at_layer is not None:
+            filtered_kwargs["start_at_layer"] = start_at_layer
         try:
             if (
                 "output_attentions" not in filtered_kwargs
                 and self.adapter.supports_hf_output_attentions
             ):
                 filtered_kwargs["output_attentions"] = True
-            if processed_args:
-                output = self.forward(processed_args[0], **filtered_kwargs)
-            elif "input_ids" in filtered_kwargs:
-                output = self.forward(
-                    filtered_kwargs["input_ids"],
-                    **{k: v for k, v in filtered_kwargs.items() if k != "input_ids"},
-                )
-            else:
-                output = self.forward(**filtered_kwargs)
-            if hasattr(output, "logits"):
-                output = output.logits
+            # incl_bwd needs grad to build the graph and run backward while the
+            # bwd cache hooks are still attached (i.e. before the finally below).
+            with torch.enable_grad() if incl_bwd else nullcontext():
+                if processed_args:
+                    output = self.forward(processed_args[0], **filtered_kwargs)
+                elif "input_ids" in filtered_kwargs:
+                    output = self.forward(
+                        filtered_kwargs["input_ids"],
+                        **{k: v for k, v in filtered_kwargs.items() if k != "input_ids"},
+                    )
+                else:
+                    output = self.forward(**filtered_kwargs)
+                if hasattr(output, "logits"):
+                    output = output.logits
+                if incl_bwd:
+                    output.backward()
         except StopAtLayerException as e:
             output = e.layer_output
         except Exception as e:
             raise e
         finally:
             for hp, _ in hooks:
-                hp.remove_hooks(dir="fwd")
+                hp.remove_hooks(dir="both" if incl_bwd else "fwd")
         if self.compatibility_mode == True:
             reverse_aliases = {}
             for old_name, new_name in aliases.items():

@@ -115,7 +115,9 @@ HF_SUPPORTED_ARCHITECTURES: set[str] = {
     "Qwen3NextForCausalLM",
     "Qwen3_5ForCausalLM",
     "Qwen3_5ForConditionalGeneration",
+    "RavenForCausalLM",
     "RecurrentGemmaForCausalLM",
+    "RWKV7ForCausalLM",
     "SmolLM3ForCausalLM",
     "StableLmForCausalLM",
     "T5ForConditionalGeneration",
@@ -200,7 +202,9 @@ CANONICAL_AUTHORS_BY_ARCH: dict[str, list[str]] = {
     "Qwen3_5ForCausalLM": ["Qwen"],
     "Qwen3_5ForConditionalGeneration": ["Qwen"],
     "QwenForCausalLM": ["Qwen"],
+    "RavenForCausalLM": ["tomg-group-umd"],
     "RecurrentGemmaForCausalLM": ["google"],
+    "RWKV7ForCausalLM": ["fla-hub"],
     "SmolLM3ForCausalLM": ["HuggingFaceTB"],
     "StableLmForCausalLM": ["stabilityai"],
     "T5ForConditionalGeneration": ["google-t5", "google", "Salesforce", "MBZUAI"],
@@ -210,10 +214,29 @@ CANONICAL_AUTHORS_BY_ARCH: dict[str, list[str]] = {
     "Zamba2ForCausalLM": ["Zyphra"],
 }
 
+# Model-name prefixes that require trust_remote_code=True to load (custom
+# modeling code on the HF Hub).
+REMOTE_CODE_MODEL_PREFIXES: tuple[str, ...] = (
+    "bigcode/santacoder",
+    "Qwen/Qwen-",
+    "Qwen/Qwen3-",
+    "microsoft/phi-2",
+    "microsoft/phi-4",
+    "apple/OpenELM",
+    "openai/gpt-oss-",
+    "swiss-ai/Apertus-",
+    "baichuan-inc/",  # BaichuanForCausalLM — ships own modeling_baichuan.py
+    "ByteDance/Ouro-",  # OuroForCausalLM — ships own modeling_ouro.py
+    "internlm/",  # InternLM2ForCausalLM — ships own modeling_internlm2.py
+    "GSAI-ML/LLaDA",  # LLaDAModelLM — ships configuration_llada.py/modeling_llada.py
+    "kuleshov-group/",  # BD3LM — ships own custom modeling_d_dit.py
+)
+
 __all__ = [
     # Constants
     "HF_SUPPORTED_ARCHITECTURES",
     "CANONICAL_AUTHORS_BY_ARCH",
+    "REMOTE_CODE_MODEL_PREFIXES",
     # Exceptions
     "ModelRegistryError",
     "ModelNotFoundError",

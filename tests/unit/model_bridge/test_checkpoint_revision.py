@@ -13,7 +13,7 @@ class TestResolveCheckpointToRevision:
     def test_pythia_index_resolves_to_step_revision(self):
         labels = [0, 1000, 3000, 10000]
         with patch(
-            "transformer_lens.loading_from_pretrained.get_checkpoint_labels",
+            "transformer_lens.model_bridge.sources.transformers.helpers.get_checkpoint_labels",
             return_value=(labels, "step"),
         ):
             revision = _resolve_checkpoint_to_revision(
@@ -24,7 +24,7 @@ class TestResolveCheckpointToRevision:
     def test_pythia_value_resolves_to_step_revision(self):
         labels = [0, 1000, 3000, 10000]
         with patch(
-            "transformer_lens.loading_from_pretrained.get_checkpoint_labels",
+            "transformer_lens.model_bridge.sources.transformers.helpers.get_checkpoint_labels",
             return_value=(labels, "step"),
         ):
             revision = _resolve_checkpoint_to_revision(
@@ -35,7 +35,7 @@ class TestResolveCheckpointToRevision:
     def test_stanford_crfm_uses_checkpoint_prefix(self):
         labels = [100, 200, 400]
         with patch(
-            "transformer_lens.loading_from_pretrained.get_checkpoint_labels",
+            "transformer_lens.model_bridge.sources.transformers.helpers.get_checkpoint_labels",
             return_value=(labels, "step"),
         ):
             revision = _resolve_checkpoint_to_revision(
@@ -50,7 +50,7 @@ class TestResolveCheckpointToRevision:
     def test_index_out_of_range_raises(self):
         labels = [0, 1000]
         with patch(
-            "transformer_lens.loading_from_pretrained.get_checkpoint_labels",
+            "transformer_lens.model_bridge.sources.transformers.helpers.get_checkpoint_labels",
             return_value=(labels, "step"),
         ):
             with pytest.raises(ValueError, match="out of range"):
@@ -61,7 +61,7 @@ class TestResolveCheckpointToRevision:
     def test_unknown_value_raises(self):
         labels = [0, 1000]
         with patch(
-            "transformer_lens.loading_from_pretrained.get_checkpoint_labels",
+            "transformer_lens.model_bridge.sources.transformers.helpers.get_checkpoint_labels",
             return_value=(labels, "step"),
         ):
             with pytest.raises(ValueError, match="not in available checkpoints"):
@@ -125,7 +125,7 @@ class TestBootRevisionPlumbing:
     def test_checkpoint_index_resolves_to_revision(self):
         labels = [0, 1000, 3000, 10000]
         with patch(
-            "transformer_lens.loading_from_pretrained.get_checkpoint_labels",
+            "transformer_lens.model_bridge.sources.transformers.helpers.get_checkpoint_labels",
             return_value=(labels, "step"),
         ):
             captured = self._patched_boot(checkpoint_index=2)

@@ -12,7 +12,7 @@ import torch
 from typing_extensions import Literal, get_args
 
 from transformer_lens.ActivationCache import ActivationCache
-from transformer_lens.HookedTransformer import HookedTransformer
+from transformer_lens.model_protocol import TransformerLensModel
 from transformer_lens.utilities import is_lower_triangular, is_square
 
 HeadName = Literal["previous_token_head", "duplicate_token_head", "induction_head"]
@@ -32,7 +32,7 @@ DET_PAT_NOT_SQUARE_ERR = "The detection pattern must be a lower triangular matri
 
 
 def detect_head(
-    model: HookedTransformer,
+    model: TransformerLensModel,
     seq: Union[str, List[str]],
     detection_pattern: Union[torch.Tensor, HeadName],
     heads: Optional[Union[List[LayerHeadTuple], LayerToHead]] = None,

@@ -21,7 +21,8 @@ def test_TransformerBridge_compatibility_mode_calls_hooks_once(
 
     hooked_model.blocks[0].hook_mlp_out.add_hook(count_hooked_calls, is_permanent=True)
     _ = hooked_model(test_input)
-    hooked_model.reset_hooks()
+    # Session-scoped fixture: clear the permanent hook too, or it leaks into later tests.
+    hooked_model.reset_hooks(including_permanent=True)
 
     bridge_call_count = 0
 
@@ -88,7 +89,7 @@ def test_stateful_hook_pattern(gpt2_bridge_compat_no_processing):
     except KeyError:
         success = False
     finally:
-        bridge_model.reset_hooks()
+        bridge_model.reset_hooks(including_permanent=True)
 
     assert success, (
         "Stateful hook pattern failed - hook was likely called multiple times, "

@@ -807,6 +807,7 @@ class TestRegistrySyncedWithFactory:
             "NeelSoluOldForCausalLM",
             "GPT2LMHeadCustomModel",
             "TransformerLensNative",
+            "TransformerLensPretrain",
             # Group 2: factory-internal alias casings (HF emits the canonical name).
             "Gemma1ForCausalLM",  # HF emits: GemmaForCausalLM
             "NeoForCausalLM",  # HF emits: GPTNeoForCausalLM
@@ -873,3 +874,114 @@ class TestRegistrySyncedWithFactory:
         assert (
             not orphaned
         ), f"CANONICAL_AUTHORS_BY_ARCH entries with no factory adapter: {orphaned}"
+
+
+class TestModelAliases:
+    """Registry-canonical alias table (data/model_aliases.json)."""
+
+    def test_alias_resolves_to_official_name(self):
+        from transformer_lens.tools.model_registry.registry_io import (
+            resolve_model_alias,
+        )
+
+        assert resolve_model_alias("gpt2-small") == "gpt2"
+
+    def test_official_name_and_unknown_return_none(self):
+        from transformer_lens.tools.model_registry.registry_io import (
+            resolve_model_alias,
+        )
+
+        assert resolve_model_alias("gpt2") is None
+        assert resolve_model_alias("no-such-model-xyz") is None
+
+    def test_no_alias_maps_to_two_officials(self):
+        """Duplicate aliases would make resolution depend on table order."""
+        from transformer_lens.tools.model_registry.registry_io import load_model_aliases
+
+        seen: dict[str, str] = {}
+        for official, aliases in load_model_aliases().items():
+            assert aliases, f"{official} has an empty alias list"
+            for alias in aliases:
+                assert (
+                    alias not in seen
+                ), f"alias {alias!r} under both {seen[alias]!r} and {official!r}"
+                seen[alias] = official
+
+    def test_legacy_loader_agrees_with_registry(self):
+        """HookedTransformer and the bridge must resolve aliases identically until 4.0."""
+        from transformer_lens.loading_from_pretrained import get_official_model_name
+        from transformer_lens.tools.model_registry.registry_io import (
+            resolve_model_alias,
+        )
+
+        assert get_official_model_name("gpt2-small") == resolve_model_alias("gpt2-small")
+
+
+class TestCheckpointLabels:
+    """Registry-canonical checkpoint schedules (checkpoints.py)."""
+
+    def test_pythia_routes_to_v1_schedule(self):
+        from transformer_lens.tools.model_registry.checkpoints import (
+            PYTHIA_CHECKPOINTS,
+            get_checkpoint_labels,
+        )
+
+        labels, label_type = get_checkpoint_labels("EleutherAI/pythia-70m")
+        assert labels == PYTHIA_CHECKPOINTS
+        assert label_type == "step"
+
+    def test_pythia_v0_routes_to_v0_schedule(self):
+        from transformer_lens.tools.model_registry.checkpoints import (
+            PYTHIA_V0_CHECKPOINTS,
+            get_checkpoint_labels,
+        )
+
+        labels, _ = get_checkpoint_labels("EleutherAI/pythia-70m-v0")
+        assert labels == PYTHIA_V0_CHECKPOINTS
+
+    def test_stanford_crfm_routes_to_crfm_schedule(self):
+        from transformer_lens.tools.model_registry.checkpoints import (
+            STANFORD_CRFM_CHECKPOINTS,
+            get_checkpoint_labels,
+        )
+
+        labels, label_type = get_checkpoint_labels("stanford-crfm/alias-gpt2-small-x21")
+        assert labels == STANFORD_CRFM_CHECKPOINTS
+        assert label_type == "step"
+
+    def test_alias_input_is_resolved(self):
+        from transformer_lens.tools.model_registry.checkpoints import (
+            get_checkpoint_labels,
+        )
+
+        assert get_checkpoint_labels("pythia-70m") == get_checkpoint_labels("EleutherAI/pythia-70m")
+
+    def test_non_checkpointed_model_raises(self):
+        from transformer_lens.tools.model_registry.checkpoints import (
+            get_checkpoint_labels,
+        )
+
+        with pytest.raises(ValueError, match="not checkpointed"):
+            get_checkpoint_labels("gpt2")
+
+    def test_matches_legacy_loader(self):
+        """Bridge checkpoint resolution must not drift from the legacy HT path until 4.0."""
+        from transformer_lens.loading_from_pretrained import (
+            get_checkpoint_labels as legacy_labels,
+        )
+        from transformer_lens.tools.model_registry.checkpoints import (
+            get_checkpoint_labels,
+        )
+
+        for name in ("EleutherAI/pythia-70m", "stanford-crfm/alias-gpt2-small-x21"):
+            assert get_checkpoint_labels(name) == legacy_labels(name)
+
+
+class TestRemoteCodePrefixes:
+    def test_covers_legacy_remote_code_models(self):
+        """Registry tooling loads legacy-listed models too; prefixes must stay a superset until 4.0."""
+        from transformer_lens.loading_from_pretrained import NEED_REMOTE_CODE_MODELS
+        from transformer_lens.tools.model_registry import REMOTE_CODE_MODEL_PREFIXES
+
+        missing = set(NEED_REMOTE_CODE_MODELS) - set(REMOTE_CODE_MODEL_PREFIXES)
+        assert not missing, f"legacy remote-code prefixes not in registry list: {missing}"
