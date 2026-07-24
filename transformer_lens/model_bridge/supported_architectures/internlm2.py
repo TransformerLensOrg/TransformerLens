@@ -11,6 +11,7 @@ from transformer_lens.conversion_utils.param_processing_conversion import (
     ParamProcessingConversion,
 )
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
+from transformer_lens.model_bridge.buffer_restore import restore_rotary_inv_freq
 from transformer_lens.model_bridge.compat import patch_dynamic_cache_v5
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
@@ -28,6 +29,28 @@ class _InternLM2AttentionBridge(JointQKVPositionEmbeddingsAttentionBridge):
     InternLM2's decoder layer unpacks (hidden_states, attn_weights, present_key_value)
     from self.attention(), but the base bridge returns only (output, weights).
     """
+
+    def forward(self, *args: Any, **kwargs: Any) -> Any:
+        """Supply position_embeddings from this layer's own rotary module.
+
+        InternLM2 keeps a rotary_emb per attention module instead of a shared
+        model-level one, so its decoder layer never passes position_embeddings
+        down. The reconstruction applies RoPE only when they are present, so
+        without this the bridge silently runs with no positional encoding.
+        """
+        if kwargs.get("position_embeddings") is None:
+            rotary = getattr(self.original_component, "rotary_emb", None)
+            hidden_states = kwargs.get("hidden_states")
+            if hidden_states is None and args and isinstance(args[0], torch.Tensor):
+                hidden_states = args[0]
+            if rotary is not None and isinstance(hidden_states, torch.Tensor):
+                position_ids = kwargs.get("position_ids")
+                if position_ids is None:
+                    position_ids = torch.arange(
+                        hidden_states.shape[1], device=hidden_states.device
+                    ).unsqueeze(0)
+                kwargs["position_embeddings"] = rotary(hidden_states, position_ids)
+        return super().forward(*args, **kwargs)
 
     def _reconstruct_attention(
         self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, **kwargs
@@ -190,6 +213,17 @@ class InternLM2ArchitectureAdapter(ArchitectureAdapter):
 
         attn_bridge = self.get_generalized_component("blocks.0.attn")
         attn_bridge.set_rotary_emb(rotary_emb)
+
+    def prepare_model(self, hf_model: Any) -> None:
+        """Restore the per-layer rotary tables lost to meta-device loading.
+
+        ``inv_freq`` is non-persistent, so v5 replaces it with uninitialized
+        memory; HF only auto-restores rotary buffers on modules exposing
+        ``original_inv_freq``, which this remote code predates. Left alone the
+        model rotates positions by random values on every load.
+        """
+        super().prepare_model(hf_model)
+        restore_rotary_inv_freq(hf_model)
 
     def prepare_loading(self, model_name: str, model_kwargs: dict) -> None:
         """Patch transformers v5 incompatibilities before from_pretrained runs."""

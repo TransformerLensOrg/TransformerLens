@@ -139,6 +139,11 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
 
     supports_attn_result: bool = True
 
+    # NoPE architectures (EXAONE-4, SmolLM3, Cohere2) deliberately null
+    # position_embeddings on their non-rotary layers to match HF. Their bridge
+    # subclasses set this so the missing-RoPE warning stays meaningful.
+    rope_optional: bool = False
+
     def __init__(
         self,
         name: str,
@@ -419,6 +424,24 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
                 key_states = self.hook_k_normed(self.k_norm(key_states))
 
         # --- RoPE ---
+        if (
+            position_embeddings is None
+            and not self.rope_optional
+            and getattr(self.config, "positional_embedding_type", None) == "rotary"
+        ):
+            # Silent skipping is how internlm2 ran without positional encoding
+            # while reporting perfect parity: its per-layer rotary means the HF
+            # decoder layer passes nothing down. Adapters in that shape must
+            # supply position_embeddings themselves (see internlm2.py).
+            import warnings
+
+            warnings.warn(
+                f"{type(self).__name__}({self.name}) reconstructed attention without "
+                "position_embeddings on a rotary architecture — RoPE was NOT applied. "
+                "The adapter must supply them (e.g. from the layer's own rotary_emb).",
+                RuntimeWarning,
+                stacklevel=2,
+            )
         if position_embeddings is not None:
             position_embeddings = self._apply_position_embedding_hooks(position_embeddings)
             cos, sin = position_embeddings
@@ -541,6 +564,23 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
         # Adapter seam: sub-layer transforms between attention output and the
         # o projection (e.g. BitNet's attn_sub_norm).
         attn_output = self._pre_output_projection(attn_output)
+
+        # Some rotary modules (FlexOlmo) return fp32 cos/sin without casting to
+        # the input dtype, so RoPE promotes q/k
+        # to fp32 while the projection weights stay in the model dtype. Match
+        # the projection rather than the activations; no-op when they agree.
+        o_module = getattr(self, "o", None)
+        o_weight = getattr(getattr(o_module, "original_component", None), "weight", None)
+        if (
+            isinstance(o_weight, torch.Tensor)
+            # Quantized weights (bnb int8/uint8, GPTQ int32) dequantize inside
+            # the matmul; casting activations to an integer storage dtype would
+            # destroy them (same guard as base.py's compute-dtype selection).
+            and o_weight.dtype.is_floating_point
+            and attn_output.is_floating_point()
+            and attn_output.dtype != o_weight.dtype
+        ):
+            attn_output = attn_output.to(dtype=o_weight.dtype)
 
         if (
             bool(getattr(self.config, "use_attn_result", False))

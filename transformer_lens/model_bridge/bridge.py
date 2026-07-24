@@ -3307,6 +3307,14 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             )
 
         was_string = isinstance(input, str)
+        if isinstance(input, list) and len(input) > 1:
+            # Unequal prompts would be right-padded into the sampler's canvas,
+            # where pad tokens read as real context. generate() gates batching
+            # for the same reason; do not silently corrupt rows here.
+            raise NotImplementedError(
+                f"diffusion_generate() does not support batched prompts for {architecture}: "
+                "the native samplers condition on a padded canvas. Sample one prompt at a time."
+            )
         if isinstance(input, torch.Tensor):
             tokens = input.to(self.cfg.device)
         else:
@@ -3326,11 +3334,14 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         # generate()'s contract (prompt + continuation).
         if isinstance(sequences, torch.Tensor) and sequences.ndim == tokens.ndim:
             prompt_len = tokens.shape[-1]
+            # Compare on one device: torch.equal raises on a device mismatch,
+            # which some samplers produce by assembling output on CPU.
+            sequences = sequences.to(tokens.device)
             includes_prompt = sequences.shape[-1] >= prompt_len and torch.equal(
                 sequences[..., :prompt_len], tokens
             )
             if not includes_prompt:
-                sequences = torch.cat([tokens, sequences.to(tokens.device)], dim=-1)
+                sequences = torch.cat([tokens, sequences], dim=-1)
 
         if was_string and self.tokenizer is not None:
             return self.tokenizer.decode(sequences[0], skip_special_tokens=True)

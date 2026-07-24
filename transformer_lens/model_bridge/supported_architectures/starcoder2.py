@@ -34,6 +34,9 @@ class Starcoder2ArchitectureAdapter(ArchitectureAdapter):
         self.cfg.gated_mlp = False
         self.cfg.attn_only = False
 
+        # StarCoder2's BOS *is* its EOS (<|endoftext|>) and its tokenizer never prepemds one
+        self.cfg.default_prepend_bos = False
+
         # StarCoder2 biases every q/k/v/o projection; the bias reshapes must use
         # the kv-head count or compat mode mis-shapes (silent) or crashes (GQA).
         self.weight_processing_conversions = {

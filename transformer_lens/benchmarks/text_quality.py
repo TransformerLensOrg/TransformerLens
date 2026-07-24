@@ -21,7 +21,11 @@ from transformers import (
     PreTrainedTokenizerBase,
 )
 
-from transformer_lens.benchmarks.utils import BenchmarkResult, BenchmarkSeverity
+from transformer_lens.benchmarks.utils import (
+    BenchmarkResult,
+    BenchmarkSeverity,
+    deterministic_rng,
+)
 from transformer_lens.model_bridge import TransformerBridge
 
 # Diverse prompts used alongside the caller-provided test_text to get a robust
@@ -184,9 +188,6 @@ def benchmark_text_quality(
     try:
         prompts = [test_text] + _DEFAULT_PROMPTS
 
-        # Seed for reproducibility
-        torch.manual_seed(42)
-
         # Diffusion LMs produce text through their native sampler; scoring that
         # text is as meaningful as scoring autoregressive output.
         from transformer_lens.benchmarks.generation import resolve_text_generator
@@ -202,17 +203,18 @@ def benchmark_text_quality(
         # Generate text for each prompt
         generations: List[Tuple[str, str]] = []  # (prompt, full_text)
         primary_generated = ""
-        for i, prompt in enumerate(prompts):
-            generated = generator(
-                prompt,
-                max_new_tokens=max_new_tokens,
-                temperature=0.7,
-            )
-            if not isinstance(generated, str) or len(generated.strip()) == 0:
-                continue
-            generations.append((prompt, generated))
-            if i == 0:
-                primary_generated = generated
+        with deterministic_rng():
+            for i, prompt in enumerate(prompts):
+                generated = generator(
+                    prompt,
+                    max_new_tokens=max_new_tokens,
+                    temperature=0.7,
+                )
+                if not isinstance(generated, str) or len(generated.strip()) == 0:
+                    continue
+                generations.append((prompt, generated))
+                if i == 0:
+                    primary_generated = generated
 
         if len(generations) == 0:
             return BenchmarkResult(

@@ -27,6 +27,9 @@ class _Exaone4AttentionBridge(PositionEmbeddingsAttentionBridge):
     null the argument first. Non-hybrid checkpoints rotate everywhere.
     """
 
+    # Nulls position_embeddings on NoPE layers by design.
+    rope_optional = True
+
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Drop position_embeddings on hybrid full-attention NoPE layers."""
         if self._is_nope_layer():

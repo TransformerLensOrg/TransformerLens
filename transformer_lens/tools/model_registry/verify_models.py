@@ -135,6 +135,27 @@ def _phases_to_run(arch: str, phases: list[int]) -> list[int]:
     return [p for p in phases if p in applicable or p in (7, 8)]
 
 
+def _full_and_core_phases(arch: str) -> tuple[set[int], set[int]]:
+    """``(full verification set, core subset)`` for this architecture.
+
+    One source for both the default phase selection and the status-writing
+    decision. While they were separate, vision families could never reach
+    verified: the default text set omitted phase 7, so every run wrote scores,
+    found phase 7 missing, and left the status untouched.
+    """
+    kind = classify_architecture(arch)
+    if kind == "audio":
+        return {1, 8}, {1, 8}
+    if kind == "multimodal":
+        return {1, 2, 3, 4, 7}, {1, 4, 7}
+    return {1, 2, 3, 4}, {1, 4}
+
+
+def _default_phases_for_architecture(arch: str) -> list[int]:
+    """Phases to run when the caller names none — a full verification."""
+    return sorted(_full_and_core_phases(arch)[0])
+
+
 def _get_current_model_status(model_id: str, arch_id: str) -> int:
     """Look up a model's current status in the registry.
 
@@ -778,7 +799,7 @@ def verify_models(
         dtype: Dtype for memory estimation
         use_hf_reference: Whether to compare against HuggingFace model
         use_ht_reference: Whether to compare against HookedTransformer
-        phases: Which benchmark phases to run (default: [1, 2, 3, 4])
+        phases: Which benchmark phases to run
         quiet: Suppress verbose output
         progress: Existing progress for resume
 
@@ -795,14 +816,13 @@ def verify_models(
         if not quiet:
             print(f"Auto-detected available memory: {max_memory_gb:.1f} GB")
 
-    if phases is None:
-        phases = [1, 2, 3, 4]
+    # phases stays None = full verification for the model.
 
     # Pre-load the GPT-2 scoring model for Phase 4 so it persists across all
     # models in the batch instead of being loaded and destroyed for each one.
     _scoring_model = None
     _scoring_tokenizer = None
-    if 4 in phases:
+    if phases is None or 4 in phases:
         try:
             from transformer_lens.benchmarks.text_quality import _load_scoring_model
 
@@ -856,7 +876,8 @@ def verify_models(
         )
 
         adapter_cls = SUPPORTED_ARCHITECTURES.get(arch)
-        phases_to_run = _phases_to_run(arch, phases)
+        eff_phases = phases if phases is not None else _default_phases_for_architecture(arch)
+        phases_to_run = _phases_to_run(arch, eff_phases)
         if adapter_cls is not None and not phases_to_run:
             applicable = getattr(adapter_cls, "applicable_phases", [1, 2, 3, 4])
             note = (
@@ -964,30 +985,22 @@ def verify_models(
         # verification and should only be set by a complete run.
         is_multimodal = classify_architecture(arch) == "multimodal"
         is_audio = classify_architecture(arch) == "audio"
-        if is_audio:
-            full_phases = {1, 8}
-            core_required = {1, 8}
-        elif is_multimodal:
-            full_phases = {1, 2, 3, 4, 7}
-            core_required = {1, 4, 7}
-        else:
-            full_phases = {1, 2, 3, 4}
-            core_required = {1, 4}
-        is_partial_run = set(phases) != full_phases
+        full_phases, core_required = _full_and_core_phases(arch)
+        is_partial_run = set(eff_phases) != full_phases
 
         if is_partial_run and phase_scores:
             # Only write scores for phases that were actually requested.
             # Bridge load failures can produce Phase 1-tagged error results
             # even during Phase 4-only runs — don't let those corrupt
             # existing scores for unrequested phases.
-            filtered_scores = {p: s for p, s in phase_scores.items() if p in phases}
+            filtered_scores = {p: s for p, s in phase_scores.items() if p in eff_phases}
             if filtered_scores:
                 if not quiet:
                     score_parts = [f"P{p}={s}%" for p, s in sorted(filtered_scores.items())]
                     print(f"  Partial phase update: {', '.join(score_parts)}")
 
                 # Core verification: P1+P4 for text-only, P1+P4+P7 for multimodal.
-                is_core_verification = set(phases) >= core_required
+                is_core_verification = set(eff_phases) >= core_required
                 partial_status = None
                 partial_note = None
 
@@ -1083,11 +1096,23 @@ def verify_models(
                 )
                 if partial_status == STATUS_FAILED:
                     progress.failed.append(model_id)
+                elif partial_status is None:
+                    # Scores were written but the status deliberately was not:
+                    # this phase set cannot establish core verification for
+                    # this architecture class. Reporting it as verified is how
+                    # a model ends up with all-pass scores and status 0.
+                    if not quiet:
+                        print(
+                            f"  Scores updated, status unchanged — core verification for "
+                            f"{arch} requires phases {sorted(core_required)}, "
+                            f"this run had {sorted(eff_phases)}."
+                        )
+                    progress.skipped.append(model_id)
                 else:
                     progress.verified.append(model_id)
             else:
                 if not quiet:
-                    print(f"  No results for requested phases {phases} — skipping update")
+                    print(f"  No results for requested phases {eff_phases} — skipping update")
                 progress.skipped.append(model_id)
         elif final_status == STATUS_VERIFIED:
             if not quiet:
@@ -1195,9 +1220,11 @@ def _print_dry_run(
     skippable = 0
     testable = 0
 
-    eff_phases = phases if phases is not None else [1, 2, 3, 4]
     for arch in sorted(by_arch.keys()):
         models = by_arch[arch]
+        # Same per-architecture default as the real run, so the dry run's
+        # memory estimates cover the phases that will actually execute.
+        eff_phases = phases if phases is not None else _default_phases_for_architecture(arch)
         phases_to_run = _phases_to_run(arch, eff_phases)
         print(f"  {arch} ({len(models)} models):")
         for c in models:
@@ -1320,7 +1347,10 @@ Examples:
         nargs="+",
         type=int,
         default=None,
-        help="Which benchmark phases to run (default: 1 2 3 4)",
+        help=(
+            "Which benchmark phases to run (default: a full verification for each "
+            "model's architecture — 1 2 3 4 for text, 1 2 3 4 7 for multimodal, 1 8 for audio)"
+        ),
     )
     parser.add_argument(
         "--dtype",

@@ -129,6 +129,9 @@ class _BaichuanAttentionBridge(JointQKVPositionEmbeddingsAttentionBridge):
         return (attn_output, attn_weights, present_key_value)
 
 
+from transformers import PreTrainedModel as _HFPreTrainedModel
+
+
 def _patch_init_weights_for_baichuan() -> None:
     """Prevent _init_weights from re-randomizing loaded checkpoint weights.
 
@@ -144,6 +147,12 @@ def _patch_init_weights_for_baichuan() -> None:
         for cls_name in ("BaiChuanPreTrainedModel", "BaichuanPreTrainedModel", "PreTrainedModel"):
             pretrained_cls = getattr(module, cls_name, None)
             if pretrained_cls is None or getattr(pretrained_cls, "_tl_patched", False):
+                continue
+            # The remote module does `from transformers import PreTrainedModel`,
+            # so the "PreTrainedModel" name can resolve to the real base class.
+            # Patching that would disable _init_weights — including HF's rotary
+            # buffer restoration — for every model loaded later in the process.
+            if pretrained_cls is _HFPreTrainedModel:
                 continue
             # Only patch classes that define their own _init_weights
             if "_init_weights" not in pretrained_cls.__dict__:

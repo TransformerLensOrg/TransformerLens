@@ -64,3 +64,74 @@ class TestAdapterFlagDeclarations:
         assert adapter_cls.supports_batched_generation is False
         # P4 exercises generate(); leaving it out would re-introduce a carve-out.
         assert 4 in adapter_cls.applicable_phases
+
+
+class TestMlpTupleHookSemantics:
+    """RWKV's channel-mix returns (hidden, state); hook_out must see the tensor."""
+
+    def _bridge(self, returns_tuple: bool):
+        import torch
+
+        from transformer_lens.model_bridge.generalized_components.mlp import MLPBridge
+
+        class _Inner(torch.nn.Module):
+            def forward(self, x):
+                doubled = x * 2
+                return (doubled, "state") if returns_tuple else doubled
+
+        bridge = MLPBridge(name="mlp")
+        bridge.set_original_component(_Inner())
+        return bridge
+
+    def test_hook_out_receives_tensor_not_tuple(self) -> None:
+        """Pre-fix this handed hook functions the raw (hidden, state) tuple."""
+        import torch
+
+        seen = []
+        bridge = self._bridge(returns_tuple=True)
+        bridge.hook_out.add_hook(lambda t, hook: seen.append(t) or t)
+        out = bridge(torch.ones(1, 2, 4))
+        assert isinstance(out, tuple) and out[1] == "state", "tuple contract broken"
+        assert len(seen) == 1 and isinstance(seen[0], torch.Tensor)
+
+    def test_intervention_on_tuple_path_reaches_the_caller(self) -> None:
+        """The re-packed tuple must carry the hook's edit, not the original."""
+        import torch
+
+        bridge = self._bridge(returns_tuple=True)
+        bridge.hook_out.add_hook(lambda t, hook: torch.zeros_like(t))
+        out = bridge(torch.ones(1, 2, 4))
+        assert torch.equal(out[0], torch.zeros(1, 2, 4))
+
+    def test_tensor_path_unchanged(self) -> None:
+        import torch
+
+        bridge = self._bridge(returns_tuple=False)
+        out = bridge(torch.ones(1, 2, 4))
+        assert isinstance(out, torch.Tensor)
+        assert torch.equal(out, torch.full((1, 2, 4), 2.0))
+
+
+class TestRopeOptionalOptOut:
+    """NoPE architectures null position_embeddings by design; the missing-RoPE
+    warning must stay silent for them and loud for everyone else."""
+
+    def test_nope_adapters_declare_the_opt_out(self) -> None:
+        import importlib
+
+        for module_name, class_name in (
+            ("exaone4", "_Exaone4AttentionBridge"),
+            ("smollm3", "_SmolLM3AttentionBridge"),
+        ):
+            module = importlib.import_module(
+                f"transformer_lens.model_bridge.supported_architectures.{module_name}"
+            )
+            bridge_cls = getattr(module, class_name)
+            assert bridge_cls.rope_optional is True, f"{class_name} must opt out"
+
+    def test_base_does_not_opt_out(self) -> None:
+        from transformer_lens.model_bridge.generalized_components import (
+            PositionEmbeddingsAttentionBridge,
+        )
+
+        assert PositionEmbeddingsAttentionBridge.rope_optional is False

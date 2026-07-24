@@ -51,6 +51,9 @@ class _SmolLM3AttentionBridge(PositionEmbeddingsAttentionBridge):
     are left untouched and behave exactly like the qwen2.py attention bridge.
     """
 
+    # Nulls position_embeddings on NoPE layers by design.
+    rope_optional = True
+
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Drop position_embeddings on NoPE layers, then run the base forward."""
         hf_attn = self.original_component

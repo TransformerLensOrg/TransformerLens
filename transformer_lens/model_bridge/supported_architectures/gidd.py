@@ -69,11 +69,11 @@ class GiddArchitectureAdapter(ArchitectureAdapter):
     supports_fold_ln = False
 
     def native_sampler_kwargs(self, max_new_tokens: int, prompt_len: int) -> dict:
-        """Gidd's max_length is the whole canvas, prompt included."""
-        total = prompt_len + max_new_tokens
+        """Gidd's max_length counts generated tokens: its windows start at
+        prompt_length and span max_length, so adding the prompt over-generates."""
         return {
-            "max_length": total,
-            "block_length": min(128, total),
+            "max_length": max_new_tokens,
+            "block_length": min(128, max_new_tokens),
             "steps": max_new_tokens,
         }
 

@@ -421,20 +421,36 @@ class ComponentBenchmarker:
         if "mlp" in component_path and hasattr(component, "name") and component.name is None:
             return
 
-        # Skip MLP components with custom forward signatures (e.g., BLOOM requires residual)
-        # These can't be tested in isolation without full model context
-        if "mlp" in component_path and hasattr(component, "hf_component"):
+        # Skip MLP components whose wrapped forward needs more than the single
+        # hidden-state probe: BLOOM MLPs require residual, and transformers 5.x
+        # fused grouped-mm experts (Qwen3.5-MoE) require the router's top_k_index
+        # and top_k_weights. The isolated harness can't synthesize those, and the
+        # full-model forward_pass_logits already covers their parity. Inspect
+        # original_component (bridge components expose that, never hf_component,
+        # so the prior check here was permanently dead).
+        # `component` here is the per-block TEMPLATE, whose original_component is
+        # unbound (None); fetch the layer-bound component to see the real HF
+        # module, exactly as _test_component does below.
+        if "mlp" in component_path:
             import inspect
 
             try:
-                sig = inspect.signature(component.hf_component.forward)
-                params = list(sig.parameters.keys())
-                # Standard MLP only needs hidden_states (or self + hidden_states)
-                # If there are more required params, skip testing
-                if len(params) > 2:  # self + hidden_states + other required params
-                    return
-            except Exception:
-                # If we can't inspect, proceed with testing
+                bound = self.adapter.get_component(self.bridge_model, component_path)
+                inner = getattr(bound, "original_component", None)
+                if inner is not None:
+                    required = [
+                        p
+                        for p in inspect.signature(inner.forward).parameters.values()
+                        if p.default is inspect.Parameter.empty
+                        and p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)
+                        and p.name != "self"
+                    ]
+                    # An isolatable MLP needs only hidden_states; more required
+                    # positional args means it can't run standalone.
+                    if len(required) > 1:
+                        return
+            except (AttributeError, ValueError, TypeError):
+                # Can't resolve/inspect — fall through and let the test run.
                 pass
 
         # Skip attention components that require position embeddings in Phase 3

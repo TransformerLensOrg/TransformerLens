@@ -168,12 +168,43 @@ def _fixup_custom_model(hf_model) -> None:
             lm_head.weight = embed.weight
             hf_model.lm_head = lm_head
 
+    # Rotary tables destroyed by meta-device loading, for ANY architecture: the
+    # reference needs the same repair the adapter applies to the bridge, or
+    # Phase 1 compares a correct model against a corrupt one. Only tables that
+    # fail a validity check are touched, so scaled RoPE is never clobbered.
+    from transformer_lens.model_bridge.buffer_restore import restore_rotary_inv_freq
+
+    restore_rotary_inv_freq(hf_model)
+
     if type(hf_model).__name__ == "GiddForDiffusionLM":
         from transformer_lens.model_bridge.supported_architectures.gidd import (
             restore_frequencies,
         )
 
         restore_frequencies(hf_model)
+
+
+def _hf_forward_with_mask_fallback(hf_model, tokens):
+    """Run an HF decoder forward, supplying an attention mask if it demands one.
+
+    Most decoders accept a bare ``input_ids`` call and build the causal mask
+    internally, but some remote-code models dereference ``attention_mask``
+    unconditionally (LLaDA2's diffusion block attention needs a 4D
+    ``(b,1,s,s)`` mask). Without this, the Phase-1 HF-logit capture raised
+    ``'NoneType' has no attribute 'size'``, the benchmark swallowed it, and the
+    forward check silently degraded to shape-only — hiding real parity.
+    """
+    try:
+        return hf_model(tokens)
+    except (AttributeError, ValueError):
+        b, s = tokens.shape[0], tokens.shape[-1]
+        for mask in (torch.ones(b, s, dtype=torch.long, device=tokens.device),
+                     torch.ones(b, 1, s, s, dtype=torch.long, device=tokens.device)):
+            try:
+                return hf_model(tokens, attention_mask=mask)
+            except (AttributeError, ValueError):
+                continue
+        raise
 
 
 def run_comparison_benchmarks(
@@ -1090,7 +1121,7 @@ def run_benchmark_suite(
                             dec_ids = torch.tensor([[decoder_start_id]]).to(hf_tokens.device)
                             hf_out = hf_model(hf_tokens, decoder_input_ids=dec_ids)
                         else:
-                            hf_out = hf_model(hf_tokens)
+                            hf_out = _hf_forward_with_mask_fallback(hf_model, hf_tokens)
                         hf_saved_logits = hf_out.logits.detach().cpu().clone()
 
                         # Compute causal LM loss (shift logits and labels)

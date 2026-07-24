@@ -63,10 +63,11 @@ class TestSamplerBudgetTranslation:
         kwargs = self._kwargs("llada2_moe", "LLaDA2MoeArchitectureAdapter", 4, 8)
         assert kwargs["block_length"] <= 4
 
-    def test_gidd_max_length_covers_prompt_plus_budget(self) -> None:
-        """Gidd's max_length is the whole canvas, prompt included."""
+    def test_gidd_max_length_is_generated_tokens_not_canvas(self) -> None:
+        """Gidd's windows start at prompt_length and span max_length, so folding
+        the prompt into it would over-generate by prompt_len tokens."""
         kwargs = self._kwargs("gidd", "GiddArchitectureAdapter", 16, 8)
-        assert kwargs["max_length"] == 24
+        assert kwargs["max_length"] == 16
 
     def test_base_default_is_plain_max_new_tokens(self) -> None:
         from transformer_lens.model_bridge.architecture_adapter import (
@@ -168,3 +169,41 @@ class TestPromptNormalization:
         prompt = torch.tensor([[1, 2, 3]])
         out = self._run(torch.tensor([[1, 2, 3, 7, 8]]), prompt)
         assert out.tolist() == [[1, 2, 3, 7, 8]]
+
+
+class TestRouterNestedProcessedWeights:
+    """JetMoe's TopKGating holds its Linear at router.layer — processing hands the
+    router bridge nested keys and the wrapped module has no .weight of its own."""
+
+    def _router(self):
+        import torch
+
+        from transformer_lens.model_bridge.generalized_components.moe import (
+            MoERouterBridge,
+        )
+
+        class _Gating(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.layer = torch.nn.Linear(8, 4, bias=False)
+
+        bridge = MoERouterBridge(name="router", logits_index=-1)
+        gating = _Gating()
+        bridge.set_original_component(gating)
+        return bridge, gating
+
+    def test_nested_keys_written_by_dotted_path(self) -> None:
+        import torch
+
+        bridge, gating = self._router()
+        new = torch.arange(32, dtype=torch.float32).reshape(4, 8)
+        bridge.set_processed_weights({"layer.weight": new.clone()})
+        assert torch.equal(gating.layer.weight.detach(), new)
+
+    def test_shape_mismatch_raises(self) -> None:
+        import pytest as _pytest
+        import torch
+
+        bridge, _ = self._router()
+        with _pytest.raises(ValueError, match="does not match"):
+            bridge.set_processed_weights({"layer.weight": torch.zeros(3, 3)})

@@ -4,7 +4,7 @@ This module contains the bridge component for Mixture of Experts layers.
 """
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Mapping, Optional
 
 import torch
 
@@ -157,3 +157,35 @@ class MoERouterBridge(LinearBridge):
         idx = self.logits_index % len(output)
         router_logits = self.hook_out(output[idx])
         return output[:idx] + (router_logits,) + output[idx + 1 :]
+
+    def set_processed_weights(
+        self, weights: Mapping[str, Optional[torch.Tensor]], verbose: bool = False
+    ) -> None:
+        """Accept routers whose Linear is nested inside a gating module.
+
+        JetMoe's TopKGating holds its projection at ``router.layer.weight``, so
+        this bridge receives ``{"layer.weight": ...}`` and the wrapped module has
+        no ``.weight`` for the base writer. Weight processing never transforms
+        router weights, so copy nested tensors back onto the wrapped module's
+        own parameters by dotted path.
+        """
+        if "weight" in weights:
+            super().set_processed_weights(weights, verbose=verbose)
+            return
+        if self.original_component is None:
+            raise RuntimeError(f"Original component not set for {self.name}")
+        for key, tensor in weights.items():
+            if tensor is None:
+                continue
+            target: Any = self.original_component
+            *path, leaf = key.split(".")
+            for part in path:
+                target = getattr(target, part)
+            param = getattr(target, leaf)
+            if param.shape != tensor.shape:
+                raise ValueError(
+                    f"Router weight {key} shape {tuple(tensor.shape)} does not match "
+                    f"parameter shape {tuple(param.shape)} on {self.name}"
+                )
+            with torch.no_grad():
+                param.copy_(tensor.to(dtype=param.dtype, device=param.device))

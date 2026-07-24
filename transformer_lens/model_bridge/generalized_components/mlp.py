@@ -72,10 +72,11 @@ class MLPBridge(GeneralizedComponent):
         # hidden states and re-pack, or hook_out would hand users a tuple and
         # interventions on it would be silently dropped.
         if isinstance(output, tuple):
-            hidden = self.hook_out(output[0])
-            if hasattr(self, "out") and hasattr(self.out, "hook_out"):
-                hidden = self.out.hook_out(hidden)
-            return (hidden,) + output[1:]
+            # Only the block-level hook: the wrapped `out` projection already
+            # fired its own hook_out inside the forward, and for gated recurrent
+            # MLPs (RWKV channel-mix) output[0] is the post-gate product — a
+            # different tensor, so re-firing would double-apply interventions.
+            return (self.hook_out(output[0]),) + output[1:]
         output = self.hook_out(output)
         if hasattr(self, "out") and hasattr(self.out, "hook_out"):
             output = self.out.hook_out(output)

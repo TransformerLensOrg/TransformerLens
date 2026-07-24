@@ -83,8 +83,11 @@ class TestHyenaDnaGeneration:
             bridge = TransformerBridge.boot_transformers(
                 "LongSafari/hyenadna-tiny-1k-seqlen-hf", device="cpu", trust_remote_code=True
             )
-        except Exception as exc:  # offline / hub failure
-            pytest.skip(f"hyenadna unavailable: {exc}")
+        except (OSError, ConnectionError, TimeoutError) as exc:
+            # Skip only when the hub is genuinely unreachable. A blanket
+            # `except Exception` would silently convert an adapter regression
+            # (the thing this test exists to catch) into a green skip.
+            pytest.skip(f"hyenadna unavailable offline: {exc}")
         return bridge.eval()
 
     def test_greedy_matches_manual_recompute(self) -> None:
