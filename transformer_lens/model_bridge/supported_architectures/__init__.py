@@ -198,7 +198,9 @@ from transformer_lens.model_bridge.supported_architectures.pegasus import Pegasu
 from transformer_lens.model_bridge.supported_architectures.phi import PhiArchitectureAdapter
 from transformer_lens.model_bridge.supported_architectures.phi3 import Phi3ArchitectureAdapter
 from transformer_lens.model_bridge.supported_architectures.phimoe import PhiMoEArchitectureAdapter
-from transformer_lens.model_bridge.supported_architectures.pretrain import PretrainArchitectureAdapter
+from transformer_lens.model_bridge.supported_architectures.pretrain import (
+    PretrainArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.qwen import QwenArchitectureAdapter
 from transformer_lens.model_bridge.supported_architectures.qwen2 import Qwen2ArchitectureAdapter
 from transformer_lens.model_bridge.supported_architectures.qwen2_5_vl import (
