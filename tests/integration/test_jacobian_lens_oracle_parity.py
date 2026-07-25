@@ -15,7 +15,7 @@ Marked @pytest.mark.slow; requires ~4 GB VRAM and network access.
 
 import subprocess
 import sys
-from typing import Dict, List, Set, Tuple
+from typing import List, Set
 
 import numpy as np
 import pytest
@@ -48,7 +48,7 @@ PARITY_LAYERS: List[int] = [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 23, 24, 2
 assert len(PARITY_PROMPTS) * len(PARITY_LAYERS) == 75
 
 TOP_K = 8
-TOP_K_MIN_OVERLAP = 7  # >= 7/8 in worst cell
+TOP_K_MIN_OVERLAP = 7       # >= 7/8 in worst cell
 SPEARMAN_TOP_K = 64
 SPEARMAN_MIN_R = 0.95
 
@@ -56,7 +56,6 @@ SPEARMAN_MIN_R = 0.95
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
 
 def _spearman_r(a: np.ndarray, b: np.ndarray) -> float:
     """Spearman rank correlation — avoids a scipy dependency."""
@@ -72,7 +71,9 @@ def _top_k_set(logits: torch.Tensor, k: int) -> Set[int]:
     return set(logits.topk(k).indices.tolist())
 
 
-def _spearman_top_union(tl_logits: torch.Tensor, oracle_logits: torch.Tensor, k: int) -> float:
+def _spearman_top_union(
+    tl_logits: torch.Tensor, oracle_logits: torch.Tensor, k: int
+) -> float:
     tl_topk = tl_logits.topk(k).indices
     or_topk = oracle_logits.topk(k).indices
     union = torch.unique(torch.cat([tl_topk, or_topk])).tolist()
@@ -85,7 +86,6 @@ def _spearman_top_union(tl_logits: torch.Tensor, oracle_logits: torch.Tensor, k:
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
-
 
 @pytest.fixture(scope="module")
 def oracle_package():
@@ -143,7 +143,6 @@ def oracle_lens_and_model(oracle_package, gemma_bridge):
 # Parity test
 # ---------------------------------------------------------------------------
 
-
 @pytest.mark.slow
 def test_jacobian_lens_oracle_parity(tl_lens, oracle_lens_and_model, gemma_bridge):
     """TL JacobianLens readouts match the anthropics oracle within #1539 tolerances.
@@ -181,8 +180,8 @@ def test_jacobian_lens_oracle_parity(tl_lens, oracle_lens_and_model, gemma_bridg
 
         # --- source layers: compare oracle transport vs TL transport ---
         for layer in source_layers:
-            tl_vec = tl_result.lens_logits[layer][-1].float()  # [vocab]
-            or_vec = oracle_logits_dict[layer][-1].float()  # [vocab]
+            tl_vec = tl_result.lens_logits[layer][-1].float()      # [vocab]
+            or_vec = oracle_logits_dict[layer][-1].float()         # [vocab]
 
             overlap = len(_top_k_set(tl_vec, TOP_K) & _top_k_set(or_vec, TOP_K))
             if overlap < TOP_K_MIN_OVERLAP:
@@ -200,7 +199,7 @@ def test_jacobian_lens_oracle_parity(tl_lens, oracle_lens_and_model, gemma_bridg
 
         # --- final layer: TL identity == oracle model_logits ---
         tl_final = tl_result.lens_logits[final_layer][-1].float()  # [vocab]
-        or_final = oracle_model_logits[-1].float()  # [vocab]
+        or_final = oracle_model_logits[-1].float()                  # [vocab]
 
         final_overlap = len(_top_k_set(tl_final, TOP_K) & _top_k_set(or_final, TOP_K))
         if final_overlap < TOP_K_MIN_OVERLAP:
@@ -216,6 +215,7 @@ def test_jacobian_lens_oracle_parity(tl_lens, oracle_lens_and_model, gemma_bridg
                 f"(final layer={final_layer}, prompt={prompt[:35]!r})"
             )
 
-    assert not failures, f"{len(failures)} cell(s) failed parity out of 75:\n" + "\n".join(
-        f"  {f}" for f in failures
+    assert not failures, (
+        f"{len(failures)} cell(s) failed parity out of 75:\n"
+        + "\n".join(f"  {f}" for f in failures)
     )
