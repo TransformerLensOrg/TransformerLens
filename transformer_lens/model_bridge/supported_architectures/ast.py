@@ -4,7 +4,6 @@ from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorCo
 from transformer_lens.conversion_utils.param_processing_conversion import (
     ParamProcessingConversion,
 )
-
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
@@ -13,37 +12,92 @@ from transformer_lens.model_bridge.generalized_components import (
     MLPBridge,
     NormalizationBridge,
     UnembeddingBridge,
+)
+from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
 
-class ASTArchitectureAdapter(ArchitectureAdapter):
 
+class ASTArchitectureAdapter(ArchitectureAdapter):
     def __init__(self, cfg: Any) -> None:
         super().__init__(cfg)
 
         # essential flag for audio models in V3
         self.cfg.is_audio_model = True
+        self.cfg.normalization_type = "LN"
 
         n_heads = self.cfg.n_heads
 
-        # calculate n_ctx: dynamically grab the length from the generated position embeddings
-        # this resolves the n_ctx = num_patches + 2 requirement accurately regardless of config stride
-        self.n_ctx = hf_model.audio_spectrogram_transformer.embeddings.position_embeddings.shape[1]
-
-        # V3 Bridge pattern: Map transformerlens canonical names to hf AST attributes
-        self.component_mapping = {
-            "embed": "audio_spectrogram_transformer.embeddings",
-            "blocks": "audio_spectrogram_transformer.layers",
-            "ln_final": "audio_spectrogram_transformer.layernorm",
-            "unembed": "classifier.dense",
-
-            # block internals mapping
-            "block.ln1": "layernorm_before",
-            "block.attn.W_Q": "attention.q_proj",
-            "block.attn.W_K": "attention.k_proj",
-            "block.attn.W_V": "attention.v_proj",
-            "block.attn.W_O": "attention.o_proj",
-            "block.ln2": "layernorm_after",
-            "block.mlp.W_in": "mlp.fc1",
-            "block.mlp.W_out": "mlp.fc2",
+        # Q/K/V/O rearrangement: splits hidden dims into (heads, head_dim)
+        self.weight_processing_conversions = {
+            "blocks.{i}.attn.q.weight": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion(
+                    "(h d_head) d_model -> h d_model d_head", h=n_heads
+                ),
+            ),
+            "blocks.{i}.attn.k.weight": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion(
+                    "(h d_head) d_model -> h d_model d_head", h=n_heads
+                ),
+            ),
+            "blocks.{i}.attn.v.weight": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion(
+                    "(h d_head) d_model -> h d_model d_head", h=n_heads
+                ),
+            ),
+            "blocks.{i}.attn.q.bias": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion("(h d_head) -> h d_head", h=n_heads),
+            ),
+            "blocks.{i}.attn.k.bias": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion("(h d_head) -> h d_head", h=n_heads),
+            ),
+            "blocks.{i}.attn.v.bias": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion("(h d_head) -> h d_head", h=n_heads),
+            ),
+            "blocks.{i}.attn.o.weight": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion(
+                    "d_model (h d_head) -> h d_head d_model", h=n_heads
+                ),
+            ),
         }
+
+        # V3 bridge pattern: hierarchical mapping using bridge components
+        self.component_mapping = {
+            "embed": GeneralizedComponent(name="audio_spectrogram_transformer.embeddings"),
+            "ln_final": NormalizationBridge(
+                name="audio_spectrogram_transformer.layernorm", config=self.cfg
+            ),
+            "unembed": UnembeddingBridge(name="classifier.dense"),
+            "blocks": BlockBridge(
+                name="audio_spectrogram_transformer.layers",
+                submodules={
+                    "ln1": NormalizationBridge(name="layernorm_before", config=self.cfg),
+                    "ln2": NormalizationBridge(name="layernorm_after", config=self.cfg),
+                    "attn": AttentionBridge(
+                        name="attention",
+                        config=self.cfg,
+                        submodules={
+                            "q": LinearBridge(name="q_proj"),
+                            "k": LinearBridge(name="k_proj"),
+                            "v": LinearBridge(name="v_proj"),
+                            "o": LinearBridge(name="o_proj"),
+                        },
+                    ),
+                    "mlp": MLPBridge(
+                        name="mlp",
+                        config=self.cfg,
+                        submodules={
+                            "in": LinearBridge(name="fc1"),
+                            "out": LinearBridge(name="fc2"),
+                        },
+                    ),
+                },
+            ),
+        }
+
+    def prepare_model(self, hf_model: Any) -> None:
+        # hook to access the live Huggingface model before boot
+        # calculate n_ctx dynamically from the instantiated position embeddings
+        self.cfg.n_ctx = (
+            hf_model.audio_spectrogram_transformer.embeddings.position_embeddings.shape[1]
+        )
