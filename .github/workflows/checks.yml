@@ -310,9 +310,12 @@ jobs:
           # OMP threads would oversubscribe the 4-vCPU runner and erase the gain.
           OMP_NUM_THREADS: "1"
           MKL_NUM_THREADS: "1"
-          # Worker count knob (this runner is 2-vCPU, so -n auto = 2). If swap
-          # still can't hold peak memory, drop to "-n 1" or grow the swapfile.
-          XDIST_ARGS: "-n auto --dist loadscope"
+          # Worker count knob (this runner is 2-vCPU, so -n auto = 2). Pinned to
+          # a single worker: the adapter-suite growth pushed two concurrent
+          # workers' resident models past 7GB RAM + 8GB swap, and the OOM-killed
+          # runner surfaces as a ~10-min "operation was canceled". Restore
+          # "-n auto --dist loadscope" once the runner has more memory headroom.
+          XDIST_ARGS: "-n 1"
       - name: Build check
         run: uv build
       - name: Upload Coverage Report Artifact
