@@ -1734,9 +1734,10 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                 (fragile across HF versions) or exception-based layer skipping (corrupts
                 model state). Raises NotImplementedError if a non-None value is passed.
             stop_at_layer: Layer to stop forward pass at
-            pixel_values: Optional image tensor for multimodal models (e.g., LLaVA, Gemma3).
+            pixel_values: Optional image tensor for multimodal models (e.g., LLaVA, Gemma3)
+                and vision models (eg. ViT, DeiT).
                 The tensor is passed directly to the underlying HuggingFace model.
-                Only valid when cfg.is_multimodal is True.
+                Only valid when cfg.is_multimodal is True or cfg.is_visual_mdoel is True.
             input_values: Optional audio waveform tensor for audio models (e.g., HuBERT).
                 The tensor is passed directly to the underlying HuggingFace model.
                 Only valid when cfg.is_audio_model is True.
@@ -1784,6 +1785,11 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                     raise ValueError(
                         "Audio models require tensor input (raw waveform), not text. "
                         "Pass a torch.Tensor or use the input_values parameter."
+                    )
+                if getattr(self.cfg, "is_visual_model", False):
+                    raise ValueError(
+                        "Visual models require tensor input (pixel values), not text. "
+                        "Pass a torch.Tensor or use the pixel_values parameter."
                     )
                 if _is_batched_list and padding_side is None:
                     # Force left-padding so real tokens are flush-right.
@@ -1872,10 +1878,13 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
 
             # Handle pixel_values for multimodal models
             if pixel_values is not None:
-                if not getattr(self.cfg, "is_multimodal", False):
+                if not (
+                    getattr(self.cfg, "is_multimodal", False)
+                    or getattr(self.cfg, "is_visual_model", False)
+                ):
                     raise ValueError(
-                        "pixel_values can only be passed to multimodal models "
-                        "(cfg.is_multimodal must be True)"
+                        "pixel_values can only be passed to multimodal or vision models "
+                        "(cfg.is_multimodal or cfg.is_visual_model must be True)"
                     )
                 kwargs["pixel_values"] = pixel_values
 
