@@ -30,7 +30,6 @@ from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     BlockBridge,
     EmbeddingBridge,
-    GatedMLPBridge,
     LinearBridge,
     PositionEmbeddingsAttentionBridge,
     RMSNormalizationBridge,
@@ -55,34 +54,33 @@ class T5GemmaArchitectureAdapter(ArchitectureAdapter):
         self.supports_fold_ln = False
 
         # Config flags used by bridge weight processing
-        self.cfg.normalization_type = "RMS"
-        self.cfg.positional_embedding_type = "rotary"
-        self.cfg.final_rms = True
-        self.cfg.gated_mlp = True
-        self.cfg.attn_only = False
+        self._set_rms_rotary_defaults()
         # Gemma-family GELU; the nested enc/dec config defeats the auto-mapper,
         # which would otherwise leave act_fn at the "relu" default.
         self.cfg.act_fn = "gelu_pytorch_tanh"
-        self.cfg.uses_rms_norm = True
         # T5Gemma uses Gemma-style (1.0 + weight) RMSNorm offset
         self.cfg.rmsnorm_uses_offset = True
 
+        # n_heads/n_kv are decoder-effective; unbalanced pairs (t5gemma-9b-2b)
+        # set different encoder counts, surfaced by the builder.
         n_heads = self.cfg.n_heads
         n_kv = getattr(self.cfg, "n_key_value_heads", None) or n_heads
+        enc_heads = getattr(self.cfg, "encoder_attention_heads", None) or n_heads
+        enc_kv = getattr(self.cfg, "encoder_key_value_heads", None) or n_kv
 
         self.weight_processing_conversions = {
             # Encoder self-attention
             "encoder_blocks.{i}.self_attn.q_proj.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=n_heads),
+                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=enc_heads),
             ),
             "encoder_blocks.{i}.self_attn.k_proj.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=n_kv),
+                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=enc_kv),
             ),
             "encoder_blocks.{i}.self_attn.v_proj.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=n_kv),
+                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=enc_kv),
             ),
             "encoder_blocks.{i}.self_attn.o_proj.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=n_heads),
+                tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=enc_heads),
             ),
             # Encoder RMSNorm offset - HF stores raw weight; Gemma applies weight+1
             "encoder_blocks.{i}.pre_self_attn_layernorm.weight": ParamProcessingConversion(
@@ -207,15 +205,7 @@ class T5GemmaArchitectureAdapter(ArchitectureAdapter):
                     "ln2_post": RMSNormalizationBridge(
                         name="post_feedforward_layernorm", config=self.cfg
                     ),
-                    "mlp": GatedMLPBridge(
-                        name="mlp",
-                        config=self.cfg,
-                        submodules={
-                            "gate": LinearBridge(name="gate_proj"),
-                            "in": LinearBridge(name="up_proj"),
-                            "out": LinearBridge(name="down_proj"),
-                        },
-                    ),
+                    "mlp": self._gated_mlp(),
                 },
             ),
             # Encoder final norm
@@ -268,15 +258,7 @@ class T5GemmaArchitectureAdapter(ArchitectureAdapter):
                     "ln3_post": RMSNormalizationBridge(
                         name="post_feedforward_layernorm", config=self.cfg
                     ),
-                    "mlp": GatedMLPBridge(
-                        name="mlp",
-                        config=self.cfg,
-                        submodules={
-                            "gate": LinearBridge(name="gate_proj"),
-                            "in": LinearBridge(name="up_proj"),
-                            "out": LinearBridge(name="down_proj"),
-                        },
-                    ),
+                    "mlp": self._gated_mlp(),
                 },
             ),
             # Decoder final norm

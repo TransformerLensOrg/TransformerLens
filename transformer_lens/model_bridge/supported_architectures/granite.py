@@ -37,6 +37,9 @@ class GraniteArchitectureAdapter(ArchitectureAdapter):
     - blocks.{i}.ln1.b, blocks.{i}.ln2.b, ln_final.b - RMSNorm has no bias
     """
 
+    _testing_hybrid = True
+    _testing_eager = None
+
     def __init__(self, cfg: Any) -> None:
         """Initialize the Granite architecture adapter."""
         super().__init__(cfg)
@@ -47,25 +50,8 @@ class GraniteArchitectureAdapter(ArchitectureAdapter):
 
     def _setup_common_config(self, cfg: Any) -> None:
         """Set up config variables shared across all Granite variants."""
-        self.cfg.normalization_type = "RMS"
-        self.cfg.positional_embedding_type = "rotary"
-        self.cfg.final_rms = True
-        self.cfg.gated_mlp = True
-        self.cfg.attn_only = False
-        self.cfg.uses_rms_norm = True
+        self._set_rms_rotary_defaults()
         self.cfg.default_prepend_bos = False
-
-        self.default_config = {
-            "d_model": cfg.d_model,
-            "d_head": cfg.d_model // cfg.n_heads,
-            "n_heads": cfg.n_heads,
-            "n_layers": cfg.n_layers,
-            "d_vocab": cfg.d_vocab,
-        }
-
-        if hasattr(cfg, "n_key_value_heads") and cfg.n_key_value_heads is not None:
-            self.default_config["n_key_value_heads"] = cfg.n_key_value_heads
-            self.cfg.n_key_value_heads = cfg.n_key_value_heads
 
     def _build_attention_bridge(self, optional: bool = False) -> PositionEmbeddingsAttentionBridge:
         """Build the standard Granite attention bridge."""
@@ -85,15 +71,7 @@ class GraniteArchitectureAdapter(ArchitectureAdapter):
 
     def _build_mlp_bridge(self) -> GatedMLPBridge:
         """Build the dense gated MLP bridge."""
-        return GatedMLPBridge(
-            name="mlp",
-            config=self.cfg,
-            submodules={
-                "gate": LinearBridge(name="gate_proj"),
-                "in": LinearBridge(name="up_proj"),
-                "out": LinearBridge(name="down_proj"),
-            },
-        )
+        return self._gated_mlp()
 
     def _build_component_mapping(self) -> dict:
         """Build the full component mapping for dense Granite."""
@@ -117,26 +95,3 @@ class GraniteArchitectureAdapter(ArchitectureAdapter):
         """Match Granite's ``lm_head / logits_scaling`` output path."""
         scaling = float(getattr(self.cfg, "logits_scaling", 1.0))
         return super().apply_output_logits_transform(logits / scaling)
-
-    def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Set up rotary embedding references for Granite component testing.
-
-        Args:
-            hf_model: The HuggingFace Granite model instance
-            bridge_model: The TransformerBridge model (if available)
-        """
-        if not hasattr(hf_model.model, "rotary_emb"):
-            return
-
-        rotary_emb = hf_model.model.rotary_emb
-
-        if bridge_model is not None and hasattr(bridge_model, "blocks"):
-            for block in bridge_model.blocks:
-                if "attn" in block._modules:
-                    block.attn.set_rotary_emb(rotary_emb)
-
-        try:
-            attn_bridge = self.get_generalized_component("blocks.0.attn")
-            attn_bridge.set_rotary_emb(rotary_emb)
-        except (AttributeError, KeyError, ValueError):
-            pass

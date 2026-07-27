@@ -45,6 +45,8 @@ class _SizedSplitConversion(BaseTensorConversion):
 class Phi3ArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for Phi-3 models."""
 
+    _testing_eager = None
+
     def __init__(self, cfg: Any) -> None:
         """Initialize the Phi-3 architecture adapter.
 
@@ -53,14 +55,7 @@ class Phi3ArchitectureAdapter(ArchitectureAdapter):
         """
         super().__init__(cfg)
 
-        # Set config variables for weight processing
-        self.cfg.normalization_type = "RMS"
-        self.cfg.positional_embedding_type = "rotary"
-        self.cfg.final_rms = True
-        self.cfg.gated_mlp = True
-        self.cfg.attn_only = False
-
-        self.cfg.uses_rms_norm = True
+        self._set_rms_rotary_defaults()
 
         # Standard fold_ln can't handle joint qkv/gate_up projections (shape mismatch).
         # LN folding is handled in preprocess_weights() instead.
@@ -209,23 +204,6 @@ class Phi3ArchitectureAdapter(ArchitectureAdapter):
             v_linear.bias = torch.nn.Parameter(v_bias)
 
         return q_linear, k_linear, v_linear
-
-    def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Set up rotary embedding references for Phi-3 component testing.
-
-        Args:
-            hf_model: The HuggingFace Phi-3 model instance
-            bridge_model: The TransformerBridge model (if available)
-        """
-        rotary_emb = hf_model.model.rotary_emb
-
-        if bridge_model is not None and hasattr(bridge_model, "blocks"):
-            for block in bridge_model.blocks:
-                if hasattr(block, "attn"):
-                    block.attn.set_rotary_emb(rotary_emb)
-
-        attn_bridge = self.get_generalized_component("blocks.0.attn")
-        attn_bridge.set_rotary_emb(rotary_emb)
 
     def prepare_loading(self, model_name: str, model_kwargs: dict) -> None:
         """Patch cached Phi-3 remote code for transformers v5 compatibility."""

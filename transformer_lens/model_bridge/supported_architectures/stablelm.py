@@ -2,24 +2,23 @@
 
 from typing import Any
 
-import torch
-
 from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion
 from transformer_lens.conversion_utils.param_processing_conversion import (
     ParamProcessingConversion,
 )
-from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
-    GatedMLPBridge,
     LinearBridge,
     NormalizationBridge,
     ParallelBlockBridge,
     PositionEmbeddingsAttentionBridge,
     RotaryEmbeddingBridge,
     UnembeddingBridge,
+)
+from transformer_lens.model_bridge.generalized_components.base import (
+    GeneralizedComponent,
 )
 
 
@@ -58,23 +57,9 @@ class StableLmArchitectureAdapter(ArchitectureAdapter):
         self.cfg.gated_mlp = True
         self.cfg.attn_only = False
         self.cfg.uses_rms_norm = False
-        # Force eager attention for numerical consistency with benchmark reference
-        # PositionEmbeddingsAttentionBridge delegates to native HF attention, so
-        # both bridge and reference must use the same implementation
+        # The bridge reimplements attention; the HF reference must run the
+        # matching eager math.
         self.cfg.attn_implementation = "eager"
-
-        self.default_config = {
-            "d_model": cfg.d_model,
-            "d_head": cfg.d_model // cfg.n_heads,
-            "n_heads": cfg.n_heads,
-            "n_layers": cfg.n_layers,
-            "d_vocab": cfg.d_vocab,
-        }
-
-        # GQA support
-        if hasattr(cfg, "n_key_value_heads") and cfg.n_key_value_heads is not None:
-            self.default_config["n_key_value_heads"] = cfg.n_key_value_heads
-            self.cfg.n_key_value_heads = cfg.n_key_value_heads
 
         n_kv_heads = getattr(self.cfg, "n_key_value_heads", None) or self.cfg.n_heads
 
@@ -122,19 +107,15 @@ class StableLmArchitectureAdapter(ArchitectureAdapter):
                 "k": LinearBridge(name="k_proj"),
                 "v": LinearBridge(name="v_proj"),
                 "o": LinearBridge(name="o_proj"),
+                # Per-head LN containers, present only when qk_layernorm=True
+                # (stablelm-2-12b); applied post-reshape like HF.
+                "q_norm": GeneralizedComponent(name="q_layernorm", optional=True),
+                "k_norm": GeneralizedComponent(name="k_layernorm", optional=True),
             },
             requires_attention_mask=True,
             requires_position_embeddings=True,
         )
-        block_submodules["mlp"] = GatedMLPBridge(
-            name="mlp",
-            config=self.cfg,
-            submodules={
-                "gate": LinearBridge(name="gate_proj"),
-                "in": LinearBridge(name="up_proj"),
-                "out": LinearBridge(name="down_proj"),
-            },
-        )
+        block_submodules["mlp"] = self._gated_mlp()
 
         # StableLM has both parallel (use_parallel_residual=True) and sequential variants.
         block_cls = ParallelBlockBridge if use_parallel_residual else BlockBridge
@@ -153,101 +134,3 @@ class StableLmArchitectureAdapter(ArchitectureAdapter):
             ),
             "unembed": UnembeddingBridge(name="lm_head", config=self.cfg),
         }
-
-    def setup_hook_compatibility(self, bridge: Any) -> None:
-        """Inject hook points for QK LayerNorm on models with qk_layernorm=True.
-
-        StableLM v2 models (e.g., stablelm-2-12b) apply per-head LayerNorm to Q and K
-        after projection but before rotary embedding. The native HF attention handles
-        this internally, but we inject hooks so researchers can observe/intervene on
-        the post-norm Q/K values.
-
-        Adds to each attention bridge:
-          - hook_q_layernorm: fires after q_layernorm(query_states)
-          - hook_k_layernorm: fires after k_layernorm(key_states)
-
-        This runs during bridge __init__ via _setup_hook_compatibility(), after
-        component setup but before hook registry finalization. The hook registry
-        scanner skips _original_component subtrees, so we register hooks directly
-        in bridge._hook_registry with canonical TL-style names.
-
-        Args:
-            bridge: The TransformerBridge instance (fully initialized)
-        """
-        if not hasattr(bridge, "blocks"):
-            return
-
-        for i, block in enumerate(bridge.blocks):
-            if not hasattr(block, "attn"):
-                continue
-            attn_bridge = block.attn
-            hf_attn = getattr(attn_bridge, "original_component", None)
-            if hf_attn is None:
-                continue
-            if not getattr(hf_attn, "qk_layernorm", False):
-                continue
-
-            # Add hook points to the attention bridge as proper submodules
-            attn_bridge.add_module("hook_q_layernorm", HookPoint())
-            attn_bridge.add_module("hook_k_layernorm", HookPoint())
-
-            # Register directly in bridge's hook registry with canonical names
-            # (the scanner skips _original_component subtrees so won't find these)
-            q_name = f"blocks.{i}.attn.hook_q_layernorm"
-            k_name = f"blocks.{i}.attn.hook_k_layernorm"
-            attn_bridge.hook_q_layernorm.name = q_name
-            attn_bridge.hook_k_layernorm.name = k_name
-            bridge._hook_registry[q_name] = attn_bridge.hook_q_layernorm
-            bridge._hook_registry[k_name] = attn_bridge.hook_k_layernorm
-
-            # Wrap the HF q_layernorm/k_layernorm forward methods to fire hooks
-            original_q_ln_forward = hf_attn.q_layernorm.forward
-            original_k_ln_forward = hf_attn.k_layernorm.forward
-
-            # Use a closure factory to capture the correct references
-            def _make_hooked_forward(original_forward: Any, hook: HookPoint) -> Any:
-                def hooked_forward(hidden_states: torch.Tensor) -> torch.Tensor:
-                    result = original_forward(hidden_states)
-                    return hook(result)
-
-                return hooked_forward
-
-            hf_attn.q_layernorm.forward = _make_hooked_forward(  # type: ignore[method-assign]
-                original_q_ln_forward, attn_bridge.hook_q_layernorm
-            )
-            hf_attn.k_layernorm.forward = _make_hooked_forward(  # type: ignore[method-assign]
-                original_k_ln_forward, attn_bridge.hook_k_layernorm
-            )
-
-    def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Set up rotary embedding references for StableLM component testing.
-
-        StableLM uses RoPE (Rotary Position Embeddings) with partial rotation.
-        We set the rotary_emb reference on all attention bridge instances and
-        force eager attention for numerical consistency.
-
-        Args:
-            hf_model: The HuggingFace StableLM model instance
-            bridge_model: The TransformerBridge model (if available)
-        """
-        rotary_emb = hf_model.model.rotary_emb
-
-        # Force HF model to use "eager" attention to match bridge implementation
-        # Bridge uses "eager" to support output_attentions for hook compatibility
-        # SDPA and eager are mathematically equivalent but have numerical differences
-        if hasattr(hf_model, "config") and hasattr(hf_model.config, "_attn_implementation"):
-            hf_model.config._attn_implementation = "eager"
-
-        # Also set on all attention layers
-        if hasattr(hf_model, "model") and hasattr(hf_model.model, "layers"):
-            for layer in hf_model.model.layers:
-                if hasattr(layer, "self_attn") and hasattr(layer.self_attn, "config"):
-                    layer.self_attn.config._attn_implementation = "eager"
-
-        if bridge_model is not None and hasattr(bridge_model, "blocks"):
-            for block in bridge_model.blocks:
-                if hasattr(block, "attn"):
-                    block.attn.set_rotary_emb(rotary_emb)
-
-        attn_bridge = self.get_generalized_component("blocks.0.attn")
-        attn_bridge.set_rotary_emb(rotary_emb)

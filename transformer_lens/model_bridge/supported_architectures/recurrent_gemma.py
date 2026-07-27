@@ -75,16 +75,14 @@ class RecurrentGemmaArchitectureAdapter(ArchitectureAdapter):
         """Initialize the RecurrentGemma architecture adapter."""
         super().__init__(cfg)
 
-        self.cfg.normalization_type = "RMS"
-        self.cfg.uses_rms_norm = True
-        self.cfg.final_rms = True
-        self.cfg.attn_only = False
+        self._set_rms_rotary_defaults()
+        # Hookable attention needs eager; the base prepare hooks force it through
+        # from_pretrained and onto the loaded config.
+        self.cfg.attn_implementation = "eager"
         # RG-LRU + local attention both use RoPE-style handling internally on the
         # attention layers; there is no model-level rotary module (it lives inside
         # each attention temporal_block), so we do not wire a rotary_emb component.
-        self.cfg.positional_embedding_type = "rotary"
         # Gemma-family gated MLP (gate_proj -> GELU-tanh(up) -> down).
-        self.cfg.gated_mlp = True
         # Gemma RMSNorm uses (1.0 + weight); see
         # https://github.com/huggingface/transformers/pull/29402
         self.cfg.rmsnorm_uses_offset = True
@@ -101,11 +99,10 @@ class RecurrentGemmaArchitectureAdapter(ArchitectureAdapter):
         if logits_soft_cap is not None:
             self.cfg.output_logits_soft_cap = logits_soft_cap
 
-        # Expose the per-layer temporal-block pattern for analysis tools, using the
-        # canonical `layers_block_type` name as on Nemotron-H / Granite.
-        block_types = list(getattr(cfg, "block_types", None) or [])
-        setattr(self.cfg, "block_types", block_types)
-        setattr(self.cfg, "layers_block_type", block_types)
+        # Canonical per-layer pattern (as on Nemotron-H). Read the builder's
+        # expanded layers_block_type; the raw block_types pattern is not
+        # propagated and would clobber it with [] on real boots.
+        setattr(self.cfg, "layers_block_type", self._canonical_layer_types(cfg))
 
         self.component_mapping = {
             "embed": EmbeddingBridge(name="model.embed_tokens"),
@@ -113,14 +110,3 @@ class RecurrentGemmaArchitectureAdapter(ArchitectureAdapter):
             "ln_final": RMSNormalizationBridge(name="model.final_norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head", config=self.cfg),
         }
-
-    def prepare_loading(self, model_name: str, model_kwargs: dict) -> None:
-        """Force eager attention when the HF config exposes the implementation knob."""
-        config = model_kwargs.get("config")
-        if config is not None and hasattr(config, "_attn_implementation"):
-            config._attn_implementation = "eager"
-
-    def prepare_model(self, hf_model: Any) -> None:
-        """Force eager attention on the loaded HF model when supported."""
-        if hasattr(hf_model, "config") and hasattr(hf_model.config, "_attn_implementation"):
-            hf_model.config._attn_implementation = "eager"

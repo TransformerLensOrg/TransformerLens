@@ -74,9 +74,6 @@ class BloomBlockBridge(BlockBridge):
         Returns:
             Output from the original BLOOM block
         """
-        # Debug: Check if alibi is being passed
-        # print(f"BloomBlockBridge.forward() called with kwargs keys: {list(kwargs.keys())}")
-
         if self.original_component is None:
             raise RuntimeError(
                 f"Original component not set for {self.name}. Call set_original_component() first."
@@ -135,6 +132,5 @@ class BloomBlockBridge(BlockBridge):
             kwargs["alibi"] = alibi
         # else: alibi is already present from HF, don't overwrite it!
 
-        # Call original component
         output = self.original_component(*args, **kwargs)
         return self._apply_output_hook(output, wrap_single_element=False)

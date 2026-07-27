@@ -18,7 +18,6 @@ from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapt
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
-    GatedMLPBridge,
     LinearBridge,
     PositionEmbeddingsAttentionBridge,
     RMSNormalizationBridge,
@@ -51,6 +50,9 @@ class _SmolLM3AttentionBridge(PositionEmbeddingsAttentionBridge):
     hook_pattern, hook_z) still fires identically. RoPE layers (use_rope == 1)
     are left untouched and behave exactly like the qwen2.py attention bridge.
     """
+
+    # Nulls position_embeddings on NoPE layers by design.
+    rope_optional = True
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Drop position_embeddings on NoPE layers, then run the base forward."""
@@ -112,27 +114,14 @@ class SmolLM3ArchitectureAdapter(ArchitectureAdapter):
         """Initialize the SmolLM3 architecture adapter."""
         super().__init__(cfg)
 
-        # Set config variables for weight processing.
-        self.cfg.normalization_type = "RMS"
-        self.cfg.positional_embedding_type = "rotary"
-        self.cfg.final_rms = True
-        self.cfg.gated_mlp = True
-        self.cfg.attn_only = False
+        self._set_rms_rotary_defaults()
 
         self.cfg.default_prepend_bos = False
-        self.cfg.uses_rms_norm = True
         # The bridge reimplements attention and reads output_attentions, so the
         # HF model must run in eager mode for the scores and pattern hooks to
         # match the reference. Set it on cfg so weight processing and
         # setup_component_testing agree without relying on boot()'s default.
         self.cfg.attn_implementation = "eager"
-
-        # GQA: propagate the KV-head count so _qkvo_weight_conversions splits K
-        # and V by n_key_value_heads. boot() only sets cfg.n_key_value_heads when
-        # it differs from n_heads, so set it explicitly when present to keep the
-        # standalone adapter deterministic.
-        if hasattr(cfg, "n_key_value_heads") and cfg.n_key_value_heads is not None:
-            self.cfg.n_key_value_heads = cfg.n_key_value_heads
 
         # Standard separate q_proj/k_proj/v_proj/o_proj layout, GQA-aware. No
         # biases anywhere (attention_bias=False, mlp_bias=False), so no bias
@@ -162,54 +151,9 @@ class SmolLM3ArchitectureAdapter(ArchitectureAdapter):
                         requires_attention_mask=True,
                         requires_position_embeddings=True,
                     ),
-                    "mlp": GatedMLPBridge(
-                        name="mlp",
-                        config=self.cfg,
-                        submodules={
-                            "gate": LinearBridge(name="gate_proj"),
-                            "in": LinearBridge(name="up_proj"),
-                            "out": LinearBridge(name="down_proj"),
-                        },
-                    ),
+                    "mlp": self._gated_mlp(),
                 },
             ),
             "ln_final": RMSNormalizationBridge(name="model.norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head", config=self.cfg),
         }
-
-    def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Wire rotary embeddings and force eager attention for component testing.
-
-        SmolLM3 uses RoPE on most layers (a periodic subset are NoPE, handled by
-        the attention bridge). We set the shared rotary_emb reference on every
-        attention bridge instance and pin eager attention so the bridge's
-        reimplemented forward matches the HF reference numerically. Setting
-        rotary_emb on NoPE-layer bridges is harmless: those bridges suppress
-        position embeddings before the rotary step, so the reference goes unused
-        there.
-
-        Args:
-            hf_model: The HuggingFace SmolLM3 model instance.
-            bridge_model: The TransformerBridge model, when available, so the
-                rotary reference is set on the live attention bridge instances.
-        """
-        rotary_emb = hf_model.model.rotary_emb
-
-        # Pin eager attention on both the top-level config and each layer's
-        # attention config, mirroring qwen3.py / apertus.py.
-        if hasattr(hf_model, "config") and hasattr(hf_model.config, "_attn_implementation"):
-            hf_model.config._attn_implementation = "eager"
-        if hasattr(hf_model, "model") and hasattr(hf_model.model, "layers"):
-            for layer in hf_model.model.layers:
-                if hasattr(layer, "self_attn") and hasattr(layer.self_attn, "config"):
-                    layer.self_attn.config._attn_implementation = "eager"
-
-        # Set rotary_emb on the live bridge attention instances when available.
-        if bridge_model is not None and hasattr(bridge_model, "blocks"):
-            for block in bridge_model.blocks:
-                if hasattr(block, "attn"):
-                    block.attn.set_rotary_emb(rotary_emb)
-
-        # Also set on the template for get_generalized_component() calls.
-        attn_bridge = self.get_generalized_component("blocks.0.attn")
-        attn_bridge.set_rotary_emb(rotary_emb)

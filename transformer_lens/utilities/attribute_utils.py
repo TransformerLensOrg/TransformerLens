@@ -42,5 +42,4 @@ def set_nested_attr(obj, attr_str, value):
     for attr in attrs[:-1]:
         obj = getattr(obj, attr)
 
-    # Set the nested attribute's value
     setattr(obj, attrs[-1], value)

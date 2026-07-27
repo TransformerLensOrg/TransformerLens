@@ -161,10 +161,7 @@ def test_ternary_tensor_conversion_find_context_field_failure():
     ternary = TernaryTensorConversion(fallback_conversion="missing_key", primary_conversion=None)
     # No context => won't find 'missing_key'
     output = ternary.convert(None, *{})
-    # According to your code, if nothing is found, we return None from find_context_field.
-    # handle_fallback_conversion will return that None from the function.
-    # => This might break if the calling code expects a tensor.
-    # We'll just check it's None.
+    # Missing fallback key => convert() returns None
     assert output is None, "Expected None if the fallback str wasn't found in the provided context."
 
 

@@ -50,7 +50,6 @@ class TestMainDemoPatternHooks:
                 induction_stripe, "batch head_index position -> head_index", "mean"
             )
 
-            # Store the result
             induction_score_store[hook.layer(), :] = induction_score
 
             return pattern
@@ -96,7 +95,6 @@ class TestMainDemoPatternHooks:
         # Filter for pattern hooks
         pattern_filter = lambda name: name.endswith("pattern")
 
-        # Run with hooks
         model.run_with_hooks(tokens, return_type=None, fwd_hooks=[(pattern_filter, tracking_hook)])
 
         # Verify each pattern hook was called exactly once

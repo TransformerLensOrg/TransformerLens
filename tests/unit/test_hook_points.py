@@ -128,10 +128,10 @@ def test_reshape_functionality_integration():
     # Create a test hook conversion
     class TestHookConversion(BaseTensorConversion):
         def handle_conversion(self, input_value, *full_context):
-            return input_value * 2  # Double the input
+            return input_value * 2
 
         def revert(self, input_value, *full_context):
-            return input_value + 10  # Add 10 to the output
+            return input_value + 10
 
     # Create a simple test module that uses HookPoint
     class TestModule(torch.nn.Module):
@@ -150,7 +150,7 @@ def test_reshape_functionality_integration():
 
     # Set up a hook that modifies the activation
     def test_hook(activation, hook):
-        return activation + 1  # Add 1 to each element
+        return activation + 1
 
     module.hook_point.add_hook(test_hook, dir="fwd")
 

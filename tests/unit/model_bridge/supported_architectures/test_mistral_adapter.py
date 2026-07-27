@@ -9,6 +9,7 @@ Tests cover:
 
 import pytest
 
+from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.config.transformer_bridge_config import TransformerBridgeConfig
 from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion
 from transformer_lens.conversion_utils.param_processing_conversion import (

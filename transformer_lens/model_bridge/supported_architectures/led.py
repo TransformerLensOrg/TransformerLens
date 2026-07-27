@@ -1,0 +1,61 @@
+"""LED (Longformer Encoder-Decoder) architecture adapter.
+
+AllenAI's LED (``LEDForConditionalGeneration``: led-base/large-16384): a
+BART-layout post-LN encoder-decoder whose encoder self-attention is
+Longformer's sliding-window + global attention (separate query/key/value
+and *_global projections behind an ``output`` projection). The encoder
+attention stays delegated to HF; the decoder is plain BART attention. The
+whole stack lives under the ``led.`` prefix instead of ``model.``.
+
+Encoder caveats: HF pads inputs to a multiple of config.attention_window
+inside LEDEncoder.forward, so encoder-block hooks fire on window-padded
+sequence lengths (only the final hidden state is unpadded). hook_q/k/v
+cover the sliding-window projections; the global path is hookable at
+q_global/k_global/v_global when global attention is requested.
+"""
+
+from typing import Any
+
+from transformer_lens.model_bridge.generalized_components import (
+    AttentionBridge,
+    LinearBridge,
+)
+from transformer_lens.model_bridge.generalized_components.base import (
+    CloneOutputUnderGradMixin,
+)
+from transformer_lens.model_bridge.supported_architectures.bart import (
+    BartArchitectureAdapter,
+)
+
+
+class _LEDEncoderQueryBridge(CloneOutputUnderGradMixin, LinearBridge):
+    """LEDEncoderSelfAttention scales the query projection with an in-place
+    ``/=``; clone under grad (see mixin)."""
+
+
+class LEDArchitectureAdapter(BartArchitectureAdapter):
+    """Architecture adapter for LEDForConditionalGeneration models."""
+
+    def __init__(self, cfg: Any) -> None:
+        """Initialize the LED architecture adapter."""
+        super().__init__(cfg)
+
+        self._reprefix_components("model.", "led.")
+
+    def _encoder_attention(self) -> AttentionBridge:
+        """Sliding-window + global attention; window chunking and the global
+        projections have no generic reconstruction, so the module delegates."""
+        return AttentionBridge(
+            name="self_attn",
+            config=self.cfg,
+            submodules={
+                "q": _LEDEncoderQueryBridge(name="longformer_self_attn.query"),
+                "k": LinearBridge(name="longformer_self_attn.key"),
+                "v": LinearBridge(name="longformer_self_attn.value"),
+                "q_global": LinearBridge(name="longformer_self_attn.query_global"),
+                "k_global": LinearBridge(name="longformer_self_attn.key_global"),
+                "v_global": LinearBridge(name="longformer_self_attn.value_global"),
+                "o": LinearBridge(name="output"),
+            },
+            maintain_native_attention=True,
+        )

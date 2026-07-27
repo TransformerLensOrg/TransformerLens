@@ -3,9 +3,9 @@
 Supports Zamba2ForCausalLM (e.g. Zyphra/Zamba2-1.2B, Zamba2-7B, Zamba2-7B-Instruct).
 
 Architecture overview:
-- Heterogeneous layers defined by ``config.layers_block_type`` — each element
-  is either ``"mamba"`` (pure Mamba-2 SSM) or ``"hybrid"``
-  (Mamba-2 + shared global-attention block).
+- Heterogeneous layers defined by ``config.layers_block_type`` — surfaced with
+  canonical names: ``"linear_attention"`` (pure Mamba-2 SSM, HF ``"mamba"``) or
+  ``"hybrid"`` (Mamba-2 + shared global-attention block).
 - Most layers are ``Zamba2MambaDecoderLayer``: a single pre-norm
   (``input_layernorm``) followed by a Mamba-2 mixer (``.mamba``).
 - A recurring subset are ``Zamba2HybridLayer``: each wraps a Mamba-2 decoder
@@ -104,10 +104,8 @@ class Zamba2ArchitectureAdapter(ArchitectureAdapter):
         self.cfg.is_stateful = False
 
         # Expose the per-layer type list so analysis tools can identify which
-        # layers are Mamba-only vs hybrid.
-        # Values: "mamba" (Mamba-2) | "hybrid" (Mamba-2 + attention).
-        layers_block_type = list(getattr(cfg, "layers_block_type", []))
-        setattr(self.cfg, "layers_block_type", layers_block_type)
+        # layers are Mamba-only vs hybrid: "linear_attention" | "hybrid".
+        setattr(self.cfg, "layers_block_type", self._canonical_layer_types(cfg))
 
         # Number of unique shared attention weight blocks (hybrid layers cycle
         # through num_mem_blocks independent attention weight sets).

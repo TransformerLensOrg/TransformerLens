@@ -68,7 +68,6 @@ def _apply_repetition_penalty(
     """
     logits = logits.clone()
     for batch_idx in range(logits.shape[0]):
-        # Get unique tokens that have appeared in this sequence
         unique_tokens = tokens[batch_idx].unique()
         score = logits[batch_idx, unique_tokens]
         # Divide positive logits, multiply negative logits

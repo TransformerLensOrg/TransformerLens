@@ -2,6 +2,7 @@
 
 import pytest
 
+from tests.unit.model_bridge.supported_architectures.helpers import make_bridge_cfg
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.conversion_utils.conversion_steps.rearrange_tensor_conversion import (
     RearrangeTensorConversion,
@@ -13,8 +14,8 @@ from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     BlockBridge,
     EmbeddingBridge,
-    LinearBridge,
     MoEBridge,
+    MoERouterBridge,
     NormalizationBridge,
     UnembeddingBridge,
 )
@@ -25,7 +26,8 @@ from transformer_lens.model_bridge.supported_architectures.phimoe import (
 
 @pytest.fixture(scope="class")
 def cfg() -> TransformerBridgeConfig:
-    bridge_cfg = TransformerBridgeConfig(
+    bridge_cfg = make_bridge_cfg(
+        "PhiMoEForCausalLM",
         d_model=64,
         d_head=16,
         n_layers=2,
@@ -34,7 +36,7 @@ def cfg() -> TransformerBridgeConfig:
         n_key_value_heads=2,
         d_vocab=256,
         d_mlp=32,
-        architecture="PhiMoEForCausalLM",
+        default_prepend_bos=True,
     )
     bridge_cfg.num_experts = 8
     bridge_cfg.experts_per_token = 2
@@ -111,5 +113,5 @@ class TestPhiMoEComponentMapping:
         assert isinstance(subs["ln2"], NormalizationBridge)
         assert isinstance(subs["attn"], AttentionBridge)
         assert isinstance(subs["mlp"], MoEBridge)
-        assert isinstance(subs["mlp"].submodules["gate"], LinearBridge)
+        assert isinstance(subs["mlp"].submodules["gate"], MoERouterBridge)
         assert subs["mlp"].submodules["gate"].name == "router"

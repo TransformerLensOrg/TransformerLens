@@ -13,6 +13,7 @@ LFM2. These tests pin the architecture-specific quirks:
 
 import pytest
 
+from tests.unit.model_bridge.supported_architectures.helpers import make_bridge_cfg
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.model_bridge.generalized_components import (
     EmbeddingBridge,
@@ -27,7 +28,8 @@ from transformer_lens.model_bridge.supported_architectures.recurrent_gemma impor
 
 @pytest.fixture(scope="class")
 def cfg() -> TransformerBridgeConfig:
-    bridge_cfg = TransformerBridgeConfig(
+    bridge_cfg = make_bridge_cfg(
+        "RecurrentGemmaForCausalLM",
         d_model=64,
         d_head=16,
         n_layers=6,
@@ -36,10 +38,11 @@ def cfg() -> TransformerBridgeConfig:
         n_key_value_heads=1,
         d_vocab=256,
         d_mlp=128,
-        architecture="RecurrentGemmaForCausalLM",
+        default_prepend_bos=True,
     )
-    # HF RecurrentGemmaConfig fields the adapter reads off the raw config.
-    bridge_cfg.block_types = ["recurrent", "recurrent", "attention"]
+    # Mirror the real pipeline: the builder passes through HF's expanded
+    # layers_block_type property, not the raw block_types pattern.
+    bridge_cfg.layers_block_type = ["recurrent", "recurrent", "attention"]
     bridge_cfg.rms_norm_eps = 1e-6
     bridge_cfg.logits_soft_cap = 30.0
     return bridge_cfg
@@ -70,13 +73,13 @@ class TestRecurrentGemmaAdapterConfig:
     def test_default_prepend_bos_is_false(self, adapter: RecurrentGemmaArchitectureAdapter) -> None:
         assert adapter.cfg.default_prepend_bos is False
 
-    def test_block_types_exposed_for_analysis(
+    def test_layer_types_exposed_for_analysis(
         self, adapter: RecurrentGemmaArchitectureAdapter
     ) -> None:
-        expected = ["recurrent", "recurrent", "attention"]
-        assert adapter.cfg.block_types == expected
-        # Normalized to the canonical name used by Nemotron-H / Granite tooling.
-        assert adapter.cfg.layers_block_type == expected
+        # Canonical name used by Nemotron-H / Granite tooling, preserved from
+        # the builder-provided per-layer list (not clobbered by block_types).
+        # "attention" normalizes to the canonical name; "recurrent" passes through.
+        assert adapter.cfg.layers_block_type == ["recurrent", "recurrent", "full_attention"]
 
     def test_applicable_phases_is_generation_only(
         self, adapter: RecurrentGemmaArchitectureAdapter

@@ -76,9 +76,9 @@ class TestZamba2AdapterConfig:
 
     def test_hybrid_metadata_is_propagated(self, adapter: Zamba2ArchitectureAdapter) -> None:
         assert getattr(adapter.cfg, "layers_block_type") == [
-            "mamba",
+            "linear_attention",
             "hybrid",
-            "mamba",
+            "linear_attention",
             "hybrid",
         ]
         assert getattr(adapter.cfg, "num_mem_blocks") == 2
@@ -88,7 +88,8 @@ class TestZamba2AdapterConfig:
         layer_types = ["mamba", "hybrid"]
         adapter = Zamba2ArchitectureAdapter(_make_cfg(layers_block_type=layer_types))
 
-        assert getattr(adapter.cfg, "layers_block_type") == layer_types
+        # HF "mamba" normalizes to the canonical name; "hybrid" passes through.
+        assert getattr(adapter.cfg, "layers_block_type") == ["linear_attention", "hybrid"]
         assert getattr(adapter.cfg, "layers_block_type") is not layer_types
 
     def test_mamba_dimensions_are_derived_from_hf_config(
@@ -179,3 +180,13 @@ class TestZamba2FactoryRegistration:
         )
 
         assert isinstance(adapter, Zamba2ArchitectureAdapter)
+
+
+def test_setup_component_testing_tolerates_missing_attn_template() -> None:
+    """HF model exposes rotary_emb but the bridge maps no attn submodule
+    (shared attention is fully delegated) — setup must no-op, not raise."""
+    from types import SimpleNamespace
+
+    adapter = Zamba2ArchitectureAdapter(_make_cfg())
+    hf_model = SimpleNamespace(model=SimpleNamespace(rotary_emb=object(), layers=[]))
+    adapter.setup_component_testing(hf_model)

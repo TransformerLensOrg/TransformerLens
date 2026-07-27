@@ -187,24 +187,13 @@ def download_file_from_hf(
 
 
 def clear_huggingface_cache():
-    """
-    Deletes the Hugging Face cache directory and all its contents.
+    """Delete the HuggingFace cache directory and all its contents.
 
-    This function deletes the Hugging Face cache directory, which is used to store downloaded models and their associated files. Deleting the cache directory will remove all the downloaded models and their files, so you will need to download them again if you want to use them in your code.
-
-    This function is safe to call in parallel test execution - it will handle race
-    conditions where multiple workers might try to delete the same directory.
-
-    Parameters:
-    None
-
-    Returns:
-    None
+    Safe to call under parallel test execution (handles concurrent-delete races).
     """
 
     print("Deleting Hugging Face cache directory and all its contents.")
 
-    # Check if cache directory exists
     if not os.path.exists(CACHE_DIR):
         return
 

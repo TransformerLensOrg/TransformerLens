@@ -6,6 +6,7 @@ and uses parameterless RMSNorm which cannot be folded.
 
 import pytest
 
+from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.config.transformer_bridge_config import TransformerBridgeConfig
 
 

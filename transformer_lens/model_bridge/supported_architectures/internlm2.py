@@ -11,11 +11,11 @@ from transformer_lens.conversion_utils.param_processing_conversion import (
     ParamProcessingConversion,
 )
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
+from transformer_lens.model_bridge.buffer_restore import restore_rotary_inv_freq
 from transformer_lens.model_bridge.compat import patch_dynamic_cache_v5
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
-    GatedMLPBridge,
     JointQKVPositionEmbeddingsAttentionBridge,
     LinearBridge,
     RMSNormalizationBridge,
@@ -29,6 +29,23 @@ class _InternLM2AttentionBridge(JointQKVPositionEmbeddingsAttentionBridge):
     InternLM2's decoder layer unpacks (hidden_states, attn_weights, present_key_value)
     from self.attention(), but the base bridge returns only (output, weights).
     """
+
+    def forward(self, *args: Any, **kwargs: Any) -> Any:
+        """Supply position_embeddings from this layer's own rotary module -- InternLM2
+        has per-attention rotary and never passes them down, so RoPE is otherwise skipped."""
+        if kwargs.get("position_embeddings") is None:
+            rotary = getattr(self.original_component, "rotary_emb", None)
+            hidden_states = kwargs.get("hidden_states")
+            if hidden_states is None and args and isinstance(args[0], torch.Tensor):
+                hidden_states = args[0]
+            if rotary is not None and isinstance(hidden_states, torch.Tensor):
+                position_ids = kwargs.get("position_ids")
+                if position_ids is None:
+                    position_ids = torch.arange(
+                        hidden_states.shape[1], device=hidden_states.device
+                    ).unsqueeze(0)
+                kwargs["position_embeddings"] = rotary(hidden_states, position_ids)
+        return super().forward(*args, **kwargs)
 
     def _reconstruct_attention(
         self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, **kwargs
@@ -87,19 +104,11 @@ class InternLM2ArchitectureAdapter(ArchitectureAdapter):
     def __init__(self, cfg: Any) -> None:
         super().__init__(cfg)
 
-        self.cfg.normalization_type = "RMS"
-        self.cfg.positional_embedding_type = "rotary"
-        self.cfg.final_rms = True
-        self.cfg.gated_mlp = True
-        self.cfg.attn_only = False
-        self.cfg.uses_rms_norm = True
+        self._set_rms_rotary_defaults()
 
         # Standard fold_ln silently skips attention when wqkv is fused (see class docstring).
         # preprocess_weights() handles it instead — same approach as phi3.py.
         self.supports_fold_ln = False
-
-        if hasattr(cfg, "n_key_value_heads") and cfg.n_key_value_heads is not None:
-            self.cfg.n_key_value_heads = cfg.n_key_value_heads
 
         n_kv_heads = getattr(cfg, "n_key_value_heads", None) or cfg.n_heads
 
@@ -134,15 +143,7 @@ class InternLM2ArchitectureAdapter(ArchitectureAdapter):
                             "o": LinearBridge(name="wo"),
                         },
                     ),
-                    "mlp": GatedMLPBridge(
-                        name="feed_forward",
-                        config=self.cfg,
-                        submodules={
-                            "gate": LinearBridge(name="w1"),
-                            "in": LinearBridge(name="w3"),
-                            "out": LinearBridge(name="w2"),
-                        },
-                    ),
+                    "mlp": self._gated_mlp(name="feed_forward", gate="w1", up="w3", down="w2"),
                 },
             ),
             "ln_final": RMSNormalizationBridge(name="model.norm", config=self.cfg),
@@ -207,6 +208,13 @@ class InternLM2ArchitectureAdapter(ArchitectureAdapter):
 
         attn_bridge = self.get_generalized_component("blocks.0.attn")
         attn_bridge.set_rotary_emb(rotary_emb)
+
+    def prepare_model(self, hf_model: Any) -> None:
+        """Restore per-layer rotary ``inv_freq`` lost to meta-device loading -- this
+        remote code predates HF's ``original_inv_freq`` auto-restore, so positions
+        would otherwise rotate by random values."""
+        super().prepare_model(hf_model)
+        restore_rotary_inv_freq(hf_model)
 
     def prepare_loading(self, model_name: str, model_kwargs: dict) -> None:
         """Patch transformers v5 incompatibilities before from_pretrained runs."""

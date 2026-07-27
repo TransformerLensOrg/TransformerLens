@@ -12,7 +12,6 @@ from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapt
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
-    GatedMLPBridge,
     JointQKVAttentionBridge,
     LinearBridge,
     NormalizationBridge,
@@ -69,15 +68,7 @@ class QwenArchitectureAdapter(ArchitectureAdapter):
                         },
                     ),
                     "ln2": NormalizationBridge(name="ln_2", config=self.cfg),
-                    "mlp": GatedMLPBridge(
-                        name="mlp",
-                        config=self.cfg,
-                        submodules={
-                            "gate": LinearBridge(name="w1"),
-                            "in": LinearBridge(name="w2"),
-                            "out": LinearBridge(name="c_proj"),
-                        },
-                    ),
+                    "mlp": self._gated_mlp(gate="w1", up="w2", down="c_proj"),
                 },
             ),
             "ln_final": NormalizationBridge(name="transformer.ln_f", config=self.cfg),

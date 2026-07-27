@@ -486,7 +486,6 @@ def test_remove_einsum_from_complex_attn_linear():
         + b
     )
 
-    # Check if the results are the same
     assert torch.allclose(result_new, result_old, atol=1e-4)
 
 

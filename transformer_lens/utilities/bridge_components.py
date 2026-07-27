@@ -93,7 +93,6 @@ def collect_all_components(model: TransformerBridge, components: dict) -> dict:
         Dictionary mapping component names to their respective components
     """
 
-    # Iterate through all components in component mapping
     for component in model.adapter.get_component_mapping().values():
         components[component.name] = component
         components = collect_all_submodules_of_component(model, component, components)

@@ -24,6 +24,7 @@ class NormalizationBridge(GeneralizedComponent):
         submodules: Optional[Dict[str, GeneralizedComponent]] = {},
         use_native_layernorm_autograd: bool = False,
         uses_rms_norm: Optional[bool] = None,
+        optional: bool = False,
     ):
         """Initialize the normalization bridge.
 
@@ -36,8 +37,9 @@ class NormalizationBridge(GeneralizedComponent):
                                           use custom implementation. Defaults to False.
             uses_rms_norm: Force RMSNorm vs LayerNorm; None defers to introspection
                 then ``config.uses_rms_norm``.
+            optional: If True, setup skips this subtree when absent (hybrid architectures).
         """
-        super().__init__(name, config, submodules=submodules)
+        super().__init__(name, config, submodules=submodules, optional=optional)
         self.hook_normalized = HookPoint()
         self.hook_scale = HookPoint()
         self.use_native_layernorm_autograd = use_native_layernorm_autograd
@@ -106,6 +108,11 @@ class NormalizationBridge(GeneralizedComponent):
                 ):
                     hidden_states = hidden_states + cast(torch.Tensor, self.original_component.bias)
             result = hidden_states.to(input_dtype)
+            if not uses_rms_norm and not result.is_contiguous():
+                # F.layer_norm materializes a contiguous output while these
+                # pointwise ops preserve the input's strides; downstream HF code
+                # may .view() the result (e.g. Idefics3 pixel_shuffle).
+                result = result.contiguous()
         output = self.hook_out(result)
         return output
 
@@ -123,6 +130,12 @@ class NormalizationBridge(GeneralizedComponent):
         """
         if self.original_component is None:
             raise RuntimeError(f"Original component not set for {self.name}")
+        if isinstance(self.original_component, torch.nn.Identity):
+            # Non-normalizing slot (ModernBertDecoder layer 0): fire hooks with
+            # pass-through values instead of fabricated LN stats.
+            _ = self.hook_scale(torch.ones_like(x[..., :1]))
+            _ = self.hook_normalized(x)
+            return x
         with torch.no_grad():
             # Upcast to float32 for hook precision (matches HT's RMSNorm/LayerNorm behavior)
             x_float = x.float() if x.dtype not in (torch.float32, torch.float64) else x

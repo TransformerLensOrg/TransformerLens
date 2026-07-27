@@ -136,7 +136,7 @@ class TestQwen3MoeBridgeStructure:
 
 
 # Forward-pass tests require real weights — meta-device tensor ops raise
-# NotImplementedError. Run these manually during Step 3 verification.
+# NotImplementedError. Run these manually during model verification.
 
 
 @pytest.mark.skip(reason="Requires real weights — run manually during verification")
