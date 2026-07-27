@@ -128,8 +128,16 @@ class ViTArchitectureAdapter(ArchitectureAdapter):
                     "hook_mlp_in": "mlp.in.hook_in",
                 },
                 submodules={
-                    "ln1": LayerNormBridge(name="layernorm_before"),
-                    "ln2": LayerNormBridge(name="layernorm_after"),
+                    "ln1": NormalizationBridge(
+                        name="layernorm_before",
+                        config=self.cfg,
+                        use_native_layernorm_autograd=True,
+                    ),
+                    "ln2": NormalizationBridge(
+                        name="layernorm_after",
+                        config=self.cfg,
+                        use_native_layernorm_autograd=True,
+                    ),
                     "attn": AttentionBridge(
                         name="attention",
                         config=self.cfg,
