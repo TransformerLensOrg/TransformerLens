@@ -208,6 +208,7 @@ def deit_bridge():
     # 2. Load the bare Hugging Face model manually to bypass the 
     # DeiTForImageClassificationWithTeacher dual-head that your adapter rejects.
     hf_model = DeiTModel.from_pretrained(MODEL_DEIT_DISTILLED)
+    hf_model.config.architectures = ["DeiTModel"]
     
     # 3. Pass the instantiated HF model to boot_transformers.
     # (Assuming your boot_transformers accepts an hf_model kwarg like HookedTransformer)
