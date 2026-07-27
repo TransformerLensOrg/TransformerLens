@@ -208,7 +208,7 @@ class ViTArchitectureAdapter(ArchitectureAdapter):
         else:
             prefix = ""
 
-        def patch_layers(module: nn.Module):
+        def patch_layers(module: Any):
             if type(module).__name__ in ("ViTLayer", "DeiTLayer"):
                 # 1. Inject the non-circular MLP wrapper onto every ViTLayer block.
                 if not hasattr(module, "mlp"):
@@ -242,9 +242,9 @@ class ViTArchitectureAdapter(ArchitectureAdapter):
 
                     module.forward = unwrapping_forward
                     setattr(module, "_tl_patched", True)
-
-            for child in module.children():
-                patch_layers(child)
+            if hasattr(module, "children"):
+                for child in module.children():
+                    patch_layers(child)
 
         patch_layers(hf_model)
 
