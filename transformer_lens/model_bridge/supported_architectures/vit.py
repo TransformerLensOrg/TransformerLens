@@ -188,7 +188,8 @@ class ViTArchitectureAdapter(ArchitectureAdapter):
         """Detect ViTForImageClassification vs DeiTForImageClassification vs a bare
         *Model, and add/omit the classifier head + prefix accordingly."""
         # Check for deit first since DeiT models may expose or share vit-compatible attributes
-        if hasattr(hf_model, "deit"):
+        # Check if it's a DeiT model (either via class name or distinct embedding attribute)
+        if "DeiT" in class_name or hasattr(hf_model, "distillation_token") or (hasattr(hf_model, "deit") and not hasattr(hf_model, "vit")):
             prefix = "deit."
         elif hasattr(hf_model, "vit"):
             prefix = "vit."
