@@ -233,7 +233,7 @@ class ViTArchitectureAdapter(ArchitectureAdapter):
                         return out[0] if isinstance(out, tuple) else out
                         
                     module.forward = unwrapping_forward
-                    module._tl_patched = True
+                    setattr(module, "_tl_patched", True)
                     
             for child in module.children():
                 patch_layers(child)
