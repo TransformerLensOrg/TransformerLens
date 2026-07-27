@@ -207,7 +207,7 @@ class ViTArchitectureAdapter(ArchitectureAdapter):
             prefix = ""
 
         def patch_layers(module: nn.Module):
-            if type(module).__name__ == "ViTLayer":
+            if type(module).__name__ in ("ViTLayer", "DeiTLayer"):
                 # 1. Inject the non-circular MLP wrapper onto every ViTLayer block.
                 if not hasattr(module, "mlp"):
                     module.mlp = ViTMLPWrapper(module)
