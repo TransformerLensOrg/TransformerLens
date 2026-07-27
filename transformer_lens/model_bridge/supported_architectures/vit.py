@@ -208,14 +208,23 @@ class ViTArchitectureAdapter(ArchitectureAdapter):
                 if not hasattr(module, "mlp"):
                     module.mlp = ViTMLPWrapper(module)
                 
-                # 2. Fix the tuple-chaining bug strictly for ViTLayer. 
-                # TL's internal loop expects blocks to return a Tensor, but HF ViTLayer returns a tuple.
+                # 2. Fix the tuple-chaining bug for both inputs and outputs.
                 if not getattr(module, "_tl_patched", False):
                     original_forward = module.forward
                     
                     def unwrapping_forward(*args, **kwargs):
+                        # Unpack incoming positional argument if it's a tuple from a previous block
+                        if len(args) > 0 and isinstance(args[0], tuple) and len(args[0]) > 0 and isinstance(args[0][0], torch.Tensor):
+                            args = (args[0][0], *args[1:])
+                        # Unpack incoming keyword argument if present
+                        if "hidden_states" in kwargs and isinstance(kwargs["hidden_states"], tuple):
+                            if len(kwargs["hidden_states"]) > 0 and isinstance(kwargs["hidden_states"][0], torch.Tensor):
+                                kwargs["hidden_states"] = kwargs["hidden_states"][0]
+
+                        # Run original HF forward (now guaranteed a pure Tensor input, keeping layernorm happy)
                         out = original_forward(*args, **kwargs)
-                        # If HF returned (hidden_states,), unpack it to just hidden_states
+                        
+                        # Unpack output if it's a tuple so the next block receives a pure Tensor
                         return out[0] if isinstance(out, tuple) else out
                         
                     module.forward = unwrapping_forward
