@@ -187,7 +187,7 @@ class ViTArchitectureAdapter(ArchitectureAdapter):
         if head_dim is not None:
             self.cfg.d_head = head_dim  # type: ignore[attr-defined]
 
-    def get_remote_component(self, current: nn.Module, path: str) -> "torch.nn.Module":
+    def get_remote_component(self, current: torch.nn.Module, path: str) -> "torch.nn.Module":
         """
         Intercept requests for specific component paths.
         """
