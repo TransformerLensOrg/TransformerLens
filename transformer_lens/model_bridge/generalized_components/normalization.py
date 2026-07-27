@@ -40,6 +40,7 @@ class NormalizationBridge(GeneralizedComponent):
         submodules: Optional[Dict[str, GeneralizedComponent]] = {},
         use_native_layernorm_autograd: bool = False,
         uses_rms_norm: Optional[bool] = None,
+        optional: bool = False,
     ):
         """Initialize the normalization bridge.
 
@@ -52,8 +53,9 @@ class NormalizationBridge(GeneralizedComponent):
                                           use custom implementation. Defaults to False.
             uses_rms_norm: Force RMSNorm vs LayerNorm; None defers to introspection
                 then ``config.uses_rms_norm``.
+            optional: If True, setup skips this subtree when absent (hybrid architectures).
         """
-        super().__init__(name, config, submodules=submodules)
+        super().__init__(name, config, submodules=submodules, optional=optional)
         self.hook_normalized = HookPoint()
         self.hook_scale = HookPoint()
         self.use_native_layernorm_autograd = use_native_layernorm_autograd
@@ -98,7 +100,35 @@ class NormalizationBridge(GeneralizedComponent):
         elif hasattr(self.config, "layer_norm_folding") and self.config.layer_norm_folding:
             result = self._hf_autograd_forward_with_hooks(hidden_states)
         else:
-            result = self._python_norm_forward(hidden_states)
+            uses_rms_norm = self.uses_rms_norm
+            # Upcast to float32 for normalization precision (matches HT's RMSNorm behavior)
+            input_dtype = hidden_states.dtype
+            if input_dtype not in (torch.float32, torch.float64):
+                hidden_states = hidden_states.float()
+            if not uses_rms_norm:
+                hidden_states = hidden_states - hidden_states.mean(-1, keepdim=True)
+            scale = self.hook_scale(
+                (
+                    hidden_states.pow(2).mean(-1, keepdim=True) + getattr(self.config, "eps", 1e-05)
+                ).sqrt()
+            )
+            hidden_states = self.hook_normalized(hidden_states / scale)
+            # Apply weight/bias in float32 before casting back (matches HF precision).
+            if uses_rms_norm:
+                hidden_states = hidden_states * self.weight
+            else:
+                hidden_states = hidden_states * self.weight
+                if (
+                    hasattr(self.original_component, "bias")
+                    and self.original_component.bias is not None
+                ):
+                    hidden_states = hidden_states + cast(torch.Tensor, self.original_component.bias)
+            result = hidden_states.to(input_dtype)
+            if not uses_rms_norm and not result.is_contiguous():
+                # F.layer_norm materializes a contiguous output while these
+                # pointwise ops preserve the input's strides; downstream HF code
+                # may .view() the result (e.g. Idefics3 pixel_shuffle).
+                result = result.contiguous()
         output = self.hook_out(result)
         return output
 
@@ -157,6 +187,12 @@ class NormalizationBridge(GeneralizedComponent):
         """
         if self.original_component is None:
             raise RuntimeError(f"Original component not set for {self.name}")
+        if isinstance(self.original_component, torch.nn.Identity):
+            # Non-normalizing slot (ModernBertDecoder layer 0): fire hooks with
+            # pass-through values instead of fabricated LN stats.
+            _ = self.hook_scale(torch.ones_like(x[..., :1]))
+            _ = self.hook_normalized(x)
+            return x
         if self.hook_scale.bwd_hooks or self.hook_normalized.bwd_hooks:
             warnings.warn(NATIVE_PATH_BWD_FALLBACK_WARNING)
             return self._python_norm_forward(x)
@@ -167,6 +203,7 @@ class NormalizationBridge(GeneralizedComponent):
             contextlib.nullcontext() if has_fwd_hooks else torch.no_grad()
         )
         with grad_ctx:
+
             # Upcast to float32 for hook precision (matches HT's RMSNorm/LayerNorm behavior)
             x_float = x.float() if x.dtype not in (torch.float32, torch.float64) else x
             if not self.uses_rms_norm:

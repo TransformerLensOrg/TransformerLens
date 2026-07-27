@@ -47,12 +47,17 @@ def benchmark_all_components(
             rtol=rtol,
         )
 
-        # Skip vision components for multimodal models — they require image
-        # inputs that isolated text-based component testing cannot provide.
-        # Vision components are validated separately in Phase 7.
+        # Skip modality towers for multimodal models — they require image or
+        # audio inputs that isolated text-based component testing cannot
+        # provide. Vision components are validated separately in Phase 7.
         skip_components = []
         if getattr(bridge.cfg, "is_multimodal", False):
-            skip_components = ["vision_encoder", "vision_projector"]
+            skip_components = [
+                "vision_encoder",
+                "vision_projector",
+                "audio_encoder",
+                "audio_projector",
+            ]
         if getattr(bridge.cfg, "is_audio_model", False):
             # Audio preprocessing needs waveform input; validated in Phase 8
             skip_components.extend(["audio_feature_extractor", "feat_proj", "conv_pos_embed"])

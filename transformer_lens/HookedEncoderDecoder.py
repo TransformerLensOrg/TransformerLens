@@ -112,7 +112,6 @@ class HookedEncoderDecoder(HookedRootModule):
             ]
         )
         self.decoder_final_ln = RMSNorm(self.cfg)
-        # self.lm_head = nn.Linear(self.cfg.d_model, self.cfg.d_vocab_out)
         self.unembed = Unembed(self.cfg)
 
         self.hook_embed = HookPoint()

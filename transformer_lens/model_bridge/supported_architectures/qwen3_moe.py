@@ -8,6 +8,7 @@ from transformer_lens.model_bridge.generalized_components import (
     EmbeddingBridge,
     LinearBridge,
     MoEBridge,
+    MoERouterBridge,
     PositionEmbeddingsAttentionBridge,
     RMSNormalizationBridge,
     RotaryEmbeddingBridge,
@@ -49,20 +50,10 @@ class Qwen3MoeArchitectureAdapter(ArchitectureAdapter):
         """Initialize the Qwen3MoE architecture adapter."""
         super().__init__(cfg)
 
-        # Set config variables for weight processing
-        self.cfg.normalization_type = "RMS"
-        self.cfg.positional_embedding_type = "rotary"
-        self.cfg.final_rms = True  # Qwen3-style; OLMoE uses False
-        self.cfg.gated_mlp = True
-        self.cfg.attn_only = False
-        self.cfg.uses_rms_norm = True
+        self._set_rms_rotary_defaults()
         # Force eager attention for output_attentions hook support
         self.cfg.attn_implementation = "eager"
         self.cfg.default_prepend_bos = False  # Qwen3 family convention
-
-        # GQA support
-        if hasattr(cfg, "n_key_value_heads") and cfg.n_key_value_heads is not None:
-            self.cfg.n_key_value_heads = cfg.n_key_value_heads
 
         # QKVO rearrangements; MoE expert and gate weights pass through unchanged
         self.weight_processing_conversions = {
@@ -96,13 +87,12 @@ class Qwen3MoeArchitectureAdapter(ArchitectureAdapter):
                     ),
                     # Qwen3MoeSparseMoeBlock stores experts as batched 3D tensors
                     # rather than a ModuleList. MoEBridge wraps the entire block and
-                    # delegates to HF's native forward. The gate (router) is mapped
-                    # as a submodule for hook access — same pattern as OLMoE.
+                    # delegates to HF's native forward — same pattern as OLMoE.
                     "mlp": MoEBridge(
                         name="mlp",
                         config=self.cfg,
                         submodules={
-                            "gate": LinearBridge(name="gate"),
+                            "gate": MoERouterBridge(name="gate"),
                         },
                     ),
                 },
@@ -110,35 +100,3 @@ class Qwen3MoeArchitectureAdapter(ArchitectureAdapter):
             "ln_final": RMSNormalizationBridge(name="model.norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head", config=self.cfg),
         }
-
-    def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Set up rotary embedding references for Qwen3MoE component testing.
-
-        Qwen3MoE uses RoPE (Rotary Position Embeddings). We set the rotary_emb
-        reference on all attention bridge instances for component testing.
-
-        Args:
-            hf_model: The HuggingFace Qwen3MoE model instance
-            bridge_model: The TransformerBridge model (if available)
-        """
-        # Get rotary embedding instance from the model
-        rotary_emb = hf_model.model.rotary_emb
-
-        # Force HF model to use "eager" attention to match bridge implementation
-        if hasattr(hf_model, "config") and hasattr(hf_model.config, "_attn_implementation"):
-            hf_model.config._attn_implementation = "eager"
-
-        if hasattr(hf_model, "model") and hasattr(hf_model.model, "layers"):
-            for layer in hf_model.model.layers:
-                if hasattr(layer, "self_attn") and hasattr(layer.self_attn, "config"):
-                    layer.self_attn.config._attn_implementation = "eager"
-
-        # Set rotary_emb on actual bridge instances in bridge_model if available
-        if bridge_model is not None and hasattr(bridge_model, "blocks"):
-            for block in bridge_model.blocks:
-                if hasattr(block, "attn"):
-                    block.attn.set_rotary_emb(rotary_emb)
-
-        # Also set on the template for get_generalized_component() calls
-        attn_bridge = self.get_generalized_component("blocks.0.attn")
-        attn_bridge.set_rotary_emb(rotary_emb)

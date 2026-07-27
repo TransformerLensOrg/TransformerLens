@@ -7,6 +7,7 @@ installed a hook_conversion would double-scale embed.hook_out).
 
 import pytest
 
+from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.config.transformer_bridge_config import TransformerBridgeConfig
 from transformer_lens.model_bridge.supported_architectures.gemma1 import (
     Gemma1ArchitectureAdapter,

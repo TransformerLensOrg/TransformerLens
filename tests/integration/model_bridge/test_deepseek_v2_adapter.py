@@ -110,15 +110,11 @@ class TestDeepSeekV2DenseVsMoELayers:
         assert not any("blocks.0.mlp.gate" in k for k in cache)
         assert not any("blocks.0.mlp.shared_experts" in k for k in cache)
 
-    def test_moe_layer_has_shared_expert_hooks(self, tiny_deepseek_v2_bridge):
-        # DeepseekV2Moe.forward() routes via nn.functional.linear(..., self.gate.weight)
-        # directly — not self.gate(hidden_states) — so the gate module's forward() is
-        # never called and its bridge hooks cannot fire. shared_experts IS called via
-        # __call__, so GatedMLPBridge hooks fire correctly.
+    def test_moe_layer_has_router_and_shared_expert_hooks(self, tiny_deepseek_v2_bridge):
+        # transformers 5.13 DeepseekV2Moe.forward() calls self.gate(hidden_states) and
+        # shared_experts via __call__, so both modules' bridge hooks fire.
         _, cache = tiny_deepseek_v2_bridge.run_with_cache(_tokens())
-        assert not any(
-            "blocks.1.mlp.gate" in k for k in cache
-        ), "gate hooks should not appear — gate is called via functional.linear, not forward()"
+        assert any("blocks.1.mlp.gate" in k for k in cache)
         assert any("blocks.1.mlp.shared_experts" in k for k in cache)
 
     def test_all_layers_have_mlp_hooks(self, tiny_deepseek_v2_bridge):

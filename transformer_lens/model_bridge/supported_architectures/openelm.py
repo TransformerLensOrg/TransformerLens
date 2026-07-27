@@ -46,26 +46,7 @@ class OpenElmArchitectureAdapter(ArchitectureAdapter):
         """Initialize the OpenELM architecture adapter."""
         super().__init__(cfg)
 
-        # Set config variables for weight processing
-        self.cfg.normalization_type = "RMS"
-        self.cfg.positional_embedding_type = "rotary"
-        self.cfg.final_rms = True
-        self.cfg.gated_mlp = True
-        self.cfg.attn_only = False
-        self.cfg.uses_rms_norm = True
-
-        self.default_config = {
-            "d_model": cfg.d_model,
-            "d_head": getattr(cfg, "head_dim", cfg.d_model // cfg.n_heads),
-            "n_heads": cfg.n_heads,
-            "n_layers": cfg.n_layers,
-            "d_vocab": cfg.d_vocab,
-        }
-
-        # GQA support
-        if hasattr(cfg, "n_key_value_heads") and cfg.n_key_value_heads is not None:
-            self.default_config["n_key_value_heads"] = cfg.n_key_value_heads
-            self.cfg.n_key_value_heads = cfg.n_key_value_heads
+        self._set_rms_rotary_defaults()
 
         # OpenELM doesn't ship its own tokenizer — uses LLaMA tokenizer.
         # Use NousResearch mirror (ungated) to avoid access restrictions.
@@ -263,12 +244,3 @@ class OpenElmArchitectureAdapter(ArchitectureAdapter):
             lm_head = torch.nn.Linear(embed.embedding_dim, embed.num_embeddings, bias=False)
             lm_head.weight = embed.weight
             hf_model.lm_head = lm_head
-
-    def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Set up references for OpenELM component testing.
-
-        Args:
-            hf_model: The HuggingFace OpenELM model instance
-            bridge_model: The TransformerBridge model (if available)
-        """
-        pass

@@ -26,16 +26,23 @@ from .api import (
 # Descriptions of common architectures (both supported and unsupported)
 ARCHITECTURE_DESCRIPTIONS: dict[str, str] = {
     # Supported architectures
+    "AfmoeForCausalLM": "Arcee AI's Trinity MoE with sandwich norms, gated attention, and token-choice routing",
     "ArceeForCausalLM": "Arcee AI's AFM, a Llama-style decoder with an ungated squared-ReLU (ReLU^2) MLP",
     "GPT2LMHeadModel": "OpenAI's GPT-2 decoder-only transformer for causal language modeling",
     "GPTNeoForCausalLM": "EleutherAI's GPT-Neo, an open-source GPT-3-like model",
     "GPTNeoXForCausalLM": "EleutherAI's GPT-NeoX architecture used in Pythia models",
     "GPTJForCausalLM": "EleutherAI's GPT-J 6B parameter model",
     "LlamaForCausalLM": "Meta's LLaMA architecture, basis for many open models",
+    "Llama4ForCausalLM": "Meta's Llama 4 text decoder with interleaved MoE and NoPE layers",
+    "Llama4ForConditionalGeneration": "Meta's Llama 4 Scout/Maverick vision-language model",
+    "LongT5ForConditionalGeneration": "Google's LongT5 with local or transient-global encoder attention",
+    "LEDForConditionalGeneration": "AllenAI's Longformer Encoder-Decoder for long documents",
+    "Florence2ForConditionalGeneration": "Microsoft's Florence-2 vision-language model with DaViT backbone and BART text stack",
     "Lfm2ForCausalLM": "LiquidAI's LFM2 hybrid convolution/attention dense model",
     "LLaDAModelLM": "GSAI's bidirectional masked-diffusion language model (single-forward support)",
     "Lfm2MoeForCausalLM": "LiquidAI's LFM2 hybrid convolution/attention Mixture of Experts model",
     "MistralForCausalLM": "Mistral AI's efficient 7B parameter model with sliding window attention",
+    "Mistral3ForConditionalGeneration": "Mistral AI's Mistral-Small VLM (Pixtral tower + Mistral decoder)",
     "MixtralForCausalLM": "Mistral AI's Mixture of Experts model",
     "GemmaForCausalLM": "Google's Gemma lightweight open model family",
     "Gemma2ForCausalLM": "Google's Gemma 2 with improved architecture",
@@ -43,13 +50,20 @@ ARCHITECTURE_DESCRIPTIONS: dict[str, str] = {
     "Gemma3nForConditionalGeneration": "Google's Gemma 3n efficient tri-modal model (text-only support)",
     "Gemma4ForConditionalGeneration": "Google's Gemma 4 multimodal model family (text-only support)",
     "Gemma4UnifiedForConditionalGeneration": "Google's Gemma 4 unified encoder-free multimodal model (text-only support)",
+    "Gemma4ForCausalLM": "Google's Gemma 4 bare text decoder",
     "DeepseekV4ForCausalLM": "DeepSeek V4 with mHC residual streams and hybrid compressed attention",
     "GlmMoeDsaForCausalLM": "Z.ai's GLM-5 MoE model with DeepSeek Sparse Attention",
     "Glm4MoeForCausalLM": "Z.ai's GLM-4.5/4.6/4.7 sparse Mixture-of-Experts causal LM",
+    "Glm4MoeLiteForCausalLM": "Z.ai's GLM-4.7-Flash MoE with DeepSeek-style latent attention",
     "Qwen2ForCausalLM": "Alibaba's Qwen2 multilingual model",
     "Qwen2MoeForCausalLM": "Alibaba's Qwen2 sparse Mixture-of-Experts model with shared experts",
+    "Qwen2_5_VLForConditionalGeneration": "Alibaba's Qwen2.5-VL vision-language model (windowed ViT + mRoPE decoder)",
+    "Qwen3VLForConditionalGeneration": "Alibaba's Qwen3-VL with DeepStack multi-level visual injection",
+    "Qwen3VLMoeForConditionalGeneration": "Alibaba's Qwen3-VL-MoE (DeepStack + sparse expert routing)",
     "Qwen3ForCausalLM": "Alibaba's Qwen3 latest generation",
     "Qwen3_5ForConditionalGeneration": "Alibaba's Qwen3.5 vision-language model",
+    "Qwen3_5MoeForCausalLM": "Alibaba's Qwen3.5-MoE hybrid linear-attention sparse-MoE text model",
+    "Qwen3_5MoeForConditionalGeneration": "Alibaba's Qwen3.5-MoE vision-language model",
     "BloomForCausalLM": "BigScience's BLOOM multilingual model",
     "OPTForCausalLM": "Meta's Open Pre-trained Transformer",
     "PhiForCausalLM": "Microsoft's Phi small language model",
@@ -62,14 +76,57 @@ ARCHITECTURE_DESCRIPTIONS: dict[str, str] = {
     "Olmo2ForCausalLM": "Allen AI's OLMo 2 with improved training",
     "Olmo3ForCausalLM": "Allen AI's OLMo 3 latest generation",
     "OlmoeForCausalLM": "Allen AI's OLMoE Mixture of Experts model",
+    "OlmoHybridForCausalLM": "Allen AI's OLMo Hybrid (GatedDeltaNet linear attention + full attention)",
     "StableLmForCausalLM": "Stability AI's StableLM model",
     "SmolLM3ForCausalLM": "Hugging Face's SmolLM3 compact open model with NoPE layers",
     "T5ForConditionalGeneration": "Google's T5 encoder-decoder model (partial support)",
+    "T5WithLMHeadModel": "Legacy T5 class name on old google-t5 checkpoints (t5-3b, t5-11b)",
     "T5GemmaForConditionalGeneration": "Google's T5Gemma encoder-decoder model with Gemma-style RoPE, GQA, and gated MLP",
-    "T5Gemma2ForConditionalGeneration": "Google's T5Gemma2 multimodal encoder-decoder model with merged self+cross decoder attention, QK-norm, and dual RoPE (text-only bridge support)",
+    "BambaForCausalLM": "IBM's Bamba hybrid Mamba-2 + attention decoder",
     "BartForConditionalGeneration": "Facebook's BART encoder-decoder model",
+    "M2M100ForConditionalGeneration": "Meta's M2M100 / NLLB-200 multilingual translation encoder-decoder",
+    "MarianMTModel": "Helsinki-NLP's Marian opus-mt translation encoder-decoder",
+    "OpenAIGPTLMHeadModel": "The original OpenAI GPT-1 decoder (post-norm, no final LN)",
+    "SeedOssForCausalLM": "ByteDance's Seed-OSS Llama-layout decoder with config-gated biases",
+    "NemotronForCausalLM": "NVIDIA's dense Nemotron/Minitron decoder (LayerNorm1P, squared-ReLU MLP)",
+    "BloomModel": "Headless Bloom checkpoints (loads as BloomForCausalLM with tied embeddings)",
+    "BertLMHeadModel": "BERT with a causal LM head (decoder-style BERT; same module tree as BertForMaskedLM)",
+    "Idefics3ForConditionalGeneration": "HuggingFace's Idefics3/SmolVLM vision-language model (granite-docling)",
+    "Qwen2AudioForConditionalGeneration": "Alibaba's Qwen2-Audio (Whisper-style encoder + Qwen2 decoder)",
+    "Ernie4_5ForCausalLM": "Baidu's dense ERNIE 4.5 Llama-layout decoder",
+    "Ernie4_5_MoeForCausalLM": "Baidu's ERNIE 4.5 MoE (shared experts, dense prefix, interleaved RoPE)",
+    "GlmForCausalLM": "Z.ai's dense GLM-4 decoder (interleaved partial RoPE, joint gate_up MLP)",
+    "Glm4ForCausalLM": "Z.ai's GLM-4-0414 / GLM-Z1 decoder with sandwich norms",
+    "Glm4vForConditionalGeneration": "Z.ai's GLM-4V / GLM-4.1V reasoning vision-language model",
+    "GlmAsrForConditionalGeneration": "Z.ai's GLM-ASR speech recognizer (audio encoder + Llama decoder)",
+    "Starcoder2ForCausalLM": "BigCode's StarCoder2 code model (LayerNorm, biased projections)",
+    "BitNetForCausalLM": "Microsoft's BitNet b1.58 (llama layout with attn/ffn sub-layer norms)",
+    "Exaone4ForCausalLM": "LG AI Research's EXAONE 4.0 (post-norms in residual, per-head QK-norm, hybrid sliding attention)",
+    "BlenderbotForConditionalGeneration": "Meta's Blenderbot dialogue encoder-decoder (asymmetric stacks)",
+    "MiniMaxM2ForCausalLM": "MiniMax's M2 sparse-MoE decoder with sigmoid routing",
+    "ExaoneForCausalLM": "LG AI Research's EXAONE-3.x Korean-English decoder (remote code)",
+    "FalconMambaForCausalLM": "TII's FalconMamba pure-SSM decoder (Mamba-1 with B/C/dt RMS)",
+    "T5Gemma2ForConditionalGeneration": "Google's T5Gemma2 multimodal encoder-decoder model with merged self+cross decoder attention, QK-norm, and dual RoPE (text-only bridge support)",
     "HrmTextForCausalLM": "Sapient Intelligence's HRM-Text hierarchical two-timescale recurrent model",
     "BD3LM": "Kuleshov Group's Block Diffusion Language Model (ICLR 2025) for masked text generation",
+    "DreamModel": "HKU-NLP's Dream 7B discrete-diffusion LM (Qwen2.5-based, bidirectional; also Apple DiffuCoder)",
+    "AudioFlamingo3ForConditionalGeneration": "NVIDIA Audio Flamingo 3 audio LALM (Whisper tower + Qwen2.5 LM)",
+    "Emu3ForConditionalGeneration": "BAAI Emu3 unified next-token text+image generation (VQ tokens in a shared vocab)",
+    "FlexOlmoForCausalLM": "AllenAI FlexOlmo federated MoE (merged OLMo-2 experts, inference-time data opt-out)",
+    "MusicFlamingoForConditionalGeneration": "NVIDIA Music Flamingo / Audio Flamingo Next (AF3 + temporal rotary conditioning)",
+    "GiddForDiffusionLM": "GIDD uniform-noise diffusion LM with self-correction (only open non-masked dLM at scale)",
+    "HyenaDNAForCausalLM": "HazyResearch HyenaDNA genomic LM (attention-free Hyena long-conv operator)",
+    "LLaDA2MoeModelLM": "Ant Group LLaDA 2.x masked block-diffusion LM on a DeepSeek-V3-style MoE decoder",
+    "JetMoeForCausalLM": "MIT-IBM JetMoE, the only open at-scale Mixture-of-Attention-heads model",
+    "LagunaForCausalLM": "poolside Laguna coding MoE (heterogeneous per-layer head counts, softplus attention gating)",
+    "ModernBertDecoderForCausalLM": "JHU Ettin decoders (ModernBERT recipe run causally; paired encoder/decoder science suite)",
+    "Jais2ForCausalLM": "G42/Inception Jais 2 Arabic-English family (Nemotron-shaped LN decoder)",
+    "Ministral3ForCausalLM": "Mistral AI Ministral 3 edge models (pure Mistral shape)",
+    "VaultGemmaForCausalLM": "Google VaultGemma, the only fully DP-SGD-pretrained open LLM (Gemma 2 minus post-norms)",
+    "YoutuForCausalLM": "Tencent Youtu-LLM: laptop-scale dense Multi-head Latent Attention (DeepSeek-V2 MLA, all layers dense)",
+    "SwitchTransformersForConditionalGeneration": "Google Switch Transformer, the foundational top-1 capacity-routed MoE (encoder-decoder)",
+    "RwkvForCausalLM": "BlinkDL RWKV-4 WKV linear-attention RNN (Pythia-parallel Pile suite)",
+    "NanoChatForCausalLM": "Karpathy's nanochat education-stack decoder (weightless norms, relu^2 MLP, capped logits)",
     "HunYuanDenseV1ForCausalLM": "Tencent's open source decoder models",
     "ViTModel": "Vision Transformer (bare encoder, no classification head)",
     "ViTForImageClassification": "Vision Transformer with an image classification head",
@@ -197,6 +254,7 @@ def generate_report(output_path: Path | None = None) -> str:
     lines.append(f"| Supported Models | {total_supported:,} |")
     lines.append(f"| Supported Architectures | {len(architectures)} |")
     lines.append(f"| Verified Models | {stats['total_verified']} |")
+    lines.append(f"| Provisional Models | {stats.get('total_provisional', 0)} |")
     lines.append(f"| Unsupported Architectures | {len(gaps)} |")
     lines.append(f"| Models in Unsupported Architectures | {total_unsupported:,} |")
     lines.append(f"| **Total Potential Models** | **{total_all:,}** |")
@@ -220,10 +278,14 @@ def generate_report(output_path: Path | None = None) -> str:
         lines.append(f"**{len(model_list)} models:**")
         lines.append("")
         for model_id in model_list:
-            # Check if verified
             model_entry = next((m for m in models if m.model_id == model_id), None)
-            verified_badge = " ✓" if model_entry and model_entry.status == 1 else ""
-            lines.append(f"- `{model_id}`{verified_badge}")
+            if model_entry and model_entry.status == 1:
+                badge = " ✓"
+            elif model_entry and model_entry.status == 4:
+                badge = " ⚠"
+            else:
+                badge = ""
+            lines.append(f"- `{model_id}`{badge}")
         lines.append("")
 
     # Unsupported architectures section
@@ -251,6 +313,9 @@ def generate_report(output_path: Path | None = None) -> str:
     )
     lines.append("")
     lines.append("✓ = Verified to work with TransformerLens")
+    lines.append(
+        "⚠ = Provisional (structural check only; not numerically verified against HuggingFace)"
+    )
 
     report = "\n".join(lines)
 

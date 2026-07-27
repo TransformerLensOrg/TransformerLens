@@ -19,7 +19,6 @@ FULL_MODEL_TESTING_LIST = [
     "pythia-70m",
 ]
 
-# Use full model list if HF_TOKEN is available, otherwise use public models only
 MODEL_TESTING_LIST = (
     FULL_MODEL_TESTING_LIST if os.environ.get("HF_TOKEN", "") else PUBLIC_MODEL_TESTING_LIST
 )

@@ -142,15 +142,12 @@ class TestCollectAliasesFromModule:
 
     def test_collect_from_module_with_children(self):
         """Test collecting aliases recursively from child modules."""
-        # Create parent module
         parent_module = Mock()
         parent_module.hook_aliases = {"parent_alias": "parent_target"}
 
-        # Create child module
         child_module = Mock()
         child_module.hook_aliases = {"child_alias": "child_target", "": "hook_out"}
 
-        # Set up named_children
         parent_module.named_children.return_value = [("child", child_module)]
         child_module.named_children.return_value = []  # No further children
 

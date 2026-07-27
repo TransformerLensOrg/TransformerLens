@@ -59,13 +59,17 @@ class ModelEntry:
     Attributes:
         architecture_id: The architecture type (e.g., "GPT2LMHeadModel")
         model_id: The HuggingFace model ID (e.g., "gpt2", "openai-community/gpt2")
-        status: Verification status (0=unverified, 1=verified, 2=skipped, 3=failed)
+        status: Verification status (0=unverified, 1=verified, 2=skipped, 3=failed,
+            4=provisional — structural-only pass via --no-hf-reference, not counted as verified)
         verified_date: Date when verification was performed
         metadata: Optional metadata from HuggingFace
         note: Optional note (skip/fail reason, e.g. "Estimated 48 GB exceeds 16 GB limit")
         phase1_score: Benchmark Phase 1 score (HF vs Bridge), 0-100 or None
         phase2_score: Benchmark Phase 2 score (Bridge vs HT unprocessed), 0-100 or None
         phase3_score: Benchmark Phase 3 score (Bridge vs HT processed), 0-100 or None
+        phase4_score: Benchmark Phase 4 score (generation / text quality), 0-100 or None
+        phase7_score: Benchmark Phase 7 score (multimodal), 0-100 or None
+        phase8_score: Benchmark Phase 8 score (audio), 0-100 or None
     """
 
     architecture_id: str
@@ -77,6 +81,9 @@ class ModelEntry:
     phase1_score: Optional[float] = None
     phase2_score: Optional[float] = None
     phase3_score: Optional[float] = None
+    phase4_score: Optional[float] = None
+    phase7_score: Optional[float] = None
+    phase8_score: Optional[float] = None
 
     def to_dict(self) -> dict:
         """Convert to a JSON-serializable dictionary."""
@@ -90,6 +97,9 @@ class ModelEntry:
             "phase1_score": self.phase1_score,
             "phase2_score": self.phase2_score,
             "phase3_score": self.phase3_score,
+            "phase4_score": self.phase4_score,
+            "phase7_score": self.phase7_score,
+            "phase8_score": self.phase8_score,
         }
 
     @classmethod
@@ -118,6 +128,9 @@ class ModelEntry:
             phase1_score=data.get("phase1_score"),
             phase2_score=data.get("phase2_score"),
             phase3_score=data.get("phase3_score"),
+            phase4_score=data.get("phase4_score"),
+            phase7_score=data.get("phase7_score"),
+            phase8_score=data.get("phase8_score"),
         )
 
 
@@ -219,6 +232,8 @@ class SupportedModelsReport:
     scan_info: Optional[ScanInfo] = None
     total_architectures: int = 0
     total_verified: int = 0
+    # Structural-only (--no-hf-reference) passes; not counted as verified.
+    total_provisional: int = 0
 
     def to_dict(self) -> dict:
         """Convert to a JSON-serializable dictionary."""
@@ -228,6 +243,7 @@ class SupportedModelsReport:
             "total_architectures": self.total_architectures,
             "total_models": self.total_models,
             "total_verified": self.total_verified,
+            "total_provisional": self.total_provisional,
             "models": [m.to_dict() for m in self.models],
         }
         return d
@@ -244,6 +260,7 @@ class SupportedModelsReport:
             total_architectures=data.get("total_architectures", 0),
             total_models=data.get("total_models", len(data.get("models", []))),
             total_verified=data.get("total_verified", 0),
+            total_provisional=data.get("total_provisional", 0),
             models=[ModelEntry.from_dict(m) for m in data["models"]],
         )
 

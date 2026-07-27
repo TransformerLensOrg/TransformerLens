@@ -229,7 +229,6 @@ def test_cross_attention_layer(our_model, huggingface_model, hello_world_tokens,
 
     hf_layer = huggingface_model.decoder.block[0].layer[1]
     our_layer = our_model.decoder[0]
-    # assert ln weights are the same
     assert_close(hf_layer.layer_norm.weight, our_layer.ln2.w)
 
     our_cross_attn_out = (

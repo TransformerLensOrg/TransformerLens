@@ -57,7 +57,6 @@ def resolve_alias(
                     raise AttributeError(
                         f"'{type(target_object).__name__}' object has no attribute '{target_name}'"
                     )
-                # Return the target hook
                 return getattr(target_object, target_name)
 
         # if the target_name is a list, we check all elements

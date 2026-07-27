@@ -227,6 +227,9 @@ class MLAAttentionBridge(PositionEmbeddingHooksMixin, AttentionBridge):
             if isinstance(position_embeddings, torch.Tensor) and position_embeddings.is_complex():
                 # V2-style: complex exponential freqs_cis
                 q_rot, k_rot = _apply_rotary_complex(q_rot, k_rot, position_embeddings)
+            elif self._rope_interleave:
+                cos, sin = position_embeddings
+                q_rot, k_rot = _apply_rotary_pos_emb_interleave(q_rot, k_rot, cos, sin)
             else:
                 cos, sin = position_embeddings
                 if self._rope_interleave:
@@ -239,6 +242,9 @@ class MLAAttentionBridge(PositionEmbeddingHooksMixin, AttentionBridge):
             emb = self._rotary_emb(hidden_states, position_ids)
             if isinstance(emb, torch.Tensor) and emb.is_complex():
                 q_rot, k_rot = _apply_rotary_complex(q_rot, k_rot, emb)
+            elif self._rope_interleave:
+                cos, sin = emb
+                q_rot, k_rot = _apply_rotary_pos_emb_interleave(q_rot, k_rot, cos, sin)
             else:
                 cos, sin = emb
                 if self._rope_interleave:

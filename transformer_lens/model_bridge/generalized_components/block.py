@@ -79,9 +79,9 @@ class BlockBridge(GeneralizedComponent):
                 auto_overrides["hook_mlp_out"] = "ln2_post.hook_out"
         merged_overrides = {**auto_overrides, **(hook_alias_overrides or {})}
 
-        # Guard against the C15 bug class: sequential transformer block (attn +
-        # mlp) with no ln2 would silently point hook_resid_mid at the wrong
-        # tensor. Use ParallelBlockBridge for parallel-residual architectures.
+        # Guard the sequential-block case: attn + mlp with no ln2 would silently
+        # point hook_resid_mid at the wrong tensor. Use ParallelBlockBridge for
+        # parallel-residual architectures.
         # Skip the check on generic-container / attn-only uses (no mlp).
         has_attn_like = submodules is not None and any(
             k in submodules for k in _VARIANT_SUBMODULE_SET

@@ -609,10 +609,7 @@ def test_get_generalized_component_deeply_nested_with_parameters(
 ) -> None:
     """Test getting deeply nested components with parameter suffixes."""
     # Test deeply nested components with parameter suffixes
-    # Note: The parameter suffixes (.weight, .bias) are stripped by _preprocess_parameter_path
-    # so these should return the same components as without the suffixes
-    # However, the _preprocess_parameter_path method only handles TransformerLens-specific parameter names
-    # like W_Q, b_Q, etc., not generic PyTorch parameter names like .weight, .bias
+    # _preprocess_parameter_path only strips TransformerLens suffixes (W_Q, b_Q), not generic .weight/.bias
 
     # Test with TransformerLens parameter names (these should work)
     q_component = adapter.get_generalized_component("blocks.0.attn.W_Q")

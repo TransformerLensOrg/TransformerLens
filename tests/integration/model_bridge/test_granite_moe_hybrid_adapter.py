@@ -10,7 +10,7 @@ Uses a tiny programmatic config with real (random) CPU weights — no network
 access or weight downloads (mirrors tests/unit/model_bridge/test_gpt_oss_moe.py
 and test_qwen3_moe_bridge.py for the from_config + direct-constructor pattern).
 
-Coverage focus (Phase 0, SSM mixer access normalization):
+Coverage focus (SSM mixer access normalization):
 - The Mamba-2 mixer is reachable at the canonical ``.mixer`` slot on SSM layers.
 - compute_effective_attention runs on a Granite SSM layer and reconstructs the
   SSM output (proves dims are sourced from the wrapped HF mixer, not the shared
@@ -39,6 +39,7 @@ from transformer_lens.model_bridge.supported_architectures.granite_moe_hybrid im
 )
 
 LAYER_TYPES = ["mamba", "attention", "mamba"]
+CANONICAL_LAYER_TYPES = ["linear_attention", "full_attention", "linear_attention"]
 MAMBA_LAYERS = [0, 2]
 ATTN_LAYER = 1
 
@@ -109,7 +110,7 @@ class TestGraniteMoeHybridStructure:
         assert len(bridge.blocks) == len(LAYER_TYPES)
 
     def test_layers_block_type_surfaced(self, bridge: TransformerBridge) -> None:
-        assert getattr(bridge.cfg, "layers_block_type", None) == LAYER_TYPES
+        assert getattr(bridge.cfg, "layers_block_type", None) == CANONICAL_LAYER_TYPES
 
     def test_mamba_layers_expose_ssm2_mixer(self, bridge: TransformerBridge) -> None:
         for i in MAMBA_LAYERS:
@@ -351,7 +352,7 @@ def _available_devices():
 
 
 class TestGraniteMoeHybridProcessedParity:
-    """Phase-3 parity guard: processed (compat-mode) bridge vs raw HF via log_softmax.
+    """Processed (compat-mode) bridge vs raw-HF parity guard via log_softmax.
 
     The forward test only checks UNPROCESSED delegation (==0.0); this pins the PROCESSED
     path so a compat-mode regression is caught in CI without the full-size checkpoint.
@@ -376,7 +377,7 @@ class TestGraniteMoeHybridProcessedParity:
 
 
 class TestGraniteMoeHybridEagerScanIntervention:
-    """Phase 4 eager-scan intervention on Granite's Mamba-2 mixer layers (hybrid):
+    """Eager-scan intervention on Granite's Mamba-2 mixer layers (hybrid):
     hooks fire on the Mamba layers only, interventions propagate to logits, and the
     default path is untouched. Eager scan needs use_cache=False (prefill)."""
 

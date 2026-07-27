@@ -68,10 +68,8 @@ class BloomMLPBridge(MLPBridge):
         # The original BLOOM block passes it, so we just pass everything through
         # No need to validate since the original component will handle it
 
-        # Call the original BLOOM MLP component with all arguments
         output = self.original_component(*args, **kwargs)
 
-        # Apply hook_out
         output = self.hook_out(output)
 
         return output

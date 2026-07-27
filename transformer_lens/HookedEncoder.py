@@ -300,7 +300,6 @@ class HookedEncoder(HookedRootModule):
 
             # If input was a list of strings, split predictions into a list
             if " " in predictions:
-                # Split along space
                 predictions = predictions.split(" ")
                 predictions = [f"Prediction {i}: {p}" for i, p in enumerate(predictions)]
             return predictions

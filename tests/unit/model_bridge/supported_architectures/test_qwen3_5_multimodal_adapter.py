@@ -9,6 +9,7 @@ from types import SimpleNamespace
 
 import torch
 
+from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.config.transformer_bridge_config import TransformerBridgeConfig
 from transformer_lens.model_bridge.generalized_components import (
     LinearBridge,

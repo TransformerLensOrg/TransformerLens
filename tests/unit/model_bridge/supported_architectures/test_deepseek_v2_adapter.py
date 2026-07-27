@@ -217,9 +217,10 @@ class TestDeepSeekV2AdapterMoE:
     """Tests the MoE submodule mapping and its dense-layer fallback."""
 
     def test_moe_submodule_keys(self, adapter: DeepSeekV2ArchitectureAdapter) -> None:
-        """The routing gate is deliberately not bridged — DeepseekV2Moe.forward bypasses it."""
+        """Gate and shared experts are bridged; DeepseekV2Moe.forward calls self.gate,
+        so its routing logits are hookable."""
         mlp = adapter.component_mapping["blocks"].submodules["mlp"]
-        assert set(mlp.submodules.keys()) == {"shared_experts"}
+        assert set(mlp.submodules.keys()) == {"gate", "shared_experts"}
 
     def test_shared_experts_is_optional(self, adapter: DeepSeekV2ArchitectureAdapter) -> None:
         """Dense layers (idx < first_k_dense_replace) have no shared_experts."""

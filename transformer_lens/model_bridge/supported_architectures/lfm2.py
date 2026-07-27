@@ -97,7 +97,6 @@ class Lfm2ArchitectureAdapter(ArchitectureAdapter):
 
     def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
         """Set up model-specific references for component testing."""
-        # Get rotary embedding instance from the HF model
         rotary_emb = hf_model.model.rotary_emb
 
         # Set attention implementation on HF model to eager (vs sdpa default)

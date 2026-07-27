@@ -47,7 +47,6 @@ class UnembeddingBridge(GeneralizedComponent):
             device = original_component.weight.device
             dtype = original_component.weight.dtype
 
-            # Create a zero bias parameter
             original_component.bias = torch.nn.Parameter(
                 torch.zeros(vocab_size, device=device, dtype=dtype)
             )
@@ -83,7 +82,6 @@ class UnembeddingBridge(GeneralizedComponent):
         Returns:
             Unembedded output (logits)
         """
-        # Otherwise delegate to original component
         if self.original_component is None:
             raise RuntimeError(
                 f"Original component not set for {self.name}. Call set_original_component() first."
