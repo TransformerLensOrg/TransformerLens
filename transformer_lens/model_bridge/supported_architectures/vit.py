@@ -188,14 +188,6 @@ class ViTArchitectureAdapter(ArchitectureAdapter):
         """Detect ViTForImageClassification vs DeiTForImageClassification vs a bare
         *Model, and add/omit the classifier head + prefix accordingly."""
         class_name = hf_model.__class__.__name__
-        # Check for deit first since DeiT models may expose or share vit-compatible attributes
-        # Check if it's a DeiT model (either via class name or distinct embedding attribute)
-        if "DeiT" in class_name or hasattr(hf_model, "distillation_token") or (hasattr(hf_model, "deit") and not hasattr(hf_model, "vit")):
-            prefix = "deit."
-        elif hasattr(hf_model, "vit"):
-            prefix = "vit."
-        else:
-            prefix = ""  # bare ViTModel / DeiTModel, loaded directly
 
         if hasattr(hf_model, "cls_classifier") and hasattr(hf_model, "distillation_classifier"):
             raise NotImplementedError(
@@ -204,6 +196,15 @@ class ViTArchitectureAdapter(ArchitectureAdapter):
                 "adapter yet — see vision_classifier_head.py's docstring for why, "
                 "and what to check before adding it."
             )
+
+        # Check for the wrapper module created by HF's ForImageClassification classes.
+        # Bare ViTModel / DeiTModel have components at the root, so prefix must be "".
+        if hasattr(hf_model, "deit") and not hasattr(hf_model, "vit"):
+            prefix = "deit."
+        elif hasattr(hf_model, "vit"):
+            prefix = "vit."
+        else:
+            prefix = ""
 
         def patch_layers(module: nn.Module):
             if type(module).__name__ == "ViTLayer":
