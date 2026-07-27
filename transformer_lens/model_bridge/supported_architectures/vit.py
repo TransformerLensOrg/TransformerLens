@@ -17,9 +17,10 @@ added after — same shape as Llama/GPT2), unlike BERT's post-LN. That's why
 `supports_fold_ln = True` here where BertArchitectureAdapter sets it False.
 """
 
+from typing import Any, Dict
+
 import torch
 import torch.nn as nn
-from typing import Any, Dict
 
 from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion
 from transformer_lens.conversion_utils.param_processing_conversion import (

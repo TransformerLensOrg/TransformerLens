@@ -35,7 +35,9 @@ from typing import Any, Optional
 import torch
 from torch import Tensor
 
-from transformer_lens.model_bridge.generalized_components.base import GeneralizedComponent
+from transformer_lens.model_bridge.generalized_components.base import (
+    GeneralizedComponent,
+)
 
 
 class VisionEmbeddingsBridge(GeneralizedComponent):

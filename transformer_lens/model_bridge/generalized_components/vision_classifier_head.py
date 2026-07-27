@@ -18,7 +18,9 @@ from typing import Any
 
 from torch import Tensor
 
-from transformer_lens.model_bridge.generalized_components.base import GeneralizedComponent
+from transformer_lens.model_bridge.generalized_components.base import (
+    GeneralizedComponent,
+)
 
 
 class VisionClassifierHeadBridge(GeneralizedComponent):
