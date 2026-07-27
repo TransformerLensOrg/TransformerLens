@@ -18,6 +18,7 @@ import torch.nn.functional as F
 
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.utilities import TypedModuleList
+from transformer_lens.utilities.activation_functions import apply_softcap
 
 # gelu_new = the tanh-approximation HF GPT-2 / HT use; F.gelu(approximate="tanh")
 # is the exact same formula.
@@ -269,9 +270,7 @@ class NativeAttention(nn.Module):
 
         scores = torch.matmul(q, k.transpose(-2, -1)) / self.scale
         # Gemma2 soft-cap before the causal mask so masked positions stay -inf.
-        if self.attn_scores_soft_cap > 0:
-            c = self.attn_scores_soft_cap
-            scores = c * torch.tanh(scores / c)
+        scores = apply_softcap(scores, self.attn_scores_soft_cap)
 
         if self.causal:
             block_mask = self.causal_mask[:seq, :seq]
@@ -468,7 +467,5 @@ class NativeModel(nn.Module):
             )
         hidden_states = self.ln_out(hidden_states)
         logits = self.head(hidden_states)
-        if self.output_logits_soft_cap > 0:
-            c = self.output_logits_soft_cap
-            logits = c * torch.tanh(logits / c)
+        logits = apply_softcap(logits, self.output_logits_soft_cap)
         return logits

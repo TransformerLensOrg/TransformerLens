@@ -112,6 +112,8 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
     component with dummy Q/K tensors and position_ids.
     """
 
+    supports_attn_result: bool = True
+
     def __init__(
         self,
         name: str,
@@ -139,6 +141,8 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
         if getattr(config, "gated_q_proj", False):
             self.hook_q_gate = HookPoint()
         # Gate on adapter intent; HF-vs-adapter mismatches surface in set_original_component.
+        if submodules is not None and "gate" in submodules:
+            self.hook_gate = HookPoint()
         if submodules is not None and "q_norm" in submodules:
             self.hook_q_normed = HookPoint()
         if submodules is not None and "k_norm" in submodules:
@@ -270,12 +274,17 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
         # Apply input hook
         hidden_states = self.hook_in(hidden_states)
 
-        # Match dtype of HF module
+        # Match dtype of HF module. Skip non-fp params: quantized weights (bnb
+        # uint8/int8, GPTQ/AWQ int32, HQQ, torchao) are stored in integer dtypes
+        # and dequantized internally during matmul. The compute dtype must come
+        # from a fp parameter; casting fp inputs to an integer storage dtype
+        # destroys precision.
         target_dtype = None
-        try:
-            target_dtype = next(hf_attn.parameters()).dtype
-        except StopIteration:
-            pass
+        for p in hf_attn.parameters():
+            if not p.dtype.is_floating_point:
+                continue
+            target_dtype = p.dtype
+            break
         if target_dtype is not None and hidden_states.is_floating_point():
             hidden_states = hidden_states.to(dtype=target_dtype)
 
@@ -465,6 +474,14 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
             if hasattr(self, "hook_q_gate"):
                 q_gate = self.hook_q_gate(q_gate)
             attn_output = attn_output * torch.sigmoid(q_gate)
+
+        # --- Gated attention (HRM-Text: separate gate_proj on hidden_states) ---
+        gate_comp = self._modules.get("gate")
+        if gate_comp is not None and gate_comp.original_component is not None and q_gate is None:
+            gate_states = gate_comp(hidden_states)
+            if hasattr(self, "hook_gate"):
+                gate_states = self.hook_gate(gate_states)
+            attn_output = attn_output * torch.sigmoid(gate_states)
 
         if (
             bool(getattr(self.config, "use_attn_result", False))

@@ -206,6 +206,23 @@ def test_translate_transformer_lens_path_last_component(adapter: Gemma3Architect
     )
 
 
+def test_translate_containerless_descendant_without_inventing_container_path(
+    adapter: Gemma3ArchitectureAdapter,
+) -> None:
+    adapter.component_mapping["blocks"].submodules["synthetic"] = MLPBridge(
+        name=None,
+        submodules={"in": LinearBridge(name="fc1")},
+    )
+
+    assert adapter.translate_transformer_lens_path("blocks.0.synthetic.in") == "model.layers.0.fc1"
+    assert (
+        adapter.translate_transformer_lens_path("blocks.0.synthetic.in", last_component_only=True)
+        == "fc1"
+    )
+    with pytest.raises(ValueError, match="Synthetic component synthetic has no remote path"):
+        adapter.translate_transformer_lens_path("blocks.0.synthetic")
+
+
 def test_component_mapping_structure(adapter: Gemma3ArchitectureAdapter) -> None:
     """Test that the component mapping has the expected structure."""
     mapping = adapter.get_component_mapping()

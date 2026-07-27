@@ -37,6 +37,7 @@ class BlockBridge(GeneralizedComponent):
     """
 
     is_list_item: bool = True
+    hook_out_is_single_residual_stream: bool = True
     # hook_mlp_in is a direct HookPoint on this class (not aliased) so it can
     # fire pre-ln2; see __init__. The post-ln2 mlp input stays at block.mlp.hook_in.
     hook_aliases = {

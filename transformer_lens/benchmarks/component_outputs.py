@@ -196,6 +196,16 @@ class BenchmarkReport:
         print("=" * 80 + "\n")
 
 
+def _is_ssm_mixer_internal(component_path: str) -> bool:
+    """True for a submodule *inside* an SSM/recurrent mixer slot (``.mixer``/``.linear_attn``).
+
+    Such submodules wrap the identical HF module (parity is covered by forward_pass_logits)
+    and take SSM-internal shapes, not the ``[b, seq, d_model]`` residual the isolated harness
+    feeds — so they are skipped. The mixer node itself (path ending in the slot) is not.
+    """
+    return any(slot in component_path.split(".")[:-1] for slot in ("mixer", "linear_attn"))
+
+
 class ComponentBenchmarker:
     """Benchmarking utility for testing TransformerBridge components against HuggingFace."""
 
@@ -298,7 +308,7 @@ class ComponentBenchmarker:
 
         # Block-type components that need to be tested recursively by layer
         # (they are ModuleLists that don't have direct forward methods)
-        block_components = {"blocks", "encoder_blocks", "decoder_blocks"}
+        block_components = {"blocks", "encoder_blocks", "decoder_blocks", "L_blocks", "H_blocks"}
 
         # Test top-level components (embed, pos_embed, ln_final, unembed)
         for comp_name, component in component_mapping.items():
@@ -385,6 +395,11 @@ class ComponentBenchmarker:
 
         # Skip if in skip list
         if component_path in skip_components:
+            return
+
+        # SSM/recurrent mixer internal submodules can't be tested in isolation (see
+        # _is_ssm_mixer_internal); the mixer node itself is still tested against HF.
+        if _is_ssm_mixer_internal(component_path):
             return
 
         # Skip MLP components that don't exist as separate modules in HF (name=None)
@@ -591,7 +606,12 @@ class ComponentBenchmarker:
             # This is needed for model-specific inputs like position_embeddings or attention_mask
             shared_inputs = None
             if (
-                ("attn" in component_path or "mlp" in component_path or "rotary" in component_path)
+                (
+                    "attn" in component_path
+                    or "mlp" in component_path
+                    or "rotary" in component_path
+                    or "conv" in component_path
+                )
                 and hasattr(bridge_component, "get_random_inputs")
                 and callable(getattr(bridge_component, "get_random_inputs"))
             ):

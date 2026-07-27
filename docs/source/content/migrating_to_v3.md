@@ -4,6 +4,8 @@ TransformerLens 3 introduces **TransformerBridge**, a new way of loading and ins
 
 This page explains the differences and gives side-by-side migration recipes for the most common patterns.
 
+> **Deprecation status.** `HookedTransformer.from_pretrained` — along with the `HookedEncoderDecoder` and `HookedAudioEncoder` load paths — now emits a `DeprecationWarning`. `HookedTransformer` and the other `Hooked*` classes are slated for removal in a future major release; every feature is being migrated to `TransformerBridge` and the driver system (features that aren't a fit for a driver, such as train-from-scratch, are moving to bridge-based homes rather than staying on `HookedTransformer`). New code should use `TransformerBridge.boot_transformers(...)`. Follow the migration progress in the deprecation plan.
+
 ## Why the change?
 
 `HookedTransformer` was a single unified implementation that every supported architecture had to be mapped into. That was beautiful in theory — interpretability code written once worked everywhere — but in practice it meant that adding a new architecture required reimplementing its forward pass inside TransformerLens, and any divergence from the HuggingFace version was a latent source of bugs.
@@ -36,7 +38,9 @@ Weight-processing flags (`fold_ln`, `center_writing_weights`, `center_unembed`, 
 
 ### Parameters that were removed
 
-`n_devices`, `move_to_device`, and `first_n_layers` are not part of `boot_transformers`. If you relied on any of these, file an issue describing your use case — the right pattern for multi-GPU loads under the bridge is still being worked out.
+`move_to_device` and `first_n_layers` are not part of `boot_transformers`. If you relied on either, file an issue describing your use case.
+
+> **Multi-GPU update.** The 3.0 release notes listed `n_devices` among the removed parameters. This feature has since been restored alongside `device_map` and `max_memory`. See [Parameters that are new](#parameters-that-are-new) below.
 
 ### Parameters that are new
 
@@ -44,6 +48,8 @@ Weight-processing flags (`fold_ln`, `center_writing_weights`, `center_unembed`, 
 - `trust_remote_code: bool = False` — pass through to HuggingFace for models that ship custom modeling code.
 - `hf_config_overrides: dict | None = None` — override specific fields of the HF config before the model is constructed.
 - `n_ctx: int | None = None` — override the model's context length. The bridge writes to whichever HF config field this architecture uses (`n_positions` / `max_position_embeddings` / etc.) so callers don't need to know the field name. Warns if larger than the model's default.
+- `n_devices` / `device_map` / `max_memory` — multi-GPU loading. `device_map` takes a HuggingFace-style map (`"auto"`, `"balanced"`, or an explicit dict) and is passed straight to `from_pretrained`; `n_devices=N` is a convenience that splits the model across `N` visible CUDA devices (translated to a `max_memory` dict internally); `max_memory` sets a per-device budget. `device` and `device_map` are mutually exclusive.
+- `revision` / `checkpoint_index` / `checkpoint_value` — load a specific HF revision, or a training checkpoint for checkpointed families (`EleutherAI/pythia*`, `stanford-crfm/*`). `checkpoint_index` / `checkpoint_value` resolve to a revision string, mirroring the old `HookedTransformer.from_pretrained` checkpoint arguments.
 - `hf_model` / `model_class` — advanced: pass in a pre-loaded HF model or a specific model class.
 
 ## Weight processing is now opt-in

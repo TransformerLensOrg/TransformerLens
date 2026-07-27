@@ -1,5 +1,5 @@
 """Bridge for Mamba-style depthwise causal Conv1d (distinct from GPT-2's Conv1D linear)."""
-from typing import Any
+from typing import Any, Dict, Optional, cast
 
 import torch
 
@@ -33,6 +33,24 @@ class DepthwiseConv1DBridge(GeneralizedComponent):
         output = self.original_component(input, *args, **kwargs)
         output = self.hook_out(output)
         return output
+
+    def get_random_inputs(
+        self,
+        batch_size: int = 2,
+        seq_len: int = 8,
+        device: Optional[torch.device] = None,
+        dtype: Optional[torch.dtype] = None,
+    ) -> Dict[str, Any]:
+        if self.original_component is None:
+            raise RuntimeError(
+                f"Original component not set for {self.name}. "
+                "Call set_original_component() first."
+            )
+        device = device or torch.device("cpu")
+        dtype = dtype or torch.float32
+        conv = cast(torch.nn.Conv1d, self.original_component)
+        channels = conv.in_channels  # exact, from the wrapped Conv1d
+        return {"args": (torch.randn(batch_size, channels, seq_len, device=device, dtype=dtype),)}
 
     def __repr__(self) -> str:
         if self.original_component is not None:

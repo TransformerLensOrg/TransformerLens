@@ -1,9 +1,12 @@
-"""Unit tests for GraniteArchitectureAdapter and GraniteMoeArchitectureAdapter.
+"""Unit tests for GraniteArchitectureAdapter.
 
 Tests cover:
 - Component mapping structure (bridge types and HF module names)
 - Weight conversion key set
 - Config flags set by the adapter
+
+GraniteMoeArchitectureAdapter has its own dedicated test file,
+test_granite_moe_adapter.py.
 """
 
 import pytest
@@ -14,7 +17,6 @@ from transformer_lens.model_bridge.generalized_components import (
     EmbeddingBridge,
     GatedMLPBridge,
     LinearBridge,
-    MoEBridge,
     PositionEmbeddingsAttentionBridge,
     RMSNormalizationBridge,
     RotaryEmbeddingBridge,
@@ -22,9 +24,6 @@ from transformer_lens.model_bridge.generalized_components import (
 )
 from transformer_lens.model_bridge.supported_architectures.granite import (
     GraniteArchitectureAdapter,
-)
-from transformer_lens.model_bridge.supported_architectures.granite_moe import (
-    GraniteMoeArchitectureAdapter,
 )
 
 # ---------------------------------------------------------------------------
@@ -72,16 +71,6 @@ def cfg() -> TransformerBridgeConfig:
 @pytest.fixture
 def adapter(cfg: TransformerBridgeConfig) -> GraniteArchitectureAdapter:
     return GraniteArchitectureAdapter(cfg)
-
-
-@pytest.fixture
-def moe_cfg() -> TransformerBridgeConfig:
-    return _make_cfg()
-
-
-@pytest.fixture
-def moe_adapter(moe_cfg: TransformerBridgeConfig) -> GraniteMoeArchitectureAdapter:
-    return GraniteMoeArchitectureAdapter(moe_cfg)
 
 
 # ---------------------------------------------------------------------------
@@ -212,44 +201,3 @@ class TestGraniteAdapterWeightConversions:
             "blocks.{i}.attn.v.weight",
             "blocks.{i}.attn.o.weight",
         }
-
-
-# ---------------------------------------------------------------------------
-# GraniteMoe component mapping tests
-# ---------------------------------------------------------------------------
-
-
-class TestGraniteMoeAdapterComponentMapping:
-    """GraniteMoe replaces dense MLP with MoE; everything else is identical to Granite."""
-
-    def test_top_level_keys(self, moe_adapter: GraniteMoeArchitectureAdapter) -> None:
-        assert set(moe_adapter.component_mapping.keys()) == {
-            "embed",
-            "rotary_emb",
-            "blocks",
-            "ln_final",
-            "unembed",
-        }
-
-    def test_mlp_is_moe_bridge(self, moe_adapter: GraniteMoeArchitectureAdapter) -> None:
-        mlp = moe_adapter.component_mapping["blocks"].submodules["mlp"]
-        assert isinstance(mlp, MoEBridge)
-
-    def test_moe_hf_path(self, moe_adapter: GraniteMoeArchitectureAdapter) -> None:
-        mlp = moe_adapter.component_mapping["blocks"].submodules["mlp"]
-        assert mlp.name == "block_sparse_moe"
-
-    def test_non_mlp_components_match_dense(
-        self,
-        adapter: GraniteArchitectureAdapter,
-        moe_adapter: GraniteMoeArchitectureAdapter,
-    ) -> None:
-        """Embed, rotary_emb, ln_final, unembed, and attention are shared with dense Granite."""
-        for key in ("embed", "rotary_emb", "ln_final", "unembed"):
-            assert type(moe_adapter.component_mapping[key]) is type(adapter.component_mapping[key])
-            assert moe_adapter.component_mapping[key].name == adapter.component_mapping[key].name
-
-    def test_attention_unchanged_in_moe(self, moe_adapter: GraniteMoeArchitectureAdapter) -> None:
-        attn = moe_adapter.component_mapping["blocks"].submodules["attn"]
-        assert isinstance(attn, PositionEmbeddingsAttentionBridge)
-        assert set(attn.submodules.keys()) == {"q", "k", "v", "o"}

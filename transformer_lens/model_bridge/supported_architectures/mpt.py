@@ -66,6 +66,15 @@ class MPTArchitectureAdapter(ArchitectureAdapter):
             "unembed": UnembeddingBridge(name="lm_head"),
         }
 
+    def validate_output_logits_transform(self) -> None:
+        """Reject ambiguous remote-code logit scaling not used by integrated HF MPT."""
+        logit_scale = getattr(self.cfg, "logit_scale", None)
+        if logit_scale not in (None, 1, 1.0):
+            raise ValueError(
+                "JacobianLens cannot infer MPT remote-code logit_scale semantics; "
+                f"got logit_scale={logit_scale!r}."
+            )
+
     def _split_mpt_qkv(self, attn_component: Any) -> tuple[nn.Linear, nn.Linear, nn.Linear]:
         """Split fused Wqkv into Q, K, V — row-wise chunk (NOT interleaved like BLOOM)."""
         w = attn_component.Wqkv.weight.detach().clone()

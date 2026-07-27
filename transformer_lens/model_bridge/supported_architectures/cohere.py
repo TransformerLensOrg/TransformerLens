@@ -173,6 +173,11 @@ class CohereArchitectureAdapter(ArchitectureAdapter):
                     state_dict[key] = (state_dict[key].float() * scale).to(orig_dtype)
         return state_dict
 
+    def apply_output_logits_transform(self, logits: torch.Tensor) -> torch.Tensor:
+        """Match Cohere's ``lm_head -> logit_scale -> optional softcap`` path."""
+        scale: float = getattr(self.cfg, "logit_scale")
+        return super().apply_output_logits_transform(logits * scale)
+
     def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
         """Set rotary embedding reference on attention bridges for component testing.
 
@@ -193,3 +198,102 @@ class CohereArchitectureAdapter(ArchitectureAdapter):
         # Also set on the template so get_generalized_component() calls work
         attn_bridge = self.get_generalized_component("blocks.0.attn")
         attn_bridge.set_rotary_emb(rotary_emb)
+
+
+class _Cohere2AttentionBridge(PositionEmbeddingsAttentionBridge):
+    """Attention bridge that honours Cohere2's RoPE/NoPE interleaving.
+
+    Cohere2 applies RoPE only on sliding-window layers. Full-attention global
+    layers receive the same position_embeddings tuple from the model loop but
+    intentionally skip apply_rotary_pos_emb inside HF's Cohere2Attention by
+    checking whether ``self.sliding_window`` is set.
+
+    The base bridge rotates whenever position_embeddings is present, so full
+    layers must suppress that argument before delegating to the shared attention
+    reconstruction path.
+    """
+
+    def forward(self, *args: Any, **kwargs: Any) -> Any:
+        """Drop position_embeddings on Cohere2 full-attention NoPE layers."""
+        if self._is_nope_layer():
+            kwargs["position_embeddings"] = None
+            if len(args) >= 2 and not isinstance(args[1], torch.Tensor):
+                args = (args[0], None) + args[2:]
+        return super().forward(*args, **kwargs)
+
+    def _is_nope_layer(self) -> bool:
+        """Return True when the wrapped Cohere2 attention is a full-attention layer."""
+        hf_attn = self.original_component
+        if hf_attn is None:
+            return False
+
+        if hasattr(hf_attn, "sliding_window"):
+            return getattr(hf_attn, "sliding_window") is None
+
+        layer_idx = getattr(hf_attn, "layer_idx", None)
+        layer_types = getattr(self.config, "layer_types", None)
+        if layer_idx is None or layer_types is None:
+            return False
+        return layer_types[layer_idx] == "full_attention"
+
+
+def _cohere2_layer_types(cfg: Any) -> list[str]:
+    """Resolve Cohere2 layer types from explicit config or sliding-window pattern."""
+    n_layers = getattr(cfg, "n_layers", None)
+    if n_layers is None:
+        n_layers = getattr(cfg, "num_hidden_layers")
+    n_layers = int(n_layers)
+    layer_types = getattr(cfg, "layer_types", None)
+    if layer_types is not None:
+        resolved = list(layer_types)
+        if len(resolved) != n_layers:
+            raise ValueError(
+                f"Cohere2 layer_types length ({len(resolved)}) must match n_layers ({n_layers})."
+            )
+        return resolved
+
+    pattern = getattr(cfg, "sliding_window_pattern", None)
+    if pattern is None:
+        pattern = getattr(cfg, "_sliding_window_pattern", None)
+    if pattern is None:
+        pattern = 4
+    pattern = int(pattern)
+    if pattern <= 0:
+        raise ValueError(f"Cohere2 sliding_window_pattern must be positive, got {pattern}.")
+
+    return [
+        "sliding_attention" if (layer_idx + 1) % pattern else "full_attention"
+        for layer_idx in range(n_layers)
+    ]
+
+
+class Cohere2ArchitectureAdapter(CohereArchitectureAdapter):
+    """Architecture adapter for Cohere2 / Command-A models.
+
+    Cohere2 keeps Cohere v1's parallel block, LayerNorm, GQA, gated MLP and
+    logit_scale behaviour, but interleaves sliding-window RoPE layers with
+    full-attention NoPE layers. HF represents that either as an explicit
+    ``layer_types`` list or as a legacy ``sliding_window_pattern`` integer.
+    """
+
+    def __init__(self, cfg: Any) -> None:
+        """Initialize the Cohere2 architecture adapter."""
+        super().__init__(cfg)
+
+        setattr(self.cfg, "layer_types", _cohere2_layer_types(cfg))
+
+        assert self.component_mapping is not None
+        blocks = self.component_mapping["blocks"]
+        assert blocks.submodules is not None
+        blocks.submodules["attn"] = _Cohere2AttentionBridge(
+            name="self_attn",
+            config=self.cfg,
+            submodules={
+                "q": LinearBridge(name="q_proj"),
+                "k": LinearBridge(name="k_proj"),
+                "v": LinearBridge(name="v_proj"),
+                "o": LinearBridge(name="o_proj"),
+            },
+            requires_attention_mask=True,
+            requires_position_embeddings=True,
+        )

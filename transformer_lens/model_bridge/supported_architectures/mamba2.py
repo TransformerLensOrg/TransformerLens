@@ -1,5 +1,6 @@
 """Architecture adapter for HF's Mamba2ForCausalLM, plus the effective attention helper."""
-from typing import Any, Optional
+import warnings
+from typing import Any, Dict, Optional, Union
 
 import torch
 
@@ -28,11 +29,9 @@ class Mamba2ArchitectureAdapter(ArchitectureAdapter):
     loop with Mamba-1.
     """
 
-    # Phases 1-3 are transformer-shaped (component/weight comparison) and don't
-    # fit SSMs; component-level coverage lives in integration tests:
-    # tests/integration/model_bridge/test_mamba2_adapter.py. Phase 4 (generation
-    # + text-quality) needs no component comparison, so it applies.
-    applicable_phases: list[int] = [4]
+    # White-box forward: P1 is exact vs raw HF (mixer delegates to HF); P2/P3 skip
+    # without a HookedTransformer; P4 is generation.
+    applicable_phases: list[int] = [1, 2, 3, 4]
 
     def __init__(self, cfg: Any) -> None:
         super().__init__(cfg)
@@ -115,60 +114,39 @@ def compute_effective_attention(
     cache: ActivationCache,
     layer: Optional[int] = None,
     include_dt_scaling: bool = False,
-) -> torch.Tensor:
-    """Compute Mamba-2 effective attention M = L ⊙ (C B^T) for one or all layers.
+) -> Union[torch.Tensor, Dict[int, torch.Tensor]]:
+    """Mamba-2 effective attention for one or all layers.
 
-    Wraps ``SSM2MixerBridge.compute_effective_attention`` so callers don't have
-    to repeat the layer index, and adds all-layers stacking when ``layer`` is
-    None.
-
-    Args:
-        bridge: A loaded Mamba-2 ``TransformerBridge``.
-        cache: ActivationCache from ``run_with_cache`` with in_proj and conv1d
-            hooks populated for every requested layer.
-        layer: Specific block index, or None for all layers stacked.
-        include_dt_scaling: See ``SSM2MixerBridge.compute_effective_attention``.
-
-    Returns:
-        Shape ``[batch, num_heads, seq, seq]`` for a single layer, or
-        ``[n_layers, batch, num_heads, seq, seq]`` when layer is None.
-
-    Raises:
-        TypeError: If any targeted block's mixer isn't an ``SSM2MixerBridge``.
-
-    Example::
-
-        from transformer_lens.model_bridge.supported_architectures.mamba2 import (
-            compute_effective_attention,
-        )
-
-        M5 = compute_effective_attention(bridge, cache, layer=5)
-        M_all = compute_effective_attention(bridge, cache)
+    .. deprecated::
+        Use the family-agnostic ``cache.compute_ssm_effective_attention(layer=...)``
+        instead. This thin wrapper delegates to it and ignores ``bridge`` (the
+        cache already knows its model).
     """
-    if layer is not None:
-        mixer = bridge.blocks[layer].mixer
-        if not isinstance(mixer, SSM2MixerBridge):
-            raise TypeError(
-                f"Layer {layer} mixer is {type(mixer).__name__}, not "
-                "SSM2MixerBridge. compute_effective_attention requires a "
-                "Mamba-2 bridge."
-            )
-        return mixer.compute_effective_attention(
-            cache, layer_idx=layer, include_dt_scaling=include_dt_scaling
-        )
+    warnings.warn(
+        "mamba2.compute_effective_attention is deprecated; use "
+        "cache.compute_ssm_effective_attention(layer=..., include_dt_scaling=...).",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return cache.compute_ssm_effective_attention(layer=layer, include_dt_scaling=include_dt_scaling)
 
-    matrices = []
-    for layer_idx, block in enumerate(bridge.blocks):
-        mixer = block.mixer
-        if not isinstance(mixer, SSM2MixerBridge):
-            raise TypeError(
-                f"Layer {layer_idx} mixer is {type(mixer).__name__}, not "
-                "SSM2MixerBridge. compute_effective_attention requires a "
-                "Mamba-2 bridge."
-            )
-        matrices.append(
-            mixer.compute_effective_attention(
-                cache, layer_idx=layer_idx, include_dt_scaling=include_dt_scaling
-            )
-        )
-    return torch.stack(matrices, dim=0)
+
+def compute_ssm_state(
+    bridge: TransformerBridge,
+    cache: ActivationCache,
+    layer: Optional[int] = None,
+    time_step: Optional[int] = None,
+) -> Union[torch.Tensor, Dict[int, torch.Tensor]]:
+    """Reconstruct the recurrent SSM state ``S`` for one or all Mamba-2 layers.
+
+    .. deprecated::
+        Use ``cache.compute_ssm_state(layer=..., time_step=...)`` instead. This
+        thin wrapper delegates to it and ignores ``bridge``.
+    """
+    warnings.warn(
+        "mamba2.compute_ssm_state is deprecated; use "
+        "cache.compute_ssm_state(layer=..., time_step=...).",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return cache.compute_ssm_state(layer=layer, time_step=time_step)
