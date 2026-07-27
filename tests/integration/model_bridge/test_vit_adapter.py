@@ -235,30 +235,6 @@ class TestDeiTBridge:
         d_model = deit_bridge.cfg.d_model
         assert cache["unembed.hook_in"].shape == (1, d_model)
 
-
-# ---------------------------------------------------------------------------
-# cfg.n_ctx regression (see unit test file for the narrower, no-network version)
-# ---------------------------------------------------------------------------
-
-
-class TestViTConfigNCtx:
-    @pytest.mark.xfail(
-        reason=(
-            "prepare_loading() in vit.py never derives n_ctx from "
-            "image_size/patch_size, and ViTConfig/DeiTConfig have none of the "
-            "field names the generic fallback chain in "
-            "model_bridge/sources/transformers.py checks (n_positions / "
-            "max_position_embeddings / max_context_length / max_length / "
-            "seq_length), so it silently defaults to 2048. Flip this to a plain "
-            "assert once prepare_loading() sets n_ctx correctly."
-        ),
-        strict=True,
-    )
-    def test_n_ctx_matches_real_patch_sequence_length(self, vit_bridge):
-        expected = 1 + (224 // 16) ** 2  # CLS + patches, for a 224px/patch16 model
-        assert vit_bridge.cfg.n_ctx == expected
-
-
 # ---------------------------------------------------------------------------
 # DeiTForImageClassificationWithTeacher — must raise, not silently mishandle
 # ---------------------------------------------------------------------------
