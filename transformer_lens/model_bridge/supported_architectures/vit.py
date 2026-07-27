@@ -187,6 +187,7 @@ class ViTArchitectureAdapter(ArchitectureAdapter):
     def prepare_model(self, hf_model: Any) -> None:
         """Detect ViTForImageClassification vs DeiTForImageClassification vs a bare
         *Model, and add/omit the classifier head + prefix accordingly."""
+        class_name = hf_model.__class__.__name__
         # Check for deit first since DeiT models may expose or share vit-compatible attributes
         # Check if it's a DeiT model (either via class name or distinct embedding attribute)
         if "DeiT" in class_name or hasattr(hf_model, "distillation_token") or (hasattr(hf_model, "deit") and not hasattr(hf_model, "vit")):
