@@ -17,7 +17,7 @@ added after — same shape as Llama/GPT2), unlike BERT's post-LN. That's why
 `supports_fold_ln = True` here where BertArchitectureAdapter sets it False.
 """
 
-import torch
+import torch.nn as nn
 from typing import Any, Dict
 
 from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion
@@ -187,7 +187,7 @@ class ViTArchitectureAdapter(ArchitectureAdapter):
         if head_dim is not None:
             self.cfg.d_head = head_dim  # type: ignore[attr-defined]
 
-    def get_remote_component(self, current: torch.nn.Module, path: str) -> "torch.nn.Module":
+    def get_remote_component(self, current: nn.Module, path: str) -> "torch.nn.Module":
         """
         Intercept requests for specific component paths.
         """
