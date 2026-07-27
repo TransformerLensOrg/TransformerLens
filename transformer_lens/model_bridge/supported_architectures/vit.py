@@ -202,52 +202,29 @@ class ViTArchitectureAdapter(ArchitectureAdapter):
                 "and what to check before adding it."
             )
 
-        def make_safe_forward(original_forward):
-            def wrapped_forward(*args, **kwargs):
-                # 1. Unpack any tuple inputs in positional arguments
-                args = tuple(
-                    arg[0] if isinstance(arg, tuple) and len(arg) > 0 and isinstance(arg[0], torch.Tensor) 
-                    else arg 
-                    for arg in args
-                )
-                # Unpack tuple inputs in keyword arguments if present
-                if "hidden_states" in kwargs and isinstance(kwargs["hidden_states"], tuple):
-                    kwargs["hidden_states"] = kwargs["hidden_states"][0]
-
-                # 2. Call the original forward pass
-                out = original_forward(*args, **kwargs)
-
-                # 3. Unpack output if it's a tuple or model output object containing a tuple
-                if isinstance(out, tuple):
-                    return out[0]
-                elif hasattr(out, "last_hidden_state"):
-                    return out.last_hidden_state
-                return out
-            return wrapped_forward
-
         def patch_layers(module: nn.Module):
             if type(module).__name__ == "ViTLayer":
-                # Inject the non-circular MLP wrapper onto every ViTLayer block
+                # 1. Inject the non-circular MLP wrapper onto every ViTLayer block.
                 if not hasattr(module, "mlp"):
                     module.mlp = ViTMLPWrapper(module)
-            
-            # Recursively patch forward on every module to handle input/output tuples
-            if not getattr(module, "_tl_patched", False):
-                module.forward = make_safe_forward(module.forward)
-                module._tl_patched = True
-
+                
+                # 2. Fix the tuple-chaining bug strictly for ViTLayer. 
+                # TL's internal loop expects blocks to return a Tensor, but HF ViTLayer returns a tuple.
+                if not getattr(module, "_tl_patched", False):
+                    original_forward = module.forward
+                    
+                    def unwrapping_forward(*args, **kwargs):
+                        out = original_forward(*args, **kwargs)
+                        # If HF returned (hidden_states,), unpack it to just hidden_states
+                        return out[0] if isinstance(out, tuple) else out
+                        
+                    module.forward = unwrapping_forward
+                    module._tl_patched = True
+                    
             for child in module.children():
                 patch_layers(child)
                 
         patch_layers(hf_model)
-
-        # Ensure top-level wrappers are also covered using hf_model
-        if hasattr(hf_model, "vit") and not getattr(hf_model.vit, "_tl_patched", False):
-            hf_model.vit.forward = make_safe_forward(hf_model.vit.forward)
-            hf_model.vit._tl_patched = True
-        if hasattr(hf_model, "encoder") and not getattr(hf_model.encoder, "_tl_patched", False):
-            hf_model.encoder.forward = make_safe_forward(hf_model.encoder.forward)
-            hf_model.encoder._tl_patched = True
 
         with_classifier = hasattr(hf_model, "classifier")
         self.component_mapping = self._build_component_mapping(
