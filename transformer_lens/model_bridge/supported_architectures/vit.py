@@ -48,8 +48,6 @@ class ViTArchitectureAdapter(ArchitectureAdapter):
     def __init__(self, cfg: Any) -> None:
         super().__init__(cfg)
 
-        patch_layers(self.model)
-
         # Mirrors HubertArchitectureAdapter's self.cfg.is_audio_model = True.
         self.cfg.is_visual_model = True
         self.cfg.normalization_type = "LN"
@@ -152,7 +150,7 @@ class ViTArchitectureAdapter(ArchitectureAdapter):
                         },
                     ),
                     "mlp": MLPBridge(
-                        name="mlp", # Intercepted by get_remote_component
+                        name="mlp", # Intercepted correctly by get_remote_component below
                         config=self.cfg,
                         submodules={
                             # Maps to ViTLayer -> ViTIntermediate -> dense
@@ -189,10 +187,11 @@ class ViTArchitectureAdapter(ArchitectureAdapter):
 
     def get_remote_component(self, current: nn.Module, path: str) -> "torch.nn.Module":
         # Intercept the container lookup.
-        # Even though we created a dummy .mlp attribute above, we MUST return 
-        # the block itself here. This ensures the child LinearBridges 
-        # resolve "intermediate.dense" relative to the block, not the dummy identity.
-        if path == "mlp" and type(current).__name__ == "ViTLayer":
+        # Since Hugging Face ViT/DeiT blocks don't have an 'mlp' wrapper container 
+        # (they place 'intermediate' and 'output' directly on the layer), we return
+        # the block itself. The submodules ('in' and 'out') will then correctly 
+        # resolve against the block.
+        if path == "mlp" and hasattr(current, "intermediate") and hasattr(current, "output"):
             return current
             
         return super().get_remote_component(current, path)
@@ -214,17 +213,6 @@ class ViTArchitectureAdapter(ArchitectureAdapter):
                 "adapter yet — see vision_classifier_head.py's docstring for why, "
                 "and what to check before adding it."
             )
-
-        # Inject a dummy 'mlp' attribute into every ViTLayer block so that 
-        # TransformerLens can successfully attach the MLPBridge container.
-        def patch_layers(module: nn.Module):
-            if type(module).__name__ == "ViTLayer":
-                if not hasattr(module, "mlp"):
-                    module.mlp = nn.Identity()
-            for child in module.children():
-                patch_layers(child)
-                
-        patch_layers(hf_model)
 
         with_classifier = hasattr(hf_model, "classifier")
         self.component_mapping = self._build_component_mapping(
