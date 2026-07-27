@@ -301,7 +301,6 @@ class TestViTPrepareModel:
         assert adapter.component_mapping["blocks"].name == "vit.encoder.layer"
         assert adapter.component_mapping["ln_final"].name == "vit.layernorm"
 
-
     def test_vit_classification_adds_unembed(self, adapter: ViTArchitectureAdapter) -> None:
         adapter.prepare_model(self._vit_for_classification())
         assert "unembed" in adapter.component_mapping
@@ -319,7 +318,7 @@ class TestViTPrepareModel:
         assert adapter.component_mapping["embed"].name == "deit.embeddings"
         assert adapter.component_mapping["blocks"].name == "deit.encoder.layer"
         assert adapter.component_mapping["ln_final"].name == "deit.layernorm"
-      
+
     def test_deit_classification_adds_unembed(self, adapter: ViTArchitectureAdapter) -> None:
         adapter.prepare_model(self._deit_for_classification())
         assert adapter.component_mapping["unembed"].name == "classifier"
