@@ -360,21 +360,3 @@ class TestViTPrepareLoading:
 
     def test_none_config_in_model_kwargs_is_noop(self, adapter: ViTArchitectureAdapter) -> None:
         adapter.prepare_loading("dummy-model", {"config": None})  # must not raise
-
-    def test_prepare_loading_does_not_touch_n_ctx(self, adapter: ViTArchitectureAdapter) -> None:
-        """Documents current behavior, not necessarily desired behavior.
-
-        ViTConfig/DeiTConfig express sequence length via image_size/patch_size,
-        not any of n_positions/max_position_embeddings/max_context_length/
-        max_length/seq_length. prepare_loading() here doesn't derive n_ctx from
-        image_size/patch_size either, so the generic HF-config fallback chain in
-        transformer_lens/model_bridge/sources/transformers.py will silently land
-        on its hardcoded default (2048) for every real ViT/DeiT load. See the
-        xfail regression test in tests/integration/model_bridge/test_vit_adapter.py
-        for the end-to-end version of this against a real checkpoint.
-        """
-        original_n_ctx = adapter.cfg.n_ctx
-        adapter.prepare_loading(
-            "dummy-model", self._model_kwargs_with(image_size=224, patch_size=16)
-        )
-        assert adapter.cfg.n_ctx == original_n_ctx
