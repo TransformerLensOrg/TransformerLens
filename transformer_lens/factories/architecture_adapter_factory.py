@@ -76,6 +76,7 @@ from transformer_lens.model_bridge.supported_architectures import (
     StableLmArchitectureAdapter,
     T5ArchitectureAdapter,
     T5GemmaArchitectureAdapter,
+    ViTArchitectureAdapter,
     XGLMArchitectureAdapter,
 )
 
@@ -158,6 +159,10 @@ SUPPORTED_ARCHITECTURES = {
     "MinGPTForCausalLM": MingptArchitectureAdapter,
     "GPTNeoForCausalLM": NeoArchitectureAdapter,
     "GPTNeoXForCausalLM": NeoxArchitectureAdapter,
+    "ViTModel": ViTArchitectureAdapter,
+    "ViTForImageClassification": ViTArchitectureAdapter,
+    "DeiTModel": ViTArchitectureAdapter,
+    "DeiTForImageClassification": ViTArchitectureAdapter, # "DeiTForImageClassificationWithTeacher" unsupported for now
 }
 
 
