@@ -40,6 +40,28 @@ from transformer_lens.model_bridge.generalized_components.vision_embeddings impo
 )
 
 
+class ViTMLPWrapper(nn.Module):
+    """A transparent wrapper to group ViT's intermediate and output layers into an 'mlp' container.
+    
+    TransformerLens expects an 'mlp' container, but Hugging Face's ViTLayer places
+    'intermediate' and 'output' directly on the block. We inject this wrapper onto
+    the block as `.mlp`. We store the block reference inside a tuple to prevent PyTorch
+    from registering it as a submodule, which would create a circular graph (Cycle:
+    ViTLayer -> mlp -> ViTLayer) and trigger infinite recursion in PyTorch hooks.
+    """
+    def __init__(self, block: nn.Module):
+        super().__init__()
+        self._block_ref = (block,)
+
+    @property
+    def intermediate(self):
+        return self._block_ref[0].intermediate
+
+    @property
+    def output(self):
+        return self._block_ref[0].output
+
+
 class ViTArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for ViT and (non-distilled-head) DeiT vision models."""
 
@@ -48,26 +70,16 @@ class ViTArchitectureAdapter(ArchitectureAdapter):
     def __init__(self, cfg: Any) -> None:
         super().__init__(cfg)
 
-        # Mirrors HubertArchitectureAdapter's self.cfg.is_audio_model = True.
         self.cfg.is_visual_model = True
         self.cfg.normalization_type = "LN"
-        # Position embeddings here are a single learned (1, seq+1[+1], hidden) tensor
-        # added inside VisionEmbeddingsBridge, not a separate lookup-by-index "pos_embed"
-        # component — there's no dedicated TL positional_embedding_type value for that
-        # shape, so "standard" is a placeholder. Check whether anything downstream (e.g.
-        # fold_ln / HookedTransformer-compat code paths) actually branches on this string
-        # for a model with no separate pos_embed component before trusting it blindly.
         self.cfg.positional_embedding_type = "standard"
         self.cfg.final_rms = False
         self.cfg.gated_mlp = False
         self.cfg.attn_only = False
-        # Pre-LN blocks (see module docstring) — unlike BertArchitectureAdapter's post-LN.
         self.supports_fold_ln = True
 
         n_heads = self.cfg.n_heads
 
-        # Q/K/V/O are separate nn.Linear projections (q_proj/k_proj/v_proj/o_proj),
-        # same rearrangement pattern as the BERT and HuBERT adapters.
         self.weight_processing_conversions = {
             "blocks.{i}.attn.q.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
@@ -98,25 +110,11 @@ class ViTArchitectureAdapter(ArchitectureAdapter):
                     "d_model (h d_head) -> h d_head d_model", h=n_heads
                 ),
             ),
-            # No q/k/v bias conversions are a no-op, not an error, when
-            # config.qkv_bias=False: LinearBridge wraps whatever nn.Linear HF actually
-            # built, and a bias-less Linear simply has no ".bias" key in the state dict
-            # for this conversion to touch.
         }
 
-        # Default mapping assumes a bare ViTModel (no prefix, no classifier).
-        # prepare_model() rebuilds this once the actual HF model is available and we
-        # can detect the "vit."/"deit." prefix and classifier presence.
         self.component_mapping = self._build_component_mapping(prefix="", with_classifier=False)
 
     def _build_component_mapping(self, prefix: str, with_classifier: bool) -> Dict[str, Any]:
-        """Build component mapping.
-
-        prefix="" for bare ViTModel/DeiTModel, "vit." for ViTForImageClassification,
-        "deit." for DeiTForImageClassification. `classifier` itself is always a direct
-        top-level attribute of the *ForImageClassification wrapper (never nested under
-        the prefix) per the HF source, so it's never prefixed.
-        """
         p = prefix
         mapping: Dict[str, Any] = {
             "embed": VisionEmbeddingsBridge(name=f"{p}embeddings"),
@@ -141,21 +139,17 @@ class ViTArchitectureAdapter(ArchitectureAdapter):
                         name="attention",
                         config=self.cfg,
                         submodules={
-                            # Maps to ViTAttention -> ViTSelfAttention -> query/key/value
                             "q": LinearBridge(name="attention.query"),
                             "k": LinearBridge(name="attention.key"),
                             "v": LinearBridge(name="attention.value"),
-                            # Maps to ViTAttention -> ViTSelfOutput -> dense
                             "o": LinearBridge(name="output.dense"),
                         },
                     ),
                     "mlp": MLPBridge(
-                        name="mlp", # Intercepted correctly by get_remote_component below
+                        name="mlp", 
                         config=self.cfg,
                         submodules={
-                            # Maps to ViTLayer -> ViTIntermediate -> dense
                             "in": LinearBridge(name="intermediate.dense"),
-                            # Maps to ViTLayer -> ViTOutput -> dense
                             "out": LinearBridge(name="output.dense"),
                         },
                     ),
@@ -177,24 +171,17 @@ class ViTArchitectureAdapter(ArchitectureAdapter):
         if hf_config is None:
             return
 
-        # Some newer ViT/DeiT configs allow an explicit head_dim distinct from
-        # hidden_size // num_attention_heads. Forward it if present so weight
-        # reshaping doesn't silently assume the naive split (same reasoning as the
-        # adapter guide's "forgetting n_key_value_heads" pitfall for GQA models).
         head_dim = getattr(hf_config, "head_dim", None)
         if head_dim is not None:
             self.cfg.d_head = head_dim  # type: ignore[attr-defined]
 
-    def get_remote_component(self, current: nn.Module, path: str) -> "torch.nn.Module":
-        # Intercept the container lookup.
-        # Since Hugging Face ViT/DeiT blocks don't have an 'mlp' wrapper container 
-        # (they place 'intermediate' and 'output' directly on the layer), we return
-        # the block itself. The submodules ('in' and 'out') will then correctly 
-        # resolve against the block.
-        if path == "mlp" and hasattr(current, "intermediate") and hasattr(current, "output"):
-            return current
-            
-        return super().get_remote_component(current, path)
+        # Derive n_ctx to avoid silent fallback to 2048 in generic logic
+        image_size = getattr(hf_config, "image_size", None)
+        patch_size = getattr(hf_config, "patch_size", None)
+        if image_size is not None and patch_size is not None:
+            num_patches = (image_size // patch_size) ** 2
+            # Standard ViT models add 1 cls_token to the sequence
+            self.cfg.n_ctx = num_patches + 1
 
     def prepare_model(self, hf_model: Any) -> None:
         """Detect ViTForImageClassification vs DeiTForImageClassification vs a bare
@@ -214,13 +201,11 @@ class ViTArchitectureAdapter(ArchitectureAdapter):
                 "and what to check before adding it."
             )
 
-        # THE FIX: Inject a dummy 'mlp' attribute into every ViTLayer block.
-        # This satisfies `replace_remote_component`'s strict `hasattr` check,
-        # allowing TransformerLens to safely overwrite it with the MLPBridge.
+        # Inject the non-circular MLP wrapper onto every ViTLayer block.
         def patch_layers(module: nn.Module):
             if type(module).__name__ == "ViTLayer":
                 if not hasattr(module, "mlp"):
-                    module.mlp = nn.Identity()
+                    module.mlp = ViTMLPWrapper(module)
             for child in module.children():
                 patch_layers(child)
                 
