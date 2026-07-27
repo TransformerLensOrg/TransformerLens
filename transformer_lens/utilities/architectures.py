@@ -45,6 +45,19 @@ AUDIO_ARCHITECTURES: set[str] = {
     "HubertForSequenceClassification",
 }
 
+# Vision-only (non-multimodal, no text tower) encoder models. Split into the
+# two HF AutoModel classes they load under: bare encoders load via AutoModel,
+# classification heads load via AutoModelForImageClassification.
+VISION_MODEL_ARCHITECTURES: set[str] = {
+    "ViTModel",
+    "DeiTModel",
+}
+VISION_CLASSIFICATION_ARCHITECTURES: set[str] = {
+    "ViTForImageClassification",
+    "DeiTForImageClassification",
+}
+VISION_ARCHITECTURES: set[str] = VISION_MODEL_ARCHITECTURES | VISION_CLASSIFICATION_ARCHITECTURES
+
 # Bridge uses different hook shapes than HookedTransformer by design.
 # Phase 2/3 HT comparisons are skipped; Phase 1 (HF comparison) is the gold standard.
 NO_HT_COMPARISON_ARCHITECTURES: set[str] = (
