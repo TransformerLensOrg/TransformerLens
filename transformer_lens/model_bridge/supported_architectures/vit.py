@@ -201,11 +201,25 @@ class ViTArchitectureAdapter(ArchitectureAdapter):
                 "and what to check before adding it."
             )
 
-        # Inject the non-circular MLP wrapper onto every ViTLayer block.
         def patch_layers(module: nn.Module):
             if type(module).__name__ == "ViTLayer":
+                # 1. Inject the non-circular MLP wrapper onto every ViTLayer block.
                 if not hasattr(module, "mlp"):
                     module.mlp = ViTMLPWrapper(module)
+                
+                # 2. Fix the tuple-chaining bug. TL's internal loop expects blocks to return 
+                # a Tensor, but HF returns a tuple. This un-wraps it.
+                if not getattr(module, "_tl_patched", False):
+                    original_forward = module.forward
+                    
+                    def unwrapping_forward(*args, **kwargs):
+                        out = original_forward(*args, **kwargs)
+                        # If HF returned (hidden_states,), unpack it to just hidden_states
+                        return out[0] if isinstance(out, tuple) else out
+                        
+                    module.forward = unwrapping_forward
+                    module._tl_patched = True
+                    
             for child in module.children():
                 patch_layers(child)
                 
