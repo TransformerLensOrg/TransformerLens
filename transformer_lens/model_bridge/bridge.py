@@ -1777,6 +1777,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             isinstance(input, list)
             and len(input) > 1
             and not getattr(self.cfg, "is_audio_model", False)
+            and not getattr(self.cfg, "is_visual_model", False)
         )
 
         try:
@@ -1909,6 +1910,19 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                         "Audio models require tensor input (raw waveform). "
                         "Pass a torch.Tensor or use input_values parameter."
                     )
+            elif getattr(self.cfg, "is_visual_model", False):
+                # "pixel_values" may already be in kwargs from the "if pixel_values is not None:"
+                # gate above (explicit pixel_values=... call); otherwise treat `input` itself as
+                # the image tensor, matching how the audio branch treats `input` as the waveform.
+                if "pixel_values" not in kwargs:
+                    if isinstance(input, torch.Tensor):
+                        kwargs["pixel_values"] = input
+                    else:
+                        raise ValueError(
+                            "Visual models require tensor input (pixel values). "
+                            "Pass a torch.Tensor as `input` or use the pixel_values parameter."
+                        )
+                output = self.original_model(**kwargs)
             elif _is_inputs_embeds:
                 output = self.original_model(inputs_embeds=input_ids, **kwargs)
             else:
