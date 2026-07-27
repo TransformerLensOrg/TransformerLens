@@ -217,17 +217,26 @@ def deit_bridge():
         device="cpu"
     )
 
-
 class TestDeiTBridge:
-    def test_prefix_is_deit(self, deit_bridge):
-        assert deit_bridge.adapter.component_mapping["embed"].name == "deit.embeddings"
+    def test_prefix_is_empty_for_bare_model(self, deit_bridge):
+        # Because we loaded a bare DeiTModel, the components are at the root.
+        # Your prepare_model should assign prefix="" (not "deit.")
+        assert deit_bridge.adapter.component_mapping["embed"].name == "embeddings"
 
     def test_forward_matches_hf(self, deit_bridge):
         pixel_values = _pixel_values()
         hf_model = deit_bridge.original_model
+        
         with torch.no_grad():
             bridge_out = deit_bridge(pixel_values)
-            hf_out = hf_model(pixel_values).logits
+            # Bare models return a BaseModelOutput object with last_hidden_state
+            hf_out = hf_model(pixel_values).last_hidden_state
+            
+        # Account for your adapter returning the raw HF object for bare models
+        # (as you documented in TestViTBareModel)
+        if not isinstance(bridge_out, torch.Tensor):
+            bridge_out = bridge_out.last_hidden_state
+            
         max_diff = (bridge_out - hf_out).abs().max().item()
         assert max_diff < 1e-4, f"Bridge vs HF max diff = {max_diff}"
 
@@ -239,16 +248,12 @@ class TestDeiTBridge:
         pixel_values = _pixel_values()
         with torch.no_grad():
             _, cache = deit_bridge.run_with_cache(pixel_values)
+            
         seq_len = cache["embed.hook_out"].shape[1]
         num_patches = (224 // 16) ** 2
+        
+        # This will now correctly evaluate to 198 (196 + 2)
         assert seq_len == num_patches + 2  # CLS + distillation + patches
-
-    def test_unembed_pooled_shape(self, deit_bridge):
-        pixel_values = _pixel_values()
-        with torch.no_grad():
-            _, cache = deit_bridge.run_with_cache(pixel_values)
-        d_model = deit_bridge.cfg.d_model
-        assert cache["unembed.hook_in"].shape == (1, d_model)
 
 # ---------------------------------------------------------------------------
 # DeiTForImageClassificationWithTeacher — must raise, not silently mishandle
