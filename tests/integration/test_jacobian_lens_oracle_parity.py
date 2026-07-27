@@ -10,11 +10,12 @@ Pass criteria (per the #1539 Tier-1 spec, matching the #1505 spike numbers):
 The oracle is pinned to commit 581d398613e5602a5af361e1c34d3a92ea82ba8e
 (Apache-2.0) so the threshold is reproducible independent of upstream drift.
 
+Install the oracle before running this test:
+    uv pip install git+https://github.com/anthropics/jacobian-lens.git@<ORACLE_COMMIT>
+
 Marked @pytest.mark.slow; requires ~4 GB VRAM and network access.
 """
 
-import subprocess
-import sys
 from typing import List, Set
 
 import numpy as np
@@ -89,16 +90,19 @@ def _spearman_top_union(tl_logits: torch.Tensor, oracle_logits: torch.Tensor, k:
 
 @pytest.fixture(scope="module")
 def oracle_package():
-    """Install the pinned anthropics/jacobian-lens and return its key symbols."""
-    subprocess.run(
-        [sys.executable, "-m", "pip", "install", "--quiet", ORACLE_PKG],
-        check=True,
+    """Return oracle symbols; skips if the pinned package is not installed.
+
+    Install out-of-band before running:
+        uv pip install {ORACLE_PKG}
+    Or let .github/workflows/oracle-parity.yml handle it in CI.
+    """
+    jlens_hf = pytest.importorskip(
+        "jlens.hf",
+        reason=(f"requires the pinned oracle: uv pip install {ORACLE_PKG}"),
     )
-    # Imports must happen after install so they resolve to the just-installed pkg.
-    from jlens.hf import from_hf
     from jlens.lens import JacobianLens as OracleJL
 
-    return OracleJL, from_hf
+    return OracleJL, jlens_hf.from_hf
 
 
 @pytest.fixture(scope="module")
