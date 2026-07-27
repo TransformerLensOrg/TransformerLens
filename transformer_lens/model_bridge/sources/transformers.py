@@ -283,6 +283,8 @@ def get_hf_model_class_for_architecture(architecture: str):
         MASKED_LM_ARCHITECTURES,
         MULTIMODAL_ARCHITECTURES,
         SEQ2SEQ_ARCHITECTURES,
+        VISION_ARCHITECTURES,
+        VISION_CLASSIFICATION_ARCHITECTURES,
     )
 
     if architecture in SEQ2SEQ_ARCHITECTURES:
@@ -300,6 +302,12 @@ def get_hf_model_class_for_architecture(architecture: str):
             return AutoModelForCTC
         from transformers import AutoModel
 
+        return AutoModel
+    elif architecture in VISION_ARCHITECTURES:
+        if architecture in VISION_CLASSIFICATION_ARCHITECTURES:
+            from transformers import AutoModelForImageClassification
+            return AutoModelForImageClassification
+        from transformers import AutoModel
         return AutoModel
     else:
         return AutoModelForCausalLM
@@ -727,7 +735,8 @@ def boot(
     use_fast = getattr(adapter.cfg, "use_fast", True)
     # Audio models use feature extractors, not text tokenizers
     _is_audio = getattr(adapter.cfg, "is_audio_model", False)
-    if _is_audio and tokenizer is None:
+    _is_visual = getattr(adapter.cfg, "is_visual_model", False)
+    if (_is_audio or _is_visual) and tokenizer is None:
         tokenizer = None  # Skip tokenizer loading for audio models
     elif tokenizer is not None:
         tokenizer = setup_tokenizer(tokenizer, default_padding_side=default_padding_side)
