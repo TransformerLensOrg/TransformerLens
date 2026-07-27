@@ -17,6 +17,7 @@ added after — same shape as Llama/GPT2), unlike BERT's post-LN. That's why
 `supports_fold_ln = True` here where BertArchitectureAdapter sets it False.
 """
 
+import torch
 from typing import Any, Dict
 
 from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion
@@ -186,12 +187,9 @@ class ViTArchitectureAdapter(ArchitectureAdapter):
         if head_dim is not None:
             self.cfg.d_head = head_dim  # type: ignore[attr-defined]
 
-    def get_remote_component(self, current: "nn.Module", path: str) -> "nn.Module":
+    def get_remote_component(self, current: nn.Module, path: str) -> "torch.nn.Module":
         """
         Intercept requests for specific component paths.
-        Hugging Face ViT doesn't wrap the MLP into a single module, so we return the 
-        block itself when asked for 'mlp'. This lets the in/out linear layers resolve
-        their paths ('intermediate.dense' and 'output.dense') correctly from the block.
         """
         if path == "mlp" and not hasattr(current, "mlp"):
             return current
