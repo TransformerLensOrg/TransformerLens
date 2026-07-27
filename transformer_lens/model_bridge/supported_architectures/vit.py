@@ -122,7 +122,7 @@ class ViTArchitectureAdapter(ArchitectureAdapter):
         mapping: Dict[str, Any] = {
             "embed": VisionEmbeddingsBridge(name=f"{p}embeddings"),
             "blocks": BlockBridge(
-                name=f"{p}layers",
+                name=f"{p}encoder.layer",
                 # Same redirect the BERT and HuBERT adapters use — kept for consistency
                 # even though ViT's MLP (unlike BERT's) is a real cohesive submodule,
                 # since both existing ground-truth adapters apply it regardless.
@@ -145,18 +145,18 @@ class ViTArchitectureAdapter(ArchitectureAdapter):
                         name="attention",
                         config=self.cfg,
                         submodules={
-                            "q": LinearBridge(name="q_proj"),
-                            "k": LinearBridge(name="k_proj"),
-                            "v": LinearBridge(name="v_proj"),
-                            "o": LinearBridge(name="o_proj"),
+                            "q": LinearBridge(name="attention.query"),
+                            "k": LinearBridge(name="attention.key"),
+                            "v": LinearBridge(name="attention.value"),
+                            "o": LinearBridge(name="output.dense"),
                         },
                     ),
                     "mlp": MLPBridge(
                         name="mlp",
                         config=self.cfg,
                         submodules={
-                            "in": LinearBridge(name="fc1"),
-                            "out": LinearBridge(name="fc2"),
+                            "in": LinearBridge(name="intermediate.dense"),
+                            "out": LinearBridge(name="output.dense"),
                         },
                     ),
                 },
