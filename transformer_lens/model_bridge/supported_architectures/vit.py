@@ -214,6 +214,18 @@ class ViTArchitectureAdapter(ArchitectureAdapter):
                 "and what to check before adding it."
             )
 
+        # THE FIX: Inject a dummy 'mlp' attribute into every ViTLayer block.
+        # This satisfies `replace_remote_component`'s strict `hasattr` check,
+        # allowing TransformerLens to safely overwrite it with the MLPBridge.
+        def patch_layers(module: nn.Module):
+            if type(module).__name__ == "ViTLayer":
+                if not hasattr(module, "mlp"):
+                    module.mlp = nn.Identity()
+            for child in module.children():
+                patch_layers(child)
+                
+        patch_layers(hf_model)
+
         with_classifier = hasattr(hf_model, "classifier")
         self.component_mapping = self._build_component_mapping(
             prefix=prefix, with_classifier=with_classifier
