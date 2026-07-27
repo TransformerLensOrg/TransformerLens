@@ -180,9 +180,7 @@ class TestViTAdapterConfig:
     def test_normalization_type_is_ln(self, adapter: ViTArchitectureAdapter) -> None:
         assert adapter.cfg.normalization_type == "LN"
 
-    def test_positional_embedding_type_is_standard(
-        self, adapter: ViTArchitectureAdapter
-    ) -> None:
+    def test_positional_embedding_type_is_standard(self, adapter: ViTArchitectureAdapter) -> None:
         assert adapter.cfg.positional_embedding_type == "standard"
 
     def test_is_visual_model_true(self, adapter: ViTArchitectureAdapter) -> None:
@@ -306,9 +304,7 @@ class TestViTPrepareModel:
     def test_vit_classification_adds_unembed(self, adapter: ViTArchitectureAdapter) -> None:
         adapter.prepare_model(self._vit_for_classification())
         assert "unembed" in adapter.component_mapping
-        assert isinstance(
-            adapter.component_mapping["unembed"], VisionClassifierHeadBridge
-        )
+        assert isinstance(adapter.component_mapping["unembed"], VisionClassifierHeadBridge)
 
     def test_classifier_is_never_prefixed(self, adapter: ViTArchitectureAdapter) -> None:
         """classifier is always a top-level attr on the *ForImageClassification wrapper."""

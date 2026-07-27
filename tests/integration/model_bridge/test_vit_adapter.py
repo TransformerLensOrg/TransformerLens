@@ -203,20 +203,20 @@ from transformers import DeiTModel
 # 1. Use the distilled checkpoint to actually test distillation token logic
 MODEL_DEIT_DISTILLED = "facebook/deit-small-distilled-patch16-224"
 
+
 @pytest.fixture(scope="module")
 def deit_bridge():
-    # 2. Load the bare Hugging Face model manually to bypass the 
+    # 2. Load the bare Hugging Face model manually to bypass the
     # DeiTForImageClassificationWithTeacher dual-head that your adapter rejects.
     hf_model = DeiTModel.from_pretrained(MODEL_DEIT_DISTILLED)
     hf_model.config.architectures = ["DeiTModel"]
-    
+
     # 3. Pass the instantiated HF model to boot_transformers.
     # (Assuming your boot_transformers accepts an hf_model kwarg like HookedTransformer)
     return TransformerBridge.boot_transformers(
-        MODEL_DEIT_DISTILLED, 
-        hf_model=hf_model, 
-        device="cpu"
+        MODEL_DEIT_DISTILLED, hf_model=hf_model, device="cpu"
     )
+
 
 class TestDeiTBridge:
     def test_prefix_is_empty_for_bare_model(self, deit_bridge):
@@ -227,17 +227,17 @@ class TestDeiTBridge:
     def test_forward_matches_hf(self, deit_bridge):
         pixel_values = _pixel_values()
         hf_model = deit_bridge.original_model
-        
+
         with torch.no_grad():
             bridge_out = deit_bridge(pixel_values)
             # Bare models return a BaseModelOutput object with last_hidden_state
             hf_out = hf_model(pixel_values).last_hidden_state
-            
+
         # Account for your adapter returning the raw HF object for bare models
         # (as you documented in TestViTBareModel)
         if not isinstance(bridge_out, torch.Tensor):
             bridge_out = bridge_out.last_hidden_state
-            
+
         max_diff = (bridge_out - hf_out).abs().max().item()
         assert max_diff < 1e-4, f"Bridge vs HF max diff = {max_diff}"
 
@@ -249,12 +249,13 @@ class TestDeiTBridge:
         pixel_values = _pixel_values()
         with torch.no_grad():
             _, cache = deit_bridge.run_with_cache(pixel_values)
-            
+
         seq_len = cache["embed.hook_out"].shape[1]
         num_patches = (224 // 16) ** 2
-        
+
         # This will now correctly evaluate to 198 (196 + 2)
         assert seq_len == num_patches + 2  # CLS + distillation + patches
+
 
 # ---------------------------------------------------------------------------
 # DeiTForImageClassificationWithTeacher — must raise, not silently mishandle

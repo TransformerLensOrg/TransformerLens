@@ -141,17 +141,17 @@ def map_default_transformer_lens_config(hf_config):
     elif hasattr(source_config, "seq_length"):
         tl_config.n_ctx = source_config.seq_length
     elif hasattr(source_config, "image_size") and hasattr(source_config, "patch_size"):
-        # Vision Transformers calculate sequence length dynamically: 
+        # Vision Transformers calculate sequence length dynamically:
         # (image_size / patch_size)^2 + 1 (for the CLS token)
         image_size = source_config.image_size
         patch_size = source_config.patch_size
-        
+
         # HF configs allow these to be integers or tuples/lists
         img_h = image_size[0] if isinstance(image_size, (list, tuple)) else image_size
         img_w = image_size[1] if isinstance(image_size, (list, tuple)) else image_size
         patch_h = patch_size[0] if isinstance(patch_size, (list, tuple)) else patch_size
         patch_w = patch_size[1] if isinstance(patch_size, (list, tuple)) else patch_size
-        
+
         tl_config.n_ctx = (img_h // patch_h) * (img_w // patch_w) + 1
     else:
         # Models like Bloom use ALiBi (no positional embeddings) and have no
@@ -319,8 +319,10 @@ def get_hf_model_class_for_architecture(architecture: str):
     elif architecture in VISION_ARCHITECTURES:
         if architecture in VISION_CLASSIFICATION_ARCHITECTURES:
             from transformers import AutoModelForImageClassification
+
             return AutoModelForImageClassification
         from transformers import AutoModel
+
         return AutoModel
     else:
         return AutoModelForCausalLM

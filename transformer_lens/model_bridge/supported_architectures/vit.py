@@ -44,13 +44,14 @@ from transformer_lens.model_bridge.generalized_components.vision_embeddings impo
 
 class ViTMLPWrapper(nn.Module):
     """A transparent wrapper to group ViT's intermediate and output layers into an 'mlp' container.
-    
+
     TransformerLens expects an 'mlp' container, but Hugging Face's ViTLayer places
     'intermediate' and 'output' directly on the block. We inject this wrapper onto
     the block as `.mlp`. We store the block reference inside a tuple to prevent PyTorch
     from registering it as a submodule, which would create a circular graph (Cycle:
     ViTLayer -> mlp -> ViTLayer) and trigger infinite recursion in PyTorch hooks.
     """
+
     def __init__(self, block: nn.Module):
         super().__init__()
         self._block_ref = (block,)
@@ -148,7 +149,7 @@ class ViTArchitectureAdapter(ArchitectureAdapter):
                         },
                     ),
                     "mlp": MLPBridge(
-                        name="mlp", 
+                        name="mlp",
                         config=self.cfg,
                         submodules={
                             "in": LinearBridge(name="intermediate.dense"),
@@ -212,32 +213,39 @@ class ViTArchitectureAdapter(ArchitectureAdapter):
                 # 1. Inject the non-circular MLP wrapper onto every ViTLayer block.
                 if not hasattr(module, "mlp"):
                     module.mlp = ViTMLPWrapper(module)
-                
+
                 # 2. Fix the tuple-chaining bug for both inputs and outputs.
                 if not getattr(module, "_tl_patched", False):
                     original_forward = module.forward
-                    
+
                     def unwrapping_forward(*args, **kwargs):
                         # Unpack incoming positional argument if it's a tuple from a previous block
-                        if len(args) > 0 and isinstance(args[0], tuple) and len(args[0]) > 0 and isinstance(args[0][0], torch.Tensor):
+                        if (
+                            len(args) > 0
+                            and isinstance(args[0], tuple)
+                            and len(args[0]) > 0
+                            and isinstance(args[0][0], torch.Tensor)
+                        ):
                             args = (args[0][0], *args[1:])
                         # Unpack incoming keyword argument if present
                         if "hidden_states" in kwargs and isinstance(kwargs["hidden_states"], tuple):
-                            if len(kwargs["hidden_states"]) > 0 and isinstance(kwargs["hidden_states"][0], torch.Tensor):
+                            if len(kwargs["hidden_states"]) > 0 and isinstance(
+                                kwargs["hidden_states"][0], torch.Tensor
+                            ):
                                 kwargs["hidden_states"] = kwargs["hidden_states"][0]
 
                         # Run original HF forward (now guaranteed a pure Tensor input, keeping layernorm happy)
                         out = original_forward(*args, **kwargs)
-                        
+
                         # Unpack output if it's a tuple so the next block receives a pure Tensor
                         return out[0] if isinstance(out, tuple) else out
-                        
+
                     module.forward = unwrapping_forward
                     setattr(module, "_tl_patched", True)
                     
             for child in module.children():
                 patch_layers(child)
-                
+
         patch_layers(hf_model)
 
         with_classifier = hasattr(hf_model, "classifier")

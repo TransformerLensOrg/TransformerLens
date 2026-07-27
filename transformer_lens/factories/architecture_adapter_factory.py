@@ -162,7 +162,7 @@ SUPPORTED_ARCHITECTURES = {
     "ViTModel": ViTArchitectureAdapter,
     "ViTForImageClassification": ViTArchitectureAdapter,
     "DeiTModel": ViTArchitectureAdapter,
-    "DeiTForImageClassification": ViTArchitectureAdapter, # "DeiTForImageClassificationWithTeacher" unsupported for now
+    "DeiTForImageClassification": ViTArchitectureAdapter,  # "DeiTForImageClassificationWithTeacher" unsupported for now
 }
 
 
