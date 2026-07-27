@@ -203,7 +203,6 @@ class NormalizationBridge(GeneralizedComponent):
             contextlib.nullcontext() if has_fwd_hooks else torch.no_grad()
         )
         with grad_ctx:
-
             # Upcast to float32 for hook precision (matches HT's RMSNorm/LayerNorm behavior)
             x_float = x.float() if x.dtype not in (torch.float32, torch.float64) else x
             if not self.uses_rms_norm:
