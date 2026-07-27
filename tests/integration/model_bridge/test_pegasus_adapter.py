@@ -4,8 +4,6 @@ Uses google/pegasus-xsum (568M) — the distilled variants are asymmetric and
 outside the symmetric-only adapter. CI-gated for download cost.
 """
 
-import os
-
 import pytest
 import torch
 
@@ -13,9 +11,9 @@ from transformer_lens.model_bridge.bridge import TransformerBridge
 
 MODEL = "google/pegasus-xsum"
 
-pytestmark = pytest.mark.skipif(
-    bool(os.getenv("CI")), reason="Pegasus-XSum download too large for CI budget"
-)
+# Pegasus-XSum 568M download/load; distilled variants are asymmetric so there is
+# no tiny stand-in. Excluded from CI tiers via -m "not slow".
+pytestmark = pytest.mark.slow
 
 
 @pytest.fixture(scope="module")

@@ -247,16 +247,15 @@ jobs:
   coverage-test:
     name: Full Code Coverage Test
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    # Suite runs under pytest-xdist on a 2-vCPU runner (~45 min with swap);
+    # 75 catches a real hang well below the old serial 90.
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
       - name: Add swap space
-        # The coverage suite runs single-process (no -n) over the full
-        # tests/integration set, which now boots ~60 adapter models in
-        # sequence. Peak resident memory overflows the 2-vCPU runner's ~7GB
-        # RAM; the OOM-killed runner surfaces as a ~10-min "operation was
-        # canceled" well under the 90-min timeout. Swap absorbs the spike
-        # (mirrors the notebook-checks job).
+        # The 2-vCPU runner has ~7GB RAM; two xdist workers each holding
+        # torch + resident models overflow it. Swap absorbs the model-load
+        # spikes (mirrors the notebook-checks job).
         run: |
           sudo swapoff /swapfile 2>/dev/null || true
           sudo rm -f /swapfile
@@ -307,6 +306,13 @@ jobs:
         run: make coverage-report-test
         env:
           HF_TOKEN:  ${{ secrets.HF_TOKEN }}
+          # One BLAS thread per worker: N xdist workers each spawning ncores
+          # OMP threads would oversubscribe the 2-vCPU runner and erase the gain.
+          OMP_NUM_THREADS: "1"
+          MKL_NUM_THREADS: "1"
+          # Worker count knob (this runner is 2-vCPU, so -n auto = 2). If swap
+          # still can't hold peak memory, drop to "-n 1" or grow the swapfile.
+          XDIST_ARGS: "-n auto --dist loadscope"
       - name: Build check
         run: uv build
       - name: Upload Coverage Report Artifact

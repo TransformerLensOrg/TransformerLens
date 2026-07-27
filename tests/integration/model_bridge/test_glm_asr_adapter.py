@@ -7,6 +7,10 @@ from transformer_lens.model_bridge.bridge import TransformerBridge
 
 MODEL = "zai-org/GLM-ASR-Nano-2512"
 
+# 2.26B params in fp32, loaded twice (bridge + fresh HF parity copy) — swap
+# thrash on the 7GB CI runner. Excluded from CI tiers via -m "not slow".
+pytestmark = pytest.mark.slow
+
 
 @pytest.fixture(scope="module")
 def glmasr_bridge():

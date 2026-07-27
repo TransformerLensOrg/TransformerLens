@@ -4,8 +4,6 @@ Uses the bf16 master-weight checkpoint (the packed 1.58-bit repo needs
 custom kernels). CI-gated for download cost.
 """
 
-import os
-
 import pytest
 import torch
 
@@ -13,9 +11,8 @@ from transformer_lens.model_bridge.bridge import TransformerBridge
 
 MODEL = "microsoft/bitnet-b1.58-2B-4T-bf16"
 
-pytestmark = pytest.mark.skipif(
-    bool(os.getenv("CI")), reason="BitNet 2B download too large for CI budget"
-)
+# BitNet 2.4B download/load — excluded from CI tiers via -m "not slow".
+pytestmark = pytest.mark.slow
 
 
 @pytest.fixture(scope="module")

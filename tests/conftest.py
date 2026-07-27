@@ -20,21 +20,22 @@ _SESSION_EXIT_STATUS = {"code": 0}
 
 @pytest.fixture(autouse=True, scope="function")
 def cleanup_memory():
-    """Automatically clean up memory after each test."""
+    """Release accelerator caches after each test."""
     yield
-    # Clear torch cache for all accelerators
+    # gc.collect() deliberately omitted here: a full collection costs
+    # ~40-200ms against the torch+transformers heap, and per-function it
+    # added 10+ min to the CI coverage run. The class-scoped fixture below
+    # still collects at every class boundary.
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
     if torch.backends.mps.is_available():
         torch.mps.empty_cache()
-    gc.collect()
 
 
 @pytest.fixture(autouse=True, scope="class")
 def cleanup_class_memory():
     """Clean up memory after each test class."""
     yield
-    # More aggressive cleanup after test classes
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
     if torch.backends.mps.is_available():

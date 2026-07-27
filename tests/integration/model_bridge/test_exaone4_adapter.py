@@ -6,8 +6,6 @@ everywhere.
 """
 
 import copy
-import os
-
 import pytest
 import torch
 
@@ -15,9 +13,8 @@ from transformer_lens.model_bridge.bridge import TransformerBridge
 
 MODEL = "LGAI-EXAONE/EXAONE-4.0-1.2B"
 
-download_gated = pytest.mark.skipif(
-    bool(os.getenv("CI")), reason="EXAONE-4.0 1.2B download too large for CI budget"
-)
+# EXAONE-4.0 1.2B download/load — excluded from CI tiers via -m "not slow".
+slow_download = pytest.mark.slow
 
 
 @pytest.fixture(scope="module")
@@ -30,7 +27,7 @@ def sample_tokens(ex4_bridge):
     return ex4_bridge.tokenizer("The capital of France is", return_tensors="pt").input_ids
 
 
-@download_gated
+@slow_download
 class TestExaone4BridgeCreation:
     def test_adapter_and_hybrid_layers(self, ex4_bridge):
         from transformer_lens.model_bridge.supported_architectures.exaone4 import (
@@ -42,7 +39,7 @@ class TestExaone4BridgeCreation:
         assert "sliding_attention" in layer_types or "full_attention" in layer_types
 
 
-@download_gated
+@slow_download
 class TestExaone4ForwardEquivalence:
     def test_forward_matches_hf(self, ex4_bridge, sample_tokens):
         hf_model = ex4_bridge.original_model
@@ -53,7 +50,7 @@ class TestExaone4ForwardEquivalence:
         assert max_diff < 1e-4, f"Bridge vs HF max diff = {max_diff}"
 
 
-@download_gated
+@slow_download
 class TestExaone4Hooks:
     def test_post_norm_and_qk_norm_hooks_fire(self, ex4_bridge, sample_tokens):
         d_model = ex4_bridge.cfg.d_model

@@ -1,7 +1,5 @@
 """Integration tests for the dense GLM architecture adapter."""
 
-import os
-
 import pytest
 import torch
 
@@ -9,9 +7,8 @@ from transformer_lens.model_bridge.bridge import TransformerBridge
 
 MODEL = "zai-org/glm-edge-1.5b-chat"
 
-pytestmark = pytest.mark.skipif(
-    bool(os.getenv("CI")), reason="glm-edge-1.5b download too large for CI budget"
-)
+# glm-edge 1.59B download/load — excluded from CI tiers via -m "not slow".
+pytestmark = pytest.mark.slow
 
 
 @pytest.fixture(scope="module")

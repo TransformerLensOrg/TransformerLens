@@ -6,8 +6,6 @@ crashes on current transformers). CI-gated for download cost; run locally
 with HF_TOKEN sourced.
 """
 
-import os
-
 import pytest
 import torch
 
@@ -15,9 +13,9 @@ from transformer_lens.model_bridge.bridge import TransformerBridge
 
 MODEL = "LGAI-EXAONE/EXAONE-3.5-2.4B-Instruct"
 
-pytestmark = pytest.mark.skipif(
-    bool(os.getenv("CI")), reason="EXAONE 2.4B download too large for CI budget"
-)
+# EXAONE 2.4B download/load; no working tiny mirror (hyper-accel/tiny-random-exaone
+# ships stale remote code). Excluded from CI tiers via -m "not slow".
+pytestmark = pytest.mark.slow
 
 
 @pytest.fixture(scope="module")

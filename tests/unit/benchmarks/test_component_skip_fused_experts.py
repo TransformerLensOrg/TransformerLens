@@ -12,8 +12,13 @@ transformers changed the experts signature.
 """
 
 import pytest
+import torch
 
 pytest.importorskip("transformers")
+
+# Config/tokenizer source only — weights are random-initialized at tiny dims
+# below (the real repo is 1.76B params; fp32 double-load swamps CI).
+MOE_ID = "hyper-accel/ci-random-qwen2-moe-a3b"
 
 
 def _report(model_id: str):
@@ -25,9 +30,37 @@ def _report(model_id: str):
         pytest.skip(f"fixture unavailable offline: {exc}")
 
 
-def test_fused_experts_are_skipped_not_failed() -> None:
+@pytest.fixture(scope="module")
+def tiny_moe_path(tmp_path_factory):
+    """Local snapshot of a shrunken random Qwen2-MoE; fused-experts routing is
+    structural, so the arity-driven skip fires at any size."""
+    from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
+
+    try:
+        cfg = AutoConfig.from_pretrained(MOE_ID)
+        tok = AutoTokenizer.from_pretrained(MOE_ID)
+    except (OSError, ConnectionError, TimeoutError) as exc:
+        pytest.skip(f"fixture unavailable offline: {exc}")
+    cfg.hidden_size = 64
+    cfg.intermediate_size = 128
+    cfg.moe_intermediate_size = 32
+    cfg.shared_expert_intermediate_size = 32
+    cfg.num_hidden_layers = 2
+    cfg.num_attention_heads = 4
+    cfg.num_key_value_heads = 2
+    cfg.num_experts = 4
+    cfg.num_experts_per_tok = 2
+    torch.manual_seed(0)
+    model = AutoModelForCausalLM.from_config(cfg)
+    path = tmp_path_factory.mktemp("tiny_qwen2_moe")
+    model.save_pretrained(path)
+    tok.save_pretrained(path)
+    return str(path)
+
+
+def test_fused_experts_are_skipped_not_failed(tiny_moe_path) -> None:
     """Fused mlp.experts are skipped and every remaining isolated component passes."""
-    report = _report("hyper-accel/ci-random-qwen2-moe-a3b")
+    report = _report(tiny_moe_path)
 
     tested = {r.component_path for r in report.component_results}
     assert not any(
