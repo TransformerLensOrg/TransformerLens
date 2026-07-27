@@ -1944,6 +1944,14 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                         "Audio models do not support return_type='loss'. "
                         "CTC loss requires aligned frame-level labels."
                     )
+                if getattr(self.cfg, "is_visual_model", False):
+                    raise ValueError(
+                        "Vision classification models do not support return_type='loss' "
+                        "via this path (no next-token LM target exists for image "
+                        "classification). Compute cross-entropy against `labels` "
+                        "yourself from the returned logits, or use hf_generate()-style "
+                        "direct access to self.original_model for HF's own loss."
+                    )
                 if _is_inputs_embeds:
                     raise ValueError(
                         "Cannot compute loss with inputs_embeds — token IDs required for labels."
