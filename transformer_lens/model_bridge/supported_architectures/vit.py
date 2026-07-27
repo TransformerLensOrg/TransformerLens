@@ -48,9 +48,19 @@ class ViTArchitectureAdapter(ArchitectureAdapter):
     def __init__(self, cfg: Any) -> None:
         super().__init__(cfg)
 
-        # Mirrors HubertArchitectureAdapter's self.cfg.is_audio_model = True. Required —
-        # bridge.py's forward() has no vision-only dispatch path without it; see
-        # BRIDGE_CHANGES.md for the corresponding bridge.py edits this flag depends on.
+        # Inject a dummy 'mlp' attribute into every ViTLayer block.
+        # TransformerLens strictly checks hasattr() before attaching the MLPBridge.
+        # HF ignores this dummy attribute during its forward pass, so it's safe.
+        def patch_layers(module: nn.Module):
+            if type(module).__name__ == "ViTLayer":
+                if not hasattr(module, "mlp"):
+                    module.mlp = nn.Identity()
+            for child in module.children():
+                patch_layers(child)
+                
+        patch_layers(self.model)
+
+        # Mirrors HubertArchitectureAdapter's self.cfg.is_audio_model = True.
         self.cfg.is_visual_model = True
         self.cfg.normalization_type = "LN"
         # Position embeddings here are a single learned (1, seq+1[+1], hidden) tensor
@@ -188,10 +198,11 @@ class ViTArchitectureAdapter(ArchitectureAdapter):
             self.cfg.d_head = head_dim  # type: ignore[attr-defined]
 
     def get_remote_component(self, current: nn.Module, path: str) -> "torch.nn.Module":
-        """
-        Intercept requests for specific component paths.
-        """
-        if path == "mlp" and not hasattr(current, "mlp"):
+        # Intercept the container lookup.
+        # Even though we created a dummy .mlp attribute above, we MUST return 
+        # the block itself here. This ensures the child LinearBridges 
+        # resolve "intermediate.dense" relative to the block, not the dummy identity.
+        if path == "mlp" and type(current).__name__ == "ViTLayer":
             return current
             
         return super().get_remote_component(current, path)
