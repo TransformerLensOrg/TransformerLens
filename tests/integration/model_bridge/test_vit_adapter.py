@@ -198,9 +198,24 @@ class TestViTBareModel:
 # ---------------------------------------------------------------------------
 
 
+from transformers import DeiTModel
+
+# 1. Use the distilled checkpoint to actually test distillation token logic
+MODEL_DEIT_DISTILLED = "facebook/deit-small-distilled-patch16-224"
+
 @pytest.fixture(scope="module")
 def deit_bridge():
-    return TransformerBridge.boot_transformers(MODEL_DEIT_CLASSIFIER, device="cpu")
+    # 2. Load the bare Hugging Face model manually to bypass the 
+    # DeiTForImageClassificationWithTeacher dual-head that your adapter rejects.
+    hf_model = DeiTModel.from_pretrained(MODEL_DEIT_DISTILLED)
+    
+    # 3. Pass the instantiated HF model to boot_transformers.
+    # (Assuming your boot_transformers accepts an hf_model kwarg like HookedTransformer)
+    return TransformerBridge.boot_transformers(
+        MODEL_DEIT_DISTILLED, 
+        hf_model=hf_model, 
+        device="cpu"
+    )
 
 
 class TestDeiTBridge:
