@@ -168,7 +168,7 @@ class ViTArchitectureAdapter(ArchitectureAdapter):
             ),
         }
         if with_classifier:
-            mapping["unembed"] = VisionClassifierHeadBridge(name="classifier", token_index=0)
+            mapping["unembed"] = VisionClassifierHeadBridge(name="classifier")
         return mapping
 
     def prepare_loading(self, model_name: str, model_kwargs: dict) -> None:
