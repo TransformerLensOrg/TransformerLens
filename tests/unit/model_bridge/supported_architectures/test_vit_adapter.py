@@ -117,7 +117,7 @@ class TestViTComponentMappingBare:
     def test_top_level_hf_paths(self, adapter: ViTArchitectureAdapter) -> None:
         mapping = adapter.component_mapping
         assert mapping["embed"].name == "embeddings"
-        assert mapping["blocks"].name == "layers"
+        assert mapping["blocks"].name == "encoder.layer"
         assert mapping["ln_final"].name == "layernorm"
 
     def test_block_submodule_keys(self, adapter: ViTArchitectureAdapter) -> None:
@@ -148,10 +148,10 @@ class TestViTComponentMappingBare:
 
     def test_attn_qkvo_hf_paths(self, adapter: ViTArchitectureAdapter) -> None:
         attn = adapter.component_mapping["blocks"].submodules["attn"]
-        assert attn.submodules["q"].name == "q_proj"
-        assert attn.submodules["k"].name == "k_proj"
-        assert attn.submodules["v"].name == "v_proj"
-        assert attn.submodules["o"].name == "o_proj"
+        assert attn.submodules["q"].name == "attention.query"
+        assert attn.submodules["k"].name == "attention.key"
+        assert attn.submodules["v"].name == "attention.value"
+        assert attn.submodules["o"].name == "output.dense"
 
     def test_attn_submodules_are_linear_bridges(self, adapter: ViTArchitectureAdapter) -> None:
         attn = adapter.component_mapping["blocks"].submodules["attn"]
@@ -160,8 +160,8 @@ class TestViTComponentMappingBare:
 
     def test_mlp_submodule_hf_paths(self, adapter: ViTArchitectureAdapter) -> None:
         mlp = adapter.component_mapping["blocks"].submodules["mlp"]
-        assert mlp.submodules["in"].name == "fc1"
-        assert mlp.submodules["out"].name == "fc2"
+        assert mlp.submodules["in"].name == "intermediate.dense"
+        assert mlp.submodules["out"].name == "output.dense"
 
     def test_mlp_hook_alias_overrides(self, adapter: ViTArchitectureAdapter) -> None:
         aliases = adapter.component_mapping["blocks"].hook_aliases
@@ -286,7 +286,7 @@ class TestViTPrepareModel:
     def test_bare_model_keeps_no_prefix(self, adapter: ViTArchitectureAdapter) -> None:
         adapter.prepare_model(self._bare_model())
         assert adapter.component_mapping["embed"].name == "embeddings"
-        assert adapter.component_mapping["blocks"].name == "layers"
+        assert adapter.component_mapping["blocks"].name == "encoder.layer"
         assert adapter.component_mapping["ln_final"].name == "layernorm"
 
     def test_bare_model_has_no_unembed(self, adapter: ViTArchitectureAdapter) -> None:
@@ -298,8 +298,9 @@ class TestViTPrepareModel:
     def test_vit_classification_adds_vit_prefix(self, adapter: ViTArchitectureAdapter) -> None:
         adapter.prepare_model(self._vit_for_classification())
         assert adapter.component_mapping["embed"].name == "vit.embeddings"
-        assert adapter.component_mapping["blocks"].name == "vit.layers"
+        assert adapter.component_mapping["blocks"].name == "vit.encoder.layer"
         assert adapter.component_mapping["ln_final"].name == "vit.layernorm"
+
 
     def test_vit_classification_adds_unembed(self, adapter: ViTArchitectureAdapter) -> None:
         adapter.prepare_model(self._vit_for_classification())
@@ -316,9 +317,9 @@ class TestViTPrepareModel:
     def test_deit_classification_adds_deit_prefix(self, adapter: ViTArchitectureAdapter) -> None:
         adapter.prepare_model(self._deit_for_classification())
         assert adapter.component_mapping["embed"].name == "deit.embeddings"
-        assert adapter.component_mapping["blocks"].name == "deit.layers"
+        assert adapter.component_mapping["blocks"].name == "deit.encoder.layer"
         assert adapter.component_mapping["ln_final"].name == "deit.layernorm"
-
+      
     def test_deit_classification_adds_unembed(self, adapter: ViTArchitectureAdapter) -> None:
         adapter.prepare_model(self._deit_for_classification())
         assert adapter.component_mapping["unembed"].name == "classifier"
