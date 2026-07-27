@@ -242,7 +242,7 @@ class ViTArchitectureAdapter(ArchitectureAdapter):
 
                     module.forward = unwrapping_forward
                     setattr(module, "_tl_patched", True)
-                    
+
             for child in module.children():
                 patch_layers(child)
 
