@@ -187,10 +187,11 @@ class ViTArchitectureAdapter(ArchitectureAdapter):
     def prepare_model(self, hf_model: Any) -> None:
         """Detect ViTForImageClassification vs DeiTForImageClassification vs a bare
         *Model, and add/omit the classifier head + prefix accordingly."""
-        if hasattr(hf_model, "vit"):
-            prefix = "vit."
-        elif hasattr(hf_model, "deit"):
+        # Check for deit first since DeiT models may expose or share vit-compatible attributes
+        if hasattr(hf_model, "deit"):
             prefix = "deit."
+        elif hasattr(hf_model, "vit"):
+            prefix = "vit."
         else:
             prefix = ""  # bare ViTModel / DeiTModel, loaded directly
 
