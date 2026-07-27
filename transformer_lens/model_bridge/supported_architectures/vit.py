@@ -123,39 +123,32 @@ class ViTArchitectureAdapter(ArchitectureAdapter):
             "embed": VisionEmbeddingsBridge(name=f"{p}embeddings"),
             "blocks": BlockBridge(
                 name=f"{p}encoder.layer",
-                # Same redirect the BERT and HuBERT adapters use — kept for consistency
-                # even though ViT's MLP (unlike BERT's) is a real cohesive submodule,
-                # since both existing ground-truth adapters apply it regardless.
                 hook_alias_overrides={
                     "hook_mlp_out": "mlp.out.hook_out",
                     "hook_mlp_in": "mlp.in.hook_in",
                 },
                 submodules={
-                    "ln1": NormalizationBridge(
-                        name="layernorm_before",
-                        config=self.cfg,
-                        use_native_layernorm_autograd=True,
-                    ),
-                    "ln2": NormalizationBridge(
-                        name="layernorm_after",
-                        config=self.cfg,
-                        use_native_layernorm_autograd=True,
-                    ),
+                    "ln1": LayerNormBridge(name="layernorm_before"),
+                    "ln2": LayerNormBridge(name="layernorm_after"),
                     "attn": AttentionBridge(
                         name="attention",
                         config=self.cfg,
                         submodules={
+                            # Maps to ViTAttention -> ViTSelfAttention -> query/key/value
                             "q": LinearBridge(name="attention.query"),
                             "k": LinearBridge(name="attention.key"),
                             "v": LinearBridge(name="attention.value"),
+                            # Maps to ViTAttention -> ViTSelfOutput -> dense
                             "o": LinearBridge(name="output.dense"),
                         },
                     ),
                     "mlp": MLPBridge(
-                        name="mlp",
+                        name="mlp", # Intercepted by get_remote_component
                         config=self.cfg,
                         submodules={
+                            # Maps to ViTLayer -> ViTIntermediate -> dense
                             "in": LinearBridge(name="intermediate.dense"),
+                            # Maps to ViTLayer -> ViTOutput -> dense
                             "out": LinearBridge(name="output.dense"),
                         },
                     ),
@@ -184,6 +177,18 @@ class ViTArchitectureAdapter(ArchitectureAdapter):
         head_dim = getattr(hf_config, "head_dim", None)
         if head_dim is not None:
             self.cfg.d_head = head_dim  # type: ignore[attr-defined]
+
+    def get_remote_component(self, current: "nn.Module", path: str) -> "nn.Module":
+        """
+        Intercept requests for specific component paths.
+        Hugging Face ViT doesn't wrap the MLP into a single module, so we return the 
+        block itself when asked for 'mlp'. This lets the in/out linear layers resolve
+        their paths ('intermediate.dense' and 'output.dense') correctly from the block.
+        """
+        if path == "mlp" and not hasattr(current, "mlp"):
+            return current
+            
+        return super().get_remote_component(current, path)
 
     def prepare_model(self, hf_model: Any) -> None:
         """Detect ViTForImageClassification vs DeiTForImageClassification vs a bare
