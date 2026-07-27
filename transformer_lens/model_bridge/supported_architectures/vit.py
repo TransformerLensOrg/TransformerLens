@@ -48,16 +48,6 @@ class ViTArchitectureAdapter(ArchitectureAdapter):
     def __init__(self, cfg: Any) -> None:
         super().__init__(cfg)
 
-        # Inject a dummy 'mlp' attribute into every ViTLayer block.
-        # TransformerLens strictly checks hasattr() before attaching the MLPBridge.
-        # HF ignores this dummy attribute during its forward pass, so it's safe.
-        def patch_layers(module: nn.Module):
-            if type(module).__name__ == "ViTLayer":
-                if not hasattr(module, "mlp"):
-                    module.mlp = nn.Identity()
-            for child in module.children():
-                patch_layers(child)
-                
         patch_layers(self.model)
 
         # Mirrors HubertArchitectureAdapter's self.cfg.is_audio_model = True.
@@ -224,6 +214,17 @@ class ViTArchitectureAdapter(ArchitectureAdapter):
                 "adapter yet — see vision_classifier_head.py's docstring for why, "
                 "and what to check before adding it."
             )
+
+        # Inject a dummy 'mlp' attribute into every ViTLayer block so that 
+        # TransformerLens can successfully attach the MLPBridge container.
+        def patch_layers(module: nn.Module):
+            if type(module).__name__ == "ViTLayer":
+                if not hasattr(module, "mlp"):
+                    module.mlp = nn.Identity()
+            for child in module.children():
+                patch_layers(child)
+                
+        patch_layers(hf_model)
 
         with_classifier = hasattr(hf_model, "classifier")
         self.component_mapping = self._build_component_mapping(
