@@ -24,6 +24,8 @@ from transformer_lens.model_bridge.supported_architectures.nemotron_h import (
 )
 
 LAYERS = ["mamba", "attention", "mamba", "mlp"]
+# The adapter normalizes HF block-type names to the canonical TL vocabulary.
+CANONICAL_LAYERS = ["linear_attention", "full_attention", "linear_attention", "mlp"]
 MAMBA_LAYERS = [0, 2]
 ATTN_LAYER = 1
 
@@ -83,7 +85,7 @@ class TestNemotronHTinyStructure:
             assert isinstance(bridge.blocks[i].mixer, SSM2MixerBridge)
 
     def test_layers_block_type_populated(self, bridge):
-        assert getattr(bridge.cfg, "layers_block_type", None) == LAYERS
+        assert getattr(bridge.cfg, "layers_block_type", None) == CANONICAL_LAYERS
 
 
 class TestNemotronHTinyForwardPass:
