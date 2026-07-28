@@ -31,7 +31,12 @@ from types import SimpleNamespace
 
 import pytest
 import torch
-from transformers import DeiTForImageClassification, DeiTModel, ViTForImageClassification, ViTModel
+from transformers import (
+    DeiTForImageClassification,
+    DeiTModel,
+    ViTForImageClassification,
+    ViTModel,
+)
 
 from transformer_lens.model_bridge.bridge import TransformerBridge
 from transformer_lens.model_bridge.generalized_components.vision_classifier_head import (
@@ -228,18 +233,18 @@ def deit_classifier_bridge():
     return TransformerBridge.boot_transformers(
         MODEL_DEIT_CLASSIFIER, hf_model=hf_model, device="cpu"
     )
- 
- 
+
+
 class TestDeiTClassifierBridge:
     def test_prefix_is_deit_for_classifier_model(self, deit_classifier_bridge):
         assert deit_classifier_bridge.adapter.component_mapping["blocks"].name == "deit.layers"
- 
+
     def test_unembed_is_vision_classifier_head(self, deit_classifier_bridge):
         assert isinstance(deit_classifier_bridge.unembed, VisionClassifierHeadBridge)
-    
+
     def test_n_ctx_matches_real_patch_grid(self, deit_classifier_bridge):
         assert deit_classifier_bridge.cfg.n_ctx == 197
- 
+
     def test_forward_matches_hf(self, deit_classifier_bridge):
         pixel_values = _pixel_values()
         hf_model = deit_classifier_bridge.original_model
@@ -248,14 +253,15 @@ class TestDeiTClassifierBridge:
             hf_out = hf_model(pixel_values).logits
         max_diff = (bridge_out - hf_out).abs().max().item()
         assert max_diff < 1e-4, f"Bridge vs HF max diff = {max_diff}"
- 
+
     def test_forward_returns_correct_shape(self, deit_classifier_bridge):
         pixel_values = _pixel_values()
         with torch.no_grad():
             output = deit_classifier_bridge(pixel_values)
         num_labels = deit_classifier_bridge.original_model.config.num_labels
         assert output.shape == (1, num_labels)
-      
+
+
 # ---------------------------------------------------------------------------
 # DeiT (bare model) — distillation token must stay invisible
 # ---------------------------------------------------------------------------
