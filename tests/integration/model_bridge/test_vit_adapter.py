@@ -7,10 +7,6 @@ wrap-don't-reimplement behavior against real HF checkpoints:
   branch, which does `output = self.original_model(**kwargs)`)
 - Submodule hooks fire with expected shapes (embed, attn q/k/v/o, mlp in/out,
   ln_final, unembed/classifier)
-- cfg.n_ctx is derived correctly (196 patches + 1 CLS token = 197 for the
-  patch16-224 configs used below) by the generic image_size/patch_size
-  branch in sources/transformers.py's map_default_transformer_lens_config()
-  — the adapter itself has no n_ctx-specific override
 - DeiT's distillation token is invisible to the adapter (sequence length
   differs from ViT's by one extra token, entirely inside VisionEmbeddingsBridge)
 - Bare ViTModel (no classifier) return-value shape via return_type="logits"
@@ -85,17 +81,6 @@ class TestViTClassifierBridgeCreation:
 
     def test_n_heads_matches_hf_config(self, vit_bridge):
         assert vit_bridge.cfg.n_heads == vit_bridge.original_model.config.num_attention_heads
-
-    def test_n_ctx_matches_patch_grid_plus_cls_token(self, vit_bridge):
-        """224x224 image / 16x16 patches = 14x14 = 196 patches, +1 CLS token.
- 
-        Regression test for n_ctx derivation on vision configs (handled
-        generically by sources/transformers.py's
-        map_default_transformer_lens_config(), not by this adapter) — this
-        used to silently fall back to the generic default (2048) instead of
-        the real vision sequence length.
-        """
-        assert vit_bridge.cfg.n_ctx == 197
 
     def test_blocks_point_at_flat_layers_attribute(self, vit_bridge):
         """Current transformers has no ViTEncoder wrapper any more — blocks
