@@ -11,6 +11,8 @@ wrap-don't-reimplement behavior against real HF checkpoints:
   differs from ViT's by one extra token, entirely inside VisionEmbeddingsBridge)
 - Bare ViTModel (no classifier) return-value shape via return_type="logits"
 - DeiTForImageClassificationWithTeacher is rejected, not silently mishandled
+- prepare_model() doesn't assume a `.encoder` wrapper exists on the HF model
+  (transformers now puts blocks directly on `<prefix>.layers`)
 
 Three checkpoints, matching the ones already sanity-checked manually:
 - google/vit-base-patch16-224          (ViTForImageClassification, prefix "vit.")
@@ -22,10 +24,11 @@ hundred MB total) — same cost class as the existing Mamba/SmolLM3 integration
 tests, no special marker needed, but expect the first run to be slow.
 """
 
+from types import SimpleNamespace
+
 import pytest
 import torch
-from transformers import DeiTModel, ViTForImageClassification, ViTModel
-
+from transformers import ViTForImageClassification, ViTModel, DeiTModel
 from transformer_lens.model_bridge.bridge import TransformerBridge
 from transformer_lens.model_bridge.generalized_components.vision_classifier_head import (
     VisionClassifierHeadBridge,
@@ -77,6 +80,11 @@ class TestViTClassifierBridgeCreation:
 
     def test_n_heads_matches_hf_config(self, vit_bridge):
         assert vit_bridge.cfg.n_heads == vit_bridge.original_model.config.num_attention_heads
+
+    def test_blocks_point_at_flat_layers_attribute(self, vit_bridge):
+        """Current transformers has no ViTEncoder wrapper any more — blocks
+        live directly on `vit.layers`, not `vit.encoder.layer`."""
+        assert vit_bridge.adapter.component_mapping["blocks"].name == "vit.layers"
 
 
 class TestViTClassifierForwardPass:
@@ -162,12 +170,17 @@ class TestViTClassifierHookCoverage:
 def vit_bare_bridge():
     # Explicitly load the bare model
     hf_model = ViTModel.from_pretrained(MODEL_VIT_BARE)
-    return TransformerBridge.boot_transformers(MODEL_VIT_BARE, hf_model=hf_model, device="cpu")
+    return TransformerBridge.boot_transformers(
+        MODEL_VIT_BARE, hf_model=hf_model, device="cpu"
+    )
 
 
 class TestViTBareModel:
     def test_no_unembed_component(self, vit_bare_bridge):
         assert "unembed" not in vit_bare_bridge.adapter.component_mapping
+
+    def test_blocks_point_at_flat_layers_attribute_no_prefix(self, vit_bare_bridge):
+        assert vit_bare_bridge.adapter.component_mapping["blocks"].name == "layers"
 
     def test_forward_does_not_crash(self, vit_bare_bridge):
         pixel_values = _pixel_values()
@@ -252,7 +265,6 @@ class TestDeiTBridge:
         seq_len = cache["embed.hook_out"].shape[1]
         num_patches = (224 // 16) ** 2
 
-        # This will now correctly evaluate to 198 (196 + 2)
         assert seq_len == num_patches + 2  # CLS + distillation + patches
 
 
@@ -288,3 +300,34 @@ class TestDeiTWithTeacherRejected:
         adapter.cfg = None  # prepare_model() doesn't touch cfg before the raise
         with pytest.raises(NotImplementedError):
             ViTArchitectureAdapter.prepare_model(adapter, hf_model)
+
+
+# ---------------------------------------------------------------------------
+# Regression test: prepare_model() must not assume `.encoder` exists.
+# ---------------------------------------------------------------------------
+
+
+class TestPrepareModelDoesNotAssumeEncoderWrapper:
+    def test_minimal_bare_model_stub_does_not_crash(self):
+        """Reproduces the AttributeError seen after upgrading transformers:
+        'types.SimpleNamespace' object has no attribute 'encoder'.
+
+        A stub with none of vit/deit/classifier/cls_classifier/
+        distillation_classifier set should be treated like a bare, no-prefix
+        model — prepare_model() must not reach for `hf_model.encoder.layer`
+        (that wrapper module no longer exists in current transformers; blocks
+        live directly on `<prefix>.layers`).
+        """
+        from transformer_lens.model_bridge.supported_architectures.vit import (
+            ViTArchitectureAdapter,
+        )
+
+        hf_model = SimpleNamespace()
+
+        adapter = ViTArchitectureAdapter.__new__(ViTArchitectureAdapter)
+        adapter.cfg = None
+
+        ViTArchitectureAdapter.prepare_model(adapter, hf_model)  # must not raise
+
+        assert adapter.component_mapping["blocks"].name == "layers"
+        assert "unembed" not in adapter.component_mapping

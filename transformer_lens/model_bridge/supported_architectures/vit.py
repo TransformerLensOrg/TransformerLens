@@ -15,12 +15,21 @@ logits.
 ViT/DeiT blocks are pre-LN (LayerNorm applied *before* attention/MLP, residual
 added after — same shape as Llama/GPT2), unlike BERT's post-LN. That's why
 `supports_fold_ln = True` here where BertArchitectureAdapter sets it False.
+
+NOTE (transformers >= the ViT/DeiT flattening refactor): as of this version of
+`modeling_vit.py`, HF removed the separate `ViTEncoder` wrapper — the blocks
+now live directly at `<prefix>.layers` on the model, not `<prefix>.encoder.layer`.
+Attention was flattened too: `ViTAttention` now owns `q_proj`/`k_proj`/`v_proj`/
+`o_proj` directly (no more nested `attention.attention.{query,key,value}` +
+`output.dense`). And `ViTLayer` already exposes a flat `.mlp` submodule
+(`ViTMLP` with `.fc1`/`.fc2`) instead of the old `intermediate`/`output` split.
+Because of this, the old `ViTMLPWrapper` shim, the block-forward tuple-unwrapping
+monkey-patch (`ViTLayer.forward` returns a plain tensor now, not a tuple), and
+the `hf_model.encoder_layer = hf_model.encoder.layer` aliasing hack are all
+gone — the component mapping below points straight at the real attributes.
 """
 
 from typing import Any, Dict
-
-import torch
-import torch.nn as nn
 
 from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion
 from transformer_lens.conversion_utils.param_processing_conversion import (
@@ -40,29 +49,6 @@ from transformer_lens.model_bridge.generalized_components.vision_classifier_head
 from transformer_lens.model_bridge.generalized_components.vision_embeddings import (
     VisionEmbeddingsBridge,
 )
-
-
-class ViTMLPWrapper(nn.Module):
-    """A transparent wrapper to group ViT's intermediate and output layers into an 'mlp' container.
-
-    TransformerLens expects an 'mlp' container, but Hugging Face's ViTLayer places
-    'intermediate' and 'output' directly on the block. We inject this wrapper onto
-    the block as `.mlp`. We store the block reference inside a tuple to prevent PyTorch
-    from registering it as a submodule, which would create a circular graph (Cycle:
-    ViTLayer -> mlp -> ViTLayer) and trigger infinite recursion in PyTorch hooks.
-    """
-
-    def __init__(self, block: nn.Module):
-        super().__init__()
-        self._block_ref = (block,)
-
-    @property
-    def intermediate(self):
-        return self._block_ref[0].intermediate
-
-    @property
-    def output(self):
-        return self._block_ref[0].output
 
 
 class ViTArchitectureAdapter(ArchitectureAdapter):
@@ -122,7 +108,9 @@ class ViTArchitectureAdapter(ArchitectureAdapter):
         mapping: Dict[str, Any] = {
             "embed": VisionEmbeddingsBridge(name=f"{p}embeddings"),
             "blocks": BlockBridge(
-                name=f"{p}encoder.layer",
+                # HF's ViTModel/DeiTModel no longer wrap blocks in a `.encoder`
+                # module — they sit directly on `<prefix>.layers`.
+                name=f"{p}layers",
                 hook_alias_overrides={
                     "hook_mlp_out": "mlp.out.hook_out",
                     "hook_mlp_in": "mlp.in.hook_in",
@@ -142,18 +130,27 @@ class ViTArchitectureAdapter(ArchitectureAdapter):
                         name="attention",
                         config=self.cfg,
                         submodules={
-                            "q": LinearBridge(name="attention.query"),
-                            "k": LinearBridge(name="attention.key"),
-                            "v": LinearBridge(name="attention.value"),
-                            "o": LinearBridge(name="output.dense"),
+                            # Submodule paths here are resolved relative to the
+                            # already-resolved "attn" bridge module itself
+                            # (block.attention). ViTAttention/DeiTAttention now
+                            # owns q_proj/k_proj/v_proj/o_proj directly
+                            # (flattened, no nested self-attention + separate
+                            # output.dense module), so no "attention." prefix.
+                            "q": LinearBridge(name="q_proj"),
+                            "k": LinearBridge(name="k_proj"),
+                            "v": LinearBridge(name="v_proj"),
+                            "o": LinearBridge(name="o_proj"),
                         },
                     ),
                     "mlp": MLPBridge(
                         name="mlp",
                         config=self.cfg,
                         submodules={
-                            "in": LinearBridge(name="intermediate.dense"),
-                            "out": LinearBridge(name="output.dense"),
+                            # ViTLayer.mlp is a real ViTMLP module now
+                            # (fc1/fc2) — no more intermediate/output split,
+                            # so no wrapper shim is needed.
+                            "in": LinearBridge(name="fc1"),
+                            "out": LinearBridge(name="fc2"),
                         },
                     ),
                 },
@@ -188,9 +185,15 @@ class ViTArchitectureAdapter(ArchitectureAdapter):
 
     def prepare_model(self, hf_model: Any) -> None:
         """Detect ViTForImageClassification vs DeiTForImageClassification vs a bare
-        *Model, and add/omit the classifier head + prefix accordingly."""
-        class_name = hf_model.__class__.__name__
+        *Model, and add/omit the classifier head + prefix accordingly.
 
+        No structural patching of the HF model is needed any more: current
+        transformers ViT/DeiT blocks already expose a flat `.mlp` (fc1/fc2) and
+        return plain tensors from `forward`, and the blocks live directly on
+        `<prefix>.layers` rather than behind a now-removed `.encoder` wrapper.
+        This method only has to figure out the right prefix/classifier and
+        build the component mapping to point at those real attributes.
+        """
         if hasattr(hf_model, "cls_classifier") and hasattr(hf_model, "distillation_classifier"):
             raise NotImplementedError(
                 "DeiTForImageClassificationWithTeacher (dual cls_classifier + "
@@ -207,51 +210,6 @@ class ViTArchitectureAdapter(ArchitectureAdapter):
             prefix = "vit."
         else:
             prefix = ""
-
-        def patch_layers(module: Any):
-            if type(module).__name__ in ("ViTLayer", "DeiTLayer"):
-                # 1. Inject the non-circular MLP wrapper onto every ViTLayer block.
-                if not hasattr(module, "mlp"):
-                    module.mlp = ViTMLPWrapper(module)
-
-                # 2. Fix the tuple-chaining bug for both inputs and outputs.
-                if not getattr(module, "_tl_patched", False):
-                    original_forward = module.forward
-
-                    def unwrapping_forward(*args, **kwargs):
-                        # Unpack incoming positional argument if it's a tuple from a previous block
-                        if (
-                            len(args) > 0
-                            and isinstance(args[0], tuple)
-                            and len(args[0]) > 0
-                            and isinstance(args[0][0], torch.Tensor)
-                        ):
-                            args = (args[0][0], *args[1:])
-                        # Unpack incoming keyword argument if present
-                        if "hidden_states" in kwargs and isinstance(kwargs["hidden_states"], tuple):
-                            if len(kwargs["hidden_states"]) > 0 and isinstance(
-                                kwargs["hidden_states"][0], torch.Tensor
-                            ):
-                                kwargs["hidden_states"] = kwargs["hidden_states"][0]
-
-                        # Run original HF forward (now guaranteed a pure Tensor input, keeping layernorm happy)
-                        out = original_forward(*args, **kwargs)
-
-                        # Unpack output if it's a tuple so the next block receives a pure Tensor
-                        return out[0] if isinstance(out, tuple) else out
-
-                    module.forward = unwrapping_forward
-                    setattr(module, "_tl_patched", True)
-            if hasattr(module, "children"):
-                for child in module.children():
-                    patch_layers(child)
-
-        patch_layers(hf_model)
-
-        # Alias the encoder layers directly to the root to bypass the TransformerLens 
-        # deep-referencing bug that orphans the `encoder` module on bare models.
-        if prefix == "":
-            hf_model.encoder_layer = hf_model.encoder.layer
 
         with_classifier = hasattr(hf_model, "classifier")
         self.component_mapping = self._build_component_mapping(
