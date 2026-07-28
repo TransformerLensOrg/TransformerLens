@@ -1763,7 +1763,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             pixel_values: Optional image tensor for multimodal models (e.g., LLaVA, Gemma3)
                 and vision models (eg. ViT, DeiT).
                 The tensor is passed directly to the underlying HuggingFace model.
-                Only valid when cfg.is_multimodal is True or cfg.is_visual_mdoel is True.
+                Only valid when cfg.is_multimodal is True or cfg.is_visual_model is True.
             input_values: Optional audio waveform tensor for audio models (e.g., HuBERT).
                 The tensor is passed directly to the underlying HuggingFace model.
                 Only valid when cfg.is_audio_model is True.
