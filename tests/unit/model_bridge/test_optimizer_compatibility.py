@@ -170,7 +170,6 @@ class TestOptimizerCompatibility:
         logits = small_bridge_model(input_ids, return_type="logits")
         loss = logits.sum()
 
-        # Backward and step
         loss.backward()
         optimizer.step()
 

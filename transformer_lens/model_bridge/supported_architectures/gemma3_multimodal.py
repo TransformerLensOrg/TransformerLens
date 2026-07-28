@@ -8,7 +8,6 @@ from typing import Any
 
 from transformer_lens.conversion_utils.conversion_steps import (
     ArithmeticTensorConversion,
-    RearrangeTensorConversion,
     TransposeTensorConversion,
 )
 from transformer_lens.conversion_utils.conversion_steps.arithmetic_tensor_conversion import (
@@ -21,7 +20,6 @@ from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapt
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
-    GatedMLPBridge,
     LinearBridge,
     RMSNormalizationBridge,
     RotaryEmbeddingBridge,
@@ -47,6 +45,8 @@ class Gemma3MultimodalArchitectureAdapter(ArchitectureAdapter):
     The language model component follows the same patterns as Gemma3ArchitectureAdapter.
     """
 
+    _testing_lm_attr = "model.language_model"
+
     def __init__(self, cfg: Any) -> None:
         """Initialize the Gemma3 multimodal architecture adapter."""
         super().__init__(cfg)
@@ -64,10 +64,7 @@ class Gemma3MultimodalArchitectureAdapter(ArchitectureAdapter):
         self.cfg.attn_implementation = "eager"
 
         # Store vision-related config
-        if hasattr(cfg, "vision_config"):
-            self.cfg.vision_hidden_size = getattr(cfg.vision_config, "hidden_size", None)
-            self.cfg.vision_num_layers = getattr(cfg.vision_config, "num_hidden_layers", None)
-            self.cfg.vision_num_heads = getattr(cfg.vision_config, "num_attention_heads", None)
+        self._extract_vision_dims(cfg)
 
         # Store multimodal projection config
         self.cfg.mm_tokens_per_image = getattr(cfg, "mm_tokens_per_image", 256)
@@ -76,24 +73,7 @@ class Gemma3MultimodalArchitectureAdapter(ArchitectureAdapter):
         # Note: The language model weights are under "model.language_model.*"
         self.weight_processing_conversions = {
             # Q/K/V weight conversions for language model
-            "blocks.{i}.attn.q.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
-            ),
-            "blocks.{i}.attn.k.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion(
-                    "(n h) m -> n m h",
-                    n=getattr(self.cfg, "n_key_value_heads", None) or self.cfg.n_heads,
-                ),
-            ),
-            "blocks.{i}.attn.v.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion(
-                    "(n h) m -> n m h",
-                    n=getattr(self.cfg, "n_key_value_heads", None) or self.cfg.n_heads,
-                ),
-            ),
-            "blocks.{i}.attn.o.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=self.cfg.n_heads),
-            ),
+            **self._qkvo_weight_conversions(),
             # RMSNorm weight conversions - Gemma adds 1.0 to weights
             "blocks.{i}.ln1.weight": ParamProcessingConversion(
                 tensor_conversion=ArithmeticTensorConversion(OperationTypes.ADDITION, 1.0),
@@ -168,15 +148,7 @@ class Gemma3MultimodalArchitectureAdapter(ArchitectureAdapter):
                             "k_norm": RMSNormalizationBridge(name="k_norm", config=self.cfg),
                         },
                     ),
-                    "mlp": GatedMLPBridge(
-                        name="mlp",
-                        config=self.cfg,
-                        submodules={
-                            "gate": LinearBridge(name="gate_proj"),
-                            "in": LinearBridge(name="up_proj"),
-                            "out": LinearBridge(name="down_proj"),
-                        },
-                    ),
+                    "mlp": self._gated_mlp(),
                 },
             ),
             "ln_final": RMSNormalizationBridge(name="model.language_model.norm", config=self.cfg),
@@ -184,46 +156,14 @@ class Gemma3MultimodalArchitectureAdapter(ArchitectureAdapter):
         }
 
     def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Set up rotary embedding references for Gemma-3 multimodal component testing.
-
-        The language model uses dual RoPE (global + local) like text-only Gemma 3.
-
-        Args:
-            hf_model: The HuggingFace Gemma-3 multimodal model instance
-            bridge_model: The TransformerBridge model (if available)
-        """
-        # Get rotary embedding from the language model
-        language_model = hf_model.model.language_model
-        rotary_emb = language_model.rotary_emb
-
-        # Force HF model to use "eager" attention
-        if hasattr(hf_model, "config") and hasattr(hf_model.config, "_attn_implementation"):
-            hf_model.config._attn_implementation = "eager"
-
-        # Also set on text config
-        if hasattr(hf_model.config, "text_config"):
-            hf_model.config.text_config._attn_implementation = "eager"
-
-        # Set on all language model attention layers
-        if hasattr(language_model, "layers"):
-            for layer in language_model.layers:
-                if hasattr(layer, "self_attn") and hasattr(layer.self_attn, "config"):
-                    layer.self_attn.config._attn_implementation = "eager"
-
-        # Set rotary_emb on actual bridge instances if available
+        """Wire rotary + eager, then enable native autograd on the Q/K norms."""
+        super().setup_component_testing(hf_model, bridge_model)
         if bridge_model is not None and hasattr(bridge_model, "blocks"):
             for block in bridge_model.blocks:
-                if hasattr(block, "attn"):
-                    block.attn.set_rotary_emb(rotary_emb)
-
-                    # Enable native autograd for q_norm/k_norm
-                    if hasattr(block.attn, "original_component"):
-                        hf_attn = block.attn.original_component
-                        if hasattr(hf_attn, "q_norm"):
-                            hf_attn.q_norm.use_native_layernorm_autograd = True
-                        if hasattr(hf_attn, "k_norm"):
-                            hf_attn.k_norm.use_native_layernorm_autograd = True
-
-        # Also set on the template for get_generalized_component() calls
-        attn_bridge = self.get_generalized_component("blocks.0.attn")
-        attn_bridge.set_rotary_emb(rotary_emb)
+                hf_attn = getattr(getattr(block, "attn", None), "original_component", None)
+                if hf_attn is None:
+                    continue
+                if hasattr(hf_attn, "q_norm"):
+                    hf_attn.q_norm.use_native_layernorm_autograd = True
+                if hasattr(hf_attn, "k_norm"):
+                    hf_attn.k_norm.use_native_layernorm_autograd = True

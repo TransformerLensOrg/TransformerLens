@@ -6,7 +6,6 @@ from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapt
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
-    GatedMLPBridge,
     LinearBridge,
     PositionEmbeddingsAttentionBridge,
     RMSNormalizationBridge,
@@ -41,17 +40,14 @@ class Olmo2ArchitectureAdapter(ArchitectureAdapter):
     - ln_final.b - RMSNorm has no bias
     """
 
+    # Attention bridge seam; EXAONE-4 swaps in its NoPE-gating variant.
+    _attention_bridge_cls = PositionEmbeddingsAttentionBridge
+
     def __init__(self, cfg: Any) -> None:
         """Initialize the OLMo 2 architecture adapter."""
         super().__init__(cfg)
 
-        # Set config variables for weight processing
-        self.cfg.normalization_type = "RMS"
-        self.cfg.positional_embedding_type = "rotary"
-        self.cfg.final_rms = True
-        self.cfg.gated_mlp = True
-        self.cfg.attn_only = False
-        self.cfg.uses_rms_norm = True
+        self._set_rms_rotary_defaults()
         # OLMo-2 uses post-norm (RMSNorm AFTER attention/MLP), so layer norm
         # folding into QKV/MLP weights is incorrect — the norms apply to the
         # output, not the input. Same pattern as BERT and Phi-3.
@@ -60,19 +56,6 @@ class Olmo2ArchitectureAdapter(ArchitectureAdapter):
         # PositionEmbeddingsAttentionBridge delegates to native HF attention, so
         # both bridge and reference must use the same implementation.
         self.cfg.attn_implementation = "eager"
-
-        self.default_config = {
-            "d_model": cfg.d_model,
-            "d_head": cfg.d_model // cfg.n_heads,
-            "n_heads": cfg.n_heads,
-            "n_layers": cfg.n_layers,
-            "d_vocab": cfg.d_vocab,
-        }
-
-        # GQA support
-        if hasattr(cfg, "n_key_value_heads") and cfg.n_key_value_heads is not None:
-            self.default_config["n_key_value_heads"] = cfg.n_key_value_heads
-            self.cfg.n_key_value_heads = cfg.n_key_value_heads
 
         self.weight_processing_conversions = {
             **self._qkvo_weight_conversions(),
@@ -91,7 +74,7 @@ class Olmo2ArchitectureAdapter(ArchitectureAdapter):
                     "ln2": RMSNormalizationBridge(
                         name="post_feedforward_layernorm", config=self.cfg
                     ),
-                    "attn": PositionEmbeddingsAttentionBridge(
+                    "attn": self._attention_bridge_cls(
                         name="self_attn",
                         config=self.cfg,
                         submodules={
@@ -105,15 +88,7 @@ class Olmo2ArchitectureAdapter(ArchitectureAdapter):
                         requires_attention_mask=True,
                         requires_position_embeddings=True,
                     ),
-                    "mlp": GatedMLPBridge(
-                        name="mlp",
-                        config=self.cfg,
-                        submodules={
-                            "gate": LinearBridge(name="gate_proj"),
-                            "in": LinearBridge(name="up_proj"),
-                            "out": LinearBridge(name="down_proj"),
-                        },
-                    ),
+                    "mlp": self._build_mlp_bridge(),
                 },
                 # Post-norm override: ln2 is post_feedforward_layernorm applied AFTER
                 # MLP, so "ln2.hook_in" captures the MLP output (wrong mid-point).
@@ -126,37 +101,6 @@ class Olmo2ArchitectureAdapter(ArchitectureAdapter):
             "unembed": UnembeddingBridge(name="lm_head", config=self.cfg),
         }
 
-    def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Set up rotary embedding references for OLMo 2 component testing.
-
-        OLMo 2 uses RoPE (Rotary Position Embeddings). We set the rotary_emb
-        reference on all attention bridge instances for component testing.
-
-        We also force the HF model to use "eager" attention to match the bridge's
-        implementation. The bridge uses "eager" to support output_attentions for hooks.
-
-        Args:
-            hf_model: The HuggingFace OLMo 2 model instance
-            bridge_model: The TransformerBridge model (if available)
-        """
-        rotary_emb = hf_model.model.rotary_emb
-
-        # Force HF model to use "eager" attention to match bridge implementation
-        if hasattr(hf_model, "config") and hasattr(hf_model.config, "_attn_implementation"):
-            hf_model.config._attn_implementation = "eager"
-
-        # Also set on all attention layers
-        if hasattr(hf_model, "model") and hasattr(hf_model.model, "layers"):
-            for layer in hf_model.model.layers:
-                if hasattr(layer, "self_attn") and hasattr(layer.self_attn, "config"):
-                    layer.self_attn.config._attn_implementation = "eager"
-
-        # Set rotary_emb on actual bridge instances in bridge_model if available
-        if bridge_model is not None and hasattr(bridge_model, "blocks"):
-            for block in bridge_model.blocks:
-                if hasattr(block, "attn"):
-                    block.attn.set_rotary_emb(rotary_emb)
-
-        # Also set on the template for get_generalized_component() calls
-        attn_bridge = self.get_generalized_component("blocks.0.attn")
-        attn_bridge.set_rotary_emb(rotary_emb)
+    def _build_mlp_bridge(self):
+        """MLP bridge seam; FlexOlmo swaps in the MoE variant."""
+        return self._gated_mlp()

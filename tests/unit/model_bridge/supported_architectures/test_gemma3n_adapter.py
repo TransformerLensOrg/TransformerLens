@@ -2,6 +2,7 @@
 
 import pytest
 
+from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.config.transformer_bridge_config import TransformerBridgeConfig
 from transformer_lens.factories.architecture_adapter_factory import (
     ArchitectureAdapterFactory,

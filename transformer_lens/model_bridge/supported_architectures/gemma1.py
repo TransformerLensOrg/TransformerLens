@@ -16,7 +16,6 @@ from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapt
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
-    GatedMLPBridge,
     LinearBridge,
     PositionEmbeddingsAttentionBridge,
     RMSNormalizationBridge,
@@ -32,17 +31,11 @@ class Gemma1ArchitectureAdapter(ArchitectureAdapter):
         """Initialize the Gemma1 architecture adapter."""
         super().__init__(cfg)
 
-        # Set config variables for weight processing
-        self.cfg.normalization_type = "RMS"
-        self.cfg.positional_embedding_type = "rotary"
-        self.cfg.final_rms = True
-        self.cfg.gated_mlp = True
-        self.cfg.attn_only = False
+        self._set_rms_rotary_defaults()
 
         # Gemma models use BOS tokens (tokenizer prepends BOS by default)
         # Matches HookedTransformer behavior (default_prepend_bos = True)
         self.cfg.default_prepend_bos = True
-        self.cfg.uses_rms_norm = True
         # Gemma models use (1.0 + weight) in RMSNorm instead of just weight
         # See: https://github.com/huggingface/transformers/pull/29402
         self.cfg.rmsnorm_uses_offset = True
@@ -104,52 +97,9 @@ class Gemma1ArchitectureAdapter(ArchitectureAdapter):
                         requires_attention_mask=True,
                         requires_position_embeddings=True,
                     ),
-                    "mlp": GatedMLPBridge(
-                        name="mlp",
-                        config=self.cfg,
-                        submodules={
-                            "gate": LinearBridge(name="gate_proj"),
-                            "in": LinearBridge(name="up_proj"),
-                            "out": LinearBridge(name="down_proj"),
-                        },
-                    ),
+                    "mlp": self._gated_mlp(),
                 },
             ),
             "ln_final": RMSNormalizationBridge(name="model.norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head"),
         }
-
-    def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Set up rotary embedding references for Gemma1 component testing.
-
-        Gemma1 uses RoPE (Rotary Position Embeddings). We set the rotary_emb reference
-        on all attention bridge instances for component testing.
-
-        Args:
-            hf_model: The HuggingFace Gemma1 model instance
-            bridge_model: The TransformerBridge model (if available, set rotary_emb on actual instances)
-        """
-        rotary_emb = hf_model.model.rotary_emb
-
-        # Force HF model to use "eager" attention to match bridge implementation
-        # Bridge uses "eager" to support output_attentions for hook compatibility
-        # SDPA and eager are mathematically equivalent but have numerical differences
-        if hasattr(hf_model, "config") and hasattr(hf_model.config, "_attn_implementation"):
-            hf_model.config._attn_implementation = "eager"
-
-        # Also set on all attention layers
-        if hasattr(hf_model, "model") and hasattr(hf_model.model, "layers"):
-            for layer in hf_model.model.layers:
-                if hasattr(layer, "self_attn") and hasattr(layer.self_attn, "config"):
-                    layer.self_attn.config._attn_implementation = "eager"
-
-        # Set rotary_emb on actual bridge instances in bridge_model if available
-        if bridge_model is not None and hasattr(bridge_model, "blocks"):
-            # Set on each layer's actual attention bridge instance
-            for block in bridge_model.blocks:
-                if hasattr(block, "attn"):
-                    block.attn.set_rotary_emb(rotary_emb)
-
-        # Also set on the template for get_generalized_component() calls
-        attn_bridge = self.get_generalized_component("blocks.0.attn")
-        attn_bridge.set_rotary_emb(rotary_emb)

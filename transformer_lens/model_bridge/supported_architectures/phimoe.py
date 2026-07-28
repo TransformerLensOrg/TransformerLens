@@ -2,10 +2,6 @@
 
 from typing import Any
 
-from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion
-from transformer_lens.conversion_utils.param_processing_conversion import (
-    ParamProcessingConversion,
-)
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
@@ -13,6 +9,7 @@ from transformer_lens.model_bridge.generalized_components import (
     EmbeddingBridge,
     LinearBridge,
     MoEBridge,
+    MoERouterBridge,
     NormalizationBridge,
     UnembeddingBridge,
 )
@@ -40,8 +37,6 @@ class PhiMoEArchitectureAdapter(ArchitectureAdapter):
         self.cfg.attn_implementation = "eager"
         self.cfg.default_prepend_bos = False
 
-        if hasattr(cfg, "n_key_value_heads") and cfg.n_key_value_heads is not None:
-            self.cfg.n_key_value_heads = cfg.n_key_value_heads
         if hasattr(cfg, "num_experts"):
             self.cfg.num_experts = cfg.num_experts
         if hasattr(cfg, "experts_per_token"):
@@ -65,41 +60,11 @@ class PhiMoEArchitectureAdapter(ArchitectureAdapter):
         if rope_theta is not None:
             self.cfg.rotary_base = rope_theta
 
-        n_kv_heads = self.cfg.n_key_value_heads or self.cfg.n_heads
         self.weight_processing_conversions = {
-            "blocks.{i}.attn.q.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
-            ),
-            "blocks.{i}.attn.k.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=n_kv_heads),
-            ),
-            "blocks.{i}.attn.v.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=n_kv_heads),
-            ),
-            "blocks.{i}.attn.o.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=self.cfg.n_heads),
+            **self._qkvo_weight_conversions(
+                include_biases=bool(getattr(self.cfg, "attention_bias", False))
             ),
         }
-        if getattr(self.cfg, "attention_bias", False):
-            self.weight_processing_conversions.update(
-                {
-                    "blocks.{i}.attn.q.bias": ParamProcessingConversion(
-                        tensor_conversion=RearrangeTensorConversion(
-                            "(h d_head) -> h d_head", h=self.cfg.n_heads
-                        ),
-                    ),
-                    "blocks.{i}.attn.k.bias": ParamProcessingConversion(
-                        tensor_conversion=RearrangeTensorConversion(
-                            "(h d_head) -> h d_head", h=n_kv_heads
-                        ),
-                    ),
-                    "blocks.{i}.attn.v.bias": ParamProcessingConversion(
-                        tensor_conversion=RearrangeTensorConversion(
-                            "(h d_head) -> h d_head", h=n_kv_heads
-                        ),
-                    ),
-                }
-            )
 
         self.component_mapping = {
             "embed": EmbeddingBridge(name="model.embed_tokens"),
@@ -128,7 +93,7 @@ class PhiMoEArchitectureAdapter(ArchitectureAdapter):
                         name="mlp",
                         config=self.cfg,
                         submodules={
-                            "gate": LinearBridge(name="router"),
+                            "gate": MoERouterBridge(name="router"),
                         },
                     ),
                 },
@@ -138,17 +103,14 @@ class PhiMoEArchitectureAdapter(ArchitectureAdapter):
         }
 
     def prepare_loading(self, model_name: str, model_kwargs: dict) -> None:
-        """Force eager attention for consistent hookable generation."""
+        """Disable remote code; base hook forces eager attention."""
         # The archived remote PhiMoE code is incompatible with current
         # Transformers cache/generation semantics; always use the native class.
         model_kwargs["trust_remote_code"] = False
-        config = model_kwargs.get("config")
-        if config is not None:
-            config._attn_implementation = "eager"
+        super().prepare_loading(model_name, model_kwargs)
 
     def prepare_model(self, hf_model: Any) -> None:
-        """Force eager attention on the loaded HF model."""
-        if hasattr(hf_model, "config"):
-            hf_model.config._attn_implementation = "eager"
+        """Also force eager on the inner model module (PhiMoE re-derives it there)."""
+        super().prepare_model(hf_model)
         if hasattr(hf_model, "model") and hasattr(hf_model.model, "_attn_implementation"):
             hf_model.model._attn_implementation = "eager"

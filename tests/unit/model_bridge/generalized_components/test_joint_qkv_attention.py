@@ -131,7 +131,6 @@ class TestJointQKVAttention:
             split_qkv_matrix=split_qkv_matrix,
         )
 
-        # Set the original component for the attention layer
         qkv_bridge.set_original_component(MockAttention())
 
         # Create test input

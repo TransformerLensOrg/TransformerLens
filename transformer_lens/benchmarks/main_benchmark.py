@@ -168,6 +168,40 @@ def _fixup_custom_model(hf_model) -> None:
             lm_head.weight = embed.weight
             hf_model.lm_head = lm_head
 
+    # Rotary tables destroyed by meta-device loading, for ANY architecture: the
+    # reference needs the same repair the adapter applies to the bridge, or
+    # Phase 1 compares a correct model against a corrupt one. Only tables that
+    # fail a validity check are touched, so scaled RoPE is never clobbered.
+    from transformer_lens.model_bridge.buffer_restore import restore_rotary_inv_freq
+
+    restore_rotary_inv_freq(hf_model)
+
+    if type(hf_model).__name__ == "GiddForDiffusionLM":
+        from transformer_lens.model_bridge.supported_architectures.gidd import (
+            restore_frequencies,
+        )
+
+        restore_frequencies(hf_model)
+
+
+def _hf_forward_with_mask_fallback(hf_model, tokens):
+    """Run an HF decoder forward, retrying with a 2D then 4D mask for models that
+    dereference ``attention_mask`` unconditionally (e.g. LLaDA2) -- else the Phase-1
+    capture raises, gets swallowed, and silently degrades to a shape-only check."""
+    try:
+        return hf_model(tokens)
+    except (AttributeError, ValueError):
+        b, s = tokens.shape[0], tokens.shape[-1]
+        for mask in (
+            torch.ones(b, s, dtype=torch.long, device=tokens.device),
+            torch.ones(b, 1, s, s, dtype=torch.long, device=tokens.device),
+        ):
+            try:
+                return hf_model(tokens, attention_mask=mask)
+            except (AttributeError, ValueError):
+                continue
+        raise
+
 
 def run_comparison_benchmarks(
     bridge_model: TransformerBridge,
@@ -1083,7 +1117,7 @@ def run_benchmark_suite(
                             dec_ids = torch.tensor([[decoder_start_id]]).to(hf_tokens.device)
                             hf_out = hf_model(hf_tokens, decoder_input_ids=dec_ids)
                         else:
-                            hf_out = hf_model(hf_tokens)
+                            hf_out = _hf_forward_with_mask_fallback(hf_model, hf_tokens)
                         hf_saved_logits = hf_out.logits.detach().cpu().clone()
 
                         # Compute causal LM loss (shift logits and labels)
@@ -1222,20 +1256,33 @@ def run_benchmark_suite(
 
         # Generation benchmarks (unprocessed only) - RUN FIRST
         # Skip for encoder-decoder and audio models (no text generation capability)
-        _skip_generation = is_encoder_decoder_model(model_name) or getattr(
-            bridge_unprocessed.cfg, "is_audio_model", False
+        # Diffusion LMs generate through a native sampler; the benchmarks route
+        # to it, so only architectures with neither path are skipped.
+        _adapter = getattr(bridge_unprocessed, "adapter", None)
+        _no_generate = not getattr(_adapter, "supports_generation", True) and not getattr(
+            _adapter, "native_sampler", None
+        )
+        _skip_generation = (
+            is_encoder_decoder_model(model_name)
+            or getattr(bridge_unprocessed.cfg, "is_audio_model", False)
+            or _no_generate
+        )
+        _skip_reason = (
+            "Skipped (model does not support generation)"
+            if _no_generate
+            else "Skipped (encoder-decoder model)"
         )
         if verbose:
             print("1. Generation Benchmarks (unprocessed)")
         if _skip_generation:
             if verbose:
-                print("⏭️ Skipped (encoder-decoder model - requires decoder_input_ids)\n")
+                print(f"⏭️ {_skip_reason}\n")
             add_result(
                 BenchmarkResult(
                     name="generation",
                     severity=BenchmarkSeverity.INFO,
                     passed=True,
-                    message="Skipped (encoder-decoder model)",
+                    message=_skip_reason,
                 )
             )
             add_result(
@@ -1243,7 +1290,7 @@ def run_benchmark_suite(
                     name="generation_with_kv_cache",
                     severity=BenchmarkSeverity.INFO,
                     passed=True,
-                    message="Skipped (encoder-decoder model)",
+                    message=_skip_reason,
                 )
             )
             add_result(
@@ -1251,7 +1298,7 @@ def run_benchmark_suite(
                     name="multiple_generation_calls",
                     severity=BenchmarkSeverity.INFO,
                     passed=True,
-                    message="Skipped (encoder-decoder model)",
+                    message=_skip_reason,
                 )
             )
             add_result(
@@ -1259,7 +1306,7 @@ def run_benchmark_suite(
                     name="text_quality",
                     severity=BenchmarkSeverity.INFO,
                     passed=True,
-                    message="Skipped (encoder-decoder model)",
+                    message=_skip_reason,
                 )
             )
         else:
@@ -1372,6 +1419,13 @@ def run_benchmark_suite(
     if (
         should_run_phase(4)
         and bridge_unprocessed is not None
+        # applicable_phases and supports_generation are independent switches;
+        # without this check a disagreement surfaces as an ERROR, not a skip.
+        # Native-sampler architectures generate too, just not autoregressively.
+        and (
+            getattr(bridge_unprocessed.adapter, "supports_generation", True)
+            or getattr(bridge_unprocessed.adapter, "native_sampler", None) is not None
+        )
         and not is_masked_lm_model(model_name, trust_remote_code=trust_remote_code)
         and not is_audio_model(model_name, trust_remote_code=trust_remote_code)
     ):
@@ -1501,6 +1555,28 @@ def run_benchmark_suite(
                     phase=8,
                 )
             )
+
+    # ========================================================================
+    # PHASE 8 (audio-text): audio-conditioned forward for audio decoders
+    # (Qwen2Audio etc.) — is_multimodal with an audio processor, not an encoder.
+    # Image Phase 7 feeds pixel_values and encoder Phase 8 feeds a raw waveform;
+    # neither exercises these models' processed-feature audio path.
+    # ========================================================================
+    _audio_text = (
+        bridge_unprocessed is not None
+        and getattr(bridge_unprocessed.cfg, "is_multimodal", False)
+        and not getattr(bridge_unprocessed.cfg, "is_audio_model", False)
+        and getattr(getattr(bridge_unprocessed, "processor", None), "audio_token", None) is not None
+    )
+    if _audio_text and should_run_phase(8):
+        current_phase[0] = 8
+        if verbose:
+            print("\n" + "=" * 80 + "\nPHASE 8: AUDIO-TEXT FORWARD\n" + "=" * 80 + "\n")
+        from transformer_lens.benchmarks.audio import benchmark_audio_text_forward
+
+        result = benchmark_audio_text_forward(bridge_unprocessed)
+        result.phase = 8
+        add_result(result)
 
     # ========================================================================
     # PHASE 3: Bridge (processed) + HookedTransformer (processed)

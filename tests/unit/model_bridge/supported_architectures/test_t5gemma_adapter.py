@@ -620,3 +620,47 @@ class TestT5GemmaConversionTableAlignment:
             f"No conversion entry for HF key {hf_key!r}. "
             f"Translated TL key: {tl_key!r}, placeholder: {placeholder_key!r}"
         )
+
+
+class TestT5GemmaUnbalancedHeadCounts:
+    """Unbalanced pairs (t5gemma-9b-2b) set different encoder head counts; the
+    encoder conversions must use them, not the decoder-effective ones."""
+
+    def test_encoder_conversions_use_encoder_counts(self) -> None:
+        import torch
+        from transformers import T5GemmaConfig, T5GemmaModuleConfig
+
+        from transformer_lens.model_bridge.sources._bridge_builder import (
+            build_bridge_config_from_hf,
+        )
+
+        enc = T5GemmaModuleConfig(
+            hidden_size=64,
+            num_attention_heads=4,
+            num_key_value_heads=2,
+            intermediate_size=128,
+            num_hidden_layers=2,
+            head_dim=16,
+        )
+        dec = T5GemmaModuleConfig(
+            hidden_size=128,
+            num_attention_heads=8,
+            num_key_value_heads=4,
+            intermediate_size=256,
+            num_hidden_layers=2,
+            head_dim=16,
+        )
+        bc = build_bridge_config_from_hf(
+            T5GemmaConfig(encoder=enc, decoder=dec),
+            "T5GemmaForConditionalGeneration",
+            "tiny-t5gemma",
+            torch.float32,
+        )
+        adapter = T5GemmaArchitectureAdapter(bc)
+        conv = adapter.weight_processing_conversions
+        enc_k = conv["encoder_blocks.{i}.self_attn.k_proj.weight"].tensor_conversion
+        enc_q = conv["encoder_blocks.{i}.self_attn.q_proj.weight"].tensor_conversion
+        dec_k = conv["decoder_blocks.{i}.self_attn.k_proj.weight"].tensor_conversion
+        assert enc_q.axes_lengths == {"n": 4}
+        assert enc_k.axes_lengths == {"n": 2}
+        assert dec_k.axes_lengths == {"n": 4}

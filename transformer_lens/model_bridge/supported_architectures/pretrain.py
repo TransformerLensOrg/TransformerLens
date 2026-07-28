@@ -84,10 +84,6 @@ class DenseOrMoEFeedForwardBridge(GeneralizedComponent):
         # attribute is typed `str | None`, which is all mypy sees without this
         # narrowing. MoEBridge/GatedMLPBridge both require a plain `str` name.
         assert self.name is not None
-        # hasattr can match by attribute-name coincidence, so verify the
-        # protocol's shape too: router/gate/up/down must be modules, and
-        # experts a *registered* ModuleList/ModuleDict -- a plain list of
-        # experts drops out of parameters()/state_dict()/.to()/train()/eval().
         if hasattr(component, "router") and hasattr(component, "experts"):
             if not isinstance(component.router, torch.nn.Module):
                 raise TypeError(

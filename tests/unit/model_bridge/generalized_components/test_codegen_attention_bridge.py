@@ -405,9 +405,7 @@ class TestCodeGenAttentionBridgeRoPE:
         # Capture Q before RoPE (at q.hook_out, before _reconstruct_attention)
         bridge.q.hook_out.add_hook(capture_raw_q)
 
-        # We intercept hook_attn_scores to verify Q was modified.
-        # Instead, we verify by comparing raw projection output vs scores difference.
-        # A simpler check: scores with RoPE ≠ scores computed from raw Q*K^T.
+        # Compare RoPE-applied scores against raw Q·Kᵀ to confirm RoPE ran.
         attn_scores_with_rope = []
 
         def capture_scores(tensor, hook):

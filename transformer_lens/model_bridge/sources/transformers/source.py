@@ -379,9 +379,10 @@ def boot(
     adapter.prepare_model(hf_model)
     default_padding_side = getattr(adapter.cfg, "default_padding_side", None)
     use_fast = getattr(adapter.cfg, "use_fast", True)
-    # Audio models use feature extractors, not text tokenizers.
+    # Audio/vision models use feature extractors or image processors, not text tokenizers.
     _is_audio = getattr(adapter.cfg, "is_audio_model", False)
-    if _is_audio and tokenizer is None:
+    _is_visual = getattr(adapter.cfg, "is_visual_model", False)
+    if (_is_audio or _is_visual) and tokenizer is None:
         tokenizer = None
     elif tokenizer is not None:
         tokenizer = setup_tokenizer(tokenizer, default_padding_side=default_padding_side)

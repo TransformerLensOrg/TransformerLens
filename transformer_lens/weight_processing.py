@@ -139,6 +139,25 @@ class ProcessWeights:
                 if sd_key.endswith(f".{component_suffix}") and f".{layer_idx}." in sd_key:
                     return sd_key
 
+        # Mixed MoE/dense adapters (Llama4, Laguna, LLaDA2-MoE) put a non-MoE
+        # layer's gated MLP in the MoE slot under dense_gate/dense_in/dense_out
+        # so it coexists with the router/experts. When the standard block-level
+        # mlp.{gate,in,out} key is absent, fall back to that dense_ variant.
+        # Fails closed: the standard resolution above already ran (so a real
+        # mlp.gate router is never shadowed), the match is anchored to a block's
+        # top-level MLP (not any nested `.mlp.`), and the dense key is returned
+        # only if it exists — models without the convention are untouched.
+        proj_match = re.match(r"(blocks\.\d+\.mlp\.)(in|gate|out)(\..+)$", key)
+        if proj_match:
+            dense_key = f"{proj_match.group(1)}dense_{proj_match.group(2)}{proj_match.group(3)}"
+            if dense_key in state_dict:
+                return dense_key
+            dm = re.match(r"blocks\.(\d+)\.(.*)", dense_key)
+            if dm:
+                for sd_key in state_dict:
+                    if sd_key.endswith(f".{dm.group(2)}") and f".{dm.group(1)}." in sd_key:
+                        return sd_key
+
         return key
 
     @staticmethod
@@ -1121,7 +1140,7 @@ class ProcessWeights:
                 pos_embed_W_pos_key = (
                     ProcessWeights._get_param_key("pos_embed.W_pos", adapter)
                     if getattr(cfg, "positional_embedding_type", "standard")
-                    not in ("rotary", "alibi")
+                    not in ("rotary", "alibi", "none")
                     else None
                 )
             except ValueError:
@@ -1140,7 +1159,8 @@ class ProcessWeights:
             )
 
             if (
-                getattr(cfg, "positional_embedding_type", "standard") not in ("rotary", "alibi")
+                getattr(cfg, "positional_embedding_type", "standard")
+                not in ("rotary", "alibi", "none")
                 and pos_embed_W_pos_key is not None
             ):
                 if pos_embed_W_pos_key not in state_dict:
@@ -1344,10 +1364,14 @@ class ProcessWeights:
         vocab_dim = -1  # Default: TL format [d_model, d_vocab]
         if cfg is not None:
             d_vocab = getattr(cfg, "d_vocab", None)
-            if d_vocab is not None:
-                if W_U.shape[0] == d_vocab and W_U.shape[-1] != d_vocab:
-                    # HF format [d_vocab, d_model] — center along dim=0
-                    vocab_dim = 0
+            d_model = getattr(cfg, "d_model", None)
+            if d_vocab is not None and W_U.shape[0] == d_vocab and W_U.shape[-1] != d_vocab:
+                # HF format [d_vocab, d_model] — center along dim=0
+                vocab_dim = 0
+            elif d_model is not None and W_U.shape[-1] == d_model and W_U.shape[0] != d_model:
+                # Padded-vocab checkpoints (e.g. HyenaDNA pads 12→16 rows) defeat
+                # the d_vocab match; the d_model axis is unambiguous.
+                vocab_dim = 0
         W_U = W_U - W_U.mean(vocab_dim, keepdim=True)
         state_dict[unembed_W_U_key] = ProcessWeights.convert_tensor_to_hf_format(
             unembed_W_U_key, W_U, None, adapter, None
@@ -1578,6 +1602,13 @@ class ProcessWeights:
         # Skip fold_ln for adapters that don't support it (e.g., post-LN architectures
         # like BERT where LN placement means folding goes into the wrong sublayer).
         if fold_ln and adapter and not getattr(adapter, "supports_fold_ln", True):
+            import warnings
+
+            warnings.warn(
+                f"{type(adapter).__name__} does not support fold_ln; norm weights "
+                "stay unfolded and analyses assuming folded LN will be off.",
+                UserWarning,
+            )
             fold_ln = False
         if fold_ln:
             if getattr(cfg, "normalization_type", "LN") in ["LN", "LNPre"]:
@@ -1600,6 +1631,13 @@ class ProcessWeights:
             and adapter
             and not getattr(adapter, "supports_center_writing_weights", True)
         ):
+            import warnings
+
+            warnings.warn(
+                f"{type(adapter).__name__} does not support center_writing_weights; "
+                "writing weights stay uncentered.",
+                UserWarning,
+            )
             center_writing_weights = False
         if center_writing_weights:
             if getattr(cfg, "normalization_type", "LN") in ["LN", "LNPre"] and (

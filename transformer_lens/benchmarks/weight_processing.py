@@ -570,6 +570,15 @@ def benchmark_attention_output_centering(
         # Check W_O accessibility on first attention block
         first_idx, first_attn_block = attn_blocks[0]
         if not hasattr(first_attn_block.attn, "W_O"):
+            # No mapped output projection (JetMoe's MoA keeps per-expert W_O
+            # inside the delegated module): structurally nothing to center —
+            # skip like the SSM case above rather than fail.
+            if getattr(first_attn_block.attn, "o", None) is None:
+                return BenchmarkResult(
+                    name="attention_output_centering",
+                    severity=BenchmarkSeverity.SKIPPED,
+                    message="No mapped output projection (delegated per-expert W_O)",
+                )
             return BenchmarkResult(
                 name="attention_output_centering",
                 severity=BenchmarkSeverity.WARNING,

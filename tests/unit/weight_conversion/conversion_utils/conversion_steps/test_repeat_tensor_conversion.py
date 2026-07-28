@@ -22,10 +22,7 @@ def test_repeat_tensor_conversion_basic():
     # The new shape should be [3, 2, 4]
     assert result.shape == (3, 2, 4)
 
-    # Because we're repeating along the second dimension with factor=2,
-    # each row is duplicated in that dimension:
-    # For row 0, we expect the same data repeated in the second dimension.
-    # We'll just check a few positions to ensure it repeated:
+    # factor-2 repeat along dim 1 duplicates each row; spot-check a few positions
     for h_idx in range(3):
         for w_idx in range(4):
             val_1 = result[h_idx, 0, w_idx].item()

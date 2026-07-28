@@ -799,7 +799,9 @@ def test_attention_dropout_follows_native_block_mode() -> None:
         TinyLLaDAConfig(attention_dropout=1.0),
         eval_bridge=False,
     )
-    assert local.bridge.training is True
+    # Bridge construction syncs wrapper mode to the wrapped model's mode, so
+    # even without an explicit eval() the eval'd native blocks stay dropout-free.
+    assert local.bridge.training is False
     assert local.bridge.blocks[0].original_component.training is False
     tokens = torch.tensor([[5, 63, 7, 9]])
 

@@ -1022,3 +1022,67 @@ class TestProcessWeights:
             state_dict["blocks.0.ln2.w"], torch.ones_like(state_dict["blocks.0.ln2.w"])
         )
         assert "blocks.0.ln2.b" in state_dict  # Should still be present when fold_biases=False
+
+
+def test_center_unembed_padded_vocab_orientation():
+    """Padded-vocab unembeds (rows > cfg.d_vocab, e.g. HyenaDNA's 12->16) must
+    still center along the vocab axis — the d_vocab shape match fails, so
+    orientation falls back to the unambiguous d_model axis."""
+    from types import SimpleNamespace
+
+    import torch
+
+    from transformer_lens.weight_processing import ProcessWeights
+
+    torch.manual_seed(0)
+    w = torch.randn(16, 128)  # HF orientation [padded_vocab, d_model]
+    cfg = SimpleNamespace(d_vocab=12, d_model=128)
+    out = ProcessWeights.center_unembed({"unembed.W_U": w.clone()}, cfg=cfg, adapter=None)
+    centered = out["unembed.W_U"]
+    # Vocab-axis means (per d_model column) must be ~0; a wrong-axis center
+    # would zero dim-1 means instead and change the predictive distribution.
+    assert centered.mean(dim=0).abs().max().item() < 1e-6
+    assert centered.shape == w.shape
+
+
+def test_resolve_state_dict_key_dense_mlp_fallback():
+    """Mixed MoE/dense adapters (Llama4) name a non-MoE layer's gated MLP
+    projections dense_gate/dense_in/dense_out. When the standard mlp.{in,gate,
+    out} key is absent, the resolver must fall back to the dense_ variant — but
+    only then, and only if the dense key actually exists (no false rewrite)."""
+    from transformer_lens.weight_processing import ProcessWeights
+
+    # standard key present -> returned unchanged (no dense rewrite)
+    sd = {"blocks.0.mlp.in.weight": 1, "blocks.0.mlp.dense_in.weight": 2}
+    assert ProcessWeights._resolve_state_dict_key(sd, "blocks.0.mlp.in.weight", 0) == (
+        "blocks.0.mlp.in.weight"
+    )
+
+    # standard absent, dense present -> dense variant (in/gate/out)
+    for name in ("in", "gate", "out"):
+        sd2 = {f"blocks.0.mlp.dense_{name}.weight": 2}
+        assert (
+            ProcessWeights._resolve_state_dict_key(sd2, f"blocks.0.mlp.{name}.weight", 0)
+            == f"blocks.0.mlp.dense_{name}.weight"
+        )
+
+    # neither present -> original key unchanged (does not invent a dense key)
+    sd3 = {"blocks.0.attn.q.weight": 1}
+    assert ProcessWeights._resolve_state_dict_key(sd3, "blocks.0.mlp.in.weight", 0) == (
+        "blocks.0.mlp.in.weight"
+    )
+
+    # a real mlp.gate (e.g. a router) is found by standard resolution first and
+    # is never shadowed by the dense fallback, even if dense_gate also exists.
+    sd4 = {"blocks.0.mlp.gate.weight": 1, "blocks.0.mlp.dense_gate.weight": 2}
+    assert ProcessWeights._resolve_state_dict_key(sd4, "blocks.0.mlp.gate.weight", 0) == (
+        "blocks.0.mlp.gate.weight"
+    )
+
+    # nested mlp paths (e.g. a shared_expert's own projections) are NOT rewritten
+    # — the fallback is anchored to a block's top-level MLP.
+    sd5 = {"blocks.0.mlp.shared_expert.dense_in.weight": 1}
+    assert (
+        ProcessWeights._resolve_state_dict_key(sd5, "blocks.0.mlp.shared_expert.in.weight", 0)
+        == "blocks.0.mlp.shared_expert.in.weight"
+    )

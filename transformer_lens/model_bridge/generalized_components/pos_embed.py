@@ -39,11 +39,14 @@ class PosEmbedBridge(GeneralizedComponent):
         """Return the positional embedding weight matrix."""
         if self.original_component is None:
             raise RuntimeError(f"Original component not set for {self.name}")
-        assert hasattr(
-            self.original_component, "weight"
-        ), f"Component {self.name} has no weight attribute"
-        weight = self.original_component.weight
-        assert isinstance(weight, torch.Tensor), f"Weight is not a tensor for {self.name}"
+        # Sinusoidal nn.Module variants (e.g. M2M100) register the table as a
+        # "weights" buffer instead of an nn.Embedding "weight" parameter.
+        weight = getattr(self.original_component, "weight", None)
+        if weight is None:
+            weight = getattr(self.original_component, "weights", None)
+        assert isinstance(
+            weight, torch.Tensor
+        ), f"Component {self.name} has no weight/weights tensor"
         return weight
 
     def forward(self, *args: Any, **kwargs: Any) -> torch.Tensor:
@@ -65,7 +68,9 @@ class PosEmbedBridge(GeneralizedComponent):
             raise RuntimeError(
                 f"Original component not set for {self.name}. Call set_original_component() first."
             )
-        if args:
+        # Sinusoidal variants (e.g. Marian) receive a torch.Size, not a tensor;
+        # there is nothing to hook in that case.
+        if args and isinstance(args[0], torch.Tensor):
             first_arg = self.hook_in(args[0])
             args = (first_arg,) + args[1:]
         output = self.original_component(*args, **kwargs)

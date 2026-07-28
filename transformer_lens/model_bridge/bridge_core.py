@@ -1,6 +1,7 @@
 """Framework-agnostic bridge surface shared by TransformerBridge and RemoteBridge."""
 from __future__ import annotations
 
+import inspect
 import re
 import warnings
 from contextlib import contextmanager, nullcontext
@@ -314,6 +315,7 @@ class BridgeCore:
         input_ids: Optional[torch.Tensor],
         *,
         is_audio_model: bool = False,
+        is_visual_model: bool = False,
         inputs_embeds_was_used: bool = False,
         loss_per_token: bool = False,
     ) -> Any:
@@ -329,6 +331,14 @@ class BridgeCore:
                     "Audio models do not support return_type='loss'. "
                     "CTC loss requires aligned frame-level labels."
                 )
+            if is_visual_model:
+                raise ValueError(
+                    "Vision classification models do not support return_type='loss' "
+                    "via this path (no next-token LM target exists for image "
+                    "classification). Compute cross-entropy against `labels` "
+                    "yourself from the returned logits, or use hf_generate()-style "
+                    "direct access to self.original_model for HF's own loss."
+                )
             if inputs_embeds_was_used:
                 raise ValueError(
                     "Cannot compute loss with inputs_embeds — token IDs required for labels."
@@ -341,6 +351,13 @@ class BridgeCore:
                 raise ValueError(
                     "Audio models do not support return_type='both'. "
                     "CTC loss requires aligned frame-level labels."
+                )
+            if is_visual_model:
+                raise ValueError(
+                    "Vision classification models do not support return_type='both' "
+                    "via this path (no next-token LM target exists for image "
+                    "classification). Compute cross-entropy against `labels` "
+                    "yourself from the returned logits."
                 )
             if inputs_embeds_was_used:
                 raise ValueError(
@@ -1147,7 +1164,19 @@ class BridgeCore:
                 "output_attentions" not in filtered_kwargs
                 and self.adapter.supports_hf_output_attentions
             ):
-                filtered_kwargs["output_attentions"] = True
+                # Attention-free remote-code models (e.g. HyenaDNA) reject the
+                # kwarg outright; only pass it when the forward actually accepts
+                # it. Non-torch drivers expose no local module to introspect —
+                # keep the kwarg for them, as before.
+                underlying = getattr(self._driver, "underlying_model", None)
+                if underlying is None:
+                    filtered_kwargs["output_attentions"] = True
+                else:
+                    fwd_params = inspect.signature(underlying.forward).parameters
+                    if "output_attentions" in fwd_params or any(
+                        p.kind is inspect.Parameter.VAR_KEYWORD for p in fwd_params.values()
+                    ):
+                        filtered_kwargs["output_attentions"] = True
             # incl_bwd needs grad to build the graph and run backward while the
             # bwd cache hooks are still attached (i.e. before the finally below).
             with torch.enable_grad() if incl_bwd else nullcontext():

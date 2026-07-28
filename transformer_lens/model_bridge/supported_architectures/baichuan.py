@@ -20,7 +20,6 @@ from transformer_lens.model_bridge.compat import patch_dynamic_cache_v5
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
-    GatedMLPBridge,
     JointQKVPositionEmbeddingsAttentionBridge,
     LinearBridge,
     RMSNormalizationBridge,
@@ -130,6 +129,9 @@ class _BaichuanAttentionBridge(JointQKVPositionEmbeddingsAttentionBridge):
         return (attn_output, attn_weights, present_key_value)
 
 
+from transformers import PreTrainedModel as _HFPreTrainedModel
+
+
 def _patch_init_weights_for_baichuan() -> None:
     """Prevent _init_weights from re-randomizing loaded checkpoint weights.
 
@@ -145,6 +147,12 @@ def _patch_init_weights_for_baichuan() -> None:
         for cls_name in ("BaiChuanPreTrainedModel", "BaichuanPreTrainedModel", "PreTrainedModel"):
             pretrained_cls = getattr(module, cls_name, None)
             if pretrained_cls is None or getattr(pretrained_cls, "_tl_patched", False):
+                continue
+            # The remote module does `from transformers import PreTrainedModel`,
+            # so the "PreTrainedModel" name can resolve to the real base class.
+            # Patching that would disable _init_weights — including HF's rotary
+            # buffer restoration — for every model loaded later in the process.
+            if pretrained_cls is _HFPreTrainedModel:
                 continue
             # Only patch classes that define their own _init_weights
             if "_init_weights" not in pretrained_cls.__dict__:
@@ -180,12 +188,7 @@ class BaichuanArchitectureAdapter(ArchitectureAdapter):
     def __init__(self, cfg: Any) -> None:
         super().__init__(cfg)
 
-        self.cfg.normalization_type = "RMS"
-        self.cfg.positional_embedding_type = "rotary"
-        self.cfg.final_rms = True
-        self.cfg.gated_mlp = True
-        self.cfg.attn_only = False
-        self.cfg.uses_rms_norm = True
+        self._set_rms_rotary_defaults()
 
         # Fused W_pack prevents standard fold_ln from reaching Q/K/V separately.
         # preprocess_weights() handles it instead.
@@ -222,15 +225,7 @@ class BaichuanArchitectureAdapter(ArchitectureAdapter):
                             "o": LinearBridge(name="o_proj"),
                         },
                     ),
-                    "mlp": GatedMLPBridge(
-                        name="mlp",
-                        config=self.cfg,
-                        submodules={
-                            "gate": LinearBridge(name="gate_proj"),
-                            "in": LinearBridge(name="up_proj"),
-                            "out": LinearBridge(name="down_proj"),
-                        },
-                    ),
+                    "mlp": self._gated_mlp(),
                 },
             ),
             "ln_final": RMSNormalizationBridge(name="model.norm", config=self.cfg),

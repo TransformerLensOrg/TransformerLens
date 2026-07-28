@@ -73,7 +73,10 @@ from transformer_lens.model_bridge.generalized_components.mla_attention import (
     MLAAttentionBridge,
 )
 from transformer_lens.model_bridge.generalized_components.mlp import MLPBridge
-from transformer_lens.model_bridge.generalized_components.moe import MoEBridge
+from transformer_lens.model_bridge.generalized_components.moe import (
+    MoEBridge,
+    MoERouterBridge,
+)
 from transformer_lens.model_bridge.generalized_components.mpt_alibi_attention import (
     MPTALiBiAttentionBridge,
 )
@@ -134,6 +137,12 @@ from transformer_lens.model_bridge.generalized_components.unembedding import (
 from transformer_lens.model_bridge.generalized_components.vision_projection import (
     VisionProjectionBridge,
 )
+from transformer_lens.model_bridge.generalized_components.vision_embeddings import (
+    VisionEmbeddingsBridge,
+)
+from transformer_lens.model_bridge.generalized_components.vision_classifier_head import (
+    VisionClassifierHeadBridge,
+)
 
 __all__ = [
     "AttentionBridge",
@@ -170,6 +179,7 @@ __all__ = [
     "MLAAttentionBridge",
     "GatedRMSNormBridge",
     "MoEBridge",
+    "MoERouterBridge",
     "PositionEmbeddingsAttentionBridge",
     "Qwen3_5VisionBlockBridge",
     "Qwen3_5VisionEncoderBridge",
@@ -189,4 +199,6 @@ __all__ = [
     "SSMBlockBridge",
     "SSMMixerBridge",
     "VisionProjectionBridge",
+    "VisionEmbeddingsBridge",
+    "VisionClassifierHeadBridge",
 ]

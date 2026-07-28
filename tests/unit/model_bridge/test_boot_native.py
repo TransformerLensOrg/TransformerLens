@@ -28,16 +28,7 @@ def _cfg(**overrides) -> TransformerBridgeConfig:
 
 
 def test_native_adapter_weight_processing_conversions_shape():
-    """Snapshot the ``weight_processing_conversions`` contract without locking
-    in its size.
-
-    The native adapter currently uses ``{}`` because the native layout already
-    stores Q/K/V split per-head — no rearranges needed. That's the right
-    choice today, but a follow-up that implements fold_ln / compatibility-mode
-    parity will likely add entries. We assert the type and that any present
-    keys point at real bridge slots; we deliberately do **not** assert the
-    set is empty, so a future PR adding conversions doesn't have to rewrite
-    this test."""
+    """Assert weight_processing_conversions is a dict whose keys reference real bridge slots; deliberately does not assert emptiness so added conversions don't force a test rewrite."""
     cfg = _cfg()
     bridge = TransformerBridge.boot_native(cfg)
     conversions = bridge.adapter.weight_processing_conversions

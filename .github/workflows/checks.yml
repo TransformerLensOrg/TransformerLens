@@ -247,15 +247,15 @@ jobs:
   coverage-test:
     name: Full Code Coverage Test
     runs-on: ubuntu-latest
-    # Suite runs under pytest-xdist on a 2-vCPU runner (~40 min with swap);
-    # 60 catches a real hang well below the old 90.
-    timeout-minutes: 60
+    # Suite runs under pytest-xdist on a 2-vCPU runner (~45 min with swap);
+    # 75 catches a real hang well below the old serial 90.
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
       - name: Add swap space
         # The 2-vCPU runner has ~7GB RAM; two xdist workers each holding
-        # torch + resident models overflow it (OOM-killed the runner at ~83%).
-        # Swap absorbs the model-load spikes. Mirrors the notebook-checks job.
+        # torch + resident models overflow it. Swap absorbs the model-load
+        # spikes (mirrors the notebook-checks job).
         run: |
           sudo swapoff /swapfile 2>/dev/null || true
           sudo rm -f /swapfile
@@ -307,7 +307,7 @@ jobs:
         env:
           HF_TOKEN:  ${{ secrets.HF_TOKEN }}
           # One BLAS thread per worker: N xdist workers each spawning ncores
-          # OMP threads would oversubscribe the 4-vCPU runner and erase the gain.
+          # OMP threads would oversubscribe the 2-vCPU runner and erase the gain.
           OMP_NUM_THREADS: "1"
           MKL_NUM_THREADS: "1"
           # Worker count knob (this runner is 2-vCPU, so -n auto = 2). If swap

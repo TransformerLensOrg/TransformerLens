@@ -50,12 +50,15 @@ class VisionProjectionBridge(GeneralizedComponent):
     def forward(
         self,
         vision_features: torch.Tensor,
+        *args: Any,
         **kwargs: Any,
     ) -> torch.Tensor:
         """Forward pass through the vision projection.
 
         Args:
             vision_features: Vision encoder output [batch, num_patches, vision_hidden_size]
+            *args: Extra positional inputs some projectors take (e.g. Mistral3's
+                image_sizes), passed through untouched
             **kwargs: Additional arguments
 
         Returns:
@@ -68,7 +71,7 @@ class VisionProjectionBridge(GeneralizedComponent):
 
         vision_features = self.hook_in(vision_features)
 
-        output = self.original_component(vision_features, **kwargs)
+        output = self.original_component(vision_features, *args, **kwargs)
 
         if isinstance(output, tuple):
             output = (self.hook_out(output[0]),) + output[1:]

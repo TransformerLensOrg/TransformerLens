@@ -39,7 +39,6 @@ class Conv1DBridge(GeneralizedComponent):
         return output
 
     def __repr__(self) -> str:
-        """String representation of the Conv1DBridge."""
         if self.original_component is not None:
             try:
                 # Conv1D has nf (out) and nx (in) attributes

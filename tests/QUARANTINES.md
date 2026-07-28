@@ -82,9 +82,20 @@ A `[vllm]` extra exists (Linux-only marker; declared conflicting with `[lit]` in
 | [`unit/model_bridge/supported_architectures/test_gemma2_adapter.py`:49](unit/model_bridge/supported_architectures/test_gemma2_adapter.py) | "Network/disk fetch of tiny Gemma2" |
 | [`integration/model_bridge/test_bridge_integration.py`:801](integration/model_bridge/test_bridge_integration.py) | "Skip Gemma2 in CI to avoid timeout" |
 | [`acceptance/model_bridge/compatibility/test_hook_completeness.py`:156](acceptance/model_bridge/compatibility/test_hook_completeness.py) | "Gemma2 too large for CI" |
-| [`integration/model_bridge/test_ouro_adapter.py`:35](integration/model_bridge/test_ouro_adapter.py) module-level (+ `slow` marker) | "ByteDance/Ouro-1.4B: 2.8GB download + ~11GB RAM, too large for CI" |
 
-**Un-skip:** locally with `HF_TOKEN` sourced.
+Big-model adapter tests use `@pytest.mark.slow`, CI tier filters `-m "not slow"`:
+
+| Path | Model |
+|---|---|
+| [`integration/model_bridge/test_exaone4_adapter.py`:17](integration/model_bridge/test_exaone4_adapter.py) | EXAONE-4.0 1.2B |
+| [`integration/model_bridge/test_bitnet_adapter.py`:15](integration/model_bridge/test_bitnet_adapter.py) | BitNet 2.4B |
+| [`integration/model_bridge/test_glm_adapter.py`:11](integration/model_bridge/test_glm_adapter.py) | glm-edge 1.59B |
+| [`integration/model_bridge/test_glm_asr_adapter.py`:12](integration/model_bridge/test_glm_asr_adapter.py) | GLM-ASR-Nano 2.26B (fp32 double-load) |
+| [`integration/model_bridge/test_pegasus_adapter.py`:16](integration/model_bridge/test_pegasus_adapter.py) | Pegasus-XSum 568M; distilled variants are asymmetric |
+| [`integration/model_bridge/test_exaone_adapter.py`:18](integration/model_bridge/test_exaone_adapter.py) | EXAONE 2.4B; no working tiny mirror (hyper-accel/tiny-random-exaone ships stale remote code) |
+| [`integration/model_bridge/test_ouro_adapter.py`:35](integration/model_bridge/test_ouro_adapter.py) (skipif + `slow`) | ByteDance/Ouro-1.4B: 2.8GB download + ~11GB RAM |
+
+**Un-skip:** locally with `HF_TOKEN` sourced (slow-marked files: run the file directly or `-m slow`).
 
 ---
 

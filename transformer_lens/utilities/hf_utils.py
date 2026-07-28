@@ -187,17 +187,9 @@ def download_file_from_hf(
 
 
 def clear_huggingface_cache():
-    """
-    Deletes the Hugging Face cache directory and all its contents.
+    """Delete the HuggingFace cache directory and all its contents.
 
-    This function is safe to call in parallel test execution - it will handle race
-    conditions where multiple workers might try to delete the same directory.
-
-    Parameters:
-    None
-
-    Returns:
-    None
+    Safe to call under parallel test execution (handles concurrent-delete races).
     """
 
     print("Deleting Hugging Face cache directory and all its contents.")

@@ -11,7 +11,6 @@ def convert_nanogpt_weights(old_state_dict, cfg: HookedTransformerConfig):
     The second is that the models can be saved with or without bias. By default, there
     is no bias. This function can handle both cases."""
     # Nanogpt models saved after torch.compile() have this unwanted prefix
-    # This is a simple way to remove it
     unwanted_prefix = "_orig_mod."
     for k, v in list(old_state_dict.items()):
         if k.startswith(unwanted_prefix):

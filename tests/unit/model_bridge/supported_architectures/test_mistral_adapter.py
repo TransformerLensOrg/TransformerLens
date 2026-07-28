@@ -9,6 +9,7 @@ Tests cover:
 
 import pytest
 
+from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.config.transformer_bridge_config import TransformerBridgeConfig
 from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion
 from transformer_lens.conversion_utils.param_processing_conversion import (
@@ -112,12 +113,13 @@ class TestMistralComponentMapping:
         assert isinstance(blocks.submodules["attn"], AttentionBridge)
         assert isinstance(blocks.submodules["mlp"], GatedMLPBridge)
 
-    def test_attn_is_not_position_embeddings_subclass(
-        self, adapter: MistralArchitectureAdapter
-    ) -> None:
-        """Mistral uses plain AttentionBridge, not PositionEmbeddingsAttentionBridge."""
+    def test_attn_is_position_embeddings_bridge(self, adapter: MistralArchitectureAdapter) -> None:
+        """Mistral uses PositionEmbeddingsAttentionBridge, like Qwen2.
+
+        That bridge is what gives Mistral hook_attn_in and the q/k/v forks.
+        """
         attn = adapter.component_mapping["blocks"].submodules["attn"]
-        assert not isinstance(attn, PositionEmbeddingsAttentionBridge)
+        assert isinstance(attn, PositionEmbeddingsAttentionBridge)
 
     def test_block_submodule_hf_paths(self, adapter: MistralArchitectureAdapter) -> None:
         blocks = adapter.component_mapping["blocks"]

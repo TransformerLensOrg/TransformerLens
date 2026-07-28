@@ -221,7 +221,6 @@ class TestBD3LMArchitectureAdapterComponentMapping:
 
         model = MockBD3LM()
 
-        # Prepare the model with the adapter
         adapter.prepare_model(model)
 
         assert adapter.component_mapping is not None

@@ -36,7 +36,6 @@ def merge_quantization_fields(field_set: Any, quantization_fields: dict[str, Any
 
                 # Check if the second element is a TensorConversionSet-like object
                 if hasattr(existing_sub_wcs, "fields") and hasattr(new_sub_wcs, "fields"):
-                    # Recursively merge the sub-TensorConversionSets
                     merge_quantization_fields(existing_sub_wcs, new_sub_wcs.fields)
                     # Update the remote field name
                     field_set.fields[field_name] = (new_remote, existing_sub_wcs)

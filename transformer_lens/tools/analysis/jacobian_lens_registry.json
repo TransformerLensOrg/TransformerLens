@@ -1,0 +1,225 @@
+{
+  "_comment": "Artifact registry for pre-fitted Jacobian Lens checkpoints hosted on neuronpedia/jacobian-lens (https://huggingface.co/neuronpedia/jacobian-lens). Keys are short model names accepted by JacobianLens.from_pretrained(); aliases lists the canonical Hugging Face model IDs that also resolve to the same entry. Generated from the repository's sibling list on 2026-07-23.",
+  "gemma-2-2b": {
+    "aliases": ["google/gemma-2-2b"],
+    "repo_id": "neuronpedia/jacobian-lens",
+    "filename": "gemma-2-2b/jlens/Salesforce-wikitext/gemma-2-2b_jacobian_lens.pt",
+    "corpus": "Salesforce-wikitext"
+  },
+  "gemma-2-2b-it": {
+    "aliases": ["google/gemma-2-2b-it"],
+    "repo_id": "neuronpedia/jacobian-lens",
+    "filename": "gemma-2-2b-it/jlens/Salesforce-wikitext/gemma-2-2b-it_jacobian_lens.pt",
+    "corpus": "Salesforce-wikitext"
+  },
+  "gemma-2-9b": {
+    "aliases": ["google/gemma-2-9b"],
+    "repo_id": "neuronpedia/jacobian-lens",
+    "filename": "gemma-2-9b/jlens/Salesforce-wikitext/gemma-2-9b_jacobian_lens.pt",
+    "corpus": "Salesforce-wikitext"
+  },
+  "gemma-2-9b-it": {
+    "aliases": ["google/gemma-2-9b-it"],
+    "repo_id": "neuronpedia/jacobian-lens",
+    "filename": "gemma-2-9b-it/jlens/Salesforce-wikitext/gemma-2-9b-it_jacobian_lens.pt",
+    "corpus": "Salesforce-wikitext"
+  },
+  "gemma-2-27b": {
+    "aliases": ["google/gemma-2-27b"],
+    "repo_id": "neuronpedia/jacobian-lens",
+    "filename": "gemma-2-27b/jlens/Salesforce-wikitext/gemma-2-27b_jacobian_lens.pt",
+    "corpus": "Salesforce-wikitext"
+  },
+  "gemma-3-270m": {
+    "aliases": [],
+    "repo_id": "neuronpedia/jacobian-lens",
+    "filename": "gemma-3-270m/jlens/Salesforce-wikitext/gemma-3-270m_jacobian_lens.pt",
+    "corpus": "Salesforce-wikitext"
+  },
+  "gemma-3-270m-it": {
+    "aliases": [],
+    "repo_id": "neuronpedia/jacobian-lens",
+    "filename": "gemma-3-270m-it/jlens/Salesforce-wikitext/gemma-3-270m-it_jacobian_lens.pt",
+    "corpus": "Salesforce-wikitext"
+  },
+  "gemma-3-1b": {
+    "aliases": ["google/gemma-3-1b-pt"],
+    "repo_id": "neuronpedia/jacobian-lens",
+    "filename": "gemma-3-1b/jlens/Salesforce-wikitext/gemma-3-1b-pt_jacobian_lens.pt",
+    "corpus": "Salesforce-wikitext"
+  },
+  "gemma-3-1b-it": {
+    "aliases": ["google/gemma-3-1b-it"],
+    "repo_id": "neuronpedia/jacobian-lens",
+    "filename": "gemma-3-1b-it/jlens/Salesforce-wikitext/gemma-3-1b-it_jacobian_lens.pt",
+    "corpus": "Salesforce-wikitext"
+  },
+  "gemma-3-4b": {
+    "aliases": ["google/gemma-3-4b-pt"],
+    "repo_id": "neuronpedia/jacobian-lens",
+    "filename": "gemma-3-4b/jlens/Salesforce-wikitext/gemma-3-4b-pt_jacobian_lens.pt",
+    "corpus": "Salesforce-wikitext"
+  },
+  "gemma-3-4b-it": {
+    "aliases": ["google/gemma-3-4b-it"],
+    "repo_id": "neuronpedia/jacobian-lens",
+    "filename": "gemma-3-4b-it/jlens/Salesforce-wikitext/gemma-3-4b-it_jacobian_lens.pt",
+    "corpus": "Salesforce-wikitext"
+  },
+  "gemma-3-12b": {
+    "aliases": ["google/gemma-3-12b-pt"],
+    "repo_id": "neuronpedia/jacobian-lens",
+    "filename": "gemma-3-12b/jlens/Salesforce-wikitext/gemma-3-12b-pt_jacobian_lens.pt",
+    "corpus": "Salesforce-wikitext"
+  },
+  "gemma-3-12b-it": {
+    "aliases": ["google/gemma-3-12b-it"],
+    "repo_id": "neuronpedia/jacobian-lens",
+    "filename": "gemma-3-12b-it/jlens/Salesforce-wikitext/gemma-3-12b-it_jacobian_lens.pt",
+    "corpus": "Salesforce-wikitext"
+  },
+  "gemma-3-27b": {
+    "aliases": ["google/gemma-3-27b-pt"],
+    "repo_id": "neuronpedia/jacobian-lens",
+    "filename": "gemma-3-27b/jlens/Salesforce-wikitext/gemma-3-27b-pt_jacobian_lens.pt",
+    "corpus": "Salesforce-wikitext"
+  },
+  "gemma-3-27b-it": {
+    "aliases": ["google/gemma-3-27b-it"],
+    "repo_id": "neuronpedia/jacobian-lens",
+    "filename": "gemma-3-27b-it/jlens/Salesforce-wikitext/gemma-3-27b-it_jacobian_lens.pt",
+    "corpus": "Salesforce-wikitext"
+  },
+  "gemma-4-31b": {
+    "aliases": ["google/gemma-4-31b"],
+    "repo_id": "neuronpedia/jacobian-lens",
+    "filename": "gemma-4-31b/jlens/Salesforce-wikitext/gemma-4-31B_jacobian_lens.pt",
+    "corpus": "Salesforce-wikitext"
+  },
+  "gemma-4-e2b": {
+    "aliases": ["google/gemma-4-e2b"],
+    "repo_id": "neuronpedia/jacobian-lens",
+    "filename": "gemma-4-e2b/jlens/Salesforce-wikitext/gemma-4-E2B_jacobian_lens.pt",
+    "corpus": "Salesforce-wikitext"
+  },
+  "gemma-4-e4b": {
+    "aliases": ["google/gemma-4-e4b"],
+    "repo_id": "neuronpedia/jacobian-lens",
+    "filename": "gemma-4-e4b/jlens/Salesforce-wikitext/gemma-4-E4B_jacobian_lens.pt",
+    "corpus": "Salesforce-wikitext"
+  },
+  "gpt2-small": {
+    "aliases": ["gpt2", "openai-community/gpt2"],
+    "repo_id": "neuronpedia/jacobian-lens",
+    "filename": "gpt2-small/jlens/Salesforce-wikitext/gpt2_jacobian_lens.pt",
+    "corpus": "Salesforce-wikitext"
+  },
+  "gpt-oss-20b": {
+    "aliases": [],
+    "repo_id": "neuronpedia/jacobian-lens",
+    "filename": "gpt-oss-20b/jlens/Salesforce-wikitext/gpt-oss-20b_jacobian_lens.pt",
+    "corpus": "Salesforce-wikitext"
+  },
+  "llama3.1-8b": {
+    "aliases": ["meta-llama/Llama-3.1-8B"],
+    "repo_id": "neuronpedia/jacobian-lens",
+    "filename": "llama3.1-8b/jlens/Salesforce-wikitext/Llama-3.1-8B_jacobian_lens.pt",
+    "corpus": "Salesforce-wikitext"
+  },
+  "llama3.1-8b-it": {
+    "aliases": ["meta-llama/Llama-3.1-8B-Instruct"],
+    "repo_id": "neuronpedia/jacobian-lens",
+    "filename": "llama3.1-8b-it/jlens/Salesforce-wikitext/Llama-3.1-8B-Instruct_jacobian_lens.pt",
+    "corpus": "Salesforce-wikitext"
+  },
+  "llama3.3-70b-it": {
+    "aliases": ["meta-llama/Llama-3.3-70B-Instruct"],
+    "repo_id": "neuronpedia/jacobian-lens",
+    "filename": "llama3.3-70b-it/jlens/Salesforce-wikitext/Llama-3.3-70B-Instruct_jacobian_lens.pt",
+    "corpus": "Salesforce-wikitext"
+  },
+  "olmo-3-1025-7b": {
+    "aliases": ["allenai/OLMo-3-1025-7B"],
+    "repo_id": "neuronpedia/jacobian-lens",
+    "filename": "olmo-3-1025-7b/jlens/Salesforce-wikitext/Olmo-3-1025-7B_jacobian_lens.pt",
+    "corpus": "Salesforce-wikitext"
+  },
+  "olmo-3-1125-32b": {
+    "aliases": ["allenai/OLMo-3-1125-32B"],
+    "repo_id": "neuronpedia/jacobian-lens",
+    "filename": "olmo-3-1125-32b/jlens/Salesforce-wikitext/Olmo-3-1125-32B_jacobian_lens.pt",
+    "corpus": "Salesforce-wikitext"
+  },
+  "pythia-70m-deduped": {
+    "aliases": ["EleutherAI/pythia-70m-deduped"],
+    "repo_id": "neuronpedia/jacobian-lens",
+    "filename": "pythia-70m-deduped/jlens/Salesforce-wikitext/pythia-70m-deduped_jacobian_lens.pt",
+    "corpus": "Salesforce-wikitext"
+  },
+  "qwen2.5-7b-it": {
+    "aliases": ["Qwen/Qwen2.5-7B-Instruct"],
+    "repo_id": "neuronpedia/jacobian-lens",
+    "filename": "qwen2.5-7b-it/jlens/Salesforce-wikitext/Qwen2.5-7B-Instruct_jacobian_lens.pt",
+    "corpus": "Salesforce-wikitext"
+  },
+  "qwen3-1.7b": {
+    "aliases": ["Qwen/Qwen3-1.7B"],
+    "repo_id": "neuronpedia/jacobian-lens",
+    "filename": "qwen3-1.7b/jlens/Salesforce-wikitext/Qwen3-1.7B_jacobian_lens.pt",
+    "corpus": "Salesforce-wikitext"
+  },
+  "qwen3-4b": {
+    "aliases": ["Qwen/Qwen3-4B"],
+    "repo_id": "neuronpedia/jacobian-lens",
+    "filename": "qwen3-4b/jlens/Salesforce-wikitext/Qwen3-4B_jacobian_lens.pt",
+    "corpus": "Salesforce-wikitext"
+  },
+  "qwen3-8b": {
+    "aliases": ["Qwen/Qwen3-8B"],
+    "repo_id": "neuronpedia/jacobian-lens",
+    "filename": "qwen3-8b/jlens/Salesforce-wikitext/Qwen3-8B_jacobian_lens.pt",
+    "corpus": "Salesforce-wikitext"
+  },
+  "qwen3-14b": {
+    "aliases": ["Qwen/Qwen3-14B"],
+    "repo_id": "neuronpedia/jacobian-lens",
+    "filename": "qwen3-14b/jlens/Salesforce-wikitext/Qwen3-14B_jacobian_lens.pt",
+    "corpus": "Salesforce-wikitext"
+  },
+  "qwen3-32b": {
+    "aliases": ["Qwen/Qwen3-32B"],
+    "repo_id": "neuronpedia/jacobian-lens",
+    "filename": "qwen3-32b/jlens/Salesforce-wikitext/Qwen3-32B_jacobian_lens.pt",
+    "corpus": "Salesforce-wikitext"
+  },
+  "qwen3.5-0.8b": {
+    "aliases": ["Qwen/Qwen3.5-0.8B"],
+    "repo_id": "neuronpedia/jacobian-lens",
+    "filename": "qwen3.5-0.8b/jlens/Salesforce-wikitext/Qwen3.5-0.8B_jacobian_lens.pt",
+    "corpus": "Salesforce-wikitext"
+  },
+  "qwen3.5-2b-pt": {
+    "aliases": ["Qwen/Qwen3.5-2B"],
+    "repo_id": "neuronpedia/jacobian-lens",
+    "filename": "qwen3.5-2b-pt/jlens/Salesforce-wikitext/Qwen3.5-2B-Base_jacobian_lens.pt",
+    "corpus": "Salesforce-wikitext"
+  },
+  "qwen3.5-4b": {
+    "aliases": ["Qwen/Qwen3.5-4B"],
+    "repo_id": "neuronpedia/jacobian-lens",
+    "filename": "qwen3.5-4b/jlens/Salesforce-wikitext/Qwen3.5-4B_jacobian_lens.pt",
+    "corpus": "Salesforce-wikitext"
+  },
+  "qwen3.5-9b-pt": {
+    "aliases": ["Qwen/Qwen3.5-9B"],
+    "repo_id": "neuronpedia/jacobian-lens",
+    "filename": "qwen3.5-9b-pt/jlens/Salesforce-wikitext/Qwen3.5-9B-Base_jacobian_lens.pt",
+    "corpus": "Salesforce-wikitext"
+  },
+  "qwen3.5-27b": {
+    "aliases": ["Qwen/Qwen3.5-27B"],
+    "repo_id": "neuronpedia/jacobian-lens",
+    "filename": "qwen3.5-27b/jlens/Salesforce-wikitext/Qwen3.5-27B_jacobian_lens.pt",
+    "corpus": "Salesforce-wikitext"
+  }
+}

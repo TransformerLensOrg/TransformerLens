@@ -138,6 +138,19 @@ def map_default_transformer_lens_config(hf_config):
         tl_config.n_ctx = source_config.max_length
     elif hasattr(source_config, "seq_length"):
         tl_config.n_ctx = source_config.seq_length
+    elif hasattr(source_config, "image_size") and hasattr(source_config, "patch_size"):
+        # Vision Transformers calculate sequence length dynamically:
+        # (image_size / patch_size)^2 + 1 (for the CLS token)
+        image_size = source_config.image_size
+        patch_size = source_config.patch_size
+
+        # HF configs allow these to be integers or tuples/lists
+        img_h = image_size[0] if isinstance(image_size, (list, tuple)) else image_size
+        img_w = image_size[1] if isinstance(image_size, (list, tuple)) else image_size
+        patch_h = patch_size[0] if isinstance(patch_size, (list, tuple)) else patch_size
+        patch_w = patch_size[1] if isinstance(patch_size, (list, tuple)) else patch_size
+
+        tl_config.n_ctx = (img_h // patch_h) * (img_w // patch_w) + 1
     elif hasattr(source_config, "max_sequence_length"):
         tl_config.n_ctx = source_config.max_sequence_length
     else:
@@ -168,6 +181,10 @@ def map_default_transformer_lens_config(hf_config):
         tl_config.d_head = tl_config.d_model
     if hasattr(source_config, "activation_function"):
         tl_config.act_fn = source_config.activation_function
+    # Gemma family: transformers 5.x exposes only hidden_activation (hidden_act
+    # was removed); it is authoritative over hidden_act when both exist.
+    elif getattr(source_config, "hidden_activation", None) is not None:
+        tl_config.act_fn = source_config.hidden_activation
     elif hasattr(source_config, "hidden_act"):
         tl_config.act_fn = source_config.hidden_act
     elif hasattr(source_config, "activation_type"):
@@ -221,16 +238,47 @@ def determine_architecture_from_hf_config(hf_config):
     if hasattr(hf_config, "model_type"):
         model_type = hf_config.model_type
         model_type_mappings = {
+            "afmoe": "AfmoeForCausalLM",
             "apertus": "ApertusForCausalLM",
             "gpt2": "GPT2LMHeadModel",
+            "openai-gpt": "OpenAIGPTLMHeadModel",
             "hubert": "HubertModel",
+            "bamba": "BambaForCausalLM",
+            "bitnet": "BitNetForCausalLM",
+            "blenderbot": "BlenderbotForConditionalGeneration",
             "bart": "BartForConditionalGeneration",
+            "ernie4_5": "Ernie4_5ForCausalLM",
+            "ernie4_5_moe": "Ernie4_5_MoeForCausalLM",
+            "exaone": "ExaoneForCausalLM",
+            "exaone4": "Exaone4ForCausalLM",
+            "falcon_mamba": "FalconMambaForCausalLM",
+            "florence2": "Florence2ForConditionalGeneration",
+            "longt5": "LongT5ForConditionalGeneration",
+            "m2m_100": "M2M100ForConditionalGeneration",
+            "marian": "MarianMTModel",
+            "mbart": "MBartForConditionalGeneration",
+            "pegasus": "PegasusForConditionalGeneration",
+            "seed_oss": "SeedOssForCausalLM",
+            "starcoder2": "Starcoder2ForCausalLM",
+            "nemotron": "NemotronForCausalLM",
+            "idefics3": "Idefics3ForConditionalGeneration",
+            "qwen2_audio": "Qwen2AudioForConditionalGeneration",
+            "audioflamingo3": "AudioFlamingo3ForConditionalGeneration",
+            "musicflamingo": "MusicFlamingoForConditionalGeneration",
+            "jetmoe": "JetMoeForCausalLM",
+            "minimax_m2": "MiniMaxM2ForCausalLM",
+            "led": "LEDForConditionalGeneration",
             "llama": "LlamaForCausalLM",
+            "llama4_text": "Llama4ForCausalLM",
+            "llama4": "Llama4ForConditionalGeneration",
             "llada": "LLaDAModelLM",
             "mamba": "MambaForCausalLM",
             "mamba2": "Mamba2ForCausalLM",
             "mistral": "MistralForCausalLM",
+            "olmo_hybrid": "OlmoHybridForCausalLM",
+            "mistral3": "Mistral3ForConditionalGeneration",
             "mixtral": "MixtralForCausalLM",
+            "mpt": "MptForCausalLM",
             "gemma": "GemmaForCausalLM",
             "gemma2": "Gemma2ForCausalLM",
             "gemma3": "Gemma3ForCausalLM",
@@ -241,7 +289,13 @@ def determine_architecture_from_hf_config(hf_config):
             # ForConditionalGeneration (vision/audio referenced but unbridged).
             "gemma4": "Gemma4ForConditionalGeneration",
             "gemma4_unified": "Gemma4UnifiedForConditionalGeneration",
+            "gemma4_text": "Gemma4ForCausalLM",
+            "glm": "GlmForCausalLM",
+            "glm4": "Glm4ForCausalLM",
+            "glm4v": "Glm4vForConditionalGeneration",
+            "glmasr": "GlmAsrForConditionalGeneration",
             "glm4_moe": "Glm4MoeForCausalLM",
+            "glm4_moe_lite": "Glm4MoeLiteForCausalLM",
             "glm_moe_dsa": "GlmMoeDsaForCausalLM",
             "t5gemma": "T5GemmaForConditionalGeneration",
             "t5gemma2": "T5Gemma2ForConditionalGeneration",
@@ -257,6 +311,9 @@ def determine_architecture_from_hf_config(hf_config):
             "phi3": "Phi3ForCausalLM",
             "qwen": "QwenForCausalLM",
             "qwen2": "Qwen2ForCausalLM",
+            "qwen2_5_vl": "Qwen2_5_VLForConditionalGeneration",
+            "qwen3_vl": "Qwen3VLForConditionalGeneration",
+            "qwen3_vl_moe": "Qwen3VLMoeForConditionalGeneration",
             "qwen2_moe": "Qwen2MoeForCausalLM",
             "qwen3": "Qwen3ForCausalLM",
             # qwen3_5 is the top-level multimodal config type; qwen3_5_text is
@@ -265,6 +322,9 @@ def determine_architecture_from_hf_config(hf_config):
             # text-only) are routed to Qwen3_5ForCausalLM.
             "qwen3_5": "Qwen3_5ForCausalLM",
             "qwen3_5_text": "Qwen3_5ForCausalLM",
+            # Same routing convention for the MoE variant.
+            "qwen3_5_moe": "Qwen3_5MoeForCausalLM",
+            "qwen3_5_moe_text": "Qwen3_5MoeForCausalLM",
             "smollm3": "SmolLM3ForCausalLM",
             "openelm": "OpenELMForCausalLM",
             "ouro": "OuroForCausalLM",

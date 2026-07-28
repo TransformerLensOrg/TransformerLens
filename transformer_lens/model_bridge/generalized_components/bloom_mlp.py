@@ -70,7 +70,6 @@ class BloomMLPBridge(MLPBridge):
 
         output = self.original_component(*args, **kwargs)
 
-        # Apply hook_out
         output = self.hook_out(output)
 
         return output

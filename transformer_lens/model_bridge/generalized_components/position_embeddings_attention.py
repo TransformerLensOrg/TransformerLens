@@ -34,6 +34,31 @@ _EAGER_ATTENTION_WRAPPED = False
 _ORIGINAL_EAGER_ATTENTION_FORWARD: Optional[Callable] = None
 
 
+def _apply_rotary_pos_emb_adjacent_pairs(
+    q: torch.Tensor, k: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """GLM/ERNIE-style RoPE: rotate adjacent element pairs in full precision.
+
+    cos/sin arrive in the standard half-duplicated layout; this convention
+    takes the first half and expands it by repeat_interleave(2) so rotation
+    pairs are (0,1), (2,3), ... instead of (i, i + d/2).
+    """
+    original_dtype = q.dtype
+    cos = cos.unsqueeze(1)
+    sin = sin.unsqueeze(1)
+    cos = cos[..., : cos.shape[-1] // 2].repeat_interleave(2, dim=-1)
+    sin = sin[..., : sin.shape[-1] // 2].repeat_interleave(2, dim=-1)
+
+    def _rotate(x: torch.Tensor) -> torch.Tensor:
+        x1 = x[..., 0::2]
+        x2 = x[..., 1::2]
+        return torch.stack((-x2, x1), dim=-1).flatten(-2)
+
+    q_embed = (q.float() * cos) + (_rotate(q).float() * sin)
+    k_embed = (k.float() * cos) + (_rotate(k).float() * sin)
+    return q_embed.to(original_dtype), k_embed.to(original_dtype)
+
+
 def _setup_eager_attention_hook_wrapper() -> None:
     """Wrap gemma2's eager_attention_forward to fire hook_rot_q and hook_rot_k.
 
@@ -112,6 +137,11 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
 
     supports_attn_result: bool = True
 
+    # NoPE architectures (EXAONE-4, SmolLM3, Cohere2) deliberately null
+    # position_embeddings on their non-rotary layers to match HF. Their bridge
+    # subclasses set this so the missing-RoPE warning stays meaningful.
+    rope_optional: bool = False
+
     def __init__(
         self,
         name: str,
@@ -169,14 +199,19 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
                 f"'o': LinearBridge(name='o_proj')}}."
             )
         # Reverse mismatch (adapter declares, HF lacks) surfaces at norm forward.
-        for norm_name in ("q_norm", "k_norm"):
-            if getattr(hf_attn, norm_name, None) is not None and norm_name not in self.submodules:
+        # HF spells the per-head variants q_layernorm/k_layernorm (StableLM).
+        for declared, hf_names in (
+            ("q_norm", ("q_norm", "q_layernorm")),
+            ("k_norm", ("k_norm", "k_layernorm")),
+        ):
+            hf_present = next((n for n in hf_names if getattr(hf_attn, n, None) is not None), None)
+            if hf_present is not None and declared not in self.submodules:
                 raise RuntimeError(
                     f"{type(self).__name__} at '{self.name}': HF module has "
-                    f"'{norm_name}' but adapter did not declare it. Forward would "
-                    f"skip the norm, producing wrong logits vs HF. Add "
-                    f"'{norm_name}': RMSNormalizationBridge(name='{norm_name}', "
-                    f"config=self.cfg) to the attention submodules."
+                    f"'{hf_present}' but adapter did not declare '{declared}'. "
+                    f"Forward would skip the norm, producing wrong logits vs HF. "
+                    f"Add '{declared}' (name='{hf_present}') to the attention "
+                    f"submodules."
                 )
 
     def _decide_qk_norm_phase(self, hf_attn: torch.nn.Module) -> Optional[str]:
@@ -192,6 +227,10 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
         q_norm = getattr(hf_attn, hf_norm_name, None)
 
         if q_norm is None:
+            # Config-gated norms (use_qk_norm, qk_layernorm) declare optional;
+            # setup pops them after this runs.
+            if getattr(self.submodules["q_norm"], "optional", False):
+                return None
             raise RuntimeError(f"{self.name}: q_norm declared but HF module has none.")
 
         weight = getattr(q_norm, "weight", None)
@@ -271,12 +310,17 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
 
         hidden_states = self.hook_in(hidden_states)
 
-        # Match dtype of HF module
+        # Match dtype of HF module. Skip non-fp params: quantized weights (bnb
+        # uint8/int8, GPTQ/AWQ int32, HQQ, torchao) are stored in integer dtypes
+        # and dequantized internally during matmul. The compute dtype must come
+        # from a fp parameter; casting fp inputs to an integer storage dtype
+        # destroys precision.
         target_dtype = None
-        try:
-            target_dtype = next(hf_attn.parameters()).dtype
-        except StopIteration:
-            pass
+        for p in hf_attn.parameters():
+            if not p.dtype.is_floating_point:
+                continue
+            target_dtype = p.dtype
+            break
         if target_dtype is not None and hidden_states.is_floating_point():
             hidden_states = hidden_states.to(dtype=target_dtype)
 
@@ -382,10 +426,35 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
                 key_states = self.hook_k_normed(self.k_norm(key_states))
 
         # --- RoPE ---
+        if (
+            position_embeddings is None
+            and not self.rope_optional
+            and getattr(self.config, "positional_embedding_type", None) == "rotary"
+        ):
+            # Silent skipping is how internlm2 ran without positional encoding
+            # while reporting perfect parity: its per-layer rotary means the HF
+            # decoder layer passes nothing down. Adapters in that shape must
+            # supply position_embeddings themselves (see internlm2.py).
+            import warnings
+
+            warnings.warn(
+                f"{type(self).__name__}({self.name}) reconstructed attention without "
+                "position_embeddings on a rotary architecture — RoPE was NOT applied. "
+                "The adapter must supply them (e.g. from the layer's own rotary_emb).",
+                RuntimeWarning,
+                stacklevel=2,
+            )
         if position_embeddings is not None:
             position_embeddings = self._apply_position_embedding_hooks(position_embeddings)
             cos, sin = position_embeddings
-            from transformers.models.llama.modeling_llama import apply_rotary_pos_emb
+            if getattr(self.config, "rotary_adjacent_pairs", False):
+                # GLM/ERNIE convention: rotate adjacent element pairs in fp32,
+                # with cos/sin halves expanded by repeat_interleave.
+                apply_rotary_pos_emb = _apply_rotary_pos_emb_adjacent_pairs
+            else:
+                from transformers.models.llama.modeling_llama import (
+                    apply_rotary_pos_emb,
+                )
 
             # Some models use partial rotary (e.g., GPT-OSS) where cos/sin cover only
             # a portion of head_dim. Split Q/K, rotate the partial dims, recombine.
@@ -398,6 +467,25 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
                 key_states = torch.cat([k_rot, k_pass], dim=-1)
             else:
                 query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
+
+        # Ministral-3's llama-4 query scale: HF multiplies Q by
+        # 1 + beta*log(1 + floor(pos/original_max)) right after RoPE.
+        rope_params = getattr(getattr(hf_attn, "config", None), "rope_parameters", None)
+        if isinstance(rope_params, dict) and rope_params.get("llama_4_scaling_beta") is not None:
+            from transformers.models.ministral3.modeling_ministral3 import (
+                get_llama_4_attn_scale,
+            )
+
+            position_ids = kwargs.get("position_ids")
+            if position_ids is None:
+                position_ids = torch.arange(
+                    query_states.shape[-2], device=query_states.device
+                ).unsqueeze(0)
+            query_states = query_states * get_llama_4_attn_scale(
+                position_ids,
+                rope_params["llama_4_scaling_beta"],
+                int(rope_params["original_max_position_embeddings"]),
+            ).to(query_states.dtype)
 
         # Fire hook_rot_q/hook_rot_k (post-rotation)
         if hasattr(self, "hook_rot_q"):
@@ -475,6 +563,27 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
                 gate_states = self.hook_gate(gate_states)
             attn_output = attn_output * torch.sigmoid(gate_states)
 
+        # Adapter seam: sub-layer transforms between attention output and the
+        # o projection (e.g. BitNet's attn_sub_norm).
+        attn_output = self._pre_output_projection(attn_output)
+
+        # Some rotary modules (FlexOlmo) return fp32 cos/sin without casting to
+        # the input dtype, so RoPE promotes q/k
+        # to fp32 while the projection weights stay in the model dtype. Match
+        # the projection rather than the activations; no-op when they agree.
+        o_module = getattr(self, "o", None)
+        o_weight = getattr(getattr(o_module, "original_component", None), "weight", None)
+        if (
+            isinstance(o_weight, torch.Tensor)
+            # Quantized weights (bnb int8/uint8, GPTQ int32) dequantize inside
+            # the matmul; casting activations to an integer storage dtype would
+            # destroy them (same guard as base.py's compute-dtype selection).
+            and o_weight.dtype.is_floating_point
+            and attn_output.is_floating_point()
+            and attn_output.dtype != o_weight.dtype
+        ):
+            attn_output = attn_output.to(dtype=o_weight.dtype)
+
         if (
             bool(getattr(self.config, "use_attn_result", False))
             and hasattr(self, "o")
@@ -497,6 +606,10 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
             attn_output = self.hook_out(attn_output)
 
         return attn_output, attn_weights
+
+    def _pre_output_projection(self, attn_output: torch.Tensor) -> torch.Tensor:
+        """Overridable seam applied before the output projection."""
+        return attn_output
 
     def get_random_inputs(
         self,

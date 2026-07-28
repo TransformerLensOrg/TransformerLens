@@ -150,7 +150,7 @@ def test_reshape_functionality_integration():
 
     # Set up a hook that modifies the activation
     def test_hook(activation, hook):
-        return activation + 1  # Add 1 to each element
+        return activation + 1
 
     module.hook_point.add_hook(test_hook, dir="fwd")
 

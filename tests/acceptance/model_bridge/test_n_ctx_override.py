@@ -64,7 +64,7 @@ def test_n_ctx_negative_raises_value_error():
 
 
 def test_n_ctx_conflict_with_hf_config_overrides_warns(caplog):
-    """When both n_ctx and the same hf_config_overrides field are set with different values, a warning should be emitted explaining that n_ctx wins."""
+    """When n_ctx and the same hf_config_overrides field disagree, a warning explaining that n_ctx wins should be emitted."""
     with caplog.at_level(logging.WARNING):
         TransformerBridge.boot_transformers(
             "gpt2",
@@ -103,7 +103,7 @@ def test_n_ctx_shrink_with_load_weights_gives_clear_error():
 
 
 def test_n_ctx_override_verified_on_loaded_model():
-    """After load, the override should be visible on hf_model.config so users can trust that the longer/shorter context is actually in effect."""
+    """After load, the override should be visible on hf_model.config so the longer/shorter context is verifiably in effect."""
     bridge = TransformerBridge.boot_transformers(
         "gpt2", device="cpu", n_ctx=2048, load_weights=False
     )

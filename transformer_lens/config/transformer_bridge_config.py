@@ -77,6 +77,7 @@ class TransformerBridgeConfig(TransformerLensConfig):
         relative_attention_max_distance: Optional[int] = None,
         relative_attention_num_buckets: Optional[int] = None,
         decoder_start_token_id: Optional[int] = None,
+        scale_embedding: Optional[bool] = None,
         tie_word_embeddings: bool = False,
         use_normalization_before_and_after: bool = False,
         attn_scores_soft_cap: float = SOFTCAP_DISABLED,
@@ -89,6 +90,8 @@ class TransformerBridgeConfig(TransformerLensConfig):
         attn_implementation: Optional[str] = None,
         # Audio model configuration
         is_audio_model: bool = False,
+        # Vision model (ViT, DeiT) configuration
+        is_visual_model: bool = False,
         # Stateful model configuration (e.g., Mamba SSMs use cache_params,
         # not past_key_values, so generation delegates to hf_generate)
         is_stateful: bool = False,
@@ -169,6 +172,9 @@ class TransformerBridgeConfig(TransformerLensConfig):
         self.relative_attention_max_distance = relative_attention_max_distance
         self.relative_attention_num_buckets = relative_attention_num_buckets
         self.decoder_start_token_id = decoder_start_token_id
+        # Seq2seq families (Bart, Marian, Pegasus, ...) scale token embeddings
+        # by sqrt(d_model) in the HF forward when set.
+        self.scale_embedding = scale_embedding
         self.tie_word_embeddings = tie_word_embeddings
         self.use_normalization_before_and_after = use_normalization_before_and_after
         self.attn_scores_soft_cap = attn_scores_soft_cap
@@ -181,6 +187,8 @@ class TransformerBridgeConfig(TransformerLensConfig):
         self.attn_implementation = attn_implementation
         # Audio model configuration
         self.is_audio_model = is_audio_model
+        # Vision model (ViT, DeiT) configuration
+        self.is_visual_model = is_visual_model
         # Stateful model configuration
         self.is_stateful = is_stateful
         # Multimodal configuration

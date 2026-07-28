@@ -85,7 +85,6 @@ class TestGetPosOffset:
 
     def test_get_pos_offset_with_real_cache_entry(self):
         """Test get_pos_offset with a real HookedTransformerKeyValueCacheEntry."""
-        # Create a real cache entry
         cache_entry = HookedTransformerKeyValueCacheEntry(
             past_keys=torch.empty((2, 5, 8, 64)), past_values=torch.empty((2, 5, 8, 64))
         )
@@ -123,7 +122,6 @@ class TestGetPosOffset:
 
     def test_get_pos_offset_batch_size_parameter_ignored(self):
         """Test that the batch_size parameter is ignored when cache is provided."""
-        # Create a real cache entry
         cache_entry = HookedTransformerKeyValueCacheEntry(
             past_keys=torch.empty((2, 7, 8, 64)), past_values=torch.empty((2, 7, 8, 64))
         )

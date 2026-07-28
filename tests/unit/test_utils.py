@@ -277,7 +277,7 @@ def test_calc_fan_in_fan_out():
     assert fan_out == 3
 
     # Test for the case when the tensor is 3D
-    tensor_3d = nn.Parameter(torch.rand(2, 25, 5))  # 2 x 25 x 5, I'm not writing this out
+    tensor_3d = nn.Parameter(torch.rand(2, 25, 5))
     fan_in, fan_out = utils.calc_fan_in_and_fan_out(tensor_3d)
     assert fan_in == 25
     assert fan_out == 10

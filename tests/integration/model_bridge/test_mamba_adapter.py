@@ -275,14 +275,8 @@ class TestMambaStatefulGeneration:
         """Bridge greedy must match HF for any prompt length, including short
         prompts.
 
-        Regression: the initial Phase 3 implementation used
-        cache_position=[conv_kernel + step] on decode which worked for
-        prompt_len >= conv_kernel via HF's clamp to conv_kernel - 1, but
-        silently wrote to the wrong buffer slot for short prompts
-        (prompt_len < conv_kernel). The fix uses the actual sequence position
-        (prompt_len + step - 1), matching HF's own generate loop. This test
-        parametrizes over prompt lengths that cross the conv_kernel boundary
-        to catch any regression.
+        Covers prompt lengths crossing the conv_kernel boundary; short prompts
+        previously wrote to the wrong conv-state slot.
         """
         tokens = torch.arange(1, prompt_len + 1).unsqueeze(0)
         with torch.no_grad():

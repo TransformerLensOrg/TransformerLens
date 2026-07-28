@@ -300,7 +300,7 @@ The `TestRegistrySyncedWithFactory` class bidirectionally asserts that `SUPPORTE
 Two test layers:
 
 1. **Unit adapter test** at `tests/unit/model_bridge/supported_architectures/test_<arch>_adapter.py`. ~26 of these exist; copy the closest sibling. The pattern: a `_make_cfg()` factory, an `adapter` fixture, and one test per architecture-specific quirk. Unit adapter tests instantiate the adapter from a synthetic config and assert structural properties — they don't load weights and don't hit HF Hub.
-2. **Integration parity test** at `tests/integration/model_bridge/test_<arch>_adapter.py`. Loads a real cached HF model and asserts logit parity vs HuggingFace at fp32 + eager attention. If there are no small cached models available, make a note of the missing test in the creation PR.
+2. **Integration parity test** at `tests/integration/model_bridge/test_<arch>_adapter.py`. Loads a real cached HF model and asserts logit parity vs HuggingFace at fp32 + eager attention. The CI integration job runs `-m "not slow"`, so if the model isn't small and cached, mark the real-weights test `@pytest.mark.slow` and add a tiny `from_config` companion at `test_<arch>_tiny.py` (random CPU weights, no Hub download) to keep CI regression coverage — see [supported_architectures/AGENTS.md §Integration parity test](../../../transformer_lens/model_bridge/supported_architectures/AGENTS.md).
 
 ### Common adapter gotchas
 
@@ -329,6 +329,8 @@ uv run python -m transformer_lens.tools.model_registry.verify_models --model <hf
 ```
 
 `verify_models` runs phases 1–4 (forward correctness vs HF, hook firing + gradients, weight processing, generation quality) and updates `data/supported_models.json` with the resulting status and per-phase scores. We recommend running `--dry-run` first to project memory and parameter count without loading the model, and verifying one model at a time — concurrent loads tend to OOM a single device.
+
+Running with `--no-hf-reference` skips the HuggingFace numerical comparison (Phase 1 becomes structural-only). A passing run is then recorded as **provisional** (status 4), which does *not* count as verified — re-run without the flag for a real HF-compared verification.
 
 A note on entry points: `verify_models` is the script that writes the registry. `main_benchmark` runs the same underlying benchmarks but defaults to *not* writing the registry (it requires `--update-registry`, and even then it doesn't record Phase 7 / 8 scores or the resume checkpoint). If you want the registry updated after your run, use `verify_models`.
 

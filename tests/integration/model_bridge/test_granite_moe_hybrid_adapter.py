@@ -39,6 +39,7 @@ from transformer_lens.model_bridge.supported_architectures.granite_moe_hybrid im
 )
 
 LAYER_TYPES = ["mamba", "attention", "mamba"]
+CANONICAL_LAYER_TYPES = ["linear_attention", "full_attention", "linear_attention"]
 MAMBA_LAYERS = [0, 2]
 ATTN_LAYER = 1
 
@@ -109,7 +110,7 @@ class TestGraniteMoeHybridStructure:
         assert len(bridge.blocks) == len(LAYER_TYPES)
 
     def test_layers_block_type_surfaced(self, bridge: TransformerBridge) -> None:
-        assert getattr(bridge.cfg, "layers_block_type", None) == LAYER_TYPES
+        assert getattr(bridge.cfg, "layers_block_type", None) == CANONICAL_LAYER_TYPES
 
     def test_mamba_layers_expose_ssm2_mixer(self, bridge: TransformerBridge) -> None:
         for i in MAMBA_LAYERS:
@@ -351,7 +352,7 @@ def _available_devices():
 
 
 class TestGraniteMoeHybridProcessedParity:
-    """Parity guard: processed (compat-mode) bridge vs raw HF via log_softmax.
+    """Processed (compat-mode) bridge vs raw-HF parity guard via log_softmax.
 
     The forward test only checks UNPROCESSED delegation (==0.0); this pins the PROCESSED
     path so a compat-mode regression is caught in CI without the full-size checkpoint.

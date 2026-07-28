@@ -1,8 +1,9 @@
 """Utility types and functions for benchmarking."""
 
+from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Collection, Dict, List, Optional, Union
+from typing import Any, Collection, Dict, Iterator, List, Optional, Union
 
 import torch
 
@@ -13,6 +14,18 @@ TINY_TEST_MODEL_PATTERNS = (
     "trl-internal-testing/tiny",
     "peft-internal-testing/tiny",
 )
+
+
+@contextmanager
+def deterministic_rng(seed: int = 42) -> Iterator[None]:
+    """Seed sampling locally, leaving the caller's RNG stream untouched.
+
+    Benchmarks that sample need reproducible verdicts, but a bare manual_seed
+    rewrites the process-global stream for every benchmark that follows.
+    """
+    with torch.random.fork_rng(devices=[]):
+        torch.manual_seed(seed)
+        yield
 
 
 def is_tiny_test_model(model_name: str) -> bool:

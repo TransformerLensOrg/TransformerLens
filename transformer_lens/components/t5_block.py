@@ -70,7 +70,7 @@ class T5Block(nn.Module):
             attention_mask (torch.Tensor, optional): The attention mask for padded tokens. Defaults to None.
 
         Returns:
-            _type_: _description_
+            Float[torch.Tensor, "batch pos d_model"]: The block output residual stream.
         """
         resid_pre = self.hook_resid_pre(resid_pre)  # [batch, pos, d_model]
 

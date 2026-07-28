@@ -18,10 +18,8 @@ class TestJointQKVAttentionHookCompatibility:
         # Create test input
         test_input = torch.tensor([[1, 2, 3, 4, 5]])  # Simple test sequence
 
-        # Get the QKV bridge from the first attention layer
         joint_qkv_attention_bridge = bridge.blocks[0].attn
 
-        # Verify that joint_qkv_attention_bridge is indeed a JointQKVAttentionBridge
         from transformer_lens.model_bridge.generalized_components.joint_qkv_attention import (
             JointQKVAttentionBridge,
         )
@@ -40,7 +38,6 @@ class TestJointQKVAttentionHookCompatibility:
             joint_qkv_attention_bridge.v.hook_out is bridge.blocks[0].attn.hook_v
         ), "v.hook_out in Joint QKV Attention bridge should be the same object as blocks.0.attn.hook_v"
 
-        # Also test that the hook points have the same properties
         assert (
             joint_qkv_attention_bridge.v.hook_out.has_hooks()
             == bridge.blocks[0].attn.hook_v.has_hooks()
@@ -51,13 +48,11 @@ class TestJointQKVAttentionHookCompatibility:
         # Load DistilGPT-2 in TransformerBridge (faster for testing)
         bridge = TransformerBridge.boot_transformers("distilgpt2", device="cpu")
 
-        # Turn on compatibility mode
         bridge.enable_compatibility_mode(disable_warnings=True)
 
         # Create test input
         test_input = torch.tensor([[1, 2, 3, 4, 5]])  # Simple test sequence
 
-        # Get the QKV bridge from the first attention layer
         joint_qkv_attention_bridge = bridge.blocks[0].attn
 
         # Run a forward pass to populate the hooks
@@ -75,13 +70,11 @@ class TestJointQKVAttentionHookCompatibility:
         # Load DistilGPT-2 in TransformerBridge (faster for testing)
         bridge = TransformerBridge.boot_transformers("distilgpt2", device="cpu")
 
-        # Turn on compatibility mode
         bridge.enable_compatibility_mode(disable_warnings=True)
 
         # Create test input
         test_input = torch.tensor([[1, 2, 3, 4, 5]])  # Simple test sequence
 
-        # Get the QKV bridge from the first attention layer
         joint_qkv_attention_bridge = bridge.blocks[0].attn
 
         # Run a forward pass to populate the hooks

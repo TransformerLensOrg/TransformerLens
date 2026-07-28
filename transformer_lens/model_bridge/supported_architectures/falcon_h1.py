@@ -48,7 +48,6 @@ from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     DepthwiseConv1DBridge,
     EmbeddingBridge,
-    GatedMLPBridge,
     GatedRMSNormBridge,
     LinearBridge,
     PositionEmbeddingsAttentionBridge,
@@ -82,6 +81,9 @@ class FalconH1ArchitectureAdapter(ArchitectureAdapter):
     sub-path is independently hookable for ablation studies.
     """
 
+    _testing_hybrid = True
+    _testing_eager = None
+
     # verify_models is transformer-shaped and would need a dedicated refactor to
     # cover SSM hybrids. Forward-pass correctness lives in the integration test:
     # tests/integration/model_bridge/test_falcon_h1_adapter.py
@@ -90,18 +92,10 @@ class FalconH1ArchitectureAdapter(ArchitectureAdapter):
     def __init__(self, cfg: Any) -> None:
         super().__init__(cfg)
 
-        self.cfg.normalization_type = "RMS"
-        self.cfg.uses_rms_norm = True
-        self.cfg.positional_embedding_type = "rotary"
-        self.cfg.final_rms = True
+        self._set_rms_rotary_defaults()
         # SwiGLU feed-forward (gate_proj / up_proj / down_proj, silu activation).
-        self.cfg.gated_mlp = True
-        self.cfg.attn_only = False
         # FalconH1RMSNorm stores its epsilon as `variance_epsilon` (like Llama).
         setattr(self.cfg, "eps_attr", "variance_epsilon")
-
-        if hasattr(cfg, "n_key_value_heads") and cfg.n_key_value_heads is not None:
-            self.cfg.n_key_value_heads = cfg.n_key_value_heads
 
         # Mamba-2 dimensional config. Falcon-H1 specifies the inner SSM width
         # directly via `mamba_d_ssm` (= mamba_n_heads * mamba_d_head), unlike
@@ -158,15 +152,7 @@ class FalconH1ArchitectureAdapter(ArchitectureAdapter):
                             "out_proj": LinearBridge(name="out_proj"),
                         },
                     ),
-                    "mlp": GatedMLPBridge(
-                        name="feed_forward",
-                        config=self.cfg,
-                        submodules={
-                            "gate": LinearBridge(name="gate_proj"),
-                            "in": LinearBridge(name="up_proj"),
-                            "out": LinearBridge(name="down_proj"),
-                        },
-                    ),
+                    "mlp": self._gated_mlp(name="feed_forward"),
                 },
             ),
             "ln_final": RMSNormalizationBridge(name="model.final_layernorm", config=self.cfg),
@@ -177,21 +163,3 @@ class FalconH1ArchitectureAdapter(ArchitectureAdapter):
         """Match Falcon-H1's post-unembedding multiplier."""
         multiplier = float(getattr(self.cfg, "lm_head_multiplier", 1.0))
         return super().apply_output_logits_transform(logits * multiplier)
-
-    def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Wire the model-level rotary embedding onto the attention bridges."""
-        if not hasattr(hf_model.model, "rotary_emb"):
-            return
-
-        rotary_emb = hf_model.model.rotary_emb
-
-        if bridge_model is not None and hasattr(bridge_model, "blocks"):
-            for block in bridge_model.blocks:
-                if hasattr(block, "attn"):
-                    block.attn.set_rotary_emb(rotary_emb)
-
-        try:
-            attn_bridge = self.get_generalized_component("blocks.0.attn")
-            attn_bridge.set_rotary_emb(rotary_emb)
-        except (AttributeError, KeyError, ValueError):
-            pass

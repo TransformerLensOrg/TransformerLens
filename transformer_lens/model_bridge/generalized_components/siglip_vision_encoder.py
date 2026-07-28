@@ -157,7 +157,6 @@ class SiglipVisionEncoderBridge(GeneralizedComponent):
 
         pixel_values = self.hook_in(pixel_values)
 
-        # Forward through the vision tower
         output = self.original_component(pixel_values, **kwargs)
 
         # Handle tuple output (some models return (hidden_states, ...))

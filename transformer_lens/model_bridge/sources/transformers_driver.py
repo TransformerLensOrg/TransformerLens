@@ -67,6 +67,13 @@ class TransformersDriver(DriverBase):
                 logits = raw.logits
             elif isinstance(raw, tuple) and len(raw) > 0:
                 logits = raw[0]
+            elif hasattr(raw, "last_hidden_state"):
+                # Bare encoder models (ViTModel, DeiTModel, BertModel, etc. without
+                # a task head) return e.g. BaseModelOutput/BaseModelOutputWithPooling,
+                # which has neither `.logits` nor tuple semantics. Fall back to
+                # `last_hidden_state` so return_type="logits" still yields a plain
+                # tensor rather than silently handing back the raw HF output object.
+                logits = raw.last_hidden_state
             else:
                 logits = raw
 

@@ -12,7 +12,7 @@ if TypeCheckError is None:
 
 MODEL = "solu-2l"
 VECTOR_TYPES = ["OV", "w_in", "w_out"]
-ATOL = 2e-4  # absolute tolerance for float comparison
+ATOL = 2e-4  # Absolute tolerance for float comparisons
 
 
 @pytest.fixture(scope="module")
