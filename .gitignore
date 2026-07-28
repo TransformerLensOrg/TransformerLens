@@ -30,3 +30,5 @@ docs/source/generated
 .adapter-progress.json
 transformer_lens/tools/model_registry/data/verification_checkpoint.json
 lapa_test.ipynb
+training_job.sh
+slurm-771.out
