@@ -79,6 +79,7 @@ ARCHITECTURE_DESCRIPTIONS: dict[str, str] = {
     "OlmoHybridForCausalLM": "Allen AI's OLMo Hybrid (GatedDeltaNet linear attention + full attention)",
     "StableLmForCausalLM": "Stability AI's StableLM model",
     "SmolLM3ForCausalLM": "Hugging Face's SmolLM3 compact open model with NoPE layers",
+    "Starcoder2ForCausalLM": "BigCode's StarCoder2 code generation model",
     "T5ForConditionalGeneration": "Google's T5 encoder-decoder model (partial support)",
     "T5WithLMHeadModel": "Legacy T5 class name on old google-t5 checkpoints (t5-3b, t5-11b)",
     "T5GemmaForConditionalGeneration": "Google's T5Gemma encoder-decoder model with Gemma-style RoPE, GQA, and gated MLP",
