@@ -87,18 +87,18 @@ class MingptArchitectureAdapter(ArchitectureAdapter):
                             "qkv": LinearBridge(name="c_attn"),  # Combined QKV projection
                             "o": LinearBridge(name="c_proj"),  # Output projection
                         },
-                    ),  # Full attention module
+                    ),
                     "mlp": MLPBridge(
                         name="mlp",
                         submodules={
                             "in": LinearBridge(name="c_fc"),
                             "out": LinearBridge(name="c_proj"),
                         },
-                    ),  # Full MLP module
+                    ),
                 },
             ),
             "ln_final": NormalizationBridge(
                 name="transformer.ln_f", config=self.cfg
             ),  # Final layer norm
-            "unembed": UnembeddingBridge(name="lm_head"),  # Language model head
+            "unembed": UnembeddingBridge(name="lm_head"),
         }

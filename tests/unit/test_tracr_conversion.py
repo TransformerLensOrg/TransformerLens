@@ -74,9 +74,9 @@ def _fake_tracr_model() -> SimpleNamespace:
             "aggregate_1:2",
             "aggregate_1:3",
             "indices:0",
-            "reverse:1",
-            "reverse:2",
-            "reverse:3",
+            "reverse_1:1",
+            "reverse_1:2",
+            "reverse_1:3",
             "tokens:BOS",
         ],
         output_encoder=_CategoricalEncoder({1: 0, 2: 1, 3: 2}),
@@ -94,7 +94,7 @@ def _fake_tracr_model() -> SimpleNamespace:
 def test_categorical_unembed_uses_named_output_basis():
     model = _fake_tracr_model()
 
-    unembed = make_tracr_categorical_unembed(model, output_label="reverse")
+    unembed = make_tracr_categorical_unembed(model, output_label="reverse_1")
 
     assert unembed.shape == (8, 3)
     np.testing.assert_array_equal(unembed[:4], np.zeros((4, 3)))
@@ -125,7 +125,7 @@ def test_bridge_state_dict_transposes_tracr_weights_and_reconstructs_unembed():
     model = _fake_tracr_model()
 
     state_dict = make_tracr_transformer_bridge_state_dict(
-        model, output_label="reverse", dtype=torch.float64
+        model, output_label="reverse_1", dtype=torch.float64
     )
 
     assert state_dict["tok_embed.weight"].shape == (5, 8)
@@ -161,4 +161,4 @@ def test_bridge_state_dict_rejects_layer_norm_tracr_models():
     model.model_config.layer_norm = True
 
     with pytest.raises(NotImplementedError, match="layer_norm=True"):
-        make_tracr_transformer_bridge_state_dict(model, output_label="reverse")
+        make_tracr_transformer_bridge_state_dict(model, output_label="reverse_1")

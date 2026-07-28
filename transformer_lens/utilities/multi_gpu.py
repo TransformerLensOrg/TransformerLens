@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 else:
     ConfigType = Any
 
-_UNSUPPORTED_OFFLOAD_DEVICE_MAP_VALUES = {"disk", "meta"}
+_UNSUPPORTED_OFFLOAD_DEVICE_MAP_VALUES = {"disk"}
 
 AvailableDeviceMemory = list[tuple[int, int]]
 """
@@ -25,6 +25,8 @@ This type is passed around between different CUDA memory operations.
 The first entry of each tuple will be the device index.
 The second entry will be how much memory is currently available.
 """
+
+MaxMemory = Dict[Union[str, int], Union[str, int]]
 
 
 def calculate_available_device_cuda_memory(i: int) -> int:
@@ -39,6 +41,15 @@ def calculate_available_device_cuda_memory(i: int) -> int:
     total = torch.cuda.get_device_properties(i).total_memory
     allocated = torch.cuda.memory_allocated(i)
     return total - allocated
+
+
+def _get_available_cuda_memory_for_device(i: int) -> int:
+    """Return a concrete byte budget accepted by Accelerate's ``max_memory``."""
+    try:
+        free_memory, _ = torch.cuda.mem_get_info(i)
+    except (AttributeError, RuntimeError):
+        return calculate_available_device_cuda_memory(i)
+    return int(free_memory)
 
 
 def determine_available_memory_for_available_devices(max_devices: int) -> AvailableDeviceMemory:
@@ -153,8 +164,8 @@ def resolve_device_map(
     n_devices: Optional[int],
     device_map: Optional[Union[str, Dict[str, Union[str, int]]]],
     device: Optional[Union[str, torch.device]],
-    max_memory: Optional[Dict[Union[str, int], str]] = None,
-) -> Tuple[Optional[Union[str, Dict[str, Union[str, int]]]], Optional[Dict[Union[str, int], str]]]:
+    max_memory: Optional[MaxMemory] = None,
+) -> Tuple[Optional[Union[str, Dict[str, Union[str, int]]]], Optional[MaxMemory]]:
     """Resolve ``n_devices`` / ``device_map`` / ``device`` into HF ``from_pretrained`` kwargs.
 
     Returns ``(device_map, max_memory)`` tuple ready to pass into ``model_kwargs``.
@@ -165,9 +176,9 @@ def resolve_device_map(
           offload targets are still rejected because Bridge component wrappers can bypass
           Accelerate's offload hooks during forward passes.
         - ``n_devices=None`` or ``1``: returns ``(None, None)`` — single-device path.
-        - ``n_devices > 1``: returns ``("balanced", {0: "auto", ..., n-1: "auto"})``.
+        - ``n_devices > 1``: returns ``("balanced", {0: bytes, ..., n-1: bytes})``.
           ``"balanced"`` is accelerate's string directive for balanced layer dispatch;
-          the ``max_memory`` dict caps visibility to exactly ``n_devices`` GPUs.
+          concrete byte budgets cap visibility to exactly ``n_devices`` GPUs.
     """
     if device_map is not None and device is not None:
         raise ValueError("device and device_map are mutually exclusive — pass one.")
@@ -182,8 +193,10 @@ def resolve_device_map(
         raise ValueError(
             f"n_devices={n_devices} but only {torch.cuda.device_count()} CUDA devices present."
         )
-    resolved_max_memory: Dict[Union[str, int], str] = (
-        dict(max_memory) if max_memory else {i: "auto" for i in range(n_devices)}
+    resolved_max_memory: MaxMemory = (
+        dict(max_memory)
+        if max_memory is not None
+        else {i: _get_available_cuda_memory_for_device(i) for i in range(n_devices)}
     )
     return "balanced", resolved_max_memory
 
@@ -191,7 +204,9 @@ def resolve_device_map(
 def _validate_device_map_values(
     device_map: Union[str, Dict[str, Union[str, int]]],
 ) -> None:
-    """Reject explicit disk / meta values in a user-supplied device_map dict."""
+    """Reject explicit disk values and mixed CPU+GPU targets in a user-supplied
+    device_map dict. Meta values are passed through (validated at boot against
+    load_weights)."""
     if isinstance(device_map, str):
         return
     for key, value in device_map.items():
@@ -202,6 +217,35 @@ def _validate_device_map_values(
                 "currently supports CPU device_map targets, but disk / meta offload can "
                 "bypass Accelerate hooks inside wrapped Bridge components."
             )
+    if is_mixed_cpu_gpu(device_map.values()):
+        raise ValueError(MIXED_CPU_GPU_ERROR)
+
+
+# In a mixed map, accelerate OFFLOADS the CPU entries: weights live in a CPU state
+# dict, the modules hold meta placeholders, and an AlignDevicesHook on the original
+# module's forward materializes them per-call. Bridge components that compute from raw
+# parameters (e.g. NormalizationBridge reads self.weight to expose hook_normalized)
+# never trigger that hook, so the forward hits meta tensors. All-CPU maps are fine —
+# no offload, real parameters.
+MIXED_CPU_GPU_ERROR = (
+    "device_map mixes CPU and GPU targets, which accelerate implements as CPU offload "
+    "(meta placeholders materialized by forward hooks that Bridge components bypass). "
+    "Use an all-GPU map (or n_devices) for multi-GPU, or an all-CPU map."
+)
+
+
+def is_mixed_cpu_gpu(values: Any) -> bool:
+    has_cpu = has_gpu = False
+    for value in values:
+        if isinstance(value, int):
+            has_gpu = True
+        elif isinstance(value, str):
+            v = value.lower()
+            if v == "cpu":
+                has_cpu = True
+            elif v.startswith("cuda"):
+                has_gpu = True
+    return has_cpu and has_gpu
 
 
 def cast_floating_params_to_dtype(model: nn.Module, dtype: torch.dtype) -> None:
@@ -262,3 +306,37 @@ def count_unique_devices(hf_model: Any) -> int:
     if not hf_device_map:
         return 1
     return len(set(hf_device_map.values()))
+
+
+def find_misplaced_modules(hf_model: Any) -> list:
+    """``(module_name, mapped, actual)`` for ``hf_device_map`` entries whose loaded
+    parameters sit on a different *real* device than the map requested.
+
+    Accelerate places a tied parameter exactly once, so a map that splits a tie group
+    (e.g. GPT-2's ``wte``/``lm_head`` share one tensor) is silently dispatched with one
+    module's execution device pointing at weights that live elsewhere — the forward then
+    crashes deep inside a kernel. Meta parameters are skipped: they mean CPU/disk offload
+    (accelerate materializes them per-forward) or a weightless ``from_config`` load, both
+    of which are placement-consistent by construction.
+    """
+    hf_device_map = getattr(hf_model, "hf_device_map", None)
+    if not hf_device_map:
+        return []
+    misplaced = []
+    for module_name, target in hf_device_map.items():
+        try:
+            module = hf_model.get_submodule(module_name) if module_name else hf_model
+        except AttributeError:
+            continue
+        param = next(module.parameters(), None)
+        if param is None or param.device.type == "meta":
+            continue
+        expected = (
+            torch.device(f"cuda:{target}") if isinstance(target, int) else torch.device(target)
+        )
+        actual = param.device
+        same_type = actual.type == expected.type
+        same_index = expected.index is None or actual.index == expected.index
+        if not (same_type and same_index):
+            misplaced.append((module_name, str(target), str(actual)))
+    return misplaced

@@ -133,6 +133,20 @@ def test_native_autograd_path_also_respects_override():
     torch.testing.assert_close(bridge(x), layer(x), rtol=1e-5, atol=1e-5)
 
 
+def test_layernorm_output_contiguous_on_noncontiguous_input():
+    # Siglip embeddings feed a transposed view through the tower; F.layer_norm
+    # restores contiguity but the decomposed pointwise path preserved the input
+    # strides, crashing downstream HF .view() calls (Idefics3 pixel_shuffle).
+    d = 16
+    layer = _layernorm(d)
+    bridge = _make_bridge(layer, _Cfg(uses_rms_norm=False))
+    x = torch.randn(2, d, 5).transpose(1, 2)
+    assert not x.is_contiguous()
+    out = bridge(x)
+    assert out.is_contiguous()
+    torch.testing.assert_close(out, layer(x), rtol=1e-5, atol=1e-5)
+
+
 def test_layernorm_with_none_bias_matches_torch():
     # MPT's MptBlock and Cohere set norm.bias = None for Hub-weight compat; the bridge must
     # treat the missing bias as zero (as F.layer_norm does), not crash or NaN.

@@ -40,6 +40,7 @@ class NormalizationBridge(GeneralizedComponent):
         submodules: Optional[Dict[str, GeneralizedComponent]] = {},
         use_native_layernorm_autograd: bool = False,
         uses_rms_norm: Optional[bool] = None,
+        optional: bool = False,
     ):
         """Initialize the normalization bridge.
 
@@ -52,8 +53,9 @@ class NormalizationBridge(GeneralizedComponent):
                                           use custom implementation. Defaults to False.
             uses_rms_norm: Force RMSNorm vs LayerNorm; None defers to introspection
                 then ``config.uses_rms_norm``.
+            optional: If True, setup skips this subtree when absent (hybrid architectures).
         """
-        super().__init__(name, config, submodules=submodules)
+        super().__init__(name, config, submodules=submodules, optional=optional)
         self.hook_normalized = HookPoint()
         self.hook_scale = HookPoint()
         self.use_native_layernorm_autograd = use_native_layernorm_autograd
@@ -93,7 +95,6 @@ class NormalizationBridge(GeneralizedComponent):
             )
         assert self.config is not None
         hidden_states = self.hook_in(hidden_states)
-        self._last_input_before_norm = hidden_states
         if self.use_native_layernorm_autograd:
             result = self._hf_autograd_forward_with_hooks(hidden_states)
         elif hasattr(self.config, "layer_norm_folding") and self.config.layer_norm_folding:
@@ -138,7 +139,13 @@ class NormalizationBridge(GeneralizedComponent):
             and component.bias is not None
         ):
             hidden_states = hidden_states + cast(torch.Tensor, component.bias)
-        return hidden_states.to(input_dtype)
+        result = hidden_states.to(input_dtype)
+        if not self.uses_rms_norm and not result.is_contiguous():
+            # F.layer_norm materializes a contiguous output while these
+            # pointwise ops preserve the input's strides; downstream HF code
+            # may .view() the result (e.g. Idefics3 pixel_shuffle).
+            result = result.contiguous()
+        return result
 
     def _hf_autograd_forward_with_hooks(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass that preserves HF's autograd while firing intermediate hooks.
@@ -158,6 +165,12 @@ class NormalizationBridge(GeneralizedComponent):
         """
         if self.original_component is None:
             raise RuntimeError(f"Original component not set for {self.name}")
+        if isinstance(self.original_component, torch.nn.Identity):
+            # Non-normalizing slot (ModernBertDecoder layer 0): fire hooks with
+            # pass-through values instead of fabricated LN stats.
+            _ = self.hook_scale(torch.ones_like(x[..., :1]))
+            _ = self.hook_normalized(x)
+            return x
         if self.hook_scale.bwd_hooks or self.hook_normalized.bwd_hooks:
             warnings.warn(NATIVE_PATH_BWD_FALLBACK_WARNING)
             return self._python_norm_forward(x)

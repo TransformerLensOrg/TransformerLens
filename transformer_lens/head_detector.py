@@ -220,7 +220,7 @@ def get_induction_head_detection_pattern(
 
 
 def get_supported_heads() -> None:
-    """Returns a list of supported heads."""
+    """Print the supported head names."""
     print(f"Supported heads: {HEAD_NAMES}")
 
 

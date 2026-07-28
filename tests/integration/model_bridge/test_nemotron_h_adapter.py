@@ -1,12 +1,12 @@
 """Integration tests for the NemotronH architecture adapter.
 
-Verifies forward-pass and generation parity against nvidia/Nemotron-H-8B-Base:
+Verifies forward-pass and generation parity against nvidia/NVIDIA-Nemotron-Nano-9B-v2:
 - Forward-pass logits match HF exactly (bridge delegates the full forward to HF)
 - Greedy multi-token generation matches HF bit-for-bit (exercises DynamicCache
   state handling across attention, Mamba-2, MLP, and MoE layers)
 - Sanity checks: config flags, block count, hook coverage
 
-Note: requires ~18 GB RAM (CPU) or ~16 GB VRAM (GPU) to load the 8B checkpoint.
+Note: requires ~36 GB RAM (CPU, fp32) or ~18 GB VRAM (GPU, bf16) to load the 9B checkpoint.
 On a machine with less memory, skip with:
     pytest -m "not slow" tests/integration/model_bridge/test_nemotron_h_adapter.py
 
@@ -28,7 +28,7 @@ from transformer_lens.model_bridge.generalized_components import (
 
 pytestmark = pytest.mark.slow
 
-MODEL = "nvidia/Nemotron-H-8B-Base"
+MODEL = "nvidia/NVIDIA-Nemotron-Nano-9B-v2"
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -82,7 +82,7 @@ class TestNemotronHBridgeCreation:
         assert isinstance(nemotron_bridge.ln_final, RMSNormalizationBridge)
 
     def test_block_count(self, nemotron_bridge: TransformerBridge) -> None:
-        # Nemotron-H-8B has 56 layers
+        # Nemotron-Nano-9B-v2 has 56 layers
         assert len(nemotron_bridge.blocks) == 56
 
     def test_blocks_are_ssm_block_bridge(self, nemotron_bridge: TransformerBridge) -> None:
@@ -95,8 +95,8 @@ class TestNemotronHBridgeCreation:
         lbt = getattr(nemotron_bridge.cfg, "layers_block_type", [])
         assert len(lbt) == len(nemotron_bridge.blocks)
         # Should contain at least one attention and one mamba layer
-        assert "attention" in lbt
-        assert "mamba" in lbt
+        assert "full_attention" in lbt
+        assert "linear_attention" in lbt
 
     def test_mamba_intermediate_size_positive(self, nemotron_bridge: TransformerBridge) -> None:
         assert getattr(nemotron_bridge.cfg, "mamba_intermediate_size", 0) > 0
@@ -179,7 +179,9 @@ class TestNemotronHGeneration:
     ) -> None:
         prompt = prompt.to(_device())
         with torch.no_grad():
-            result = nemotron_bridge.generate(prompt, max_new_tokens=5, do_sample=False)
+            result = nemotron_bridge.generate(
+                prompt, max_new_tokens=5, do_sample=False, stop_at_eos=False
+            )
         assert isinstance(result, torch.Tensor)
         assert result.shape == (1, 9)  # 4 prompt + 5 new
 
@@ -235,8 +237,8 @@ class TestNemotronHHookCoverage:
     ) -> None:
         """Mamba layers should expose in_proj / conv1d / out_proj hooks."""
         lbt = getattr(nemotron_bridge.cfg, "layers_block_type", [])
-        mamba_indices = [i for i, t in enumerate(lbt) if t == "mamba"]
-        assert mamba_indices, "No mamba layers found in layers_block_type"
+        mamba_indices = [i for i, t in enumerate(lbt) if t == "linear_attention"]
+        assert mamba_indices, "No linear_attention layers found in layers_block_type"
         # Check a few mamba layers
         for i in mamba_indices[:3]:
             for submod in ("in_proj", "conv1d", "out_proj"):

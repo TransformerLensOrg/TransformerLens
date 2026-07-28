@@ -5,7 +5,6 @@ from typing import Any
 
 from transformer_lens.conversion_utils.conversion_steps import (
     ArithmeticTensorConversion,
-    RearrangeTensorConversion,
     TransposeTensorConversion,
 )
 from transformer_lens.conversion_utils.conversion_steps.arithmetic_tensor_conversion import (
@@ -18,7 +17,6 @@ from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapt
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
-    GatedMLPBridge,
     LinearBridge,
     RMSNormalizationBridge,
     RotaryEmbeddingBridge,
@@ -58,32 +56,7 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
             # hook_conversion needed (setup_hook_compatibility is a no-op).
             #
             # Q/K/V weight conversions
-            "blocks.{i}.attn.q.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
-            ),
-            "blocks.{i}.attn.k.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion(
-                    "(n h) m -> n m h",
-                    n=getattr(
-                        self.cfg,
-                        "n_key_value_heads",
-                        self.cfg.n_heads,
-                    ),
-                ),
-            ),
-            "blocks.{i}.attn.v.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion(
-                    "(n h) m -> n m h",
-                    n=getattr(
-                        self.cfg,
-                        "n_key_value_heads",
-                        self.cfg.n_heads,
-                    ),
-                ),
-            ),
-            "blocks.{i}.attn.o.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=self.cfg.n_heads),
-            ),
+            **self._qkvo_weight_conversions(),
             # RMSNorm weight conversions - Gemma adds 1.0 to weights before applying
             # See: https://github.com/huggingface/transformers/pull/29402
             "blocks.{i}.ln1.weight": ParamProcessingConversion(
@@ -156,15 +129,7 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
                             "k_norm": RMSNormalizationBridge(name="k_norm", config=self.cfg),
                         },
                     ),
-                    "mlp": GatedMLPBridge(
-                        name="mlp",
-                        config=self.cfg,
-                        submodules={
-                            "gate": LinearBridge(name="gate_proj"),
-                            "in": LinearBridge(name="up_proj"),
-                            "out": LinearBridge(name="down_proj"),
-                        },
-                    ),
+                    "mlp": self._gated_mlp(),
                 },
             ),
             "ln_final": RMSNormalizationBridge(name="model.norm", config=self.cfg),
@@ -172,56 +137,20 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
         }
 
     def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Set up rotary embedding references and native autograd for Gemma-3 component testing.
+        """Wire local RoPE + eager attention; q/k norms delegate to HF autograd.
 
-        Gemma-3 uses dual RoPE (global + local). We set local RoPE (used by 85% of layers)
-        on all attention bridge instances for component testing.
-
-        We also enable use_native_layernorm_autograd on all normalization bridges to ensure
-        they delegate to HuggingFace's exact implementation instead of using manual computation.
-
-        Additionally, we force the HF model to use "eager" attention to match the bridge's
-        implementation. The bridge uses "eager" to support output_attentions for hooks, while
-        HF defaults to "sdpa". These produce mathematically equivalent results but with small
-        numerical differences due to different implementations.
-
-        Note: Layers 5, 11, 17, 23 use global RoPE but will use local in component tests.
-        This is an acceptable tradeoff given the shared-instance constraint.
-
-        Args:
-            hf_model: The HuggingFace Gemma-3 model instance
-            bridge_model: The TransformerBridge model (if available, set rotary_emb on actual instances)
+        Gemma-3 uses dual RoPE (global + local); component tests share the local
+        instance across all layers (layers on global RoPE accept the tradeoff).
         """
-        # Get the shared rotary embedding from the model (contains both global and local RoPE)
-        rotary_emb = hf_model.model.rotary_emb
-
-        # Force HF model to use "eager" attention to match bridge implementation
-        # Bridge uses "eager" to support output_attentions for hook compatibility
-        # SDPA and eager are mathematically equivalent but have numerical differences
-        if hasattr(hf_model, "config") and hasattr(hf_model.config, "_attn_implementation"):
-            hf_model.config._attn_implementation = "eager"
-
-        # Also set on all attention layers
-        if hasattr(hf_model, "model") and hasattr(hf_model.model, "layers"):
-            for layer in hf_model.model.layers:
-                if hasattr(layer, "self_attn") and hasattr(layer.self_attn, "config"):
-                    layer.self_attn.config._attn_implementation = "eager"
-
-        # Set rotary_emb on actual bridge instances in bridge_model if available
+        super().setup_component_testing(hf_model, bridge_model)
         if bridge_model is not None and hasattr(bridge_model, "blocks"):
-            # Set on each layer's actual attention bridge instance
             for block in bridge_model.blocks:
-                if hasattr(block, "attn"):
-                    block.attn.set_rotary_emb(rotary_emb)
-
-                    # Enable native autograd for q_norm/k_norm to match HF exactly
-                    if hasattr(block.attn, "original_component"):
-                        hf_attn = block.attn.original_component
-                        if hasattr(hf_attn, "q_norm"):
-                            hf_attn.q_norm.use_native_layernorm_autograd = True
-                        if hasattr(hf_attn, "k_norm"):
-                            hf_attn.k_norm.use_native_layernorm_autograd = True
-
-        # Also set on the template for get_generalized_component() calls
-        attn_bridge = self.get_generalized_component("blocks.0.attn")
-        attn_bridge.set_rotary_emb(rotary_emb)
+                hf_attn = getattr(block, "attn", None) and getattr(
+                    block.attn, "original_component", None
+                )
+                if hf_attn is None:
+                    continue
+                if hasattr(hf_attn, "q_norm"):
+                    hf_attn.q_norm.use_native_layernorm_autograd = True
+                if hasattr(hf_attn, "k_norm"):
+                    hf_attn.k_norm.use_native_layernorm_autograd = True

@@ -118,6 +118,23 @@ class TestMPTForwardPass:
         max_diff = (bridge_out - hf_out).abs().max().item()
         assert max_diff < 1e-4, f"Batch=2 bridge vs HF max diff = {max_diff:.2e}"
 
+    @pytest.mark.parametrize("logit_scale", [0.125, "inv_sqrt_d_model"])
+    def test_jacobian_lens_rejects_ambiguous_logit_scale(self, logit_scale: object) -> None:
+        """Integrated HF MPT ignores this remote-code field, so J-lens fails closed."""
+        from transformer_lens.tools.analysis import JacobianLens
+
+        bridge = _make_bridge()
+        bridge.cfg.logit_scale = logit_scale
+        lens = JacobianLens(
+            {0: torch.eye(_D_MODEL)},
+            n_prompts=1,
+            d_model=_D_MODEL,
+            metadata={"target_layer": _N_LAYERS - 1},
+        )
+
+        with pytest.raises(ValueError, match="MPT remote-code logit_scale"):
+            lens.validate_model(bridge)
+
 
 # ---------------------------------------------------------------------------
 # Hook coverage via run_with_cache

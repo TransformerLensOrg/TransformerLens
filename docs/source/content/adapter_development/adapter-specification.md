@@ -22,7 +22,7 @@ An Architecture Adapter is a Python class that extends `ArchitectureAdapter` (fr
 
 ## Registration Checklist
 
-After creating the adapter, register it in these files:
+After creating the adapter, register it in all four locations:
 
 1. **`transformer_lens/model_bridge/supported_architectures/__init__.py`**
    - Add import: `from transformer_lens.model_bridge.supported_architectures.<module> import <ClassName>`
@@ -31,6 +31,13 @@ After creating the adapter, register it in these files:
 2. **`transformer_lens/factories/architecture_adapter_factory.py`**
    - Add import (in the existing import block from `supported_architectures`)
    - Add entry to `SUPPORTED_ARCHITECTURES` dict: `"<HFArchitectureClass>": <AdapterClass>`
+
+3. **`transformer_lens/tools/model_registry/__init__.py`**
+   - Add the architecture name to `HF_SUPPORTED_ARCHITECTURES`
+   - Add the architecture's foundation-model organizations to `CANONICAL_AUTHORS_BY_ARCH`
+
+4. **`transformer_lens/tools/model_registry/generate_report.py`**
+   - Add a concise architecture description to `ARCHITECTURE_DESCRIPTIONS`
 
 ## Config Attributes
 

@@ -79,14 +79,14 @@ class NanogptArchitectureAdapter(ArchitectureAdapter):
                         name="ln_1", config=self.cfg
                     ),  # Pre-attention layer norm
                     "ln2": NormalizationBridge(name="ln_2", config=self.cfg),  # Pre-MLP layer norm
-                    "attn": AttentionBridge(name="attn", config=self.cfg),  # Full attention module
-                    "mlp": MLPBridge(name="mlp"),  # Full MLP module
+                    "attn": AttentionBridge(name="attn", config=self.cfg),
+                    "mlp": MLPBridge(name="mlp"),
                 },
             ),
             "ln_final": NormalizationBridge(
                 name="transformer.ln_f", config=self.cfg
             ),  # Final layer norm
-            "unembed": UnembeddingBridge(name="lm_head"),  # Language model head
+            "unembed": UnembeddingBridge(name="lm_head"),
         }
 
     def convert_weights(self, remote_module: Any) -> dict[str, torch.Tensor]:

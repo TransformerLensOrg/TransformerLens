@@ -7,6 +7,7 @@ from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     DepthwiseConv1DBridge,
     EmbeddingBridge,
+    GatedRMSNormBridge,
     LinearBridge,
     MLPBridge,
     MoEBridge,
@@ -32,6 +33,7 @@ N_LAYERS = 3
 N_CTX = 256
 D_VOCAB = 1000
 LAYER_TYPES = ["mamba", "attention", "mamba"]
+CANONICAL_LAYER_TYPES = ["linear_attention", "full_attention", "linear_attention"]
 
 
 def _make_cfg(
@@ -89,6 +91,11 @@ class TestGraniteMoeHybridAdapterConfig:
         assert adapter.cfg.uses_rms_norm is True
         assert adapter.cfg.default_prepend_bos is False
 
+    def test_layers_block_type_surfaced(self, adapter: GraniteMoeHybridArchitectureAdapter) -> None:
+        # Sourced from HF's `layer_types`; exposed uniformly as `layers_block_type`
+        # (matching NemotronH) so analysis tools can find the Mamba layers.
+        assert getattr(adapter.cfg, "layers_block_type", None) == CANONICAL_LAYER_TYPES
+
     def test_non_rope_position_embedding_disables_rotary_mapping(self) -> None:
         adapter = GraniteMoeHybridArchitectureAdapter(
             _make_cfg(position_embedding_type="nope", num_experts=4)
@@ -142,7 +149,7 @@ class TestGraniteMoeHybridAdapterComponentMapping:
             "ln1",
             "ln2",
             "attn",
-            "mamba",
+            "mixer",
             "shared_mlp",
             "moe",
         }
@@ -150,14 +157,15 @@ class TestGraniteMoeHybridAdapterComponentMapping:
         assert isinstance(blocks.submodules["ln1"], RMSNormalizationBridge)
         assert isinstance(blocks.submodules["ln2"], RMSNormalizationBridge)
         assert isinstance(blocks.submodules["attn"], PositionEmbeddingsAttentionBridge)
-        assert isinstance(blocks.submodules["mamba"], SSM2MixerBridge)
+        assert isinstance(blocks.submodules["mixer"], SSM2MixerBridge)
         assert isinstance(blocks.submodules["shared_mlp"], MLPBridge)
         assert isinstance(blocks.submodules["moe"], MoEBridge)
 
         assert blocks.submodules["ln1"].name == "input_layernorm"
         assert blocks.submodules["ln2"].name == "post_attention_layernorm"
         assert blocks.submodules["attn"].name == "self_attn"
-        assert blocks.submodules["mamba"].name == "mamba"
+        # Canonical `.mixer` dict key; HF submodule path stays `.mamba`.
+        assert blocks.submodules["mixer"].name == "mamba"
         assert blocks.submodules["shared_mlp"].name == "shared_mlp"
         assert blocks.submodules["moe"].name == "block_sparse_moe"
 
@@ -176,17 +184,18 @@ class TestGraniteMoeHybridAdapterComponentMapping:
             assert isinstance(submodule, LinearBridge)
 
     def test_mamba_mapping(self, adapter: GraniteMoeHybridArchitectureAdapter) -> None:
-        mamba = adapter.component_mapping["blocks"].submodules["mamba"]
-        assert mamba.optional is True
-        assert set(mamba.submodules.keys()) == {"in_proj", "conv1d", "inner_norm"}
+        mixer = adapter.component_mapping["blocks"].submodules["mixer"]
+        assert mixer.optional is True
+        assert set(mixer.submodules.keys()) == {"in_proj", "conv1d", "inner_norm"}
 
-        assert isinstance(mamba.submodules["in_proj"], LinearBridge)
-        assert isinstance(mamba.submodules["conv1d"], DepthwiseConv1DBridge)
-        assert isinstance(mamba.submodules["inner_norm"], LinearBridge)
+        assert isinstance(mixer.submodules["in_proj"], LinearBridge)
+        assert isinstance(mixer.submodules["conv1d"], DepthwiseConv1DBridge)
+        # HF's inner norm is the gated two-input MambaRMSNormGated, not a plain linear.
+        assert isinstance(mixer.submodules["inner_norm"], GatedRMSNormBridge)
 
-        assert mamba.submodules["in_proj"].name == "in_proj"
-        assert mamba.submodules["conv1d"].name == "conv1d"
-        assert mamba.submodules["inner_norm"].name == "norm"
+        assert mixer.submodules["in_proj"].name == "in_proj"
+        assert mixer.submodules["conv1d"].name == "conv1d"
+        assert mixer.submodules["inner_norm"].name == "norm"
 
     def test_shared_mlp_mapping(self, adapter: GraniteMoeHybridArchitectureAdapter) -> None:
         shared_mlp = adapter.component_mapping["blocks"].submodules["shared_mlp"]

@@ -28,7 +28,6 @@ class MockModelWithCfg:
         return self._parameters
 
     def to(self, device_or_dtype):
-        # Mock the to method
         if isinstance(device_or_dtype, torch.device):
             self.cfg.device = device_or_dtype.type
         elif isinstance(device_or_dtype, str):

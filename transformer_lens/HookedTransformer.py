@@ -32,7 +32,6 @@ import einops
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import tqdm.auto as tqdm
 from jaxtyping import Float, Int
 from transformers import AutoTokenizer, PreTrainedModel, PreTrainedTokenizerBase
@@ -66,12 +65,14 @@ from transformer_lens.loading_from_pretrained import NON_HF_HOSTED_MODEL_NAMES
 from transformer_lens.utilities import (
     USE_DEFAULT_VALUE,
     TypedModuleList,
+    apply_softcap,
     get_best_available_device,
     get_device_for_block_index,
     init_kaiming_normal_,
     init_kaiming_uniform_,
     init_xavier_normal_,
     init_xavier_uniform_,
+    softcap_enabled,
 )
 from transformer_lens.utilities.devices import move_to_and_update_config
 from transformer_lens.weight_processing import ProcessWeights
@@ -669,10 +670,7 @@ class HookedTransformer(HookedRootModule):
                 return None
             else:
                 logits = self.unembed(residual)  # [batch, pos, d_vocab]
-                if self.cfg.output_logits_soft_cap > 0.0:
-                    logits = self.cfg.output_logits_soft_cap * F.tanh(
-                        logits / self.cfg.output_logits_soft_cap
-                    )
+                logits = apply_softcap(logits, self.cfg.output_logits_soft_cap)
                 if return_type == "logits":
                     return logits
                 else:
@@ -1315,6 +1313,17 @@ class HookedTransformer(HookedRootModule):
                 3. Global default ("right")
             first_n_layers: If specified, only load the first n layers of the model.
         """
+        import warnings
+
+        warnings.warn(
+            "HookedTransformer.from_pretrained is deprecated and will be removed in a "
+            "future major release. Use TransformerBridge.boot_transformers(...) instead, "
+            "then call enable_compatibility_mode() for HookedTransformer-equivalent "
+            "numerics. See docs/source/content/migrating_to_v3.md.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
         if checkpoint_value is not None and checkpoint_label is not None:
             raise ValueError(
                 "Specify checkpoint_value or checkpoint_label, not both — they are aliases."
@@ -1420,7 +1429,7 @@ class HookedTransformer(HookedRootModule):
                     "architecture. Setting center_writing_weights=False."
                 )
                 center_writing_weights = False
-        if center_unembed and cfg.output_logits_soft_cap > 0.0:
+        if center_unembed and softcap_enabled(cfg.output_logits_soft_cap):
             logging.warning(
                 "You tried to specify center_unembed=True for a model using logit softcap, but this can't be done! Softcapping is not invariant upon adding a constant "
                 "Setting center_unembed=False instead."
@@ -1500,23 +1509,14 @@ class HookedTransformer(HookedRootModule):
 
         Set seed here to ensure determinism.
 
-        This does NOT follow the PyTorch scheme, which as far as I can tell is super out of date but
-        no one has gotten round to updating it? https://github.com/pytorch/pytorch/issues/18182
-
-        The default PyTorch scheme is the following: all linear layers use uniform(-1/sqrt(fan_in),
-        1/sqrt(fan_in)) for weights, and uniform(-1/sqrt(fan_in), 1/sqrt(fan_in)) for biases. For
-        biases, fan_in is computed using the fan_in for the weight matrix of the linear layer. Note
-        that it *does not actually* use Kaiming initialization, despite the fact that it calls the
-        function.
+        This does NOT follow the default PyTorch scheme, which is the following: all linear layers
+        use uniform(-1/sqrt(fan_in), 1/sqrt(fan_in)) for weights, and uniform(-1/sqrt(fan_in),
+        1/sqrt(fan_in)) for biases. For biases, fan_in is computed using the fan_in for the weight
+        matrix of the linear layer. Note that it *does not actually* use Kaiming initialization,
+        despite the fact that it calls the function.
 
         However, for Transformer blocks, it instead initializes biases to zero and weights using Xavier uniform, that
         is: uniform(-sqrt(6 / (fan_in + fan_out)), sqrt(6 / (fan_in + fan_out))) for weights.
-
-        PyTorch Transformers are especially bad - TransformerEncoder initializes all layers to the
-        exact same weights?! https://github.com/pytorch/pytorch/issues/72253.
-
-        The best paper I've found on transformer initialization is the muP paper, but haven't
-        integrated those ideas yet: https://arxiv.org/abs/2203.03466
 
         We split off the initialization into separate functions because muP initialization handles
         different parts of the model differently.
@@ -2033,6 +2033,11 @@ class HookedTransformer(HookedRootModule):
                     self.tokenizer.padding_side = _orig_padding_side
             device = get_device_for_block_index(0, self.cfg)
             input = input.to(device)
+            if input_tokens is not None:
+                # Re-alias to the moved tensor: input_tokens must live on the model's
+                # device so later concatenations with sampled tokens (freq_penalty
+                # sampling and the final output) don't mix devices.
+                input_tokens = input
             if use_past_kv_cache:
                 past_kv_cache = TransformerLensKeyValueCache.init_cache(
                     self.cfg, self.cfg.device, batch_size
@@ -2243,7 +2248,6 @@ class HookedTransformer(HookedRootModule):
 
                 def _logits_to_tuple(logits_list: list[torch.Tensor]) -> tuple[torch.Tensor, ...]:
                     assert logits_list is not None
-                    # Convert to tuple of tensors
                     return tuple(logits_list)
 
                 try:

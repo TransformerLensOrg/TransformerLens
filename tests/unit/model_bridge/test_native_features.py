@@ -9,11 +9,15 @@ real machinery, not just a flat GPT-2 toy.
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
+import pytest
 import torch
 
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.model_bridge import TransformerBridge
 from transformer_lens.model_bridge.generalized_components import (
+    AttentionBridge,
     GatedMLPBridge,
     MLPBridge,
     NormalizationBridge,
@@ -27,6 +31,11 @@ from transformer_lens.model_bridge.sources.native.model import (
     NativeMLP,
     NativeRMSNorm,
 )
+
+
+class _ResultOnlyAttentionBridge(AttentionBridge):
+    supports_split_qkv_fork = False
+    supports_attn_result = True
 
 
 def _cfg(**overrides) -> TransformerBridgeConfig:
@@ -49,6 +58,61 @@ def _cfg(**overrides) -> TransformerBridgeConfig:
 def _forward(bridge: TransformerBridge) -> torch.Tensor:
     inputs = torch.randint(0, bridge.cfg.d_vocab, (2, bridge.cfg.n_ctx))
     return bridge(inputs, return_type="logits")
+
+
+def test_result_hook_capability_is_independent_of_qkv_input_forks() -> None:
+    bridge = TransformerBridge.boot_native(_cfg())
+    bridge.blocks[0]._modules["attn"] = _ResultOnlyAttentionBridge(
+        name="result_only",
+        config=bridge.cfg,
+    )
+
+    bridge.set_use_attn_result(True)
+    assert bridge.cfg.use_attn_result is True
+    with pytest.raises(NotImplementedError, match="use_split_qkv_input"):
+        bridge.set_use_split_qkv_input(True)
+
+
+def test_forward_only_capabilities_reject_generation_and_causal_loss() -> None:
+    bridge = TransformerBridge.boot_native(_cfg())
+    bridge.adapter.supports_generation = False
+    bridge.adapter.supports_causal_loss = False
+    tokens = torch.randint(0, bridge.cfg.d_vocab, (1, 4))
+
+    with pytest.raises(NotImplementedError, match="generation is not supported"):
+        bridge.generate(tokens, max_new_tokens=1)
+    with pytest.raises(NotImplementedError, match="shifted causal loss"):
+        bridge(tokens, return_type="loss")
+
+
+def test_output_attention_capability_controls_only_the_implicit_request() -> None:
+    bridge = TransformerBridge.boot_native(_cfg())
+    tokens = torch.randint(0, bridge.cfg.d_vocab, (1, 4))
+
+    with patch.object(
+        bridge.original_model,
+        "forward",
+        wraps=bridge.original_model.forward,
+    ) as forward:
+        bridge.run_with_cache(tokens)
+    assert forward.call_args.kwargs["output_attentions"] is True
+
+    bridge.adapter.supports_hf_output_attentions = False
+    with patch.object(
+        bridge.original_model,
+        "forward",
+        wraps=bridge.original_model.forward,
+    ) as forward:
+        bridge.run_with_cache(tokens)
+    assert "output_attentions" not in forward.call_args.kwargs
+
+    with patch.object(
+        bridge.original_model,
+        "forward",
+        wraps=bridge.original_model.forward,
+    ) as forward:
+        bridge.run_with_cache(tokens, output_attentions=True)
+    assert forward.call_args.kwargs["output_attentions"] is True
 
 
 # -- soft-cap -----------------------------------------------------------------
@@ -109,8 +173,7 @@ def test_output_logits_soft_cap_bounds_logits():
     """Logits must be bounded by ±cap when output_logits_soft_cap > 0."""
     cap = 5.0
     cfg = _cfg(output_logits_soft_cap=cap, seed=0)
-    # Force-large outputs by skipping the soft-cap → then re-enabling. Easier:
-    # just pick a cap and assert |logits| <= cap. tanh-cap math guarantees it.
+    # tanh soft-cap bounds |logits| <= cap by construction
     bridge = TransformerBridge.boot_native(cfg)
     logits = _forward(bridge)
     assert logits.abs().max().item() <= cap + 1e-5
@@ -532,9 +595,6 @@ def test_rotary_pattern_differs_from_absolute():
 
 
 # -- init modes ---------------------------------------------------------------
-
-
-import pytest
 
 
 @pytest.mark.parametrize(

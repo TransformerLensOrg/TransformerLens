@@ -19,8 +19,12 @@ from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     BlockBridge,
     EmbeddingBridge,
+    LinearBridge,
     MLPBridge,
     NormalizationBridge,
+)
+from transformer_lens.model_bridge.generalized_components.base import (
+    GeneralizedComponent,
 )
 from transformer_lens.model_bridge.generalized_components.joint_qkv_attention import (
     JointQKVAttentionBridge,
@@ -120,6 +124,30 @@ class TestComponentSetup:
 
         # Should not raise any errors
         setup_submodules(component, adapter, original_ln)
+
+    def test_containerless_executable_promotes_children_for_processed_weights(self):
+        adapter = MockArchitectureAdapter()
+        original_block = nn.Module()
+        original_block.fc_in = nn.Linear(4, 8, bias=False)
+        original_block.fc_out = nn.Linear(8, 4, bias=False)
+        mlp = MLPBridge(
+            name=None,
+            submodules={
+                "in": LinearBridge(name="fc_in"),
+                "out": LinearBridge(name="fc_out"),
+            },
+        )
+        block = GeneralizedComponent(name="block", submodules={"mlp": mlp})
+        block.set_original_component(original_block)
+
+        setup_submodules(block, adapter, original_block)
+
+        mlp_in = getattr(mlp, "in")
+        assert set(block.real_components) == {"mlp.in", "mlp.out"}
+        assert block.real_components["mlp.in"][1] is mlp_in
+        new_weight = torch.randn_like(mlp_in.original_component.weight)
+        block.set_processed_weights({"mlp.in.weight": new_weight})
+        torch.testing.assert_close(mlp_in.original_component.weight, new_weight)
 
     def test_setup_components_regular_component(self):
         """Test setting up regular (non-list) components."""

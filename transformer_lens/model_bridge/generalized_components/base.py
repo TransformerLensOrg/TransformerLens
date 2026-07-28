@@ -15,6 +15,21 @@ from transformer_lens.conversion_utils.conversion_steps.base_tensor_conversion i
 from transformer_lens.hook_points import HookPoint
 
 
+class CloneOutputUnderGradMixin(nn.Module):
+    """Clone the forward output so HF's in-place mutation cannot corrupt it.
+
+    Under grad, autograd forbids in-place writes to backward-hook views; under
+    no_grad, cached hook_out tensors alias the storage HF then rewrites.
+    Mix in ahead of a bridge class: ``class X(CloneOutputUnderGradMixin, LinearBridge)``.
+    """
+
+    def forward(self, *args: Any, **kwargs: Any) -> Any:
+        out = super().forward(*args, **kwargs)
+        if isinstance(out, torch.Tensor):
+            out = out.clone()
+        return out
+
+
 class GeneralizedComponent(nn.Module):
     """Base class for generalized transformer components.
 
@@ -23,6 +38,7 @@ class GeneralizedComponent(nn.Module):
     """
 
     is_list_item: bool = False
+    hook_out_is_single_residual_stream: bool = False
     compatibility_mode: bool = False
     disable_warnings: bool = False
     hook_aliases: Dict[str, Union[str, List[str]]] = {}
@@ -69,7 +85,6 @@ class GeneralizedComponent(nn.Module):
 
         # Copy class-level hook_aliases and apply any overrides
         if hook_alias_overrides is not None:
-            # Make a copy of class-level aliases and update with overrides
             self.hook_aliases = self.__class__.hook_aliases.copy()
             self.hook_aliases.update(hook_alias_overrides)
 
@@ -159,6 +174,13 @@ class GeneralizedComponent(nn.Module):
             original_component: The original transformer component to wrap
         """
         self.add_module("_original_component", original_component)
+        # An opaque wrapper (created with config=None) shadows the wrapped
+        # module's own config. HF forwards sometimes read a submodule's config
+        # directly (e.g. Qwen2Audio's forward does create_bidirectional_mask(
+        # config=self.audio_tower.config)), so inherit the real config to avoid
+        # exposing None. Components given an explicit config keep it.
+        if self.config is None:
+            self.config = getattr(original_component, "config", None)
 
     @property
     def original_component(self) -> Optional[nn.Module]:
@@ -233,7 +255,6 @@ class GeneralizedComponent(nn.Module):
                     if hasattr(self.original_component, key):
                         param = getattr(self.original_component, key)
                         if param is not None and isinstance(param, torch.nn.Parameter):
-                            # Check that shapes match
                             if param.shape != weight_tensor.shape:
                                 raise ValueError(
                                     f"Shape mismatch when setting weight '{key}' in {type(self.original_component).__name__}: "
@@ -315,6 +336,11 @@ class GeneralizedComponent(nn.Module):
         if isinstance(output, tuple):
             hooked_first = self.hook_out(output[0])
             output = (hooked_first,) + output[1:]
+        elif not isinstance(output, torch.Tensor) and isinstance(
+            getattr(output, "last_hidden_state", None), torch.Tensor
+        ):
+            # ModelOutput-returning components (e.g. vision/audio towers).
+            output.last_hidden_state = self.hook_out(output.last_hidden_state)
         else:
             output = self.hook_out(output)
         return output
@@ -360,6 +386,10 @@ class GeneralizedComponent(nn.Module):
             "compatibility_mode",
             "disable_warnings",
             "optional",
+            # train()/eval() set self.training; redirecting it to the original
+            # component leaves the wrapper stuck in training mode (dropout at
+            # inference). Recursion still reaches the original via _modules.
+            "training",
         ]:
             super().__setattr__(name, value)
             return

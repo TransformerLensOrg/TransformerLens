@@ -12,7 +12,6 @@ from typing import Any
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
     EmbeddingBridge,
-    GatedMLPBridge,
     LinearBridge,
     MLAAttentionBridge,
     MLABlockBridge,
@@ -33,6 +32,8 @@ class DeepSeekV3ArchitectureAdapter(ArchitectureAdapter):
     MoE on most layers (dense MLP on first few), and no biases.
     """
 
+    _testing_eager = None
+
     def __init__(self, cfg: Any) -> None:
         super().__init__(cfg)
 
@@ -43,6 +44,9 @@ class DeepSeekV3ArchitectureAdapter(ArchitectureAdapter):
         self.cfg.uses_rms_norm = True
         # HF defaults to SDPA which handles MLA correctly.
         # HF's eager attention crashes on MLA's asymmetric Q/K dimensions.
+
+        # MLA has no per-head q/k/v to fold into; skip LN folding.
+        self.supports_fold_ln = False
 
         self.weight_processing_conversions = {}
 
@@ -80,16 +84,7 @@ class DeepSeekV3ArchitectureAdapter(ArchitectureAdapter):
                         submodules={
                             # Router is a custom Module, not nn.Linear
                             "gate": GeneralizedComponent(name="gate", optional=True),
-                            "shared_experts": GatedMLPBridge(
-                                name="shared_experts",
-                                config=self.cfg,
-                                optional=True,
-                                submodules={
-                                    "gate": LinearBridge(name="gate_proj"),
-                                    "in": LinearBridge(name="up_proj"),
-                                    "out": LinearBridge(name="down_proj"),
-                                },
-                            ),
+                            "shared_experts": self._gated_mlp(name="shared_experts", optional=True),
                         },
                     ),
                 },
@@ -97,16 +92,3 @@ class DeepSeekV3ArchitectureAdapter(ArchitectureAdapter):
             "ln_final": RMSNormalizationBridge(name="model.norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head"),
         }
-
-    def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Set up rotary embedding references for component testing."""
-        rotary_emb = hf_model.model.rotary_emb
-
-        if bridge_model is not None and hasattr(bridge_model, "blocks"):
-            for block in bridge_model.blocks:
-                if hasattr(block, "attn"):
-                    block.attn.set_rotary_emb(rotary_emb)
-
-        # Also set on template for get_generalized_component() callers
-        attn_bridge = self.get_generalized_component("blocks.0.attn")
-        attn_bridge.set_rotary_emb(rotary_emb)

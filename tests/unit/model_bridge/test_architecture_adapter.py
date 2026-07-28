@@ -206,6 +206,23 @@ def test_translate_transformer_lens_path_last_component(adapter: Gemma3Architect
     )
 
 
+def test_translate_containerless_descendant_without_inventing_container_path(
+    adapter: Gemma3ArchitectureAdapter,
+) -> None:
+    adapter.component_mapping["blocks"].submodules["synthetic"] = MLPBridge(
+        name=None,
+        submodules={"in": LinearBridge(name="fc1")},
+    )
+
+    assert adapter.translate_transformer_lens_path("blocks.0.synthetic.in") == "model.layers.0.fc1"
+    assert (
+        adapter.translate_transformer_lens_path("blocks.0.synthetic.in", last_component_only=True)
+        == "fc1"
+    )
+    with pytest.raises(ValueError, match="Synthetic component synthetic has no remote path"):
+        adapter.translate_transformer_lens_path("blocks.0.synthetic")
+
+
 def test_component_mapping_structure(adapter: Gemma3ArchitectureAdapter) -> None:
     """Test that the component mapping has the expected structure."""
     mapping = adapter.get_component_mapping()
@@ -592,10 +609,7 @@ def test_get_generalized_component_deeply_nested_with_parameters(
 ) -> None:
     """Test getting deeply nested components with parameter suffixes."""
     # Test deeply nested components with parameter suffixes
-    # Note: The parameter suffixes (.weight, .bias) are stripped by _preprocess_parameter_path
-    # so these should return the same components as without the suffixes
-    # However, the _preprocess_parameter_path method only handles TransformerLens-specific parameter names
-    # like W_Q, b_Q, etc., not generic PyTorch parameter names like .weight, .bias
+    # _preprocess_parameter_path only strips TransformerLens suffixes (W_Q, b_Q), not generic .weight/.bias
 
     # Test with TransformerLens parameter names (these should work)
     q_component = adapter.get_generalized_component("blocks.0.attn.W_Q")

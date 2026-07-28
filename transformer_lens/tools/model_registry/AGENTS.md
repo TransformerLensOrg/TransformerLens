@@ -46,7 +46,8 @@ Read [the root AGENTS.md](../../../AGENTS.md) for project-wide rules. This file 
 | `--reverify` | Re-test already-verified models (default skips status=1 entries) |
 | `--retry-failed` | Re-test status=3 (failed) entries |
 | `--dry-run` | Print what would be tested without running |
-| `--no-hf-reference` / `--no-ht-reference` | Skip the HF / HT comparison passes (faster, lower confidence) |
+| `--no-hf-reference` | Skip the HF reference — Phase 1 is structural-only, never numerically compared to HF. A passing run records `status=4` (PROVISIONAL), which does **not** count as verified. Re-run without the flag to upgrade to VERIFIED. |
+| `--no-ht-reference` | Skip the HookedTransformer comparison passes (faster, lower confidence) |
 | `--quiet` | Suppress per-model logging |
 
 ---
@@ -116,6 +117,8 @@ Never edit manually.
 | 7 | Multimodal (vision/text alignment) — only Llava / Gemma3-multimodal |
 | 8 | Audio — only Hubert |
 
+SSM / recurrent families and the hybrids (Mamba-1/2, gated-delta-net, NemotronH, GraniteMoeHybrid, Jamba, Qwen3.5/Qwen3-Next) declare `applicable_phases = [1, 2, 3, 4]` — all four apply. P2/P3 run but skip their HookedTransformer-comparison sub-tests (SSMs have no HT), which is scored as a pass.
+
 ### Phase-score thresholds
 
 `verify_models` enforces hard pass/fail at the thresholds in `_MIN_PHASE_SCORES` ([`verify_models.py:508`](verify_models.py)). Below threshold OR a required-test failure → `STATUS_FAILED`. The contract:
@@ -139,6 +142,7 @@ Phase 4 is intentionally lenient — source ([`verify_models.py:554`](verify_mod
 - `status==1` + `note` mentions `"low text quality"` → P4 < 50%; investigate.
 - `status==1` + P4 < 100% on a small model, no quality flag → potential weight-fold/tokenizer bug; investigate.
 - `status==3` (FAILED) → `note` carries the failure reason; debug from there.
+- `status==4` (PROVISIONAL) → structural-only pass via `--no-hf-reference`; Phase 1 was never numerically compared to HF, so it does **not** count as verified (`note` is prefixed `Structural only (no HF reference)`). Re-run without the flag for a real verification.
 
 P1/P3 failures: [supported_architectures/AGENTS.md §When to override preprocess_weights](../../model_bridge/supported_architectures/AGENTS.md#when-to-override-preprocess_weights), [debugging_numerical_divergence.md](../../../docs/source/content/debugging_numerical_divergence.md). P4 drift: [§Tokenizer policy](../../model_bridge/supported_architectures/AGENTS.md#tokenizer-policy) (logit-scale / embedding-scale folds typically degrade P4 without crossing the 50% gate).
 
