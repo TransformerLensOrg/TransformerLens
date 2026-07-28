@@ -170,20 +170,6 @@ class ViTArchitectureAdapter(ArchitectureAdapter):
             mapping["unembed"] = VisionClassifierHeadBridge(name="classifier")
         return mapping
 
-    def prepare_loading(self, model_name: str, model_kwargs: dict) -> None:
-        """Propagate ViT/DeiT HF config attributes not covered by the generic mapper."""
-        hf_config = model_kwargs.get("config")
-        if hf_config is None:
-            return
-
-        # Derive n_ctx to avoid silent fallback to 2048 in generic logic
-        image_size = getattr(hf_config, "image_size", None)
-        patch_size = getattr(hf_config, "patch_size", None)
-        if image_size is not None and patch_size is not None:
-            num_patches = (image_size // patch_size) ** 2
-            # Standard ViT models add 1 cls_token to the sequence
-            self.cfg.n_ctx = num_patches + 1
-
     def prepare_model(self, hf_model: Any) -> None:
         """Detect ViTForImageClassification vs DeiTForImageClassification vs a bare
         *Model, and add/omit the classifier head + prefix accordingly.
