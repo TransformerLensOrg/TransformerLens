@@ -1980,7 +1980,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                 logits = output.logits
             elif isinstance(output, tuple) and len(output) > 0:
                 logits = output[0]
-             elif hasattr(output, "last_hidden_state"):
+            elif hasattr(output, "last_hidden_state"):
                 # Bare encoder models (ViTModel, DeiTModel, BertModel, etc. without
                 # a task head) return e.g. BaseModelOutput/BaseModelOutputWithPooling,
                 # which has neither `.logits` nor tuple semantics. Fall back to
