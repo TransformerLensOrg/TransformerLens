@@ -100,35 +100,7 @@ class NormalizationBridge(GeneralizedComponent):
         elif hasattr(self.config, "layer_norm_folding") and self.config.layer_norm_folding:
             result = self._hf_autograd_forward_with_hooks(hidden_states)
         else:
-            uses_rms_norm = self.uses_rms_norm
-            # Upcast to float32 for normalization precision (matches HT's RMSNorm behavior)
-            input_dtype = hidden_states.dtype
-            if input_dtype not in (torch.float32, torch.float64):
-                hidden_states = hidden_states.float()
-            if not uses_rms_norm:
-                hidden_states = hidden_states - hidden_states.mean(-1, keepdim=True)
-            scale = self.hook_scale(
-                (
-                    hidden_states.pow(2).mean(-1, keepdim=True) + getattr(self.config, "eps", 1e-05)
-                ).sqrt()
-            )
-            hidden_states = self.hook_normalized(hidden_states / scale)
-            # Apply weight/bias in float32 before casting back (matches HF precision).
-            if uses_rms_norm:
-                hidden_states = hidden_states * self.weight
-            else:
-                hidden_states = hidden_states * self.weight
-                if (
-                    hasattr(self.original_component, "bias")
-                    and self.original_component.bias is not None
-                ):
-                    hidden_states = hidden_states + cast(torch.Tensor, self.original_component.bias)
-            result = hidden_states.to(input_dtype)
-            if not uses_rms_norm and not result.is_contiguous():
-                # F.layer_norm materializes a contiguous output while these
-                # pointwise ops preserve the input's strides; downstream HF code
-                # may .view() the result (e.g. Idefics3 pixel_shuffle).
-                result = result.contiguous()
+            result = self._python_norm_forward(hidden_states)
         output = self.hook_out(result)
         return output
 
@@ -167,7 +139,13 @@ class NormalizationBridge(GeneralizedComponent):
             and component.bias is not None
         ):
             hidden_states = hidden_states + cast(torch.Tensor, component.bias)
-        return hidden_states.to(input_dtype)
+        result = hidden_states.to(input_dtype)
+        if not self.uses_rms_norm and not result.is_contiguous():
+            # F.layer_norm materializes a contiguous output while these
+            # pointwise ops preserve the input's strides; downstream HF code
+            # may .view() the result (e.g. Idefics3 pixel_shuffle).
+            result = result.contiguous()
+        return result
 
     def _hf_autograd_forward_with_hooks(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass that preserves HF's autograd while firing intermediate hooks.
