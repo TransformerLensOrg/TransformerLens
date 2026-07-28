@@ -13,7 +13,6 @@ from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapt
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
-    GatedMLPBridge,
     LinearBridge,
     RMSNormalizationBridge,
     RotaryEmbeddingBridge,
@@ -34,6 +33,8 @@ class Qwen3ArchitectureAdapter(ArchitectureAdapter):
     Serves as base class for Qwen3.5 and Qwen3Next hybrid variants.
     """
 
+    _testing_hybrid = True
+
     def __init__(self, cfg: Any, *, hybrid: bool = False, lm_prefix: str = "model") -> None:
         super().__init__(cfg)
         self._setup_qwen3_config(cfg)
@@ -46,17 +47,9 @@ class Qwen3ArchitectureAdapter(ArchitectureAdapter):
 
     def _setup_qwen3_config(self, cfg: Any) -> None:
         """Config shared across all Qwen3 variants (dense, hybrid, MoE)."""
-        self.cfg.normalization_type = "RMS"
-        self.cfg.positional_embedding_type = "rotary"
-        self.cfg.final_rms = True
-        self.cfg.gated_mlp = True
-        self.cfg.attn_only = False
-        self.cfg.uses_rms_norm = True
+        self._set_rms_rotary_defaults()
         self.cfg.default_prepend_bos = False
         self.cfg.attn_implementation = "eager"
-
-        if hasattr(cfg, "n_key_value_heads") and cfg.n_key_value_heads is not None:
-            self.cfg.n_key_value_heads = cfg.n_key_value_heads
 
     def _build_attention_bridge(self, optional: bool = False) -> PositionEmbeddingsAttentionBridge:
         """Standard Qwen3 attention bridge with Q/K norms."""
@@ -76,15 +69,7 @@ class Qwen3ArchitectureAdapter(ArchitectureAdapter):
 
     def _build_mlp_bridge(self):
         """Dense gated MLP (gate_proj + up_proj -> down_proj). Override for MoE."""
-        return GatedMLPBridge(
-            name="mlp",
-            config=self.cfg,
-            submodules={
-                "gate": LinearBridge(name="gate_proj"),
-                "in": LinearBridge(name="up_proj"),
-                "out": LinearBridge(name="down_proj"),
-            },
-        )
+        return self._gated_mlp()
 
     def _build_linear_attn_bridge(self, optional: bool = False) -> GatedDeltaNetBridge:
         """GatedDeltaNet linear-attention bridge for hybrid variants."""
@@ -114,34 +99,6 @@ class Qwen3ArchitectureAdapter(ArchitectureAdapter):
             "ln_final": RMSNormalizationBridge(name=f"{lm_prefix}.norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head"),
         }
-
-    def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Set eager attn on HF model and rotary_emb on attention bridges."""
-        rotary_emb = hf_model.model.rotary_emb
-
-        if hasattr(hf_model, "config") and hasattr(hf_model.config, "_attn_implementation"):
-            hf_model.config._attn_implementation = "eager"
-
-        if hasattr(hf_model, "model") and hasattr(hf_model.model, "layers"):
-            for layer in hf_model.model.layers:
-                if hasattr(layer, "self_attn") and hasattr(layer.self_attn, "config"):
-                    layer.self_attn.config._attn_implementation = "eager"
-
-        if bridge_model is not None and hasattr(bridge_model, "blocks"):
-            for block in bridge_model.blocks:
-                if "attn" in block._modules:
-                    block.attn.set_rotary_emb(rotary_emb)
-
-        # Set on template for get_generalized_component() calls
-        # Set on template — may not exist in hybrid adapters
-        mapping = self.component_mapping or {}
-        blocks_template = mapping.get("blocks") if isinstance(mapping, dict) else None
-        if blocks_template and "attn" in getattr(blocks_template, "submodules", {}):
-            try:
-                attn_template = self.get_generalized_component("blocks.0.attn")
-                attn_template.set_rotary_emb(rotary_emb)
-            except (ValueError, AttributeError, KeyError):
-                pass
 
     @staticmethod
     def _preprocess_gated_q_proj(

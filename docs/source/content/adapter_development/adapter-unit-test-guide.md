@@ -5,7 +5,7 @@ This is the companion to the [Architecture Adapter Creation Guide](adapter-creat
 A new adapter needs two test layers:
 
 - **Unit adapter test** — `tests/unit/model_bridge/supported_architectures/test_<arch>_adapter.py`. Instantiates the adapter from a *synthetic* `TransformerBridgeConfig` and asserts **structural** properties. No weight load, no HF Hub, runs in `make unit-test`. **This guide is about this layer.**
-- **Integration parity test** — `tests/integration/model_bridge/test_<arch>_adapter.py`. Loads a real cached HF model — or a tiny random fixture when the real model OOMs CI — and asserts logit parity at fp32 + eager attention. Required; covered in [contributing.md](../contributing.md#required-tests-for-a-new-adapter).
+- **Integration parity test** — `tests/integration/model_bridge/test_<arch>_adapter.py`. Loads a real cached HF model and asserts logit parity at fp32 + eager attention. When the real model is heavy or non-cached, mark it `@pytest.mark.slow` (the CI integration job runs `-m "not slow"`) and add a tiny `from_config` companion — `test_<arch>_tiny.py`, random CPU weights, no Hub download — as the layer that actually runs in CI. Required; covered in [contributing.md](../contributing.md#required-tests-for-a-new-adapter) and [supported_architectures/AGENTS.md](../../../../transformer_lens/model_bridge/supported_architectures/AGENTS.md).
 
 ## The one rule
 

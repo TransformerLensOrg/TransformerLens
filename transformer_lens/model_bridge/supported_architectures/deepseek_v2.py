@@ -16,7 +16,6 @@ from typing import Any
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
     EmbeddingBridge,
-    GatedMLPBridge,
     LinearBridge,
     MLAAttentionBridge,
     MLABlockBridge,
@@ -38,6 +37,8 @@ class DeepSeekV2ArchitectureAdapter(ArchitectureAdapter):
     first few), and no biases.
     """
 
+    _testing_eager = None
+
     def __init__(self, cfg: Any) -> None:
         super().__init__(cfg)
 
@@ -46,6 +47,9 @@ class DeepSeekV2ArchitectureAdapter(ArchitectureAdapter):
         self.cfg.gated_mlp = True
         self.cfg.final_rms = True
         self.cfg.uses_rms_norm = True
+
+        # MLA has no per-head q/k/v to fold into; skip LN folding.
+        self.supports_fold_ln = False
 
         self.weight_processing_conversions = {}
 
@@ -84,42 +88,24 @@ class DeepSeekV2ArchitectureAdapter(ArchitectureAdapter):
                             "o": LinearBridge(name="o_proj"),
                         },
                     ),
-                    # On dense layers (idx < first_k_dense_replace), shared_experts
-                    # are absent — marked optional so setup gracefully skips them when
-                    # the layer is DeepseekV2MLP instead of MoE.
-                    # Note: the gate module is NOT bridged — DeepseekV2Moe.forward()
-                    # calls nn.functional.linear(..., self.gate.weight) directly,
-                    # bypassing forward(), so no hook can be attached to it.
-                    "mlp": MoEBridge(
-                        name="mlp",
-                        config=self.cfg,
-                        submodules={
-                            "shared_experts": GatedMLPBridge(
-                                name="shared_experts",
-                                config=self.cfg,
-                                optional=True,
-                                submodules={
-                                    "gate": LinearBridge(name="gate_proj"),
-                                    "in": LinearBridge(name="up_proj"),
-                                    "out": LinearBridge(name="down_proj"),
-                                },
-                            ),
-                        },
-                    ),
+                    # On dense layers (idx < first_k_dense_replace), gate and
+                    # shared_experts are absent — marked optional so setup gracefully
+                    # skips them when the layer is DeepseekV2MLP instead of MoE.
+                    "mlp": self._build_mlp_bridge(),
                 },
             ),
             "ln_final": RMSNormalizationBridge(name="model.norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head"),
         }
 
-    def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Set up rotary embedding references for component testing."""
-        rotary_emb = hf_model.model.rotary_emb
-
-        if bridge_model is not None and hasattr(bridge_model, "blocks"):
-            for block in bridge_model.blocks:
-                if hasattr(block, "attn"):
-                    block.attn.set_rotary_emb(rotary_emb)
-
-        attn_bridge = self.get_generalized_component("blocks.0.attn")
-        attn_bridge.set_rotary_emb(rotary_emb)
+    def _build_mlp_bridge(self):
+        """Routed MoE with optional shared experts; Youtu (all-dense) overrides."""
+        return MoEBridge(
+            name="mlp",
+            config=self.cfg,
+            submodules={
+                # Router is a custom Module, not nn.Linear.
+                "gate": GeneralizedComponent(name="gate", optional=True),
+                "shared_experts": self._gated_mlp(name="shared_experts", optional=True),
+            },
+        )

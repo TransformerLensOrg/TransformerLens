@@ -4,6 +4,7 @@ This module provides the bridge components that wrap remote model components and
 a consistent interface for accessing their weights and performing operations.
 """
 
+import inspect
 import logging
 import re
 import warnings
@@ -206,6 +207,12 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         self._setup_hook_compatibility()
         self._initialize_hooks_to_cache()
         self.processor = None
+        # Bridge wrappers are inserted into the HF module tree after
+        # from_pretrained's eval(), and nn.Module defaults to training=True —
+        # without re-syncing, reconstruction paths apply dropout at inference.
+        # train() recurses, so this stamps the wrappers with the model's mode.
+        original_model.train(original_model.training)
+        self.train(original_model.training)
 
     @classmethod
     def boot_transformers(
@@ -374,14 +381,14 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
 
     @property
     def original_model(self) -> nn.Module:
-        """Get the original model."""
+        """Return the wrapped underlying model; raises AttributeError if it was never set."""
         if "original_model" not in self.__dict__:
             raise AttributeError("original_model has not been set")
         return self.__dict__["original_model"]
 
     @original_model.setter
     def original_model(self, value: nn.Module) -> None:
-        """Set the original model."""
+        """Store the model in __dict__ so nn.Module does not register it as a submodule."""
         self.__dict__["original_model"] = value
 
     def _register_aliases(self) -> None:
@@ -833,6 +840,13 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         from transformer_lens.utilities.bridge_components import (
             apply_fn_to_all_components,
         )
+
+        if not getattr(self.adapter, "supports_compatibility_mode", True):
+            raise RuntimeError(
+                f"{type(self.adapter).__name__} does not support compatibility mode: "
+                "its stored-processed-weights forward is known to diverge from the "
+                "reference model. Use the default bridge forward instead."
+            )
 
         self.compatibility_mode = True
 
@@ -2235,7 +2249,13 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                 "output_attentions" not in filtered_kwargs
                 and self.adapter.supports_hf_output_attentions
             ):
-                filtered_kwargs["output_attentions"] = True
+                # Attention-free remote models (e.g. HyenaDNA) reject the kwarg
+                # outright; only pass it when the HF forward actually accepts it.
+                fwd_params = inspect.signature(self.original_model.forward).parameters
+                if "output_attentions" in fwd_params or any(
+                    p.kind is inspect.Parameter.VAR_KEYWORD for p in fwd_params.values()
+                ):
+                    filtered_kwargs["output_attentions"] = True
             if processed_args:
                 output = self.forward(processed_args[0], **filtered_kwargs)
             elif "input_ids" in filtered_kwargs:
@@ -2524,6 +2544,15 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         # A row may finish via EOS and/or any of the configured stopping criteria.
         any_stop_active = stop_at_eos or stopping_criteria_list is not None
 
+        # Pure-SSM models (Mamba-1/2) take the stateful cache as `cache_params`;
+        # modern hybrids (Bamba, NemotronH, FalconH1) take `past_key_values` and
+        # would receive a duplicate cache_params via **kwargs cascade otherwise.
+        stateful_cache_kwarg = "cache_params"
+        if use_stateful_cache:
+            forward_params = inspect.signature(self.original_model.forward).parameters
+            if "cache_params" not in forward_params:
+                stateful_cache_kwarg = "past_key_values"
+
         for gen_step_idx in tqdm.tqdm(range(max_new_tokens), disable=not verbose):
             with torch.no_grad():
                 if is_encoder_decoder:
@@ -2559,12 +2588,17 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                         if multimodal_kwargs:
                             forward_kwargs.update(multimodal_kwargs)
                     if use_stateful_cache:
-                        forward_kwargs["cache_params"] = mamba_cache
+                        forward_kwargs[stateful_cache_kwarg] = mamba_cache
                         forward_kwargs["use_cache"] = True
                         if gen_step_idx == 0:
-                            cache_position = torch.arange(
-                                0, mamba_conv_kernel, device=self.cfg.device
+                            # Mamba's conv-window warmup positions vs standard
+                            # full-prompt positions for past_key_values hybrids.
+                            prefill_len = (
+                                mamba_conv_kernel
+                                if stateful_cache_kwarg == "cache_params"
+                                else current_tokens.shape[1]
                             )
+                            cache_position = torch.arange(0, prefill_len, device=self.cfg.device)
                             forward_kwargs["cache_position"] = cache_position
                             logits = self(
                                 current_tokens,
@@ -2716,13 +2750,33 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             if all_finished:
                 return
 
+    def _resolve_generation_caching(self, use_past_kv_cache: bool, batched: bool) -> bool:
+        """Honor adapter caching/batching limits (recurrent/conv decoders have no KV
+        cache; batching is rejected where padding can't be masked, not mis-generated)."""
+        if batched and not getattr(self.adapter, "supports_batched_generation", True):
+            architecture = self.cfg.architecture or type(self.adapter).__name__
+            raise NotImplementedError(
+                f"Batched generation is not supported by {architecture}: its forward does not "
+                "apply an attention mask, so padded rows would corrupt the output. Generate one "
+                "sequence at a time, or pass equal-length inputs as a tensor."
+            )
+        if not getattr(self.adapter, "supports_kv_cache", True):
+            return False
+        return use_past_kv_cache
+
     def _ensure_generation_supported(self, api_name: str) -> None:
         """Reject autoregressive generation for forward-only architectures."""
         if not self.adapter.supports_generation:
             architecture = self.cfg.architecture or type(self.adapter).__name__
+            hint = (
+                " Use diffusion_generate() — this architecture samples by iterative denoising, "
+                "not left-to-right."
+                if getattr(self.adapter, "native_sampler", None)
+                else ""
+            )
             raise NotImplementedError(
                 f"TransformerBridge.{api_name}() generation is not supported by "
-                f"the {architecture} architecture."
+                f"the {architecture} architecture.{hint}"
             )
 
     def generate(
@@ -2853,6 +2907,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         is_stateful_model = getattr(self.cfg, "is_stateful", False)
 
         _is_batched_list = isinstance(input, list) and len(input) > 1
+        use_past_kv_cache = self._resolve_generation_caching(use_past_kv_cache, _is_batched_list)
 
         _generate_from_embeds = False
         if isinstance(input, str):
@@ -3083,8 +3138,17 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         if is_encoder_decoder:
             encoder_input = input_tokens.clone()
             decoder_start_token_id = getattr(
-                self.original_model.config, "decoder_start_token_id", 0
+                self.original_model.config, "decoder_start_token_id", None
             )
+            if decoder_start_token_id is None:
+                # HF's fallback chain: bos, then eos (MBart-family checkpoints
+                # like IndicBART leave decoder_start unset and start from EOS).
+                fallback = getattr(self.original_model.config, "bos_token_id", None)
+                if fallback is None:
+                    fallback = getattr(self.original_model.config, "eos_token_id", None)
+                if isinstance(fallback, (list, tuple)):
+                    fallback = fallback[0]
+                decoder_start_token_id = fallback if fallback is not None else 0
             decoder_tokens = torch.full(
                 (batch_size, 1),
                 decoder_start_token_id,
@@ -3201,6 +3265,74 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         return result, input_tokens
 
     @torch.no_grad()
+    def diffusion_generate(
+        self,
+        input: Union[str, List[str], torch.Tensor],
+        max_new_tokens: int = 32,
+        prepend_bos: Optional[bool] = None,
+        **kwargs: Any,
+    ) -> Union[str, torch.Tensor]:
+        """Sample from a non-autoregressive (diffusion) architecture.
+
+        Delegates to the model's own sampler, which calls the model through
+        ``__call__`` so bridge hooks fire on every denoising step.
+        """
+        sampler_name = getattr(self.adapter, "native_sampler", None)
+        architecture = self.cfg.architecture or type(self.adapter).__name__
+        if sampler_name is None:
+            raise NotImplementedError(
+                f"{architecture} has no native sampler; use generate() for autoregressive "
+                "architectures."
+            )
+        sampler = getattr(self.original_model, sampler_name, None)
+        if sampler is None:
+            raise NotImplementedError(
+                f"{architecture} declares native_sampler={sampler_name!r} but the loaded model "
+                "has no such method."
+            )
+
+        was_string = isinstance(input, str)
+        if isinstance(input, list) and len(input) > 1:
+            # Unequal prompts would be right-padded into the sampler's canvas,
+            # where pad tokens read as real context. generate() gates batching
+            # for the same reason; do not silently corrupt rows here.
+            raise NotImplementedError(
+                f"diffusion_generate() does not support batched prompts for {architecture}: "
+                "the native samplers condition on a padded canvas. Sample one prompt at a time."
+            )
+        if isinstance(input, torch.Tensor):
+            tokens = input.to(self.cfg.device)
+        else:
+            # Tokenization is the bridge's concern, not the sampler's — absorb
+            # prepend_bos here rather than forwarding it into native kwargs.
+            tokens = self.to_tokens(
+                input, prepend_bos=prepend_bos, move_to_device=True, truncate=False
+            )
+
+        sampler_kwargs = self.adapter.native_sampler_kwargs(max_new_tokens, tokens.shape[-1])
+        sampler_kwargs.update(kwargs)
+        output = sampler(tokens, **sampler_kwargs)
+        # Samplers return either bare ids or a generation output object.
+        sequences = getattr(output, "sequences", output)
+        # They also disagree on whether the prompt is included: Dream and Gidd
+        # return the whole canvas, LLaDA2 slices it off. Normalize to
+        # generate()'s contract (prompt + continuation).
+        if isinstance(sequences, torch.Tensor) and sequences.ndim == tokens.ndim:
+            prompt_len = tokens.shape[-1]
+            # Compare on one device: torch.equal raises on a device mismatch,
+            # which some samplers produce by assembling output on CPU.
+            sequences = sequences.to(tokens.device)
+            includes_prompt = sequences.shape[-1] >= prompt_len and torch.equal(
+                sequences[..., :prompt_len], tokens
+            )
+            if not includes_prompt:
+                sequences = torch.cat([tokens, sequences], dim=-1)
+
+        if was_string and self.tokenizer is not None:
+            return self.tokenizer.decode(sequences[0], skip_special_tokens=True)
+        return sequences
+
+    @torch.no_grad()
     def generate_stream(
         self,
         input: Union[str, List[str], torch.Tensor] = "",
@@ -3264,6 +3396,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         self._ensure_generation_supported("generate_stream")
         # --- Input parsing (mirrors generate()) ---
         _is_batched_list = isinstance(input, list) and len(input) > 1
+        use_past_kv_cache = self._resolve_generation_caching(use_past_kv_cache, _is_batched_list)
 
         if isinstance(input, str):
             input_tokens = self.to_tokens(

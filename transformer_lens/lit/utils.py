@@ -110,13 +110,11 @@ def get_tokens_from_model(
     if model.tokenizer is None:
         raise ValueError("Model must have a tokenizer to convert text to tokens")
 
-    # Get token IDs
     token_ids = model.to_tokens(text, prepend_bos=prepend_bos, truncate=truncate)
 
     if max_length is not None and token_ids.shape[1] > max_length:
         token_ids = token_ids[:, :max_length]
 
-    # Convert IDs to strings
     token_strings = model.tokenizer.convert_ids_to_tokens(token_ids.squeeze(0).tolist())
 
     return token_strings, token_ids.squeeze(0)
@@ -179,7 +177,6 @@ def extract_attention_from_cache(
         Shape: [query_pos, key_pos] if head specified
         Shape: [num_heads, query_pos, key_pos] if head is None
     """
-    # Get attention pattern from cache
     attn_pattern = cache[f"blocks.{layer}.attn.hook_pattern"]
 
     # Remove batch dimension
@@ -210,7 +207,6 @@ def extract_embeddings_from_cache(
     Returns:
         Embeddings as numpy array.
     """
-    # Get residual stream at layer
     resid = cache[f"blocks.{layer}.hook_resid_post"]
 
     # Remove batch dimension
@@ -258,7 +254,6 @@ def compute_token_gradients(
     tokens, token_ids = get_tokens_from_model(model, text, prepend_bos=prepend_bos)
     token_ids = token_ids.unsqueeze(0).to(model.cfg.device)
 
-    # Get input embeddings
     input_embeds = model.embed(token_ids)
     input_embeds.requires_grad_(True)
 
@@ -273,7 +268,6 @@ def compute_token_gradients(
     target_logit = logits[0, target_idx, token_ids[0, target_idx + 1]]
     target_logit.backward()
 
-    # Get gradients
     gradients = input_embeds.grad[0]  # [seq_len, d_model]
 
     # Compute gradient L2 norm per token
@@ -308,13 +302,10 @@ def get_top_k_predictions(
     Returns:
         List of (token_string, probability) tuples.
     """
-    # Get logits at position
     pos_logits = logits[batch_idx, position]  # [d_vocab]
 
-    # Convert to probabilities
     probs = torch.softmax(pos_logits, dim=-1)
 
-    # Get top-k
     top_probs, top_indices = torch.topk(probs, k)
 
     # Convert to strings

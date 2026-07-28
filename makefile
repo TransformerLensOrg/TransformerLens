@@ -7,6 +7,11 @@ UV_SYNC := uv sync$(ACTIVE_FLAG)
 # Remove this line when no longer needed
 RERUN_ARGS := --reruns 2 --reruns-delay 5
 
+# Parallelism for the coverage run. loadscope keeps a module's tests + its
+# module/session fixtures on one worker (models load once per worker, not
+# re-scattered). Override to -n 2 (or -n 0) if a runner OOMs.
+XDIST_ARGS ?= -n auto --dist loadscope
+
 dep:
 	$(UV_SYNC)
 
@@ -33,7 +38,7 @@ benchmark-test:
 	$(RUN) pytest tests/benchmarks $(RERUN_ARGS)
 
 coverage-report-test:
-	$(RUN) pytest --cov=transformer_lens/ --cov-report=html --cov-branch -m "not slow" tests/integration tests/unit tests/acceptance $(RERUN_ARGS)
+	$(RUN) pytest -o "addopts=--jaxtyping-packages=transformer_lens,beartype.beartype -W ignore::beartype.roar.BeartypeDecorHintPep585DeprecationWarning" --cov=transformer_lens/ --cov-report=html --cov-branch $(XDIST_ARGS) -m "not slow" tests/integration tests/unit tests/acceptance $(RERUN_ARGS)
 
 docstring-test:
 	$(RUN) pytest transformer_lens/ $(RERUN_ARGS)

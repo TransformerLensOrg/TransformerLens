@@ -17,6 +17,11 @@ from transformer_lens.conversion_utils.param_processing_conversion import (
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
+from transformer_lens.model_bridge.generalized_components.gated_mlp import (
+    GatedMLPBridge,
+)
+from transformer_lens.model_bridge.generalized_components.linear import LinearBridge
+from transformer_lens.model_bridge.generalized_components.mlp import MLPBridge
 from transformer_lens.model_bridge.types import (
     ComponentMapping,
     RemoteComponent,
@@ -41,13 +46,41 @@ class ArchitectureAdapter:
     # in specific phases (e.g. SSMs don't have the transformer-shaped hooks/
     # weights the benchmark phases assume) should override. An empty list
     # means "skip verify_models entirely; verification lives in integration
-    # tests." The full refactor that would make SSM phases meaningful is
-    # documented in ~/.claude/plans/ssm-verification-compatibility.md.
+    # tests."
     applicable_phases: list[int] = [1, 2, 3, 4]
 
     # Whether this architecture supports text generation via generate().
     # Encoder-only models (e.g. BERT, HuBERT) should set this to False.
     supports_generation: bool = True
+
+    # Whether the wrapped forward speaks the HF KV-cache protocol. False for
+    # recurrent/convolutional decoders (RWKV's bespoke `state`, HyenaDNA's
+    # kwarg-less FFT forward): generation then recomputes the full prefix each
+    # step, which is exact but O(n^2).
+    supports_kv_cache: bool = True
+
+    # Whether batched generation is sound. False where the wrapped forward
+    # ignores attention_mask (RWKV) or rejects it (HyenaDNA), so left-padding
+    # would silently corrupt results rather than be masked out.
+    supports_batched_generation: bool = True
+
+    # Name of a native non-autoregressive sampler on the wrapped model, exposed
+    # via bridge.diffusion_generate() (e.g. Dream's "diffusion_generate",
+    # LLaDA2's/Gidd's "generate"). None means the architecture has none.
+    native_sampler: Optional[str] = None
+
+    def native_sampler_kwargs(self, max_new_tokens: int, prompt_len: int) -> Dict[str, Any]:
+        """Map a token budget onto the native sampler's own parameter names
+        (diffusion samplers each spell the budget differently)."""
+        return {"max_new_tokens": max_new_tokens}
+
+    # Runtime gate for enable_compatibility_mode(): set False when the stored-
+    # processed-weights forward is known to diverge (e.g. VaultGemma).
+    supports_compatibility_mode: bool = True
+    # Component paths (by suffix) whose isolated forward cannot run on the
+    # component harness's synthesized probes — e.g. fused top-k routers whose
+    # forward sorts/scatters. They stay hookable at runtime.
+    component_test_skip_suffixes: tuple = ()
 
     # Whether run_with_cache should request attention tensors from Hugging Face.
     # Set False when an adapter reconstructs those tensors but the HF wrapper
@@ -99,6 +132,85 @@ class ArchitectureAdapter:
             if not hasattr(self.cfg, key):
                 setattr(self.cfg, key, value)
 
+    def _gated_mlp(
+        self,
+        name: str = "mlp",
+        *,
+        gate: str = "gate_proj",
+        up: str = "up_proj",
+        down: str = "down_proj",
+        optional: bool = False,
+    ) -> GatedMLPBridge:
+        """GatedMLPBridge with the standard gate/in/out LinearBridge submodules
+        (up->in, down->out)."""
+        return GatedMLPBridge(
+            name=name,
+            config=self.cfg,
+            submodules={
+                "gate": LinearBridge(name=gate),
+                "in": LinearBridge(name=up),
+                "out": LinearBridge(name=down),
+            },
+            optional=optional,
+        )
+
+    @property
+    def components(self) -> ComponentMapping:
+        """component_mapping, asserted built — for subclasses that extend or edit
+        a parent's mapping without per-file None narrowing."""
+        assert self.component_mapping is not None, "component_mapping has not been built"
+        return self.component_mapping
+
+    def _ungated_mlp(
+        self,
+        name: str = "mlp",
+        *,
+        up: str = "up_proj",
+        down: str = "down_proj",
+        optional: bool = False,
+    ) -> MLPBridge:
+        """MLPBridge with the standard in/out LinearBridge submodules (up->in, down->out)."""
+        return MLPBridge(
+            name=name,
+            config=self.cfg,
+            submodules={
+                "in": LinearBridge(name=up),
+                "out": LinearBridge(name=down),
+            },
+            optional=optional,
+        )
+
+    def _canonical_layer_types(self, cfg: Any) -> list[str]:
+        """Per-layer mixer-type list, normalized to canonical TL names
+        (mamba->linear_attention, attention->full_attention; others pass through)."""
+        aliases = {"mamba": "linear_attention", "attention": "full_attention"}
+        raw = getattr(cfg, "layers_block_type", None) or getattr(cfg, "layer_types", None) or []
+        return [aliases.get(t, t) for t in raw]
+
+    def _extract_vision_dims(self, cfg: Any) -> None:
+        """Copy vision-tower dims onto cfg, handling both HF-standard naming
+        (num_hidden_layers/num_attention_heads) and Qwen-style (depth/num_heads)."""
+        vision_cfg = getattr(cfg, "vision_config", None)
+        if vision_cfg is None:
+            return
+        self.cfg.vision_hidden_size = getattr(vision_cfg, "hidden_size", None)
+        self.cfg.vision_num_layers = getattr(
+            vision_cfg, "num_hidden_layers", getattr(vision_cfg, "depth", None)
+        )
+        self.cfg.vision_num_heads = getattr(
+            vision_cfg, "num_attention_heads", getattr(vision_cfg, "num_heads", None)
+        )
+
+    def _set_rms_rotary_defaults(self, *, final_rms: bool = True) -> None:
+        """Set the Llama-family config flags: RMS norms, rotary positions, gated MLP
+        (final_rms is per-architecture -- Mistral/Mixtral/OLMoE set False)."""
+        self.cfg.normalization_type = "RMS"
+        self.cfg.positional_embedding_type = "rotary"
+        self.cfg.final_rms = final_rms
+        self.cfg.gated_mlp = True
+        self.cfg.attn_only = False
+        self.cfg.uses_rms_norm = True
+
     def apply_output_logits_transform(self, logits: torch.Tensor) -> torch.Tensor:
         """Apply the architecture's declared post-unembedding transform.
 
@@ -112,7 +224,7 @@ class ArchitectureAdapter:
         """Validate that the adapter can reproduce its post-unembedding path."""
 
     def _qkvo_weight_conversions(
-        self, n_kv_heads: Optional[int] = None
+        self, n_kv_heads: Optional[int] = None, include_biases: bool = False
     ) -> Dict[str, ParamProcessingConversion]:
         """Standard Q/K/V/O weight rearrangement conversions.
 
@@ -121,10 +233,12 @@ class ArchitectureAdapter:
 
         Args:
             n_kv_heads: Number of KV heads for GQA. If None, falls back to n_heads.
+            include_biases: Also emit Q/K/V bias reshapes. K/V use the kv-head
+                count — a hand-rolled n_heads reshape breaks on GQA checkpoints.
         """
         if n_kv_heads is None:
             n_kv_heads = getattr(self.cfg, "n_key_value_heads", None) or self.cfg.n_heads
-        return {
+        conversions = {
             "blocks.{i}.attn.q.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
             ),
@@ -138,6 +252,38 @@ class ArchitectureAdapter:
                 tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=self.cfg.n_heads),
             ),
         }
+        if include_biases:
+            conversions.update(
+                {
+                    "blocks.{i}.attn.q.bias": ParamProcessingConversion(
+                        tensor_conversion=RearrangeTensorConversion(
+                            "(h d_head) -> h d_head", h=self.cfg.n_heads
+                        ),
+                    ),
+                    "blocks.{i}.attn.k.bias": ParamProcessingConversion(
+                        tensor_conversion=RearrangeTensorConversion(
+                            "(h d_head) -> h d_head", h=n_kv_heads
+                        ),
+                    ),
+                    "blocks.{i}.attn.v.bias": ParamProcessingConversion(
+                        tensor_conversion=RearrangeTensorConversion(
+                            "(h d_head) -> h d_head", h=n_kv_heads
+                        ),
+                    ),
+                }
+            )
+        return conversions
+
+    def _reprefix_components(self, old: str, new: str) -> None:
+        """Rewrite component names starting with ``old`` to start with ``new``.
+
+        For adapters that reuse a parent mapping under a different module
+        nesting (e.g. a multimodal wrapper's ``model.language_model.``).
+        """
+        assert self.component_mapping is not None
+        for component in self.component_mapping.values():
+            if component.name and component.name.startswith(old):
+                component.name = new + component.name[len(old) :]
 
     def preprocess_weights(self, state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
         """Apply architecture-specific weight transformations before ProcessWeights.
@@ -746,24 +892,38 @@ class ArchitectureAdapter:
 
         Override this to patch HF model classes before from_pretrained() is called.
         For example, patching custom model code that is incompatible with transformers v5
-        meta device initialization.
+        meta device initialization. Overrides that also want the base eager-forcing
+        must call super().prepare_loading(...).
+
+        The base implementation forces eager attention on the loading config when
+        cfg.attn_implementation == "eager": composite configs (vision towers) don't
+        reliably inherit the from_pretrained attn_implementation kwarg.
 
         Args:
             model_name: The HuggingFace model name/path
             model_kwargs: The kwargs dict that will be passed to from_pretrained()
         """
-        pass
+        if getattr(self.cfg, "attn_implementation", None) == "eager":
+            config = model_kwargs.get("config")
+            if config is not None and hasattr(config, "_attn_implementation"):
+                config._attn_implementation = "eager"
 
     def prepare_model(self, hf_model: Any) -> None:
         """Called after HuggingFace model loading but before bridge creation.
 
         Override this to fix up the loaded model (e.g., create synthetic modules,
-        re-initialize deferred computations, apply post-load patches).
+        re-initialize deferred computations, apply post-load patches). Overrides
+        that also want the base eager-forcing must call super().prepare_model(...).
+
+        The base implementation mirrors prepare_loading's eager-forcing onto the
+        loaded model's config when cfg.attn_implementation == "eager".
 
         Args:
             hf_model: The loaded HuggingFace model instance
         """
-        pass
+        if getattr(self.cfg, "attn_implementation", None) == "eager":
+            if hasattr(hf_model, "config"):
+                hf_model.config._attn_implementation = "eager"
 
     def create_stateful_cache(
         self,
@@ -796,21 +956,86 @@ class ArchitectureAdapter:
             "HF cache object."
         )
 
-    def setup_component_testing(self, hf_model: RemoteModel, bridge_model: Any = None) -> None:
-        """Set up model-specific references needed for component testing.
+    # setup_component_testing knobs; adapters override these one-line class
+    # attributes instead of re-declaring the standard wiring method.
+    _testing_lm_attr: str = "model"
+    _testing_eager: Optional[str] = "layers"
+    _testing_hybrid: bool = False
+    _testing_rotary_attr: str = "rotary_emb"
+    _testing_wire_rotary: bool = True
 
-        This hook is called after the adapter is created and has access to the HF model.
-        Subclasses can override this to configure bridges with model-specific components
-        (e.g., rotary embeddings, normalization parameters) needed for get_random_inputs().
+    def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
+        """Wire model-specific references for component testing (eager-forcing + rotary
+        per the ``_testing_*`` attributes); override and call super() for extra needs."""
+        self._wire_rotary_for_testing(
+            hf_model,
+            bridge_model,
+            lm_attr=self._testing_lm_attr,
+            hybrid=self._testing_hybrid,
+            eager=self._testing_eager,
+            rotary_attr=self._testing_rotary_attr,
+            wire_rotary=self._testing_wire_rotary,
+        )
 
-        Args:
-            hf_model: The HuggingFace model instance
-            bridge_model: Optional TransformerBridge model instance (for configuring actual bridges)
+    def _wire_rotary_for_testing(
+        self,
+        hf_model: Any,
+        bridge_model: Any = None,
+        *,
+        lm_attr: str = "model",
+        hybrid: bool = False,
+        eager: Optional[str] = "layers",
+        rotary_attr: str = "rotary_emb",
+        wire_rotary: bool = True,
+    ) -> None:
+        """Force eager attention and set the model's shared rotary_emb on each attention
+        bridge and the template (``wire_rotary=False`` for delegated attention, which has
+        no set_rotary_emb; ``hybrid`` tolerates attention-less blocks)."""
+        lm = hf_model
+        for segment in lm_attr.split("."):
+            lm = getattr(lm, segment, None)
+            if lm is None:
+                break
 
-        Note:
-            This is a no-op in the base class. Override in subclasses as needed.
-        """
-        pass
+        if (
+            eager is not None
+            and hasattr(hf_model, "config")
+            and hasattr(hf_model.config, "_attn_implementation")
+        ):
+            hf_model.config._attn_implementation = "eager"
+            # Nested multimodal configs carry their own attn implementation.
+            text_config = getattr(hf_model.config, "text_config", None)
+            if text_config is not None:
+                text_config._attn_implementation = "eager"
+        if eager == "layers" and lm is not None and hasattr(lm, "layers"):
+            for layer in lm.layers:
+                if hasattr(layer, "self_attn") and hasattr(layer.self_attn, "config"):
+                    layer.self_attn.config._attn_implementation = "eager"
+
+        if not wire_rotary or lm is None or not hasattr(lm, rotary_attr):
+            return
+        rotary_emb = getattr(lm, rotary_attr)
+
+        # No attn submodule in the blocks template (fully delegated attention,
+        # e.g. Zamba2's shared blocks): wiring is inapplicable, not an error.
+        blocks_template = (self.component_mapping or {}).get("blocks")
+        if blocks_template is not None and "attn" not in getattr(blocks_template, "submodules", {}):
+            return
+
+        if bridge_model is not None and hasattr(bridge_model, "blocks"):
+            for block in bridge_model.blocks:
+                has_attn = ("attn" in block._modules) if hybrid else hasattr(block, "attn")
+                if has_attn and hasattr(block.attn, "set_rotary_emb"):
+                    block.attn.set_rotary_emb(rotary_emb)
+
+        try:
+            template = self.get_generalized_component("blocks.0.attn")
+        except (ValueError, AttributeError, KeyError):
+            if not hybrid:
+                raise
+            template = None
+        if template is not None and hasattr(template, "set_rotary_emb"):
+            template.set_rotary_emb(rotary_emb)
 
     def _enable_ht_attention(self, attn_bridge, hf_attn):
         """Enable HT computation for attention (architecture-agnostic).

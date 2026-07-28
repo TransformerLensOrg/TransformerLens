@@ -7,15 +7,9 @@ Verifies wrap-don't-reimplement behavior against state-spaces/mamba-130m-hf:
 - SSM blocks correctly exclude transformer-specific hook_resid_mid
 - Parameter access via __getattr__ fallback (A_log, D)
 
-Note on cache clone safety: The Mamba adapter plan flagged in-place MambaCache
-mutation as a risk — hooks that capture `ssm_states` would see corrupted values
-on subsequent decode steps because HF mutates the cache in place. Phase 1 avoids
-this risk entirely by design: the wrap-don't-reimplement approach keeps the
-MambaMixer opaque, so `ssm_states` is never exposed through a hook. Phase 1
-hooks only observe projection inputs/outputs (in_proj, conv1d, x_proj, dt_proj,
-out_proj), which are per-step tensors and are never mutated by the cache
-machinery. If a future phase adds per-step SSM state hooks (compatibility mode),
-those hooks MUST `.clone()` captured state tensors.
+Note on cache clone safety: hooks never expose ssm_states (the MambaMixer stays
+opaque); any future per-step SSM-state hook must `.clone()` captured state, since
+HF mutates the cache in place.
 """
 
 import contextlib
@@ -109,7 +103,7 @@ class TestMambaHookCoverage:
                 assert f"blocks.{i}.mixer.{submod}.hook_out" in cache
 
     def test_projection_shapes(self, cache, mamba_bridge):
-        """Hook tensor shapes match the plan's Step 1.5 shape summary."""
+        """Hook tensor shapes match the expected projection shapes."""
         d_model = mamba_bridge.cfg.d_model  # 768
         intermediate = mamba_bridge.cfg.intermediate_size  # 1536
         conv_kernel = mamba_bridge.cfg.conv_kernel  # 4
@@ -219,7 +213,7 @@ class TestMambaStopAtLayer:
 
 
 class TestMambaStatefulGeneration:
-    """Phase 3: bridge.generate() runs a proper stateful loop instead of
+    """bridge.generate() runs a proper stateful loop instead of
     delegating to hf_generate(). This gives hook integration during generation.
     """
 
@@ -282,14 +276,8 @@ class TestMambaStatefulGeneration:
         """Bridge greedy must match HF for any prompt length, including short
         prompts.
 
-        Regression: the initial Phase 3 implementation used
-        cache_position=[conv_kernel + step] on decode which worked for
-        prompt_len >= conv_kernel via HF's clamp to conv_kernel - 1, but
-        silently wrote to the wrong buffer slot for short prompts
-        (prompt_len < conv_kernel). The fix uses the actual sequence position
-        (prompt_len + step - 1), matching HF's own generate loop. This test
-        parametrizes over prompt lengths that cross the conv_kernel boundary
-        to catch any regression.
+        Covers prompt lengths crossing the conv_kernel boundary; short prompts
+        previously wrote to the wrong conv-state slot.
         """
         tokens = torch.arange(1, prompt_len + 1).unsqueeze(0)
         with torch.no_grad():
@@ -449,7 +437,7 @@ class TestMamba1EffectiveAttention:
 
 
 class TestMamba1SSMState:
-    """Mamba-1 recurrent-state reconstruction (Phase 4.5): read-parity with Mamba-2.
+    """Mamba-1 recurrent-state reconstruction: read-parity with Mamba-2.
 
     The vectorized state must match a naive fp64 step-by-step S6 scan, and
     ``y = C·S + D·x`` reconstructed through gate + out_proj must match HF's cached
@@ -566,7 +554,7 @@ def _eager_scan(bridge):
 
 
 class TestMamba1EagerScanIntervention:
-    """Phase 4 (Mamba-1): opt-in eager S6 scan exposes hook_ssm_write / hook_ssm_state
+    """Mamba-1 opt-in eager S6 scan exposes hook_ssm_write / hook_ssm_state
     for interventions that propagate to logits, while the default path is untouched.
     Eager scan needs use_cache=False (prefill; cache_params is None)."""
 

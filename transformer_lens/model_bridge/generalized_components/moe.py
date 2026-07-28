@@ -5,7 +5,7 @@ This module contains the bridge component for Mixture of Experts layers.
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Mapping, Optional
 
 import torch
 
@@ -13,6 +13,7 @@ from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
+from transformer_lens.model_bridge.generalized_components.linear import LinearBridge
 
 
 class MoEBridge(GeneralizedComponent):
@@ -21,8 +22,10 @@ class MoEBridge(GeneralizedComponent):
     This component wraps a Mixture of Experts layer from a remote model and provides a consistent interface
     for accessing its weights and performing MoE operations.
 
-    MoE models often return tuples of (hidden_states, router_scores). This bridge handles that pattern
-    and provides a hook for capturing router scores.
+    hook_router_scores fires only when the wrapped block returns a tuple
+    (gpt_oss, LLaDA2 remote); 5.13-native SparseMoeBlocks return a plain
+    tensor, so router observability comes from the ``gate`` submodule's
+    hook_out instead.
     """
 
     hook_aliases = {"hook_pre": "hook_in", "hook_post": "hook_out"}
@@ -32,6 +35,7 @@ class MoEBridge(GeneralizedComponent):
         name: str,
         config: Optional[Any] = None,
         submodules: Optional[Dict[str, GeneralizedComponent]] = {},
+        optional: bool = False,
     ):
         """Initialize the MoE bridge.
 
@@ -39,8 +43,9 @@ class MoEBridge(GeneralizedComponent):
             name: The name of the component in the model
             config: Optional configuration (unused for MoEBridge)
             submodules: Dictionary of GeneralizedComponent submodules to register
+            optional: If True, setup skips this subtree when absent (dense layers)
         """
-        super().__init__(name, config, submodules=submodules)
+        super().__init__(name, config, submodules=submodules, optional=optional)
         self.hook_router_scores = HookPoint()
 
     def get_random_inputs(
@@ -127,6 +132,12 @@ class MoEBridge(GeneralizedComponent):
                 )
             if len(output) > 1:
                 router_scores = output[1]
+                # Some MoEs pack extras with the logits (LLaDA2 returns
+                # (router_logits, topk_idx)); hook the first tensor.
+                if isinstance(router_scores, tuple):
+                    router_scores = next(
+                        (t for t in router_scores if isinstance(t, torch.Tensor)), None
+                    )
                 if isinstance(router_scores, torch.Tensor):
                     self.hook_router_scores(router_scores)
             hidden_states = self.hook_out(hidden_states)
@@ -134,3 +145,55 @@ class MoEBridge(GeneralizedComponent):
         else:
             hidden_states = self.hook_out(output)
             return hidden_states
+
+
+class MoERouterBridge(LinearBridge):
+    """Bridge MoE router logits while preserving HF's tuple return.
+
+    5.13 TopKRouters return ``(router_logits, topk_weights, topk_indices)``;
+    hook_out fires on the logits (element ``logits_index`` — JetMoe puts them
+    last) and the tuple is re-packed so HF's unpacking is undisturbed.
+    """
+
+    def __init__(self, *args: Any, logits_index: int = 0, **kwargs: Any):
+        super().__init__(*args, **kwargs)
+        self.logits_index = logits_index
+
+    def forward(self, input: torch.Tensor, *args: Any, **kwargs: Any) -> Any:
+        if self.original_component is None:
+            raise RuntimeError(
+                f"Original component not set for {self.name}. Call set_original_component() first."
+            )
+        input = self.hook_in(input)
+        output = self.original_component(input, *args, **kwargs)
+        if not isinstance(output, tuple) or len(output) == 0:
+            return self.hook_out(output)
+        idx = self.logits_index % len(output)
+        router_logits = self.hook_out(output[idx])
+        return output[:idx] + (router_logits,) + output[idx + 1 :]
+
+    def set_processed_weights(
+        self, weights: Mapping[str, Optional[torch.Tensor]], verbose: bool = False
+    ) -> None:
+        """Copy router weights onto nested params by dotted path (JetMoe nests its
+        Linear at ``router.layer.weight``); router weights are never processed."""
+        if "weight" in weights:
+            super().set_processed_weights(weights, verbose=verbose)
+            return
+        if self.original_component is None:
+            raise RuntimeError(f"Original component not set for {self.name}")
+        for key, tensor in weights.items():
+            if tensor is None:
+                continue
+            target: Any = self.original_component
+            *path, leaf = key.split(".")
+            for part in path:
+                target = getattr(target, part)
+            param = getattr(target, leaf)
+            if param.shape != tensor.shape:
+                raise ValueError(
+                    f"Router weight {key} shape {tuple(tensor.shape)} does not match "
+                    f"parameter shape {tuple(param.shape)} on {self.name}"
+                )
+            with torch.no_grad():
+                param.copy_(tensor.to(dtype=param.dtype, device=param.device))

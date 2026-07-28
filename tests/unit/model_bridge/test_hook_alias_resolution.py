@@ -66,7 +66,6 @@ def _resolve(component: GeneralizedComponent, target: str) -> Any:
 
 
 # xfail(strict=True) so future fixes XPASS and force the marker to be removed.
-# Each entry maps to a specific audit finding deferred from the C1+C15 PR.
 _KNOWN_DEAD_ALIASES = {
     "GPT2LMHeadCustomModel": "audit H27 — stale adapter, delete candidate",
     "NanoGPTForCausalLM": "audit H28 — broken weight conversion, delete candidate",
@@ -75,6 +74,7 @@ _KNOWN_DEAD_ALIASES = {
     "LlavaNextForConditionalGeneration": "audit H15 + M24 — vision encoder + tiling opaque",
     "LlavaOnevisionForConditionalGeneration": "audit H15 + M25 — vision encoder + video frames opaque",
     "Gemma3ForConditionalGeneration": "audit H15 — multimodal vision encoder opaque",
+    "Idefics3ForConditionalGeneration": "vision-encoder layer submodules unwired (same Siglip opacity as Llava/Gemma3 multimodal)",
     "OpenELMForCausalLM": "audit H23 — per-layer head counts break uniform q/k/v shape",
     "GraniteMoeHybridForCausalLM": "new finding — MoE+shared-MLP block lacks proper submodule aliases",
 }

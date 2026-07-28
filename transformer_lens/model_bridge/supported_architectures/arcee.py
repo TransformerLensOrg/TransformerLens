@@ -45,6 +45,8 @@ class ArceeArchitectureAdapter(ArchitectureAdapter):
     ProcessWeights._safe_get_tensor().
     """
 
+    _testing_eager = None
+
     def __init__(self, cfg: Any) -> None:
         """Initialize the Arcee architecture adapter."""
         super().__init__(cfg)
@@ -60,20 +62,6 @@ class ArceeArchitectureAdapter(ArchitectureAdapter):
         # Use eager attention so output_attentions works for hook_attn_scores /
         # hook_pattern; SDPA does not support output_attentions.
         self.cfg.attn_implementation = "eager"
-
-        self.default_config = {
-            "d_model": cfg.d_model,
-            "d_head": cfg.d_model // cfg.n_heads,
-            "n_heads": cfg.n_heads,
-            "n_layers": cfg.n_layers,
-            "d_vocab": cfg.d_vocab,
-        }
-
-        # GQA support (num_key_value_heads < num_attention_heads). Must set on cfg,
-        # not just default_config, so _qkvo_weight_conversions() picks it up.
-        if hasattr(cfg, "n_key_value_heads") and cfg.n_key_value_heads is not None:
-            self.default_config["n_key_value_heads"] = cfg.n_key_value_heads
-            self.cfg.n_key_value_heads = cfg.n_key_value_heads
 
         self.weight_processing_conversions = {
             **self._qkvo_weight_conversions(),
@@ -111,26 +99,3 @@ class ArceeArchitectureAdapter(ArchitectureAdapter):
             "ln_final": RMSNormalizationBridge(name="model.norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head", config=self.cfg),
         }
-
-    def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Set up rotary embedding references for Arcee component testing.
-
-        Arcee uses RoPE (Rotary Position Embeddings). We set the rotary_emb reference
-        on all attention bridge instances for component testing.
-
-        Args:
-            hf_model: The HuggingFace Arcee model instance
-            bridge_model: The TransformerBridge model (if available, set rotary_emb on actual instances)
-        """
-        # Get rotary embedding instance from the model
-        rotary_emb = hf_model.model.rotary_emb
-
-        # Set rotary_emb on actual bridge instances in bridge_model if available
-        if bridge_model is not None and hasattr(bridge_model, "blocks"):
-            for block in bridge_model.blocks:
-                if hasattr(block, "attn"):
-                    block.attn.set_rotary_emb(rotary_emb)
-
-        # Also set on the template for get_generalized_component() calls
-        attn_bridge = self.get_generalized_component("blocks.0.attn")
-        attn_bridge.set_rotary_emb(rotary_emb)

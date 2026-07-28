@@ -3,8 +3,6 @@ import torch
 from transformer_lens.conversion_utils.conversion_steps.base_tensor_conversion import (
     BaseTensorConversion,
 )
-
-# These imports reflect your code structure
 from transformer_lens.conversion_utils.conversion_steps.tensor_conversion_set import (
     TensorConversionSet,
 )

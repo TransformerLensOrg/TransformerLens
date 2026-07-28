@@ -17,7 +17,6 @@ import torch
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
     EmbeddingBridge,
-    GatedMLPBridge,
     LinearBridge,
     NormalizationBridge,
     ParallelBlockBridge,
@@ -45,6 +44,8 @@ class CohereArchitectureAdapter(ArchitectureAdapter):
     - blocks.{i}.ln1.b                   — CohereLayerNorm has no bias
     - ln_final.b                         — CohereLayerNorm has no bias
     """
+
+    _testing_eager = None
 
     def __init__(self, cfg: Any) -> None:
         """Initialize the Cohere architecture adapter."""
@@ -141,15 +142,7 @@ class CohereArchitectureAdapter(ArchitectureAdapter):
                     # GatedMLPBridge: gate/in/out matches Llama's gate_proj/up_proj/down_proj.
                     # Optional use_qk_norm is handled transparently by HF's
                     # CohereAttention.forward delegation (no extra submodules needed).
-                    "mlp": GatedMLPBridge(
-                        name="mlp",
-                        config=self.cfg,
-                        submodules={
-                            "gate": LinearBridge(name="gate_proj"),
-                            "in": LinearBridge(name="up_proj"),
-                            "out": LinearBridge(name="down_proj"),
-                        },
-                    ),
+                    "mlp": self._gated_mlp(),
                 },
             ),
             # Final LayerNorm (CohereLayerNorm, weight-only) at model.norm
@@ -177,27 +170,6 @@ class CohereArchitectureAdapter(ArchitectureAdapter):
         """Match Cohere's ``lm_head -> logit_scale -> optional softcap`` path."""
         scale: float = getattr(self.cfg, "logit_scale")
         return super().apply_output_logits_transform(logits * scale)
-
-    def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Set rotary embedding reference on attention bridges for component testing.
-
-        CohereRotaryEmbedding lives at hf_model.model.rotary_emb. The bridge
-        delegates to it directly, preserving the repeat_interleave RoPE convention
-        without re-implementing it in TL.
-
-        Pattern matches llama.py and qwen2.py.
-        """
-        rotary_emb = hf_model.model.rotary_emb
-
-        # Set on actual bridge instances in the live model (if available)
-        if bridge_model is not None and hasattr(bridge_model, "blocks"):
-            for block in bridge_model.blocks:
-                if hasattr(block, "attn"):
-                    block.attn.set_rotary_emb(rotary_emb)
-
-        # Also set on the template so get_generalized_component() calls work
-        attn_bridge = self.get_generalized_component("blocks.0.attn")
-        attn_bridge.set_rotary_emb(rotary_emb)
 
 
 class _Cohere2AttentionBridge(PositionEmbeddingsAttentionBridge):
@@ -281,9 +253,7 @@ class Cohere2ArchitectureAdapter(CohereArchitectureAdapter):
         super().__init__(cfg)
 
         setattr(self.cfg, "layer_types", _cohere2_layer_types(cfg))
-
-        assert self.component_mapping is not None
-        blocks = self.component_mapping["blocks"]
+        blocks = self.components["blocks"]
         assert blocks.submodules is not None
         blocks.submodules["attn"] = _Cohere2AttentionBridge(
             name="self_attn",

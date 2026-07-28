@@ -46,6 +46,7 @@ _interrupt_requested = False
 from .registry_io import (
     QUANTIZED_NOTE,
     STATUS_FAILED,
+    STATUS_PROVISIONAL,
     STATUS_SKIPPED,
     STATUS_UNVERIFIED,
     STATUS_VERIFIED,
@@ -66,6 +67,13 @@ _BRIDGE_REMOTE_CODE_PREFIXES: tuple[str, ...] = (
     "internlm/",  # InternLM2ForCausalLM — ships own modeling_internlm2.py
     "GSAI-ML/LLaDA",  # LLaDAModelLM — ships configuration_llada.py/modeling_llada.py
     "kuleshov-group/",  # BD3LM — ships own custom modeling_d_dit.py
+    "Dream-org/",  # DreamModel — ships own modeling_dream.py
+    "dvruette/",  # GiddForDiffusionLM — ships own modeling_gidd.py
+    "LongSafari/",  # HyenaDNAForCausalLM — ships own modeling_hyena.py
+    "inclusionAI/",  # LLaDA2MoeModelLM — ships own modeling_llada2_moe.py
+    "poolside/",  # LagunaForCausalLM — ships own modeling_laguna.py
+    "apple/DiffuCoder",  # DreamModel (DiffuCoder) — same remote code family
+    "LGAI-EXAONE/",  # ExaoneForCausalLM (EXAONE-3.x) — ships own modeling_exaone.py
 )
 
 # Data directory for registry files
@@ -128,6 +136,34 @@ def _phases_to_run(arch: str, phases: list[int]) -> list[int]:
     return [p for p in phases if p in applicable or p in (7, 8)]
 
 
+def _full_and_core_phases(arch: str) -> tuple[set[int], set[int]]:
+    """``(full verification set, core subset)`` for this architecture -- the single
+    source for both default phase selection and the status-writing decision."""
+    from transformer_lens.utilities.architectures import AUDIO_TEXT_ARCHITECTURES
+
+    kind = classify_architecture(arch)
+    if kind == "audio":
+        return {1, 8}, {1, 8}
+    if kind == "multimodal":
+        return {1, 2, 3, 4, 7}, {1, 4, 7}
+    if arch in AUDIO_TEXT_ARCHITECTURES:
+        # Phase 8 (audio-conditioned forward) out of the core set so a partial {1,4}
+        # run still verifies; a full run records and gates it via _check_phase_scores.
+        return {1, 2, 3, 4, 8}, {1, 4}
+    return {1, 2, 3, 4}, {1, 4}
+
+
+def _default_phases_for_architecture(arch: str) -> list[int]:
+    """Phases to run when the caller names none — a full verification."""
+    return sorted(_full_and_core_phases(arch)[0])
+
+
+def _pass_status(use_hf_reference: bool) -> int:
+    """Status for a passing run: VERIFIED with an HF reference, else PROVISIONAL
+    (a --no-hf-reference structural-only pass is recorded but not counted verified)."""
+    return STATUS_VERIFIED if use_hf_reference else STATUS_PROVISIONAL
+
+
 def _get_current_model_status(model_id: str, arch_id: str) -> int:
     """Look up a model's current status in the registry.
 
@@ -160,6 +196,8 @@ class VerificationProgress:
     skipped: list[str] = field(default_factory=list)
     failed: list[str] = field(default_factory=list)
     verified: list[str] = field(default_factory=list)
+    # Structural-only (--no-hf-reference) passes; kept out of the verified tally.
+    provisional: list[str] = field(default_factory=list)
     start_time: Optional[str] = None
 
     def to_dict(self) -> dict:
@@ -168,6 +206,7 @@ class VerificationProgress:
             "skipped": self.skipped,
             "failed": self.failed,
             "verified": self.verified,
+            "provisional": self.provisional,
             "start_time": self.start_time,
         }
 
@@ -178,6 +217,7 @@ class VerificationProgress:
             skipped=data.get("skipped", []),
             failed=data.get("failed", []),
             verified=data.get("verified", []),
+            provisional=data.get("provisional", []),
             start_time=data.get("start_time"),
         )
 
@@ -573,7 +613,7 @@ _REQUIRED_PHASE_TESTS: dict[int, list[str]] = {
     2: ["logits_equivalence", "loss_equivalence"],
     3: ["logits_equivalence", "loss_equivalence"],
     7: ["multimodal_forward"],
-    8: ["audio_forward"],
+    8: ["audio_forward", "audio_text_forward"],
 }
 
 
@@ -726,15 +766,15 @@ def _save_checkpoint(progress: VerificationProgress) -> None:
 def _skip_model(
     model_id: str, arch: str, note: str, progress: VerificationProgress, quiet: bool
 ) -> None:
-    """Record a model as skipped with ``note``, preserving an existing verified status, and
-    checkpoint. Callers ``continue`` the loop afterwards.
+    """Record a model as skipped with ``note``, preserving an existing verified or provisional
+    status, and checkpoint. Callers ``continue`` the loop afterwards.
     """
     if not quiet:
         print(f"  SKIP: {note}")
-    if _get_current_model_status(model_id, arch) != STATUS_VERIFIED:
+    if _get_current_model_status(model_id, arch) not in (STATUS_VERIFIED, STATUS_PROVISIONAL):
         update_model_status(model_id, arch, STATUS_SKIPPED, note=note, sanitize_fn=_sanitize_note)
     elif not quiet:
-        print("  (preserving existing verified status)")
+        print("  (preserving existing verified/provisional status)")
     progress.skipped.append(model_id)
     _save_checkpoint(progress)
 
@@ -771,7 +811,7 @@ def verify_models(
         dtype: Dtype for memory estimation
         use_hf_reference: Whether to compare against HuggingFace model
         use_ht_reference: Whether to compare against HookedTransformer
-        phases: Which benchmark phases to run (default: [1, 2, 3, 4])
+        phases: Which benchmark phases to run
         quiet: Suppress verbose output
         progress: Existing progress for resume
 
@@ -788,14 +828,13 @@ def verify_models(
         if not quiet:
             print(f"Auto-detected available memory: {max_memory_gb:.1f} GB")
 
-    if phases is None:
-        phases = [1, 2, 3, 4]
+    # phases stays None = full verification for the model.
 
     # Pre-load the GPT-2 scoring model for Phase 4 so it persists across all
     # models in the batch instead of being loaded and destroyed for each one.
     _scoring_model = None
     _scoring_tokenizer = None
-    if 4 in phases:
+    if phases is None or 4 in phases:
         try:
             from transformer_lens.benchmarks.text_quality import _load_scoring_model
 
@@ -812,7 +851,11 @@ def verify_models(
         # Check for graceful interrupt between models
         if _interrupt_requested:
             if not quiet:
-                print(f"\nStopping gracefully. Progress saved ({len(progress.verified)} verified).")
+                print(
+                    f"\nStopping gracefully. Progress saved "
+                    f"({len(progress.verified)} verified, "
+                    f"{len(progress.provisional)} provisional)."
+                )
             _save_checkpoint(progress)
             raise SystemExit(_EXIT_GRACEFUL_INTERRUPT)
 
@@ -849,7 +892,8 @@ def verify_models(
         )
 
         adapter_cls = SUPPORTED_ARCHITECTURES.get(arch)
-        phases_to_run = _phases_to_run(arch, phases)
+        eff_phases = phases if phases is not None else _default_phases_for_architecture(arch)
+        phases_to_run = _phases_to_run(arch, eff_phases)
         if adapter_cls is not None and not phases_to_run:
             applicable = getattr(adapter_cls, "applicable_phases", [1, 2, 3, 4])
             note = (
@@ -957,30 +1001,22 @@ def verify_models(
         # verification and should only be set by a complete run.
         is_multimodal = classify_architecture(arch) == "multimodal"
         is_audio = classify_architecture(arch) == "audio"
-        if is_audio:
-            full_phases = {1, 8}
-            core_required = {1, 8}
-        elif is_multimodal:
-            full_phases = {1, 2, 3, 4, 7}
-            core_required = {1, 4, 7}
-        else:
-            full_phases = {1, 2, 3, 4}
-            core_required = {1, 4}
-        is_partial_run = set(phases) != full_phases
+        full_phases, core_required = _full_and_core_phases(arch)
+        is_partial_run = set(eff_phases) != full_phases
 
         if is_partial_run and phase_scores:
             # Only write scores for phases that were actually requested.
             # Bridge load failures can produce Phase 1-tagged error results
             # even during Phase 4-only runs — don't let those corrupt
             # existing scores for unrequested phases.
-            filtered_scores = {p: s for p, s in phase_scores.items() if p in phases}
+            filtered_scores = {p: s for p, s in phase_scores.items() if p in eff_phases}
             if filtered_scores:
                 if not quiet:
                     score_parts = [f"P{p}={s}%" for p, s in sorted(filtered_scores.items())]
                     print(f"  Partial phase update: {', '.join(score_parts)}")
 
                 # Core verification: P1+P4 for text-only, P1+P4+P7 for multimodal.
-                is_core_verification = set(phases) >= core_required
+                is_core_verification = set(eff_phases) >= core_required
                 partial_status = None
                 partial_note = None
 
@@ -1058,6 +1094,12 @@ def verify_models(
                             tests_str = ", ".join(failed_tests) if failed_tests else "unknown"
                             partial_note = f"CORE FAILED: P1={p1}% (failed: {tests_str})"
 
+                    # A structural-only core pass (--no-hf-reference) is provisional,
+                    # never numerically compared to HF, so it must not count as verified.
+                    if partial_status == STATUS_VERIFIED and not use_hf_reference:
+                        partial_status = STATUS_PROVISIONAL
+                        partial_note = f"Structural only (no HF reference): {partial_note}"
+
                     if not quiet:
                         print(f"  {partial_note}")
 
@@ -1068,18 +1110,49 @@ def verify_models(
                     phase_scores=filtered_scores,
                     note=partial_note,
                 )
+                # A provisional run was not numerically verified; do not write a
+                # verification-history record (VerificationHistory.is_verified()
+                # treats any record as verified — a second "counts as verified" path).
+                if partial_status != STATUS_PROVISIONAL:
+                    add_verification_record(
+                        model_id,
+                        arch,
+                        notes=partial_note,
+                        sanitize_fn=_sanitize_note,
+                    )
                 if partial_status == STATUS_FAILED:
                     progress.failed.append(model_id)
+                elif partial_status == STATUS_PROVISIONAL:
+                    progress.provisional.append(model_id)
+                elif partial_status is None:
+                    # Scores were written but the status deliberately was not:
+                    # this phase set cannot establish core verification for
+                    # this architecture class. Reporting it as verified is how
+                    # a model ends up with all-pass scores and status 0.
+                    if not quiet:
+                        print(
+                            f"  Scores updated, status unchanged — core verification for "
+                            f"{arch} requires phases {sorted(core_required)}, "
+                            f"this run had {sorted(eff_phases)}."
+                        )
+                    progress.skipped.append(model_id)
                 else:
                     progress.verified.append(model_id)
             else:
                 if not quiet:
-                    print(f"  No results for requested phases {phases} — skipping update")
+                    print(f"  No results for requested phases {eff_phases} — skipping update")
                 progress.skipped.append(model_id)
         elif final_status == STATUS_VERIFIED:
+            # A passing run is VERIFIED only if it was numerically compared to an
+            # HF reference; a --no-hf-reference (structural-only) pass is PROVISIONAL.
+            written_status = _pass_status(use_hf_reference)
+            is_provisional = written_status == STATUS_PROVISIONAL
+            if is_provisional:
+                note = f"Structural only (no HF reference): {note}"
             if not quiet:
+                label = "PROVISIONAL" if is_provisional else "VERIFIED"
                 print(
-                    f"  VERIFIED: P1={phase_scores.get(1)}%, "
+                    f"  {label}: P1={phase_scores.get(1)}%, "
                     f"P2={phase_scores.get(2)}%, P3={phase_scores.get(3)}%, "
                     f"P4={phase_scores.get(4)}%, P7={phase_scores.get(7)}%, "
                     f"P8={phase_scores.get(8)}%"
@@ -1087,16 +1160,22 @@ def verify_models(
             update_model_status(
                 model_id,
                 arch,
-                STATUS_VERIFIED,
+                written_status,
                 phase_scores=phase_scores,
                 note=note,
             )
-            add_verification_record(
-                model_id,
-                arch,
-                notes=note,
-            )
-            progress.verified.append(model_id)
+            # Provisional runs are not numerically verified — no history record
+            # (is_verified() would otherwise report them as verified).
+            if not is_provisional:
+                add_verification_record(
+                    model_id,
+                    arch,
+                    notes=note,
+                )
+            if is_provisional:
+                progress.provisional.append(model_id)
+            else:
+                progress.verified.append(model_id)
         else:
             if not quiet:
                 print(f"  FAILED: {note}")
@@ -1182,9 +1261,11 @@ def _print_dry_run(
     skippable = 0
     testable = 0
 
-    eff_phases = phases if phases is not None else [1, 2, 3, 4]
     for arch in sorted(by_arch.keys()):
         models = by_arch[arch]
+        # Same per-architecture default as the real run, so the dry run's
+        # memory estimates cover the phases that will actually execute.
+        eff_phases = phases if phases is not None else _default_phases_for_architecture(arch)
         phases_to_run = _phases_to_run(arch, eff_phases)
         print(f"  {arch} ({len(models)} models):")
         for c in models:
@@ -1215,12 +1296,18 @@ def _print_summary(progress: VerificationProgress) -> None:
     print(f"{'='*70}")
     print(f"  Total tested:  {total}")
     print(f"  Verified:      {len(progress.verified)}")
+    print(f"  Provisional:   {len(progress.provisional)}")
     print(f"  Skipped:       {len(progress.skipped)}")
     print(f"  Failed:        {len(progress.failed)}")
 
     if progress.verified:
         print(f"\n  Verified models:")
         for m in progress.verified:
+            print(f"    - {m}")
+
+    if progress.provisional:
+        print(f"\n  Provisional models (structural only, no HF reference):")
+        for m in progress.provisional:
             print(f"    - {m}")
 
     if progress.failed:
@@ -1295,7 +1382,11 @@ Examples:
     parser.add_argument(
         "--no-hf-reference",
         action="store_true",
-        help="Skip HuggingFace reference comparison",
+        help=(
+            "Skip HuggingFace reference comparison (Phase 1 is structural-only). "
+            "A passing run is recorded as PROVISIONAL, not verified — re-run without "
+            "this flag for a real HF-compared verification."
+        ),
     )
     parser.add_argument(
         "--no-ht-reference",
@@ -1307,7 +1398,10 @@ Examples:
         nargs="+",
         type=int,
         default=None,
-        help="Which benchmark phases to run (default: 1 2 3 4)",
+        help=(
+            "Which benchmark phases to run (default: a full verification for each "
+            "model's architecture — 1 2 3 4 for text, 1 2 3 4 7 for multimodal, 1 8 for audio)"
+        ),
     )
     parser.add_argument(
         "--dtype",

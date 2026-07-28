@@ -1,4 +1,4 @@
-"""Phase 3: family-agnostic SSM effective-attention dispatch + canonical hook vocabulary.
+"""Family-agnostic SSM effective-attention dispatch + canonical hook vocabulary.
 
 Builds tiny synthetic models (no Hub access) for each SSM family and verifies:
 - SSMMixerProtocol conformance (Mamba-1, Mamba-2, gated-delta-net; not attention),
@@ -330,7 +330,7 @@ class TestComputeSSMEffectiveAttention:
 
 
 # ---------------------------------------------------------------------------
-# Canonical hook vocabulary (3b) — survives the hybrid alias resolution
+# Canonical hook vocabulary — survives the hybrid alias resolution
 # ---------------------------------------------------------------------------
 
 
@@ -364,7 +364,7 @@ class TestCanonicalHookVocabulary:
 
 
 # ---------------------------------------------------------------------------
-# cache.compute_ssm_state (Phase 4.5) — family-agnostic over Mamba-1 / Mamba-2
+# cache.compute_ssm_state — family-agnostic over Mamba-1 / Mamba-2
 # and gated-delta-net (each reconstructs its own recurrent state).
 # ---------------------------------------------------------------------------
 

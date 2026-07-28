@@ -32,6 +32,7 @@ from transformer_lens.model_bridge.generalized_components import (
     GatedMLPBridge,
     LinearBridge,
     MoEBridge,
+    MoERouterBridge,
     PositionEmbeddingsAttentionBridge,
     RMSNormalizationBridge,
     RotaryEmbeddingBridge,
@@ -77,12 +78,7 @@ def _cfg(*, n_key_value_heads: int | None = 2) -> TransformerBridgeConfig:
 
 
 def _mapping(adapter: OlmoeArchitectureAdapter) -> dict:
-    """Narrow component_mapping (Optional on the base class) to a non-None dict.
-
-    Factored into a helper so each test stays a one-liner instead of repeating the
-    `assert ... is not None` prelude in every method. The qwen3_moe adapter test
-    inlines that prelude per method instead; this is the deduplicated equivalent.
-    """
+    """Narrow component_mapping (Optional on the base class) to a non-None dict."""
     mapping = adapter.component_mapping
     assert mapping is not None
     return mapping
@@ -325,7 +321,7 @@ class TestOlmoeBlockSubmodules:
     def test_mlp_gate_submodule_type(self, adapter: OlmoeArchitectureAdapter) -> None:
         """Router is a LinearBridge so the routing logits can be hooked."""
         mlp = _mapping(adapter)["blocks"].submodules["mlp"]
-        assert isinstance(mlp.submodules["gate"], LinearBridge)
+        assert isinstance(mlp.submodules["gate"], MoERouterBridge)
 
 
 class TestOlmoeMoEStructure:

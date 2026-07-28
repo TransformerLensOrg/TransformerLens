@@ -26,7 +26,6 @@ class TestWeightProcessingIntegration:
         """Create adapter for GPT-2 Small model."""
         from transformer_lens.model_bridge import TransformerBridge
 
-        # Use the proper way to get an adapter by creating a bridge and accessing its adapter
         bridge = TransformerBridge.boot_transformers("distilgpt2", device="cpu")
         return bridge.adapter
 

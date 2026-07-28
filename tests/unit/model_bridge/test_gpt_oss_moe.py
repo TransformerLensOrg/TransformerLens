@@ -32,7 +32,6 @@ def gpt_oss_bridge(gpt_oss_model_meta):
         GPTOSSArchitectureAdapter,
     )
 
-    # Map HF config to TL config format
     tl_config = map_default_transformer_lens_config(gpt_oss_model_meta.config)
 
     # Create TransformerBridgeConfig with architecture set
@@ -50,7 +49,6 @@ def gpt_oss_bridge(gpt_oss_model_meta):
     # Get tokenizer (lightweight operation)
     tokenizer = AutoTokenizer.from_pretrained("openai/gpt-oss-20b", trust_remote_code=True)
 
-    # Create bridge
     bridge = TransformerBridge(
         model=gpt_oss_model_meta,
         adapter=adapter,
@@ -154,10 +152,8 @@ def test_gpt_oss_run_with_cache_with_random_weights():
     # Create model with random weights
     model = AutoModelForCausalLM.from_config(config, trust_remote_code=True)
 
-    # Map to TL config
     tl_config = map_default_transformer_lens_config(config)
 
-    # Create bridge config
     bridge_config = TransformerBridgeConfig(
         d_model=tl_config.d_model,
         d_head=tl_config.d_head,
@@ -166,25 +162,20 @@ def test_gpt_oss_run_with_cache_with_random_weights():
         architecture="GptOssForCausalLM",
     )
 
-    # Create adapter
     adapter = GPTOSSArchitectureAdapter(bridge_config)
 
-    # Get tokenizer
     from transformers import AutoTokenizer
 
     tokenizer = AutoTokenizer.from_pretrained("openai/gpt-oss-20b", trust_remote_code=True)
 
-    # Create bridge
     bridge = TransformerBridge(
         model=model,
         adapter=adapter,
         tokenizer=tokenizer,
     )
 
-    # Enable compatibility mode
     bridge.enable_compatibility_mode(no_processing=True)
 
-    # Create test input
     tokens = torch.randint(0, 1000, (1, 5))
 
     # Test forward pass

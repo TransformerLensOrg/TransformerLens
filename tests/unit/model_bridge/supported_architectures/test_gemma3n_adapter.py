@@ -2,6 +2,7 @@
 
 import pytest
 
+from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.config.transformer_bridge_config import TransformerBridgeConfig
 from transformer_lens.factories.architecture_adapter_factory import (
     ArchitectureAdapterFactory,
@@ -75,7 +76,7 @@ def test_text_path_nested_under_language_model():
     assert isinstance(m["embed"], EmbeddingBridge)
     assert isinstance(m["blocks"], AltUpBlockBridge)
     assert isinstance(m["unembed"], UnembeddingBridge)
-    # Vision/audio are referenced-but-unbridged (Route D groundwork).
+    # Vision/audio are referenced-but-unbridged.
     assert "vision_encoder" not in m and "audio_encoder" not in m
 
 
