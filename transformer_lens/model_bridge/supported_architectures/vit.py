@@ -55,6 +55,7 @@ class ViTArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for ViT and (non-distilled-head) DeiT vision models."""
 
     supports_generation: bool = False
+    applicable_phases: list[int] = []
 
     def __init__(self, cfg: Any) -> None:
         super().__init__(cfg)
