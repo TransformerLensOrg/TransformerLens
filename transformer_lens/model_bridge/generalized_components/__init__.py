@@ -137,6 +137,12 @@ from transformer_lens.model_bridge.generalized_components.unembedding import (
 from transformer_lens.model_bridge.generalized_components.vision_projection import (
     VisionProjectionBridge,
 )
+from transformer_lens.model_bridge.generalized_components.vision_embeddings import (
+    VisionEmbeddingsBridge,
+)
+from transformer_lens.model_bridge.generalized_components.vision_classifier_head import (
+    VisionClassifierHeadBridge,
+)
 
 __all__ = [
     "AttentionBridge",
@@ -193,4 +199,6 @@ __all__ = [
     "SSMBlockBridge",
     "SSMMixerBridge",
     "VisionProjectionBridge",
+    "VisionEmbeddingsBridge",
+    "VisionClassifierHeadBridge",
 ]
