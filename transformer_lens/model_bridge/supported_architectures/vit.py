@@ -55,6 +55,10 @@ class ViTArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for ViT and (non-distilled-head) DeiT vision models."""
 
     supports_generation: bool = False
+
+    # Vision models have no tokenizer, so the default text-shaped verify_models
+    # phases can't run against them. Mirrors falcon_h1.py's opt-out until
+    # verify_models grows a vision-model-aware phase set (tracked separately).
     applicable_phases: list[int] = []
 
     def __init__(self, cfg: Any) -> None:
