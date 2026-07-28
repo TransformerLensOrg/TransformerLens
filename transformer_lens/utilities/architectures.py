@@ -71,6 +71,19 @@ AUDIO_ARCHITECTURES: set[str] = {
     "HubertForSequenceClassification",
 }
 
+# Vision-only (non-multimodal, no text tower) encoder models. Split into the
+# two HF AutoModel classes they load under: bare encoders load via AutoModel,
+# classification heads load via AutoModelForImageClassification.
+VISION_MODEL_ARCHITECTURES: set[str] = {
+    "ViTModel",
+    "DeiTModel",
+}
+VISION_CLASSIFICATION_ARCHITECTURES: set[str] = {
+    "ViTForImageClassification",
+    "DeiTForImageClassification",
+}
+VISION_ARCHITECTURES: set[str] = VISION_MODEL_ARCHITECTURES | VISION_CLASSIFICATION_ARCHITECTURES
+
 # Text models whose remote code registers only under plain AutoModel
 # (the class itself carries the LM head).
 BASE_AUTOMODEL_ARCHITECTURES: set[str] = {

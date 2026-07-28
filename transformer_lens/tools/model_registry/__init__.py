@@ -187,6 +187,10 @@ HF_SUPPORTED_ARCHITECTURES: set[str] = {
     "T5GemmaForConditionalGeneration",
     "T5Gemma2ForConditionalGeneration",
     "XGLMForCausalLM",
+    "ViTModel",
+    "ViTForImageClassification",
+    "DeiTModel",
+    "DeiTForImageClassification",
     "Zamba2ForCausalLM",
 }
 
@@ -335,6 +339,10 @@ CANONICAL_AUTHORS_BY_ARCH: dict[str, list[str]] = {
     "T5GemmaForConditionalGeneration": ["google"],
     "T5Gemma2ForConditionalGeneration": ["google"],
     "XGLMForCausalLM": ["facebook"],
+    "ViTModel": ["google"],
+    "ViTForImageClassification": ["google"],
+    "DeiTModel": ["facebook"],
+    "DeiTForImageClassification": ["facebook"],
     "Zamba2ForCausalLM": ["Zyphra"],
 }
 

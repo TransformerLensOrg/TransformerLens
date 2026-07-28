@@ -157,6 +157,19 @@ def map_default_transformer_lens_config(hf_config):
         tl_config.n_ctx = source_config.max_length
     elif hasattr(source_config, "seq_length"):
         tl_config.n_ctx = source_config.seq_length
+    elif hasattr(source_config, "image_size") and hasattr(source_config, "patch_size"):
+        # Vision Transformers calculate sequence length dynamically:
+        # (image_size / patch_size)^2 + 1 (for the CLS token)
+        image_size = source_config.image_size
+        patch_size = source_config.patch_size
+
+        # HF configs allow these to be integers or tuples/lists
+        img_h = image_size[0] if isinstance(image_size, (list, tuple)) else image_size
+        img_w = image_size[1] if isinstance(image_size, (list, tuple)) else image_size
+        patch_h = patch_size[0] if isinstance(patch_size, (list, tuple)) else patch_size
+        patch_w = patch_size[1] if isinstance(patch_size, (list, tuple)) else patch_size
+
+        tl_config.n_ctx = (img_h // patch_h) * (img_w // patch_w) + 1
     elif hasattr(source_config, "max_sequence_length"):
         tl_config.n_ctx = source_config.max_sequence_length
     else:
@@ -367,6 +380,8 @@ def get_hf_model_class_for_architecture(architecture: str):
         MASKED_LM_ARCHITECTURES,
         MULTIMODAL_ARCHITECTURES,
         SEQ2SEQ_ARCHITECTURES,
+        VISION_ARCHITECTURES,
+        VISION_CLASSIFICATION_ARCHITECTURES,
     )
 
     if architecture in SEQ2SEQ_ARCHITECTURES or architecture in AUDIO_TEXT_ARCHITECTURES:
@@ -386,6 +401,14 @@ def get_hf_model_class_for_architecture(architecture: str):
             from transformers import AutoModelForCTC
 
             return AutoModelForCTC
+        from transformers import AutoModel
+
+        return AutoModel
+    elif architecture in VISION_ARCHITECTURES:
+        if architecture in VISION_CLASSIFICATION_ARCHITECTURES:
+            from transformers import AutoModelForImageClassification
+
+            return AutoModelForImageClassification
         from transformers import AutoModel
 
         return AutoModel
@@ -813,7 +836,8 @@ def boot(
     use_fast = getattr(adapter.cfg, "use_fast", True)
     # Audio models use feature extractors, not text tokenizers
     _is_audio = getattr(adapter.cfg, "is_audio_model", False)
-    if _is_audio and tokenizer is None:
+    _is_visual = getattr(adapter.cfg, "is_visual_model", False)
+    if (_is_audio or _is_visual) and tokenizer is None:
         tokenizer = None  # Skip tokenizer loading for audio models
     elif tokenizer is not None:
         tokenizer = setup_tokenizer(tokenizer, default_padding_side=default_padding_side)

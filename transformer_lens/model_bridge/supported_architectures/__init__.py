@@ -252,6 +252,9 @@ from transformer_lens.model_bridge.supported_architectures.starcoder2 import (
 from transformer_lens.model_bridge.supported_architectures.switch_transformers import (
     SwitchTransformersArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.vit import (
+    ViTArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.t5 import T5ArchitectureAdapter
 from transformer_lens.model_bridge.supported_architectures.t5gemma import T5GemmaArchitectureAdapter
 from transformer_lens.model_bridge.supported_architectures.t5gemma2 import (
@@ -396,6 +399,8 @@ __all__ = [
     "Starcoder2ArchitectureAdapter",
     "T5ArchitectureAdapter",
     "T5GemmaArchitectureAdapter",
+    "T5Gemma2ArchitectureAdapter",
+    "ViTArchitectureAdapter",
     "XGLMArchitectureAdapter",
     "Zamba2ArchitectureAdapter",
     "HrmTextArchitectureAdapter",
