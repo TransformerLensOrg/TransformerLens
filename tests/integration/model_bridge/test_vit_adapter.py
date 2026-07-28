@@ -24,7 +24,8 @@ tests, no special marker needed, but expect the first run to be slow.
 
 import pytest
 import torch
-from transformers import ViTForImageClassification, ViTModel, DeiTModel
+from transformers import DeiTModel, ViTForImageClassification, ViTModel
+
 from transformer_lens.model_bridge.bridge import TransformerBridge
 from transformer_lens.model_bridge.generalized_components.vision_classifier_head import (
     VisionClassifierHeadBridge,
@@ -161,9 +162,7 @@ class TestViTClassifierHookCoverage:
 def vit_bare_bridge():
     # Explicitly load the bare model
     hf_model = ViTModel.from_pretrained(MODEL_VIT_BARE)
-    return TransformerBridge.boot_transformers(
-        MODEL_VIT_BARE, hf_model=hf_model, device="cpu"
-    )
+    return TransformerBridge.boot_transformers(MODEL_VIT_BARE, hf_model=hf_model, device="cpu")
 
 
 class TestViTBareModel:

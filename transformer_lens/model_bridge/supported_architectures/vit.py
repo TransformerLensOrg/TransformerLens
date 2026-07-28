@@ -248,6 +248,11 @@ class ViTArchitectureAdapter(ArchitectureAdapter):
 
         patch_layers(hf_model)
 
+        # Alias the encoder layers directly to the root to bypass the TransformerLens 
+        # deep-referencing bug that orphans the `encoder` module on bare models.
+        if prefix == "":
+            hf_model.encoder_layer = hf_model.encoder.layer
+
         with_classifier = hasattr(hf_model, "classifier")
         self.component_mapping = self._build_component_mapping(
             prefix=prefix, with_classifier=with_classifier
