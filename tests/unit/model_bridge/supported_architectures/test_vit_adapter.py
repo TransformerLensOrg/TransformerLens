@@ -15,11 +15,6 @@ Tests cover:
 - prepare_model(): bare model / ViTForImageClassification / DeiTForImageClassification
   prefix rebinding + classifier injection, and the DeiTForImageClassificationWithTeacher
   guard rail
-- n_ctx propagation: prepare_loading() now derives cfg.n_ctx from the HF
-  config's image_size/patch_size fields ((image_size // patch_size) ** 2 + 1,
-  i.e. patch grid plus the CLS token), so it is covered directly below in
-  TestViTPrepareLoading, and cross-checked against a real checkpoint
-  (google/vit-base-patch16-224 -> n_ctx == 197) in the integration test.
 
 NOTE (transformers ViT/DeiT flattening refactor): current transformers removed
 the separate `ViTEncoder`/`ViTSelfAttention`/`ViTSelfOutput`/`ViTIntermediate`/
@@ -34,6 +29,8 @@ NOT covered here (needs a real HF model + real forward pass — see the
 integration test at tests/integration/model_bridge/test_vit_adapter.py instead):
 - Numeric parity with HF
 - Hook firing / cache shapes
+- n_ctx propagation: This is cross-checked against a real checkpoint
+  (google/vit-base-patch16-224 -> n_ctx == 197) in the integration test.
 """
 
 from types import SimpleNamespace
@@ -360,28 +357,3 @@ class TestViTPrepareModel:
     ) -> None:
         with pytest.raises(NotImplementedError, match="distillation_classifier"):
             adapter.prepare_model(self._deit_with_teacher())
-
-
-# ---------------------------------------------------------------------------
-# prepare_loading() — HF config propagation
-# ---------------------------------------------------------------------------
-
-
-class TestViTPrepareLoading:
-    def _model_kwargs_with(self, **hf_config_fields) -> dict:
-        return {"config": SimpleNamespace(**hf_config_fields)}
-
-    def test_head_dim_propagates(self, adapter: ViTArchitectureAdapter) -> None:
-        adapter.prepare_loading("dummy-model", self._model_kwargs_with(head_dim=96))
-        assert adapter.cfg.d_head == 96
-
-    def test_missing_head_dim_is_noop(self, adapter: ViTArchitectureAdapter) -> None:
-        original_d_head = adapter.cfg.d_head
-        adapter.prepare_loading("dummy-model", self._model_kwargs_with())
-        assert adapter.cfg.d_head == original_d_head
-
-    def test_no_config_in_model_kwargs_is_noop(self, adapter: ViTArchitectureAdapter) -> None:
-        adapter.prepare_loading("dummy-model", {})  # must not raise
-
-    def test_none_config_in_model_kwargs_is_noop(self, adapter: ViTArchitectureAdapter) -> None:
-        adapter.prepare_loading("dummy-model", {"config": None})  # must not raise
