@@ -14,10 +14,13 @@ wrap-don't-reimplement behavior against real HF checkpoints:
 - prepare_model() doesn't assume a `.encoder` wrapper exists on the HF model
   (transformers now puts blocks directly on `<prefix>.layers`)
 
-Three checkpoints, matching the ones already sanity-checked manually:
+Four checkpoints, matching the ones already sanity-checked manually (added
+facebook/deit-small-patch16-224 as a real DeiTForImageClassification load —
+previously declared as MODEL_DEIT_CLASSIFIER but never actually used):
 - google/vit-base-patch16-224          (ViTForImageClassification, prefix "vit.")
 - google/vit-base-patch16-224-in21k    (bare ViTModel, no prefix, no classifier)
 - facebook/deit-small-patch16-224      (DeiTForImageClassification, prefix "deit.")
+- facebook/deit-small-distilled-patch16-224 (bare DeiTModel, distillation token)
 
 NOTE ON RUNNING THESE: they download real weights from HuggingFace (a few
 hundred MB total) — same cost class as the existing Mamba/SmolLM3 integration
@@ -28,7 +31,7 @@ from types import SimpleNamespace
 
 import pytest
 import torch
-from transformers import DeiTModel, ViTForImageClassification, ViTModel
+from transformers import DeiTForImageClassification, DeiTModel, ViTForImageClassification, ViTModel
 
 from transformer_lens.model_bridge.bridge import TransformerBridge
 from transformer_lens.model_bridge.generalized_components.vision_classifier_head import (
@@ -188,18 +191,27 @@ class TestViTBareModel:
 
     def test_forward_return_value_is_not_a_plain_tensor(self, vit_bare_bridge):
         """KNOWN GAP — flagging, not necessarily desired behavior.
-
+ 
         For a bare ViTModel, HF's own forward returns BaseModelOutputWithPooling,
-        which has no `.logits` and is NOT a tuple subclass (confirmed directly:
-        `isinstance(BaseModelOutputWithPooling(...), tuple) is False` on
-        transformers 5.8.1). bridge.py's forward() only special-cases `.logits`
-        or `isinstance(output, tuple)` before falling through to
-        `logits = output` — so `bridge(pixel_values)` with the default
-        return_type="logits" currently returns the raw HF output object, not a
-        tensor. If that's intentional (there's no real "logits" for a bare
-        encoder), consider documenting it explicitly and/or exposing
-        `last_hidden_state`/`pooler_output` some other way; if not, this is the
-        regression test to flip once fixed.
+        which has no `.logits` and is NOT a tuple subclass. bridge.py's forward()
+        only special-cases `.logits` or `isinstance(output, tuple)` before
+        falling through to `logits = output` — so `bridge(pixel_values)` with
+        the default return_type="logits" currently returns the raw HF output
+        object, not a tensor. (Confirmed against transformers 5.8.1; this is a
+        general bridge.py behavior, not vision-specific, so it's worth
+        rechecking whether a later transformers release — e.g. 5.13.0 — changes
+        the shape of BaseModelOutputWithPooling in a way that affects this.)
+ 
+        Per review discussion, the desired fix lives in bridge.py, not this
+        adapter, and there are two reasonable directions:
+          (a) fall back to `output.last_hidden_state` when return_type="logits"
+              but the output has no `.logits` attribute, or
+          (b) raise a clear, actionable error instead of returning the raw HF
+              output object silently.
+        This test currently pins the raw-object behavior as a known gap so a
+        bridge.py fix doesn't land silently unnoticed here. It should be
+        updated to assert whichever of (a)/(b) is chosen once bridge.py is
+        fixed, rather than left pinning the current gap indefinitely.
         """
         pixel_values = _pixel_values()
         with torch.no_grad():
@@ -210,6 +222,44 @@ class TestViTBareModel:
 
 # ---------------------------------------------------------------------------
 # DeiTForImageClassification — distillation token must stay invisible
+# Previously MODEL_DEIT_CLASSIFIER was declared but never used, and the only
+# DeiT fixture (deit_bridge, below) loaded a bare DeiTModel — so the
+# "deit."-prefix + real classifier-head path had no coverage. This fixture
+# and test class close that gap with a real DeiTForImageClassification load.
+# ---------------------------------------------------------------------------
+@pytest.fixture(scope="module")
+def deit_classifier_bridge():
+    hf_model = DeiTForImageClassification.from_pretrained(MODEL_DEIT_CLASSIFIER)
+    return TransformerBridge.boot_transformers(
+        MODEL_DEIT_CLASSIFIER, hf_model=hf_model, device="cpu"
+    )
+ 
+ 
+class TestDeiTClassifierBridge:
+    def test_prefix_is_deit_for_classifier_model(self, deit_classifier_bridge):
+        assert deit_classifier_bridge.adapter.component_mapping["blocks"].name == "deit.layers"
+ 
+    def test_unembed_is_vision_classifier_head(self, deit_classifier_bridge):
+        assert isinstance(deit_classifier_bridge.unembed, VisionClassifierHeadBridge)
+ 
+    def test_forward_matches_hf(self, deit_classifier_bridge):
+        pixel_values = _pixel_values()
+        hf_model = deit_classifier_bridge.original_model
+        with torch.no_grad():
+            bridge_out = deit_classifier_bridge(pixel_values)
+            hf_out = hf_model(pixel_values).logits
+        max_diff = (bridge_out - hf_out).abs().max().item()
+        assert max_diff < 1e-4, f"Bridge vs HF max diff = {max_diff}"
+ 
+    def test_forward_returns_correct_shape(self, deit_classifier_bridge):
+        pixel_values = _pixel_values()
+        with torch.no_grad():
+            output = deit_classifier_bridge(pixel_values)
+        num_labels = deit_classifier_bridge.original_model.config.num_labels
+        assert output.shape == (1, num_labels)
+      
+# ---------------------------------------------------------------------------
+# DeiT (bare model) — distillation token must stay invisible
 # ---------------------------------------------------------------------------
 # 1. Use the distilled checkpoint to actually test distillation token logic
 MODEL_DEIT_DISTILLED = "facebook/deit-small-distilled-patch16-224"
