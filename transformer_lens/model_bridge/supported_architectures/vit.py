@@ -176,10 +176,6 @@ class ViTArchitectureAdapter(ArchitectureAdapter):
         if hf_config is None:
             return
 
-        head_dim = getattr(hf_config, "head_dim", None)
-        if head_dim is not None:
-            self.cfg.d_head = head_dim  # type: ignore[attr-defined]
-
         # Derive n_ctx to avoid silent fallback to 2048 in generic logic
         image_size = getattr(hf_config, "image_size", None)
         patch_size = getattr(hf_config, "patch_size", None)
