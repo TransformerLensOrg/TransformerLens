@@ -237,7 +237,7 @@ class TestDeiTClassifierBridge:
     def test_unembed_is_vision_classifier_head(self, deit_classifier_bridge):
         assert isinstance(deit_classifier_bridge.unembed, VisionClassifierHeadBridge)
     
-  def test_n_ctx_matches_real_patch_grid(self, deit_classifier_bridge):
+    def test_n_ctx_matches_real_patch_grid(self, deit_classifier_bridge):
         assert deit_classifier_bridge.cfg.n_ctx == 197
  
     def test_forward_matches_hf(self, deit_classifier_bridge):
