@@ -17,6 +17,15 @@ Tests cover:
   guard rail
 - prepare_loading(): head_dim propagation from the HF config
 
+NOTE (transformers ViT/DeiT flattening refactor): current transformers removed
+the separate `ViTEncoder`/`ViTSelfAttention`/`ViTSelfOutput`/`ViTIntermediate`/
+`ViTOutput` wrapper modules. Blocks now live directly at `<prefix>.layers`
+(not `<prefix>.encoder.layer`); `ViTAttention`/`DeiTAttention` own `q_proj`/
+`k_proj`/`v_proj`/`o_proj` directly (not nested `attention.query`/`attention.key`/
+`attention.value`/`output.dense`); and `ViTLayer.mlp` is already a flat `ViTMLP`
+with `fc1`/`fc2` (not `intermediate.dense`/`output.dense`). All the HF-path
+assertions below reflect that.
+
 NOT covered here (needs a real HF model + real forward pass — see the
 integration test at tests/integration/model_bridge/test_vit_adapter.py instead):
 - Numeric parity with HF
@@ -117,7 +126,8 @@ class TestViTComponentMappingBare:
     def test_top_level_hf_paths(self, adapter: ViTArchitectureAdapter) -> None:
         mapping = adapter.component_mapping
         assert mapping["embed"].name == "embeddings"
-        assert mapping["blocks"].name == "encoder.layer"
+        # No more ViTEncoder wrapper — blocks sit directly on `.layers`.
+        assert mapping["blocks"].name == "layers"
         assert mapping["ln_final"].name == "layernorm"
 
     def test_block_submodule_keys(self, adapter: ViTArchitectureAdapter) -> None:
@@ -147,11 +157,15 @@ class TestViTComponentMappingBare:
         assert set(attn.submodules.keys()) == {"q", "k", "v", "o"}
 
     def test_attn_qkvo_hf_paths(self, adapter: ViTArchitectureAdapter) -> None:
+        """Paths here are relative to the already-resolved "attn" bridge module
+        (block.attention). ViTAttention/DeiTAttention now owns q_proj/k_proj/
+        v_proj/o_proj directly (flattened, no nested self-attention + separate
+        output.dense module), so no "attention." prefix."""
         attn = adapter.component_mapping["blocks"].submodules["attn"]
-        assert attn.submodules["q"].name == "attention.query"
-        assert attn.submodules["k"].name == "attention.key"
-        assert attn.submodules["v"].name == "attention.value"
-        assert attn.submodules["o"].name == "output.dense"
+        assert attn.submodules["q"].name == "q_proj"
+        assert attn.submodules["k"].name == "k_proj"
+        assert attn.submodules["v"].name == "v_proj"
+        assert attn.submodules["o"].name == "o_proj"
 
     def test_attn_submodules_are_linear_bridges(self, adapter: ViTArchitectureAdapter) -> None:
         attn = adapter.component_mapping["blocks"].submodules["attn"]
@@ -159,9 +173,12 @@ class TestViTComponentMappingBare:
             assert isinstance(sub, LinearBridge)
 
     def test_mlp_submodule_hf_paths(self, adapter: ViTArchitectureAdapter) -> None:
+        """Paths here are relative to the already-resolved "mlp" bridge module
+        (block.mlp). ViTLayer.mlp is a real ViTMLP now (fc1/fc2 directly) — no
+        more intermediate/output split, so no wrapper shim is needed."""
         mlp = adapter.component_mapping["blocks"].submodules["mlp"]
-        assert mlp.submodules["in"].name == "intermediate.dense"
-        assert mlp.submodules["out"].name == "output.dense"
+        assert mlp.submodules["in"].name == "fc1"
+        assert mlp.submodules["out"].name == "fc2"
 
     def test_mlp_hook_alias_overrides(self, adapter: ViTArchitectureAdapter) -> None:
         aliases = adapter.component_mapping["blocks"].hook_aliases
@@ -286,19 +303,30 @@ class TestViTPrepareModel:
     def test_bare_model_keeps_no_prefix(self, adapter: ViTArchitectureAdapter) -> None:
         adapter.prepare_model(self._bare_model())
         assert adapter.component_mapping["embed"].name == "embeddings"
-        assert adapter.component_mapping["blocks"].name == "encoder.layer"
+        assert adapter.component_mapping["blocks"].name == "layers"
         assert adapter.component_mapping["ln_final"].name == "layernorm"
 
     def test_bare_model_has_no_unembed(self, adapter: ViTArchitectureAdapter) -> None:
         adapter.prepare_model(self._bare_model())
         assert "unembed" not in adapter.component_mapping
 
+    def test_bare_model_does_not_require_encoder_attribute(
+        self, adapter: ViTArchitectureAdapter
+    ) -> None:
+        """Regression test: prepare_model() must not assume a `.encoder`
+        wrapper module exists on the HF model. Current transformers removed
+        it — blocks live directly on `<prefix>.layers` — so a minimal stub
+        with no `.encoder` attribute at all must still work."""
+        hf_model = SimpleNamespace()
+        assert not hasattr(hf_model, "encoder")
+        adapter.prepare_model(hf_model)  # must not raise AttributeError
+
     # -- ViTForImageClassification -----------------------------------------
 
     def test_vit_classification_adds_vit_prefix(self, adapter: ViTArchitectureAdapter) -> None:
         adapter.prepare_model(self._vit_for_classification())
         assert adapter.component_mapping["embed"].name == "vit.embeddings"
-        assert adapter.component_mapping["blocks"].name == "vit.encoder.layer"
+        assert adapter.component_mapping["blocks"].name == "vit.layers"
         assert adapter.component_mapping["ln_final"].name == "vit.layernorm"
 
     def test_vit_classification_adds_unembed(self, adapter: ViTArchitectureAdapter) -> None:
@@ -316,7 +344,7 @@ class TestViTPrepareModel:
     def test_deit_classification_adds_deit_prefix(self, adapter: ViTArchitectureAdapter) -> None:
         adapter.prepare_model(self._deit_for_classification())
         assert adapter.component_mapping["embed"].name == "deit.embeddings"
-        assert adapter.component_mapping["blocks"].name == "deit.encoder.layer"
+        assert adapter.component_mapping["blocks"].name == "deit.layers"
         assert adapter.component_mapping["ln_final"].name == "deit.layernorm"
 
     def test_deit_classification_adds_unembed(self, adapter: ViTArchitectureAdapter) -> None:
