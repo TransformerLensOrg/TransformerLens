@@ -1,107 +1,28 @@
 """Raven / Huginn architecture adapter (RavenForCausalLM).
 
-Model family: tomg-group-umd/huginn-0125 ("Huginn"), a depth-recurrent
-("latent reasoning") decoder from Geiping et al. Loaded via remote code
-(``auto_map`` → ``raven_modeling_minimal.RavenForCausalLM``), so
-``trust_remote_code=True`` is required.
+Family ``tomg-group-umd/huginn-0125``: depth-recurrent ("latent reasoning")
+decoder loaded via remote code. Three phases over one residual width —
+prelude blocks, a weight-tied recurrent core applied N times (``num_steps``
+is a RUNTIME forward argument, defaulting to ``config.mean_recurrence``),
+then coda blocks. Core blocks are post-residual ``SandwichBlock`` modules
+(residual renormalised after each add), MHA with combined ``Wqkv`` plus a
+learned additive ``qk_bias``.
 
-Architecture overview
----------------------
-Huginn is NOT a flat stack of transformer layers. Its forward has three
-phases, all operating on the same residual width ``n_embd`` (5280):
-
-    wte → prelude (P physical blocks)
-        → [ recurrent core: R physical blocks, applied N times ]
-        → coda (C physical blocks) → ln_f → lm_head
-
-with P = ``n_layers_in_prelude`` (2), R = ``n_layers_in_recurrent_block``
-(4), C = ``n_layers_in_coda`` (2). ``num_hidden_layers`` (8) counts the
-*physical* blocks (2 + 4 + 2), stored as three separate ``ModuleList``s under
-``model.transformer`` (``prelude`` / ``core_block`` / ``coda``), NOT one
-``model.layers``.
-
-The recurrence is the defining feature. ``RavenForCausalLM.forward`` calls
-``iterate_forward`` → ``core_block_forward``, which runs the SAME four
-``core_block`` modules N times. Each step re-injects the prelude output:
-
-    x = adapter(cat([latent_state, prelude_output], dim=-1))   # injection
-    for block in core_block: x = block(x)                      # 4 blocks
-
-``N`` (``num_steps``) is a RUNTIME argument to ``forward``, not a fixed
-config value. At eval it defaults to ``config.mean_recurrence`` (32) via
-``randomized_iteration_sampler``; a caller may pass any ``num_steps``.
-
-Each block is a ``SandwichBlock``: four RMSNorms with post-residual
-normalisation (``x = norm_2(attn(norm_1(x)) + x)``; ``x = norm_4(mlp(norm_3
-(x)) + x)``) — the residual stream itself is renormalised after each add,
-unlike a standard pre-norm transformer. Attention is MHA (55 heads == 55 kv
-heads) with a COMBINED ``Wqkv`` projection plus a learned additive ``qk_bias``
-parameter and RoPE (base 50000). The MLP is a gated SiLU MLP with a combined
-gate+up ``fc`` projection. Embeddings are scaled by ``√n_embd`` (≈72.66) in
-the HF forward, and ``lm_head`` is tied to ``wte``.
-
-Key adapter decisions
----------------------
-1. Full delegation, like Ouro. The recurrence, the prelude re-injection, the
-   emb-scale, the sandwich norms and RoPE all live inside the remote-code
-   ``forward`` that the bridge delegates to, so a single forward pass is
-   numerically correct with no loop handling here.
-
-2. ``OpaqueBlockBridge`` for all three block lists (``prelude`` / ``core_block``
-   / ``coda``): ``BlockBridge``'s hook aliases hardcode a standard pre-norm flow
-   (hook_resid_mid, ln1→attn→ln2→mlp) that the post-residual ``SandwichBlock``
-   does not follow. ``OpaqueBlockBridge`` delegates the whole block and exposes
-   only ``hook_in`` / ``hook_out`` on the residual stream, which is correct
-   regardless of the internal norm placement. Each block's inner attn / mlp /
-   norms are still declared as submodules so they wrap the live HF modules and
-   their hooks fire.
-
-3. Recurrent core hooks. Because the core loop lives inside the HF forward,
-   the four ``core_block`` blocks' ``hook_in`` / ``hook_out`` fire once PER
-   recurrence step (N times per forward), and ``run_with_cache`` keeps the
-   final step. This is the load-bearing behavioural difference from a flat
-   decoder and mirrors Ouro's looped-depth semantics. Separately addressing
-   an individual recurrence step (e.g. logit-lens across steps) is NOT
-   expressible through the static ``core_block.{i}.hook_out`` names — it
-   requires the model's native ``iterate_one_step`` / ``predict_from_latents``
-   interface. Deliberately not mapped: ``transformer.adapter`` (the injection
-   Linear) and ``HuginnDynamicCache``'s block-indexed slot layout.
-
-4. ``applicable_phases = []``. Huginn diverges too far from the transformer-
-   shaped ``verify_models`` phases to score meaningfully: post-residual
-   sandwich norms, a runtime recurrence count, combined QKV + ``qk_bias``,
-   and — decisively — a RANDOM initial latent state (``initialize_state``
-   uses ``torch.randn_like``), which makes the forward non-deterministic
-   across calls unless the RNG is seeded or ``input_states`` is supplied.
-   Correctness is covered in the integration tests, where the seed is pinned
-   before both the bridge and HF calls (same decision spirit as nemotron_h /
-   mamba). ``ln_f`` is applied mid-network (after the recurrence, feeding the
-   coda) as well as at the end, so ``supports_fold_ln = False`` — folding it
-   into ``W_U`` would corrupt the coda input.
-
-Config propagation
-------------------
-The recurrence-shape attributes (``mean_recurrence``, ``n_layers_in_prelude``
-/ ``_recurrent_block`` / ``_coda``, ``mean_backprop_depth``, ``injection_type``,
-``qk_bias``) are surfaced on ``self.cfg`` here AND added to the two
-``_HF_PASSTHROUGH_ATTRS`` lists so analysis tooling can read them off a booted
-bridge.
-
-Remote-code loading (transformers v5)
-------------------------------------
-Huginn's remote code targets transformers 4.44 and breaks under v5 (5.8.1) in
-two ways that ``prepare_loading`` patches: (1) ``_tied_weights_keys`` is a list,
-but v5's ``tie_weights`` expects a dict, so the model does not even construct;
-(2) v5's meta-device load re-invokes ``PreTrainedModel._init_weights`` on
-already-materialised modules and would re-randomise the checkpoint. See
-``prepare_loading`` for both. (Huginn does not use ``ROPE_INIT_FUNCTIONS``; it
-precomputes its own ``freqs_cis``, so no RoPE patch is needed.)
-
-Optional parameters (may be absent from a state_dict)
-----------------------------------------------------
-Huginn has ``bias=False`` everywhere except the attention ``qk_bias``
-parameter; RMSNorm has no bias. Weight processing must tolerate missing
-biases via ``ProcessWeights._safe_get_tensor()``.
+Adapter decisions:
+- Full delegation: recurrence, prelude re-injection, emb-scale, sandwich
+  norms, and RoPE all run inside the remote-code forward.
+- ``OpaqueBlockBridge`` for all three block lists: BlockBridge's hook aliases
+  hardcode the standard pre-norm flow the SandwichBlock does not follow.
+- Core-block ``hook_in``/``hook_out`` fire once PER recurrence step (N times
+  per forward); ``run_with_cache`` keeps the final step. Per-step access is
+  not expressible through the static hook names — it needs the model's native
+  ``iterate_one_step``/``predict_from_latents`` interface. Deliberately not
+  mapped: ``transformer.adapter`` and ``HuginnDynamicCache``'s slot layout.
+- ``applicable_phases = []``: ``initialize_state`` uses ``torch.randn_like``,
+  so the forward is non-deterministic unless seeded — integration tests pin
+  the seed around both the bridge and HF calls.
+- Only bias anywhere is ``qk_bias``; weight processing must tolerate missing
+  biases via ``ProcessWeights._safe_get_tensor()``.
 """
 
 import sys

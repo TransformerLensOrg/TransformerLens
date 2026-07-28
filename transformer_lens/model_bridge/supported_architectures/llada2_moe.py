@@ -55,6 +55,8 @@ class LLaDA2MoeArchitectureAdapter(ArchitectureAdapter):
 
     applicable_phases: list[int] = [1, 2, 3, 4]
     supports_generation: bool = False
+    # Bidirectional masked-denoising objective; shifted causal CE is undefined.
+    supports_causal_loss: bool = False
     # Semi-autoregressive block remasking, shipped on the model class.
     native_sampler: str = "generate"
     # Fused query_key_value with no per-projection conversions to fold into.

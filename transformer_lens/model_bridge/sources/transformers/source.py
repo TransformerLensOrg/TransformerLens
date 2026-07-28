@@ -37,6 +37,23 @@ warnings.filterwarnings("ignore", message=".*generation flags.*not valid.*")
 logging.getLogger("transformers").setLevel(logging.ERROR)
 
 
+def _force_eager_attention(hf_model: Any) -> None:
+    """Switch a pre-loaded model to eager attention so attention hooks can fire."""
+    if hasattr(hf_model, "set_attn_implementation"):
+        try:
+            hf_model.set_attn_implementation("eager")
+            return
+        except Exception:
+            pass  # Exotic wrapped models can reject the public API; write the config instead.
+    config = getattr(hf_model, "config", None)
+    if config is not None and hasattr(config, "_attn_implementation"):
+        config._attn_implementation = "eager"
+        # Nested multimodal configs carry their own attn implementation.
+        text_config = getattr(config, "text_config", None)
+        if text_config is not None:
+            text_config._attn_implementation = "eager"
+
+
 def boot(
     model_name: str,
     hf_config_overrides: dict | None = None,
@@ -273,8 +290,13 @@ def boot(
                 "(the map is not applied; parameters load on CPU via from_config)."
             )
     if hf_model is not None:
-        # Use the pre-loaded model as-is (quantized models with custom device_map, etc).
-        pass
+        # Pre-loaded weights stay untouched (quantized models with custom device_map are
+        # why this branch takes the model as-is), but attn-impl selection is runtime
+        # dispatch — safe to switch in place. Without it, transformers' default sdpa
+        # returns attn_weights=None and hook_pattern / hook_attn_scores silently never
+        # fire. An explicit adapter/user choice wins, matching the load path above.
+        if getattr(adapter.cfg, "attn_implementation", None) is None:
+            _force_eager_attention(hf_model)
     elif not load_weights:
         from_config_kwargs = {}
         if trust_remote_code:

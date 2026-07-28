@@ -4,6 +4,7 @@ Dream is Qwen2.5-shaped but bidirectional (diffusion): attention must stay
 delegated to HF, generation phases are excluded, and the v5 rope shim must
 restore the 'default' ROPE_INIT_FUNCTIONS entry the remote code looks up.
 """
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -14,6 +15,7 @@ from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.factories.architecture_adapter_factory import (
     SUPPORTED_ARCHITECTURES,
 )
+from transformer_lens.model_bridge import TransformerBridge
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     BlockBridge,
@@ -44,6 +46,12 @@ class TestDreamAdapterPhases:
         """Diffusion LM: covers text phases 1-4 but declares no autoregressive generation."""
         assert adapter.applicable_phases == [1, 2, 3, 4]
         assert adapter.supports_generation is False
+
+    def test_forward_refuses_causal_loss(self, adapter):
+        """Shifted causal CE is undefined for masked denoising; forward must refuse it."""
+        fake_bridge = SimpleNamespace(adapter=adapter, cfg=adapter.cfg)
+        with pytest.raises(NotImplementedError, match="shifted causal"):
+            TransformerBridge.forward(fake_bridge, "hi", return_type="loss")
 
 
 class TestDreamComponentMapping:

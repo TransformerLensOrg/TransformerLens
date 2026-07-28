@@ -100,6 +100,8 @@ class DreamArchitectureAdapter(Qwen2ArchitectureAdapter):
     # sampler's text (benchmarks route through diffusion_generate).
     applicable_phases: list[int] = [1, 2, 3, 4]
     supports_generation: bool = False
+    # Bidirectional masked-denoising objective; shifted causal CE is undefined.
+    supports_causal_loss: bool = False
     # Sampling is iterative denoising, not left-to-right; Dream ships the
     # schedule as a mixin method whose per-step forward goes through __call__,
     # so bridge hooks fire during sampling.

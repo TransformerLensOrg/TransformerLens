@@ -4,6 +4,7 @@ Uniform-noise diffusion: bidirectional softcap attention delegates,
 QK norms are optional (config.use_qk_norm), ScaledLinear projections
 rule out folding, and generation is the model's own diffusion sampler.
 """
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -13,6 +14,7 @@ from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.factories.architecture_adapter_factory import (
     SUPPORTED_ARCHITECTURES,
 )
+from transformer_lens.model_bridge import TransformerBridge
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     MLPBridge,
@@ -36,6 +38,12 @@ class TestGiddPhases:
         assert adapter.applicable_phases == [1, 2, 3, 4]
         assert adapter.supports_generation is False
         assert adapter.supports_fold_ln is False
+
+    def test_forward_refuses_causal_loss(self, adapter):
+        """Shifted causal CE is undefined for masked denoising; forward must refuse it."""
+        fake_bridge = SimpleNamespace(adapter=adapter, cfg=adapter.cfg)
+        with pytest.raises(NotImplementedError, match="shifted causal"):
+            TransformerBridge.forward(fake_bridge, "hi", return_type="loss")
 
 
 class TestGiddMapping:
