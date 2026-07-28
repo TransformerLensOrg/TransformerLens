@@ -15,7 +15,11 @@ Tests cover:
 - prepare_model(): bare model / ViTForImageClassification / DeiTForImageClassification
   prefix rebinding + classifier injection, and the DeiTForImageClassificationWithTeacher
   guard rail
-- prepare_loading(): head_dim propagation from the HF config
+- n_ctx propagation: prepare_loading() now derives cfg.n_ctx from the HF
+  config's image_size/patch_size fields ((image_size // patch_size) ** 2 + 1,
+  i.e. patch grid plus the CLS token), so it is covered directly below in
+  TestViTPrepareLoading, and cross-checked against a real checkpoint
+  (google/vit-base-patch16-224 -> n_ctx == 197) in the integration test.
 
 NOTE (transformers ViT/DeiT flattening refactor): current transformers removed
 the separate `ViTEncoder`/`ViTSelfAttention`/`ViTSelfOutput`/`ViTIntermediate`/
@@ -30,12 +34,6 @@ NOT covered here (needs a real HF model + real forward pass — see the
 integration test at tests/integration/model_bridge/test_vit_adapter.py instead):
 - Numeric parity with HF
 - Hook firing / cache shapes
-- Whether cfg.n_ctx ends up correct (it currently does NOT — prepare_loading()
-  never sets it, and the generic HF-config fallback chain in
-  transformer_lens/model_bridge/sources/transformers.py doesn't recognize
-  ViTConfig's image_size/patch_size fields, so it silently defaults to 2048.
-  That's only observable once the full loading pipeline runs, which is why it's
-  asserted as an (xfail) regression test in the integration file, not here.)
 """
 
 from types import SimpleNamespace
