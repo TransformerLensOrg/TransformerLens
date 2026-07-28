@@ -62,8 +62,8 @@ jobs:
       - name: Build
         run: uv build
       - name: Publish
-        run: |
-          uv pip install twine
-          uv run twine upload --non-interactive -u __token__ -p "$PYPI_TOKEN_PYPI" dist/*
+        # uv-native publish: no twine, so no ad-hoc install for `uv run` to
+        # re-sync back to locked (older) dependency versions mid-publish.
+        run: uv publish --token "$PYPI_TOKEN_PYPI"
         env:
           PYPI_TOKEN_PYPI: ${{ secrets.PYPI_TOKEN_PYPI }}
