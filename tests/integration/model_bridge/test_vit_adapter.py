@@ -90,6 +90,13 @@ class TestViTClassifierBridgeCreation:
         live directly on `vit.layers`, not `vit.encoder.layer`."""
         assert vit_bridge.adapter.component_mapping["blocks"].name == "vit.layers"
 
+    def test_n_ctx_matches_real_patch_grid(self, vit_bridge):
+        """Regression check for the previously-broken n_ctx propagation: for
+        google/vit-base-patch16-224 (224px image, patch16 -> 14x14 patches),
+        cfg.n_ctx should be patches + CLS token = 197, not the generic
+        HF-config-fallback default of 2048."""
+        assert vit_bridge.cfg.n_ctx == 197
+
 
 class TestViTClassifierForwardPass:
     def test_forward_returns_correct_shape(self, vit_bridge):
@@ -229,6 +236,9 @@ class TestDeiTClassifierBridge:
  
     def test_unembed_is_vision_classifier_head(self, deit_classifier_bridge):
         assert isinstance(deit_classifier_bridge.unembed, VisionClassifierHeadBridge)
+    
+  def test_n_ctx_matches_real_patch_grid(self, deit_classifier_bridge):
+        assert deit_classifier_bridge.cfg.n_ctx == 197
  
     def test_forward_matches_hf(self, deit_classifier_bridge):
         pixel_values = _pixel_values()
