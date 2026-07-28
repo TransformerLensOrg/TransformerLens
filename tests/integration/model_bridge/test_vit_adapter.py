@@ -86,6 +86,17 @@ class TestViTClassifierBridgeCreation:
     def test_n_heads_matches_hf_config(self, vit_bridge):
         assert vit_bridge.cfg.n_heads == vit_bridge.original_model.config.num_attention_heads
 
+    def test_n_ctx_matches_patch_grid_plus_cls_token(self, vit_bridge):
+        """224x224 image / 16x16 patches = 14x14 = 196 patches, +1 CLS token.
+ 
+        Regression test for n_ctx derivation on vision configs (handled
+        generically by sources/transformers.py's
+        map_default_transformer_lens_config(), not by this adapter) — this
+        used to silently fall back to the generic default (2048) instead of
+        the real vision sequence length.
+        """
+        assert vit_bridge.cfg.n_ctx == 197
+
     def test_blocks_point_at_flat_layers_attribute(self, vit_bridge):
         """Current transformers has no ViTEncoder wrapper any more — blocks
         live directly on `vit.layers`, not `vit.encoder.layer`."""
