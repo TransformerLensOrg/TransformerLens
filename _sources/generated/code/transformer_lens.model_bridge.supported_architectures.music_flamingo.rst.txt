@@ -1,0 +1,7 @@
+transformer\_lens.model\_bridge.supported\_architectures.music\_flamingo module
+===============================================================================
+
+.. automodule:: transformer_lens.model_bridge.supported_architectures.music_flamingo
+   :members:
+   :undoc-members:
+   :show-inheritance:

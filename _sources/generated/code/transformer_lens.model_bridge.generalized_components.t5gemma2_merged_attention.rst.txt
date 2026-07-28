@@ -1,0 +1,7 @@
+transformer\_lens.model\_bridge.generalized\_components.t5gemma2\_merged\_attention module
+==========================================================================================
+
+.. automodule:: transformer_lens.model_bridge.generalized_components.t5gemma2_merged_attention
+   :members:
+   :undoc-members:
+   :show-inheritance:

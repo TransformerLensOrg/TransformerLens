@@ -1,0 +1,7 @@
+transformer\_lens.model\_bridge.supported\_architectures.llama4\_multimodal module
+==================================================================================
+
+.. automodule:: transformer_lens.model_bridge.supported_architectures.llama4_multimodal
+   :members:
+   :undoc-members:
+   :show-inheritance:

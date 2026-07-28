@@ -1,0 +1,7 @@
+transformer\_lens.model\_bridge.supported\_architectures.zamba2 module
+======================================================================
+
+.. automodule:: transformer_lens.model_bridge.supported_architectures.zamba2
+   :members:
+   :undoc-members:
+   :show-inheritance:

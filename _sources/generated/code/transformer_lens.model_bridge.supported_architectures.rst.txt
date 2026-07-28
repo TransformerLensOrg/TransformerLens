@@ -7,23 +7,48 @@ Submodules
 .. toctree::
    :maxdepth: 4
 
+   transformer_lens.model_bridge.supported_architectures.afmoe
    transformer_lens.model_bridge.supported_architectures.apertus
+   transformer_lens.model_bridge.supported_architectures.arcee
+   transformer_lens.model_bridge.supported_architectures.audio_flamingo3
    transformer_lens.model_bridge.supported_architectures.baichuan
+   transformer_lens.model_bridge.supported_architectures.bamba
    transformer_lens.model_bridge.supported_architectures.bart
+   transformer_lens.model_bridge.supported_architectures.bd3lm
    transformer_lens.model_bridge.supported_architectures.bert
+   transformer_lens.model_bridge.supported_architectures.bitnet
+   transformer_lens.model_bridge.supported_architectures.blenderbot
    transformer_lens.model_bridge.supported_architectures.bloom
    transformer_lens.model_bridge.supported_architectures.codegen
    transformer_lens.model_bridge.supported_architectures.cohere
    transformer_lens.model_bridge.supported_architectures.deepseek_v2
    transformer_lens.model_bridge.supported_architectures.deepseek_v3
+   transformer_lens.model_bridge.supported_architectures.deepseek_v4
+   transformer_lens.model_bridge.supported_architectures.dream
+   transformer_lens.model_bridge.supported_architectures.emu3
+   transformer_lens.model_bridge.supported_architectures.ernie4_5
+   transformer_lens.model_bridge.supported_architectures.ernie4_5_moe
+   transformer_lens.model_bridge.supported_architectures.exaone
+   transformer_lens.model_bridge.supported_architectures.exaone4
    transformer_lens.model_bridge.supported_architectures.falcon
+   transformer_lens.model_bridge.supported_architectures.falcon_h1
+   transformer_lens.model_bridge.supported_architectures.falcon_mamba
+   transformer_lens.model_bridge.supported_architectures.flex_olmo
+   transformer_lens.model_bridge.supported_architectures.florence2
    transformer_lens.model_bridge.supported_architectures.gemma1
    transformer_lens.model_bridge.supported_architectures.gemma2
    transformer_lens.model_bridge.supported_architectures.gemma3
    transformer_lens.model_bridge.supported_architectures.gemma3_multimodal
    transformer_lens.model_bridge.supported_architectures.gemma3n
    transformer_lens.model_bridge.supported_architectures.gemma4
+   transformer_lens.model_bridge.supported_architectures.gemma4_text
+   transformer_lens.model_bridge.supported_architectures.gidd
+   transformer_lens.model_bridge.supported_architectures.glm
+   transformer_lens.model_bridge.supported_architectures.glm4
    transformer_lens.model_bridge.supported_architectures.glm4_moe
+   transformer_lens.model_bridge.supported_architectures.glm4_moe_lite
+   transformer_lens.model_bridge.supported_architectures.glm4v
+   transformer_lens.model_bridge.supported_architectures.glm_asr
    transformer_lens.model_bridge.supported_architectures.glm_moe_dsa
    transformer_lens.model_bridge.supported_architectures.gpt2
    transformer_lens.model_bridge.supported_architectures.gpt2_lm_head_custom
@@ -33,47 +58,93 @@ Submodules
    transformer_lens.model_bridge.supported_architectures.granite
    transformer_lens.model_bridge.supported_architectures.granite_moe
    transformer_lens.model_bridge.supported_architectures.granite_moe_hybrid
+   transformer_lens.model_bridge.supported_architectures.hrm_text
    transformer_lens.model_bridge.supported_architectures.hubert
    transformer_lens.model_bridge.supported_architectures.hunyuan_v1_dense
+   transformer_lens.model_bridge.supported_architectures.hyenadna
+   transformer_lens.model_bridge.supported_architectures.idefics3
    transformer_lens.model_bridge.supported_architectures.internlm2
+   transformer_lens.model_bridge.supported_architectures.jais2
+   transformer_lens.model_bridge.supported_architectures.jamba
+   transformer_lens.model_bridge.supported_architectures.jetmoe
+   transformer_lens.model_bridge.supported_architectures.laguna
+   transformer_lens.model_bridge.supported_architectures.led
+   transformer_lens.model_bridge.supported_architectures.lfm2
    transformer_lens.model_bridge.supported_architectures.lfm2_moe
+   transformer_lens.model_bridge.supported_architectures.llada
+   transformer_lens.model_bridge.supported_architectures.llada2_moe
    transformer_lens.model_bridge.supported_architectures.llama
+   transformer_lens.model_bridge.supported_architectures.llama4
+   transformer_lens.model_bridge.supported_architectures.llama4_multimodal
    transformer_lens.model_bridge.supported_architectures.llava
    transformer_lens.model_bridge.supported_architectures.llava_next
    transformer_lens.model_bridge.supported_architectures.llava_onevision
+   transformer_lens.model_bridge.supported_architectures.longt5
+   transformer_lens.model_bridge.supported_architectures.m2m100
    transformer_lens.model_bridge.supported_architectures.mamba
    transformer_lens.model_bridge.supported_architectures.mamba2
+   transformer_lens.model_bridge.supported_architectures.marian
+   transformer_lens.model_bridge.supported_architectures.mbart
    transformer_lens.model_bridge.supported_architectures.mingpt
+   transformer_lens.model_bridge.supported_architectures.minimax_m2
+   transformer_lens.model_bridge.supported_architectures.ministral3
    transformer_lens.model_bridge.supported_architectures.mistral
+   transformer_lens.model_bridge.supported_architectures.mistral3
    transformer_lens.model_bridge.supported_architectures.mixtral
+   transformer_lens.model_bridge.supported_architectures.modernbert_decoder
    transformer_lens.model_bridge.supported_architectures.mpt
+   transformer_lens.model_bridge.supported_architectures.music_flamingo
+   transformer_lens.model_bridge.supported_architectures.nanochat
    transformer_lens.model_bridge.supported_architectures.nanogpt
    transformer_lens.model_bridge.supported_architectures.native
    transformer_lens.model_bridge.supported_architectures.neel_solu_old
+   transformer_lens.model_bridge.supported_architectures.nemotron
    transformer_lens.model_bridge.supported_architectures.nemotron_h
    transformer_lens.model_bridge.supported_architectures.neo
    transformer_lens.model_bridge.supported_architectures.neox
    transformer_lens.model_bridge.supported_architectures.olmo
    transformer_lens.model_bridge.supported_architectures.olmo2
    transformer_lens.model_bridge.supported_architectures.olmo3
+   transformer_lens.model_bridge.supported_architectures.olmo_hybrid
    transformer_lens.model_bridge.supported_architectures.olmoe
+   transformer_lens.model_bridge.supported_architectures.openai_gpt
    transformer_lens.model_bridge.supported_architectures.openelm
    transformer_lens.model_bridge.supported_architectures.opt
+   transformer_lens.model_bridge.supported_architectures.ouro
+   transformer_lens.model_bridge.supported_architectures.pegasus
    transformer_lens.model_bridge.supported_architectures.phi
    transformer_lens.model_bridge.supported_architectures.phi3
    transformer_lens.model_bridge.supported_architectures.phimoe
+   transformer_lens.model_bridge.supported_architectures.pretrain
    transformer_lens.model_bridge.supported_architectures.qwen
    transformer_lens.model_bridge.supported_architectures.qwen2
+   transformer_lens.model_bridge.supported_architectures.qwen2_5_vl
+   transformer_lens.model_bridge.supported_architectures.qwen2_audio
+   transformer_lens.model_bridge.supported_architectures.qwen2_moe
    transformer_lens.model_bridge.supported_architectures.qwen3
    transformer_lens.model_bridge.supported_architectures.qwen3_5
+   transformer_lens.model_bridge.supported_architectures.qwen3_5_moe
    transformer_lens.model_bridge.supported_architectures.qwen3_5_multimodal
    transformer_lens.model_bridge.supported_architectures.qwen3_moe
    transformer_lens.model_bridge.supported_architectures.qwen3_next
+   transformer_lens.model_bridge.supported_architectures.qwen3_vl
+   transformer_lens.model_bridge.supported_architectures.qwen3_vl_moe
+   transformer_lens.model_bridge.supported_architectures.raven
+   transformer_lens.model_bridge.supported_architectures.recurrent_gemma
+   transformer_lens.model_bridge.supported_architectures.rwkv
+   transformer_lens.model_bridge.supported_architectures.rwkv7
+   transformer_lens.model_bridge.supported_architectures.seed_oss
    transformer_lens.model_bridge.supported_architectures.smollm3
    transformer_lens.model_bridge.supported_architectures.stablelm
+   transformer_lens.model_bridge.supported_architectures.starcoder2
+   transformer_lens.model_bridge.supported_architectures.switch_transformers
    transformer_lens.model_bridge.supported_architectures.t5
    transformer_lens.model_bridge.supported_architectures.t5gemma
+   transformer_lens.model_bridge.supported_architectures.t5gemma2
+   transformer_lens.model_bridge.supported_architectures.vaultgemma
    transformer_lens.model_bridge.supported_architectures.xglm
+   transformer_lens.model_bridge.supported_architectures.youtu
+   transformer_lens.model_bridge.supported_architectures.zamba2
 
 Module contents
 ---------------

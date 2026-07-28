@@ -1,0 +1,7 @@
+transformer\_lens.model\_bridge.supported\_architectures.m2m100 module
+======================================================================
+
+.. automodule:: transformer_lens.model_bridge.supported_architectures.m2m100
+   :members:
+   :undoc-members:
+   :show-inheritance:

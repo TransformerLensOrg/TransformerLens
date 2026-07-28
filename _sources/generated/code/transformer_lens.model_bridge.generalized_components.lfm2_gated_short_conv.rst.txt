@@ -1,0 +1,7 @@
+transformer\_lens.model\_bridge.generalized\_components.lfm2\_gated\_short\_conv module
+=======================================================================================
+
+.. automodule:: transformer_lens.model_bridge.generalized_components.lfm2_gated_short_conv
+   :members:
+   :undoc-members:
+   :show-inheritance:

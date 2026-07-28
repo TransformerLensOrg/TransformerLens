@@ -1,0 +1,7 @@
+transformer\_lens.model\_bridge.supported\_architectures.audio\_flamingo3 module
+================================================================================
+
+.. automodule:: transformer_lens.model_bridge.supported_architectures.audio_flamingo3
+   :members:
+   :undoc-members:
+   :show-inheritance:

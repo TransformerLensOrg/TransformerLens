@@ -1,0 +1,7 @@
+transformer\_lens.model\_bridge.generalized\_components.ssm\_protocol module
+============================================================================
+
+.. automodule:: transformer_lens.model_bridge.generalized_components.ssm_protocol
+   :members:
+   :undoc-members:
+   :show-inheritance:

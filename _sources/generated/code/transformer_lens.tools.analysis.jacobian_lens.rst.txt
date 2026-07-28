@@ -1,0 +1,7 @@
+transformer\_lens.tools.analysis.jacobian\_lens module
+======================================================
+
+.. automodule:: transformer_lens.tools.analysis.jacobian_lens
+   :members:
+   :undoc-members:
+   :show-inheritance:

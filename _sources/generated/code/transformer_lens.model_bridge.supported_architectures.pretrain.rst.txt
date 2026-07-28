@@ -1,0 +1,7 @@
+transformer\_lens.model\_bridge.supported\_architectures.pretrain module
+========================================================================
+
+.. automodule:: transformer_lens.model_bridge.supported_architectures.pretrain
+   :members:
+   :undoc-members:
+   :show-inheritance:

@@ -1,0 +1,7 @@
+transformer\_lens.model\_bridge.supported\_architectures.recurrent\_gemma module
+================================================================================
+
+.. automodule:: transformer_lens.model_bridge.supported_architectures.recurrent_gemma
+   :members:
+   :undoc-members:
+   :show-inheritance:

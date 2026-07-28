@@ -1,0 +1,7 @@
+transformer\_lens.model\_bridge.supported\_architectures.bitnet module
+======================================================================
+
+.. automodule:: transformer_lens.model_bridge.supported_architectures.bitnet
+   :members:
+   :undoc-members:
+   :show-inheritance:

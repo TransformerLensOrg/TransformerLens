@@ -62,12 +62,12 @@
             <button type="button" class="par run show_par button_toggle_par" value="par" data-shortcut="p" title="Toggle lines partially run">0<span class="text"> partial</span></button>
         </h2>
         <p class="text">
-            <a id="prevFileLink" class="nav" href="z_d0157ce994448472_mamba2_py.html">&#xab; prev</a> &nbsp; &nbsp;
+            <a id="prevFileLink" class="nav" href="z_d0157ce994448472_mbart_py.html">&#xab; prev</a> &nbsp; &nbsp;
             <a id="indexLink" class="nav" href="index.html">&Hat; index</a> &nbsp; &nbsp;
-            <a id="nextFileLink" class="nav" href="z_d0157ce994448472_mistral_py.html">&#xbb; next</a>
+            <a id="nextFileLink" class="nav" href="z_d0157ce994448472_minimax_m2_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-07-22 20:47 +0000
+            created at 2026-07-28 04:13 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -171,31 +171,31 @@
     <p class="run run2"><span class="n"><a id="t87" href="#t87">87</a></span><span class="t">                            <span class="str">"qkv"</span><span class="op">:</span> <span class="nam">LinearBridge</span><span class="op">(</span><span class="nam">name</span><span class="op">=</span><span class="str">"c_attn"</span><span class="op">)</span><span class="op">,</span>  <span class="com"># Combined QKV projection</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t88" href="#t88">88</a></span><span class="t">                            <span class="str">"o"</span><span class="op">:</span> <span class="nam">LinearBridge</span><span class="op">(</span><span class="nam">name</span><span class="op">=</span><span class="str">"c_proj"</span><span class="op">)</span><span class="op">,</span>  <span class="com"># Output projection</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t89" href="#t89">89</a></span><span class="t">                        <span class="op">}</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t90" href="#t90">90</a></span><span class="t">                    <span class="op">)</span><span class="op">,</span>  <span class="com"># Full attention module</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t90" href="#t90">90</a></span><span class="t">                    <span class="op">)</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t91" href="#t91">91</a></span><span class="t">                    <span class="str">"mlp"</span><span class="op">:</span> <span class="nam">MLPBridge</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t92" href="#t92">92</a></span><span class="t">                        <span class="nam">name</span><span class="op">=</span><span class="str">"mlp"</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t93" href="#t93">93</a></span><span class="t">                        <span class="nam">submodules</span><span class="op">=</span><span class="op">{</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t94" href="#t94">94</a></span><span class="t">                            <span class="str">"in"</span><span class="op">:</span> <span class="nam">LinearBridge</span><span class="op">(</span><span class="nam">name</span><span class="op">=</span><span class="str">"c_fc"</span><span class="op">)</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t95" href="#t95">95</a></span><span class="t">                            <span class="str">"out"</span><span class="op">:</span> <span class="nam">LinearBridge</span><span class="op">(</span><span class="nam">name</span><span class="op">=</span><span class="str">"c_proj"</span><span class="op">)</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t96" href="#t96">96</a></span><span class="t">                        <span class="op">}</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t97" href="#t97">97</a></span><span class="t">                    <span class="op">)</span><span class="op">,</span>  <span class="com"># Full MLP module</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t97" href="#t97">97</a></span><span class="t">                    <span class="op">)</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t98" href="#t98">98</a></span><span class="t">                <span class="op">}</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t99" href="#t99">99</a></span><span class="t">            <span class="op">)</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t100" href="#t100">100</a></span><span class="t">            <span class="str">"ln_final"</span><span class="op">:</span> <span class="nam">NormalizationBridge</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t101" href="#t101">101</a></span><span class="t">                <span class="nam">name</span><span class="op">=</span><span class="str">"transformer.ln_f"</span><span class="op">,</span> <span class="nam">config</span><span class="op">=</span><span class="nam">self</span><span class="op">.</span><span class="nam">cfg</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t102" href="#t102">102</a></span><span class="t">            <span class="op">)</span><span class="op">,</span>  <span class="com"># Final layer norm</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t103" href="#t103">103</a></span><span class="t">            <span class="str">"unembed"</span><span class="op">:</span> <span class="nam">UnembeddingBridge</span><span class="op">(</span><span class="nam">name</span><span class="op">=</span><span class="str">"lm_head"</span><span class="op">)</span><span class="op">,</span>  <span class="com"># Language model head</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t103" href="#t103">103</a></span><span class="t">            <span class="str">"unembed"</span><span class="op">:</span> <span class="nam">UnembeddingBridge</span><span class="op">(</span><span class="nam">name</span><span class="op">=</span><span class="str">"lm_head"</span><span class="op">)</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t104" href="#t104">104</a></span><span class="t">        <span class="op">}</span>&nbsp;</span><span class="r"></span></p>
 </main>
 <footer>
     <div class="content">
         <p>
-            <a class="nav" href="z_d0157ce994448472_mamba2_py.html">&#xab; prev</a> &nbsp; &nbsp;
+            <a class="nav" href="z_d0157ce994448472_mbart_py.html">&#xab; prev</a> &nbsp; &nbsp;
             <a class="nav" href="index.html">&Hat; index</a> &nbsp; &nbsp;
-            <a class="nav" href="z_d0157ce994448472_mistral_py.html">&#xbb; next</a>
+            <a class="nav" href="z_d0157ce994448472_minimax_m2_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-07-22 20:47 +0000
+            created at 2026-07-28 04:13 +0000
         </p>
     </div>
 </footer>

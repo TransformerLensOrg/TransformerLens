@@ -9,6 +9,7 @@ Submodules
 
    transformer_lens.tools.analysis.direct_logit_attribution
    transformer_lens.tools.analysis.direct_path_patching
+   transformer_lens.tools.analysis.jacobian_lens
 
 Module contents
 ---------------
