@@ -189,35 +189,23 @@ class TestViTBareModel:
         with torch.no_grad():
             vit_bare_bridge(pixel_values)  # must not raise
 
-    def test_forward_return_value_is_not_a_plain_tensor(self, vit_bare_bridge):
-        """KNOWN GAP — flagging, not necessarily desired behavior.
- 
+    def test_forward_returns_last_hidden_state_tensor(self, vit_bare_bridge):
+        """
         For a bare ViTModel, HF's own forward returns BaseModelOutputWithPooling,
-        which has no `.logits` and is NOT a tuple subclass. bridge.py's forward()
-        only special-cases `.logits` or `isinstance(output, tuple)` before
-        falling through to `logits = output` — so `bridge(pixel_values)` with
-        the default return_type="logits" currently returns the raw HF output
-        object, not a tensor. (Confirmed against transformers 5.8.1; this is a
-        general bridge.py behavior, not vision-specific, so it's worth
-        rechecking whether a later transformers release — e.g. 5.13.0 — changes
-        the shape of BaseModelOutputWithPooling in a way that affects this.)
- 
-        Per review discussion, the desired fix lives in bridge.py, not this
-        adapter, and there are two reasonable directions:
-          (a) fall back to `output.last_hidden_state` when return_type="logits"
-              but the output has no `.logits` attribute, or
-          (b) raise a clear, actionable error instead of returning the raw HF
-              output object silently.
-        This test currently pins the raw-object behavior as a known gap so a
-        bridge.py fix doesn't land silently unnoticed here. It should be
-        updated to assert whichever of (a)/(b) is chosen once bridge.py is
-        fixed, rather than left pinning the current gap indefinitely.
+        which has no `.logits` and is not a tuple subclass. bridge.py's forward()
+        now falls back to `output.last_hidden_state` in that case, so
+        return_type="logits" (the default) returns a plain tensor instead of the
+        raw HF output object. This mirrors the choice made for bare text encoders
+        that hit the same code path.
         """
         pixel_values = _pixel_values()
+        hf_model = vit_bare_bridge.original_model
         with torch.no_grad():
             output = vit_bare_bridge(pixel_values)
-        assert not isinstance(output, torch.Tensor)
-        assert hasattr(output, "last_hidden_state")
+            hf_out = hf_model(pixel_values).last_hidden_state
+        assert isinstance(output, torch.Tensor)
+        assert output.shape == hf_out.shape
+        assert torch.allclose(output, hf_out, atol=1e-4)
 
 
 # ---------------------------------------------------------------------------
