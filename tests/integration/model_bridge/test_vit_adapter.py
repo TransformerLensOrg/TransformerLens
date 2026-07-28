@@ -7,6 +7,10 @@ wrap-don't-reimplement behavior against real HF checkpoints:
   branch, which does `output = self.original_model(**kwargs)`)
 - Submodule hooks fire with expected shapes (embed, attn q/k/v/o, mlp in/out,
   ln_final, unembed/classifier)
+- cfg.n_ctx is derived correctly (196 patches + 1 CLS token = 197 for the
+  patch16-224 configs used below) by the generic image_size/patch_size
+  branch in sources/transformers.py's map_default_transformer_lens_config()
+  — the adapter itself has no n_ctx-specific override
 - DeiT's distillation token is invisible to the adapter (sequence length
   differs from ViT's by one extra token, entirely inside VisionEmbeddingsBridge)
 - Bare ViTModel (no classifier) return-value shape via return_type="logits"
