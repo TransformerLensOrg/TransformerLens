@@ -24,7 +24,7 @@ tests, no special marker needed, but expect the first run to be slow.
 
 import pytest
 import torch
-
+from transformers import ViTForImageClassification, ViTModel, DeiTModel
 from transformer_lens.model_bridge.bridge import TransformerBridge
 from transformer_lens.model_bridge.generalized_components.vision_classifier_head import (
     VisionClassifierHeadBridge,
@@ -42,11 +42,13 @@ def _pixel_values(batch: int = 1, image_size: int = 224) -> torch.Tensor:
 # ---------------------------------------------------------------------------
 # ViTForImageClassification (the "normal" case)
 # ---------------------------------------------------------------------------
-
-
 @pytest.fixture(scope="module")
 def vit_bridge():
-    return TransformerBridge.boot_transformers(MODEL_VIT_CLASSIFIER, device="cpu")
+    # Explicitly load the classification model to bypass boot_transformers auto-loader logic
+    hf_model = ViTForImageClassification.from_pretrained(MODEL_VIT_CLASSIFIER)
+    return TransformerBridge.boot_transformers(
+        MODEL_VIT_CLASSIFIER, hf_model=hf_model, device="cpu"
+    )
 
 
 class TestViTClassifierBridgeCreation:
@@ -155,11 +157,13 @@ class TestViTClassifierHookCoverage:
 # ---------------------------------------------------------------------------
 # Bare ViTModel (no classifier) — google/vit-base-patch16-224-in21k
 # ---------------------------------------------------------------------------
-
-
 @pytest.fixture(scope="module")
 def vit_bare_bridge():
-    return TransformerBridge.boot_transformers(MODEL_VIT_BARE, device="cpu")
+    # Explicitly load the bare model
+    hf_model = ViTModel.from_pretrained(MODEL_VIT_BARE)
+    return TransformerBridge.boot_transformers(
+        MODEL_VIT_BARE, hf_model=hf_model, device="cpu"
+    )
 
 
 class TestViTBareModel:
@@ -196,10 +200,6 @@ class TestViTBareModel:
 # ---------------------------------------------------------------------------
 # DeiTForImageClassification — distillation token must stay invisible
 # ---------------------------------------------------------------------------
-
-
-from transformers import DeiTModel
-
 # 1. Use the distilled checkpoint to actually test distillation token logic
 MODEL_DEIT_DISTILLED = "facebook/deit-small-distilled-patch16-224"
 
