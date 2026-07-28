@@ -844,7 +844,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         if not getattr(self.adapter, "supports_compatibility_mode", True):
             raise RuntimeError(
                 f"{type(self.adapter).__name__} does not support compatibility mode: "
-                "its stored-processed-weights forward is known to diverge from the "
+                "its stored-processed-weights  is known to diverge from the "
                 "reference model. Use the default bridge forward instead."
             )
 
@@ -1980,6 +1980,13 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                 logits = output.logits
             elif isinstance(output, tuple) and len(output) > 0:
                 logits = output[0]
+             elif hasattr(output, "last_hidden_state"):
+                # Bare encoder models (ViTModel, DeiTModel, BertModel, etc. without
+                # a task head) return e.g. BaseModelOutput/BaseModelOutputWithPooling,
+                # which has neither `.logits` nor tuple semantics. Fall back to
+                # `last_hidden_state` so return_type="logits" still yields a plain
+                # tensor rather than silently handing back the raw HF output object.
+                logits = output.last_hidden_state
             else:
                 logits = output
             if return_type == "logits":
