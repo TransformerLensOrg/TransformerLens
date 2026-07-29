@@ -69,6 +69,8 @@ AUDIO_ARCHITECTURES: set[str] = {
     "HubertForCTC",
     "HubertModel",
     "HubertForSequenceClassification",
+    "ASTModel",
+    "ASTForAudioClassification",
 }
 
 # Vision-only (non-multimodal, no text tower) encoder models. Split into the

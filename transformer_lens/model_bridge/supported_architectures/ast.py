@@ -1,3 +1,8 @@
+"""AST (Audio Spectrogram Transformer) architecture adapter.
+
+Supports both ASTModel (bare encoder) and ASTForAudioClassification
+"""
+
 from typing import Any
 
 from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion
@@ -19,6 +24,15 @@ from transformer_lens.model_bridge.generalized_components.base import (
 
 
 class ASTArchitectureAdapter(ArchitectureAdapter):
+    """Architecture adapter for AST (Audio Spectrogram Transformer) audio classifiers.
+
+    Input is a [batch, time=1024, n_mels=128] spectrogram; positions 0/1 are the
+    CLS and distillation tokens. HF pools (cls+dist)/2 after ln_final and applies
+    and extra LayerNorm inside the classifier head, see the unembed mapping note.
+    """
+
+    supports_generation: bool = False
+
     def __init__(self, cfg: Any) -> None:
         super().__init__(cfg)
 
@@ -61,15 +75,18 @@ class ASTArchitectureAdapter(ArchitectureAdapter):
             ),
         }
 
-        # V3 bridge pattern: hierarchical mapping using bridge components
-        self.component_mapping = {
-            "embed": GeneralizedComponent(name="audio_spectrogram_transformer.embeddings"),
-            "ln_final": NormalizationBridge(
-                name="audio_spectrogram_transformer.layernorm", config=self.cfg
-            ),
-            "unembed": UnembeddingBridge(name="classifier.dense"),
+        # default mapping for bare ASTModel (prefix="")
+        self.component_mapping = self._build_component_mapping(prefix="")
+
+    def _build_component_mapping(self, prefix: str) -> dict:
+        """Build component mapping. prefix="" for ASTModel, "audio_spectrogram_transformer." for classification."""
+        p = prefix
+
+        return {
+            "embed": GeneralizedComponent(name=f"{p}embeddings"),
+            "ln_final": NormalizationBridge(name=f"{p}layernorm", config=self.cfg),
             "blocks": BlockBridge(
-                name="audio_spectrogram_transformer.layers",
+                name=f"{p}layers",
                 submodules={
                     "ln1": NormalizationBridge(name="layernorm_before", config=self.cfg),
                     "ln2": NormalizationBridge(name="layernorm_after", config=self.cfg),
@@ -96,8 +113,29 @@ class ASTArchitectureAdapter(ArchitectureAdapter):
         }
 
     def prepare_model(self, hf_model: Any) -> None:
-        # hook to access the live Huggingface model before boot
-        # calculate n_ctx dynamically from the instantiated position embeddings
-        self.cfg.n_ctx = (
-            hf_model.audio_spectrogram_transformer.embeddings.position_embeddings.shape[1]
-        )
+        """Detect classification head, rebind prefixes, guard unembed, and set n_ctx."""
+        # 1. handle classification model vs bare encoder
+        if hasattr(hf_model, "audio_spectrogram_transformer"):
+            self.component_mapping = self._build_component_mapping(
+                prefix="audio_spectrogram_transformer."
+            )
+            base_model = hf_model.audio_spectrogram_transformer
+
+            # guard unembed: only map if num_labls > 0 and dense head is real
+            num_labels = getattr(hf_model.config, "num_labels", 0)
+            if (
+                num_labels > 0
+                and hasattr(hf_model, "classifier")
+                and hasattr(hf_model.classifier, "dense")
+            ):
+                self.component_mapping["unembed"] = UnembeddingBridge(name="classifier.dense")
+                self.cfg.d_vocab = num_labels
+                self.cfg.d_vocab_out = num_labels
+        else:
+            base_model = hf_model
+
+        # 2. dynamically grab n_ctx from whatever base model we resolved
+        if hasattr(base_model, "embeddings") and hasattr(
+            base_model.embeddings, "position_embeddings"
+        ):
+            self.cfg.n_ctx = base_model.embeddings.position_embeddings.shape[1]
