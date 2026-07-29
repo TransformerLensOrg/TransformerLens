@@ -106,6 +106,9 @@ class DreamArchitectureAdapter(Qwen2ArchitectureAdapter):
     # schedule as a mixin method whose per-step forward goes through __call__,
     # so bridge hooks fire during sampling.
     native_sampler: str = "diffusion_generate"
+    # Delegated attention computes rotary inside HF; nothing to wire.
+    _testing_eager = None
+    _testing_wire_rotary = False
 
     def native_sampler_kwargs(self, max_new_tokens: int, prompt_len: int) -> dict:
         """Dream denoises a fixed-length canvas; one step per token is its default ratio."""
@@ -146,6 +149,3 @@ class DreamArchitectureAdapter(Qwen2ArchitectureAdapter):
         except Exception:
             pass
         super().prepare_loading(model_name, model_kwargs)
-
-    def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Delegated attention computes rotary inside HF; nothing to wire."""

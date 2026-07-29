@@ -82,6 +82,24 @@ def gpt2_hooked_processed():
     return HookedTransformer.from_pretrained("gpt2", device="cpu")
 
 
+@pytest.fixture(scope="session")
+def gpt2_bridge():
+    """TransformerBridge wrapping gpt2 (no compatibility mode). Read-only use only."""
+    from transformer_lens.model_bridge import TransformerBridge
+
+    return TransformerBridge.boot_transformers("gpt2", device="cpu")
+
+
+@pytest.fixture(scope="session")
+def gpt2_bridge_compat():
+    """TransformerBridge wrapping gpt2 with compatibility mode enabled. Read-only use only."""
+    from transformer_lens.model_bridge import TransformerBridge
+
+    bridge = TransformerBridge.boot_transformers("gpt2", device="cpu")
+    bridge.enable_compatibility_mode()
+    return bridge
+
+
 def pytest_sessionfinish(session, exitstatus):
     """Clean up at the end of test session."""
     if torch.cuda.is_available():

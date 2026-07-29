@@ -86,6 +86,8 @@ class OuroArchitectureAdapter(ArchitectureAdapter):
     ProcessWeights._safe_get_tensor() or by checking for None values.
     """
 
+    _testing_eager = None
+
     def __init__(self, cfg: Any) -> None:
         """Initialize the Ouro architecture adapter."""
         super().__init__(cfg)
@@ -200,28 +202,3 @@ class OuroArchitectureAdapter(ArchitectureAdapter):
                     rope_class.compute_default_rope_parameters = staticmethod(
                         _compute_default_rope_parameters
                     )
-
-    def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Set up rotary embedding references for Ouro component testing.
-
-        Ouro uses RoPE (Rotary Position Embeddings) with a single shared
-        ``model.rotary_emb``. We set the rotary_emb reference on all attention
-        bridge instances for component testing.
-
-        Args:
-            hf_model: The HuggingFace Ouro model instance
-            bridge_model: The TransformerBridge model (if available, set rotary_emb on actual instances)
-        """
-        # Get rotary embedding instance from the model
-        rotary_emb = hf_model.model.rotary_emb
-
-        # Set rotary_emb on actual bridge instances in bridge_model if available
-        if bridge_model is not None and hasattr(bridge_model, "blocks"):
-            # Set on each layer's actual attention bridge instance
-            for block in bridge_model.blocks:
-                if hasattr(block, "attn"):
-                    block.attn.set_rotary_emb(rotary_emb)
-
-        # Also set on the template for get_generalized_component() calls
-        attn_bridge = self.get_generalized_component("blocks.0.attn")
-        attn_bridge.set_rotary_emb(rotary_emb)

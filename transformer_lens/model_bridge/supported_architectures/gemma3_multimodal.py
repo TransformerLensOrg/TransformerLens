@@ -30,6 +30,9 @@ from transformer_lens.model_bridge.generalized_components import (
 from transformer_lens.model_bridge.generalized_components.position_embeddings_attention import (
     PositionEmbeddingsAttentionBridge,
 )
+from transformer_lens.model_bridge.supported_architectures.gemma3 import (
+    _enable_native_qk_norm_autograd,
+)
 
 
 class Gemma3MultimodalArchitectureAdapter(ArchitectureAdapter):
@@ -158,12 +161,4 @@ class Gemma3MultimodalArchitectureAdapter(ArchitectureAdapter):
     def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
         """Wire rotary + eager, then enable native autograd on the Q/K norms."""
         super().setup_component_testing(hf_model, bridge_model)
-        if bridge_model is not None and hasattr(bridge_model, "blocks"):
-            for block in bridge_model.blocks:
-                hf_attn = getattr(getattr(block, "attn", None), "original_component", None)
-                if hf_attn is None:
-                    continue
-                if hasattr(hf_attn, "q_norm"):
-                    hf_attn.q_norm.use_native_layernorm_autograd = True
-                if hasattr(hf_attn, "k_norm"):
-                    hf_attn.k_norm.use_native_layernorm_autograd = True
+        _enable_native_qk_norm_autograd(bridge_model)

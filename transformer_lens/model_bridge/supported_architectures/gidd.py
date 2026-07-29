@@ -64,6 +64,9 @@ class GiddArchitectureAdapter(ArchitectureAdapter):
     # ScaledLinear applies a runtime weight scale; folding norms into those
     # projections (or centering through scaled residual adds) is unsound.
     supports_fold_ln = False
+    # Delegated attention reads the rotary buffer inside HF; nothing to wire.
+    _testing_eager = None
+    _testing_wire_rotary = False
 
     def native_sampler_kwargs(self, max_new_tokens: int, prompt_len: int) -> dict:
         """Gidd's max_length counts generated tokens: its windows start at
@@ -158,6 +161,3 @@ class GiddArchitectureAdapter(ArchitectureAdapter):
         """Restore the rotary table lost to meta-device loading."""
         super().prepare_model(hf_model)
         restore_frequencies(hf_model)
-
-    def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Delegated attention reads the rotary buffer inside HF; nothing to wire."""

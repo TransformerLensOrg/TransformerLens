@@ -127,8 +127,6 @@ class TestExaoneRegistration:
         assert determine_architecture_from_hf_config(cfg) == "ExaoneForCausalLM"
 
     def test_verify_models_grants_remote_code_to_lgai(self):
-        from transformer_lens.tools.model_registry import (
-            REMOTE_CODE_MODEL_PREFIXES,
-        )
+        from transformer_lens.tools.model_registry import REMOTE_CODE_MODEL_PREFIXES
 
         assert "LGAI-EXAONE/" in REMOTE_CODE_MODEL_PREFIXES

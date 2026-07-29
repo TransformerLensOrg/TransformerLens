@@ -475,6 +475,36 @@ class TestApi:
         assert api.is_model_supported("openai-community/gpt2")
         assert not api.is_model_supported("nonexistent/model")
 
+    def test_is_architecture_supported_resolves_hub_casing_alias(
+        self, registry_data_dir, monkeypatch
+    ):
+        """Hub configs report JetMoEForCausalLM; rows key the transformers casing."""
+        from transformer_lens.tools.model_registry import api
+
+        data_file = registry_data_dir / "supported_models.json"
+        data = json.loads(data_file.read_text())
+        data["models"].append(
+            {
+                "architecture_id": "JetMoeForCausalLM",
+                "model_id": "jetmoe/jetmoe-8b",
+                "status": 1,
+                "verified_date": "2026-01-01",
+                "metadata": None,
+                "note": None,
+                "phase1_score": 100.0,
+                "phase2_score": 100.0,
+                "phase3_score": 100.0,
+            }
+        )
+        data_file.write_text(json.dumps(data))
+
+        monkeypatch.setattr(api, "_DATA_DIR", registry_data_dir)
+        api.clear_cache()
+
+        assert api.is_architecture_supported("JetMoeForCausalLM")
+        assert api.is_architecture_supported("JetMoEForCausalLM")
+        assert not api.is_architecture_supported("SomeUnknownModel")
+
     def test_get_registry_stats(self, registry_data_dir, monkeypatch):
         from transformer_lens.tools.model_registry import api
 
@@ -957,6 +987,14 @@ class TestRegistrySyncedWithFactory:
             "NeoXForCausalLM",  # HF emits: GPTNeoXForCausalLM
         }
     )
+
+    # Not excludes, but a related category: architectures in both registry sets
+    # whose Hub checkpoints report a DIFFERENT arch string, so the scraper finds
+    # zero rows for them. DeiTModel / DeiTForImageClassification are the current
+    # cases — non-distilled facebook/deit-* configs report ViTForImageClassification,
+    # and distilled ones report DeiTForImageClassificationWithTeacher, which the
+    # ViT adapter refuses (unbridged distillation token). Zero rows is correct;
+    # do not fabricate registry entries to fill the gap.
 
     def test_every_factory_arch_is_in_hf_supported(self):
         """Every non-excluded factory key must be present in HF_SUPPORTED_ARCHITECTURES."""

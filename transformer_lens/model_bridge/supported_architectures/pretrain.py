@@ -42,7 +42,6 @@ import torch
 
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
-from transformer_lens.model_bridge.bridge import TransformerBridge
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     DelegatedAttentionBlockBridge,
@@ -56,6 +55,7 @@ from transformer_lens.model_bridge.generalized_components import (
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
+from transformer_lens.model_bridge.transformer_bridge import TransformerBridge
 
 ARCHITECTURE_NAME = "TransformerLensPretrain"
 

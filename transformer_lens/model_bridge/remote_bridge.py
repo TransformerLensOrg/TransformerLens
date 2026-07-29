@@ -115,6 +115,7 @@ class RemoteBridge(BridgeCore, HookIntrospectionMixin):
             logits,
             kwargs.get("input_ids"),
             is_audio_model=getattr(self.cfg, "is_audio_model", False),
+            is_visual_model=getattr(self.cfg, "is_visual_model", False),
             loss_per_token=loss_per_token,
         )
 

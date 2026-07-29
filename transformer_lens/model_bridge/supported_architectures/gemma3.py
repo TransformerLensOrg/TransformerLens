@@ -27,6 +27,21 @@ from transformer_lens.model_bridge.generalized_components.position_embeddings_at
 )
 
 
+def _enable_native_qk_norm_autograd(bridge_model: Any) -> None:
+    """Component tests grad-check through the wrapped Q/K norms; delegate them
+    to HF's native layernorm autograd (shared by text and multimodal Gemma-3)."""
+    if bridge_model is None or not hasattr(bridge_model, "blocks"):
+        return
+    for block in bridge_model.blocks:
+        hf_attn = getattr(getattr(block, "attn", None), "original_component", None)
+        if hf_attn is None:
+            continue
+        if hasattr(hf_attn, "q_norm"):
+            hf_attn.q_norm.use_native_layernorm_autograd = True
+        if hasattr(hf_attn, "k_norm"):
+            hf_attn.k_norm.use_native_layernorm_autograd = True
+
+
 class Gemma3ArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for Gemma3 models."""
 
@@ -143,14 +158,4 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
         instance across all layers (layers on global RoPE accept the tradeoff).
         """
         super().setup_component_testing(hf_model, bridge_model)
-        if bridge_model is not None and hasattr(bridge_model, "blocks"):
-            for block in bridge_model.blocks:
-                hf_attn = getattr(block, "attn", None) and getattr(
-                    block.attn, "original_component", None
-                )
-                if hf_attn is None:
-                    continue
-                if hasattr(hf_attn, "q_norm"):
-                    hf_attn.q_norm.use_native_layernorm_autograd = True
-                if hasattr(hf_attn, "k_norm"):
-                    hf_attn.k_norm.use_native_layernorm_autograd = True
+        _enable_native_qk_norm_autograd(bridge_model)

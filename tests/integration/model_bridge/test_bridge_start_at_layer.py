@@ -130,5 +130,23 @@ def test_state_cleaned_up_after_start_at_layer(bridge):
     assert torch.allclose(bridge.forward(tokens), full_logits, atol=1e-4)
 
 
+def test_vision_model_start_at_layer_raises():
+    """Vision forwards route inputs_embeds-shaped tensors into pixel_values;
+    the residual re-entry path must refuse before that unpack (download-free fake)."""
+    from types import SimpleNamespace
+
+    from transformer_lens.model_bridge.transformer_bridge import TransformerBridge
+
+    class _FakeVisionBridge(TransformerBridge):
+        """Bypass the heavy __init__; the real forward hits the guard first."""
+
+        def __init__(self):
+            self.cfg = SimpleNamespace(is_visual_model=True)
+
+    residual = torch.randn(1, 4, 8)
+    with pytest.raises(NotImplementedError, match="not supported for vision models"):
+        _FakeVisionBridge().forward(residual, start_at_layer=0)
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

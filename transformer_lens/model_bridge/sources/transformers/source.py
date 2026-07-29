@@ -517,4 +517,19 @@ def boot(
         except Exception:
             pass
 
+    # Vision models: load the image processor.
+    if getattr(adapter.cfg, "is_visual_model", False):
+        try:
+            from transformers import AutoImageProcessor
+
+            huggingface_token = os.environ.get("HF_TOKEN", "")
+            token_arg = huggingface_token if len(huggingface_token) > 0 else None
+            bridge.processor = AutoImageProcessor.from_pretrained(
+                model_name,
+                token=token_arg,
+                trust_remote_code=trust_remote_code,
+            )
+        except Exception:
+            pass
+
     return bridge

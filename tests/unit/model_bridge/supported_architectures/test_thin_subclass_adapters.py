@@ -1,10 +1,11 @@
-"""Unit tests for the four Tier-2 thin-subclass adapters.
+"""Unit tests for the Tier-2 thin-subclass adapters.
 
 Each wraps an architecture whose module tree matches an already-verified
 parent: Youtu = dense-MLA DeepSeek-V2, Jais2 = Nemotron (plain LayerNorm,
 so folding stays enabled), Ministral3 = Mistral (plus a llama-4 positional
 query scale the attention bridge applies from rope_parameters), VaultGemma
-= Gemma 2 minus the post-norms.
+= Gemma 2 minus the post-norms, MusicFlamingo = Audio Flamingo 3 plus a
+delegated rotary temporal embedding.
 """
 from typing import Any
 
@@ -26,6 +27,9 @@ from transformer_lens.model_bridge.supported_architectures.ministral3 import (
 )
 from transformer_lens.model_bridge.supported_architectures.mistral import (
     MistralArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.music_flamingo import (
+    MusicFlamingoArchitectureAdapter,
 )
 from transformer_lens.model_bridge.supported_architectures.nemotron import (
     NemotronArchitectureAdapter,
@@ -76,3 +80,7 @@ def test_factory_registrations():
     assert SUPPORTED_ARCHITECTURES["Jais2ForCausalLM"] is Jais2ArchitectureAdapter
     assert SUPPORTED_ARCHITECTURES["Ministral3ForCausalLM"] is Ministral3ArchitectureAdapter
     assert SUPPORTED_ARCHITECTURES["VaultGemmaForCausalLM"] is VaultGemmaArchitectureAdapter
+    assert (
+        SUPPORTED_ARCHITECTURES["MusicFlamingoForConditionalGeneration"]
+        is MusicFlamingoArchitectureAdapter
+    )

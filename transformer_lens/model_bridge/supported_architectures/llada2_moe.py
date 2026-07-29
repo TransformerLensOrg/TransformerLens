@@ -61,6 +61,9 @@ class LLaDA2MoeArchitectureAdapter(ArchitectureAdapter):
     native_sampler: str = "generate"
     # Fused query_key_value with no per-projection conversions to fold into.
     supports_fold_ln = False
+    # Delegated attention computes rotary inside HF; nothing to wire.
+    _testing_eager = None
+    _testing_wire_rotary = False
 
     def native_sampler_kwargs(self, max_new_tokens: int, prompt_len: int) -> dict:
         """gen_length must cover whole blocks; block_length caps at the budget."""
@@ -163,6 +166,3 @@ class LLaDA2MoeArchitectureAdapter(ArchitectureAdapter):
 
         model.register_forward_pre_hook(_mask_guard, with_kwargs=True)
         model._llada2_mask_guard = True
-
-    def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Delegated attention computes rotary inside HF; nothing to wire."""
