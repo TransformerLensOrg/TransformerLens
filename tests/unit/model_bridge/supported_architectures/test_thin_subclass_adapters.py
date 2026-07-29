@@ -84,3 +84,51 @@ def test_factory_registrations():
         SUPPORTED_ARCHITECTURES["MusicFlamingoForConditionalGeneration"]
         is MusicFlamingoArchitectureAdapter
     )
+
+
+# Internal-only adapters (never on the Hub; the class-level counterpart of
+# INTENTIONAL_EXCLUDES group 1 in tests/unit/tools/test_model_registry.py) are
+# exempt from the per-adapter unit-coverage requirement. Keyed by adapter
+# module basename so this file's own source never contains the class names the
+# scanner looks for.
+_COVERAGE_EXEMPT_MODULES = {"mingpt", "nanogpt", "native", "neel_solu_old"}
+
+
+def _adapter_coverage() -> list[tuple[str, str, bool]]:
+    """(class name, module basename, referenced-by-any-test-file) for every
+    registered adapter class."""
+    from pathlib import Path
+
+    sources = [p.read_text() for p in Path(__file__).parent.glob("test_*.py")]
+    rows = []
+    for cls in sorted(set(SUPPORTED_ARCHITECTURES.values()), key=lambda c: c.__name__):
+        module = cls.__module__.rsplit(".", 1)[-1]
+        rows.append((cls.__name__, module, any(cls.__name__ in s for s in sources)))
+    return rows
+
+
+def test_every_registered_adapter_has_unit_coverage():
+    """Derived from the factory so a new adapter — thin subclass or not — cannot
+    ship without a unit test referencing it (the silent gap this file's hand
+    enumeration used to allow)."""
+    missing = [
+        name
+        for name, module, covered in _adapter_coverage()
+        if not covered and module not in _COVERAGE_EXEMPT_MODULES
+    ]
+    assert not missing, (
+        f"Registered adapters with no unit test coverage: {missing}. Add a "
+        "test file (copy a sibling) or a bespoke test in this file."
+    )
+
+
+def test_coverage_exemptions_are_still_uncovered():
+    """Self-cleaning: once an exempt adapter gains coverage, drop the exemption."""
+    stale = [
+        module
+        for name, module, covered in _adapter_coverage()
+        if covered and module in _COVERAGE_EXEMPT_MODULES
+    ]
+    assert (
+        not stale
+    ), f"Exempt adapter modules now have coverage; remove from _COVERAGE_EXEMPT_MODULES: {stale}"
