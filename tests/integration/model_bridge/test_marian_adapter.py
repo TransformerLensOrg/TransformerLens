@@ -5,6 +5,7 @@ import math
 import pytest
 import torch
 
+from tests.integration.model_bridge.helpers import make_tiny_pair
 from transformer_lens.model_bridge.bridge import TransformerBridge
 
 MODEL = "Helsinki-NLP/opus-mt-en-de"
@@ -190,13 +191,15 @@ class TestMarianGeneration:
 
 def _tiny_marian_pair():
     """Seeded tiny Marian with a trained-style nonzero final_logits_bias."""
-    import copy
-
     from transformers import MarianConfig, MarianMTModel
 
-    from transformer_lens.model_bridge.sources._bridge_builder import (
-        build_bridge_from_module,
-    )
+    def _loader(c):
+        # final_logits_bias is a persistent buffer, so ref's normal_() draw
+        # reaches hf via make_tiny_pair's state_dict copy.
+        model = MarianMTModel(c)
+        with torch.no_grad():
+            model.final_logits_bias.normal_()
+        return model
 
     cfg = MarianConfig(
         vocab_size=128,
@@ -213,17 +216,7 @@ def _tiny_marian_pair():
         eos_token_id=2,
         decoder_start_token_id=2,
     )
-    cfg._attn_implementation = "eager"
-    torch.manual_seed(42)
-    ref = MarianMTModel(cfg).eval()
-    with torch.no_grad():
-        ref.final_logits_bias.normal_()
-    hf = MarianMTModel(copy.deepcopy(cfg)).eval()
-    hf.load_state_dict(ref.state_dict())
-    bridge = build_bridge_from_module(
-        hf, "MarianMTModel", hf_config=copy.deepcopy(cfg), tokenizer=None, device="cpu"
-    ).eval()
-    return bridge, ref
+    return make_tiny_pair(cfg, "MarianMTModel", loader=_loader)
 
 
 class TestMarianBiasFoldTiny:

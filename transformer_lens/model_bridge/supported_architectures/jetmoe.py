@@ -45,6 +45,9 @@ class JetMoeArchitectureAdapter(ArchitectureAdapter):
     # TopKGating's forward sorts/scatters expert assignments and crashes on
     # the harness's isolated probes; routers stay hookable at runtime.
     component_test_skip_suffixes = ("mlp.gate", "attn.experts.router")
+    # Delegated attention computes rotary inside HF; nothing to wire.
+    _testing_eager = None
+    _testing_wire_rotary = False
 
     def __init__(self, cfg: Any) -> None:
         """Initialize the JetMoE architecture adapter."""
@@ -92,6 +95,3 @@ class JetMoeArchitectureAdapter(ArchitectureAdapter):
             "ln_final": RMSNormalizationBridge(name="model.norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head"),
         }
-
-    def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Delegated attention computes rotary inside HF; nothing to wire."""

@@ -38,6 +38,9 @@ class LagunaArchitectureAdapter(ArchitectureAdapter):
 
     # Per-layer head counts: no uniform "(n h) m -> n m h" reshape exists.
     supports_fold_ln = False
+    # Delegated attention computes rotary inside HF; nothing to wire.
+    _testing_eager = None
+    _testing_wire_rotary = False
 
     def __init__(self, cfg: Any) -> None:
         """Initialize the Laguna architecture adapter."""
@@ -91,9 +94,6 @@ class LagunaArchitectureAdapter(ArchitectureAdapter):
             "ln_final": RMSNormalizationBridge(name="model.norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head"),
         }
-
-    def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Delegated attention computes rotary inside HF; nothing to wire."""
 
     def prepare_loading(self, model_name: str, model_kwargs: dict) -> None:
         """User-register Laguna's native conversion mapping so the per-expert->batched

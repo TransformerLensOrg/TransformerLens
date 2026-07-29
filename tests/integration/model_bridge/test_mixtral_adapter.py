@@ -6,19 +6,15 @@ where the sparse block moved from layer.block_sparse_moe to layer.mlp —
 component setup fails outright if the mapping goes stale again.
 """
 
-import copy
-
 import torch
+
+from tests.integration.model_bridge.helpers import make_tiny_pair
 
 MODEL_VOCAB = 128
 
 
 def _tiny_mixtral_pair():
-    from transformers import AutoModelForCausalLM, MixtralConfig
-
-    from transformer_lens.model_bridge.sources._bridge_builder import (
-        build_bridge_from_module,
-    )
+    from transformers import MixtralConfig
 
     cfg = MixtralConfig(
         vocab_size=MODEL_VOCAB,
@@ -34,16 +30,7 @@ def _tiny_mixtral_pair():
         bos_token_id=1,
         eos_token_id=2,
     )
-    cfg._attn_implementation = "eager"
-
-    torch.manual_seed(42)
-    ref = AutoModelForCausalLM.from_config(cfg).eval()
-    hf = AutoModelForCausalLM.from_config(copy.deepcopy(cfg)).eval()
-    hf.load_state_dict(ref.state_dict())
-    bridge = build_bridge_from_module(
-        hf, "MixtralForCausalLM", hf_config=copy.deepcopy(cfg), tokenizer=None, device="cpu"
-    ).eval()
-    return bridge, ref
+    return make_tiny_pair(cfg, "MixtralForCausalLM")
 
 
 class TestMixtralBridge:

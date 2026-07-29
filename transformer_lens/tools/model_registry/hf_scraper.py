@@ -5,10 +5,15 @@ This module queries the HuggingFace Hub API to find ALL models and categorize
 them by architecture - those supported by TransformerLens and those not yet supported.
 
 The scraper works by:
-1. Scanning ALL text-generation models on HuggingFace (paginated)
+1. Scanning ALL models for one HF task tag per run (paginated; default: text-generation)
 2. Extracting the architecture class from each model's config
 3. Categorizing models into supported vs unsupported based on TransformerLens adapters
 4. Building comprehensive lists for both categories
+
+Sequential runs MERGE (existing rows and gap entries are preserved), so a full
+registry refresh is layered task passes: text-generation, then text2text-generation
+(T5/mT5), then the vision passes image-classification and image-feature-extraction
+(ViT/DeiT).
 
 Output format matches the schemas defined in schemas.py exactly, so the data
 files can be loaded by api.py without any transformation.
@@ -20,6 +25,10 @@ Usage:
     # Targeted scrape: only models of a specific architecture
     python -m transformer_lens.tools.model_registry.hf_scraper \\
         --architecture LlamaForCausalLM --full-scan
+
+    # Vision pass: layer image-task models onto a prior text-generation scan
+    python -m transformer_lens.tools.model_registry.hf_scraper \\
+        --task image-classification --full-scan
 
     # Quick scan (top N models by downloads)
     python -m transformer_lens.tools.model_registry.hf_scraper --limit 10000
@@ -37,7 +46,11 @@ from pathlib import Path
 from typing import Optional
 
 from . import HF_SUPPORTED_ARCHITECTURES
-from .registry_io import is_quantized_model
+from .registry_io import (
+    STATUS_UNVERIFIED,
+    is_quantized_model,
+    recompute_registry_totals,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -137,9 +150,9 @@ def _load_existing_models(output_dir: Path) -> tuple[set[str], list[dict]]:
 def _load_existing_gaps(output_dir: Path) -> dict[str, dict]:
     """Load existing per-architecture gap entries keyed by architecture_id.
 
-    Lets a new scrape merge instead of overwrite — without this, the second of two
-    sequential scrapes (e.g. text-generation then text2text-generation) wipes the
-    first run's gap data.
+    Lets a new scrape merge instead of overwrite — without this, each later pass of a
+    sequential multi-task run (text-generation, then text2text-generation, then the
+    image tasks) wipes the earlier passes' gap data.
     """
     gaps_path = output_dir / "architecture_gaps.json"
     by_arch: dict[str, dict] = {}
@@ -163,7 +176,7 @@ def _build_model_entry(model_id: str, architecture_id: str) -> dict:
     return {
         "architecture_id": architecture_id,
         "model_id": model_id,
-        "status": 0,
+        "status": STATUS_UNVERIFIED,
         "verified_date": None,
         "metadata": None,
         "note": None,
@@ -173,6 +186,7 @@ def _build_model_entry(model_id: str, architecture_id: str) -> dict:
         "phase4_score": None,
         "phase7_score": None,
         "phase8_score": None,
+        "phase9_score": None,
     }
 
 
@@ -258,7 +272,10 @@ def scrape_all_models(
     Args:
         output_dir: Directory to write JSON data files
         max_models: Maximum NEW models to scan (None = unlimited/all)
-        task: HuggingFace task filter (default: text-generation)
+        task: HuggingFace task tag to filter by (default: text-generation). Sequential
+            runs merge, so layer extra passes for non-text architectures:
+            ``text2text-generation`` (T5/mT5), ``image-classification`` and
+            ``image-feature-extraction`` (ViT/DeiT).
         batch_size: Log progress every N models
         checkpoint_interval: Save checkpoint every N models
         min_downloads: Minimum download count to include a model (default: 500)
@@ -552,17 +569,6 @@ def scrape_all_models(
     logger.info(f"Total supported models: {len(supported_models)}")
     logger.info(f"Unsupported architectures found: {len(unsupported_arch_counts)}")
 
-    # Count unique supported architectures and verified/provisional models
-    supported_arch_ids: set[str] = set()
-    total_verified = 0
-    total_provisional = 0
-    for model in supported_models:
-        supported_arch_ids.add(model["architecture_id"])
-        if model.get("status", 0) == 1:
-            total_verified += 1
-        elif model.get("status", 0) == 4:
-            total_provisional += 1
-
     # Build scan info (shared by both reports)
     scan_info = {
         "total_scanned": scanned,
@@ -572,13 +578,11 @@ def scrape_all_models(
     }
 
     # Build supported models report dict (for return value)
+    registry_totals = recompute_registry_totals(supported_models)
     supported_report = {
         "generated_at": date.today().isoformat(),
         "scan_info": scan_info,
-        "total_architectures": len(supported_arch_ids),
-        "total_models": len(supported_models),
-        "total_verified": total_verified,
-        "total_provisional": total_provisional,
+        **registry_totals,
         "models": supported_models,
     }
 
@@ -603,8 +607,8 @@ def scrape_all_models(
         for arch, count in unsupported_arch_counts.items()
     ]
 
-    # Merge with gaps from prior scrapes so a sequential text-generation +
-    # text2text-generation run doesn't lose the first pass's data. For overlapping
+    # Merge with gaps from prior scrapes so sequential task passes (text-generation
+    # + text2text-generation + image tasks) don't lose earlier data. For overlapping
     # architectures, sum counts/downloads, take the smaller min_param_count, and
     # union sample_models (capped at 10).
     existing_gaps = _load_existing_gaps(output_dir)
@@ -699,7 +703,7 @@ def scrape_all_models(
     logger.info("SCAN SUMMARY")
     logger.info("=" * 70)
     logger.info(f"Total models scanned: {scanned}")
-    logger.info(f"\nSUPPORTED ARCHITECTURES ({len(supported_arch_ids)}):")
+    logger.info(f"\nSUPPORTED ARCHITECTURES ({registry_totals['total_architectures']}):")
 
     # Count models per supported architecture
     supported_arch_counts: dict[str, int] = {}
@@ -769,6 +773,10 @@ Examples:
     python -m transformer_lens.tools.model_registry.hf_scraper \\
         --architecture LlamaForCausalLM --full-scan
 
+    # Vision pass: layer image-task models onto the existing registry
+    python -m transformer_lens.tools.model_registry.hf_scraper \\
+        --task image-classification --full-scan
+
     # Quick scan of top 10,000 models by downloads
     python -m transformer_lens.tools.model_registry.hf_scraper --limit 10000
 
@@ -801,7 +809,9 @@ Examples:
         "--task",
         type=str,
         default="text-generation",
-        help="HuggingFace task to filter by (default: text-generation)",
+        help="HuggingFace task tag to filter by (default: text-generation). Sequential "
+        "runs merge, so layer extra passes: text2text-generation for seq2seq (T5/mT5), "
+        "image-classification and image-feature-extraction for vision (ViT/DeiT).",
     )
     parser.add_argument(
         "--checkpoint-interval",

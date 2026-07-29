@@ -26,6 +26,11 @@ from transformer_lens.model_bridge.generalized_components import (
     RMSNormalizationBridge,
     UnembeddingBridge,
 )
+from transformer_lens.model_bridge.supported_architectures._remote_code_compat import (
+    disable_tied_weights_lookup,
+    force_import_remote_class,
+    patch_init_weights_skip_loaded,
+)
 
 
 def restore_frequencies(hf_model: Any) -> bool:
@@ -57,11 +62,16 @@ class GiddArchitectureAdapter(ArchitectureAdapter):
 
     applicable_phases: list[int] = [1, 2, 3, 4]
     supports_generation: bool = False
+    # Bidirectional masked-denoising objective; shifted causal CE is undefined.
+    supports_causal_loss: bool = False
     # Block-wise denoising with self-correction, shipped on the model class.
     native_sampler: str = "generate"
     # ScaledLinear applies a runtime weight scale; folding norms into those
     # projections (or centering through scaled residual adds) is unsound.
     supports_fold_ln = False
+    # Delegated attention reads the rotary buffer inside HF; nothing to wire.
+    _testing_eager = None
+    _testing_wire_rotary = False
 
     def native_sampler_kwargs(self, max_new_tokens: int, prompt_len: int) -> dict:
         """Gidd's max_length counts generated tokens: its windows start at
@@ -76,12 +86,7 @@ class GiddArchitectureAdapter(ArchitectureAdapter):
         """Initialize the Gidd architecture adapter."""
         super().__init__(cfg)
 
-        self.cfg.normalization_type = "RMS"
-        self.cfg.uses_rms_norm = True
-        self.cfg.positional_embedding_type = "rotary"
-        self.cfg.gated_mlp = False  # ungated up/down MLP
-        self.cfg.attn_only = False
-        self.cfg.final_rms = True
+        self._set_rms_rotary_defaults(gated=False)
 
         self.weight_processing_conversions = {}
 
@@ -126,28 +131,14 @@ class GiddArchitectureAdapter(ArchitectureAdapter):
         all_tied_weights_keys lookup (the checkpoint is untied anyway).
         """
         try:
-            from transformers.dynamic_module_utils import get_class_from_dynamic_module
-
-            model_class = get_class_from_dynamic_module(
-                "modeling_gidd.GiddForDiffusionLM", model_name
-            )
-            setattr(model_class, "all_tied_weights_keys", {})
-            # v5 walks _init_weights over every module post-materialization;
-            # the remote _init_weights assumes module.weight exists (crashes
-            # on containers) and would re-randomize loaded tensors anyway.
-            # Skip modules whose params are already real (internlm2 pattern).
-            pretrained_cls = model_class.__mro__[1]
-            if not getattr(pretrained_cls, "_tl_patched", False):
-                original_init_weights = getattr(pretrained_cls, "_init_weights")
-
-                def safe_init_weights(self, mod, _original=original_init_weights):
-                    first_param = next(mod.parameters(), None)
-                    if first_param is not None and first_param.device.type != "meta":
-                        return
-                    _original(self, mod)
-
-                setattr(pretrained_cls, "_init_weights", safe_init_weights)
-                setattr(pretrained_cls, "_tl_patched", True)
+            model_class = force_import_remote_class(model_name, "modeling_gidd.GiddForDiffusionLM")
+            if model_class is not None:
+                disable_tied_weights_lookup(model_class)
+                # v5 walks _init_weights over every module post-materialization;
+                # the remote _init_weights assumes module.weight exists (crashes
+                # on containers) and would re-randomize loaded tensors anyway.
+                # The remote pretrained base sits one MRO step above the LM class.
+                patch_init_weights_skip_loaded(model_class.__mro__[1])
         except Exception:
             pass
         super().prepare_loading(model_name, model_kwargs)
@@ -156,6 +147,3 @@ class GiddArchitectureAdapter(ArchitectureAdapter):
         """Restore the rotary table lost to meta-device loading."""
         super().prepare_model(hf_model)
         restore_frequencies(hf_model)
-
-    def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Delegated attention reads the rotary buffer inside HF; nothing to wire."""

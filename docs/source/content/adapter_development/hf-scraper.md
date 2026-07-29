@@ -10,7 +10,7 @@ The HuggingFace model scraper (`transformer_lens.tools.model_registry.hf_scraper
 
 ## Setup
 
-Sphinx, `verify_models`, and the scraper all need an HF token to read gated models. Source from the repo's `.env` (see [feedback_hf_token_env.md](../../../../../.claude/projects/-Users-jlarson-Documents-PROJECTS-TransformerLens/memory/feedback_hf_token_env.md) for the project convention):
+Sphinx, `verify_models`, and the scraper all need an HF token to read gated models. The project convention is to source `HF_TOKEN` from the repo's `.env` before any Hub-hitting command:
 
 ```bash
 set -a; source .env; set +a
@@ -84,7 +84,7 @@ A `verification_history.json` placeholder is also written if it doesn't already 
 | `--architecture ARCH` | none | Only include models whose `config.architectures[0]` matches this exact class name. Applies to main scan and canonical sweep. |
 | `--full-scan` | off | Scan every model matching `--task`. Hours-long; checkpoints periodically. |
 | `--limit N` | 10000 | Cap scan at N models (ignored with `--full-scan`). |
-| `--task TASK` | `text-generation` | HF tag to filter by. Use `text2text-generation` for seq2seq architectures (T5, mT5). |
+| `--task TASK` | `text-generation` | HF tag to filter by, one pass per run. Use `text2text-generation` for seq2seq architectures (T5, mT5); `image-classification` / `image-feature-extraction` for vision encoders (ViT, DeiT). |
 | `--output DIR` | `transformer_lens/tools/model_registry/data/` | Where to write JSON files. |
 | `--min-downloads N` | 500 | Skip models below this download threshold. Canonical-org models bypass this via the sweep. |
 | `--checkpoint-interval N` | 5000 | Save a checkpoint every N scanned models. |
@@ -127,5 +127,6 @@ If you see a 429 mid-run, the scraper waits and retries automatically (up to 10 
 - **Rate limiting.** HF Hub allows ~1000 requests per 5 minutes. The scraper uses `list_models(expand=['config', 'safetensors'])` to fetch inline metadata, so it spends ~200 paginated calls on a full ~200K-model scan — well under the limit. The retry/backoff is there for transient blips, not as a workaround.
 - **Quantized variants are filtered.** AWQ, GPTQ, GGUF, bnb, FP8 checkpoints are dropped at the `is_quantized_model` check. TransformerLens requires full-precision weights.
 - **`--task` matches HF tags, not `pipeline_tag`.** Encoder-decoder models tagged `text2text-generation` are discoverable under the default `--task text-generation` only via tag overlap. For seq2seq architectures (T5, mT5), pass `--task text2text-generation` explicitly to be safe.
+- **One task per run; sequential runs merge.** A full registry refresh is layered task passes: `text-generation`, then `text2text-generation`, then the vision passes `image-classification` and `image-feature-extraction`. The image passes exist to register vision-encoder architectures (ViT, DeiT), which never carry text tags and are invisible to the text passes.
 - **The architecture filter is exact-match against `config.architectures[0]`.** It does not accept aliases or partial matches. A targeted scrape for `LlamaForCausalLM` will not surface `LlamaModel` checkpoints (which have a different primary architecture string), nor variants like `Llama4ForCausalLM` if they appear in the future.
 - **Existing registry data is preserved, not filtered.** A targeted scrape adds new entries matching the filter; it does not remove unrelated entries from `supported_models.json`. To inspect just the targeted architecture's results in isolation, write to a scratch directory with `-o`.

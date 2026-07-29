@@ -7,7 +7,6 @@ from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     DepthwiseConv1DBridge,
     EmbeddingBridge,
-    GatedMLPBridge,
     Lfm2ShortConvBridge,
     LinearBridge,
     PositionEmbeddingsAttentionBridge,
@@ -15,6 +14,7 @@ from transformer_lens.model_bridge.generalized_components import (
     RotaryEmbeddingBridge,
     UnembeddingBridge,
 )
+from transformer_lens.utilities.attn_implementation import force_eager_attention
 
 
 class Lfm2ArchitectureAdapter(ArchitectureAdapter):
@@ -24,12 +24,7 @@ class Lfm2ArchitectureAdapter(ArchitectureAdapter):
         """Initialize the Lfm2 architecture adapter."""
         super().__init__(cfg)
 
-        self.cfg.normalization_type = "RMS"
-        self.cfg.positional_embedding_type = "rotary"
-        self.cfg.final_rms = True
-        self.cfg.gated_mlp = True
-        self.cfg.attn_only = False
-        self.cfg.uses_rms_norm = True
+        self._set_rms_rotary_defaults()
         self.cfg.act_fn = "silu"
 
         self.cfg.attn_implementation = "eager"
@@ -80,15 +75,7 @@ class Lfm2ArchitectureAdapter(ArchitectureAdapter):
                             "out": LinearBridge(name="out_proj"),
                         },
                     ),
-                    "mlp": GatedMLPBridge(
-                        name="feed_forward",
-                        config=self.cfg,
-                        submodules={
-                            "gate": LinearBridge(name="w1"),
-                            "in": LinearBridge(name="w3"),
-                            "out": LinearBridge(name="w2"),
-                        },
-                    ),
+                    "mlp": self._gated_mlp(name="feed_forward", gate="w1", up="w3", down="w2"),
                 },
             ),
             "ln_final": RMSNormalizationBridge(name="model.embedding_norm", config=self.cfg),
@@ -100,13 +87,7 @@ class Lfm2ArchitectureAdapter(ArchitectureAdapter):
         rotary_emb = hf_model.model.rotary_emb
 
         # Set attention implementation on HF model to eager (vs sdpa default)
-        if hasattr(hf_model, "config") and hasattr(hf_model.config, "_attn_implementation"):
-            hf_model.config._attn_implementation = "eager"
-
-        if hasattr(hf_model, "model") and hasattr(hf_model.model, "layers"):
-            for layer in hf_model.model.layers:
-                if hasattr(layer, "self_attn") and hasattr(layer.self_attn, "config"):
-                    layer.self_attn.config._attn_implementation = "eager"
+        force_eager_attention(hf_model, per_layer=True)
 
         # Set rotary_emb on actual bridge instances
         if bridge_model is not None and hasattr(bridge_model, "blocks"):

@@ -138,6 +138,9 @@ def map_default_transformer_lens_config(hf_config):
         tl_config.n_ctx = source_config.max_length
     elif hasattr(source_config, "seq_length"):
         tl_config.n_ctx = source_config.seq_length
+    elif hasattr(source_config, "max_seq_len"):
+        # MPT-family field name.
+        tl_config.n_ctx = source_config.max_seq_len
     elif hasattr(source_config, "image_size") and hasattr(source_config, "patch_size"):
         # Vision Transformers calculate sequence length dynamically:
         # (image_size / patch_size)^2 + 1 (for the CLS token)

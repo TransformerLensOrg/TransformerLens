@@ -26,12 +26,7 @@ class NanoChatArchitectureAdapter(ArchitectureAdapter):
         """Initialize the NanoChat architecture adapter."""
         super().__init__(cfg)
 
-        self.cfg.normalization_type = "RMS"
-        self.cfg.positional_embedding_type = "rotary"
-        self.cfg.final_rms = True
-        self.cfg.gated_mlp = False  # ungated relu^2 MLP (fc1 -> act -> fc2)
-        self.cfg.attn_only = False
-        self.cfg.uses_rms_norm = True
+        self._set_rms_rotary_defaults(gated=False)
         soft_cap = getattr(cfg, "final_logit_softcapping", None) or getattr(
             cfg, "logits_soft_cap", None
         )

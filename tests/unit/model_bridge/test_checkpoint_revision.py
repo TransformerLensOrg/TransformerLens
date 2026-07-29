@@ -143,9 +143,11 @@ class TestBootRevisionPlumbing:
             )
 
     def test_default_revision_is_none(self):
-        """With no revision/checkpoint args, revision is not added to model_kwargs."""
+        """With no revision/checkpoint args, boot passes an explicit revision=None
+        to AutoConfig and omits revision from the model-load kwargs."""
         captured = self._patched_boot()
-        assert captured["autoconfig_kwargs"].get("revision") is None
+        assert "revision" in captured["autoconfig_kwargs"]
+        assert captured["autoconfig_kwargs"]["revision"] is None
         assert "revision" not in captured.get("model_kwargs", {})
 
 

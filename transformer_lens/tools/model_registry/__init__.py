@@ -194,6 +194,14 @@ HF_SUPPORTED_ARCHITECTURES: set[str] = {
     "Zamba2ForCausalLM",
 }
 
+# Hub checkpoint configs can disagree with the transformers class name on casing
+# (jetmoe/jetmoe-8b reports "JetMoEForCausalLM"; registry rows are keyed by the
+# transformers class "JetMoeForCausalLM"). Row-scanning lookups normalize through
+# this map before matching.
+ARCHITECTURE_ALIASES: dict[str, str] = {
+    "JetMoEForCausalLM": "JetMoeForCausalLM",
+}
+
 # Foundation-trained orgs per architecture. Source of truth for the scraper's
 # download-threshold bypass and the docs table's "Canonical only" toggle.
 CANONICAL_AUTHORS_BY_ARCH: dict[str, list[str]] = {
@@ -339,8 +347,8 @@ CANONICAL_AUTHORS_BY_ARCH: dict[str, list[str]] = {
     "T5GemmaForConditionalGeneration": ["google"],
     "T5Gemma2ForConditionalGeneration": ["google"],
     "XGLMForCausalLM": ["facebook"],
-    "ViTModel": ["google"],
-    "ViTForImageClassification": ["google"],
+    "ViTModel": ["google", "facebook"],
+    "ViTForImageClassification": ["google", "facebook"],
     "DeiTModel": ["facebook"],
     "DeiTForImageClassification": ["facebook"],
     "Zamba2ForCausalLM": ["Zyphra"],
@@ -374,6 +382,7 @@ REMOTE_CODE_MODEL_PREFIXES: tuple[str, ...] = (
 __all__ = [
     # Constants
     "HF_SUPPORTED_ARCHITECTURES",
+    "ARCHITECTURE_ALIASES",
     "CANONICAL_AUTHORS_BY_ARCH",
     "REMOTE_CODE_MODEL_PREFIXES",
     # Exceptions

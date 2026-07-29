@@ -4,7 +4,7 @@
 
 Most research code that was written against `HookedTransformer.from_pretrained(...)` assumes compatibility mode. Most new code that needs HF-faithful logits does not.
 
-> Source: [`transformer_lens/model_bridge/bridge.py:enable_compatibility_mode`](../../../transformer_lens/model_bridge/bridge.py).
+> Source: [`transformer_lens/model_bridge/transformer_bridge.py:enable_compatibility_mode`](../../../transformer_lens/model_bridge/transformer_bridge.py).
 
 ---
 

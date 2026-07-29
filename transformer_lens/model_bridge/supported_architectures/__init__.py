@@ -330,6 +330,7 @@ __all__ = [
     "CohereArchitectureAdapter",
     "DeepSeekV2ArchitectureAdapter",
     "DeepSeekV3ArchitectureAdapter",
+    "DeepSeekV4ArchitectureAdapter",
     "DreamArchitectureAdapter",
     "Emu3ArchitectureAdapter",
     "Ernie4_5ArchitectureAdapter",

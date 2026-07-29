@@ -14,6 +14,9 @@ from transformer_lens.conversion_utils.conversion_steps.rearrange_tensor_convers
 from transformer_lens.conversion_utils.param_processing_conversion import (
     ParamProcessingConversion,
 )
+from transformer_lens.model_bridge.generalized_components.attention import (
+    AttentionBridge,
+)
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
@@ -22,6 +25,9 @@ from transformer_lens.model_bridge.generalized_components.gated_mlp import (
 )
 from transformer_lens.model_bridge.generalized_components.linear import LinearBridge
 from transformer_lens.model_bridge.generalized_components.mlp import MLPBridge
+from transformer_lens.model_bridge.generalized_components.position_embeddings_attention import (
+    PositionEmbeddingsAttentionBridge,
+)
 from transformer_lens.model_bridge.types import (
     ComponentMapping,
     RemoteComponent,
@@ -30,6 +36,7 @@ from transformer_lens.model_bridge.types import (
     TransformerLensPath,
 )
 from transformer_lens.utilities.activation_functions import apply_softcap
+from transformer_lens.utilities.attn_implementation import force_eager_attention
 
 
 class ArchitectureAdapter:
@@ -180,6 +187,46 @@ class ArchitectureAdapter:
             optional=optional,
         )
 
+    # Attention class _qkvo_attention_bridge instantiates; families with bespoke
+    # attention (BitNet, EXAONE-4) swap in a subclass.
+    _attention_bridge_cls: type[AttentionBridge] = PositionEmbeddingsAttentionBridge
+
+    def _qkvo_attention_bridge(
+        self,
+        *,
+        optional: bool = False,
+        extra_submodules: Optional[Dict[str, GeneralizedComponent]] = None,
+        requires_attention_mask: Optional[bool] = True,
+        requires_position_embeddings: Optional[bool] = True,
+    ) -> AttentionBridge:
+        """``self_attn`` bridge from ``_attention_bridge_cls`` with the standard
+        q/k/v/o LinearBridge submodules. A None flag is omitted from the
+        constructor call so the bridge class's own default applies."""
+        submodules: Dict[str, GeneralizedComponent] = {
+            "q": LinearBridge(name="q_proj"),
+            "k": LinearBridge(name="k_proj"),
+            "v": LinearBridge(name="v_proj"),
+            "o": LinearBridge(name="o_proj"),
+        }
+        if extra_submodules:
+            submodules.update(extra_submodules)
+        flags: Dict[str, Any] = {}
+        if requires_attention_mask is not None:
+            flags["requires_attention_mask"] = requires_attention_mask
+        if requires_position_embeddings is not None:
+            flags["requires_position_embeddings"] = requires_position_embeddings
+        return self._attention_bridge_cls(
+            name="self_attn",
+            config=self.cfg,
+            optional=optional,
+            submodules=submodules,
+            **flags,
+        )
+
+    def _build_attention_bridge(self) -> AttentionBridge:
+        """Attention bridge seam; subclasses swap the class or the construction."""
+        return self._qkvo_attention_bridge()
+
     def _canonical_layer_types(self, cfg: Any) -> list[str]:
         """Per-layer mixer-type list, normalized to canonical TL names
         (mamba->linear_attention, attention->full_attention; others pass through)."""
@@ -201,13 +248,14 @@ class ArchitectureAdapter:
             vision_cfg, "num_attention_heads", getattr(vision_cfg, "num_heads", None)
         )
 
-    def _set_rms_rotary_defaults(self, *, final_rms: bool = True) -> None:
+    def _set_rms_rotary_defaults(self, *, final_rms: bool = True, gated: bool = True) -> None:
         """Set the Llama-family config flags: RMS norms, rotary positions, gated MLP
-        (final_rms is per-architecture -- Mistral/Mixtral/OLMoE set False)."""
+        (final_rms is per-architecture -- Mistral/Mixtral/OLMoE set False; gated=False
+        for squared-ReLU/plain-MLP families like Gidd and NanoChat)."""
         self.cfg.normalization_type = "RMS"
         self.cfg.positional_embedding_type = "rotary"
         self.cfg.final_rms = final_rms
-        self.cfg.gated_mlp = True
+        self.cfg.gated_mlp = gated
         self.cfg.attn_only = False
         self.cfg.uses_rms_norm = True
 
@@ -922,8 +970,7 @@ class ArchitectureAdapter:
             hf_model: The loaded HuggingFace model instance
         """
         if getattr(self.cfg, "attn_implementation", None) == "eager":
-            if hasattr(hf_model, "config"):
-                hf_model.config._attn_implementation = "eager"
+            force_eager_attention(hf_model)
 
     def create_stateful_cache(
         self,
@@ -997,20 +1044,9 @@ class ArchitectureAdapter:
             if lm is None:
                 break
 
-        if (
-            eager is not None
-            and hasattr(hf_model, "config")
-            and hasattr(hf_model.config, "_attn_implementation")
-        ):
-            hf_model.config._attn_implementation = "eager"
-            # Nested multimodal configs carry their own attn implementation.
-            text_config = getattr(hf_model.config, "text_config", None)
-            if text_config is not None:
-                text_config._attn_implementation = "eager"
-        if eager == "layers" and lm is not None and hasattr(lm, "layers"):
-            for layer in lm.layers:
-                if hasattr(layer, "self_attn") and hasattr(layer.self_attn, "config"):
-                    layer.self_attn.config._attn_implementation = "eager"
+        if eager is not None:
+            # eager == "layers" additionally stamps per-layer self_attn configs.
+            force_eager_attention(hf_model, per_layer=(eager == "layers"))
 
         if not wire_rotary or lm is None or not hasattr(lm, rotary_attr):
             return

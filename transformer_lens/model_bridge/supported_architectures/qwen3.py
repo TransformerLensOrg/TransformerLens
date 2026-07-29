@@ -11,18 +11,15 @@ import torch
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
+    AttentionBridge,
     BlockBridge,
     EmbeddingBridge,
-    LinearBridge,
     RMSNormalizationBridge,
     RotaryEmbeddingBridge,
     UnembeddingBridge,
 )
 from transformer_lens.model_bridge.generalized_components.gated_delta_net import (
     GatedDeltaNetBridge,
-)
-from transformer_lens.model_bridge.generalized_components.position_embeddings_attention import (
-    PositionEmbeddingsAttentionBridge,
 )
 
 
@@ -51,20 +48,17 @@ class Qwen3ArchitectureAdapter(ArchitectureAdapter):
         self.cfg.default_prepend_bos = False
         self.cfg.attn_implementation = "eager"
 
-    def _build_attention_bridge(self, optional: bool = False) -> PositionEmbeddingsAttentionBridge:
+    def _build_attention_bridge(self, optional: bool = False) -> AttentionBridge:
         """Standard Qwen3 attention bridge with Q/K norms."""
-        return PositionEmbeddingsAttentionBridge(
-            name="self_attn",
-            config=self.cfg,
+        return self._qkvo_attention_bridge(
             optional=optional,
-            submodules={
-                "q": LinearBridge(name="q_proj"),
-                "k": LinearBridge(name="k_proj"),
-                "v": LinearBridge(name="v_proj"),
-                "o": LinearBridge(name="o_proj"),
+            extra_submodules={
                 "q_norm": RMSNormalizationBridge(name="q_norm", config=self.cfg),
                 "k_norm": RMSNormalizationBridge(name="k_norm", config=self.cfg),
             },
+            # None omits the flags, keeping the bridge class's own defaults.
+            requires_attention_mask=None,
+            requires_position_embeddings=None,
         )
 
     def _build_mlp_bridge(self):

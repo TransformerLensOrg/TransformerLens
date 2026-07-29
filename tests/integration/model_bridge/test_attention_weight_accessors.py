@@ -51,7 +51,7 @@ def llama_bridge():
 
 
 @pytest.fixture(scope="module")
-def gpt2_bridge():
+def tiny_gpt2_bridge():
     """Tiny GPT-2: square Conv1D c_proj (control — no-transpose path must stay correct)."""
     from transformers import GPT2Config, GPT2LMHeadModel
 
@@ -116,8 +116,8 @@ class TestLinearAccessorParity:
 
 
 class TestConv1DAccessorParity:
-    def test_w_o_reproduces_c_proj(self, gpt2_bridge):
-        bridge, hf_model = gpt2_bridge
+    def test_w_o_reproduces_c_proj(self, tiny_gpt2_bridge):
+        bridge, hf_model = tiny_gpt2_bridge
         attn = bridge.blocks[0].attn
         w_o = attn.W_O
         assert w_o.shape == (4, 16, 64)

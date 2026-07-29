@@ -6,17 +6,13 @@ nn.LayerNorm in a standard pre-norm layout, so unlike its Nemotron parent
 that the re-enabled fold path stays faithful.
 """
 
-import copy
-
 import torch
+
+from tests.integration.model_bridge.helpers import make_tiny_pair
 
 
 def _tiny_jais2_pair():
-    from transformers import AutoModelForCausalLM, Jais2Config
-
-    from transformer_lens.model_bridge.sources._bridge_builder import (
-        build_bridge_from_module,
-    )
+    from transformers import Jais2Config
 
     cfg = Jais2Config(
         vocab_size=128,
@@ -31,16 +27,7 @@ def _tiny_jais2_pair():
         bos_token_id=1,
         eos_token_id=2,
     )
-    cfg._attn_implementation = "eager"
-
-    torch.manual_seed(42)
-    ref = AutoModelForCausalLM.from_config(cfg).eval()
-    hf = AutoModelForCausalLM.from_config(copy.deepcopy(cfg)).eval()
-    hf.load_state_dict(ref.state_dict())
-    bridge = build_bridge_from_module(
-        hf, "Jais2ForCausalLM", hf_config=copy.deepcopy(cfg), tokenizer=None, device="cpu"
-    ).eval()
-    return bridge, ref
+    return make_tiny_pair(cfg, "Jais2ForCausalLM")
 
 
 class TestJais2Bridge:

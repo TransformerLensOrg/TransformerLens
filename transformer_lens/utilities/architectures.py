@@ -98,6 +98,10 @@ NO_HT_COMPARISON_ARCHITECTURES: set[str] = (
     # Encoder-decoder: HookedTransformer cannot represent them (T5 repos under
     # org-prefixed names slip past HT's legacy name guard and crash at forward).
     | SEQ2SEQ_ARCHITECTURES
+    # Vision-only encoders: no text tower at all — HT cannot represent them.
+    | VISION_ARCHITECTURES
+    # Audio-conditioned decoders load via AutoModelForSeq2SeqLM; same HT gap.
+    | AUDIO_TEXT_ARCHITECTURES
     | {
         "Gemma3ForCausalLM",
     }
@@ -107,7 +111,7 @@ NO_HT_COMPARISON_ARCHITECTURES: set[str] = (
 def classify_architecture(architecture: str) -> str:
     """Classify an architecture string into a model type.
 
-    Returns one of: "seq2seq", "masked_lm", "multimodal", "audio", "causal_lm"
+    Returns one of: "seq2seq", "masked_lm", "multimodal", "audio", "vision", "causal_lm"
     """
     if architecture in SEQ2SEQ_ARCHITECTURES:
         return "seq2seq"
@@ -117,6 +121,8 @@ def classify_architecture(architecture: str) -> str:
         return "multimodal"
     if architecture in AUDIO_ARCHITECTURES:
         return "audio"
+    if architecture in VISION_ARCHITECTURES:
+        return "vision"
     return "causal_lm"
 
 
@@ -134,7 +140,7 @@ def classify_model_config(config) -> str:
     """Classify a model by its HF config.
 
     Checks config.is_encoder_decoder first, then falls back to architecture list.
-    Returns one of: "seq2seq", "masked_lm", "multimodal", "audio", "causal_lm"
+    Returns one of: "seq2seq", "masked_lm", "multimodal", "audio", "vision", "causal_lm"
     """
     if getattr(config, "is_encoder_decoder", False):
         return "seq2seq"
@@ -154,7 +160,7 @@ def classify_model_name(
 
     Loads the config once, classifies from it. If token is None, reads
     HF_TOKEN from the environment automatically.
-    Returns one of: "seq2seq", "masked_lm", "multimodal", "audio", "causal_lm"
+    Returns one of: "seq2seq", "masked_lm", "multimodal", "audio", "vision", "causal_lm"
     """
     try:
         from transformers import AutoConfig

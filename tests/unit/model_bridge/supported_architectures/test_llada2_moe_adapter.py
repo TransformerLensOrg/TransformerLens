@@ -8,7 +8,10 @@ from typing import Any
 
 import pytest
 
-from tests.unit.model_bridge.supported_architectures.helpers import make_bridge_cfg
+from tests.unit.model_bridge.supported_architectures.helpers import (
+    DiffusionContractTests,
+    make_bridge_cfg,
+)
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.factories.architecture_adapter_factory import (
     SUPPORTED_ARCHITECTURES,
@@ -74,3 +77,10 @@ def test_prepare_loading_registers_rope_shim(adapter=None):
 
 def test_factory_registration():
     assert SUPPORTED_ARCHITECTURES["LLaDA2MoeModelLM"] is LLaDA2MoeArchitectureAdapter
+
+
+class TestLLaDA2MoeDiffusionContract(DiffusionContractTests):
+    adapter_cls = LLaDA2MoeArchitectureAdapter
+    architecture = "LLaDA2MoeModelLM"
+    expected_sampler = "generate"
+    cfg_overrides = {"n_key_value_heads": 4}

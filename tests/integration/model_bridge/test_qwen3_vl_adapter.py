@@ -23,27 +23,24 @@ def _image_inputs(processor):
 
 
 @pytest.fixture(scope="module")
-def qwen3vl_bridge():
+def bridge():
     return TransformerBridge.boot_transformers(MODEL, device="cpu", dtype=torch.float32)
 
 
-@pytest.fixture(scope="module")
-def sample_tokens(qwen3vl_bridge):
-    torch.manual_seed(0)
-    return torch.randint(0, qwen3vl_bridge.cfg.d_vocab - 10, (1, 12))
+SAMPLE_TOKENS_LEN = 12
 
 
 class TestQwen3VLBridgeCreation:
-    def test_adapter_selected(self, qwen3vl_bridge):
+    def test_adapter_selected(self, bridge):
         from transformer_lens.model_bridge.supported_architectures.qwen3_vl import (
             Qwen3VLArchitectureAdapter,
         )
 
-        assert isinstance(qwen3vl_bridge.adapter, Qwen3VLArchitectureAdapter)
+        assert isinstance(bridge.adapter, Qwen3VLArchitectureAdapter)
 
 
 class TestQwen3VLForwardEquivalence:
-    def test_text_forward_matches_fresh_hf(self, qwen3vl_bridge, sample_tokens):
+    def test_text_forward_matches_fresh_hf(self, bridge, sample_tokens):
         from transformers import AutoModelForImageTextToText
 
         fresh = AutoModelForImageTextToText.from_pretrained(
@@ -51,12 +48,12 @@ class TestQwen3VLForwardEquivalence:
         )
         fresh.eval()
         with torch.no_grad():
-            bridge_out = qwen3vl_bridge(sample_tokens)
+            bridge_out = bridge(sample_tokens)
             hf_out = fresh(input_ids=sample_tokens).logits
         max_diff = (bridge_out - hf_out).abs().max().item()
         assert max_diff < 1e-5, f"Bridge vs fresh HF max diff = {max_diff}"
 
-    def test_multimodal_forward_matches_fresh_hf(self, qwen3vl_bridge):
+    def test_multimodal_forward_matches_fresh_hf(self, bridge):
         """DeepStack features flow through wrapped mergers into the text
         residual stream — the full pipeline must stay HF-exact."""
         from transformers import AutoModelForImageTextToText, AutoProcessor
@@ -71,14 +68,14 @@ class TestQwen3VLForwardEquivalence:
         # as kwargs) so the multimodal path — not just the wrapped HF model — is exercised.
         bridge_inputs = {k: v for k, v in inputs.items() if k != "input_ids"}
         with torch.no_grad():
-            bridge_out = qwen3vl_bridge(inputs["input_ids"], **bridge_inputs)
+            bridge_out = bridge(inputs["input_ids"], **bridge_inputs)
             hf_out = fresh(**inputs).logits
         max_diff = (bridge_out - hf_out).abs().max().item()
         assert max_diff < 1e-5, f"Bridge vs fresh HF max diff = {max_diff}"
 
 
 class TestQwen3VLHooks:
-    def test_deepstack_merger_hooks_fire(self, qwen3vl_bridge):
+    def test_deepstack_merger_hooks_fire(self, bridge):
         """Each DeepStack level's merger output is hookable at the source."""
         from transformers import AutoProcessor
 
@@ -95,12 +92,12 @@ class TestQwen3VLHooks:
             "vision_encoder.deepstack_mergers.1.hook_out",
         ]
         with torch.no_grad():
-            qwen3vl_bridge.run_with_hooks(ids, fwd_hooks=[(name, grab) for name in hooks], **inputs)
+            bridge.run_with_hooks(ids, fwd_hooks=[(name, grab) for name in hooks], **inputs)
         for name in hooks:
             assert name in captured, f"{name} did not fire"
 
-    def test_text_hooks_fire(self, qwen3vl_bridge, sample_tokens):
-        d_model = qwen3vl_bridge.cfg.d_model
+    def test_text_hooks_fire(self, bridge, sample_tokens):
+        d_model = bridge.cfg.d_model
         seq = sample_tokens.shape[1]
         expected = {
             "blocks.0.attn.hook_out": (1, seq, d_model),
@@ -112,15 +109,13 @@ class TestQwen3VLHooks:
             captured[hook.name] = tuple(tensor.shape)
 
         with torch.no_grad():
-            qwen3vl_bridge.run_with_hooks(
-                sample_tokens, fwd_hooks=[(name, grab) for name in expected]
-            )
+            bridge.run_with_hooks(sample_tokens, fwd_hooks=[(name, grab) for name in expected])
         for name, shape in expected.items():
             assert captured.get(name) == shape, f"{name}: {captured.get(name)}"
 
 
 class TestQwen3VLGeneration:
-    def test_generate(self, qwen3vl_bridge):
-        text = qwen3vl_bridge.generate("Hello", max_new_tokens=5, do_sample=False, verbose=False)
+    def test_generate(self, bridge):
+        text = bridge.generate("Hello", max_new_tokens=5, do_sample=False, verbose=False)
         assert isinstance(text, str)
         assert text.startswith("Hello")

@@ -7,7 +7,6 @@ from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
     LinearBridge,
-    MLPBridge,
     PositionEmbeddingsAttentionBridge,
     RMSNormalizationBridge,
     RotaryEmbeddingBridge,
@@ -51,13 +50,7 @@ class ArceeArchitectureAdapter(ArchitectureAdapter):
         """Initialize the Arcee architecture adapter."""
         super().__init__(cfg)
 
-        # Set config variables for weight processing
-        self.cfg.normalization_type = "RMS"
-        self.cfg.positional_embedding_type = "rotary"
-        self.cfg.final_rms = True
-        self.cfg.gated_mlp = False  # ungated ReLU^2 MLP (up_proj -> act -> down_proj)
-        self.cfg.attn_only = False
-        self.cfg.uses_rms_norm = True
+        self._set_rms_rotary_defaults(gated=False)
 
         # Use eager attention so output_attentions works for hook_attn_scores /
         # hook_pattern; SDPA does not support output_attentions.
@@ -87,13 +80,7 @@ class ArceeArchitectureAdapter(ArchitectureAdapter):
                         requires_attention_mask=True,
                         requires_position_embeddings=True,
                     ),
-                    "mlp": MLPBridge(
-                        name="mlp",
-                        submodules={
-                            "in": LinearBridge(name="up_proj"),
-                            "out": LinearBridge(name="down_proj"),
-                        },
-                    ),
+                    "mlp": self._ungated_mlp(),
                 },
             ),
             "ln_final": RMSNormalizationBridge(name="model.norm", config=self.cfg),

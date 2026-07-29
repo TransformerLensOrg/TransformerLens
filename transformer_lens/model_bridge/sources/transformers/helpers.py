@@ -1,6 +1,9 @@
-"""HF-loader-specific helpers: model-class selection, checkpoint revision resolution, registry discovery."""
+"""HF-loader-specific helpers: model-class selection, modality processor loading, checkpoint revision resolution, registry discovery."""
 from __future__ import annotations
 
+from typing import Any
+
+import transformers
 from transformers import (
     AutoModelForCausalLM,
     AutoModelForMaskedLM,
@@ -53,6 +56,77 @@ def get_hf_model_class_for_architecture(architecture: str):
         return AutoModel
     else:
         return AutoModelForCausalLM
+
+
+# Modality flag → HF auto-loader class, applied in order. Last write wins on
+# bridge.processor: multimodal → audio → vision. The flags are disjoint today
+# (vit.py is the only is_visual_model adapter and it doesn't set is_multimodal),
+# but the order must be preserved for future dual-flag adapters.
+_MODALITY_PROCESSOR_LOADERS: list[tuple[str, str]] = [
+    ("is_multimodal", "AutoProcessor"),
+    ("is_audio_model", "AutoFeatureExtractor"),
+    ("is_visual_model", "AutoImageProcessor"),
+]
+
+
+def _ensure_torchvision() -> bool:
+    """Import torchvision, installing it on the fly if missing; True when importable."""
+    try:
+        import torchvision  # noqa: F401
+
+        return True
+    except Exception:
+        pass
+    import importlib
+    import shutil
+    import subprocess
+    import sys
+
+    try:
+        if shutil.which("uv"):
+            subprocess.check_call(["uv", "pip", "install", "torchvision", "-q"])
+        else:
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "torchvision", "-q"])
+        importlib.invalidate_caches()
+        return True
+    except Exception:
+        return False
+
+
+def load_modality_processor(
+    bridge: Any,
+    cfg: Any,
+    model_name: str,
+    trust_remote_code: bool,
+    token: str | None,
+) -> None:
+    """Attach the modality preprocessor to ``bridge.processor`` per the cfg's modality flags.
+
+    Best-effort: each loader failure is swallowed so a missing/broken processor
+    never blocks the boot itself.
+    """
+    for cfg_flag, loader_name in _MODALITY_PROCESSOR_LOADERS:
+        if not getattr(cfg, cfg_flag, False):
+            continue
+        try:
+            loader = getattr(transformers, loader_name)
+            bridge.processor = loader.from_pretrained(
+                model_name,
+                token=token,
+                trust_remote_code=trust_remote_code,
+            )
+        except Exception:
+            # Some AutoProcessors need torchvision (e.g. LlavaOnevision); install and retry.
+            if loader_name != "AutoProcessor" or not _ensure_torchvision():
+                continue
+            try:
+                bridge.processor = transformers.AutoProcessor.from_pretrained(
+                    model_name,
+                    token=token,
+                    trust_remote_code=trust_remote_code,
+                )
+            except Exception:
+                pass
 
 
 # Known training-checkpoint revision conventions on HF Hub.

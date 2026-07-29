@@ -46,13 +46,13 @@ from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapt
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
-    GatedMLPBridge,
     LinearBridge,
     PositionEmbeddingsAttentionBridge,
     RMSNormalizationBridge,
     RotaryEmbeddingBridge,
     UnembeddingBridge,
 )
+from transformer_lens.utilities.attn_implementation import force_eager_attention
 
 
 class HrmTextArchitectureAdapter(ArchitectureAdapter):
@@ -71,12 +71,7 @@ class HrmTextArchitectureAdapter(ArchitectureAdapter):
         """Initialize the HRM-Text architecture adapter."""
         super().__init__(cfg)
 
-        self.cfg.normalization_type = "RMS"
-        self.cfg.positional_embedding_type = "rotary"
-        self.cfg.final_rms = True
-        self.cfg.gated_mlp = True
-        self.cfg.attn_only = False
-        self.cfg.uses_rms_norm = True
+        self._set_rms_rotary_defaults()
 
         if hasattr(cfg, "num_key_value_heads") and cfg.num_key_value_heads is not None:
             self.cfg.n_key_value_heads = cfg.num_key_value_heads
@@ -118,15 +113,7 @@ class HrmTextArchitectureAdapter(ArchitectureAdapter):
                     requires_attention_mask=True,
                     requires_position_embeddings=True,
                 ),
-                "mlp": GatedMLPBridge(
-                    name="mlp",
-                    config=self.cfg,
-                    submodules={
-                        "gate": LinearBridge(name="gate_proj"),
-                        "in": LinearBridge(name="up_proj"),
-                        "out": LinearBridge(name="down_proj"),
-                    },
-                ),
+                "mlp": self._gated_mlp(),
             }
 
         self.component_mapping = {
@@ -192,15 +179,8 @@ class HrmTextArchitectureAdapter(ArchitectureAdapter):
         """
         rotary_emb = hf_model.model.rotary_emb
 
-        if hasattr(hf_model, "config") and hasattr(hf_model.config, "_attn_implementation"):
-            hf_model.config._attn_implementation = "eager"
-
-        for stack_attr in ("L_module", "H_module"):
-            stack = getattr(hf_model.model, stack_attr, None)
-            if stack is not None and hasattr(stack, "layers"):
-                for layer in stack.layers:
-                    if hasattr(layer, "self_attn") and hasattr(layer.self_attn, "config"):
-                        layer.self_attn.config._attn_implementation = "eager"
+        # per_layer covers both L_module and H_module stacks.
+        force_eager_attention(hf_model, per_layer=True)
 
         if bridge_model is not None:
             for blocks_attr in ("L_blocks", "H_blocks"):

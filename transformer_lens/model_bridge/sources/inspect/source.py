@@ -14,6 +14,10 @@ from transformer_lens.model_bridge.remote_bridge import RemoteBridge
 from transformer_lens.model_bridge.sources._bridge_builder import (
     build_bridge_config_from_hf,
     configure_tokenizer,
+    skip_tokenizer_for_modality,
+)
+from transformer_lens.model_bridge.sources._hf_format import (
+    determine_architecture_from_hf_config,
 )
 from transformer_lens.utilities.hf_utils import get_hf_token
 
@@ -67,17 +71,20 @@ def boot_inspect(
 
     hf_token = get_hf_token()
     hf_config = AutoConfig.from_pretrained(model_name, token=hf_token)
-    architecture = hf_config.architectures[0]
+    # Shared resolution (not architectures[0]) handles architectures=None configs via
+    # model_type and rejects unsupported archs before the provider loads weights.
+    architecture = determine_architecture_from_hf_config(hf_config)
     # Default fp32 to match boot_transformers (which loads/casts fp32 regardless of the
     # config's native dtype); an explicit dtype still wins.
     resolved_dtype = dtype if dtype is not None else torch.float32
 
     bridge_config = build_bridge_config_from_hf(hf_config, architecture, model_name, resolved_dtype)
     adapter = ArchitectureAdapterFactory.select_architecture_adapter(bridge_config)
-    if tokenizer is None:
+    if tokenizer is None and not skip_tokenizer_for_modality(adapter.cfg):
         tokenizer = AutoTokenizer.from_pretrained(model_name, token=hf_token)
-    # Match boot_transformers' tokenizer setup so to_tokens(str) is token-identical.
-    tokenizer = configure_tokenizer(tokenizer, adapter.cfg)
+    if tokenizer is not None:
+        # Match boot_transformers' tokenizer setup so to_tokens(str) is token-identical.
+        tokenizer = configure_tokenizer(tokenizer, adapter.cfg)
 
     if provider == "tl_bridge":
         # The provider's raw HF forward must match boot_transformers' load: same dtype,

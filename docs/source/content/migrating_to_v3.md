@@ -10,7 +10,7 @@ This page explains the differences and gives side-by-side migration recipes for 
 
 `HookedTransformer` was a single unified implementation that every supported architecture had to be mapped into. That was beautiful in theory — interpretability code written once worked everywhere — but in practice it meant that adding a new architecture required reimplementing its forward pass inside TransformerLens, and any divergence from the HuggingFace version was a latent source of bugs.
 
-TransformerBridge flips the arrangement. Instead of reimplementing models, it keeps the native HuggingFace implementation and wraps it behind a consistent interface through an **architecture adapter**. The adapter knows how the HF module graph maps onto a small set of generalized components (embedding, attention, MLP, normalization, blocks) and registers uniform hook points over them. The result is the same familiar TransformerLens experience — hooks, caches, patching — but applied to the real HF model, and extended to 50+ architectures out of the box.
+TransformerBridge flips the arrangement. Instead of reimplementing models, it keeps the native HuggingFace implementation and wraps it behind a consistent interface through an **architecture adapter**. The adapter knows how the HF module graph maps onto a small set of generalized components (embedding, attention, MLP, normalization, blocks) and registers uniform hook points over them. The result is the same familiar TransformerLens experience — hooks, caches, patching — but applied to the real HF model, and extended to 140+ architectures out of the box.
 
 ## Loading a model
 

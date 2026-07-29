@@ -49,12 +49,6 @@ class OlmoeArchitectureAdapter(ArchitectureAdapter):
         # Force eager attention for numerical consistency with benchmark reference
         self.cfg.attn_implementation = "eager"
 
-        n_kv_heads = (
-            self.cfg.n_key_value_heads
-            if self.cfg.n_key_value_heads is not None
-            else self.cfg.n_heads
-        )
-
         self.weight_processing_conversions = {
             **self._qkvo_weight_conversions(),
         }
@@ -62,6 +56,9 @@ class OlmoeArchitectureAdapter(ArchitectureAdapter):
         # Component mapping — PRE-NORM architecture:
         # ln1 = input_layernorm (applied BEFORE attention)
         # ln2 = post_attention_layernorm (applied BEFORE MLP)
+        # Deliberate mirror of qwen3_moe.py / minimax_m2.py: same wiring by structural
+        # coincidence, not lineage (norm/router semantics differ per vendor),
+        # so each file keeps its mapping inline and readable.
         self.component_mapping = {
             "embed": EmbeddingBridge(name="model.embed_tokens"),
             "rotary_emb": RotaryEmbeddingBridge(name="model.rotary_emb", config=self.cfg),
@@ -110,4 +107,6 @@ class OlmoeArchitectureAdapter(ArchitectureAdapter):
             _patch_olmo_inplace_clamp,
         )
 
+        # Base forces eager on the loaded config (cfg.attn_implementation="eager").
+        super().prepare_model(hf_model)
         _patch_olmo_inplace_clamp(hf_model)

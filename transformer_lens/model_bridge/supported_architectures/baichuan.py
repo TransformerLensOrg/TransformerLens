@@ -5,7 +5,6 @@ Both use combined QKV via W_pack with RoPE, RMSNorm, and gated MLP.
 """
 
 import importlib.util
-import sys
 from typing import Any
 
 import torch
@@ -24,6 +23,10 @@ from transformer_lens.model_bridge.generalized_components import (
     LinearBridge,
     RMSNormalizationBridge,
     UnembeddingBridge,
+)
+from transformer_lens.model_bridge.supported_architectures._remote_code_compat import (
+    iter_remote_modeling_modules,
+    patch_init_weights_skip_loaded,
 )
 
 
@@ -129,45 +132,27 @@ class _BaichuanAttentionBridge(JointQKVPositionEmbeddingsAttentionBridge):
         return (attn_output, attn_weights, present_key_value)
 
 
-from transformers import PreTrainedModel as _HFPreTrainedModel
-
-
 def _patch_init_weights_for_baichuan() -> None:
     """Prevent _init_weights from re-randomizing loaded checkpoint weights.
 
     Transformers v5 calls _init_weights on all modules after weight
-    materialization. For modules with real (non-meta) tensors, we must
-    skip re-initialization to preserve the loaded checkpoint values.
+    materialization; the helper skips modules with real (non-meta) tensors so
+    loaded checkpoint values survive.
     """
-    for key in list(sys.modules.keys()):
-        if "baichuan" not in key.lower() or "modeling" not in key.lower():
-            continue
-        module = sys.modules[key]
-        # Both v1 (BaiChuan) and v2 (Baichuan) define a PreTrainedModel subclass
+    for module in iter_remote_modeling_modules("baichuan"):
+        # Both v1 (BaiChuan) and v2 (Baichuan) define a PreTrainedModel subclass.
+        # The remote module also does `from transformers import PreTrainedModel`,
+        # so the last name can resolve to the real HF base class — the helper
+        # refuses that (and anything without its own _init_weights); skip and
+        # keep scanning.
         for cls_name in ("BaiChuanPreTrainedModel", "BaichuanPreTrainedModel", "PreTrainedModel"):
             pretrained_cls = getattr(module, cls_name, None)
-            if pretrained_cls is None or getattr(pretrained_cls, "_tl_patched", False):
+            if pretrained_cls is None:
                 continue
-            # The remote module does `from transformers import PreTrainedModel`,
-            # so the "PreTrainedModel" name can resolve to the real base class.
-            # Patching that would disable _init_weights — including HF's rotary
-            # buffer restoration — for every model loaded later in the process.
-            if pretrained_cls is _HFPreTrainedModel:
+            try:
+                patch_init_weights_skip_loaded(pretrained_cls)
+            except ValueError:
                 continue
-            # Only patch classes that define their own _init_weights
-            if "_init_weights" not in pretrained_cls.__dict__:
-                continue
-
-            original_init_weights = pretrained_cls._init_weights
-
-            def safe_init_weights(self, mod, _original=original_init_weights):  # type: ignore[no-untyped-def]
-                first_param = next(mod.parameters(), None)
-                if first_param is not None and first_param.device.type != "meta":
-                    return
-                _original(self, mod)
-
-            pretrained_cls._init_weights = safe_init_weights
-            pretrained_cls._tl_patched = True
 
 
 class BaichuanArchitectureAdapter(ArchitectureAdapter):

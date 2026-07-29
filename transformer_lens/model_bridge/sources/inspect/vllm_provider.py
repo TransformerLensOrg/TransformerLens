@@ -106,10 +106,13 @@ class TransformerLensVLLMModelAPI(_InspectModelAPIBase):
                 "validated against vllm 0.20.x."
             ) from exc
 
+        from transformer_lens.model_bridge.sources._hf_format import (
+            determine_architecture_from_hf_config,
+        )
         from transformer_lens.utilities.hf_utils import get_hf_token
 
         from ..vllm.internals import extract_hf_config
-        from ..vllm.overlays import get_overlay
+        from ..vllm.overlays import DEFAULT_VLLM_OVERLAY, get_overlay
         from ..vllm.source import _dtype_from_hf_config, construct_instrumented_llm
         from ..vllm.worker_extension import dtype_name
 
@@ -140,8 +143,14 @@ class TransformerLensVLLMModelAPI(_InspectModelAPIBase):
         # Pre-LLM: resolve architecture WITHOUT loading weights, then prime the plugin
         # so its monkey-patched Worker.load_model installs capture hooks pre-compile.
         hf_config_preview = AutoConfig.from_pretrained(model_name, token=hf_token)
-        architecture = hf_config_preview.architectures[0]
-        overlay = get_overlay(architecture)
+        # Shared resolution (not architectures[0]) handles architectures=None configs
+        # via model_type. Unlike boot_vllm, an arch unknown to TL's registry must not
+        # abort here: get_overlay serves the decoder-only default for any name, so a
+        # resolver miss falls back to that same default and the model stays loadable.
+        try:
+            overlay = get_overlay(determine_architecture_from_hf_config(hf_config_preview))
+        except ValueError:
+            overlay = DEFAULT_VLLM_OVERLAY
         resolved_dtype = dtype if dtype is not None else _dtype_from_hf_config(hf_config_preview)
         capture_specs = overlay.capture_specs(hf_config_preview)
         self._llm = construct_instrumented_llm(

@@ -93,13 +93,32 @@ class TransformerLensTransformersModelAPI(_InspectModelAPIBase):
         **model_args: Any,
     ) -> None:
         super().__init__(model_name, base_url, api_key, [], config)
-        from transformers import AutoModelForCausalLM, AutoTokenizer
+        from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
+
+        from transformer_lens.model_bridge.sources._hf_format import (
+            determine_architecture_from_hf_config,
+        )
+        from transformer_lens.model_bridge.sources.transformers.helpers import (
+            get_hf_model_class_for_architecture,
+        )
 
         self._device = model_args.pop("device", "cpu")
         hf_kwargs = model_args.pop("model_kwargs", {})
-        self._hf = (
-            AutoModelForCausalLM.from_pretrained(model_name, **hf_kwargs).to(self._device).eval()
-        )
+        # Config-first class selection: vision/seq2seq/masked-LM archs need a different
+        # AutoModel entry point than AutoModelForCausalLM.
+        config_kwargs = {
+            k: hf_kwargs[k] for k in ("token", "trust_remote_code", "revision") if k in hf_kwargs
+        }
+        hf_config = AutoConfig.from_pretrained(model_name, **config_kwargs)
+        try:
+            model_class = get_hf_model_class_for_architecture(
+                determine_architecture_from_hf_config(hf_config)
+            )
+        except ValueError:
+            # Arch unknown to TL's registry — keep loading it as a plain HF causal LM
+            # (standalone Inspect usage; the structural probe handles the layout).
+            model_class = AutoModelForCausalLM
+        self._hf = model_class.from_pretrained(model_name, **hf_kwargs).to(self._device).eval()
         self._tokenizer = AutoTokenizer.from_pretrained(model_name)
         self._layers = _locate_layers(self._hf)
         # Head-split reshape geometry; None per-field when the config lacks it (head

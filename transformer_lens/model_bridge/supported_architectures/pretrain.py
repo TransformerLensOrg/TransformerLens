@@ -42,7 +42,6 @@ import torch
 
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
-from transformer_lens.model_bridge.bridge import TransformerBridge
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     DelegatedAttentionBlockBridge,
@@ -56,6 +55,7 @@ from transformer_lens.model_bridge.generalized_components import (
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
+from transformer_lens.model_bridge.transformer_bridge import TransformerBridge
 
 ARCHITECTURE_NAME = "TransformerLensPretrain"
 
@@ -302,11 +302,10 @@ class PretrainArchitectureAdapter(ArchitectureAdapter):
     def __init__(self, cfg: Any) -> None:
         super().__init__(cfg)
 
-        self.cfg.normalization_type = "RMS"
-        self.cfg.positional_embedding_type = "rotary"
-        self.cfg.final_rms = True
-        self.cfg.gated_mlp = True
-        self.cfg.attn_only = False
+        # Also sets uses_rms_norm=True: norm bridges fall back to it when the
+        # wrapped norm's class name doesn't identify itself as RMSNorm, and a
+        # False fallback would mean-center RMS hook intermediates.
+        self._set_rms_rotary_defaults()
 
         self.component_mapping = {
             # "inner." because this adapter expects the source model to

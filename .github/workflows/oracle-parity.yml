@@ -1,17 +1,11 @@
 name: Oracle Parity
 
 # Runs the @pytest.mark.slow oracle parity suite for JacobianLens.
-# Not part of the standard PR gate — requires ~4 GB VRAM and network access.
-# Triggered manually or automatically when the test file or this workflow changes.
+# Not part of the standard PR gate — requires ~4 GB VRAM (or a long CPU run)
+# and network access, so it is manual-trigger only. Run it after changing
+# tests/integration/test_jacobian_lens_oracle_parity.py or this workflow.
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-      - dev*
-    paths:
-      - "tests/integration/test_jacobian_lens_oracle_parity.py"
-      - ".github/workflows/oracle-parity.yml"
 
 permissions:
   contents: read
@@ -21,6 +15,8 @@ jobs:
     name: Oracle Parity Checks
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      HAS_HF_TOKEN: ${{ secrets.HF_TOKEN != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -46,7 +42,7 @@ jobs:
           uv pip install "git+https://github.com/anthropics/jacobian-lens.git@${ORACLE_COMMIT}"
 
       - name: Authenticate HuggingFace
-        if: env.HF_TOKEN != ''
+        if: ${{ env.HAS_HF_TOKEN == 'true' }}
         run: uv run python -c "import os; from huggingface_hub import login; login(token=os.environ['HF_TOKEN'])"
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}

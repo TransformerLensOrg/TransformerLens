@@ -102,7 +102,7 @@ class TestBridgeOfflineWithHfModel:
         """Bridge boot succeeds when AutoConfig.from_pretrained would fail."""
         from unittest.mock import patch
 
-        import transformer_lens.model_bridge.sources.transformers as bridge_source
+        import transformer_lens.model_bridge.sources.transformers.source as bridge_source
 
         with patch.object(bridge_source, "AutoConfig") as mock_autoconfig:
             mock_autoconfig.from_pretrained.side_effect = OSError("Simulated Hub failure")
@@ -110,6 +110,7 @@ class TestBridgeOfflineWithHfModel:
             bridge = TransformerBridge.boot_transformers(
                 self.OFFLINE_MODEL, hf_model=hf_model, tokenizer=tokenizer
             )
+            assert not mock_autoconfig.from_pretrained.called
 
             test_input = tokenizer("Hello", return_tensors="pt")["input_ids"]
             with torch.no_grad():
@@ -142,15 +143,40 @@ class TestBridgeOfflineWithHfModel:
             ), f"Bridge mutated hf_model.config.{attr}"
 
     def test_autoconfig_not_called_when_hf_model_provided(self, hf_model, tokenizer):
-        """Patches AutoConfig in the bridge module only — transitive calls from AutoTokenizer
-        (which uses ``transformers.AutoConfig`` directly) aren't intercepted.
+        """boot() must not call AutoConfig.from_pretrained when hf_model is supplied.
+
+        Patches the binding in the consuming module (sources.transformers.source),
+        which imports AutoConfig at module load; AutoTokenizer's internal use of
+        ``transformers.AutoConfig`` is deliberately not intercepted.
         """
         from unittest.mock import patch
 
-        import transformer_lens.model_bridge.sources.transformers as bridge_source
+        import transformer_lens.model_bridge.sources.transformers.source as bridge_source
 
         with patch.object(bridge_source, "AutoConfig") as mock_autoconfig:
             TransformerBridge.boot_transformers(
                 self.OFFLINE_MODEL, hf_model=hf_model, tokenizer=tokenizer
             )
             assert not mock_autoconfig.from_pretrained.called
+
+    def test_attention_hooks_fire_with_preloaded_hf_model(self):
+        """hook_pattern must fire on a pre-loaded model left on transformers' default sdpa.
+
+        Under sdpa, HF attention returns attn_weights=None, so boot must force eager.
+        Uses OPT because its AttentionBridge reads the pattern off the HF return tuple
+        (Mistral computes its own pattern and would mask the regression).
+        """
+        from transformers import AutoModelForCausalLM, AutoTokenizer
+
+        model_name = "hf-internal-testing/tiny-random-OPTForCausalLM"
+        hf_model = AutoModelForCausalLM.from_pretrained(model_name).eval()
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
+
+        bridge = TransformerBridge.boot_transformers(
+            model_name, hf_model=hf_model, tokenizer=tokenizer
+        )
+
+        pattern_name = "blocks.0.attn.hook_pattern"
+        _, cache = bridge.run_with_cache("Hello", names_filter=pattern_name)
+        assert pattern_name in cache, "attention pattern hook never fired"
+        assert torch.isfinite(cache[pattern_name]).all()

@@ -48,27 +48,28 @@ def snapshot_path(tmp_path_factory):
 
 
 @pytest.fixture(scope="module")
-def olmo_bridge(snapshot_path):
+def bridge(snapshot_path):
     return TransformerBridge.boot_transformers(snapshot_path, device="cpu", dtype=torch.float32)
 
 
 @pytest.fixture(scope="module")
 def sample_tokens():
+    # Shadows the conftest fixture: keeps the original 0-2000 draw range, not d_vocab-10.
     torch.manual_seed(0)
     return torch.randint(0, 2000, (1, 12))
 
 
 class TestOlmoHybridBridgeCreation:
-    def test_adapter_selected(self, olmo_bridge):
+    def test_adapter_selected(self, bridge):
         from transformer_lens.model_bridge.supported_architectures.olmo_hybrid import (
             OlmoHybridArchitectureAdapter,
         )
 
-        assert isinstance(olmo_bridge.adapter, OlmoHybridArchitectureAdapter)
+        assert isinstance(bridge.adapter, OlmoHybridArchitectureAdapter)
 
 
 class TestOlmoHybridForwardEquivalence:
-    def test_forward_matches_fresh_hf(self, olmo_bridge, snapshot_path, sample_tokens):
+    def test_forward_matches_fresh_hf(self, bridge, snapshot_path, sample_tokens):
         from transformers import AutoModelForCausalLM
 
         fresh = AutoModelForCausalLM.from_pretrained(
@@ -76,16 +77,16 @@ class TestOlmoHybridForwardEquivalence:
         )
         fresh.eval()
         with torch.no_grad():
-            bridge_out = olmo_bridge(sample_tokens)
+            bridge_out = bridge(sample_tokens)
             hf_out = fresh(input_ids=sample_tokens).logits
         max_diff = (bridge_out - hf_out).abs().max().item()
         assert max_diff < 1e-5, f"Bridge vs fresh HF max diff = {max_diff}"
 
 
 class TestOlmoHybridHooks:
-    def test_hooks_fire_per_layer_type(self, olmo_bridge, sample_tokens):
+    def test_hooks_fire_per_layer_type(self, bridge, sample_tokens):
         """Layer 0 is linear attention, layer 1 is full attention."""
-        d_model = olmo_bridge.cfg.d_model
+        d_model = bridge.cfg.d_model
         seq = sample_tokens.shape[1]
         expected = {
             "blocks.0.linear_attn.hook_out": (1, seq, d_model),
@@ -99,13 +100,13 @@ class TestOlmoHybridHooks:
             captured[hook.name] = tuple(tensor.shape)
 
         with torch.no_grad():
-            olmo_bridge.run_with_hooks(sample_tokens, fwd_hooks=[(name, grab) for name in expected])
+            bridge.run_with_hooks(sample_tokens, fwd_hooks=[(name, grab) for name in expected])
         for name, shape in expected.items():
             assert captured.get(name) == shape, f"{name}: {captured.get(name)}"
 
 
 class TestOlmoHybridGeneration:
-    def test_generate_with_stateful_cache(self, olmo_bridge):
-        text = olmo_bridge.generate("Hello", max_new_tokens=5, do_sample=False, verbose=False)
+    def test_generate_with_stateful_cache(self, bridge):
+        text = bridge.generate("Hello", max_new_tokens=5, do_sample=False, verbose=False)
         assert isinstance(text, str)
         assert text.startswith("Hello")

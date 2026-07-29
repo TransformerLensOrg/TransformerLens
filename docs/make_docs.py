@@ -821,9 +821,10 @@ for English, and may not be the same for other languages.
 #bt-root tbody td a:hover { text-decoration: underline; }
 #bt-root .bt-rn { color: var(--color-foreground-muted, #999); font-size: 12px; width: 36px; text-align: right; }
 #bt-root .bt-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+/* No .bt-s2: status-2 (skipped) rows deliberately render with the .bt-s0
+   "Unverified" badge — see the status cell's class mapping. */
 #bt-root .bt-s0 { background: #e8e8e8; color: #666; }
 #bt-root .bt-s1 { background: #d4edda; color: #155724; }
-#bt-root .bt-s2 { background: #fff3cd; color: #856404; }
 #bt-root .bt-s3 { background: #f8d7da; color: #721c24; }
 #bt-root .bt-s4 { background: #d1ecf1; color: #0c5460; }
 #bt-root .bt-muted { color: var(--color-foreground-muted, #999); }
@@ -902,7 +903,7 @@ for English, and may not be the same for other languages.
     <input type="text" id="btSearch" placeholder="Search by model name or organization...">
     <select id="btArch"><option value="">All Architectures</option></select>
     <select id="btPrefix"><option value="">All Organizations</option></select>
-    <select id="btStatus"><option value="">All Statuses</option><option value="1">Verified</option><option value="4">Provisional</option><option value="0">Unverified</option><option value="3">Failed</option></select>
+    <select id="btStatus"><option value="">All Statuses</option>__STATUS_OPTIONS__</select>
     <label class="bt-canonical-toggle"><input type="checkbox" id="btCanonical"> Canonical only</label>
     <span class="bt-count" id="btCount"></span>
   </div>
@@ -928,7 +929,8 @@ for English, and may not be the same for other languages.
 <script>
 (function() {
     const PS = 25, COLS = 9;
-    const SM = {0:'Unverified',1:'Verified',2:'Unverified',3:'Failed',4:'Provisional'};
+    // Interpolated from STATUS_LABELS (Python, registry_io).
+    const SM = __STATUS_MAP_JSON__;
     // Interpolated from CANONICAL_AUTHORS_BY_ARCH (Python, registry __init__).
     const OFFICIAL_ORGS = __OFFICIAL_ORGS_JSON__;
     const cfgCache = {};
@@ -1510,17 +1512,33 @@ for English, and may not be the same for other languages.
 """
 
 
-def generate_bridge_models_page():
-    """Generate the TransformerBridge models markdown page."""
+def render_bridge_models_page() -> str:
+    """Render the TransformerBridge models page template with placeholders interpolated."""
     import json as _json
 
     from transformer_lens.tools.model_registry import CANONICAL_AUTHORS_BY_ARCH
+    from transformer_lens.tools.model_registry.registry_io import STATUS_LABELS
 
-    GENERATED_DIR.mkdir(exist_ok=True)
-    rendered = BRIDGE_MODELS_PAGE.replace(
-        "__OFFICIAL_ORGS_JSON__", _json.dumps(CANONICAL_AUTHORS_BY_ARCH, sort_keys=True)
+    # Curated filter order (most useful first). Status 2 (skipped) shares the
+    # "Unverified" label with status 0, so it gets no option of its own.
+    status_options = "".join(
+        f'<option value="{code}">{STATUS_LABELS[code]}</option>' for code in (1, 4, 0, 3)
     )
-    (GENERATED_DIR / "transformer_bridge_models.md").write_text(rendered, encoding="utf-8")
+    return (
+        BRIDGE_MODELS_PAGE.replace(
+            "__OFFICIAL_ORGS_JSON__", _json.dumps(CANONICAL_AUTHORS_BY_ARCH, sort_keys=True)
+        )
+        .replace("__STATUS_MAP_JSON__", _json.dumps(STATUS_LABELS, sort_keys=True))
+        .replace("__STATUS_OPTIONS__", status_options)
+    )
+
+
+def generate_bridge_models_page():
+    """Generate the TransformerBridge models markdown page."""
+    GENERATED_DIR.mkdir(exist_ok=True)
+    (GENERATED_DIR / "transformer_bridge_models.md").write_text(
+        render_bridge_models_page(), encoding="utf-8"
+    )
 
 
 def docs_hot_reload():

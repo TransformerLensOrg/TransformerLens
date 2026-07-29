@@ -138,8 +138,8 @@ class TestQwen3_5LoadingGuards:
         from transformer_lens.model_bridge.sources import transformers as source
 
         # boot() lives in the submodule after the package split; module-level
-        # name lookups for TransformerBridge / setup_tokenizer happen there, not
-        # in the package __init__.
+        # name lookups for TransformerBridge / configure_tokenizer happen there,
+        # not in the package __init__.
         from transformer_lens.model_bridge.sources.transformers import (
             source as boot_module,
         )
@@ -215,7 +215,7 @@ class TestQwen3_5LoadingGuards:
             staticmethod(lambda *args, **kwargs: DummyTokenizer()),
         )
         monkeypatch.setattr(boot_module, "TransformerBridge", DummyBridge)
-        monkeypatch.setattr(boot_module, "setup_tokenizer", lambda tokenizer, **kwargs: tokenizer)
+        monkeypatch.setattr(boot_module, "configure_tokenizer", lambda tokenizer, cfg: tokenizer)
 
         bridge = source.boot(
             "Qwen/Qwen3.5-0.8B",

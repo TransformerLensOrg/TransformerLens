@@ -9,6 +9,8 @@ Phase 4: Text Quality - Perplexity-based legibility scoring via GPT-2 Medium
 Phase 5: Granular Weight Processing Tests (optional, individual flags)
 Phase 6: Granular Weight Processing Tests (optional, combined flags)
 Phase 7: Multimodal Tests (only for multimodal models with pixel_values support)
+Phase 8: Audio Tests (only for audio encoder models / audio-conditioned decoders)
+Phase 9: Vision Tests (only for vision-only encoder models, e.g. ViT/DeiT)
 """
 
 import gc
@@ -75,6 +77,7 @@ from transformer_lens.factories.architecture_adapter_factory import (
     ArchitectureAdapterFactory,
 )
 from transformer_lens.model_bridge import TransformerBridge
+from transformer_lens.tools.model_registry.registry_io import TEXT_PHASES
 
 # Architecture classification — single source of truth in utilities.architectures
 from transformer_lens.utilities.architectures import (
@@ -97,6 +100,40 @@ def should_skip_ht_comparison(model_name: str, trust_remote_code: bool = False) 
         return any(arch in NO_HT_COMPARISON_ARCHITECTURES for arch in architectures)
     except Exception:
         return False
+
+
+def _adapter_applicable_phases(model_name: str, trust_remote_code: bool = False) -> list[int]:
+    """Text phases (1-4) the model's adapter declares applicable (default all)."""
+    from transformer_lens.factories.architecture_adapter_factory import (
+        SUPPORTED_ARCHITECTURES,
+    )
+
+    try:
+        config = AutoConfig.from_pretrained(
+            model_name, trust_remote_code=trust_remote_code, token=_hf_token()
+        )
+        for arch in get_architectures_for_config(config):
+            adapter_cls = SUPPORTED_ARCHITECTURES.get(arch)
+            if adapter_cls is not None:
+                return getattr(adapter_cls, "applicable_phases", list(TEXT_PHASES))
+    except Exception:
+        pass
+    return list(TEXT_PHASES)
+
+
+def _phase_enabled(
+    phase_num: int, phases: Optional[List[int]], applicable_phases: List[int]
+) -> bool:
+    """Phase gating shared by run_benchmark_suite's should_run_phase.
+
+    An adapter's ``applicable_phases`` declares which text phases (1-4) it covers.
+    Phases 7/8/9 are gated separately by ``is_multimodal``/``is_audio_model``/
+    ``is_visual_model`` at their call sites, so they are never filtered out here
+    (mirrors verify_models._phases_to_run).
+    """
+    if phases is not None and phase_num not in phases:
+        return False
+    return phase_num not in TEXT_PHASES or phase_num in applicable_phases
 
 
 def get_auto_model_class(model_name: str, trust_remote_code: bool = False):
@@ -713,9 +750,11 @@ def run_benchmark_suite(
     # Track current phase for result tagging
     current_phase: List[Optional[int]] = [None]  # Use list to allow modification in nested function
 
+    adapter_applicable = _adapter_applicable_phases(model_name, trust_remote_code)
+
     def should_run_phase(phase_num: int) -> bool:
-        """Check if a phase should run based on the phases filter."""
-        return phases is None or phase_num in phases
+        """Check if a phase should run based on the phases filter and adapter applicability."""
+        return _phase_enabled(phase_num, phases, adapter_applicable)
 
     def add_result(result: BenchmarkResult) -> None:
         """Add a result and optionally print it immediately."""
@@ -1579,6 +1618,58 @@ def run_benchmark_suite(
         add_result(result)
 
     # ========================================================================
+    # Phase 9: Vision Tests (only for vision-only encoder models)
+    # Runs before Phase 3 so we can reuse bridge_unprocessed before cleanup.
+    # ========================================================================
+    if (
+        bridge_unprocessed is not None
+        and getattr(bridge_unprocessed.cfg, "is_visual_model", False)
+        and should_run_phase(9)
+    ):
+        current_phase[0] = 9
+        if verbose:
+            print("\n" + "=" * 80)
+            print("PHASE 9: VISION TESTS")
+            print("=" * 80)
+            print("Testing vision forward parity and caching with synthetic images.")
+            print("=" * 80 + "\n")
+
+        try:
+            from transformer_lens.benchmarks.vision import (
+                benchmark_vision_cache,
+                benchmark_vision_forward,
+            )
+
+            vision_results = [
+                benchmark_vision_forward(bridge_unprocessed),
+                benchmark_vision_cache(bridge_unprocessed),
+            ]
+            for result in vision_results:
+                result.phase = 9
+                results.append(result)
+                if verbose:
+                    print(result)
+
+            if verbose:
+                print("\n" + "=" * 80)
+                print("PHASE 9 COMPLETE")
+                print("=" * 80)
+
+        except Exception as e:
+            if verbose:
+                print(f"\n⚠ Vision tests failed: {e}\n")
+            results.append(
+                BenchmarkResult(
+                    name="vision_suite",
+                    passed=False,
+                    severity=BenchmarkSeverity.ERROR,
+                    message=f"Failed to run vision tests: {str(e)}",
+                    details={"error": str(e)},
+                    phase=9,
+                )
+            )
+
+    # ========================================================================
     # PHASE 3: Bridge (processed) + HookedTransformer (processed)
     # ========================================================================
     current_phase[0] = 3
@@ -1600,7 +1691,7 @@ def run_benchmark_suite(
         _cleanup_bridge_unprocessed()
         _skip_phase3 = True
         if verbose:
-            print("\n⚠ Phase 3 skipped (not in phases list)\n")
+            print("\n⚠ Phase 3 skipped (excluded by phases filter or adapter applicable_phases)\n")
     elif is_encoder_decoder_model(model_name):
         _cleanup_bridge_unprocessed()
         _skip_phase3 = True
@@ -1913,34 +2004,48 @@ def run_benchmark_suite(
     return results
 
 
-def update_model_registry(model_name: str, results: List[BenchmarkResult]) -> bool:
+def update_model_registry(
+    model_name: str, results: List[BenchmarkResult], use_hf_reference: bool = False
+) -> bool:
     """Update the model registry with benchmark results.
 
     Args:
         model_name: The model that was benchmarked
         results: List of benchmark results
+        use_hf_reference: Whether the run numerically compared against an HF
+            reference. Defaults to False so an unstated reference state records
+            a passing run as PROVISIONAL, never VERIFIED.
 
     Returns:
         True if registry was updated successfully
     """
     from transformer_lens.tools.model_registry.registry_io import (
-        STATUS_VERIFIED,
+        STATUS_FAILED,
+        STATUS_PROVISIONAL,
         add_verification_record,
+        extract_phase_scores,
+        pass_status,
         update_model_status,
     )
 
-    # Calculate phase scores (percentage of passed tests per phase)
-    phase_results: Dict[int, List[bool]] = {1: [], 2: [], 3: []}
-    for result in results:
-        if result.phase in phase_results and result.severity != BenchmarkSeverity.SKIPPED:
-            phase_results[result.phase].append(result.passed)
+    # Threshold/note logic shared with verify_models so the two paths can't drift.
+    from transformer_lens.tools.model_registry.verify_models import (
+        _build_verified_note,
+        _check_phase_scores,
+        _sanitize_note,
+    )
 
-    phase_scores: Dict[int, Optional[float]] = {}
-    for phase, passed_list in phase_results.items():
-        if passed_list:
-            phase_scores[phase] = round(sum(passed_list) / len(passed_list) * 100, 1)
-        else:
-            phase_scores[phase] = None
+    phase_scores = extract_phase_scores(results)
+
+    score_error = _check_phase_scores(phase_scores, results)
+    if score_error:
+        status = STATUS_FAILED
+        note = score_error
+    else:
+        status = pass_status(use_hf_reference)
+        note = _build_verified_note(phase_scores, results)
+        if status == STATUS_PROVISIONAL:
+            note = f"Structural only (no HF reference): {note}"
 
     # Try to determine architecture
     architecture_id = "Unknown"
@@ -1957,21 +2062,26 @@ def update_model_registry(model_name: str, results: List[BenchmarkResult]) -> bo
     updated = update_model_status(
         model_id=model_name,
         arch_id=architecture_id,
-        status=STATUS_VERIFIED,
+        status=status,
         phase_scores=phase_scores,
+        note=note,
+        sanitize_fn=_sanitize_note,
     )
 
-    add_verification_record(
-        model_id=model_name,
-        arch_id=architecture_id,
-        notes="Benchmark passed",
-        verified_by="main_benchmark",
-    )
+    # No history record for provisional runs — VerificationHistory.is_verified()
+    # treats any record as verified, which would bypass the provisional gate.
+    if status != STATUS_PROVISIONAL:
+        add_verification_record(
+            model_id=model_name,
+            arch_id=architecture_id,
+            notes=note,
+            verified_by="main_benchmark",
+            sanitize_fn=_sanitize_note,
+        )
 
-    print(
-        f"Updated registry for {model_name}: "
-        f"P1={phase_scores.get(1)}%, P2={phase_scores.get(2)}%, P3={phase_scores.get(3)}%"
-    )
+    label = {STATUS_FAILED: "FAILED", STATUS_PROVISIONAL: "PROVISIONAL"}.get(status, "VERIFIED")
+    score_parts = ", ".join(f"P{p}={s}%" for p, s in sorted(phase_scores.items()))
+    print(f"Updated registry for {model_name} ({label}): {score_parts or 'no phase results'}")
     return updated
 
 
@@ -2035,7 +2145,9 @@ def main():
     )
 
     if args.update_registry:
-        update_model_registry(args.model, results)
+        # Same requested-reference state verify_models feeds pass_status(): a
+        # --no-hf-reference run can only mint PROVISIONAL, never VERIFIED.
+        update_model_registry(args.model, results, use_hf_reference=not args.no_hf_reference)
 
 
 if __name__ == "__main__":

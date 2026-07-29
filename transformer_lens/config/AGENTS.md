@@ -16,8 +16,8 @@ The `logit_scale` bug existed because the rules below weren't documented anywher
 
 | Use case | Path |
 |---|---|
-| First-class TL field that adapters / hooks / weight processing read | **Declare as a dataclass parameter** on `TransformerBridgeConfig`. Set a sensible default. Update `map_default_transformer_lens_config` in [`sources/transformers.py`](../model_bridge/sources/transformers.py) to translate the HF-config attr name to your field name. |
-| HF attr the adapter reads at runtime, no semantic translation needed | **Add to `_HF_PASSTHROUGH_ATTRS`** in BOTH [`sources/transformers.py:481`](../model_bridge/sources/transformers.py) AND [`sources/_bridge_builder.py:18`](../model_bridge/sources/_bridge_builder.py). The trap: adding to only one half-fixes. See [sources/AGENTS.md](../model_bridge/sources/AGENTS.md). |
+| First-class TL field that adapters / hooks / weight processing read | **Declare as a dataclass parameter** on `TransformerBridgeConfig`. Set a sensible default. Update `map_default_transformer_lens_config` in [`sources/_hf_format.py`](../model_bridge/sources/_hf_format.py) to translate the HF-config attr name to your field name. |
+| HF attr the adapter reads at runtime, no semantic translation needed | **Add to `_HF_PASSTHROUGH_ATTRS`** in [`sources/_bridge_builder.py`](../model_bridge/sources/_bridge_builder.py) — the single list. See [sources/AGENTS.md](../model_bridge/sources/AGENTS.md). |
 | HF attr name differs from existing TL field | **Add an explicit handler** in `map_default_transformer_lens_config` (e.g. Gemma2's `final_logit_softcapping` → `output_logits_soft_cap`). Don't also add to PASSTHROUGH. |
 | Just a derived view of an existing field | **Add a `@property`** on `TransformerBridgeConfig` (e.g. `head_dim` aliases `d_head`). |
 

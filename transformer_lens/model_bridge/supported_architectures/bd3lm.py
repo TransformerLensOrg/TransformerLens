@@ -16,6 +16,10 @@ from transformer_lens.model_bridge.generalized_components import (
 from transformer_lens.model_bridge.generalized_components.block import (
     DelegatedAttentionBlockBridge,
 )
+from transformer_lens.model_bridge.supported_architectures._remote_code_compat import (
+    disable_tied_weights_lookup,
+    force_import_remote_class,
+)
 
 
 class BD3LMArchitectureAdapter(ArchitectureAdapter):
@@ -140,14 +144,10 @@ class BD3LMArchitectureAdapter(ArchitectureAdapter):
         Modeling code has a custom __getattr__ that fails to delegate back
         to PreTrainedModel, raising AttributeError on all_tied_weights_keys.
         """
-        try:
-            from transformers.dynamic_module_utils import get_class_from_dynamic_module
-
-            model_class = get_class_from_dynamic_module("modeling_bd3lm.BD3LM", model_name)
-            setattr(model_class, "all_tied_weights_keys", {})
-        except Exception:
-            # Best-effort patch: should never block loading if dynamic module is missing/modified.
-            pass
+        # Best-effort: never block loading if the dynamic module is missing/modified.
+        model_class = force_import_remote_class(model_name, "modeling_bd3lm.BD3LM")
+        if model_class is not None:
+            disable_tied_weights_lookup(model_class)
 
     def prepare_model(self, hf_model: Any) -> None:
         """Patch BD3LM quirks that prevent standard bridge construction.

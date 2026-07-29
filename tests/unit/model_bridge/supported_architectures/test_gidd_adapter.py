@@ -8,7 +8,10 @@ from typing import Any
 
 import pytest
 
-from tests.unit.model_bridge.supported_architectures.helpers import make_bridge_cfg
+from tests.unit.model_bridge.supported_architectures.helpers import (
+    DiffusionContractTests,
+    make_bridge_cfg,
+)
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.factories.architecture_adapter_factory import (
     SUPPORTED_ARCHITECTURES,
@@ -109,3 +112,9 @@ def test_restore_frequencies_no_op_without_buffer():
     )
 
     assert restore_frequencies(SimpleNamespace(model=SimpleNamespace(), config=None)) is False
+
+
+class TestGiddDiffusionContract(DiffusionContractTests):
+    adapter_cls = GiddArchitectureAdapter
+    architecture = "GiddForDiffusionLM"
+    expected_sampler = "generate"

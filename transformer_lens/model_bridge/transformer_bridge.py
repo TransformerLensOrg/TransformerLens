@@ -1661,6 +1661,11 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         are computed for the right sequence length; block ``start_at_layer`` then swaps
         it back in for its own input, discarding whatever blocks 0..k-1 produced.
         """
+        if getattr(self.cfg, "is_visual_model", False):
+            raise NotImplementedError(
+                "start_at_layer is not supported for vision models: the residual "
+                "re-entry path assumes token inputs_embeds."
+            )
         for alt in ("encoder_blocks", "decoder_blocks", "L_blocks", "H_blocks"):
             if hasattr(self, alt):
                 raise NotImplementedError(

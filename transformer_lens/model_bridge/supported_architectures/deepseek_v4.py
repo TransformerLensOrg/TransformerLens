@@ -28,6 +28,7 @@ from transformer_lens.model_bridge.generalized_components import (
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
+from transformer_lens.utilities.attn_implementation import force_eager_attention
 
 
 class DeepseekV4HyperConnectionBridge(GeneralizedComponent):
@@ -257,10 +258,4 @@ class DeepSeekV4ArchitectureAdapter(ArchitectureAdapter):
 
     def prepare_model(self, hf_model: Any) -> None:
         """Force eager attention on a pre-loaded model before installing bridges."""
-        if hasattr(hf_model, "config"):
-            hf_model.config._attn_implementation = "eager"
-        model = getattr(hf_model, "model", None)
-        if model is not None and hasattr(model, "layers"):
-            for layer in model.layers:
-                if hasattr(layer, "self_attn") and hasattr(layer.self_attn, "config"):
-                    layer.self_attn.config._attn_implementation = "eager"
+        force_eager_attention(hf_model, per_layer=True)

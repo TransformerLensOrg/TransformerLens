@@ -1,40 +1,23 @@
 """RWKV-7 ("Goose") architecture adapter (RWKV7ForCausalLM).
 
-Model family: ``fla-hub/rwkv7-*`` (e.g. ``fla-hub/rwkv7-0.1B-g1``), an
-attention-free recurrent language model from the flash-linear-attention (``fla``)
-library. Loaded via remote code (``trust_remote_code=True``); the modeling
-classes live in ``fla.models.rwkv7``.
+Family ``fla-hub/rwkv7-*``: attention-free recurrent LM from the
+flash-linear-attention library, loaded via remote code. Blocks pair a
+time-mixing (generalized delta rule) and a token-shifted squared-ReLU
+channel-mixing sublayer under biased pre-LN; no positional embeddings.
 
-Architecture overview
----------------------
-RWKV-7 is a flat stack of recurrent blocks over a shared residual width, wrapped
-by standard (biased) LayerNorm rather than RMSNorm and with no positional
-embeddings::
-
-    embeddings -> [ RWKV7Block x N ] -> norm -> lm_head
-
-Each ``RWKV7Block`` is a pre-norm pair of a time-mixing and a channel-mixing
-sublayer::
-
-    x = x + attn(attn_norm(x))     # time-mixing  (RWKV7Attention)
-    x = x + ffn(ffn_norm(x))       # channel-mixing (RWKV7FeedForward)
-
-with an extra ``pre_norm`` LayerNorm on layer 0 only (``config.norm_first``).
-The time-mixing sublayer is the RWKV-7 "generalized delta rule": token-shifted
-lerp coefficients (``x_r``..``x_g``), receptance / key / value / output
-projections (``r_proj`` / ``k_proj`` / ``v_proj`` / ``o_proj``), low-rank LoRAs
-for the log-space decay / value blend / a-coefficient / gate, and a GroupNorm.
-The channel-mixing sublayer is a token-shifted squared-ReLU MLP (``key`` up,
-``value`` down).
-
-Cross-block ``v_first`` threading: ``RWKV7Model.forward`` initialises
-``v_first = torch.zeros_like(hidden_states)`` and threads it through every block
-(layer 0 fills it; later layers blend their value with it). This is managed
-entirely by the HF model-level forward, so the bridge — which delegates each
-block's forward to HF — gets it for free.
+Adapter decisions:
+- Full delegation: recurrence, token shift, LoRAs, and cross-block ``v_first``
+  threading all run inside the fla forward (v_first is managed by the HF
+  model-level forward, so delegated blocks get it for free).
+  ``weight_processing_conversions = {}``.
+- ``OpaqueBlockBridge``: BlockBridge's hook aliases hardcode the standard
+  pre-norm attention flow; only ``hook_in``/``hook_out`` are sound here.
+- ``ffn_norm`` is a fused add-and-norm ``(normed, residual) = ffn_norm(x, res,
+  True)`` under ``config.fuse_norm`` — wrapped as a delegating
+  ``GeneralizedComponent`` because ``NormalizationBridge`` can't express it.
+- ``head_dim`` is read but never assigned (aliases the read-only ``d_head``).
 """
 
-import sys
 from typing import Any
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
@@ -47,6 +30,12 @@ from transformer_lens.model_bridge.generalized_components import (
 )
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
+)
+from transformer_lens.model_bridge.supported_architectures._remote_code_compat import (
+    force_import_remote_class,
+    iter_remote_modeling_modules,
+    patch_init_weights_skip_loaded,
+    retie_weights_keys_v5,
 )
 
 
@@ -64,6 +53,12 @@ class RWKV7ArchitectureAdapter(ArchitectureAdapter):
     # Attention-free and recurrent — off the transformer-shaped verify_models
     # path; correctness lives in the integration tests (bridge-vs-HF parity).
     applicable_phases: list[int] = []
+    # fla threads recurrence through its own Cache object, not past_key_values;
+    # generation recomputes the full prefix per step (exact, O(n^2)).
+    supports_kv_cache: bool = False
+    # The fla forward ignores attention_mask, so left-padding would silently
+    # poison the recurrent state instead of being masked out.
+    supports_batched_generation: bool = False
 
     def __init__(self, cfg: Any) -> None:
         """Initialize the RWKV-7 architecture adapter."""
@@ -188,45 +183,18 @@ class RWKV7ArchitectureAdapter(ArchitectureAdapter):
         try:
             import fla.models.rwkv7.modeling_rwkv7  # noqa: F401
         except Exception:
-            try:
-                from transformers.dynamic_module_utils import (
-                    get_class_from_dynamic_module,
-                )
-
-                get_class_from_dynamic_module(
-                    "modeling_rwkv7.RWKV7ForCausalLM",
-                    model_name,
-                )
-            except Exception:
+            if force_import_remote_class(model_name, "modeling_rwkv7.RWKV7ForCausalLM") is None:
                 return
 
         # Patch every loaded RWKV-7 modeling module (each remote revision gets its
         # own module object in sys.modules).
-        for key in list(sys.modules.keys()):
-            if "rwkv7" not in key.lower() or "modeling" not in key.lower():
-                continue
-            module = sys.modules[key]
-
+        for module in iter_remote_modeling_modules("rwkv7"):
             # Patch 1: tied-weights keys list -> v5 dict form.
-            causal_lm_class = getattr(module, "RWKV7ForCausalLM", None)
-            if causal_lm_class is not None and isinstance(
-                getattr(causal_lm_class, "_tied_weights_keys", None), list
-            ):
-                causal_lm_class._tied_weights_keys = {"lm_head.weight": "model.embeddings.weight"}
-
+            retie_weights_keys_v5(
+                getattr(module, "RWKV7ForCausalLM", None),
+                {"lm_head.weight": "model.embeddings.weight"},
+            )
             # Patch 2: don't re-randomise already-loaded weights.
             pretrained_class = getattr(module, "RWKV7PreTrainedModel", None)
-            if pretrained_class is None or getattr(pretrained_class, "_tl_patched", False):
-                continue
-            original_init_weights = pretrained_class._init_weights
-
-            def safe_init_weights(self, mod, _original=original_init_weights):
-                # Only initialise modules still on meta device (pre-loading);
-                # never re-randomise weights already read from the checkpoint.
-                first_param = next(mod.parameters(), None)
-                if first_param is not None and first_param.device.type != "meta":
-                    return
-                _original(self, mod)
-
-            pretrained_class._init_weights = safe_init_weights
-            pretrained_class._tl_patched = True
+            if pretrained_class is not None:
+                patch_init_weights_skip_loaded(pretrained_class)

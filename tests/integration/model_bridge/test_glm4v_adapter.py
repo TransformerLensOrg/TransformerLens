@@ -29,27 +29,24 @@ def snapshot_path(tmp_path_factory):
 
 
 @pytest.fixture(scope="module")
-def glm4v_bridge(snapshot_path):
+def bridge(snapshot_path):
     return TransformerBridge.boot_transformers(snapshot_path, device="cpu", dtype=torch.float32)
 
 
-@pytest.fixture(scope="module")
-def sample_tokens(glm4v_bridge):
-    torch.manual_seed(0)
-    return torch.randint(0, glm4v_bridge.cfg.d_vocab - 10, (1, 12))
+SAMPLE_TOKENS_LEN = 12
 
 
 class TestGlm4vBridgeCreation:
-    def test_adapter_selected(self, glm4v_bridge):
+    def test_adapter_selected(self, bridge):
         from transformer_lens.model_bridge.supported_architectures.glm4v import (
             Glm4vArchitectureAdapter,
         )
 
-        assert isinstance(glm4v_bridge.adapter, Glm4vArchitectureAdapter)
+        assert isinstance(bridge.adapter, Glm4vArchitectureAdapter)
 
 
 class TestGlm4vForwardEquivalence:
-    def test_text_forward_matches_fresh_hf(self, glm4v_bridge, snapshot_path, sample_tokens):
+    def test_text_forward_matches_fresh_hf(self, bridge, snapshot_path, sample_tokens):
         from transformers import AutoModelForImageTextToText
 
         fresh = AutoModelForImageTextToText.from_pretrained(
@@ -57,12 +54,12 @@ class TestGlm4vForwardEquivalence:
         )
         fresh.eval()
         with torch.no_grad():
-            bridge_out = glm4v_bridge(sample_tokens)
+            bridge_out = bridge(sample_tokens)
             hf_out = fresh(input_ids=sample_tokens).logits
         max_diff = (bridge_out - hf_out).abs().max().item()
         assert max_diff < 1e-5, f"Bridge vs fresh HF max diff = {max_diff}"
 
-    def test_multimodal_forward_matches_fresh_hf(self, glm4v_bridge, snapshot_path):
+    def test_multimodal_forward_matches_fresh_hf(self, bridge, snapshot_path):
         from PIL import Image
         from transformers import AutoModelForImageTextToText, AutoProcessor
 
@@ -84,15 +81,15 @@ class TestGlm4vForwardEquivalence:
         # as kwargs) so the multimodal path — not just the wrapped HF model — is exercised.
         bridge_inputs = {k: v for k, v in inputs.items() if k != "input_ids"}
         with torch.no_grad():
-            bridge_out = glm4v_bridge(inputs["input_ids"], **bridge_inputs)
+            bridge_out = bridge(inputs["input_ids"], **bridge_inputs)
             hf_out = fresh(**inputs).logits
         max_diff = (bridge_out - hf_out).abs().max().item()
         assert max_diff < 1e-5, f"Bridge vs fresh HF max diff = {max_diff}"
 
 
 class TestGlm4vHooks:
-    def test_hooks_fire_including_sandwich_norms(self, glm4v_bridge, sample_tokens):
-        d_model = glm4v_bridge.cfg.d_model
+    def test_hooks_fire_including_sandwich_norms(self, bridge, sample_tokens):
+        d_model = bridge.cfg.d_model
         seq = sample_tokens.shape[1]
         expected = {
             "blocks.0.attn.hook_out": (1, seq, d_model),
@@ -106,15 +103,13 @@ class TestGlm4vHooks:
             captured[hook.name] = tuple(tensor.shape)
 
         with torch.no_grad():
-            glm4v_bridge.run_with_hooks(
-                sample_tokens, fwd_hooks=[(name, grab) for name in expected]
-            )
+            bridge.run_with_hooks(sample_tokens, fwd_hooks=[(name, grab) for name in expected])
         for name, shape in expected.items():
             assert captured.get(name) == shape, f"{name}: {captured.get(name)}"
 
 
 class TestGlm4vGeneration:
-    def test_generate(self, glm4v_bridge):
-        text = glm4v_bridge.generate("Hello", max_new_tokens=5, do_sample=False, verbose=False)
+    def test_generate(self, bridge):
+        text = bridge.generate("Hello", max_new_tokens=5, do_sample=False, verbose=False)
         assert isinstance(text, str)
         assert text.startswith("Hello")

@@ -133,9 +133,9 @@ class TestModelEntry:
         assert restored.phase3_score is None
 
     def test_round_trip_preserves_all_phase_scores(self):
-        """P4/P7/P8 (generation, multimodal, audio) must survive round-trip.
+        """P4/P7/P8/P9 (generation, multimodal, audio, vision) must survive round-trip.
 
-        verify_models writes phase1-4 + phase7 + phase8; a ModelEntry that only
+        verify_models writes phase1-4 + phase7-9; a ModelEntry that only
         declared phase1-3 silently dropped the rest on any from_dict/to_dict pass.
         """
         from transformer_lens.tools.model_registry.schemas import ModelEntry
@@ -153,12 +153,14 @@ class TestModelEntry:
             "phase4_score": 96.3,
             "phase7_score": 100.0,
             "phase8_score": None,
+            "phase9_score": 100.0,
         }
         restored = ModelEntry.from_dict(raw)
         assert restored.phase4_score == 96.3
         assert restored.phase7_score == 100.0
         assert restored.phase8_score is None
-        # to_dict emits all six phase keys and preserves the values
+        assert restored.phase9_score == 100.0
+        # to_dict emits all seven phase keys and preserves the values
         out = restored.to_dict()
         for phase in (
             "phase1_score",
@@ -167,8 +169,37 @@ class TestModelEntry:
             "phase4_score",
             "phase7_score",
             "phase8_score",
+            "phase9_score",
         ):
             assert out[phase] == raw[phase], phase
+
+    def test_phase9_absent_defaults_to_none(self):
+        """Registry rows written before Phase 9 existed lack the field entirely."""
+        from transformer_lens.tools.model_registry.schemas import ModelEntry
+
+        entry = ModelEntry.from_dict(
+            {"architecture_id": "GPT2LMHeadModel", "model_id": "gpt2", "status": 1}
+        )
+        assert entry.phase9_score is None
+        assert entry.to_dict()["phase9_score"] is None
+
+    def test_real_registry_loads_with_and_without_phase9(self):
+        """The live registry (15k+ rows) predates phase9_score; every row must
+        parse, absent fields defaulting to None and present ones preserved."""
+        from transformer_lens.tools.model_registry.registry_io import (
+            load_supported_models_raw,
+        )
+        from transformer_lens.tools.model_registry.schemas import ModelEntry
+
+        data = load_supported_models_raw()
+        models = data.get("models", [])
+        assert models, "real registry unexpectedly empty"
+        for raw in models:
+            entry = ModelEntry.from_dict(raw)
+            if "phase9_score" in raw:
+                assert entry.phase9_score == raw["phase9_score"]
+            else:
+                assert entry.phase9_score is None
 
     def test_backwards_compat_verified_bool(self):
         """Old format had 'verified: true' instead of 'status: 1'."""
@@ -444,6 +475,36 @@ class TestApi:
         assert api.is_model_supported("openai-community/gpt2")
         assert not api.is_model_supported("nonexistent/model")
 
+    def test_is_architecture_supported_resolves_hub_casing_alias(
+        self, registry_data_dir, monkeypatch
+    ):
+        """Hub configs report JetMoEForCausalLM; rows key the transformers casing."""
+        from transformer_lens.tools.model_registry import api
+
+        data_file = registry_data_dir / "supported_models.json"
+        data = json.loads(data_file.read_text())
+        data["models"].append(
+            {
+                "architecture_id": "JetMoeForCausalLM",
+                "model_id": "jetmoe/jetmoe-8b",
+                "status": 1,
+                "verified_date": "2026-01-01",
+                "metadata": None,
+                "note": None,
+                "phase1_score": 100.0,
+                "phase2_score": 100.0,
+                "phase3_score": 100.0,
+            }
+        )
+        data_file.write_text(json.dumps(data))
+
+        monkeypatch.setattr(api, "_DATA_DIR", registry_data_dir)
+        api.clear_cache()
+
+        assert api.is_architecture_supported("JetMoeForCausalLM")
+        assert api.is_architecture_supported("JetMoEForCausalLM")
+        assert not api.is_architecture_supported("SomeUnknownModel")
+
     def test_get_registry_stats(self, registry_data_dir, monkeypatch):
         from transformer_lens.tools.model_registry import api
 
@@ -547,6 +608,17 @@ class TestValidate:
             "test",
         )
         assert not any("status" in e.path for e in errors), errors
+
+    def test_validate_phase9_score(self):
+        """phase9_score validates like the other phase scores: numbers/None pass,
+        anything else is rejected."""
+        from transformer_lens.tools.model_registry.validate import _validate_model_entry
+
+        base = {"architecture_id": "ViTModel", "model_id": "google/vit-base-patch16-224"}
+        assert not _validate_model_entry({**base, "phase9_score": 88.0}, "test")
+        assert not _validate_model_entry({**base, "phase9_score": None}, "test")
+        errors = _validate_model_entry({**base, "phase9_score": "high"}, "test")
+        assert any("phase9_score" in e.path for e in errors)
 
 
 # ============================================================
@@ -915,6 +987,14 @@ class TestRegistrySyncedWithFactory:
             "NeoXForCausalLM",  # HF emits: GPTNeoXForCausalLM
         }
     )
+
+    # Not excludes, but a related category: architectures in both registry sets
+    # whose Hub checkpoints report a DIFFERENT arch string, so the scraper finds
+    # zero rows for them. DeiTModel / DeiTForImageClassification are the current
+    # cases — non-distilled facebook/deit-* configs report ViTForImageClassification,
+    # and distilled ones report DeiTForImageClassificationWithTeacher, which the
+    # ViT adapter refuses (unbridged distillation token). Zero rows is correct;
+    # do not fabricate registry entries to fill the gap.
 
     def test_every_factory_arch_is_in_hf_supported(self):
         """Every non-excluded factory key must be present in HF_SUPPORTED_ARCHITECTURES."""

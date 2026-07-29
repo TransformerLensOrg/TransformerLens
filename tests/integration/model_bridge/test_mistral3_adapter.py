@@ -3,33 +3,31 @@
 import pytest
 import torch
 
+from tests.integration.model_bridge.helpers import make_tiny_pair
 from transformer_lens.model_bridge.bridge import TransformerBridge
 
 MODEL = "tiny-random/mistral-3"
 
 
 @pytest.fixture(scope="module")
-def mistral3_bridge():
+def bridge():
     return TransformerBridge.boot_transformers(MODEL, device="cpu", dtype=torch.float32)
 
 
-@pytest.fixture(scope="module")
-def sample_tokens(mistral3_bridge):
-    torch.manual_seed(0)
-    return torch.randint(0, mistral3_bridge.cfg.d_vocab - 10, (1, 12))
+SAMPLE_TOKENS_LEN = 12
 
 
 class TestMistral3BridgeCreation:
-    def test_adapter_selected(self, mistral3_bridge):
+    def test_adapter_selected(self, bridge):
         from transformer_lens.model_bridge.supported_architectures.mistral3 import (
             Mistral3ArchitectureAdapter,
         )
 
-        assert isinstance(mistral3_bridge.adapter, Mistral3ArchitectureAdapter)
+        assert isinstance(bridge.adapter, Mistral3ArchitectureAdapter)
 
 
 class TestMistral3ForwardEquivalence:
-    def test_text_forward_matches_fresh_hf(self, mistral3_bridge, sample_tokens):
+    def test_text_forward_matches_fresh_hf(self, bridge, sample_tokens):
         from transformers import AutoModelForImageTextToText
 
         fresh = AutoModelForImageTextToText.from_pretrained(
@@ -37,12 +35,12 @@ class TestMistral3ForwardEquivalence:
         )
         fresh.eval()
         with torch.no_grad():
-            bridge_out = mistral3_bridge(sample_tokens)
+            bridge_out = bridge(sample_tokens)
             hf_out = fresh(input_ids=sample_tokens).logits
         max_diff = (bridge_out - hf_out).abs().max().item()
         assert max_diff < 1e-5, f"Bridge vs fresh HF max diff = {max_diff}"
 
-    def test_multimodal_forward_matches_fresh_hf(self, mistral3_bridge):
+    def test_multimodal_forward_matches_fresh_hf(self, bridge):
         from PIL import Image
         from transformers import AutoModelForImageTextToText, AutoProcessor
 
@@ -58,15 +56,15 @@ class TestMistral3ForwardEquivalence:
         # as kwargs) so the multimodal path — not just the wrapped HF model — is exercised.
         bridge_inputs = {k: v for k, v in inputs.items() if k != "input_ids"}
         with torch.no_grad():
-            bridge_out = mistral3_bridge(inputs["input_ids"], **bridge_inputs)
+            bridge_out = bridge(inputs["input_ids"], **bridge_inputs)
             hf_out = fresh(**inputs).logits
         max_diff = (bridge_out - hf_out).abs().max().item()
         assert max_diff < 1e-5, f"Bridge vs fresh HF max diff = {max_diff}"
 
 
 class TestMistral3Hooks:
-    def test_hooks_fire(self, mistral3_bridge, sample_tokens):
-        d_model = mistral3_bridge.cfg.d_model
+    def test_hooks_fire(self, bridge, sample_tokens):
+        d_model = bridge.cfg.d_model
         seq = sample_tokens.shape[1]
         expected = {
             "blocks.0.attn.hook_out": (1, seq, d_model),
@@ -79,16 +77,14 @@ class TestMistral3Hooks:
             captured[hook.name] = tuple(tensor.shape)
 
         with torch.no_grad():
-            mistral3_bridge.run_with_hooks(
-                sample_tokens, fwd_hooks=[(name, grab) for name in expected]
-            )
+            bridge.run_with_hooks(sample_tokens, fwd_hooks=[(name, grab) for name in expected])
         for name, shape in expected.items():
             assert captured.get(name) == shape, f"{name}: {captured.get(name)}"
 
 
 class TestMistral3Generation:
-    def test_generate(self, mistral3_bridge):
-        text = mistral3_bridge.generate("Hello", max_new_tokens=5, do_sample=False, verbose=False)
+    def test_generate(self, bridge):
+        text = bridge.generate("Hello", max_new_tokens=5, do_sample=False, verbose=False)
         assert isinstance(text, str)
         assert text.startswith("Hello")
 
@@ -99,17 +95,11 @@ def _tiny_ministral3_vlm_pair():
     original_max_position_embeddings=4 puts most of a 12-token prompt past the
     llama-4 query-scale threshold, so a bridge that skips the scale diverges.
     """
-    import copy
-
     from transformers import (
         Ministral3Config,
         Mistral3Config,
         Mistral3ForConditionalGeneration,
         PixtralVisionConfig,
-    )
-
-    from transformer_lens.model_bridge.sources._bridge_builder import (
-        build_bridge_from_module,
     )
 
     text_cfg = Ministral3Config(
@@ -142,20 +132,9 @@ def _tiny_ministral3_vlm_pair():
         image_token_index=3,
         vision_feature_layer=-1,
     )
-    cfg._attn_implementation = "eager"
-
-    torch.manual_seed(42)
-    ref = Mistral3ForConditionalGeneration(cfg).eval()
-    hf = Mistral3ForConditionalGeneration(copy.deepcopy(cfg)).eval()
-    hf.load_state_dict(ref.state_dict())
-    bridge = build_bridge_from_module(
-        hf,
-        "Mistral3ForConditionalGeneration",
-        hf_config=copy.deepcopy(cfg),
-        tokenizer=None,
-        device="cpu",
-    ).eval()
-    return bridge, ref
+    return make_tiny_pair(
+        cfg, "Mistral3ForConditionalGeneration", loader=Mistral3ForConditionalGeneration
+    )
 
 
 class TestMinistral3QueryScale:
