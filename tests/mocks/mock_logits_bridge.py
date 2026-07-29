@@ -19,8 +19,9 @@ from transformer_lens.model_bridge.generalized_components import (
 from transformer_lens.model_bridge.sources._driver_base import DriverBase
 
 
-def mock_bridge_cfg() -> TransformerBridgeConfig:
-    return TransformerBridgeConfig(
+def mock_bridge_cfg(**overrides) -> TransformerBridgeConfig:
+    """Tiny bridge config; pass any TransformerBridgeConfig field as an override."""
+    params = dict(
         d_model=4,
         d_head=2,
         n_layers=1,
@@ -30,6 +31,8 @@ def mock_bridge_cfg() -> TransformerBridgeConfig:
         d_mlp=8,
         architecture="Mock",
     )
+    params.update(overrides)
+    return TransformerBridgeConfig(**params)
 
 
 class LogitsDriver(DriverBase):

@@ -53,8 +53,9 @@ class Qwen3_5ArchitectureAdapter(Qwen3ArchitectureAdapter):
                 "Qwen3.5 support in TransformerLens is text-only. Pass a "
                 "Qwen3_5ForCausalLM / Qwen3_5TextConfig model, or load by model id "
                 "with TransformerBridge.boot_transformers(...) so the text_config is "
-                "selected automatically. Qwen3_5ForConditionalGeneration, image/video "
-                "inputs, and Qwen3.5 MoE are not supported by this adapter."
+                "selected automatically. Qwen3_5ForConditionalGeneration and image/video "
+                "inputs are not supported by this adapter. Qwen3.5-MoE checkpoints are "
+                "handled separately by Qwen3_5MoeArchitectureAdapter."
             )
 
     def preprocess_weights(self, state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:

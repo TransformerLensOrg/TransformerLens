@@ -33,12 +33,6 @@ class GPTOSSArchitectureAdapter(ArchitectureAdapter):
 
         # Conversion rules for weight processing/folding
         # GPT-OSS uses MoE with batched experts, so we need special handling
-        # GPT-OSS may use GQA: K/V heads can differ from Q heads
-        n_kv_heads = (
-            self.cfg.n_key_value_heads
-            if hasattr(self.cfg, "n_key_value_heads") and self.cfg.n_key_value_heads is not None
-            else self.cfg.n_heads
-        )
         self.weight_processing_conversions = {
             **self._qkvo_weight_conversions(),
         }

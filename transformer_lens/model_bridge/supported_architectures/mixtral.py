@@ -35,12 +35,6 @@ class MixtralArchitectureAdapter(ArchitectureAdapter):
 
         self._set_rms_rotary_defaults(final_rms=False)
 
-        n_kv_heads = (
-            self.cfg.n_key_value_heads
-            if hasattr(self.cfg, "n_key_value_heads") and self.cfg.n_key_value_heads is not None
-            else self.cfg.n_heads
-        )
-
         self.weight_processing_conversions = {
             **self._qkvo_weight_conversions(),
         }

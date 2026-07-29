@@ -15,8 +15,7 @@ from unittest.mock import MagicMock
 import pytest
 import torch
 
-from transformer_lens.config import TransformerBridgeConfig
-from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
+from tests.mocks.vllm_boot import fake_collective_rpc, mocked_vllm_boot
 from transformer_lens.model_bridge.remote_bridge import RemoteBridge
 from transformer_lens.model_bridge.sources.vllm import plugin
 from transformer_lens.model_bridge.sources.vllm.source import (
@@ -25,107 +24,15 @@ from transformer_lens.model_bridge.sources.vllm.source import (
 )
 
 
-def _hf_config() -> SimpleNamespace:
-    return SimpleNamespace(
-        architectures=["LlamaForCausalLM"],
-        torch_dtype=torch.float16,
-        hidden_size=4,
-        vocab_size=16,
-        num_hidden_layers=2,
-    )
-
-
-def _cfg() -> TransformerBridgeConfig:
-    return TransformerBridgeConfig(
-        d_model=4,
-        d_head=2,
-        n_layers=2,
-        n_ctx=8,
-        n_heads=2,
-        d_vocab=16,
-        d_mlp=8,
-        architecture="LlamaForCausalLM",
-    )
-
-
-def _fake_rpc(absent_per_rank):
-    """Method-dispatch collective_rpc stub: tl_absent_hooks feeds the boot-time
-    coverage check (list per rank); every other method returns a real tensor
-    (the reconstruction probe's get_param is beartype-enforced)."""
-
-    def rpc(method, *args, **kwargs):
-        if method == "tl_absent_hooks":
-            return absent_per_rank
-        return [torch.ones(16, 4)]
-
-    return MagicMock(side_effect=rpc)
-
-
 @pytest.fixture
 def mocked_boot(monkeypatch):
-    """Mock every external boundary boot_vllm crosses; yield handles for assertions."""
+    """Mock every external boundary boot_vllm crosses; yield handles for assertions.
+
+    plugin.configure() stays real (the mocked_vllm_boot default) so the
+    clear-state tests below exercise real plugin state.
+    """
     plugin.clear_config()
-    hf_config = _hf_config()
-    cfg = _cfg()
-    adapter = ArchitectureAdapter(cfg)
-    adapter.component_mapping = {}
-
-    auto_config = MagicMock(return_value=hf_config)
-    auto_tokenizer = MagicMock(return_value=MagicMock(name="tokenizer"))
-    monkeypatch.setattr("transformers.AutoConfig.from_pretrained", auto_config)
-    monkeypatch.setattr("transformers.AutoTokenizer.from_pretrained", auto_tokenizer)
-
-    fake_llm = MagicMock(name="llm")
-    fake_llm.collective_rpc = _fake_rpc([[]])
-    fake_vllm = MagicMock()
-    fake_vllm.LLM = MagicMock(return_value=fake_llm)
-    monkeypatch.setitem(sys.modules, "vllm", fake_vllm)
-
-    monkeypatch.setattr(
-        "transformer_lens.model_bridge.sources.vllm.source.get_hf_token",
-        lambda: "fake-token",
-    )
-    monkeypatch.setattr(
-        "transformer_lens.model_bridge.sources.vllm.source.extract_hf_config",
-        lambda llm: hf_config,
-    )
-    monkeypatch.setattr(
-        "transformer_lens.model_bridge.sources.vllm.source.build_bridge_config_from_hf",
-        lambda hf, arch, name, dt: cfg,
-    )
-    monkeypatch.setattr(
-        "transformer_lens.model_bridge.sources.vllm.source"
-        ".ArchitectureAdapterFactory.select_architecture_adapter",
-        lambda c: adapter,
-    )
-    # Skip the real monkey-patch of Worker.load_model — only entry-points discovery
-    # would import vllm.v1.worker.gpu_worker. Leave configure() unmocked so the
-    # clear() test exercises real state.
-    monkeypatch.setattr(
-        "transformer_lens.model_bridge.sources.vllm.source.plugin.register",
-        lambda: None,
-    )
-
-    # Real tokenizer setup/probing can't run on a MagicMock tokenizer.
-    def _fake_configure_tokenizer(tokenizer, cfg_):
-        cfg_.tokenizer_prepends_bos, cfg_.tokenizer_appends_eos = (False, True)
-        return tokenizer
-
-    configure_tok = MagicMock(side_effect=_fake_configure_tokenizer)
-    monkeypatch.setattr(
-        "transformer_lens.model_bridge.sources.vllm.source.configure_tokenizer",
-        configure_tok,
-    )
-
-    yield {
-        "auto_config": auto_config,
-        "auto_tokenizer": auto_tokenizer,
-        "vllm_llm": fake_vllm.LLM,
-        "hf_config": hf_config,
-        "cfg": cfg,
-        "configure_tok": configure_tok,
-    }
-
+    yield mocked_vllm_boot(monkeypatch)
     plugin.clear_config()
 
 
@@ -231,7 +138,7 @@ def test_env_channel_populated_during_llm_construction(mocked_boot):
 def test_boot_fails_loud_when_hook_absent_on_all_ranks(mocked_boot):
     """A spec that installed on no rank is a broken dot-path — silent zeros otherwise."""
     fake_llm = mocked_boot["vllm_llm"].return_value
-    fake_llm.collective_rpc = _fake_rpc([["blocks.0.hook_out"], ["blocks.0.hook_out"]])
+    fake_llm.collective_rpc = fake_collective_rpc([["blocks.0.hook_out"], ["blocks.0.hook_out"]])
     with pytest.raises(RuntimeError, match="blocks.0.hook_out"):
         boot_vllm("any-model")
 
@@ -240,7 +147,7 @@ def test_boot_accepts_per_rank_absence(mocked_boot):
     """PP shards legally lack some layers — only absent-everywhere is an error."""
     fake_llm = mocked_boot["vllm_llm"].return_value
     # Disjoint per rank — union covers every spec.
-    fake_llm.collective_rpc = _fake_rpc([["blocks.1.hook_out"], ["blocks.0.hook_out"]])
+    fake_llm.collective_rpc = fake_collective_rpc([["blocks.1.hook_out"], ["blocks.0.hook_out"]])
     assert boot_vllm("any-model") is not None
 
 

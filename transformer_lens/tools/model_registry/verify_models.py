@@ -52,8 +52,10 @@ from .registry_io import (
     STATUS_UNVERIFIED,
     STATUS_VERIFIED,
     add_verification_record,
+    extract_phase_scores,
     is_incompatible_quantized,
     load_supported_models_raw,
+    pass_status,
     required_quant_library_for_model,
     update_model_status,
 )
@@ -144,12 +146,6 @@ def _full_and_core_phases(arch: str) -> tuple[set[int], set[int]]:
 def _default_phases_for_architecture(arch: str) -> list[int]:
     """Phases to run when the caller names none — a full verification."""
     return sorted(_full_and_core_phases(arch)[0])
-
-
-def _pass_status(use_hf_reference: bool) -> int:
-    """Status for a passing run: VERIFIED with an HF reference, else PROVISIONAL
-    (a --no-hf-reference structural-only pass is recorded but not counted verified)."""
-    return STATUS_VERIFIED if use_hf_reference else STATUS_PROVISIONAL
 
 
 def _get_current_model_status(model_id: str, arch_id: str) -> int:
@@ -530,41 +526,9 @@ def select_models_for_verification(
     return candidates
 
 
-def _extract_phase_scores(results: list) -> dict[int, Optional[float]]:
-    """Extract phase scores from benchmark results.
-
-    Mirrors the logic in update_model_registry() from main_benchmark.py.
-
-    Args:
-        results: List of BenchmarkResult objects
-
-    Returns:
-        Dict mapping phase number to score (0-100) or None
-    """
-    from transformer_lens.benchmarks.utils import BenchmarkSeverity
-
-    phase_results: dict[int, list[bool]] = {1: [], 2: [], 3: [], 4: [], 7: [], 8: [], 9: []}
-    for result in results:
-        if result.phase in phase_results and result.severity != BenchmarkSeverity.SKIPPED:
-            phase_results[result.phase].append(result.passed)
-
-    scores: dict[int, Optional[float]] = {}
-    for phase, passed_list in phase_results.items():
-        if passed_list:
-            scores[phase] = round(sum(passed_list) / len(passed_list) * 100, 1)
-        # Omit phases with no results — they weren't run, so their
-        # existing registry scores should be preserved.
-
-    # Phase 4 (text quality): store the actual 0-100 quality score from the
-    # benchmark details instead of a binary pass/fail percentage.
-    if 4 in scores:
-        for result in results:
-            if result.phase == 4 and result.details and "score" in result.details:
-                scores[4] = round(result.details["score"], 1)
-                break
-
-    return scores
-
+# Phase-score extraction and pass-status logic live in registry_io
+# (extract_phase_scores / pass_status) — the shared home for both
+# registry-writing paths, this module and main_benchmark.update_model_registry.
 
 # Per-phase minimum score thresholds (0-100).
 # Phase 1: Core correctness (bridge vs HF) — must pass everything.
@@ -956,7 +920,7 @@ def verify_models(
             if not quiet:
                 print(f"  Benchmark failed: {error_msg[:200]}")
 
-        phase_scores = _extract_phase_scores(all_results)
+        phase_scores = extract_phase_scores(all_results)
 
         if not error_msg:
             score_error = _check_phase_scores(phase_scores, all_results)
@@ -1159,7 +1123,7 @@ def verify_models(
         elif final_status == STATUS_VERIFIED:
             # A passing run is VERIFIED only if it was numerically compared to an
             # HF reference; a --no-hf-reference (structural-only) pass is PROVISIONAL.
-            written_status = _pass_status(use_hf_reference)
+            written_status = pass_status(use_hf_reference)
             is_provisional = written_status == STATUS_PROVISIONAL
             if is_provisional:
                 note = f"Structural only (no HF reference): {note}"

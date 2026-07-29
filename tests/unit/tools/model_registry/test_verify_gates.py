@@ -5,23 +5,20 @@ drift or a phase-filter regression would slip through CI. They are pure function
 pin them directly:
 - ``_phases_to_run`` — restricts requested phases to the adapter's ``applicable_phases``
   (SSM/recurrent families now run all four); phases 7/8 always pass through.
-- ``_extract_phase_scores`` — per-phase pass-rate, with SKIPPED results excluded.
+- ``_check_phase_scores`` — per-phase thresholds and required-test gating.
 - ``_is_ssm_mixer_internal`` — the component-benchmark skip for SSM mixer internals.
+
+``extract_phase_scores`` / ``pass_status`` moved to registry_io; their tests live in
+test_registry_io_helpers.py.
 """
 from types import SimpleNamespace
 
 from transformer_lens.benchmarks.component_outputs import _is_ssm_mixer_internal
 from transformer_lens.benchmarks.utils import BenchmarkSeverity
-from transformer_lens.tools.model_registry.registry_io import (
-    STATUS_PROVISIONAL,
-    STATUS_VERIFIED,
-)
 from transformer_lens.tools.model_registry.verify_models import (
     _check_phase_scores,
     _default_phases_for_architecture,
-    _extract_phase_scores,
     _full_and_core_phases,
-    _pass_status,
     _phases_to_run,
 )
 
@@ -89,39 +86,6 @@ def _result(phase, passed, severity, details=None, name="test"):
     )
 
 
-class TestExtractPhaseScores:
-    def test_skipped_results_excluded_from_score(self):
-        # A SKIPPED centering test (passed=False) must NOT drag the phase down — this is
-        # exactly the SSM P3=90 bug. One real PASS + one SKIPPED → 100.
-        results = [
-            _result(3, True, BenchmarkSeverity.INFO),
-            _result(3, False, BenchmarkSeverity.SKIPPED),
-        ]
-        assert _extract_phase_scores(results)[3] == 100.0
-
-    def test_mixed_pass_fail_averaged(self):
-        results = [
-            _result(1, True, BenchmarkSeverity.INFO),
-            _result(1, False, BenchmarkSeverity.DANGER),
-        ]
-        assert _extract_phase_scores(results)[1] == 50.0
-
-    def test_all_skipped_phase_omitted(self):
-        results = [_result(2, False, BenchmarkSeverity.SKIPPED)]
-        assert 2 not in _extract_phase_scores(results)
-
-    def test_phase4_uses_quality_score_from_details(self):
-        results = [_result(4, True, BenchmarkSeverity.INFO, details={"score": 87.5})]
-        assert _extract_phase_scores(results)[4] == 87.5
-
-    def test_phase9_results_scored(self):
-        results = [
-            _result(9, True, BenchmarkSeverity.INFO),
-            _result(9, False, BenchmarkSeverity.DANGER),
-        ]
-        assert _extract_phase_scores(results)[9] == 50.0
-
-
 class TestCheckPhaseScores:
     """Phase 9 gates like 7/8: min score 75, vision_forward required, NULL fails."""
 
@@ -159,14 +123,3 @@ class TestIsSSMMixerInternal:
     def test_transformer_components_untouched(self):
         for path in ("blocks.0.attn.q", "blocks.0.mlp.out", "embed", "unembed", "ln_final"):
             assert not _is_ssm_mixer_internal(path)
-
-
-class TestPassStatus:
-    """A passing run is VERIFIED only when numerically compared to HF; a
-    --no-hf-reference (structural-only) pass is PROVISIONAL, not verified."""
-
-    def test_hf_reference_passes_verify(self):
-        assert _pass_status(use_hf_reference=True) == STATUS_VERIFIED
-
-    def test_no_hf_reference_is_provisional(self):
-        assert _pass_status(use_hf_reference=False) == STATUS_PROVISIONAL

@@ -16,15 +16,13 @@ from transformer_lens.model_bridge.generalized_components import (
     MLAAttentionBridge,
     MLABlockBridge,
     MoEBridge,
+    MoERouterBridge,
     RMSNormalizationBridge,
     RotaryEmbeddingBridge,
     UnembeddingBridge,
 )
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
-)
-from transformer_lens.model_bridge.supported_architectures.glm4_moe import (
-    Glm4MoeRouterBridge,
 )
 
 
@@ -86,7 +84,7 @@ class Glm4MoeLiteArchitectureAdapter(ArchitectureAdapter):
                         name="mlp",
                         config=self.cfg,
                         submodules={
-                            "gate": Glm4MoeRouterBridge(name="gate", optional=True),
+                            "gate": MoERouterBridge(name="gate", optional=True),
                             "shared_experts": self._gated_mlp(name="shared_experts", optional=True),
                         },
                     ),
