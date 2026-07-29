@@ -4,7 +4,6 @@ from __future__ import annotations
 import contextlib
 import copy
 import logging
-import os
 import warnings
 from typing import Any
 
@@ -17,41 +16,26 @@ from transformer_lens.factories.architecture_adapter_factory import (
 from transformer_lens.model_bridge.bridge import TransformerBridge
 from transformer_lens.model_bridge.sources._bridge_builder import (
     build_bridge_config_from_hf,
-    detect_tokenizer_bos_eos,
+    configure_tokenizer,
+    skip_tokenizer_for_modality,
 )
 from transformer_lens.model_bridge.sources._hf_format import (
     determine_architecture_from_hf_config,
-    setup_tokenizer,
 )
 from transformer_lens.tools.model_registry.registry_io import resolve_model_alias
 from transformer_lens.utilities import get_device
+from transformer_lens.utilities.attn_implementation import force_eager_attention
 
 from .helpers import (
     _resolve_checkpoint_to_revision,
     get_hf_model_class_for_architecture,
+    load_modality_processor,
 )
 
 # Suppress transformers warnings that go to stderr; otherwise notebook tests fail
 # on unexpected stderr output.
 warnings.filterwarnings("ignore", message=".*generation flags.*not valid.*")
 logging.getLogger("transformers").setLevel(logging.ERROR)
-
-
-def _force_eager_attention(hf_model: Any) -> None:
-    """Switch a pre-loaded model to eager attention so attention hooks can fire."""
-    if hasattr(hf_model, "set_attn_implementation"):
-        try:
-            hf_model.set_attn_implementation("eager")
-            return
-        except Exception:
-            pass  # Exotic wrapped models can reject the public API; write the config instead.
-    config = getattr(hf_model, "config", None)
-    if config is not None and hasattr(config, "_attn_implementation"):
-        config._attn_implementation = "eager"
-        # Nested multimodal configs carry their own attn implementation.
-        text_config = getattr(config, "text_config", None)
-        if text_config is not None:
-            text_config._attn_implementation = "eager"
 
 
 def boot(
@@ -296,7 +280,7 @@ def boot(
         # returns attn_weights=None and hook_pattern / hook_attn_scores silently never
         # fire. An explicit adapter/user choice wins, matching the load path above.
         if getattr(adapter.cfg, "attn_implementation", None) is None:
-            _force_eager_attention(hf_model)
+            force_eager_attention(hf_model)
     elif not load_weights:
         from_config_kwargs = {}
         if trust_remote_code:
@@ -399,17 +383,11 @@ def boot(
                 _actual,
             )
     adapter.prepare_model(hf_model)
-    default_padding_side = getattr(adapter.cfg, "default_padding_side", None)
-    use_fast = getattr(adapter.cfg, "use_fast", True)
-    # Audio/vision models use feature extractors or image processors, not text tokenizers.
-    _is_audio = getattr(adapter.cfg, "is_audio_model", False)
-    _is_visual = getattr(adapter.cfg, "is_visual_model", False)
-    if (_is_audio or _is_visual) and tokenizer is None:
-        tokenizer = None
-    elif tokenizer is not None:
-        tokenizer = setup_tokenizer(tokenizer, default_padding_side=default_padding_side)
-    else:
+    if tokenizer is not None:
+        tokenizer = configure_tokenizer(tokenizer, adapter.cfg)
+    elif not skip_tokenizer_for_modality(adapter.cfg):
         token_arg = get_hf_token()
+        use_fast = getattr(adapter.cfg, "use_fast", True)
         # Some adapters override tokenizer source (e.g. OpenELM has no tokenizer of its own).
         tokenizer_source = model_name
         if hasattr(adapter.cfg, "tokenizer_name") and adapter.cfg.tokenizer_name is not None:
@@ -432,104 +410,12 @@ def boot(
                 trust_remote_code=trust_remote_code,
                 revision=revision,
             )
-        tokenizer = setup_tokenizer(
-            base_tokenizer,
-            default_padding_side=default_padding_side,
-        )
-    if tokenizer is not None:
-        (
-            adapter.cfg.tokenizer_prepends_bos,
-            adapter.cfg.tokenizer_appends_eos,
-        ) = detect_tokenizer_bos_eos(tokenizer)
+        tokenizer = configure_tokenizer(base_tokenizer, adapter.cfg)
     from transformer_lens.model_bridge.sources.transformers_driver import (
         TransformersDriver,
     )
 
     driver = TransformersDriver(hf_model, adapter, tokenizer)
     bridge = TransformerBridge(hf_model, adapter, tokenizer, driver=driver)
-
-    # Multimodal models: load the image preprocessor.
-    if getattr(adapter.cfg, "is_multimodal", False):
-        try:
-            from transformers import AutoProcessor
-
-            huggingface_token = os.environ.get("HF_TOKEN", "")
-            token_arg = huggingface_token if len(huggingface_token) > 0 else None
-            bridge.processor = AutoProcessor.from_pretrained(
-                model_name,
-                token=token_arg,
-                trust_remote_code=trust_remote_code,
-            )
-        except Exception:
-            # Some processors need torchvision (e.g. LlavaOnevision); install if missing.
-            _torchvision_available = False
-            try:
-                import torchvision  # noqa: F401
-
-                _torchvision_available = True
-            except Exception:
-                import shutil
-                import subprocess
-                import sys
-
-                try:
-                    if shutil.which("uv"):
-                        subprocess.check_call(
-                            ["uv", "pip", "install", "torchvision", "-q"],
-                        )
-                    else:
-                        subprocess.check_call(
-                            [sys.executable, "-m", "pip", "install", "torchvision", "-q"],
-                        )
-                    import importlib
-
-                    importlib.invalidate_caches()
-                    _torchvision_available = True
-                except Exception:
-                    pass
-
-            if _torchvision_available:
-                try:
-                    from transformers import AutoProcessor
-
-                    huggingface_token = os.environ.get("HF_TOKEN", "")
-                    token_arg = huggingface_token if len(huggingface_token) > 0 else None
-                    bridge.processor = AutoProcessor.from_pretrained(
-                        model_name,
-                        token=token_arg,
-                        trust_remote_code=trust_remote_code,
-                    )
-                except Exception:
-                    pass
-
-    # Audio models: load the feature extractor.
-    if getattr(adapter.cfg, "is_audio_model", False):
-        try:
-            from transformers import AutoFeatureExtractor
-
-            huggingface_token = os.environ.get("HF_TOKEN", "")
-            token_arg = huggingface_token if len(huggingface_token) > 0 else None
-            bridge.processor = AutoFeatureExtractor.from_pretrained(
-                model_name,
-                token=token_arg,
-                trust_remote_code=trust_remote_code,
-            )
-        except Exception:
-            pass
-
-    # Vision models: load the image processor.
-    if getattr(adapter.cfg, "is_visual_model", False):
-        try:
-            from transformers import AutoImageProcessor
-
-            huggingface_token = os.environ.get("HF_TOKEN", "")
-            token_arg = huggingface_token if len(huggingface_token) > 0 else None
-            bridge.processor = AutoImageProcessor.from_pretrained(
-                model_name,
-                token=token_arg,
-                trust_remote_code=trust_remote_code,
-            )
-        except Exception:
-            pass
-
+    load_modality_processor(bridge, adapter.cfg, model_name, trust_remote_code, _hf_token)
     return bridge

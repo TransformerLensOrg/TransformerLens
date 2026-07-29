@@ -1,9 +1,6 @@
 """Ouro architecture adapter."""
 
-import sys
-from typing import Any, Optional
-
-import torch
+from typing import Any
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
@@ -16,30 +13,11 @@ from transformer_lens.model_bridge.generalized_components import (
     RotaryEmbeddingBridge,
     UnembeddingBridge,
 )
-
-
-def _compute_default_rope_parameters(
-    config: Any,
-    device: Optional[torch.device] = None,
-    seq_len: Optional[int] = None,
-    **rope_kwargs: Any,
-) -> tuple[torch.Tensor, float]:
-    """Standard (unscaled) RoPE inverse frequencies, as transformers v4 defined them.
-
-    Transformers v5 removed the "default" entry from ROPE_INIT_FUNCTIONS (standard
-    RoPE moved to a per-model static method), but Ouro's remote code still looks it
-    up. Signature and return match the v4 contract the remote code calls with:
-    (config, device) -> (inv_freq, attention_scaling).
-    """
-    base = config.rope_theta
-    partial_rotary_factor = getattr(config, "partial_rotary_factor", None) or 1.0
-    head_dim = getattr(config, "head_dim", None) or config.hidden_size // config.num_attention_heads
-    dim = int(head_dim * partial_rotary_factor)
-    inv_freq = 1.0 / (
-        base
-        ** (torch.arange(0, dim, 2, dtype=torch.int64).to(device=device, dtype=torch.float) / dim)
-    )
-    return inv_freq, 1.0
+from transformer_lens.model_bridge.supported_architectures._remote_code_compat import (
+    compute_default_rope_inv_freq,
+    force_import_remote_class,
+    iter_remote_modeling_modules,
+)
 
 
 class OuroArchitectureAdapter(ArchitectureAdapter):
@@ -173,32 +151,24 @@ class OuroArchitectureAdapter(ArchitectureAdapter):
             model_kwargs: The kwargs dict for from_pretrained()
         """
         # Force-import the modeling module so we can patch it
-        try:
-            from transformers.dynamic_module_utils import get_class_from_dynamic_module
-
-            get_class_from_dynamic_module(
-                "modeling_ouro.OuroForCausalLM",
-                model_name,
-            )
-        except Exception:
+        if force_import_remote_class(model_name, "modeling_ouro.OuroForCausalLM") is None:
             return
 
-        # Each checkpoint revision gets its own module in sys.modules, so patch
-        # every imported Ouro modeling module (same idiom as openelm.py).
-        for key in list(sys.modules.keys()):
-            if "ouro" in key.lower() and "modeling" in key.lower():
-                module = sys.modules[key]
-                rope_functions = getattr(module, "ROPE_INIT_FUNCTIONS", None)
-                if rope_functions is not None and "default" not in rope_functions:
-                    setattr(
-                        module,
-                        "ROPE_INIT_FUNCTIONS",
-                        {**rope_functions, "default": _compute_default_rope_parameters},
-                    )
-                rope_class = getattr(module, "OuroRotaryEmbedding", None)
-                if rope_class is not None and not hasattr(
-                    rope_class, "compute_default_rope_parameters"
-                ):
-                    rope_class.compute_default_rope_parameters = staticmethod(
-                        _compute_default_rope_parameters
-                    )
+        # Each checkpoint revision gets its own module in sys.modules; patch all.
+        for module in iter_remote_modeling_modules("ouro"):
+            # Rebind the module-level ROPE_INIT_FUNCTIONS name to a copy with
+            # "default" restored; the shared transformers dict stays untouched.
+            rope_functions = getattr(module, "ROPE_INIT_FUNCTIONS", None)
+            if rope_functions is not None and "default" not in rope_functions:
+                setattr(
+                    module,
+                    "ROPE_INIT_FUNCTIONS",
+                    {**rope_functions, "default": compute_default_rope_inv_freq},
+                )
+            rope_class = getattr(module, "OuroRotaryEmbedding", None)
+            if rope_class is not None and not hasattr(
+                rope_class, "compute_default_rope_parameters"
+            ):
+                rope_class.compute_default_rope_parameters = staticmethod(
+                    compute_default_rope_inv_freq
+                )

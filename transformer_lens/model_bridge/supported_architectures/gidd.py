@@ -26,6 +26,11 @@ from transformer_lens.model_bridge.generalized_components import (
     RMSNormalizationBridge,
     UnembeddingBridge,
 )
+from transformer_lens.model_bridge.supported_architectures._remote_code_compat import (
+    disable_tied_weights_lookup,
+    force_import_remote_class,
+    patch_init_weights_skip_loaded,
+)
 
 
 def restore_frequencies(hf_model: Any) -> bool:
@@ -131,28 +136,14 @@ class GiddArchitectureAdapter(ArchitectureAdapter):
         all_tied_weights_keys lookup (the checkpoint is untied anyway).
         """
         try:
-            from transformers.dynamic_module_utils import get_class_from_dynamic_module
-
-            model_class = get_class_from_dynamic_module(
-                "modeling_gidd.GiddForDiffusionLM", model_name
-            )
-            setattr(model_class, "all_tied_weights_keys", {})
-            # v5 walks _init_weights over every module post-materialization;
-            # the remote _init_weights assumes module.weight exists (crashes
-            # on containers) and would re-randomize loaded tensors anyway.
-            # Skip modules whose params are already real (internlm2 pattern).
-            pretrained_cls = model_class.__mro__[1]
-            if not getattr(pretrained_cls, "_tl_patched", False):
-                original_init_weights = getattr(pretrained_cls, "_init_weights")
-
-                def safe_init_weights(self, mod, _original=original_init_weights):
-                    first_param = next(mod.parameters(), None)
-                    if first_param is not None and first_param.device.type != "meta":
-                        return
-                    _original(self, mod)
-
-                setattr(pretrained_cls, "_init_weights", safe_init_weights)
-                setattr(pretrained_cls, "_tl_patched", True)
+            model_class = force_import_remote_class(model_name, "modeling_gidd.GiddForDiffusionLM")
+            if model_class is not None:
+                disable_tied_weights_lookup(model_class)
+                # v5 walks _init_weights over every module post-materialization;
+                # the remote _init_weights assumes module.weight exists (crashes
+                # on containers) and would re-randomize loaded tensors anyway.
+                # The remote pretrained base sits one MRO step above the LM class.
+                patch_init_weights_skip_loaded(model_class.__mro__[1])
         except Exception:
             pass
         super().prepare_loading(model_name, model_kwargs)

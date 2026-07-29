@@ -30,6 +30,7 @@ from transformer_lens.model_bridge.types import (
     TransformerLensPath,
 )
 from transformer_lens.utilities.activation_functions import apply_softcap
+from transformer_lens.utilities.attn_implementation import force_eager_attention
 
 
 class ArchitectureAdapter:
@@ -922,8 +923,7 @@ class ArchitectureAdapter:
             hf_model: The loaded HuggingFace model instance
         """
         if getattr(self.cfg, "attn_implementation", None) == "eager":
-            if hasattr(hf_model, "config"):
-                hf_model.config._attn_implementation = "eager"
+            force_eager_attention(hf_model)
 
     def create_stateful_cache(
         self,
@@ -997,20 +997,9 @@ class ArchitectureAdapter:
             if lm is None:
                 break
 
-        if (
-            eager is not None
-            and hasattr(hf_model, "config")
-            and hasattr(hf_model.config, "_attn_implementation")
-        ):
-            hf_model.config._attn_implementation = "eager"
-            # Nested multimodal configs carry their own attn implementation.
-            text_config = getattr(hf_model.config, "text_config", None)
-            if text_config is not None:
-                text_config._attn_implementation = "eager"
-        if eager == "layers" and lm is not None and hasattr(lm, "layers"):
-            for layer in lm.layers:
-                if hasattr(layer, "self_attn") and hasattr(layer.self_attn, "config"):
-                    layer.self_attn.config._attn_implementation = "eager"
+        if eager is not None:
+            # eager == "layers" additionally stamps per-layer self_attn configs.
+            force_eager_attention(hf_model, per_layer=(eager == "layers"))
 
         if not wire_rotary or lm is None or not hasattr(lm, rotary_attr):
             return

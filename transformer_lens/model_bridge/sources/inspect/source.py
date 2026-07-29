@@ -14,6 +14,7 @@ from transformer_lens.model_bridge.remote_bridge import RemoteBridge
 from transformer_lens.model_bridge.sources._bridge_builder import (
     build_bridge_config_from_hf,
     configure_tokenizer,
+    skip_tokenizer_for_modality,
 )
 from transformer_lens.model_bridge.sources._hf_format import (
     determine_architecture_from_hf_config,
@@ -79,10 +80,7 @@ def boot_inspect(
 
     bridge_config = build_bridge_config_from_hf(hf_config, architecture, model_name, resolved_dtype)
     adapter = ArchitectureAdapterFactory.select_architecture_adapter(bridge_config)
-    # Audio/vision models use feature extractors or image processors, not text tokenizers.
-    _is_audio = getattr(adapter.cfg, "is_audio_model", False)
-    _is_visual = getattr(adapter.cfg, "is_visual_model", False)
-    if tokenizer is None and not (_is_audio or _is_visual):
+    if tokenizer is None and not skip_tokenizer_for_modality(adapter.cfg):
         tokenizer = AutoTokenizer.from_pretrained(model_name, token=hf_token)
     if tokenizer is not None:
         # Match boot_transformers' tokenizer setup so to_tokens(str) is token-identical.

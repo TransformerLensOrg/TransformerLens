@@ -18,7 +18,6 @@ Adapter decisions:
 - ``head_dim`` is read but never assigned (aliases the read-only ``d_head``).
 """
 
-import sys
 from typing import Any
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
@@ -31,6 +30,12 @@ from transformer_lens.model_bridge.generalized_components import (
 )
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
+)
+from transformer_lens.model_bridge.supported_architectures._remote_code_compat import (
+    force_import_remote_class,
+    iter_remote_modeling_modules,
+    patch_init_weights_skip_loaded,
+    retie_weights_keys_v5,
 )
 
 
@@ -178,45 +183,18 @@ class RWKV7ArchitectureAdapter(ArchitectureAdapter):
         try:
             import fla.models.rwkv7.modeling_rwkv7  # noqa: F401
         except Exception:
-            try:
-                from transformers.dynamic_module_utils import (
-                    get_class_from_dynamic_module,
-                )
-
-                get_class_from_dynamic_module(
-                    "modeling_rwkv7.RWKV7ForCausalLM",
-                    model_name,
-                )
-            except Exception:
+            if force_import_remote_class(model_name, "modeling_rwkv7.RWKV7ForCausalLM") is None:
                 return
 
         # Patch every loaded RWKV-7 modeling module (each remote revision gets its
         # own module object in sys.modules).
-        for key in list(sys.modules.keys()):
-            if "rwkv7" not in key.lower() or "modeling" not in key.lower():
-                continue
-            module = sys.modules[key]
-
+        for module in iter_remote_modeling_modules("rwkv7"):
             # Patch 1: tied-weights keys list -> v5 dict form.
-            causal_lm_class = getattr(module, "RWKV7ForCausalLM", None)
-            if causal_lm_class is not None and isinstance(
-                getattr(causal_lm_class, "_tied_weights_keys", None), list
-            ):
-                causal_lm_class._tied_weights_keys = {"lm_head.weight": "model.embeddings.weight"}
-
+            retie_weights_keys_v5(
+                getattr(module, "RWKV7ForCausalLM", None),
+                {"lm_head.weight": "model.embeddings.weight"},
+            )
             # Patch 2: don't re-randomise already-loaded weights.
             pretrained_class = getattr(module, "RWKV7PreTrainedModel", None)
-            if pretrained_class is None or getattr(pretrained_class, "_tl_patched", False):
-                continue
-            original_init_weights = pretrained_class._init_weights
-
-            def safe_init_weights(self, mod, _original=original_init_weights):
-                # Only initialise modules still on meta device (pre-loading);
-                # never re-randomise weights already read from the checkpoint.
-                first_param = next(mod.parameters(), None)
-                if first_param is not None and first_param.device.type != "meta":
-                    return
-                _original(self, mod)
-
-            pretrained_class._init_weights = safe_init_weights
-            pretrained_class._tl_patched = True
+            if pretrained_class is not None:
+                patch_init_weights_skip_loaded(pretrained_class)

@@ -15,6 +15,7 @@ from transformer_lens.model_bridge.generalized_components import (
     RotaryEmbeddingBridge,
     UnembeddingBridge,
 )
+from transformer_lens.utilities.attn_implementation import force_eager_attention
 
 
 class Lfm2ArchitectureAdapter(ArchitectureAdapter):
@@ -100,13 +101,7 @@ class Lfm2ArchitectureAdapter(ArchitectureAdapter):
         rotary_emb = hf_model.model.rotary_emb
 
         # Set attention implementation on HF model to eager (vs sdpa default)
-        if hasattr(hf_model, "config") and hasattr(hf_model.config, "_attn_implementation"):
-            hf_model.config._attn_implementation = "eager"
-
-        if hasattr(hf_model, "model") and hasattr(hf_model.model, "layers"):
-            for layer in hf_model.model.layers:
-                if hasattr(layer, "self_attn") and hasattr(layer.self_attn, "config"):
-                    layer.self_attn.config._attn_implementation = "eager"
+        force_eager_attention(hf_model, per_layer=True)
 
         # Set rotary_emb on actual bridge instances
         if bridge_model is not None and hasattr(bridge_model, "blocks"):

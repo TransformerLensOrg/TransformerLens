@@ -24,6 +24,10 @@ from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     LinearBridge,
 )
+from transformer_lens.model_bridge.supported_architectures._remote_code_compat import (
+    compute_default_rope_inv_freq,
+    force_import_remote_class,
+)
 from transformer_lens.model_bridge.supported_architectures.qwen2 import (
     Qwen2ArchitectureAdapter,
 )
@@ -69,28 +73,12 @@ def _patch_from_model_config(gen_cfg_cls: Any) -> None:
     setattr(gen_cfg_cls, "_tl_from_model_config_patched", True)
 
 
-def _v4_default_rope_parameters(
-    config: Any = None, device: Any = None, seq_len: Any = None, **rope_kwargs: Any
-) -> tuple:
-    """transformers 4.x ``_compute_default_rope_parameters``, removed in v5."""
-    if config is not None:
-        base = config.rope_theta
-        partial = getattr(config, "partial_rotary_factor", 1.0)
-        head_dim = getattr(config, "head_dim", None) or (
-            config.hidden_size // config.num_attention_heads
-        )
-        dim = int(head_dim * partial)
-    else:
-        base = rope_kwargs["base"]
-        dim = rope_kwargs["dim"]
-    inv_freq = 1.0 / (base ** (torch.arange(0, dim, 2, dtype=torch.int64).float().to(device) / dim))
-    return inv_freq, 1.0
-
-
 def _register_default_rope_init() -> None:
+    """Restore the global ``ROPE_INIT_FUNCTIONS["default"]`` entry v5 removed;
+    Dream's remote code (and llada2_moe's) looks it up by that key."""
     from transformers.modeling_rope_utils import ROPE_INIT_FUNCTIONS
 
-    ROPE_INIT_FUNCTIONS.setdefault("default", _v4_default_rope_parameters)
+    ROPE_INIT_FUNCTIONS.setdefault("default", compute_default_rope_inv_freq)
 
 
 class DreamArchitectureAdapter(Qwen2ArchitectureAdapter):
@@ -135,17 +123,13 @@ class DreamArchitectureAdapter(Qwen2ArchitectureAdapter):
         # DreamGenerationConfig.validate is a no-op with the v4 signature
         # (is_init=False); v5 passes user_set_attributes. Replace with a
         # kwargs-tolerant no-op.
-        try:
-            from transformers.dynamic_module_utils import get_class_from_dynamic_module
-
-            gen_cfg_cls = get_class_from_dynamic_module(
-                "generation_utils.DreamGenerationConfig", model_name
-            )
+        gen_cfg_cls = force_import_remote_class(
+            model_name, "generation_utils.DreamGenerationConfig"
+        )
+        if gen_cfg_cls is not None:
             setattr(gen_cfg_cls, "validate", lambda self, *args, **kwargs: None)
             _patch_from_model_config(gen_cfg_cls)
-            _patch_eager_attention_mask(
-                get_class_from_dynamic_module("modeling_dream.DreamAttention", model_name)
-            )
-        except Exception:
-            pass
+        attn_cls = force_import_remote_class(model_name, "modeling_dream.DreamAttention")
+        if attn_cls is not None:
+            _patch_eager_attention_mask(attn_cls)
         super().prepare_loading(model_name, model_kwargs)

@@ -17,6 +17,11 @@ from transformer_lens.benchmarks.utils import (
 )
 from transformer_lens.model_bridge import TransformerBridge
 
+# Bridge-vs-HF parity tolerances for the audio forward; looser than vision's
+# 1e-4 atol because audio encoders run long conv front-ends before the blocks.
+_AUDIO_PARITY_ATOL = 1e-3
+_AUDIO_PARITY_RTOL = 3e-2
+
 
 def _prepare_audio_text_inputs(bridge: TransformerBridge):
     """Build audio-conditioned inputs (synthetic waveform + audio token) for an
@@ -176,8 +181,8 @@ def benchmark_audio_forward(
             return compare_tensors(
                 bridge_output,
                 ref_output,
-                atol=1e-3,
-                rtol=3e-2,
+                atol=_AUDIO_PARITY_ATOL,
+                rtol=_AUDIO_PARITY_RTOL,
                 name="audio_forward",
             )
 

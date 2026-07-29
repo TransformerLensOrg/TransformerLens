@@ -25,9 +25,11 @@ from transformer_lens.model_bridge.generalized_components import (
     RMSNormalizationBridge,
     UnembeddingBridge,
 )
+from transformer_lens.model_bridge.supported_architectures._remote_code_compat import (
+    compute_default_rope_inv_freq,
+)
 from transformer_lens.model_bridge.supported_architectures.dream import (
     DreamArchitectureAdapter,
-    _v4_default_rope_parameters,
 )
 
 
@@ -90,7 +92,7 @@ class TestDreamRopeShim:
             hidden_size = 64
             num_attention_heads = 4
 
-        inv_freq, scaling = _v4_default_rope_parameters(Cfg(), device="cpu")
+        inv_freq, scaling = compute_default_rope_inv_freq(Cfg(), device="cpu")
         dim = 16
         expected = 1.0 / (10000.0 ** (torch.arange(0, dim, 2, dtype=torch.int64).float() / dim))
         torch.testing.assert_close(inv_freq, expected)

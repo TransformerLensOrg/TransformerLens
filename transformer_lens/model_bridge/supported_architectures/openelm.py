@@ -1,6 +1,5 @@
 """OpenELM architecture adapter."""
 
-import sys
 from typing import Any
 
 import torch
@@ -16,6 +15,11 @@ from transformer_lens.model_bridge.generalized_components import (
 )
 from transformer_lens.model_bridge.generalized_components.attention import (
     AttentionBridge,
+)
+from transformer_lens.model_bridge.supported_architectures._remote_code_compat import (
+    force_import_remote_class,
+    iter_remote_modeling_modules,
+    patch_init_weights_skip_loaded,
 )
 
 
@@ -107,70 +111,39 @@ class OpenElmArchitectureAdapter(ArchitectureAdapter):
             model_kwargs: The kwargs dict for from_pretrained()
         """
         # Force-import the modeling module so we can patch it
-        try:
-            from transformers.dynamic_module_utils import get_class_from_dynamic_module
-
-            get_class_from_dynamic_module(
-                "modeling_openelm.OpenELMForCausalLM",
-                model_name,
-            )
-        except Exception:
+        if force_import_remote_class(model_name, "modeling_openelm.OpenELMForCausalLM") is None:
             return
 
-        # Find ALL imported OpenELM modules and apply patches.
-        # Each model variant (e.g., OpenELM-1_1B vs OpenELM-1_1B-Instruct) gets its own
-        # module in sys.modules with a different cache path, so we patch all of them.
-        for key in list(sys.modules.keys()):
-            if "openelm" in key.lower() and "modeling" in key.lower():
-                module = sys.modules[key]
-                if hasattr(module, "OpenELMRotaryEmbedding"):
-                    rope_class = module.OpenELMRotaryEmbedding
-                    # Skip if already patched (avoid wrapping safe_compute in safe_compute)
-                    if getattr(rope_class, "_tl_patched", False):
-                        continue
-                    # Patch 1: RoPE meta device fix
-                    original_compute = rope_class._compute_sin_cos_embeddings
+        # Each model variant (e.g., OpenELM-1_1B vs OpenELM-1_1B-Instruct) gets its
+        # own module in sys.modules with a different cache path; patch all of them.
+        for module in iter_remote_modeling_modules("openelm"):
+            rope_class = getattr(module, "OpenELMRotaryEmbedding", None)
+            # Skip if already patched (avoid wrapping safe_compute in safe_compute)
+            if rope_class is not None and not getattr(rope_class, "_tl_patched", False):
+                # Patch 1: RoPE meta device fix
+                original_compute = rope_class._compute_sin_cos_embeddings
 
-                    def safe_compute(
-                        self,
-                        key_len,
-                        key_device="cpu",
-                        key_dtype=torch.float32,
-                        _original=original_compute,
-                    ):
-                        try:
-                            _original(self, key_len, key_device, key_dtype)
-                        except NotImplementedError:
-                            pass  # Deferred: re-initialized in prepare_model()
+                def safe_compute(
+                    self,
+                    key_len,
+                    key_device="cpu",
+                    key_dtype=torch.float32,
+                    _original=original_compute,
+                ):
+                    try:
+                        _original(self, key_len, key_device, key_dtype)
+                    except NotImplementedError:
+                        pass  # Deferred: re-initialized in prepare_model()
 
-                    rope_class._compute_sin_cos_embeddings = safe_compute
-                    rope_class._tl_patched = True
-                    self._original_rope_compute = original_compute
-                    self._rope_class = rope_class
+                rope_class._compute_sin_cos_embeddings = safe_compute
+                rope_class._tl_patched = True
+                self._original_rope_compute = original_compute
+                self._rope_class = rope_class
 
-                if hasattr(module, "OpenELMPreTrainedModel"):
-                    pretrained_class = module.OpenELMPreTrainedModel
-                    if getattr(pretrained_class, "_tl_patched", False):
-                        continue
-                    # Patch 2: Prevent _init_weights from re-randomizing loaded weights.
-                    # transformers v5 calls _init_weights on all modules after weight
-                    # materialization. For modules with real (non-meta) tensors, we must
-                    # skip re-initialization to preserve the loaded checkpoint values.
-                    original_init_weights = pretrained_class._init_weights
-
-                    def safe_init_weights(
-                        self,
-                        mod,
-                        _original=original_init_weights,
-                    ):
-                        # Only initialize modules still on meta device (pre-loading)
-                        first_param = next(mod.parameters(), None)
-                        if first_param is not None and first_param.device.type != "meta":
-                            return  # Already loaded from checkpoint — don't re-randomize
-                        _original(self, mod)
-
-                    pretrained_class._init_weights = safe_init_weights
-                    pretrained_class._tl_patched = True
+            # Patch 2: don't let _init_weights re-randomize loaded weights.
+            pretrained_class = getattr(module, "OpenELMPreTrainedModel", None)
+            if pretrained_class is not None:
+                patch_init_weights_skip_loaded(pretrained_class)
 
     def prepare_model(self, hf_model: Any) -> None:
         """Post-load fixes for non-persistent buffers zeroed during meta materialization.

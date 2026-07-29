@@ -77,6 +77,7 @@ from transformer_lens.factories.architecture_adapter_factory import (
     ArchitectureAdapterFactory,
 )
 from transformer_lens.model_bridge import TransformerBridge
+from transformer_lens.tools.model_registry.registry_io import TEXT_PHASES
 
 # Architecture classification — single source of truth in utilities.architectures
 from transformer_lens.utilities.architectures import (
@@ -114,10 +115,10 @@ def _adapter_applicable_phases(model_name: str, trust_remote_code: bool = False)
         for arch in get_architectures_for_config(config):
             adapter_cls = SUPPORTED_ARCHITECTURES.get(arch)
             if adapter_cls is not None:
-                return getattr(adapter_cls, "applicable_phases", [1, 2, 3, 4])
+                return getattr(adapter_cls, "applicable_phases", list(TEXT_PHASES))
     except Exception:
         pass
-    return [1, 2, 3, 4]
+    return list(TEXT_PHASES)
 
 
 def _phase_enabled(
@@ -132,7 +133,7 @@ def _phase_enabled(
     """
     if phases is not None and phase_num not in phases:
         return False
-    return phase_num not in (1, 2, 3, 4) or phase_num in applicable_phases
+    return phase_num not in TEXT_PHASES or phase_num in applicable_phases
 
 
 def get_auto_model_class(model_name: str, trust_remote_code: bool = False):

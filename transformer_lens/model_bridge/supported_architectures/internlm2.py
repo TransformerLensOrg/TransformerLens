@@ -1,6 +1,5 @@
 """InternLM2 architecture adapter."""
 
-import sys
 from typing import Any
 
 import torch
@@ -20,6 +19,11 @@ from transformer_lens.model_bridge.generalized_components import (
     LinearBridge,
     RMSNormalizationBridge,
     UnembeddingBridge,
+)
+from transformer_lens.model_bridge.supported_architectures._remote_code_compat import (
+    force_import_remote_class,
+    iter_remote_modeling_modules,
+    patch_init_weights_skip_loaded,
 )
 
 
@@ -53,34 +57,6 @@ class _InternLM2AttentionBridge(JointQKVPositionEmbeddingsAttentionBridge):
         attn_output, attn_weights = super()._reconstruct_attention(q, k, v, **kwargs)
         past_key_value = kwargs.get("past_key_values", kwargs.get("past_key_value", None))
         return (attn_output, attn_weights, past_key_value)
-
-
-def _patch_init_weights_for_internlm2() -> None:
-    """Prevent _init_weights from re-randomizing loaded checkpoint weights.
-
-    Transformers v5 calls _init_weights on all modules after weight
-    materialization. For modules with real (non-meta) tensors, we must
-    skip re-initialization to preserve the loaded checkpoint values.
-    Same approach as openelm.py.
-    """
-    for key in list(sys.modules.keys()):
-        if "internlm2" not in key.lower() or "modeling" not in key.lower():
-            continue
-        module = sys.modules[key]
-        pretrained_cls = getattr(module, "InternLM2PreTrainedModel", None)
-        if pretrained_cls is None or getattr(pretrained_cls, "_tl_patched", False):
-            continue
-
-        original_init_weights = pretrained_cls._init_weights
-
-        def safe_init_weights(self, mod, _original=original_init_weights):  # type: ignore[no-untyped-def]
-            first_param = next(mod.parameters(), None)
-            if first_param is not None and first_param.device.type != "meta":
-                return
-            _original(self, mod)
-
-        pretrained_cls._init_weights = safe_init_weights
-        pretrained_cls._tl_patched = True
 
 
 class InternLM2ArchitectureAdapter(ArchitectureAdapter):
@@ -230,17 +206,14 @@ class InternLM2ArchitectureAdapter(ArchitectureAdapter):
         patch_dynamic_cache_v5()
 
         # Force-import the remote modeling module so we can patch _init_weights.
-        try:
-            from transformers.dynamic_module_utils import get_class_from_dynamic_module
+        force_import_remote_class(model_name, "modeling_internlm2.InternLM2ForCausalLM")
 
-            get_class_from_dynamic_module(
-                "modeling_internlm2.InternLM2ForCausalLM",
-                model_name,
-            )
-        except Exception:
-            pass
-
-        _patch_init_weights_for_internlm2()
+        # v5 calls _init_weights on all modules after weight materialization;
+        # skip already-real tensors so checkpoint values survive.
+        for module in iter_remote_modeling_modules("internlm2"):
+            pretrained_cls = getattr(module, "InternLM2PreTrainedModel", None)
+            if pretrained_cls is not None:
+                patch_init_weights_skip_loaded(pretrained_cls)
 
     def preprocess_weights(self, state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
         """Fold layer norms into QKV and MLP weights.

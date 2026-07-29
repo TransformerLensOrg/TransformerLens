@@ -8,10 +8,16 @@ from types import SimpleNamespace
 
 from transformer_lens.benchmarks.utils import BenchmarkSeverity
 from transformer_lens.tools.model_registry.registry_io import (
+    MODALITY_PHASES,
+    PHASES,
     STATUS_PROVISIONAL,
+    STATUS_SKIPPED,
     STATUS_VERIFIED,
+    TEXT_PHASES,
     extract_phase_scores,
+    load_supported_models_raw,
     pass_status,
+    recompute_registry_totals,
 )
 
 
@@ -63,3 +69,56 @@ class TestPassStatus:
 
     def test_no_hf_reference_is_provisional(self):
         assert pass_status(use_hf_reference=False) == STATUS_PROVISIONAL
+
+
+class TestPhaseGroups:
+    """TEXT_PHASES gate applicable_phases; MODALITY_PHASES bypass that gate
+    (verify_models._phases_to_run / main_benchmark._phase_enabled)."""
+
+    def test_phases_is_text_plus_modality(self):
+        assert PHASES == TEXT_PHASES + MODALITY_PHASES
+        assert set(TEXT_PHASES).isdisjoint(MODALITY_PHASES)
+
+    def test_registry_score_columns_are_phase_members(self):
+        # Columns appear lazily (a phase's column lands on first write), so the
+        # data-file schema check is subset of PHASES, not equality.
+        allowed = {f"phase{p}_score" for p in PHASES}
+        data = load_supported_models_raw()
+        seen = {k for m in data["models"] for k in m if k.startswith("phase")}
+        assert seen  # the registry does carry phase columns
+        assert seen <= allowed
+
+
+class TestRecomputeRegistryTotals:
+    """Both supported_models.json writers (update_model_status and hf_scraper)
+    share this recomputation — pin key names and counting rules."""
+
+    def test_counting_rules_and_key_names(self):
+        models = [
+            {"architecture_id": "ArchA", "model_id": "a1", "status": STATUS_VERIFIED},
+            {"architecture_id": "ArchA", "model_id": "a2", "status": STATUS_PROVISIONAL},
+            {"architecture_id": "ArchB", "model_id": "b1", "status": STATUS_SKIPPED},
+            {"architecture_id": "ArchB", "model_id": "b2"},  # missing status -> unverified
+        ]
+        totals = recompute_registry_totals(models)
+        assert totals == {
+            "total_architectures": 2,
+            "total_models": 4,
+            "total_verified": 1,
+            "total_provisional": 1,
+        }
+        # Key order feeds hf_scraper's JSON dump directly — pin it for
+        # byte-identical report output.
+        assert list(totals) == [
+            "total_architectures",
+            "total_models",
+            "total_verified",
+            "total_provisional",
+        ]
+
+    def test_matches_checked_in_registry_header(self):
+        # The checked-in header was written under the same rules; recomputing it
+        # from the models list must reproduce it exactly.
+        data = load_supported_models_raw()
+        totals = recompute_registry_totals(data["models"])
+        assert totals == {key: data[key] for key in totals}

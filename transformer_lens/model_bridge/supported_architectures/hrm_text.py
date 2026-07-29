@@ -53,6 +53,7 @@ from transformer_lens.model_bridge.generalized_components import (
     RotaryEmbeddingBridge,
     UnembeddingBridge,
 )
+from transformer_lens.utilities.attn_implementation import force_eager_attention
 
 
 class HrmTextArchitectureAdapter(ArchitectureAdapter):
@@ -192,15 +193,8 @@ class HrmTextArchitectureAdapter(ArchitectureAdapter):
         """
         rotary_emb = hf_model.model.rotary_emb
 
-        if hasattr(hf_model, "config") and hasattr(hf_model.config, "_attn_implementation"):
-            hf_model.config._attn_implementation = "eager"
-
-        for stack_attr in ("L_module", "H_module"):
-            stack = getattr(hf_model.model, stack_attr, None)
-            if stack is not None and hasattr(stack, "layers"):
-                for layer in stack.layers:
-                    if hasattr(layer, "self_attn") and hasattr(layer.self_attn, "config"):
-                        layer.self_attn.config._attn_implementation = "eager"
+        # per_layer covers both L_module and H_module stacks.
+        force_eager_attention(hf_model, per_layer=True)
 
         if bridge_model is not None:
             for blocks_attr in ("L_blocks", "H_blocks"):

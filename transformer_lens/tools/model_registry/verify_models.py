@@ -45,12 +45,14 @@ _interrupt_requested = False
 
 from . import REMOTE_CODE_MODEL_PREFIXES
 from .registry_io import (
+    MODALITY_PHASES,
     QUANTIZED_NOTE,
     STATUS_FAILED,
     STATUS_PROVISIONAL,
     STATUS_SKIPPED,
     STATUS_UNVERIFIED,
     STATUS_VERIFIED,
+    TEXT_PHASES,
     add_verification_record,
     extract_phase_scores,
     is_incompatible_quantized,
@@ -110,16 +112,17 @@ def _phases_to_run(arch: str, phases: list[int]) -> list[int]:
     """Restrict requested phases to those the adapter supports.
 
     An adapter's ``applicable_phases`` declares which text phases (1-4) it covers. Phases
-    7/8/9 are gated separately by ``is_multimodal``/``is_audio``/``is_visual_model`` in the
-    benchmark, so they are never filtered out here. An empty result means none of the
-    requested phases apply to this architecture (SSM / recurrent families run all four).
+    7/8/9 are gated separately by ``is_multimodal``/``is_audio``/``is_visual_model`` in
+    ``main_benchmark._phase_enabled`` (the mirror of this gate), so they are never filtered
+    out here. An empty result means none of the requested phases apply to this architecture
+    (SSM / recurrent families run all four).
     """
     from transformer_lens.factories.architecture_adapter_factory import (
         SUPPORTED_ARCHITECTURES,
     )
 
-    applicable = getattr(SUPPORTED_ARCHITECTURES.get(arch), "applicable_phases", [1, 2, 3, 4])
-    return [p for p in phases if p in applicable or p in (7, 8, 9)]
+    applicable = getattr(SUPPORTED_ARCHITECTURES.get(arch), "applicable_phases", list(TEXT_PHASES))
+    return [p for p in phases if p in applicable or p in MODALITY_PHASES]
 
 
 def _full_and_core_phases(arch: str) -> tuple[set[int], set[int]]:
@@ -397,7 +400,7 @@ def estimate_benchmark_memory_gb(
     phase_peaks = []
 
     if phases is None:
-        phases = [1, 2, 3, 4]
+        phases = list(TEXT_PHASES)
 
     for p in phases:
         if p == 1:
@@ -546,15 +549,7 @@ _MIN_PHASE_SCORES: dict[int, float] = {
 }
 _DEFAULT_MIN_PHASE_SCORE = 50.0
 
-# Architectures that include a vision encoder and require Phase 7 (multimodal
-# benchmarks) as part of core verification.
 from transformer_lens.utilities.architectures import classify_architecture
-
-_AUDIO_ARCHITECTURES = {
-    "HubertForCTC",
-    "HubertModel",
-    "HubertForSequenceClassification",
-}
 
 # Tests that MUST pass for a phase to be considered passing, regardless of
 # the overall percentage score.  If any required test fails, the phase fails
@@ -848,7 +843,7 @@ def verify_models(
         eff_phases = phases if phases is not None else _default_phases_for_architecture(arch)
         phases_to_run = _phases_to_run(arch, eff_phases)
         if adapter_cls is not None and not phases_to_run:
-            applicable = getattr(adapter_cls, "applicable_phases", [1, 2, 3, 4])
+            applicable = getattr(adapter_cls, "applicable_phases", list(TEXT_PHASES))
             note = (
                 f"Architecture {arch} has applicable_phases={applicable}; "
                 f"verify_models coverage is deferred. Verification lives "
@@ -951,9 +946,10 @@ def verify_models(
         # only update the phase scores that were run.  Don't change the
         # model's overall status or note — those reflect the full
         # verification and should only be set by a complete run.
-        is_multimodal = classify_architecture(arch) == "multimodal"
-        is_audio = classify_architecture(arch) == "audio"
-        is_vision = classify_architecture(arch) == "vision"
+        kind = classify_architecture(arch)
+        is_multimodal = kind == "multimodal"
+        is_audio = kind == "audio"
+        is_vision = kind == "vision"
         full_phases, core_required = _full_and_core_phases(arch)
         is_partial_run = set(eff_phases) != full_phases
 
@@ -1032,7 +1028,8 @@ def verify_models(
                             partial_status = STATUS_FAILED
                             partial_note = (
                                 f"Core verification failed: multimodal tests "
-                                f"scored {p7_score}% (requires >= 75%)"
+                                f"scored {p7_score}% (requires >= "
+                                f"{_MIN_PHASE_SCORES.get(7, _DEFAULT_MIN_PHASE_SCORE):g}%)"
                             )
                     elif p1_pass and p4_pass and not p9_pass:
                         p9_score = filtered_scores.get(9)
@@ -1044,7 +1041,8 @@ def verify_models(
                         else:
                             partial_note = (
                                 f"Core verification failed: vision tests "
-                                f"scored {p9_score}% (requires >= 75%)"
+                                f"scored {p9_score}% (requires >= "
+                                f"{_MIN_PHASE_SCORES.get(9, _DEFAULT_MIN_PHASE_SCORE):g}%)"
                             )
                     elif p1_pass:
                         partial_status = STATUS_VERIFIED

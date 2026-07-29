@@ -31,8 +31,21 @@ STATUS_FAILED = 3
 # real result but deliberately NOT counted as verified.
 STATUS_PROVISIONAL = 4
 
+# Human-readable labels for docs display. STATUS_SKIPPED deliberately renders as
+# "Unverified": a skip (memory/tooling) is not a verification outcome.
+STATUS_LABELS: dict[int, str] = {
+    STATUS_UNVERIFIED: "Unverified",
+    STATUS_VERIFIED: "Verified",
+    STATUS_SKIPPED: "Unverified",
+    STATUS_FAILED: "Failed",
+    STATUS_PROVISIONAL: "Provisional",
+}
+
 # Registry phase-score columns: text 1-4, multimodal 7, audio 8, vision 9.
-PHASES: tuple[int, ...] = (1, 2, 3, 4, 7, 8, 9)
+# PHASES is derived so the full column set can never drift from the two groups.
+TEXT_PHASES: tuple[int, ...] = (1, 2, 3, 4)
+MODALITY_PHASES: tuple[int, ...] = (7, 8, 9)
+PHASES: tuple[int, ...] = TEXT_PHASES + MODALITY_PHASES
 
 # HF-loadable quantization formats. Admitted to the registry; verification gates
 # on `required_quant_library_for_model()` at run time.
@@ -242,6 +255,20 @@ def extract_phase_scores(results: list) -> dict[int, Optional[float]]:
     return scores
 
 
+def recompute_registry_totals(models: list[dict]) -> dict:
+    """Header totals for supported_models.json, recomputed from the models list.
+
+    Shared by both writers (``update_model_status`` here and hf_scraper's report
+    builder) so the counting rules cannot drift.
+    """
+    return {
+        "total_architectures": len({m["architecture_id"] for m in models}),
+        "total_models": len(models),
+        "total_verified": sum(1 for m in models if m.get("status", 0) == STATUS_VERIFIED),
+        "total_provisional": sum(1 for m in models if m.get("status", 0) == STATUS_PROVISIONAL),
+    }
+
+
 def update_model_status(
     model_id: str,
     arch_id: str,
@@ -335,13 +362,7 @@ def update_model_status(
         updated = True
 
     if updated:
-        models = data.get("models", [])
-        data["total_verified"] = sum(1 for m in models if m.get("status", 0) == STATUS_VERIFIED)
-        data["total_provisional"] = sum(
-            1 for m in models if m.get("status", 0) == STATUS_PROVISIONAL
-        )
-        data["total_models"] = len(models)
-        data["total_architectures"] = len(set(m["architecture_id"] for m in models))
+        data.update(recompute_registry_totals(data.get("models", [])))
         save_supported_models_raw(data)
 
     return updated

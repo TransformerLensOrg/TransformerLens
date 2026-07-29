@@ -232,6 +232,12 @@ def detect_tokenizer_bos_eos(tokenizer: Any) -> tuple[bool, bool]:
     return prepends_bos, appends_eos
 
 
+def skip_tokenizer_for_modality(cfg: Any) -> bool:
+    """True when a source must not auto-load a text tokenizer: audio/vision models use
+    feature extractors or image processors, not text tokenizers (their repos ship none)."""
+    return bool(getattr(cfg, "is_audio_model", False) or getattr(cfg, "is_visual_model", False))
+
+
 def configure_tokenizer(tokenizer: Any, cfg: Any) -> Any:
     """Shared boot step: normalize the tokenizer and record its BOS/EOS behavior on cfg.
 

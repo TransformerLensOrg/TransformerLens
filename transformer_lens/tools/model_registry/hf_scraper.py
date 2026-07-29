@@ -46,7 +46,11 @@ from pathlib import Path
 from typing import Optional
 
 from . import HF_SUPPORTED_ARCHITECTURES
-from .registry_io import is_quantized_model
+from .registry_io import (
+    STATUS_UNVERIFIED,
+    is_quantized_model,
+    recompute_registry_totals,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -172,7 +176,7 @@ def _build_model_entry(model_id: str, architecture_id: str) -> dict:
     return {
         "architecture_id": architecture_id,
         "model_id": model_id,
-        "status": 0,
+        "status": STATUS_UNVERIFIED,
         "verified_date": None,
         "metadata": None,
         "note": None,
@@ -565,17 +569,6 @@ def scrape_all_models(
     logger.info(f"Total supported models: {len(supported_models)}")
     logger.info(f"Unsupported architectures found: {len(unsupported_arch_counts)}")
 
-    # Count unique supported architectures and verified/provisional models
-    supported_arch_ids: set[str] = set()
-    total_verified = 0
-    total_provisional = 0
-    for model in supported_models:
-        supported_arch_ids.add(model["architecture_id"])
-        if model.get("status", 0) == 1:
-            total_verified += 1
-        elif model.get("status", 0) == 4:
-            total_provisional += 1
-
     # Build scan info (shared by both reports)
     scan_info = {
         "total_scanned": scanned,
@@ -585,13 +578,11 @@ def scrape_all_models(
     }
 
     # Build supported models report dict (for return value)
+    registry_totals = recompute_registry_totals(supported_models)
     supported_report = {
         "generated_at": date.today().isoformat(),
         "scan_info": scan_info,
-        "total_architectures": len(supported_arch_ids),
-        "total_models": len(supported_models),
-        "total_verified": total_verified,
-        "total_provisional": total_provisional,
+        **registry_totals,
         "models": supported_models,
     }
 
@@ -712,7 +703,7 @@ def scrape_all_models(
     logger.info("SCAN SUMMARY")
     logger.info("=" * 70)
     logger.info(f"Total models scanned: {scanned}")
-    logger.info(f"\nSUPPORTED ARCHITECTURES ({len(supported_arch_ids)}):")
+    logger.info(f"\nSUPPORTED ARCHITECTURES ({registry_totals['total_architectures']}):")
 
     # Count models per supported architecture
     supported_arch_counts: dict[str, int] = {}

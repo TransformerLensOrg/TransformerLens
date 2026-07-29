@@ -24,6 +24,7 @@ from transformer_lens.benchmarks.main_benchmark import (  # noqa: E402
 )
 from transformer_lens.benchmarks.utils import BenchmarkSeverity  # noqa: E402
 from transformer_lens.benchmarks.vision import (  # noqa: E402
+    _VISION_PARITY_ATOL,
     benchmark_vision_cache,
     benchmark_vision_forward,
 )
@@ -187,7 +188,8 @@ class TestBenchmarkVisionForward:
         res = benchmark_vision_forward(bridge)
         assert res.passed is True
         assert res.severity == BenchmarkSeverity.INFO
-        assert res.details["max_diff"] == 0.0
+        # Parity runs through the shared comparator at the vision tolerance.
+        assert res.details["atol"] == _VISION_PARITY_ATOL
 
     def test_parity_pass_bare_encoder_last_hidden_state(self):
         hidden = torch.randn(1, 5, 4)
@@ -219,7 +221,7 @@ class TestBenchmarkVisionForward:
         bridge = _FakeVisionBridge(_vision_cfg(), hf, forward_out=torch.randn(1, 5))
         res = benchmark_vision_forward(bridge)
         assert res.passed is False
-        assert "shape" in res.message
+        assert "shape" in res.message.lower()
 
 
 def _full_cache(final_key):

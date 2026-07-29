@@ -7,7 +7,11 @@ encoders don't generate.
 
 import torch
 
-from transformer_lens.benchmarks.utils import BenchmarkResult, BenchmarkSeverity
+from transformer_lens.benchmarks.utils import (
+    BenchmarkResult,
+    BenchmarkSeverity,
+    compare_tensors,
+)
 from transformer_lens.model_bridge import TransformerBridge
 
 # Bridge wraps the real HF forward (hooked submodules substituted in place), so
@@ -80,41 +84,14 @@ def benchmark_vision_forward(
                 passed=False,
             )
 
-        if bridge_out.shape != hf_ref.shape:
-            return BenchmarkResult(
-                name="vision_forward",
-                severity=BenchmarkSeverity.DANGER,
-                message=(
-                    f"Bridge output shape {list(bridge_out.shape)} != "
-                    f"HF output shape {list(hf_ref.shape)}"
-                ),
-                passed=False,
-            )
-
-        max_diff = (bridge_out - hf_ref).abs().max().item()
-        details = {
-            "output_shape": list(bridge_out.shape),
-            "pixel_values_shape": list(pixel_values.shape),
-            "max_diff": max_diff,
-            "atol": _VISION_PARITY_ATOL,
-        }
-        if max_diff > _VISION_PARITY_ATOL:
-            return BenchmarkResult(
-                name="vision_forward",
-                severity=BenchmarkSeverity.DANGER,
-                message=f"Bridge vs HF max diff {max_diff:.2e} exceeds {_VISION_PARITY_ATOL}",
-                details=details,
-                passed=False,
-            )
-
-        return BenchmarkResult(
+        # Shared comparator: handles the shape check plus device/dtype
+        # normalization a custom-device reference would otherwise mis-compare on.
+        return compare_tensors(
+            bridge_out,
+            hf_ref,
+            atol=_VISION_PARITY_ATOL,
+            rtol=0.0,
             name="vision_forward",
-            severity=BenchmarkSeverity.INFO,
-            message=(
-                f"Vision forward parity OK, output shape: {list(bridge_out.shape)}, "
-                f"max diff {max_diff:.2e}"
-            ),
-            details=details,
         )
 
     except Exception as e:
