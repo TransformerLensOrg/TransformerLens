@@ -100,6 +100,26 @@ def gpt2_bridge_compat():
     return bridge
 
 
+# Full-model fixtures for the acceptance/integration tiers — per tests/AGENTS.md, don't
+# adopt them in unit-tier tests (they time out / OOM there).
+@pytest.fixture(scope="session")
+def gpt2_hooked_unprocessed():
+    """HookedTransformer gpt2 without weight processing. Read-only use only."""
+    from transformer_lens import HookedTransformer
+
+    return HookedTransformer.from_pretrained_no_processing("gpt2", device="cpu")
+
+
+@pytest.fixture(scope="session")
+def gpt2_bridge_compat_no_processing():
+    """TransformerBridge wrapping gpt2 with compat mode, no weight processing. Read-only use only."""
+    from transformer_lens.model_bridge import TransformerBridge
+
+    bridge = TransformerBridge.boot_transformers("gpt2", device="cpu")
+    bridge.enable_compatibility_mode(no_processing=True)
+    return bridge
+
+
 def pytest_sessionfinish(session, exitstatus):
     """Clean up at the end of test session."""
     if torch.cuda.is_available():

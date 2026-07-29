@@ -31,7 +31,6 @@ from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapt
 from transformer_lens.model_bridge.generalized_components import (
     EmbeddingBridge,
     LinearBridge,
-    MLPBridge,
     OpaqueBlockBridge,
     RMSNormalizationBridge,
     UnembeddingBridge,
@@ -75,13 +74,7 @@ class RavenArchitectureAdapter(ArchitectureAdapter):
         """Initialize the Raven / Huginn architecture adapter."""
         super().__init__(cfg)
 
-        # Standard weight-processing / norm flags.
-        self.cfg.normalization_type = "RMS"
-        self.cfg.uses_rms_norm = True
-        self.cfg.positional_embedding_type = "rotary"
-        self.cfg.final_rms = True
-        self.cfg.gated_mlp = True
-        self.cfg.attn_only = False
+        self._set_rms_rotary_defaults()
 
         # ln_f (transformer.ln_f) is applied after the recurrence (feeding the
         # coda) AND at the very end, so it is not a final-only norm. Folding it
@@ -162,14 +155,7 @@ class RavenArchitectureAdapter(ArchitectureAdapter):
             "attn": attn,
             "norm_2": RMSNormalizationBridge(name="norm_2", config=self.cfg),
             "norm_3": RMSNormalizationBridge(name="norm_3", config=self.cfg),
-            "mlp": MLPBridge(
-                name="mlp",
-                config=self.cfg,
-                submodules={
-                    "in": LinearBridge(name="fc"),
-                    "out": LinearBridge(name="proj"),
-                },
-            ),
+            "mlp": self._ungated_mlp(up="fc", down="proj"),
             "norm_4": RMSNormalizationBridge(name="norm_4", config=self.cfg),
         }
 

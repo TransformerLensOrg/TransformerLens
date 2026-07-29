@@ -6,14 +6,10 @@ FlexOlmo pattern, with the remote code's two quirks exercised: the v4
 rope-init shim and the strict 4D block-diffusion attention mask.
 """
 
-import copy
-
 import torch
 
+from tests.integration.model_bridge.helpers import make_tiny_pair
 from transformer_lens.model_bridge.generalized_components import MoEBridge
-from transformer_lens.model_bridge.sources._bridge_builder import (
-    build_bridge_from_module,
-)
 from transformer_lens.model_bridge.supported_architectures.dream import (
     _register_default_rope_init,
 )
@@ -41,16 +37,11 @@ def _tiny_llada2_pair():
     cfg.bos_token_id = 1
     cfg.eos_token_id = 2
     cfg.first_k_dense_replace = 1
-    cfg._attn_implementation = "eager"
-
-    torch.manual_seed(42)
-    ref = AutoModelForCausalLM.from_config(cfg, trust_remote_code=True).eval()
-    hf = AutoModelForCausalLM.from_config(copy.deepcopy(cfg), trust_remote_code=True).eval()
-    hf.load_state_dict(ref.state_dict())
-    bridge = build_bridge_from_module(
-        hf, "LLaDA2MoeModelLM", hf_config=copy.deepcopy(cfg), tokenizer=None, device="cpu"
-    ).eval()
-    return bridge, ref
+    return make_tiny_pair(
+        cfg,
+        "LLaDA2MoeModelLM",
+        loader=lambda c: AutoModelForCausalLM.from_config(c, trust_remote_code=True),
+    )
 
 
 class TestLLaDA2MoeBridge:

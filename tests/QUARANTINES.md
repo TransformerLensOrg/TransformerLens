@@ -86,14 +86,14 @@ A `[vllm]` extra exists (Linux-only marker; declared conflicting with `[lit]` in
 | Path | Reason |
 |---|---|
 | [`unit/model_bridge/supported_architectures/test_gemma2_adapter.py`:50](unit/model_bridge/supported_architectures/test_gemma2_adapter.py) | "Network/disk fetch of tiny Gemma2" |
-| [`integration/model_bridge/test_bridge_integration.py`:762](integration/model_bridge/test_bridge_integration.py) | "Skip Gemma2 in CI to avoid timeout" |
+| [`integration/model_bridge/test_bridge_integration.py`:750](integration/model_bridge/test_bridge_integration.py) | "Skip Gemma2 in CI to avoid timeout" |
 | [`acceptance/model_bridge/compatibility/test_hook_completeness.py`:156](acceptance/model_bridge/compatibility/test_hook_completeness.py) | "Gemma2 too large for CI" (whole file also `slow`-marked at :18 — hook-parity matrix loads real models) |
 
 Big-model adapter tests use `@pytest.mark.slow`, CI tier filters `-m "not slow"`:
 
 | Path | Model |
 |---|---|
-| [`integration/model_bridge/test_exaone4_adapter.py`:18](integration/model_bridge/test_exaone4_adapter.py) | EXAONE-4.0 1.2B |
+| [`integration/model_bridge/test_exaone4_adapter.py`:17](integration/model_bridge/test_exaone4_adapter.py) | EXAONE-4.0 1.2B |
 | [`integration/model_bridge/test_bd3lm_adapter.py`:20](integration/model_bridge/test_bd3lm_adapter.py) | BD3LM-OWT (remote code; slow to avoid HF fetch on standard runs) |
 | [`integration/model_bridge/test_bitnet_adapter.py`:15](integration/model_bridge/test_bitnet_adapter.py) | BitNet 2.4B |
 | [`integration/model_bridge/test_cohere2_adapter.py`:18](integration/model_bridge/test_cohere2_adapter.py) | tiny-Cohere2ForCausalLM (CPU-safe, but HF fetch) |

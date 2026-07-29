@@ -5,6 +5,18 @@ hook must install before the package is first imported.
 """
 
 import pytest
+import torch
+
+
+@pytest.fixture(scope="module")
+def sample_tokens(request, bridge):
+    """Deterministic tokens for the requesting module's ``bridge`` fixture.
+
+    Length defaults to 8; modules override via a ``SAMPLE_TOKENS_LEN`` constant.
+    """
+    torch.manual_seed(0)
+    length = getattr(request.module, "SAMPLE_TOKENS_LEN", 8)
+    return torch.randint(0, bridge.cfg.d_vocab - 10, (1, length))
 
 
 @pytest.fixture(scope="session")
@@ -26,14 +38,6 @@ def distilgpt2_bridge_compat():
 
 
 @pytest.fixture(scope="session")
-def gpt2_hooked_unprocessed():
-    """HookedTransformer gpt2 without weight processing."""
-    from transformer_lens import HookedTransformer
-
-    return HookedTransformer.from_pretrained_no_processing("gpt2", device="cpu")
-
-
-@pytest.fixture(scope="session")
 def distilgpt2_hooked_processed():
     """HookedTransformer distilgpt2 with default weight processing."""
     from transformer_lens import HookedTransformer
@@ -47,16 +51,6 @@ def distilgpt2_hooked_unprocessed():
     from transformer_lens import HookedTransformer
 
     return HookedTransformer.from_pretrained_no_processing("distilgpt2", device="cpu")
-
-
-@pytest.fixture(scope="session")
-def gpt2_bridge_compat_no_processing():
-    """TransformerBridge wrapping gpt2 with compat mode, no weight processing."""
-    from transformer_lens.model_bridge.bridge import TransformerBridge
-
-    bridge = TransformerBridge.boot_transformers("gpt2", device="cpu")
-    bridge.enable_compatibility_mode(no_processing=True)
-    return bridge
 
 
 @pytest.fixture(scope="session")

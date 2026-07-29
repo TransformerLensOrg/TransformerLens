@@ -5,9 +5,9 @@ multimodal class), so parity is proven on a seeded tiny from a local config
 with the hybrid sliding/full attention mix exercised (window < seq).
 """
 
-import copy
-
 import torch
+
+from tests.integration.model_bridge.helpers import make_tiny_pair
 
 VOCAB = 256
 
@@ -15,10 +15,6 @@ VOCAB = 256
 def _tiny_gemma4_text_pair():
     from transformers import Gemma4TextConfig
     from transformers.models.gemma4.modeling_gemma4 import Gemma4ForCausalLM
-
-    from transformer_lens.model_bridge.sources._bridge_builder import (
-        build_bridge_from_module,
-    )
 
     cfg = Gemma4TextConfig(
         vocab_size=VOCAB,
@@ -36,16 +32,7 @@ def _tiny_gemma4_text_pair():
         eos_token_id=1,
         bos_token_id=2,
     )
-    cfg._attn_implementation = "eager"
-
-    torch.manual_seed(42)
-    ref = Gemma4ForCausalLM(cfg).eval()
-    hf = Gemma4ForCausalLM(copy.deepcopy(cfg)).eval()
-    hf.load_state_dict(ref.state_dict())
-    bridge = build_bridge_from_module(
-        hf, "Gemma4ForCausalLM", hf_config=copy.deepcopy(cfg), tokenizer=None, device="cpu"
-    ).eval()
-    return bridge, ref
+    return make_tiny_pair(cfg, "Gemma4ForCausalLM", loader=Gemma4ForCausalLM)
 
 
 class TestGemma4TextBridge:

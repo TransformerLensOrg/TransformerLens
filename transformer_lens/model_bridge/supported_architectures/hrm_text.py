@@ -46,7 +46,6 @@ from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapt
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
-    GatedMLPBridge,
     LinearBridge,
     PositionEmbeddingsAttentionBridge,
     RMSNormalizationBridge,
@@ -72,12 +71,7 @@ class HrmTextArchitectureAdapter(ArchitectureAdapter):
         """Initialize the HRM-Text architecture adapter."""
         super().__init__(cfg)
 
-        self.cfg.normalization_type = "RMS"
-        self.cfg.positional_embedding_type = "rotary"
-        self.cfg.final_rms = True
-        self.cfg.gated_mlp = True
-        self.cfg.attn_only = False
-        self.cfg.uses_rms_norm = True
+        self._set_rms_rotary_defaults()
 
         if hasattr(cfg, "num_key_value_heads") and cfg.num_key_value_heads is not None:
             self.cfg.n_key_value_heads = cfg.num_key_value_heads
@@ -119,15 +113,7 @@ class HrmTextArchitectureAdapter(ArchitectureAdapter):
                     requires_attention_mask=True,
                     requires_position_embeddings=True,
                 ),
-                "mlp": GatedMLPBridge(
-                    name="mlp",
-                    config=self.cfg,
-                    submodules={
-                        "gate": LinearBridge(name="gate_proj"),
-                        "in": LinearBridge(name="up_proj"),
-                        "out": LinearBridge(name="down_proj"),
-                    },
-                ),
+                "mlp": self._gated_mlp(),
             }
 
         self.component_mapping = {

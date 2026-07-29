@@ -9,27 +9,24 @@ MODEL = "optimum-intel-internal-testing/tiny-random-qwen2.5-vl"
 
 
 @pytest.fixture(scope="module")
-def qwen25vl_bridge():
+def bridge():
     return TransformerBridge.boot_transformers(MODEL, device="cpu", dtype=torch.float32)
 
 
-@pytest.fixture(scope="module")
-def sample_tokens(qwen25vl_bridge):
-    torch.manual_seed(0)
-    return torch.randint(0, qwen25vl_bridge.cfg.d_vocab - 10, (1, 12))
+SAMPLE_TOKENS_LEN = 12
 
 
 class TestQwen2_5_VLBridgeCreation:
-    def test_adapter_selected(self, qwen25vl_bridge):
+    def test_adapter_selected(self, bridge):
         from transformer_lens.model_bridge.supported_architectures.qwen2_5_vl import (
             Qwen2_5_VLArchitectureAdapter,
         )
 
-        assert isinstance(qwen25vl_bridge.adapter, Qwen2_5_VLArchitectureAdapter)
+        assert isinstance(bridge.adapter, Qwen2_5_VLArchitectureAdapter)
 
 
 class TestQwen2_5_VLForwardEquivalence:
-    def test_text_forward_matches_fresh_hf(self, qwen25vl_bridge, sample_tokens):
+    def test_text_forward_matches_fresh_hf(self, bridge, sample_tokens):
         from transformers import AutoModelForImageTextToText
 
         fresh = AutoModelForImageTextToText.from_pretrained(
@@ -37,12 +34,12 @@ class TestQwen2_5_VLForwardEquivalence:
         )
         fresh.eval()
         with torch.no_grad():
-            bridge_out = qwen25vl_bridge(sample_tokens)
+            bridge_out = bridge(sample_tokens)
             hf_out = fresh(input_ids=sample_tokens).logits
         max_diff = (bridge_out - hf_out).abs().max().item()
         assert max_diff < 1e-5, f"Bridge vs fresh HF max diff = {max_diff}"
 
-    def test_multimodal_forward_matches_fresh_hf(self, qwen25vl_bridge):
+    def test_multimodal_forward_matches_fresh_hf(self, bridge):
         """Image patches flow through the wrapped windowed tower + merger and
         mRoPE position streams diverge from text-only — must stay HF-exact."""
         from PIL import Image
@@ -66,15 +63,15 @@ class TestQwen2_5_VLForwardEquivalence:
         # attention_mask, image_grid_thw — as kwargs) so the vision path is exercised.
         bridge_inputs = {k: v for k, v in inputs.items() if k != "input_ids"}
         with torch.no_grad():
-            bridge_out = qwen25vl_bridge(inputs["input_ids"], **bridge_inputs)
+            bridge_out = bridge(inputs["input_ids"], **bridge_inputs)
             hf_out = fresh(**inputs).logits
         max_diff = (bridge_out - hf_out).abs().max().item()
         assert max_diff < 1e-5, f"Bridge vs fresh HF max diff = {max_diff}"
 
 
 class TestQwen2_5_VLHooks:
-    def test_hooks_fire(self, qwen25vl_bridge, sample_tokens):
-        d_model = qwen25vl_bridge.cfg.d_model
+    def test_hooks_fire(self, bridge, sample_tokens):
+        d_model = bridge.cfg.d_model
         seq = sample_tokens.shape[1]
         expected = {
             "blocks.0.attn.hook_out": (1, seq, d_model),
@@ -87,15 +84,13 @@ class TestQwen2_5_VLHooks:
             captured[hook.name] = tuple(tensor.shape)
 
         with torch.no_grad():
-            qwen25vl_bridge.run_with_hooks(
-                sample_tokens, fwd_hooks=[(name, grab) for name in expected]
-            )
+            bridge.run_with_hooks(sample_tokens, fwd_hooks=[(name, grab) for name in expected])
         for name, shape in expected.items():
             assert captured.get(name) == shape, f"{name}: {captured.get(name)}"
 
 
 class TestQwen2_5_VLGeneration:
-    def test_generate(self, qwen25vl_bridge):
-        text = qwen25vl_bridge.generate("Hello", max_new_tokens=5, do_sample=False, verbose=False)
+    def test_generate(self, bridge):
+        text = bridge.generate("Hello", max_new_tokens=5, do_sample=False, verbose=False)
         assert isinstance(text, str)
         assert text.startswith("Hello")

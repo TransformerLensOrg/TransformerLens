@@ -86,12 +86,7 @@ class GiddArchitectureAdapter(ArchitectureAdapter):
         """Initialize the Gidd architecture adapter."""
         super().__init__(cfg)
 
-        self.cfg.normalization_type = "RMS"
-        self.cfg.uses_rms_norm = True
-        self.cfg.positional_embedding_type = "rotary"
-        self.cfg.gated_mlp = False  # ungated up/down MLP
-        self.cfg.attn_only = False
-        self.cfg.final_rms = True
+        self._set_rms_rotary_defaults(gated=False)
 
         self.weight_processing_conversions = {}
 

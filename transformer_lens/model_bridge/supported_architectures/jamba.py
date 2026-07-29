@@ -207,15 +207,7 @@ class JambaArchitectureAdapter(ArchitectureAdapter):
                     "router": LinearBridge(name="router", optional=True),
                 },
             )
-        return GatedMLPBridge(
-            name="feed_forward",
-            config=self.cfg,
-            submodules={
-                "gate": LinearBridge(name="gate_proj"),
-                "in": LinearBridge(name="up_proj"),
-                "out": LinearBridge(name="down_proj"),
-            },
-        )
+        return self._gated_mlp(name="feed_forward")
 
     def _build_component_mapping(self, num_experts: int) -> dict:
         return {

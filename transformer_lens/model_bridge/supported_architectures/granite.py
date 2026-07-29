@@ -10,11 +10,10 @@ import torch
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
+    AttentionBridge,
     BlockBridge,
     EmbeddingBridge,
     GatedMLPBridge,
-    LinearBridge,
-    PositionEmbeddingsAttentionBridge,
     RMSNormalizationBridge,
     RotaryEmbeddingBridge,
     UnembeddingBridge,
@@ -53,21 +52,9 @@ class GraniteArchitectureAdapter(ArchitectureAdapter):
         self._set_rms_rotary_defaults()
         self.cfg.default_prepend_bos = False
 
-    def _build_attention_bridge(self, optional: bool = False) -> PositionEmbeddingsAttentionBridge:
-        """Build the standard Granite attention bridge."""
-        return PositionEmbeddingsAttentionBridge(
-            name="self_attn",
-            config=self.cfg,
-            optional=optional,
-            submodules={
-                "q": LinearBridge(name="q_proj"),
-                "k": LinearBridge(name="k_proj"),
-                "v": LinearBridge(name="v_proj"),
-                "o": LinearBridge(name="o_proj"),
-            },
-            requires_attention_mask=True,
-            requires_position_embeddings=True,
-        )
+    def _build_attention_bridge(self, optional: bool = False) -> AttentionBridge:
+        """Build the standard Granite attention bridge (GraniteMoeHybrid passes optional)."""
+        return self._qkvo_attention_bridge(optional=optional)
 
     def _build_mlp_bridge(self) -> GatedMLPBridge:
         """Build the dense gated MLP bridge."""

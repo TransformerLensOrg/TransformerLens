@@ -22,40 +22,41 @@ class Qwen3_5ArchitectureAdapter(Qwen3ArchitectureAdapter):
     - Gated q_proj (2x wide) sliced by preprocess_weights for weight analysis
     """
 
+    # Multimodal wrapper architecture this text-only adapter rejects; the MoE
+    # subclass swaps in its own name.
+    _multimodal_arch_name: str = "Qwen3_5ForConditionalGeneration"
+
     def __init__(self, cfg: Any) -> None:
         setattr(cfg, "gated_q_proj", True)
         super().__init__(cfg, hybrid=True)
 
     def prepare_loading(self, model_name: str, model_kwargs: dict) -> None:
-        """Swap multimodal Qwen3_5Config for text-only Qwen3_5TextConfig.
-
-        Published checkpoints carry architectures=['Qwen3_5ForConditionalGeneration'].
-        We replace config with text_config so AutoModelForCausalLM loads the
-        text-only Qwen3_5ForCausalLM.
-        """
+        """Swap the multimodal config for its text_config so AutoModelForCausalLM
+        loads the text-only model (published checkpoints carry the
+        ForConditionalGeneration architecture)."""
         config = model_kwargs.get("config")
         if config is not None and hasattr(config, "text_config"):
             model_kwargs["config"] = config.text_config
 
     def prepare_model(self, hf_model: Any) -> None:
-        """Reject full multimodal Qwen3.5 models on this text-only adapter."""
+        """Reject full multimodal checkpoints on this text-only adapter."""
         config = getattr(hf_model, "config", None)
         architectures = getattr(config, "architectures", []) or []
         class_name = type(hf_model).__name__
+        multimodal_arch = self._multimodal_arch_name
 
         is_conditional_generation = (
-            class_name == "Qwen3_5ForConditionalGeneration"
-            or "Qwen3_5ForConditionalGeneration" in architectures
+            class_name == multimodal_arch or multimodal_arch in architectures
         )
         still_has_top_level_multimodal_config = hasattr(config, "text_config")
         if is_conditional_generation or still_has_top_level_multimodal_config:
+            causal_arch = multimodal_arch.replace("ForConditionalGeneration", "ForCausalLM")
+            text_config_name = multimodal_arch.replace("ForConditionalGeneration", "TextConfig")
             raise ValueError(
-                "Qwen3.5 support in TransformerLens is text-only. Pass a "
-                "Qwen3_5ForCausalLM / Qwen3_5TextConfig model, or load by model id "
-                "with TransformerBridge.boot_transformers(...) so the text_config is "
-                "selected automatically. Qwen3_5ForConditionalGeneration and image/video "
-                "inputs are not supported by this adapter. Qwen3.5-MoE checkpoints are "
-                "handled separately by Qwen3_5MoeArchitectureAdapter."
+                f"This adapter is text-only. Pass a {causal_arch} / "
+                f"{text_config_name} model, or load by model id with "
+                f"TransformerBridge.boot_transformers(...) so {multimodal_arch} "
+                f"checkpoints route to the multimodal adapter automatically."
             )
 
     def preprocess_weights(self, state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
