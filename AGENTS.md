@@ -22,7 +22,7 @@ Sub-folder rules: [tests/AGENTS.md](tests/AGENTS.md) · [supported_architectures
 
 ## 1. What this repo is
 
-**TransformerLens** — mechanistic-interpretability library. Loads 9,000+ models across 50+ architecture families (see [supported_models.json](transformer_lens/tools/model_registry/data/supported_models.json)) and exposes internal activations through a hook system for caching, editing, and ablating intermediate state. Built on HuggingFace `transformers`.
+**TransformerLens** — mechanistic-interpretability library. Loads 15,000+ models across 140+ architecture families (see [supported_models.json](transformer_lens/tools/model_registry/data/supported_models.json)) and exposes internal activations through a hook system for caching, editing, and ablating intermediate state. Built on HuggingFace `transformers`.
 
 ## 2. Two systems live in this repo
 
@@ -33,7 +33,7 @@ Sub-folder rules: [tests/AGENTS.md](tests/AGENTS.md) · [supported_architectures
 
 > ⚠ The **HookedTransformer acceptance suite is quarantined** ([test_hooked_transformer.py](tests/acceptance/test_hooked_transformer.py), [test_hooked_encoder.py](tests/acceptance/test_hooked_encoder.py), [test_hooked_encoder_decoder.py](tests/acceptance/test_hooked_encoder_decoder.py); see [QUARANTINES.md](tests/QUARANTINES.md)). HT changes land untested at the acceptance level — extra manual care required.
 
-Bridge architecture-adapter pattern: each HF architecture has one file in [supported_architectures/](transformer_lens/model_bridge/supported_architectures/) mapping HF module paths to canonical names. Bridge hooks are architecture-native (e.g. `blocks.{i}.hook_out`); HT-style aliases live in [bridge.py](transformer_lens/model_bridge/bridge.py).
+Bridge architecture-adapter pattern: each HF architecture has one file in [supported_architectures/](transformer_lens/model_bridge/supported_architectures/) mapping HF module paths to canonical names. Bridge hooks are architecture-native (e.g. `blocks.{i}.hook_out`); HT-style aliases live in [bridge_core.py](transformer_lens/model_bridge/bridge_core.py).
 
 **Mirroring rule:** if you change `HookedTransformer` behaviour that has a `TransformerBridge` counterpart, update both in the same PR. [supported_models.py](transformer_lens/supported_models.py) is HT-only — Bridge-only models go in the Bridge registry data file.
 
@@ -107,7 +107,7 @@ Python: **>=3.10, <4.0**. CI tests 3.10, 3.11, 3.12. Format/type/docstring check
 ## 5. Hook naming — HT vs Bridge
 
 - **HT canonical**: uniform across architectures — `hook_embed`, `blocks.{i}.hook_resid_pre`, `blocks.{i}.attn.hook_q`, `blocks.{i}.hook_resid_post`.
-- **Bridge-native**: architecture-shaped — `blocks.{i}.hook_out`, `blocks.{i}.attn.q.hook_out`. HT aliases registered via `build_alias_to_canonical_map()` in [bridge.py](transformer_lens/model_bridge/bridge.py).
+- **Bridge-native**: architecture-shaped — `blocks.{i}.hook_out`, `blocks.{i}.attn.q.hook_out`. HT aliases registered via `build_alias_to_canonical_map()` in [bridge_core.py](transformer_lens/model_bridge/bridge_core.py).
 
 Prefer Bridge-native names in new code. Raw-HF-forward drivers comparing against `boot_transformers` must match its load configuration (fp32, eager attention) and probe for optional features like `resid_mid` rather than assume.
 

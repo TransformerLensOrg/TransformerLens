@@ -57,6 +57,15 @@ class RavenArchitectureAdapter(ArchitectureAdapter):
     # integration tests (seed pinned before bridge and HF calls).
     applicable_phases: list[int] = []
 
+    # HuginnDynamicCache decode freezes K/V from earlier stochastic calls (fresh
+    # randn latent per forward), so cached logits can't seed-match the full HF
+    # forward we verify against; full-prefix recompute per step is exact.
+    supports_kv_cache: bool = False
+
+    # The remote forward ignores attention_mask (its compile_mask call is
+    # commented out), so left-padded rows silently attend to pad tokens.
+    supports_batched_generation: bool = False
+
     def __init__(self, cfg: Any) -> None:
         """Initialize the Raven / Huginn architecture adapter."""
         super().__init__(cfg)

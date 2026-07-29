@@ -17,6 +17,9 @@ from transformer_lens.model_bridge.sources._bridge_builder import (
     build_bridge_config_from_hf,
     configure_tokenizer,
 )
+from transformer_lens.model_bridge.sources._hf_format import (
+    determine_architecture_from_hf_config,
+)
 from transformer_lens.utilities.hf_utils import get_hf_token
 
 from . import plugin
@@ -243,10 +246,12 @@ def boot_vllm(
     from transformers import AutoConfig, AutoTokenizer
 
     # Resolve architecture WITHOUT loading weights so we can tell the plugin
-    # which dot-paths to hook before LLM(...) constructs the worker.
+    # which dot-paths to hook before LLM(...) constructs the worker. Shared
+    # resolution (not architectures[0]) handles architectures=None configs via
+    # model_type and rejects unsupported archs before the expensive engine boot.
     hf_token = get_hf_token()
     hf_config_preview = AutoConfig.from_pretrained(model_name, token=hf_token)
-    architecture = hf_config_preview.architectures[0]
+    architecture = determine_architecture_from_hf_config(hf_config_preview)
     overlay = get_overlay(architecture)
 
     resolved_dtype = dtype or _dtype_from_hf_config(hf_config_preview)
@@ -281,8 +286,6 @@ def boot_vllm(
         },
     )
     hf_config = extract_hf_config(llm)
-    if tokenizer is None:
-        tokenizer = AutoTokenizer.from_pretrained(model_name, token=hf_token)
 
     # Build the adapter (RemoteBridge skips adapter.prepare_model — there's no
     # local model tree to walk). Use the shared HF→TL config builder so
@@ -292,8 +295,14 @@ def boot_vllm(
     bridge_config = build_bridge_config_from_hf(hf_config, architecture, model_name, resolved_dtype)
     adapter = ArchitectureAdapterFactory.select_architecture_adapter(bridge_config)
 
-    # Match boot_transformers' tokenizer setup so to_tokens(str) is token-identical.
-    tokenizer = configure_tokenizer(tokenizer, adapter.cfg)
+    # Audio/vision models use feature extractors or image processors, not text tokenizers.
+    _is_audio = getattr(adapter.cfg, "is_audio_model", False)
+    _is_visual = getattr(adapter.cfg, "is_visual_model", False)
+    if tokenizer is None and not (_is_audio or _is_visual):
+        tokenizer = AutoTokenizer.from_pretrained(model_name, token=hf_token)
+    if tokenizer is not None:
+        # Match boot_transformers' tokenizer setup so to_tokens(str) is token-identical.
+        tokenizer = configure_tokenizer(tokenizer, adapter.cfg)
 
     driver = VLLMDriver(
         llm=llm,

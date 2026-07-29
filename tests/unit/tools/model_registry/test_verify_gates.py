@@ -17,7 +17,10 @@ from transformer_lens.tools.model_registry.registry_io import (
     STATUS_VERIFIED,
 )
 from transformer_lens.tools.model_registry.verify_models import (
+    _check_phase_scores,
+    _default_phases_for_architecture,
     _extract_phase_scores,
+    _full_and_core_phases,
     _pass_status,
     _phases_to_run,
 )
@@ -34,6 +37,14 @@ class TestPhasesToRun:
     def test_phases_7_and_8_always_pass_through(self):
         # 7/8 are gated by is_multimodal/is_audio elsewhere, never filtered here.
         assert _phases_to_run("MambaForCausalLM", [1, 7, 8]) == [1, 7, 8]
+
+    def test_phase_9_always_passes_through(self):
+        # 9 is gated by is_visual_model elsewhere, never filtered here.
+        assert _phases_to_run("MambaForCausalLM", [1, 9]) == [1, 9]
+
+    def test_vision_arch_runs_only_phase_9(self):
+        # ViT/DeiT declare applicable_phases=[]; text phases filter out, 9 stays.
+        assert _phases_to_run("ViTModel", [1, 2, 3, 4, 9]) == [9]
 
     def test_unknown_architecture_defaults_to_all_phases(self):
         assert _phases_to_run("NotARealArchitecture", [1, 2, 3, 4]) == [1, 2, 3, 4]
@@ -58,8 +69,24 @@ class TestPhasesToRun:
         assert set(result) <= set(phases)
 
 
-def _result(phase, passed, severity, details=None):
-    return SimpleNamespace(phase=phase, passed=passed, severity=severity, details=details)
+class TestVisionPhaseSets:
+    """Vision-only encoders verify through P9 alone — no text phases apply."""
+
+    def test_full_and_core_phases_vision(self):
+        for arch in ("ViTModel", "ViTForImageClassification", "DeiTForImageClassification"):
+            assert _full_and_core_phases(arch) == ({9}, {9})
+
+    def test_default_phases_vision(self):
+        assert _default_phases_for_architecture("ViTModel") == [9]
+
+    def test_default_phases_text_unchanged(self):
+        assert _default_phases_for_architecture("GPT2LMHeadModel") == [1, 2, 3, 4]
+
+
+def _result(phase, passed, severity, details=None, name="test"):
+    return SimpleNamespace(
+        phase=phase, passed=passed, severity=severity, details=details, name=name
+    )
 
 
 class TestExtractPhaseScores:
@@ -86,6 +113,35 @@ class TestExtractPhaseScores:
     def test_phase4_uses_quality_score_from_details(self):
         results = [_result(4, True, BenchmarkSeverity.INFO, details={"score": 87.5})]
         assert _extract_phase_scores(results)[4] == 87.5
+
+    def test_phase9_results_scored(self):
+        results = [
+            _result(9, True, BenchmarkSeverity.INFO),
+            _result(9, False, BenchmarkSeverity.DANGER),
+        ]
+        assert _extract_phase_scores(results)[9] == 50.0
+
+
+class TestCheckPhaseScores:
+    """Phase 9 gates like 7/8: min score 75, vision_forward required, NULL fails."""
+
+    def test_phase9_pass(self):
+        results = [_result(9, True, BenchmarkSeverity.INFO, name="vision_forward")]
+        assert _check_phase_scores({9: 100.0}, results) is None
+
+    def test_phase9_below_threshold_fails(self):
+        results = [_result(9, False, BenchmarkSeverity.DANGER, name="vision_cache")]
+        error = _check_phase_scores({9: 50.0}, results)
+        assert error is not None and "P9" in error
+
+    def test_phase9_required_test_failure_overrides_score(self):
+        results = [_result(9, False, BenchmarkSeverity.DANGER, name="vision_forward")]
+        error = _check_phase_scores({9: 80.0}, results)
+        assert error is not None and "vision_forward" in error
+
+    def test_phase9_null_score_fails(self):
+        error = _check_phase_scores({9: None}, [])
+        assert error is not None and "P9=NULL" in error
 
 
 class TestIsSSMMixerInternal:

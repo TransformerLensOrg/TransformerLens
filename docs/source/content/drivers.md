@@ -2,7 +2,7 @@
 
 TransformerLens v4 separates *what you study* (the bridge's hook names, cache, and intervention surface) from *what runs the forward pass* (a **Driver**). Every backend — local HuggingFace `transformers`, vLLM, or an `inspect_ai` provider — satisfies the same protocol, so the same hook names work everywhere; what changes is which hooks each backend can fire and whether gradients exist at all.
 
-This page covers the user-facing surface. The contract lives in [`transformer_lens/model_bridge/driver_protocol.py`](https://github.com/TransformerLensOrg/TransformerLens/blob/dev-4.x/transformer_lens/model_bridge/driver_protocol.py).
+This page covers the user-facing surface. The contract lives in [`transformer_lens/model_bridge/driver_protocol.py`](../../../transformer_lens/model_bridge/driver_protocol.py).
 
 ---
 
@@ -70,15 +70,15 @@ logits2, cache2 = bridge.run_with_cache(
 )
 ```
 
-Notes grounded in the source docstrings ([`sources/vllm/source.py`](https://github.com/TransformerLensOrg/TransformerLens/blob/dev-4.x/transformer_lens/model_bridge/sources/vllm/source.py)):
+Notes grounded in the source docstrings ([`sources/vllm/source.py`](../../../transformer_lens/model_bridge/sources/vllm/source.py)):
 
 - **Fireable hooks** (decoder-only overlay): `embed.hook_out`, `blocks.{i}.hook_out` / `attn.hook_out` / `mlp.hook_out`, `ln_final.hook_normalized`.
 - **Returned logits are reconstructed full-sequence logits**: vLLM's sampler bypasses `lm_head`, so the driver rebuilds them host-side as `ln_final @ lm_head.weight.T` (+ bias, + Gemma soft-cap) — valid at every position, so loss works. If the unembedding weight is unreachable it falls back to final-position log-probs and the bridge rejects `return_type="loss"`.
-- **Convention alignment**: vLLM materializes `ln_final` *post-weight*, but the driver un-folds the exposed capture (÷ weight, or ÷ (1 + weight) for Gemma) so `ln_final.hook_normalized` matches the pre-weight value `boot_transformers` serves. If the norm weight is unreachable it warns and serves the raw post-weight value. See [`sources/vllm/overlays/decoder_only.py`](https://github.com/TransformerLensOrg/TransformerLens/blob/dev-4.x/transformer_lens/model_bridge/sources/vllm/overlays/decoder_only.py) for which hooks diverge from HF conventions.
+- **Convention alignment**: vLLM materializes `ln_final` *post-weight*, but the driver un-folds the exposed capture (÷ weight, or ÷ (1 + weight) for Gemma) so `ln_final.hook_normalized` matches the pre-weight value `boot_transformers` serves. If the norm weight is unreachable it warns and serves the raw post-weight value. See [`sources/vllm/overlays/decoder_only.py`](../../../transformer_lens/model_bridge/sources/vllm/overlays/decoder_only.py) for which hooks diverge from HF conventions.
 - `enable_batching=True` switches to the eager batched path (`batch_size > 1`, chunked prefill) for data collection; `enable_position_interventions=True` lets a spec carry a `pos` field (int or list) to scope an edit to specific sequence positions.
 - `tensor_parallel_size=2` enables single-node tensor parallelism (GPU-validated: capture/intervention/logit parity vs TP=1 within the standard band): every served hook point is post-all-reduce and replicated across a stage's TP ranks, with a first-forward cross-rank check that fails loud if that ever stops holding; vocab-sharded unembeddings are gathered for logit reconstruction. Incompatible with `enable_batching`; multi-node (Ray) remains unsupported.
 - `pipeline_parallel_size=2` enables single-node pipeline parallelism (GPU-validated: capture/intervention/logit parity vs single-rank within the standard band): each stage owns a disjoint layer slice, so the driver merges per-rank capture reads (fail-loud if a requested hook is served by no rank) and each rank applies only the intervention specs whose hooks it owns. Ownership is determined by whether a hook actually fired, not by module presence — tied-embedding models alias `embed_tokens` onto the last stage and some builds instantiate the final norm everywhere. The first-forward layout check also verifies TP replicas of each stage fired identically under vLLM's PP microbatching. Composes with `tensor_parallel_size`; same `enable_batching` restriction.
-- Requires a CUDA GPU. Install with `pip install "transformer-lens[vllm]"` (or `uv sync --extra vllm`). The extra is Linux-only (vLLM ships no macOS/Windows wheels), pins the validated `vllm 0.20.x` band — which in turn pins its matching `torch` — and cannot co-install with the `[lit]` extra (numpy version conflict). See [`sources/vllm/internals.py`](https://github.com/TransformerLensOrg/TransformerLens/blob/dev-4.x/transformer_lens/model_bridge/sources/vllm/internals.py) before bumping the band.
+- Requires a CUDA GPU. Install with `pip install "transformer-lens[vllm]"` (or `uv sync --extra vllm`). The extra is Linux-only (vLLM ships no macOS/Windows wheels), pins the validated `vllm 0.20.x` band — which in turn pins its matching `torch` — and cannot co-install with the `[lit]` extra (numpy version conflict). See [`sources/vllm/internals.py`](../../../transformer_lens/model_bridge/sources/vllm/internals.py) before bumping the band.
 
 ### Inspect — interp inside `inspect_ai` evals
 
@@ -91,12 +91,12 @@ bridge = RemoteBridge.boot_inspect("HuggingFaceTB/SmolLM2-135M")  # provider="tl
 logits, cache = bridge.run_with_cache("Hello, world")
 ```
 
-From the [`boot_inspect` docstring](https://github.com/TransformerLensOrg/TransformerLens/blob/dev-4.x/transformer_lens/model_bridge/sources/inspect/source.py):
+From the [`boot_inspect` docstring](../../../transformer_lens/model_bridge/sources/inspect/source.py):
 
 - The default `tl_bridge` provider is HF-backed: residual/attn/mlp capture, full affine interventions, and full-sequence logits. `tl_bridge_vllm` is the vLLM-backed sibling; `provider="vllm-lens"` targets a running vllm-lens provider (residual-only, additive-steering-only).
 - **Fireable hooks** (`tl_bridge`): `blocks.{i}.hook_in` (resid_pre), `ln2.hook_in` (resid_mid), `hook_out` (resid_post), `attn.hook_out`, `mlp.hook_out`, plus head-split `attn.hook_q/k/v` / `attn.hook_z` / `attn.hook_pattern` where a per-model structural self-check finds them. `embed`, `ln_final`, and `attn.hook_attn_scores` are always non-fireable — use `boot_transformers()` for those.
 - For parity with `boot_transformers`, the provider loads with the same dtype (fp32 by default) and eager attention.
-- For capture *during an eval*, add the `capture_activations([...])` solver from [`sources/inspect/eval.py`](https://github.com/TransformerLensOrg/TransformerLens/blob/dev-4.x/transformer_lens/model_bridge/sources/inspect/eval.py) to a Task's solver chain: full activations go to per-sample `.npz` artifacts, and a compact summary lands in the sample store for `samples_df` analysis.
+- For capture *during an eval*, add the `capture_activations([...])` solver from [`sources/inspect/eval.py`](../../../transformer_lens/model_bridge/sources/inspect/eval.py) to a Task's solver chain: full activations go to per-sample `.npz` artifacts, and a compact summary lands in the sample store for `samples_df` analysis.
 
 ---
 

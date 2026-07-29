@@ -10,7 +10,7 @@ The HuggingFace model scraper (`transformer_lens.tools.model_registry.hf_scraper
 
 ## Setup
 
-Sphinx, `verify_models`, and the scraper all need an HF token to read gated models. Source from the repo's `.env` (see [feedback_hf_token_env.md](../../../../../.claude/projects/-Users-jlarson-Documents-PROJECTS-TransformerLens/memory/feedback_hf_token_env.md) for the project convention):
+Sphinx, `verify_models`, and the scraper all need an HF token to read gated models. The project convention is to source `HF_TOKEN` from the repo's `.env` before any Hub-hitting command:
 
 ```bash
 set -a; source .env; set +a

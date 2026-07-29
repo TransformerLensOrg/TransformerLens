@@ -29,7 +29,7 @@ logits, cache = bridge.run_with_cache("Hello world")
 
 TransformerBridge wraps a HuggingFace model behind a consistent TransformerLens interface through an **architecture adapter** — each supported architecture has an adapter that maps the HF module graph onto a set of generalized components (embedding, attention, MLP, normalization, blocks) with uniform hook points. The big win is that the same interpretability code just works across arbitrary architectures, and the bridge preserves the native HF implementation rather than reimplementing it.
 
-The bridge currently covers 50+ architectures spanning Llama, Mistral, Qwen, Gemma, OLMo, Phi, Mamba, LLaVA, and more. For the full list — including which models have been verified end-to-end — see the [TransformerBridge Models](../generated/transformer_bridge_models.md) page.
+The bridge currently covers 140+ architectures spanning Llama, Mistral, Qwen, Gemma, OLMo, Phi, Mamba, LLaVA, and more. For the full list — including which models have been verified end-to-end — see the [TransformerBridge Models](../generated/transformer_bridge_models.md) page.
 
 ## Advice for Reading the Code
 

@@ -107,17 +107,17 @@ def _sanitize_note(note: Optional[str]) -> Optional[str]:
 def _phases_to_run(arch: str, phases: list[int]) -> list[int]:
     """Restrict requested phases to those the adapter supports.
 
-    An adapter's ``applicable_phases`` declares which text phases (1-4) it covers. Phases 7/8
-    are gated separately by ``is_multimodal``/``is_audio`` in the benchmark, so they are never
-    filtered out here. An empty result means none of the requested phases apply to this
-    architecture (SSM / recurrent families run all four).
+    An adapter's ``applicable_phases`` declares which text phases (1-4) it covers. Phases
+    7/8/9 are gated separately by ``is_multimodal``/``is_audio``/``is_visual_model`` in the
+    benchmark, so they are never filtered out here. An empty result means none of the
+    requested phases apply to this architecture (SSM / recurrent families run all four).
     """
     from transformer_lens.factories.architecture_adapter_factory import (
         SUPPORTED_ARCHITECTURES,
     )
 
     applicable = getattr(SUPPORTED_ARCHITECTURES.get(arch), "applicable_phases", [1, 2, 3, 4])
-    return [p for p in phases if p in applicable or p in (7, 8)]
+    return [p for p in phases if p in applicable or p in (7, 8, 9)]
 
 
 def _full_and_core_phases(arch: str) -> tuple[set[int], set[int]]:
@@ -130,6 +130,10 @@ def _full_and_core_phases(arch: str) -> tuple[set[int], set[int]]:
         return {1, 8}, {1, 8}
     if kind == "multimodal":
         return {1, 2, 3, 4, 7}, {1, 4, 7}
+    if kind == "vision":
+        # Vision-only encoders have no text tower; P9 (image forward/cache
+        # parity) is the whole verification — text phases 1-4 don't apply.
+        return {9}, {9}
     if arch in AUDIO_TEXT_ARCHITECTURES:
         # Phase 8 (audio-conditioned forward) out of the core set so a partial {1,4}
         # run still verifies; a full run records and gates it via _check_phase_scores.
@@ -539,7 +543,7 @@ def _extract_phase_scores(results: list) -> dict[int, Optional[float]]:
     """
     from transformer_lens.benchmarks.utils import BenchmarkSeverity
 
-    phase_results: dict[int, list[bool]] = {1: [], 2: [], 3: [], 4: [], 7: [], 8: []}
+    phase_results: dict[int, list[bool]] = {1: [], 2: [], 3: [], 4: [], 7: [], 8: [], 9: []}
     for result in results:
         if result.phase in phase_results and result.severity != BenchmarkSeverity.SKIPPED:
             phase_results[result.phase].append(result.passed)
@@ -574,6 +578,7 @@ _MIN_PHASE_SCORES: dict[int, float] = {
     4: 50.0,
     7: 75.0,
     8: 75.0,
+    9: 75.0,
 }
 _DEFAULT_MIN_PHASE_SCORE = 50.0
 
@@ -595,6 +600,7 @@ _REQUIRED_PHASE_TESTS: dict[int, list[str]] = {
     3: ["logits_equivalence", "loss_equivalence"],
     7: ["multimodal_forward"],
     8: ["audio_forward", "audio_text_forward"],
+    9: ["vision_forward"],
 }
 
 
@@ -620,13 +626,15 @@ def _check_phase_scores(
     failing_phases: list[str] = []
     for phase, score in sorted(phase_scores.items()):
         if score is None:
-            # Phase 7 (multimodal) or Phase 8 (audio) with a NULL score means
-            # the processor was unavailable and no tests ran.  This is a
-            # verification failure, not something to silently skip.
+            # Phase 7 (multimodal), 8 (audio), or 9 (vision) with a NULL score
+            # means the modality tests never ran.  This is a verification
+            # failure, not something to silently skip.
             if phase == 7:
                 failing_phases.append(f"P7=NULL (multimodal tests skipped — processor unavailable)")
             elif phase == 8:
                 failing_phases.append(f"P8=NULL (audio tests skipped — no results)")
+            elif phase == 9:
+                failing_phases.append("P9=NULL (vision tests skipped — no results)")
             continue
 
         # Phase 4 is a quality metric, not a pass/fail check — skip it here.
@@ -981,6 +989,7 @@ def verify_models(
         # verification and should only be set by a complete run.
         is_multimodal = classify_architecture(arch) == "multimodal"
         is_audio = classify_architecture(arch) == "audio"
+        is_vision = classify_architecture(arch) == "vision"
         full_phases, core_required = _full_and_core_phases(arch)
         is_partial_run = set(eff_phases) != full_phases
 
@@ -995,7 +1004,8 @@ def verify_models(
                     score_parts = [f"P{p}={s}%" for p, s in sorted(filtered_scores.items())]
                     print(f"  Partial phase update: {', '.join(score_parts)}")
 
-                # Core verification: P1+P4 for text-only, P1+P4+P7 for multimodal.
+                # Core verification: P1+P4 for text-only, P1+P4+P7 for
+                # multimodal, P9 for vision.
                 is_core_verification = set(eff_phases) >= core_required
                 partial_status = None
                 partial_note = None
@@ -1031,7 +1041,19 @@ def verify_models(
                         else:
                             p8_pass = False
 
-                    if p1_pass and p4_pass and p7_pass and p8_pass:
+                    # For vision models, Phase 9 is required; text phases 1/4
+                    # are not applicable (no text tower).
+                    p9_pass = True
+                    if is_vision:
+                        p1_pass = True
+                        p4_pass = True
+                        p9 = filtered_scores.get(9)
+                        if p9 is not None:
+                            p9_pass = p9 >= _MIN_PHASE_SCORES.get(9, _DEFAULT_MIN_PHASE_SCORE)
+                        else:
+                            p9_pass = False
+
+                    if p1_pass and p4_pass and p7_pass and p8_pass and p9_pass:
                         partial_status = STATUS_VERIFIED
                         partial_note = "Core verification completed"
                     elif p1_pass and p4_pass and not p7_pass:
@@ -1047,6 +1069,18 @@ def verify_models(
                             partial_note = (
                                 f"Core verification failed: multimodal tests "
                                 f"scored {p7_score}% (requires >= 75%)"
+                            )
+                    elif p1_pass and p4_pass and not p9_pass:
+                        p9_score = filtered_scores.get(9)
+                        partial_status = STATUS_FAILED
+                        if p9_score is None:
+                            partial_note = (
+                                "Core verification failed: vision tests skipped (no results)"
+                            )
+                        else:
+                            partial_note = (
+                                f"Core verification failed: vision tests "
+                                f"scored {p9_score}% (requires >= 75%)"
                             )
                     elif p1_pass:
                         partial_status = STATUS_VERIFIED
@@ -1135,7 +1169,7 @@ def verify_models(
                     f"  {label}: P1={phase_scores.get(1)}%, "
                     f"P2={phase_scores.get(2)}%, P3={phase_scores.get(3)}%, "
                     f"P4={phase_scores.get(4)}%, P7={phase_scores.get(7)}%, "
-                    f"P8={phase_scores.get(8)}%"
+                    f"P8={phase_scores.get(8)}%, P9={phase_scores.get(9)}%"
                 )
             update_model_status(
                 model_id,
@@ -1164,7 +1198,7 @@ def verify_models(
                         f"  Partial scores saved: P1={phase_scores.get(1)}%, "
                         f"P2={phase_scores.get(2)}%, P3={phase_scores.get(3)}%, "
                         f"P4={phase_scores.get(4)}%, P7={phase_scores.get(7)}%, "
-                        f"P8={phase_scores.get(8)}%"
+                        f"P8={phase_scores.get(8)}%, P9={phase_scores.get(9)}%"
                     )
             update_model_status(
                 model_id,
@@ -1380,7 +1414,8 @@ Examples:
         default=None,
         help=(
             "Which benchmark phases to run (default: a full verification for each "
-            "model's architecture — 1 2 3 4 for text, 1 2 3 4 7 for multimodal, 1 8 for audio)"
+            "model's architecture — 1 2 3 4 for text, 1 2 3 4 7 for multimodal, "
+            "1 8 for audio, 9 for vision)"
         ),
     )
     parser.add_argument(

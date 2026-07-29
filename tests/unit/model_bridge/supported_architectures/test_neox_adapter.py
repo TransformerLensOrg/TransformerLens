@@ -217,6 +217,27 @@ class TestNeoxAdapterWeightConversions:
 class TestNeoxSetupComponentTesting:
     """setup_component_testing must wire NeoX's rotary embedding into attention bridges."""
 
+    def test_sets_rotary_emb_on_template_attention(self, adapter: NeoxArchitectureAdapter) -> None:
+        rotary_emb = object()
+        template = adapter.get_generalized_component("blocks.0.attn")
+        assert isinstance(template, JointQKVPositionEmbeddingsAttentionBridge)
+
+        adapter.setup_component_testing(_fake_hf_model(rotary_emb))
+
+        assert template._rotary_emb is rotary_emb
+
+    def test_does_not_force_eager_attention(self, adapter: NeoxArchitectureAdapter) -> None:
+        """NeoX component parity does not require eager, so the HF attn
+        implementation must be left untouched."""
+        hf_model = SimpleNamespace(
+            gpt_neox=SimpleNamespace(rotary_emb=object()),
+            config=SimpleNamespace(_attn_implementation="sdpa"),
+        )
+
+        adapter.setup_component_testing(hf_model)
+
+        assert hf_model.config._attn_implementation == "sdpa"
+
     def test_sets_rotary_emb_on_bridge_model_blocks(self, adapter: NeoxArchitectureAdapter) -> None:
         rotary_emb = object()
         bridge_model = DummyBridgeModel([DummyBlock(), DummyBlock(), DummyBlock()])

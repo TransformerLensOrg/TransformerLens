@@ -9,6 +9,8 @@ Phase 4: Text Quality - Perplexity-based legibility scoring via GPT-2 Medium
 Phase 5: Granular Weight Processing Tests (optional, individual flags)
 Phase 6: Granular Weight Processing Tests (optional, combined flags)
 Phase 7: Multimodal Tests (only for multimodal models with pixel_values support)
+Phase 8: Audio Tests (only for audio encoder models / audio-conditioned decoders)
+Phase 9: Vision Tests (only for vision-only encoder models, e.g. ViT/DeiT)
 """
 
 import gc
@@ -97,6 +99,40 @@ def should_skip_ht_comparison(model_name: str, trust_remote_code: bool = False) 
         return any(arch in NO_HT_COMPARISON_ARCHITECTURES for arch in architectures)
     except Exception:
         return False
+
+
+def _adapter_applicable_phases(model_name: str, trust_remote_code: bool = False) -> list[int]:
+    """Text phases (1-4) the model's adapter declares applicable (default all)."""
+    from transformer_lens.factories.architecture_adapter_factory import (
+        SUPPORTED_ARCHITECTURES,
+    )
+
+    try:
+        config = AutoConfig.from_pretrained(
+            model_name, trust_remote_code=trust_remote_code, token=_hf_token()
+        )
+        for arch in get_architectures_for_config(config):
+            adapter_cls = SUPPORTED_ARCHITECTURES.get(arch)
+            if adapter_cls is not None:
+                return getattr(adapter_cls, "applicable_phases", [1, 2, 3, 4])
+    except Exception:
+        pass
+    return [1, 2, 3, 4]
+
+
+def _phase_enabled(
+    phase_num: int, phases: Optional[List[int]], applicable_phases: List[int]
+) -> bool:
+    """Phase gating shared by run_benchmark_suite's should_run_phase.
+
+    An adapter's ``applicable_phases`` declares which text phases (1-4) it covers.
+    Phases 7/8/9 are gated separately by ``is_multimodal``/``is_audio_model``/
+    ``is_visual_model`` at their call sites, so they are never filtered out here
+    (mirrors verify_models._phases_to_run).
+    """
+    if phases is not None and phase_num not in phases:
+        return False
+    return phase_num not in (1, 2, 3, 4) or phase_num in applicable_phases
 
 
 def get_auto_model_class(model_name: str, trust_remote_code: bool = False):
@@ -713,9 +749,11 @@ def run_benchmark_suite(
     # Track current phase for result tagging
     current_phase: List[Optional[int]] = [None]  # Use list to allow modification in nested function
 
+    adapter_applicable = _adapter_applicable_phases(model_name, trust_remote_code)
+
     def should_run_phase(phase_num: int) -> bool:
-        """Check if a phase should run based on the phases filter."""
-        return phases is None or phase_num in phases
+        """Check if a phase should run based on the phases filter and adapter applicability."""
+        return _phase_enabled(phase_num, phases, adapter_applicable)
 
     def add_result(result: BenchmarkResult) -> None:
         """Add a result and optionally print it immediately."""
@@ -1579,6 +1617,58 @@ def run_benchmark_suite(
         add_result(result)
 
     # ========================================================================
+    # Phase 9: Vision Tests (only for vision-only encoder models)
+    # Runs before Phase 3 so we can reuse bridge_unprocessed before cleanup.
+    # ========================================================================
+    if (
+        bridge_unprocessed is not None
+        and getattr(bridge_unprocessed.cfg, "is_visual_model", False)
+        and should_run_phase(9)
+    ):
+        current_phase[0] = 9
+        if verbose:
+            print("\n" + "=" * 80)
+            print("PHASE 9: VISION TESTS")
+            print("=" * 80)
+            print("Testing vision forward parity and caching with synthetic images.")
+            print("=" * 80 + "\n")
+
+        try:
+            from transformer_lens.benchmarks.vision import (
+                benchmark_vision_cache,
+                benchmark_vision_forward,
+            )
+
+            vision_results = [
+                benchmark_vision_forward(bridge_unprocessed),
+                benchmark_vision_cache(bridge_unprocessed),
+            ]
+            for result in vision_results:
+                result.phase = 9
+                results.append(result)
+                if verbose:
+                    print(result)
+
+            if verbose:
+                print("\n" + "=" * 80)
+                print("PHASE 9 COMPLETE")
+                print("=" * 80)
+
+        except Exception as e:
+            if verbose:
+                print(f"\n⚠ Vision tests failed: {e}\n")
+            results.append(
+                BenchmarkResult(
+                    name="vision_suite",
+                    passed=False,
+                    severity=BenchmarkSeverity.ERROR,
+                    message=f"Failed to run vision tests: {str(e)}",
+                    details={"error": str(e)},
+                    phase=9,
+                )
+            )
+
+    # ========================================================================
     # PHASE 3: Bridge (processed) + HookedTransformer (processed)
     # ========================================================================
     current_phase[0] = 3
@@ -1600,7 +1690,7 @@ def run_benchmark_suite(
         _cleanup_bridge_unprocessed()
         _skip_phase3 = True
         if verbose:
-            print("\n⚠ Phase 3 skipped (not in phases list)\n")
+            print("\n⚠ Phase 3 skipped (excluded by phases filter or adapter applicable_phases)\n")
     elif is_encoder_decoder_model(model_name):
         _cleanup_bridge_unprocessed()
         _skip_phase3 = True

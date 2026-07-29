@@ -30,6 +30,11 @@ from transformer_lens.model_bridge.generalized_components import (
 class NeoxArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for NeoX models."""
 
+    # setup_component_testing knobs: rotary_emb lives on hf_model.gpt_neox;
+    # eager forcing is intentionally skipped for NeoX.
+    _testing_lm_attr = "gpt_neox"
+    _testing_eager = None
+
     def __init__(self, cfg: Any) -> None:
         """Initialize the NeoX architecture adapter.
 
@@ -240,24 +245,3 @@ class NeoxArchitectureAdapter(ArchitectureAdapter):
         W_V_transformation.bias = torch.nn.Parameter(b_V)
 
         return W_Q_transformation, W_K_transformation, W_V_transformation
-
-    def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Set up rotary embedding references for GPT-NeoX/StableLM component testing.
-
-        GPT-NeoX models use RoPE (Rotary Position Embeddings) which need to be
-        set on all attention bridge instances for component testing.
-
-        Args:
-            hf_model: The HuggingFace GPT-NeoX model instance
-            bridge_model: The TransformerBridge model (if available, set rotary_emb on actual instances)
-        """
-        # Get rotary embedding instance from model level
-        # In GPT-NeoX/StableLM, rotary_emb is at the model level
-        rotary_emb = hf_model.gpt_neox.rotary_emb
-
-        # Set rotary_emb on actual bridge instances in bridge_model if available
-        if bridge_model is not None and hasattr(bridge_model, "blocks"):
-            # Set on each layer's actual attention bridge instance
-            for block in bridge_model.blocks:
-                if hasattr(block, "attn"):
-                    block.attn.set_rotary_emb(rotary_emb)
