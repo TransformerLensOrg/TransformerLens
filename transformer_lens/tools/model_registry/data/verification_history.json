@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-07-24T13:57:03.104108",
+  "last_updated": "2026-07-30T13:28:53.398865",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -20898,6 +20898,16 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Full verification completed with issues, low text quality",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "lapa-llm/lapa-v0.1.3-instruct",
+      "architecture_id": "Gemma3ForConditionalGeneration",
+      "verified_date": "2026-07-30",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
       "invalidated": false,
       "invalidation_reason": null
     }
