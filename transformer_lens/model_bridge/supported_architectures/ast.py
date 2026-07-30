@@ -28,7 +28,7 @@ class ASTArchitectureAdapter(ArchitectureAdapter):
 
     Input is a [batch, time=1024, n_mels=128] spectrogram; positions 0/1 are the
     CLS and distillation tokens. HF pools (cls+dist)/2 after ln_final and applies
-    and extra LayerNorm inside the classifier head, see the unembed mapping note.
+    an extra LayerNorm inside the classifier head, see the unembed mapping note.
     """
 
     supports_generation: bool = False
@@ -121,7 +121,7 @@ class ASTArchitectureAdapter(ArchitectureAdapter):
             )
             base_model = hf_model.audio_spectrogram_transformer
 
-            # guard unembed: only map if num_labls > 0 and dense head is real
+            # guard unembed: only map if num_labels > 0 and dense head is real
             num_labels = getattr(hf_model.config, "num_labels", 0)
             if (
                 num_labels > 0

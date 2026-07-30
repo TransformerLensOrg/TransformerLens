@@ -80,5 +80,7 @@ class TestASTBoot:
         tl_model = TransformerBridge.boot_transformers(
             "MIT/ast-finetuned-audioset-10-10-0.4593", load_weights=False
         )
-        assert tl_model.cfg.architecture == "ASTForAudioClassification"
-        assert tl_model.cfg.is_audio_model is True
+
+        # strict assertions to guarantee the classification path fired
+        assert type(tl_model.original_model).__name__ == "ASTForAudioClassification"
+        assert "unembed" in tl_model.adapter.component_mapping
