@@ -140,6 +140,12 @@ These work identically on `TransformerBridge` and need no migration:
 - `cfg.*` — the bridge exposes a `.cfg` with the same fields (`n_layers`, `n_heads`, `d_model`, `d_vocab`, `n_ctx`, ...)
 - `W_Q`, `W_K`, `W_V`, `W_O`, `b_Q`, `b_K`, `b_V`, `b_O` — attention weights are exposed with the same `[n_heads, d_model, d_head]` shape conventions
 
+> **Gradients require the transformers driver.** `run_with_cache(incl_bwd=True)`,
+> backward hooks, attribution patching, and other gradient-based analyses need
+> local autograd, so load the model with `TransformerBridge.boot_transformers(...)`.
+> Serving and remote drivers do not expose gradients; see
+> {ref}`Fundamental limits <drivers-fundamental-limits>`.
+
 If your code only touches these APIs, the migration is genuinely just the loading call and (optionally) `enable_compatibility_mode`.
 
 ### BERT Next Sentence Prediction
