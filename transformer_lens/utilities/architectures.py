@@ -64,12 +64,17 @@ AUDIO_TEXT_ARCHITECTURES: set[str] = {
     "MusicFlamingoForConditionalGeneration",
 }
 
+# Audio spectrogram models for classification
+AUDIO_CLASSIFICATION_ARCHITECTURES: set[str] = {
+    "ASTForAudioClassification",
+}
+
 # Audio encoder models (HuBERT, wav2vec2, etc.)
 AUDIO_ARCHITECTURES: set[str] = {
     "HubertForCTC",
     "HubertModel",
     "HubertForSequenceClassification",
-}
+} | AUDIO_CLASSIFICATION_ARCHITECTURES
 
 # Vision-only (non-multimodal, no text tower) encoder models. Split into the
 # two HF AutoModel classes they load under: bare encoders load via AutoModel,

@@ -375,6 +375,7 @@ def get_hf_model_class_for_architecture(architecture: str):
     """
     from transformer_lens.utilities.architectures import (
         AUDIO_ARCHITECTURES,
+        AUDIO_CLASSIFICATION_ARCHITECTURES,
         AUDIO_TEXT_ARCHITECTURES,
         BASE_AUTOMODEL_ARCHITECTURES,
         MASKED_LM_ARCHITECTURES,
@@ -396,6 +397,10 @@ def get_hf_model_class_for_architecture(architecture: str):
         from transformers import AutoModel
 
         return AutoModel
+    elif architecture in AUDIO_CLASSIFICATION_ARCHITECTURES:
+        from transformers import AutoModelForAudioClassification
+
+        return AutoModelForAudioClassification
     elif architecture in AUDIO_ARCHITECTURES:
         if "ForCTC" in architecture:
             from transformers import AutoModelForCTC

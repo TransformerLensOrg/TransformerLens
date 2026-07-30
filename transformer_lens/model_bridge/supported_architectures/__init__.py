@@ -6,6 +6,7 @@ This module contains all the supported architecture adapters for different model
 from transformer_lens.model_bridge.supported_architectures.afmoe import AfmoeArchitectureAdapter
 from transformer_lens.model_bridge.supported_architectures.apertus import ApertusArchitectureAdapter
 from transformer_lens.model_bridge.supported_architectures.arcee import ArceeArchitectureAdapter
+from transformer_lens.model_bridge.supported_architectures.ast import ASTArchitectureAdapter
 from transformer_lens.model_bridge.supported_architectures.audio_flamingo3 import (
     AudioFlamingo3ArchitectureAdapter,
 )
@@ -271,6 +272,7 @@ __all__ = [
     "AfmoeArchitectureAdapter",
     "ApertusArchitectureAdapter",
     "ArceeArchitectureAdapter",
+    "ASTArchitectureAdapter",
     "AudioFlamingo3ArchitectureAdapter",
     "BD3LMArchitectureAdapter",
     "BaichuanArchitectureAdapter",
