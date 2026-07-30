@@ -223,3 +223,31 @@ Weight-matrix rows return **raw** HuggingFace weights by default. `HookedTransfo
 | `model.W_pos` | `bridge.pos_embed.W_pos` | Raw weight (also `bridge.pos_embed.weight`). `center_writing_weights` centers `W_pos` in default HT loads, so it matches HT's only under matching processing (`enable_compatibility_mode()`, or HT loaded with no processing). |
 | `model.W_E_pos` | `torch.cat([bridge.W_E, bridge.pos_embed.W_pos], dim=0)` | No single accessor — concatenate the token + positional matrices. Same weight-processing caveat as `W_pos` (both `W_E` and `W_pos` are centered writing-weights). |
 | `HookedTransformer.from_pretrained_no_processing(name)` | `TransformerBridge.boot_transformers(name, no_processing=True)` | Both load raw weights, so these match. |
+
+```python
+import torch
+
+from transformer_lens import HookedTransformer
+from transformer_lens.model_bridge import TransformerBridge
+
+model = HookedTransformer.from_pretrained(
+    "gpt2", device="cpu", dtype=torch.float32
+)
+bridge = TransformerBridge.boot_transformers(
+    "openai-community/gpt2", device="cpu", dtype=torch.float32
+)
+bridge.enable_compatibility_mode()
+
+W_pos = bridge.pos_embed.W_pos
+W_E_pos = torch.cat([bridge.W_E, W_pos], dim=0)
+
+assert W_pos.shape == (bridge.cfg.n_ctx, bridge.cfg.d_model)
+assert W_E_pos.shape == (
+    bridge.cfg.d_vocab + bridge.cfg.n_ctx,
+    bridge.cfg.d_model,
+)
+torch.testing.assert_close(W_pos, model.W_pos)
+torch.testing.assert_close(W_E_pos, model.W_E_pos)
+```
+
+The equality checks use matching weight processing: `enable_compatibility_mode()` centers the bridge's writing weights in the same way as a default `HookedTransformer` load. A raw bridge load instead matches `HookedTransformer.from_pretrained_no_processing`; see [Will my numbers match HookedTransformer?](#will-my-numbers-match-hookedtransformer) for the broader rule.
