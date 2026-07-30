@@ -351,9 +351,7 @@ class JacobianLens:
         )
 
     @classmethod
-    def _from_checkpoint_payload(
-        cls, path: str, payload: Dict[str, Any]
-    ) -> "JacobianLens":
+    def _from_checkpoint_payload(cls, path: str, payload: Dict[str, Any]) -> "JacobianLens":
         """Reconstruct a JacobianLens from a fit-checkpoint payload.
 
         Divides the running Jacobian sums by ``n_prompts``, strips fit-reserved

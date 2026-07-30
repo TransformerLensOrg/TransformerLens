@@ -8,7 +8,6 @@ import torch
 
 from transformer_lens.tools.analysis.jacobian_lens import JacobianLens
 
-
 # ---------------------------------------------------------------------------
 # Fixture helpers
 # ---------------------------------------------------------------------------
@@ -43,9 +42,7 @@ def _save_checkpoint(
     sums (useful for zero/negative n_prompts tests).
     """
     payload = {
-        "jacobian_sum": {
-            i: torch.randn(d_model, d_model) * n_prompts for i in range(n_layers)
-        },
+        "jacobian_sum": {i: torch.randn(d_model, d_model) * n_prompts for i in range(n_layers)},
         "n_prompts": n_prompts if n_prompts_override is None else n_prompts_override,
         "source_layers": list(range(n_layers)),
         "d_model": d_model,
@@ -233,8 +230,7 @@ class TestLoadCheckpoint:
         """A checkpoint loaded and re-saved produces a valid artifact."""
         ckpt_path = str(tmp_path / "ckpt.pt")
         art_path = str(tmp_path / "artifact.pt")
-        _save_checkpoint(ckpt_path, n_layers=2, d_model=8, n_prompts=3,
-                         metadata={"corpus": "wiki"})
+        _save_checkpoint(ckpt_path, n_layers=2, d_model=8, n_prompts=3, metadata={"corpus": "wiki"})
         lens = JacobianLens.load(ckpt_path)
         lens.save(art_path)
         reloaded = JacobianLens.load(art_path)
@@ -306,11 +302,15 @@ class TestMergeProvenance:
         # jacobian_sum = n * mean, so here mean = ones for both
         payload1 = {
             "jacobian_sum": {0: torch.ones(d_model, d_model) * n1},
-            "n_prompts": n1, "d_model": d_model, "source_layers": [0],
+            "n_prompts": n1,
+            "d_model": d_model,
+            "source_layers": [0],
         }
         payload2 = {
             "jacobian_sum": {0: torch.ones(d_model, d_model) * n2 * 2},
-            "n_prompts": n2, "d_model": d_model, "source_layers": [0],
+            "n_prompts": n2,
+            "d_model": d_model,
+            "source_layers": [0],
         }
         torch.save(payload1, p1)
         torch.save(payload2, p2)

@@ -501,10 +501,11 @@ def test_load_official_format_without_metadata(tmp_path: Any) -> None:
     assert lens.jacobians[0].dtype == torch.float32
 
 
-def test_load_rejects_fit_checkpoints(tmp_path: Any) -> None:
+def test_load_checkpoint_with_zero_n_prompts_raises(tmp_path: Any) -> None:
+    # load() now accepts jacobian_sum checkpoints but rejects ones with n_prompts=0
     path = str(tmp_path / "ckpt.pt")
     torch.save({"jacobian_sum": {}, "n_done": 3}, path)
-    with pytest.raises(ValueError, match="no 'J' key"):
+    with pytest.raises(ValueError, match="n_prompts=0"):
         JacobianLens.load(path)
 
 
