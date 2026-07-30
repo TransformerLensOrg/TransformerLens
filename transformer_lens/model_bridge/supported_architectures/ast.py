@@ -1,6 +1,6 @@
 """AST (Audio Spectrogram Transformer) architecture adapter.
 
-Supports both ASTModel (bare encoder) and ASTForAudioClassification
+Supports ASTForAudioClassification
 """
 
 from typing import Any

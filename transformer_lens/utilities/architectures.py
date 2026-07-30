@@ -69,7 +69,10 @@ AUDIO_ARCHITECTURES: set[str] = {
     "HubertForCTC",
     "HubertModel",
     "HubertForSequenceClassification",
-    "ASTModel",
+}
+
+# Audio spectrogram models for classification
+AUDIO_CLASSIFICATION_ARCHITECTURES: set[str] = {
     "ASTForAudioClassification",
 }
 

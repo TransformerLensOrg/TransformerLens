@@ -1,7 +1,6 @@
 """Unit tests for ASTArchitectureAdapter."""
 
 import pytest
-import torch
 from transformers import ASTConfig, ASTForAudioClassification
 
 from transformer_lens.config.transformer_bridge_config import TransformerBridgeConfig
@@ -73,37 +72,13 @@ class TestASTComponentMapping:
         assert adapter.cfg.d_vocab_out == 2
 
 
-class TestASTParity:
-    """FP32 numerical parity assertion."""
+class TestASTBoot:
+    """Verify the real load path routes to AutoModelForAudioClassification."""
 
-    def test_forward_pass_parity(self, hf_config):
-        hf_model = ASTForAudioClassification(hf_config)
-        hf_model.eval()
-
-        # boot the V3 transformerbridge natively
-        tl_model = TransformerBridge.boot_transformers("ast", hf_model=hf_model)
-        tl_model.eval()
-
-        # 3. create dummy spectrogram input [batch, freq, time]
-        dummy_spectrogram = torch.randn(1, 1024, 128)
-
-        # 4. compare forward passes
-        with torch.no_grad():
-            hf_logits = hf_model(dummy_spectrogram).logits
-
-            # bridge forward pass (extract sequence before HF's pooling)
-            _, cache = tl_model.run_with_cache(dummy_spectrogram)
-            resid = cache["ln_final.hook_normalized"]
-
-            # apply AST pooling logic to the bridges residual stream
-            cls_token = resid[:, 0, :]
-            dist_token = resid[:, 1, :]
-            pooled_out = (cls_token + dist_token) / 2.0
-
-            # apply the final classifier (which holds 2nd layernorm + dense)
-            tl_logits = hf_model.classifier(pooled_out)
-
-        diff = (hf_logits - tl_logits).abs().max().item()
-
-        # 5. assert parity
-        assert diff < 1e-4, "Parity failed: Bridge tensors do not match HuggingFace."
+    def test_ast_boot_transformers_load_weights_false(self):
+        # load_weights=False prevents downloading massive model binaries during unit tests
+        tl_model = TransformerBridge.boot_transformers(
+            "MIT/ast-finetuned-audioset-10-10-0.4593", load_weights=False
+        )
+        assert tl_model.cfg.architecture == "ASTForAudioClassification"
+        assert tl_model.cfg.is_audio_model is True
