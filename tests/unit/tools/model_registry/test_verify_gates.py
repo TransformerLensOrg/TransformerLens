@@ -17,6 +17,7 @@ from transformer_lens.tools.model_registry.registry_io import (
     STATUS_VERIFIED,
 )
 from transformer_lens.tools.model_registry.verify_models import (
+    _check_phase_scores,
     _extract_phase_scores,
     _pass_status,
     _phases_to_run,
@@ -86,6 +87,23 @@ class TestExtractPhaseScores:
     def test_phase4_uses_quality_score_from_details(self):
         results = [_result(4, True, BenchmarkSeverity.INFO, details={"score": 87.5})]
         assert _extract_phase_scores(results)[4] == 87.5
+
+
+class TestCheckPhaseScores:
+    """A required modality phase must not pass by being absent from the scores."""
+
+    def test_required_modality_phase_absent_fails(self):
+        # All P7 tests SKIPPED -> phase 7 is omitted entirely (see
+        # test_all_skipped_phase_omitted), so the gate must not infer a pass.
+        scores = {1: 100.0, 2: 100.0, 3: 100.0, 4: 100.0}
+        assert _check_phase_scores(scores, []) is None
+        error = _check_phase_scores(scores, [], required_phases={1, 4, 7})
+        assert error is not None and "P7=NULL" in error
+
+    def test_absent_modality_phase_ignored_when_not_required(self):
+        # A partial run (--phases 1 2) must not be failed for a missing P7.
+        error = _check_phase_scores({1: 100.0, 2: 100.0}, [], required_phases={1})
+        assert error is None
 
 
 class TestIsSSMMixerInternal:
