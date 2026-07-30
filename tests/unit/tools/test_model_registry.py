@@ -132,6 +132,44 @@ class TestModelEntry:
         assert restored.phase2_score == entry.phase2_score
         assert restored.phase3_score is None
 
+    def test_round_trip_preserves_all_phase_scores(self):
+        """P4/P7/P8 (generation, multimodal, audio) must survive round-trip.
+
+        verify_models writes phase1-4 + phase7 + phase8; a ModelEntry that only
+        declared phase1-3 silently dropped the rest on any from_dict/to_dict pass.
+        """
+        from transformer_lens.tools.model_registry.schemas import ModelEntry
+
+        raw = {
+            "architecture_id": "Qwen2_5_VLForConditionalGeneration",
+            "model_id": "Qwen/Qwen2.5-VL-3B-Instruct",
+            "status": 1,
+            "verified_date": "2026-07-07",
+            "metadata": None,
+            "note": "Full verification completed",
+            "phase1_score": 100.0,
+            "phase2_score": 100.0,
+            "phase3_score": 100.0,
+            "phase4_score": 96.3,
+            "phase7_score": 100.0,
+            "phase8_score": None,
+        }
+        restored = ModelEntry.from_dict(raw)
+        assert restored.phase4_score == 96.3
+        assert restored.phase7_score == 100.0
+        assert restored.phase8_score is None
+        # to_dict emits all six phase keys and preserves the values
+        out = restored.to_dict()
+        for phase in (
+            "phase1_score",
+            "phase2_score",
+            "phase3_score",
+            "phase4_score",
+            "phase7_score",
+            "phase8_score",
+        ):
+            assert out[phase] == raw[phase], phase
+
     def test_backwards_compat_verified_bool(self):
         """Old format had 'verified: true' instead of 'status: 1'."""
         from transformer_lens.tools.model_registry.schemas import ModelEntry
@@ -497,8 +535,18 @@ class TestValidate:
             {"architecture_id": "", "model_id": "ok", "status": 5},
             "test",
         )
-        # architecture_id too short and status > 3
+        # architecture_id too short and status > 4
         assert len(errors) >= 2
+
+    def test_validate_provisional_status_is_valid(self):
+        """status=4 (PROVISIONAL) must pass validation — it is a real status."""
+        from transformer_lens.tools.model_registry.validate import _validate_model_entry
+
+        errors = _validate_model_entry(
+            {"architecture_id": "GPT2LMHeadModel", "model_id": "ok", "status": 4},
+            "test",
+        )
+        assert not any("status" in e.path for e in errors), errors
 
 
 # ============================================================
@@ -566,6 +614,59 @@ class TestRegistryIO:
         assert entry["status"] == 1
         assert entry["phase1_score"] == 100.0
         assert data["total_verified"] == 3  # was 2 verified, now 3
+
+    def test_update_model_status_provisional_excluded_from_verified(
+        self, registry_data_dir, monkeypatch
+    ):
+        """A provisional (--no-hf-reference) result is recorded but must NOT be
+        counted in total_verified — the core guarantee of the feature."""
+        from transformer_lens.tools.model_registry import registry_io
+
+        monkeypatch.setattr(
+            registry_io,
+            "_SUPPORTED_MODELS_PATH",
+            registry_data_dir / "supported_models.json",
+        )
+
+        result = registry_io.update_model_status(
+            model_id="sshleifer/tiny-gpt2",
+            arch_id="GPT2LMHeadModel",
+            status=registry_io.STATUS_PROVISIONAL,
+            phase_scores={1: 100.0},
+        )
+        assert result is True
+
+        with open(registry_data_dir / "supported_models.json") as f:
+            data = json.load(f)
+        entry = next(m for m in data["models"] if m["model_id"] == "sshleifer/tiny-gpt2")
+        assert entry["status"] == registry_io.STATUS_PROVISIONAL
+        # The two real verified entries (gpt2, Llama) stay verified; provisional
+        # is counted separately and never folded into total_verified.
+        assert data["total_verified"] == 2
+        assert data["total_provisional"] == 1
+
+    def test_update_model_status_adds_provisional_if_missing(self, registry_data_dir, monkeypatch):
+        """A structural-only pass on a new model is recorded (not dropped)."""
+        from transformer_lens.tools.model_registry import registry_io
+
+        monkeypatch.setattr(
+            registry_io,
+            "_SUPPORTED_MODELS_PATH",
+            registry_data_dir / "supported_models.json",
+        )
+
+        result = registry_io.update_model_status(
+            model_id="brand-new/provisional-model",
+            arch_id="GPT2LMHeadModel",
+            status=registry_io.STATUS_PROVISIONAL,
+            phase_scores={1: 100.0},
+        )
+        assert result is True
+        with open(registry_data_dir / "supported_models.json") as f:
+            data = json.load(f)
+        assert data["total_models"] == 4
+        assert data["total_provisional"] == 1
+        assert data["total_verified"] == 2  # unchanged
 
     def test_update_model_status_not_found_non_verified(self, registry_data_dir, monkeypatch):
         from transformer_lens.tools.model_registry import registry_io
@@ -807,6 +908,7 @@ class TestRegistrySyncedWithFactory:
             "NeelSoluOldForCausalLM",
             "GPT2LMHeadCustomModel",
             "TransformerLensNative",
+            "TransformerLensPretrain",
             # Group 2: factory-internal alias casings (HF emits the canonical name).
             "Gemma1ForCausalLM",  # HF emits: GemmaForCausalLM
             "NeoForCausalLM",  # HF emits: GPTNeoForCausalLM

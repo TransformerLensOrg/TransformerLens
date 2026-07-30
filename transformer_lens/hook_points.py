@@ -24,7 +24,6 @@ import torch.nn as nn
 import torch.utils.hooks as hooks
 from torch import Tensor
 
-# Import BaseTensorConversion from the new location
 from transformer_lens.conversion_utils.conversion_steps.base_tensor_conversion import (
     BaseTensorConversion,
 )
@@ -221,7 +220,6 @@ class HookPoint(nn.Module):
                 for alias_name in alias_names:
                     # Create a view of this HookPoint with the alias name
                     hook_with_alias = _AliasedHookPoint(alias_name, self)
-                    # Apply the hook
                     hook_result = hook(module_output, hook=hook_with_alias)  # type: ignore[arg-type]
 
                     # If the hook modified the output, use that for subsequent calls
@@ -440,7 +438,7 @@ def __getattr__(name: str):
 
         warnings.warn(
             "Importing HookedRootModule from transformer_lens.hook_points is "
-            "deprecated and will be removed in a future release. Import it from "
+            "deprecated and will be removed in TransformerLens 4.0. Import it from "
             "transformer_lens (preferred) or transformer_lens.HookedRootModule instead.",
             DeprecationWarning,
             stacklevel=2,

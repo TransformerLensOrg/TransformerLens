@@ -113,9 +113,8 @@ class TestNemotronHAdapterConfig:
         # intermediate=32, n_groups=2, ssm_state_size=4 → 32 + 2*2*4 = 48
         assert getattr(adapter.cfg, "conv_dim", None) == 48
 
-    def test_applicable_phases_empty(self) -> None:
-        # verify_models is transformer-shaped; SSM hybrids skip it.
-        assert NemotronHArchitectureAdapter.applicable_phases == []
+    def test_applicable_phases_full(self) -> None:
+        assert NemotronHArchitectureAdapter.applicable_phases == [1, 2, 3, 4]
 
     def test_weight_processing_conversions_empty(
         self, adapter: NemotronHArchitectureAdapter

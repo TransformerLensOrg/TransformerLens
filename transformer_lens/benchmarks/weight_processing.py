@@ -559,16 +559,26 @@ def benchmark_attention_output_centering(
 
         attn_blocks = bridge.blocks_with("attn")
         if not attn_blocks:
+            # Attention-less (pure SSM) or hybrids whose attention lives inside a
+            # passthrough mixer (NemotronH): nothing to center — skip, don't fail.
             return BenchmarkResult(
                 name="attention_output_centering",
-                severity=BenchmarkSeverity.WARNING,
-                message="No blocks have attention submodule",
-                passed=False,
+                severity=BenchmarkSeverity.SKIPPED,
+                message="No blocks expose an attention submodule (SSM / passthrough-mixer hybrid)",
             )
 
         # Check W_O accessibility on first attention block
         first_idx, first_attn_block = attn_blocks[0]
         if not hasattr(first_attn_block.attn, "W_O"):
+            # No mapped output projection (JetMoe's MoA keeps per-expert W_O
+            # inside the delegated module): structurally nothing to center —
+            # skip like the SSM case above rather than fail.
+            if getattr(first_attn_block.attn, "o", None) is None:
+                return BenchmarkResult(
+                    name="attention_output_centering",
+                    severity=BenchmarkSeverity.SKIPPED,
+                    message="No mapped output projection (delegated per-expert W_O)",
+                )
             return BenchmarkResult(
                 name="attention_output_centering",
                 severity=BenchmarkSeverity.WARNING,
@@ -642,17 +652,20 @@ def benchmark_mlp_output_centering(
         from transformer_lens.model_bridge.generalized_components.moe import MoEBridge
 
         mlp_module = None
-        block = bridge.blocks[0]
-        for name in ("mlp", "shared_mlp"):
-            if name in block._modules:
-                mlp_module = block._modules[name]
+        for block in bridge.blocks:
+            for name in ("mlp", "shared_mlp"):
+                if name in block._modules:
+                    mlp_module = block._modules[name]
+                    break
+            if mlp_module is not None:
                 break
         if mlp_module is None:
+            # Pure SSM, or a hybrid whose MLP lives inside a passthrough mixer:
+            # no standalone MLP to center — skip, don't fail.
             return BenchmarkResult(
                 name="mlp_output_centering",
-                severity=BenchmarkSeverity.WARNING,
-                message="No MLP submodule found on block 0",
-                passed=False,
+                severity=BenchmarkSeverity.SKIPPED,
+                message="No block exposes an MLP submodule (SSM / passthrough-mixer hybrid)",
             )
 
         if isinstance(mlp_module, MoEBridge):

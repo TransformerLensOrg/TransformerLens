@@ -73,16 +73,6 @@ model_names = FULL_MODEL_NAMES if os.environ.get("HF_TOKEN", "") else PUBLIC_MOD
 
 text = "Hello world!"
 
-""" 
-# Code to regenerate loss store
-store = {}
-for name in model_names:
-    model = HookedTransformer.from_pretrained(name, device='cuda')
-    loss = model(text,return_type="loss")
-    store[name] = loss.item()
-print(store)
-"""
-
 # Loss values for minimal testing
 SMALL_LOSS_STORE = {
     "gpt2-small": 5.331855773925781,
@@ -385,7 +375,6 @@ def benchmark_model_options(
         device
     )
 
-    # hf_model = hf_model.to(device)
     hf_logits = hf_model(tokens).logits.detach()
     hf_logits = hf_logits.to("cpu")
 

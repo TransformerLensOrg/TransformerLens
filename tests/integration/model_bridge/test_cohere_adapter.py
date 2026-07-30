@@ -208,6 +208,55 @@ class TestCohereLogitScaleEndToEnd:
         max_diff = (bridge_out - hf_out).abs().max().item()
         assert max_diff < 1e-4, f"Possible double-application of logit_scale; diff={max_diff:.6f}"
 
+    def test_jacobian_lens_raw_readout_applies_logit_scale(
+        self, cohere_bridge: TransformerBridge
+    ) -> None:
+        """Intermediate raw-Bridge readouts reproduce Cohere's post-unembed scale."""
+        from transformer_lens.tools.analysis import JacobianLens
+
+        d_model = cohere_bridge.cfg.d_model
+        lens = JacobianLens(
+            {0: torch.eye(d_model)},
+            n_prompts=1,
+            d_model=d_model,
+            metadata={"target_layer": 1},
+        )
+        tokens = torch.tensor([[1, 2, 3, 4]])
+        result = lens.readout(
+            cohere_bridge,
+            tokens,
+            layers=[0],
+            positions=[-1],
+            return_full_logits=True,
+        )
+
+        assert result.lens_logits is not None
+        with torch.no_grad():
+            _, cache = cohere_bridge.run_with_cache(tokens, names_filter=["blocks.0.hook_out"])
+            residual = cache["blocks.0.hook_out"][0, -1]
+            raw_logits = cohere_bridge.unembed(cohere_bridge.ln_final(residual.unsqueeze(0)))[0]
+        expected = raw_logits * float(cohere_bridge.cfg.logit_scale)
+
+        torch.testing.assert_close(result.lens_logits[0][0], expected)
+        assert not torch.allclose(result.lens_logits[0][0], raw_logits)
+
+    def test_jacobian_lens_rejects_processed_bridge(
+        self, cohere_bridge_processed: TransformerBridge
+    ) -> None:
+        """A folded logit scale must never be multiplied a second time."""
+        from transformer_lens.tools.analysis import JacobianLens
+
+        d_model = cohere_bridge_processed.cfg.d_model
+        lens = JacobianLens(
+            {0: torch.eye(d_model)},
+            n_prompts=1,
+            d_model=d_model,
+            metadata={"target_layer": 1},
+        )
+
+        with pytest.raises(ValueError, match="process_weights"):
+            lens.validate_model(cohere_bridge_processed)
+
 
 # ---------------------------------------------------------------------------
 # 4. Tied embedding preserved — embed.W_E must NOT be scaled

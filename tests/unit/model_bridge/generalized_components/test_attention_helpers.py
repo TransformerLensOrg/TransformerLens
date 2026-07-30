@@ -1,9 +1,12 @@
 """Tests for AttentionBridge helper methods (_get_n_heads, _reshape_weight_to_3d)."""
+import einops
 import torch
+from transformers.pytorch_utils import Conv1D
 
 from transformer_lens.model_bridge.generalized_components.attention import (
     AttentionBridge,
 )
+from transformer_lens.model_bridge.generalized_components.linear import LinearBridge
 
 
 class _FakeCfg:
@@ -85,3 +88,83 @@ class TestReshapeWeightTo3D:
         assert qkv_result.shape == (4, 32, 16)
         assert o_result.shape == (4, 8, 64)
         assert qkv_result.shape != o_result.shape
+
+
+class TestWeightLayoutInOut:
+    def test_linear_detected_as_out_in(self):
+        bridge = _make_bridge(_FakeCfg(n_heads=4))
+        proj = LinearBridge(name="o_proj")
+        proj.set_original_component(torch.nn.Linear(8, 8))
+        assert bridge._weight_layout_in_out(proj) is False
+
+    def test_conv1d_detected_as_in_out(self):
+        bridge = _make_bridge(_FakeCfg(n_heads=4))
+        proj = LinearBridge(name="c_proj")
+        proj.set_original_component(Conv1D(8, 8))
+        assert bridge._weight_layout_in_out(proj) is True
+
+    def test_unknown_component_returns_none(self):
+        bridge = _make_bridge(_FakeCfg(n_heads=4))
+        proj = LinearBridge(name="o_proj")
+        assert bridge._weight_layout_in_out(proj) is None
+
+
+class TestReshapeWeightSquareDisambiguation:
+    """Square weights are shape-ambiguous: nn.Linear stores [out, in], Conv1D [in, out].
+
+    Each test reproduces the wrapped module's projection from the reshaped 3D
+    weight, so a wrong-axis split fails numerically, not just on shape.
+    """
+
+    def test_square_linear_o_weight_reproduces_projection(self):
+        bridge = _make_bridge(_FakeCfg(n_heads=4))
+        linear = torch.nn.Linear(32, 32, bias=False)
+        w3d = bridge._reshape_weight_to_3d(
+            linear.weight, n_heads=4, pattern="o", in_out_layout=False
+        )
+        assert w3d.shape == (4, 8, 32)
+        z = torch.randn(2, 4, 8)
+        expected = linear(z.reshape(2, 32))
+        actual = torch.einsum("bhd,hdm->bm", z, w3d)
+        assert torch.allclose(actual, expected, atol=1e-6)
+
+    def test_square_conv1d_o_weight_reproduces_projection(self):
+        bridge = _make_bridge(_FakeCfg(n_heads=4))
+        conv = Conv1D(32, 32)
+        w3d = bridge._reshape_weight_to_3d(conv.weight, n_heads=4, pattern="o", in_out_layout=True)
+        assert w3d.shape == (4, 8, 32)
+        z = torch.randn(2, 4, 8)
+        expected = conv(z.reshape(2, 32))
+        actual = torch.einsum("bhd,hdm->bm", z, w3d) + conv.bias
+        assert torch.allclose(actual, expected, atol=1e-6)
+
+    def test_square_linear_qkv_weight_reproduces_projection(self):
+        bridge = _make_bridge(_FakeCfg(n_heads=4))
+        linear = torch.nn.Linear(32, 32, bias=False)
+        w3d = bridge._reshape_weight_to_3d(
+            linear.weight, n_heads=4, pattern="qkv", in_out_layout=False
+        )
+        assert w3d.shape == (4, 32, 8)
+        x = torch.randn(2, 32)
+        expected = linear(x).reshape(2, 4, 8)
+        actual = torch.einsum("bm,hmd->bhd", x, w3d)
+        assert torch.allclose(actual, expected, atol=1e-6)
+
+    def test_square_conv1d_qkv_weight_reproduces_projection(self):
+        bridge = _make_bridge(_FakeCfg(n_heads=4))
+        conv = Conv1D(32, 32)
+        w3d = bridge._reshape_weight_to_3d(
+            conv.weight, n_heads=4, pattern="qkv", in_out_layout=True
+        )
+        assert w3d.shape == (4, 32, 8)
+        x = torch.randn(2, 32)
+        expected = conv(x).reshape(2, 4, 8)
+        actual = torch.einsum("bm,hmd->bhd", x, w3d) + conv.bias.reshape(4, 8)
+        assert torch.allclose(actual, expected, atol=1e-6)
+
+    def test_square_heuristic_fallback_unchanged(self):
+        # Without layout info the legacy heuristic assumes [in, out] on square weights.
+        bridge = _make_bridge(_FakeCfg(n_heads=4))
+        weight = torch.randn(32, 32)
+        legacy = einops.rearrange(weight, "(n d) m -> n d m", n=4)
+        assert torch.equal(bridge._reshape_weight_to_3d(weight, n_heads=4, pattern="o"), legacy)

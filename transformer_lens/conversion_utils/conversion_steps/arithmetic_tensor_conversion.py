@@ -41,7 +41,6 @@ class ArithmeticTensorConversion(BaseTensorConversion):
 
     def revert(self, input_value, *full_context):
         """Revert the arithmetic operation (apply inverse operation)."""
-        # Apply input filter if present
         input_value = (
             self.input_filter(input_value) if self.input_filter is not None else input_value
         )
@@ -57,7 +56,6 @@ class ArithmeticTensorConversion(BaseTensorConversion):
             case OperationTypes.DIVISION:
                 output = input_value * self.value
 
-        # Apply output filter if present
         return self.output_filter(output) if self.output_filter is not None else output
 
     def __repr__(self):

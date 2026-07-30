@@ -16,7 +16,6 @@ def merge_quantization_fields(field_set: Any, quantization_fields: dict[str, Any
     Returns:
         The merged field set (same object, modified in-place).
     """
-    # Merge the quantization fields into the existing field_set
     for field_name, new_field_value in quantization_fields.items():
         existing_field = field_set.fields.get(field_name)
 
@@ -37,7 +36,6 @@ def merge_quantization_fields(field_set: Any, quantization_fields: dict[str, Any
 
                 # Check if the second element is a TensorConversionSet-like object
                 if hasattr(existing_sub_wcs, "fields") and hasattr(new_sub_wcs, "fields"):
-                    # Recursively merge the sub-TensorConversionSets
                     merge_quantization_fields(existing_sub_wcs, new_sub_wcs.fields)
                     # Update the remote field name
                     field_set.fields[field_name] = (new_remote, existing_sub_wcs)
@@ -52,7 +50,6 @@ def merge_quantization_fields(field_set: Any, quantization_fields: dict[str, Any
                 )
         else:
             # new_field_value is a simple value (like torch.Tensor)
-            # Simply overwrite the existing field
             field_set.fields[field_name] = new_field_value
 
     return field_set

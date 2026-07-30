@@ -2,16 +2,13 @@
 
 from typing import Any
 
-from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion
-from transformer_lens.conversion_utils.param_processing_conversion import (
-    ParamProcessingConversion,
-)
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
     LinearBridge,
     MoEBridge,
+    MoERouterBridge,
     PositionEmbeddingsAttentionBridge,
     RMSNormalizationBridge,
     RotaryEmbeddingBridge,
@@ -48,28 +45,9 @@ class OlmoeArchitectureAdapter(ArchitectureAdapter):
         """Initialize the OLMoE architecture adapter."""
         super().__init__(cfg)
 
-        # Set config variables for weight processing
-        self.cfg.normalization_type = "RMS"
-        self.cfg.positional_embedding_type = "rotary"
-        self.cfg.final_rms = False
-        self.cfg.gated_mlp = True
-        self.cfg.attn_only = False
-        self.cfg.uses_rms_norm = True
+        self._set_rms_rotary_defaults(final_rms=False)
         # Force eager attention for numerical consistency with benchmark reference
         self.cfg.attn_implementation = "eager"
-
-        self.default_config = {
-            "d_model": cfg.d_model,
-            "d_head": cfg.d_model // cfg.n_heads,
-            "n_heads": cfg.n_heads,
-            "n_layers": cfg.n_layers,
-            "d_vocab": cfg.d_vocab,
-        }
-
-        # GQA support
-        if hasattr(cfg, "n_key_value_heads") and cfg.n_key_value_heads is not None:
-            self.default_config["n_key_value_heads"] = cfg.n_key_value_heads
-            self.cfg.n_key_value_heads = cfg.n_key_value_heads
 
         n_kv_heads = (
             self.cfg.n_key_value_heads
@@ -78,18 +56,7 @@ class OlmoeArchitectureAdapter(ArchitectureAdapter):
         )
 
         self.weight_processing_conversions = {
-            "blocks.{i}.attn.q.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
-            ),
-            "blocks.{i}.attn.k.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=n_kv_heads),
-            ),
-            "blocks.{i}.attn.v.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=n_kv_heads),
-            ),
-            "blocks.{i}.attn.o.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=self.cfg.n_heads),
-            ),
+            **self._qkvo_weight_conversions(),
         }
 
         # Component mapping — PRE-NORM architecture:
@@ -120,13 +87,12 @@ class OlmoeArchitectureAdapter(ArchitectureAdapter):
                     # OLMoE uses batched expert parameters (gate_up_proj, down_proj
                     # as 3D tensors) rather than a ModuleList of individual experts.
                     # MoEBridge wraps the entire MLP module and delegates to HF's
-                    # native forward pass. The gate (router) is mapped as a submodule
-                    # for hook access.
+                    # native forward pass.
                     "mlp": MoEBridge(
                         name="mlp",
                         config=self.cfg,
                         submodules={
-                            "gate": LinearBridge(name="gate"),
+                            "gate": MoERouterBridge(name="gate"),
                         },
                     ),
                 },
@@ -145,35 +111,3 @@ class OlmoeArchitectureAdapter(ArchitectureAdapter):
         )
 
         _patch_olmo_inplace_clamp(hf_model)
-
-    def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Set up rotary embedding references for OLMoE component testing.
-
-        OLMoE uses RoPE (Rotary Position Embeddings). We set the rotary_emb
-        reference on all attention bridge instances for component testing.
-
-        Args:
-            hf_model: The HuggingFace OLMoE model instance
-            bridge_model: The TransformerBridge model (if available)
-        """
-        # Get rotary embedding instance from the model
-        rotary_emb = hf_model.model.rotary_emb
-
-        # Force HF model to use "eager" attention to match bridge implementation
-        if hasattr(hf_model, "config") and hasattr(hf_model.config, "_attn_implementation"):
-            hf_model.config._attn_implementation = "eager"
-
-        if hasattr(hf_model, "model") and hasattr(hf_model.model, "layers"):
-            for layer in hf_model.model.layers:
-                if hasattr(layer, "self_attn") and hasattr(layer.self_attn, "config"):
-                    layer.self_attn.config._attn_implementation = "eager"
-
-        # Set rotary_emb on actual bridge instances in bridge_model if available
-        if bridge_model is not None and hasattr(bridge_model, "blocks"):
-            for block in bridge_model.blocks:
-                if hasattr(block, "attn"):
-                    block.attn.set_rotary_emb(rotary_emb)
-
-        # Also set on the template for get_generalized_component() calls
-        attn_bridge = self.get_generalized_component("blocks.0.attn")
-        attn_bridge.set_rotary_emb(rotary_emb)

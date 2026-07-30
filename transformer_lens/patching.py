@@ -206,7 +206,6 @@ def generic_activation_patch(
             corrupted_activation = corrupted_activation.clone()
         return patch_setter(corrupted_activation, index, clean_activation)
 
-    # Iterate over every list of indices, and make the appropriate patch!
     for c, index_row in enumerate(tqdm((list(index_df.iterrows())))):
         index = index_row[1].to_list()
 
@@ -220,12 +219,10 @@ def generic_activation_patch(
             clean_activation=clean_cache[current_activation_name],
         )
 
-        # Run the model with the patching hook and get the logits!
         patched_logits = model.run_with_hooks(
             corrupted_tokens, fwd_hooks=[(current_activation_name, current_hook)]
         )
 
-        # Calculate the patching metric and store
         if flattened_output:
             patched_metric_output[c] = patching_metric(patched_logits).item()
         else:

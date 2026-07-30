@@ -7,6 +7,7 @@ from typing import Any, Dict, Optional
 
 import einops
 import torch
+from transformers.pytorch_utils import Conv1D
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,8 @@ class AttentionBridge(GeneralizedComponent):
     # Override to False on variants without a pre-LN fork (e.g. MLA); skips
     # the split-qkv HookPoints and the BlockBridge pre-ln1 capture.
     supports_split_qkv_fork: bool = True
+    # Reconstructed variants can opt in independently of Q/K/V input forks.
+    supports_attn_result: bool = False
     property_aliases = {
         "W_Q": "q.weight",
         "W_K": "k.weight",
@@ -53,7 +56,7 @@ class AttentionBridge(GeneralizedComponent):
 
     def __init__(
         self,
-        name: str,
+        name: Optional[str],
         config: Any,
         submodules: Optional[Dict[str, GeneralizedComponent]] = None,
         conversion_rule: Optional[BaseTensorConversion] = None,
@@ -70,7 +73,7 @@ class AttentionBridge(GeneralizedComponent):
         """Initialize the attention bridge.
 
         Args:
-            name: The name of this component
+            name: The name of this component, or None when projections live on the parent
             config: Model configuration (required for auto-conversion detection)
             submodules: Dictionary of submodules to register (e.g., q_proj, k_proj, etc.)
             conversion_rule: Optional conversion rule. If None, AttentionAutoConversion will be used
@@ -376,7 +379,11 @@ class AttentionBridge(GeneralizedComponent):
                 self.name,
             )
             return k, v
-        k, v = past_key_values.update(k, v, layer_idx)
+        # Some architectures (e.g. HRM-Text's recurrent stacks) pass a cycle_offset
+        # so each stack invocation writes to a unique cache slot. Non-participating
+        # models simply leave it unset.
+        cycle_offset = kwargs.get("cycle_offset", 0)
+        k, v = past_key_values.update(k, v, layer_idx + cycle_offset)
         return k, v
 
     def _reshape_qkv_to_heads(
@@ -536,35 +543,55 @@ class AttentionBridge(GeneralizedComponent):
             return self.config.n_heads
         return self.config.n_head
 
+    def _weight_layout_in_out(self, proj: Any) -> Optional[bool]:
+        """Whether ``proj``'s wrapped module stores its weight as [in, out].
+
+        Conv1D (GPT-2 style) stores [in_features, out_features]; nn.Linear stores
+        [out_features, in_features]. Returns None when the wrapped module is
+        neither, so callers can fall back to a shape heuristic.
+        """
+        component = getattr(proj, "original_component", None)
+        if isinstance(component, Conv1D):
+            return True
+        if isinstance(component, torch.nn.Linear):
+            return False
+        return None
+
     def _reshape_weight_to_3d(
-        self, weight: torch.Tensor, n_heads: int, pattern: str = "qkv"
+        self,
+        weight: torch.Tensor,
+        n_heads: int,
+        pattern: str = "qkv",
+        in_out_layout: Optional[bool] = None,
     ) -> torch.Tensor:
-        """Reshape a 2D weight to 3D by splitting heads, auto-detecting Linear vs Conv1D.
+        """Reshape a 2D weight to 3D by splitting heads.
 
         Args:
             weight: 2D weight tensor
             n_heads: Number of heads to split into
             pattern: "qkv" for [n_heads, d_model, d_head], "o" for [n_heads, d_head, d_model]
+            in_out_layout: True if the weight is stored [in, out] (Conv1D), False
+                for [out, in] (nn.Linear). None falls back to a shape heuristic,
+                which cannot distinguish the two when the weight is square.
         """
         if pattern == "o":
-            if weight.shape[0] == n_heads * (
-                weight.shape[1] // n_heads
-                if weight.shape[1] % n_heads == 0
-                else weight.shape[0] // n_heads
-            ):
-                return einops.rearrange(
-                    weight, "(n_heads d_head) d_model -> n_heads d_head d_model", n_heads=n_heads
+            if in_out_layout is None:
+                # Heuristic: assumes [in, out] whenever the head split fits dim 0.
+                in_out_layout = weight.shape[0] == n_heads * (
+                    weight.shape[1] // n_heads
+                    if weight.shape[1] % n_heads == 0
+                    else weight.shape[0] // n_heads
                 )
+            mat = weight if in_out_layout else weight.T
             return einops.rearrange(
-                weight.T, "(n_heads d_head) d_model -> n_heads d_head d_model", n_heads=n_heads
+                mat, "(n_heads d_head) d_model -> n_heads d_head d_model", n_heads=n_heads
             )
         # QKV pattern
-        if weight.shape[0] % n_heads == 0:
-            return einops.rearrange(
-                weight, "(n_heads d_head) d_model -> n_heads d_model d_head", n_heads=n_heads
-            )
+        if in_out_layout is None:
+            in_out_layout = weight.shape[0] % n_heads != 0
+        mat = weight.T if in_out_layout else weight
         return einops.rearrange(
-            weight, "d_model (n_heads d_head) -> n_heads d_model d_head", n_heads=n_heads
+            mat, "(n_heads d_head) d_model -> n_heads d_model d_head", n_heads=n_heads
         )
 
     def _project_per_head_qkv(
@@ -742,7 +769,9 @@ class AttentionBridge(GeneralizedComponent):
         """Get W_Q in 3D format [n_heads, d_model, d_head]."""
         weight = self.q.weight
         if weight.ndim == 2 and self.config is not None:
-            return self._reshape_weight_to_3d(weight, self._get_n_heads())
+            return self._reshape_weight_to_3d(
+                weight, self._get_n_heads(), in_out_layout=self._weight_layout_in_out(self.q)
+            )
         return weight
 
     @property
@@ -750,7 +779,11 @@ class AttentionBridge(GeneralizedComponent):
         """Get W_K in 3D format [n_heads, d_model, d_head] (uses n_kv_heads for GQA)."""
         weight = self.k.weight
         if weight.ndim == 2 and self.config is not None:
-            return self._reshape_weight_to_3d(weight, self._get_n_heads(use_kv=True))
+            return self._reshape_weight_to_3d(
+                weight,
+                self._get_n_heads(use_kv=True),
+                in_out_layout=self._weight_layout_in_out(self.k),
+            )
         return weight
 
     @property
@@ -758,7 +791,11 @@ class AttentionBridge(GeneralizedComponent):
         """Get W_V in 3D format [n_heads, d_model, d_head] (uses n_kv_heads for GQA)."""
         weight = self.v.weight
         if weight.ndim == 2 and self.config is not None:
-            return self._reshape_weight_to_3d(weight, self._get_n_heads(use_kv=True))
+            return self._reshape_weight_to_3d(
+                weight,
+                self._get_n_heads(use_kv=True),
+                in_out_layout=self._weight_layout_in_out(self.v),
+            )
         return weight
 
     @property
@@ -766,7 +803,12 @@ class AttentionBridge(GeneralizedComponent):
         """Get W_O in 3D format [n_heads, d_head, d_model]."""
         weight = self.o.weight
         if weight.ndim == 2 and self.config is not None:
-            return self._reshape_weight_to_3d(weight, self._get_n_heads(), pattern="o")
+            return self._reshape_weight_to_3d(
+                weight,
+                self._get_n_heads(),
+                pattern="o",
+                in_out_layout=self._weight_layout_in_out(self.o),
+            )
         return weight
 
     def _reshape_bias(

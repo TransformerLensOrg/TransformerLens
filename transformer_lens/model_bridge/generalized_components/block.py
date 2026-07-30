@@ -37,6 +37,7 @@ class BlockBridge(GeneralizedComponent):
     """
 
     is_list_item: bool = True
+    hook_out_is_single_residual_stream: bool = True
     # hook_mlp_in is a direct HookPoint on this class (not aliased) so it can
     # fire pre-ln2; see __init__. The post-ln2 mlp input stays at block.mlp.hook_in.
     hook_aliases = {
@@ -78,9 +79,9 @@ class BlockBridge(GeneralizedComponent):
                 auto_overrides["hook_mlp_out"] = "ln2_post.hook_out"
         merged_overrides = {**auto_overrides, **(hook_alias_overrides or {})}
 
-        # Guard against the C15 bug class: sequential transformer block (attn +
-        # mlp) with no ln2 would silently point hook_resid_mid at the wrong
-        # tensor. Use ParallelBlockBridge for parallel-residual architectures.
+        # Guard the sequential-block case: attn + mlp with no ln2 would silently
+        # point hook_resid_mid at the wrong tensor. Use ParallelBlockBridge for
+        # parallel-residual architectures.
         # Skip the check on generic-container / attn-only uses (no mlp).
         has_attn_like = submodules is not None and any(
             k in submodules for k in _VARIANT_SUBMODULE_SET

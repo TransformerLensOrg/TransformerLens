@@ -394,6 +394,12 @@ def benchmark_gated_hooks_fire(
                         name.rsplit(".", 1)[-1] == stem for name in target_hook_names
                     ):
                         failed.append((flag_name, stem))
+            except NotImplementedError as e:
+                # Some architectures reject the split path only at forward time (e.g.
+                # gated q_proj: Qwen3.5 / Qwen3-Next). Treat like the setter-time gate —
+                # skipped (applicability gate is intentional), not failed.
+                tested_flags.remove(flag_name)
+                skipped.append((flag_name, str(e).split("\n", 1)[0][:120]))
             finally:
                 setter(False)
 

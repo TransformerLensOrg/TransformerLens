@@ -10,13 +10,19 @@ from typing import Optional
 SEQ2SEQ_ARCHITECTURES: set[str] = {
     "T5ForConditionalGeneration",
     "MT5ForConditionalGeneration",
+    "T5WithLMHeadModel",
     "T5GemmaForConditionalGeneration",
+    "LongT5ForConditionalGeneration",
+    "T5Gemma2ForConditionalGeneration",
     "BartForConditionalGeneration",
     "MBartForConditionalGeneration",
+    "M2M100ForConditionalGeneration",
     "MarianMTModel",
     "PegasusForConditionalGeneration",
     "BlenderbotForConditionalGeneration",
     "BlenderbotSmallForConditionalGeneration",
+    "LEDForConditionalGeneration",
+    "SwitchTransformersForConditionalGeneration",
 }
 
 # Masked language models (BERT-style, no text generation)
@@ -26,16 +32,36 @@ MASKED_LM_ARCHITECTURES: set[str] = {
     "AlbertForMaskedLM",
     "DistilBertForMaskedLM",
     "ElectraForMaskedLM",
+    "BD3LM",
 }
 
 # Vision-language multimodal models
 MULTIMODAL_ARCHITECTURES: set[str] = {
+    "Emu3ForConditionalGeneration",
     "LlavaForConditionalGeneration",
     "LlavaNextForConditionalGeneration",
     "LlavaOnevisionForConditionalGeneration",
     "Gemma3ForConditionalGeneration",
     "Gemma4ForConditionalGeneration",
     "Qwen3_5ForConditionalGeneration",
+    "Qwen3_5MoeForConditionalGeneration",
+    "Idefics3ForConditionalGeneration",
+    "Florence2ForConditionalGeneration",
+    "Mistral3ForConditionalGeneration",
+    "Llama4ForConditionalGeneration",
+    "Qwen2_5_VLForConditionalGeneration",
+    "Qwen3VLForConditionalGeneration",
+    "Qwen3VLMoeForConditionalGeneration",
+    "Glm4vForConditionalGeneration",
+}
+
+# Audio-conditioned text decoders (audio encoder + causal LM); load via
+# AutoModelForSeq2SeqLM but behave as text decoders for classification.
+AUDIO_TEXT_ARCHITECTURES: set[str] = {
+    "Qwen2AudioForConditionalGeneration",
+    "GlmAsrForConditionalGeneration",
+    "AudioFlamingo3ForConditionalGeneration",
+    "MusicFlamingoForConditionalGeneration",
 }
 
 # Audio encoder models (HuBERT, wav2vec2, etc.)
@@ -45,11 +71,20 @@ AUDIO_ARCHITECTURES: set[str] = {
     "HubertForSequenceClassification",
 }
 
+# Text models whose remote code registers only under plain AutoModel
+# (the class itself carries the LM head).
+BASE_AUTOMODEL_ARCHITECTURES: set[str] = {
+    "DreamModel",
+}
+
 # Bridge uses different hook shapes than HookedTransformer by design.
 # Phase 2/3 HT comparisons are skipped; Phase 1 (HF comparison) is the gold standard.
 NO_HT_COMPARISON_ARCHITECTURES: set[str] = (
     MULTIMODAL_ARCHITECTURES
     | AUDIO_ARCHITECTURES
+    # Encoder-decoder: HookedTransformer cannot represent them (T5 repos under
+    # org-prefixed names slip past HT's legacy name guard and crash at forward).
+    | SEQ2SEQ_ARCHITECTURES
     | {
         "Gemma3ForCausalLM",
     }

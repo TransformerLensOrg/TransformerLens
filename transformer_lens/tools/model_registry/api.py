@@ -423,7 +423,6 @@ def get_all_architectures_with_stats() -> list[ArchitectureStats]:
                 example_models=[],
             )
 
-    # Sort by model count descending
     result = sorted(arch_stats.values(), key=lambda x: x.model_count, reverse=True)
     return result
 
@@ -458,6 +457,7 @@ def get_registry_stats() -> dict:
         - total_supported_models: Number of supported models
         - total_supported_architectures: Number of supported architectures
         - total_verified: Number of verified models
+        - total_provisional: Number of provisional (structural-only) models
         - total_unsupported_architectures: Number of unsupported architectures
         - generated_at: When the data was generated
 
@@ -475,6 +475,7 @@ def get_registry_stats() -> dict:
         "total_supported_models": supported.total_models,
         "total_supported_architectures": supported.total_architectures,
         "total_verified": supported.total_verified,
+        "total_provisional": supported.total_provisional,
         "total_unsupported_architectures": gaps.total_unsupported_architectures,
         "total_unsupported_models": gaps.total_unsupported_models,
         "supported_generated_at": supported.generated_at.isoformat(),

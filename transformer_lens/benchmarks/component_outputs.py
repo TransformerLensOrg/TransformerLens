@@ -196,6 +196,16 @@ class BenchmarkReport:
         print("=" * 80 + "\n")
 
 
+def _is_ssm_mixer_internal(component_path: str) -> bool:
+    """True for a submodule *inside* an SSM/recurrent mixer slot (``.mixer``/``.linear_attn``).
+
+    Such submodules wrap the identical HF module (parity is covered by forward_pass_logits)
+    and take SSM-internal shapes, not the ``[b, seq, d_model]`` residual the isolated harness
+    feeds — so they are skipped. The mixer node itself (path ending in the slot) is not.
+    """
+    return any(slot in component_path.split(".")[:-1] for slot in ("mixer", "linear_attn"))
+
+
 class ComponentBenchmarker:
     """Benchmarking utility for testing TransformerBridge components against HuggingFace."""
 
@@ -288,6 +298,9 @@ class ComponentBenchmarker:
             BenchmarkReport with results for all tested components
         """
         skip_components = skip_components or []
+        # Adapters can exclude subcomponents whose isolated forward cannot run
+        # on synthesized probes (e.g. fused top-k routers) by path suffix.
+        skip_suffixes = tuple(getattr(self.adapter, "component_test_skip_suffixes", ()))
         component_mapping = self.adapter.get_component_mapping()
 
         # Generate test inputs if not provided
@@ -298,7 +311,7 @@ class ComponentBenchmarker:
 
         # Block-type components that need to be tested recursively by layer
         # (they are ModuleLists that don't have direct forward methods)
-        block_components = {"blocks", "encoder_blocks", "decoder_blocks"}
+        block_components = {"blocks", "encoder_blocks", "decoder_blocks", "L_blocks", "H_blocks"}
 
         # Test top-level components (embed, pos_embed, ln_final, unembed)
         for comp_name, component in component_mapping.items():
@@ -317,7 +330,11 @@ class ComponentBenchmarker:
         for block_type in block_components:
             if block_type in component_mapping and block_type not in skip_components:
                 blocks_component = component_mapping[block_type]
-                n_layers = self.cfg.n_layers
+                # Derive the length from the actual stack: asymmetric
+                # encoder-decoder models (e.g. Blenderbot's 2/12) have
+                # per-stack counts that cfg.n_layers cannot represent.
+                bound_blocks = getattr(self.bridge_model, block_type)
+                n_layers = len(bound_blocks)
 
                 for layer_idx in range(n_layers):
                     # Get the actual block to check which submodules were bound
@@ -387,26 +404,47 @@ class ComponentBenchmarker:
         if component_path in skip_components:
             return
 
+        # Adapter-declared suffix exclusions (isolated forward can't run on
+        # synthesized probes, e.g. fused top-k routers).
+        skip_suffixes = tuple(getattr(self.adapter, "component_test_skip_suffixes", ()))
+        if any(component_path.endswith(suffix) for suffix in skip_suffixes):
+            return
+
+        # SSM/recurrent mixer internal submodules can't be tested in isolation (see
+        # _is_ssm_mixer_internal); the mixer node itself is still tested against HF.
+        if _is_ssm_mixer_internal(component_path):
+            return
+
         # Skip MLP components that don't exist as separate modules in HF (name=None)
         # These are virtual components where fc1/fc2 are directly on the layer
         # Component testing doesn't work for these because get_component returns the parent layer
         if "mlp" in component_path and hasattr(component, "name") and component.name is None:
             return
 
-        # Skip MLP components with custom forward signatures (e.g., BLOOM requires residual)
-        # These can't be tested in isolation without full model context
-        if "mlp" in component_path and hasattr(component, "hf_component"):
+        # Skip MLPs whose forward needs more than a hidden_states probe (BLOOM
+        # residual; transformers 5.x fused MoE experts need router indices/weights);
+        # full-model forward_pass_logits already covers their parity. Fetch the
+        # layer-bound component since the per-block template's original_component is None.
+        if "mlp" in component_path:
             import inspect
 
             try:
-                sig = inspect.signature(component.hf_component.forward)
-                params = list(sig.parameters.keys())
-                # Standard MLP only needs hidden_states (or self + hidden_states)
-                # If there are more required params, skip testing
-                if len(params) > 2:  # self + hidden_states + other required params
-                    return
-            except Exception:
-                # If we can't inspect, proceed with testing
+                bound = self.adapter.get_component(self.bridge_model, component_path)
+                inner = getattr(bound, "original_component", None)
+                if inner is not None:
+                    required = [
+                        p
+                        for p in inspect.signature(inner.forward).parameters.values()
+                        if p.default is inspect.Parameter.empty
+                        and p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)
+                        and p.name != "self"
+                    ]
+                    # An isolatable MLP needs only hidden_states; more required
+                    # positional args means it can't run standalone.
+                    if len(required) > 1:
+                        return
+            except (AttributeError, ValueError, TypeError):
+                # Can't resolve/inspect — fall through and let the test run.
                 pass
 
         # Skip attention components that require position embeddings in Phase 3
@@ -464,8 +502,9 @@ class ComponentBenchmarker:
 
             # Skip attention output projection (expects concatenated attn output)
             # Skip MLP output projection (expects MLP intermediate activations)
+            # — including *_out variants (dense_out on MoE shared/dense paths).
             # Note: q_norm/k_norm are handled specially in _run_component
-            if last_part in ["o", "out"]:
+            if last_part in ["o", "out"] or last_part.endswith("_out"):
                 return
 
             # Skip MLA intermediates (expect compressed-dim inputs, not hidden_states)
@@ -591,7 +630,12 @@ class ComponentBenchmarker:
             # This is needed for model-specific inputs like position_embeddings or attention_mask
             shared_inputs = None
             if (
-                ("attn" in component_path or "mlp" in component_path or "rotary" in component_path)
+                (
+                    "attn" in component_path
+                    or "mlp" in component_path
+                    or "rotary" in component_path
+                    or "conv" in component_path
+                )
                 and hasattr(bridge_component, "get_random_inputs")
                 and callable(getattr(bridge_component, "get_random_inputs"))
             ):
@@ -641,8 +685,25 @@ class ComponentBenchmarker:
             )
 
             # Extract tensors if outputs are tuples
-            bridge_tensor = bridge_output[0] if isinstance(bridge_output, tuple) else bridge_output
-            hf_tensor = hf_output[0] if isinstance(hf_output, tuple) else hf_output
+            # Legacy modules (e.g. GPT-1's Attention) return lists, not tuples.
+            bridge_tensor = (
+                bridge_output[0] if isinstance(bridge_output, (tuple, list)) else bridge_output
+            )
+            hf_tensor = hf_output[0] if isinstance(hf_output, (tuple, list)) else hf_output
+
+            # Marian/Bart apply a trained final_logits_bias AFTER lm_head inside the
+            # model forward. The bridge folds it into the unembed bias (b_U), so the
+            # isolated HF lm_head must add it too for a fair comparison — otherwise
+            # the two diverge by exactly the bias (a false failure; the assembled
+            # unembed+bias path is already covered by forward_pass_logits).
+            if "unembed" in component_path or "lm_head" in component_path:
+                flb = getattr(self.hf_model, "final_logits_bias", None)
+                if (
+                    flb is not None
+                    and isinstance(hf_tensor, torch.Tensor)
+                    and hf_tensor.shape[-1] == flb.shape[-1]
+                ):
+                    hf_tensor = hf_tensor + flb.to(hf_tensor.dtype)
 
             # Ensure both are tensors
             if not isinstance(bridge_tensor, torch.Tensor) or not isinstance(
@@ -767,7 +828,18 @@ class ComponentBenchmarker:
                 return component(*shared_inputs["args"])
             else:
                 # Call with keyword args (e.g., for attention)
-                return component(**shared_inputs)
+                try:
+                    return component(**shared_inputs)
+                except TypeError:
+                    # Pre-kwarg-era modules (e.g. GPT-1's Attention) take the
+                    # input positionally and reject the hidden_states keyword.
+                    hidden = shared_inputs.get("hidden_states")
+                    if hidden is None:
+                        raise
+                    mask = shared_inputs.get("attention_mask")
+                    if mask is not None:
+                        return component(hidden, attention_mask=mask)
+                    return component(hidden)
 
         # Fallback: Use legacy calling conventions for components without get_random_inputs()
         if "attn" in component_path and "attn" == component_path.split(".")[-1]:

@@ -4,21 +4,22 @@ Reimplements forward (prefill only) to expose mech-interp-relevant intermediate
 states. Falls back to HF native forward during autoregressive generation where
 cache state management is required.
 """
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import Any, Dict, Optional
 
 import torch
 import torch.nn.functional as F
 
+from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
+from transformer_lens.model_bridge.generalized_components.ssm_protocol import (
+    SSMStateHookMixin,
+)
 
-if TYPE_CHECKING:
-    from transformer_lens.ActivationCache import ActivationCache
 
-
-class GatedDeltaNetBridge(GeneralizedComponent):
+class GatedDeltaNetBridge(SSMStateHookMixin, GeneralizedComponent):
     """Bridge for GatedDeltaNet linear-attention with full hook decomposition.
 
     Hooks (prefill, in execution order):
@@ -37,6 +38,11 @@ class GatedDeltaNetBridge(GeneralizedComponent):
             per v-head [batch, seq, n_v_heads]
         hook_recurrence_out: output of linear recurrence [batch, seq, n_v_heads, head_v_dim]
         hook_gate_input: z tensor (pre-silu) for GatedRMSNorm [batch, seq, n_v_heads, head_v_dim]
+        hook_ssm_state: recurrent state trajectory S_t [batch, seq, n_v_heads, head_k_dim,
+            head_v_dim] — fires ONLY on the opt-in eager-scan path (eager_scan=True),
+            which swaps the fused kernel for a Python delta-rule scan so S_t can be
+            read/patched. hook_ssm_write (alias -> hook_beta) is the write strength and
+            propagates through the scan.
         hook_out: final output to residual stream [batch, seq, d_model]
 
     During generation (cache_params present), only hook_in/hook_out fire.
@@ -48,6 +54,15 @@ class GatedDeltaNetBridge(GeneralizedComponent):
     hook_aliases = {
         "hook_linear_attn_in": "hook_in",
         "hook_linear_attn_out": "hook_out",
+        # Canonical SSM vocabulary (additive) — maps onto GDN's existing hooks so
+        # interp tools can find these quantities by the same name across families.
+        # Semantic mapping: q reads the state (~C), k writes to it (~B), the gate
+        # g is the decay, beta is the per-step write strength.
+        "hook_ssm_out": "hook_out",
+        "hook_ssm_C": "hook_q",
+        "hook_ssm_B": "hook_k",
+        "hook_ssm_decay": "hook_log_decay",
+        "hook_ssm_write": "hook_beta",
     }
 
     property_aliases = {
@@ -81,6 +96,8 @@ class GatedDeltaNetBridge(GeneralizedComponent):
         # Recurrence output + gated norm input
         self.hook_recurrence_out = HookPoint()
         self.hook_gate_input = HookPoint()
+        # hook_ssm_state + eager_scan come from SSMStateHookMixin; hook_ssm_write is
+        # an alias onto hook_beta (the delta rule's write is state-dependent).
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         if self.original_component is None:
@@ -201,17 +218,23 @@ class GatedDeltaNetBridge(GeneralizedComponent):
             query = query.repeat_interleave(repeat, dim=2)
             key = key.repeat_interleave(repeat, dim=2)
 
-        # --- Core linear recurrence (opaque fused kernel) ---
-        core_out, _ = hf.chunk_gated_delta_rule(
-            query,
-            key,
-            value,
-            g=g,
-            beta=beta,
-            initial_state=None,
-            output_final_state=False,
-            use_qk_l2norm_in_kernel=True,
-        )
+        # --- Core linear recurrence ---
+        # Default: HF's opaque fused kernel. eager_scan: a Python delta-rule scan
+        # that fires hook_ssm_state so the state trajectory can be intervened on.
+        if self.eager_scan:
+            _, core_out = self._gated_delta_scan(query, key, value, g, beta, fire_hook=True)
+            core_out = core_out.to(value.dtype)
+        else:
+            core_out, _ = hf.chunk_gated_delta_rule(
+                query,
+                key,
+                value,
+                g=g,
+                beta=beta,
+                initial_state=None,
+                output_final_state=False,
+                use_qk_l2norm_in_kernel=True,
+            )
         core_out = self.hook_recurrence_out(core_out)
 
         # --- Gated RMSNorm: norm(core_out) * silu(z) ---
@@ -227,30 +250,176 @@ class GatedDeltaNetBridge(GeneralizedComponent):
         output = hf.out_proj(core_out)
         return self.hook_out(output)
 
-    def compute_effective_attention(
+    @staticmethod
+    def _l2norm(x: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
+        """Match the kernel's internal Q/K L2 normalization (use_qk_l2norm_in_kernel)."""
+        return x / torch.sqrt((x * x).sum(-1, keepdim=True) + eps)
+
+    def _gated_delta_scan(
         self,
-        cache: "ActivationCache",
-        layer_idx: int,
-    ) -> torch.Tensor:
-        """Materialize the effective attention matrix from cached hook values.
+        query: torch.Tensor,
+        key: torch.Tensor,
+        value: torch.Tensor,
+        g: torch.Tensor,
+        beta: torch.Tensor,
+        fire_hook: bool,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Eager gated-delta-rule recurrence — the readable form of the fused kernel.
 
-        The gated delta rule recurrence is::
+        Reproduces HF ``torch_recurrent_gated_delta_rule``: L2-normalize Q/K, scale
+        Q by ``1/sqrt(head_k_dim)``, then per step::
 
-            S_t = exp(g_t) * S_{t-1} + beta_t * v_t @ k_t^T
-            o_t = S_t^T @ q_t
+            S_t = exp(g_t) · S_{t-1}                          (decay)
+            delta_t = (v_t - S_t^T k_t) · beta_t              (delta rule: remove then write)
+            S_t = S_t + k_t ⊗ delta_t                         -> hook_ssm_state trajectory
+            o_t = S_t^T q_t
 
-        The effective attention M[i,j] = contribution of input j to output i::
-
-            M[i,j] = (q_i^T @ k_j) * beta_j * prod_{t=j+1}^{i} exp(g_t)
-
-        **Approximation note:** The fused kernel applies L2-normalization to Q
-        and K internally (``use_qk_l2norm_in_kernel=True``). The hooked Q/K are
-        pre-normalization, so this reconstruction diverges when Q/K norms vary
-        significantly across positions/heads. Accuracy is best when Q/K norms
-        are roughly uniform (common after training converges).
+        Q/K are assumed already GQA-expanded to ``n_v_heads``. Matches the fused
+        kernel only to fp tolerance (≈1e-6 fp32), never bit-for-bit; O(seq) Python.
 
         Args:
-            cache: ActivationCache from ``run_with_cache``.
+            query, key: ``[batch, seq, n_v_heads, head_k_dim]`` (post-conv, pre-norm).
+            value: ``[batch, seq, n_v_heads, head_v_dim]``.
+            g: log-space decay ``[batch, seq, n_v_heads]`` (NEGATIVE; decay = exp(g)).
+            beta: write strength ``[batch, seq, n_v_heads]``.
+            fire_hook: if True, fire ``hook_ssm_state`` on the trajectory and
+                recompute ``o_t`` from the (possibly patched) state.
+
+        Returns:
+            ``(state_traj, core_out)`` — state ``[batch, seq, n_v_heads, head_k_dim,
+            head_v_dim]`` and output ``[batch, seq, n_v_heads, head_v_dim]``.
+        """
+        q = self._l2norm(query.float())
+        k = self._l2norm(key.float())
+        v = value.float()
+        q = q * (q.shape[-1] ** -0.5)
+        g_f = g.float()
+        beta_f = beta.float()
+
+        batch, seq_len, n_v, k_dim = q.shape
+        v_dim = v.shape[-1]
+        state = torch.zeros(batch, n_v, k_dim, v_dim, dtype=q.dtype, device=q.device)
+        states = []
+        outs = []
+        for t in range(seq_len):
+            q_t, k_t, v_t = q[:, t], k[:, t], v[:, t]  # [batch, n_v, dim]
+            decay = g_f[:, t].exp()[:, :, None, None]  # [batch, n_v, 1, 1]
+            beta_t = beta_f[:, t][:, :, None]  # [batch, n_v, 1]
+            state = state * decay
+            kv_mem = (state * k_t[:, :, :, None]).sum(dim=-2)  # [batch, n_v, v_dim]
+            delta = (v_t - kv_mem) * beta_t
+            state = state + k_t[:, :, :, None] * delta[:, :, None, :]
+            states.append(state)
+            outs.append((state * q_t[:, :, :, None]).sum(dim=-2))
+
+        state_traj = torch.stack(states, dim=1)  # [batch, seq, n_v, k_dim, v_dim]
+        if fire_hook:
+            state_traj = self.hook_ssm_state(state_traj)
+            # Recompute o_t = S_t^T q_t from the (possibly patched) trajectory.
+            core_out = torch.einsum("bshkv,bshk->bshv", state_traj, q)
+        else:
+            core_out = torch.stack(outs, dim=1)  # [batch, seq, n_v, v_dim]
+        return state_traj, core_out
+
+    def compute_ssm_state(
+        self,
+        cache: ActivationCache,
+        layer_idx: int,
+        time_step: Optional[int] = None,
+    ) -> torch.Tensor:
+        """Reconstruct the recurrent state ``S`` of the gated delta rule from cache.
+
+        Read-only: replays the eager delta-rule scan (``_gated_delta_scan``) on the
+        cached hook_q/k/v/beta/log_decay — no ``forward()`` re-run. Faithful (the
+        full delta rule, key-removal included), unlike ``compute_effective_attention``
+        which is a gated-linear-attention heuristic that drops key removal.
+
+        Requires the interior hooks, which fire only on the hooked prefill path:
+        call ``run_with_cache(tokens, use_cache=False)`` so ``cache_params`` is None.
+
+        On padded batches the cached hooks are unmasked, so ``S`` is exact only at
+        non-pad positions; pad-position state is out of contract.
+
+        Args:
+            cache: ActivationCache from ``run_with_cache(..., use_cache=False)``.
+            layer_idx: Block index for this linear_attn layer.
+            time_step: If given, return only ``S`` at that position
+                (``[batch, n_v_heads, head_k_dim, head_v_dim]``). None returns
+                every step.
+
+        Returns:
+            ``[batch, seq, n_v_heads, head_k_dim, head_v_dim]`` for all steps, or
+            ``[batch, n_v_heads, head_k_dim, head_v_dim]`` for a single ``time_step``.
+
+        Memory is O(batch · n_v_heads · seq · head_k_dim · head_v_dim); pass
+        ``time_step`` (or short sequences) when that is too large.
+        """
+        prefix = f"blocks.{layer_idx}.linear_attn"
+        q_key = f"{prefix}.hook_q"
+        k_key = f"{prefix}.hook_k"
+        v_key = f"{prefix}.hook_v"
+        beta_key = f"{prefix}.hook_beta"
+        decay_key = f"{prefix}.hook_log_decay"
+
+        for key in (q_key, k_key, v_key, beta_key, decay_key):
+            if key not in cache:
+                raise RuntimeError(
+                    f"compute_ssm_state needs {key!r} in cache. Run "
+                    "run_with_cache(tokens, use_cache=False) on the bridge first."
+                )
+
+        q = cache[q_key].float()  # [batch, seq, n_k_heads, head_k_dim]
+        k = cache[k_key].float()
+        v = cache[v_key].float()  # [batch, seq, n_v_heads, head_v_dim]
+        beta = cache[beta_key].float()  # [batch, seq, n_v_heads]
+        g = cache[decay_key].float()  # [batch, seq, n_v_heads]
+
+        # GQA expansion to n_v_heads (Q/K carry n_k_heads).
+        n_v = v.shape[2]
+        if q.shape[2] < n_v:
+            repeat = n_v // q.shape[2]
+            q = q.repeat_interleave(repeat, dim=2)
+            k = k.repeat_interleave(repeat, dim=2)
+
+        state_traj, _ = self._gated_delta_scan(q, k, v, g, beta, fire_hook=False)
+        if time_step is not None:
+            return state_traj[:, time_step]
+        return state_traj
+
+    def compute_effective_attention(
+        self,
+        cache: ActivationCache,
+        layer_idx: int,
+    ) -> torch.Tensor:
+        """Materialize a heuristic effective-attention matrix from cached hooks.
+
+        Uses the gated-linear-attention form of the recurrence (the exact gated
+        *delta* rule additionally removes the key being written)::
+
+            S_t ≈ exp(g_t) * S_{t-1} + beta_t * v_t @ k_t^T
+            o_t = S_t^T @ q_t
+            M[i,j] = (q_i^T @ k_j) * beta_j * prod_{t=j+1}^{i} exp(g_t)
+
+        so ``M`` is an interpretability heuristic, not a faithful output decomposition.
+
+        Requires the interior hooks (hook_q/k/beta/log_decay), which fire only on
+        the hooked prefill path: call ``run_with_cache(tokens, use_cache=False)``
+        so ``cache_params`` is None. The default cached path exposes only
+        hook_in/hook_out and this method then raises.
+
+        **Measured divergence (tiny random-init test fixture, seed-stable):**
+
+        - *L2-norm gap.* The fused kernel L2-normalizes Q/K internally
+          (``use_qk_l2norm_in_kernel=True``) but the hooked Q/K are pre-norm, so
+          ``M`` differs from the normalized form by ≈1.0 relative when Q/K norms
+          are small/non-uniform (the random-init regime); the gap shrinks toward 0
+          as norms equalize after training.
+        - *Delta-rule omission.* Even with normalized Q/K, ``M @ V`` reconstructs
+          the fused-kernel ``hook_recurrence_out`` only to O(1) relative error
+          because the key-removal term is dropped.
+
+        Args:
+            cache: ActivationCache from ``run_with_cache(..., use_cache=False)``.
             layer_idx: Block index for this linear_attn layer.
 
         Returns:

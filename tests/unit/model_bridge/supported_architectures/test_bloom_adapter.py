@@ -317,6 +317,16 @@ class TestBloomFactoryRegistration:
 
         assert "BloomForCausalLM" in SUPPORTED_ARCHITECTURES
 
+    def test_headless_bloom_model_alias(self) -> None:
+        """Old headless checkpoints (bigscience-small-testing, norbloom) carry
+        architectures=['BloomModel']; they load as BloomForCausalLM with tied
+        embeddings, so the alias reuses the same adapter."""
+        from transformer_lens.factories.architecture_adapter_factory import (
+            SUPPORTED_ARCHITECTURES,
+        )
+
+        assert SUPPORTED_ARCHITECTURES["BloomModel"] is BloomArchitectureAdapter
+
     def test_factory_returns_bloom_adapter(self) -> None:
         from transformer_lens.factories.architecture_adapter_factory import (
             ArchitectureAdapterFactory,

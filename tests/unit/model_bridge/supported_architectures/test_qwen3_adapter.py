@@ -13,6 +13,7 @@ from typing import Any
 import pytest
 import torch
 
+from tests.unit.model_bridge.supported_architectures.helpers import make_bridge_cfg
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion
 from transformer_lens.conversion_utils.param_processing_conversion import (
@@ -37,26 +38,10 @@ from transformer_lens.model_bridge.supported_architectures.qwen3 import (
 )
 
 
-def _make_cfg(
-    n_heads: int = 8,
-    n_key_value_heads: int = 4,
-    d_model: int = 64,
-    n_layers: int = 2,
-    d_vocab: int = 100,
-    n_ctx: int = 128,
-) -> TransformerBridgeConfig:
-    """Minimal TransformerBridgeConfig for Qwen3 adapter tests."""
-    return TransformerBridgeConfig(
-        d_model=d_model,
-        d_head=d_model // n_heads,
-        n_layers=n_layers,
-        n_ctx=n_ctx,
-        n_heads=n_heads,
-        n_key_value_heads=n_key_value_heads,
-        d_vocab=d_vocab,
-        default_prepend_bos=False,
-        architecture="Qwen3ForCausalLM",
-    )
+def _make_cfg(**overrides: Any) -> TransformerBridgeConfig:
+    """Minimal TransformerBridgeConfig for Qwen3 adapter tests (GQA by default)."""
+    overrides.setdefault("n_key_value_heads", 4)
+    return make_bridge_cfg("Qwen3ForCausalLM", **overrides)
 
 
 @pytest.fixture

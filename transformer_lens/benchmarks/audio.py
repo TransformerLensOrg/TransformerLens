@@ -18,6 +18,96 @@ from transformer_lens.benchmarks.utils import (
 from transformer_lens.model_bridge import TransformerBridge
 
 
+def _prepare_audio_text_inputs(bridge: TransformerBridge):
+    """Build audio-conditioned inputs (synthetic waveform + audio token) for an
+    audio-text decoder; ``(None, None)`` if the processor has no audio path."""
+    processor = getattr(bridge, "processor", None)
+    audio_token = getattr(processor, "audio_token", None) if processor is not None else None
+    if processor is None or audio_token is None:
+        return None, None
+    import numpy as np
+
+    sr = 16000
+    t = np.linspace(0, 1.0, sr, endpoint=False, dtype=np.float32)
+    audio = (0.1 * np.sin(2 * np.pi * (200 + 400 * t) * t)).astype(np.float32)
+    prompt = f"{audio_token}\nTranscribe this audio."
+    try:
+        inputs = processor(text=prompt, audio=audio, sampling_rate=sr, return_tensors="pt")
+        input_ids = inputs["input_ids"].to(bridge.cfg.device)
+        extra = {
+            k: (v.to(bridge.cfg.device) if hasattr(v, "to") else v)
+            for k, v in inputs.items()
+            if k != "input_ids"
+        }
+        return input_ids, extra
+    except Exception:
+        return None, None
+
+
+def benchmark_audio_text_forward(bridge: TransformerBridge) -> BenchmarkResult:
+    """Benchmark the audio-conditioned forward (input_features -> finite logits) of
+    an audio-text decoder -- the audio path that the image and encoder benchmarks do not cover."""
+    if not getattr(bridge.cfg, "is_multimodal", False):
+        return BenchmarkResult(
+            name="audio_text_forward",
+            severity=BenchmarkSeverity.SKIPPED,
+            message="Skipped: model is not multimodal",
+        )
+    if is_tiny_test_model(getattr(bridge.cfg, "model_name", "") or ""):
+        return BenchmarkResult(
+            name="audio_text_forward",
+            severity=BenchmarkSeverity.INFO,
+            message="Skipped for tiny/test model",
+        )
+
+    input_ids, extra = _prepare_audio_text_inputs(bridge)
+    if input_ids is None:
+        return BenchmarkResult(
+            name="audio_text_forward",
+            severity=BenchmarkSeverity.SKIPPED,
+            message="Skipped: processor could not build audio inputs (no audio_token?)",
+        )
+
+    try:
+        with torch.no_grad():
+            out = bridge(input_ids, return_type="logits", **extra)
+        logits = out if isinstance(out, torch.Tensor) else getattr(out, "logits", None)
+        if logits is None:
+            return BenchmarkResult(
+                name="audio_text_forward",
+                severity=BenchmarkSeverity.DANGER,
+                message="Audio-conditioned forward returned no logits",
+                passed=False,
+            )
+        d_vocab = getattr(bridge.cfg, "d_vocab", None)
+        shape_ok = logits.ndim == 3 and (d_vocab is None or logits.shape[-1] == d_vocab)
+        finite = bool(torch.isfinite(logits).all())
+        if not finite or not shape_ok:
+            return BenchmarkResult(
+                name="audio_text_forward",
+                severity=BenchmarkSeverity.DANGER,
+                message=f"Audio-conditioned forward produced invalid logits (finite={finite}, shape={tuple(logits.shape)})",
+                details={"logits_shape": list(logits.shape), "all_finite": finite},
+                passed=False,
+            )
+        return BenchmarkResult(
+            name="audio_text_forward",
+            severity=BenchmarkSeverity.INFO,
+            message=f"Audio-conditioned forward OK: finite logits {tuple(logits.shape)}",
+            details={
+                "logits_shape": list(logits.shape),
+                "audio_feature_keys": [k for k in extra if "feature" in k or "audio" in k],
+            },
+        )
+    except Exception as e:
+        return BenchmarkResult(
+            name="audio_text_forward",
+            severity=BenchmarkSeverity.ERROR,
+            message=f"Audio-conditioned forward failed: {str(e)}",
+            passed=False,
+        )
+
+
 def benchmark_audio_forward(
     bridge: TransformerBridge,
     test_audio: torch.Tensor,
