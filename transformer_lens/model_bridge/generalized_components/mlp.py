@@ -4,6 +4,8 @@ This module contains the bridge component for MLP layers.
 """
 from typing import Any, Dict, Optional
 
+import torch
+
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
@@ -18,11 +20,8 @@ class MLPBridge(GeneralizedComponent):
 
     hook_aliases = {"hook_pre": "in.hook_out", "hook_post": "out.hook_in"}
     property_aliases = {
-        "W_gate": "gate.weight",
         "b_gate": "gate.bias",
-        "W_in": "in.weight",
         "b_in": "in.bias",
-        "W_out": "out.weight",
         "b_out": "out.bias",
     }
 
@@ -81,3 +80,55 @@ class MLPBridge(GeneralizedComponent):
         if hasattr(self, "out") and hasattr(self.out, "hook_out"):
             output = self.out.hook_out(output)
         return output
+
+    def _weight_layout_in_out(self, proj: Any) -> Optional[bool]:
+        """Whether proj's wrapped module stores its weight as [in, out].
+
+        Conv1D (GPT-2 style) stores [in_features, out_features]; nn.Linear stores
+        [out_features, in_features]. Returns None when the wrapped module is
+        neither, so callers can fall back to a shape heuristic.
+        """
+        from transformers.pytorch_utils import Conv1D
+
+        component = getattr(proj, "original_component", None)
+        if isinstance(component, Conv1D):
+            return True
+        if isinstance(component, torch.nn.Linear):
+            return False
+        return None
+
+    @property
+    def W_in(self) -> torch.Tensor:
+        """MLP input weight in TL orientation [d_model, d_mlp]."""
+        in_module = getattr(self, "in", None)
+        if in_module is None:
+            raise AttributeError("No 'in' submodule on this MLP bridge")
+        weight = in_module.weight
+        layout = self._weight_layout_in_out(in_module)
+        if layout is False:
+            return weight.T
+        return weight
+
+    @property
+    def W_gate(self) -> Optional[torch.Tensor]:
+        """MLP gate weight in TL orientation [d_model, d_mlp], or None if ungated."""
+        gate_module = getattr(self, "gate", None)
+        if gate_module is None:
+            return None
+        weight = gate_module.weight
+        layout = self._weight_layout_in_out(gate_module)
+        if layout is False:
+            return weight.T
+        return weight
+
+    @property
+    def W_out(self) -> torch.Tensor:
+        """MLP output weight in TL orientation [d_mlp, d_model]."""
+        out_module = getattr(self, "out", None)
+        if out_module is None:
+            raise AttributeError("No 'out' submodule on this MLP bridge")
+        weight = out_module.weight
+        layout = self._weight_layout_in_out(out_module)
+        if layout is False:
+            return weight.T
+        return weight
