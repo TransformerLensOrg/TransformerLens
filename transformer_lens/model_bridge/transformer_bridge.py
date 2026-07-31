@@ -1666,6 +1666,12 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 "start_at_layer is not supported for vision models: the residual "
                 "re-entry path assumes token inputs_embeds."
             )
+        if getattr(self.cfg, "is_audio_model", False):
+            raise NotImplementedError(
+                "start_at_layer is not supported for audio models: audio encoders "
+                "process waveforms through convolutional feature extraction before "
+                "the transformer blocks, making residual-stream injection infeasible."
+            )
         for alt in ("encoder_blocks", "decoder_blocks", "L_blocks", "H_blocks"):
             if hasattr(self, alt):
                 raise NotImplementedError(
