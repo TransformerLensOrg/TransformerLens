@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import copy as _copy
-from typing import Any, Optional, Union
+from typing import Any, Optional, Union, overload
 
 import torch
 
@@ -18,8 +18,30 @@ from transformer_lens.model_bridge.sources.native.model import (
 )
 
 
+@overload
 def boot(
-    config: Union[TransformerBridgeConfig, dict],
+    config: TransformerBridgeConfig,
+    tokenizer: Optional[Any] = None,
+    device: Optional[Union[str, torch.device]] = None,
+    dtype: Optional[torch.dtype] = None,
+    model_name: str = "native",
+) -> TransformerBridge:
+    ...
+
+
+@overload
+def boot(
+    config: dict[str, Any],
+    tokenizer: Optional[Any] = None,
+    device: Optional[Union[str, torch.device]] = None,
+    dtype: Optional[torch.dtype] = None,
+    model_name: str = "native",
+) -> TransformerBridge:
+    ...
+
+
+def boot(
+    config: Any,
     tokenizer: Optional[Any] = None,
     device: Optional[Union[str, torch.device]] = None,
     dtype: Optional[torch.dtype] = None,
@@ -30,6 +52,14 @@ def boot(
     No HuggingFace Hub call, no ``transformers`` import. ``config.init_mode``
     and ``config.seed`` control reproducibility.
     """
+    if not isinstance(config, (TransformerBridgeConfig, dict)):
+        raise TypeError(
+            "boot_native expected a TransformerBridgeConfig or dict, "
+            f"got {type(config).__name__}. Construct a TransformerBridgeConfig "
+            "with the same fields; legacy config classes are deprecated and "
+            "are not accepted."
+        )
+
     cfg: TransformerBridgeConfig
     if isinstance(config, dict):
         cfg = TransformerBridgeConfig.from_dict(config)
