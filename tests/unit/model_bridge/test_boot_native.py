@@ -260,6 +260,8 @@ def test_boot_native_rmspre_forward():
     expected = (x_fp32 * rms_inv).to(x.dtype)
 
     assert torch.allclose(out, expected, atol=1e-6)
+
+
 def test_boot_native_skips_custom_init_when_disabled(monkeypatch):
     def fail_if_called(*_args, **_kwargs):
         pytest.fail("initialize_native_model was called with init_weights=False")
@@ -322,6 +324,8 @@ def test_init_weights_rejects_non_native_bridge():
 
     with pytest.raises(RuntimeError, match=r"boot_native.*StubModel"):
         bridge.init_weights()
+
+
 def test_boot_native_forward_and_cache():
     cfg = _cfg()
     bridge = TransformerBridge.boot_native(cfg)
