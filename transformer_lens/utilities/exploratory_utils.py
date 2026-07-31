@@ -31,9 +31,10 @@ def test_prompt(
 
     Examples:
 
-    >>> from transformer_lens import HookedTransformer, utilities
-    >>> model = HookedTransformer.from_pretrained("tiny-stories-1M")
-    Loaded pretrained model tiny-stories-1M into HookedTransformer
+    >>> from transformer_lens import utilities
+    >>> from transformer_lens.model_bridge import TransformerBridge
+    >>> model = TransformerBridge.boot_transformers("roneneldan/TinyStories-1M")
+    >>> model.enable_compatibility_mode()
 
     >>> prompt = "Why did the elephant cross the"
     >>> answer = "road"
