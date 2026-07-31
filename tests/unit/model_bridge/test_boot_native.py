@@ -151,6 +151,113 @@ def test_boot_native_distinct_seeds_diverge():
     assert any(diffs), "Two different seeds produced identical params"
 
 
+def test_boot_native_lnpre_param_free():
+    """LNPre builds param-free norm (no learnable weight/bias)."""
+    from transformer_lens.model_bridge.generalized_components.base import (
+        GeneralizedComponent,
+    )
+    from transformer_lens.model_bridge.sources.native.model import NativeLayerNormPre
+
+    bridge = TransformerBridge.boot_native(_cfg(normalization_type="LNPre"))
+    native_model = bridge.original_model
+
+    ln1_wrapped = native_model.layers[0].ln1
+    ln2_wrapped = native_model.layers[0].ln2
+    ln_out_wrapped = native_model.ln_out
+
+    assert isinstance(ln1_wrapped, GeneralizedComponent)
+    assert isinstance(ln2_wrapped, GeneralizedComponent)
+    assert isinstance(ln_out_wrapped, GeneralizedComponent)
+
+    ln1 = ln1_wrapped._original_component
+    ln2 = ln2_wrapped._original_component
+    ln_out = ln_out_wrapped._original_component
+
+    assert isinstance(ln1, NativeLayerNormPre)
+    assert isinstance(ln2, NativeLayerNormPre)
+    assert isinstance(ln_out, NativeLayerNormPre)
+
+    for norm_module in [ln1, ln2, ln_out]:
+        assert not hasattr(norm_module, "weight") or not isinstance(
+            getattr(norm_module, "weight", None), torch.nn.Parameter
+        ), f"LNPre should have no learnable weight"
+        assert not hasattr(norm_module, "bias") or not isinstance(
+            getattr(norm_module, "bias", None), torch.nn.Parameter
+        ), f"LNPre should have no learnable bias"
+
+
+def test_boot_native_rmspre_param_free():
+    """RMSPre builds param-free RMS norm (no learnable weight)."""
+    from transformer_lens.model_bridge.generalized_components.base import (
+        GeneralizedComponent,
+    )
+    from transformer_lens.model_bridge.sources.native.model import NativeRMSNormPre
+
+    bridge = TransformerBridge.boot_native(_cfg(normalization_type="RMSPre"))
+    native_model = bridge.original_model
+
+    ln1_wrapped = native_model.layers[0].ln1
+    ln2_wrapped = native_model.layers[0].ln2
+    ln_out_wrapped = native_model.ln_out
+
+    assert isinstance(ln1_wrapped, GeneralizedComponent)
+    assert isinstance(ln2_wrapped, GeneralizedComponent)
+    assert isinstance(ln_out_wrapped, GeneralizedComponent)
+
+    ln1 = ln1_wrapped._original_component
+    ln2 = ln2_wrapped._original_component
+    ln_out = ln_out_wrapped._original_component
+
+    assert isinstance(ln1, NativeRMSNormPre)
+    assert isinstance(ln2, NativeRMSNormPre)
+    assert isinstance(ln_out, NativeRMSNormPre)
+
+    for norm_module in [ln1, ln2, ln_out]:
+        assert not hasattr(norm_module, "weight") or not isinstance(
+            getattr(norm_module, "weight", None), torch.nn.Parameter
+        ), f"RMSPre should have no learnable weight"
+
+
+def test_boot_native_supports_fold_ln():
+    """Native adapter supports fold_ln and center_writing_weights."""
+    bridge = TransformerBridge.boot_native(_cfg())
+    assert bridge.adapter.supports_fold_ln is True
+    assert bridge.adapter.supports_center_writing_weights is True
+
+
+def test_boot_native_lnpre_forward():
+    """LNPre forward produces correct normalization (param-free LayerNorm)."""
+    from transformer_lens.model_bridge.sources.native.model import NativeLayerNormPre
+
+    norm = NativeLayerNormPre(eps=1e-5)
+    x = torch.tensor([[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]], dtype=torch.float32)
+
+    out = norm(x)
+
+    expected_mean = x.mean(dim=-1, keepdim=True)
+    expected_centered = x - expected_mean
+    expected_scale = (expected_centered.pow(2).mean(dim=-1, keepdim=True) + 1e-5).sqrt()
+    expected = expected_centered / expected_scale
+
+    assert torch.allclose(out, expected, atol=1e-6)
+
+
+def test_boot_native_rmspre_forward():
+    """RMSPre forward produces correct normalization (param-free RMS norm)."""
+    from transformer_lens.model_bridge.sources.native.model import NativeRMSNormPre
+
+    norm = NativeRMSNormPre(eps=1e-5)
+    x = torch.tensor([[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]], dtype=torch.float32)
+
+    out = norm(x)
+
+    x_fp32 = x.to(torch.float32)
+    rms_inv = torch.rsqrt(x_fp32.pow(2).mean(dim=-1, keepdim=True) + 1e-5)
+    expected = (x_fp32 * rms_inv).to(x.dtype)
+
+    assert torch.allclose(out, expected, atol=1e-6)
+
+
 def test_boot_native_forward_and_cache():
     cfg = _cfg()
     bridge = TransformerBridge.boot_native(cfg)
@@ -347,3 +454,87 @@ def test_boot_native_supports_training_step():
     ), "No non-zero gradients after backward"
     optimizer.step()
     optimizer.zero_grad()
+
+
+def test_boot_native_fold_ln_output_invariant():
+    """fold_ln should not change model output (mathematically equivalent).
+
+    Uses randomized LN weights to actually exercise the folding math, and compares
+    at the logit level for precision.
+    """
+    cfg = _cfg(n_layers=2)
+    bridge = TransformerBridge.boot_native(cfg)
+
+    # Randomize LN weights to actually test folding (identity weights make fold a no-op)
+    torch.manual_seed(42)
+    with torch.no_grad():
+        for name, param in bridge.named_parameters():
+            if "ln" in name.lower() and "weight" in name:
+                param.copy_(torch.randn_like(param) * 0.5 + 1.0)
+            elif "ln" in name.lower() and "bias" in name:
+                param.copy_(torch.randn_like(param) * 0.1)
+
+    inputs = torch.randint(0, cfg.d_vocab, (2, cfg.n_ctx))
+    with torch.no_grad():
+        logits_unfolded = bridge(inputs, return_type="logits")
+
+    bridge.enable_compatibility_mode(
+        fold_ln=True,
+        center_writing_weights=False,
+        center_unembed=False,
+        fold_value_biases=False,
+        refactor_factored_attn_matrices=False,
+    )
+
+    with torch.no_grad():
+        logits_folded = bridge(inputs, return_type="logits")
+
+    assert torch.allclose(
+        logits_folded, logits_unfolded, atol=1e-4, rtol=1e-4
+    ), f"fold_ln should not change logits: max diff={torch.abs(logits_folded - logits_unfolded).max():.6e}"
+
+
+def test_boot_native_lnpre_compatibility_mode():
+    """LNPre models should work with enable_compatibility_mode without crashing.
+
+    LNPre has no weights to fold, so fold_ln should be a no-op. The key is that
+    it doesn't crash (e.g. EinopsError from shape mismatches).
+    """
+    cfg = _cfg(n_layers=2, normalization_type="LNPre")
+    bridge = TransformerBridge.boot_native(cfg)
+
+    inputs = torch.randint(0, cfg.d_vocab, (2, cfg.n_ctx))
+    with torch.no_grad():
+        logits_before = bridge(inputs, return_type="logits")
+
+    # This should not crash — fold_ln on param-free norms is a no-op
+    bridge.enable_compatibility_mode(
+        fold_ln=True,
+        center_writing_weights=False,
+        center_unembed=False,
+        fold_value_biases=False,
+        refactor_factored_attn_matrices=False,
+    )
+
+    with torch.no_grad():
+        logits_after = bridge(inputs, return_type="logits")
+
+    # Since LNPre has no weights, output should be unchanged
+    assert torch.allclose(
+        logits_after, logits_before, atol=1e-6
+    ), f"LNPre fold_ln should be no-op: max diff={torch.abs(logits_after - logits_before).max():.6e}"
+
+
+def test_boot_native_lnpre_has_hooks():
+    """LNPre should expose hook_scale and hook_normalized for ActivationCache compatibility."""
+    cfg = _cfg(normalization_type="LNPre")
+    bridge = TransformerBridge.boot_native(cfg)
+
+    inputs = torch.randint(0, cfg.d_vocab, (2, cfg.n_ctx))
+    _, cache = bridge.run_with_cache(inputs, return_type="logits")
+
+    # Check that the scale and normalized hooks are present
+    assert "blocks.0.ln1.hook_scale" in cache, "LNPre should have hook_scale"
+    assert "blocks.0.ln1.hook_normalized" in cache, "LNPre should have hook_normalized"
+    assert "ln_final.hook_scale" in cache, "ln_final should have hook_scale"
+    assert "ln_final.hook_normalized" in cache, "ln_final should have hook_normalized"

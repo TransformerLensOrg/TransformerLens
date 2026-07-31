@@ -12,20 +12,25 @@ from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
     GatedMLPBridge,
+    LayerNormPreBridge,
     LinearBridge,
     MLPBridge,
     NormalizationBridge,
     PosEmbedBridge,
     RMSNormalizationBridge,
+    RMSNormPreBridge,
     UnembeddingBridge,
-)
-from transformer_lens.model_bridge.generalized_components.base import (
-    GeneralizedComponent,
 )
 
 
 def _uses_rms(cfg: Any) -> bool:
-    return (getattr(cfg, "normalization_type", None) or "LN").upper() in ("RMS", "RMSPRE")
+    norm_type = (getattr(cfg, "normalization_type", None) or "LN").upper()
+    return norm_type in ("RMS", "RMSPRE")
+
+
+def _uses_param_free_norm(cfg: Any) -> bool:
+    norm_type = (getattr(cfg, "normalization_type", None) or "LN").upper()
+    return norm_type in ("RMSPRE", "LNPRE")
 
 
 def _uses_no_norm(cfg: Any) -> bool:
@@ -37,9 +42,20 @@ def _is_rotary(cfg: Any) -> bool:
 
 
 def _make_norm_bridge(name: str, cfg: Any, *, force_rms: bool = False):
-    if force_rms or _uses_rms(cfg):
+    norm_type = (getattr(cfg, "normalization_type", None) or "LN").upper()
+    is_param_free = _uses_param_free_norm(cfg)
+
+    if force_rms or norm_type in ("RMS", "RMSPRE"):
+        if is_param_free or norm_type == "RMSPRE":
+            return RMSNormPreBridge(name=name, config=cfg)
         return RMSNormalizationBridge(name=name, config=cfg)
+    if norm_type == "LNPRE":
+        return LayerNormPreBridge(name=name, config=cfg)
     if _uses_no_norm(cfg):
+        from transformer_lens.model_bridge.generalized_components.base import (
+            GeneralizedComponent,
+        )
+
         return GeneralizedComponent(name=name, config=cfg)
     return NormalizationBridge(name=name, config=cfg)
 
@@ -91,13 +107,16 @@ class NativeArchitectureAdapter(ArchitectureAdapter):
     def __init__(self, cfg: Any) -> None:
         super().__init__(cfg)
 
-        # Native layout already stores Q/K/V split; no rearranges needed.
-        # Compatibility-mode fold_ln / center_writing_weights aren't wired up,
-        # so gate the corresponding ProcessWeights paths off — folding without
-        # the state-dict conversions would mis-place or drop weights.
-        self.supports_fold_ln = False
-        self.supports_center_writing_weights = False
-        self.weight_processing_conversions = {}
+        # Support fold_ln (LN weight folds into downstream layers) and
+        # center_writing_weights (residual-stream-writing weights are centered).
+        self.supports_fold_ln = True
+        self.supports_center_writing_weights = True
+        # Native Q/K/V/O stored as nn.Linear [out, in]; fold_ln formulas expect
+        # TL [head, d_model, d_head] format. Use the shared helper to wire up the
+        # necessary rearranges so fold_layer_norm sees the right shapes.
+        self.weight_processing_conversions = {
+            **self._qkvo_weight_conversions(include_biases=True),
+        }
 
         # Internal attribute names avoid collisions with bridge slot names
         # ("embed", "blocks", "ln_final", "unembed") — the bridge's __getattr__

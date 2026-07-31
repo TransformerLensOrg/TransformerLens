@@ -23,9 +23,11 @@ from .model import (
     NativeAttention,
     NativeBlock,
     NativeGatedMLP,
+    NativeLayerNormPre,
     NativeMLP,
     NativeModel,
     NativeRMSNorm,
+    NativeRMSNormPre,
 )
 
 # Residual-scaled output is gpt2-specific; other modes treat every weight the
@@ -98,6 +100,8 @@ def initialize_native_model(
 def _init_norm(norm: nn.Module) -> None:
     if isinstance(norm, NativeRMSNorm):
         nn.init.ones_(norm.weight)
+    elif isinstance(norm, (NativeRMSNormPre, NativeLayerNormPre)):
+        pass
     elif isinstance(norm, nn.LayerNorm):
         nn.init.ones_(norm.weight)
         nn.init.zeros_(norm.bias)

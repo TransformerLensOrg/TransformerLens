@@ -66,11 +66,59 @@ class NativeRMSNorm(nn.Module):
         return self.weight * normalized
 
 
+class NativeRMSNormPre(nn.Module):
+    """Param-free RMSNorm — normalization only, no learnable scale."""
+
+    def __init__(self, eps: float = 1e-5):
+        super().__init__()
+        self.eps = eps
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        input_dtype = x.dtype
+        x_fp32 = x.to(torch.float32)
+        rms_inv = torch.rsqrt(x_fp32.pow(2).mean(dim=-1, keepdim=True) + self.eps)
+        return (x_fp32 * rms_inv).to(input_dtype)
+
+
+class NativeLayerNormPre(nn.Module):
+    """Param-free LayerNorm — center + normalize only, no learnable scale/bias.
+
+    Computes in fp32 for numerical stability, matching NativeRMSNormPre and
+    HookedTransformer's LayerNormPre.
+    """
+
+    def __init__(self, eps: float = 1e-5):
+        super().__init__()
+        self.eps = eps
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        input_dtype = x.dtype
+        x_fp32 = x.to(torch.float32)
+        x_fp32 = x_fp32 - x_fp32.mean(dim=-1, keepdim=True)
+        scale = (x_fp32.pow(2).mean(dim=-1, keepdim=True) + self.eps).sqrt()
+        return (x_fp32 / scale).to(input_dtype)
+
+
+def _is_param_free_norm(cfg: TransformerBridgeConfig) -> bool:
+    """Check if the config specifies a param-free normalization type."""
+    return _normalization_type(cfg) in ("RMSPRE", "LNPRE")
+
+
 def _make_norm(cfg: TransformerBridgeConfig, *, force_rms: bool = False) -> nn.Module:
-    if force_rms or _uses_rms_norm(cfg):
+    norm_type = _normalization_type(cfg)
+    is_param_free = _is_param_free_norm(cfg)
+
+    if force_rms or norm_type in ("RMS", "RMSPRE"):
+        if is_param_free or norm_type == "RMSPRE":
+            return NativeRMSNormPre(eps=cfg.eps)
         return NativeRMSNorm(cfg.d_model, eps=cfg.eps)
+
+    if norm_type == "LNPRE":
+        return NativeLayerNormPre(eps=cfg.eps)
+
     if _uses_no_norm(cfg):
         return nn.Identity()
+
     return nn.LayerNorm(cfg.d_model, eps=cfg.eps)
 
 
