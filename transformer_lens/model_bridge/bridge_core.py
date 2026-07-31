@@ -107,14 +107,19 @@ class BridgeCore:
             )
 
             value = configure_tokenizer(value, self.cfg)
-            if hasattr(value, "get_vocab"):
-                vocab = value.get_vocab()
-                self.cfg.d_vocab = max(vocab.values()) + 1
-            elif hasattr(value, "vocab"):
-                self.cfg.d_vocab = max(value.vocab.values()) + 1
-            else:
-                self.cfg.d_vocab = getattr(value, "vocab_size", 50257)
-            self.cfg.d_vocab_out = self.cfg.d_vocab
+            # Only infer d_vocab from tokenizer if not already set from model config.
+            # This preserves the original behavior where d_vocab=-1 triggers inference.
+            # On reassignment, always update since user explicitly changed tokenizer.
+            if self.cfg.d_vocab == -1 or self._tokenizer is not None:
+                if hasattr(value, "get_vocab"):
+                    vocab = value.get_vocab()
+                    self.cfg.d_vocab = max(vocab.values()) + 1
+                elif hasattr(value, "vocab"):
+                    self.cfg.d_vocab = max(value.vocab.values()) + 1
+                else:
+                    self.cfg.d_vocab = getattr(value, "vocab_size", 50257)
+                if self.cfg.d_vocab_out == -1 or self._tokenizer is not None:
+                    self.cfg.d_vocab_out = self.cfg.d_vocab
         self._tokenizer = value
 
     # ---- hook registry ----
