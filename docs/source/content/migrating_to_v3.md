@@ -140,6 +140,12 @@ These work identically on `TransformerBridge` and need no migration:
 - `cfg.*` — the bridge exposes a `.cfg` with the same fields (`n_layers`, `n_heads`, `d_model`, `d_vocab`, `n_ctx`, ...)
 - `W_Q`, `W_K`, `W_V`, `W_O`, `b_Q`, `b_K`, `b_V`, `b_O` — attention weights are exposed with the same `[n_heads, d_model, d_head]` shape conventions
 
+> **Gradients require the transformers driver.** `run_with_cache(incl_bwd=True)`,
+> backward hooks, attribution patching, and other gradient-based analyses need
+> local autograd, so load the model with `TransformerBridge.boot_transformers(...)`.
+> Serving and remote drivers do not expose gradients; see
+> {ref}`Fundamental limits <drivers-fundamental-limits>`.
+
 If your code only touches these APIs, the migration is genuinely just the loading call and (optionally) `enable_compatibility_mode`.
 
 ### BERT Next Sentence Prediction
@@ -223,3 +229,108 @@ Weight-matrix rows return **raw** HuggingFace weights by default. `HookedTransfo
 | `model.W_pos` | `bridge.pos_embed.W_pos` | Raw weight (also `bridge.pos_embed.weight`). `center_writing_weights` centers `W_pos` in default HT loads, so it matches HT's only under matching processing (`enable_compatibility_mode()`, or HT loaded with no processing). |
 | `model.W_E_pos` | `torch.cat([bridge.W_E, bridge.pos_embed.W_pos], dim=0)` | No single accessor — concatenate the token + positional matrices. Same weight-processing caveat as `W_pos` (both `W_E` and `W_pos` are centered writing-weights). |
 | `HookedTransformer.from_pretrained_no_processing(name)` | `TransformerBridge.boot_transformers(name, no_processing=True)` | Both load raw weights, so these match. |
+| `model.input_to_embed(...)`; `model(..., start_at_layer=k)` | `bridge.input_to_embed(...)`; `bridge(..., start_at_layer=k)` | The bridge accepts the residual entering block `k`. Embedding-stage hooks are excluded, but blocks `0..k-1` still execute on a discarded path before block `k` swaps in that residual. |
+| `model.get_caching_hooks(...)`; `model.add_caching_hooks(...)` | Same methods on `bridge` | Prefer these methods or `run_with_cache` over `cache_all` and `cache_some`, which now emit `DeprecationWarning`. |
+| `model.run_with_cache(..., pos_slice=..., incl_bwd=...)` | Same call on `bridge` | `pos_slice` limits cached positions. `incl_bwd=True` requires the gradients-capable transformers driver and a scalar output such as `return_type="loss"`. |
+| `model(..., past_kv_cache=cache)` | `bridge(..., past_key_values=cache, return_type="logits_and_cache")` | The returned cache is the HuggingFace-native cache object, not `TransformerLensKeyValueCache`. |
+| `model.mod_dict` | `bridge.mod_dict` | Includes the named-module tree plus canonical and HookedTransformer-style hook aliases. See [Hook names](#hook-names). |
+| `model.reset_hooks(...)` | `bridge.reset_hooks(clear_contexts=..., direction=..., including_permanent=..., level=...)` | The bridge supports the same scoped hook cleanup controls. |
+| A helper typed as `HookedTransformer` | Type it as `TransformerLensModel` or `TransformerLensModelWithWeights` from `transformer_lens.model_protocol` | Use the narrower structural protocol unless the helper reads weights or advanced `ActivationCache` helpers. |
+| `HookedTransformerConfig(...)` | `TransformerBridgeConfig(...)` | Construct the bridge config with the same core fields, then pass it to `TransformerBridge.boot_native(config)` for train-from-scratch or toy models. Do not pass a legacy config object to `boot_native`. |
+| `model.all_head_labels()` | `bridge.all_head_labels` | This is a property on the bridge, so omit the call parentheses. |
+| `model.set_tokenizer(tokenizer)` | `TransformerBridge.boot_transformers(name, tokenizer=tokenizer)` | A bridge's tokenizer is fixed when it boots. Reboot to change it; assigning `bridge.tokenizer` directly bypasses tokenizer/config wiring. |
+
+The loading, tokenization, generation, and basic hook calls listed under
+[APIs that are unchanged](#apis-that-are-unchanged) do not need wrappers. The
+recipes below cover the capabilities whose calling convention or runtime
+behavior deserves extra attention.
+
+They use a local transformers-backed bridge:
+
+```python
+from transformer_lens.model_bridge import TransformerBridge
+
+bridge = TransformerBridge.boot_transformers(
+    "openai-community/gpt2",
+    device="cpu",
+)
+```
+
+### Resume from an intermediate residual stream
+
+Capture the residual entering block `k`, then supply it as the next call's
+input:
+
+```python
+tokens = bridge.to_tokens("The quick brown fox")
+_, cache = bridge.run_with_cache(tokens)
+
+k = 3
+residual = cache[f"blocks.{k}.hook_in"]
+resumed_logits = bridge(residual, start_at_layer=k)
+```
+
+`start_at_layer` excludes embedding-stage hooks and omits blocks below `k` from
+the returned cache. It does not skip their computation: the HuggingFace model
+still runs blocks `0..k-1` on a path whose result is discarded when block `k`
+swaps in `residual`.
+
+### Cache selected positions and gradients
+
+`run_with_cache` is the shortest path for one run. It accepts the same hook-name
+filters described under [Hook names](#hook-names):
+
+```python
+loss, cache = bridge.run_with_cache(
+    "The quick brown fox",
+    names_filter=lambda name: name.endswith("hook_out"),
+    pos_slice=-1,
+    incl_bwd=True,
+    return_type="loss",
+)
+last_position_grad = cache["blocks.0.hook_out_grad"]
+```
+
+`incl_bwd=True` calls backward internally, so the output must be scalar; use
+`return_type="loss"`. Backward caching is available only on the local
+gradients-capable transformers driver. For hooks that should persist across
+multiple calls, use `get_caching_hooks` or `add_caching_hooks`, then remove them
+with `reset_hooks`. `cache_all` and `cache_some` remain compatibility shims but
+emit `DeprecationWarning`.
+
+### Reuse the HuggingFace KV cache
+
+Request `logits_and_cache`, then feed the returned cache into the next call:
+
+```python
+tokens = bridge.to_tokens("The quick brown fox")
+past_key_values = None
+
+for position in range(tokens.shape[1]):
+    logits, past_key_values = bridge(
+        tokens[:, position : position + 1],
+        past_key_values=past_key_values,
+        return_type="logits_and_cache",
+    )
+```
+
+`past_key_values` is the native cache object produced by the wrapped
+HuggingFace model. It is not a `TransformerLensKeyValueCache`, and code should
+not depend on the latter's layout or methods.
+
+### Type helpers for both model classes
+
+Use the structural protocol when a helper should accept either a
+`HookedTransformer` or a `TransformerBridge`:
+
+```python
+from transformer_lens.model_protocol import TransformerLensModel
+
+
+def cache_activations(model: TransformerLensModel, text: str):
+    _, cache = model.run_with_cache(text)
+    return cache
+```
+
+Use `TransformerLensModelWithWeights` instead when the helper also needs the
+weight-processing surface used by advanced `ActivationCache` operations.

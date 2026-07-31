@@ -100,6 +100,7 @@ From the [`boot_inspect` docstring](../../../transformer_lens/model_bridge/sourc
 
 ---
 
+(drivers-fundamental-limits)=
 ## Fundamental limits
 
 Serving engines are not autograd engines. On the vLLM backend (and any future serving backend):
