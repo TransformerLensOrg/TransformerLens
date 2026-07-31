@@ -86,7 +86,7 @@ class MLPBridge(GeneralizedComponent):
 
         Conv1D (GPT-2 style) stores [in_features, out_features]; nn.Linear stores
         [out_features, in_features]. Returns None when the wrapped module is
-        neither, so callers can fall back to a shape heuristic.
+        neither, so callers can fall back to in_features/out_features or shape heuristic.
         """
         from transformers.pytorch_utils import Conv1D
 
@@ -98,29 +98,39 @@ class MLPBridge(GeneralizedComponent):
         return None
 
     def _normalize_mlp_weight(
-        self, weight: torch.Tensor, layout: Optional[bool], pattern: str = "in"
+        self, weight: torch.Tensor, layout: Optional[bool], proj: Any, pattern: str = "in"
     ) -> torch.Tensor:
         """Normalize MLP weight to TL orientation.
 
         Args:
             weight: 2D weight tensor from the projection
             layout: True if [in, out] (Conv1D), False if [out, in] (nn.Linear),
-                None falls back to shape heuristic.
+                None falls back to in_features/out_features or shape heuristic.
+            proj: The projection module (LinearBridge) for metadata fallback.
             pattern: "in" for W_in/W_gate [d_model, d_mlp], "out" for W_out [d_mlp, d_model]
+
+        Note: Shape heuristic assumes d_model < d_mlp, which fails for architectures
+        like GIDD's ScaledLinear where d_mlp < d_model. When layout is None, we first
+        check in_features/out_features; shape heuristic is last resort.
         """
         if layout is None:
-            # Shape heuristic: for W_in/W_gate, d_model < d_mlp typically.
-            # Conv1D stores [d_model, d_mlp], nn.Linear stores [d_mlp, d_model].
-            # If shape[0] < shape[1], assume Conv1D layout (already correct for "in").
-            if pattern == "in":
-                layout = weight.shape[0] < weight.shape[1]
+            # Try in_features/out_features from the wrapped module (works for bare nn.Module)
+            component = getattr(proj, "original_component", None)
+            in_f = getattr(component, "in_features", None)
+            out_f = getattr(component, "out_features", None)
+            if in_f is not None and out_f is not None:
+                # Module declares its orientation; weight[0] == out_f means [out, in] layout
+                layout = weight.shape[0] == in_f  # True if [in, out], False if [out, in]
             else:
-                # For W_out: Conv1D stores [d_mlp, d_model], nn.Linear stores [d_model, d_mlp].
-                # TL wants [d_mlp, d_model]. If shape[0] > shape[1], assume Conv1D.
-                layout = weight.shape[0] > weight.shape[1]
+                # Last resort: shape heuristic. WARNING: assumes d_model < d_mlp.
+                # This will mis-orient architectures where d_mlp < d_model.
+                if pattern == "in":
+                    layout = weight.shape[0] < weight.shape[1]
+                else:
+                    layout = weight.shape[0] > weight.shape[1]
         if layout:
-            return weight  # Conv1D: already in TL orientation
-        return weight.T  # nn.Linear: transpose to TL orientation
+            return weight  # Conv1D-style: already in TL orientation
+        return weight.T  # nn.Linear-style: transpose to TL orientation
 
     @property
     def W_in(self) -> torch.Tensor:
@@ -130,7 +140,7 @@ class MLPBridge(GeneralizedComponent):
             raise AttributeError("No 'in' submodule on this MLP bridge")
         weight = in_module.weight
         layout = self._weight_layout_in_out(in_module)
-        return self._normalize_mlp_weight(weight, layout, pattern="in")
+        return self._normalize_mlp_weight(weight, layout, in_module, pattern="in")
 
     @property
     def W_gate(self) -> Optional[torch.Tensor]:
@@ -140,7 +150,7 @@ class MLPBridge(GeneralizedComponent):
             return None
         weight = gate_module.weight
         layout = self._weight_layout_in_out(gate_module)
-        return self._normalize_mlp_weight(weight, layout, pattern="in")
+        return self._normalize_mlp_weight(weight, layout, gate_module, pattern="in")
 
     @property
     def W_out(self) -> torch.Tensor:
@@ -150,4 +160,4 @@ class MLPBridge(GeneralizedComponent):
             raise AttributeError("No 'out' submodule on this MLP bridge")
         weight = out_module.weight
         layout = self._weight_layout_in_out(out_module)
-        return self._normalize_mlp_weight(weight, layout, pattern="out")
+        return self._normalize_mlp_weight(weight, layout, out_module, pattern="out")

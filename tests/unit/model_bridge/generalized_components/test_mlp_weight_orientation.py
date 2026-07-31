@@ -173,3 +173,42 @@ class TestMLPWeightOrientation:
         """nn.Linear and Conv1D bridges should return same shape for W_in/W_out."""
         assert linear_mlp_bridge.W_in.shape == conv1d_mlp_bridge.W_in.shape
         assert linear_mlp_bridge.W_out.shape == conv1d_mlp_bridge.W_out.shape
+
+    def test_in_features_fallback_over_shape_heuristic(self, d_model: int):
+        """When d_mlp < d_model, in_features/out_features should take precedence."""
+        d_mlp_small = d_model // 2  # d_mlp < d_model breaks shape heuristic
+
+        class ScaledLinear(nn.Module):
+            """Bare nn.Module with in_features/out_features (like GIDD's ScaledLinear)."""
+
+            def __init__(self, in_f: int, out_f: int):
+                super().__init__()
+                self.in_features = in_f
+                self.out_features = out_f
+                # Weight stored as [out, in] like nn.Linear
+                self.weight = nn.Parameter(torch.randn(out_f, in_f))
+
+            def forward(self, x):
+                return x @ self.weight.T
+
+        mlp = MLPBridge(name="mlp")
+        in_proj = ScaledLinear(d_model, d_mlp_small)
+        out_proj = ScaledLinear(d_mlp_small, d_model)
+
+        in_bridge = LinearBridge(name="in")
+        in_bridge.set_original_component(in_proj)
+        out_bridge = LinearBridge(name="out")
+        out_bridge.set_original_component(out_proj)
+
+        mlp.add_module("in", in_bridge)
+        mlp.add_module("out", out_bridge)
+
+        # Even though d_mlp < d_model, should still get TL orientation
+        assert mlp.W_in.shape == (d_model, d_mlp_small)
+        assert mlp.W_out.shape == (d_mlp_small, d_model)
+
+        # Verify forward correctness
+        resid = torch.randn(1, 8, d_model)
+        tl_result = resid @ mlp.W_in
+        proj_result = in_proj(resid)
+        assert torch.allclose(tl_result, proj_result, atol=1e-5)
