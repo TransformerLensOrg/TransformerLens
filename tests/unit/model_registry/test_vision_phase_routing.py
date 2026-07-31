@@ -1,9 +1,10 @@
-"""Vision encoders must route to the Phase-1-only verification set.
+"""Vision encoders must route to the {1, 9} verification set.
 
 Vision architectures have no tokenizer and no HookedTransformer counterpart, so the
 default text phase set ({1,2,3,4}) cannot run against them. They previously opted out
 of verification entirely via ``applicable_phases = []``, which made them unverifiable
-rather than verified — Phase 1 (HF parity on pixel input) does apply.
+rather than verified — Phase 1 (HF parity on pixel input) and Phase 9 (pixel
+forward/cache/stability) do apply.
 """
 
 import pytest
@@ -30,21 +31,22 @@ def test_vision_architectures_classify_as_vision(architecture: str) -> None:
 
 
 @pytest.mark.parametrize("architecture", VISION_ARCHS)
-def test_vision_runs_phase_one_only(architecture: str) -> None:
-    """Phase 1 is the whole verification story for a vision encoder."""
+def test_vision_runs_phases_one_and_nine(architecture: str) -> None:
+    """HF parity (P1) plus vision hook/cache tests (P9) are the whole story."""
     full, core = _full_and_core_phases(architecture)
-    assert full == {1}
-    assert core == {1}
+    assert full == {1, 9}
+    assert core == {1, 9}
 
 
 @pytest.mark.parametrize("architecture", VISION_ARCHS)
-def test_vision_phase_one_survives_adapter_filter(architecture: str) -> None:
-    """The adapter's applicable_phases must not filter Phase 1 back out.
+def test_vision_phases_survive_adapter_filter(architecture: str) -> None:
+    """The adapter's applicable_phases must not filter Phase 1 or 9 back out.
 
     An adapter declaring applicable_phases=[] leaves _phases_to_run empty, which
     verify_models treats as "coverage deferred" and skips the model outright.
+    Phase 9 bypasses the filter like 7/8 (gated by is_visual_model instead).
     """
-    assert _phases_to_run(architecture, [1]) == [1]
+    assert _phases_to_run(architecture, [1, 9]) == [1, 9]
 
 
 @pytest.mark.parametrize("architecture", VISION_ARCHS)

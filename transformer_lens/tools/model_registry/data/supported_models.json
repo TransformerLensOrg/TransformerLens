@@ -217950,7 +217950,7 @@
       "architecture_id": "ViTForImageClassification",
       "model_id": "google/vit-base-patch16-224",
       "status": 1,
-      "verified_date": "2026-07-30",
+      "verified_date": "2026-07-31",
       "metadata": null,
       "note": "Full verification completed",
       "phase1_score": 100.0,
@@ -217958,13 +217958,14 @@
       "phase3_score": null,
       "phase4_score": null,
       "phase7_score": null,
-      "phase8_score": null
+      "phase8_score": null,
+      "phase9_score": 100.0
     },
     {
       "architecture_id": "ViTModel",
       "model_id": "google/vit-base-patch16-224-in21k",
       "status": 1,
-      "verified_date": "2026-07-30",
+      "verified_date": "2026-07-31",
       "metadata": null,
       "note": "Full verification completed",
       "phase1_score": 100.0,
@@ -217972,13 +217973,14 @@
       "phase3_score": null,
       "phase4_score": null,
       "phase7_score": null,
-      "phase8_score": null
+      "phase8_score": null,
+      "phase9_score": 100.0
     },
     {
       "architecture_id": "ViTForImageClassification",
       "model_id": "facebook/deit-base-patch16-224",
       "status": 1,
-      "verified_date": "2026-07-30",
+      "verified_date": "2026-07-31",
       "metadata": null,
       "note": "Full verification completed",
       "phase1_score": 100.0,
@@ -217986,7 +217988,8 @@
       "phase3_score": null,
       "phase4_score": null,
       "phase7_score": null,
-      "phase8_score": null
+      "phase8_score": null,
+      "phase9_score": 100.0
     }
   ]
 }

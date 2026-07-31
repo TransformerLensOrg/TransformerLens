@@ -123,17 +123,17 @@ def _sanitize_note(note: Optional[str]) -> Optional[str]:
 def _phases_to_run(arch: str, phases: list[int]) -> list[int]:
     """Restrict requested phases to those the adapter supports.
 
-    An adapter's ``applicable_phases`` declares which text phases (1-4) it covers. Phases 7/8
-    are gated separately by ``is_multimodal``/``is_audio`` in the benchmark, so they are never
-    filtered out here. An empty result means none of the requested phases apply to this
-    architecture (SSM / recurrent families run all four).
+    An adapter's ``applicable_phases`` declares which text phases (1-4) it covers. Phases
+    7/8/9 are gated separately by ``is_multimodal``/``is_audio_model``/``is_visual_model``
+    in the benchmark, so they are never filtered out here. An empty result means none of
+    the requested phases apply to this architecture (SSM / recurrent families run all four).
     """
     from transformer_lens.factories.architecture_adapter_factory import (
         SUPPORTED_ARCHITECTURES,
     )
 
     applicable = getattr(SUPPORTED_ARCHITECTURES.get(arch), "applicable_phases", [1, 2, 3, 4])
-    return [p for p in phases if p in applicable or p in (7, 8)]
+    return [p for p in phases if p in applicable or p in (7, 8, 9)]
 
 
 def _full_and_core_phases(arch: str) -> tuple[set[int], set[int]]:
@@ -145,10 +145,11 @@ def _full_and_core_phases(arch: str) -> tuple[set[int], set[int]]:
     if kind == "audio":
         return {1, 8}, {1, 8}
     if kind == "vision":
-        # Vision encoders have no tokenizer and no text tower: Phase 1 (HF parity)
-        # is the whole story. Phases 2/3 need HookedTransformer, Phase 4 needs text
-        # generation, and Phase 7 covers vision+text multimodal models, not these.
-        return {1}, {1}
+        # Vision encoders have no tokenizer and no text tower: Phases 2/3 need
+        # HookedTransformer, Phase 4 needs text generation, and Phase 7 covers
+        # vision+text multimodal models, not these. Phase 1 (HF parity) plus
+        # Phase 9 (pixel forward/cache/stability) are the whole story.
+        return {1, 9}, {1, 9}
     if kind == "multimodal":
         return {1, 2, 3, 4, 7}, {1, 4, 7}
     if arch in AUDIO_TEXT_ARCHITECTURES:
@@ -563,7 +564,7 @@ def _extract_phase_scores(results: list) -> dict[int, Optional[float]]:
     """
     from transformer_lens.benchmarks.utils import BenchmarkSeverity
 
-    phase_results: dict[int, list[bool]] = {1: [], 2: [], 3: [], 4: [], 7: [], 8: []}
+    phase_results: dict[int, list[bool]] = {1: [], 2: [], 3: [], 4: [], 7: [], 8: [], 9: []}
     for result in results:
         if result.phase in phase_results and result.severity != BenchmarkSeverity.SKIPPED:
             phase_results[result.phase].append(result.passed)
@@ -598,6 +599,7 @@ _MIN_PHASE_SCORES: dict[int, float] = {
     4: 50.0,
     7: 75.0,
     8: 75.0,
+    9: 75.0,
 }
 _DEFAULT_MIN_PHASE_SCORE = 50.0
 
@@ -619,6 +621,7 @@ _REQUIRED_PHASE_TESTS: dict[int, list[str]] = {
     3: ["logits_equivalence", "loss_equivalence"],
     7: ["multimodal_forward"],
     8: ["audio_forward", "audio_text_forward"],
+    9: ["vision_forward", "vision_cache"],
 }
 
 
@@ -644,13 +647,15 @@ def _check_phase_scores(
     failing_phases: list[str] = []
     for phase, score in sorted(phase_scores.items()):
         if score is None:
-            # Phase 7 (multimodal) or Phase 8 (audio) with a NULL score means
-            # the processor was unavailable and no tests ran.  This is a
+            # Phase 7 (multimodal), 8 (audio), or 9 (vision) with a NULL score
+            # means the processor was unavailable and no tests ran.  This is a
             # verification failure, not something to silently skip.
             if phase == 7:
                 failing_phases.append(f"P7=NULL (multimodal tests skipped — processor unavailable)")
             elif phase == 8:
                 failing_phases.append(f"P8=NULL (audio tests skipped — no results)")
+            elif phase == 9:
+                failing_phases.append(f"P9=NULL (vision tests skipped — no results)")
             continue
 
         # Phase 4 is a quality metric, not a pass/fail check — skip it here.
@@ -1160,7 +1165,7 @@ def verify_models(
                     f"  {label}: P1={phase_scores.get(1)}%, "
                     f"P2={phase_scores.get(2)}%, P3={phase_scores.get(3)}%, "
                     f"P4={phase_scores.get(4)}%, P7={phase_scores.get(7)}%, "
-                    f"P8={phase_scores.get(8)}%"
+                    f"P8={phase_scores.get(8)}%, P9={phase_scores.get(9)}%"
                 )
             update_model_status(
                 model_id,
@@ -1189,7 +1194,7 @@ def verify_models(
                         f"  Partial scores saved: P1={phase_scores.get(1)}%, "
                         f"P2={phase_scores.get(2)}%, P3={phase_scores.get(3)}%, "
                         f"P4={phase_scores.get(4)}%, P7={phase_scores.get(7)}%, "
-                        f"P8={phase_scores.get(8)}%"
+                        f"P8={phase_scores.get(8)}%, P9={phase_scores.get(9)}%"
                     )
             update_model_status(
                 model_id,
@@ -1405,7 +1410,8 @@ Examples:
         default=None,
         help=(
             "Which benchmark phases to run (default: a full verification for each "
-            "model's architecture — 1 2 3 4 for text, 1 2 3 4 7 for multimodal, 1 8 for audio)"
+            "model's architecture — 1 2 3 4 for text, 1 2 3 4 7 for multimodal, "
+            "1 8 for audio, 1 9 for vision)"
         ),
     )
     parser.add_argument(

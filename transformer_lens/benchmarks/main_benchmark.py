@@ -1594,6 +1594,58 @@ def run_benchmark_suite(
         add_result(result)
 
     # ========================================================================
+    # Phase 9: Vision Tests (only for vision encoder models — ViT/DeiT, not
+    # vision+text multimodal models, which Phase 7 covers)
+    # Runs before Phase 3 so we can reuse bridge_unprocessed before cleanup.
+    # ========================================================================
+    if (
+        bridge_unprocessed is not None
+        and getattr(bridge_unprocessed.cfg, "is_visual_model", False)
+        and not getattr(bridge_unprocessed.cfg, "is_multimodal", False)
+        and should_run_phase(9)
+    ):
+        current_phase[0] = 9
+        if verbose:
+            print("\n" + "=" * 80)
+            print("PHASE 9: VISION TESTS")
+            print("=" * 80)
+            print("Testing pixel forward pass, caching, representation stability, and decoding.")
+            print("=" * 80 + "\n")
+
+        try:
+            from transformer_lens.benchmarks.vision import run_vision_benchmarks
+
+            vision_results = run_vision_benchmarks(
+                bridge_unprocessed,
+                test_pixels=_test_modality_input,
+                verbose=verbose,
+            )
+            for result in vision_results:
+                result.phase = 9
+                results.append(result)
+                if verbose:
+                    print(result)
+
+            if verbose:
+                print("\n" + "=" * 80)
+                print("PHASE 9 COMPLETE")
+                print("=" * 80)
+
+        except Exception as e:
+            if verbose:
+                print(f"\n⚠ Vision tests failed: {e}\n")
+            results.append(
+                BenchmarkResult(
+                    name="vision_suite",
+                    passed=False,
+                    severity=BenchmarkSeverity.ERROR,
+                    message=f"Failed to run vision tests: {str(e)}",
+                    details={"error": str(e)},
+                    phase=9,
+                )
+            )
+
+    # ========================================================================
     # PHASE 3: Bridge (processed) + HookedTransformer (processed)
     # ========================================================================
     current_phase[0] = 3

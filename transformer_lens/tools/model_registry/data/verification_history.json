@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-07-30T15:28:34.785196",
+  "last_updated": "2026-07-31T10:36:39.286088",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -20995,6 +20995,56 @@
       "model_id": "facebook/hubert-large-ls960-ft",
       "architecture_id": "HubertForCTC",
       "verified_date": "2026-07-30",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "google/vit-base-patch16-224",
+      "architecture_id": "ViTForImageClassification",
+      "verified_date": "2026-07-31",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "google/vit-base-patch16-224-in21k",
+      "architecture_id": "ViTModel",
+      "verified_date": "2026-07-31",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "facebook/deit-base-patch16-224",
+      "architecture_id": "ViTForImageClassification",
+      "verified_date": "2026-07-31",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "facebook/deit-base-patch16-224",
+      "architecture_id": "ViTForImageClassification",
+      "verified_date": "2026-07-31",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "google/vit-base-patch16-224",
+      "architecture_id": "ViTForImageClassification",
+      "verified_date": "2026-07-31",
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Full verification completed",
