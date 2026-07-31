@@ -7,9 +7,9 @@
     "scan_duration_seconds": 8.7
   },
   "total_architectures": 143,
-  "total_models": 15669,
+  "total_models": 15670,
   "total_provisional": 7,
-  "total_verified": 1202,
+  "total_verified": 1203,
   "models": [
     {
       "architecture_id": "FalconH1ForCausalLM",
@@ -111768,6 +111768,20 @@
       "phase3_score": null,
       "phase4_score": null,
       "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Gemma3ForConditionalGeneration",
+      "model_id": "lapa-llm/lapa-v0.1.3-instruct",
+      "status": 1,
+      "verified_date": "2026-07-30",
+      "metadata": null,
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 100.0,
+      "phase7_score": 100.0,
       "phase8_score": null
     },
     {

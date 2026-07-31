@@ -624,10 +624,19 @@ _REQUIRED_PHASE_TESTS: dict[int, list[str]] = {
     9: ["vision_forward", "vision_cache"],
 }
 
+# Failure text for a modality phase that produced no score — either absent from
+# phase_scores (all tests skipped) or explicitly NULL.
+_MODALITY_NULL_MESSAGES: dict[int, str] = {
+    7: "P7=NULL (multimodal tests skipped — processor unavailable)",
+    8: "P8=NULL (audio tests skipped — no results)",
+    9: "P9=NULL (vision tests skipped — no results)",
+}
+
 
 def _check_phase_scores(
     phase_scores: dict[int, Optional[float]],
     all_results: list,
+    required_phases: Optional[set[int]] = None,
 ) -> Optional[str]:
     """Check phase scores against per-phase minimum thresholds and required tests.
 
@@ -639,23 +648,33 @@ def _check_phase_scores(
     correctness check.  Low text quality is surfaced in the verification
     note via _build_verified_note() but never causes a model to fail.
 
+    Args:
+        phase_scores: Per-phase scores; a phase whose tests all skipped is
+            absent entirely (``extract_phase_scores`` omits empty phases).
+        all_results: Benchmark results, used to name the failing tests.
+        required_phases: Phases this architecture must produce a score for —
+            the core set from ``_full_and_core_phases``.  A required modality
+            phase that is absent counts as NULL, not as a pass.
+
     Returns an error message if any phase fails, or None if all phases pass.
     The message includes the names of failed tests.
     """
     from transformer_lens.benchmarks.utils import BenchmarkSeverity
 
     failing_phases: list[str] = []
+
+    # A required modality phase whose tests all skipped never reaches phase_scores.
+    for phase in sorted((required_phases or set()) - set(phase_scores)):
+        if phase in _MODALITY_NULL_MESSAGES:
+            failing_phases.append(_MODALITY_NULL_MESSAGES[phase])
+
     for phase, score in sorted(phase_scores.items()):
         if score is None:
-            # Phase 7 (multimodal), 8 (audio), or 9 (vision) with a NULL score
-            # means the processor was unavailable and no tests ran.  This is a
-            # verification failure, not something to silently skip.
-            if phase == 7:
-                failing_phases.append(f"P7=NULL (multimodal tests skipped — processor unavailable)")
-            elif phase == 8:
-                failing_phases.append(f"P8=NULL (audio tests skipped — no results)")
-            elif phase == 9:
-                failing_phases.append(f"P9=NULL (vision tests skipped — no results)")
+            # Phase 7 (multimodal), Phase 8 (audio), or 9 (vision) with a NULL score means
+            # the modality tests never ran.  This is a verification failure,
+            # not something to silently skip.
+            if phase in _MODALITY_NULL_MESSAGES:
+                failing_phases.append(_MODALITY_NULL_MESSAGES[phase])
             continue
 
         # Phase 4 is a quality metric, not a pass/fail check — skip it here.
@@ -981,7 +1000,12 @@ def verify_models(
         phase_scores = _extract_phase_scores(all_results)
 
         if not error_msg:
-            score_error = _check_phase_scores(phase_scores, all_results)
+            # Only require the core phases this run actually requested, so a
+            # partial run (e.g. --phases 1 2) isn't failed for a missing P7.
+            _, core_for_arch = _full_and_core_phases(arch)
+            score_error = _check_phase_scores(
+                phase_scores, all_results, required_phases=core_for_arch & set(eff_phases)
+            )
             if score_error:
                 error_msg = score_error
 

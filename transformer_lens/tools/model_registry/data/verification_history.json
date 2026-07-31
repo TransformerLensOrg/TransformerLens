@@ -20922,6 +20922,16 @@
       "invalidation_reason": null
     },
     {
+      "model_id": "lapa-llm/lapa-v0.1.3-instruct",
+      "architecture_id": "Gemma3ForConditionalGeneration",
+      "verified_date": "2026-07-30",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
       "model_id": "google/vit-base-patch16-224",
       "architecture_id": "ViTForImageClassification",
       "verified_date": "2026-07-30",
