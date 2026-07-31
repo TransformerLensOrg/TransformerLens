@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-07-24T13:57:03.104108",
+  "last_updated": "2026-07-30T15:28:34.785196",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -20898,6 +20898,106 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Full verification completed with issues, low text quality",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "MIT/ast-finetuned-audioset-10-10-0.4593",
+      "architecture_id": "ASTForAudioClassification",
+      "verified_date": "2026-07-30",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P8=0.0% < 75.0% (failed: audio_forward, audio_cache, audio_representation_stability \u2014 Audio forward pass failed: Dimension out of range (expected to be in range of [-3, 2], but got 3)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "MIT/ast-finetuned-audioset-10-10-0.4593",
+      "architecture_id": "ASTForAudioClassification",
+      "verified_date": "2026-07-30",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "google/vit-base-patch16-224",
+      "architecture_id": "ViTForImageClassification",
+      "verified_date": "2026-07-30",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "google/vit-base-patch16-224-in21k",
+      "architecture_id": "ViTModel",
+      "verified_date": "2026-07-30",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "facebook/deit-base-distilled-patch16-224",
+      "architecture_id": "DeiTForImageClassification",
+      "verified_date": "2026-07-30",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: Could not determine supported architecture from config. Available architectures: ['AfmoeForCausalLM', 'A",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "MIT/ast-finetuned-speech-commands-v2",
+      "architecture_id": "ASTForAudioClassification",
+      "verified_date": "2026-07-30",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "facebook/deit-base-patch16-224",
+      "architecture_id": "ViTForImageClassification",
+      "verified_date": "2026-07-30",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "MIT/ast-finetuned-audioset-10-10-0.4593",
+      "architecture_id": "ASTForAudioClassification",
+      "verified_date": "2026-07-30",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "google/vit-base-patch16-224",
+      "architecture_id": "ViTForImageClassification",
+      "verified_date": "2026-07-30",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "facebook/hubert-large-ls960-ft",
+      "architecture_id": "HubertForCTC",
+      "verified_date": "2026-07-30",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
       "invalidated": false,
       "invalidation_reason": null
     }

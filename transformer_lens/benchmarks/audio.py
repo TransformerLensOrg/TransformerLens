@@ -12,6 +12,7 @@ import torch
 from transformer_lens.benchmarks.utils import (
     BenchmarkResult,
     BenchmarkSeverity,
+    build_modality_input,
     compare_tensors,
     is_tiny_test_model,
 )
@@ -222,11 +223,14 @@ def benchmark_audio_cache(
                 passed=False,
             )
 
-        # Check for critical audio-specific hooks
+        # Only require the frontend components this architecture actually declares:
+        # waveform encoders (HuBERT, wav2vec2) have a conv feature extractor, while
+        # spectrogram encoders (AST) patch-embed the spectrogram directly.
+        component_mapping = bridge.adapter.component_mapping or {}
         critical_hooks = [
-            "audio_feature_extractor.hook_out",
-            "conv_pos_embed.hook_out",
-            "embed_ln.hook_out",
+            f"{name}.hook_out"
+            for name in ("audio_feature_extractor", "conv_pos_embed", "embed_ln", "embed")
+            if name in component_mapping
         ]
         # Also check at least the first and last block
         n_layers = bridge.cfg.n_layers
@@ -379,6 +383,13 @@ def benchmark_audio_feature_extractor(
         test_audio: Audio waveform tensor [batch, num_samples]
     """
     try:
+        if "audio_feature_extractor" not in (bridge.adapter.component_mapping or {}):
+            return BenchmarkResult(
+                name="audio_feature_extractor",
+                severity=BenchmarkSeverity.SKIPPED,
+                message="Skipped: architecture has no conv feature extractor (spectrogram input)",
+            )
+
         with torch.no_grad():
             _, cache = bridge.run_with_cache(test_audio)
 
@@ -536,16 +547,24 @@ def run_audio_benchmarks(
 
     Args:
         bridge: TransformerBridge model to test
-        test_audio: Optional audio waveform tensor. If None, generates synthetic audio.
+        test_audio: Optional audio input tensor. If None, generates a synthetic input
+            shaped for this architecture (waveform or spectrogram).
         verbose: Whether to print progress
 
     Returns:
         List of BenchmarkResult objects
     """
     if test_audio is None:
-        device = bridge.cfg.device
-        dtype = bridge.cfg.dtype
-        test_audio = torch.randn(1, 16000, device=device, dtype=dtype)
+        test_audio = build_modality_input(bridge, device=bridge.cfg.device, dtype=bridge.cfg.dtype)
+    if test_audio is None:
+        return [
+            BenchmarkResult(
+                name="audio_forward",
+                severity=BenchmarkSeverity.ERROR,
+                message="Could not build an audio input for this model",
+                passed=False,
+            )
+        ]
 
     results = []
 

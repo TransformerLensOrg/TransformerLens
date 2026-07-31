@@ -144,6 +144,11 @@ def _full_and_core_phases(arch: str) -> tuple[set[int], set[int]]:
     kind = classify_architecture(arch)
     if kind == "audio":
         return {1, 8}, {1, 8}
+    if kind == "vision":
+        # Vision encoders have no tokenizer and no text tower: Phase 1 (HF parity)
+        # is the whole story. Phases 2/3 need HookedTransformer, Phase 4 needs text
+        # generation, and Phase 7 covers vision+text multimodal models, not these.
+        return {1}, {1}
     if kind == "multimodal":
         return {1, 2, 3, 4, 7}, {1, 4, 7}
     if arch in AUDIO_TEXT_ARCHITECTURES:

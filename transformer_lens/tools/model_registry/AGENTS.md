@@ -115,9 +115,11 @@ Never edit manually.
 | 3 | Weight processing (compatibility mode, fold/centre) |
 | 4 | Text-generation quality |
 | 7 | Multimodal (vision/text alignment) — only Llava / Gemma3-multimodal |
-| 8 | Audio — only Hubert |
+| 8 | Audio — Hubert (waveform) and AST (spectrogram) |
 
 SSM / recurrent families and the hybrids (Mamba-1/2, gated-delta-net, NemotronH, GraniteMoeHybrid, Jamba, Qwen3.5/Qwen3-Next) declare `applicable_phases = [1, 2, 3, 4]` — all four apply. P2/P3 run but skip their HookedTransformer-comparison sub-tests (SSMs have no HT), which is scored as a pass.
+
+**Non-text modalities.** `classify_architecture` routes audio architectures to `{1, 8}` and vision architectures (ViT/DeiT) to `{1}` — vision has no tokenizer for P4, and neither modality has a HookedTransformer counterpart for P2/P3. Phase 1 and Phase 8 build their input with `build_modality_input()` ([`benchmarks/utils.py`](../../benchmarks/utils.py)), which shapes it from the HF config: `[batch, max_length, num_mel_bins]` for spectrogram encoders, `[batch, samples]` for waveform encoders, `[batch, channels, image_size, image_size]` for vision. Add a new non-text architecture there rather than hardcoding a shape at the call site.
 
 ### Phase-score thresholds
 
