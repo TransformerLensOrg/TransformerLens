@@ -25,7 +25,13 @@ from transformer_lens.model_bridge.generalized_components.base import (
 
 
 def _uses_rms(cfg: Any) -> bool:
-    return (getattr(cfg, "normalization_type", None) or "LN").upper() in ("RMS", "RMSPRE")
+    norm_type = (getattr(cfg, "normalization_type", None) or "LN").upper()
+    return norm_type in ("RMS", "RMSPRE")
+
+
+def _uses_param_free_norm(cfg: Any) -> bool:
+    norm_type = (getattr(cfg, "normalization_type", None) or "LN").upper()
+    return norm_type in ("RMSPRE", "LNPRE")
 
 
 def _uses_no_norm(cfg: Any) -> bool:
@@ -37,7 +43,11 @@ def _is_rotary(cfg: Any) -> bool:
 
 
 def _make_norm_bridge(name: str, cfg: Any, *, force_rms: bool = False):
-    if force_rms or _uses_rms(cfg):
+    norm_type = (getattr(cfg, "normalization_type", None) or "LN").upper()
+
+    if _uses_param_free_norm(cfg):
+        return GeneralizedComponent(name=name, config=cfg)
+    if force_rms or norm_type in ("RMS", "RMSPRE"):
         return RMSNormalizationBridge(name=name, config=cfg)
     if _uses_no_norm(cfg):
         return GeneralizedComponent(name=name, config=cfg)
@@ -92,11 +102,10 @@ class NativeArchitectureAdapter(ArchitectureAdapter):
         super().__init__(cfg)
 
         # Native layout already stores Q/K/V split; no rearranges needed.
-        # Compatibility-mode fold_ln / center_writing_weights aren't wired up,
-        # so gate the corresponding ProcessWeights paths off — folding without
-        # the state-dict conversions would mis-place or drop weights.
-        self.supports_fold_ln = False
-        self.supports_center_writing_weights = False
+        # Support fold_ln (LN weight folds into downstream layers) and
+        # center_writing_weights (residual-stream-writing weights are centered).
+        self.supports_fold_ln = True
+        self.supports_center_writing_weights = True
         self.weight_processing_conversions = {}
 
         # Internal attribute names avoid collisions with bridge slot names
