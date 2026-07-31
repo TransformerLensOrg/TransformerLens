@@ -961,6 +961,21 @@ def boot(
         except Exception:
             pass  # Feature extractor not available; user can set bridge.processor manually
 
+    # Load image processor for vision encoder models (needed for image preprocessing)
+    if getattr(adapter.cfg, "is_visual_model", False):
+        try:
+            from transformers import AutoImageProcessor
+
+            huggingface_token = os.environ.get("HF_TOKEN", "")
+            token_arg = huggingface_token if len(huggingface_token) > 0 else None
+            bridge.processor = AutoImageProcessor.from_pretrained(
+                model_name,
+                token=token_arg,
+                trust_remote_code=trust_remote_code,
+            )
+        except Exception:
+            pass  # Image processor not available; user can set bridge.processor manually
+
     return bridge
 
 

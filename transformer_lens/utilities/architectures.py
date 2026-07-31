@@ -100,6 +100,8 @@ BASE_AUTOMODEL_ARCHITECTURES: set[str] = {
 NO_HT_COMPARISON_ARCHITECTURES: set[str] = (
     MULTIMODAL_ARCHITECTURES
     | AUDIO_ARCHITECTURES
+    # Vision encoders have no HookedTransformer counterpart.
+    | VISION_ARCHITECTURES
     # Encoder-decoder: HookedTransformer cannot represent them (T5 repos under
     # org-prefixed names slip past HT's legacy name guard and crash at forward).
     | SEQ2SEQ_ARCHITECTURES
@@ -112,7 +114,7 @@ NO_HT_COMPARISON_ARCHITECTURES: set[str] = (
 def classify_architecture(architecture: str) -> str:
     """Classify an architecture string into a model type.
 
-    Returns one of: "seq2seq", "masked_lm", "multimodal", "audio", "causal_lm"
+    Returns one of: "seq2seq", "masked_lm", "multimodal", "audio", "vision", "causal_lm"
     """
     if architecture in SEQ2SEQ_ARCHITECTURES:
         return "seq2seq"
@@ -122,6 +124,8 @@ def classify_architecture(architecture: str) -> str:
         return "multimodal"
     if architecture in AUDIO_ARCHITECTURES:
         return "audio"
+    if architecture in VISION_ARCHITECTURES:
+        return "vision"
     return "causal_lm"
 
 

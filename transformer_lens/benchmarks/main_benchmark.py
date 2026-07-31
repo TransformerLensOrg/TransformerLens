@@ -55,6 +55,7 @@ from transformer_lens.benchmarks.utils import (
     BenchmarkResult,
     BenchmarkSeverity,
     PhaseReferenceData,
+    build_modality_input,
     compare_tensors,
     format_results,
 )
@@ -1050,12 +1051,20 @@ def run_benchmark_suite(
             print(f"\nStack trace:\n{error_trace}")
         return results
 
-    # Detect audio model once for use across all phases
+    # Detect audio/vision models once for use across all phases
     _is_audio = bridge_unprocessed is not None and getattr(
         bridge_unprocessed.cfg, "is_audio_model", False
     )
-    # Shared waveform for audio model benchmarks (consistent across HF capture and bridge forward)
-    _test_audio = torch.randn(1, 16000, device=device, dtype=dtype) if _is_audio else None
+    _is_visual = bridge_unprocessed is not None and getattr(
+        bridge_unprocessed.cfg, "is_visual_model", False
+    )
+    # Shared non-text input (spectrogram, waveform, or pixels) — the same tensor is used
+    # for the HF reference capture and the bridge forward so they stay comparable.
+    _test_modality_input = (
+        build_modality_input(bridge_unprocessed, device=device, dtype=dtype)
+        if (_is_audio or _is_visual)
+        else None
+    )
 
     # Run Phase 1 benchmarks
     if should_run_phase(1) and bridge_unprocessed:
@@ -1087,20 +1096,24 @@ def run_benchmark_suite(
             if verbose:
                 print("Capturing HF reference outputs to CPU...")
             try:
-                if _is_audio:
-                    # Audio models: use the shared waveform for HF vs bridge comparison
+                if _test_modality_input is not None:
+                    # Audio/vision models: use the shared non-text input for HF vs bridge
                     with torch.no_grad():
-                        hf_out = hf_model(input_values=_test_audio)
-                        # Audio encoders output last_hidden_state, not logits
+                        if _is_visual:
+                            hf_out = hf_model(pixel_values=_test_modality_input)
+                        else:
+                            hf_out = hf_model(input_values=_test_modality_input)
+                        # Bare encoders output last_hidden_state, not logits
                         if hasattr(hf_out, "logits") and hf_out.logits is not None:
                             hf_saved_logits = hf_out.logits.detach().cpu().clone()
                         else:
                             hf_saved_logits = hf_out.last_hidden_state.detach().cpu().clone()
-                        # No loss computation for audio — CTC requires aligned labels
+                        # No loss computation — there are no next-token labels here
                     if verbose:
+                        kind = "vision" if _is_visual else "audio"
                         print(
-                            f"✓ Captured HF audio output {hf_saved_logits.shape}, "
-                            f"loss=N/A (CTC requires labels)\n"
+                            f"✓ Captured HF {kind} output {hf_saved_logits.shape}, "
+                            f"loss=N/A (no token labels)\n"
                         )
                 else:
                     hf_tokens = bridge_unprocessed.to_tokens(test_text)
@@ -1130,10 +1143,12 @@ def run_benchmark_suite(
                                 shift_labels.view(-1),
                             ).item()
 
-                if verbose:
-                    loss_str = f"{hf_saved_loss:.4f}" if hf_saved_loss is not None else "N/A"
-                    print(f"✓ Captured HF logits {hf_saved_logits.shape}, " f"loss={loss_str}\n")
-                del hf_tokens
+                    if verbose:
+                        loss_str = f"{hf_saved_loss:.4f}" if hf_saved_loss is not None else "N/A"
+                        print(
+                            f"✓ Captured HF logits {hf_saved_logits.shape}, " f"loss={loss_str}\n"
+                        )
+                    del hf_tokens
             except Exception as e:
                 if verbose:
                     print(f"⚠ Could not capture HF reference outputs: {e}\n")
@@ -1154,10 +1169,10 @@ def run_benchmark_suite(
         # matmul non-determinism can exceed the float32 default of 1e-3
         p1_atol = 1e-3 if dtype == torch.float32 else 5e-3
 
-        # For audio models, reuse the waveform from HF reference capture
+        # For audio/vision models, reuse the input from HF reference capture
         _p1_input: Union[str, torch.Tensor] = test_text
-        if _is_audio and _test_audio is not None:
-            _p1_input = _test_audio
+        if _test_modality_input is not None:
+            _p1_input = _test_modality_input
 
         if hf_saved_logits is not None:
             # Full mode: use pre-captured HF logits (bridge only, 1.0x)
@@ -1181,12 +1196,13 @@ def run_benchmark_suite(
                     print(f"✗ Forward pass benchmark failed: {e}\n")
 
         # Capture Phase 1 reference for Phase 3 equivalence comparison.
-        # Skip for audio models (Phase 3 won't run — no HookedTransformer support).
+        # Skip for audio/vision models (Phase 3 won't run — no HookedTransformer
+        # support — and the capture below feeds text, which they cannot accept).
         # When dtype==float32 (default) and the model natively uses reduced
         # precision, upcast for maximum accuracy.  When the user explicitly
         # requested a non-float32 dtype, run the reference pass in that dtype
         # so the entire pipeline honours the requested precision.
-        if bridge_unprocessed is not None and not _is_audio:
+        if bridge_unprocessed is not None and not _is_audio and not _is_visual:
             try:
                 original_dtype = bridge_unprocessed.cfg.dtype
                 needs_upcast = dtype == torch.float32 and original_dtype not in (
@@ -1525,10 +1541,9 @@ def run_benchmark_suite(
         try:
             from transformer_lens.benchmarks.audio import run_audio_benchmarks
 
-            test_audio = torch.randn(1, 16000, device=device, dtype=dtype)
             audio_results = run_audio_benchmarks(
                 bridge_unprocessed,
-                test_audio=test_audio,
+                test_audio=_test_modality_input,
                 verbose=verbose,
             )
             for result in audio_results:
@@ -1577,6 +1592,58 @@ def run_benchmark_suite(
         result = benchmark_audio_text_forward(bridge_unprocessed)
         result.phase = 8
         add_result(result)
+
+    # ========================================================================
+    # Phase 9: Vision Tests (only for vision encoder models — ViT/DeiT, not
+    # vision+text multimodal models, which Phase 7 covers)
+    # Runs before Phase 3 so we can reuse bridge_unprocessed before cleanup.
+    # ========================================================================
+    if (
+        bridge_unprocessed is not None
+        and getattr(bridge_unprocessed.cfg, "is_visual_model", False)
+        and not getattr(bridge_unprocessed.cfg, "is_multimodal", False)
+        and should_run_phase(9)
+    ):
+        current_phase[0] = 9
+        if verbose:
+            print("\n" + "=" * 80)
+            print("PHASE 9: VISION TESTS")
+            print("=" * 80)
+            print("Testing pixel forward pass, caching, representation stability, and decoding.")
+            print("=" * 80 + "\n")
+
+        try:
+            from transformer_lens.benchmarks.vision import run_vision_benchmarks
+
+            vision_results = run_vision_benchmarks(
+                bridge_unprocessed,
+                test_pixels=_test_modality_input,
+                verbose=verbose,
+            )
+            for result in vision_results:
+                result.phase = 9
+                results.append(result)
+                if verbose:
+                    print(result)
+
+            if verbose:
+                print("\n" + "=" * 80)
+                print("PHASE 9 COMPLETE")
+                print("=" * 80)
+
+        except Exception as e:
+            if verbose:
+                print(f"\n⚠ Vision tests failed: {e}\n")
+            results.append(
+                BenchmarkResult(
+                    name="vision_suite",
+                    passed=False,
+                    severity=BenchmarkSeverity.ERROR,
+                    message=f"Failed to run vision tests: {str(e)}",
+                    details={"error": str(e)},
+                    phase=9,
+                )
+            )
 
     # ========================================================================
     # PHASE 3: Bridge (processed) + HookedTransformer (processed)

@@ -6,7 +6,7 @@ Read [the root AGENTS.md](../../../AGENTS.md) for project-wide rules. This file 
 
 ## TL;DR
 
-> **Use `verify_models`, not `main_benchmark`.** Only `verify_models` writes `data/supported_models.json`. `main_benchmark` runs the same math but defaults to NOT writing the registry (needs `--update-registry`, and even with it misses Phase 7/8 scores and the resume checkpoint). If you ran `main_benchmark`, the registry is stale.
+> **Use `verify_models`, not `main_benchmark`.** Only `verify_models` writes `data/supported_models.json`. `main_benchmark` runs the same math but defaults to NOT writing the registry (needs `--update-registry`, and even with it misses Phase 7/8/9 scores and the resume checkpoint). If you ran `main_benchmark`, the registry is stale.
 
 - **`update_model_status()` in `registry_io.py` is the only mutator of status/phase/note on existing entries.** Never set by hand.
 - **Adding a new model-ID entry is allowed** (required before `verify_models --model <repo>` can find it). See [Adding a new model entry](#adding-a-new-model-entry).
@@ -41,7 +41,7 @@ Read [the root AGENTS.md](../../../AGENTS.md) for project-wide rules. This file 
 | `--device <cpu\|cuda\|mps>` | Override automatic device selection |
 | `--dtype <float32\|bfloat16>` | Override automatic dtype selection |
 | `--max-memory <gb>` | Skip models whose parameter-count estimate exceeds this GB cap (default: tries every model that fits available device memory). Use this to avoid OOM on a small device — e.g. `--max-memory 16` on a 24 GB GPU leaves head-room for activations. |
-| `--phases <n...>` | Restrict to specific phases (default `1 2 3 4`; Phase 7/8 are auto-skipped for non-applicable architectures) |
+| `--phases <n...>` | Restrict to specific phases (default `1 2 3 4`; Phase 7/8/9 are auto-skipped for non-applicable architectures) |
 | `--resume` | Read `data/verification_checkpoint.json` and skip models already tested in the in-flight run |
 | `--reverify` | Re-test already-verified models (default skips status=1 entries) |
 | `--retry-failed` | Re-test status=3 (failed) entries |
@@ -84,7 +84,8 @@ To verify a model not yet in `data/supported_models.json`, hand-add the entry fi
   "status": 0,
   "verified_date": null, "metadata": null, "note": null,
   "phase1_score": null, "phase2_score": null, "phase3_score": null,
-  "phase4_score": null, "phase7_score": null, "phase8_score": null
+  "phase4_score": null, "phase7_score": null, "phase8_score": null,
+  "phase9_score": null
 }
 ```
 
@@ -115,9 +116,12 @@ Never edit manually.
 | 3 | Weight processing (compatibility mode, fold/centre) |
 | 4 | Text-generation quality |
 | 7 | Multimodal (vision/text alignment) — only Llava / Gemma3-multimodal |
-| 8 | Audio — only Hubert |
+| 8 | Audio — Hubert (waveform) and AST (spectrogram) |
+| 9 | Vision — ViT/DeiT pixel forward, hook/cache firing, representation stability, classification decode |
 
 SSM / recurrent families and the hybrids (Mamba-1/2, gated-delta-net, NemotronH, GraniteMoeHybrid, Jamba, Qwen3.5/Qwen3-Next) declare `applicable_phases = [1, 2, 3, 4]` — all four apply. P2/P3 run but skip their HookedTransformer-comparison sub-tests (SSMs have no HT), which is scored as a pass.
+
+**Non-text modalities.** `classify_architecture` routes audio architectures to `{1, 8}` and vision architectures (ViT/DeiT) to `{1, 9}` — vision has no tokenizer for P4, and neither modality has a HookedTransformer counterpart for P2/P3. Phases 1/8/9 build their input with `build_modality_input()` ([`benchmarks/utils.py`](../../benchmarks/utils.py)), which shapes it from the HF config: `[batch, max_length, num_mel_bins]` for spectrogram encoders, `[batch, samples]` for waveform encoders, `[batch, channels, image_size, image_size]` for vision. Add a new non-text architecture there rather than hardcoding a shape at the call site.
 
 ### Phase-score thresholds
 
@@ -131,6 +135,7 @@ SSM / recurrent families and the hybrids (Mamba-1/2, gated-delta-net, NemotronH,
 | 4 | 50% | — | **Non-gating.** Below 50% adds `"low text quality"` to the registry `note`; never causes `STATUS_FAILED`. |
 | 7 | 75% | `multimodal_forward` | `STATUS_FAILED`. NULL score (processor unavailable) also fails. |
 | 8 | 75% | `audio_forward` | `STATUS_FAILED`. NULL score also fails. |
+| 9 | 75% | `vision_forward`, `vision_cache` | `STATUS_FAILED`. NULL score also fails. |
 
 Phase 4 is intentionally lenient — source ([`verify_models.py:554`](verify_models.py)) calls it *"a quality metric, not a correctness check."* The 50% bar asks "is the text coherent at all?" not "is this adapter clean?"
 

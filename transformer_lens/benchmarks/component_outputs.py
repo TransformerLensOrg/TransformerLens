@@ -12,6 +12,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, cast
 import torch
 from torch import nn
 
+from transformer_lens.benchmarks.utils import build_modality_input
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components.base import (
@@ -618,13 +619,15 @@ class ComponentBenchmarker:
                 torch.arange(seq_len, device=test_input.device).unsqueeze(0).expand(batch, -1)
             )
 
-            # For embedding components, generate token indices once
-            shared_token_indices = None
+            # For embedding components, generate the embedding input once
+            shared_embed_input = None
             if component_path in ("embed", "encoder_embed", "decoder_embed"):
-                batch, seq_len, _ = test_input.shape
-                shared_token_indices = torch.randint(
-                    0, self.cfg.d_vocab, (batch, seq_len), device=test_input.device
-                )
+                shared_embed_input = test_inputs.get("modality_input")
+                if shared_embed_input is None:
+                    batch, seq_len, _ = test_input.shape
+                    shared_embed_input = torch.randint(
+                        0, self.cfg.d_vocab, (batch, seq_len), device=test_input.device
+                    )
 
             # Generate shared inputs for attention/MLP/rotary components that have get_random_inputs()
             # This is needed for model-specific inputs like position_embeddings or attention_mask
@@ -678,10 +681,10 @@ class ComponentBenchmarker:
 
             # Run through both components with shared inputs (for attention) or standard inputs (for others)
             bridge_output = self._run_component(
-                bridge_component, test_input, component_path, shared_token_indices, shared_inputs
+                bridge_component, test_input, component_path, shared_embed_input, shared_inputs
             )
             hf_output = self._run_component(
-                hf_component, test_input, component_path, shared_token_indices, shared_inputs
+                hf_component, test_input, component_path, shared_embed_input, shared_inputs
             )
 
             # Extract tensors if outputs are tuples
@@ -736,8 +739,8 @@ class ComponentBenchmarker:
                     if val is not None and isinstance(val, torch.Tensor):
                         del val
                     shared_inputs[key] = None
-            if shared_token_indices is not None:
-                del shared_token_indices
+            if shared_embed_input is not None:
+                del shared_embed_input
 
             return ComponentTestResult(
                 component_path=component_path,
@@ -796,7 +799,7 @@ class ComponentBenchmarker:
         component: nn.Module,
         test_input: torch.Tensor,
         component_path: str,
-        shared_token_indices: Optional[torch.Tensor] = None,
+        shared_embed_input: Optional[torch.Tensor] = None,
         shared_inputs: Optional[dict] = None,
     ) -> Any:
         """Run a component with appropriate arguments.
@@ -805,7 +808,8 @@ class ComponentBenchmarker:
             component: The component to run
             test_input: The test input tensor
             component_path: Path to the component for debugging
-            shared_token_indices: Pre-generated token indices for embedding components
+            shared_embed_input: Pre-generated input for embedding components (token ids,
+                or a spectrogram/pixel tensor for audio and vision models)
             shared_inputs: Pre-generated inputs from get_random_inputs() to use for both bridge and HF components
 
         Returns:
@@ -861,16 +865,15 @@ class ComponentBenchmarker:
                     # Try simple call
                     return component(test_input)
         elif component_path in ("embed", "encoder_embed", "decoder_embed"):
-            # Main embedding component expects integer indices
-            # Use shared token indices if provided, otherwise generate new ones
-            if shared_token_indices is not None:
-                token_indices = shared_token_indices
+            # Token ids for text models; a spectrogram or pixel tensor for audio/vision.
+            if shared_embed_input is not None:
+                embed_input = shared_embed_input
             else:
                 batch, seq_len, _ = test_input.shape
-                token_indices = torch.randint(
+                embed_input = torch.randint(
                     0, self.cfg.d_vocab, (batch, seq_len), device=test_input.device
                 )
-            return component(token_indices)
+            return component(embed_input)
         elif component_path == "pos_embed" or "pos_embed" in component_path:
             # Position embedding expects integer position indices
             batch, seq_len, _ = test_input.shape
@@ -951,10 +954,24 @@ class ComponentBenchmarker:
         except StopIteration:
             device = torch.device("cpu")
 
-        return {
+        inputs = {
             "hidden_states": torch.randn(batch_size, seq_len, d_model, dtype=dtype, device=device),
-            "token_ids": torch.randint(0, self.cfg.d_vocab, (batch_size, seq_len), device=device),
         }
+
+        # Vision/audio models have no token vocabulary — d_vocab stays at its -1 sentinel.
+        if self.cfg.d_vocab > 0:
+            inputs["token_ids"] = torch.randint(
+                0, self.cfg.d_vocab, (batch_size, seq_len), device=device
+            )
+
+        # Audio/vision embeddings consume a raw spectrogram or pixel tensor, not token ids.
+        modality_input = build_modality_input(
+            self.bridge_model, batch_size=batch_size, device=device, dtype=dtype
+        )
+        if modality_input is not None:
+            inputs["modality_input"] = modality_input
+
+        return inputs
 
     def _compare_outputs(
         self, bridge_output: torch.Tensor, hf_output: torch.Tensor

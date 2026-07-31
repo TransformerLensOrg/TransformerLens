@@ -6,10 +6,10 @@
     "min_downloads": 500,
     "scan_duration_seconds": 8.7
   },
-  "total_architectures": 140,
-  "total_models": 15665,
+  "total_architectures": 143,
+  "total_models": 15670,
   "total_provisional": 7,
-  "total_verified": 1198,
+  "total_verified": 1203,
   "models": [
     {
       "architecture_id": "FalconH1ForCausalLM",
@@ -87557,7 +87557,7 @@
       "architecture_id": "HubertForCTC",
       "model_id": "facebook/hubert-large-ls960-ft",
       "status": 1,
-      "verified_date": "2026-03-19",
+      "verified_date": "2026-07-30",
       "metadata": null,
       "note": "Full verification completed",
       "phase1_score": 100.0,
@@ -217931,6 +217931,79 @@
       "phase4_score": 97.3,
       "phase7_score": null,
       "phase8_score": null
+    },
+    {
+      "architecture_id": "ASTForAudioClassification",
+      "model_id": "MIT/ast-finetuned-audioset-10-10-0.4593",
+      "status": 1,
+      "verified_date": "2026-07-30",
+      "metadata": null,
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": 100.0
+    },
+    {
+      "architecture_id": "ASTForAudioClassification",
+      "model_id": "MIT/ast-finetuned-speech-commands-v2",
+      "status": 1,
+      "verified_date": "2026-07-30",
+      "metadata": null,
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": 100.0
+    },
+    {
+      "architecture_id": "ViTForImageClassification",
+      "model_id": "google/vit-base-patch16-224",
+      "status": 1,
+      "verified_date": "2026-07-31",
+      "metadata": null,
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null,
+      "phase9_score": 100.0
+    },
+    {
+      "architecture_id": "ViTModel",
+      "model_id": "google/vit-base-patch16-224-in21k",
+      "status": 1,
+      "verified_date": "2026-07-31",
+      "metadata": null,
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null,
+      "phase9_score": 100.0
+    },
+    {
+      "architecture_id": "ViTForImageClassification",
+      "model_id": "facebook/deit-base-patch16-224",
+      "status": 1,
+      "verified_date": "2026-07-31",
+      "metadata": null,
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null,
+      "phase9_score": 100.0
     }
   ]
 }
