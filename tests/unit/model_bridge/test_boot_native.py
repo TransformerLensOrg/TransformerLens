@@ -129,8 +129,10 @@ def test_boot_native_distinct_seeds_diverge():
 
 def test_boot_native_lnpre_param_free():
     """LNPre builds param-free norm (no learnable weight/bias)."""
+    from transformer_lens.model_bridge.generalized_components.base import (
+        GeneralizedComponent,
+    )
     from transformer_lens.model_bridge.sources.native.model import NativeLayerNormPre
-    from transformer_lens.model_bridge.generalized_components.base import GeneralizedComponent
 
     bridge = TransformerBridge.boot_native(_cfg(normalization_type="LNPre"))
     native_model = bridge.original_model
@@ -162,8 +164,10 @@ def test_boot_native_lnpre_param_free():
 
 def test_boot_native_rmspre_param_free():
     """RMSPre builds param-free RMS norm (no learnable weight)."""
+    from transformer_lens.model_bridge.generalized_components.base import (
+        GeneralizedComponent,
+    )
     from transformer_lens.model_bridge.sources.native.model import NativeRMSNormPre
-    from transformer_lens.model_bridge.generalized_components.base import GeneralizedComponent
 
     bridge = TransformerBridge.boot_native(_cfg(normalization_type="RMSPre"))
     native_model = bridge.original_model

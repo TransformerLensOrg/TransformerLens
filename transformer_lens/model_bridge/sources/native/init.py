@@ -23,11 +23,11 @@ from .model import (
     NativeAttention,
     NativeBlock,
     NativeGatedMLP,
+    NativeLayerNormPre,
     NativeMLP,
     NativeModel,
     NativeRMSNorm,
     NativeRMSNormPre,
-    NativeLayerNormPre,
 )
 
 # Residual-scaled output is gpt2-specific; other modes treat every weight the
