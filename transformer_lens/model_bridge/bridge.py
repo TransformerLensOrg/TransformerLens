@@ -336,10 +336,17 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         cfg: TransformerBridgeConfig
         if isinstance(config, dict):
             cfg = _Cfg.from_dict(config)
-        else:
+        elif isinstance(config, _Cfg):
             # Deep-copy so NativeModel's default-resolution writes don't land
             # on the caller's config.
             cfg = _copy.deepcopy(config)
+        else:
+            raise TypeError(
+                f"boot_native expects a TransformerBridgeConfig or a plain dict, "
+                f"but got {type(config).__name__!r}. Construct a TransformerBridgeConfig "
+                f"(from transformer_lens.config) to build a TL-native model, or pass a "
+                f"dict of its fields."
+            )
 
         # Foreign architecture strings would dispatch to the wrong adapter and
         # crash deep in prepare_model. Refuse them with a pointing message.

@@ -196,6 +196,22 @@ def test_boot_native_rejects_foreign_architecture_string():
     assert bridge.cfg.architecture == "TransformerLensNative"
 
 
+def test_boot_native_rejects_non_bridge_config_with_clear_typeerror():
+    """Passing a config that isn't a ``TransformerBridgeConfig`` or a dict (e.g.
+    the legacy ``HookedTransformerConfig``) used to fail deep inside ``boot``
+    with an opaque ``AttributeError`` ("...has no attribute 'architecture'").
+    Surface a clear ``TypeError`` that tells the caller what to construct
+    instead (regression for #1562)."""
+    import pytest
+
+    from transformer_lens import HookedTransformerConfig
+
+    ht_cfg = HookedTransformerConfig(n_layers=2, d_model=64, n_ctx=32, d_head=16, act_fn="gelu")
+    with pytest.raises(TypeError, match="TransformerBridgeConfig"):
+        TransformerBridge.boot_native(ht_cfg)
+
+
+
 def test_native_adapter_rejects_non_submodule_collisions():
     """The bridge's ``__getattr__`` fallback finds *any* attribute on the
     underlying model — buffers, plain tensors, properties — not just
