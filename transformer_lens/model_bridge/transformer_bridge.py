@@ -948,6 +948,18 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             return w.reshape(self.cfg.n_heads, d_head, self.cfg.d_model)
         return w
 
+    def _ungroup_kv_weights(self, w: torch.Tensor) -> torch.Tensor:
+        """Repeat stacked K/V weights along the head axis to match W_Q/W_O's head count.
+
+        GQA stores one K/V per key-value head while W_Q/W_O are per-query-head, so
+        grouped K/V weights must be expanded before building QK/OV FactoredMatrices.
+        Mirrors GroupedQueryAttention's unconditional repeat_interleave; a no-op for
+        MHA models (head axes already match).
+        """
+        if w.ndim == 4 and w.shape[1] < self.cfg.n_heads:
+            w = torch.repeat_interleave(w, dim=1, repeats=self.cfg.n_heads // w.shape[1])
+        return w
+
     @property
     def W_K(self) -> torch.Tensor:
         """Stack the key weights across all layers."""
@@ -1033,24 +1045,24 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
     @property
     def QK(self):
         """QK circuit. On hybrids, returns attn layers only (with warning). See QK_for_attn_layers()."""
-        return FactoredMatrix(self.W_Q, self.W_K.transpose(-2, -1))
+        return FactoredMatrix(self.W_Q, self._ungroup_kv_weights(self.W_K).transpose(-2, -1))
 
     @property
     def OV(self):
         """OV circuit. On hybrids, returns attn layers only (with warning). See OV_for_attn_layers()."""
-        return FactoredMatrix(self.W_V, self.W_O)
+        return FactoredMatrix(self._ungroup_kv_weights(self.W_V), self.W_O)
 
     def QK_for_attn_layers(self) -> Tuple[List[int], FactoredMatrix]:
         """QK circuit for attention layers only. Returns (layer_indices, FactoredMatrix)."""
         q_indices, W_Q = self.stack_params_for("attn", "attn.W_Q", self._reshape_qkv)
         _, W_K = self.stack_params_for("attn", "attn.W_K", self._reshape_qkv)
-        return q_indices, FactoredMatrix(W_Q, W_K.transpose(-2, -1))
+        return q_indices, FactoredMatrix(W_Q, self._ungroup_kv_weights(W_K).transpose(-2, -1))
 
     def OV_for_attn_layers(self) -> Tuple[List[int], FactoredMatrix]:
         """OV circuit for attention layers only. Returns (layer_indices, FactoredMatrix)."""
         v_indices, W_V = self.stack_params_for("attn", "attn.W_V", self._reshape_qkv)
         _, W_O = self.stack_params_for("attn", "attn.W_O", self._reshape_o)
-        return v_indices, FactoredMatrix(W_V, W_O)
+        return v_indices, FactoredMatrix(self._ungroup_kv_weights(W_V), W_O)
 
     # ------------------------------------------------------------------
     # Mechanistic interpretability analysis methods
