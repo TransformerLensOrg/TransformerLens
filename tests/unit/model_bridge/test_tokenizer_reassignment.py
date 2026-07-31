@@ -4,8 +4,8 @@ import pytest
 from transformers import AutoTokenizer
 
 from transformer_lens.config import TransformerBridgeConfig
-from transformer_lens.model_bridge.bridge_core import BridgeCore
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
+from transformer_lens.model_bridge.bridge_core import BridgeCore
 
 
 class MockAdapter(ArchitectureAdapter):
