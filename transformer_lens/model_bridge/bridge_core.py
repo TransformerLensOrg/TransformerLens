@@ -78,7 +78,7 @@ class BridgeCore:
         self._tokenizer = None
         if tokenizer is not None:
             self.tokenizer = tokenizer  # Use the property setter
-        elif self.cfg.d_vocab_out == -1:
+        if self.cfg.d_vocab_out == -1:
             self.cfg.d_vocab_out = self.cfg.d_vocab
         self.compatibility_mode = False
         self._weights_processed = False
@@ -100,26 +100,40 @@ class BridgeCore:
 
     @tokenizer.setter
     def tokenizer(self, value: Any) -> None:
-        """Set tokenizer and re-run wiring (d_vocab, BOS/EOS detection, padding)."""
-        if value is not None:
-            from transformer_lens.model_bridge.sources._bridge_builder import (
-                configure_tokenizer,
-            )
+        """Set tokenizer and re-run wiring (d_vocab, BOS/EOS detection, padding).
 
-            value = configure_tokenizer(value, self.cfg)
-            # Only infer d_vocab from tokenizer if not already set from model config.
-            # This preserves the original behavior where d_vocab=-1 triggers inference.
-            # On reassignment, always update since user explicitly changed tokenizer.
-            if self.cfg.d_vocab == -1 or self._tokenizer is not None:
+        On initial assignment (during __init__), the boot path has already called
+        configure_tokenizer, so we skip calling it again. However, we still infer
+        d_vocab if it wasn't set from the model config (d_vocab == -1).
+
+        On reassignment, we re-run configure_tokenizer and update d_vocab to keep
+        cfg in sync with the new tokenizer.
+        """
+        is_reassignment = getattr(self, "_tokenizer", None) is not None
+        cfg = getattr(self, "cfg", None)
+        if value is not None and cfg is not None:
+            if is_reassignment:
+                from transformer_lens.model_bridge.sources._bridge_builder import (
+                    configure_tokenizer,
+                )
+
+                value = configure_tokenizer(value, cfg)
+
+            # Infer d_vocab: on initial assignment only if not set (-1),
+            # on reassignment always update to match new tokenizer.
+            # Use getattr for cfg attributes since tests may use SimpleNamespace.
+            d_vocab = getattr(cfg, "d_vocab", None)
+            if d_vocab == -1 or is_reassignment:
                 if hasattr(value, "get_vocab"):
                     vocab = value.get_vocab()
-                    self.cfg.d_vocab = max(vocab.values()) + 1
+                    cfg.d_vocab = max(vocab.values()) + 1
                 elif hasattr(value, "vocab"):
-                    self.cfg.d_vocab = max(value.vocab.values()) + 1
+                    cfg.d_vocab = max(value.vocab.values()) + 1
                 else:
-                    self.cfg.d_vocab = getattr(value, "vocab_size", 50257)
-                if self.cfg.d_vocab_out == -1 or self._tokenizer is not None:
-                    self.cfg.d_vocab_out = self.cfg.d_vocab
+                    cfg.d_vocab = getattr(value, "vocab_size", 50257)
+            d_vocab_out = getattr(cfg, "d_vocab_out", None)
+            if d_vocab_out == -1 or is_reassignment:
+                cfg.d_vocab_out = getattr(cfg, "d_vocab", d_vocab_out)
         self._tokenizer = value
 
     # ---- hook registry ----
