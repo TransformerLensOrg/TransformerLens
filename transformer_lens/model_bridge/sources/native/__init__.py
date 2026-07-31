@@ -84,12 +84,12 @@ def boot(
 
     # Fork RNG around construction + init when seeded so neither nn.Linear's
     # default reset_parameters nor our scoped init perturb the caller's RNG.
-    # Unseeded calls let global RNG advance normally.
-    if cfg.seed is not None:
+    # When custom init is disabled, construction keeps PyTorch's normal global
+    # RNG semantics and cfg.seed has no initialization work to control.
+    if cfg.init_weights and cfg.seed is not None:
         with torch.random.fork_rng(devices=[]):
             model = NativeModel(cfg)
-            if cfg.init_weights:
-                initialize_native_model(model, cfg)
+            initialize_native_model(model, cfg)
     else:
         model = NativeModel(cfg)
         if cfg.init_weights:

@@ -264,10 +264,14 @@ def test_boot_native_skips_custom_init_when_disabled(monkeypatch):
     def fail_if_called(*_args, **_kwargs):
         pytest.fail("initialize_native_model was called with init_weights=False")
 
+    def fail_if_forked(*_args, **_kwargs):
+        pytest.fail("fork_rng was called with init_weights=False")
+
     monkeypatch.setattr(
         "transformer_lens.model_bridge.sources.native.initialize_native_model",
         fail_if_called,
     )
+    monkeypatch.setattr(torch.random, "fork_rng", fail_if_forked)
     bridge = TransformerBridge.boot_native(_cfg(init_weights=False))
 
     assert isinstance(bridge.original_model, NativeModel)
@@ -281,7 +285,7 @@ def test_native_bridge_init_weights_reinitializes_in_place_and_honors_seed():
 
     with torch.no_grad():
         for param in model.parameters():
-            param.zero_()
+            param.fill_(42)
 
     bridge.init_weights()
 

@@ -105,6 +105,8 @@ def initialize_native_model(
     _init_norm(model.ln_out)
     head = cast(nn.Linear, _unwrap_component(model.head))
     weight_init(head.weight)
+    if head.bias is not None:
+        nn.init.zeros_(head.bias)
 
 
 def _init_norm(norm: nn.Module) -> None:
