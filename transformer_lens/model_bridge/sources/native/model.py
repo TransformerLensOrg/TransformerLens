@@ -81,23 +81,35 @@ class NativeRMSNormPre(nn.Module):
 
 
 class NativeLayerNormPre(nn.Module):
-    """Param-free LayerNorm — center + normalize only, no learnable scale/bias."""
+    """Param-free LayerNorm — center + normalize only, no learnable scale/bias.
+
+    Computes in fp32 for numerical stability, matching NativeRMSNormPre and
+    HookedTransformer's LayerNormPre.
+    """
 
     def __init__(self, eps: float = 1e-5):
         super().__init__()
         self.eps = eps
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = x - x.mean(dim=-1, keepdim=True)
-        scale = (x.pow(2).mean(dim=-1, keepdim=True) + self.eps).sqrt()
-        return x / scale
+        input_dtype = x.dtype
+        x_fp32 = x.to(torch.float32)
+        x_fp32 = x_fp32 - x_fp32.mean(dim=-1, keepdim=True)
+        scale = (x_fp32.pow(2).mean(dim=-1, keepdim=True) + self.eps).sqrt()
+        return (x_fp32 / scale).to(input_dtype)
+
+
+def _is_param_free_norm(cfg: TransformerBridgeConfig) -> bool:
+    """Check if the config specifies a param-free normalization type."""
+    return _normalization_type(cfg) in ("RMSPRE", "LNPRE")
 
 
 def _make_norm(cfg: TransformerBridgeConfig, *, force_rms: bool = False) -> nn.Module:
     norm_type = _normalization_type(cfg)
+    is_param_free = _is_param_free_norm(cfg)
 
     if force_rms or norm_type in ("RMS", "RMSPRE"):
-        if norm_type == "RMSPRE":
+        if is_param_free or norm_type == "RMSPRE":
             return NativeRMSNormPre(eps=cfg.eps)
         return NativeRMSNorm(cfg.d_model, eps=cfg.eps)
 

@@ -222,3 +222,65 @@ class NormalizationBridge(GeneralizedComponent):
             return result
         warnings.warn(NATIVE_PATH_EDIT_FALLBACK_WARNING)
         return self._apply_weight_and_bias(hooked_normalized, input_dtype)
+
+
+class LayerNormPreBridge(NormalizationBridge):
+    """Bridge for param-free LayerNorm (LNPre) — exposes hook_scale/hook_normalized but no weights.
+
+    Used by native models with normalization_type="LNPre" where the normalization has
+    no learnable parameters. The forward pass centers and normalizes without applying
+    any weight or bias.
+    """
+
+    def __init__(
+        self,
+        name: str,
+        config: Any,
+        submodules: Optional[Dict[str, GeneralizedComponent]] = None,
+        optional: bool = False,
+    ):
+        super().__init__(
+            name,
+            config,
+            submodules=submodules or {},
+            use_native_layernorm_autograd=False,
+            uses_rms_norm=False,
+            optional=optional,
+        )
+
+    def _apply_weight_and_bias(
+        self, hidden_states: torch.Tensor, input_dtype: torch.dtype
+    ) -> torch.Tensor:
+        """No-op for param-free norms — just cast back to input dtype."""
+        return hidden_states.to(input_dtype)
+
+
+class RMSNormPreBridge(NormalizationBridge):
+    """Bridge for param-free RMSNorm (RMSPre) — exposes hook_scale/hook_normalized but no weights.
+
+    Used by native models with normalization_type="RMSPre" where the normalization has
+    no learnable parameters. The forward pass normalizes by RMS without applying
+    any learnable scale.
+    """
+
+    def __init__(
+        self,
+        name: str,
+        config: Any,
+        submodules: Optional[Dict[str, GeneralizedComponent]] = None,
+        optional: bool = False,
+    ):
+        super().__init__(
+            name,
+            config,
+            submodules=submodules or {},
+            use_native_layernorm_autograd=False,
+            uses_rms_norm=True,
+            optional=optional,
+        )
+
+    def _apply_weight_and_bias(
+        self, hidden_states: torch.Tensor, input_dtype: torch.dtype
+    ) -> torch.Tensor:
+        """No-op for param-free norms — just cast back to input dtype."""
+        return hidden_states.to(input_dtype)

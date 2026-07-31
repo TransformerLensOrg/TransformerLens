@@ -433,12 +433,28 @@ def test_boot_native_supports_training_step():
 
 
 def test_boot_native_fold_ln_output_invariant():
-    """fold_ln should not change model output (mathematically equivalent)."""
-    cfg = _cfg(n_layers=2)
-    bridge_unfolded = TransformerBridge.boot_native(cfg)
-    bridge_folded = TransformerBridge.boot_native(cfg)
+    """fold_ln should not change model output (mathematically equivalent).
 
-    bridge_folded.enable_compatibility_mode(
+    Uses randomized LN weights to actually exercise the folding math, and compares
+    at the logit level for precision.
+    """
+    cfg = _cfg(n_layers=2)
+    bridge = TransformerBridge.boot_native(cfg)
+
+    # Randomize LN weights to actually test folding (identity weights make fold a no-op)
+    torch.manual_seed(42)
+    with torch.no_grad():
+        for name, param in bridge.named_parameters():
+            if "ln" in name.lower() and "weight" in name:
+                param.copy_(torch.randn_like(param) * 0.5 + 1.0)
+            elif "ln" in name.lower() and "bias" in name:
+                param.copy_(torch.randn_like(param) * 0.1)
+
+    inputs = torch.randint(0, cfg.d_vocab, (2, cfg.n_ctx))
+    with torch.no_grad():
+        logits_unfolded = bridge(inputs, return_type="logits")
+
+    bridge.enable_compatibility_mode(
         fold_ln=True,
         center_writing_weights=False,
         center_unembed=False,
@@ -446,13 +462,55 @@ def test_boot_native_fold_ln_output_invariant():
         refactor_factored_attn_matrices=False,
     )
 
+    with torch.no_grad():
+        logits_folded = bridge(inputs, return_type="logits")
+
+    assert torch.allclose(
+        logits_folded, logits_unfolded, atol=1e-4, rtol=1e-4
+    ), f"fold_ln should not change logits: max diff={torch.abs(logits_folded - logits_unfolded).max():.6e}"
+
+
+def test_boot_native_lnpre_compatibility_mode():
+    """LNPre models should work with enable_compatibility_mode without crashing.
+
+    LNPre has no weights to fold, so fold_ln should be a no-op. The key is that
+    it doesn't crash (e.g. EinopsError from shape mismatches).
+    """
+    cfg = _cfg(n_layers=2, normalization_type="LNPre")
+    bridge = TransformerBridge.boot_native(cfg)
+
     inputs = torch.randint(0, cfg.d_vocab, (2, cfg.n_ctx))
     with torch.no_grad():
-        loss_unfolded = bridge_unfolded(inputs, return_type="loss").item()
-        loss_folded = bridge_folded(inputs, return_type="loss").item()
+        logits_before = bridge(inputs, return_type="logits")
 
-    diff = abs(loss_folded - loss_unfolded)
-    assert diff < 0.01, (
-        f"fold_ln should not change output: folded={loss_folded:.6f}, "
-        f"unfolded={loss_unfolded:.6f}, diff={diff:.6f}"
+    # This should not crash — fold_ln on param-free norms is a no-op
+    bridge.enable_compatibility_mode(
+        fold_ln=True,
+        center_writing_weights=False,
+        center_unembed=False,
+        fold_value_biases=False,
+        refactor_factored_attn_matrices=False,
     )
+
+    with torch.no_grad():
+        logits_after = bridge(inputs, return_type="logits")
+
+    # Since LNPre has no weights, output should be unchanged
+    assert torch.allclose(
+        logits_after, logits_before, atol=1e-6
+    ), f"LNPre fold_ln should be no-op: max diff={torch.abs(logits_after - logits_before).max():.6e}"
+
+
+def test_boot_native_lnpre_has_hooks():
+    """LNPre should expose hook_scale and hook_normalized for ActivationCache compatibility."""
+    cfg = _cfg(normalization_type="LNPre")
+    bridge = TransformerBridge.boot_native(cfg)
+
+    inputs = torch.randint(0, cfg.d_vocab, (2, cfg.n_ctx))
+    _, cache = bridge.run_with_cache(inputs, return_type="logits")
+
+    # Check that the scale and normalized hooks are present
+    assert "blocks.0.ln1.hook_scale" in cache, "LNPre should have hook_scale"
+    assert "blocks.0.ln1.hook_normalized" in cache, "LNPre should have hook_normalized"
+    assert "ln_final.hook_scale" in cache, "ln_final should have hook_scale"
+    assert "ln_final.hook_normalized" in cache, "ln_final should have hook_normalized"
