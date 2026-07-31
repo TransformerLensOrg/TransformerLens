@@ -2,6 +2,7 @@
 
 import copy
 import logging
+import warnings
 
 import pytest
 import torch
@@ -156,6 +157,37 @@ class TestOptionalSubmoduleSetup:
         block.set_original_component(model.layers[3])
         with pytest.raises(AttributeError):
             setup_submodules(block, adapter, model.layers[3])
+
+    def test_prunes_hook_aliases_for_skipped_attn(self):
+        """Absent optional attn drops HT attn aliases; present layers keep them."""
+        blocks = _setup_blocks(HybridModel(), AttnAdapter())
+        attn_aliases = (
+            "hook_attn_out",
+            "hook_attn_in",
+            "hook_q_input",
+            "hook_k_input",
+            "hook_v_input",
+        )
+        for i in range(3):
+            for alias in attn_aliases:
+                assert alias in blocks[i].hook_aliases
+        for alias in attn_aliases:
+            assert alias not in blocks[3].hook_aliases
+        # Residual / MLP aliases are independent of attn and must survive.
+        assert "hook_resid_pre" in blocks[3].hook_aliases
+        assert "hook_mlp_out" in blocks[3].hook_aliases
+
+    def test_pruned_aliases_do_not_warn_on_register(self):
+        blocks = _setup_blocks(HybridModel(), AttnAdapter())
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            blocks[3]._register_aliases()
+        unresolved = [
+            w
+            for w in caught
+            if "did not resolve" in str(w.message) and "hook_attn" in str(w.message)
+        ]
+        assert unresolved == []
 
 
 # -- Tests: blocks_with() -----------------------------------------------------

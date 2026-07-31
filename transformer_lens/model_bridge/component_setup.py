@@ -150,6 +150,43 @@ def setup_submodules(
     # Clean up so architecture_adapter traversal won't find stale entries
     for name in skipped_optional:
         component.submodules.pop(name, None)
+    if skipped_optional:
+        _prune_hook_aliases_for_skipped(component, skipped_optional)
+
+
+def _prune_hook_aliases_for_skipped(component: GeneralizedComponent, skipped: list[str]) -> None:
+    """Drop hook aliases whose target path starts at a skipped optional submodule.
+
+    Hybrid layers share a BlockBridge template that declares HT aliases like
+    ``hook_attn_out -> attn.hook_out``. When ``attn`` is absent on a GatedDeltaNet
+    (or Mamba) layer, those aliases cannot resolve and would warn at
+    ``_register_aliases``. Prune them here so only inapplicable aliases disappear
+    on the affected layer — full-attention siblings keep theirs.
+    """
+    aliases = getattr(component, "hook_aliases", None)
+    if not aliases:
+        return
+    skipped_set = set(skipped)
+    # Deepcopied blocks still share the class-level dict until mutated.
+    if aliases is type(component).hook_aliases:
+        aliases = dict(aliases)
+        component.hook_aliases = aliases
+
+    def _first_segment(path: str) -> str:
+        return path.split(".", 1)[0]
+
+    to_drop: list[str] = []
+    for alias_name, target in aliases.items():
+        if isinstance(target, list):
+            kept = [t for t in target if _first_segment(t) not in skipped_set]
+            if not kept:
+                to_drop.append(alias_name)
+            elif len(kept) != len(target):
+                aliases[alias_name] = kept
+        elif _first_segment(target) in skipped_set:
+            to_drop.append(alias_name)
+    for alias_name in to_drop:
+        aliases.pop(alias_name, None)
 
 
 def setup_components(
