@@ -134,6 +134,7 @@
         filterwarnings=[
             "ignore:distutils Version classes are deprecated:DeprecationWarning",
             "ignore:pkg_resources is deprecated as an API:DeprecationWarning",
+            "ignore:Hooked(Transformer|EncoderDecoder|AudioEncoder)\\.from_pretrained is deprecated:DeprecationWarning",
         ]
         markers=[
             "slow: marks tests as slow (deselect with '-m \"not slow\"')",
