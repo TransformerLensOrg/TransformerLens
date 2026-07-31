@@ -43,6 +43,12 @@ _NON_RESIDUAL_MODES: dict[str, _NonResidualInit] = {
 _SUPPORTED_MODES = frozenset({"gpt2", *_NON_RESIDUAL_MODES})
 
 
+def _unwrap_component(module: nn.Module) -> nn.Module:
+    """Return the native module stored behind a bridge wrapper, if present."""
+    original = getattr(module, "original_component", None)
+    return original if isinstance(original, nn.Module) else module
+
+
 def initialize_native_model(
     model: NativeModel, cfg: TransformerBridgeConfig, seed: int | None = None
 ) -> None:
@@ -85,19 +91,24 @@ def initialize_native_model(
         weight_init = lambda t: fn(t, generator)  # noqa: E731
         output_init = weight_init
 
-    weight_init(model.tok_embed.weight)
+    tok_embed = cast(nn.Embedding, _unwrap_component(model.tok_embed))
+    weight_init(tok_embed.weight)
     if model.pos is not None:
-        weight_init(model.pos.weight)
+        pos = cast(nn.Embedding, _unwrap_component(model.pos))
+        weight_init(pos.weight)
     # Rotary has only registered buffers (cos/sin), no parameters to init.
 
     for block in model.layers:
-        _init_block(block, weight_init=weight_init, output_init=output_init)
+        native_block = cast(NativeBlock, _unwrap_component(block))
+        _init_block(native_block, weight_init=weight_init, output_init=output_init)
 
     _init_norm(model.ln_out)
-    weight_init(model.head.weight)
+    head = cast(nn.Linear, _unwrap_component(model.head))
+    weight_init(head.weight)
 
 
 def _init_norm(norm: nn.Module) -> None:
+    norm = _unwrap_component(norm)
     if isinstance(norm, NativeRMSNorm):
         nn.init.ones_(norm.weight)
     elif isinstance(norm, (NativeRMSNormPre, NativeLayerNormPre)):
@@ -118,13 +129,19 @@ def _init_block(
     output_init: Callable[[torch.Tensor], torch.Tensor],
 ) -> None:
     _init_norm(block.ln1)
-    _init_attention(block.attn, weight_init=weight_init, output_init=output_init)
+    attn = cast(NativeAttention, _unwrap_component(block.attn))
+    _init_attention(attn, weight_init=weight_init, output_init=output_init)
     if not block.cfg.attn_only:
         _init_norm(block.ln2)
-        if isinstance(block.mlp, NativeGatedMLP):
-            _init_gated_mlp(block.mlp, weight_init=weight_init, output_init=output_init)
+        mlp = _unwrap_component(block.mlp)
+        if isinstance(mlp, NativeGatedMLP):
+            _init_gated_mlp(mlp, weight_init=weight_init, output_init=output_init)
         else:
-            _init_mlp(block.mlp, weight_init=weight_init, output_init=output_init)
+            _init_mlp(
+                cast(NativeMLP, mlp),
+                weight_init=weight_init,
+                output_init=output_init,
+            )
 
 
 def _init_attention(
@@ -133,13 +150,15 @@ def _init_attention(
     weight_init: Callable[[torch.Tensor], torch.Tensor],
     output_init: Callable[[torch.Tensor], torch.Tensor],
 ) -> None:
-    for linear in (attn.q, attn.k, attn.v):
+    for component in (attn.q, attn.k, attn.v):
+        linear = cast(nn.Linear, _unwrap_component(component))
         weight_init(linear.weight)
         if linear.bias is not None:
             nn.init.zeros_(linear.bias)
-    output_init(attn.o.weight)
-    if attn.o.bias is not None:
-        nn.init.zeros_(attn.o.bias)
+    output = cast(nn.Linear, _unwrap_component(attn.o))
+    output_init(output.weight)
+    if output.bias is not None:
+        nn.init.zeros_(output.bias)
 
 
 def _init_mlp(
@@ -148,10 +167,12 @@ def _init_mlp(
     weight_init: Callable[[torch.Tensor], torch.Tensor],
     output_init: Callable[[torch.Tensor], torch.Tensor],
 ) -> None:
-    weight_init(mlp.fc_in.weight)
-    nn.init.zeros_(mlp.fc_in.bias)
-    output_init(mlp.fc_out.weight)
-    nn.init.zeros_(mlp.fc_out.bias)
+    fc_in = cast(nn.Linear, _unwrap_component(mlp.fc_in))
+    fc_out = cast(nn.Linear, _unwrap_component(mlp.fc_out))
+    weight_init(fc_in.weight)
+    nn.init.zeros_(fc_in.bias)
+    output_init(fc_out.weight)
+    nn.init.zeros_(fc_out.bias)
 
 
 def _init_gated_mlp(
@@ -160,8 +181,10 @@ def _init_gated_mlp(
     weight_init: Callable[[torch.Tensor], torch.Tensor],
     output_init: Callable[[torch.Tensor], torch.Tensor],
 ) -> None:
-    weight_init(mlp.gate.weight)
+    gate = cast(nn.Linear, _unwrap_component(mlp.gate))
+    weight_init(gate.weight)
     # ``in`` is registered via add_module; getattr resolves it from _modules.
-    in_proj = cast(nn.Linear, getattr(mlp, "in"))
+    in_proj = cast(nn.Linear, _unwrap_component(getattr(mlp, "in")))
+    out_proj = cast(nn.Linear, _unwrap_component(mlp.out))
     weight_init(in_proj.weight)
-    output_init(mlp.out.weight)
+    output_init(out_proj.weight)
