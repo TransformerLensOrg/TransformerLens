@@ -88,6 +88,30 @@ def test_boot_native_accepts_dict_config():
     assert bridge.cfg.architecture == "TransformerLensNative"
 
 
+def test_boot_native_rejects_legacy_config_with_actionable_error():
+    import pytest
+
+    from transformer_lens import HookedTransformerConfig
+
+    legacy_config = HookedTransformerConfig(
+        n_layers=1,
+        d_model=32,
+        n_ctx=8,
+        d_head=16,
+        n_heads=2,
+        d_vocab=16,
+        act_fn="gelu",
+    )
+
+    with pytest.raises(
+        TypeError,
+        match=(
+            "boot_native expected a TransformerBridgeConfig or dict, " "got HookedTransformerConfig"
+        ),
+    ):
+        TransformerBridge.boot_native(legacy_config)
+
+
 def test_boot_native_does_not_perturb_global_rng():
     """``boot_native(seed=...)`` must use a scoped torch.Generator instead of
     ``torch.manual_seed``. Otherwise a user calling boot_native then
