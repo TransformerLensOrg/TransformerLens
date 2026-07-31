@@ -26,7 +26,12 @@ from transformer_lens.tools.analysis.direct_path_patching import (
 
 @pytest.fixture(scope="module")
 def tiny_model():
-    """A small, randomly-initialised transformer with LN folded in."""
+    """A small, randomly-initialised transformer with LN folded in.
+
+    seed pins the weight init: without it the weights depend on the ambient
+    RNG state of the xdist worker, and unlucky draws push the linear-LN
+    approximation error past tolerance.
+    """
     cfg = HookedTransformerConfig(
         n_layers=3,
         d_model=64,
@@ -38,6 +43,7 @@ def tiny_model():
         act_fn="gelu",
         normalization_type="LN",
         attn_only=False,
+        seed=0,
     )
     model = HookedTransformer(cfg)
     model.process_weights_()
@@ -275,17 +281,19 @@ class TestCorrectness:
     def test_correctness_against_actual_ln_forward(self, tiny_model, tokens_and_caches):
         """Logit-diff metric: linear-LN approximation should match actual LN within 1e-3.
 
-        process_weights_() folds LN into the weight matrices, so the linear
-        approximation is exact and the tolerance can be tight.  Using logit diff
-        (correct_tok - incorrect_tok) cancels the centering offset introduced by
-        process_weights_() and gives a numerically clean comparison.
+        The approximation is not exact even after process_weights_(): the
+        reference LN recomputes its scale from the patched residual while the
+        approximation freezes the corrupted-run scale — a first-order error in
+        ||delta_resid|| that varies with the weight draw (up to ~4e-3 observed
+        unseeded).  The fixture's seed=0 pins it at ~2e-4, so 1e-3 keeps margin
+        while still failing if the patch were dropped entirely (no-patch diff
+        ~2e-3).  Logit diff (correct_tok - incorrect_tok) cancels the centering
+        offset introduced by process_weights_().
         """
         _, corrupted_tokens, clean_cache, corrupted_cache = tokens_and_caches
         src_layer, src_head = 0, 0
         dst_layer, dst_head = 2, 1
 
-        # Pick stable token indices for the logit-diff metric
-        torch.manual_seed(0)
         correct_tok = 17
         incorrect_tok = 42
 
@@ -339,7 +347,7 @@ class TestCorrectness:
 
         assert abs(our_metric - ref_metric) < 1e-3, (
             f"Linear-LN approx {our_metric:.6f} disagrees with actual-LN ref {ref_metric:.6f} "
-            f"(diff={abs(our_metric - ref_metric):.2e}). process_weights_() should make these exact."
+            f"(diff={abs(our_metric - ref_metric):.2e})."
         )
 
     def test_all_sources_consistent_with_single(self, tiny_model, tokens_and_caches):
