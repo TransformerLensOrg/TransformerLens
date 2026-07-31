@@ -240,6 +240,8 @@ Weight-matrix rows return **raw** HuggingFace weights by default. `HookedTransfo
 | `model.all_head_labels()` | `bridge.all_head_labels` | This is a property on the bridge, so omit the call parentheses. |
 | `model.set_tokenizer(tokenizer)` | `TransformerBridge.boot_transformers(name, tokenizer=tokenizer)` | A bridge's tokenizer is fixed when it boots. Reboot to change it; assigning `bridge.tokenizer` directly bypasses tokenizer/config wiring. |
 
+The following example demonstrates the `W_pos` and `W_E_pos` equivalents under matching weight processing:
+
 ```python
 import torch
 
