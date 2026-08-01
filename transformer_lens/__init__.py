@@ -7,9 +7,9 @@ from . import (
     hook_points,
     patching,
     tools,
-    train,
     utilities,
 )
+from . import train
 from . import loading_from_pretrained as loading
 from . import supported_models
 from .ActivationCache import ActivationCache

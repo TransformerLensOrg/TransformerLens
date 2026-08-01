@@ -15,9 +15,9 @@ eager import here would create a cycle for core modules that consume
 import importlib
 from typing import Any
 
-_SUBMODULES = ("analysis", "model_registry")
+_SUBMODULES = ("analysis", "model_registry", "training")
 
-__all__ = ["analysis", "model_registry"]
+__all__ = ["analysis", "model_registry", "training"]
 
 
 def __getattr__(name: str) -> Any:
