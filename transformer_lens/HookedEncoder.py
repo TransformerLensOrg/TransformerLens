@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import os
+import warnings
 from typing import Any, Dict, List, Optional, Tuple, TypeVar, Union, cast, overload
 
 import torch
@@ -58,6 +59,12 @@ class HookedEncoder(HookedRootModule):
         **kwargs: Any,
     ):
         super().__init__()
+        warnings.warn(
+            "HookedEncoder is deprecated and will be removed in 4.0. Use "
+            "TransformerBridge.boot_transformers(...) instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         if isinstance(cfg, Dict):
             cfg = HookedTransformerConfig(**cfg)
         elif isinstance(cfg, str):
