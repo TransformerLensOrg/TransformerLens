@@ -230,6 +230,7 @@ class TestGetBridgeParams:
             block.mlp.gate = Mock()
             block.mlp.gate.weight = torch.randn(3072, 768)
             block.mlp.gate.bias = torch.randn(3072)
+            block.mlp.W_gate = torch.randn(3072, 768)
 
         return mock_bridge
 
@@ -255,8 +256,10 @@ class TestGetBridgeParams:
         block.attn.o.weight = torch.randn(768, 768)
         block.attn.o.bias = torch.randn(768)
 
-        # Mock MLP
+        # Mock MLP (mirrors MLPBridge's normalized accessor API)
         block.mlp = Mock()
+        block.mlp.W_in = torch.randn(768, 3072)
+        block.mlp.W_out = torch.randn(3072, 768)
         setattr(block.mlp, "in", Mock())
         getattr(block.mlp, "in").weight = torch.randn(768, 3072)
         getattr(block.mlp, "in").bias = torch.randn(3072)
