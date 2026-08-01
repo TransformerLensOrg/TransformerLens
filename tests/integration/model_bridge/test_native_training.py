@@ -166,9 +166,7 @@ def test_train_loop_trains_bridge_via_train_config():
     cfg = _telemetry_cfg()
     bridge = TransformerBridge.boot_native(cfg)
 
-    dataset = InductionDataset(
-        num_samples=16, seq_len=cfg.n_ctx, vocab_size=cfg.d_vocab
-    )
+    dataset = InductionDataset(num_samples=16, seq_len=cfg.n_ctx, vocab_size=cfg.d_vocab)
     train_cfg = TrainConfig(
         num_epochs=1,
         batch_size=8,
