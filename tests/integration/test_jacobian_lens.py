@@ -426,3 +426,59 @@ def test_gemma_published_artifact_parity_topk_and_softcap():
     )
     torch.testing.assert_close(result.model_logits[0], expected_final_logits, atol=1e-5, rtol=1e-5)
     torch.testing.assert_close(result.lens_logits[final_layer], result.model_logits)
+
+
+def test_decompose_gpt2_activation_reconstructs_and_is_orthogonal(published_gpt2_lens, gpt2_bridge):
+    """decompose on a real GPT-2 activation: k nonnegative atoms, the non-J-space residual is
+    orthogonal to the selected J-lens vectors, and component + residual recover the activation."""
+    layer, k = 6, 8
+    result = published_gpt2_lens.decompose(gpt2_bridge, PROMPT, layer=layer, position=-1, k=k)
+
+    assert result.support.numel() == k
+    assert (result.coordinates >= 0).all()
+    assert (result.support >= 0).all() and (result.support < gpt2_bridge.cfg.d_vocab).all()
+
+    # the decomposed activation is the model's blocks.{layer}.hook_out at the last position
+    tokens = gpt2_bridge.to_tokens(PROMPT)
+    hook = f"blocks.{layer}.hook_out"
+    _, cache = gpt2_bridge.run_with_cache(tokens, names_filter=lambda name: name == hook)
+    activation = cache[hook][0, -1, :].float()
+    assert torch.allclose(
+        result.j_space_component + result.non_j_space_component, activation, atol=1e-3
+    )
+
+    # the non-J-space residual is orthogonal to every selected J-lens vector (cosine ~ 0)
+    dictionary = published_gpt2_lens.lens_vector_dictionary(gpt2_bridge, layer)
+    residual = result.non_j_space_component
+    for atom_id in result.support.tolist():
+        atom = dictionary[atom_id]
+        cosine = torch.dot(residual, atom) / (residual.norm() * atom.norm())
+        assert cosine.abs().item() < 1e-3
+
+
+@pytest.mark.slow
+def test_decompose_gemma_activation_is_valid():
+    """Decompose a real gemma-2-2b-it activation via its published lens (slow: real download)."""
+    from transformer_lens.model_bridge import TransformerBridge
+    from transformer_lens.tools.analysis import JacobianLens
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    model = TransformerBridge.boot_transformers(GEMMA_MODEL, dtype=torch.bfloat16, device=device)
+    lens = JacobianLens.from_pretrained(
+        LENS_REPO, filename=GEMMA_LENS_FILE, revision=LENS_REVISION, model=model
+    )
+    layer = lens.source_layers[len(lens.source_layers) // 2]
+    k = 16
+    result = lens.decompose(model, PROMPT, layer=layer, position=-1, k=k)
+
+    assert result.support.numel() == k
+    assert (result.coordinates >= 0).all()
+    assert (result.support >= 0).all() and (result.support < model.cfg.d_vocab).all()
+
+    tokens = model.to_tokens(PROMPT)
+    hook = f"blocks.{layer}.hook_out"
+    _, cache = model.run_with_cache(tokens, names_filter=lambda name: name == hook)
+    activation = cache[hook][0, -1, :].float()
+    assert torch.allclose(
+        result.j_space_component + result.non_j_space_component, activation, atol=1e-2
+    )

@@ -232,3 +232,67 @@ lens = JacobianLens.from_pretrained(
 To propose a short-name entry in TransformerLens, open a pull request that adds the
 published file to `transformer_lens/tools/analysis/jacobian_lens_registry.json` and
 include the fitting provenance and validation results.
+
+## Sparse decomposition (J-space coordinates)
+
+A fitted lens also decomposes an activation into the concepts it is *disposed to say*.
+`JacobianLens.decompose` writes an activation `x` at layer ℓ as a `k`-sparse **nonnegative**
+combination of J-lens vectors `v_t = J_ℓ^T W_U[:, t]` (one direction per vocabulary token),
+selected greedily:
+
+```python
+from transformer_lens.model_bridge import TransformerBridge
+from transformer_lens.tools.analysis import JacobianLens
+
+model = TransformerBridge.boot_transformers("gpt2", device="cpu")
+lens = JacobianLens.from_pretrained("gpt2-small", model=model)
+
+# decompose the activation at a prompt position ...
+result = lens.decompose(model, "The Eiffel Tower is in the city of", layer=6, position=-1, k=8)
+# ... or a raw [d_model] activation you already have (leave position=None):
+#   result = lens.decompose(model, activation, layer=6, k=8)
+
+tokens = [model.to_string(int(t)) for t in result.support]  # the k selected J-lens vectors
+coordinates = result.coordinates                            # their nonnegative coefficients
+```
+
+The result carries two things that need not coincide (per the paper's appendix):
+
+- `coordinates` (the *local J-space coordinates*) -- the nonnegative pursuit coefficients on the
+  selected J-lens vectors, with `reconstruction = sum(coordinates * v_t)`.
+- `j_space_component` (the *J-space component*) -- the orthogonal projection of the activation
+  onto the span of the selected vectors -- and `non_j_space_component = x - j_space_component`,
+  the residual the interventions leave unchanged.
+
+```
+x  in R^d_model
+   |-- decompose(x, layer, k)
+        |-- coordinates            a_t >= 0      (local J-space coordinates)
+        |-- j_space_component      Pi_S x        (orthogonal projection onto span of selected v_t)
+        \-- non_j_space_component  x - Pi_S x     (orthogonal to the selected vectors)
+```
+
+Two algorithms are available via `algorithm=`: `"nonnegative_orthogonal_matching_pursuit"`
+(default; an exact nonnegative least-squares re-solve on the selected set, optimal at the small
+sparsity used here) and `"gradient_pursuit"` (the directional update of Blumensath & Davies
+(2008) that the paper uses, which only pays off for large active sets).
+
+### Interpreting the numbers honestly
+
+The quantitative findings below are from Gurnee et al. (2026) and were measured on **closed
+Anthropic models** (Sonnet / Haiku / Opus); on open-weight models the *shape* may hold but the
+exact values will not necessarily transfer.
+
+- The decomposition is **not** a top-k logit-lens readout: because the J-lens vectors are
+  overcomplete and non-orthogonal, it gives "a different (and typically less redundant) set of
+  active concepts than simply taking the top-k by inner product."
+- The J-space is a **small fraction** of the activation: its component "never [exceeds] more than
+  10%" of total activation variance, and for concept vectors carries "a median of only 6-7% ...
+  the remaining ~93% lying outside the J-space." Do not expect `j_space_component` to capture
+  most of `x`.
+- `k` defaults to 25 because the paper "typically choose[s] it to be no more than 25, which we
+  empirically observed to be the number of J-lens vectors that are meaningfully active at a given
+  time."
+
+The full-vocabulary dictionary is cached on the model's device and is vocabulary-sized
+(gigabytes for large models); release it with `lens.clear_device_cache()`.
