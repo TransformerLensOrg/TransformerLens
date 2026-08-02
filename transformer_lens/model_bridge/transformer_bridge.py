@@ -3481,8 +3481,38 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
 
         return tl_state_dict
 
+    def _tl_key_to_actual_keys(self) -> dict[str, list[str]]:
+        """Inverse of the renaming state_dict() applies: map each TL-format key
+        back to every raw parameter/buffer path that represents it.
+
+        Mirrors the filtering and key-conversion in state_dict() exactly, except
+        it keeps every raw key for a given TL key instead of only the first-seen
+        one. Bridge components frequently expose the same underlying parameter
+        through more than one attribute path (e.g. GPT-2's split q/k/v weights
+        are views into the wrapped module's combined c_attn weight, reachable
+        both via a block-level shortcut and via the nested _original_component
+        chain) - all of those aliases must be written for the round trip to
+        actually change what forward() reads, not just what state_dict() shows.
+        """
+        mapping: dict[str, list[str]] = {}
+        for actual_key in self.original_model.state_dict():
+            if actual_key == "_original_component" or actual_key.startswith("_original_component."):
+                continue
+            clean_key = actual_key.replace("._original_component", "")
+            if not self._is_valid_bridge_path(clean_key):
+                continue
+            hf_key = self._normalize_bridge_key_to_hf(clean_key)
+            tl_key = self.adapter.convert_hf_key_to_tl_key(hf_key)
+            mapping.setdefault(tl_key, []).append(actual_key)
+        return mapping
+
     def load_state_dict(self, state_dict, strict=True, assign=False):
         """Load state dict into the model, handling both clean keys and original keys with _original_component references.
+
+        Accepts three key formats: TL-format keys as emitted by state_dict()
+        (e.g. "blocks.0.attn.q.weight"), raw native parameter paths (e.g. for
+        ``boot_native`` / tracr-style loading), and raw paths with
+        "_original_component" segments stripped.
 
         Args:
             state_dict: Dictionary containing a whole state of the module
@@ -3494,26 +3524,47 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         """
         current_state_dict = self.original_model.state_dict()
         clean_to_actual = {}
-        actual_to_clean = {}
         for actual_key in current_state_dict.keys():
             if actual_key != "_original_component":
-                clean_key = actual_key.replace("._original_component", "")
-                clean_to_actual[clean_key] = actual_key
-                actual_to_clean[actual_key] = clean_key
+                clean_to_actual[actual_key.replace("._original_component", "")] = actual_key
+
+        tl_to_actual = self._tl_key_to_actual_keys()
+
         mapped_state_dict = {}
+        unexpected_keys = []
         for input_key, value in state_dict.items():
             if input_key in current_state_dict:
                 mapped_state_dict[input_key] = value
-            else:
-                if input_key in clean_to_actual:
-                    actual_key = clean_to_actual[input_key]
+            elif input_key in clean_to_actual:
+                mapped_state_dict[clean_to_actual[input_key]] = value
+            elif input_key in tl_to_actual:
+                for actual_key in tl_to_actual[input_key]:
                     mapped_state_dict[actual_key] = value
-                else:
-                    mapped_state_dict[input_key] = value
-        effective_strict = strict and len(mapped_state_dict) == len(current_state_dict)
-        return self.original_model.load_state_dict(
-            mapped_state_dict, strict=effective_strict, assign=assign
-        )
+            else:
+                unexpected_keys.append(input_key)
+
+        required_actual_keys = {key for keys in tl_to_actual.values() for key in keys}
+        missing_keys = sorted(required_actual_keys - mapped_state_dict.keys())
+
+        if strict and (missing_keys or unexpected_keys):
+            error_msgs = []
+            if unexpected_keys:
+                error_msgs.append(
+                    "Unexpected key(s) in state_dict: "
+                    + ", ".join(f'"{k}"' for k in sorted(unexpected_keys))
+                )
+            if missing_keys:
+                error_msgs.append(
+                    "Missing key(s) in state_dict: " + ", ".join(f'"{k}"' for k in missing_keys)
+                )
+            raise RuntimeError(
+                "Error(s) in loading state_dict for {}:\n\t{}".format(
+                    type(self.original_model).__name__, "\n\t".join(error_msgs)
+                )
+            )
+
+        result = self.original_model.load_state_dict(mapped_state_dict, strict=False, assign=assign)
+        return type(result)(missing_keys=missing_keys, unexpected_keys=unexpected_keys)
 
     def get_params(self):
         """Access to model parameters in the format expected by SVDInterpreter.
