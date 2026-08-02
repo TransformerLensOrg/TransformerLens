@@ -32,6 +32,18 @@ by the nonnegativity constraint.
 
 This module is model-free: it operates on a raw dictionary tensor, so it can be used and
 tested without loading a model.
+
+References:
+    - Gurnee et al. (2026), "Verbalizable Representations Form a Global Workspace in
+      Language Models," Transformer Circuits Thread -- the J-space decomposition.
+    - Pati, Rezaiifar & Krishnaprasad (1993), "Orthogonal Matching Pursuit: Recursive
+      Function Approximation with Applications to Wavelet Decomposition," 27th Asilomar
+      Conference on Signals, Systems and Computers -- the greedy atom selection shared
+      by both algorithms.
+    - Blumensath & Davies (2008), "Gradient Pursuits," IEEE Transactions on Signal
+      Processing 56(6):2370-2382 -- the ``gradient_pursuit`` coefficient update.
+    - Lawson & Hanson (1974), "Solving Least Squares Problems," Prentice-Hall -- the
+      active-set nonnegative least-squares re-solve used by the default algorithm.
 """
 
 from __future__ import annotations
