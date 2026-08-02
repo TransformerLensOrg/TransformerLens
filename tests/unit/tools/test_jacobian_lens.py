@@ -1154,3 +1154,32 @@ class TestRegistry:
 
         assert len(set(filenames)) == 1, "All three aliases should resolve to the same filename"
         assert filenames[0].endswith("gpt2_jacobian_lens.pt")
+
+
+def test_lens_vector_dictionary_matches_lens_vectors_and_caches(toy_model: _ToyBridge) -> None:
+    """The full-vocabulary dictionary equals lens_vectors over every token, is cached per
+    (layer, device), and is released by clear_device_cache."""
+    torch.manual_seed(0)
+    d_model = toy_model.cfg.d_model
+    layer = 1
+    lens = JacobianLens({layer: torch.randn(d_model, d_model)}, n_prompts=1, d_model=d_model)
+    d_vocab = toy_model.W_U.shape[1]
+
+    dictionary = lens.lens_vector_dictionary(toy_model, layer)
+    assert dictionary.shape == (d_vocab, d_model)
+
+    all_vectors = lens.lens_vectors(toy_model, list(range(d_vocab)), layer)
+    assert torch.allclose(dictionary, all_vectors, atol=1e-5)
+
+    # cached: the same object is returned on a repeat call, and clearing releases it
+    assert lens.lens_vector_dictionary(toy_model, layer) is dictionary
+    lens.clear_device_cache()
+    assert lens.lens_vector_dictionary(toy_model, layer) is not dictionary
+
+
+def test_lens_vector_dictionary_rejects_unfitted_layer(toy_model: _ToyBridge) -> None:
+    """Requesting a layer the lens was not fitted at raises (delegated to _matrix_on)."""
+    d_model = toy_model.cfg.d_model
+    lens = JacobianLens({1: torch.randn(d_model, d_model)}, n_prompts=1, d_model=d_model)
+    with pytest.raises(ValueError):
+        lens.lens_vector_dictionary(toy_model, 0)  # layer 0 was not fitted

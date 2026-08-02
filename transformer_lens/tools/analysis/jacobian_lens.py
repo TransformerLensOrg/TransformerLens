@@ -222,6 +222,7 @@ class JacobianLens:
         self.d_model = int(d_model)
         self.metadata: Dict[str, Any] = dict(metadata or {})
         self._device_jacobians: Dict[Tuple[int, torch.device], torch.Tensor] = {}
+        self._dictionary_cache: Dict[Tuple[int, torch.device], torch.Tensor] = {}
 
     @property
     def source_layers(self) -> List[int]:
@@ -502,8 +503,10 @@ class JacobianLens:
     # ------------------------------------------------------------------ #
 
     def clear_device_cache(self) -> None:
-        """Release lazily cached Jacobian copies on accelerator devices."""
+        """Release lazily cached Jacobian copies and full-vocabulary dictionaries on
+        accelerator devices."""
         self._device_jacobians.clear()
+        self._dictionary_cache.clear()
 
     def _matrix_on(self, layer: int, device: Union[str, torch.device]) -> torch.Tensor:
         """Return one cached fp32 Jacobian copy for a layer/device pair."""
@@ -680,6 +683,38 @@ class JacobianLens:
         unembed_columns = model.W_U[:, token_ids].float()  # [d_model, n]
         matrix = self._matrix_on(layer, unembed_columns.device)
         return (matrix.T @ unembed_columns).T
+
+    @torch.no_grad()
+    def lens_vector_dictionary(
+        self, model: Any, layer: int
+    ) -> Float[torch.Tensor, "d_vocab d_model"]:
+        """Full-vocabulary J-lens dictionary at ``layer``: ``[d_vocab, d_model]``.
+
+        Row ``t`` is the J-lens vector ``v_t = J[layer]^T W_U[:, t]`` -- this is
+        :meth:`lens_vectors` over the entire vocabulary. The result is cached per
+        (layer, device) so a sparse decomposition can reuse it; :meth:`clear_device_cache`
+        releases it.
+
+        The dictionary is vocabulary-sized and cached on the model's device
+        (``d_vocab * d_model`` fp32 values, on the order of gigabytes for a large
+        vocabulary), one entry per requested layer.
+
+        Args:
+            model: The model supplying ``W_U``.
+            layer: Source layer for the dictionary (must be a fitted source layer).
+
+        Returns:
+            The dictionary, fp32, on the model's device.
+        """
+        self.validate_model(model)
+        layer = _normalize_layer(layer, model.cfg.n_layers)
+        device = torch.device(model.W_U.device)
+        cached = self._dictionary_cache.get((layer, device))
+        if cached is None:
+            matrix = self._matrix_on(layer, device)  # [d_model, d_model]
+            cached = (matrix.T @ model.W_U.float()).T  # [d_vocab, d_model]
+            self._dictionary_cache[(layer, device)] = cached
+        return cached
 
     # ------------------------------------------------------------------ #
     # interventions                                                      #
