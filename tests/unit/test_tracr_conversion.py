@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 import torch
 
+from transformer_lens.model_bridge import TransformerBridge
 from transformer_lens.utilities.tracr import (
     infer_tracr_output_label,
     make_tracr_categorical_unembed,
@@ -119,6 +120,17 @@ def test_bridge_config_matches_tracr_metadata():
     assert cfg.d_mlp == 6
     assert cfg.normalization_type is None
     assert cfg.attention_dir == "bidirectional"
+
+
+def test_bridge_state_dict_loads_into_native_bridge():
+    model = _fake_tracr_model()
+    bridge = TransformerBridge.boot_native(make_tracr_transformer_bridge_config(model))
+    state_dict = make_tracr_transformer_bridge_state_dict(model, output_label="reverse_1")
+
+    result = bridge.load_state_dict(state_dict, strict=False)
+
+    assert result.unexpected_keys == []
+    torch.testing.assert_close(bridge.state_dict()["embed.weight"], state_dict["tok_embed.weight"])
 
 
 def test_bridge_state_dict_transposes_tracr_weights_and_reconstructs_unembed():
