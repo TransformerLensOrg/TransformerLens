@@ -335,3 +335,50 @@ def cache_activations(model: TransformerLensModel, text: str):
 
 Use `TransformerLensModelWithWeights` instead when the helper also needs the
 weight-processing surface used by advanced `ActivationCache` operations.
+
+
+### Build a TL-native model from scratch
+
+For toy models and interpretability-research training loops, the bridge
+replaces `HookedTransformerConfig + HookedTransformer(cfg)` with
+`TransformerBridgeConfig + TransformerBridge.boot_native(cfg)`:
+
+```python
+# Before
+from transformer_lens import HookedTransformer, HookedTransformerConfig
+
+cfg = HookedTransformerConfig(
+    d_model=64,
+    d_head=8,
+    n_heads=8,
+    n_layers=2,
+    n_ctx=256,
+    d_vocab=50257,
+    act_fn="gelu_new",
+    seed=42,
+)
+model = HookedTransformer(cfg)
+
+# After
+from transformer_lens.config import TransformerBridgeConfig
+from transformer_lens.model_bridge import TransformerBridge
+
+cfg = TransformerBridgeConfig(
+    d_model=64,
+    d_head=8,
+    n_heads=8,
+    n_layers=2,
+    n_ctx=256,
+    d_vocab=50257,
+    act_fn="gelu_new",
+    seed=42,               # optional: makes initialisation reproducible
+)
+bridge = TransformerBridge.boot_native(cfg, device="cpu")
+```
+
+`boot_native` makes no HuggingFace Hub call and requires no `transformers`
+import. `cfg.seed` seeds the weight initialiser; omitting it lets the
+global RNG advance normally. Passing a `HookedTransformerConfig` (or any
+other legacy config object) to `boot_native` raises `TypeError` — construct
+a `TransformerBridgeConfig` directly. To re-randomise weights after
+construction, call `bridge.init_weights()`.
