@@ -964,6 +964,26 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             return w.reshape(self.cfg.n_heads, d_head, self.cfg.d_model)
         return w
 
+    def _expand_kv_heads(self, w: torch.Tensor) -> torch.Tensor:
+        """Expand stacked grouped K/V weights along the head axis to n_heads.
+
+        GQA models store one K/V projection per key-value head while W_Q/W_O are
+        per-query-head, so weight circuits must repeat the grouped K/V up to
+        n_heads before factoring: query head h reads kv head
+        h // (n_heads // n_kv_heads), i.e. repeat_interleave — the same layout
+        GroupedQueryAttention.W_K/W_V expose on HookedTransformer. No-op for MHA,
+        where the head axes already match.
+        """
+        if w.ndim != 4 or w.shape[1] == self.cfg.n_heads:
+            return w
+        n_kv_heads = w.shape[1]
+        if self.cfg.n_heads % n_kv_heads != 0:
+            raise ValueError(
+                f"Cannot expand {n_kv_heads} key-value heads to {self.cfg.n_heads} "
+                f"query heads: n_heads must be a multiple of n_kv_heads."
+            )
+        return w.repeat_interleave(self.cfg.n_heads // n_kv_heads, dim=1)
+
     @property
     def W_K(self) -> torch.Tensor:
         """Stack the key weights across all layers."""
@@ -1049,24 +1069,24 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
     @property
     def QK(self):
         """QK circuit. On hybrids, returns attn layers only (with warning). See QK_for_attn_layers()."""
-        return FactoredMatrix(self.W_Q, self.W_K.transpose(-2, -1))
+        return FactoredMatrix(self.W_Q, self._expand_kv_heads(self.W_K).transpose(-2, -1))
 
     @property
     def OV(self):
         """OV circuit. On hybrids, returns attn layers only (with warning). See OV_for_attn_layers()."""
-        return FactoredMatrix(self.W_V, self.W_O)
+        return FactoredMatrix(self._expand_kv_heads(self.W_V), self.W_O)
 
     def QK_for_attn_layers(self) -> Tuple[List[int], FactoredMatrix]:
         """QK circuit for attention layers only. Returns (layer_indices, FactoredMatrix)."""
         q_indices, W_Q = self.stack_params_for("attn", "attn.W_Q", self._reshape_qkv)
         _, W_K = self.stack_params_for("attn", "attn.W_K", self._reshape_qkv)
-        return q_indices, FactoredMatrix(W_Q, W_K.transpose(-2, -1))
+        return q_indices, FactoredMatrix(W_Q, self._expand_kv_heads(W_K).transpose(-2, -1))
 
     def OV_for_attn_layers(self) -> Tuple[List[int], FactoredMatrix]:
         """OV circuit for attention layers only. Returns (layer_indices, FactoredMatrix)."""
         v_indices, W_V = self.stack_params_for("attn", "attn.W_V", self._reshape_qkv)
         _, W_O = self.stack_params_for("attn", "attn.W_O", self._reshape_o)
-        return v_indices, FactoredMatrix(W_V, W_O)
+        return v_indices, FactoredMatrix(self._expand_kv_heads(W_V), W_O)
 
     # ------------------------------------------------------------------
     # Mechanistic interpretability analysis methods
@@ -1193,17 +1213,17 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 weights = [w.to(target_device) for w in weights]
             return torch.stack(weights, dim=0)
 
-        W_V = _stack("attn.W_V", self._reshape_qkv)
+        W_V = self._expand_kv_heads(_stack("attn.W_V", self._reshape_qkv))
         W_O = _stack("attn.W_O", self._reshape_o)
         left = FactoredMatrix(W_V, W_O)
 
         if mode == "Q":
             W_Q = _stack("attn.W_Q", self._reshape_qkv)
-            W_K = _stack("attn.W_K", self._reshape_qkv)
+            W_K = self._expand_kv_heads(_stack("attn.W_K", self._reshape_qkv))
             right = FactoredMatrix(W_Q, W_K.transpose(-2, -1))
         elif mode == "K":
             W_Q = _stack("attn.W_Q", self._reshape_qkv)
-            W_K = _stack("attn.W_K", self._reshape_qkv)
+            W_K = self._expand_kv_heads(_stack("attn.W_K", self._reshape_qkv))
             right = FactoredMatrix(W_Q, W_K.transpose(-2, -1)).T
         elif mode == "V":
             right = left
