@@ -386,6 +386,12 @@ class HookedEncoder(HookedRootModule):
         **from_pretrained_kwargs: Any,
     ) -> HookedEncoder:
         """Loads in the pretrained weights from huggingface. Currently supports loading weight from HuggingFace BertForMaskedLM. Unlike HookedTransformer, this does not yet do any preprocessing on the model."""
+        warnings.warn(
+            "HookedEncoder.from_pretrained is deprecated and will be removed in 4.0. Use "
+            "TransformerBridge.boot_transformers(...) instead.",
+            DeprecationWarning,
+            stacklevel=4,
+        )
         logging.warning(
             "Support for BERT in TransformerLens is currently experimental, until such a time when it has feature "
             "parity with HookedTransformer and has been tested on real research tasks. Until then, backward "
