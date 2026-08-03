@@ -193,6 +193,22 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         if callable(setter):
             setter(value)
 
+    def init_weights(self) -> None:
+        """Reinitialize a TL-native model in place using the bridge config."""
+        from transformer_lens.model_bridge.sources.native.init import (
+            initialize_native_model,
+        )
+        from transformer_lens.model_bridge.sources.native.model import NativeModel
+
+        model = self.original_model
+        if not isinstance(model, NativeModel):
+            raise RuntimeError(
+                "TransformerBridge.init_weights() is only supported for TL-native "
+                "bridges created with TransformerBridge.boot_native(...); this bridge "
+                f"wraps {type(model).__name__}."
+            )
+        initialize_native_model(model, self.cfg)
+
     def _set_processed_weight_attributes(self) -> None:
         """Create 3D processed weight attributes for attention components.
 
