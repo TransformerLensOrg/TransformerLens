@@ -237,8 +237,10 @@ Weight-matrix rows return **raw** HuggingFace weights by default. `HookedTransfo
 | `model.reset_hooks(...)` | `bridge.reset_hooks(clear_contexts=..., direction=..., including_permanent=..., level=...)` | The bridge supports the same scoped hook cleanup controls. |
 | A helper typed as `HookedTransformer` | Type it as `TransformerLensModel` or `TransformerLensModelWithWeights` from `transformer_lens.model_protocol` | Use the narrower structural protocol unless the helper reads weights or advanced `ActivationCache` helpers. |
 | `HookedTransformerConfig(...)` | `TransformerBridgeConfig(...)` | Construct the bridge config with the same core fields, then pass it to `TransformerBridge.boot_native(config)` for train-from-scratch or toy models. Do not pass a legacy config object to `boot_native`. |
+| `cfg.init_weights` | `bridge.init_weights()` | `boot_native()` honors the config flag during construction; call `init_weights()` to reinitialize a TL-native bridge in place. |
 | `model.all_head_labels()` | `bridge.all_head_labels` | This is a property on the bridge, so omit the call parentheses. |
 | `model.set_tokenizer(tokenizer)` | `TransformerBridge.boot_transformers(name, tokenizer=tokenizer)` | A bridge's tokenizer is fixed when it boots. Reboot to change it; assigning `bridge.tokenizer` directly bypasses tokenizer/config wiring. |
+| `from transformer_lens.train import train, HookedTransformerTrainConfig` | `from transformer_lens.tools.training import train, TrainConfig` | The training loop moved to `tools.training` and `HookedTransformerTrainConfig` renamed to `TrainConfig`. The old imports still work but emit `DeprecationWarning`. |
 
 The loading, tokenization, generation, and basic hook calls listed under
 [APIs that are unchanged](#apis-that-are-unchanged) do not need wrappers. The
@@ -358,3 +360,54 @@ def cache_activations(model: TransformerLensModel, text: str):
 
 Use `TransformerLensModelWithWeights` instead when the helper also needs the
 weight-processing surface used by advanced `ActivationCache` operations.
+
+
+### Build a TL-native model from scratch
+
+For toy models and interpretability-research training loops, the bridge
+replaces `HookedTransformerConfig + HookedTransformer(cfg)` with
+`TransformerBridgeConfig + TransformerBridge.boot_native(cfg)`:
+
+```python
+# Before
+from transformer_lens import HookedTransformer, HookedTransformerConfig
+
+cfg = HookedTransformerConfig(
+    d_model=64,
+    d_head=8,
+    n_heads=8,
+    n_layers=2,
+    n_ctx=256,
+    d_vocab=50257,
+    act_fn="gelu_new",
+    seed=42,
+)
+model = HookedTransformer(cfg)
+
+# After
+from transformer_lens.config import TransformerBridgeConfig
+from transformer_lens.model_bridge import TransformerBridge
+
+cfg = TransformerBridgeConfig(
+    d_model=64,
+    d_head=8,
+    n_heads=8,
+    n_layers=2,
+    n_ctx=256,
+    d_vocab=50257,
+    act_fn="gelu_new",
+    seed=42,               # optional: makes initialisation reproducible
+)
+bridge = TransformerBridge.boot_native(cfg, device="cpu")
+```
+
+`boot_native` makes no HuggingFace Hub call and requires no `transformers`
+import. `cfg.seed` seeds the weight initialiser; omitting it lets the
+global RNG advance normally. Passing a `HookedTransformerConfig` (or any
+other legacy config object) to `boot_native` raises `TypeError` — construct
+a `TransformerBridgeConfig` directly. To reinitialize weights in place, call `bridge.init_weights()` — if `cfg.seed` is set,
+`init_weights()` rebuilds from that same seed and produces identical weights; clear or
+change `cfg.seed` first for a genuinely fresh draw. Unlike `HookedTransformer.init_weights()`,
+which calls `torch.manual_seed(cfg.seed)` globally, `boot_native` forks the RNG — training
+loops ported verbatim that rely on global seed state for data shuffling will silently
+lose reproducibility.

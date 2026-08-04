@@ -100,6 +100,49 @@ def test_native_raw_keys_still_load_tracr_style():
         assert torch.equal(reloaded_raw[key], value), f"{key} did not round-trip"
 
 
+def test_native_clean_key_dict_with_partial_aliases_does_not_raise_strict():
+    """A complete raw-HF-format-style state dict (clean keys, _original_component
+    stripped) writes only one alias per shared-storage TL key -- boot_native's own
+    wrapping produces this aliasing internally (e.g. "layers.0.ln1.weight" is
+    reachable via two different _original_component paths onto the same
+    Parameter), not just gpt2's c_attn split. Since aliases of the same tensor
+    share storage, writing any one of them is sufficient; strict=True must not
+    report the other, unwritten aliases as missing."""
+    bridge = TransformerBridge.boot_native(_native_cfg())
+
+    raw_sd = bridge.original_model.state_dict()
+    clean_to_actuals: dict[str, list[str]] = {}
+    for actual_key in raw_sd:
+        if actual_key != "_original_component":
+            clean_to_actuals.setdefault(actual_key.replace("._original_component", ""), []).append(
+                actual_key
+            )
+    assert any(len(keys) > 1 for keys in clean_to_actuals.values()), (
+        "fixture assumption broken: expected boot_native to have some "
+        "clean key reachable through more than one actual path"
+    )
+
+    # One representative actual key's value per clean key, same shape as a
+    # real raw-HF-format checkpoint (no duplicate paths for the same param).
+    clean_sd = {clean_key: raw_sd[keys[0]].clone() for clean_key, keys in clean_to_actuals.items()}
+
+    with torch.no_grad():
+        for p in bridge.parameters():
+            p.zero_()
+
+    result = bridge.load_state_dict(clean_sd, strict=True)
+    assert result.missing_keys == []
+    assert result.unexpected_keys == []
+
+    reloaded_raw = bridge.original_model.state_dict()
+    for clean_key, actual_keys in clean_to_actuals.items():
+        value = clean_sd[clean_key]
+        for actual_key in actual_keys:
+            assert torch.equal(
+                reloaded_raw[actual_key], value
+            ), f"{actual_key} (alias of {clean_key}) did not round-trip"
+
+
 @pytest.mark.slow
 def test_boot_transformers_round_trip_matches_forward_pass():
     """GPT-2's Conv1D-combined attention makes the bridge's q/k/v components
@@ -129,3 +172,25 @@ def test_boot_transformers_round_trip_matches_forward_pass():
     assert torch.allclose(
         logits_before, logits_after, atol=1e-5
     ), f"round trip did not restore forward-pass output: max diff={max_diff:.3e}"
+
+
+@pytest.mark.slow
+def test_boot_transformers_clean_key_dict_does_not_raise_strict():
+    """Reported review case on real gpt2: a complete raw-HF-format-style state
+    dict (clean keys) writes only one alias per shared-storage TL key, since
+    gpt2's split q/k/v are views into c_attn reachable via multiple actual
+    paths. strict=True previously raised ~337 false "missing key" errors even
+    though the load fully restores the forward pass."""
+    bridge = TransformerBridge.boot_transformers("gpt2", device="cpu")
+
+    raw_sd = bridge.original_model.state_dict()
+    clean_sd = {
+        actual_key.replace("._original_component", ""): value.clone()
+        for actual_key, value in raw_sd.items()
+        if actual_key != "_original_component"
+    }
+    assert len(clean_sd) < len(raw_sd), "fixture assumption broken: expected some aliasing on gpt2"
+
+    result = bridge.load_state_dict(clean_sd, strict=True)
+    assert result.missing_keys == []
+    assert result.unexpected_keys == []

@@ -12,6 +12,7 @@ import torch
 
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.model_bridge import TransformerBridge
+from transformer_lens.tools.training import TrainConfig, train
 
 
 def _induction_batch(batch_size: int, seq_len: int, vocab_size: int) -> torch.Tensor:
@@ -137,4 +138,50 @@ def test_native_bridge_induction_circuit_forms():
     assert max(rises) > 0.2, (
         f"No layer's coherence rose meaningfully. "
         f"Initial={coherence_initial}, final={coherence_final}, deltas={rises}"
+    )
+
+
+class InductionDataset(torch.utils.data.Dataset):
+    """Simple dataset wrapper for induction batches.
+
+    Returns single samples — DataLoader handles batching.
+    """
+
+    def __init__(self, num_samples: int, seq_len: int, vocab_size: int):
+        self.num_samples = num_samples
+        self.seq_len = seq_len
+        self.vocab_size = vocab_size
+
+    def __len__(self) -> int:
+        return self.num_samples
+
+    def __getitem__(self, idx: int) -> dict[str, torch.Tensor]:
+        sample = _induction_batch(1, self.seq_len, self.vocab_size)
+        return {"tokens": sample.squeeze(0)}
+
+
+def test_train_loop_trains_bridge_via_train_config():
+    """train() function in tools.training trains a bridge via TrainConfig."""
+    torch.manual_seed(42)
+    cfg = _telemetry_cfg()
+    bridge = TransformerBridge.boot_native(cfg)
+
+    dataset = InductionDataset(num_samples=16, seq_len=cfg.n_ctx, vocab_size=cfg.d_vocab)
+    train_cfg = TrainConfig(
+        num_epochs=1,
+        batch_size=8,
+        lr=1e-3,
+        seed=42,
+        max_steps=10,
+        device="cpu",
+    )
+
+    sample_batch = torch.stack([dataset[i]["tokens"] for i in range(8)])
+    initial_loss = bridge(sample_batch, return_type="loss").item()
+
+    trained = train(bridge, train_cfg, dataset)
+
+    final_loss = trained(sample_batch, return_type="loss").item()
+    assert final_loss < initial_loss, (
+        f"Training did not reduce loss: initial={initial_loss:.4f}, " f"final={final_loss:.4f}"
     )
