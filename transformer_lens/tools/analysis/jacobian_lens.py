@@ -361,7 +361,7 @@ class JacobianLens:
         fields, and marks the result as converted so :meth:`merge` refuses to
         mix it with natively TL-fitted lenses.
         """
-        n_prompts = int(payload.get("n_prompts", 0))
+        n_prompts = int(payload.get("n_done", payload.get("n_prompts", 0)))
         if n_prompts <= 0:
             raise ValueError(
                 f"{path} is a fit checkpoint with n_prompts={n_prompts}; "
