@@ -5,6 +5,9 @@ Use transformer_lens.tools.training instead.
 
 import warnings
 
+import torch.nn as nn
+from torch.utils.data import Dataset
+
 from transformer_lens.tools.training import TrainConfig as _TrainConfig
 from transformer_lens.tools.training import train as _train
 
@@ -19,10 +22,10 @@ class HookedTransformerTrainConfig(_TrainConfig):
             DeprecationWarning,
             stacklevel=2,
         )
-        super().__init__(*args, **kwargs)  # type: ignore
+        super().__init__(*args, **kwargs)  # type: ignore[arg-type]
 
 
-def train(model: object, config: object, dataset: object) -> object:
+def train(model: nn.Module, config: _TrainConfig, dataset: Dataset) -> nn.Module:
     """Deprecated. Use transformer_lens.tools.training.train instead."""
     warnings.warn(
         "transformer_lens.train is deprecated; use "
@@ -30,4 +33,4 @@ def train(model: object, config: object, dataset: object) -> object:
         DeprecationWarning,
         stacklevel=2,
     )
-    return _train(model, config, dataset)  # type: ignore
+    return _train(model, config, dataset)

@@ -68,7 +68,7 @@ def train(
     """Train a model on an autoregressive language modeling task.
 
     Args:
-        model: The model to train (must expose TrainableModel protocol surface)
+        model: The model to train (nn.Module with __call__(tokens, return_type="loss"))
         config: The training configuration
         dataset: The dataset to train on - assumed set up for autoregressive language modeling.
 

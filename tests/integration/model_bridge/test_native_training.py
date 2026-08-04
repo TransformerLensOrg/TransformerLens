@@ -173,14 +173,15 @@ def test_train_loop_trains_bridge_via_train_config():
         lr=1e-3,
         seed=42,
         max_steps=10,
+        device="cpu",
     )
 
     sample_batch = torch.stack([dataset[i]["tokens"] for i in range(8)])
-    initial_loss = bridge(sample_batch.to("cpu"), return_type="loss").item()
+    initial_loss = bridge(sample_batch, return_type="loss").item()
 
     trained = train(bridge, train_cfg, dataset)
 
-    final_loss = trained(sample_batch.to("cpu"), return_type="loss").item()
+    final_loss = trained(sample_batch, return_type="loss").item()
     assert final_loss < initial_loss, (
         f"Training did not reduce loss: initial={initial_loss:.4f}, " f"final={final_loss:.4f}"
     )
