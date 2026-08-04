@@ -240,6 +240,7 @@ Weight-matrix rows return **raw** HuggingFace weights by default. `HookedTransfo
 | `cfg.init_weights` | `bridge.init_weights()` | `boot_native()` honors the config flag during construction; call `init_weights()` to reinitialize a TL-native bridge in place. |
 | `model.all_head_labels()` | `bridge.all_head_labels` | This is a property on the bridge, so omit the call parentheses. |
 | `model.set_tokenizer(tokenizer)` | `TransformerBridge.boot_transformers(name, tokenizer=tokenizer)` | A bridge's tokenizer is fixed when it boots. Reboot to change it; assigning `bridge.tokenizer` directly bypasses tokenizer/config wiring. |
+| `from transformer_lens.train import train, HookedTransformerTrainConfig` | `from transformer_lens.tools.training import train, TrainConfig` | The training loop moved to `tools.training` and `HookedTransformerTrainConfig` renamed to `TrainConfig`. The old imports still work but emit `DeprecationWarning`. |
 
 The loading, tokenization, generation, and basic hook calls listed under
 [APIs that are unchanged](#apis-that-are-unchanged) do not need wrappers. The
