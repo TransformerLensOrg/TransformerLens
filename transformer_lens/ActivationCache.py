@@ -14,6 +14,7 @@ back to these docs depending on what you need to do.
 from __future__ import annotations
 
 import logging
+from collections import Counter
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -154,12 +155,17 @@ class ActivationCache:
         # Note: model reference prevents garbage collection. Set cache.model = None if unneeded.
 
     def _batch_size(self) -> int:
-        """The cache's batch size: the largest leading dim across entries.
+        """The cache's batch size: the most common leading dim across entries.
 
-        Bridge-native caches may hold broadcast entries with a leading dim of 1
-        (e.g. position-index inputs) alongside genuinely batched activations.
+        Caches may hold non-batch entries alongside genuinely batched
+        activations — broadcast entries with a leading dim of 1 (e.g. the
+        bridge's position-index inputs) or position-indexed entries whose
+        leading dim is the sequence length (e.g. T5's relative position bias).
+        The batched activations vastly outnumber both, so the mode is the
+        reliable signal where max/min are not.
         """
-        return max((v.size(0) for v in self.cache_dict.values() if v.ndim > 0), default=1)
+        counts = Counter(v.size(0) for v in self.cache_dict.values() if v.ndim > 0)
+        return counts.most_common(1)[0][0] if counts else 1
 
     def remove_batch_dim(self) -> ActivationCache:
         """Remove the Batch Dimension (if a single batch item).
