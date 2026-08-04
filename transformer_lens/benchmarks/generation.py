@@ -1,6 +1,6 @@
 """Generation and KV cache benchmarks for TransformerBridge."""
 
-from typing import Any, Optional
+from typing import Any
 
 from transformer_lens.benchmarks.utils import (
     BenchmarkResult,

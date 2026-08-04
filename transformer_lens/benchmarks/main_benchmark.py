@@ -36,7 +36,6 @@ from transformer_lens.benchmarks.backward_gradients import (
 from transformer_lens.benchmarks.component_benchmark import benchmark_all_components
 from transformer_lens.benchmarks.forward_pass import (
     benchmark_forward_pass,
-    benchmark_logits_equivalence,
     benchmark_loss_equivalence,
 )
 from transformer_lens.benchmarks.generation import (

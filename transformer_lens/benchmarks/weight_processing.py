@@ -1,6 +1,5 @@
 """Weight processing benchmarks for TransformerBridge."""
 
-from typing import Optional, cast
 
 import torch
 
@@ -8,7 +7,6 @@ from transformer_lens.benchmarks.utils import (
     BenchmarkResult,
     BenchmarkSeverity,
     is_tiny_test_model,
-    safe_allclose,
 )
 from transformer_lens.model_bridge import TransformerBridge
 

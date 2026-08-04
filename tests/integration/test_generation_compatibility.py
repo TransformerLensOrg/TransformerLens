@@ -4,7 +4,6 @@ This module tests generation API features including HuggingFace-style ModelOutpu
 support and TransformerBridge batch dimension compatibility.
 """
 
-import warnings
 
 import pytest
 import torch
