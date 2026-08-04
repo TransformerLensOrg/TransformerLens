@@ -75,6 +75,42 @@ def test_boot_native_returns_bridge_over_native_model():
     assert isinstance(bridge.original_model, NativeModel)
 
 
+def test_state_dict_round_trip_restores_native_bridge():
+    bridge = TransformerBridge.boot_native(_cfg())
+    expected = {key: value.clone() for key, value in bridge.state_dict().items()}
+
+    with torch.no_grad():
+        for parameter in bridge.parameters():
+            parameter.zero_()
+
+    incompatible_keys = bridge.load_state_dict(expected, strict=True)
+
+    assert incompatible_keys.missing_keys == []
+    assert incompatible_keys.unexpected_keys == []
+    for key, expected_value in expected.items():
+        assert torch.equal(bridge.state_dict()[key], expected_value), key
+
+
+def test_state_dict_strict_load_rejects_missing_tl_key():
+    bridge = TransformerBridge.boot_native(_cfg())
+    state_dict = bridge.state_dict()
+    state_dict.pop("embed.weight")
+
+    with pytest.raises(RuntimeError, match=r"Missing key\(s\)"):
+        bridge.load_state_dict(state_dict, strict=True)
+
+
+def test_load_state_dict_preserves_raw_native_keys():
+    bridge = TransformerBridge.boot_native(_cfg())
+    raw_key = "layers.0.attn.k.weight"
+    actual_key = "layers.0.attn.k._original_component.weight"
+    replacement = torch.full_like(bridge.original_model.state_dict()[actual_key], 0.25)
+
+    bridge.load_state_dict({raw_key: replacement}, strict=False)
+
+    assert torch.equal(bridge.original_model.state_dict()[actual_key], replacement)
+
+
 def test_boot_native_accepts_dict_config():
     cfg_dict = dict(
         d_model=32,
