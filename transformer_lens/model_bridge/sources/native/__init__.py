@@ -8,7 +8,9 @@ import torch
 
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.model_bridge.bridge import TransformerBridge
-from transformer_lens.model_bridge.sources._bridge_builder import build_bridge_from_module
+from transformer_lens.model_bridge.sources._bridge_builder import (
+    build_bridge_from_module,
+)
 from transformer_lens.model_bridge.sources.native.init import initialize_native_model
 from transformer_lens.model_bridge.sources.native.model import (
     NativeAttention,
@@ -82,14 +84,16 @@ def boot(
 
     # Fork RNG around construction + init when seeded so neither nn.Linear's
     # default reset_parameters nor our scoped init perturb the caller's RNG.
-    # Unseeded calls let global RNG advance normally.
-    if cfg.seed is not None:
+    # When custom init is disabled, construction keeps PyTorch's normal global
+    # RNG semantics and cfg.seed has no initialization work to control.
+    if cfg.init_weights and cfg.seed is not None:
         with torch.random.fork_rng(devices=[]):
             model = NativeModel(cfg)
             initialize_native_model(model, cfg)
     else:
         model = NativeModel(cfg)
-        initialize_native_model(model, cfg)
+        if cfg.init_weights:
+            initialize_native_model(model, cfg)
 
     if device is not None:
         model = model.to(device)

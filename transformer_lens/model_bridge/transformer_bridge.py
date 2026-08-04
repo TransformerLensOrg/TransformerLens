@@ -193,6 +193,22 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         if callable(setter):
             setter(value)
 
+    def init_weights(self) -> None:
+        """Reinitialize a TL-native model in place using the bridge config."""
+        from transformer_lens.model_bridge.sources.native.init import (
+            initialize_native_model,
+        )
+        from transformer_lens.model_bridge.sources.native.model import NativeModel
+
+        model = self.original_model
+        if not isinstance(model, NativeModel):
+            raise RuntimeError(
+                "TransformerBridge.init_weights() is only supported for TL-native "
+                "bridges created with TransformerBridge.boot_native(...); this bridge "
+                f"wraps {type(model).__name__}."
+            )
+        initialize_native_model(model, self.cfg)
+
     def _set_processed_weight_attributes(self) -> None:
         """Create 3D processed weight attributes for attention components.
 
@@ -948,6 +964,26 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             return w.reshape(self.cfg.n_heads, d_head, self.cfg.d_model)
         return w
 
+    def _expand_kv_heads(self, w: torch.Tensor) -> torch.Tensor:
+        """Expand stacked grouped K/V weights along the head axis to n_heads.
+
+        GQA models store one K/V projection per key-value head while W_Q/W_O are
+        per-query-head, so weight circuits must repeat the grouped K/V up to
+        n_heads before factoring: query head h reads kv head
+        h // (n_heads // n_kv_heads), i.e. repeat_interleave — the same layout
+        GroupedQueryAttention.W_K/W_V expose on HookedTransformer. No-op for MHA,
+        where the head axes already match.
+        """
+        if w.ndim != 4 or w.shape[1] == self.cfg.n_heads:
+            return w
+        n_kv_heads = w.shape[1]
+        if self.cfg.n_heads % n_kv_heads != 0:
+            raise ValueError(
+                f"Cannot expand {n_kv_heads} key-value heads to {self.cfg.n_heads} "
+                f"query heads: n_heads must be a multiple of n_kv_heads."
+            )
+        return w.repeat_interleave(self.cfg.n_heads // n_kv_heads, dim=1)
+
     @property
     def W_K(self) -> torch.Tensor:
         """Stack the key weights across all layers."""
@@ -1033,24 +1069,24 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
     @property
     def QK(self):
         """QK circuit. On hybrids, returns attn layers only (with warning). See QK_for_attn_layers()."""
-        return FactoredMatrix(self.W_Q, self.W_K.transpose(-2, -1))
+        return FactoredMatrix(self.W_Q, self._expand_kv_heads(self.W_K).transpose(-2, -1))
 
     @property
     def OV(self):
         """OV circuit. On hybrids, returns attn layers only (with warning). See OV_for_attn_layers()."""
-        return FactoredMatrix(self.W_V, self.W_O)
+        return FactoredMatrix(self._expand_kv_heads(self.W_V), self.W_O)
 
     def QK_for_attn_layers(self) -> Tuple[List[int], FactoredMatrix]:
         """QK circuit for attention layers only. Returns (layer_indices, FactoredMatrix)."""
         q_indices, W_Q = self.stack_params_for("attn", "attn.W_Q", self._reshape_qkv)
         _, W_K = self.stack_params_for("attn", "attn.W_K", self._reshape_qkv)
-        return q_indices, FactoredMatrix(W_Q, W_K.transpose(-2, -1))
+        return q_indices, FactoredMatrix(W_Q, self._expand_kv_heads(W_K).transpose(-2, -1))
 
     def OV_for_attn_layers(self) -> Tuple[List[int], FactoredMatrix]:
         """OV circuit for attention layers only. Returns (layer_indices, FactoredMatrix)."""
         v_indices, W_V = self.stack_params_for("attn", "attn.W_V", self._reshape_qkv)
         _, W_O = self.stack_params_for("attn", "attn.W_O", self._reshape_o)
-        return v_indices, FactoredMatrix(W_V, W_O)
+        return v_indices, FactoredMatrix(self._expand_kv_heads(W_V), W_O)
 
     # ------------------------------------------------------------------
     # Mechanistic interpretability analysis methods
@@ -1177,17 +1213,17 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 weights = [w.to(target_device) for w in weights]
             return torch.stack(weights, dim=0)
 
-        W_V = _stack("attn.W_V", self._reshape_qkv)
+        W_V = self._expand_kv_heads(_stack("attn.W_V", self._reshape_qkv))
         W_O = _stack("attn.W_O", self._reshape_o)
         left = FactoredMatrix(W_V, W_O)
 
         if mode == "Q":
             W_Q = _stack("attn.W_Q", self._reshape_qkv)
-            W_K = _stack("attn.W_K", self._reshape_qkv)
+            W_K = self._expand_kv_heads(_stack("attn.W_K", self._reshape_qkv))
             right = FactoredMatrix(W_Q, W_K.transpose(-2, -1))
         elif mode == "K":
             W_Q = _stack("attn.W_Q", self._reshape_qkv)
-            W_K = _stack("attn.W_K", self._reshape_qkv)
+            W_K = self._expand_kv_heads(_stack("attn.W_K", self._reshape_qkv))
             right = FactoredMatrix(W_Q, W_K.transpose(-2, -1)).T
         elif mode == "V":
             right = left
@@ -3481,8 +3517,38 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
 
         return tl_state_dict
 
+    def _tl_key_to_actual_keys(self) -> dict[str, list[str]]:
+        """Inverse of the renaming state_dict() applies: map each TL-format key
+        back to every raw parameter/buffer path that represents it.
+
+        Mirrors the filtering and key-conversion in state_dict() exactly, except
+        it keeps every raw key for a given TL key instead of only the first-seen
+        one. Bridge components frequently expose the same underlying parameter
+        through more than one attribute path (e.g. GPT-2's split q/k/v weights
+        are views into the wrapped module's combined c_attn weight, reachable
+        both via a block-level shortcut and via the nested _original_component
+        chain) - all of those aliases must be written for the round trip to
+        actually change what forward() reads, not just what state_dict() shows.
+        """
+        mapping: dict[str, list[str]] = {}
+        for actual_key in self.original_model.state_dict():
+            if actual_key == "_original_component" or actual_key.startswith("_original_component."):
+                continue
+            clean_key = actual_key.replace("._original_component", "")
+            if not self._is_valid_bridge_path(clean_key):
+                continue
+            hf_key = self._normalize_bridge_key_to_hf(clean_key)
+            tl_key = self.adapter.convert_hf_key_to_tl_key(hf_key)
+            mapping.setdefault(tl_key, []).append(actual_key)
+        return mapping
+
     def load_state_dict(self, state_dict, strict=True, assign=False):
         """Load state dict into the model, handling both clean keys and original keys with _original_component references.
+
+        Accepts three key formats: TL-format keys as emitted by state_dict()
+        (e.g. "blocks.0.attn.q.weight"), raw native parameter paths (e.g. for
+        ``boot_native`` / tracr-style loading), and raw paths with
+        "_original_component" segments stripped.
 
         Args:
             state_dict: Dictionary containing a whole state of the module
@@ -3494,26 +3560,57 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         """
         current_state_dict = self.original_model.state_dict()
         clean_to_actual = {}
-        actual_to_clean = {}
         for actual_key in current_state_dict.keys():
             if actual_key != "_original_component":
-                clean_key = actual_key.replace("._original_component", "")
-                clean_to_actual[clean_key] = actual_key
-                actual_to_clean[actual_key] = clean_key
+                clean_to_actual[actual_key.replace("._original_component", "")] = actual_key
+
+        tl_to_actual = self._tl_key_to_actual_keys()
+
         mapped_state_dict = {}
+        unexpected_keys = []
         for input_key, value in state_dict.items():
             if input_key in current_state_dict:
                 mapped_state_dict[input_key] = value
-            else:
-                if input_key in clean_to_actual:
-                    actual_key = clean_to_actual[input_key]
+            elif input_key in clean_to_actual:
+                mapped_state_dict[clean_to_actual[input_key]] = value
+            elif input_key in tl_to_actual:
+                for actual_key in tl_to_actual[input_key]:
                     mapped_state_dict[actual_key] = value
-                else:
-                    mapped_state_dict[input_key] = value
-        effective_strict = strict and len(mapped_state_dict) == len(current_state_dict)
-        return self.original_model.load_state_dict(
-            mapped_state_dict, strict=effective_strict, assign=assign
+            else:
+                unexpected_keys.append(input_key)
+
+        # A TL key's actual-key aliases share the same underlying storage (see
+        # _tl_key_to_actual_keys), so writing any one of them already updates
+        # what forward() reads for all of them. Treat the group as satisfied
+        # if any alias was written -- e.g. a caller supplying clean/raw keys
+        # (the branch above maps each clean key to exactly one actual key)
+        # shouldn't have the *other*, unwritten aliases reported as missing.
+        missing_keys = sorted(
+            actual_key
+            for actual_keys in tl_to_actual.values()
+            if not any(k in mapped_state_dict for k in actual_keys)
+            for actual_key in actual_keys
         )
+
+        if strict and (missing_keys or unexpected_keys):
+            error_msgs = []
+            if unexpected_keys:
+                error_msgs.append(
+                    "Unexpected key(s) in state_dict: "
+                    + ", ".join(f'"{k}"' for k in sorted(unexpected_keys))
+                )
+            if missing_keys:
+                error_msgs.append(
+                    "Missing key(s) in state_dict: " + ", ".join(f'"{k}"' for k in missing_keys)
+                )
+            raise RuntimeError(
+                "Error(s) in loading state_dict for {}:\n\t{}".format(
+                    type(self.original_model).__name__, "\n\t".join(error_msgs)
+                )
+            )
+
+        result = self.original_model.load_state_dict(mapped_state_dict, strict=False, assign=assign)
+        return type(result)(missing_keys=missing_keys, unexpected_keys=unexpected_keys)
 
     def get_params(self):
         """Access to model parameters in the format expected by SVDInterpreter.
