@@ -153,6 +153,14 @@ class ActivationCache:
 
         # Note: model reference prevents garbage collection. Set cache.model = None if unneeded.
 
+    def _batch_size(self) -> int:
+        """The cache's batch size: the largest leading dim across entries.
+
+        Bridge-native caches may hold broadcast entries with a leading dim of 1
+        (e.g. position-index inputs) alongside genuinely batched activations.
+        """
+        return max((v.size(0) for v in self.cache_dict.values() if v.ndim > 0), default=1)
+
     def remove_batch_dim(self) -> ActivationCache:
         """Remove the Batch Dimension (if a single batch item).
 
@@ -160,16 +168,13 @@ class ActivationCache:
             The ActivationCache with the batch dimension removed.
         """
         if self.has_batch_dim:
-            # Skip tensors without a batch dimension
-            has_batch_1 = any(v.size(0) == 1 for v in self.cache_dict.values())
+            batch_size = self._batch_size()
+            assert (
+                batch_size == 1
+            ), f"Cannot remove batch dimension from cache with batch size {batch_size}"
             for key in self.cache_dict:
-                if self.cache_dict[key].size(0) == 1:
+                if self.cache_dict[key].ndim > 0 and self.cache_dict[key].size(0) == 1:
                     self.cache_dict[key] = self.cache_dict[key][0]
-                else:
-                    assert has_batch_1, (
-                        f"Cannot remove batch dimension from cache with batch size > 1, "
-                        f"for key {key} with shape {self.cache_dict[key].shape}"
-                    )
             self.has_batch_dim = False
         else:
             logging.warning("Tried removing batch dimension after already having removed it.")
@@ -339,8 +344,16 @@ class ActivationCache:
             self.has_batch_dim or batch_slice.mode == "empty"
         ), "Cannot index into a cache without a batch dim"
         still_has_batch_dim = (batch_slice.mode != "int") and self.has_batch_dim
+        batch_size = self._batch_size()
+        # Broadcast entries (leading dim 1 when the true batch is larger) are not
+        # batched — leave them untouched so slicing can't index out of bounds.
         new_cache_dict = {
-            name: batch_slice.apply(param, dim=0) for name, param in self.cache_dict.items()
+            name: (
+                batch_slice.apply(param, dim=0)
+                if param.ndim > 0 and param.size(0) == batch_size
+                else param
+            )
+            for name, param in self.cache_dict.items()
         }
         return ActivationCache(new_cache_dict, self.model, has_batch_dim=still_has_batch_dim)
 

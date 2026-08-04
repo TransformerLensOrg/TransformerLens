@@ -33,7 +33,7 @@ except ImportError:
 # Fixtures
 @pytest.fixture
 def mock_hooked_transformer():
-    """Create a mock HookedTransformer for testing."""
+    """Create a mock TransformerLens model for testing."""
     mock = MagicMock()
 
     # Mock config
@@ -61,8 +61,10 @@ def mock_hooked_transformer():
     mock.tokenizer.eos_token = "</s>"
     mock.tokenizer.bos_token = "<s>"
 
-    # Mock to_tokens
-    mock.to_tokens.return_value = torch.tensor([[1, 2, 3, 4, 5]])
+    # Explicit assignments (not auto-created children) so the mock structurally
+    # satisfies the runtime TransformerLensModel protocol check.
+    mock.to_tokens = MagicMock(return_value=torch.tensor([[1, 2, 3, 4, 5]]))
+    mock.run_with_hooks = MagicMock()
 
     # Mock embed
     mock.embed.return_value = torch.randn(1, 5, 64)
@@ -248,17 +250,16 @@ class TestConstants:
     @pytest.mark.skipif(not LIT_AVAILABLE, reason="LIT not installed")
     def test_input_field_names_drive_input_spec(self, mock_hooked_transformer):
         """Input field-name constants become input_spec dict keys."""
-        from transformer_lens.lit.model import HookedTransformerLIT
+        from transformer_lens.lit.model import TransformerLensLIT
 
-        with patch("transformer_lens.HookedTransformer", type(mock_hooked_transformer)):
-            wrapper = HookedTransformerLIT(mock_hooked_transformer)
-            spec = wrapper.input_spec()
+        wrapper = TransformerLensLIT(mock_hooked_transformer)
+        spec = wrapper.input_spec()
 
-            assert "text" in spec
-            assert isinstance(spec["text"], lit_types.TextSegment)  # type: ignore[union-attr]
-            assert "tokens" in spec
-            # TARGET_MASK appears because compute_gradients is on by default.
-            assert "target_mask" in spec
+        assert "text" in spec
+        assert isinstance(spec["text"], lit_types.TextSegment)  # type: ignore[union-attr]
+        assert "tokens" in spec
+        # TARGET_MASK appears because compute_gradients is on by default.
+        assert "target_mask" in spec
 
     def test_output_field_names(self):
         """Test output field names are defined."""
@@ -288,14 +289,13 @@ class TestConstants:
     @pytest.mark.skipif(not LIT_AVAILABLE, reason="LIT not installed")
     def test_no_tokenizer_error_is_raised(self, mock_hooked_transformer):
         """Predicting without a tokenizer raises the NO_TOKENIZER message."""
-        from transformer_lens.lit.model import HookedTransformerLIT
+        from transformer_lens.lit.model import TransformerLensLIT
 
         mock_hooked_transformer.tokenizer = None
 
-        with patch("transformer_lens.HookedTransformer", type(mock_hooked_transformer)):
-            wrapper = HookedTransformerLIT(mock_hooked_transformer)
-            with pytest.raises(ValueError, match="tokenizer"):
-                wrapper._predict_single({"text": "hello"})
+        wrapper = TransformerLensLIT(mock_hooked_transformer)
+        with pytest.raises(ValueError, match="tokenizer"):
+            wrapper._predict_single({"text": "hello"})
 
 
 # Tests for dataset.py
@@ -406,29 +406,28 @@ class TestModel:
     @pytest.mark.skipif(not LIT_AVAILABLE, reason="LIT not installed")
     def test_default_config_drives_wrapper_behavior(self, mock_hooked_transformer):
         """Default config drives batch size and embedding/attention outputs."""
-        from transformer_lens.lit.model import HookedTransformerLIT
+        from transformer_lens.lit.model import TransformerLensLIT
 
-        with patch("transformer_lens.HookedTransformer", type(mock_hooked_transformer)):
-            wrapper = HookedTransformerLIT(mock_hooked_transformer)
-            spec = wrapper.output_spec()
+        wrapper = TransformerLensLIT(mock_hooked_transformer)
+        spec = wrapper.output_spec()
 
-            # batch_size default feeds the minibatch limit LIT batches with.
-            assert wrapper.max_minibatch_size() == 8
-            # output_embeddings default -> embedding fields present.
-            assert "cls_embedding" in spec
-            assert "mean_embedding" in spec
-            # output_attention default -> a per-layer attention field per model layer.
-            assert "layer_0/attention" in spec
-            assert "layer_3/attention" in spec
-            # compute_gradients default -> salience gradient fields present.
-            assert "grad_l2" in spec
+        # batch_size default feeds the minibatch limit LIT batches with.
+        assert wrapper.max_minibatch_size() == 8
+        # output_embeddings default -> embedding fields present.
+        assert "cls_embedding" in spec
+        assert "mean_embedding" in spec
+        # output_attention default -> a per-layer attention field per model layer.
+        assert "layer_0/attention" in spec
+        assert "layer_3/attention" in spec
+        # compute_gradients default -> salience gradient fields present.
+        assert "grad_l2" in spec
 
     @pytest.mark.skipif(not LIT_AVAILABLE, reason="LIT not installed")
     def test_config_custom(self):
         """Test custom configuration."""
-        from transformer_lens.lit.model import HookedTransformerLITConfig
+        from transformer_lens.lit.model import TransformerLensLITConfig
 
-        config = HookedTransformerLITConfig(
+        config = TransformerLensLITConfig(
             max_seq_length=256,
             batch_size=4,
             compute_gradients=False,
@@ -440,80 +439,75 @@ class TestModel:
 
     @pytest.mark.skipif(not LIT_AVAILABLE, reason="LIT not installed")
     def test_model_wrapper_init(self, mock_hooked_transformer):
-        """Test HookedTransformerLIT initialization."""
-        from transformer_lens.lit.model import HookedTransformerLIT
+        """Test TransformerLensLIT initialization."""
+        from transformer_lens.lit.model import TransformerLensLIT
 
         # Need to mock the isinstance check - patch where it's imported
-        with patch("transformer_lens.HookedTransformer", type(mock_hooked_transformer)):
-            wrapper = HookedTransformerLIT(mock_hooked_transformer)
+        wrapper = TransformerLensLIT(mock_hooked_transformer)
 
-            assert wrapper.model is mock_hooked_transformer
-            assert wrapper.config is not None
+        assert wrapper.model is mock_hooked_transformer
+        assert wrapper.config is not None
 
     @pytest.mark.skipif(not LIT_AVAILABLE, reason="LIT not installed")
     def test_model_wrapper_invalid_model(self):
         """Test that invalid model type raises error."""
-        from transformer_lens.lit.model import HookedTransformerLIT
+        from transformer_lens.lit.model import TransformerLensLIT
 
         with pytest.raises(TypeError):
-            HookedTransformerLIT("not a model")  # type: ignore[union-attr]
+            TransformerLensLIT("not a model")  # type: ignore[union-attr]
 
     @pytest.mark.skipif(not LIT_AVAILABLE, reason="LIT not installed")
     def test_model_input_spec(self, mock_hooked_transformer):
         """Test input_spec method."""
-        from transformer_lens.lit.model import HookedTransformerLIT
+        from transformer_lens.lit.model import TransformerLensLIT
 
-        with patch("transformer_lens.HookedTransformer", type(mock_hooked_transformer)):
-            wrapper = HookedTransformerLIT(mock_hooked_transformer)
-            spec = wrapper.input_spec()
+        wrapper = TransformerLensLIT(mock_hooked_transformer)
+        spec = wrapper.input_spec()
 
-            assert "text" in spec
-            assert isinstance(spec["text"], lit_types.TextSegment)  # type: ignore[union-attr]
+        assert "text" in spec
+        assert isinstance(spec["text"], lit_types.TextSegment)  # type: ignore[union-attr]
 
     @pytest.mark.skipif(not LIT_AVAILABLE, reason="LIT not installed")
     def test_model_output_spec(self, mock_hooked_transformer):
         """Test output_spec method."""
-        from transformer_lens.lit.model import HookedTransformerLIT
+        from transformer_lens.lit.model import TransformerLensLIT
 
-        with patch("transformer_lens.HookedTransformer", type(mock_hooked_transformer)):
-            wrapper = HookedTransformerLIT(mock_hooked_transformer)
-            spec = wrapper.output_spec()
+        wrapper = TransformerLensLIT(mock_hooked_transformer)
+        spec = wrapper.output_spec()
 
-            assert "tokens" in spec
-            assert "top_k_tokens" in spec
-            # With default config, should have embeddings
-            assert "cls_embedding" in spec
+        assert "tokens" in spec
+        assert "top_k_tokens" in spec
+        # With default config, should have embeddings
+        assert "cls_embedding" in spec
 
     @pytest.mark.skipif(not LIT_AVAILABLE, reason="LIT not installed")
     def test_model_output_spec_no_embeddings(self, mock_hooked_transformer):
         """Test output_spec without embeddings."""
         from transformer_lens.lit.model import (
-            HookedTransformerLIT,
-            HookedTransformerLITConfig,
+            TransformerLensLIT,
+            TransformerLensLITConfig,
         )
 
         # Must also disable compute_gradients since gradients require embeddings
-        config = HookedTransformerLITConfig(output_embeddings=False, compute_gradients=False)
+        config = TransformerLensLITConfig(output_embeddings=False, compute_gradients=False)
 
-        with patch("transformer_lens.HookedTransformer", type(mock_hooked_transformer)):
-            wrapper = HookedTransformerLIT(mock_hooked_transformer, config=config)
-            spec = wrapper.output_spec()
+        wrapper = TransformerLensLIT(mock_hooked_transformer, config=config)
+        spec = wrapper.output_spec()
 
-            assert "tokens" in spec
-            assert "cls_embedding" not in spec
+        assert "tokens" in spec
+        assert "cls_embedding" not in spec
 
     @pytest.mark.skipif(not LIT_AVAILABLE, reason="LIT not installed")
     def test_model_description(self, mock_hooked_transformer):
         """Test model description."""
-        from transformer_lens.lit.model import HookedTransformerLIT
+        from transformer_lens.lit.model import TransformerLensLIT
 
-        with patch("transformer_lens.HookedTransformer", type(mock_hooked_transformer)):
-            wrapper = HookedTransformerLIT(mock_hooked_transformer)
-            desc = wrapper.description()
+        wrapper = TransformerLensLIT(mock_hooked_transformer)
+        desc = wrapper.description()
 
-            assert "test-model" in desc
-            assert "4L" in desc  # n_layers
-            assert "4H" in desc  # n_heads
+        assert "test-model" in desc
+        assert "4L" in desc  # n_layers
+        assert "4H" in desc  # n_heads
 
 
 # Tests for __init__.py
@@ -527,8 +521,8 @@ class TestInit:
         from transformer_lens import lit
 
         # Check key exports exist
-        assert hasattr(lit, "HookedTransformerLIT")
-        assert hasattr(lit, "HookedTransformerLITConfig")
+        assert hasattr(lit, "TransformerLensLIT")
+        assert hasattr(lit, "TransformerLensLITConfig")
         assert hasattr(lit, "SimpleTextDataset")
         assert hasattr(lit, "serve")
         assert hasattr(lit, "LITWidget")
@@ -559,18 +553,17 @@ class TestIntegration:
 
     def test_full_prediction_flow(self, mock_hooked_transformer):
         """Test full prediction flow with mock model."""
-        from transformer_lens.lit.model import HookedTransformerLIT
+        from transformer_lens.lit.model import TransformerLensLIT
 
-        with patch("transformer_lens.HookedTransformer", type(mock_hooked_transformer)):
-            wrapper = HookedTransformerLIT(mock_hooked_transformer)
+        wrapper = TransformerLensLIT(mock_hooked_transformer)
 
-            # This would fail with the mock, but we can at least check the structure
-            # In a real test with a real model, this would work
-            input_spec = wrapper.input_spec()
-            output_spec = wrapper.output_spec()
+        # This would fail with the mock, but we can at least check the structure
+        # In a real test with a real model, this would work
+        input_spec = wrapper.input_spec()
+        output_spec = wrapper.output_spec()
 
-            assert "text" in input_spec
-            assert "tokens" in output_spec
+        assert "text" in input_spec
+        assert "tokens" in output_spec
 
     def test_dataset_model_compatibility(self):
         """Test that datasets are compatible with model input spec."""

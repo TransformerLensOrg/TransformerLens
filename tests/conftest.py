@@ -74,10 +74,8 @@ def gpt2_tokenizer():
     return AutoTokenizer.from_pretrained("gpt2")
 
 
-# Golden-fixture counterparts of the HookedTransformer fixtures below. They load
-# frozen HT-captured reference data (see tests/goldens.py) instead of booting a
-# live HT, and skip when the golden dataset is unreachable. B-tier tests migrate
-# onto these; the live-HT fixtures delete with HookedTransformer.
+# Golden fixtures: frozen HT-captured reference data (see tests/goldens.py),
+# skipping when the golden dataset is unreachable.
 @pytest.fixture(scope="session")
 def gpt2_goldens_processed():
     """Golden cell for gpt2 with default weight processing (full_defaults)."""
@@ -118,22 +116,6 @@ def gpt2_bridge_compat():
 
 # Full-model fixtures for the acceptance/integration tiers — per tests/AGENTS.md, don't
 # adopt them in unit-tier tests (they time out / OOM there).
-@pytest.fixture(scope="session")
-def gpt2_hooked_processed():
-    """Read-only use only — mutations leak across the session."""
-    from transformer_lens import HookedTransformer
-
-    return HookedTransformer.from_pretrained("gpt2", device="cpu")
-
-
-@pytest.fixture(scope="session")
-def gpt2_hooked_unprocessed():
-    """HookedTransformer gpt2 without weight processing. Read-only use only."""
-    from transformer_lens import HookedTransformer
-
-    return HookedTransformer.from_pretrained_no_processing("gpt2", device="cpu")
-
-
 @pytest.fixture(scope="session")
 def gpt2_bridge_compat_no_processing():
     """TransformerBridge wrapping gpt2 with compat mode, no weight processing. Read-only use only."""

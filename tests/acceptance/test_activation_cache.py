@@ -4,7 +4,8 @@ import pytest
 import torch
 from fancy_einsum import einsum
 
-from transformer_lens import HookedTransformer, utils
+from transformer_lens import utils
+from transformer_lens.model_bridge import TransformerBridge
 from transformer_lens.utils import Slice
 
 # Create IOI prompts
@@ -50,18 +51,40 @@ def get_ioi_tokens_and_answer_tokens(model):
 def load_model(name):
     # Cached so each model loads once for the whole module instead of per-test.
     # Read-only: tests here only run forward/run_with_cache and read cfg — never mutate the model.
-    return HookedTransformer.from_pretrained(
-        name,
+    bridge = TransformerBridge.boot_transformers(name, device="cpu")
+    bridge.enable_compatibility_mode(
         center_unembed=True,
         center_writing_weights=True,
         fold_ln=True,
         refactor_factored_attn_matrices=True,
     )
+    return bridge
+
+
+@lru_cache(maxsize=None)
+def load_attn_only_model():
+    # Random-weight attn-only bridge: the tests using it verify decomposition
+    # bookkeeping against references recomputed from the same cache, so learned
+    # weights are unnecessary (and no attn-only HF checkpoint exists).
+    from transformer_lens.config import TransformerBridgeConfig
+
+    torch.manual_seed(0)
+    cfg = TransformerBridgeConfig(
+        n_layers=2,
+        d_model=64,
+        n_ctx=64,
+        d_head=16,
+        n_heads=4,
+        d_vocab=500,
+        act_fn="gelu",
+        attn_only=True,
+    )
+    return TransformerBridge.boot_native(cfg)
 
 
 @torch.no_grad
 def test_logit_attrs_matches_reference_code():
-    model = load_model("solu-2l")
+    model = load_model("distilgpt2")
 
     tokens, answer_tokens = get_ioi_tokens_and_answer_tokens(model)
 
@@ -93,7 +116,7 @@ def test_logit_attrs_matches_reference_code():
 
 @torch.no_grad
 def test_logit_accumulated_resid_on_last_layer_variants():
-    model = load_model("solu-2l")
+    model = load_model("distilgpt2")
     tokens, answer_tokens = get_ioi_tokens_and_answer_tokens(model)
     _, cache = model.run_with_cache(tokens)
 
@@ -110,7 +133,7 @@ def test_logit_accumulated_resid_on_last_layer_variants():
 
 @torch.no_grad
 def test_logit_accumulated_resid_without_mid():
-    model = load_model("solu-2l")
+    model = load_model("distilgpt2")
     tokens, answer_tokens = get_ioi_tokens_and_answer_tokens(model)
     _, cache = model.run_with_cache(tokens)
 
@@ -124,7 +147,7 @@ def test_logit_accumulated_resid_without_mid():
 @torch.no_grad
 def test_logit_attrs_works_for_all_input_shapes():
     # Load solu-2l
-    model = load_model("solu-2l")
+    model = load_model("distilgpt2")
 
     tokens, answer_tokens = get_ioi_tokens_and_answer_tokens(model)
 
@@ -236,7 +259,7 @@ def test_logit_attrs_works_for_all_input_shapes():
 @torch.no_grad
 def test_accumulated_resid_with_apply_ln():
     # Load solu-2l
-    model = load_model("solu-2l")
+    model = load_model("distilgpt2")
 
     tokens, _ = get_ioi_tokens_and_answer_tokens(model)
 
@@ -274,7 +297,7 @@ def test_accumulated_resid_with_apply_ln():
 
 @torch.no_grad
 def test_apply_ln_recompute_ln_differs_from_cached():
-    model = load_model("solu-2l")
+    model = load_model("distilgpt2")
     tokens, _ = get_ioi_tokens_and_answer_tokens(model)
     _, cache = model.run_with_cache(tokens)
 
@@ -291,7 +314,7 @@ def test_apply_ln_recompute_ln_differs_from_cached():
 @torch.no_grad
 def test_decompose_resid_with_apply_ln():
     # Load solu-2l
-    model = load_model("solu-2l")
+    model = load_model("distilgpt2")
 
     tokens, _ = get_ioi_tokens_and_answer_tokens(model)
 
@@ -310,15 +333,20 @@ def test_decompose_resid_with_apply_ln():
 
 @torch.no_grad
 def test_decompose_resid_including_attention():
-    model = load_model("solu-2l")
+    model = load_model("distilgpt2")
     tokens, _ = get_ioi_tokens_and_answer_tokens(model)
     _, cache = model.run_with_cache(tokens)
 
-    ref_attention_resids = torch.stack(
-        [cache["attn_out", l][:, -1] for l in range(model.cfg.n_layers)]
-    )
+    layer = 1
+    # mlp_input=True includes the current layer's attention: components 0..layer.
+    ref_attention_resids = torch.stack([cache["attn_out", l][:, -1] for l in range(layer + 1)])
     residual_stack = cache.decompose_resid(
-        layer=1, pos_slice=Slice(-1), mlp_input=True, apply_ln=False, incl_embeds=False, mode="attn"
+        layer=layer,
+        pos_slice=Slice(-1),
+        mlp_input=True,
+        apply_ln=False,
+        incl_embeds=False,
+        mode="attn",
     )
 
     assert torch.isclose(ref_attention_resids, residual_stack, atol=1e-7).all()
@@ -327,7 +355,7 @@ def test_decompose_resid_including_attention():
 @torch.no_grad
 def test_stack_head_results_with_apply_ln():
     # Load solu-2l
-    model = load_model("solu-2l")
+    model = load_model("distilgpt2")
 
     tokens, _ = get_ioi_tokens_and_answer_tokens(model)
 
@@ -348,7 +376,7 @@ def test_stack_head_results_with_apply_ln():
 
 @torch.no_grad
 def test_stack_head_results_including_remainder():
-    model = load_model("solu-2l")
+    model = load_model("distilgpt2")
     tokens, _ = get_ioi_tokens_and_answer_tokens(model)
     _, cache = model.run_with_cache(tokens)
 
@@ -379,7 +407,7 @@ def test_stack_head_results_including_remainder():
 @torch.no_grad
 def test_stack_neuron_results_with_apply_ln():
     # Load solu-2l
-    model = load_model("solu-2l")
+    model = load_model("distilgpt2")
 
     tokens, _ = get_ioi_tokens_and_answer_tokens(model)
 
@@ -398,7 +426,7 @@ def test_stack_neuron_results_with_apply_ln():
 
 @torch.no_grad
 def test_stack_neuron_results_including_remainder():
-    model = load_model("solu-2l")
+    model = load_model("distilgpt2")
     tokens, _ = get_ioi_tokens_and_answer_tokens(model)
     _, cache = model.run_with_cache(tokens)
 
@@ -428,7 +456,7 @@ def test_stack_neuron_results_including_remainder():
 
 @torch.no_grad
 def test_stack_neuron_results_using_neuron_slice():
-    model = load_model("solu-2l")
+    model = load_model("distilgpt2")
     tokens, _ = get_ioi_tokens_and_answer_tokens(model)
     _, cache = model.run_with_cache(tokens)
 
@@ -440,7 +468,7 @@ def test_stack_neuron_results_using_neuron_slice():
 
 @torch.no_grad
 def test_remove_batch_dim():
-    model = load_model("solu-2l")
+    model = load_model("distilgpt2")
     tokens, _ = get_ioi_tokens_and_answer_tokens(model)
     _, cache = model.run_with_cache(tokens[:1])
 
@@ -466,7 +494,7 @@ def test_remove_batch_dim():
 
 @torch.no_grad
 def test_remove_batch_dim_fails_if_batch_gt_1():
-    model = load_model("solu-2l")
+    model = load_model("distilgpt2")
     tokens, _ = get_ioi_tokens_and_answer_tokens(model)
     _, cache = model.run_with_cache(tokens)
 
@@ -477,7 +505,7 @@ def test_remove_batch_dim_fails_if_batch_gt_1():
 
 @torch.no_grad
 def test_retrieve_activations():
-    model = load_model("solu-2l")
+    model = load_model("distilgpt2")
     tokens, _ = get_ioi_tokens_and_answer_tokens(model)
     _, cache = model.run_with_cache(tokens)
 
@@ -504,7 +532,7 @@ def test_retrieve_activations():
 
 @torch.no_grad
 def test_get_items():
-    model = load_model("solu-2l")
+    model = load_model("distilgpt2")
     tokens, _ = get_ioi_tokens_and_answer_tokens(model)
     _, cache = model.run_with_cache(tokens)
 
@@ -518,7 +546,7 @@ def test_get_items():
 
 @torch.no_grad
 def test_get_values():
-    model = load_model("solu-2l")
+    model = load_model("distilgpt2")
     tokens, _ = get_ioi_tokens_and_answer_tokens(model)
     _, cache = model.run_with_cache(tokens)
 
@@ -530,7 +558,7 @@ def test_get_values():
 
 @torch.no_grad
 def test_get_keys():
-    model = load_model("solu-2l")
+    model = load_model("distilgpt2")
     tokens, _ = get_ioi_tokens_and_answer_tokens(model)
     _, cache = model.run_with_cache(tokens)
 
@@ -542,27 +570,34 @@ def test_get_keys():
 
 @torch.no_grad
 def test_apply_slice_to_batch_dim():
-    model = load_model("solu-2l")
+    model = load_model("distilgpt2")
     tokens, _ = get_ioi_tokens_and_answer_tokens(model)
     _, cache = model.run_with_cache(tokens)
 
     assert cache.has_batch_dim
-    batch_slice = Slice((2, 4))
-    new_cache = cache.apply_slice_to_batch_dim(batch_slice)
+    batch = tokens.shape[0]
 
+    def check(new_cache, expected_slice):
+        # Broadcast entries (leading dim 1, e.g. pos_embed.hook_in) are not
+        # batched and pass through slicing unchanged.
+        for key in cache.cache_dict:
+            if cache[key].shape[0] == batch:
+                assert torch.equal(cache[key][expected_slice], new_cache[key]), key
+            else:
+                assert torch.equal(cache[key], new_cache[key]), key
+
+    new_cache = cache.apply_slice_to_batch_dim(Slice((2, 4)))
     assert new_cache.has_batch_dim
-    assert all(torch.equal(cache[key][2:4], new_cache[key]) for key in cache.cache_dict)
+    check(new_cache, slice(2, 4))
 
-    batch_slice = 2
-    new_cache = cache.apply_slice_to_batch_dim(batch_slice)
-
+    new_cache = cache.apply_slice_to_batch_dim(2)
     assert not new_cache.has_batch_dim
-    assert all(torch.equal(cache[key][2], new_cache[key]) for key in cache.cache_dict)
+    check(new_cache, 2)
 
 
 @torch.no_grad
 def test_toggle_autodiff():
-    model = load_model("solu-2l")
+    model = load_model("distilgpt2")
     tokens, _ = get_ioi_tokens_and_answer_tokens(model)
     _, cache = model.run_with_cache(tokens)
 
@@ -573,7 +608,7 @@ def test_toggle_autodiff():
 
 @torch.no_grad
 def test_stack_activation():
-    model = load_model("solu-2l")
+    model = load_model("distilgpt2")
     tokens, _ = get_ioi_tokens_and_answer_tokens(model)
     _, cache = model.run_with_cache(tokens)
 
@@ -589,7 +624,7 @@ def test_stack_activation():
 
 @torch.no_grad
 def test_get_full_resid_decomposition():
-    model = load_model("solu-2l")
+    model = load_model("distilgpt2")
     tokens, _ = get_ioi_tokens_and_answer_tokens(model)
     _, cache = model.run_with_cache(tokens)
 
@@ -657,7 +692,7 @@ def test_get_full_resid_decomposition():
 
 @torch.no_grad
 def test_get_full_resid_decomposition_with_neurons_expanded():
-    model = load_model("solu-2l")
+    model = load_model("distilgpt2")
     tokens, _ = get_ioi_tokens_and_answer_tokens(model)
     _, cache = model.run_with_cache(tokens)
 
@@ -689,7 +724,7 @@ def test_get_full_resid_decomposition_with_neurons_expanded():
 
 @torch.no_grad
 def test_get_full_resid_decomposition_without_applying_ln():
-    model = load_model("solu-2l")
+    model = load_model("distilgpt2")
     tokens, _ = get_ioi_tokens_and_answer_tokens(model)
     _, cache = model.run_with_cache(tokens)
 
@@ -714,8 +749,9 @@ def test_get_full_resid_decomposition_without_applying_ln():
 
 @torch.no_grad
 def test_get_full_resid_decomposition_attn_only_model():
-    model = load_model("attn-only-2l")
-    tokens, _ = get_ioi_tokens_and_answer_tokens(model)
+    model = load_attn_only_model()
+    torch.manual_seed(1)
+    tokens = torch.randint(0, model.cfg.d_vocab, (2, 12))
     _, cache = model.run_with_cache(tokens)
 
     ref_head_stack = cache.stack_head_results(
@@ -733,8 +769,9 @@ def test_get_full_resid_decomposition_attn_only_model():
 
 @torch.no_grad
 def test_compute_test_head_results_does_not_compute_results_twice():
-    model = load_model("attn-only-2l")
-    tokens, _ = get_ioi_tokens_and_answer_tokens(model)
+    model = load_attn_only_model()
+    torch.manual_seed(1)
+    tokens = torch.randint(0, model.cfg.d_vocab, (2, 12))
     _, cache = model.run_with_cache(tokens)
 
     assert "blocks.0.attn.hook_result" not in cache.cache_dict
@@ -751,7 +788,7 @@ def test_compute_test_head_results_does_not_compute_results_twice():
 
 @torch.no_grad
 def test_get_neuron_results():
-    model = load_model("solu-2l")
+    model = load_model("distilgpt2")
     tokens, _ = get_ioi_tokens_and_answer_tokens(model)
     _, cache = model.run_with_cache(tokens)
 
@@ -771,7 +808,7 @@ def test_get_neuron_results():
 
 @torch.no_grad
 def test_get_neuron_results_without_slice():
-    model = load_model("solu-2l")
+    model = load_model("distilgpt2")
     tokens, _ = get_ioi_tokens_and_answer_tokens(model)
     _, cache = model.run_with_cache(tokens)
 
@@ -792,7 +829,7 @@ def test_get_neuron_results_without_slice():
 @torch.no_grad
 def test_get_neuron_results_project_output_onto_1d():
     """1D projection: contract W_out with [d_model] vector, drop the d_model dim."""
-    model = load_model("solu-2l")
+    model = load_model("distilgpt2")
     tokens, _ = get_ioi_tokens_and_answer_tokens(model)
     _, cache = model.run_with_cache(tokens)
 
@@ -809,7 +846,7 @@ def test_get_neuron_results_project_output_onto_1d():
 @torch.no_grad
 def test_get_neuron_results_project_output_onto_2d():
     """2D projection: contract W_out with [d_model, n_outs], keep n_outs as last dim."""
-    model = load_model("solu-2l")
+    model = load_model("distilgpt2")
     tokens, _ = get_ioi_tokens_and_answer_tokens(model)
     _, cache = model.run_with_cache(tokens)
 
@@ -821,13 +858,15 @@ def test_get_neuron_results_project_output_onto_2d():
     expected = full @ directions  # [batch, pos, d_mlp, n_outs]
     projected = cache.get_neuron_results(layer, project_output_onto=directions)
     assert projected.shape == expected.shape
-    assert torch.allclose(projected, expected, atol=1e-5)
+    # atol 1e-3: fp64-verified association noise — impl and this einsum reference
+    # sit ~1e-4/3e-4 from the fp64 truth on distilgpt2 (d_model=768).
+    assert torch.allclose(projected, expected, atol=1e-3)
 
 
 @torch.no_grad
 def test_stack_neuron_results_project_output_onto_matches_unprojected():
     """stack_neuron_results with projection equals unprojected output then @ projection."""
-    model = load_model("solu-2l")
+    model = load_model("distilgpt2")
     tokens, _ = get_ioi_tokens_and_answer_tokens(model)
     _, cache = model.run_with_cache(tokens)
 
@@ -845,13 +884,13 @@ def test_stack_neuron_results_project_output_onto_matches_unprojected():
     expected_2d = full @ directions
     projected_2d = cache.stack_neuron_results(layer, pos_slice=-1, project_output_onto=directions)
     assert projected_2d.shape == expected_2d.shape
-    assert torch.allclose(projected_2d, expected_2d, atol=1e-5)
+    assert torch.allclose(projected_2d, expected_2d, atol=1e-3)
 
 
 @torch.no_grad
 def test_stack_neuron_results_project_incl_remainder():
     """Projection commutes with the incl_remainder branch."""
-    model = load_model("solu-2l")
+    model = load_model("distilgpt2")
     tokens, _ = get_ioi_tokens_and_answer_tokens(model)
     _, cache = model.run_with_cache(tokens)
 
@@ -870,7 +909,7 @@ def test_stack_neuron_results_project_incl_remainder():
 @torch.no_grad
 def test_get_full_resid_decomposition_project_output_onto_1d():
     """Full decomposition projection equals unprojected stack @ direction."""
-    model = load_model("solu-2l")
+    model = load_model("distilgpt2")
     tokens, _ = get_ioi_tokens_and_answer_tokens(model)
     _, cache = model.run_with_cache(tokens)
 
@@ -888,7 +927,7 @@ def test_get_full_resid_decomposition_project_output_onto_1d():
 @torch.no_grad
 def test_get_full_resid_decomposition_project_output_onto_2d():
     """2D projection: last dim is num_outputs, not squeezed."""
-    model = load_model("solu-2l")
+    model = load_model("distilgpt2")
     tokens, _ = get_ioi_tokens_and_answer_tokens(model)
     _, cache = model.run_with_cache(tokens)
 
@@ -907,7 +946,7 @@ def test_get_full_resid_decomposition_project_output_onto_2d():
 @torch.no_grad
 def test_stack_neuron_results_apply_ln_and_project_1d():
     """LN-fused projection equals non-fused (apply_ln) then projected, for 1D direction."""
-    model = load_model("solu-2l")
+    model = load_model("distilgpt2")
     tokens, _ = get_ioi_tokens_and_answer_tokens(model)
     _, cache = model.run_with_cache(tokens)
 
@@ -925,7 +964,7 @@ def test_stack_neuron_results_apply_ln_and_project_1d():
 @torch.no_grad
 def test_stack_neuron_results_apply_ln_and_project_2d():
     """LN-fused projection equals non-fused (apply_ln) then projected, for 2D directions."""
-    model = load_model("solu-2l")
+    model = load_model("distilgpt2")
     tokens, _ = get_ioi_tokens_and_answer_tokens(model)
     _, cache = model.run_with_cache(tokens)
 
@@ -943,7 +982,7 @@ def test_stack_neuron_results_apply_ln_and_project_2d():
 @torch.no_grad
 def test_stack_neuron_results_apply_ln_and_project_incl_remainder():
     """LN-fused projection respects incl_remainder via cached-scale LN linearity."""
-    model = load_model("solu-2l")
+    model = load_model("distilgpt2")
     tokens, _ = get_ioi_tokens_and_answer_tokens(model)
     _, cache = model.run_with_cache(tokens)
 
@@ -968,7 +1007,7 @@ def test_stack_neuron_results_apply_ln_and_project_incl_remainder():
 @torch.no_grad
 def test_get_full_resid_decomposition_apply_ln_and_project_1d():
     """Full decomposition with apply_ln + 1D projection matches non-projected then projected."""
-    model = load_model("solu-2l")
+    model = load_model("distilgpt2")
     tokens, _ = get_ioi_tokens_and_answer_tokens(model)
     _, cache = model.run_with_cache(tokens)
 
@@ -993,7 +1032,7 @@ def test_get_full_resid_decomposition_apply_ln_and_project_1d():
 @torch.no_grad
 def test_get_full_resid_decomposition_apply_ln_and_project_2d():
     """Full decomposition with apply_ln + 2D projection matches non-projected then projected."""
-    model = load_model("solu-2l")
+    model = load_model("distilgpt2")
     tokens, _ = get_ioi_tokens_and_answer_tokens(model)
     _, cache = model.run_with_cache(tokens)
 
@@ -1032,7 +1071,7 @@ def test_stack_neuron_results_apply_ln_projection_skips_dmodel_materialization()
                     self.max_numel = max(self.max_numel, t.numel())
             return result
 
-    model = load_model("solu-2l")
+    model = load_model("distilgpt2")
     tokens, _ = get_ioi_tokens_and_answer_tokens(model)
     _, cache = model.run_with_cache(tokens)
 
@@ -1077,7 +1116,7 @@ def test_stack_neuron_results_projection_skips_dmodel_materialization():
                     self.max_numel = max(self.max_numel, t.numel())
             return result
 
-    model = load_model("solu-2l")
+    model = load_model("distilgpt2")
     tokens, _ = get_ioi_tokens_and_answer_tokens(model)
     _, cache = model.run_with_cache(tokens)
 

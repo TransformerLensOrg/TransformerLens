@@ -1,7 +1,7 @@
 """Vision benchmark (Phase 9) gating and behavior tests (download-free).
 
 Vision-only encoders (ViT/DeiT) have no text tower: text phases 1-4 can't run
-against them, and HookedTransformer can't represent them. Phase 9 feeds
+against them (no text-side reference applies). Phase 9 feeds
 synthetic pixel_values through the bridge and checks parity/caching against the
 wrapped HF model. These tests pin the classification plumbing, the phase gating
 in run_benchmark_suite, and the benchmark verdicts themselves using fake

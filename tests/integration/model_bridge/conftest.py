@@ -37,8 +37,7 @@ def distilgpt2_bridge_compat():
     return bridge
 
 
-# Golden-fixture counterparts of the two HT fixtures below (see tests/goldens.py).
-# B-tier tests migrate onto these; the live-HT fixtures delete with HookedTransformer.
+# Golden fixtures: frozen HT-captured reference data (see tests/goldens.py).
 @pytest.fixture(scope="session")
 def distilgpt2_goldens_processed():
     """Golden cell for distilgpt2 with default weight processing (full_defaults)."""
@@ -57,22 +56,6 @@ def distilgpt2_goldens_unprocessed():
     if not goldens.goldens_available("distilgpt2", "no_processing"):
         pytest.skip("TL goldens dataset unavailable (set TL_GOLDENS_DIR or enable network)")
     return goldens.GoldenCell("distilgpt2", "no_processing")
-
-
-@pytest.fixture(scope="session")
-def distilgpt2_hooked_processed():
-    """HookedTransformer distilgpt2 with default weight processing."""
-    from transformer_lens import HookedTransformer
-
-    return HookedTransformer.from_pretrained("distilgpt2", device="cpu")
-
-
-@pytest.fixture(scope="session")
-def distilgpt2_hooked_unprocessed():
-    """HookedTransformer distilgpt2 without weight processing."""
-    from transformer_lens import HookedTransformer
-
-    return HookedTransformer.from_pretrained_no_processing("distilgpt2", device="cpu")
 
 
 @pytest.fixture(scope="session")
