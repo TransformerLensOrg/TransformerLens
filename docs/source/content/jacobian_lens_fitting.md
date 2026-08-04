@@ -305,9 +305,10 @@ be preserved end-to-end. Value precision is preserved within those two conversio
 
 ### Note on tuned-lens
 
-Tuned-lens checkpoints are not currently supported. The tuned-lens format has no
-bias slot, so importing would silently drop the translation component and produce
-wrong-but-plausible readouts. Layer indexing also differs (input-to-layer-ℓ vs.
-output-of-block-ℓ), which would yield misaligned readouts if not corrected. These
-issues are deferred; support can be added in a follow-up once a lossless mapping
-is established.
+Tuned-lens checkpoints are not currently supported. Tuned-lens translators are
+affine (weight + bias), but the Jacobian artifact format has no bias slot to
+receive the translation component; importing would therefore silently drop the
+bias and produce wrong-but-plausible readouts. Layer indexing also differs
+(input-to-layer-ℓ vs. output-of-block-ℓ), which would yield misaligned
+readouts if not corrected. These issues are deferred; support can be added in a
+follow-up once a lossless mapping is established.

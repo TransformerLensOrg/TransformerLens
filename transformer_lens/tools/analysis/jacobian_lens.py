@@ -123,6 +123,9 @@ _SWAP_ERROR_COSINE = 0.999
 
 # Keys written by fit() that must not appear in converted-lens metadata so that
 # merge() can refuse to mix TL-fitted lenses with externally converted ones.
+# Note: "target_layer" is intentionally NOT listed here — it must survive
+# conversion so that validate_model() can detect and refuse checkpoints that
+# were fitted against a non-final target layer.
 _FIT_RESERVED_KEYS: frozenset = frozenset(
     {
         "transformer_lens_fit",
@@ -134,7 +137,6 @@ _FIT_RESERVED_KEYS: frozenset = frozenset(
         "dim_batch",
         "max_seq_len",
         "skip_first_positions",
-        "target_layer",
     }
 )
 

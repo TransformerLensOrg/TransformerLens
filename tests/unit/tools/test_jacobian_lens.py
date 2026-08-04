@@ -509,6 +509,67 @@ def test_load_checkpoint_with_zero_n_prompts_raises(tmp_path: Any) -> None:
         JacobianLens.load(path)
 
 
+def test_load_checkpoint_mirrors_fit_payload_schema(tmp_path: Any) -> None:
+    """Fixture uses the exact keys that fit() writes so schema drift causes failure.
+
+    A real checkpoint produced by a JacobianLens.fit() run would contain:
+    - top-level ``jacobian_sum``, ``n_prompts``, ``d_model``
+    - flat provenance keys (``model_name``, ``model_revision``, ``corpus``)
+    - a nested ``metadata`` dict with fit-reserved provenance
+      (``transformer_lens_fit``, ``target_layer``, etc.)
+
+    After load(): jacobian_sum / n_prompts gives the per-layer Jacobians;
+    fit-reserved keys are stripped from metadata; flat provenance is harvested;
+    ``target_layer`` is preserved (not stripped) so validate_model() can check it;
+    ``converted_from`` sentinel is set.
+    """
+    path = str(tmp_path / "fit_checkpoint.pt")
+    torch.save(
+        {
+            "jacobian_sum": {0: torch.ones(D_MODEL, D_MODEL) * 5.0},
+            "n_prompts": 5,
+            "d_model": D_MODEL,
+            # flat provenance keys written alongside the payload by some writers
+            "model_name": "toy-bridge",
+            "model_revision": "abc123def456",
+            "corpus": CORPUS,
+            # nested metadata as fit() writes it, including fit-reserved fields
+            "metadata": {
+                "transformer_lens_fit": True,
+                "transformer_lens_version": "3.7.0",
+                "hook_convention": "blocks.{layer}.hook_out",
+                "fit_dtype": "float32",
+                "target_layer": N_LAYERS - 1,
+                "dim_batch": 8,
+                "max_seq_len": 128,
+                "skip_first_positions": 16,
+            },
+        },
+        path,
+    )
+    lens = JacobianLens.load(path)
+
+    # jacobian_sum / n_prompts = ones*5 / 5 = ones
+    assert torch.allclose(lens.jacobians[0], torch.ones(D_MODEL, D_MODEL))
+    assert lens.n_prompts == 5
+
+    # flat provenance harvested into metadata
+    assert lens.metadata["model_name"] == "toy-bridge"
+    assert lens.metadata["corpus"] == CORPUS
+
+    # fit-reserved internal keys must be stripped
+    assert "transformer_lens_fit" not in lens.metadata
+    assert "transformer_lens_version" not in lens.metadata
+    assert "hook_convention" not in lens.metadata
+    assert "fit_dtype" not in lens.metadata
+
+    # target_layer must be preserved (NOT stripped) so validate_model can check it
+    assert lens.metadata["target_layer"] == N_LAYERS - 1
+
+    # converted_from sentinel must be set so merge() refuses to mix with fitted lenses
+    assert lens.metadata["converted_from"] == "jacobian_lens_checkpoint"
+
+
 def test_from_pretrained_uses_retry_and_forwards_hub_arguments(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Any
 ) -> None:
