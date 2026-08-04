@@ -3543,8 +3543,18 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             else:
                 unexpected_keys.append(input_key)
 
-        required_actual_keys = {key for keys in tl_to_actual.values() for key in keys}
-        missing_keys = sorted(required_actual_keys - mapped_state_dict.keys())
+        # A TL key's actual-key aliases share the same underlying storage (see
+        # _tl_key_to_actual_keys), so writing any one of them already updates
+        # what forward() reads for all of them. Treat the group as satisfied
+        # if any alias was written -- e.g. a caller supplying clean/raw keys
+        # (the branch above maps each clean key to exactly one actual key)
+        # shouldn't have the *other*, unwritten aliases reported as missing.
+        missing_keys = sorted(
+            actual_key
+            for actual_keys in tl_to_actual.values()
+            if not any(k in mapped_state_dict for k in actual_keys)
+            for actual_key in actual_keys
+        )
 
         if strict and (missing_keys or unexpected_keys):
             error_msgs = []
