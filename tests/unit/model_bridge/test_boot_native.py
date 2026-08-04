@@ -75,6 +75,37 @@ def test_boot_native_returns_bridge_over_native_model():
     assert isinstance(bridge.original_model, NativeModel)
 
 
+def test_native_state_dict_round_trip_restores_parameters():
+    bridge = TransformerBridge.boot_native(_cfg())
+
+    saved_state_dict = {key: value.detach().clone() for key, value in bridge.state_dict().items()}
+    original_parameters = {
+        name: parameter.detach().clone() for name, parameter in bridge.named_parameters()
+    }
+
+    with torch.no_grad():
+        for parameter in bridge.parameters():
+            parameter.zero_()
+
+    result = bridge.load_state_dict(saved_state_dict, strict=True)
+
+    assert result.missing_keys == []
+    assert result.unexpected_keys == []
+
+    for name, parameter in bridge.named_parameters():
+        torch.testing.assert_close(parameter, original_parameters[name])
+
+
+def test_native_state_dict_strict_rejects_unexpected_keys():
+    bridge = TransformerBridge.boot_native(_cfg())
+
+    with pytest.raises(RuntimeError, match="Unexpected key"):
+        bridge.load_state_dict(
+            {"not.a.real.weight": torch.zeros(1)},
+            strict=True,
+        )
+
+
 def test_boot_native_accepts_dict_config():
     cfg_dict = dict(
         d_model=32,
