@@ -320,6 +320,30 @@ for position in range(tokens.shape[1]):
 HuggingFace model. It is not a `TransformerLensKeyValueCache`, and code should
 not depend on the latter's layout or methods.
 
+### Load a legacy TL-format checkpoint
+
+Historical training-run checkpoints (OthelloGPT, grokking demos, ARENA
+content) were saved via `HookedTransformer.state_dict()` before the bridge
+existed, using property-style keys (`blocks.0.attn.W_Q`, `embed.W_E`, ...)
+and per-head tensor shapes that `bridge.load_state_dict` doesn't recognize
+natively. `convert_tl_checkpoint` is a one-time converter for exactly this:
+convert once, load, then re-save in bridge format — `load_state_dict` itself
+stays native-only rather than carrying a second, permanent key convention.
+
+```python
+from transformer_lens.config import TransformerBridgeConfig
+from transformer_lens.model_bridge import TransformerBridge
+from transformer_lens.utilities.tl_checkpoint_conversion import convert_tl_checkpoint
+
+cfg = TransformerBridgeConfig(...)  # same hyperparameters the checkpoint was trained under
+legacy_state_dict = torch.load("othello_gpt.pth")
+
+bridge = TransformerBridge.boot_native(cfg)
+bridge.load_state_dict(convert_tl_checkpoint(legacy_state_dict, cfg), strict=True)
+
+torch.save(bridge.state_dict(), "othello_gpt_bridge_format.pth")  # re-save once, done
+```
+
 ### Type helpers for both model classes
 
 Use the structural protocol when a helper should accept either a
