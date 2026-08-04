@@ -48,8 +48,10 @@ class TestHookCompleteness:
         bridge = TransformerBridge.boot_transformers(model_name, device="cpu")
         bridge.enable_compatibility_mode(no_processing=True)
 
-        # Run benchmark
-        result = benchmark_hook_registry(bridge, reference_model=ht)
+        # Run benchmark against HT's hook-name set. (Reference data is built from
+        # the live HT while it exists; the golden hook manifest replaces this
+        # data source when HookedTransformer is removed.)
+        result = benchmark_hook_registry(bridge, reference_hooks=ht.hook_dict.keys())
 
         # Must pass - no missing hooks allowed
         assert result.passed, (
@@ -75,10 +77,23 @@ class TestHookCompleteness:
         # Use a short prompt to speed up testing
         test_text = "The quick brown fox"
 
+        # Capture the reference activation snapshot from the live HT. (The golden
+        # activation snapshot replaces this data source when HT is removed.)
+        import torch
+
+        reference_activations = {}
+        with torch.no_grad():
+            _, ht_cache = ht.run_with_cache(test_text)
+        reference_activations = {
+            name: tensor for name, tensor in ht_cache.items() if isinstance(tensor, torch.Tensor)
+        }
+
         # Run benchmark - this will fail if hooks don't fire
         # tolerance=1e-2: some architectures (e.g., pythia) accumulate small floating-point
         # differences across layers that exceed 1e-3 but are not meaningful divergences.
-        result = benchmark_forward_hooks(bridge, test_text, reference_model=ht, tolerance=1e-2)
+        result = benchmark_forward_hooks(
+            bridge, test_text, reference_activations=reference_activations, tolerance=1e-2
+        )
 
         # Must pass - all hooks must fire
         assert result.passed, (

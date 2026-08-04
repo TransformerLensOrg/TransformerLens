@@ -2,7 +2,6 @@
 
 from typing import Any, Optional
 
-from transformer_lens import HookedTransformer
 from transformer_lens.benchmarks.utils import (
     BenchmarkResult,
     BenchmarkSeverity,
@@ -26,7 +25,6 @@ def benchmark_generation(
     bridge: TransformerBridge,
     test_text: str,
     max_new_tokens: int = 10,
-    reference_model: Optional[HookedTransformer] = None,
 ) -> BenchmarkResult:
     """Benchmark basic text generation."""
     try:
@@ -116,7 +114,6 @@ def benchmark_generation_with_kv_cache(
     bridge: TransformerBridge,
     test_text: str,
     max_new_tokens: int = 10,
-    reference_model: Optional[HookedTransformer] = None,
 ) -> BenchmarkResult:
     """Benchmark text generation with KV caching enabled.
 
@@ -127,7 +124,6 @@ def benchmark_generation_with_kv_cache(
         bridge: TransformerBridge model to test
         test_text: Input text for generation
         max_new_tokens: Number of tokens to generate
-        reference_model: Optional HookedTransformer reference model (not used)
 
     Returns:
         BenchmarkResult with generation details
@@ -189,7 +185,6 @@ def benchmark_multiple_generation_calls(
     bridge: TransformerBridge,
     test_prompts: list,
     max_new_tokens: int = 5,
-    reference_model: Optional[HookedTransformer] = None,
 ) -> BenchmarkResult:
     """Benchmark multiple generation calls to ensure KV cache handling is robust.
 
@@ -197,7 +192,6 @@ def benchmark_multiple_generation_calls(
         bridge: TransformerBridge model to test
         test_prompts: List of input prompts for generation
         max_new_tokens: Number of tokens to generate per prompt
-        reference_model: Optional HookedTransformer reference model (not used)
 
     Returns:
         BenchmarkResult with multiple generation details

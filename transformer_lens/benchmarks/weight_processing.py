@@ -4,7 +4,6 @@ from typing import Optional, cast
 
 import torch
 
-from transformer_lens import HookedTransformer
 from transformer_lens.benchmarks.utils import (
     BenchmarkResult,
     BenchmarkSeverity,
@@ -14,285 +13,15 @@ from transformer_lens.benchmarks.utils import (
 from transformer_lens.model_bridge import TransformerBridge
 
 
-def benchmark_weight_processing(
-    bridge: TransformerBridge,
-    test_text: str,
-    reference_model: Optional[HookedTransformer] = None,
-) -> BenchmarkResult:
-    """Benchmark weight processing (folding, centering) application.
-
-    Args:
-        bridge: TransformerBridge model to test
-        test_text: Input text for testing
-        reference_model: Optional HookedTransformer reference model
-
-    Returns:
-        BenchmarkResult with weight processing verification details
-    """
-    try:
-        from transformer_lens.components.layer_norm_pre import LayerNormPre
-        from transformer_lens.model_bridge.generalized_components.normalization import (
-            NormalizationBridge,
-        )
-
-        # Check layer norm folding
-        if not isinstance(bridge.ln_final, NormalizationBridge):
-            return BenchmarkResult(
-                name="weight_processing",
-                severity=BenchmarkSeverity.WARNING,
-                message=f"Bridge ln_final is {type(bridge.ln_final).__name__}, expected NormalizationBridge",
-            )
-
-        # Verify NormalizationBridge has LayerNormPre functionality
-        if not hasattr(bridge.ln_final, "_layernorm_pre_forward"):
-            return BenchmarkResult(
-                name="weight_processing",
-                severity=BenchmarkSeverity.WARNING,
-                message="Bridge ln_final missing LayerNormPre functionality",
-            )
-
-        if not hasattr(bridge.ln_final.config, "layer_norm_folding"):
-            return BenchmarkResult(
-                name="weight_processing",
-                severity=BenchmarkSeverity.WARNING,
-                message="Bridge ln_final missing layer_norm_folding config",
-            )
-
-        if reference_model is not None:
-            # Check that reference model has LayerNormPre
-            if not isinstance(reference_model.ln_final, LayerNormPre):
-                return BenchmarkResult(
-                    name="weight_processing",
-                    severity=BenchmarkSeverity.WARNING,
-                    message=f"Reference ln_final is {type(reference_model.ln_final).__name__}, expected LayerNormPre",
-                )
-
-            # Check weight centering - writing weights should be approximately centered
-            mlp_blocks = bridge.blocks_with("mlp")
-            if not mlp_blocks:
-                return BenchmarkResult(
-                    name="weight_processing",
-                    severity=BenchmarkSeverity.WARNING,
-                    message="No blocks have MLP submodule — cannot check centering",
-                )
-            _mlp_idx, mlp_block = mlp_blocks[0]
-            bridge_w_out = mlp_block.mlp.W_out
-            reference_w_out = reference_model.blocks[_mlp_idx].mlp.W_out
-
-            bridge_mean = torch.mean(torch.abs(torch.mean(bridge_w_out, dim=-1, keepdim=True)))
-            reference_mean = torch.mean(
-                torch.abs(torch.mean(reference_w_out, dim=-1, keepdim=True))
-            )
-
-            if bridge_mean.item() > 1e-3:
-                return BenchmarkResult(
-                    name="weight_processing",
-                    severity=BenchmarkSeverity.WARNING,
-                    message=f"Bridge weights not well-centered: {bridge_mean.item():.6f}",
-                    details={"bridge_mean": bridge_mean.item()},
-                )
-
-            if reference_mean.item() > 1e-3:
-                return BenchmarkResult(
-                    name="weight_processing",
-                    severity=BenchmarkSeverity.WARNING,
-                    message=f"Reference weights not well-centered: {reference_mean.item():.6f}",
-                    details={"reference_mean": reference_mean.item()},
-                )
-
-            return BenchmarkResult(
-                name="weight_processing",
-                severity=BenchmarkSeverity.INFO,
-                message="Weight processing verified (folding and centering applied)",
-                details={
-                    "bridge_mean": bridge_mean.item(),
-                    "reference_mean": reference_mean.item(),
-                },
-            )
-
-        return BenchmarkResult(
-            name="weight_processing",
-            severity=BenchmarkSeverity.INFO,
-            message="Weight processing structure verified",
-        )
-
-    except Exception as e:
-        return BenchmarkResult(
-            name="weight_processing",
-            severity=BenchmarkSeverity.ERROR,
-            message=f"Weight processing check failed: {str(e)}",
-            passed=False,
-        )
-
-
-def benchmark_weight_sharing(
-    bridge: TransformerBridge,
-    test_text: str,
-    reference_model: Optional[HookedTransformer] = None,
-    atol: float = 1e-3,
-) -> BenchmarkResult:
-    """Benchmark weight sharing and modification effects.
-
-    Args:
-        bridge: TransformerBridge model to test
-        test_text: Input text for testing
-        reference_model: Optional HookedTransformer reference model
-        atol: Absolute tolerance for effect comparison
-
-    Returns:
-        BenchmarkResult with weight sharing verification details
-    """
-    try:
-        # Get baseline loss
-        bridge_original = bridge(test_text, return_type="loss")
-
-        if reference_model is not None:
-            reference_original = reference_model(test_text, return_type="loss")
-
-            bridge_attn_blocks = bridge.blocks_with("attn")
-            if not bridge_attn_blocks:
-                return BenchmarkResult(
-                    name="weight_sharing",
-                    severity=BenchmarkSeverity.INFO,
-                    message="No blocks have attention submodule — skipping weight sharing check",
-                )
-            bridge_attn_idx, bridge_attn_block = bridge_attn_blocks[0]
-
-            # Verify weights are identical before modification
-            bridge_W_V = torch.clone(cast(torch.Tensor, bridge_attn_block.attn.W_V))
-            reference_W_V = torch.clone(
-                cast(torch.Tensor, reference_model.blocks[bridge_attn_idx].attn.W_V)
-            )
-
-            # Check if models have GQA (different head counts for K/V vs Q)
-            has_gqa = (
-                hasattr(bridge.cfg, "n_key_value_heads")
-                and bridge.cfg.n_key_value_heads != bridge.cfg.n_heads
-            )
-
-            # For GQA models, HookedTransformer may not support GQA correctly yet
-            # Skip the weight comparison if shapes don't match
-            if bridge_W_V.shape != reference_W_V.shape:  # type: ignore[union-attr]
-                if has_gqa:
-                    # This is expected - HookedTransformer doesn't support GQA yet
-                    # Skip this benchmark for GQA models
-                    return BenchmarkResult(
-                        name="weight_sharing",
-                        severity=BenchmarkSeverity.INFO,
-                        message=f"GQA model detected - skipping HT comparison (Bridge W_V: {bridge_W_V.shape}, HT W_V: {reference_W_V.shape})",  # type: ignore[union-attr]
-                        details={
-                            "bridge_shape": str(bridge_W_V.shape),  # type: ignore[union-attr]
-                            "reference_shape": str(reference_W_V.shape),  # type: ignore[union-attr]
-                        },
-                    )
-                else:
-                    return BenchmarkResult(
-                        name="weight_sharing",
-                        severity=BenchmarkSeverity.WARNING,
-                        message=f"Weight shapes differ: Bridge {bridge_W_V.shape} vs Reference {reference_W_V.shape}",  # type: ignore[union-attr]
-                        details={
-                            "bridge_shape": str(bridge_W_V.shape),  # type: ignore[union-attr]
-                            "reference_shape": str(reference_W_V.shape),  # type: ignore[union-attr]
-                        },
-                    )
-
-            if not safe_allclose(bridge_W_V, reference_W_V):  # type: ignore[arg-type]
-                return BenchmarkResult(
-                    name="weight_sharing",
-                    severity=BenchmarkSeverity.WARNING,
-                    message="Weights differ before modification",
-                )
-
-            # Modify weights in both models
-            with torch.no_grad():
-                bridge_attn_block.attn.W_V[0, :, :] = 0  # type: ignore[union-attr,operator]
-                reference_model.blocks[bridge_attn_idx].attn.W_V[0, :, :] = 0
-
-            # Test modified losses
-            bridge_modified = bridge(test_text, return_type="loss")
-            reference_modified = reference_model(test_text, return_type="loss")
-
-            bridge_change = bridge_modified - bridge_original
-            reference_change = reference_modified - reference_original
-
-            # Restore weights
-            with torch.no_grad():
-                bridge_attn_block.attn.W_V.copy_(bridge_W_V)  # type: ignore[union-attr,operator,arg-type]
-                reference_model.blocks[bridge_attn_idx].attn.W_V.copy_(reference_W_V)
-
-            diff = abs(bridge_change - reference_change)
-            if diff < atol:
-                return BenchmarkResult(
-                    name="weight_sharing",
-                    severity=BenchmarkSeverity.INFO,
-                    message=f"Weight modifications have similar effects: {bridge_change:.6f} ≈ {reference_change:.6f}",
-                    details={"diff": diff.item(), "atol": atol},
-                )
-            else:
-                return BenchmarkResult(
-                    name="weight_sharing",
-                    severity=BenchmarkSeverity.WARNING,
-                    message=f"Weight modification effects differ: {bridge_change:.6f} vs {reference_change:.6f}",
-                    details={"diff": diff.item(), "atol": atol},
-                )
-
-        # No reference model - just verify modification has an effect
-        # Find first block with attention (hybrid models may not have attn on block 0)
-        bridge_attn_blocks = bridge.blocks_with("attn")
-        if not bridge_attn_blocks:
-            return BenchmarkResult(
-                name="weight_sharing",
-                severity=BenchmarkSeverity.INFO,
-                message="No blocks have attention submodule — skipping weight sharing check",
-            )
-        _ws_idx, ws_attn_block = bridge_attn_blocks[0]
-
-        original_W_V = ws_attn_block.attn.W_V.clone()
-        with torch.no_grad():
-            ws_attn_block.attn.W_V[0, :, :] = 0
-
-        bridge_modified = bridge(test_text, return_type="loss")
-        change = abs(bridge_modified - bridge_original)
-
-        # Restore weights
-        with torch.no_grad():
-            ws_attn_block.attn.W_V.copy_(original_W_V)
-
-        if change < 1e-6:
-            return BenchmarkResult(
-                name="weight_sharing",
-                severity=BenchmarkSeverity.WARNING,
-                message=f"Weight modification had minimal effect: {change:.6f}",
-                details={"change": change.item()},
-            )
-
-        return BenchmarkResult(
-            name="weight_sharing",
-            severity=BenchmarkSeverity.INFO,
-            message=f"Weight modification affects forward pass: change={change:.6f}",
-            details={"change": change.item()},
-        )
-
-    except Exception as e:
-        return BenchmarkResult(
-            name="weight_sharing",
-            severity=BenchmarkSeverity.ERROR,
-            message=f"Weight sharing check failed: {str(e)}",
-            passed=False,
-        )
-
-
 def benchmark_weight_modification(
     bridge: TransformerBridge,
     test_text: str,
-    reference_model: Optional[HookedTransformer] = None,
 ) -> BenchmarkResult:
     """Benchmark that weight modifications propagate correctly.
 
     Args:
         bridge: TransformerBridge model to test
         test_text: Input text for testing
-        reference_model: Optional HookedTransformer reference model (not used)
 
     Returns:
         BenchmarkResult with weight modification verification details
@@ -424,14 +153,12 @@ def benchmark_weight_modification(
 def benchmark_layer_norm_folding(
     bridge: TransformerBridge,
     test_text: str,
-    reference_model: Optional[HookedTransformer] = None,
 ) -> BenchmarkResult:
     """Benchmark layer norm folding - norm weights should be identity after folding.
 
     Args:
         bridge: TransformerBridge model to test
         test_text: Input text for testing
-        reference_model: Optional HookedTransformer reference model (not used)
 
     Returns:
         BenchmarkResult with layer norm folding verification details
@@ -535,14 +262,12 @@ def benchmark_layer_norm_folding(
 def benchmark_attention_output_centering(
     bridge: TransformerBridge,
     test_text: str,
-    reference_model: Optional[HookedTransformer] = None,
 ) -> BenchmarkResult:
     """Benchmark attention output centering - W_O should have mean ≈ 0.
 
     Args:
         bridge: TransformerBridge model to test
         test_text: Input text for testing
-        reference_model: Optional HookedTransformer reference model (not used)
 
     Returns:
         BenchmarkResult with attention output centering verification details
@@ -626,14 +351,12 @@ def benchmark_attention_output_centering(
 def benchmark_mlp_output_centering(
     bridge: TransformerBridge,
     test_text: str,
-    reference_model: Optional[HookedTransformer] = None,
 ) -> BenchmarkResult:
     """Benchmark MLP output centering - MLP output weights should have mean ≈ 0.
 
     Args:
         bridge: TransformerBridge model to test
         test_text: Input text for testing
-        reference_model: Optional HookedTransformer reference model (not used)
 
     Returns:
         BenchmarkResult with MLP output centering verification details
@@ -729,14 +452,12 @@ def benchmark_mlp_output_centering(
 def benchmark_unembed_centering(
     bridge: TransformerBridge,
     test_text: str,
-    reference_model: Optional[HookedTransformer] = None,
 ) -> BenchmarkResult:
     """Benchmark unembed centering - unembed matrix should have mean ≈ 0.
 
     Args:
         bridge: TransformerBridge model to test
         test_text: Input text for testing
-        reference_model: Optional HookedTransformer reference model (not used)
 
     Returns:
         BenchmarkResult with unembed centering verification details
@@ -797,14 +518,12 @@ def benchmark_unembed_centering(
 def benchmark_value_bias_folding(
     bridge: TransformerBridge,
     test_text: str,
-    reference_model: Optional[HookedTransformer] = None,
 ) -> BenchmarkResult:
     """Benchmark value bias folding - b_V should be zero after folding.
 
     Args:
         bridge: TransformerBridge model to test
         test_text: Input text for testing
-        reference_model: Optional HookedTransformer reference model (not used)
 
     Returns:
         BenchmarkResult with value bias folding verification details
@@ -887,14 +606,12 @@ def benchmark_value_bias_folding(
 def benchmark_no_nan_inf(
     bridge: TransformerBridge,
     test_text: str,
-    reference_model: Optional[HookedTransformer] = None,
 ) -> BenchmarkResult:
     """Benchmark that weights contain no NaN or Inf values.
 
     Args:
         bridge: TransformerBridge model to test
         test_text: Input text for testing
-        reference_model: Optional HookedTransformer reference model (not used)
 
     Returns:
         BenchmarkResult with NaN/Inf verification details
@@ -947,14 +664,12 @@ def benchmark_no_nan_inf(
 def benchmark_weight_magnitudes(
     bridge: TransformerBridge,
     test_text: str,
-    reference_model: Optional[HookedTransformer] = None,
 ) -> BenchmarkResult:
     """Benchmark that weight magnitudes are in reasonable ranges.
 
     Args:
         bridge: TransformerBridge model to test
         test_text: Input text for testing
-        reference_model: Optional HookedTransformer reference model (not used)
 
     Returns:
         BenchmarkResult with weight magnitude verification details

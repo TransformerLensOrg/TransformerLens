@@ -39,7 +39,6 @@ class TestBenchmarkSuite:
             model_name=model_name,
             device="cpu",
             use_hf_reference=True,
-            use_ht_reference=True,
             enable_compatibility_mode=True,
             verbose=False,  # Keep test output clean
             track_memory=False,

@@ -4,7 +4,6 @@ from typing import Dict, Optional
 
 import torch
 
-from transformer_lens import HookedTransformer
 from transformer_lens.benchmarks.utils import (
     BenchmarkResult,
     BenchmarkSeverity,
@@ -18,7 +17,7 @@ from transformer_lens.model_bridge import TransformerBridge
 def benchmark_backward_hooks(
     bridge: TransformerBridge,
     test_text: str,
-    reference_model: Optional[HookedTransformer] = None,
+    reference_gradients: Optional[Dict[str, torch.Tensor]] = None,
     abs_tolerance: float = 0.2,
     rel_tolerance: float = 3e-4,
 ) -> BenchmarkResult:
@@ -26,8 +25,9 @@ def benchmark_backward_hooks(
 
     Args:
         bridge: TransformerBridge model to test
-        test_text: Input text for testing
-        reference_model: Optional HookedTransformer reference model
+        test_text: Input text for testing (must match the snapshot's prompt)
+        reference_gradients: Optional reference gradients keyed by hook name
+            (e.g. a golden fixture snapshot). Capture-only self-check if None.
         abs_tolerance: Absolute tolerance for gradient comparison
         rel_tolerance: Relative tolerance for gradient comparison
 
@@ -36,11 +36,10 @@ def benchmark_backward_hooks(
     """
     try:
         bridge_gradients: Dict[str, torch.Tensor] = {}
-        reference_gradients: Dict[str, torch.Tensor] = {}
 
-        # Get all hook names
-        if reference_model is not None:
-            hook_names = list(reference_model.hook_dict.keys())
+        # Reference hook names come from the snapshot when provided
+        if reference_gradients is not None:
+            hook_names = list(reference_gradients.keys())
         else:
             hook_names = list(bridge._hook_registry.keys())
 
@@ -64,7 +63,7 @@ def benchmark_backward_hooks(
         for hook_point in bridge_hook_points:
             hook_point.remove_hooks(dir="bwd")
 
-        if reference_model is None:
+        if reference_gradients is None:
             # No reference - just verify gradients were captured
             result = BenchmarkResult(
                 name="backward_hooks",
@@ -78,26 +77,6 @@ def benchmark_backward_hooks(
                 bridge.zero_grad()
 
             return result
-
-        # Register backward hooks on reference model
-        reference_hook_points: list[HookPoint] = []
-        for hook_name in hook_names:
-            if hook_name in reference_model.hook_dict:
-                hook_point = reference_model.hook_dict[hook_name]
-                hook_point.add_hook(
-                    make_grad_capture_hook(reference_gradients, hook_name, return_none=True),
-                    dir="bwd",
-                )
-                reference_hook_points.append(hook_point)
-
-        # Run reference forward and backward
-        reference_output = reference_model(test_text)
-        reference_loss = reference_output[:, -1, :].sum()
-        reference_loss.backward()
-
-        # Clean up hooks
-        for hook_point in reference_hook_points:
-            hook_point.remove_hooks(dir="bwd")
 
         # Compare gradients
         common_hooks = set(bridge_gradients.keys()) & set(reference_gradients.keys())
@@ -199,8 +178,6 @@ def benchmark_backward_hooks(
                 # Clear model gradients (variables will be GC'd when function returns)
                 if hasattr(bridge, "zero_grad"):
                     bridge.zero_grad()
-                if hasattr(reference_model, "zero_grad"):
-                    reference_model.zero_grad()
 
                 return result
             else:
@@ -220,8 +197,6 @@ def benchmark_backward_hooks(
                 # Clear model gradients (variables will be GC'd when function returns)
                 if hasattr(bridge, "zero_grad"):
                     bridge.zero_grad()
-                if hasattr(reference_model, "zero_grad"):
-                    reference_model.zero_grad()
 
                 return result
 
@@ -241,8 +216,6 @@ def benchmark_backward_hooks(
         # Clear model gradients (variables will be GC'd when function returns)
         if hasattr(bridge, "zero_grad"):
             bridge.zero_grad()
-        if reference_model is not None and hasattr(reference_model, "zero_grad"):
-            reference_model.zero_grad()
 
         return result
 
@@ -265,7 +238,7 @@ def benchmark_backward_hooks(
 def benchmark_critical_backward_hooks(
     bridge: TransformerBridge,
     test_text: str,
-    reference_model: Optional[HookedTransformer] = None,
+    reference_gradients: Optional[Dict[str, torch.Tensor]] = None,
     abs_tolerance: float = 0.2,
     rel_tolerance: float = 3e-4,
 ) -> BenchmarkResult:
@@ -273,8 +246,9 @@ def benchmark_critical_backward_hooks(
 
     Args:
         bridge: TransformerBridge model to test
-        test_text: Input text for testing
-        reference_model: Optional HookedTransformer reference model
+        test_text: Input text for testing (must match the snapshot's prompt)
+        reference_gradients: Optional reference gradients keyed by hook name
+            (e.g. a golden fixture snapshot). Capture-only self-check if None.
         abs_tolerance: Absolute tolerance for gradient comparison
         rel_tolerance: Relative tolerance for gradient comparison
 
@@ -319,7 +293,7 @@ def benchmark_critical_backward_hooks(
         for hook_point in bridge_hook_points:
             hook_point.remove_hooks(dir="bwd")
 
-        if reference_model is None:
+        if reference_gradients is None:
             # No reference - just verify gradients were captured
             captured_count = len(bridge_gradients)
             result = BenchmarkResult(
@@ -334,28 +308,6 @@ def benchmark_critical_backward_hooks(
                 bridge.zero_grad()
 
             return result
-
-        # Register backward hooks on reference model
-        reference_gradients: Dict[str, torch.Tensor] = {}
-
-        reference_hook_points: list[HookPoint] = []
-        for hook_name in critical_hooks:
-            if hook_name in reference_model.hook_dict:
-                hook_point = reference_model.hook_dict[hook_name]
-                hook_point.add_hook(
-                    make_grad_capture_hook(reference_gradients, hook_name, return_none=True),
-                    dir="bwd",
-                )
-                reference_hook_points.append(hook_point)
-
-        # Run reference forward and backward
-        reference_output = reference_model(test_text)
-        reference_loss = reference_output[:, -1, :].sum()
-        reference_loss.backward()
-
-        # Clean up hooks
-        for hook_point in reference_hook_points:
-            hook_point.remove_hooks(dir="bwd")
 
         # Compare gradients
         mismatches = []
@@ -433,8 +385,6 @@ def benchmark_critical_backward_hooks(
             # Clear model gradients (variables will be GC'd when function returns)
             if hasattr(bridge, "zero_grad"):
                 bridge.zero_grad()
-            if hasattr(reference_model, "zero_grad"):
-                reference_model.zero_grad()
 
             return result
 
@@ -448,8 +398,6 @@ def benchmark_critical_backward_hooks(
         # Clear model gradients (variables will be GC'd when function returns)
         if hasattr(bridge, "zero_grad"):
             bridge.zero_grad()
-        if hasattr(reference_model, "zero_grad"):
-            reference_model.zero_grad()
 
         return result
 
@@ -472,15 +420,16 @@ def benchmark_critical_backward_hooks(
 def benchmark_gradient_computation(
     bridge: TransformerBridge,
     test_text: str,
-    reference_model: Optional[HookedTransformer] = None,
+    reference_loss: Optional[float] = None,
     atol: float = 1e-3,
 ) -> BenchmarkResult:
     """Benchmark basic gradient computation.
 
     Args:
         bridge: TransformerBridge model to test
-        test_text: Input text for testing
-        reference_model: Optional HookedTransformer reference model
+        test_text: Input text for testing (must match the reference's prompt)
+        reference_loss: Optional reference last-position summed-logit value
+            (e.g. from a golden fixture or an HF forward). Self-check only if None.
         atol: Absolute tolerance for gradient comparison
 
     Returns:
@@ -511,7 +460,7 @@ def benchmark_gradient_computation(
                 bridge.zero_grad()
             return result
 
-        if reference_model is None:
+        if reference_loss is None:
             # No reference - just verify gradients exist
             result = BenchmarkResult(
                 name="gradient_computation",
@@ -523,14 +472,9 @@ def benchmark_gradient_computation(
                 bridge.zero_grad()
             return result
 
-        # Compare with reference model
-        reference_output = reference_model(test_text)
-        reference_loss = reference_output[:, -1, :].sum()
-        reference_loss.backward()
-
-        # Compare loss values
+        # Compare loss values against the reference scalar
         bridge_loss_val = bridge_loss.item()
-        reference_loss_val = reference_loss.item()
+        reference_loss_val = reference_loss
 
         diff = abs(bridge_loss_val - reference_loss_val)
         if diff < atol:
@@ -551,8 +495,6 @@ def benchmark_gradient_computation(
         # Clean up gradients
         if hasattr(bridge, "zero_grad"):
             bridge.zero_grad()
-        if reference_model is not None and hasattr(reference_model, "zero_grad"):
-            reference_model.zero_grad()
 
         return result
 

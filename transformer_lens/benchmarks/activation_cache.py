@@ -4,7 +4,6 @@ from typing import Optional
 
 import torch
 
-from transformer_lens import HookedTransformer
 from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.benchmarks.utils import (
     BenchmarkResult,
@@ -17,14 +16,12 @@ from transformer_lens.model_bridge import TransformerBridge
 def benchmark_run_with_cache(
     bridge: TransformerBridge,
     test_text: str,
-    reference_model: Optional[HookedTransformer] = None,
 ) -> BenchmarkResult:
-    """Benchmark run_with_cache functionality.
+    """Benchmark run_with_cache functionality (structural self-check).
 
     Args:
         bridge: TransformerBridge model to test
         test_text: Input text for testing
-        reference_model: Optional HookedTransformer reference model
 
     Returns:
         BenchmarkResult with cache functionality details
@@ -98,19 +95,6 @@ def benchmark_run_with_cache(
                 passed=False,
             )
 
-        if reference_model is not None:
-            # Compare cache size with reference
-            reference_output, reference_cache = reference_model.run_with_cache(test_text)
-
-            cache_diff = abs(len(cache) - len(reference_cache))
-            if cache_diff > 0:
-                return BenchmarkResult(
-                    name="run_with_cache",
-                    severity=BenchmarkSeverity.WARNING,
-                    message=f"Cache sizes differ: Bridge={len(cache)}, Ref={len(reference_cache)}",
-                    details={"bridge_size": len(cache), "ref_size": len(reference_cache)},
-                )
-
         return BenchmarkResult(
             name="run_with_cache",
             severity=BenchmarkSeverity.INFO,
@@ -130,15 +114,16 @@ def benchmark_run_with_cache(
 def benchmark_activation_cache(
     bridge: TransformerBridge,
     test_text: str,
-    reference_model: Optional[HookedTransformer] = None,
+    reference_cache: Optional[dict[str, torch.Tensor]] = None,
     tolerance: float = 1e-3,
 ) -> BenchmarkResult:
-    """Benchmark activation cache values against reference model.
+    """Benchmark activation cache values against a reference activation snapshot.
 
     Args:
         bridge: TransformerBridge model to test
-        test_text: Input text for testing
-        reference_model: Optional HookedTransformer reference model
+        test_text: Input text for testing (must match the snapshot's prompt)
+        reference_cache: Optional reference activations keyed by hook name (e.g. a
+            golden fixture snapshot). Structural self-check only if None.
         tolerance: Tolerance for activation comparison
 
     Returns:
@@ -147,7 +132,7 @@ def benchmark_activation_cache(
     try:
         bridge_output, bridge_cache = bridge.run_with_cache(test_text)
 
-        if reference_model is None:
+        if reference_cache is None:
             # No reference - just verify cache structure
             return BenchmarkResult(
                 name="activation_cache",
@@ -155,8 +140,6 @@ def benchmark_activation_cache(
                 message=f"Activation cache created with {len(bridge_cache)} entries",
                 details={"cache_size": len(bridge_cache)},
             )
-
-        reference_output, reference_cache = reference_model.run_with_cache(test_text)
 
         # Find common keys
         bridge_keys = set(bridge_cache.keys())
