@@ -11,8 +11,6 @@ Rule ([AGENTS.md §10](../AGENTS.md#10-hard-rules)): **never add `xfail` / `skip
 | Path | Marker | Trigger |
 |---|---|---|
 | [`unit/test_lit.py`](unit/test_lit.py) (×20) | `skipif(not LIT_AVAILABLE)` | `pip install lit-nlp` (`lit` group) |
-| [`unit/components/test_attention.py`:130](unit/components/test_attention.py) | `skipif(not is_bitsandbytes_available())` | `uv sync --group quantization` |
-| [`unit/factories/test_mlp_factory.py`:40](unit/factories/test_mlp_factory.py) | same | same |
 
 **Un-skip:** never. Install the optional group to run locally.
 
@@ -62,20 +60,16 @@ A `[vllm]` extra exists (Linux-only marker; declared conflicting with `[lit]` in
 | [`unit/model_bridge/compatibility/test_next_sentence_prediction.py`:88](unit/model_bridge/compatibility/test_next_sentence_prediction.py) | `skipif(not cuda)` | Any CUDA |
 | [`unit/test_generate_no_tokenizer.py`:112](unit/test_generate_no_tokenizer.py) | `skipif(not cuda)` | Any CUDA |
 | [`unit/model_bridge/test_driver_protocol.py`:103](unit/model_bridge/test_driver_protocol.py) | `skipif(not cuda)` | Any CUDA |
-| [`unit/components/test_attention.py`:165](unit/components/test_attention.py) | `skipif(not cuda)` (half/bfloat16) | Any CUDA |
-| [`unit/components/test_attention.py`:492](unit/components/test_attention.py) | `skipif(not mps or torch != 2.8.0)` | Apple Silicon + torch 2.8.0 (regression env for pytorch#161640) |
 | [`unit/test_weight_processing.py`:475](unit/test_weight_processing.py) | `skipif(not cuda and not mps)` (cross-device fold) | Any non-CPU accelerator |
-| [`acceptance/test_hooked_encoder.py`:172](acceptance/test_hooked_encoder.py) | `skipif(mps or not cuda)` (bf16/fp16) | CUDA, non-MPS |
-| [`acceptance/test_hooked_encoder.py`:227](acceptance/test_hooked_encoder.py) | `skipif(not cuda)` | Any CUDA |
-| [`acceptance/test_hooked_encoder_decoder.py`:420](acceptance/test_hooked_encoder_decoder.py) | `skipif(not cuda)` | Any CUDA |
-| [`acceptance/test_multi_gpu.py`:91,105](acceptance/test_multi_gpu.py) | `skipif(device_count < 2)` | 2+ CUDA |
-| [`acceptance/test_multi_gpu.py`:22](acceptance/test_multi_gpu.py) | `skipif(device_count < 4)` | 4+ CUDA |
+| [`acceptance/test_hooked_encoder.py`:171](acceptance/test_hooked_encoder.py) | `skipif(mps or not cuda)` (bf16/fp16) | CUDA, non-MPS |
+| [`acceptance/test_hooked_encoder.py`:226](acceptance/test_hooked_encoder.py) | `skipif(not cuda)` | Any CUDA |
+| [`acceptance/test_hooked_encoder_decoder.py`:417](acceptance/test_hooked_encoder_decoder.py) | `skipif(not cuda)` | Any CUDA |
 | [`acceptance/model_bridge/test_bridge_multigpu.py`](acceptance/model_bridge/test_bridge_multigpu.py) module-level | `multigpu` marker + `skipif(device_count < 2)` | 2+ CUDA |
 | [`acceptance/model_bridge/test_bridge_multigpu_device_map.py`](acceptance/model_bridge/test_bridge_multigpu_device_map.py) module-level | `multigpu` marker + `skipif(device_count < 2)` | 2+ CUDA |
 | [`mps/test_mps_basic.py`](mps/test_mps_basic.py) module-level | `skipif(not mps)` | Apple Silicon |
 | [`mps/test_mps_ssm_eager_scan.py`](mps/test_mps_ssm_eager_scan.py) module-level | `skipif(not mps)` | Apple Silicon |
 
-**Un-skip:** never in CI. The two `test_bridge_multigpu*` suites are the boot_transformers multi-device verification tier — run them manually on a >= 2-GPU box (`-m multigpu`, one file per pytest process) together with `scripts/bridge_multi_device_parity.py` before releases that touch device placement. **Validated 2026-07-16 on a 2-GPU box**: both suites pass, and the parity sweep (5 architectures, `n_devices=2` and `device_map=balanced`) reported bitwise-identical activations vs single-device (worst diff 0.0 across every cached hook); HookedTransformer's legacy `test_multi_gpu.py` 2-GPU subset also passed. The box debugging added two fail-loud boot guards: tied-weight pairs split across map entries, and mixed CPU+GPU maps (accelerate CPU offload, whose materialization hooks param-reading Bridge components bypass). CI provides the other tiers (CUDA via compatibility-checks → CPU-only in practice; MPS via `mps-checks`). See [tests/AGENTS.md §MPS rules](AGENTS.md#mps-rules) and the `--ignore=` list in [`checks.yml`](../.github/workflows/checks.yml).
+**Un-skip:** never in CI. The two `test_bridge_multigpu*` suites are the boot_transformers multi-device verification tier — run them manually on a >= 2-GPU box (`-m multigpu`, one file per pytest process) together with `scripts/bridge_multi_device_parity.py` before releases that touch device placement. **Validated 2026-07-16 on a 2-GPU box**: both suites pass, and the parity sweep (5 architectures, `n_devices=2` and `device_map=balanced`) reported bitwise-identical activations vs single-device (worst diff 0.0 across every cached hook); HookedTransformer's legacy `test_multi_gpu.py` 2-GPU subset also passed (that file has since been removed by #1603). The box debugging added two fail-loud boot guards: tied-weight pairs split across map entries, and mixed CPU+GPU maps (accelerate CPU offload, whose materialization hooks param-reading Bridge components bypass). CI provides the other tiers (CUDA via compatibility-checks → CPU-only in practice; MPS via `mps-checks`). See [tests/AGENTS.md §MPS rules](AGENTS.md#mps-rules) and the `--ignore=` list in [`checks.yml`](../.github/workflows/checks.yml).
 
 ---
 
@@ -135,20 +129,6 @@ Big-model adapter tests use `@pytest.mark.slow`, CI tier filters `-m "not slow"`
 
 ---
 
-## ⚠️ Technical debt — whole-file
-
-Entire test modules quarantined via module-level `pytestmark`. Significant coverage gap — priority to re-enable.
-
-| Path | Reason |
-|---|---|
-| [`acceptance/test_hooked_transformer.py`:19](acceptance/test_hooked_transformer.py) | "CI test pollution" |
-| [`acceptance/test_hooked_encoder.py`:13](acceptance/test_hooked_encoder.py) | same |
-| [`acceptance/test_hooked_encoder_decoder.py`:10](acceptance/test_hooked_encoder_decoder.py) | same |
-
-**Un-skip:** root-cause the test pollution (fixture-scope or import-ordering bug). Until then, these acceptance tiers are dark.
-
----
-
 ## Technical debt — individual
 
 | Path | Marker | Covers |
@@ -160,11 +140,8 @@ Entire test modules quarantined via module-level `pytestmark`. Significant cover
 | [`unit/model_bridge/supported_architectures/test_qwen3_5_adapter.py`:448,464,494,514,605,700,805,947,1133](unit/model_bridge/supported_architectures/test_qwen3_5_adapter.py) | `skipif` ×9 | Qwen3_5 classes absent from installed transformers |
 | [`unit/model_bridge/supported_architectures/test_qwen3_next_adapter.py`:397](unit/model_bridge/supported_architectures/test_qwen3_next_adapter.py) | `skipif` | Qwen3NextForCausalLM absent from installed transformers |
 | [`integration/test_weight_processing_integration.py`:279](integration/test_weight_processing_integration.py) | `skip` | Weight-processing edge case |
-| [`integration/test_tensor_extraction_consistency.py`:33](integration/test_tensor_extraction_consistency.py) | `skip` | Tensor extraction |
-| [`integration/test_tokenization_methods.py`:53](integration/test_tokenization_methods.py) | `skipif` | Tokenization coverage |
 | [`integration/test_hooked_encoder_properties.py`:71](integration/test_hooked_encoder_properties.py) | `xfail` | HookedEncoder properties |
 | [`acceptance/model_bridge/compatibility/test_backward_hooks.py`:11](acceptance/model_bridge/compatibility/test_backward_hooks.py) | `skip` | Backward-hook compatibility |
-| [`acceptance/test_hooked_transformer.py`:540,549](acceptance/test_hooked_transformer.py) | `skipif` ×2 (inside module-level skip) | fp64/fp32 + bf16/fp16 dtype checks (CUDA-gated, MPS excluded) |
 
 **Un-skip:** debug the underlying issue and remove the marker. Each removal lands in a focused PR with a regression test.
 
