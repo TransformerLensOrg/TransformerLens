@@ -380,5 +380,9 @@ bridge = TransformerBridge.boot_native(cfg, device="cpu")
 import. `cfg.seed` seeds the weight initialiser; omitting it lets the
 global RNG advance normally. Passing a `HookedTransformerConfig` (or any
 other legacy config object) to `boot_native` raises `TypeError` — construct
-a `TransformerBridgeConfig` directly. To re-randomise weights after
-construction, call `bridge.init_weights()`.
+a `TransformerBridgeConfig` directly. To reinitialize weights in place, call `bridge.init_weights()` — if `cfg.seed` is set,
+`init_weights()` rebuilds from that same seed and produces identical weights; clear or
+change `cfg.seed` first for a genuinely fresh draw. Unlike `HookedTransformer.init_weights()`,
+which calls `torch.manual_seed(cfg.seed)` globally, `boot_native` forks the RNG — training
+loops ported verbatim that rely on global seed state for data shuffling will silently
+lose reproducibility.
