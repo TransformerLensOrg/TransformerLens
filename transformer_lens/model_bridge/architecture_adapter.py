@@ -4,7 +4,6 @@ This module contains the base class for architecture adapters that map between d
 """
 from typing import Any, Dict, Optional, cast
 
-import einops
 import torch
 
 from transformer_lens.config import TransformerBridgeConfig
@@ -1072,100 +1071,3 @@ class ArchitectureAdapter:
             template = None
         if template is not None and hasattr(template, "set_rotary_emb"):
             template.set_rotary_emb(rotary_emb)
-
-    def _enable_ht_attention(self, attn_bridge, hf_attn):
-        """Enable HT computation for attention (architecture-agnostic).
-
-        Detects the architecture by checking which weight attributes exist.
-        """
-        n_heads = getattr(
-            self.cfg,
-            "n_heads",
-            getattr(self.cfg, "n_head", getattr(self.cfg, "num_attention_heads", None)),
-        )
-        d_model = getattr(
-            self.cfg, "d_model", getattr(self.cfg, "n_embd", getattr(self.cfg, "hidden_size", None))
-        )
-        if n_heads is None or d_model is None:
-            raise RuntimeError(f"Could not determine n_heads or d_model from config: {self.cfg}")
-        d_head = d_model // n_heads
-        if hasattr(hf_attn, "c_attn"):
-            W_Q, W_K, W_V, b_Q, b_K, b_V = self._extract_qkv_gpt2_style(
-                hf_attn.c_attn, n_heads, d_model, d_head
-            )
-            W_O, b_O = self._extract_output_proj(hf_attn.c_proj, n_heads, d_head, d_model)
-        elif (
-            hasattr(hf_attn, "q_proj") and hasattr(hf_attn, "k_proj") and hasattr(hf_attn, "v_proj")
-        ):
-            W_Q, b_Q = self._extract_linear_ht_format(hf_attn.q_proj, n_heads, d_head, d_model)  # type: ignore[attr-defined]
-            W_K, b_K = self._extract_linear_ht_format(hf_attn.k_proj, n_heads, d_head, d_model)  # type: ignore[attr-defined]
-            W_V, b_V = self._extract_linear_ht_format(hf_attn.v_proj, n_heads, d_head, d_model)  # type: ignore[attr-defined]
-            out_proj = hf_attn.out_proj if hasattr(hf_attn, "out_proj") else hf_attn.o_proj
-            W_O, b_O = self._extract_output_proj(out_proj, n_heads, d_head, d_model)
-        elif hasattr(hf_attn, "query_key_value"):
-            W_Q, W_K, W_V, b_Q, b_K, b_V = self._extract_qkv_neox_style(  # type: ignore[attr-defined]
-                hf_attn.query_key_value, n_heads, d_model, d_head
-            )
-            W_O, b_O = self._extract_output_proj(hf_attn.dense, n_heads, d_head, d_model)
-        else:
-            raise ValueError(
-                f"Unsupported attention architecture. Module has attributes: {dir(hf_attn)}"
-            )
-        attn_bridge.set_processed_weights(
-            {
-                "W_Q": W_Q,
-                "W_K": W_K,
-                "W_V": W_V,
-                "W_O": W_O,
-                "b_Q": b_Q,
-                "b_K": b_K,
-                "b_V": b_V,
-                "b_O": b_O,
-            }
-        )
-        self._disable_hook_conversions(attn_bridge)
-
-    def _extract_qkv_gpt2_style(self, c_attn, n_heads, d_model, d_head):
-        """Extract Q, K, V weights from GPT-2 style combined c_attn.
-
-        GPT-2 uses Conv1D which stores weights as [in_features, out_features] = [d_model, 3*d_model].
-        We need to split and reshape to [n_heads, d_model, d_head] format for HookedTransformer.
-        """
-        W = c_attn.weight.data
-        W_Q, W_K, W_V = torch.tensor_split(W, 3, dim=1)
-        W_Q = einops.rearrange(W_Q, "m (i h)->i m h", i=n_heads)
-        W_K = einops.rearrange(W_K, "m (i h)->i m h", i=n_heads)
-        W_V = einops.rearrange(W_V, "m (i h)->i m h", i=n_heads)
-        qkv_bias = c_attn.bias.data
-        qkv_bias = einops.rearrange(
-            qkv_bias, "(qkv index head)->qkv index head", qkv=3, index=n_heads, head=d_head
-        )
-        b_Q = qkv_bias[0]
-        b_K = qkv_bias[1]
-        b_V = qkv_bias[2]
-        return (W_Q, W_K, W_V, b_Q, b_K, b_V)
-
-    def _extract_output_proj(self, out_proj, n_heads, d_head, d_model):
-        """Extract output projection weights in HT format.
-
-        Returns W_O in [n_heads, d_head, d_model] format for HookedTransformer compatibility.
-
-        For Conv1D (GPT-2), weight is stored as [d_model, d_model] = [nx, nf].
-        For Linear, weight is stored as [d_model, d_model] = [out_features, in_features].
-        """
-        weight = out_proj.weight.data
-        bias = out_proj.bias.data if hasattr(out_proj, "bias") else None
-        W_O = weight.view(n_heads, d_head, d_model).contiguous()
-        b_O = bias.contiguous() if bias is not None else None
-        return (W_O, b_O)
-
-    def _disable_hook_conversions(self, attn_bridge):
-        """Disable hook conversions for attention submodules.
-
-        Note: In no_processing mode, we DON'T disable conversions because Q/K/V hooks need
-        to convert from 3D [batch, seq, d_model] to 4D [batch, seq, n_heads, d_head].
-        We also preserve o.hook_in.hook_conversion (hook_z).
-
-        This method is kept for potential future use but currently does nothing in no_processing mode.
-        """
-        pass
