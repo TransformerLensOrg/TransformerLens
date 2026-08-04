@@ -74,12 +74,28 @@ def gpt2_tokenizer():
     return AutoTokenizer.from_pretrained("gpt2")
 
 
+# Golden-fixture counterparts of the HookedTransformer fixtures below. They load
+# frozen HT-captured reference data (see tests/goldens.py) instead of booting a
+# live HT, and skip when the golden dataset is unreachable. B-tier tests migrate
+# onto these; the live-HT fixtures delete with HookedTransformer.
 @pytest.fixture(scope="session")
-def gpt2_hooked_processed():
-    """Read-only use only — mutations leak across the session."""
-    from transformer_lens import HookedTransformer
+def gpt2_goldens_processed():
+    """Golden cell for gpt2 with default weight processing (full_defaults)."""
+    from tests import goldens
 
-    return HookedTransformer.from_pretrained("gpt2", device="cpu")
+    if not goldens.goldens_available("gpt2", "full_defaults"):
+        pytest.skip("TL goldens dataset unavailable (set TL_GOLDENS_DIR or enable network)")
+    return goldens.GoldenCell("gpt2", "full_defaults")
+
+
+@pytest.fixture(scope="session")
+def gpt2_goldens_unprocessed():
+    """Golden cell for gpt2 without weight processing (no_processing)."""
+    from tests import goldens
+
+    if not goldens.goldens_available("gpt2", "no_processing"):
+        pytest.skip("TL goldens dataset unavailable (set TL_GOLDENS_DIR or enable network)")
+    return goldens.GoldenCell("gpt2", "no_processing")
 
 
 @pytest.fixture(scope="session")
@@ -102,6 +118,14 @@ def gpt2_bridge_compat():
 
 # Full-model fixtures for the acceptance/integration tiers — per tests/AGENTS.md, don't
 # adopt them in unit-tier tests (they time out / OOM there).
+@pytest.fixture(scope="session")
+def gpt2_hooked_processed():
+    """Read-only use only — mutations leak across the session."""
+    from transformer_lens import HookedTransformer
+
+    return HookedTransformer.from_pretrained("gpt2", device="cpu")
+
+
 @pytest.fixture(scope="session")
 def gpt2_hooked_unprocessed():
     """HookedTransformer gpt2 without weight processing. Read-only use only."""

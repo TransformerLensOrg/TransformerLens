@@ -16,7 +16,7 @@ tests pin the architecture-specific quirks:
 import pytest
 import torch
 
-from transformer_lens.config import HookedTransformerConfig, TransformerBridgeConfig
+from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion
 from transformer_lens.conversion_utils.param_processing_conversion import (
     ParamProcessingConversion,
@@ -200,10 +200,9 @@ class TestArceeReLU2Activation:
     def test_factory_picks_relu2(self) -> None:
         """The activation factory resolves act_fn="relu2" to the squared-ReLU fn.
 
-        Uses a HookedTransformerConfig (the factory's declared param type), which
-        also exercises the __post_init__ guard asserting act_fn in
-        SUPPORTED_ACTIVATIONS."""
-        htc = HookedTransformerConfig(
+        Uses a TransformerBridgeConfig (structurally compatible with the
+        factory's declared param type)."""
+        htc = TransformerBridgeConfig(
             n_layers=2,
             d_model=64,
             n_ctx=128,

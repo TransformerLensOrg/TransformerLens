@@ -11,7 +11,7 @@ PUBLIC_MODEL_NAMES = [
 ]
 
 
-class TestLegacyHookedTransformerCoverage:
+class TestLegacyAPICoverage:
     """Acceptance tests for TransformerBridge functionality."""
 
     @pytest.fixture(autouse=True, scope="class")

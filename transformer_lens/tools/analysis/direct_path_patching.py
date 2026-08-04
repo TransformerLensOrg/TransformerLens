@@ -54,15 +54,17 @@ References
 from __future__ import annotations
 
 import warnings
-from typing import Any, Callable, Literal, Union
+from typing import Any, Callable, Literal, cast
 
 import torch
 from jaxtyping import Float
 from tqdm.auto import tqdm
 
 from transformer_lens.ActivationCache import ActivationCache
-from transformer_lens.HookedTransformer import HookedTransformer
-from transformer_lens.model_bridge.bridge import TransformerBridge
+from transformer_lens.model_protocol import (
+    TransformerLensModel,
+    TransformerLensModelWithWeights,
+)
 
 # ---------------------------------------------------------------------------
 # Internal helpers
@@ -72,23 +74,21 @@ from transformer_lens.model_bridge.bridge import TransformerBridge
 def _check_fold_ln(model: Any) -> None:
     """Warn if the model's LayerNorm weights have not been folded in.
 
-    HookedTransformer stores the learned scale as ``.w``; TransformerBridge wraps
-    the original HuggingFace module, which stores it as ``.weight``.  We check
-    both so the guard works for either system.
+    TransformerBridge wraps the original HuggingFace module, which stores the
+    learned scale as ``.weight``; legacy TransformerLens components store it as
+    ``.w``.  We check both so the guard works for either layout.
     """
     try:
         ln1 = model.blocks[0].ln1  # type: ignore[index]
-        # .w  → HookedTransformer; .weight → TransformerBridge (wraps HF module)
+        # .weight → TransformerBridge (wraps HF module); .w → legacy TL components
         w = getattr(ln1, "w", None)
         if w is None:
             w = getattr(ln1, "weight", None)
         if w is not None and not torch.allclose(w, torch.ones_like(w), atol=1e-3):
             warnings.warn(
                 "get_act_patch_direct_path is most accurate when LayerNorm parameters "
-                "are folded into the weight matrices. "
-                "For HookedTransformer: pass fold_ln=True to from_pretrained, or call "
-                "model.process_weights_(). "
-                "For TransformerBridge: call model.process_weights(fold_ln=True). "
+                "are folded into the weight matrices: call "
+                "model.process_weights(fold_ln=True) on the TransformerBridge. "
                 "Results may be inaccurate with unfolded LayerNorm.",
                 UserWarning,
                 stacklevel=3,
@@ -157,7 +157,7 @@ def _make_direct_path_hook(
 
 
 def get_act_patch_direct_path(
-    model: Union[HookedTransformer, TransformerBridge],
+    model: TransformerLensModel,
     corrupted_tokens: torch.Tensor,
     clean_cache: ActivationCache,
     corrupted_cache: ActivationCache,
@@ -183,7 +183,7 @@ def get_act_patch_direct_path(
     Parameters
     ----------
     model:
-        A HookedTransformer or TransformerBridge instance.
+        Any TransformerLens model (e.g. TransformerBridge).
     corrupted_tokens:
         Token IDs for the corrupted input, shape [batch, seq_len].
     clean_cache:
@@ -222,11 +222,14 @@ def get_act_patch_direct_path(
     # which are always available:
     #   result_h = z[:, :, h, :] @ W_O[h]   shape [batch, pos, d_model]
     src_z_name = f"blocks.{src_layer}.attn.hook_z"
-    W_O = model.blocks[src_layer].attn.W_O  # type: ignore[union-attr]  # [n_heads, d_head, d_model]
+    # Static-only view of the weights surface (runtime checks use the base protocol:
+    # nn.Module submodules are invisible to getattr_static-based isinstance).
+    weights_model = cast(TransformerLensModelWithWeights, model)
+    W_O = weights_model.blocks[src_layer].attn.W_O  # [n_heads, d_head, d_model]
 
     def _head_result(cache, h):
         z = cache[src_z_name][:, :, h, :]  # [batch, pos, d_head]
-        return z @ W_O[h]  # type: ignore[index]  # [batch, pos, d_model]
+        return z @ W_O[h]  # [batch, pos, d_model]
 
     delta_resid = _head_result(clean_cache, src_head) - _head_result(corrupted_cache, src_head)
     # shape: [batch, pos, d_model]
@@ -253,7 +256,7 @@ def get_act_patch_direct_path(
         disable=not verbose,
     ):
         ln_scale_name = f"blocks.{dst_layer}.ln1.hook_scale"
-        W_comp = W_all(model.blocks[dst_layer].attn)[dst_head]  # type: ignore[index]  # [d_model, d_head]
+        W_comp = W_all(weights_model.blocks[dst_layer].attn)[dst_head]  # [d_model, d_head]
 
         hook_fn = _make_direct_path_hook(
             delta_resid=delta_resid,
@@ -275,7 +278,7 @@ def get_act_patch_direct_path(
 
 
 def get_act_patch_direct_path_all_sources(
-    model: Union[HookedTransformer, TransformerBridge],
+    model: TransformerLensModel,
     corrupted_tokens: torch.Tensor,
     clean_cache: ActivationCache,
     corrupted_cache: ActivationCache,

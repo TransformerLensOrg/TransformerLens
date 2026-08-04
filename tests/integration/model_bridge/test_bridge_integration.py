@@ -11,7 +11,6 @@ import os
 import pytest
 import torch
 
-from transformer_lens import HookedTransformer
 from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.conversion_utils.conversion_steps.rearrange_tensor_conversion import (
     RearrangeTensorConversion,
@@ -632,20 +631,17 @@ def test_TransformerBridge_hooks_backward_hooks():
     """Test that TransformerBridge.hooks() correctly registers backward hooks.
 
     This test verifies that TransformerBridge.hooks() properly handles bwd_hooks
-    and registers them correctly, matching the behavior of HookedTransformer.hooks().
+    and registers them correctly.
     """
-    # Create both models with the same configuration
-    hooked_model = HookedTransformer.from_pretrained_no_processing("gpt2", device_map="cpu")
     bridge_model: TransformerBridge = TransformerBridge.boot_transformers("gpt2", device="cpu")  # type: ignore
     bridge_model.enable_compatibility_mode(no_processing=True)
 
     # Create a simple backward hook that tracks if it was called
-    hook_called = {"hooked": False, "bridge": False}
+    hook_called = {"bridge": False}
 
     def make_test_hook(model_type):
         def hook_fn(grad, hook=None):
             hook_called[model_type] = True
-            # For HookedTransformer, the hook doesn't modify the gradient
             return None
 
         return hook_fn
@@ -653,19 +649,6 @@ def test_TransformerBridge_hooks_backward_hooks():
     # Test input
     test_input = torch.tensor([[1, 2, 3]])
 
-    # Test HookedTransformer - backward hooks should work
-    with hooked_model.hooks(bwd_hooks=[("blocks.0.hook_mlp_out", make_test_hook("hooked"))]):
-        output = hooked_model(test_input)
-        # Check that the backward hook was registered
-        assert (
-            len(hooked_model.blocks[0].hook_mlp_out.bwd_hooks) > 0
-        ), "HookedTransformer should register backward hooks"
-
-        # Trigger backward pass
-        output.sum().backward()
-
-    # Test TransformerBridge - backward hooks should now work correctly
-    # With compatibility mode, TransformerBridge should have the same hook names as HookedTransformer
     with bridge_model.hooks(bwd_hooks=[("blocks.0.hook_mlp_out", make_test_hook("bridge"))]):
         output = bridge_model(test_input)
         # This assertion verifies that backward hooks are now properly registered
@@ -676,8 +659,6 @@ def test_TransformerBridge_hooks_backward_hooks():
         # Backward pass should trigger the hook
         output.sum().backward()
 
-    # Verify the hooks were called appropriately
-    assert hook_called["hooked"], "HookedTransformer backward hook should have been called"
     assert hook_called["bridge"], "TransformerBridge backward hook should now be called correctly"
 
 

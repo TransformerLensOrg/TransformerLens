@@ -1,9 +1,9 @@
 import einops
 
-from transformer_lens.config.hooked_transformer_config import HookedTransformerConfig
+from transformer_lens.config import TransformerLensConfig
 
 
-def convert_bloom_weights(bloom, cfg: HookedTransformerConfig):
+def convert_bloom_weights(bloom, cfg: TransformerLensConfig):
     state_dict = {}
 
     state_dict["embed.W_E"] = bloom.transformer.word_embeddings.weight

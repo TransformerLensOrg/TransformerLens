@@ -51,6 +51,14 @@ class TestLoaderResolution:
             goldens.golden_path("org/tiny", "full_defaults")
         assert not goldens.goldens_available("org/tiny", "full_defaults")
 
+    def test_golden_cell_accessor(self, synthetic_goldens):
+        cell = goldens.GoldenCell("org/tiny", "no_processing")
+        assert torch.equal(cell.tensors("views")["W_E"], torch.ones(4, 2))
+        assert cell.scalars["long_text_ce_loss"] == pytest.approx(3.5)
+        assert cell.provenance["schema_version"] == 1
+        with pytest.raises(FileNotFoundError, match="provenance.json"):
+            goldens.GoldenCell("org/tiny", "full_defaults")
+
     def test_unset_env_and_unreachable_hub_degrade_to_unavailable(self, monkeypatch):
         monkeypatch.setenv("TL_GOLDENS_DIR", "/nonexistent/path")
         goldens.resolve_goldens_dir.cache_clear()

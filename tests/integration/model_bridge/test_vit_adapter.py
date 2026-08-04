@@ -277,7 +277,7 @@ def deit_bridge():
     hf_model.config.architectures = ["DeiTModel"]
 
     # 3. Pass the instantiated HF model to boot_transformers.
-    # (Assuming your boot_transformers accepts an hf_model kwarg like HookedTransformer)
+    # boot_transformers accepts an already-instantiated hf_model.
     return TransformerBridge.boot_transformers(
         MODEL_DEIT_DISTILLED, hf_model=hf_model, device="cpu"
     )

@@ -28,8 +28,8 @@ import torch
 
 # Set once the dataset repo exists; pin to a specific commit revision so golden
 # updates are explicit, reviewed events (never a moving branch).
-GOLDENS_REPO_ID = "TransformerLensOrg/tl-compat-goldens"
-GOLDENS_REVISION: str | None = None  # e.g. a commit sha; None = repo default branch
+GOLDENS_REPO_ID = "lars4776/TL-Goldens"
+GOLDENS_REVISION: str | None = "130db21b365cbe286a5473c3267725733eefd085"
 
 _ENV_VAR = "TL_GOLDENS_DIR"
 
@@ -94,3 +94,34 @@ def load_golden_tensors(model: str, config: str, name: str) -> dict[str, torch.T
 def load_golden_json(model: str, config: str, name: str) -> Any:
     """Load one JSON artifact (e.g. 'hook_manifest', 'scalars', 'provenance')."""
     return json.loads((golden_path(model, config) / f"{name}.json").read_text())
+
+
+class GoldenCell:
+    """Lazy accessor for one (model, processing-config) golden cell.
+
+    Conftest fixtures hand these to tests so each test loads only the
+    artifacts it asserts on (activation snapshots are the big ones).
+    """
+
+    def __init__(self, model: str, config: str) -> None:
+        self.model = model
+        self.config = config
+        self.path = golden_path(model, config)  # raises early if the cell is absent
+
+    def tensors(self, name: str) -> dict[str, torch.Tensor]:
+        return load_golden_tensors(self.model, self.config, name)
+
+    def json(self, name: str) -> Any:
+        return load_golden_json(self.model, self.config, name)
+
+    @property
+    def hook_manifest(self) -> dict[str, Any]:
+        return self.json("hook_manifest")
+
+    @property
+    def scalars(self) -> dict[str, Any]:
+        return self.json("scalars")
+
+    @property
+    def provenance(self) -> dict[str, Any]:
+        return self.json("provenance")

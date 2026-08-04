@@ -2888,7 +2888,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         output_hidden_states) directly to the underlying HF model. Use this when you need
         full HuggingFace generation features not supported by the standard generate() method.
 
-        For standard generation compatible with HookedTransformer, use generate() instead.
+        For the standard TransformerLens generation interface, use generate() instead.
 
         Args:
             input: Text string, list of strings, or tensor of tokens
@@ -2916,8 +2916,8 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         Example::
 
             # Get full HF ModelOutput with logits and attentions
-            from transformer_lens import HookedTransformer
-            model = HookedTransformer.from_pretrained("tiny-stories-1M")
+            from transformer_lens import TransformerBridge
+            model = TransformerBridge.boot_transformers("tiny-stories-1M")
             result = model.hf_generate(
                 "Hello world",
                 max_new_tokens=5,

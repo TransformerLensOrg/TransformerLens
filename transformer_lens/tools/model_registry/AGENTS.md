@@ -47,7 +47,6 @@ Read [the root AGENTS.md](../../../AGENTS.md) for project-wide rules. This file 
 | `--retry-failed` | Re-test status=3 (failed) entries |
 | `--dry-run` | Print what would be tested without running |
 | `--no-hf-reference` | Skip the HF reference — Phase 1 is structural-only, never numerically compared to HF. A passing run records `status=4` (PROVISIONAL), which does **not** count as verified. Re-run without the flag to upgrade to VERIFIED. |
-| `--no-ht-reference` | Skip the HookedTransformer comparison passes (faster, lower confidence) |
 | `--quiet` | Suppress per-model logging |
 
 ---
@@ -117,7 +116,7 @@ Never edit manually.
 | 7 | Multimodal (vision/text alignment) — only Llava / Gemma3-multimodal |
 | 8 | Audio — only Hubert |
 
-SSM / recurrent families and the hybrids (Mamba-1/2, gated-delta-net, NemotronH, GraniteMoeHybrid, Jamba, Qwen3.5/Qwen3-Next) declare `applicable_phases = [1, 2, 3, 4]` — all four apply. P2/P3 run but skip their HookedTransformer-comparison sub-tests (SSMs have no HT), which is scored as a pass.
+SSM / recurrent families and the hybrids (Mamba-1/2, gated-delta-net, NemotronH, GraniteMoeHybrid, Jamba, Qwen3.5/Qwen3-Next) declare `applicable_phases = [1, 2, 3, 4]` — all four apply. P2 runs bridge self-checks (hooks, cache, gradients); P3 checks processed-weight equivalence against the Phase-1 HF reference when available.
 
 ### Phase-score thresholds
 

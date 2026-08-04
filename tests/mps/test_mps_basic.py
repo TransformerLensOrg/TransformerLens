@@ -33,9 +33,11 @@ SMALL_MODEL = "roneneldan/TinyStories-1M"  # ~50MB, safe for 1GB runner budget
 
 def _load_tiny_model(device: str = "mps"):
     """Load TinyStories-1M on the given device with float32 (bfloat16 unsupported on MPS)."""
-    from transformer_lens import HookedTransformer
+    from transformer_lens.model_bridge import TransformerBridge
 
-    return HookedTransformer.from_pretrained(SMALL_MODEL, device=device, dtype=torch.float32)
+    bridge = TransformerBridge.boot_transformers(SMALL_MODEL, device=device, dtype=torch.float32)
+    bridge.enable_compatibility_mode()
+    return bridge
 
 
 def _cleanup(model=None):

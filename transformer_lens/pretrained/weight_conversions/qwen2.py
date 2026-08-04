@@ -1,10 +1,10 @@
 import einops
 import torch
 
-from transformer_lens.config.hooked_transformer_config import HookedTransformerConfig
+from transformer_lens.config import TransformerLensConfig
 
 
-def convert_qwen2_weights(qwen, cfg: HookedTransformerConfig):
+def convert_qwen2_weights(qwen, cfg: TransformerLensConfig):
     # Note that this method is also applied for Qwen1.5 models, since they
     # have architecture type Qwen2ForCausalLM.
 

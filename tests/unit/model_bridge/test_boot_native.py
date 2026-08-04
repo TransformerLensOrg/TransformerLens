@@ -488,8 +488,8 @@ def test_boot_native_does_not_mutate_supplied_config():
 
 
 def test_native_gelu_new_uses_tanh_approximation():
-    """gelu_new must compute the tanh-approximation that HF GPT-2 and
-    HookedTransformer use, not plain (erf-based) GELU. A plain alias would
+    """gelu_new must compute the tanh-approximation that HF GPT-2 uses,
+    not plain (erf-based) GELU. A plain alias would
     produce small but persistent drift in parity comparisons."""
     import torch.nn.functional as F
 

@@ -261,16 +261,22 @@ def capture_one(model_name: str, config_name: str, out_root: Path, skip_existing
             {"final_logits": long_logits[:, -1, :]},
         )
 
-    orig_loss, ablated_loss = _run_ablation(model, MAIN_DEMO_TEXT, MAIN_DEMO_LAYER, MAIN_DEMO_HEAD)
+    # Clamp the Main-Demo anchor (gpt2's L0H8) to this model's dims — smaller
+    # models (pythia-14m has 4 heads) just need *a* fixed causal intervention.
+    # hook_v is indexed by KV heads under GQA, so clamp against those when set.
+    n_v_heads = getattr(model.cfg, "n_key_value_heads", None) or model.cfg.n_heads
+    ablation_layer = min(MAIN_DEMO_LAYER, model.cfg.n_layers - 1)
+    ablation_head = min(MAIN_DEMO_HEAD, n_v_heads - 1)
+    orig_loss, ablated_loss = _run_ablation(model, MAIN_DEMO_TEXT, ablation_layer, ablation_head)
 
     scalars = {
         "short_prompt": SHORT_PROMPT,
         "long_text_ce_loss": long_loss,
         "ablation": {
             "text": MAIN_DEMO_TEXT,
-            "layer": MAIN_DEMO_LAYER,
-            "head": MAIN_DEMO_HEAD,
-            "hook": f"blocks.{MAIN_DEMO_LAYER}.attn.hook_v",
+            "layer": ablation_layer,
+            "head": ablation_head,
+            "hook": f"blocks.{ablation_layer}.attn.hook_v",
             "orig_loss": orig_loss,
             "ablated_loss": ablated_loss,
         },

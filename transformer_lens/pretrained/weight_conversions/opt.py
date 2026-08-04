@@ -1,10 +1,10 @@
 import einops
 import torch
 
-from transformer_lens.config.hooked_transformer_config import HookedTransformerConfig
+from transformer_lens.config import TransformerLensConfig
 
 
-def convert_opt_weights(opt, cfg: HookedTransformerConfig):
+def convert_opt_weights(opt, cfg: TransformerLensConfig):
     state_dict = {}
 
     state_dict["embed.W_E"] = opt.model.decoder.embed_tokens.weight

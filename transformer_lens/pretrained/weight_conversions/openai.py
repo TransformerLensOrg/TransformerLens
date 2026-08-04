@@ -10,10 +10,10 @@ GPT-OSS has a unique MoE architecture:
 import einops
 import torch
 
-from transformer_lens.config.hooked_transformer_config import HookedTransformerConfig
+from transformer_lens.config import TransformerLensConfig
 
 
-def convert_gpt_oss_weights(gpt_oss, cfg: HookedTransformerConfig):
+def convert_gpt_oss_weights(gpt_oss, cfg: TransformerLensConfig):
     state_dict = {}
 
     assert cfg.n_key_value_heads is not None

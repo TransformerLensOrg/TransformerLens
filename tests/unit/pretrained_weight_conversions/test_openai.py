@@ -1,13 +1,13 @@
 import torch
 
-from transformer_lens.config.hooked_transformer_config import HookedTransformerConfig
+from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.pretrained.weight_conversions.openai import (
     convert_gpt_oss_weights,
 )
 
 
 def make_cfg():
-    return HookedTransformerConfig(
+    return TransformerBridgeConfig(
         n_layers=1,
         d_model=32,
         d_head=8,

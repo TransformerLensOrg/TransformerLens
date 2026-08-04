@@ -213,7 +213,7 @@ def estimate_model_params(model_id: str) -> int:
     """Estimate parameter count using AutoConfig (lightweight, no model download).
 
     Fetches only the config JSON (~KB) and computes n_params from dimensions
-    using the same formula as HookedTransformerConfig.__post_init__.
+    using the standard TransformerLens parameter-count formula.
 
     Args:
         model_id: HuggingFace model ID
@@ -353,7 +353,7 @@ def estimate_model_params(model_id: str) -> int:
             n_params -= n_layers * (d_model * d_mlp * mlp_multiplier)
             n_params += n_layers * moe_per_layer
 
-    # Embedding parameters (not in HookedTransformerConfig formula but relevant for memory)
+    # Embedding parameters (not in the block-param formula but relevant for memory)
     n_params += d_vocab * d_model
 
     return n_params
