@@ -17,7 +17,7 @@ def lm_cross_entropy_loss(
     tokens: Int[torch.Tensor, "batch pos"],
     attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
     per_token: bool = False,
-) -> Union[Float[torch.Tensor, ""], Float[torch.Tensor, "batch pos"]]:
+) -> Union[Float[torch.Tensor, ""], Float[torch.Tensor, "batch pos_minus_one"]]:
     """Cross entropy loss for the language model, gives the loss for predicting the NEXT token.
 
     Args:
@@ -37,7 +37,7 @@ def lm_cross_entropy_loss(
         # Ignore token positions which are masked out or where the next token is masked out
         # (generally padding tokens)
         next_token_mask = torch.logical_and(attention_mask[:, :-1], attention_mask[:, 1:])
-        predicted_log_probs *= next_token_mask
+        predicted_log_probs = predicted_log_probs.masked_fill(~next_token_mask, 0.0)
         n_tokens = next_token_mask.sum().item()
     else:
         n_tokens = predicted_log_probs.numel()

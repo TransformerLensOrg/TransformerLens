@@ -345,6 +345,8 @@ class BridgeCore:
         """Cross-entropy loss matching HookedTransformer's formula (log_softmax + gather)."""
         if tokens.device != logits.device:
             tokens = tokens.to(logits.device)
+        if attention_mask is not None and attention_mask.device != logits.device:
+            attention_mask = attention_mask.to(logits.device)
         return lm_cross_entropy_loss(logits, tokens, attention_mask, per_token)
 
     def _finalize_return(
@@ -353,6 +355,7 @@ class BridgeCore:
         logits: Optional[torch.Tensor],
         input_ids: Optional[torch.Tensor],
         *,
+        attention_mask: Optional[torch.Tensor] = None,
         is_audio_model: bool = False,
         is_visual_model: bool = False,
         inputs_embeds_was_used: bool = False,
@@ -384,7 +387,12 @@ class BridgeCore:
                 )
             assert isinstance(logits, torch.Tensor), f"Expected logits tensor, got {type(logits)}"
             assert input_ids is not None, "input_ids required for return_type='loss'"
-            return self.loss_fn(logits, input_ids, per_token=loss_per_token)
+            return self.loss_fn(
+                logits,
+                input_ids,
+                attention_mask=attention_mask,
+                per_token=loss_per_token,
+            )
         if return_type == "both":
             if is_audio_model:
                 raise ValueError(
@@ -404,7 +412,12 @@ class BridgeCore:
                 )
             assert isinstance(logits, torch.Tensor), f"Expected logits tensor, got {type(logits)}"
             assert input_ids is not None, "input_ids required for return_type='both'"
-            loss = self.loss_fn(logits, input_ids, per_token=loss_per_token)
+            loss = self.loss_fn(
+                logits,
+                input_ids,
+                attention_mask=attention_mask,
+                per_token=loss_per_token,
+            )
             return (logits, loss)
         if return_type == "predictions":
             assert self.tokenizer is not None, "Tokenizer required for return_type='predictions'"
