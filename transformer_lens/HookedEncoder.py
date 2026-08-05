@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import os
+import warnings
 from typing import Any, Dict, List, Optional, Tuple, TypeVar, Union, cast, overload
 
 import torch
@@ -58,6 +59,12 @@ class HookedEncoder(HookedRootModule):
         **kwargs: Any,
     ):
         super().__init__()
+        warnings.warn(
+            "HookedEncoder is deprecated and will be removed in 4.0. Use "
+            "TransformerBridge.boot_transformers(...) instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         if isinstance(cfg, Dict):
             cfg = HookedTransformerConfig(**cfg)
         elif isinstance(cfg, str):
@@ -379,6 +386,12 @@ class HookedEncoder(HookedRootModule):
         **from_pretrained_kwargs: Any,
     ) -> HookedEncoder:
         """Loads in the pretrained weights from huggingface. Currently supports loading weight from HuggingFace BertForMaskedLM. Unlike HookedTransformer, this does not yet do any preprocessing on the model."""
+        warnings.warn(
+            "HookedEncoder.from_pretrained is deprecated and will be removed in 4.0. Use "
+            "TransformerBridge.boot_transformers(...) instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         logging.warning(
             "Support for BERT in TransformerLens is currently experimental, until such a time when it has feature "
             "parity with HookedTransformer and has been tested on real research tasks. Until then, backward "
