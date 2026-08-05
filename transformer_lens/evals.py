@@ -325,7 +325,7 @@ class IOIDataset(Dataset):
         >>> from transformer_lens.evals import ioi_eval, IOIDataset
         >>> from transformer_lens.model_bridge import TransformerBridge
 
-        >>> model = TransformerBridge.boot_transformers("gpt2")
+        >>> model = TransformerBridge.boot_transformers("gpt2", device="cpu")
         >>> model.enable_compatibility_mode()
 
         >>> # Evaluate on a deterministic dataset (seed makes results reproducible)

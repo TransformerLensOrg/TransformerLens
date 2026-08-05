@@ -60,7 +60,7 @@ class ActivationCache:
     The :class:`ActivationCache` is at the core of Transformer Lens. It is a wrapper that stores all
     important activations from a forward pass of the model, and provides a variety of helper
     functions to investigate them. The common way to access it is to run the model with
-    :meth:`transformer_lens.HookedTransformer.HookedTransformer.run_with_cache`.
+    :meth:`transformer_lens.model_bridge.TransformerBridge.run_with_cache`.
 
     Examples:
 
