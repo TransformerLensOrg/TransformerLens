@@ -1551,6 +1551,37 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                     position_ids.masked_fill_(attention_mask == 0, 1)
                     kwargs["position_ids"] = position_ids
 
+            # Any masked-out token shifts the absolute position of every real token
+            # after it, so positions must be derived from the mask rather than left
+            # to HF's default arange. This is the same derivation HookedTransformer
+            # applies in pos_embed; without it the bridge silently returns wrong
+            # logits. An all-ones mask reduces to arange, so this is a no-op there.
+            #
+            # The mask spans any cached prefix as well as the new tokens, so it is
+            # offset back to just the tokens actually being passed — matching how
+            # AbstractAttention/PosEmbed use past_kv_pos_offset.
+            if (
+                attention_mask is not None
+                and "position_ids" not in kwargs
+                and not _is_inputs_embeds
+                and attention_mask.ndim == 2
+                and isinstance(input_ids, torch.Tensor)
+                and input_ids.ndim == 2
+                and attention_mask.shape[1] >= input_ids.shape[1]
+            ):
+                _derived = utils.get_offset_position_ids(0, attention_mask)
+                _arange = torch.arange(attention_mask.shape[1], device=_derived.device)
+                # Only intervene when the mask actually moves an attended token off
+                # its default position — i.e. some masked token precedes a real one
+                # (left padding, or an interior gap). Pure right padding and an
+                # all-ones mask already agree with arange, and injecting position_ids
+                # there would be a no-op at best and unsupported by models whose
+                # forward does not take them at worst.
+                if bool(((_derived != _arange) & (attention_mask != 0)).any()):
+                    kwargs["position_ids"] = _derived[
+                        :, attention_mask.shape[1] - input_ids.shape[1] :
+                    ]
+
             if attention_mask is not None:
                 kwargs["attention_mask"] = attention_mask
             if past_key_values is not None:
