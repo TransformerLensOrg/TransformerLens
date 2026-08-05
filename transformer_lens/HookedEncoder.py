@@ -390,7 +390,7 @@ class HookedEncoder(HookedRootModule):
             "HookedEncoder.from_pretrained is deprecated and will be removed in 4.0. Use "
             "TransformerBridge.boot_transformers(...) instead.",
             DeprecationWarning,
-            stacklevel=4,
+            stacklevel=2,
         )
         logging.warning(
             "Support for BERT in TransformerLens is currently experimental, until such a time when it has feature "

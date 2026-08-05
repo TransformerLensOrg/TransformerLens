@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import importlib
 import subprocess
 import sys
-import warnings
 from pathlib import Path
 
 import pytest
@@ -71,24 +69,32 @@ def test_hooked_encoder_constructor_warns_once():
     _assert_single_deprecation(lambda: HookedEncoder(_small_config()), "HookedEncoder")
 
 
-def test_hooked_encoder_from_pretrained_warns_at_callsite(monkeypatch):
-    hooked_encoder_module = importlib.import_module("transformer_lens.HookedEncoder")
+def test_hooked_encoder_from_pretrained_warning_reaches_external_caller():
+    code = "\n".join(
+        [
+            "import importlib",
+            "hooked_encoder_module = importlib.import_module('transformer_lens.HookedEncoder')",
+            "HookedEncoder = hooked_encoder_module.HookedEncoder",
+            "def stop_loading(*args, **kwargs):",
+            "    raise RuntimeError('stop after deprecation warning')",
+            "hooked_encoder_module.loading.get_official_model_name = stop_loading",
+            "try:",
+            "    HookedEncoder.from_pretrained('bert-base-cased')",
+            "except RuntimeError as error:",
+            "    assert str(error) == 'stop after deprecation warning'",
+        ]
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        cwd=PROJECT_ROOT,
+        text=True,
+        check=False,
+    )
 
-    def stop_loading(*args, **kwargs):
-        raise RuntimeError("stop after deprecation warning")
-
-    monkeypatch.setattr(hooked_encoder_module.loading, "get_official_model_name", stop_loading)
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("default")
-        with pytest.raises(RuntimeError, match="stop after deprecation warning"):
-            hooked_encoder_module.HookedEncoder.from_pretrained("bert-base-cased")
-
-    deprecations = [
-        warning for warning in caught if issubclass(warning.category, DeprecationWarning)
-    ]
-    assert len(deprecations) == 1
-    assert "HookedEncoder.from_pretrained" in str(deprecations[0].message)
-    assert deprecations[0].filename == __file__
+    assert result.returncode == 0, result.stderr
+    assert "<string>:" in result.stderr
+    assert "DeprecationWarning: HookedEncoder.from_pretrained is deprecated" in result.stderr
 
 
 def test_bert_next_sentence_prediction_constructor_warns_once():
