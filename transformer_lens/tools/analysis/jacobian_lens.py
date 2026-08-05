@@ -298,34 +298,39 @@ class JacobianLens:
         indices to transport matrices, plus ``n_prompts``, ``d_model``, and an
         optional ``metadata`` dict.
 
-        **Fit checkpoint** (running-sum format, written during or after a
-        fitting run before the final average is applied): must contain a
-        ``jacobian_sum`` key mapping layer indices to *running-sum* matrices
-        (i.e. the sum over prompts, not yet divided by ``n_prompts``), plus
-        ``n_prompts`` and ``d_model``.  The per-layer means are reconstructed
-        on load.  A ``converted_from: "jacobian_lens_checkpoint"`` key is
-        added to metadata so :meth:`merge` refuses to silently combine
-        checkpoints with natively TL-fitted lenses.  Fit-reserved provenance
-        keys (``transformer_lens_fit``, etc.) are stripped; scalar fields that
-        can be serialised under ``weights_only=True`` are preserved.
+        **Fit checkpoint** (running-sum format, written by the reference
+        implementation's ``write_checkpoint()`` during fitting): must contain
+        a ``jacobian_sum`` key mapping layer indices to *running-sum* matrices
+        (i.e. the sum over prompts, not yet divided by the prompt count), plus
+        ``n_done``.  ``d_model`` is inferred from the first matrix's shape;
+        no explicit ``d_model`` key is required or expected.  The per-layer
+        means are reconstructed on load.  A
+        ``converted_from: "jacobian_lens_checkpoint"`` key is added to
+        metadata so :meth:`merge` refuses to silently combine checkpoints with
+        natively TL-fitted lenses.  Fit-reserved provenance keys
+        (``transformer_lens_fit``, etc.) are stripped; scalar fields that can
+        be serialised under ``weights_only=True`` are preserved.
         Tensor-valued metadata fields that would fail :func:`_validate_metadata`
         are recorded by name in a ``dropped_fields`` list.
 
-        Fit checkpoint schema
-        ---------------------
-        The following top-level keys are expected (all others are ignored)::
+        Fit checkpoint schema (reference ``write_checkpoint()`` format)
+        ---------------------------------------------------------------
+        The reference implementation writes exactly six top-level keys; all
+        other keys in the payload are ignored::
 
             {
-                "jacobian_sum": {<layer int>: <float32 tensor [d, d]>, ...},
-                "n_prompts":    <int>,   # prompts summed into jacobian_sum
-                "d_model":      <int>,
-                "source_layers": [<int>, ...],  # optional, for documentation
-                # optional flat provenance (harvested into metadata):
-                "model_name":   <str>,
+                "jacobian_sum":   {<layer int>: <float32 tensor [d, d]>, ...},
+                "n_done":         <int>,        # prompts accumulated into jacobian_sum
+                "next_idx":       <int>,        # next prompt index (informational)
+                "source_layers":  [<int>, ...], # documented layer indices (informational)
+                "target_layer":   <int>,        # target layer — harvested into metadata
+                "skip_first":     <int>,        # leading positions skipped (informational)
+                # optional flat provenance accepted from alternative checkpoint writers:
+                "model_name":     <str>,
                 "model_revision": <str>,
-                "corpus":       <str>,
-                # optional nested provenance:
-                "metadata":     {<str>: <scalar/list/dict>, ...},
+                "corpus":         <str>,
+                # optional nested provenance accepted from alternative writers:
+                "metadata":       {<str>: <scalar/list/dict>, ...},
             }
 
         Args:
@@ -367,7 +372,13 @@ class JacobianLens:
                 f"{path} is a fit checkpoint with n_prompts={n_prompts}; "
                 "a positive prompt count is required to reconstruct the Jacobian mean."
             )
-        d_model = int(payload["d_model"])
+        if not payload["jacobian_sum"]:
+            raise ValueError(
+                f"{path} is a fit checkpoint with an empty jacobian_sum; "
+                "at least one layer matrix is required to reconstruct d_model."
+            )
+        first_matrix = next(iter(payload["jacobian_sum"].values()))
+        d_model = first_matrix.shape[0]
         jacobians = {
             int(layer): matrix.float() / n_prompts
             for layer, matrix in payload["jacobian_sum"].items()
@@ -380,6 +391,10 @@ class JacobianLens:
         for key in _CHECKPOINT_FLAT_PROVENANCE:
             if key in payload and key not in raw_meta:
                 raw_meta[key] = payload[key]
+        # target_layer lives at the top level in the reference checkpoint format;
+        # harvest it into metadata so validate_model() can check the fitting target.
+        if "target_layer" in payload and "target_layer" not in raw_meta:
+            raw_meta["target_layer"] = payload["target_layer"]
 
         # Build clean metadata: drop fit-reserved keys, record tensor-valued
         # fields that _validate_metadata would reject (they cannot survive a
