@@ -4,14 +4,14 @@ from unittest import mock
 
 import torch
 
-from transformer_lens.config.hooked_transformer_config import HookedTransformerConfig
+from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.pretrained.weight_conversions.apertus import (
     convert_apertus_weights,
 )
 
 
 def make_cfg(use_qk_norm=True, n_key_value_heads=4):
-    return HookedTransformerConfig(
+    return TransformerBridgeConfig(
         n_layers=1,
         d_model=64,
         d_head=16,

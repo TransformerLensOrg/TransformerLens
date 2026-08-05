@@ -1,8 +1,8 @@
-"""HookedRootModule-parity for BridgeCore hook orchestration.
+"""BridgeCore hook-orchestration behaviour.
 
 `reset_hooks` direction/permanence/level/clear-contexts selectivity, the
 `mod_dict` accessor, and the `check_hooks_to_add` extension point -- the
-surface migrated hook code relies on when moving off HookedTransformer.
+surface migrated hook code relies on.
 
 Uses the network-free pretrain mock bridge (real block tree, HT-style
 hook aliases like `blocks.0.hook_mlp_out`) rather than a thin stub, so the

@@ -149,24 +149,3 @@ class TestBootRevisionPlumbing:
         assert "revision" in captured["autoconfig_kwargs"]
         assert captured["autoconfig_kwargs"]["revision"] is None
         assert "revision" not in captured.get("model_kwargs", {})
-
-
-class TestHookedTransformerCheckpointLabelAlias:
-    def test_checkpoint_label_routes_to_checkpoint_value(self):
-        from transformer_lens import HookedTransformer
-
-        with patch("transformer_lens.loading.get_pretrained_model_config") as mock_get_cfg:
-            mock_get_cfg.side_effect = RuntimeError("stop after config call")
-            with pytest.raises(RuntimeError, match="stop after config call"):
-                HookedTransformer.from_pretrained("EleutherAI/pythia-70m", checkpoint_label=3000)
-
-        _, kwargs = mock_get_cfg.call_args
-        assert kwargs["checkpoint_value"] == 3000
-
-    def test_checkpoint_label_and_value_together_raises(self):
-        from transformer_lens import HookedTransformer
-
-        with pytest.raises(ValueError, match="aliases"):
-            HookedTransformer.from_pretrained(
-                "EleutherAI/pythia-70m", checkpoint_label=3000, checkpoint_value=1000
-            )

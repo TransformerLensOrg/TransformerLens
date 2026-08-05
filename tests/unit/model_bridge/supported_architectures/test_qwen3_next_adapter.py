@@ -1,6 +1,6 @@
 """Unit tests for the Qwen3Next architecture adapter.
 
-Qwen3Next is supported only via TransformerBridge, not HookedTransformer.
+Qwen3Next is supported via TransformerBridge.
 The bridge reads HF config directly via the adapter and bypasses
 transformer_lens.loading_from_pretrained, so no convert_hf_model_config tests here.
 """

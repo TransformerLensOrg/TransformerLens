@@ -1,8 +1,8 @@
 """Tests for TransformerBridge mechanistic interpretability analysis methods.
 
 Tests tokens_to_residual_directions, accumulated_bias, all_composition_scores,
-all_head_labels, and top-level W_E/W_U/b_U properties. Validates against
-HookedTransformer for correctness, not just shape/type.
+all_head_labels, and top-level W_E/W_U/b_U properties. Validates against the
+frozen HookedTransformer goldens for correctness, not just shape/type.
 
 Uses distilgpt2 (CI-cached).
 """
@@ -18,9 +18,19 @@ def bridge_compat(distilgpt2_bridge_compat):
 
 
 @pytest.fixture()
-def reference_ht(distilgpt2_hooked_processed):
-    """Alias session fixture for backward compatibility with test signatures."""
-    return distilgpt2_hooked_processed
+def golden(distilgpt2_goldens_processed):
+    """Golden cell replacing the live-HT reference."""
+    return distilgpt2_goldens_processed
+
+
+@pytest.fixture(scope="module")
+def golden_views(distilgpt2_goldens_processed):
+    return distilgpt2_goldens_processed.tensors("views")
+
+
+@pytest.fixture(scope="module")
+def golden_state(distilgpt2_goldens_processed):
+    return distilgpt2_goldens_processed.tensors("state_dict")
 
 
 class TestTopLevelWeightProperties:
@@ -38,18 +48,18 @@ class TestTopLevelWeightProperties:
         """bridge.b_U should equal bridge.unembed.b_U."""
         assert torch.equal(bridge_compat.b_U, bridge_compat.unembed.b_U)
 
-    def test_W_E_matches_hooked_transformer(self, bridge_compat, reference_ht):
-        """bridge.W_E values should match HookedTransformer.W_E."""
-        assert bridge_compat.W_E.shape == reference_ht.W_E.shape
+    def test_W_E_matches_hooked_transformer(self, bridge_compat, golden_views):
+        """bridge.W_E values should match the golden HookedTransformer W_E."""
+        assert bridge_compat.W_E.shape == golden_views["W_E"].shape
         # After weight processing, embeddings may differ due to centering.
         # But shapes must match and both must be non-zero.
         assert bridge_compat.W_E.std() > 0
-        assert reference_ht.W_E.std() > 0
+        assert golden_views["W_E"].std() > 0
 
-    def test_W_U_matches_hooked_transformer(self, bridge_compat, reference_ht):
-        """bridge.W_U values should match HookedTransformer.W_U."""
-        assert bridge_compat.W_U.shape == reference_ht.W_U.shape
-        max_diff = (bridge_compat.W_U - reference_ht.W_U).abs().max().item()
+    def test_W_U_matches_hooked_transformer(self, bridge_compat, golden_views):
+        """bridge.W_U values should match the golden HookedTransformer W_U."""
+        assert bridge_compat.W_U.shape == golden_views["W_U"].shape
+        max_diff = (bridge_compat.W_U - golden_views["W_U"]).abs().max().item()
         assert max_diff < 1e-4, f"W_U differs by {max_diff}"
 
 
@@ -82,12 +92,12 @@ class TestTokensToResidualDirections:
         for i, tok in enumerate(tokens):
             assert torch.equal(rd[i], bridge_compat.W_U[:, tok])
 
-    def test_matches_hooked_transformer(self, bridge_compat, reference_ht):
-        """Output should match HookedTransformer for the same tokens."""
+    def test_matches_hooked_transformer(self, bridge_compat, golden_views):
+        """Output should match the golden W_U columns for the same tokens."""
         tokens = torch.tensor([10, 20, 30])
         bridge_rd = bridge_compat.tokens_to_residual_directions(tokens)
-        ht_rd = reference_ht.tokens_to_residual_directions(tokens)
-        max_diff = (bridge_rd - ht_rd).abs().max().item()
+        golden_rd = golden_views["W_U"][:, tokens].T
+        max_diff = (bridge_rd - golden_rd).abs().max().item()
         assert max_diff < 1e-4, f"Residual directions differ by {max_diff}"
 
 
@@ -114,19 +124,29 @@ class TestAccumulatedBias:
         ab_all = bridge_compat.accumulated_bias(bridge_compat.cfg.n_layers)
         assert ab_all.norm() > ab_0.norm()
 
-    def test_matches_hooked_transformer(self, bridge_compat, reference_ht):
-        """Output should match HookedTransformer."""
+    @staticmethod
+    def _golden_accumulated_bias(state, layer, mlp_input=False):
+        """HookedTransformer.accumulated_bias recomputed from the frozen golden params."""
+        bias = torch.zeros_like(state["blocks.0.attn.b_O"])
+        for i in range(layer):
+            bias += state[f"blocks.{i}.attn.b_O"] + state[f"blocks.{i}.mlp.b_out"]
+        if mlp_input:
+            bias += state[f"blocks.{layer}.attn.b_O"]
+        return bias
+
+    def test_matches_hooked_transformer(self, bridge_compat, golden_state):
+        """Output should match the frozen HookedTransformer bias sums."""
         for layer in [0, 1, 3, bridge_compat.cfg.n_layers]:
             bridge_ab = bridge_compat.accumulated_bias(layer)
-            ht_ab = reference_ht.accumulated_bias(layer)
-            max_diff = (bridge_ab - ht_ab).abs().max().item()
+            golden_ab = self._golden_accumulated_bias(golden_state, layer)
+            max_diff = (bridge_ab - golden_ab).abs().max().item()
             assert max_diff < 1e-4, f"accumulated_bias({layer}) differs by {max_diff}"
 
-    def test_mlp_input_flag(self, bridge_compat, reference_ht):
+    def test_mlp_input_flag(self, bridge_compat, golden_state):
         """mlp_input=True should include the current layer's attn bias."""
         bridge_ab = bridge_compat.accumulated_bias(1, mlp_input=True)
-        ht_ab = reference_ht.accumulated_bias(1, mlp_input=True)
-        max_diff = (bridge_ab - ht_ab).abs().max().item()
+        golden_ab = self._golden_accumulated_bias(golden_state, 1, mlp_input=True)
+        max_diff = (bridge_ab - golden_ab).abs().max().item()
         assert max_diff < 1e-4, f"accumulated_bias(1, mlp_input=True) differs by {max_diff}"
 
 
@@ -177,6 +197,8 @@ class TestAllHeadLabels:
         assert labels[1] == "L0H1"
         assert labels[bridge_compat.cfg.n_heads] == "L1H0"
 
-    def test_matches_hooked_transformer(self, bridge_compat, reference_ht):
-        """Should match HookedTransformer's labels exactly."""
-        assert bridge_compat.all_head_labels == reference_ht.all_head_labels()
+    def test_matches_hooked_transformer(self, bridge_compat):
+        """Should match the legacy L{layer}H{head} enumeration exactly."""
+        cfg = bridge_compat.cfg
+        expected = [f"L{l}H{h}" for l in range(cfg.n_layers) for h in range(cfg.n_heads)]
+        assert bridge_compat.all_head_labels == expected

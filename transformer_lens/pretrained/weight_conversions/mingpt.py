@@ -1,9 +1,9 @@
 import einops
 
-from transformer_lens.config.hooked_transformer_config import HookedTransformerConfig
+from transformer_lens.config import TransformerLensConfig
 
 
-def convert_mingpt_weights(old_state_dict, cfg: HookedTransformerConfig):
+def convert_mingpt_weights(old_state_dict, cfg: TransformerLensConfig):
     # mingpt (https://github.com/karpathy/minGPT) is mostly similar to GPT-2,
     # but doesn't concat the QKV matrices.
     state_dict = {}

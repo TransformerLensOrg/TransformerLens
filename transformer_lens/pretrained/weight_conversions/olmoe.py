@@ -1,10 +1,10 @@
 import einops
 import torch
 
-from transformer_lens.config.hooked_transformer_config import HookedTransformerConfig
+from transformer_lens.config import TransformerLensConfig
 
 
-def convert_olmoe_weights(olmoe, cfg: HookedTransformerConfig):
+def convert_olmoe_weights(olmoe, cfg: TransformerLensConfig):
     state_dict = {}
 
     assert cfg.n_key_value_heads is not None

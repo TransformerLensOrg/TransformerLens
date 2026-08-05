@@ -11,7 +11,7 @@ Tests cover:
 import torch
 import torch.nn as nn
 
-from transformer_lens.config.hooked_transformer_config import HookedTransformerConfig
+from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.pretrained.weight_conversions.gemma import convert_gemma_weights
 
 
@@ -21,7 +21,7 @@ def get_gemma3_config(
     use_normalization_before_and_after: bool = True,
 ):
     """Create a Gemma 3 style config for testing."""
-    return HookedTransformerConfig(
+    return TransformerBridgeConfig(
         d_model=128,
         d_head=64,
         n_heads=2,
@@ -42,7 +42,7 @@ def get_gemma3_config(
 class MockGemmaLayer(nn.Module):
     """A mock Gemma layer with real nn.Module components."""
 
-    def __init__(self, cfg: HookedTransformerConfig, use_qk_norm: bool = True):
+    def __init__(self, cfg: TransformerBridgeConfig, use_qk_norm: bool = True):
         super().__init__()
         self.input_layernorm = nn.LayerNorm(cfg.d_model)
         self.post_attention_layernorm = nn.LayerNorm(cfg.d_model)
@@ -77,7 +77,7 @@ class MockGemmaLayer(nn.Module):
 class MockGemmaTextModel(nn.Module):
     """A mock text-only Gemma3ForCausalLM model."""
 
-    def __init__(self, cfg: HookedTransformerConfig):
+    def __init__(self, cfg: TransformerBridgeConfig):
         super().__init__()
         self.model = nn.Module()
         self.model.embed_tokens = nn.Embedding(cfg.d_vocab, cfg.d_model)
@@ -91,7 +91,7 @@ class MockGemmaTextModel(nn.Module):
 class MockGemmaMultimodalModel(nn.Module):
     """A mock multimodal Gemma3ForConditionalGeneration model."""
 
-    def __init__(self, cfg: HookedTransformerConfig):
+    def __init__(self, cfg: TransformerBridgeConfig):
         super().__init__()
         # Multimodal structure: model.language_model.model
         self.language_model = nn.Module()

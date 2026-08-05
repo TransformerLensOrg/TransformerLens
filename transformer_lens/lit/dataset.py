@@ -79,7 +79,7 @@ class DatasetConfig:
 
 
 class SimpleTextDataset(_LITDatasetBase):  # type: ignore[misc, valid-type]
-    """Simple text dataset for use with HookedTransformerLIT.
+    """Simple text dataset for use with TransformerLensLIT.
 
     This is a basic dataset class that holds text examples for analysis
     with LIT. Each example is a dictionary with at least a "text" field.

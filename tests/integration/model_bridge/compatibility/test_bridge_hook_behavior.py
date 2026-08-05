@@ -25,10 +25,10 @@ def bridge_compat(distilgpt2_bridge_compat):
     return distilgpt2_bridge_compat
 
 
-@pytest.fixture()
-def reference_ht(distilgpt2_hooked_processed):
-    """Alias session fixture for backward compatibility with test signatures."""
-    return distilgpt2_hooked_processed
+@pytest.fixture(scope="module")
+def golden(distilgpt2_goldens_processed):
+    """Golden cell replacing the live-HT reference."""
+    return distilgpt2_goldens_processed
 
 
 class TestHookFiring:
@@ -144,37 +144,34 @@ class TestHookModification:
 
 
 class TestHookAblationEquivalence:
-    """Test that ablation effects match between bridge and HookedTransformer."""
+    """Test that ablation effects match the frozen HookedTransformer golden anchors."""
 
-    def test_ablation_effect_matches_reference(self, bridge_compat, reference_ht):
-        """Ablation effects should match between bridge and HookedTransformer."""
-        test_text = "Natural language processing"
+    def test_ablation_effect_matches_reference(self, bridge_compat, golden):
+        """Replaying the golden ablation must reproduce the frozen HT loss delta."""
+        anchor = golden.scalars["ablation"]
+        head = anchor["head"]
 
         def ablation_hook(activation, hook):
-            activation[:, :, 5, :] = 0
+            activation[:, :, head, :] = 0
             return activation
 
-        ht_baseline = reference_ht(test_text, return_type="loss")
-        ht_ablated = reference_ht.run_with_hooks(
-            test_text,
-            return_type="loss",
-            fwd_hooks=[("blocks.0.attn.hook_v", ablation_hook)],
-        )
-
-        bridge_baseline = bridge_compat(test_text, return_type="loss")
+        bridge_baseline = bridge_compat(anchor["text"], return_type="loss")
         bridge_ablated = bridge_compat.run_with_hooks(
-            test_text,
+            anchor["text"],
             return_type="loss",
-            fwd_hooks=[("blocks.0.attn.hook_v", ablation_hook)],
+            fwd_hooks=[(anchor["hook"], ablation_hook)],
         )
 
-        ht_effect = ht_ablated - ht_baseline
-        bridge_effect = bridge_ablated - bridge_baseline
-        effect_diff = abs(ht_effect - bridge_effect)
+        golden_effect = anchor["ablated_loss"] - anchor["orig_loss"]
+        bridge_effect = (bridge_ablated - bridge_baseline).item()
+        effect_diff = abs(golden_effect - bridge_effect)
 
         assert (
+            abs(bridge_baseline.item() - anchor["orig_loss"]) < 0.01
+        ), f"Baseline loss drifted from golden: {bridge_baseline.item()} vs {anchor['orig_loss']}"
+        assert (
             effect_diff < 2e-4
-        ), f"Hook effects should match between models (diff: {effect_diff:.6f})"
+        ), f"Hook effect should match the golden anchor (diff: {effect_diff:.6f})"
 
 
 class TestHookActivationShapes:
@@ -218,33 +215,26 @@ class TestHookActivationShapes:
         assert len(shapes["v"]) == 4
         assert shapes["v"][2] == bridge_compat.cfg.n_heads
 
-    def test_shapes_match_reference(self, bridge_compat, reference_ht):
-        """Activation shapes should match between bridge and HookedTransformer."""
+    def test_shapes_match_reference(self, bridge_compat, golden):
+        """Activation shapes should match the golden hook manifest."""
         hook_name = "blocks.0.attn.hook_v"
-        tokens = reference_ht.to_tokens("The cat sat on")
+        golden_shape = golden.hook_manifest[hook_name]
+        assert golden_shape is not None, f"{hook_name} unfired in the golden capture"
 
-        ref_act: list[torch.Tensor] = []
         bridge_act: list[torch.Tensor] = []
-
-        def collect_ref(a: torch.Tensor, hook: object) -> torch.Tensor:
-            ref_act.append(a)
-            return a
 
         def collect_bridge(a: torch.Tensor, hook: object) -> torch.Tensor:
             bridge_act.append(a)
             return a
 
-        reference_ht.add_hook(hook_name, collect_ref)
         bridge_compat.add_hook(hook_name, collect_bridge)
+        try:
+            with torch.no_grad():
+                bridge_compat(golden.scalars["short_prompt"])
+        finally:
+            bridge_compat.reset_hooks()
 
-        with torch.no_grad():
-            reference_ht(tokens)
-            bridge_compat(tokens)
-
-        reference_ht.reset_hooks()
-        bridge_compat.reset_hooks()
-
-        assert ref_act[0].shape == bridge_act[0].shape
+        assert list(bridge_act[0].shape) == golden_shape
 
 
 class TestHookContextManager:
@@ -293,8 +283,8 @@ class TestHookContextManager:
 class TestHookRegistry:
     """Test hook registry completeness."""
 
-    def test_key_hooks_present(self, bridge_compat, reference_ht):
-        """Key hooks should be present in both bridge and reference."""
+    def test_key_hooks_present(self, bridge_compat, golden):
+        """Key hooks should be present in both the golden manifest and the bridge."""
         key_hooks = [
             "hook_embed",
             "hook_pos_embed",
@@ -303,8 +293,9 @@ class TestHookRegistry:
             "blocks.0.attn.hook_v",
             "blocks.0.attn.hook_z",
         ]
+        manifest = golden.hook_manifest
         for hook_name in key_hooks:
-            assert hook_name in reference_ht.hook_dict, f"Reference missing {hook_name}"
+            assert hook_name in manifest, f"Golden manifest missing {hook_name}"
             assert hook_name in bridge_compat.hook_dict, f"Bridge missing {hook_name}"
 
     def test_bridge_has_substantial_hooks(self, bridge_compat):

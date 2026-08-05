@@ -1,6 +1,6 @@
-"""LIT Model wrapper for TransformerLens HookedTransformer.
+"""LIT Model wrapper for TransformerLens models.
 
-This module provides a LIT-compatible wrapper around TransformerLens's HookedTransformer,
+This module provides a LIT-compatible wrapper around TransformerLens models,
 enabling the use of Google's Learning Interpretability Tool (LIT) for model visualization
 and analysis.
 
@@ -12,14 +12,14 @@ The wrapper exposes:
 - Loss computation
 
 Example usage:
-    >>> from transformer_lens import HookedTransformer  # doctest: +SKIP
-    >>> from transformer_lens.lit import HookedTransformerLIT  # doctest: +SKIP
+    >>> from transformer_lens import TransformerBridge  # doctest: +SKIP
+    >>> from transformer_lens.lit import TransformerLensLIT  # doctest: +SKIP
     >>>
     >>> # Load model
-    >>> model = HookedTransformer.from_pretrained("gpt2-small")  # doctest: +SKIP
+    >>> model = TransformerBridge.boot_transformers("gpt2")  # doctest: +SKIP
     >>>
     >>> # Create LIT wrapper
-    >>> lit_model = HookedTransformerLIT(model)  # doctest: +SKIP
+    >>> lit_model = TransformerLensLIT(model)  # doctest: +SKIP
     >>>
     >>> # Run prediction
     >>> inputs = [{"text": "Hello, world!"}]  # doctest: +SKIP
@@ -74,8 +74,8 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class HookedTransformerLITConfig:
-    """Configuration for the HookedTransformerLIT wrapper."""
+class TransformerLensLITConfig:
+    """Configuration for the TransformerLensLIT wrapper."""
 
     max_seq_length: int = DEFAULTS.MAX_SEQ_LENGTH
     batch_size: int = DEFAULTS.BATCH_SIZE
@@ -102,8 +102,8 @@ else:
     _LITModelBase = object  # type: ignore[misc,assignment]
 
 
-class HookedTransformerLIT(_LITModelBase):  # type: ignore[valid-type,misc]
-    """LIT Model wrapper for TransformerLens HookedTransformer.
+class TransformerLensLIT(_LITModelBase):  # type: ignore[valid-type,misc]
+    """LIT Model wrapper for TransformerLens models.
 
     This wrapper implements the LIT Model API, enabling the use of LIT's
     visualization and analysis tools with TransformerLens models.
@@ -115,8 +115,8 @@ class HookedTransformerLIT(_LITModelBase):  # type: ignore[valid-type,misc]
     - Token gradients for salience maps
 
     Example:
-        >>> model = HookedTransformer.from_pretrained("gpt2-small")  # doctest: +SKIP
-        >>> lit_model = HookedTransformerLIT(model)  # doctest: +SKIP
+        >>> model = TransformerBridge.boot_transformers("gpt2")  # doctest: +SKIP
+        >>> lit_model = TransformerLensLIT(model)  # doctest: +SKIP
         >>> lit_model.input_spec()  # doctest: +SKIP
         {'text': TextSegment(), ...}
     """
@@ -124,28 +124,31 @@ class HookedTransformerLIT(_LITModelBase):  # type: ignore[valid-type,misc]
     def __init__(
         self,
         model: Any,
-        config: Optional[HookedTransformerLITConfig] = None,
+        config: Optional[TransformerLensLITConfig] = None,
     ):
         """Initialize the LIT wrapper.
 
         Args:
-            model: TransformerLens HookedTransformer model.
+            model: A TransformerLens model (e.g. TransformerBridge).
             config: Optional configuration. Uses defaults if not provided.
 
         Raises:
             ImportError: If lit-nlp is not installed.
-            TypeError: If model is not a HookedTransformer.
+            TypeError: If model does not implement the TransformerLens model interface.
         """
         _ensure_lit_available()
 
-        # Validate model type
-        from transformer_lens import HookedTransformer
+        # Validate model type (structural: accepts TransformerBridge and any
+        # other conforming TransformerLens model)
+        from transformer_lens.model_protocol import TransformerLensModel
 
-        if not isinstance(model, HookedTransformer):
+        if not isinstance(model, TransformerLensModel):
             raise TypeError(ERRORS.INVALID_MODEL.format(model_type=type(model)))
 
-        self.model = model
-        self.config = config or HookedTransformerLITConfig()
+        # Deliberately Any: the wrapper reaches beyond the minimal protocol
+        # surface (tokenizer, embed, callables) on whichever model conforms.
+        self.model: Any = model
+        self.config = config or TransformerLensLITConfig()
 
         # Gradients require embeddings to be output (for alignment)
         if self.config.compute_gradients and not self.config.output_embeddings:
@@ -159,7 +162,7 @@ class HookedTransformerLIT(_LITModelBase):  # type: ignore[valid-type,misc]
         # Cache model info
         self._model_info = get_model_info(model)
 
-        logger.info(f"Created HookedTransformerLIT wrapper for {self._model_info['model_name']}")
+        logger.info(f"Created TransformerLensLIT wrapper for {self._model_info['model_name']}")
 
     @property
     def supports_concurrent_predictions(self) -> bool:
@@ -635,36 +638,37 @@ class HookedTransformerLIT(_LITModelBase):  # type: ignore[valid-type,misc]
     def from_pretrained(
         cls,
         model_name: str,
-        config: Optional[HookedTransformerLITConfig] = None,
+        config: Optional[TransformerLensLITConfig] = None,
         **model_kwargs,
-    ) -> "HookedTransformerLIT":
+    ) -> "TransformerLensLIT":
         """Create a LIT wrapper from a pretrained model name.
 
-        Convenience method that loads the HookedTransformer model
-        and wraps it for LIT.
+        Convenience method that boots a TransformerBridge (with compatibility
+        mode enabled for the legacy hook/weight surface) and wraps it for LIT.
 
         Args:
-            model_name: Name of the pretrained model (e.g., "gpt2-small").
+            model_name: Name of the pretrained model (e.g., "gpt2").
             config: Optional wrapper configuration.
-            **model_kwargs: Additional arguments for HookedTransformer.from_pretrained.
+            **model_kwargs: Additional arguments for TransformerBridge.boot_transformers.
 
         Returns:
-            HookedTransformerLIT wrapper instance.
+            TransformerLensLIT wrapper instance.
 
         Example:
-            >>> lit_model = HookedTransformerLIT.from_pretrained("gpt2-small")  # doctest: +SKIP
+            >>> lit_model = TransformerLensLIT.from_pretrained("gpt2")  # doctest: +SKIP
         """
-        from transformer_lens import HookedTransformer
+        from transformer_lens.model_bridge import TransformerBridge
 
-        model = HookedTransformer.from_pretrained(model_name, **model_kwargs)
+        model = TransformerBridge.boot_transformers(model_name, **model_kwargs)
+        model.enable_compatibility_mode()
         return cls(model, config=config)
 
 
 # If LIT is available, register as a proper LIT BatchedModel subclass
 if _LIT_AVAILABLE:
 
-    class HookedTransformerLITBatched(lit_model.BatchedModel):  # type: ignore[union-attr]
-        """Batched version of HookedTransformerLIT for better performance.
+    class TransformerLensLITBatched(lit_model.BatchedModel):  # type: ignore[union-attr]
+        """Batched version of TransformerLensLIT for better performance.
 
         This class implements the BatchedModel interface for efficient
         batch processing. Use this for production deployments.
@@ -673,16 +677,16 @@ if _LIT_AVAILABLE:
         def __init__(
             self,
             model: Any,
-            config: Optional[HookedTransformerLITConfig] = None,
+            config: Optional[TransformerLensLITConfig] = None,
         ):
             """Initialize the batched LIT wrapper.
 
             Args:
-                model: TransformerLens HookedTransformer model.
+                model: A TransformerLens model (e.g. TransformerBridge).
                 config: Optional configuration.
             """
             # Use the non-batched wrapper internally
-            self._wrapper = HookedTransformerLIT(model, config)
+            self._wrapper = TransformerLensLIT(model, config)
             self.model = model
             self.config = self._wrapper.config
 
@@ -691,7 +695,7 @@ if _LIT_AVAILABLE:
 
         @classmethod
         def init_spec(cls) -> Dict[str, Any]:
-            return HookedTransformerLIT.init_spec()
+            return TransformerLensLIT.init_spec()
 
         def input_spec(self) -> Dict[str, Any]:
             return self._wrapper.input_spec()
@@ -721,9 +725,9 @@ if _LIT_AVAILABLE:
         def from_pretrained(
             cls,
             model_name: str,
-            config: Optional[HookedTransformerLITConfig] = None,
+            config: Optional[TransformerLensLITConfig] = None,
             **model_kwargs,
-        ) -> "HookedTransformerLITBatched":
+        ) -> "TransformerLensLITBatched":
             """Create a batched LIT wrapper from a pretrained model.
 
             Args:
@@ -732,9 +736,17 @@ if _LIT_AVAILABLE:
                 **model_kwargs: Additional arguments for model loading.
 
             Returns:
-                HookedTransformerLITBatched instance.
+                TransformerLensLITBatched instance.
             """
-            from transformer_lens import HookedTransformer
+            from transformer_lens.model_bridge import TransformerBridge
 
-            model = HookedTransformer.from_pretrained(model_name, **model_kwargs)
+            model = TransformerBridge.boot_transformers(model_name, **model_kwargs)
+            model.enable_compatibility_mode()
             return cls(model, config=config)
+
+
+# Legacy aliases (deprecated names kept for one transition release).
+HookedTransformerLITConfig = TransformerLensLITConfig
+HookedTransformerLIT = TransformerLensLIT
+if _LIT_AVAILABLE:
+    HookedTransformerLITBatched = TransformerLensLITBatched

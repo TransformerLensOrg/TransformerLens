@@ -9,50 +9,41 @@ from transformer_lens.model_bridge.bridge import TransformerBridge
 class TestBridgeCreationModes:
     """Test different modes of creating and configuring TransformerBridge."""
 
-    @pytest.fixture
-    def test_text(self):
-        """Test text for evaluation."""
-        return "Hello world"
-
     def test_bridge_no_processing(
-        self, distilgpt2_bridge_compat_no_processing, distilgpt2_hooked_processed, test_text
+        self, distilgpt2_bridge_compat_no_processing, distilgpt2_goldens_unprocessed
     ):
-        """Test bridge with no weight processing."""
+        """Test bridge with no weight processing against the unprocessed golden loss."""
         bridge = distilgpt2_bridge_compat_no_processing
+        golden = distilgpt2_goldens_unprocessed
 
-        ref_loss = distilgpt2_hooked_processed(test_text, return_type="loss")
-        bridge_loss = bridge(test_text, return_type="loss")
+        text = golden.scalars["ablation"]["text"]
+        ref_loss = golden.scalars["long_text_ce_loss"]
+        bridge_loss = bridge(text, return_type="loss")
 
-        # With no processing, losses should be close but not identical
-        assert (
-            abs(ref_loss - bridge_loss) < 1.0
-        ), f"Losses should be reasonably close: {ref_loss} vs {bridge_loss}"
+        diff = abs(ref_loss - bridge_loss.item())
+        assert diff < 0.01, f"Unprocessed bridge should match the golden loss: {diff}"
         assert 3.0 < bridge_loss < 8.0, f"Bridge loss should be reasonable: {bridge_loss}"
 
     def test_bridge_full_compatibility(
-        self, distilgpt2_bridge_compat, distilgpt2_hooked_processed, test_text
+        self, distilgpt2_bridge_compat, distilgpt2_goldens_processed
     ):
-        """Test bridge with full compatibility mode processing."""
+        """Test bridge with full compatibility mode against the processed golden loss."""
         bridge = distilgpt2_bridge_compat
+        golden = distilgpt2_goldens_processed
 
-        ref_loss = distilgpt2_hooked_processed(test_text, return_type="loss")
-        bridge_loss = bridge(test_text, return_type="loss")
+        text = golden.scalars["ablation"]["text"]
+        ref_loss = golden.scalars["long_text_ce_loss"]
+        bridge_loss = bridge(text, return_type="loss")
 
-        # With full processing, losses should be very close
-        diff = abs(ref_loss - bridge_loss)
-        assert diff < 0.01, f"Processed bridge should match reference closely: {diff}"
+        diff = abs(ref_loss - bridge_loss.item())
+        assert diff < 0.01, f"Processed bridge should match the golden loss: {diff}"
         assert 3.0 < bridge_loss < 8.0, f"Bridge loss should be reasonable: {bridge_loss}"
 
-    def test_bridge_tokenizer_compatibility(self, distilgpt2_bridge, distilgpt2_hooked_processed):
-        """Test that bridge tokenizer works like reference."""
-        test_text = "Hello world test"
-
-        # Tokenize with both
-        ref_tokens = distilgpt2_hooked_processed.to_tokens(test_text)
-        bridge_tokens = distilgpt2_bridge.to_tokens(test_text)
-
-        # Should produce identical tokens
-        assert torch.equal(ref_tokens, bridge_tokens), "Tokenizers should produce identical results"
+    def test_bridge_tokenizer_compatibility(self, distilgpt2_bridge):
+        """Bridge to_tokens must reproduce the frozen legacy tokenization (BOS + GPT-2 BPE)."""
+        bridge_tokens = distilgpt2_bridge.to_tokens("Hello world test")
+        expected = torch.tensor([[50256, 15496, 995, 1332]])
+        assert torch.equal(bridge_tokens, expected), "Tokenization drifted from the frozen ids"
 
     def test_bridge_configuration_persistence(self):
         # Fresh boot: tests the boot → enable_compat transition.

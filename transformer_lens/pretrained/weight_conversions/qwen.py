@@ -1,10 +1,10 @@
 import einops
 import torch
 
-from transformer_lens.config.hooked_transformer_config import HookedTransformerConfig
+from transformer_lens.config import TransformerLensConfig
 
 
-def convert_qwen_weights(qwen, cfg: HookedTransformerConfig):
+def convert_qwen_weights(qwen, cfg: TransformerLensConfig):
     state_dict = {}
     model = qwen.transformer
     state_dict["embed.W_E"] = model.wte.weight

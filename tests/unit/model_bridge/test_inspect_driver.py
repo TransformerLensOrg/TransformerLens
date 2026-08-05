@@ -120,7 +120,7 @@ class TestHookSets:
             "blocks.0.mlp.hook_out",  # mlp_out
         ]:
             assert name in supported
-        assert "blocks.0.hook_attn_out" not in supported  # HookedTransformer alias not duplicated
+        assert "blocks.0.hook_attn_out" not in supported  # block-level alias not duplicated
 
     def test_nonfireable_disjoint_and_includes_headsplit(self):
         driver = _driver()
@@ -321,9 +321,7 @@ class TestHooksRegistry:
         assert hooks.resolve("blocks.0.hook_in") == (0, "resid_pre")
         assert hooks.resolve("blocks.0.hook_out") == (0, "resid_post")
         assert hooks.resolve("embed.hook_out") is None
-        assert (
-            hooks.resolve("blocks.2.hook_attn_out") is None
-        )  # HookedTransformer alias not exposed
+        assert hooks.resolve("blocks.2.hook_attn_out") is None  # block-level alias not exposed
 
 
 class TestInterventionTranslation:

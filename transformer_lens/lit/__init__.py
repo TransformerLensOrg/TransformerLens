@@ -5,12 +5,12 @@ Interpretability Tool (LIT), enabling interactive visualization and analysis
 of transformer models.
 
 Quick Start:
-    >>> from transformer_lens import HookedTransformer  # doctest: +SKIP
-    >>> from transformer_lens.lit import HookedTransformerLIT, SimpleTextDataset, serve  # doctest: +SKIP
+    >>> from transformer_lens import TransformerBridge  # doctest: +SKIP
+    >>> from transformer_lens.lit import TransformerLensLIT, SimpleTextDataset, serve  # doctest: +SKIP
     >>>
     >>> # Load model and create LIT wrapper
-    >>> model = HookedTransformer.from_pretrained("gpt2-small")  # doctest: +SKIP
-    >>> lit_model = HookedTransformerLIT(model)  # doctest: +SKIP
+    >>> model = TransformerBridge.boot_transformers("gpt2")  # doctest: +SKIP
+    >>> lit_model = TransformerLensLIT(model)  # doctest: +SKIP
     >>>
     >>> # Create a dataset
     >>> dataset = SimpleTextDataset.from_strings([  # doctest: +SKIP
@@ -65,6 +65,9 @@ __all__ = [
     "HookedTransformerLIT",
     "HookedTransformerLITBatched",
     "HookedTransformerLITConfig",
+    "TransformerLensLIT",
+    "TransformerLensLITBatched",
+    "TransformerLensLITConfig",
     # Datasets
     "SimpleTextDataset",
     "PromptCompletionDataset",
@@ -96,15 +99,20 @@ from .dataset import (  # noqa: E402
 )
 
 # Import model wrapper (handles LIT availability internally)
-from .model import HookedTransformerLIT, HookedTransformerLITConfig  # noqa: E402
+from .model import (  # noqa: E402
+    HookedTransformerLIT,
+    HookedTransformerLITConfig,
+    TransformerLensLIT,
+    TransformerLensLITConfig,
+)
 
 # Conditional imports that require LIT
 _LIT_AVAILABLE = check_lit_installed()
 
 if _LIT_AVAILABLE:
-    from .model import HookedTransformerLITBatched  # noqa: E402
+    from .model import TransformerLensLITBatched  # noqa: E402
 else:
-    HookedTransformerLITBatched = None  # type: ignore[misc, assignment]
+    TransformerLensLITBatched = None  # type: ignore[misc, assignment]
 
 
 def serve(
@@ -121,7 +129,7 @@ def serve(
     for interactive model exploration.
 
     Args:
-        models: Either a single HookedTransformer/HookedTransformerLIT, or
+        models: Either a single TransformerLens model/TransformerLensLIT, or
                 a dictionary mapping model names to model wrappers.
         datasets: Either a single dataset, or a dictionary mapping
                   dataset names to datasets.
@@ -131,10 +139,10 @@ def serve(
         **kwargs: Additional arguments passed to LIT server.
 
     Example:
-        >>> from transformer_lens import HookedTransformer  # doctest: +SKIP
+        >>> from transformer_lens import TransformerBridge  # doctest: +SKIP
         >>> from transformer_lens.lit import SimpleTextDataset, serve  # doctest: +SKIP
         >>>
-        >>> model = HookedTransformer.from_pretrained("gpt2-small")  # doctest: +SKIP
+        >>> model = TransformerBridge.boot_transformers("gpt2")  # doctest: +SKIP
         >>> dataset = SimpleTextDataset.from_strings(["Hello world!"])  # doctest: +SKIP
         >>>
         >>> # Simple usage with single model and dataset
@@ -153,11 +161,11 @@ def serve(
 
     # Handle single model vs dictionary of models
     if not isinstance(models, dict):
-        # Single model passed - check if it's a HookedTransformer that needs wrapping
+        # Single model passed - check if it's a TransformerLens model that needs wrapping
         model = models
         if hasattr(model, "cfg") and hasattr(model, "run_with_cache"):
-            # It's a HookedTransformer, wrap it
-            model = HookedTransformerLIT(model)
+            # It's a TransformerLens model, wrap it
+            model = TransformerLensLIT(model)
         models = {"model": model}
 
     # Handle single dataset vs dictionary of datasets
@@ -210,11 +218,11 @@ class LITWidget:
     without needing to run a separate server.
 
     Example:
-        >>> from transformer_lens import HookedTransformer  # doctest: +SKIP
-        >>> from transformer_lens.lit import HookedTransformerLIT, SimpleTextDataset, LITWidget  # doctest: +SKIP
+        >>> from transformer_lens import TransformerBridge  # doctest: +SKIP
+        >>> from transformer_lens.lit import TransformerLensLIT, SimpleTextDataset, LITWidget  # doctest: +SKIP
         >>>
-        >>> model = HookedTransformer.from_pretrained("gpt2-small")  # doctest: +SKIP
-        >>> lit_model = HookedTransformerLIT(model)  # doctest: +SKIP
+        >>> model = TransformerBridge.boot_transformers("gpt2")  # doctest: +SKIP
+        >>> lit_model = TransformerLensLIT(model)  # doctest: +SKIP
         >>> dataset = SimpleTextDataset.from_strings(["Hello world!"])  # doctest: +SKIP
         >>>
         >>> widget = LITWidget({"gpt2": lit_model}, {"examples": dataset})  # doctest: +SKIP

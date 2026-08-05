@@ -11,7 +11,6 @@ import os
 import pytest
 import torch
 
-from transformer_lens import HookedTransformer
 from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.conversion_utils.conversion_steps.rearrange_tensor_conversion import (
     RearrangeTensorConversion,
@@ -561,91 +560,21 @@ def test_get_params_configuration_mismatch():
         bridge.cfg.n_layers = original_n_layers
 
 
-def test_get_params_multi_query_attention_reshaping():
-    """Test Multi-Query Attention weight reshaping logic without requiring a large model.
-
-    This test verifies that the get_params function can correctly handle different
-    weight shapes that occur in Multi-Query Attention architectures, where K and V
-    weights have different shapes than Q weights.
-    """
-    model_name = "gpt2"
-    bridge = TransformerBridge.boot_transformers(model_name)
-
-    # Get the original attention layer to modify
-    original_attn = bridge.blocks[0].attn
-    original_k_weight = original_attn.k.weight.clone()
-    original_v_weight = original_attn.v.weight.clone()
-
-    try:
-        # Test case 1: Simulate MQA where K and V have shape [d_head, d_model]
-        # instead of [d_model, d_model]
-        d_head = bridge.cfg.d_head
-        d_model = bridge.cfg.d_model
-
-        # Create MQA-style K and V weights with shape [d_head, d_model]
-        mqa_k_weight = torch.randn(
-            d_head, d_model, dtype=original_k_weight.dtype, device=original_k_weight.device
-        )
-        mqa_v_weight = torch.randn(
-            d_head, d_model, dtype=original_v_weight.dtype, device=original_v_weight.device
-        )
-
-        # Temporarily replace the weights
-        original_attn.k.weight.data = mqa_k_weight
-        original_attn.v.weight.data = mqa_v_weight
-
-        # This should work without raising exceptions
-        params_dict = bridge.get_params()
-
-        # Verify the weights were reshaped correctly
-        # For MQA: K and V should be expanded from [d_head, d_model] to [n_heads, d_model, d_head] (same as Q)
-        k_param = params_dict["blocks.0.attn.W_K"]
-        v_param = params_dict["blocks.0.attn.W_V"]
-
-        expected_shape = (bridge.cfg.n_heads, bridge.cfg.d_model, bridge.cfg.d_head)
-        assert (
-            k_param.shape == expected_shape
-        ), f"K weight should be reshaped to {expected_shape}, got {k_param.shape}"
-        assert (
-            v_param.shape == expected_shape
-        ), f"V weight should be reshaped to {expected_shape}, got {v_param.shape}"
-
-        # Verify that all heads contain the transposed MQA weight (due to transpose + expand operation)
-        expected_k_per_head = mqa_k_weight.transpose(0, 1)  # [d_head, d_model] -> [d_model, d_head]
-        expected_v_per_head = mqa_v_weight.transpose(0, 1)  # [d_head, d_model] -> [d_model, d_head]
-
-        for head_idx in range(bridge.cfg.n_heads):
-            assert torch.allclose(
-                k_param[head_idx], expected_k_per_head
-            ), f"K head {head_idx} should match transposed MQA weight"
-            assert torch.allclose(
-                v_param[head_idx], expected_v_per_head
-            ), f"V head {head_idx} should match transposed MQA weight"
-
-    finally:
-        # Always restore original weights
-        original_attn.k.weight.data = original_k_weight
-        original_attn.v.weight.data = original_v_weight
-
-
 def test_TransformerBridge_hooks_backward_hooks():
     """Test that TransformerBridge.hooks() correctly registers backward hooks.
 
     This test verifies that TransformerBridge.hooks() properly handles bwd_hooks
-    and registers them correctly, matching the behavior of HookedTransformer.hooks().
+    and registers them correctly.
     """
-    # Create both models with the same configuration
-    hooked_model = HookedTransformer.from_pretrained_no_processing("gpt2", device_map="cpu")
     bridge_model: TransformerBridge = TransformerBridge.boot_transformers("gpt2", device="cpu")  # type: ignore
     bridge_model.enable_compatibility_mode(no_processing=True)
 
     # Create a simple backward hook that tracks if it was called
-    hook_called = {"hooked": False, "bridge": False}
+    hook_called = {"bridge": False}
 
     def make_test_hook(model_type):
         def hook_fn(grad, hook=None):
             hook_called[model_type] = True
-            # For HookedTransformer, the hook doesn't modify the gradient
             return None
 
         return hook_fn
@@ -653,19 +582,6 @@ def test_TransformerBridge_hooks_backward_hooks():
     # Test input
     test_input = torch.tensor([[1, 2, 3]])
 
-    # Test HookedTransformer - backward hooks should work
-    with hooked_model.hooks(bwd_hooks=[("blocks.0.hook_mlp_out", make_test_hook("hooked"))]):
-        output = hooked_model(test_input)
-        # Check that the backward hook was registered
-        assert (
-            len(hooked_model.blocks[0].hook_mlp_out.bwd_hooks) > 0
-        ), "HookedTransformer should register backward hooks"
-
-        # Trigger backward pass
-        output.sum().backward()
-
-    # Test TransformerBridge - backward hooks should now work correctly
-    # With compatibility mode, TransformerBridge should have the same hook names as HookedTransformer
     with bridge_model.hooks(bwd_hooks=[("blocks.0.hook_mlp_out", make_test_hook("bridge"))]):
         output = bridge_model(test_input)
         # This assertion verifies that backward hooks are now properly registered
@@ -676,8 +592,6 @@ def test_TransformerBridge_hooks_backward_hooks():
         # Backward pass should trigger the hook
         output.sum().backward()
 
-    # Verify the hooks were called appropriately
-    assert hook_called["hooked"], "HookedTransformer backward hook should have been called"
     assert hook_called["bridge"], "TransformerBridge backward hook should now be called correctly"
 
 

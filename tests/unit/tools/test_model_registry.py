@@ -1089,7 +1089,7 @@ class TestModelAliases:
                 seen[alias] = official
 
     def test_legacy_loader_agrees_with_registry(self):
-        """HookedTransformer and the bridge must resolve aliases identically until 4.0."""
+        """The legacy loader and the registry must resolve aliases identically until 4.0."""
         from transformer_lens.loading_from_pretrained import get_official_model_name
         from transformer_lens.tools.model_registry.registry_io import (
             resolve_model_alias,

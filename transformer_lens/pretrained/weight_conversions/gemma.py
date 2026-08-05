@@ -1,10 +1,10 @@
 import einops
 import torch
 
-from transformer_lens.config.hooked_transformer_config import HookedTransformerConfig
+from transformer_lens.config import TransformerLensConfig
 
 
-def convert_gemma_weights(gemma, cfg: HookedTransformerConfig):
+def convert_gemma_weights(gemma, cfg: TransformerLensConfig):
     state_dict = {}
 
     assert cfg.n_key_value_heads is not None  # keep mypy happy
@@ -43,7 +43,7 @@ def convert_gemma_weights(gemma, cfg: HookedTransformerConfig):
         ].input_layernorm.weight.float() + torch.ones_like(
             base_model.layers[l].input_layernorm.weight, dtype=torch.float32
         )
-        if cfg.use_normalization_before_and_after:
+        if getattr(cfg, "use_normalization_before_and_after", False):
             # Only applies for Gemma 2
             state_dict[f"blocks.{l}.ln1_post.w"] = base_model.layers[
                 l
@@ -63,7 +63,7 @@ def convert_gemma_weights(gemma, cfg: HookedTransformerConfig):
 
         # Load q_norm and k_norm if they exist (Gemma 3)
         # Gemma3RMSNorm adds 1 to weights in forward(), so we pre-add it here
-        if cfg.use_qk_norm:
+        if getattr(cfg, "use_qk_norm", False):
             state_dict[f"blocks.{l}.attn.q_norm.w"] = base_model.layers[
                 l
             ].self_attn.q_norm.weight.float() + torch.ones_like(
@@ -94,7 +94,7 @@ def convert_gemma_weights(gemma, cfg: HookedTransformerConfig):
         )
 
         # GemmaRMSNorm adds 1 to weights before multiplying by input, keep RMS calcs in float32
-        if not cfg.use_normalization_before_and_after:
+        if not getattr(cfg, "use_normalization_before_and_after", False):
             # Only applies for Gemma 1. Confusingly post_attention_layernorm is applied to mlp_input in Gemma 1 and attn_out in Gemma 2
             state_dict[f"blocks.{l}.ln2.w"] = base_model.layers[
                 l

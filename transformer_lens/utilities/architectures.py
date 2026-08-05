@@ -90,23 +90,6 @@ BASE_AUTOMODEL_ARCHITECTURES: set[str] = {
     "DreamModel",
 }
 
-# Bridge uses different hook shapes than HookedTransformer by design.
-# Phase 2/3 HT comparisons are skipped; Phase 1 (HF comparison) is the gold standard.
-NO_HT_COMPARISON_ARCHITECTURES: set[str] = (
-    MULTIMODAL_ARCHITECTURES
-    | AUDIO_ARCHITECTURES
-    # Encoder-decoder: HookedTransformer cannot represent them (T5 repos under
-    # org-prefixed names slip past HT's legacy name guard and crash at forward).
-    | SEQ2SEQ_ARCHITECTURES
-    # Vision-only encoders: no text tower at all — HT cannot represent them.
-    | VISION_ARCHITECTURES
-    # Audio-conditioned decoders load via AutoModelForSeq2SeqLM; same HT gap.
-    | AUDIO_TEXT_ARCHITECTURES
-    | {
-        "Gemma3ForCausalLM",
-    }
-)
-
 
 def classify_architecture(architecture: str) -> str:
     """Classify an architecture string into a model type.

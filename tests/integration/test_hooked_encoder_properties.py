@@ -72,8 +72,7 @@ def test_W_pos(model: HookedEncoder):
     reason=(
         "HookedEncoder.W_E_pos return annotation 'd_vocab+n_ctx d_model' references "
         "unbound dimension names (no input args supply them), so the jaxtyping import-hook "
-        "can't resolve the sum at runtime. Same annotation exists on HookedTransformer.W_E_pos; "
-        "fixing it is a separate API-touch."
+        "can't resolve the sum at runtime. Fixing it is a separate API-touch."
     ),
     strict=True,
 )

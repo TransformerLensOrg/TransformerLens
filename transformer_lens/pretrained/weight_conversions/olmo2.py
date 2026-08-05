@@ -2,10 +2,10 @@ import einops
 import torch
 from transformers.models.olmo2.modeling_olmo2 import Olmo2DecoderLayer
 
-from transformer_lens.config.hooked_transformer_config import HookedTransformerConfig
+from transformer_lens.config import TransformerLensConfig
 
 
-def convert_olmo2_weights(olmo2, cfg: HookedTransformerConfig):
+def convert_olmo2_weights(olmo2, cfg: TransformerLensConfig):
     state_dict = {}
 
     assert cfg.d_mlp is not None

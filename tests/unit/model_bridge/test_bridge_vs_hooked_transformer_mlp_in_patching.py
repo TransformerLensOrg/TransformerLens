@@ -1,4 +1,9 @@
-"""Bridge vs HookedTransformer parity test for cross-run hook_mlp_in patching (#1317).
+"""Cross-run hook_mlp_in patching semantics on TransformerBridge (#1317).
+
+Formerly anchored on a live HookedTransformer; now anchored on the intrinsic
+legacy contracts: ``hook_mlp_in`` captures a copy of the pre-ln2 residual
+(``hook_resid_mid``), self-patching is a logits no-op, cross-patching is
+effective, and the pre-ln2 closure fires exactly once (the #1317 bug class).
 
 Parameterized over Pythia (native autograd LN) and GPT-2 (manual LN), and over
 ``no_processing`` so both folded and unfolded compat-mode setups are covered.
@@ -8,38 +13,22 @@ from __future__ import annotations
 import pytest
 import torch
 
-from transformer_lens import HookedTransformer
 from transformer_lens.model_bridge import TransformerBridge
 
 _MODELS = ("EleutherAI/pythia-14m", "gpt2")
 _NO_PROCESSING = (True, False)
 
-_pair_cache: dict[tuple[str, bool], tuple[TransformerBridge, HookedTransformer]] = {}
-_baseline_cache: dict[tuple[str, bool, tuple[int, ...]], float] = {}
+_bridge_cache: dict[tuple[str, bool], TransformerBridge] = {}
 
 
-def _build_pair(model: str, no_processing: bool) -> tuple[TransformerBridge, HookedTransformer]:
+def _build_bridge(model: str, no_processing: bool) -> TransformerBridge:
     key = (model, no_processing)
-    if key not in _pair_cache:
+    if key not in _bridge_cache:
         bridge = TransformerBridge.boot_transformers(model, device="cpu")
         bridge.enable_compatibility_mode(no_processing=no_processing)
-        if no_processing:
-            ht = HookedTransformer.from_pretrained_no_processing(model, device="cpu")
-        else:
-            ht = HookedTransformer.from_pretrained(model, device="cpu")
         bridge.set_use_hook_mlp_in(True)
-        ht.cfg.use_hook_mlp_in = True
-        _pair_cache[key] = (bridge, ht)
-    return _pair_cache[key]
-
-
-def _baseline_logit_diff(model: str, no_processing: bool, prompt: torch.Tensor) -> float:
-    key = (model, no_processing, tuple(prompt.flatten().tolist()))
-    if key not in _baseline_cache:
-        bridge, ht = _build_pair(model, no_processing)
-        with torch.no_grad():
-            _baseline_cache[key] = (bridge(prompt) - ht(prompt)).abs().max().item()
-    return _baseline_cache[key]
+        _bridge_cache[key] = bridge
+    return _bridge_cache[key]
 
 
 @pytest.mark.slow
@@ -47,59 +36,79 @@ def _baseline_logit_diff(model: str, no_processing: bool, prompt: torch.Tensor) 
 @pytest.mark.parametrize("model", _MODELS)
 @pytest.mark.parametrize("layer", [0, 3])
 def test_cross_run_mlp_in_patch_matches_legacy(model: str, layer: int, no_processing: bool) -> None:
-    """Splice cached resid_mid from run A into run B's hook_mlp_in; logits should match."""
-    bridge, ht = _build_pair(model, no_processing)
+    """hook_mlp_in captures the pre-ln2 residual, self-patch is a no-op, cross-patch works."""
+    bridge = _build_bridge(model, no_processing)
+    hook_path = f"blocks.{layer}.hook_mlp_in"
+    # Parallel-block models (Pythia) have no resid_mid: attn and MLP both read resid_pre.
+    resid_mid_path = f"blocks.{layer}.hook_resid_mid"
+    if resid_mid_path not in bridge.hook_dict:
+        resid_mid_path = f"blocks.{layer}.hook_resid_pre"
 
     prompt_a = torch.arange(1, 9).unsqueeze(0)
     prompt_b = torch.arange(10, 18).unsqueeze(0)
 
-    cache_a_bridge: dict = {}
-    cache_a_ht: dict = {}
-    bridge_fire_count = {"n": 0}
+    cache_a: dict = {}
+    fire_count = {"n": 0}
 
-    def _cap_bridge(tensor: torch.Tensor, hook: object) -> torch.Tensor:
-        bridge_fire_count["n"] += 1
-        cache_a_bridge["v"] = tensor.detach().clone()
-        return tensor
-
-    def _cap_ht(tensor: torch.Tensor, hook: object) -> torch.Tensor:
-        cache_a_ht["v"] = tensor.detach().clone()
-        return tensor
-
-    def _patch(cache: dict) -> "object":
+    def _cap(cache: dict, key: str, count: bool = False):
         def _inner(tensor: torch.Tensor, hook: object) -> torch.Tensor:
-            return cache["v"]
+            if count:
+                fire_count["n"] += 1
+            cache[key] = tensor.detach().clone()
+            return tensor
 
         return _inner
 
-    bridge.run_with_hooks(prompt_a, fwd_hooks=[(f"blocks.{layer}.hook_mlp_in", _cap_bridge)])
-    ht.run_with_hooks(prompt_a, fwd_hooks=[(f"blocks.{layer}.hook_mlp_in", _cap_ht)])
+    def _patch(cache: dict, key: str):
+        def _inner(tensor: torch.Tensor, hook: object) -> torch.Tensor:
+            return cache[key]
+
+        return _inner
+
+    bridge.run_with_hooks(
+        prompt_a,
+        fwd_hooks=[
+            (hook_path, _cap(cache_a, "mlp_in", count=True)),
+            (resid_mid_path, _cap(cache_a, "resid_mid")),
+        ],
+    )
 
     # Pins down a silent-miss in the ln2 pre-hook (the #1317 bug class).
-    assert bridge_fire_count["n"] == 1, (
+    assert fire_count["n"] == 1, (
         f"[{model} no_processing={no_processing}] bridge hook_mlp_in fired "
-        f"{bridge_fire_count['n']} times, expected exactly 1 (pre-ln2 capture closure)"
+        f"{fire_count['n']} times, expected exactly 1 (pre-ln2 capture closure)"
     )
 
-    assert cache_a_bridge["v"].shape == cache_a_ht["v"].shape
-    captured_diff = (cache_a_bridge["v"] - cache_a_ht["v"]).abs().max().item()
-    assert captured_diff < 1e-3, (
-        f"[{model} no_processing={no_processing}] Bridge hook_mlp_in captures "
-        f"different values than HT: {captured_diff:.3e}"
+    assert cache_a["mlp_in"].shape == cache_a["resid_mid"].shape
+    captured_diff = (cache_a["mlp_in"] - cache_a["resid_mid"]).abs().max().item()
+    assert captured_diff < 1e-5, (
+        f"[{model} no_processing={no_processing}] hook_mlp_in captures a value "
+        f"{captured_diff:.3e} away from {resid_mid_path}; it must be a copy of the "
+        f"pre-ln2 residual stream"
     )
 
-    bridge_logits = bridge.run_with_hooks(
-        prompt_b, fwd_hooks=[(f"blocks.{layer}.hook_mlp_in", _patch(cache_a_bridge))]
+    # Self-patch no-op: run B's own captured value must flow through identically.
+    cache_b: dict = {}
+    with torch.no_grad():
+        baseline_logits = bridge(prompt_b)
+    bridge.run_with_hooks(prompt_b, fwd_hooks=[(hook_path, _cap(cache_b, "mlp_in"))])
+    selfpatched_logits = bridge.run_with_hooks(
+        prompt_b, fwd_hooks=[(hook_path, _patch(cache_b, "mlp_in"))]
     )
-    ht_logits = ht.run_with_hooks(
-        prompt_b, fwd_hooks=[(f"blocks.{layer}.hook_mlp_in", _patch(cache_a_ht))]
+    self_diff = (selfpatched_logits - baseline_logits).abs().max().item()
+    assert self_diff < 1e-5, (
+        f"[{model} no_processing={no_processing}] Self-patching hook_mlp_in moved the "
+        f"logits by {self_diff:.3e}"
     )
 
-    baseline_diff = _baseline_logit_diff(model, no_processing, prompt_b)
-    patched_diff = (bridge_logits - ht_logits).abs().max().item()
-    assert patched_diff < 10 * max(baseline_diff, 1e-5), (
-        f"[{model} no_processing={no_processing}] Bridge vs HT cross-run mlp_in patch "
-        f"logits diverge {patched_diff:.3e}, >10x the unhooked baseline {baseline_diff:.3e}"
+    # Cross-patch effectiveness: run A's value must change run B's logits.
+    crosspatched_logits = bridge.run_with_hooks(
+        prompt_b, fwd_hooks=[(hook_path, _patch(cache_a, "mlp_in"))]
+    )
+    cross_diff = (crosspatched_logits - baseline_logits).abs().max().item()
+    assert cross_diff > 1e-3, (
+        f"[{model} no_processing={no_processing}] Cross-patching hook_mlp_in left the "
+        f"logits unchanged ({cross_diff:.3e})"
     )
 
 

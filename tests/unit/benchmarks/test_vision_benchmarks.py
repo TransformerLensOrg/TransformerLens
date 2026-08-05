@@ -1,7 +1,7 @@
 """Vision benchmark (Phase 9) gating and behavior tests (download-free).
 
 Vision-only encoders (ViT/DeiT) have no text tower: text phases 1-4 can't run
-against them, and HookedTransformer can't represent them. Phase 9 feeds
+against them (no text-side reference applies). Phase 9 feeds
 synthetic pixel_values through the bridge and checks parity/caching against the
 wrapped HF model. These tests pin the classification plumbing, the phase gating
 in run_benchmark_suite, and the benchmark verdicts themselves using fake
@@ -30,8 +30,6 @@ from transformer_lens.benchmarks.vision import (  # noqa: E402
 )
 from transformer_lens.model_bridge.bridge import TransformerBridge  # noqa: E402
 from transformer_lens.utilities.architectures import (  # noqa: E402
-    AUDIO_TEXT_ARCHITECTURES,
-    NO_HT_COMPARISON_ARCHITECTURES,
     VISION_ARCHITECTURES,
     classify_architecture,
     classify_model_config,
@@ -52,16 +50,8 @@ class TestVisionClassification:
         cfg = SimpleNamespace(architectures=["ViTForImageClassification"])
         assert classify_model_config(cfg) == "vision"
 
-    def test_vision_skips_ht_comparison(self):
-        # No text tower — HookedTransformer cannot represent vision encoders.
-        assert VISION_ARCHITECTURES <= NO_HT_COMPARISON_ARCHITECTURES
-
-    def test_audio_text_skips_ht_comparison(self):
-        # Seq2seq-loading audio-conditioned decoders have the same HT gap.
-        assert AUDIO_TEXT_ARCHITECTURES <= NO_HT_COMPARISON_ARCHITECTURES
-
     def test_audio_text_still_classifies_causal(self):
-        # NO_HT membership must not leak into classification (bridge semantics).
+        # Audio-text models classify as causal LMs (bridge semantics).
         assert classify_architecture("Qwen2AudioForConditionalGeneration") == "causal_lm"
 
 

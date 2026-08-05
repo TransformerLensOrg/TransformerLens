@@ -3,12 +3,11 @@
 import pytest
 
 from docs.make_docs import get_config, get_model_info, get_property
-from transformer_lens.config import HookedTransformerConfig
 
 
 def test_get_config():
     """Test get config with attn-only-1l model."""
-    config: HookedTransformerConfig = get_config("attn-only-1l")
+    config = get_config("attn-only-1l")
     assert config.attn_only is True
 
 

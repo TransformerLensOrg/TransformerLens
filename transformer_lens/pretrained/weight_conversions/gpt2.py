@@ -1,10 +1,10 @@
 import einops
 import torch
 
-from transformer_lens.config.hooked_transformer_config import HookedTransformerConfig
+from transformer_lens.config import TransformerLensConfig
 
 
-def convert_gpt2_weights(gpt2, cfg: HookedTransformerConfig):
+def convert_gpt2_weights(gpt2, cfg: TransformerLensConfig):
     state_dict = {}
 
     state_dict["embed.W_E"] = gpt2.transformer.wte.weight

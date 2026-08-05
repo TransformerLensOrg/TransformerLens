@@ -15,10 +15,10 @@ from typing import cast
 import einops
 import torch
 
-from transformer_lens.config.hooked_transformer_config import HookedTransformerConfig
+from transformer_lens.config import TransformerLensConfig
 
 
-def convert_olmo3_weights(olmo3, cfg: HookedTransformerConfig):
+def convert_olmo3_weights(olmo3, cfg: TransformerLensConfig):
     state_dict = {}
 
     using_gqa = cfg.n_key_value_heads is not None and cfg.n_key_value_heads < cfg.n_heads

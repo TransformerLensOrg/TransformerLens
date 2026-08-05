@@ -12,7 +12,7 @@ Tests cover:
 import torch
 import torch.nn as nn
 
-from transformer_lens.config.hooked_transformer_config import HookedTransformerConfig
+from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.pretrained.weight_conversions.olmo3 import convert_olmo3_weights
 
 
@@ -22,7 +22,7 @@ def get_olmo3_config(
     n_key_value_heads: int = 1,
 ):
     """Create an OLMo 3 style config for testing."""
-    return HookedTransformerConfig(
+    return TransformerBridgeConfig(
         d_model=128,
         d_head=64,
         n_heads=2,
@@ -43,7 +43,7 @@ def get_olmo3_config(
 class MockOlmo3Layer(nn.Module):
     """A mock OLMo 3 layer with real nn.Module components."""
 
-    def __init__(self, cfg: HookedTransformerConfig, use_qk_norm: bool = True):
+    def __init__(self, cfg: TransformerBridgeConfig, use_qk_norm: bool = True):
         super().__init__()
 
         # OLMo 3 uses post-attention and post-feedforward layer norms (RMSNorm)
@@ -73,7 +73,7 @@ class MockOlmo3Layer(nn.Module):
 class MockOlmo3Model(nn.Module):
     """A mock Olmo3ForCausalLM model."""
 
-    def __init__(self, cfg: HookedTransformerConfig):
+    def __init__(self, cfg: TransformerBridgeConfig):
         super().__init__()
         self.model = nn.Module()
         self.model.embed_tokens = nn.Embedding(cfg.d_vocab, cfg.d_model)

@@ -213,7 +213,7 @@ def estimate_model_params(model_id: str) -> int:
     """Estimate parameter count using AutoConfig (lightweight, no model download).
 
     Fetches only the config JSON (~KB) and computes n_params from dimensions
-    using the same formula as HookedTransformerConfig.__post_init__.
+    using the standard TransformerLens parameter-count formula.
 
     Args:
         model_id: HuggingFace model ID
@@ -353,7 +353,7 @@ def estimate_model_params(model_id: str) -> int:
             n_params -= n_layers * (d_model * d_mlp * mlp_multiplier)
             n_params += n_layers * moe_per_layer
 
-    # Embedding parameters (not in HookedTransformerConfig formula but relevant for memory)
+    # Embedding parameters (not in the block-param formula but relevant for memory)
     n_params += d_vocab * d_model
 
     return n_params
@@ -372,8 +372,8 @@ def estimate_benchmark_memory_gb(
 
     Phase 1 (HF ref on):  HF ref + Bridge → 2.0x peak
     Phase 1 (HF ref off): Bridge only     → 1.0x peak
-    Phase 2: Bridge + HookedTransformer (separate copy) → 2.0x model + overhead
-    Phase 3: Same as Phase 2 (processed versions) → 2.0x model + overhead
+    Phase 2: Bridge only (runtime self-checks) → 1.0x model + overhead
+    Phase 3: Bridge + weight-processing state-dict transient → 2.0x model + overhead
     Phase 4: Bridge + GPT-2 scorer (~500MB) → ~1.0x model + 0.5 GB
 
     Args:
@@ -407,8 +407,11 @@ def estimate_benchmark_memory_gb(
             # HF ref + Bridge (2 copies) or Bridge alone
             multiplier = 2.0 if use_hf_reference else 1.0
             phase_peaks.append(model_size_gb * multiplier * (1 + overhead_fraction))
-        elif p in (2, 3):
-            # Bridge + HookedTransformer = 2 copies
+        elif p == 2:
+            # Bridge only (runtime self-checks + saved-HF equivalence)
+            phase_peaks.append(model_size_gb * 1.0 * (1 + overhead_fraction))
+        elif p == 3:
+            # Bridge + the full state-dict copy materialized during weight processing
             phase_peaks.append(model_size_gb * 2.0 * (1 + overhead_fraction))
         elif p == 4:
             # Bridge + GPT-2 scorer
@@ -745,7 +748,6 @@ def verify_models(
     max_memory_gb: Optional[float] = None,
     dtype: str = "float32",
     use_hf_reference: bool = True,
-    use_ht_reference: bool = True,
     phases: Optional[list[int]] = None,
     quiet: bool = False,
     progress: Optional[VerificationProgress] = None,
@@ -758,7 +760,6 @@ def verify_models(
         max_memory_gb: Memory limit (auto-detected if None)
         dtype: Dtype for memory estimation
         use_hf_reference: Whether to compare against HuggingFace model
-        use_ht_reference: Whether to compare against HookedTransformer
         phases: Which benchmark phases to run
         quiet: Suppress verbose output
         progress: Existing progress for resume
@@ -903,7 +904,6 @@ def verify_models(
                 device=device,
                 dtype=torch_dtype,
                 use_hf_reference=use_hf_reference,
-                use_ht_reference=use_ht_reference,
                 verbose=not quiet,
                 phases=phases_to_run,
                 trust_remote_code=needs_remote_code,
@@ -1365,11 +1365,6 @@ Examples:
         ),
     )
     parser.add_argument(
-        "--no-ht-reference",
-        action="store_true",
-        help="Skip HookedTransformer reference comparison",
-    )
-    parser.add_argument(
         "--phases",
         nargs="+",
         type=int,
@@ -1510,7 +1505,6 @@ Examples:
         max_memory_gb=max_memory_gb,
         dtype=args.dtype,
         use_hf_reference=not args.no_hf_reference,
-        use_ht_reference=not args.no_ht_reference,
         phases=args.phases,
         quiet=args.quiet,
         progress=progress,

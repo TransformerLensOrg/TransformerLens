@@ -1,8 +1,7 @@
 """input_to_embed on TransformerBridge — the residual entering block 0.
 
-Bridge analog of HookedTransformer.input_to_embed. The correctness anchor is
-that feeding its residual to forward(..., start_at_layer=0) reproduces the full
-forward exactly.
+The correctness anchor is that feeding its residual to
+forward(..., start_at_layer=0) reproduces the full forward exactly.
 """
 
 import pytest

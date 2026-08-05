@@ -193,13 +193,12 @@ class TestGetBridgeParams:
 
         # Set all biases to None
         for block in mock_bridge.blocks:
-            block.attn.q.bias = None
-            block.attn.k.bias = None
-            block.attn.v.bias = None
-            block.attn.o.bias = None
-            setattr(block.mlp, "in", Mock())
-            getattr(block.mlp, "in").bias = None
-            block.mlp.out.bias = None
+            block.attn.b_Q = None
+            block.attn.b_K = None
+            block.attn.b_V = None
+            block.attn.b_O = None
+            block.mlp.b_in = None
+            block.mlp.b_out = None
 
         return mock_bridge
 
@@ -227,42 +226,31 @@ class TestGetBridgeParams:
 
         # Add gate weights to MLP
         for block in mock_bridge.blocks:
-            block.mlp.gate = Mock()
-            block.mlp.gate.weight = torch.randn(3072, 768)
-            block.mlp.gate.bias = torch.randn(3072)
+            block.mlp.W_gate = torch.randn(768, 3072)
+            block.mlp.b_gate = torch.randn(3072)
 
         return mock_bridge
 
     def _create_mock_block(self):
-        """Create a mock transformer block."""
+        """Create a mock transformer block exposing TL-layout weight properties."""
         block = Mock()
 
-        # Mock attention
+        # Mock attention (TL-layout properties, as the component bridges expose)
         block.attn = Mock()
-        block.attn.q = Mock()
-        block.attn.q.weight = torch.randn(768, 768)
-        block.attn.q.bias = torch.randn(768)
-
-        block.attn.k = Mock()
-        block.attn.k.weight = torch.randn(768, 768)
-        block.attn.k.bias = torch.randn(768)
-
-        block.attn.v = Mock()
-        block.attn.v.weight = torch.randn(768, 768)
-        block.attn.v.bias = torch.randn(768)
-
-        block.attn.o = Mock()
-        block.attn.o.weight = torch.randn(768, 768)
-        block.attn.o.bias = torch.randn(768)
+        block.attn.W_Q = torch.randn(12, 768, 64)
+        block.attn.W_K = torch.randn(12, 768, 64)
+        block.attn.W_V = torch.randn(12, 768, 64)
+        block.attn.W_O = torch.randn(12, 64, 768)
+        block.attn.b_Q = torch.randn(12, 64)
+        block.attn.b_K = torch.randn(12, 64)
+        block.attn.b_V = torch.randn(12, 64)
+        block.attn.b_O = torch.randn(768)
 
         # Mock MLP
         block.mlp = Mock()
-        setattr(block.mlp, "in", Mock())
-        getattr(block.mlp, "in").weight = torch.randn(768, 3072)
-        getattr(block.mlp, "in").bias = torch.randn(3072)
-
-        block.mlp.out = Mock()
-        block.mlp.out.weight = torch.randn(3072, 768)
-        block.mlp.out.bias = torch.randn(768)
+        block.mlp.W_in = torch.randn(768, 3072)
+        block.mlp.W_out = torch.randn(3072, 768)
+        block.mlp.b_in = torch.randn(3072)
+        block.mlp.b_out = torch.randn(768)
 
         return block

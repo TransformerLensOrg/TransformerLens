@@ -1,6 +1,6 @@
 """Unit tests for the Qwen3_5 architecture adapter.
 
-Qwen3_5 is supported only via TransformerBridge, not HookedTransformer.
+Qwen3_5 is supported via TransformerBridge.
 """
 
 from types import SimpleNamespace
