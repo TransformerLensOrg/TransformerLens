@@ -3,7 +3,7 @@
 ```{warning}
 `HookedTransformer` is deprecated as of TransformerLens 3.0 and will be removed in the next major version. New code should use [`TransformerBridge`](migrating_to_v3.md) instead. Existing `HookedTransformer` code continues to work through the 3.x branch via a compatibility layer. See the [migration guide](migrating_to_v3.md) for conversion recipes.
 
-The HookedTransformer **acceptance test suite is currently quarantined** due to a CI test-pollution issue (see `tests/QUARANTINES.md` in the repo). Changes that touch HookedTransformer internals therefore land essentially untested at the acceptance level — extra manual care is required until the suite is re-enabled.
+`HookedTransformer` **has no acceptance suite of its own** — `tests/acceptance/test_hooked_transformer.py` was removed when the Bridge tests were reanchored onto frozen golden datasets. Changes that touch HookedTransformer internals therefore land essentially untested at the acceptance level — extra manual care is required. The `HookedEncoder` (BERT) and `HookedEncoderDecoder` (T5) acceptance suites are unaffected and run normally.
 ```
 
 ## Contributing with AI coding agents
@@ -98,7 +98,7 @@ The flaky-retry policy (`--reruns 2 --reruns-delay 5`) wraps every `make` target
 
 Some tests carry persistent `skip` / `skipif` / `xfail` markers — for optional dependencies (LIT, bitsandbytes), hardware requirements (CUDA, MPS, multi-GPU), CI cost / network budget, or upstream platform bugs. The `tests/QUARANTINES.md` file in the repo inventories every one with an "un-skip when…" line. **Before debugging a failing test, check whether it's a known quarantine.**
 
-The HookedTransformer acceptance suite (`tests/acceptance/test_hooked_transformer.py`, `test_hooked_encoder.py`, `test_hooked_encoder_decoder.py`) is currently a whole-file quarantine — see the warning at the top of this page.
+There are currently no whole-file quarantines; every remaining marker is per-test and inventoried in `tests/QUARANTINES.md`.
 
 ## Formatting
 
