@@ -323,10 +323,10 @@ class IOIDataset(Dataset):
     .. code-block:: python
 
         >>> from transformer_lens.evals import ioi_eval, IOIDataset
-        >>> from transformer_lens.HookedTransformer import HookedTransformer
+        >>> from transformer_lens.model_bridge import TransformerBridge
 
-        >>> model = HookedTransformer.from_pretrained('gpt2-small')
-        Loaded pretrained model gpt2-small into HookedTransformer
+        >>> model = TransformerBridge.boot_transformers("gpt2", device="cpu")
+        >>> model.enable_compatibility_mode()
 
         >>> # Evaluate on a deterministic dataset (seed makes results reproducible)
         >>> ds = IOIDataset(tokenizer=model.tokenizer, num_samples=100, seed=42)
@@ -551,10 +551,11 @@ def mmlu_eval(
 
     .. code-block:: python
 
-        >>> from transformer_lens import HookedTransformer
+        >>> from transformer_lens.model_bridge import TransformerBridge
         >>> from transformer_lens.evals import mmlu_eval
 
-        >>> model = HookedTransformer.from_pretrained("gpt2-small")  # doctest: +SKIP
+        >>> model = TransformerBridge.boot_transformers("gpt2")  # doctest: +SKIP
+        >>> model.enable_compatibility_mode()  # doctest: +SKIP
         >>> results = mmlu_eval(model, subjects="abstract_algebra", num_samples=10)  # doctest: +SKIP
         >>> print(f"Accuracy: {results['accuracy']:.2%}")  # doctest: +SKIP
     """
