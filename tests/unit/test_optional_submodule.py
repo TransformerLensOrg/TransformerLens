@@ -31,6 +31,8 @@ class HybridLayer(nn.Module):
     def __init__(self, has_foo: bool, dim: int = 4):
         super().__init__()
         self.bar = nn.Linear(dim, dim, bias=False)
+        self.ln2 = nn.Linear(dim, dim, bias=False)
+        self.mlp = FakeSubmodule(dim)
         if has_foo:
             self.foo = FakeSubmodule(dim)
 
@@ -81,7 +83,48 @@ class AttnAdapter(ArchitectureAdapter):
             name="layers",
             submodules={
                 "bar": LinearBridge(name="bar"),
+                "ln2": LinearBridge(name="ln2"),
+                "mlp": LinearBridge(name="mlp"),
                 "attn": LinearBridge(name="foo", optional=True),
+            },
+        )
+
+
+class SsmAdapter(ArchitectureAdapter):
+    """Uses an optional SSM submodule with a custom hook alias."""
+
+    def __init__(self):
+        self.cfg = type("Cfg", (), {"n_layers": 4, "d_model": 4})()
+        self.component_mapping = {}
+
+    def make_block_template(self) -> BlockBridge:
+        return BlockBridge(
+            name="layers",
+            submodules={
+                "bar": LinearBridge(name="bar"),
+                "ln2": LinearBridge(name="ln2"),
+                "mlp": LinearBridge(name="mlp"),
+                "ssm": LinearBridge(name="foo", optional=True),
+            },
+            hook_alias_overrides={"hook_ssm_out": "ssm.hook_out"},
+        )
+
+
+class PostNormAdapter(ArchitectureAdapter):
+    """Uses an optional post-MLP norm with the BlockBridge MLP fallback."""
+
+    def __init__(self):
+        self.cfg = type("Cfg", (), {"n_layers": 4, "d_model": 4})()
+        self.component_mapping = {}
+
+    def make_block_template(self) -> BlockBridge:
+        return BlockBridge(
+            name="layers",
+            submodules={
+                "bar": LinearBridge(name="bar"),
+                "ln2": LinearBridge(name="ln2"),
+                "ln2_post": LinearBridge(name="foo", optional=True),
+                "mlp": LinearBridge(name="mlp"),
             },
         )
 
@@ -177,16 +220,24 @@ class TestOptionalSubmoduleSetup:
         assert "hook_resid_pre" in blocks[3].hook_aliases
         assert "hook_mlp_out" in blocks[3].hook_aliases
 
+    def test_prunes_hook_aliases_for_skipped_ssm(self):
+        blocks = _setup_blocks(HybridModel(), SsmAdapter())
+
+        assert "hook_ssm_out" in blocks[0].hook_aliases
+        assert "hook_ssm_out" not in blocks[3].hook_aliases
+
+    def test_keeps_mlp_alias_fallback_after_skipped_post_norm(self):
+        blocks = _setup_blocks(HybridModel(), PostNormAdapter())
+
+        assert blocks[0].hook_aliases["hook_mlp_out"] == "ln2_post.hook_out"
+        assert blocks[3].hook_aliases["hook_mlp_out"] == "mlp.hook_out"
+
     def test_pruned_aliases_do_not_warn_on_register(self):
         blocks = _setup_blocks(HybridModel(), AttnAdapter())
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
             blocks[3]._register_aliases()
-        unresolved = [
-            w
-            for w in caught
-            if "did not resolve" in str(w.message) and "hook_attn" in str(w.message)
-        ]
+        unresolved = [w for w in caught if "did not resolve" in str(w.message)]
         assert unresolved == []
 
 
