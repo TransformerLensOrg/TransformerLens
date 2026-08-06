@@ -1429,6 +1429,82 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         residual = self.forward(tokens, stop_at_layer=0, attention_mask=attention_mask)
         return residual, tokens, None, attention_mask
 
+    def _accepts_derived_position_ids(self) -> bool:
+        """Whether it is safe to hand the wrapped model a mask-derived ``position_ids``.
+
+        Two families of model must be left alone, so the injection below is
+        gated on the target the same way ``output_attentions`` is in
+        :meth:`BridgeCore.run_with_cache`:
+
+        * **Fixed-signature models.** Remote-code forwards such as
+          ``LLaDAModelLM.forward`` take neither ``position_ids`` nor
+          ``**kwargs``, so passing it raises ``TypeError`` where the model
+          previously returned logits.
+        * **Models that own their position derivation.** mRoPE architectures
+          (Qwen2-VL, Qwen2.5-VL, Qwen3-VL, GLM-4V) build a 3-D temporal /
+          height / width index in ``get_rope_index``, and only while
+          ``position_ids is None``; a supplied 2-D tensor is silently expanded
+          across all three streams instead. Their derivation already scatters
+          positions onto attended slots only, so it handles left padding
+          correctly on its own and needs no help from us.
+        * **Mask-consuming positional embeddings.** OPT's
+          ``OPTLearnedPositionalEmbedding.forward`` takes the mask and derives
+          the same positions we would, so injection buys nothing — but it does
+          replace the model's own padding-slot convention with ours, which
+          shows up as a whole-tensor diff.
+
+        Non-torch drivers (vLLM, Inspect) expose no module to introspect and
+        manage positions internally, so they are excluded as well.
+        """
+        underlying = getattr(self._driver, "underlying_model", None)
+        if underlying is None:
+            return False
+
+        cached = self.__dict__.get("_derived_position_ids_ok")
+        if cached is not None and cached[0] is underlying:
+            return bool(cached[1])
+
+        def verdict() -> bool:
+            fwd_params = inspect.signature(underlying.forward).parameters
+            if "position_ids" not in fwd_params and not any(
+                p.kind is inspect.Parameter.VAR_KEYWORD for p in fwd_params.values()
+            ):
+                return False
+
+            # ``get_rope_index`` lives on the inner text model, not the
+            # ForConditionalGeneration wrapper that is usually original_model.
+            for module in (
+                underlying,
+                getattr(underlying, "model", None),
+                getattr(underlying, "language_model", None),
+            ):
+                if module is not None and hasattr(module, "get_rope_index"):
+                    return False
+
+            # Config-level backstop for mRoPE models that spell the derivation
+            # differently; the section list is what makes positions 3-D.
+            config = getattr(underlying, "config", None)
+            for candidate in (config, getattr(config, "text_config", None)):
+                scaling = getattr(candidate, "rope_scaling", None)
+                if isinstance(scaling, dict) and "mrope_section" in scaling:
+                    return False
+
+            # A positional embedding that takes the mask derives positions for
+            # itself. Only embeddings that override nn.Embedding.forward are
+            # worth inspecting, which keeps this to a handful per model.
+            for module in underlying.modules():
+                if not isinstance(module, nn.Embedding):
+                    continue
+                if type(module).forward is nn.Embedding.forward:
+                    continue
+                if "attention_mask" in inspect.signature(module.forward).parameters:
+                    return False
+            return True
+
+        accepts = verdict()
+        self.__dict__["_derived_position_ids_ok"] = (underlying, accepts)
+        return accepts
+
     def forward(
         self,
         input: Union[str, List[str], torch.Tensor],
@@ -1597,6 +1673,42 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                     position_ids.masked_fill_(attention_mask == 0, 1)
                     kwargs["position_ids"] = position_ids
 
+            # Any masked-out token shifts the absolute position of every real token
+            # after it, so positions must be derived from the mask rather than left
+            # to HF's default arange. This is the same derivation HookedTransformer
+            # applies in pos_embed; without it the bridge silently returns wrong
+            # logits. An all-ones mask reduces to arange, so this is a no-op there.
+            #
+            # The mask spans any cached prefix as well as the new tokens, so it is
+            # offset back to just the tokens actually being passed — matching how
+            # AbstractAttention/PosEmbed use past_kv_pos_offset.
+            if (
+                attention_mask is not None
+                and "position_ids" not in kwargs
+                and not _is_inputs_embeds
+                and attention_mask.ndim == 2
+                and isinstance(input_ids, torch.Tensor)
+                and input_ids.ndim == 2
+                and attention_mask.shape[1] >= input_ids.shape[1]
+                and self._accepts_derived_position_ids()
+            ):
+                # .long() because callers may hand in a float 0/1 mask, and
+                # positions index an embedding table.
+                _derived = utils.get_offset_position_ids(0, attention_mask.long())
+                _arange = torch.arange(attention_mask.shape[1], device=_derived.device)
+                # Decide per row, not per batch. A row only needs the derived
+                # positions when its mask actually moves one of its attended
+                # tokens off the default position — i.e. a masked token precedes
+                # a real one (left padding, or an interior gap). Rows that are
+                # unpadded or purely right-padded keep arange verbatim, so one
+                # left-padded row in a batch cannot perturb its neighbours.
+                _needs = ((_derived != _arange) & (attention_mask != 0)).any(dim=1, keepdim=True)
+                if bool(_needs.any()):
+                    _positions = torch.where(_needs, _derived, _arange.expand_as(_derived))
+                    kwargs["position_ids"] = _positions[
+                        :, attention_mask.shape[1] - input_ids.shape[1] :
+                    ]
+
             if attention_mask is not None:
                 kwargs["attention_mask"] = attention_mask
             if past_key_values is not None:
@@ -1704,6 +1816,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 return_type,
                 logits,
                 input_ids,
+                attention_mask=attention_mask,
                 is_audio_model=getattr(self.cfg, "is_audio_model", False),
                 is_visual_model=getattr(self.cfg, "is_visual_model", False),
                 inputs_embeds_was_used=_is_inputs_embeds,

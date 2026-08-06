@@ -31,7 +31,8 @@ def test_prompt(
 
     Examples:
 
-    >>> from transformer_lens import TransformerBridge, utilities
+    >>> from transformer_lens import utilities
+    >>> from transformer_lens.model_bridge import TransformerBridge
     >>> model = TransformerBridge.boot_transformers("roneneldan/TinyStories-1M")
     >>> model.enable_compatibility_mode()
 
@@ -156,8 +157,8 @@ def test_prompt(
 try:
     import pytest
 
-    # Note: Docstring won't be tested with PyTest (it's ignored), as it thinks this is a regular unit
-    # test (because its name is prefixed `test_`).
+    # Note: PyTest collects and runs this docstring as a doctest. The skip marker only applies to the
+    # accidentally collected function item (because its name is prefixed `test_`).
     pytest.mark.skip(test_prompt)
 except ModuleNotFoundError:
     pass  # disregard if pytest not in env

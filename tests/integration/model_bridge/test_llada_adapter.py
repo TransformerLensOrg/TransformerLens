@@ -649,6 +649,20 @@ def test_padding_mask_blocks_keys_without_becoming_causal(models: TinyModels) ->
     )
 
 
+def test_left_padding_does_not_inject_unsupported_position_ids(models: TinyModels) -> None:
+    """The bridge derives position_ids from attention_mask for left-padded input
+    (#1609), but this forward takes neither position_ids nor **kwargs — as the
+    released LLaDA remote code does not — so the kwarg would raise TypeError
+    where the model used to return logits.
+    """
+    tokens = torch.tensor([[63, 63, 5, 7, 9]])
+    attention_mask = torch.tensor([[0, 0, 1, 1, 1]])
+    with torch.inference_mode():
+        reference_logits = models.reference(tokens, attention_mask=attention_mask).logits
+        bridge_logits = models.bridge(tokens, attention_mask=attention_mask)
+    torch.testing.assert_close(bridge_logits, reference_logits, rtol=1e-5, atol=1e-6)
+
+
 def test_run_with_cache_exposes_hooks_without_hf_output_attentions(
     models: TinyModels,
 ) -> None:

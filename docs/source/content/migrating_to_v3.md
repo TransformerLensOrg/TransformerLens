@@ -242,6 +242,36 @@ Weight-matrix rows return **raw** HuggingFace weights by default. `HookedTransfo
 | `model.set_tokenizer(tokenizer)` | `TransformerBridge.boot_transformers(name, tokenizer=tokenizer)` | A bridge's tokenizer is fixed when it boots. Reboot to change it; assigning `bridge.tokenizer` directly bypasses tokenizer/config wiring. |
 | `from transformer_lens.train import train, HookedTransformerTrainConfig` | `from transformer_lens.tools.training import train, TrainConfig` | The training loop moved to `tools.training` and `HookedTransformerTrainConfig` renamed to `TrainConfig`. The old imports still work but emit `DeprecationWarning`. |
 
+The following example demonstrates the `W_pos` and `W_E_pos` equivalents under matching weight processing:
+
+```python
+import torch
+
+from transformer_lens import HookedTransformer
+from transformer_lens.model_bridge import TransformerBridge
+
+model = HookedTransformer.from_pretrained(
+    "gpt2", device="cpu", dtype=torch.float32
+)
+bridge = TransformerBridge.boot_transformers(
+    "openai-community/gpt2", device="cpu", dtype=torch.float32
+)
+bridge.enable_compatibility_mode()
+
+W_pos = bridge.pos_embed.W_pos
+W_E_pos = torch.cat([bridge.W_E, W_pos], dim=0)
+
+assert W_pos.shape == (bridge.cfg.n_ctx, bridge.cfg.d_model)
+assert W_E_pos.shape == (
+    bridge.cfg.d_vocab + bridge.cfg.n_ctx,
+    bridge.cfg.d_model,
+)
+torch.testing.assert_close(W_pos, model.W_pos)
+torch.testing.assert_close(W_E_pos, model.W_E_pos)
+```
+
+The equality checks use matching weight processing: `enable_compatibility_mode()` centers the bridge's writing weights in the same way as a default `HookedTransformer` load. A raw bridge load instead matches `HookedTransformer.from_pretrained_no_processing`; see [Will my numbers match HookedTransformer?](#will-my-numbers-match-hookedtransformer) for the broader rule.
+
 The loading, tokenization, generation, and basic hook calls listed under
 [APIs that are unchanged](#apis-that-are-unchanged) do not need wrappers. The
 recipes below cover the capabilities whose calling convention or runtime
