@@ -155,18 +155,16 @@ def setup_submodules(
 
 
 def _prune_hook_aliases_for_skipped(component: GeneralizedComponent, skipped: list[str]) -> None:
-    """Drop hook aliases whose target path starts at a skipped optional submodule.
+    """Remove aliases targeting skipped optional submodules.
 
-    Hybrid layers share a BlockBridge template that declares HT aliases like
-    ``hook_attn_out -> attn.hook_out``. When ``attn`` is absent on a GatedDeltaNet
-    (or Mamba) layer, those aliases cannot resolve and would warn at
-    ``_register_aliases``. Prune them here so only inapplicable aliases disappear
-    on the affected layer — full-attention siblings keep theirs.
+    An overridden alias falls back to its class-level target when that target is
+    live on the current component.
     """
     aliases = getattr(component, "hook_aliases", None)
     if not aliases:
         return
     skipped_set = set(skipped)
+    default_aliases = type(component).hook_aliases
     # Deepcopied blocks still share the class-level dict until mutated.
     if aliases is type(component).hook_aliases:
         aliases = dict(aliases)
@@ -175,16 +173,46 @@ def _prune_hook_aliases_for_skipped(component: GeneralizedComponent, skipped: li
     def _first_segment(path: str) -> str:
         return path.split(".", 1)[0]
 
+    def _live_fallback(alias_name: str) -> str | list[str] | None:
+        fallback = default_aliases.get(alias_name)
+        if fallback is None:
+            return None
+        targets = fallback if isinstance(fallback, list) else [fallback]
+        live_targets = []
+        for target in targets:
+            if _first_segment(target) in skipped_set:
+                continue
+            current: nn.Module = component
+            for part in target.split("."):
+                modules = object.__getattribute__(current, "_modules")
+                next_component = modules.get(part)
+                if next_component is None:
+                    break
+                current = next_component
+            else:
+                live_targets.append(target)
+        if not live_targets:
+            return None
+        return live_targets if isinstance(fallback, list) else live_targets[0]
+
     to_drop: list[str] = []
     for alias_name, target in aliases.items():
         if isinstance(target, list):
             kept = [t for t in target if _first_segment(t) not in skipped_set]
             if not kept:
-                to_drop.append(alias_name)
+                fallback = _live_fallback(alias_name)
+                if fallback is None:
+                    to_drop.append(alias_name)
+                else:
+                    aliases[alias_name] = fallback
             elif len(kept) != len(target):
                 aliases[alias_name] = kept
         elif _first_segment(target) in skipped_set:
-            to_drop.append(alias_name)
+            fallback = _live_fallback(alias_name)
+            if fallback is None:
+                to_drop.append(alias_name)
+            else:
+                aliases[alias_name] = fallback
     for alias_name in to_drop:
         aliases.pop(alias_name, None)
 
