@@ -28,6 +28,7 @@ import numpy as np
 import torch
 import tqdm
 from torch import nn
+from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 
 from transformer_lens import utilities as utils
 from transformer_lens.ActivationCache import ActivationCache
@@ -1950,6 +1951,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         multimodal_kwargs: Dict[str, Any],
         verbose: bool,
         stopping_criteria_list: Optional[Any] = None,
+        initial_attention_mask: Optional[torch.Tensor] = None,
     ) -> Generator[Tuple[torch.Tensor, torch.Tensor, bool], None, None]:
         """Core generation loop. Yields (sampled_tokens, final_logits, all_finished) per step.
 
@@ -1984,10 +1986,30 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                     )
                 else:
                     forward_kwargs: Dict[str, Any] = {}
+                    # A prompt mask covers only the prompt, so extend it by one
+                    # attended column per token generated so far. position_ids are
+                    # left to forward(), which derives them from the mask for the
+                    # models that can take them.
+                    running_attention_mask: Optional[torch.Tensor] = None
+                    if initial_attention_mask is not None:
+                        n_generated = current_tokens.shape[1] - initial_attention_mask.shape[1]
+                        running_attention_mask = torch.cat(
+                            [
+                                initial_attention_mask.to(current_tokens.device),
+                                torch.ones(
+                                    (current_tokens.shape[0], n_generated),
+                                    dtype=initial_attention_mask.dtype,
+                                    device=current_tokens.device,
+                                ),
+                            ],
+                            dim=1,
+                        )
+                        forward_kwargs["attention_mask"] = running_attention_mask
                     # Compute attention mask and position_ids for batched
                     # inputs with padding.
                     if (
-                        _is_batched_list
+                        initial_attention_mask is None
+                        and _is_batched_list
                         and self.tokenizer is not None
                         and self.tokenizer.pad_token_id is not None
                     ):
@@ -2060,6 +2082,13 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                                 forward_kwargs["position_ids"] = forward_kwargs["position_ids"][
                                     :, -1:
                                 ]
+                            elif running_attention_mask is not None:
+                                # total_len - 1 counts pad slots, so it is wrong
+                                # for a left-padded prompt. Derive the new token's
+                                # position from the mask instead.
+                                forward_kwargs["position_ids"] = utils.get_offset_position_ids(
+                                    0, running_attention_mask.long()
+                                )[:, -1:]
                             else:
                                 forward_kwargs["position_ids"] = torch.full(
                                     (batch_size, 1),
@@ -2221,6 +2250,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         pixel_values: Optional[torch.Tensor] = None,
         stop_strings: Optional[Union[str, List[str]]] = None,
         stopping_criteria: Optional[Any] = None,
+        attention_mask: Optional[torch.Tensor] = None,
         **multimodal_kwargs,
     ) -> (
         str
@@ -2297,6 +2327,17 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 Stateful/SSM models raise only when run with use_past_kv_cache=False (the
                 default keeps them on the hooked loop). Each error names the supported
                 alternative.
+            attention_mask: Optional ``[batch, pos]`` 0/1 mask over the prompt, marking
+                which prompt tokens are real. Required to generate correctly from an
+                already-padded token tensor: without it the pad tokens are treated as
+                real context and every real token's position is shifted, so the
+                continuation differs from the same prompt unpadded. The mask is extended
+                by one attended column per generated token. Takes precedence over the
+                ``padding_side`` heuristic, and unlike it can express an interior gap or
+                a pad id that also occurs as a real token. Passing ``padding_side``
+                instead reads the padding off the pad token, which is enough for the
+                common single-edge case. Not supported for encoder-decoder or
+                inputs_embeds generation.
 
         Returns:
             Generated sequence as string, list of strings, or tensor depending on input type and return_type.
@@ -2352,6 +2393,52 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         else:
             input_tokens = input.to(self.cfg.device)
             input_type = "tokens"
+
+        # Without one of these a pre-padded tensor generates as though its pads were
+        # real context, shifting every real token's position (#1612). An explicit
+        # mask wins; otherwise the padding is read off the tokens, but only when the
+        # caller asked for that by passing padding_side. Deriving a mask on the
+        # default path would silently change behaviour for every existing caller,
+        # and would demand a real tokenizer where today none is required.
+        initial_attention_mask: Optional[torch.Tensor] = attention_mask
+        if initial_attention_mask is not None and (
+            _generate_from_embeds
+            or getattr(getattr(self.original_model, "config", None), "is_encoder_decoder", False)
+        ):
+            # Growing the mask per step only means something for decoder-only token
+            # generation. On these paths the mask used to arrive via
+            # **multimodal_kwargs and be forwarded to the model untouched — as
+            # processors emit it alongside pixel_values — so keep doing that rather
+            # than reject a call that worked before this parameter existed.
+            multimodal_kwargs = {**multimodal_kwargs, "attention_mask": initial_attention_mask}
+            initial_attention_mask = None
+        if initial_attention_mask is not None:
+            if initial_attention_mask.shape != input_tokens.shape:
+                raise ValueError(
+                    f"attention_mask shape {tuple(initial_attention_mask.shape)} does not "
+                    f"match the prompt shape {tuple(input_tokens.shape)}. Pass a 0/1 mask "
+                    "covering exactly the prompt tokens; generate() extends it itself."
+                )
+            initial_attention_mask = initial_attention_mask.to(self.cfg.device)
+        elif (
+            padding_side is not None
+            and input_type == "tokens"
+            and isinstance(self.tokenizer, PreTrainedTokenizerBase)
+            and self.tokenizer.pad_token_id is not None
+        ):
+            _prepend = self.cfg.default_prepend_bos if prepend_bos is None else prepend_bos
+            _orig_side = self.tokenizer.padding_side
+            self.tokenizer.padding_side = padding_side
+            try:
+                initial_attention_mask = utils.get_attention_mask(
+                    self.tokenizer, input_tokens, _prepend
+                ).to(self.cfg.device)
+            finally:
+                self.tokenizer.padding_side = _orig_side
+            # An all-ones mask is what the model assumes anyway; skipping it keeps
+            # the unpadded path byte-identical to before.
+            if initial_attention_mask is not None and bool(initial_attention_mask.all()):
+                initial_attention_mask = None
 
         # Determine return type
         if return_type == "input":
@@ -2603,6 +2690,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 multimodal_kwargs=multimodal_kwargs if multimodal_kwargs else {},
                 verbose=verbose,
                 stopping_criteria_list=stopping_criteria_list,
+                initial_attention_mask=initial_attention_mask,
             ):
                 sampled_tokens_list.append(sampled_tokens.unsqueeze(1))
                 if logits_seq_list is not None:
