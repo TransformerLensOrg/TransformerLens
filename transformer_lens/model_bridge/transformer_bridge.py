@@ -1658,6 +1658,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 return_type,
                 logits,
                 input_ids,
+                attention_mask=attention_mask,
                 is_audio_model=getattr(self.cfg, "is_audio_model", False),
                 is_visual_model=getattr(self.cfg, "is_visual_model", False),
                 inputs_embeds_was_used=_is_inputs_embeds,
