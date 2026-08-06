@@ -17,8 +17,6 @@ if TYPE_CHECKING:
 else:
     ConfigType = Any
 
-_UNSUPPORTED_OFFLOAD_DEVICE_MAP_VALUES = {"disk"}
-
 AvailableDeviceMemory = list[tuple[int, int]]
 """
 This type is passed around between different CUDA memory operations.
@@ -204,19 +202,13 @@ def resolve_device_map(
 def _validate_device_map_values(
     device_map: Union[str, Dict[str, Union[str, int]]],
 ) -> None:
-    """Reject explicit disk values and mixed CPU+GPU targets in a user-supplied
-    device_map dict. Meta values are passed through (validated at boot against
-    load_weights)."""
+    """Reject mixed CPU+GPU targets in a user-supplied device_map dict. Disk
+    values are accepted (GeneralizedComponent.__call__ wraps forward in
+    Accelerate's align_module_device, so components reading raw params
+    directly still see materialized data). Meta values are passed through
+    (validated at boot against load_weights)."""
     if isinstance(device_map, str):
         return
-    for key, value in device_map.items():
-        normalized = str(value).lower() if isinstance(value, str) else None
-        if normalized in _UNSUPPORTED_OFFLOAD_DEVICE_MAP_VALUES:
-            raise ValueError(
-                f"device_map[{key!r}]={value!r} is not supported yet. TransformerBridge "
-                "currently supports CPU device_map targets, but disk / meta offload can "
-                "bypass Accelerate hooks inside wrapped Bridge components."
-            )
     if is_mixed_cpu_gpu(device_map.values()):
         raise ValueError(MIXED_CPU_GPU_ERROR)
 

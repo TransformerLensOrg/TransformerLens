@@ -16,6 +16,7 @@ from transformer_lens.model_bridge.generalized_components.attention import (
 )
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
+    align_offloaded_subtree,
 )
 from transformer_lens.model_bridge.generalized_components.linear import LinearBridge
 
@@ -284,9 +285,20 @@ class JointQKVAttentionBridge(AttentionBridge):
             original_component, "reorder_and_upcast_attn", False
         )
 
-        q_transformation, k_transformation, v_transformation = self.split_qkv_matrix(
-            original_component
-        )
+        # split_qkv_matrix reads original_component's raw weight/bias once, here,
+        # to build independent q/k/v slices - not a live view, so under Accelerate
+        # offload this needs the real (not meta) data materialized for this one
+        # read. The resulting slices are real, standalone tensors that stay valid
+        # afterward regardless of what Accelerate later does to original_component
+        # (unlike whatever reads original_component itself on every forward call,
+        # e.g. GeneralizedComponent.__call__ / LinearBridge for "o"/c_proj, split
+        # q/k/v specifically stay permanently resident rather than re-offloading
+        # after each forward - a deliberate, small, documented memory trade-off
+        # for combined-qkv architectures).
+        with align_offloaded_subtree(original_component):
+            q_transformation, k_transformation, v_transformation = self.split_qkv_matrix(
+                original_component
+            )
         self.q.set_original_component(q_transformation)
         self.k.set_original_component(k_transformation)
         self.v.set_original_component(v_transformation)

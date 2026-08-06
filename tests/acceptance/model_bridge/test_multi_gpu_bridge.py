@@ -9,8 +9,12 @@ from typing import Dict, Union
 
 import pytest
 import torch
+from accelerate.hooks import attach_align_device_hook
 
 from transformer_lens.model_bridge import TransformerBridge
+from transformer_lens.model_bridge.generalized_components.normalization import (
+    NormalizationBridge,
+)
 from transformer_lens.utilities.multi_gpu import (
     cast_floating_params_to_dtype,
     count_unique_devices,
@@ -106,10 +110,11 @@ class TestResolveDeviceMap:
         assert dm is explicit
         assert mm is None
 
-    def test_disk_value_in_device_map_rejected(self):
-        bad: Dict[str, Union[str, int]] = {"transformer.h.0": "disk"}
-        with pytest.raises(ValueError, match="not supported yet"):
-            resolve_device_map(None, bad, None)
+    def test_disk_value_in_device_map_passes_through(self):
+        explicit: Dict[str, Union[str, int]] = {"transformer.h.0": "disk"}
+        dm, mm = resolve_device_map(None, explicit, None)
+        assert dm is explicit
+        assert mm is None
 
     def test_meta_value_in_device_map_passes_through(self):
         device_map: Dict[str, Union[str, int]] = {"transformer.h.0": "meta"}
@@ -383,6 +388,102 @@ class TestStackedWeightsHandleCrossDevice:
             assert bias.shape == (gpt2_bridge.cfg.d_model,)
         finally:
             gpt2_bridge.cfg.n_devices = original_n_devices
+
+
+class TestGeneralizedComponentOffloadMaterialization:
+    """CPU/disk offload (#1280, #1459, #1493) hits meta tensors inside Bridge
+    components because Accelerate only materializes real data around a hooked
+    module's own forward() - components that read raw params directly (or via
+    a synthetic sub-module built once at setup, e.g. split QKV) bypass that
+    window. GeneralizedComponent.__call__ wraps every component call in
+    Accelerate's own align_module_device, so this covers the leaf case without
+    needing a real (slow) model download."""
+
+    def _offloaded_layer_norm(self) -> tuple[torch.nn.LayerNorm, dict[str, torch.Tensor]]:
+        module = torch.nn.LayerNorm(4)
+        weights_map = {k: v.clone() for k, v in module.state_dict().items()}
+        attach_align_device_hook(
+            module, execution_device=torch.device("cpu"), offload=True, weights_map=weights_map
+        )
+        return module, weights_map
+
+    def test_offloaded_leaf_module_starts_as_meta(self):
+        # Establishes the failure mode this test guards against: Accelerate
+        # offload really does leave the module's own weight as a meta
+        # placeholder outside of a forward call.
+        module, _ = self._offloaded_layer_norm()
+        assert module.weight.is_meta
+
+    def test_normalization_bridge_materializes_offloaded_params(self):
+        module, weights_map = self._offloaded_layer_norm()
+
+        class _Cfg:
+            eps = 1e-5
+            rmsnorm_uses_offset = False
+
+        bridge = NormalizationBridge(name="ln", config=_Cfg(), uses_rms_norm=False)
+        bridge.set_original_component(module)
+        bridge.eval()
+
+        x = torch.randn(2, 3, 4)
+        with torch.no_grad():
+            out = bridge(x)
+        assert not torch.isnan(out).any()
+
+        expected = torch.nn.functional.layer_norm(
+            x, (4,), weight=weights_map["weight"], bias=weights_map["bias"], eps=1e-5
+        )
+        torch.testing.assert_close(out, expected, atol=1e-5, rtol=1e-5)
+
+
+class TestDiskOffloadEndToEnd:
+    """Real gpt2 end-to-end: disk device_map used to be rejected outright
+    (#1280); now it should produce identical numerics to a non-offloaded load,
+    including through gpt2's split-QKV path (JointQKVAttentionBridge builds
+    q/k/v as one-time slices of c_attn's raw weight at setup - a case the
+    generic per-call materialization alone doesn't cover, see
+    set_original_component)."""
+
+    def _device_map(self, disk_layers: set[int]) -> Dict[str, str]:
+        device_map: Dict[str, str] = {
+            "transformer.wte": "cpu",
+            "transformer.wpe": "cpu",
+            "transformer.ln_f": "cpu",
+            "lm_head": "cpu",
+        }
+        for i in range(12):
+            device_map[f"transformer.h.{i}"] = "disk" if i in disk_layers else "cpu"
+        return device_map
+
+    def test_disk_offload_matches_non_offloaded_forward_pass(self, gpt2_bridge, tmp_path):
+        gpt2_bridge.eval()
+        torch.manual_seed(0)
+        tokens = torch.randint(0, 1000, (2, 8))
+        with torch.no_grad():
+            baseline_logits = gpt2_bridge(tokens).clone()
+            baseline_loss = gpt2_bridge(tokens, return_type="loss").item()
+
+        offloaded_bridge = TransformerBridge.boot_transformers(
+            "gpt2",
+            device_map=self._device_map({0, 3, 6, 9}),
+            offload_folder=str(tmp_path),
+        )
+        offloaded_bridge.eval()
+        with torch.no_grad():
+            offloaded_logits = offloaded_bridge(tokens)
+            offloaded_loss = offloaded_bridge(tokens, return_type="loss").item()
+
+        torch.testing.assert_close(offloaded_logits, baseline_logits, atol=1e-4, rtol=1e-4)
+        assert abs(offloaded_loss - baseline_loss) < 1e-4
+
+    def test_disk_value_no_longer_raises_at_boot(self, tmp_path):
+        # Regression guard for the ValueError this used to raise unconditionally.
+        bridge = TransformerBridge.boot_transformers(
+            "gpt2",
+            device_map=self._device_map({0}),
+            offload_folder=str(tmp_path),
+        )
+        assert bridge.original_model.hf_device_map["transformer.h.0"] == "disk"
 
 
 # Real-hardware multi-GPU coverage lives in test_bridge_multigpu.py and

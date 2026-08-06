@@ -56,6 +56,7 @@ def boot(
     device_map: str | dict[str, str | int] | None = None,
     n_devices: int | None = None,
     max_memory: dict[str | int, str | int] | None = None,
+    offload_folder: str | None = None,
 ) -> TransformerBridge:
     """Boot a model from HuggingFace (exposed as ``TransformerBridge.boot_transformers``).
 
@@ -84,12 +85,17 @@ def boot(
             models loaded with custom configurations (e.g., quantization via BitsAndBytesConfig).
             When provided, load_weights is ignored.
         device_map: HuggingFace-style device map (``"auto"``, ``"balanced"``, dict, etc.) for
-            dispatched inference. Explicit maps may include CPU targets; disk / meta offload
-            targets are still rejected because Bridge component wrappers need additional
-            offload-hook routing work. Mutually exclusive with ``device``.
+            dispatched inference. Explicit maps may include CPU and disk targets; meta targets
+            are still rejected when ``load_weights=True`` (meta has no real data to offload from,
+            unlike disk/cpu). Mixed CPU+GPU maps are rejected too — accelerate implements that as
+            CPU offload, and the underlying materialization mechanism can't split across it and a
+            GPU-resident forward pass without further hook-routing work. Mutually exclusive with
+            ``device``.
         n_devices: Convenience: split the model across this many CUDA devices (translated to a
             ``max_memory`` dict internally). Requires CUDA with at least this many visible devices.
         max_memory: Optional per-device memory budget for HF's dispatcher.
+        offload_folder: Directory for disk-offloaded weight shards when ``device_map`` includes
+            a ``"disk"`` target. Defaults to a temporary directory (HF's own default) if omitted.
         n_ctx: Optional context length override. The bridge normally uses the model's documented
             max context from the HF config. Setting this writes to whichever HF field the model
             uses (n_positions / max_position_embeddings / etc.), so callers don't need to know
@@ -251,6 +257,8 @@ def boot(
         model_kwargs["device_map"] = resolved_device_map
     if resolved_max_memory is not None:
         model_kwargs["max_memory"] = resolved_max_memory
+    if offload_folder is not None:
+        model_kwargs["offload_folder"] = offload_folder
     if hasattr(adapter.cfg, "attn_implementation") and adapter.cfg.attn_implementation is not None:
         model_kwargs["attn_implementation"] = adapter.cfg.attn_implementation
     else:
@@ -321,17 +329,16 @@ def boot(
     # with a resolved device_map AND pre-loaded models with caller-dispatched device_map="auto".
     hf_device_map_post = getattr(hf_model, "hf_device_map", None)
     if hf_device_map_post:
-        # All-CPU placement is supported (real parameters, no offload). Disk / meta —
-        # and CPU entries in a MIXED map, which accelerate implements as CPU offload —
-        # are rejected: offload materializes weights via forward hooks that wrapped
-        # Bridge components bypass (e.g. NormalizationBridge computes from raw params).
+        # All-CPU placement, and disk offload, are supported (GeneralizedComponent.__call__
+        # wraps forward in Accelerate's align_module_device, so wrapped components reading
+        # raw params directly still see materialized data). meta remains rejected here: it
+        # has no real data to materialize even under offload/dispatch, unlike disk/cpu.
         offload_values = {str(v).lower() for v in hf_device_map_post.values() if isinstance(v, str)}
-        unsupported = offload_values & {"disk", "meta"}
+        unsupported = offload_values & {"meta"}
         if unsupported:
             raise ValueError(
                 f"hf_device_map contains unsupported offload targets: {sorted(unsupported)}. "
-                "TransformerBridge currently supports CPU device_map targets, but disk / meta "
-                "offload can bypass Accelerate hooks inside wrapped Bridge components."
+                "TransformerBridge currently supports CPU and disk device_map targets."
             )
         if is_mixed_cpu_gpu(hf_device_map_post.values()):
             raise ValueError(f"Realized hf_device_map is unsupported: {MIXED_CPU_GPU_ERROR}")
