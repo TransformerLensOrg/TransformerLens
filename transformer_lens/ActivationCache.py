@@ -72,9 +72,9 @@ class ActivationCache:
     the model predicting "road". This kind of analysis commonly falls under the category of "logit
     attribution" or "direct logit attribution" (DLA).
 
-    >>> from transformer_lens import HookedTransformer
-    >>> model = HookedTransformer.from_pretrained("tiny-stories-1M")
-    Loaded pretrained model tiny-stories-1M into HookedTransformer
+    >>> from transformer_lens import TransformerBridge
+    >>> model = TransformerBridge.boot_transformers("roneneldan/TinyStories-1M")
+    >>> model.enable_compatibility_mode()
 
     >>> _logits, cache = model.run_with_cache("Why did the chicken cross the")
     >>> residual_stream, labels = cache.decompose_resid(return_labels=True, mode="attn")
@@ -281,12 +281,12 @@ class ActivationCache:
 
         Examples:
 
-            >>> from transformer_lens import HookedTransformer
-            >>> model = HookedTransformer.from_pretrained("tiny-stories-1M")
-            Loaded pretrained model tiny-stories-1M into HookedTransformer
+            >>> from transformer_lens import TransformerBridge
+            >>> model = TransformerBridge.boot_transformers("roneneldan/TinyStories-1M")
+            >>> model.enable_compatibility_mode()
             >>> _logits, cache = model.run_with_cache("Some prompt")
             >>> list(cache.keys())[0:3]
-            ['hook_embed', 'hook_pos_embed', 'blocks.0.hook_resid_pre']
+            ['embed.hook_in', 'hook_embed', 'embed.hook_out']
 
         Returns:
             List of all keys.
@@ -317,16 +317,16 @@ class ActivationCache:
 
         Examples:
 
-            >>> from transformer_lens import HookedTransformer
-            >>> model = HookedTransformer.from_pretrained("tiny-stories-1M")
-            Loaded pretrained model tiny-stories-1M into HookedTransformer
+            >>> from transformer_lens import TransformerBridge
+            >>> model = TransformerBridge.boot_transformers("roneneldan/TinyStories-1M")
+            >>> model.enable_compatibility_mode()
             >>> _logits, cache = model.run_with_cache("Some prompt")
             >>> cache_interesting_names = []
             >>> for key in cache:
             ...     if not key.startswith("blocks.") or key.startswith("blocks.0"):
             ...         cache_interesting_names.append(key)
             >>> print(cache_interesting_names[0:3])
-            ['hook_embed', 'hook_pos_embed', 'blocks.0.hook_resid_pre']
+            ['embed.hook_in', 'hook_embed', 'embed.hook_out']
 
         Returns:
             Iterator over the cache.
@@ -411,12 +411,12 @@ class ActivationCache:
 
         Logit Lens analysis can be done as follows:
 
-        >>> from transformer_lens import HookedTransformer
+        >>> from transformer_lens import TransformerBridge
         >>> import torch
         >>> import pandas as pd
 
-        >>> model = HookedTransformer.from_pretrained("tiny-stories-1M", device="cpu", fold_ln=True)
-        Loaded pretrained model tiny-stories-1M into HookedTransformer
+        >>> model = TransformerBridge.boot_transformers("roneneldan/TinyStories-1M", device="cpu")
+        >>> model.enable_compatibility_mode()
 
         >>> prompt = "Why did the chicken cross the"
         >>> answer = " road"
@@ -440,10 +440,11 @@ class ActivationCache:
         >>> print(layers_logits.shape)
         torch.Size([9, 50257])
 
-        >>> # If you want to apply the unembedding bias, add b_U when present:
-        >>> # b_U = getattr(model, "b_U", None)
-        >>> # layers_logits = layers_logits + b_U if b_U is not None else layers_logits
-        >>> # print(layers_logits.shape)
+        >>> # The unembedding bias can be added on top when the model carries one
+        >>> # (the rank table below stays on the bias-free logits):
+        >>> b_U = getattr(model, "b_U", None)
+        >>> with_bias = layers_logits + b_U if b_U is not None else layers_logits
+        >>> print(with_bias.shape)
         torch.Size([9, 50257])
 
         >>> # Get the rank of the correct answer by layer

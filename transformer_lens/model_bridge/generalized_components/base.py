@@ -96,10 +96,11 @@ class GeneralizedComponent(nn.Module):
     def _register_aliases(self) -> None:
         """Register aliases from class-level dictionaries.
 
-        This is called ONLY in enable_compatibility_mode() after weight processing.
+        Called unconditionally at bridge init (see bridge.py); compatibility mode
+        additionally re-registers after weight processing.
         It creates actual Python attributes/properties that directly reference the target objects.
 
-        Note: This should only be called when compatibility mode is enabled and after
+        Note: Re-registration expects to run after
         weight processing is complete to ensure property aliases point to processed weights.
         """
         if self.hook_aliases:
