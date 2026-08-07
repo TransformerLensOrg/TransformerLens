@@ -141,6 +141,11 @@ class AbstractAttention(ABC, nn.Module):
                 raise ValueError("Layer ID must be provided to scale attention scores")
             self.attn_scale *= self.layer_id + 1
 
+        if self.cfg.use_attention_sinks:
+            # Learned per-head sink logit (GPT-OSS); joins the softmax as an
+            # extra key column and is dropped afterward.
+            self.sinks = nn.Parameter(torch.zeros(self.cfg.n_heads, dtype=self.cfg.dtype))
+
         self.hook_k = HookPoint()  # [batch, pos, head_index, d_head]
         self.hook_q = HookPoint()  # [batch, pos, head_index, d_head]
         self.hook_v = HookPoint()  # [batch, pos, head_index, d_head]
@@ -321,7 +326,21 @@ class AbstractAttention(ABC, nn.Module):
             attn_scores += additive_attention_mask
 
         attn_scores = self.hook_attn_scores(attn_scores)
-        pattern = F.softmax(attn_scores, dim=-1)
+        if self.cfg.use_attention_sinks:
+            # The sink column is appended after hook_attn_scores so hooks keep
+            # the [batch, head, query_pos, key_pos] shape, and dropped after
+            # the softmax — every real position's weight is scaled down by the
+            # sink's share, so pattern rows sum to less than 1.
+            sink = (
+                self.sinks.reshape(1, -1, 1, 1)
+                .expand(attn_scores.shape[0], -1, attn_scores.shape[-2], -1)
+                .to(attn_scores.dtype)
+            )
+            combined = torch.cat([attn_scores, sink], dim=-1)
+            combined = combined - combined.max(dim=-1, keepdim=True).values
+            pattern = F.softmax(combined, dim=-1)[..., :-1]
+        else:
+            pattern = F.softmax(attn_scores, dim=-1)
         if not isinstance(pattern, torch.Tensor):
             raise TypeError(f"Expected 'pattern' to be a Tensor, got {type(pattern)}")
         pattern = torch.where(torch.isnan(pattern), torch.zeros_like(pattern), pattern)
@@ -635,6 +654,10 @@ class AbstractAttention(ABC, nn.Module):
         pos = torch.arange(n_ctx, dtype=high_precision)
         dim = torch.arange(rotary_dim // 2, dtype=high_precision)
 
+        use_yarn = self.cfg.use_yarn_rope and not (
+            self.cfg.yarn_global_attn_only and self.attn_type == "local"
+        )
+
         # Llama-3.1 uses NTK-by-Parts Rotary Embedding introduced in Section 3.2 in https://arxiv.org/pdf/2309.00071
         # Implementation copied from https://github.com/huggingface/transformers/blob/v4.46.0/src/transformers/modeling_rope_utils.py#L310
         if self.cfg.use_NTK_by_parts_rope:
@@ -660,7 +683,7 @@ class AbstractAttention(ABC, nn.Module):
             is_medium_freq = ~(wavelen < high_freq_wavelen) * ~(wavelen > low_freq_wavelen)
             inv_freq_llama = torch.where(is_medium_freq, smoothed_inv_freq, inv_freq_llama)
             freq = 1 / inv_freq_llama
-        elif self.cfg.use_yarn_rope:
+        elif use_yarn:
             # YARN (Yet Another RoPE extensioN) from https://arxiv.org/abs/2309.00071
             # Implementation follows HuggingFace: transformers/modeling_rope_utils.py
             inv_freq = 1.0 / (
@@ -678,8 +701,11 @@ class AbstractAttention(ABC, nn.Module):
                     2 * math.log(base)
                 )
 
-            low = math.floor(_find_correction_dim(beta_fast))
-            high = math.ceil(_find_correction_dim(beta_slow))
+            low = _find_correction_dim(beta_fast)
+            high = _find_correction_dim(beta_slow)
+            if self.cfg.yarn_truncate:
+                low = math.floor(low)
+                high = math.ceil(high)
             low = max(low, 0)
             high = min(high, rotary_dim - 1)
 
@@ -707,7 +733,7 @@ class AbstractAttention(ABC, nn.Module):
         angles = pos[:, None] / freq[None, :]
         sin, cos = torch.sin(angles).to(dtype), torch.cos(angles).to(dtype)
         # YARN attention_factor scales the embeddings (default 1.0 is a no-op)
-        if self.cfg.use_yarn_rope and self.cfg.yarn_attention_factor != 1.0:
+        if use_yarn and self.cfg.yarn_attention_factor != 1.0:
             sin = sin * self.cfg.yarn_attention_factor
             cos = cos * self.cfg.yarn_attention_factor
         return sin, cos

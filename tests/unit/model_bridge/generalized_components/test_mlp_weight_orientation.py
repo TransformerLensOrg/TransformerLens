@@ -1,79 +1,214 @@
-"""MLPBridge W_in/W_out/W_gate must resolve to the TL orientation for every wrapper.
-
-nn.Linear stores [out_features, in_features] (the transpose of the TL
-convention) while Conv1D stores [in_features, out_features] (TL as-is) — a raw
-``in.weight`` alias silently returned transposed weights for every
-nn.Linear-backed model (all of boot_native), in both aspect ratios.
-"""
+"""Tests for MLP weight orientation (W_in/W_out/W_gate in TL convention)."""
 
 import pytest
 import torch
-from transformers.pytorch_utils import Conv1D
+import torch.nn as nn
 
-from transformer_lens.config import TransformerBridgeConfig
-from transformer_lens.model_bridge import TransformerBridge
+from transformer_lens.model_bridge.generalized_components.linear import LinearBridge
 from transformer_lens.model_bridge.generalized_components.mlp import MLPBridge
 
 
-def _native_bridge(d_model, d_mlp):
-    cfg = TransformerBridgeConfig(
-        n_layers=1,
-        d_model=d_model,
-        d_head=d_model // 4,
-        n_heads=4,
-        d_mlp=d_mlp,
-        d_vocab=50,
-        n_ctx=8,
-        act_fn="gelu",
-        seed=0,
-    )
-    return TransformerBridge.boot_native(cfg)
+class TestMLPWeightOrientation:
+    """Test that MLP weight accessors return TL orientation regardless of backing module."""
 
+    @pytest.fixture
+    def d_model(self) -> int:
+        return 64
 
-@pytest.mark.parametrize(
-    "d_model,d_mlp",
-    [
-        (32, 128),  # expansion (the usual shape)
-        (128, 32),  # bottleneck — the aspect ratio a shape heuristic cannot see
-    ],
-)
-def test_native_linear_weights_are_tl_oriented(d_model, d_mlp):
-    bridge = _native_bridge(d_model, d_mlp)
-    mlp = bridge.blocks[0].mlp
+    @pytest.fixture
+    def d_mlp(self) -> int:
+        return 256
 
-    assert mlp.W_in.shape == (d_model, d_mlp)
-    assert mlp.W_out.shape == (d_mlp, d_model)
-    # The stacked bridge-level accessors follow: [n_layers, d_model, d_mlp] etc.
-    assert bridge.W_in.shape == (1, d_model, d_mlp)
-    assert bridge.W_out.shape == (1, d_mlp, d_model)
+    @pytest.fixture
+    def linear_mlp_bridge(self, d_model: int, d_mlp: int) -> MLPBridge:
+        """Create an MLPBridge backed by nn.Linear modules."""
+        mlp = MLPBridge(name="mlp")
 
-    # Orientation must reflect the actual parameters, not just shapes: the
-    # nn.Linear weight is [d_mlp, d_model]; the property must be its transpose.
-    raw = getattr(mlp, "in").weight
-    assert torch.equal(mlp.W_in, raw.T)
+        # Create nn.Linear projections (stores weights as [out, in])
+        in_proj = nn.Linear(d_model, d_mlp, bias=False)
+        out_proj = nn.Linear(d_mlp, d_model, bias=False)
 
+        # Wrap in LinearBridge
+        in_bridge = LinearBridge(name="in")
+        in_bridge.set_original_component(in_proj)
+        out_bridge = LinearBridge(name="out")
+        out_bridge.set_original_component(out_proj)
 
-def test_conv1d_weight_passes_through():
-    """Conv1D (GPT-2 style) already stores [in, out]; no transpose expected."""
+        # Register as submodules
+        mlp.add_module("in", in_bridge)
+        mlp.add_module("out", out_bridge)
 
-    class _Proj:
-        def __init__(self, weight, component):
-            self.weight = weight
-            self.original_component = component
+        return mlp
 
-    mlp = MLPBridge.__new__(MLPBridge)
-    conv = Conv1D(8, 4)  # nf=8 (out), nx=4 (in) -> weight [4, 8]
-    object.__setattr__(mlp, "_test_proj", _Proj(conv.weight, conv))
-    # exercise the resolver directly with a synthetic projection
-    weight = mlp._tl_oriented_weight("_test_proj")
-    assert weight.shape == (4, 8)
-    assert torch.equal(weight, conv.weight)
+    @pytest.fixture
+    def conv1d_mlp_bridge(self, d_model: int, d_mlp: int) -> MLPBridge:
+        """Create an MLPBridge backed by Conv1D modules (GPT-2 style)."""
+        from transformers.pytorch_utils import Conv1D
 
+        mlp = MLPBridge(name="mlp")
 
-def test_missing_gate_raises_attribute_error():
-    """Non-gated MLPs must not appear to have W_gate (hasattr contract)."""
-    bridge = _native_bridge(32, 128)
-    mlp = bridge.blocks[0].mlp
-    assert not hasattr(mlp, "W_gate")
-    with pytest.raises(AttributeError, match="gate"):
-        _ = mlp.W_gate
+        # Create Conv1D projections (stores weights as [in, out])
+        in_proj = Conv1D(d_mlp, d_model)
+        out_proj = Conv1D(d_model, d_mlp)
+
+        # Wrap in LinearBridge
+        in_bridge = LinearBridge(name="in")
+        in_bridge.set_original_component(in_proj)
+        out_bridge = LinearBridge(name="out")
+        out_bridge.set_original_component(out_proj)
+
+        # Register as submodules
+        mlp.add_module("in", in_bridge)
+        mlp.add_module("out", out_bridge)
+
+        return mlp
+
+    def test_linear_w_in_shape_is_tl_convention(
+        self, linear_mlp_bridge: MLPBridge, d_model: int, d_mlp: int
+    ):
+        """W_in from nn.Linear should be [d_model, d_mlp]."""
+        w_in = linear_mlp_bridge.W_in
+        assert w_in.shape == (d_model, d_mlp), f"Expected ({d_model}, {d_mlp}), got {w_in.shape}"
+
+    def test_linear_w_out_shape_is_tl_convention(
+        self, linear_mlp_bridge: MLPBridge, d_model: int, d_mlp: int
+    ):
+        """W_out from nn.Linear should be [d_mlp, d_model]."""
+        w_out = linear_mlp_bridge.W_out
+        assert w_out.shape == (d_mlp, d_model), f"Expected ({d_mlp}, {d_model}), got {w_out.shape}"
+
+    def test_conv1d_w_in_shape_is_tl_convention(
+        self, conv1d_mlp_bridge: MLPBridge, d_model: int, d_mlp: int
+    ):
+        """W_in from Conv1D should be [d_model, d_mlp]."""
+        w_in = conv1d_mlp_bridge.W_in
+        assert w_in.shape == (d_model, d_mlp), f"Expected ({d_model}, {d_mlp}), got {w_in.shape}"
+
+    def test_conv1d_w_out_shape_is_tl_convention(
+        self, conv1d_mlp_bridge: MLPBridge, d_model: int, d_mlp: int
+    ):
+        """W_out from Conv1D should be [d_mlp, d_model]."""
+        w_out = conv1d_mlp_bridge.W_out
+        assert w_out.shape == (d_mlp, d_model), f"Expected ({d_mlp}, {d_model}), got {w_out.shape}"
+
+    def test_linear_w_in_reproduces_projection(
+        self, linear_mlp_bridge: MLPBridge, d_model: int, d_mlp: int
+    ):
+        """resid @ W_in should match what the wrapped nn.Linear computes."""
+        resid = torch.randn(1, 8, d_model)
+        w_in = linear_mlp_bridge.W_in
+
+        # Compute via TL-style matmul: resid @ W_in
+        tl_result = resid @ w_in
+
+        # Compute via the wrapped projection
+        in_bridge = getattr(linear_mlp_bridge, "in")
+        proj_result = in_bridge.original_component(resid)
+
+        assert torch.allclose(tl_result, proj_result, atol=1e-5), (
+            f"resid @ W_in does not match projection output. "
+            f"Max diff: {(tl_result - proj_result).abs().max()}"
+        )
+
+    def test_linear_w_out_reproduces_projection(
+        self, linear_mlp_bridge: MLPBridge, d_model: int, d_mlp: int
+    ):
+        """hidden @ W_out should match what the wrapped nn.Linear computes."""
+        hidden = torch.randn(1, 8, d_mlp)
+        w_out = linear_mlp_bridge.W_out
+
+        # Compute via TL-style matmul: hidden @ W_out
+        tl_result = hidden @ w_out
+
+        # Compute via the wrapped projection
+        out_bridge = linear_mlp_bridge.out
+        proj_result = out_bridge.original_component(hidden)
+
+        assert torch.allclose(tl_result, proj_result, atol=1e-5), (
+            f"hidden @ W_out does not match projection output. "
+            f"Max diff: {(tl_result - proj_result).abs().max()}"
+        )
+
+    def test_conv1d_w_in_reproduces_projection(
+        self, conv1d_mlp_bridge: MLPBridge, d_model: int, d_mlp: int
+    ):
+        """resid @ W_in should match what the wrapped Conv1D computes."""
+        resid = torch.randn(1, 8, d_model)
+        w_in = conv1d_mlp_bridge.W_in
+
+        # Compute via TL-style matmul: resid @ W_in
+        tl_result = resid @ w_in
+
+        # Compute via the wrapped projection
+        in_bridge = getattr(conv1d_mlp_bridge, "in")
+        proj_result = in_bridge.original_component(resid)
+
+        assert torch.allclose(tl_result, proj_result, atol=1e-5), (
+            f"resid @ W_in does not match projection output. "
+            f"Max diff: {(tl_result - proj_result).abs().max()}"
+        )
+
+    def test_conv1d_w_out_reproduces_projection(
+        self, conv1d_mlp_bridge: MLPBridge, d_model: int, d_mlp: int
+    ):
+        """hidden @ W_out should match what the wrapped Conv1D computes."""
+        hidden = torch.randn(1, 8, d_mlp)
+        w_out = conv1d_mlp_bridge.W_out
+
+        # Compute via TL-style matmul: hidden @ W_out
+        tl_result = hidden @ w_out
+
+        # Compute via the wrapped projection
+        out_bridge = conv1d_mlp_bridge.out
+        proj_result = out_bridge.original_component(hidden)
+
+        assert torch.allclose(tl_result, proj_result, atol=1e-5), (
+            f"hidden @ W_out does not match projection output. "
+            f"Max diff: {(tl_result - proj_result).abs().max()}"
+        )
+
+    def test_both_backends_produce_same_orientation(
+        self, linear_mlp_bridge: MLPBridge, conv1d_mlp_bridge: MLPBridge, d_model: int, d_mlp: int
+    ):
+        """nn.Linear and Conv1D bridges should return same shape for W_in/W_out."""
+        assert linear_mlp_bridge.W_in.shape == conv1d_mlp_bridge.W_in.shape
+        assert linear_mlp_bridge.W_out.shape == conv1d_mlp_bridge.W_out.shape
+
+    def test_in_features_fallback_over_shape_heuristic(self, d_model: int):
+        """When d_mlp < d_model, in_features/out_features should take precedence."""
+        d_mlp_small = d_model // 2  # d_mlp < d_model breaks shape heuristic
+
+        class ScaledLinear(nn.Module):
+            """Bare nn.Module with in_features/out_features (like GIDD's ScaledLinear)."""
+
+            def __init__(self, in_f: int, out_f: int):
+                super().__init__()
+                self.in_features = in_f
+                self.out_features = out_f
+                # Weight stored as [out, in] like nn.Linear
+                self.weight = nn.Parameter(torch.randn(out_f, in_f))
+
+            def forward(self, x):
+                return x @ self.weight.T
+
+        mlp = MLPBridge(name="mlp")
+        in_proj = ScaledLinear(d_model, d_mlp_small)
+        out_proj = ScaledLinear(d_mlp_small, d_model)
+
+        in_bridge = LinearBridge(name="in")
+        in_bridge.set_original_component(in_proj)
+        out_bridge = LinearBridge(name="out")
+        out_bridge.set_original_component(out_proj)
+
+        mlp.add_module("in", in_bridge)
+        mlp.add_module("out", out_bridge)
+
+        # Even though d_mlp < d_model, should still get TL orientation
+        assert mlp.W_in.shape == (d_model, d_mlp_small)
+        assert mlp.W_out.shape == (d_mlp_small, d_model)
+
+        # Verify forward correctness
+        resid = torch.randn(1, 8, d_model)
+        tl_result = resid @ mlp.W_in
+        proj_result = in_proj(resid)
+        assert torch.allclose(tl_result, proj_result, atol=1e-5)

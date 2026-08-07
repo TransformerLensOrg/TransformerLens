@@ -166,17 +166,18 @@ class TestLegacyAPICoverage:
             pass  # Weight access might not be implemented yet
 
         # Test MLP weights
-        try:
-            w_in = bridge_model.W_in
-            w_out = bridge_model.W_out
+        w_in = bridge_model.W_in
+        w_out = bridge_model.W_out
 
-            assert w_in.shape[0] == bridge_model.cfg.n_layers
-            assert w_out.shape[0] == bridge_model.cfg.n_layers
+        assert w_in.shape[0] == bridge_model.cfg.n_layers
+        assert w_in.shape[1] == bridge_model.cfg.d_model
+        assert w_in.shape[2] == bridge_model.cfg.d_mlp
+        assert w_out.shape[0] == bridge_model.cfg.n_layers
+        assert w_out.shape[1] == bridge_model.cfg.d_mlp
+        assert w_out.shape[2] == bridge_model.cfg.d_model
+        assert w_in.shape[2] == w_out.shape[1], "W_in and W_out inner dimensions must match"
 
-            weight_tests.append("mlp_weights")
-
-        except AttributeError:
-            pass  # Weight access might not be implemented yet
+        weight_tests.append("mlp_weights")
 
         # At least some weight access should work eventually
         if len(weight_tests) > 0:
