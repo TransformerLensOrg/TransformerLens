@@ -3,6 +3,7 @@
 Qwen3_5 is supported only via TransformerBridge, not HookedTransformer.
 """
 
+import warnings
 from types import SimpleNamespace
 
 import pytest
@@ -613,6 +614,14 @@ class TestQwen3_5Integration:
         from transformer_lens.model_bridge import TransformerBridge
 
         assert isinstance(bridge, TransformerBridge)
+
+    def test_bridge_creation_has_no_unresolved_alias_warnings(self):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            _make_tiny_bridge()
+
+        unresolved = [warning for warning in caught if "did not resolve" in str(warning.message)]
+        assert unresolved == []
 
     def test_hook_names_present(self, bridge):
         """blocks.0.attn.* must NOT appear — self_attn is absent on linear-attn layers."""

@@ -3,6 +3,9 @@
 BigCode's StarCoder2 (``Starcoder2ForCausalLM``): pre-norm decoder with
 plain LayerNorm (not RMS), separate biased q/k/v/o projections, GQA, RoPE,
 and a non-gated ``c_fc``/``c_proj`` MLP.
+
+Not a drop-in for its GPTBigCode predecessor: that one fuses q/k/v into a
+single ``c_attn`` and uses learned positions, so it needs a different bridge.
 """
 
 from typing import Any

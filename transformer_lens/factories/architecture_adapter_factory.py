@@ -13,6 +13,7 @@ from transformer_lens.model_bridge.supported_architectures import (
     AfmoeArchitectureAdapter,
     ApertusArchitectureAdapter,
     ArceeArchitectureAdapter,
+    ASTArchitectureAdapter,
     AudioFlamingo3ArchitectureAdapter,
     BaichuanArchitectureAdapter,
     BambaArchitectureAdapter,
@@ -147,6 +148,7 @@ from transformer_lens.model_bridge.supported_architectures import (
     T5Gemma2ArchitectureAdapter,
     T5GemmaArchitectureAdapter,
     VaultGemmaArchitectureAdapter,
+    ViTArchitectureAdapter,
     XGLMArchitectureAdapter,
     YoutuArchitectureAdapter,
     Zamba2ArchitectureAdapter,
@@ -157,6 +159,7 @@ SUPPORTED_ARCHITECTURES = {
     "AfmoeForCausalLM": AfmoeArchitectureAdapter,
     "ApertusForCausalLM": ApertusArchitectureAdapter,
     "ArceeForCausalLM": ArceeArchitectureAdapter,
+    "ASTForAudioClassification": ASTArchitectureAdapter,
     "BaiChuanForCausalLM": BaichuanArchitectureAdapter,
     "BaichuanForCausalLM": BaichuanArchitectureAdapter,
     "BambaForCausalLM": BambaArchitectureAdapter,
@@ -310,6 +313,10 @@ SUPPORTED_ARCHITECTURES = {
     "MinGPTForCausalLM": MingptArchitectureAdapter,
     "GPTNeoForCausalLM": NeoArchitectureAdapter,
     "GPTNeoXForCausalLM": NeoxArchitectureAdapter,
+    "ViTModel": ViTArchitectureAdapter,
+    "ViTForImageClassification": ViTArchitectureAdapter,
+    "DeiTModel": ViTArchitectureAdapter,
+    "DeiTForImageClassification": ViTArchitectureAdapter,  # "DeiTForImageClassificationWithTeacher" unsupported for now
 }
 
 

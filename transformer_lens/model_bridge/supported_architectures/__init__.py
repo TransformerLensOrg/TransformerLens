@@ -6,6 +6,7 @@ This module contains all the supported architecture adapters for different model
 from transformer_lens.model_bridge.supported_architectures.afmoe import AfmoeArchitectureAdapter
 from transformer_lens.model_bridge.supported_architectures.apertus import ApertusArchitectureAdapter
 from transformer_lens.model_bridge.supported_architectures.arcee import ArceeArchitectureAdapter
+from transformer_lens.model_bridge.supported_architectures.ast import ASTArchitectureAdapter
 from transformer_lens.model_bridge.supported_architectures.audio_flamingo3 import (
     AudioFlamingo3ArchitectureAdapter,
 )
@@ -252,6 +253,9 @@ from transformer_lens.model_bridge.supported_architectures.starcoder2 import (
 from transformer_lens.model_bridge.supported_architectures.switch_transformers import (
     SwitchTransformersArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.vit import (
+    ViTArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.t5 import T5ArchitectureAdapter
 from transformer_lens.model_bridge.supported_architectures.t5gemma import T5GemmaArchitectureAdapter
 from transformer_lens.model_bridge.supported_architectures.t5gemma2 import (
@@ -268,6 +272,7 @@ __all__ = [
     "AfmoeArchitectureAdapter",
     "ApertusArchitectureAdapter",
     "ArceeArchitectureAdapter",
+    "ASTArchitectureAdapter",
     "AudioFlamingo3ArchitectureAdapter",
     "BD3LMArchitectureAdapter",
     "BaichuanArchitectureAdapter",
@@ -396,6 +401,8 @@ __all__ = [
     "Starcoder2ArchitectureAdapter",
     "T5ArchitectureAdapter",
     "T5GemmaArchitectureAdapter",
+    "T5Gemma2ArchitectureAdapter",
+    "ViTArchitectureAdapter",
     "XGLMArchitectureAdapter",
     "Zamba2ArchitectureAdapter",
     "HrmTextArchitectureAdapter",

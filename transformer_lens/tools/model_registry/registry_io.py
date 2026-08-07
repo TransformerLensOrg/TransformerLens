@@ -229,7 +229,7 @@ def update_model_status(
             elif phase_scores and "exceeds" in (entry.get("note") or "").lower():
                 # Writing real scores clears a stale memory-skip note
                 entry["note"] = None
-            for phase_num in (1, 2, 3, 4, 7, 8):
+            for phase_num in (1, 2, 3, 4, 7, 8, 9):
                 key = f"phase{phase_num}_score"
                 if phase_num in phase_scores:
                     entry[key] = phase_scores[phase_num]
@@ -249,6 +249,7 @@ def update_model_status(
                 "phase4_score",
                 "phase7_score",
                 "phase8_score",
+                "phase9_score",
             ]
             reordered = {k: entry[k] for k in _KEY_ORDER if k in entry}
             for k in entry:
@@ -277,6 +278,7 @@ def update_model_status(
                 "phase4_score": phase_scores.get(4),
                 "phase7_score": phase_scores.get(7),
                 "phase8_score": phase_scores.get(8),
+                "phase9_score": phase_scores.get(9),
             }
         )
         updated = True

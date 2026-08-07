@@ -41,54 +41,60 @@ def _prepare_test_inputs(bridge: TransformerBridge):
     if image is None:
         return None, None, None
 
-    # Build a prompt with the model's image token placeholder.
-    # Different models use different tokens:
+    # Build a prompt with the model's image token placeholder. Families disagree
+    # on which token their processor accepts, and a rejected token raises:
     #   LLava: image_token = "<image>"
-    #   Gemma3: boi_token = "<start_of_image>"
-    #   Gemma4: image_token is the expandable placeholder (280 tokens),
-    #           boi_token ("<|image>") is just a marker — use image_token first.
-    image_token = getattr(bridge.processor, "image_token", None) or getattr(
-        bridge.processor, "boi_token", "<image>"
-    )
-    prompt = f"{image_token}\nDescribe this image."
-    try:
-        if hasattr(bridge.processor, "post_process_generation"):
-            # Task-prompt captioners (Florence-2 style) map task tokens to
-            # prompts themselves and ignore free-text instructions.
-            prompt = "<CAPTION>"
-        else:
-            # Some processors insert the image placeholders themselves; a
-            # manual placeholder would then double-count. Probe with a plain
-            # prompt first and keep it if image tokens were auto-inserted.
-            # Idefics3-style processors RAISE on image inputs without image
-            # tokens in the text — a failed probe just means "not
-            # auto-inserting", so fall back to the placeholder prompt.
-            image_token_id = getattr(bridge.original_model.config, "image_token_id", None)
-            if image_token_id is not None:
-                try:
-                    plain = "Describe this image."
-                    probe = bridge.processor(text=plain, images=image, return_tensors="pt")
-                    if (probe["input_ids"] == image_token_id).any():
-                        prompt = plain
-                except Exception:
-                    pass
-        inputs = bridge.processor(text=prompt, images=image, return_tensors="pt")
-        input_ids = inputs["input_ids"].to(bridge.cfg.device)
+    #   Gemma3: only boi_token ("<start_of_image>") expands; image_token
+    #           ("<image_soft_token>") is rejected
+    #   Gemma4: only image_token ("<|image|>") expands; boi_token is a marker
+    if hasattr(bridge.processor, "post_process_generation"):
+        # Task-prompt captioners (Florence-2 style) map task tokens to prompts
+        # themselves and ignore free-text instructions.
+        candidates = ["<CAPTION>"]
+    else:
+        tokens = [
+            getattr(bridge.processor, "image_token", None),
+            getattr(bridge.processor, "boi_token", None),
+        ]
+        seen = list(dict.fromkeys(t for t in tokens if t)) or ["<image>"]
+        candidates = [f"{t}\nDescribe this image." for t in seen]
 
-        # Collect all extra kwargs the model's forward() may need
-        # (pixel_values, image_sizes, pixel_attention_mask, etc.)
-        extra_kwargs = {}
-        for key, val in inputs.items():
-            if key == "input_ids":
-                continue
-            if hasattr(val, "to"):
-                extra_kwargs[key] = val.to(bridge.cfg.device)
-            else:
-                extra_kwargs[key] = val
+        # Some processors insert the image placeholders themselves; a manual
+        # placeholder would then double-count. Probe with a plain prompt first
+        # and prefer it if image tokens were auto-inserted. Idefics3-style
+        # processors RAISE on image inputs without image tokens in the text — a
+        # failed probe just means "not auto-inserting", so fall back below.
+        image_token_id = getattr(bridge.original_model.config, "image_token_id", None)
+        if image_token_id is not None:
+            try:
+                plain = "Describe this image."
+                probe = bridge.processor(text=plain, images=image, return_tensors="pt")
+                if (probe["input_ids"] == image_token_id).any():
+                    candidates.insert(0, plain)
+            except Exception:
+                pass
 
-        return input_ids, extra_kwargs, prompt
-    except Exception:
-        return None, None, None
+    for prompt in candidates:
+        try:
+            inputs = bridge.processor(text=prompt, images=image, return_tensors="pt")
+            input_ids = inputs["input_ids"].to(bridge.cfg.device)
+
+            # Collect all extra kwargs the model's forward() may need
+            # (pixel_values, image_sizes, pixel_attention_mask, etc.)
+            extra_kwargs = {}
+            for key, val in inputs.items():
+                if key == "input_ids":
+                    continue
+                if hasattr(val, "to"):
+                    extra_kwargs[key] = val.to(bridge.cfg.device)
+                else:
+                    extra_kwargs[key] = val
+
+            return input_ids, extra_kwargs, prompt
+        except Exception:
+            continue
+
+    return None, None, None
 
 
 def benchmark_multimodal_forward(

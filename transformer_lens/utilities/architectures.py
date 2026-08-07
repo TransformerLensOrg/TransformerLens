@@ -64,12 +64,30 @@ AUDIO_TEXT_ARCHITECTURES: set[str] = {
     "MusicFlamingoForConditionalGeneration",
 }
 
+# Audio spectrogram models for classification
+AUDIO_CLASSIFICATION_ARCHITECTURES: set[str] = {
+    "ASTForAudioClassification",
+}
+
 # Audio encoder models (HuBERT, wav2vec2, etc.)
 AUDIO_ARCHITECTURES: set[str] = {
     "HubertForCTC",
     "HubertModel",
     "HubertForSequenceClassification",
+} | AUDIO_CLASSIFICATION_ARCHITECTURES
+
+# Vision-only (non-multimodal, no text tower) encoder models. Split into the
+# two HF AutoModel classes they load under: bare encoders load via AutoModel,
+# classification heads load via AutoModelForImageClassification.
+VISION_MODEL_ARCHITECTURES: set[str] = {
+    "ViTModel",
+    "DeiTModel",
 }
+VISION_CLASSIFICATION_ARCHITECTURES: set[str] = {
+    "ViTForImageClassification",
+    "DeiTForImageClassification",
+}
+VISION_ARCHITECTURES: set[str] = VISION_MODEL_ARCHITECTURES | VISION_CLASSIFICATION_ARCHITECTURES
 
 # Text models whose remote code registers only under plain AutoModel
 # (the class itself carries the LM head).
@@ -82,6 +100,8 @@ BASE_AUTOMODEL_ARCHITECTURES: set[str] = {
 NO_HT_COMPARISON_ARCHITECTURES: set[str] = (
     MULTIMODAL_ARCHITECTURES
     | AUDIO_ARCHITECTURES
+    # Vision encoders have no HookedTransformer counterpart.
+    | VISION_ARCHITECTURES
     # Encoder-decoder: HookedTransformer cannot represent them (T5 repos under
     # org-prefixed names slip past HT's legacy name guard and crash at forward).
     | SEQ2SEQ_ARCHITECTURES
@@ -94,7 +114,7 @@ NO_HT_COMPARISON_ARCHITECTURES: set[str] = (
 def classify_architecture(architecture: str) -> str:
     """Classify an architecture string into a model type.
 
-    Returns one of: "seq2seq", "masked_lm", "multimodal", "audio", "causal_lm"
+    Returns one of: "seq2seq", "masked_lm", "multimodal", "audio", "vision", "causal_lm"
     """
     if architecture in SEQ2SEQ_ARCHITECTURES:
         return "seq2seq"
@@ -104,6 +124,8 @@ def classify_architecture(architecture: str) -> str:
         return "multimodal"
     if architecture in AUDIO_ARCHITECTURES:
         return "audio"
+    if architecture in VISION_ARCHITECTURES:
+        return "vision"
     return "causal_lm"
 
 
