@@ -88,7 +88,9 @@ def test_bridge_gpt_oss() -> bool:
     from transformer_lens.model_bridge import TransformerBridge
 
     bridge = TransformerBridge.boot_transformers(GPT_OSS_ID, device="cuda", dtype=torch.bfloat16)
-    wanted = {f"blocks.{i}.hook_resid_post" for i in GPT_OSS_LAYERS} | {"blocks.0.attn.hook_pattern"}
+    wanted = {f"blocks.{i}.hook_resid_post" for i in GPT_OSS_LAYERS} | {
+        "blocks.0.attn.hook_pattern"
+    }
     with torch.inference_mode():
         bridge_logits, cache = bridge.run_with_cache(ids, names_filter=lambda n: n in wanted)
 
@@ -103,7 +105,9 @@ def test_bridge_gpt_oss() -> bool:
     top1 = (ref_logits.argmax(-1) == bridge_logits.float().cpu().argmax(-1)).float().mean().item()
     passed = cos > BF16_COS_MIN and top1 == 1.0
     ok &= passed
-    print(f"  logits: cos={cos:.4f} rel={rel:.4f} top1-agree={top1:.2f}  {'PASS' if passed else 'FAIL'}")
+    print(
+        f"  logits: cos={cos:.4f} rel={rel:.4f} top1-agree={top1:.2f}  {'PASS' if passed else 'FAIL'}"
+    )
 
     # Sink spot-check: pattern rows must sum to < 1 (the sink keeps its share).
     row_sums = cache["blocks.0.attn.hook_pattern"].float().sum(dim=-1)
@@ -140,12 +144,15 @@ def test_ht_mxfp4() -> bool:
     cos, rel = _cos_rel(ref_logits, logits)
     top1 = (ref_logits.argmax(-1) == logits.argmax(-1)).float().mean().item()
     print(f"  loaded and ran forward: {'PASS' if finite else 'FAIL (non-finite logits)'}")
-    # Informational: HT's own MoE numerics are outside #1619's scope (the crash),
-    # but large disagreement here is worth a follow-up look.
-    print(f"  logits vs HF (informational): cos={cos:.4f} rel={rel:.4f} top1-agree={top1:.2f}")
+    # Hard gate since the HT-side sink/sliding-window/yarn fixes: HT must now
+    # reproduce the HF forward, not merely load.
+    parity = cos > BF16_COS_MIN and top1 == 1.0
+    print(
+        f"  logits vs HF: cos={cos:.4f} rel={rel:.4f} top1-agree={top1:.2f}  {'PASS' if parity else 'FAIL'}"
+    )
 
     _free(model)
-    return finite
+    return finite and parity
 
 
 def test_olmo3() -> bool:
@@ -208,7 +215,9 @@ def test_olmo3() -> bool:
     top1 = (ref_logits.argmax(-1) == logits.float().cpu().argmax(-1)).float().mean().item()
     passed = cos > FP32_COS_MIN and top1 == 1.0
     ok &= passed
-    print(f"  logits: cos={cos:.4f} rel={rel:.2e} top1-agree={top1:.2f}  {'PASS' if passed else 'FAIL'}")
+    print(
+        f"  logits: cos={cos:.4f} rel={rel:.2e} top1-agree={top1:.2f}  {'PASS' if passed else 'FAIL'}"
+    )
 
     _free(model, cache)
     return ok

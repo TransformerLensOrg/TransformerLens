@@ -62,6 +62,8 @@ def convert_gpt_oss_weights(gpt_oss, cfg: HookedTransformerConfig):
                 cfg.n_key_value_heads, cfg.d_head, dtype=cfg.dtype, device=cfg.device
             )
 
+        state_dict[f"blocks.{l}.attn.sinks"] = layer.self_attn.sinks
+
         W_O = einops.rearrange(layer.self_attn.o_proj.weight, "m (n h) -> n h m", n=cfg.n_heads)
         state_dict[f"blocks.{l}.attn.W_O"] = W_O
 

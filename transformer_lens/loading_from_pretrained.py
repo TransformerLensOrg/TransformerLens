@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+import math
 import os
 import re
 from pathlib import Path
@@ -668,11 +669,39 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "n_key_value_heads": hf_config.num_key_value_heads,
             "gated_mlp": True,
             "final_rms": True,
-            "use_local_attn": False,
             "rotary_dim": hf_config.head_dim,
             "num_experts": hf_config.num_local_experts,
             "experts_per_token": hf_config.num_experts_per_tok,
+            "use_attention_sinks": True,
+            # Alternating sliding_attention / full_attention layers; HT's local
+            # attention mask (last window_size keys) matches HF's sliding window.
+            "use_local_attn": True,
+            "window_size": hf_config.sliding_window,
+            "attn_types": [
+                "local" if layer_type == "sliding_attention" else "global"
+                for layer_type in hf_config.layer_types
+            ],
         }
+        rope_params = getattr(hf_config, "rope_parameters", None) or {}
+        if rope_params.get("rope_type") == "yarn":
+            yarn_factor = rope_params["factor"]
+            attention_factor = rope_params.get("attention_factor")
+            if attention_factor is None:
+                # HF's default: get_mscale(factor) = 0.1 * ln(factor) + 1
+                attention_factor = 0.1 * math.log(yarn_factor) + 1.0 if yarn_factor > 1 else 1.0
+            cfg_dict.update(
+                {
+                    "use_yarn_rope": True,
+                    "yarn_factor": yarn_factor,
+                    "yarn_attention_factor": attention_factor,
+                    "yarn_beta_fast": rope_params.get("beta_fast") or 32.0,
+                    "yarn_beta_slow": rope_params.get("beta_slow") or 1.0,
+                    "yarn_original_max_position_embeddings": rope_params[
+                        "original_max_position_embeddings"
+                    ],
+                    "yarn_truncate": rope_params.get("truncate", True),
+                }
+            )
     elif architecture == "BloomForCausalLM":
         cfg_dict = {
             "d_model": hf_config.hidden_size,
