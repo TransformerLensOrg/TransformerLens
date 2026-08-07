@@ -13,6 +13,8 @@ or a pad id that also occurs as a real token.
 
 from __future__ import annotations
 
+import copy
+
 import pytest
 import torch
 
@@ -204,6 +206,46 @@ def test_mask_shape_must_match_the_prompt(distilgpt2_bridge, prompt) -> None:
         distilgpt2_bridge.generate(
             prompt, attention_mask=torch.ones(1, prompt.shape[1] + 5, dtype=torch.long), **GREEDY
         )
+
+
+def test_padding_side_without_a_tokenizer_is_an_error(distilgpt2_bridge, prompt) -> None:
+    """A bridge booted without a tokenizer has nothing to read the padding from, so
+    padding_side would be inert — leaving exactly the bug this module is about, but
+    silently. attention_mask still works there and the message must say so."""
+    bridge = copy.copy(distilgpt2_bridge)
+    bridge.tokenizer = None
+    assert bridge.tokenizer is None and distilgpt2_bridge.tokenizer is not None
+    padded, _ = _left_pad(distilgpt2_bridge, prompt, 3)
+
+    with pytest.raises(ValueError, match="this bridge has none"):
+        bridge.generate(padded, padding_side="left", **GREEDY)
+
+
+def test_padding_side_without_a_pad_token_is_an_error(distilgpt2_bridge, prompt) -> None:
+    """Same reasoning for a tokenizer that has no pad id to scan for."""
+    padded, _ = _left_pad(distilgpt2_bridge, prompt, 3)
+    tokenizer = distilgpt2_bridge.tokenizer
+    original_pad = tokenizer.pad_token_id
+    tokenizer.pad_token_id = None
+    try:
+        with pytest.raises(ValueError, match="pad_token_id"):
+            distilgpt2_bridge.generate(padded, padding_side="left", **GREEDY)
+    finally:
+        tokenizer.pad_token_id = original_pad
+
+
+def test_a_tokenizerless_bridge_still_accepts_an_explicit_mask(
+    distilgpt2_bridge, prompt, unpadded_continuation
+) -> None:
+    """The alternative the error points at has to actually work."""
+    bridge = copy.copy(distilgpt2_bridge)
+    bridge.tokenizer = None
+    n_pad = 3
+    padded, mask = _left_pad(distilgpt2_bridge, prompt, n_pad)
+
+    out = bridge.generate(padded, attention_mask=mask, **GREEDY)
+
+    assert out[0, n_pad + prompt.shape[1] :].tolist() == unpadded_continuation
 
 
 def test_inputs_embeds_forwards_the_mask_untouched(distilgpt2_bridge, prompt) -> None:

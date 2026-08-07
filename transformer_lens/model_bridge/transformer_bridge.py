@@ -2336,8 +2336,11 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 ``padding_side`` heuristic, and unlike it can express an interior gap or
                 a pad id that also occurs as a real token. Passing ``padding_side``
                 instead reads the padding off the pad token, which is enough for the
-                common single-edge case. Not supported for encoder-decoder or
-                inputs_embeds generation.
+                common single-edge case, and raises if this bridge has no tokenizer
+                or pad id to read it from. On the encoder-decoder and inputs_embeds
+                paths the mask is forwarded to the model as-is rather than grown per
+                step, which is what processors emitting one alongside
+                ``pixel_values`` expect.
 
         Returns:
             Generated sequence as string, list of strings, or tensor depending on input type and return_type.
@@ -2420,12 +2423,23 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                     "covering exactly the prompt tokens; generate() extends it itself."
                 )
             initial_attention_mask = initial_attention_mask.to(self.cfg.device)
-        elif (
-            padding_side is not None
-            and input_type == "tokens"
-            and isinstance(self.tokenizer, PreTrainedTokenizerBase)
-            and self.tokenizer.pad_token_id is not None
-        ):
+        elif padding_side is not None and input_type == "tokens":
+            # Reading the padding off the tokens needs a tokenizer with a pad id.
+            # Without one the argument would be inert, leaving exactly the bug this
+            # fixes — silently, on a bridge booted without a tokenizer. Say so
+            # rather than generate something quietly wrong.
+            if not isinstance(self.tokenizer, PreTrainedTokenizerBase):
+                raise ValueError(
+                    "generate(padding_side=...) reads the padding off the pad token, "
+                    "which needs a tokenizer; this bridge has none. Pass "
+                    "attention_mask=... to state the padding directly instead."
+                )
+            if self.tokenizer.pad_token_id is None:
+                raise ValueError(
+                    "generate(padding_side=...) reads the padding off the pad token, "
+                    "but this tokenizer has no pad_token_id. Set one, or pass "
+                    "attention_mask=... to state the padding directly instead."
+                )
             _prepend = self.cfg.default_prepend_bos if prepend_bos is None else prepend_bos
             _orig_side = self.tokenizer.padding_side
             self.tokenizer.padding_side = padding_side
