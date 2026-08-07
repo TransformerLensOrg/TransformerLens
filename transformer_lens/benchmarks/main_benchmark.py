@@ -889,7 +889,12 @@ def run_benchmark_suite(
         bridge_unprocessed.cfg, "is_audio_model", False
     )
     # Shared waveform for audio model benchmarks (consistent across HF capture and bridge forward)
-    _test_audio = torch.randn(1, 16000, device=device, dtype=dtype) if _is_audio else None
+    if _is_audio:
+        from transformer_lens.benchmarks.audio import _prepare_audio_encoder_input
+
+        _test_audio = _prepare_audio_encoder_input(bridge_unprocessed)
+    else:
+        _test_audio = None
 
     # Run Phase 1 benchmarks
     if should_run_phase(1) and bridge_unprocessed:
@@ -924,7 +929,7 @@ def run_benchmark_suite(
                 if _is_audio:
                     # Audio models: use the shared waveform for HF vs bridge comparison
                     with torch.no_grad():
-                        hf_out = hf_model(input_values=_test_audio)
+                        hf_out = hf_model(_test_audio)
                         # Audio encoders output last_hidden_state, not logits
                         if hasattr(hf_out, "logits") and hf_out.logits is not None:
                             hf_saved_logits = hf_out.logits.detach().cpu().clone()
@@ -1321,7 +1326,8 @@ def run_benchmark_suite(
         try:
             from transformer_lens.benchmarks.audio import run_audio_benchmarks
 
-            test_audio = torch.randn(1, 16000, device=device, dtype=dtype)
+            # None → run_audio_benchmarks derives feature-extractor-driven input
+            test_audio = None
             audio_results = run_audio_benchmarks(
                 bridge_unprocessed,
                 test_audio=test_audio,

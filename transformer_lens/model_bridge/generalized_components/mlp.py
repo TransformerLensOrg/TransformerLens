@@ -4,6 +4,9 @@ This module contains the bridge component for MLP layers.
 """
 from typing import Any, Dict, Optional
 
+import torch
+from transformers.pytorch_utils import Conv1D
+
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
@@ -17,14 +20,49 @@ class MLPBridge(GeneralizedComponent):
     """
 
     hook_aliases = {"hook_pre": "in.hook_out", "hook_post": "out.hook_in"}
+    # W_* are real properties below (layout-aware); only the 1-D biases are
+    # orientation-free enough for raw passthrough aliases.
     property_aliases = {
-        "W_gate": "gate.weight",
         "b_gate": "gate.bias",
-        "W_in": "in.weight",
         "b_in": "in.bias",
-        "W_out": "out.weight",
         "b_out": "out.bias",
     }
+
+    def _tl_oriented_weight(self, proj_name: str) -> Any:
+        """Wrapped projection weight in the TL orientation ([d_model, d_mlp] for
+        the input side; [d_mlp, d_model] for the output side).
+
+        nn.Linear stores [out_features, in_features] (transpose of TL); Conv1D
+        (GPT-2 style) stores [in_features, out_features] (TL as-is). Unknown
+        wrapper types pass the raw weight through unchanged.
+        """
+        proj = getattr(self, proj_name, None)
+        if proj is None:
+            raise AttributeError(f"{type(self).__name__} has no '{proj_name}' projection")
+        weight = proj.weight
+        if weight.ndim != 2:
+            return weight
+        component = getattr(proj, "original_component", None)
+        if isinstance(component, Conv1D):
+            return weight
+        if isinstance(component, torch.nn.Linear):
+            return weight.T
+        return weight
+
+    @property
+    def W_in(self) -> Any:
+        """W_in in TL orientation [d_model, d_mlp]."""
+        return self._tl_oriented_weight("in")
+
+    @property
+    def W_out(self) -> Any:
+        """W_out in TL orientation [d_mlp, d_model]."""
+        return self._tl_oriented_weight("out")
+
+    @property
+    def W_gate(self) -> Any:
+        """W_gate in TL orientation [d_model, d_mlp]."""
+        return self._tl_oriented_weight("gate")
 
     def __init__(
         self,

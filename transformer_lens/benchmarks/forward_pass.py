@@ -134,10 +134,11 @@ def benchmark_forward_pass(
         if reference_logits is not None:
             reference_output = reference_logits.to(bridge_output.device)
         elif _is_audio and isinstance(test_input, torch.Tensor):
-            # Audio HF reference model: pass waveform directly
+            # Audio HF reference model: pass the prepared audio input positionally
+            # (input_values for wav2vec2-style, input_features for AST-style)
             assert reference_model is not None
             with torch.no_grad():
-                hf_output = reference_model(input_values=test_input)
+                hf_output = reference_model(test_input)
                 if hasattr(hf_output, "logits") and hf_output.logits is not None:
                     reference_output = hf_output.logits
                 else:

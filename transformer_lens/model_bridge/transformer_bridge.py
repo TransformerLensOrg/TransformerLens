@@ -63,8 +63,8 @@ if TYPE_CHECKING:
 _BLOCK_PATTERN = re.compile("blocks\\.(\\d+)")
 
 
-def _resolve_attr_path(obj: nn.Module, attr_path: str) -> torch.Tensor:
-    """Walk a dot-separated attribute path and return the final tensor."""
+def _resolve_attr_path(obj: nn.Module, attr_path: str) -> Optional[torch.Tensor]:
+    """Walk a dot-separated attribute path and return the final tensor (None if bias-free)."""
     result = obj
     for attr in attr_path.split("."):
         result = getattr(result, attr)
@@ -415,17 +415,33 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                     return getattr(self.__dict__["original_model"], name)
             except AttributeError:
                 pass  # type: ignore[operator,assignment]
+        # A class property whose fget raised AttributeError lands here with the
+        # informative message discarded (CPython drops it before __getattr__).
+        # Re-invoke the property so its own diagnostic (e.g. "bias-free
+        # projection") surfaces instead of a generic missing-attribute error.
+        descriptor = getattr(type(self), name, None)
+        if isinstance(descriptor, property) and descriptor.fget is not None:
+            descriptor.fget(self)
         raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
     def __str__(self) -> str:
-        """Get a string representation of the bridge.
-        # type: ignore[operator]
-               Returns:
-                   A string describing the bridge's components # type: ignore[operator]
+        """One-line-per-component summary of the bridge.
+
+        Returns:
+            A string describing the bridge's components.
         """
         lines = ["TransformerBridge:"]
         mapping = self.adapter.get_component_mapping()
-        lines.extend(self._format_component_mapping(mapping, indent=1))
+
+        def _describe(component_mapping, indent):
+            pad = "  " * indent
+            for name, component in component_mapping.items():
+                lines.append(f"{pad}{name}: {type(component).__name__}")
+                submodules = getattr(component, "submodules", None)
+                if submodules:
+                    _describe(submodules, indent + 1)
+
+        _describe(mapping, 1)
         return "\n".join(lines)
 
     def enable_compatibility_mode(
@@ -477,6 +493,17 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 f"{type(self.adapter).__name__} does not support compatibility mode: "
                 "its stored-processed-weights path is known to diverge from the "
                 "reference model. Use the default bridge forward instead."
+            )
+
+        if getattr(self.cfg, "is_audio_model", False):
+            # Audio encoders have no text embed/unembed for the legacy weight
+            # processing to operate on; without this guard the processing path
+            # dies later with an opaque KeyError ('embed.weight').
+            raise NotImplementedError(
+                "enable_compatibility_mode() is not supported for audio encoder models: "
+                "the legacy weight processing (fold_ln/centering) assumes a text "
+                "embed/unembed, which audio encoders do not have. Use the bridge's "
+                "native hooks (run_with_cache / run_with_hooks) directly."
             )
 
         self.compatibility_mode = True
@@ -895,6 +922,11 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         weights: List[torch.Tensor] = []
         for idx, block in matching:
             w = _resolve_attr_path(block, attr_path)
+            if w is None:
+                raise AttributeError(
+                    f"blocks[{idx}].{attr_path} is None — this checkpoint has no such "
+                    f"parameter (bias-free projection)."
+                )
             if reshape_fn is not None:
                 w = reshape_fn(w)
             weights.append(w)
@@ -938,8 +970,17 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             )
 
         weights: List[torch.Tensor] = []
-        for _, block in matching_blocks:
+        for block_idx, block in matching_blocks:
             w = _resolve_attr_path(block, attr_path)
+            if w is None:
+                # Bias-free checkpoints (e.g. qkv_bias=False) expose None here;
+                # stacking would raise an opaque TypeError.
+                raise AttributeError(
+                    f"blocks[{block_idx}].{attr_path} is None — this checkpoint has no "
+                    f"such parameter (bias-free projection). Bias-free models expose no "
+                    f"stacked {attr_path.rsplit('.', 1)[-1]}; construct zeros explicitly "
+                    f"if your analysis needs one."
+                )
             if reshape_fn is not None:
                 w = reshape_fn(w)
             weights.append(w)
@@ -1203,8 +1244,13 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
 
         def _stack(attr_path: str, reshape_fn: Optional[Callable] = None) -> torch.Tensor:
             weights: List[torch.Tensor] = []
-            for block in blocks_list:
+            for block_idx, block in zip(indices, blocks_list):
                 w = _resolve_attr_path(block, attr_path)
+                if w is None:
+                    raise AttributeError(
+                        f"blocks[{block_idx}].{attr_path} is None — this checkpoint has "
+                        f"no such parameter (bias-free projection)."
+                    )
                 if reshape_fn is not None:
                     w = reshape_fn(w)
                 weights.append(w)

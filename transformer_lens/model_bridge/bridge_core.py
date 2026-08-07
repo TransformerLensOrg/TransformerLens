@@ -222,7 +222,11 @@ class BridgeCore:
             if hasattr(component_mapping, "hook_aliases") and component_mapping.hook_aliases:
                 for alias_name, target in component_mapping.hook_aliases.items():
                     full_alias = f"{prefix}.{alias_name}" if prefix else alias_name
-                    full_target = f"{prefix}.{target}" if prefix else target
+                    if isinstance(target, list):
+                        # Fallback chain: candidates in declared priority order.
+                        full_target: Any = tuple(f"{prefix}.{t}" if prefix else t for t in target)
+                    else:
+                        full_target = f"{prefix}.{target}" if prefix else target
                     aliases[full_alias] = full_target
             if hasattr(component_mapping, "submodules") and component_mapping.submodules:
                 for sub_name, sub_component in component_mapping.submodules.items():
@@ -234,16 +238,24 @@ class BridgeCore:
     @lru_cache(maxsize=128)
     def _compute_hook_aliases_cached(
         hook_names_tuple: Tuple[str, ...],
-        component_aliases_tuple: Tuple[Tuple[str, str], ...],
+        component_aliases_tuple: Tuple[Tuple[str, Union[str, Tuple[str, ...]]], ...],
     ) -> Tuple[Tuple[str, str], ...]:
         """Cached computation of hook aliases."""
         aliases: dict = {}
+        # For list-valued (fallback-chain) targets, remember which candidate
+        # resolved each alias so an earlier (higher-priority) candidate wins.
+        alias_priority: dict = {}
         component_aliases = dict(component_aliases_tuple)
         for hook_name in hook_names_tuple:
-            for alias_pattern, target_pattern in component_aliases.items():
-                if "blocks." in target_pattern and "blocks." in hook_name:
-                    block_match = _BLOCK_PATTERN.search(hook_name)
-                    if block_match:
+            for alias_pattern, target_patterns in component_aliases.items():
+                candidates = (
+                    target_patterns if isinstance(target_patterns, tuple) else (target_patterns,)
+                )
+                for priority, target_pattern in enumerate(candidates):
+                    if "blocks." in target_pattern and "blocks." in hook_name:
+                        block_match = _BLOCK_PATTERN.search(hook_name)
+                        if not block_match:
+                            continue
                         block_num = block_match.group(1)
                         dynamic_alias_pattern = alias_pattern.replace(
                             "blocks.", f"blocks.{block_num}."
@@ -254,11 +266,15 @@ class BridgeCore:
                         if hook_name.endswith(dynamic_target_pattern):
                             target_len = len(dynamic_target_pattern)
                             alias_name = hook_name[:-target_len] + dynamic_alias_pattern
+                            if alias_priority.get(alias_name, len(candidates)) > priority:
+                                aliases[alias_name] = hook_name
+                                alias_priority[alias_name] = priority
+                    elif hook_name.endswith(target_pattern):
+                        target_len = len(target_pattern)
+                        alias_name = hook_name[:-target_len] + alias_pattern
+                        if alias_priority.get(alias_name, len(candidates)) > priority:
                             aliases[alias_name] = hook_name
-                elif hook_name.endswith(target_pattern):
-                    target_len = len(target_pattern)
-                    alias_name = hook_name[:-target_len] + alias_pattern
-                    aliases[alias_name] = hook_name
+                            alias_priority[alias_name] = priority
         return tuple(aliases.items())
 
     def _collect_hook_aliases_from_registry(self) -> dict:

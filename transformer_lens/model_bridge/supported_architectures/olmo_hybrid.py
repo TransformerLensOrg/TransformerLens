@@ -40,6 +40,11 @@ class _OlmoHybridBlockBridge(BlockBridge):
         if self.hook_aliases is BlockBridge.hook_aliases:
             self.hook_aliases = dict(self.hook_aliases)
         self.hook_aliases.pop("hook_resid_mid", None)
+        # Full-attention (OLMo2 post-norm) layers route the MLP output through
+        # post_feedforward_layernorm, so the residual-facing MLP output is
+        # ln2_post.hook_out there; linear-attention layers have no ln2_post and
+        # fall back to the raw mlp.hook_out.
+        self.hook_aliases["hook_mlp_out"] = ["ln2_post.hook_out", "mlp.hook_out"]
 
 
 class OlmoHybridArchitectureAdapter(ArchitectureAdapter):

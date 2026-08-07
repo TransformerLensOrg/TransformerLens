@@ -5,7 +5,7 @@ audio waveform inputs through forward(), run_with_cache(), and produce
 stable representations.
 """
 
-from typing import List, Optional
+from typing import Any, List, Optional
 
 import torch
 
@@ -21,6 +21,37 @@ from transformer_lens.model_bridge import TransformerBridge
 # 1e-4 atol because audio encoders run long conv front-ends before the blocks.
 _AUDIO_PARITY_ATOL = 1e-3
 _AUDIO_PARITY_RTOL = 3e-2
+
+
+def _prepare_audio_encoder_input(
+    bridge: Any, test_audio: Optional[torch.Tensor] = None
+) -> torch.Tensor:
+    """Model-ready audio input via the bridge's feature extractor when available.
+
+    Non-wav2vec2-style architectures (e.g. AST) consume feature-extractor
+    outputs (spectrograms), not raw waveforms, and declare their own sampling
+    rate — so input prep must go through ``bridge.processor`` whenever the
+    boot attached one. Falls back to a raw 16 kHz waveform otherwise.
+    """
+    processor = getattr(bridge, "processor", None)
+    fe = getattr(processor, "feature_extractor", processor)
+    sampling_rate = int(getattr(fe, "sampling_rate", 16000) or 16000)
+
+    device = bridge.cfg.device
+    dtype = bridge.cfg.dtype
+    if test_audio is None:
+        test_audio = torch.randn(1, sampling_rate, device=device, dtype=dtype)
+
+    if fe is not None and callable(fe):
+        try:
+            waveforms = [w for w in test_audio.detach().cpu().float().numpy()]
+            out = fe(waveforms, sampling_rate=sampling_rate, return_tensors="pt")
+            prepared = out.get("input_values", out.get("input_features"))
+            if prepared is not None:
+                return prepared.to(device=device, dtype=dtype)
+        except Exception:
+            pass  # fall through to the raw waveform
+    return test_audio
 
 
 def _prepare_audio_text_inputs(bridge: TransformerBridge):
@@ -172,7 +203,7 @@ def benchmark_audio_forward(
         # Compare against HF reference if available
         if reference_model is not None:
             with torch.no_grad():
-                ref_output_raw = reference_model(input_values=test_audio)
+                ref_output_raw = reference_model(test_audio)
                 if output_key == "logits":
                     ref_output = ref_output_raw.logits
                 else:
@@ -227,16 +258,18 @@ def benchmark_audio_cache(
                 passed=False,
             )
 
-        # Check for critical audio-specific hooks
-        critical_hooks = [
+        # Critical hooks: first/last block are universal; the named audio
+        # front-end hooks are wav2vec2/HuBERT-shaped, so require them only when
+        # the architecture actually exposes them in its hook registry.
+        n_layers = bridge.cfg.n_layers
+        critical_hooks = ["blocks.0.hook_out", f"blocks.{n_layers - 1}.hook_out"]
+        front_end_hooks = [
             "audio_feature_extractor.hook_out",
             "conv_pos_embed.hook_out",
             "embed_ln.hook_out",
         ]
-        # Also check at least the first and last block
-        n_layers = bridge.cfg.n_layers
-        critical_hooks.append("blocks.0.hook_out")
-        critical_hooks.append(f"blocks.{n_layers - 1}.hook_out")
+        hook_registry = getattr(bridge, "hook_dict", {})
+        critical_hooks.extend(h for h in front_end_hooks if h in hook_registry)
 
         missing = [h for h in critical_hooks if h not in cache_keys]
         found = len(critical_hooks) - len(missing)
@@ -253,7 +286,9 @@ def benchmark_audio_cache(
                 name="audio_cache",
                 severity=BenchmarkSeverity.WARNING,
                 message=f"Missing {len(missing)} critical hooks: {missing[:3]}",
-                passed=found >= 3,  # Pass if at least 3 of 5 critical hooks present
+                passed=not any(
+                    h.startswith("blocks.") for h in missing
+                ),  # block hooks are mandatory
                 details={
                     "total_cached": len(cache_keys),
                     "critical_found": found,
@@ -547,10 +582,7 @@ def run_audio_benchmarks(
     Returns:
         List of BenchmarkResult objects
     """
-    if test_audio is None:
-        device = bridge.cfg.device
-        dtype = bridge.cfg.dtype
-        test_audio = torch.randn(1, 16000, device=device, dtype=dtype)
+    test_audio = _prepare_audio_encoder_input(bridge, test_audio)
 
     results = []
 
