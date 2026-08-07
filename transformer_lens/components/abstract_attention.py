@@ -654,6 +654,10 @@ class AbstractAttention(ABC, nn.Module):
         pos = torch.arange(n_ctx, dtype=high_precision)
         dim = torch.arange(rotary_dim // 2, dtype=high_precision)
 
+        use_yarn = self.cfg.use_yarn_rope and not (
+            self.cfg.yarn_global_attn_only and self.attn_type == "local"
+        )
+
         # Llama-3.1 uses NTK-by-Parts Rotary Embedding introduced in Section 3.2 in https://arxiv.org/pdf/2309.00071
         # Implementation copied from https://github.com/huggingface/transformers/blob/v4.46.0/src/transformers/modeling_rope_utils.py#L310
         if self.cfg.use_NTK_by_parts_rope:
@@ -679,7 +683,7 @@ class AbstractAttention(ABC, nn.Module):
             is_medium_freq = ~(wavelen < high_freq_wavelen) * ~(wavelen > low_freq_wavelen)
             inv_freq_llama = torch.where(is_medium_freq, smoothed_inv_freq, inv_freq_llama)
             freq = 1 / inv_freq_llama
-        elif self.cfg.use_yarn_rope:
+        elif use_yarn:
             # YARN (Yet Another RoPE extensioN) from https://arxiv.org/abs/2309.00071
             # Implementation follows HuggingFace: transformers/modeling_rope_utils.py
             inv_freq = 1.0 / (
@@ -729,7 +733,7 @@ class AbstractAttention(ABC, nn.Module):
         angles = pos[:, None] / freq[None, :]
         sin, cos = torch.sin(angles).to(dtype), torch.cos(angles).to(dtype)
         # YARN attention_factor scales the embeddings (default 1.0 is a no-op)
-        if self.cfg.use_yarn_rope and self.cfg.yarn_attention_factor != 1.0:
+        if use_yarn and self.cfg.yarn_attention_factor != 1.0:
             sin = sin * self.cfg.yarn_attention_factor
             cos = cos * self.cfg.yarn_attention_factor
         return sin, cos

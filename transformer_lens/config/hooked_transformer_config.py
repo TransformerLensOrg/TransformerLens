@@ -220,6 +220,9 @@ class HookedTransformerConfig(TransformerLensConfig):
         yarn_beta_slow (float): Lower rotation threshold for YARN correction range. Defaults to 1.
         yarn_truncate (bool): Whether to floor/ceil the YARN correction-range bounds
             (HF's `truncate`). GPT-OSS ships truncate=False. Defaults to True.
+        yarn_global_attn_only (bool): Whether YARN applies only to global-attention
+            layers, with sliding/local layers keeping plain rope (Olmo-3's
+            per-layer-type rope). Defaults to False.
         use_attention_sinks (bool): Whether attention carries a learned per-head sink
             logit (GPT-OSS) that joins the softmax as an extra key column and is
             dropped afterward. Defaults to False.
@@ -304,6 +307,9 @@ class HookedTransformerConfig(TransformerLensConfig):
     # HF yarn's `truncate` option: floor/ceil the correction range bounds.
     # GPT-OSS ships truncate=False, keeping the bounds fractional.
     yarn_truncate: bool = True
+    # Per-layer-type rope (Olmo-3): YARN applies only on global-attention
+    # layers; sliding/local layers keep plain rope.
+    yarn_global_attn_only: bool = False
     # GPT-OSS: learned per-head sink logit that joins the attention softmax as
     # an extra key column and is dropped afterward, so real positions share
     # probability mass with the sink.

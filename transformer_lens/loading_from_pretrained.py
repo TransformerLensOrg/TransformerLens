@@ -692,10 +692,10 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             cfg_dict.update(
                 {
                     "use_yarn_rope": True,
-                    "yarn_factor": yarn_factor,
-                    "yarn_attention_factor": attention_factor,
-                    "yarn_beta_fast": rope_params.get("beta_fast") or 32.0,
-                    "yarn_beta_slow": rope_params.get("beta_slow") or 1.0,
+                    "yarn_factor": float(yarn_factor),
+                    "yarn_attention_factor": float(attention_factor),
+                    "yarn_beta_fast": float(rope_params.get("beta_fast") or 32.0),
+                    "yarn_beta_slow": float(rope_params.get("beta_slow") or 1.0),
                     "yarn_original_max_position_embeddings": rope_params[
                         "original_max_position_embeddings"
                     ],
@@ -1491,9 +1491,30 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "gated_mlp": True,
             "tie_word_embeddings": hf_config.tie_word_embeddings,
         }
-        # OLMo 3 uses YARN RoPE scaling
+        # OLMo 3 uses per-layer-type rope (transformers 5.x): plain rope on
+        # sliding_attention layers, YARN on full_attention layers.
+        rope_params = getattr(hf_config, "rope_parameters", None)
         rope_scaling = getattr(hf_config, "rope_scaling", None)
-        if rope_scaling and rope_scaling.get("rope_type") == "yarn":
+        if isinstance(rope_params, dict) and "full_attention" in rope_params:
+            full_rope = rope_params["full_attention"] or {}
+            sliding_rope = rope_params.get("sliding_attention") or {}
+            cfg_dict["rotary_base"] = full_rope.get("rope_theta", 500000.0)
+            sliding_theta = sliding_rope.get("rope_theta")
+            if sliding_theta is not None and sliding_theta != cfg_dict["rotary_base"]:
+                cfg_dict["rotary_base_local"] = sliding_theta
+            if full_rope.get("rope_type") == "yarn":
+                cfg_dict["use_yarn_rope"] = True
+                cfg_dict["yarn_global_attn_only"] = True
+                cfg_dict["yarn_factor"] = float(full_rope.get("factor", 8.0))
+                cfg_dict["yarn_attention_factor"] = float(full_rope.get("attention_factor", 1.0))
+                cfg_dict["yarn_beta_fast"] = float(full_rope.get("beta_fast") or 32.0)
+                cfg_dict["yarn_beta_slow"] = float(full_rope.get("beta_slow") or 1.0)
+                cfg_dict["yarn_original_max_position_embeddings"] = full_rope.get(
+                    "original_max_position_embeddings", 4096
+                )
+                cfg_dict["yarn_truncate"] = full_rope.get("truncate", True)
+        elif rope_scaling and rope_scaling.get("rope_type") == "yarn":
+            # transformers < 5.0 flat rope_scaling dict
             cfg_dict["use_yarn_rope"] = True
             cfg_dict["yarn_factor"] = rope_scaling.get("factor", 8.0)
             cfg_dict["yarn_attention_factor"] = rope_scaling.get("attention_factor", 1.0)
@@ -1507,6 +1528,11 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             cfg_dict["attn_types"] = [
                 "local" if t == "sliding_attention" else "global" for t in layer_types
             ]
+            # Without use_local_attn, attn_types is inert and every layer runs
+            # global attention with no sliding mask.
+            if "sliding_attention" in layer_types and hf_config.sliding_window:
+                cfg_dict["use_local_attn"] = True
+                cfg_dict["window_size"] = hf_config.sliding_window
         else:
             cfg_dict["attn_types"] = ["global"] * hf_config.num_hidden_layers
     elif architecture == "OlmoeForCausalLM":

@@ -320,3 +320,81 @@ class TestOlmo3StateDictLoads:
         for block in model.blocks:
             assert block.attn.W_K.abs().max() > 0, "K weights were zero-filled (#1620)"
             assert block.attn.W_V.abs().max() > 0, "V weights were zero-filled (#1620)"
+
+
+class TestOlmo3HookedTransformerParity:
+    """End-to-end HT-vs-HF logit parity on a tiny random Olmo-3.
+
+    Olmo-3 declares per-layer-type rope in transformers 5.x — plain rope on
+    sliding_attention layers, YARN on full_attention layers — and the old
+    mapping read the defunct `rope_scaling` attribute, silently applying plain
+    rope everywhere and never wiring the sliding-window mask. This locks in
+    the per-type mapping via the production config path.
+    """
+
+    def test_tiny_model_logit_parity(self, tmp_path):
+        from transformers import AutoModelForCausalLM, Olmo3Config, Olmo3ForCausalLM
+
+        from transformer_lens.loading_from_pretrained import convert_hf_model_config
+
+        hf_config = Olmo3Config(
+            hidden_size=64,
+            num_hidden_layers=4,
+            num_attention_heads=4,
+            num_key_value_heads=4,  # kv == heads, the #1620 trigger
+            intermediate_size=32,
+            vocab_size=256,
+            max_position_embeddings=256,
+            sliding_window=4,  # < seq len so the sliding-window mask actually bites
+            layer_types=[
+                "sliding_attention",
+                "sliding_attention",
+                "full_attention",
+                "sliding_attention",
+            ],
+            rope_parameters={
+                "sliding_attention": {"rope_type": "default", "rope_theta": 500000.0},
+                "full_attention": {
+                    "rope_type": "yarn",
+                    "rope_theta": 500000.0,
+                    "factor": 8.0,
+                    "attention_factor": 1.2079441541679836,
+                    "beta_fast": 32,
+                    "beta_slow": 1,
+                    "original_max_position_embeddings": 32,
+                },
+            },
+        )
+        torch.manual_seed(0)
+        hf_model = Olmo3ForCausalLM(hf_config).eval().float()
+        hf_model.save_pretrained(tmp_path)
+
+        ids = torch.tensor([[5, 17, 29, 3, 11, 42, 7, 23]])
+        reference = AutoModelForCausalLM.from_pretrained(
+            str(tmp_path), dtype=torch.float32, attn_implementation="eager"
+        ).eval()
+        with torch.inference_mode():
+            ref_logits = reference(ids).logits
+
+        cfg_dict = convert_hf_model_config(str(tmp_path))
+        assert cfg_dict["use_yarn_rope"] is True
+        assert cfg_dict["yarn_global_attn_only"] is True
+        assert cfg_dict["use_local_attn"] is True
+        assert cfg_dict["window_size"] == 4
+        cfg_dict["dtype"] = torch.float32
+        cfg_dict["tokenizer_name"] = None  # keep the test download-free
+
+        cfg = HookedTransformerConfig.from_dict(cfg_dict)
+        model = HookedTransformer(cfg)
+        model.load_and_process_state_dict(
+            convert_olmo3_weights(hf_model, cfg),
+            fold_ln=False,
+            center_writing_weights=False,
+            center_unembed=False,
+            fold_value_biases=False,
+        )
+        with torch.inference_mode():
+            ht_logits = model(ids, return_type="logits")
+
+        max_diff = (ref_logits - ht_logits).abs().max().item()
+        assert max_diff < 1e-4, f"HT vs HF logit drift {max_diff:.2e}"
