@@ -86,6 +86,19 @@ def convert_gpt_oss_weights(gpt_oss, cfg: HookedTransformerConfig):
         down_proj = experts.down_proj  # (num_experts, expert_dim, hidden_size)
         down_bias = experts.down_proj_bias  # (num_experts, hidden_size)
 
+        if not isinstance(gate_up_proj, torch.Tensor):
+            # Packed MXFP4 checkpoints wrap expert weights in a triton-kernels
+            # object (confusingly also named "Tensor") that cannot be sliced.
+            raise NotImplementedError(
+                f"blocks.{l}.mlp.experts.gate_up_proj is a "
+                f"{type(gate_up_proj).__module__}.{type(gate_up_proj).__name__}, not a "
+                "torch.Tensor — this gpt-oss checkpoint has packed MXFP4 expert weights. "
+                "Load it dequantized so the converter sees plain tensors: pass "
+                "hf_model=AutoModelForCausalLM.from_pretrained(name, "
+                "quantization_config=Mxfp4Config(dequantize=True)), or load by model "
+                "name and TransformerLens dequantizes automatically."
+            )
+
         for e in range(cfg.num_experts):
             # Split interleaved gate_up_proj into separate gate and up (in) projections
             # Even columns → gate path, Odd columns → up/in path

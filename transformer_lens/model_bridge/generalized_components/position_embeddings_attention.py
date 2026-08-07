@@ -22,6 +22,7 @@ from transformer_lens.model_bridge.generalized_components.attention import (
 from transformer_lens.model_bridge.generalized_components.position_embedding_hooks_mixin import (
     PositionEmbeddingHooksMixin,
 )
+from transformer_lens.utilities.hf_utils import get_rotary_pct_from_config
 
 # Global registry mapping HF attention modules to their bridge instances
 # Uses WeakValueDictionary to avoid preventing garbage collection of bridges
@@ -459,10 +460,17 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
                     apply_rotary_pos_emb,
                 )
 
-            # Some models use partial rotary (e.g., GPT-OSS) where cos/sin cover only
-            # a portion of head_dim. Split Q/K, rotate the partial dims, recombine.
             rotary_dim = cos.shape[-1]
-            if rotary_dim < head_dim:
+            if rotary_dim * 2 == head_dim and get_rotary_pct_from_config(self.config) == 1.0:
+                # GPT-OSS convention: full rotation with un-duplicated half-width
+                # cos/sin. Duplicating the halves reduces it to llama's
+                # rotate-half formula over the full head_dim.
+                cos = torch.cat([cos, cos], dim=-1)
+                sin = torch.cat([sin, sin], dim=-1)
+                query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
+            elif rotary_dim < head_dim:
+                # Partial rotary (e.g., GPT-NeoX/Phi) where cos/sin cover only a
+                # portion of head_dim. Split Q/K, rotate the partial dims, recombine.
                 q_rot, q_pass = query_states[..., :rotary_dim], query_states[..., rotary_dim:]
                 k_rot, k_pass = key_states[..., :rotary_dim], key_states[..., rotary_dim:]
                 q_rot, k_rot = apply_rotary_pos_emb(q_rot, k_rot, cos, sin)
@@ -535,9 +543,27 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
         attn_scores = self.hook_attn_scores(attn_scores)
 
         # --- Softmax (in float32 for numerical stability) ---
-        attn_weights = torch.nn.functional.softmax(attn_scores, dim=-1, dtype=torch.float32).to(
-            query_states.dtype
-        )
+        # GPT-OSS attention sinks: a learned per-head logit joins the softmax as
+        # an extra key column and is dropped afterward, so every real position's
+        # weight is scaled down by the sink's share. Appended after
+        # hook_attn_scores so hooks keep the [batch, head, q_pos, kv_pos] shape
+        # and score patches still flow into the softmax.
+        sinks = getattr(hf_attn, "sinks", None)
+        if sinks is not None:
+            sink_col = (
+                sinks.reshape(1, -1, 1, 1)
+                .expand(attn_scores.shape[0], -1, attn_scores.shape[-2], -1)
+                .to(attn_scores.dtype)
+            )
+            combined = torch.cat([attn_scores, sink_col], dim=-1)
+            combined = combined - combined.max(dim=-1, keepdim=True).values
+            attn_weights = torch.nn.functional.softmax(combined, dim=-1, dtype=torch.float32).to(
+                query_states.dtype
+            )[..., :-1]
+        else:
+            attn_weights = torch.nn.functional.softmax(attn_scores, dim=-1, dtype=torch.float32).to(
+                query_states.dtype
+            )
 
         # --- Dropout ---
         dropout_rate = getattr(hf_attn, "attention_dropout", 0.0)

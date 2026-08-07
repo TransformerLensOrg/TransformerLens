@@ -1,3 +1,4 @@
+import pytest
 import torch
 
 from transformer_lens.config.hooked_transformer_config import HookedTransformerConfig
@@ -193,3 +194,26 @@ def test_state_dict_completeness():
             "W_out.bias",
         ]:
             assert f"blocks.0.mlp.experts.{e}.{name}" in state_dict
+
+
+class Tensor:
+    """Mimics triton_kernels.tensor.Tensor: named "Tensor", not a torch.Tensor,
+    not subscriptable — what packed-MXFP4 gpt-oss checkpoints expose (#1619)."""
+
+    def __init__(self, shape):
+        self.shape = shape
+        self.dtype = "mxfp4"
+        self.data = object()
+        self.storage = object()
+
+
+def test_packed_mxfp4_experts_raise_legible_error():
+    """Packed MXFP4 expert weights must raise naming MXFP4, not a bare TypeError."""
+    cfg = make_cfg()
+    model = make_mock_model(cfg)
+    model.model.layers[0].mlp.experts.gate_up_proj = Tensor(
+        (cfg.num_experts, cfg.d_model, 2 * cfg.d_mlp)
+    )
+
+    with pytest.raises(NotImplementedError, match="MXFP4"):
+        convert_gpt_oss_weights(model, cfg)

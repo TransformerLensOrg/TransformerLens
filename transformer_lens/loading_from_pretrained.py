@@ -23,6 +23,7 @@ from transformers import (
     T5ForConditionalGeneration,
     Wav2Vec2Model,
 )
+from transformers.utils.quantization_config import Mxfp4Config
 
 import transformer_lens.utilities as utils
 from transformer_lens.config.hooked_transformer_config import HookedTransformerConfig
@@ -1808,6 +1809,31 @@ def get_checkpoint_labels(model_name: str, **kwargs: Any) -> tuple[list[int], st
 
 
 # %% Loading state dicts
+def _mxfp4_dequantize_config(
+    official_model_name: str,
+    cfg: HookedTransformerConfig,
+    token: str | None,
+) -> Any | None:
+    """Return ``Mxfp4Config(dequantize=True)`` for packed-MXFP4 gpt-oss checkpoints.
+
+    The gpt-oss weight converter slices expert tensors, which only works on
+    materialized torch.Tensors — packed MXFP4 weights stay wrapped in
+    triton-kernels objects. Returns None for anything else, including
+    already-dequantized gpt-oss finetunes.
+    """
+    if cfg.original_architecture != "GptOssForCausalLM":
+        return None
+    hf_cfg = AutoConfig.from_pretrained(official_model_name, token=token)
+    quant_cfg = getattr(hf_cfg, "quantization_config", None)
+    if isinstance(quant_cfg, dict):
+        quant_method = quant_cfg.get("quant_method")
+    else:
+        quant_method = getattr(quant_cfg, "quant_method", None)
+    if quant_method != "mxfp4":
+        return None
+    return Mxfp4Config(dequantize=True)
+
+
 def get_pretrained_state_dict(
     official_model_name: str,
     cfg: HookedTransformerConfig,
@@ -1928,6 +1954,14 @@ def get_pretrained_state_dict(
                     **kwargs,
                 )
             else:
+                if "quantization_config" not in kwargs:
+                    mxfp4_dequantize = _mxfp4_dequantize_config(
+                        official_model_name,
+                        cfg,
+                        huggingface_token if len(huggingface_token) > 0 else None,
+                    )
+                    if mxfp4_dequantize is not None:
+                        kwargs = {**kwargs, "quantization_config": mxfp4_dequantize}
                 # Older models may lack pad_token_id (required in newer transformers)
                 try:
                     hf_model = AutoModelForCausalLM.from_pretrained(
