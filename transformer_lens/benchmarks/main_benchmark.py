@@ -35,6 +35,7 @@ from transformer_lens.benchmarks.backward_gradients import (
 )
 from transformer_lens.benchmarks.component_benchmark import benchmark_all_components
 from transformer_lens.benchmarks.forward_pass import (
+    _compute_self_target_loss,
     benchmark_forward_pass,
     benchmark_loss_equivalence,
 )
@@ -1038,7 +1039,7 @@ def run_benchmark_suite(
                 with torch.no_grad():
                     bridge_logits = bridge_unprocessed(test_text, return_type="logits")
                     phase1_reference.hf_logits = bridge_logits.detach().cpu().clone()
-                    bridge_loss = bridge_unprocessed(test_text, return_type="loss")
+                    bridge_loss = _compute_self_target_loss(bridge_unprocessed, test_text)
                     phase1_reference.hf_loss = bridge_loss.item()
                     phase1_reference.test_text = test_text
                 if needs_upcast:

@@ -28,6 +28,7 @@ import numpy as np
 import torch
 import tqdm
 from torch import nn
+from torch.nn import functional as F
 
 from transformer_lens import utilities as utils
 from transformer_lens.ActivationCache import ActivationCache
@@ -1459,6 +1460,51 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         self.__dict__["_derived_position_ids_ok"] = (underlying, accepts)
         return accepts
 
+    @staticmethod
+    def _seq2seq_loss(
+        logits: torch.Tensor,
+        labels: torch.Tensor,
+        native_loss: Any,
+        *,
+        per_token: bool,
+    ) -> torch.Tensor:
+        """Return encoder-decoder loss without the causal LM token shift."""
+        if labels.device != logits.device:
+            labels = labels.to(logits.device)
+        if labels.shape != logits.shape[:-1]:
+            raise ValueError(
+                "seq2seq labels must match the decoder logits batch and position "
+                f"dimensions, got labels {tuple(labels.shape)} and logits "
+                f"{tuple(logits.shape)}"
+            )
+        if not per_token and isinstance(native_loss, torch.Tensor):
+            return native_loss
+
+        losses = F.cross_entropy(
+            logits.flatten(0, 1),
+            labels.flatten(),
+            reduction="none" if per_token else "mean",
+            ignore_index=-100,
+        )
+        return losses.view_as(labels) if per_token else losses
+
+    def _finalize_seq2seq_return(
+        self,
+        return_type: str,
+        logits: torch.Tensor,
+        labels: torch.Tensor,
+        native_output: Any,
+        *,
+        loss_per_token: bool,
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
+        loss = self._seq2seq_loss(
+            logits,
+            labels,
+            getattr(native_output, "loss", None),
+            per_token=loss_per_token,
+        )
+        return (logits, loss) if return_type == "both" else loss
+
     def forward(
         self,
         input: Union[str, List[str], torch.Tensor],
@@ -1467,6 +1513,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         prepend_bos: Optional[bool] = None,
         padding_side: Optional[str] = None,
         attention_mask: Optional[torch.Tensor] = None,
+        labels: Optional[torch.Tensor] = None,
         start_at_layer: Optional[int] = None,
         stop_at_layer: Optional[int] = None,
         pixel_values: Optional[torch.Tensor] = None,
@@ -1485,6 +1532,8 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             loss_per_token: Whether to return loss per token
             prepend_bos: Whether to prepend BOS token
             padding_side: Which side to pad on
+            labels: Explicit language-model targets. Encoder-decoder models require
+                labels for loss; decoder-only models fall back to input IDs when omitted.
             past_key_values: HuggingFace KV cache from a prior ``use_cache=True`` step
                 (e.g. the second element of a ``return_type='logits_and_cache'`` return).
                 When provided, KV caching is enabled automatically and only the new
@@ -1511,13 +1560,29 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             Model output based on return_type
         """
 
-        if return_type in ("loss", "both") and not self.adapter.supports_causal_loss:
+        underlying_model = getattr(getattr(self, "_driver", None), "underlying_model", None)
+        model_config = getattr(underlying_model, "config", None)
+        is_encoder_decoder = bool(getattr(model_config, "is_encoder_decoder", False))
+        if return_type in ("loss", "both"):
+            if is_encoder_decoder and labels is None:
+                raise ValueError(
+                    "labels are required for seq2seq return_type='loss' or 'both'; "
+                    "encoder input_ids are not decoder targets"
+                )
+        if (
+            return_type in ("loss", "both")
+            and not is_encoder_decoder
+            and not self.adapter.supports_causal_loss
+        ):
             architecture = self.cfg.architecture or type(self.adapter).__name__
             raise NotImplementedError(
                 f"{architecture} does not support TransformerBridge's shifted causal "
                 "loss. Request return_type='logits' and compute the architecture-specific "
                 "masked-token objective explicitly."
             )
+
+        if labels is not None:
+            kwargs["labels"] = labels
 
         if start_at_layer is not None:
             input = self._setup_start_at_layer(input, start_at_layer)
@@ -1673,11 +1738,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             if kwargs.pop("use_past_kv_cache", False) or kwargs.get("use_cache", False):
                 kwargs["use_cache"] = True
             # Auto-generate decoder_input_ids for encoder-decoder models
-            if (
-                "decoder_input_ids" not in kwargs
-                and hasattr(self.original_model, "config")
-                and getattr(self.original_model.config, "is_encoder_decoder", False)
-            ):
+            if "decoder_input_ids" not in kwargs and labels is None and is_encoder_decoder:
                 decoder_start_token_id = getattr(
                     self.original_model.config, "decoder_start_token_id", None
                 )
@@ -1766,11 +1827,24 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             if return_type == "logits_and_cache":
                 past_key_values = getattr(output, "past_key_values", None)
                 return (logits, past_key_values)
+            if is_encoder_decoder and return_type in ("loss", "both"):
+                assert isinstance(
+                    logits, torch.Tensor
+                ), f"Expected seq2seq logits tensor, got {type(logits)}"
+                assert isinstance(labels, torch.Tensor)
+                return self._finalize_seq2seq_return(
+                    return_type,
+                    logits,
+                    labels,
+                    output,
+                    loss_per_token=loss_per_token,
+                )
             return self._finalize_return(
                 return_type,
                 logits,
                 input_ids,
                 attention_mask=attention_mask,
+                labels=labels,
                 is_audio_model=getattr(self.cfg, "is_audio_model", False),
                 is_visual_model=getattr(self.cfg, "is_visual_model", False),
                 inputs_embeds_was_used=_is_inputs_embeds,
