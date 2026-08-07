@@ -59,6 +59,7 @@ Big-model adapter tests use `@pytest.mark.slow`, CI tier filters `-m "not slow"`
 | [`integration/model_bridge/test_pegasus_adapter.py`:16](integration/model_bridge/test_pegasus_adapter.py) | Pegasus-XSum 568M; distilled variants are asymmetric |
 | [`integration/model_bridge/test_exaone_adapter.py`:18](integration/model_bridge/test_exaone_adapter.py) | EXAONE 2.4B; no working tiny mirror (hyper-accel/tiny-random-exaone ships stale remote code) |
 | [`integration/model_bridge/test_ouro_adapter.py`:35](integration/model_bridge/test_ouro_adapter.py) (skipif + `slow`) | ByteDance/Ouro-1.4B: 2.8GB download + ~11GB RAM |
+| [`integration/test_jacobian_lens_kurtosis.py`](integration/test_jacobian_lens_kurtosis.py) | Qwen3.5-0.8B (~1.6GB) + lens artifacts + wikitext validation split; CPU-feasible (#1539 Tier-1) |
 
 **Un-skip:** locally with `HF_TOKEN` sourced (slow-marked files: run the file directly or `-m slow`).
 
