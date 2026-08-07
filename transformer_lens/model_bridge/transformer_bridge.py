@@ -29,6 +29,7 @@ import torch
 import tqdm
 from torch import nn
 from torch.nn import functional as F
+from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 
 from transformer_lens import utilities as utils
 from transformer_lens.ActivationCache import ActivationCache
