@@ -79,22 +79,40 @@ class TestMxfp4DequantizeConfig:
 
 @mock.patch("logging.warning")
 def test_fill_missing_keys(mock_warning: mock.MagicMock):
+    """Non-attention weight matrices still warn-and-fill (attention ones raise instead)."""
     cfg = get_default_config()
     model = HookedTransformer(cfg)
     default_state_dict = model.state_dict()
 
-    incomplete_state_dict = {k: v for k, v in default_state_dict.items() if "W_" not in k}
+    non_attention_weights = {"embed.W_E", "pos_embed.W_pos", "unembed.W_U"}
+    assert non_attention_weights <= set(default_state_dict.keys())
+    incomplete_state_dict = {
+        k: v for k, v in default_state_dict.items() if k not in non_attention_weights
+    }
 
     filled_state_dict = fill_missing_keys(model, incomplete_state_dict)
 
     assert set(filled_state_dict.keys()) == set(default_state_dict.keys())
 
-    # Check that warnings were issued for missing weight matrices
-    for key in default_state_dict:
-        if "W_" in key and key not in incomplete_state_dict:
-            mock_warning.assert_any_call(
-                f"Missing key for a weight matrix in pretrained, filled in with an empty tensor: {key}"
-            )
+    for key in non_attention_weights:
+        mock_warning.assert_any_call(
+            f"Missing key for a weight matrix in pretrained, filled in with an empty tensor: {key}"
+        )
+
+
+def test_fill_missing_keys_raises_on_missing_attention_weights():
+    """A missing attention W means converter/component naming mismatch (#1620) —
+    zero-filling it silently breaks the model, so it must raise instead."""
+    cfg = get_default_config()
+    model = HookedTransformer(cfg)
+    default_state_dict = model.state_dict()
+
+    incomplete_state_dict = {
+        k: v for k, v in default_state_dict.items() if not k.endswith("attn.W_K")
+    }
+
+    with pytest.raises(ValueError, match="attention weight matrices"):
+        fill_missing_keys(model, incomplete_state_dict)
 
 
 def test_fill_missing_keys_with_hf_model_keys():

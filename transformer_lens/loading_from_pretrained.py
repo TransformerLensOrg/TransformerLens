@@ -2079,6 +2079,24 @@ def fill_missing_keys(
     """
     default_state_dict = model.state_dict()
     missing_keys = set(default_state_dict.keys()) - set(state_dict.keys())
+    # A missing attention weight matrix means a converter/component naming
+    # mismatch (e.g. W_K written where GroupedQueryAttention expects _W_K).
+    # Filling it with an empty tensor silently zeroes the sublayer while every
+    # downstream number still looks plausible — fail loudly instead.
+    attention_weight_names = {"W_Q", "W_K", "W_V", "W_O", "_W_K", "_W_V"}
+    missing_attention_weights = sorted(
+        key
+        for key in missing_keys
+        if "hf_model" not in key and key.rsplit(".", 1)[-1] in attention_weight_names
+    )
+    if missing_attention_weights:
+        raise ValueError(
+            f"Pretrained state dict is missing attention weight matrices the model "
+            f"expects: {missing_attention_weights}. This usually means the weight "
+            f"converter and the instantiated attention module disagree on parameter "
+            f"naming (e.g. GQA's underscore-prefixed _W_K/_W_V vs W_K/W_V). Refusing "
+            f"to zero-fill them, which would silently produce wrong outputs."
+        )
     for key in missing_keys:
         if "hf_model" in key:
             # Skip keys that are from the HuggingFace model, if loading from HF.

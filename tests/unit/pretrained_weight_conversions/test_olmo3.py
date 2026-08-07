@@ -12,6 +12,7 @@ Tests cover:
 import torch
 import torch.nn as nn
 
+from transformer_lens import HookedTransformer
 from transformer_lens.config.hooked_transformer_config import HookedTransformerConfig
 from transformer_lens.pretrained.weight_conversions.olmo3 import convert_olmo3_weights
 
@@ -19,7 +20,7 @@ from transformer_lens.pretrained.weight_conversions.olmo3 import convert_olmo3_w
 def get_olmo3_config(
     n_layers: int = 2,
     use_qk_norm: bool = True,
-    n_key_value_heads: int = 1,
+    n_key_value_heads: int | None = 1,
 ):
     """Create an OLMo 3 style config for testing."""
     return HookedTransformerConfig(
@@ -177,21 +178,40 @@ class TestOlmo3QKNorm:
 
 
 class TestOlmo3GQA:
-    """Test Grouped Query Attention (GQA) handling."""
+    """Test Grouped Query Attention (GQA) handling.
 
-    def test_no_gqa_no_underscore_prefix(self):
-        """Test that non-GQA models don't have underscore prefix."""
-        # Note: OLMo 3 always uses GQA (n_key_value_heads < n_heads)
-        # This test documents the expected behavior for MHA models
-        cfg = get_olmo3_config(n_key_value_heads=2)  # MHA (n_kv_heads == n_heads)
+    The prefix must match TransformerBlock's attention choice: it builds
+    GroupedQueryAttention (underscore-prefixed _W_K/_W_V) whenever
+    n_key_value_heads is set — even when it equals n_heads (#1620). The
+    previous expectation of un-prefixed keys for that case zero-filled K/V
+    on checkpoints like allenai/Olmo-3-1025-7B (32 kv heads == 32 heads).
+    """
+
+    def test_kv_heads_equal_to_n_heads_keeps_underscore_prefix(self):
+        """n_key_value_heads == n_heads still instantiates GQA, so keys need the prefix."""
+        cfg = get_olmo3_config(n_key_value_heads=2)  # equals n_heads
         model = MockOlmo3Model(cfg)
 
         state_dict = convert_olmo3_weights(model, cfg)
 
         for layer in range(cfg.n_layers):
-            # MHA should not have underscore prefix
+            assert f"blocks.{layer}.attn._W_K" in state_dict
+            assert f"blocks.{layer}.attn._W_V" in state_dict
+            assert f"blocks.{layer}.attn.W_K" not in state_dict
+            assert f"blocks.{layer}.attn.W_V" not in state_dict
+
+    def test_no_kv_heads_means_plain_mha_keys(self):
+        """Without n_key_value_heads the block builds plain Attention — no prefix."""
+        cfg = get_olmo3_config(n_key_value_heads=None)
+        model = MockOlmo3Model(cfg)
+
+        state_dict = convert_olmo3_weights(model, cfg)
+
+        for layer in range(cfg.n_layers):
             assert f"blocks.{layer}.attn.W_K" in state_dict
             assert f"blocks.{layer}.attn.W_V" in state_dict
+            assert f"blocks.{layer}.attn._W_K" not in state_dict
+            assert f"blocks.{layer}.attn._W_V" not in state_dict
 
 
 # ============================================================================
@@ -272,3 +292,31 @@ class TestOlmo3WeightShapes:
 
         assert state_dict["embed.W_E"].shape == (cfg.d_vocab, cfg.d_model)
         assert state_dict["unembed.W_U"].shape == (cfg.d_model, cfg.d_vocab)
+
+
+# ============================================================================
+# Test: Converted dict loads into HookedTransformer (#1620 regression)
+# ============================================================================
+
+
+class TestOlmo3StateDictLoads:
+    """The converted dict must feed the instantiated attention without
+    zero-filling K/V — the #1620 failure mode on kv_heads == n_heads."""
+
+    def test_converted_dict_loads_with_nonzero_kv(self):
+        cfg = get_olmo3_config(n_layers=1, n_key_value_heads=2)  # equals n_heads
+        source_model = MockOlmo3Model(cfg)
+        state_dict = convert_olmo3_weights(source_model, cfg)
+
+        model = HookedTransformer(cfg)
+        model.load_and_process_state_dict(
+            state_dict,
+            fold_ln=False,
+            center_writing_weights=False,
+            center_unembed=False,
+            fold_value_biases=False,
+        )
+
+        for block in model.blocks:
+            assert block.attn.W_K.abs().max() > 0, "K weights were zero-filled (#1620)"
+            assert block.attn.W_V.abs().max() > 0, "V weights were zero-filled (#1620)"
