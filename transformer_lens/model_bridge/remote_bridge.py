@@ -75,9 +75,14 @@ class RemoteBridge(BridgeCore, HookIntrospectionMixin):
         *,
         return_type: str | None = "logits",
         loss_per_token: bool = False,
+        labels: Any = None,
         **kwargs: Any,
     ) -> Any:
-        """Tokenize → driver.forward → replay captures → finalize per return_type."""
+        """Tokenize → driver.forward → replay captures → finalize per return_type.
+
+        Explicit ``labels`` use shifted causal loss; remote encoder-decoder loss
+        is unsupported.
+        """
         # Early copy of _finalize_return's gate — fail before the wasted remote forward.
         self._check_loss_supported(return_type)
         self._reject_stop_at_layer(kwargs.pop("stop_at_layer", None))
@@ -109,12 +114,17 @@ class RemoteBridge(BridgeCore, HookIntrospectionMixin):
             return logits  # weird shape — let caller handle
         if logits is not None:
             logits = to_torch(logits)
+        if labels is not None:
+            if not isinstance(labels, TensorLike):
+                raise TypeError(f"labels must be tensor-like, got {type(labels).__name__}")
+            labels = to_torch(labels)
 
         return self._finalize_return(
             return_type,
             logits,
             kwargs.get("input_ids"),
             attention_mask=kwargs.get("attention_mask"),
+            labels=labels,
             is_audio_model=getattr(self.cfg, "is_audio_model", False),
             is_visual_model=getattr(self.cfg, "is_visual_model", False),
             loss_per_token=loss_per_token,

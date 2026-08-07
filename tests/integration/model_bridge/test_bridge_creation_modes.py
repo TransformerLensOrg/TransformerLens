@@ -59,6 +59,17 @@ class TestBridgeCreationModes:
         assert hasattr(bridge, "cfg"), "Configuration should persist after compatibility mode"
         assert bridge.cfg is not None, "Configuration should not be None"
 
+    def test_audio_model_compat_mode_rejected(self):
+        """Audio encoders must get a clean NotImplementedError from compat mode.
+
+        The legacy weight processing assumes a text embed/unembed; without the
+        guard it dies later with an opaque KeyError ('embed.weight').
+        """
+        bridge = TransformerBridge.boot_transformers("distilgpt2", device="cpu")
+        bridge.cfg.is_audio_model = True
+        with pytest.raises(NotImplementedError, match="audio encoder"):
+            bridge.enable_compatibility_mode()
+
     def test_bridge_device_handling(self, gpt2_bridge):
         """Test that bridge handles device specification correctly."""
         assert (

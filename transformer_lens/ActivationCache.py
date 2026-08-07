@@ -445,10 +445,11 @@ class ActivationCache:
         >>> print(layers_logits.shape)
         torch.Size([9, 50257])
 
-        >>> # If you want to apply the unembedding bias, add b_U when present:
-        >>> # b_U = getattr(model, "b_U", None)
-        >>> # layers_logits = layers_logits + b_U if b_U is not None else layers_logits
-        >>> # print(layers_logits.shape)
+        >>> # The unembedding bias can be added on top when the model carries one
+        >>> # (the rank table below stays on the bias-free logits):
+        >>> b_U = getattr(model, "b_U", None)
+        >>> with_bias = layers_logits + b_U if b_U is not None else layers_logits
+        >>> print(with_bias.shape)
         torch.Size([9, 50257])
 
         >>> # Get the rank of the correct answer by layer

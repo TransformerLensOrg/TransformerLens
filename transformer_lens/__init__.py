@@ -33,6 +33,21 @@ except ImportError:
 
 from .SVDInterpreter import SVDInterpreter
 
+
+def __getattr__(name: str):
+    # Lazy: model_bridge is import-heavy and importing it eagerly here would
+    # risk cycles with modules the bridge itself imports.
+    if name == "TransformerBridge":
+        from .model_bridge import TransformerBridge
+
+        return TransformerBridge
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def __dir__():
+    return sorted(set(globals()) | {"TransformerBridge"})
+
+
 import os as _os  # noqa: E402
 
 if _os.environ.get("TRANSFORMERLENS_HF_RETRY") == "1":
@@ -42,6 +57,7 @@ if _os.environ.get("TRANSFORMERLENS_HF_RETRY") == "1":
 
 __all__ = [
     "HookedTransformerConfig",
+    "TransformerBridge",
     "TransformerBridgeConfig",
     "FactoredMatrix",
     "ActivationCache",

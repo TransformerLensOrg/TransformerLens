@@ -220,6 +220,44 @@ class TestRemoteBridgeForward:
         loss = bridge.forward(torch.tensor([[1, 2, 3]]), return_type="loss")
         assert isinstance(loss, torch.Tensor) and loss.dim() == 0
 
+    def test_forward_loss_uses_explicit_labels(self):
+        import torch
+        import torch.nn.functional as F
+
+        logits = torch.zeros(1, 3, 16)
+        logits[0, 0, 9] = 2.0
+        logits[0, 1, 8] = 2.0
+
+        class LogitsDriver(DriverBase):
+            supported_hook_points = frozenset({"x"})
+            _supported_features = frozenset()
+
+            def __init__(self):
+                super().__init__(_cfg(), tokenizer=None)
+
+            def forward(
+                self,
+                input_ids=None,
+                *,
+                capture=(),
+                intervene=None,
+                max_new_tokens=1,
+                return_logits=True,
+                **kw,
+            ):
+                return ForwardResult(logits=logits, captured={})
+
+        bridge = RemoteBridge(_stub_adapter(), tokenizer=None, driver=LogitsDriver())
+        labels = torch.tensor([[7, 9, 8]])
+        loss = bridge.forward(
+            torch.tensor([[1, 2, 3]]),
+            labels=labels,
+            return_type="loss",
+        )
+
+        expected = F.cross_entropy(logits[:, :-1].flatten(0, 1), labels[:, 1:].flatten())
+        torch.testing.assert_close(loss, expected)
+
     def test_forward_loss_uses_scored_window_of_cached_attention_mask(self):
         import torch
         import torch.nn.functional as F

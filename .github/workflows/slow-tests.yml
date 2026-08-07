@@ -1,0 +1,69 @@
+# Nightly slow-tier run. 20+ integration/acceptance files carry
+# @pytest.mark.slow, and no PR-gating workflow executes them — without this
+# job that coverage reads as CI-gated when it never runs (flagged in the
+# #1593/#1598 reviews). Manual trigger available for pre-merge checks.
+#
+# NOTE: GitHub only fires `schedule` from the default branch, so the cron is
+# inert until this file reaches `main`; use workflow_dispatch (via the API or
+# `gh workflow run --ref <branch>`) before then.
+name: Slow Tests
+
+on:
+  schedule:
+    - cron: "0 5 * * *" # nightly, off-peak
+  workflow_dispatch:
+
+concurrency:
+  group: slow-tests
+  cancel-in-progress: false
+
+jobs:
+  slow-tests:
+    name: Slow Tests (nightly)
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+      - name: Free runner disk (slow tier downloads tens of GB of checkpoints)
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+      - name: Add swap for fp32 CPU model boots
+        run: |
+          sudo fallocate -l 8G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.11"
+          activate-environment: true
+          enable-cache: true
+      - name: Re-use HuggingFace models cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface/hub
+          key: ${{ runner.os }}-huggingface-models-v4-slow
+          restore-keys: |
+            ${{ runner.os }}-huggingface-models-v4
+            ${{ runner.os }}-huggingface-models
+      - name: Install dependencies
+        run: |
+          uv lock --check
+          uv sync --extra inspect
+      - name: Authenticate HuggingFace
+        if: env.HF_TOKEN != ''
+        run: uv run python -c "import os; from huggingface_hub import login; login(token=os.environ['HF_TOKEN'])"
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      # Models needing more RAM/disk than a 16GB/14GB runner (+8G swap) can
+      # serve are deselected explicitly rather than silently OOM-crashing the
+      # job; they need a large-runner or self-hosted follow-up.
+      - name: Slow tests (unit + integration + acceptance)
+        run: >
+          uv run pytest tests/unit tests/integration tests/acceptance
+          -m slow --reruns 2 --reruns-delay 5 --durations=25
+          --ignore=tests/integration/model_bridge/test_nemotron_h_adapter.py
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}

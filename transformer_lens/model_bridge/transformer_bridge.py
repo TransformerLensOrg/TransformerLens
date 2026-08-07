@@ -28,6 +28,7 @@ import numpy as np
 import torch
 import tqdm
 from torch import nn
+from torch.nn import functional as F
 
 from transformer_lens import utilities as utils
 from transformer_lens.ActivationCache import ActivationCache
@@ -62,8 +63,8 @@ if TYPE_CHECKING:
 _BLOCK_PATTERN = re.compile("blocks\\.(\\d+)")
 
 
-def _resolve_attr_path(obj: nn.Module, attr_path: str) -> torch.Tensor:
-    """Walk a dot-separated attribute path and return the final tensor."""
+def _resolve_attr_path(obj: nn.Module, attr_path: str) -> Optional[torch.Tensor]:
+    """Walk a dot-separated attribute path and return the final tensor (None if bias-free)."""
     result = obj
     for attr in attr_path.split("."):
         result = getattr(result, attr)
@@ -414,17 +415,33 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                     return getattr(self.__dict__["original_model"], name)
             except AttributeError:
                 pass  # type: ignore[operator,assignment]
+        # A class property whose fget raised AttributeError lands here with the
+        # informative message discarded (CPython drops it before __getattr__).
+        # Re-invoke the property so its own diagnostic (e.g. "bias-free
+        # projection") surfaces instead of a generic missing-attribute error.
+        descriptor = getattr(type(self), name, None)
+        if isinstance(descriptor, property) and descriptor.fget is not None:
+            descriptor.fget(self)
         raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
     def __str__(self) -> str:
-        """Get a string representation of the bridge.
-        # type: ignore[operator]
-               Returns:
-                   A string describing the bridge's components # type: ignore[operator]
+        """One-line-per-component summary of the bridge.
+
+        Returns:
+            A string describing the bridge's components.
         """
         lines = ["TransformerBridge:"]
         mapping = self.adapter.get_component_mapping()
-        lines.extend(self._format_component_mapping(mapping, indent=1))
+
+        def _describe(component_mapping, indent):
+            pad = "  " * indent
+            for name, component in component_mapping.items():
+                lines.append(f"{pad}{name}: {type(component).__name__}")
+                submodules = getattr(component, "submodules", None)
+                if submodules:
+                    _describe(submodules, indent + 1)
+
+        _describe(mapping, 1)
         return "\n".join(lines)
 
     def enable_compatibility_mode(
@@ -494,6 +511,17 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                     "for compatibility mode, or call enable_compatibility_mode(no_processing=True) "
                     "for the hook/component compatibility layer without the weight transforms."
                 )
+
+        if getattr(self.cfg, "is_audio_model", False):
+            # Audio encoders have no text embed/unembed for the legacy weight
+            # processing to operate on; without this guard the processing path
+            # dies later with an opaque KeyError ('embed.weight').
+            raise NotImplementedError(
+                "enable_compatibility_mode() is not supported for audio encoder models: "
+                "the legacy weight processing (fold_ln/centering) assumes a text "
+                "embed/unembed, which audio encoders do not have. Use the bridge's "
+                "native hooks (run_with_cache / run_with_hooks) directly."
+            )
 
         self.compatibility_mode = True
 
@@ -911,6 +939,11 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         weights: List[torch.Tensor] = []
         for idx, block in matching:
             w = _resolve_attr_path(block, attr_path)
+            if w is None:
+                raise AttributeError(
+                    f"blocks[{idx}].{attr_path} is None — this checkpoint has no such "
+                    f"parameter (bias-free projection)."
+                )
             if reshape_fn is not None:
                 w = reshape_fn(w)
             weights.append(w)
@@ -954,8 +987,17 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             )
 
         weights: List[torch.Tensor] = []
-        for _, block in matching_blocks:
+        for block_idx, block in matching_blocks:
             w = _resolve_attr_path(block, attr_path)
+            if w is None:
+                # Bias-free checkpoints (e.g. qkv_bias=False) expose None here;
+                # stacking would raise an opaque TypeError.
+                raise AttributeError(
+                    f"blocks[{block_idx}].{attr_path} is None — this checkpoint has no "
+                    f"such parameter (bias-free projection). Bias-free models expose no "
+                    f"stacked {attr_path.rsplit('.', 1)[-1]}; construct zeros explicitly "
+                    f"if your analysis needs one."
+                )
             if reshape_fn is not None:
                 w = reshape_fn(w)
             weights.append(w)
@@ -1219,8 +1261,13 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
 
         def _stack(attr_path: str, reshape_fn: Optional[Callable] = None) -> torch.Tensor:
             weights: List[torch.Tensor] = []
-            for block in blocks_list:
+            for block_idx, block in zip(indices, blocks_list):
                 w = _resolve_attr_path(block, attr_path)
+                if w is None:
+                    raise AttributeError(
+                        f"blocks[{block_idx}].{attr_path} is None — this checkpoint has "
+                        f"no such parameter (bias-free projection)."
+                    )
                 if reshape_fn is not None:
                     w = reshape_fn(w)
                 weights.append(w)
@@ -1476,6 +1523,51 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         self.__dict__["_derived_position_ids_ok"] = (underlying, accepts)
         return accepts
 
+    @staticmethod
+    def _seq2seq_loss(
+        logits: torch.Tensor,
+        labels: torch.Tensor,
+        native_loss: Any,
+        *,
+        per_token: bool,
+    ) -> torch.Tensor:
+        """Return encoder-decoder loss without the causal LM token shift."""
+        if labels.device != logits.device:
+            labels = labels.to(logits.device)
+        if labels.shape != logits.shape[:-1]:
+            raise ValueError(
+                "seq2seq labels must match the decoder logits batch and position "
+                f"dimensions, got labels {tuple(labels.shape)} and logits "
+                f"{tuple(logits.shape)}"
+            )
+        if not per_token and isinstance(native_loss, torch.Tensor):
+            return native_loss
+
+        losses = F.cross_entropy(
+            logits.flatten(0, 1),
+            labels.flatten(),
+            reduction="none" if per_token else "mean",
+            ignore_index=-100,
+        )
+        return losses.view_as(labels) if per_token else losses
+
+    def _finalize_seq2seq_return(
+        self,
+        return_type: str,
+        logits: torch.Tensor,
+        labels: torch.Tensor,
+        native_output: Any,
+        *,
+        loss_per_token: bool,
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
+        loss = self._seq2seq_loss(
+            logits,
+            labels,
+            getattr(native_output, "loss", None),
+            per_token=loss_per_token,
+        )
+        return (logits, loss) if return_type == "both" else loss
+
     def forward(
         self,
         input: Union[str, List[str], torch.Tensor],
@@ -1484,6 +1576,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         prepend_bos: Optional[bool] = None,
         padding_side: Optional[str] = None,
         attention_mask: Optional[torch.Tensor] = None,
+        labels: Optional[torch.Tensor] = None,
         start_at_layer: Optional[int] = None,
         stop_at_layer: Optional[int] = None,
         pixel_values: Optional[torch.Tensor] = None,
@@ -1502,6 +1595,8 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             loss_per_token: Whether to return loss per token
             prepend_bos: Whether to prepend BOS token
             padding_side: Which side to pad on
+            labels: Explicit language-model targets. Encoder-decoder models require
+                labels for loss; decoder-only models fall back to input IDs when omitted.
             past_key_values: HuggingFace KV cache from a prior ``use_cache=True`` step
                 (e.g. the second element of a ``return_type='logits_and_cache'`` return).
                 When provided, KV caching is enabled automatically and only the new
@@ -1528,13 +1623,29 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             Model output based on return_type
         """
 
-        if return_type in ("loss", "both") and not self.adapter.supports_causal_loss:
+        underlying_model = getattr(getattr(self, "_driver", None), "underlying_model", None)
+        model_config = getattr(underlying_model, "config", None)
+        is_encoder_decoder = bool(getattr(model_config, "is_encoder_decoder", False))
+        if return_type in ("loss", "both"):
+            if is_encoder_decoder and labels is None:
+                raise ValueError(
+                    "labels are required for seq2seq return_type='loss' or 'both'; "
+                    "encoder input_ids are not decoder targets"
+                )
+        if (
+            return_type in ("loss", "both")
+            and not is_encoder_decoder
+            and not self.adapter.supports_causal_loss
+        ):
             architecture = self.cfg.architecture or type(self.adapter).__name__
             raise NotImplementedError(
                 f"{architecture} does not support TransformerBridge's shifted causal "
                 "loss. Request return_type='logits' and compute the architecture-specific "
                 "masked-token objective explicitly."
             )
+
+        if labels is not None:
+            kwargs["labels"] = labels
 
         if start_at_layer is not None:
             input = self._setup_start_at_layer(input, start_at_layer)
@@ -1690,11 +1801,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             if kwargs.pop("use_past_kv_cache", False) or kwargs.get("use_cache", False):
                 kwargs["use_cache"] = True
             # Auto-generate decoder_input_ids for encoder-decoder models
-            if (
-                "decoder_input_ids" not in kwargs
-                and hasattr(self.original_model, "config")
-                and getattr(self.original_model.config, "is_encoder_decoder", False)
-            ):
+            if "decoder_input_ids" not in kwargs and labels is None and is_encoder_decoder:
                 decoder_start_token_id = getattr(
                     self.original_model.config, "decoder_start_token_id", None
                 )
@@ -1783,11 +1890,24 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             if return_type == "logits_and_cache":
                 past_key_values = getattr(output, "past_key_values", None)
                 return (logits, past_key_values)
+            if is_encoder_decoder and return_type in ("loss", "both"):
+                assert isinstance(
+                    logits, torch.Tensor
+                ), f"Expected seq2seq logits tensor, got {type(logits)}"
+                assert isinstance(labels, torch.Tensor)
+                return self._finalize_seq2seq_return(
+                    return_type,
+                    logits,
+                    labels,
+                    output,
+                    loss_per_token=loss_per_token,
+                )
             return self._finalize_return(
                 return_type,
                 logits,
                 input_ids,
                 attention_mask=attention_mask,
+                labels=labels,
                 is_audio_model=getattr(self.cfg, "is_audio_model", False),
                 is_visual_model=getattr(self.cfg, "is_visual_model", False),
                 inputs_embeds_was_used=_is_inputs_embeds,

@@ -86,20 +86,31 @@ def get_bridge_params(bridge) -> Dict[str, torch.Tensor]:
                     layer_idx,
                 )
             else:
+                # GQA: expand grouped K/V (and their biases below) to n_heads so
+                # per-head pairings like SVDInterpreter's OV = W_V[h] @ W_O[h]
+                # line up — the legacy HT convention repeat_interleaved these.
+                n_kv_heads = w_k.shape[0]
+                if w_k.ndim == 3 and 0 < n_kv_heads < cfg.n_heads:
+                    if cfg.n_heads % n_kv_heads != 0:
+                        raise ValueError(
+                            f"blocks.{layer_idx}.attn: n_heads ({cfg.n_heads}) is not "
+                            f"divisible by n_kv_heads ({n_kv_heads}); cannot expand "
+                            "grouped K/V to per-query heads."
+                        )
+                    repeats = cfg.n_heads // n_kv_heads
+                    w_k = torch.repeat_interleave(w_k, repeats, dim=0)
+                    w_v = torch.repeat_interleave(w_v, repeats, dim=0)
                 params_dict[f"blocks.{layer_idx}.attn.W_Q"] = w_q
                 params_dict[f"blocks.{layer_idx}.attn.W_K"] = w_k
                 params_dict[f"blocks.{layer_idx}.attn.W_V"] = w_v
                 params_dict[f"blocks.{layer_idx}.attn.W_O"] = w_o
-                n_kv_heads = w_k.shape[0]
-                for bias_name, n in (
-                    ("b_Q", cfg.n_heads),
-                    ("b_K", n_kv_heads),
-                    ("b_V", n_kv_heads),
-                ):
+                for bias_name in ("b_Q", "b_K", "b_V"):
                     bias = _tensor_attr(attn, bias_name)
-                    params_dict[f"blocks.{layer_idx}.attn.{bias_name}"] = (
-                        bias if bias is not None else _zeros(n, cfg.d_head)
-                    )
+                    if bias is None:
+                        bias = _zeros(cfg.n_heads, cfg.d_head)
+                    elif bias.ndim == 2 and 0 < bias.shape[0] < cfg.n_heads:
+                        bias = torch.repeat_interleave(bias, cfg.n_heads // bias.shape[0], dim=0)
+                    params_dict[f"blocks.{layer_idx}.attn.{bias_name}"] = bias
                 b_O = _tensor_attr(attn, "b_O")
                 params_dict[f"blocks.{layer_idx}.attn.b_O"] = (
                     b_O if b_O is not None else _zeros(cfg.d_model)

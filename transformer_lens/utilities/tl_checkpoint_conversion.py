@@ -1,5 +1,9 @@
 """One-time converter for legacy TL-property-format checkpoints (#1588).
 
+Rotary-model checkpoints are unsupported: their ``rotary_sin``/``rotary_cos``
+buffer keys fail loudly as unrecognized keys (drop them first if you need to
+convert one — the bridge recomputes rotary embeddings from the config).
+
 Historical training runs (OthelloGPT, grokking demos, ARENA content) were
 saved via ``HookedTransformer.state_dict()`` before ``TransformerBridge``
 existed, using property-style keys ("blocks.0.attn.W_Q", "embed.W_E", ...)
