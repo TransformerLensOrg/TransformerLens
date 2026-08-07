@@ -55,6 +55,8 @@ Submodules
    transformer_lens.model_bridge.generalized_components.t5gemma2_merged_attention
    transformer_lens.model_bridge.generalized_components.t5gemma_decoder_block
    transformer_lens.model_bridge.generalized_components.unembedding
+   transformer_lens.model_bridge.generalized_components.vision_classifier_head
+   transformer_lens.model_bridge.generalized_components.vision_embeddings
    transformer_lens.model_bridge.generalized_components.vision_projection
 
 Module contents

@@ -10,6 +10,7 @@ Submodules
    transformer_lens.model_bridge.supported_architectures.afmoe
    transformer_lens.model_bridge.supported_architectures.apertus
    transformer_lens.model_bridge.supported_architectures.arcee
+   transformer_lens.model_bridge.supported_architectures.ast
    transformer_lens.model_bridge.supported_architectures.audio_flamingo3
    transformer_lens.model_bridge.supported_architectures.baichuan
    transformer_lens.model_bridge.supported_architectures.bamba
@@ -142,6 +143,7 @@ Submodules
    transformer_lens.model_bridge.supported_architectures.t5gemma
    transformer_lens.model_bridge.supported_architectures.t5gemma2
    transformer_lens.model_bridge.supported_architectures.vaultgemma
+   transformer_lens.model_bridge.supported_architectures.vit
    transformer_lens.model_bridge.supported_architectures.xglm
    transformer_lens.model_bridge.supported_architectures.youtu
    transformer_lens.model_bridge.supported_architectures.zamba2

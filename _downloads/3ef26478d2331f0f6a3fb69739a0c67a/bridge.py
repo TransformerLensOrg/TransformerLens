@@ -844,7 +844,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         if not getattr(self.adapter, "supports_compatibility_mode", True):
             raise RuntimeError(
                 f"{type(self.adapter).__name__} does not support compatibility mode: "
-                "its stored-processed-weights forward is known to diverge from the "
+                "its stored-processed-weights  is known to diverge from the "
                 "reference model. Use the default bridge forward instead."
             )
 
@@ -1760,9 +1760,10 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                 (fragile across HF versions) or exception-based layer skipping (corrupts
                 model state). Raises NotImplementedError if a non-None value is passed.
             stop_at_layer: Layer to stop forward pass at
-            pixel_values: Optional image tensor for multimodal models (e.g., LLaVA, Gemma3).
+            pixel_values: Optional image tensor for multimodal models (e.g., LLaVA, Gemma3)
+                and vision models (eg. ViT, DeiT).
                 The tensor is passed directly to the underlying HuggingFace model.
-                Only valid when cfg.is_multimodal is True.
+                Only valid when cfg.is_multimodal is True or cfg.is_visual_model is True.
             input_values: Optional audio waveform tensor for audio models (e.g., HuBERT).
                 The tensor is passed directly to the underlying HuggingFace model.
                 Only valid when cfg.is_audio_model is True.
@@ -1822,6 +1823,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             isinstance(input, list)
             and len(input) > 1
             and not getattr(self.cfg, "is_audio_model", False)
+            and not getattr(self.cfg, "is_visual_model", False)
         )
 
         try:
@@ -1830,6 +1832,11 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                     raise ValueError(
                         "Audio models require tensor input (raw waveform), not text. "
                         "Pass a torch.Tensor or use the input_values parameter."
+                    )
+                if getattr(self.cfg, "is_visual_model", False):
+                    raise ValueError(
+                        "Visual models require tensor input (pixel values), not text. "
+                        "Pass a torch.Tensor or use the pixel_values parameter."
                     )
                 if _is_batched_list and padding_side is None:
                     # Force left-padding so real tokens are flush-right.
@@ -1918,10 +1925,13 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
 
             # Handle pixel_values for multimodal models
             if pixel_values is not None:
-                if not getattr(self.cfg, "is_multimodal", False):
+                if not (
+                    getattr(self.cfg, "is_multimodal", False)
+                    or getattr(self.cfg, "is_visual_model", False)
+                ):
                     raise ValueError(
-                        "pixel_values can only be passed to multimodal models "
-                        "(cfg.is_multimodal must be True)"
+                        "pixel_values can only be passed to multimodal or vision models "
+                        "(cfg.is_multimodal or cfg.is_visual_model must be True)"
                     )
                 kwargs["pixel_values"] = pixel_values
 
@@ -1946,6 +1956,19 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                         "Audio models require tensor input (raw waveform). "
                         "Pass a torch.Tensor or use input_values parameter."
                     )
+            elif getattr(self.cfg, "is_visual_model", False):
+                # "pixel_values" may already be in kwargs from the "if pixel_values is not None:"
+                # gate above (explicit pixel_values=... call); otherwise treat `input` itself as
+                # the image tensor, matching how the audio branch treats `input` as the waveform.
+                if "pixel_values" not in kwargs:
+                    if isinstance(input, torch.Tensor):
+                        kwargs["pixel_values"] = input
+                    else:
+                        raise ValueError(
+                            "Visual models require tensor input (pixel values). "
+                            "Pass a torch.Tensor as `input` or use the pixel_values parameter."
+                        )
+                output = self.original_model(**kwargs)
             elif _is_inputs_embeds:
                 output = self.original_model(inputs_embeds=input_ids, **kwargs)
             else:
@@ -1957,6 +1980,13 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                 logits = output.logits
             elif isinstance(output, tuple) and len(output) > 0:
                 logits = output[0]
+            elif hasattr(output, "last_hidden_state"):
+                # Bare encoder models (ViTModel, DeiTModel, BertModel, etc. without
+                # a task head) return e.g. BaseModelOutput/BaseModelOutputWithPooling,
+                # which has neither `.logits` nor tuple semantics. Fall back to
+                # `last_hidden_state` so return_type="logits" still yields a plain
+                # tensor rather than silently handing back the raw HF output object.
+                logits = output.last_hidden_state
             else:
                 logits = output
             if return_type == "logits":
@@ -1969,6 +1999,14 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                     raise ValueError(
                         "Audio models do not support return_type='loss'. "
                         "CTC loss requires aligned frame-level labels."
+                    )
+                if getattr(self.cfg, "is_visual_model", False):
+                    raise ValueError(
+                        "Vision classification models do not support return_type='loss' "
+                        "via this path (no next-token LM target exists for image "
+                        "classification). Compute cross-entropy against `labels` "
+                        "yourself from the returned logits, or use hf_generate()-style "
+                        "direct access to self.original_model for HF's own loss."
                     )
                 if _is_inputs_embeds:
                     raise ValueError(

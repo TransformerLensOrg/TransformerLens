@@ -1,0 +1,7 @@
+transformer\_lens.model\_bridge.generalized\_components.vision\_embeddings module
+=================================================================================
+
+.. automodule:: transformer_lens.model_bridge.generalized_components.vision_embeddings
+   :members:
+   :undoc-members:
+   :show-inheritance:
