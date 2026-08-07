@@ -26,6 +26,7 @@
 - [tests/QUARANTINES.md](tests/QUARANTINES.md) — check before debugging any failing test. The macOS-arm64 KV-cache skip is the most common time-sink.
 - [debugging_numerical_divergence.md](docs/source/content/debugging_numerical_divergence.md) — Bridge-vs-HF logit drift bisection.
 - [compatibility_mode.md](docs/source/content/compatibility_mode.md) — `bridge.enable_compatibility_mode()` contract; read before adding tests that use it.
+- [devtools/adapter_builder/](devtools/adapter_builder/README.md) — autonomous agent-team adapter builder (contributor tooling, Max tier); manual path is `/add-model-support`.
 
 ## Starter tasks
 

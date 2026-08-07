@@ -99,6 +99,7 @@ Python: **>=3.10, <4.0**. CI tests 3.10, 3.11, 3.12. Format/type/docstring check
 | [demos/](demos/) | Jupyter notebooks; a subset runs in CI under `nbval` with sanitization from [demos/doc_sanitize.cfg](demos/doc_sanitize.cfg) |
 | [docs/source/content/](docs/source/content/) | Sphinx markdown sources |
 | [docs/source/content/adapter_development/](docs/source/content/adapter_development/) | Adapter-authoring guides — read these before adding a new architecture |
+| [devtools/adapter_builder/](devtools/adapter_builder/) | Contributor-only agent-team adapter builder (not shipped in the package) — see its [README](devtools/adapter_builder/README.md) |
 | [makefile](makefile) | Canonical test/format/docs targets |
 | [pyproject.toml](pyproject.toml) | Deps, pytest / mypy / format / build config |
 | [.github/workflows/checks.yml](.github/workflows/checks.yml) | CI gates |
@@ -113,7 +114,7 @@ Prefer Bridge-native names in new code. Raw-HF-forward drivers comparing against
 
 ## 6. Adding a model
 
-Adapters are written **per architecture family**, not per individual model — adding `gpt2` registers all GPT-2 variants. Full workflow (starter-adapter table, 4-place registration, common gotchas, anti-patterns): **[supported_architectures/AGENTS.md](transformer_lens/model_bridge/supported_architectures/AGENTS.md)**. Verification flow: **[tools/model_registry/AGENTS.md](transformer_lens/tools/model_registry/AGENTS.md)**. Claude Code users: invoke `/add-model-support <hf_repo>`.
+Adapters are written **per architecture family**, not per individual model — adding `gpt2` registers all GPT-2 variants. Full workflow (starter-adapter table, 4-place registration, common gotchas, anti-patterns): **[supported_architectures/AGENTS.md](transformer_lens/model_bridge/supported_architectures/AGENTS.md)**. Verification flow: **[tools/model_registry/AGENTS.md](transformer_lens/tools/model_registry/AGENTS.md)**. Claude Code users: invoke `/add-model-support <hf_repo>`. For batch/autonomous adapter creation there is an agent-team harness in [devtools/adapter_builder/](devtools/adapter_builder/README.md) (Claude Code Max tier required).
 
 ## 7. Prioritization
 
