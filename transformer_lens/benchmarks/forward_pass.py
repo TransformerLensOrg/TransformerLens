@@ -13,6 +13,12 @@ from transformer_lens.benchmarks.utils import (
 from transformer_lens.model_bridge import TransformerBridge
 
 
+def _compute_self_target_loss(bridge: TransformerBridge, test_text: str) -> torch.Tensor:
+    """Compute loss with the tokenized input supplied as explicit labels."""
+    labels = bridge.to_tokens(test_text)
+    return bridge(test_text, labels=labels, return_type="loss")
+
+
 def _is_encoder_decoder(model: torch.nn.Module) -> bool:
     """Check if a model is an encoder-decoder architecture."""
     config = getattr(model, "config", None)
@@ -128,10 +134,11 @@ def benchmark_forward_pass(
         if reference_logits is not None:
             reference_output = reference_logits.to(bridge_output.device)
         elif _is_audio and isinstance(test_input, torch.Tensor):
-            # Audio HF reference model: pass waveform directly
+            # Audio HF reference model: pass the prepared audio input positionally
+            # (input_values for wav2vec2-style, input_features for AST-style)
             assert reference_model is not None
             with torch.no_grad():
-                hf_output = reference_model(input_values=test_input)
+                hf_output = reference_model(test_input)
                 if hasattr(hf_output, "logits") and hf_output.logits is not None:
                     reference_output = hf_output.logits
                 else:
@@ -188,7 +195,7 @@ def benchmark_loss_equivalence(
         BenchmarkResult with comparison details
     """
     try:
-        bridge_loss = bridge(test_text, return_type="loss")
+        bridge_loss = _compute_self_target_loss(bridge, test_text)
 
         if reference_loss is None:
             # No reference - just verify loss is valid

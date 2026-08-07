@@ -103,6 +103,7 @@ Big-model adapter tests use `@pytest.mark.slow`, CI tier filters `-m "not slow"`
 | [`integration/model_bridge/test_ouro_adapter.py`:35](integration/model_bridge/test_ouro_adapter.py) (skipif + `slow`) | ByteDance/Ouro-1.4B: 2.8GB download + ~11GB RAM |
 | [`integration/model_bridge/test_raven_adapter.py`:42](integration/model_bridge/test_raven_adapter.py) (skipif + `slow`) | huginn-0125: ~14GB download + ~28GB RAM |
 | [`integration/model_bridge/test_rwkv7_adapter.py`:36](integration/model_bridge/test_rwkv7_adapter.py) (skipif + `slow`; `importorskip("fla")` at :30) | rwkv7-0.1B-g1: remote code + flash-linear-attention dep |
+| [`integration/test_jacobian_lens_kurtosis.py`](integration/test_jacobian_lens_kurtosis.py) | Qwen3.5-0.8B (~1.6GB) + lens artifacts + wikitext validation split; CPU-feasible (#1539 Tier-1) |
 
 **Un-skip:** locally with `HF_TOKEN` sourced (slow-marked files: run the file directly or `-m slow`).
 

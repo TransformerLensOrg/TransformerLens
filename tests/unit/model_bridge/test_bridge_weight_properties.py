@@ -1,10 +1,12 @@
 """Tests for TransformerBridge._stack_block_params() and weight properties."""
 
+import pytest
 import torch
 
 from transformer_lens.model_bridge.generalized_components.attention import (
     AttentionBridge,
 )
+from transformer_lens.model_bridge.transformer_bridge import TransformerBridge
 
 
 class TestReshapeBias:
@@ -48,3 +50,39 @@ class TestReshapeBias:
         result = bridge._reshape_bias(bias)
         # ndim != 1, so no reshape — returns as-is
         assert result is bias
+
+
+class TestStackBlockParams:
+    """Tests for TransformerBridge._stack_block_params() via a duck-typed self."""
+
+    class _Attn(torch.nn.Module):
+        def __init__(self, bias):
+            super().__init__()
+            self.b_Q = bias
+
+    class _Block(torch.nn.Module):
+        def __init__(self, bias):
+            super().__init__()
+            self.attn = TestStackBlockParams._Attn(bias)
+
+    class _FakeBridge:
+        def __init__(self, biases):
+            self.blocks = [TestStackBlockParams._Block(b) for b in biases]
+
+            class Cfg:
+                n_devices = 1
+                device = None
+
+            self.cfg = Cfg()
+
+    def test_stacks_present_params(self):
+        fake = self._FakeBridge([torch.ones(2, 3), torch.zeros(2, 3)])
+        stacked = TransformerBridge._stack_block_params(fake, "attn.b_Q")
+        assert stacked.shape == (2, 2, 3)
+        assert torch.equal(stacked[0], torch.ones(2, 3))
+
+    def test_none_param_raises_actionable_error(self):
+        """Bias-free checkpoints must get a clear error, not a raw stack TypeError."""
+        fake = self._FakeBridge([torch.ones(2, 3), None])
+        with pytest.raises(AttributeError, match=r"blocks\[1\]\.attn\.b_Q.*bias-free"):
+            TransformerBridge._stack_block_params(fake, "attn.b_Q")

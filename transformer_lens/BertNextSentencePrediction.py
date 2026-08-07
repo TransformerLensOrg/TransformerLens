@@ -5,6 +5,7 @@ Contains a BERT style model specifically for Next Sentence Prediction. This is s
 to e.g. GPT style transformers.
 """
 
+import warnings
 from typing import Any, Dict, List, Optional, Tuple, Union, overload
 
 import torch
@@ -31,6 +32,13 @@ class BertNextSentencePrediction:
     """
 
     def __init__(self, model: Any):
+        warnings.warn(
+            "BertNextSentencePrediction is deprecated and will be removed in 4.0. Use "
+            "TransformerBridge.boot_transformers(...) for BERT-style models; see "
+            "demos/BERT.ipynb.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.model = model
 
     def __call__(

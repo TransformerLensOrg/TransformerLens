@@ -23,6 +23,7 @@ from typing import (
 )
 
 import torch
+from torch.nn import functional as F
 
 from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.hook_points import HookPoint
@@ -221,7 +222,11 @@ class BridgeCore:
             if hasattr(component_mapping, "hook_aliases") and component_mapping.hook_aliases:
                 for alias_name, target in component_mapping.hook_aliases.items():
                     full_alias = f"{prefix}.{alias_name}" if prefix else alias_name
-                    full_target = f"{prefix}.{target}" if prefix else target
+                    if isinstance(target, list):
+                        # Fallback chain: candidates in declared priority order.
+                        full_target: Any = tuple(f"{prefix}.{t}" if prefix else t for t in target)
+                    else:
+                        full_target = f"{prefix}.{target}" if prefix else target
                     aliases[full_alias] = full_target
             if hasattr(component_mapping, "submodules") and component_mapping.submodules:
                 for sub_name, sub_component in component_mapping.submodules.items():
@@ -233,16 +238,24 @@ class BridgeCore:
     @lru_cache(maxsize=128)
     def _compute_hook_aliases_cached(
         hook_names_tuple: Tuple[str, ...],
-        component_aliases_tuple: Tuple[Tuple[str, str], ...],
+        component_aliases_tuple: Tuple[Tuple[str, Union[str, Tuple[str, ...]]], ...],
     ) -> Tuple[Tuple[str, str], ...]:
         """Cached computation of hook aliases."""
         aliases: dict = {}
+        # For list-valued (fallback-chain) targets, remember which candidate
+        # resolved each alias so an earlier (higher-priority) candidate wins.
+        alias_priority: dict = {}
         component_aliases = dict(component_aliases_tuple)
         for hook_name in hook_names_tuple:
-            for alias_pattern, target_pattern in component_aliases.items():
-                if "blocks." in target_pattern and "blocks." in hook_name:
-                    block_match = _BLOCK_PATTERN.search(hook_name)
-                    if block_match:
+            for alias_pattern, target_patterns in component_aliases.items():
+                candidates = (
+                    target_patterns if isinstance(target_patterns, tuple) else (target_patterns,)
+                )
+                for priority, target_pattern in enumerate(candidates):
+                    if "blocks." in target_pattern and "blocks." in hook_name:
+                        block_match = _BLOCK_PATTERN.search(hook_name)
+                        if not block_match:
+                            continue
                         block_num = block_match.group(1)
                         dynamic_alias_pattern = alias_pattern.replace(
                             "blocks.", f"blocks.{block_num}."
@@ -253,11 +266,15 @@ class BridgeCore:
                         if hook_name.endswith(dynamic_target_pattern):
                             target_len = len(dynamic_target_pattern)
                             alias_name = hook_name[:-target_len] + dynamic_alias_pattern
+                            if alias_priority.get(alias_name, len(candidates)) > priority:
+                                aliases[alias_name] = hook_name
+                                alias_priority[alias_name] = priority
+                    elif hook_name.endswith(target_pattern):
+                        target_len = len(target_pattern)
+                        alias_name = hook_name[:-target_len] + alias_pattern
+                        if alias_priority.get(alias_name, len(candidates)) > priority:
                             aliases[alias_name] = hook_name
-                elif hook_name.endswith(target_pattern):
-                    target_len = len(target_pattern)
-                    alias_name = hook_name[:-target_len] + alias_pattern
-                    aliases[alias_name] = hook_name
+                            alias_priority[alias_name] = priority
         return tuple(aliases.items())
 
     def _collect_hook_aliases_from_registry(self) -> dict:
@@ -351,6 +368,37 @@ class BridgeCore:
             attention_mask = self._prepare_loss_attention_mask(attention_mask, tokens)
         return lm_cross_entropy_loss(logits, tokens, attention_mask, per_token)
 
+    def _causal_labels_loss(
+        self,
+        logits: torch.Tensor,
+        labels: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        per_token: bool = False,
+    ) -> torch.Tensor:
+        """Compute shifted causal loss against explicit labels, ignoring ``-100``."""
+        if labels.device != logits.device:
+            labels = labels.to(logits.device)
+        if labels.shape != logits.shape[:-1]:
+            raise ValueError(
+                "causal labels must match the logits batch and position dimensions, "
+                f"got labels {tuple(labels.shape)} and logits {tuple(logits.shape)}"
+            )
+
+        losses = F.cross_entropy(
+            logits[:, :-1].flatten(0, 1),
+            labels[:, 1:].flatten(),
+            reduction="none",
+            ignore_index=-100,
+        ).view_as(labels[:, 1:])
+        valid_targets = labels[:, 1:] != -100
+        if attention_mask is not None:
+            if attention_mask.device != logits.device:
+                attention_mask = attention_mask.to(logits.device)
+            token_mask = self._prepare_loss_attention_mask(attention_mask, labels)
+            valid_targets &= token_mask[:, :-1] & token_mask[:, 1:]
+        losses = losses.masked_fill(~valid_targets, 0.0)
+        return losses if per_token else losses.sum() / valid_targets.sum()
+
     @staticmethod
     def _prepare_loss_attention_mask(
         attention_mask: torch.Tensor, tokens: torch.Tensor
@@ -417,6 +465,7 @@ class BridgeCore:
         input_ids: Optional[torch.Tensor],
         *,
         attention_mask: Optional[torch.Tensor] = None,
+        labels: Optional[torch.Tensor] = None,
         is_audio_model: bool = False,
         is_visual_model: bool = False,
         inputs_embeds_was_used: bool = False,
@@ -442,11 +491,18 @@ class BridgeCore:
                     "yourself from the returned logits, or use hf_generate()-style "
                     "direct access to self.original_model for HF's own loss."
                 )
-            if inputs_embeds_was_used:
+            if inputs_embeds_was_used and labels is None:
                 raise ValueError(
                     "Cannot compute loss with inputs_embeds — token IDs required for labels."
                 )
             assert isinstance(logits, torch.Tensor), f"Expected logits tensor, got {type(logits)}"
+            if labels is not None:
+                return self._causal_labels_loss(
+                    logits,
+                    labels,
+                    attention_mask=attention_mask,
+                    per_token=loss_per_token,
+                )
             assert input_ids is not None, "input_ids required for return_type='loss'"
             return self.loss_fn(
                 logits,
@@ -467,18 +523,26 @@ class BridgeCore:
                     "classification). Compute cross-entropy against `labels` "
                     "yourself from the returned logits."
                 )
-            if inputs_embeds_was_used:
+            if inputs_embeds_was_used and labels is None:
                 raise ValueError(
                     "Cannot compute loss with inputs_embeds — token IDs required for labels."
                 )
             assert isinstance(logits, torch.Tensor), f"Expected logits tensor, got {type(logits)}"
-            assert input_ids is not None, "input_ids required for return_type='both'"
-            loss = self.loss_fn(
-                logits,
-                input_ids,
-                attention_mask=attention_mask,
-                per_token=loss_per_token,
-            )
+            if labels is not None:
+                loss = self._causal_labels_loss(
+                    logits,
+                    labels,
+                    attention_mask=attention_mask,
+                    per_token=loss_per_token,
+                )
+            else:
+                assert input_ids is not None, "input_ids required for return_type='both'"
+                loss = self.loss_fn(
+                    logits,
+                    input_ids,
+                    attention_mask=attention_mask,
+                    per_token=loss_per_token,
+                )
             return (logits, loss)
         if return_type == "predictions":
             assert self.tokenizer is not None, "Tokenizer required for return_type='predictions'"

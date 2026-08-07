@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+import math
 import os
 import re
 from pathlib import Path
@@ -23,6 +24,7 @@ from transformers import (
     T5ForConditionalGeneration,
     Wav2Vec2Model,
 )
+from transformers.utils.quantization_config import Mxfp4Config
 
 import transformer_lens.utilities as utils
 from transformer_lens.config.hooked_transformer_config import HookedTransformerConfig
@@ -672,11 +674,39 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "n_key_value_heads": hf_config.num_key_value_heads,
             "gated_mlp": True,
             "final_rms": True,
-            "use_local_attn": False,
             "rotary_dim": hf_config.head_dim,
             "num_experts": hf_config.num_local_experts,
             "experts_per_token": hf_config.num_experts_per_tok,
+            "use_attention_sinks": True,
+            # Alternating sliding_attention / full_attention layers; HT's local
+            # attention mask (last window_size keys) matches HF's sliding window.
+            "use_local_attn": True,
+            "window_size": hf_config.sliding_window,
+            "attn_types": [
+                "local" if layer_type == "sliding_attention" else "global"
+                for layer_type in hf_config.layer_types
+            ],
         }
+        rope_params = getattr(hf_config, "rope_parameters", None) or {}
+        if rope_params.get("rope_type") == "yarn":
+            yarn_factor = rope_params["factor"]
+            attention_factor = rope_params.get("attention_factor")
+            if attention_factor is None:
+                # HF's default: get_mscale(factor) = 0.1 * ln(factor) + 1
+                attention_factor = 0.1 * math.log(yarn_factor) + 1.0 if yarn_factor > 1 else 1.0
+            cfg_dict.update(
+                {
+                    "use_yarn_rope": True,
+                    "yarn_factor": float(yarn_factor),
+                    "yarn_attention_factor": float(attention_factor),
+                    "yarn_beta_fast": float(rope_params.get("beta_fast") or 32.0),
+                    "yarn_beta_slow": float(rope_params.get("beta_slow") or 1.0),
+                    "yarn_original_max_position_embeddings": rope_params[
+                        "original_max_position_embeddings"
+                    ],
+                    "yarn_truncate": rope_params.get("truncate", True),
+                }
+            )
     elif architecture == "BloomForCausalLM":
         cfg_dict = {
             "d_model": hf_config.hidden_size,
@@ -1466,9 +1496,30 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "gated_mlp": True,
             "tie_word_embeddings": hf_config.tie_word_embeddings,
         }
-        # OLMo 3 uses YARN RoPE scaling
+        # OLMo 3 uses per-layer-type rope (transformers 5.x): plain rope on
+        # sliding_attention layers, YARN on full_attention layers.
+        rope_params = getattr(hf_config, "rope_parameters", None)
         rope_scaling = getattr(hf_config, "rope_scaling", None)
-        if rope_scaling and rope_scaling.get("rope_type") == "yarn":
+        if isinstance(rope_params, dict) and "full_attention" in rope_params:
+            full_rope = rope_params["full_attention"] or {}
+            sliding_rope = rope_params.get("sliding_attention") or {}
+            cfg_dict["rotary_base"] = full_rope.get("rope_theta", 500000.0)
+            sliding_theta = sliding_rope.get("rope_theta")
+            if sliding_theta is not None and sliding_theta != cfg_dict["rotary_base"]:
+                cfg_dict["rotary_base_local"] = sliding_theta
+            if full_rope.get("rope_type") == "yarn":
+                cfg_dict["use_yarn_rope"] = True
+                cfg_dict["yarn_global_attn_only"] = True
+                cfg_dict["yarn_factor"] = float(full_rope.get("factor", 8.0))
+                cfg_dict["yarn_attention_factor"] = float(full_rope.get("attention_factor", 1.0))
+                cfg_dict["yarn_beta_fast"] = float(full_rope.get("beta_fast") or 32.0)
+                cfg_dict["yarn_beta_slow"] = float(full_rope.get("beta_slow") or 1.0)
+                cfg_dict["yarn_original_max_position_embeddings"] = full_rope.get(
+                    "original_max_position_embeddings", 4096
+                )
+                cfg_dict["yarn_truncate"] = full_rope.get("truncate", True)
+        elif rope_scaling and rope_scaling.get("rope_type") == "yarn":
+            # transformers < 5.0 flat rope_scaling dict
             cfg_dict["use_yarn_rope"] = True
             cfg_dict["yarn_factor"] = rope_scaling.get("factor", 8.0)
             cfg_dict["yarn_attention_factor"] = rope_scaling.get("attention_factor", 1.0)
@@ -1482,6 +1533,11 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             cfg_dict["attn_types"] = [
                 "local" if t == "sliding_attention" else "global" for t in layer_types
             ]
+            # Without use_local_attn, attn_types is inert and every layer runs
+            # global attention with no sliding mask.
+            if "sliding_attention" in layer_types and hf_config.sliding_window:
+                cfg_dict["use_local_attn"] = True
+                cfg_dict["window_size"] = hf_config.sliding_window
         else:
             cfg_dict["attn_types"] = ["global"] * hf_config.num_hidden_layers
     elif architecture == "OlmoeForCausalLM":
@@ -1801,6 +1857,31 @@ def get_checkpoint_labels(model_name: str, **kwargs: Any) -> tuple[list[int], st
 
 
 # %% Loading state dicts
+def _mxfp4_dequantize_config(
+    official_model_name: str,
+    cfg: HookedTransformerConfig,
+    token: str | None,
+) -> Any | None:
+    """Return ``Mxfp4Config(dequantize=True)`` for packed-MXFP4 gpt-oss checkpoints.
+
+    The gpt-oss weight converter slices expert tensors, which only works on
+    materialized torch.Tensors — packed MXFP4 weights stay wrapped in
+    triton-kernels objects. Returns None for anything else, including
+    already-dequantized gpt-oss finetunes.
+    """
+    if cfg.original_architecture != "GptOssForCausalLM":
+        return None
+    hf_cfg = AutoConfig.from_pretrained(official_model_name, token=token)
+    quant_cfg = getattr(hf_cfg, "quantization_config", None)
+    if isinstance(quant_cfg, dict):
+        quant_method = quant_cfg.get("quant_method")
+    else:
+        quant_method = getattr(quant_cfg, "quant_method", None)
+    if quant_method != "mxfp4":
+        return None
+    return Mxfp4Config(dequantize=True)
+
+
 def get_pretrained_state_dict(
     official_model_name: str,
     cfg: HookedTransformerConfig,
@@ -1921,6 +2002,14 @@ def get_pretrained_state_dict(
                     **kwargs,
                 )
             else:
+                if "quantization_config" not in kwargs:
+                    mxfp4_dequantize = _mxfp4_dequantize_config(
+                        official_model_name,
+                        cfg,
+                        huggingface_token if len(huggingface_token) > 0 else None,
+                    )
+                    if mxfp4_dequantize is not None:
+                        kwargs = {**kwargs, "quantization_config": mxfp4_dequantize}
                 # Older models may lack pad_token_id (required in newer transformers)
                 try:
                     hf_model = AutoModelForCausalLM.from_pretrained(
@@ -2038,6 +2127,24 @@ def fill_missing_keys(
     """
     default_state_dict = model.state_dict()
     missing_keys = set(default_state_dict.keys()) - set(state_dict.keys())
+    # A missing attention weight matrix means a converter/component naming
+    # mismatch (e.g. W_K written where GroupedQueryAttention expects _W_K).
+    # Filling it with an empty tensor silently zeroes the sublayer while every
+    # downstream number still looks plausible — fail loudly instead.
+    attention_weight_names = {"W_Q", "W_K", "W_V", "W_O", "_W_K", "_W_V"}
+    missing_attention_weights = sorted(
+        key
+        for key in missing_keys
+        if "hf_model" not in key and key.rsplit(".", 1)[-1] in attention_weight_names
+    )
+    if missing_attention_weights:
+        raise ValueError(
+            f"Pretrained state dict is missing attention weight matrices the model "
+            f"expects: {missing_attention_weights}. This usually means the weight "
+            f"converter and the instantiated attention module disagree on parameter "
+            f"naming (e.g. GQA's underscore-prefixed _W_K/_W_V vs W_K/W_V). Refusing "
+            f"to zero-fill them, which would silently produce wrong outputs."
+        )
     for key in missing_keys:
         if "hf_model" in key:
             # Skip keys that are from the HuggingFace model, if loading from HF.

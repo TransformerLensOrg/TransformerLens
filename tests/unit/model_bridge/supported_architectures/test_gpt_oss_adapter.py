@@ -15,6 +15,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+import torch
 import torch.nn as nn
 from torch import ones, randn, zeros
 
@@ -142,13 +143,15 @@ class FakeGPTOSSAttention(nn.Module):
     GQA module: Q is n_heads-wide, K/V are n_key_value_heads-wide, no biases.
     """
 
-    def __init__(self, cfg: TransformerBridgeConfig) -> None:
+    def __init__(self, cfg: TransformerBridgeConfig, with_sinks: bool = False) -> None:
         super().__init__()
         # PositionEmbeddingsAttentionBridge reads these HF-style attributes during forward.
         self.head_dim = cfg.d_head
         self.num_key_value_groups = cfg.n_heads // (cfg.n_key_value_heads or cfg.n_heads)
         self.scaling = cfg.d_head**-0.5
         self.attention_dropout = 0.0
+        if with_sinks:
+            self.sinks = nn.Parameter(randn(cfg.n_heads))
 
         # GQA: Q has n_heads, while K/V have n_key_value_heads.
         kv_width = (cfg.n_key_value_heads or cfg.n_heads) * cfg.d_head
@@ -315,23 +318,7 @@ class TestGPTOSSGQAHookShapes:
     @pytest.fixture
     def wired_attn_bridge(self) -> PositionEmbeddingsAttentionBridge:
         adapter = GPTOSSArchitectureAdapter(_cfg(n_key_value_heads=self.N_KV_HEADS))
-        fake_attn = FakeGPTOSSAttention(adapter.cfg)
-        attn_bridge = _mapping(adapter)["blocks"].submodules["attn"]
-        assert isinstance(attn_bridge, PositionEmbeddingsAttentionBridge)
-        attn_bridge.set_original_component(fake_attn)
-        # A full TransformerBridge build materializes these child bridge modules for us.
-        # This unit test wires them by hand so it can stay download-free.
-        for name, original in {
-            "q": fake_attn.q_proj,
-            "k": fake_attn.k_proj,
-            "v": fake_attn.v_proj,
-            "o": fake_attn.o_proj,
-        }.items():
-            submodule = attn_bridge.submodules[name]
-            submodule.set_original_component(original)
-            attn_bridge.add_module(name, submodule)
-        attn_bridge.setup_hook_compatibility()
-        return attn_bridge
+        return _wire_attention(adapter, FakeGPTOSSAttention(adapter.cfg))
 
     def _run_and_capture(self, attn_bridge: PositionEmbeddingsAttentionBridge) -> tuple:
         captured: dict = {}
@@ -440,3 +427,101 @@ class TestGPTOSSArchitectureGuards:
         """GPT-OSS has no biases on any projection."""
         for key in _conversions(adapter):
             assert not key.endswith(".bias")
+
+
+def _wire_attention(
+    adapter: GPTOSSArchitectureAdapter, fake_attn: FakeGPTOSSAttention
+) -> PositionEmbeddingsAttentionBridge:
+    """Wire a fake HF attention module into the adapter's attention bridge by hand,
+    so tests stay download-free (a full TransformerBridge build does this for us)."""
+    attn_bridge = _mapping(adapter)["blocks"].submodules["attn"]
+    assert isinstance(attn_bridge, PositionEmbeddingsAttentionBridge)
+    attn_bridge.set_original_component(fake_attn)
+    for name, original in {
+        "q": fake_attn.q_proj,
+        "k": fake_attn.k_proj,
+        "v": fake_attn.v_proj,
+        "o": fake_attn.o_proj,
+    }.items():
+        submodule = attn_bridge.submodules[name]
+        submodule.set_original_component(original)
+        attn_bridge.add_module(name, submodule)
+    attn_bridge.setup_hook_compatibility()
+    return attn_bridge
+
+
+class TestGPTOSSAttentionSinks:
+    """The reconstructed softmax must carry GPT-OSS's learned sink logits (#1618).
+
+    HF's eager path appends a per-head sink column to the masked scores,
+    softmaxes over the combined logits, then drops the sink column — so every
+    real position's weight is scaled down by the sink's share. A softmax
+    without the sink produces a different pattern at every layer.
+    """
+
+    N_HEADS = 4
+    N_KV_HEADS = 2
+    D_MODEL = 64
+    D_HEAD = 16
+    BATCH = 2
+    SEQ = 8
+
+    def _make_fake_attn(self, with_sinks: bool) -> FakeGPTOSSAttention:
+        torch.manual_seed(0)
+        return FakeGPTOSSAttention(_cfg(n_key_value_heads=self.N_KV_HEADS), with_sinks=with_sinks)
+
+    def _run_bridge(self, fake_attn: FakeGPTOSSAttention) -> tuple:
+        adapter = GPTOSSArchitectureAdapter(_cfg(n_key_value_heads=self.N_KV_HEADS))
+        attn_bridge = _wire_attention(adapter, fake_attn)
+        torch.manual_seed(1)
+        hidden = randn(self.BATCH, self.SEQ, self.D_MODEL)
+        # Identity RoPE keeps the reference computable without rotation math.
+        cos = ones(1, self.SEQ, self.D_HEAD)
+        sin = zeros(1, self.SEQ, self.D_HEAD)
+        out, pattern = attn_bridge(hidden, position_embeddings=(cos, sin))
+        return hidden, out, pattern
+
+    def _hf_eager_sink_reference(
+        self, fake_attn: FakeGPTOSSAttention, hidden: torch.Tensor
+    ) -> torch.Tensor:
+        """Replicate HF's gpt-oss eager_attention_forward under identity RoPE."""
+        batch, seq = hidden.shape[:2]
+        q = fake_attn.q_proj(hidden).view(batch, seq, self.N_HEADS, self.D_HEAD).transpose(1, 2)
+        k = fake_attn.k_proj(hidden).view(batch, seq, self.N_KV_HEADS, self.D_HEAD).transpose(1, 2)
+        v = fake_attn.v_proj(hidden).view(batch, seq, self.N_KV_HEADS, self.D_HEAD).transpose(1, 2)
+        groups = self.N_HEADS // self.N_KV_HEADS
+        k = k.repeat_interleave(groups, dim=1)
+        v = v.repeat_interleave(groups, dim=1)
+        scores = (q @ k.transpose(-2, -1)) * fake_attn.scaling
+        causal = torch.tril(torch.ones(seq, seq, dtype=torch.bool))
+        scores = scores.masked_fill(~causal, torch.finfo(scores.dtype).min)
+        sinks = fake_attn.sinks.reshape(1, -1, 1, 1).expand(batch, -1, seq, -1)
+        combined = torch.cat([scores, sinks], dim=-1)
+        combined = combined - combined.max(dim=-1, keepdim=True).values
+        weights = torch.softmax(combined, dim=-1)[..., :-1]
+        out = (weights @ v).transpose(1, 2).reshape(batch, seq, self.N_HEADS * self.D_HEAD)
+        return fake_attn.o_proj(out)
+
+    def test_output_matches_hf_eager_sink_reference(self) -> None:
+        fake_attn = self._make_fake_attn(with_sinks=True)
+        hidden, out, _ = self._run_bridge(fake_attn)
+        with torch.no_grad():
+            expected = self._hf_eager_sink_reference(fake_attn, hidden)
+        assert torch.allclose(out, expected, atol=1e-5), (
+            f"bridge attention output drifts {(out - expected).abs().max():.2e} "
+            "from the HF eager sink reference"
+        )
+
+    def test_pattern_rows_leave_mass_for_the_sink(self) -> None:
+        """With sinks, each pattern row sums to < 1 — the dropped sink keeps its share."""
+        fake_attn = self._make_fake_attn(with_sinks=True)
+        _, _, pattern = self._run_bridge(fake_attn)
+        row_sums = pattern.sum(dim=-1)
+        assert (row_sums < 1.0).all(), "some pattern row ignored the sink's share"
+
+    def test_no_sinks_keeps_standard_softmax(self) -> None:
+        """Without a sinks attribute the softmax must stay a plain row-normalization."""
+        fake_attn = self._make_fake_attn(with_sinks=False)
+        _, _, pattern = self._run_bridge(fake_attn)
+        row_sums = pattern.sum(dim=-1)
+        assert torch.allclose(row_sums, torch.ones_like(row_sums), atol=1e-5)
