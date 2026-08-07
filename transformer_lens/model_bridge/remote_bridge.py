@@ -78,7 +78,11 @@ class RemoteBridge(BridgeCore, HookIntrospectionMixin):
         labels: Any = None,
         **kwargs: Any,
     ) -> Any:
-        """Tokenize → driver.forward → replay captures → finalize per return_type."""
+        """Tokenize → driver.forward → replay captures → finalize per return_type.
+
+        Explicit ``labels`` use shifted causal loss; remote encoder-decoder loss
+        is unsupported.
+        """
         # Early copy of _finalize_return's gate — fail before the wasted remote forward.
         self._check_loss_supported(return_type)
         self._reject_stop_at_layer(kwargs.pop("stop_at_layer", None))
