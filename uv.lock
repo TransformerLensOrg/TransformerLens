@@ -9562,7 +9562,7 @@ quantization = [
 
 [package.metadata]
 requires-dist = [
-    { name = "accelerate", specifier = ">=0.23.0" },
+    { name = "accelerate", specifier = ">=1.1.0" },
     { name = "beartype", specifier = ">=0.14.1" },
     { name = "better-abc", specifier = ">=0.0.3" },
     { name = "chardet", marker = "extra == 'evals'", specifier = "<6" },

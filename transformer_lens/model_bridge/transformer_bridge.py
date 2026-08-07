@@ -478,6 +478,23 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 "reference model. Use the default bridge forward instead."
             )
 
+        hf_device_map = getattr(self.original_model, "hf_device_map", None)
+        if hf_device_map and not no_processing:
+            offloaded = {k for k, v in hf_device_map.items() if str(v).lower() in ("cpu", "disk")}
+            if offloaded:
+                raise RuntimeError(
+                    "enable_compatibility_mode() with weight processing "
+                    "(fold_ln/center_writing_weights/center_unembed/fold_value_biases) is not "
+                    "supported on a bridge with an offloaded device_map "
+                    f"({sorted(offloaded)} are CPU/disk-offloaded). Weight processing reads and "
+                    "rewrites parameters directly across many components at once, not through a "
+                    "single component's own forward() call the way the default (non-compat-mode) "
+                    "bridge forward does, so it isn't covered by GeneralizedComponent's per-call "
+                    "materialization and hits raw meta tensors. Load without a CPU/disk device_map "
+                    "for compatibility mode, or call enable_compatibility_mode(no_processing=True) "
+                    "for the hook/component compatibility layer without the weight transforms."
+                )
+
         self.compatibility_mode = True
 
         def set_compatibility_mode(component: Any) -> None:

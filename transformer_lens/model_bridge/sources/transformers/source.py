@@ -87,10 +87,13 @@ def boot(
         device_map: HuggingFace-style device map (``"auto"``, ``"balanced"``, dict, etc.) for
             dispatched inference. Explicit maps may include CPU and disk targets; meta targets
             are still rejected when ``load_weights=True`` (meta has no real data to offload from,
-            unlike disk/cpu). Mixed CPU+GPU maps are rejected too — accelerate implements that as
-            CPU offload, and the underlying materialization mechanism can't split across it and a
-            GPU-resident forward pass without further hook-routing work. Mutually exclusive with
-            ``device``.
+            unlike disk/cpu). Mixed CPU/disk + GPU maps are rejected too, not because they're
+            known to be broken but because CPU/disk offload has only been verified on CPU-only
+            hardware — no GPU to mix in. ``bridge.enable_compatibility_mode()`` (with weight
+            processing, i.e. not ``no_processing=True``) is unsupported on a CPU/disk-offloaded
+            bridge and raises immediately rather than mid-fold; the default (non-compat-mode)
+            forward pass, ``run_with_cache``, and hooks all work normally under offload. Mutually
+            exclusive with ``device``.
         n_devices: Convenience: split the model across this many CUDA devices (translated to a
             ``max_memory`` dict internally). Requires CUDA with at least this many visible devices.
         max_memory: Optional per-device memory budget for HF's dispatcher.
@@ -218,12 +221,12 @@ def boot(
     # resolver raises on conflict. If n_devices>1 is passed it's translated into a device_map +
     # max_memory pair here so downstream code only needs to check the resolved values.
     from transformer_lens.utilities.multi_gpu import (
-        MIXED_CPU_GPU_ERROR,
+        MIXED_OFFLOAD_GPU_ERROR,
         cast_floating_params_to_dtype,
         count_unique_devices,
         find_embedding_device,
         find_misplaced_modules,
-        is_mixed_cpu_gpu,
+        is_mixed_offload_gpu,
         resolve_device_map,
     )
 
@@ -340,8 +343,8 @@ def boot(
                 f"hf_device_map contains unsupported offload targets: {sorted(unsupported)}. "
                 "TransformerBridge currently supports CPU and disk device_map targets."
             )
-        if is_mixed_cpu_gpu(hf_device_map_post.values()):
-            raise ValueError(f"Realized hf_device_map is unsupported: {MIXED_CPU_GPU_ERROR}")
+        if is_mixed_offload_gpu(hf_device_map_post.values()):
+            raise ValueError(f"Realized hf_device_map is unsupported: {MIXED_OFFLOAD_GPU_ERROR}")
         if (
             "cpu" in offload_values
             and device_map is None

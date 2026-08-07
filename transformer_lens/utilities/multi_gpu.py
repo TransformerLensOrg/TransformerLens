@@ -202,42 +202,45 @@ def resolve_device_map(
 def _validate_device_map_values(
     device_map: Union[str, Dict[str, Union[str, int]]],
 ) -> None:
-    """Reject mixed CPU+GPU targets in a user-supplied device_map dict. Disk
-    values are accepted (GeneralizedComponent.__call__ wraps forward in
-    Accelerate's align_module_device, so components reading raw params
-    directly still see materialized data). Meta values are passed through
-    (validated at boot against load_weights)."""
+    """Reject mixed CPU/disk + GPU targets in a user-supplied device_map dict.
+    All-CPU and all-disk-or-CPU maps are accepted (GeneralizedComponent.__call__
+    wraps forward in Accelerate's align_module_device, so components reading raw
+    params directly still see materialized data, verified on CPU-only hardware).
+    Meta values are passed through (validated at boot against load_weights)."""
     if isinstance(device_map, str):
         return
-    if is_mixed_cpu_gpu(device_map.values()):
-        raise ValueError(MIXED_CPU_GPU_ERROR)
+    if is_mixed_offload_gpu(device_map.values()):
+        raise ValueError(MIXED_OFFLOAD_GPU_ERROR)
 
 
-# In a mixed map, accelerate OFFLOADS the CPU entries: weights live in a CPU state
-# dict, the modules hold meta placeholders, and an AlignDevicesHook on the original
-# module's forward materializes them per-call. Bridge components that compute from raw
-# parameters (e.g. NormalizationBridge reads self.weight to expose hook_normalized)
-# never trigger that hook, so the forward hits meta tensors. All-CPU maps are fine —
-# no offload, real parameters.
-MIXED_CPU_GPU_ERROR = (
-    "device_map mixes CPU and GPU targets, which accelerate implements as CPU offload "
-    "(meta placeholders materialized by forward hooks that Bridge components bypass). "
-    "Use an all-GPU map (or n_devices) for multi-GPU, or an all-CPU map."
+# In a mixed map, accelerate OFFLOADS the CPU/disk entries: weights live in a CPU
+# state dict or on disk, the modules hold meta placeholders, and an AlignDevicesHook
+# on the original module's forward materializes them per-call.
+# GeneralizedComponent.__call__ wraps every component call in that same hook, so this
+# is likely fine in principle — but it's only been verified on CPU-only hardware (no
+# GPU to mix in), so a map that actually puts some weights on a GPU stays rejected
+# until that's confirmed. All-CPU, all-disk, or CPU+disk maps are fine — no GPU
+# involved, so nothing to leave unverified.
+MIXED_OFFLOAD_GPU_ERROR = (
+    "device_map mixes CPU/disk offload targets with a GPU target. This is likely fine "
+    "(GeneralizedComponent.__call__ materializes offloaded params for every component "
+    "call), but has only been verified on CPU-only hardware — no GPU to mix in. Use an "
+    "all-GPU map (or n_devices) for multi-GPU, or an all-CPU/all-disk map."
 )
 
 
-def is_mixed_cpu_gpu(values: Any) -> bool:
-    has_cpu = has_gpu = False
+def is_mixed_offload_gpu(values: Any) -> bool:
+    has_offload = has_gpu = False
     for value in values:
         if isinstance(value, int):
             has_gpu = True
         elif isinstance(value, str):
             v = value.lower()
-            if v == "cpu":
-                has_cpu = True
+            if v in ("cpu", "disk"):
+                has_offload = True
             elif v.startswith("cuda"):
                 has_gpu = True
-    return has_cpu and has_gpu
+    return has_offload and has_gpu
 
 
 def cast_floating_params_to_dtype(model: nn.Module, dtype: torch.dtype) -> None:

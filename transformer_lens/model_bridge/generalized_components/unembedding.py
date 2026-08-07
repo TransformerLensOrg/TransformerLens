@@ -5,6 +5,7 @@ This module contains the bridge component for unembedding layers.
 from typing import Any, Dict, Optional
 
 import torch
+from accelerate.utils import align_module_device
 
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
@@ -43,9 +44,16 @@ class UnembeddingBridge(GeneralizedComponent):
         # If this is a Linear layer without bias, enable it
         if isinstance(original_component, torch.nn.Linear) and original_component.bias is None:
             # Get the output features (vocab size)
-            vocab_size = original_component.weight.shape[0]
-            device = original_component.weight.device
-            dtype = original_component.weight.dtype
+            vocab_size = original_component.weight.shape[0]  # shape is safe on a meta tensor too
+            dtype = original_component.weight.dtype  # dtype is also safe on a meta tensor
+
+            # .device is NOT safe the same way: under Accelerate offload this
+            # weight is a meta placeholder outside of a materialized window, so
+            # reading .device unguarded would build a meta-device (i.e. fake,
+            # data-less) bias instead of real zeros. align_module_device gives
+            # the real execution device for this one read.
+            with align_module_device(original_component):
+                device = original_component.weight.device
 
             original_component.bias = torch.nn.Parameter(
                 torch.zeros(vocab_size, device=device, dtype=dtype)
@@ -122,7 +130,10 @@ class UnembeddingBridge(GeneralizedComponent):
             ), f"Component {self.name} has no weight attribute"
             weight = self.original_component.weight
             assert isinstance(weight, torch.Tensor), f"Weight is not a tensor for {self.name}"
-            device = weight.device
-            dtype = weight.dtype
-            vocab_size: int = int(weight.shape[0])
+            dtype = weight.dtype  # safe on a meta tensor
+            vocab_size: int = int(weight.shape[0])  # safe on a meta tensor
+            # .device is not safe the same way under offload - see
+            # set_original_component's identical guard above.
+            with align_module_device(self.original_component):
+                device = weight.device
             return torch.zeros(vocab_size, device=device, dtype=dtype)
