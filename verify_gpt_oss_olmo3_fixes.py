@@ -54,8 +54,12 @@ def _cos_rel(a: torch.Tensor, b: torch.Tensor) -> tuple[float, float]:
     return cos.item(), ((a - b).norm() / a.norm()).item()
 
 
-def _capture_layer_outputs(hf_model, layers, ids):
-    """Forward-hook the decoder layers; returns ({layer: output}, logits)."""
+def _capture_layer_outputs(hf_model, layers, ids, first_layer_attention=False):
+    """Forward-hook the decoder layers; returns ({layer: output}, logits, attn0).
+
+    attn0 is HF's layer-0 attention weights (post-sink-drop) when
+    first_layer_attention is set, else None.
+    """
     captured: dict[int, torch.Tensor] = {}
 
     def make_hook(idx):
@@ -67,11 +71,13 @@ def _capture_layer_outputs(hf_model, layers, ids):
     handles = [hf_model.model.layers[i].register_forward_hook(make_hook(i)) for i in layers]
     try:
         with torch.inference_mode():
-            logits = hf_model(ids).logits.float().cpu()
+            output = hf_model(ids, output_attentions=first_layer_attention)
+            logits = output.logits.float().cpu()
     finally:
         for handle in handles:
             handle.remove()
-    return captured, logits
+    attn0 = output.attentions[0].float().cpu() if first_layer_attention else None
+    return captured, logits, attn0
 
 
 def test_bridge_gpt_oss() -> bool:
@@ -82,7 +88,9 @@ def test_bridge_gpt_oss() -> bool:
     hf = AutoModelForCausalLM.from_pretrained(
         GPT_OSS_ID, dtype=torch.bfloat16, device_map="cuda", attn_implementation="eager"
     ).eval()
-    ref, ref_logits = _capture_layer_outputs(hf, GPT_OSS_LAYERS, ids)
+    ref, ref_logits, ref_attn0 = _capture_layer_outputs(
+        hf, GPT_OSS_LAYERS, ids, first_layer_attention=True
+    )
     _free(hf)
 
     from transformer_lens.model_bridge import TransformerBridge
@@ -109,11 +117,18 @@ def test_bridge_gpt_oss() -> bool:
         f"  logits: cos={cos:.4f} rel={rel:.4f} top1-agree={top1:.2f}  {'PASS' if passed else 'FAIL'}"
     )
 
-    # Sink spot-check: pattern rows must sum to < 1 (the sink keeps its share).
-    row_sums = cache["blocks.0.attn.hook_pattern"].float().sum(dim=-1)
-    sink_active = bool((row_sums < 1.0).all())
-    ok &= sink_active
-    print(f"  pattern row-sums < 1 (sink active): {'PASS' if sink_active else 'FAIL'}")
+    # Sink check: the bridge pattern must match HF's post-sink-drop attention
+    # weights. Row sums are NOT a valid gate: trained sinks can absorb ~all of
+    # a row's mass (sums near 0) or ~none (bf16 rounding pushes sums slightly
+    # above 1) — both observed on the real checkpoint.
+    br_pat = cache["blocks.0.attn.hook_pattern"].float().cpu()
+    pat_diff = (ref_attn0 - br_pat).abs().max().item()
+    sink_ok = pat_diff < 2e-2
+    ok &= sink_ok
+    print(
+        f"  pattern vs HF attentions: max|diff|={pat_diff:.2e} "
+        f"(min row sum={br_pat.sum(dim=-1).min():.1e})  {'PASS' if sink_ok else 'FAIL'}"
+    )
 
     _free(bridge, cache)
     return ok
@@ -163,7 +178,7 @@ def test_olmo3() -> bool:
     hf = AutoModelForCausalLM.from_pretrained(
         OLMO3_ID, dtype=torch.float32, device_map="cuda", attn_implementation="eager"
     ).eval()
-    ref, ref_logits = _capture_layer_outputs(hf, OLMO3_LAYERS, ids)
+    ref, ref_logits, _ = _capture_layer_outputs(hf, OLMO3_LAYERS, ids)
     _free(hf)
 
     from transformer_lens import HookedTransformer
