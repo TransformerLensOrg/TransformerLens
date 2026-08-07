@@ -172,7 +172,7 @@ TransformerLens includes bridge adapters for Mamba-1 (`state-spaces/mamba-*-hf`)
 and Mamba-2 (`AntonV/mamba2-130m-hf`, `state-spaces/mamba2-*`, etc.). The adapters
 cover:
 
-* Forward pass (bit-for-bit HF equivalent)
+* Forward pass (bit-for-bit HuggingFace equivalent)
 * Hook-based introspection of projection activations (`in_proj`, `conv1d`, `x_proj`,
   `dt_proj`, `out_proj` for Mamba-1; `in_proj`, `conv1d`, `inner_norm`, `out_proj` for
   Mamba-2)
