@@ -1293,14 +1293,16 @@ class BridgeCore:
         target_device = self._input_device()
         if processed_args and isinstance(processed_args[0], str):
             assert self.tokenizer is not None, "Tokenizer must be set to pass string input."
-            input_ids = self.to_tokens(processed_args[0])
+            prepend_bos = kwargs.pop("prepend_bos", None)
+            input_ids = self.to_tokens(processed_args[0], prepend_bos=prepend_bos)
             if target_device is not None:
                 input_ids = input_ids.to(target_device)
             kwargs["input_ids"] = input_ids
             processed_args = processed_args[1:]
         elif "input" in kwargs and isinstance(kwargs["input"], str):
             assert self.tokenizer is not None, "Tokenizer must be set to pass string input."
-            input_ids = self.to_tokens(kwargs["input"])
+            prepend_bos = kwargs.pop("prepend_bos", None)
+            input_ids = self.to_tokens(kwargs["input"], prepend_bos=prepend_bos)
             if target_device is not None:
                 input_ids = input_ids.to(target_device)
             kwargs["input_ids"] = input_ids
