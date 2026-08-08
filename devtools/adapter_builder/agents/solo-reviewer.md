@@ -89,7 +89,11 @@ Verify against code and HF source, not the Programmer's summary.
 
 ## Final review — on `verification-complete`
 
-**Scope: the complete adapter across all phases.** Holistic review — check
+**Scope: the complete adapter across all phases.**
+**Gate on verification quality first:** every verified model must have `status: 1`
+in `supported_models.json`. Status 4 with "Structural only (no HF reference)" means
+the HuggingFace parity comparison never ran — that is NOT verification; request
+changes and have the Programmer rerun verify_models with the HF reference on. Holistic review — check
 cross-phase consistency, end-to-end correctness. Run P5 fully: plan-to-code
 match across ALL phases, all prior findings resolved, test quality.
 Read `.adapter-workspace/verification-results.md` for the verification record.

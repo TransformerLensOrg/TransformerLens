@@ -23,6 +23,8 @@
 #     [--retry]                    Resume from saved progress (safe for planning/programming)
 #     [--auto-approve]             Run agents in auto-approve mode (no permission prompts)
 #     [--skip-arch-check]          Skip the pre-flight architecture existence check
+#     [--dry-run]                  Run all pre-flight checks, then exit without
+#                                  creating a worktree or launching sessions
 #
 # Example:
 #   # Interactive (foreground)
@@ -68,6 +70,7 @@ AUTO_APPROVE=false
 BACKGROUND=false
 RETRY=false
 SKIP_ARCH_CHECK=false
+DRY_RUN=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -84,6 +87,7 @@ while [[ $# -gt 0 ]]; do
     --retry)              RETRY=true;               shift   ;;
     --auto-approve)       AUTO_APPROVE=true;        shift   ;;
     --skip-arch-check)    SKIP_ARCH_CHECK=true;     shift   ;;
+    --dry-run)            DRY_RUN=true;             shift   ;;
     -h|--help)            usage ;;
     *) err "Unknown argument: $1" ;;
   esac
@@ -175,10 +179,16 @@ WORKTREE_BASE="${WORKTREE_BASE:-$(dirname "$REPO_ROOT")/worktrees}"
 # --------------------------------------------------------------------------- #
 # Early opt-out: check if architecture is already supported
 # --------------------------------------------------------------------------- #
-FACTORY_FILE="$REPO_ROOT/transformer_lens/factories/architecture_adapter_factory.py"
-if [[ -f "$FACTORY_FILE" ]] && grep -q "\"${ARCHITECTURE}\"" "$FACTORY_FILE"; then
-  ok "Architecture '${ARCHITECTURE}' already has an adapter in TransformerLens."
-  log "Found in: $FACTORY_FILE"
+# The worktree is created from BASE_BRANCH, so the "already supported" check
+# must read the factory file from that branch — not the main checkout's
+# working tree, which may differ (e.g. golden-master test branches with the
+# adapter stripped). Fall back to the on-disk file if the branch ref can't
+# be read; the branch is hard-validated later.
+FACTORY_REL="transformer_lens/factories/architecture_adapter_factory.py"
+FACTORY_CONTENT="$(git -C "$REPO_ROOT" show "${BASE_BRANCH}:${FACTORY_REL}" 2>/dev/null \
+  || cat "$REPO_ROOT/$FACTORY_REL" 2>/dev/null || true)"
+if [[ -n "$FACTORY_CONTENT" ]] && grep -q "\"${ARCHITECTURE}\"" <<< "$FACTORY_CONTENT"; then
+  ok "Architecture '${ARCHITECTURE}' already has an adapter on branch '${BASE_BRANCH}'."
   log "No work needed. Exiting."
   exit 0
 fi
@@ -235,6 +245,14 @@ fi
 
 git -C "$REPO_ROOT" rev-parse --verify "$BASE_BRANCH" &>/dev/null \
   || err "Base branch '$BASE_BRANCH' does not exist in this repository."
+
+if [[ "$DRY_RUN" == true ]]; then
+  ok "Pre-flight passed (dry run) — no worktree created, no sessions launched."
+  log "  would create : $WORKTREE_DIR (branch $NEW_BRANCH from $BASE_BRANCH)"
+  log "  architecture : $ARCHITECTURE"
+  log "  seed model   : ${SEED_MODEL:-none}"
+  exit 0
+fi
 
 # Source progress tracking
 # shellcheck disable=SC1091

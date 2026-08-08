@@ -84,19 +84,25 @@ Tests: required, CI-friendly, no tautologies. Use `@pytest.mark.skip` for genuin
 **3.0** Port models: `uv run python "$TL_ADAPTER_BUILDER_ROOT/scripts/port-arch-models.py" --arch-short <short>`
 Skip this → verify_models silently skips everything.
 
-**3.1** Select ≤7B models, up to 5, sorted by downloads. If none fit → signal `VERIFICATION SKIPPED — ALL MODELS TOO LARGE`, stop.
+**3.1** Select up to 5 models, all ≤7B, chosen for **config diversity, not popularity**:
+always include the smallest model of the architecture (tiny models expose
+numerical-path divergence fastest and verify in seconds) and the most-downloaded
+that fits; fill remaining slots with config variants (different head_dim,
+rotary_pct, bias flags, GQA settings) over download rank. Verify **smallest
+first** — a numerical bug should fail in seconds, not after a 30-minute large-model
+run. If none fit → signal `VERIFICATION SKIPPED — ALL MODELS TOO LARGE`, stop.
 
 **3.2** One model at a time. Read `docs/memory-lock.md`, then:
 ```bash
 "$TL_ADAPTER_BUILDER_ROOT/agents/overlord-request.sh" run "verify_models: <id>" -- \
   uv run python -m transformer_lens.tools.model_registry.verify_models \
-    --model <id> --max-memory $MAX_MEMORY_GB --device cpu --dtype float32 --no-ht-reference
+    --model <id> --max-memory $MAX_MEMORY_GB --device cpu --dtype float32
 ```
-Check `status` in `supported_models.json`: 1=next, 2=note+next, 3=**stop and fix**.
+Check `status` in `supported_models.json`: 1=next, 2=note+next, 3=**stop and fix**, 4 (provisional, "Structural only")=**wrong invocation — rerun with the HF reference on**.
 After each passing model, append its ID to `verified_models` in `.adapter-progress.json`.
 On crash-resume, skip models already in `verified_models`.
 
-Default `--dtype float32`. Never re-add `--ht-reference`. If a model fails:
+Default `--dtype float32`. **Never pass `--no-hf-reference`** — it skips the HuggingFace parity comparison and writes status 4 (provisional), which does not count as verified (a hook blocks it). If verify_models rejects a flag, read `--help` and understand a replacement before using it — never substitute a similar-looking flag. If a model fails:
 - **status=3 (phase score failure):** read the `note` and phase scores. This is an adapter bug — investigate root cause, fix, re-verify.
 - **OOM / MemoryError / killed:** retry that single model with `--dtype bfloat16`. If it still OOMs, skip it (note in verification results) and move to the next model. Do not loop.
 - **status=2 (SKIPPED by verify_models):** the model exceeded `--max-memory` pre-check. Note why and move on — this is not an adapter bug.

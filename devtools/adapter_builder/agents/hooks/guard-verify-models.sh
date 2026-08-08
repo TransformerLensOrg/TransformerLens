@@ -63,6 +63,13 @@ if echo "$command" | grep -qE '(^|[[:space:]])--dry-run(\b|[[:space:]]|=|$)'; th
   allow
 fi
 
+# Structural-only mode is never acceptable for adapter verification — it
+# skips the HuggingFace parity comparison and writes status 4 (provisional),
+# which the review gate does not count as verified.
+if echo "$command" | grep -qE '(^|[[:space:]])--no-hf-reference(\b|[[:space:]]|=|$)'; then
+  block "BLOCKED: --no-hf-reference downgrades verification to structural-only (status 4 provisional). Adapter verification requires the HuggingFace parity comparison — rerun without this flag (the HF reference is on by default)."
+fi
+
 # Extract --model <id> or --model=<id>. If absent, this is likely a bulk
 # --architectures run; defer to verify_models' own filtering.
 model=$(echo "$command" | sed -nE 's/.*--model[[:space:]]+([^[:space:]]+).*/\1/p' | head -1)

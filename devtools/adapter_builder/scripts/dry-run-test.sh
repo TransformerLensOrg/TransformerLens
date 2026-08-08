@@ -345,6 +345,30 @@ else
   fail "launch-solo-pair.sh does not start solo-coordinator.sh"
 fi
 
+# --------------------------------------------------------------------------- #
+# Launcher pre-flight: the already-supported check must read the BASE BRANCH
+# --------------------------------------------------------------------------- #
+log "Checking launcher early-exit reads the base branch (--dry-run)..."
+
+# An adapter present on the default base branch must early-exit...
+EARLY_OUT=$("$PROJECT_ROOT/agents/launch-solo-pair.sh" \
+  --architecture LlamaForCausalLM --dry-run 2>&1 || true)
+if echo "$EARLY_OUT" | grep -q "already has an adapter"; then
+  ok "existing adapter early-exits against the base branch"
+else
+  fail "expected early-exit for LlamaForCausalLM: $EARLY_OUT"
+fi
+
+# ...and both launchers must consult git show <branch>:factory, not the
+# working tree (golden-master test branches strip the adapter on a branch).
+for launcher in launch.sh launch-solo-pair.sh; do
+  if grep -q 'git -C "$REPO_ROOT" show "${BASE_BRANCH}:${FACTORY_REL}"' "$PROJECT_ROOT/agents/$launcher"; then
+    ok "$launcher factory check is branch-aware"
+  else
+    fail "$launcher factory check does not read the base branch"
+  fi
+done
+
 # Summary
 echo ""
 echo "=========================================="

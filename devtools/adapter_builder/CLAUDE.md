@@ -52,6 +52,7 @@ scripts/                       Tooling
   compare-adapters.sh          Structured diff between two existing adapters
   format-timeline.py           Render timeline.jsonl entries for status/logs
   notify.sh                    Slack/iMessage/macOS notification on completion
+  strip-adapter.py             Remove an adapter + registrations + registry entries (golden-master rebuild tests)
   dry-run-test.sh              Self-test suite for this project
 ```
 

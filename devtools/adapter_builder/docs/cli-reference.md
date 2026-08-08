@@ -91,6 +91,7 @@ Use this after you've committed the adapter from a successful run and want to ti
 | `--retry` | off | Resume a crashed session. Planning/programming crashes resume normally; verification crashes require manual inspection and trigger a notification instead |
 | `--auto-approve` | off | Skip Claude Code permission prompts |
 | `--skip-arch-check` | off | Skip the pre-flight architecture existence check (see below). Use when launching an architecture that's so new it isn't yet in the installed `transformers` package *and* isn't on HuggingFace Hub |
+| `--dry-run` | off | Run all pre-flight checks (adapter-exists on the base branch, architecture validation, base-branch exists), print what would be created, and exit without creating a worktree or launching sessions |
 | `-h`, `--help` | — | Print the full usage header from `launch.sh` |
 
 ## Pre-flight: Architecture Existence Check

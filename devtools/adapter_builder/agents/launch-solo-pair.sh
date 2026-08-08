@@ -27,6 +27,8 @@
 #     [--worktree-dir <path>]      Where to create the worktree
 #     [--skip-arch-check]          Skip architecture existence check
 #     [--auto-approve]             Skip Claude Code permission prompts
+#     [--dry-run]                  Run all pre-flight checks, then exit without
+#                                  creating a worktree or launching sessions
 # =============================================================================
 
 set -euo pipefail
@@ -58,6 +60,7 @@ MAX_MEMORY_GB=""
 WORKTREE_DIR=""
 AUTO_APPROVE=false
 SKIP_ARCH_CHECK=false
+DRY_RUN=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -70,6 +73,7 @@ while [[ $# -gt 0 ]]; do
     --worktree-dir)       WORKTREE_DIR="$2";       shift 2 ;;
     --skip-arch-check)    SKIP_ARCH_CHECK=true;     shift   ;;
     --auto-approve)       AUTO_APPROVE=true;        shift   ;;
+    --dry-run)            DRY_RUN=true;             shift   ;;
     -h|--help)            usage ;;
     *) err "Unknown argument: $1" ;;
   esac
@@ -121,9 +125,16 @@ if [[ -n "$SEED_MODEL" && "$SKIP_ARCH_CHECK" == false ]]; then
   SKIP_ARCH_CHECK=true
 fi
 
-FACTORY_FILE="$REPO_ROOT/transformer_lens/factories/architecture_adapter_factory.py"
-if [[ -f "$FACTORY_FILE" ]] && grep -q "\"${ARCHITECTURE}\"" "$FACTORY_FILE"; then
-  ok "Architecture '${ARCHITECTURE}' already has an adapter."
+# The worktree is created from BASE_BRANCH, so the "already supported" check
+# must read the factory file from that branch — not the main checkout's
+# working tree, which may differ (e.g. golden-master test branches with the
+# adapter stripped). Fall back to the on-disk file if the branch ref can't
+# be read; the branch is hard-validated later.
+FACTORY_REL="transformer_lens/factories/architecture_adapter_factory.py"
+FACTORY_CONTENT="$(git -C "$REPO_ROOT" show "${BASE_BRANCH}:${FACTORY_REL}" 2>/dev/null \
+  || cat "$REPO_ROOT/$FACTORY_REL" 2>/dev/null || true)"
+if [[ -n "$FACTORY_CONTENT" ]] && grep -q "\"${ARCHITECTURE}\"" <<< "$FACTORY_CONTENT"; then
+  ok "Architecture '${ARCHITECTURE}' already has an adapter on branch '${BASE_BRANCH}'."
   log "No work needed. Exiting."
   exit 0
 fi
@@ -154,6 +165,14 @@ fi
 
 git -C "$REPO_ROOT" rev-parse --verify "$BASE_BRANCH" &>/dev/null \
   || err "Base branch '$BASE_BRANCH' does not exist."
+
+if [[ "$DRY_RUN" == true ]]; then
+  ok "Pre-flight passed (dry run) — no worktree created, no sessions launched."
+  log "  would create : $WORKTREE_DIR (branch $NEW_BRANCH from $BASE_BRANCH)"
+  log "  architecture : $ARCHITECTURE"
+  log "  seed model   : ${SEED_MODEL:-none}"
+  exit 0
+fi
 
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/progress.sh"

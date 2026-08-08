@@ -63,7 +63,7 @@ Critical rules are enforced by Claude Code hooks, not by asking agents to rememb
 | **guard-hooked-transformer** | Blocks writes to deprecated `HookedTransformer.py`, `loading_from_pretrained.py`, `components/`, `pretrained/weight_conversions/` |
 | **guard-git** | Blocks `git commit`, `git push`, `gh pr create`, `gh release create` — agents cannot publish changes |
 | **guard-review-rounds** | Blocks review files past round 3 per checkpoint, forcing escalation to the user when loops stall |
-| **guard-verify-models** | Blocks `verify_models --model …` invocations targeting unregistered models or anything above `MAX_VERIFY_PARAMS` (default 7.5B) |
+| **guard-verify-models** | Blocks `verify_models --model …` invocations targeting unregistered models, anything above `MAX_VERIFY_PARAMS` (default 7.5B), or `--no-hf-reference` (structural-only runs are not verification) |
 | **gate-reviewer-writes-file** | Blocks reviewer subagent returns that didn't persist a review file to `.adapter-workspace/reviews/` (or `completion-report.md`) |
 | **gate-lint-checks** | Refuses to let the session end until `mypy` and `make check-format` both pass |
 | **timeline-capture** | Logs every tool call and session event to `.adapter-workspace/timeline.jsonl` (grepable, structured) |

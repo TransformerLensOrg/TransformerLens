@@ -24,7 +24,7 @@ tool:
   uv run python -m transformer_lens.tools.model_registry.verify_models \
     --model <model_id> \
     --max-memory $MAX_MEMORY_GB \
-    --device cpu --dtype float32 --no-ht-reference
+    --device cpu --dtype float32
 ```
 
 The `--` separator terminates lock arguments; everything after it is the
