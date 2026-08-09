@@ -264,7 +264,7 @@ class BlockBridge(GeneralizedComponent):
         match = (
             re.search(r"blocks\.(\d+)", self.name)
             or re.search(r"\.h\.(\d+)", self.name)
-            or re.search(r"\.layers\.(\d+)", self.name)
+            or re.search(r"(?:^|\.)layers\.(\d+)", self.name)
         )
         return int(match.group(1)) if match else None
 
