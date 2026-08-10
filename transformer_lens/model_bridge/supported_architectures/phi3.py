@@ -61,8 +61,10 @@ class Phi3ArchitectureAdapter(ArchitectureAdapter):
         # LN folding is handled in preprocess_weights() instead.
         self.supports_fold_ln = False
 
-        # GQA: Q has n_heads * d_head, K/V have n_kv_heads * d_head
-        d_head = cfg.d_model // cfg.n_heads
+        # GQA: Q has n_heads * d_head, K/V have n_kv_heads * d_head.
+        # cfg.d_head honours an explicit HF head_dim, which need not equal
+        # d_model // n_heads.
+        d_head = cfg.d_head
         n_kv_heads = cfg.n_key_value_heads or cfg.n_heads
         q_size = cfg.n_heads * d_head
         kv_size = n_kv_heads * d_head
@@ -167,8 +169,10 @@ class Phi3ArchitectureAdapter(ArchitectureAdapter):
         qkv_weight = original_attention_component.qkv_proj.weight
         d_model = qkv_weight.shape[1]
 
-        # GQA: Q has n_heads * d_head, K/V have n_kv_heads * d_head each
-        d_head = self.cfg.d_model // self.cfg.n_heads
+        # GQA: Q has n_heads * d_head, K/V have n_kv_heads * d_head each.
+        # cfg.d_head honours an explicit HF head_dim, which need not equal
+        # d_model // n_heads.
+        d_head = self.cfg.d_head
         n_kv_heads = self.cfg.n_key_value_heads or self.cfg.n_heads
         q_size = self.cfg.n_heads * d_head
         kv_size = n_kv_heads * d_head
