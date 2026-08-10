@@ -215,6 +215,14 @@ def get_tokens_with_bos_removed(
     Returns:
         torch.Tensor: The tokenized input with the bos token removed.
     """
+    if tokenizer.bos_token_id is None:
+        # Nothing to remove (#1628). Callers reach this when cfg.tokenizer_prepends_bos
+        # says the tokenizer prepends a BOS but the tokenizer has none — a stale
+        # flag, since detect_tokenizer_bos_eos() requires a bos_token_id. Trusting
+        # it here would drop a real first token under right padding ([CLS] for a
+        # BERT tokenizer), and compare tokens against None under left padding.
+        return tokens
+
     if tokenizer.padding_side == "right":
         return tokens[..., 1:]
 
