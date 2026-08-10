@@ -86,6 +86,12 @@ New integration tests should use the variant that matches the property they're t
 - **One-shot:** calling it twice re-runs the centering subtractions. Don't.
 - **Not reversible** from within the bridge — re-boot for raw weights.
 - **`_setup_hook_compatibility` is idempotent**; only `process_weights` mutates weights.
+- **Incompatible with a CPU/disk-offloaded `device_map`** unless `no_processing=True`. Weight
+  processing (`fold_ln` etc.) reads and rewrites parameters directly across many components at
+  once, not through a single component's own `forward()` call, so it isn't covered by
+  `GeneralizedComponent`'s per-call materialization and raises immediately rather than crashing
+  mid-fold on a raw `meta` tensor. The default (non-compat-mode) forward pass works normally
+  under offload — this restriction is compat mode's weight processing specifically.
 
 ## See also
 

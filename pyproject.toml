@@ -1,7 +1,7 @@
 [project]
     authors=[{name="Neel Nanda", email="77788841+TransformerLensOrg@users.noreply.github.com"}]
     dependencies=[
-        "accelerate>=0.23.0",                                                # Needed for Llama Models
+        "accelerate>=1.1.0",                                                 # align_module_device (device_map disk offload)
         "beartype>=0.14.1",
         "better-abc>=0.0.3",
         "datasets>=2.7.1",

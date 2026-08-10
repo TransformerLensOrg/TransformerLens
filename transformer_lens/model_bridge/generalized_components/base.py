@@ -1,6 +1,7 @@
 """Base class for generalized transformer components."""
 from __future__ import annotations
 
+import contextlib
 import inspect
 import warnings
 from collections.abc import Callable
@@ -8,11 +9,32 @@ from typing import Any, Dict, List, Optional, Union
 
 import torch
 import torch.nn as nn
+from accelerate.utils import align_module_device
 
 from transformer_lens.conversion_utils.conversion_steps.base_tensor_conversion import (
     BaseTensorConversion,
 )
 from transformer_lens.hook_points import HookPoint
+
+
+def align_offloaded_subtree(module: nn.Module) -> contextlib.ExitStack:
+    """Materialize every Accelerate-offloaded descendant of ``module`` for the
+    caller's duration (an ``ExitStack`` of ``align_module_device`` contexts).
+
+    Accelerate attaches offload hooks at leaf level - whichever submodule
+    directly owns the Parameter (e.g. ``c_attn``, ``c_proj``) - not on
+    container modules like an attention block as a whole. ``align_module_device``
+    on a container alone is therefore a no-op even though its descendants are
+    offloaded. Walking every descendant and entering each one's
+    ``align_module_device`` (a cheap no-op for any module that has no hook of
+    its own) covers both a leaf ``original_component`` and a multi-level
+    container uniformly, without needing to know in advance which specific
+    descendant a given architecture adapter's code actually reads from.
+    """
+    stack = contextlib.ExitStack()
+    for submodule in module.modules():
+        stack.enter_context(align_module_device(submodule))
+    return stack
 
 
 class CloneOutputUnderGradMixin(nn.Module):
@@ -87,6 +109,44 @@ class GeneralizedComponent(nn.Module):
         if hook_alias_overrides is not None:
             self.hook_aliases = self.__class__.hook_aliases.copy()
             self.hook_aliases.update(hook_alias_overrides)
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        """Run forward(), materializing the wrapped component's params first if offloaded.
+
+        Bridge components read the wrapped module's raw parameters directly
+        (self.weight / self.original_component.bias / etc. via __getattr__ or
+        direct attribute access) rather than exclusively calling the wrapped
+        module's own forward(). Under an Accelerate CPU/disk device_map,
+        Accelerate only swaps a meta placeholder for the real, materialized
+        tensor around the wrapped module's OWN forward() call (its pre/post
+        forward hooks) - a raw attribute read outside that window silently
+        sees the meta placeholder instead, with no error. align_module_device
+        wraps this call in the same pre/post-forward hook Accelerate would
+        have run, so every read during this call - whichever way the code
+        reaches it - gets real data. It's a no-op (bare yield) when the
+        wrapped module has no offload hook, which covers the common case of
+        no device_map, a single device, or a multi-GPU split with no CPU/disk
+        offload involved.
+
+        Deliberately just original_component, not align_offloaded_subtree's
+        whole-subtree walk: Accelerate hooks the leaf modules that actually own
+        Parameters (e.g. NormalizationBridge/LinearBridge wrap one directly), so
+        materializing exactly that leaf for exactly its own call keeps the same
+        one-leaf-at-a-time memory footprint Accelerate's native per-module hooks
+        would give a plain (non-bridge) forward pass. A component whose
+        original_component is a container of several separately-hooked leaves
+        (e.g. an attention module wrapping distinct q/k/v/o projections) doesn't
+        need this to also materialize here - each of ITS own sub-bridges calls
+        into its own leaf the same way. align_offloaded_subtree is for the
+        narrower case of code that reads a specific descendant's raw params
+        directly during setup, without going through that descendant's own
+        bridge __call__ at all (see JointQKVAttentionBridge.set_original_component).
+        """
+        original_component = self._modules.get("_original_component")
+        if original_component is None:
+            return super().__call__(*args, **kwargs)
+        with align_module_device(original_component):
+            return super().__call__(*args, **kwargs)
 
     def _register_hook(self, name: str, hook: HookPoint) -> None:
         """Register a hook in the component's hook registry."""

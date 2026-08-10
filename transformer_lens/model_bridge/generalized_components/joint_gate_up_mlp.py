@@ -8,6 +8,7 @@ import torch
 
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
+    align_offloaded_subtree,
 )
 from transformer_lens.model_bridge.generalized_components.gated_mlp import (
     GatedMLPBridge,
@@ -108,7 +109,13 @@ class JointGateUpMLPBridge(GatedMLPBridge):
         """Set the original MLP component and split fused projections."""
         super().set_original_component(original_component)
 
-        gate_proj, up_proj = self.split_gate_up_matrix(original_component)
+        # Same setup-time raw-weight read as JointQKVAttentionBridge.set_original_component:
+        # split_gate_up_matrix reads original_component.gate_up_proj directly, once, to build
+        # independent gate/up slices - needs real (not meta) data materialized for that one read
+        # under Accelerate offload. See align_offloaded_subtree's docstring for why the whole
+        # subtree, not just original_component itself, needs materializing here.
+        with align_offloaded_subtree(original_component):
+            gate_proj, up_proj = self.split_gate_up_matrix(original_component)
         self.gate.set_original_component(gate_proj)
         getattr(self, "in").set_original_component(up_proj)
 
