@@ -75,6 +75,42 @@ def test_boot_native_returns_bridge_over_native_model():
     assert isinstance(bridge.original_model, NativeModel)
 
 
+@pytest.mark.parametrize("stop_at_layer", [0, 2, -1])
+def test_boot_native_direct_stop_matches_cached_stop(stop_at_layer: int):
+    bridge = TransformerBridge.boot_native(_cfg(n_layers=3))
+    bridge.eval()
+    tokens = torch.tensor([[1, 2, 3]])
+
+    with torch.no_grad():
+        expected, _ = bridge.run_with_cache(tokens, stop_at_layer=stop_at_layer)
+        actual = bridge(tokens, stop_at_layer=stop_at_layer)
+
+    assert actual.shape == (1, 3, bridge.cfg.d_model)
+    torch.testing.assert_close(actual, expected)
+
+
+def test_boot_native_input_to_embed_round_trip():
+    bridge = TransformerBridge.boot_native(_cfg(n_layers=3))
+    bridge.eval()
+    tokens = torch.tensor([[1, 2, 3]])
+
+    with torch.no_grad():
+        expected = bridge(tokens)
+        residual, returned_tokens, shortformer_pos_embed, attention_mask = bridge.input_to_embed(
+            tokens
+        )
+        actual = bridge(
+            residual,
+            start_at_layer=0,
+            attention_mask=attention_mask,
+        )
+
+    assert residual.shape == (1, 3, bridge.cfg.d_model)
+    assert torch.equal(returned_tokens, tokens)
+    assert shortformer_pos_embed is None
+    torch.testing.assert_close(actual, expected)
+
+
 def test_native_state_dict_round_trip_restores_parameters():
     bridge = TransformerBridge.boot_native(_cfg())
 
