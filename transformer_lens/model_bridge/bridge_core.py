@@ -930,8 +930,8 @@ class BridgeCore:
         @contextmanager
         def _hooks_context() -> Iterator["BridgeCore"]:
             added_hooks: List[Tuple[HookPoint, Literal["fwd", "bwd"]]] = []
-            self.context_level += 1
-            context_level = self.context_level
+            context_level = getattr(self, "context_level", 0) + 1
+            self.context_level = context_level
 
             def add_hook_to_point(
                 hook_point: HookPoint,
@@ -1104,8 +1104,8 @@ class BridgeCore:
                             hook_name_to_use = hook_point.name if hook_point.name else n
                             add_hook_to_point(hook_point, hook_fn, hook_name_to_use, direction)
 
-        self.context_level += 1
-        context_level = self.context_level
+        context_level = getattr(self, "context_level", 0) + 1
+        self.context_level = context_level
         try:
             if stop_at_layer is not None and hasattr(self, "blocks"):
                 if stop_at_layer < 0:
@@ -1359,8 +1359,8 @@ class BridgeCore:
             )
         if start_at_layer is not None:
             filtered_kwargs["start_at_layer"] = start_at_layer
-        self.context_level += 1
-        context_level = self.context_level
+        context_level = getattr(self, "context_level", 0) + 1
+        self.context_level = context_level
         try:
             for hp, name in hooks:
                 hp.add_hook(make_cache_hook(name), level=context_level)
