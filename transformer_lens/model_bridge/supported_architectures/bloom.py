@@ -33,6 +33,9 @@ class BloomArchitectureAdapter(ArchitectureAdapter):
         self.cfg.final_rms = False
         self.cfg.gated_mlp = False
         self.cfg.attn_only = False
+        # HF BloomAttention is always full MHA and ignores num_key_value_heads;
+        # a stray config field would otherwise send weight processing down GQA paths.
+        self.cfg.n_key_value_heads = None
 
         self.cfg.default_prepend_bos = False
         # After split_qkv_matrix, Q/K/V are individual [n_heads*d_head, d_model] weights.

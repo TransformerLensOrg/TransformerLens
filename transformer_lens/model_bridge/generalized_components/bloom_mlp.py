@@ -38,6 +38,15 @@ class BloomMLPBridge(MLPBridge):
         """
         super().__init__(name, config, submodules or {})
 
+    def set_original_component(self, original_component: torch.nn.Module) -> None:
+        super().set_original_component(original_component)
+        # The Megatron-TP replay path (pretraining_tp>1 + slow_but_exact) computes
+        # dense_4h_to_h via F.linear on weight slices, bypassing the module call the
+        # out-projection hooks attach to. Force the module path; the only difference
+        # is fp summation order.
+        if getattr(original_component, "slow_but_exact", False):
+            setattr(original_component, "slow_but_exact", False)
+
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Forward pass through BLOOM MLP with hooks.
 

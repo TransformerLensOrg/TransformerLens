@@ -108,6 +108,14 @@ class TestBloomAdapterComponentMapping:
         assert blocks.hook_aliases["hook_attn_out"] == "attn.o.hook_out"
         assert blocks.hook_aliases["hook_mlp_out"] == "mlp.out.hook_out"
 
+    def test_stray_kv_head_count_is_discarded(self) -> None:
+        """A stray num_key_value_heads in a checkpoint config must not put the
+        adapter into GQA mode — HF BloomAttention ignores the field entirely."""
+        cfg = _make_cfg()
+        cfg.n_key_value_heads = 4
+        adapter = BloomArchitectureAdapter(cfg)
+        assert adapter.cfg.n_key_value_heads is None
+
     def test_ln_final_type_and_name(self, adapter: BloomArchitectureAdapter) -> None:
         mapping = self._mapping(adapter)
         assert isinstance(mapping["ln_final"], NormalizationBridge)
