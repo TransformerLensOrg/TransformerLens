@@ -92,6 +92,8 @@ Use this after you've committed the adapter from a successful run and want to ti
 | `--auto-approve` | off | Skip Claude Code permission prompts |
 | `--skip-arch-check` | off | Skip the pre-flight architecture existence check (see below). Use when launching an architecture that's so new it isn't yet in the installed `transformers` package *and* isn't on HuggingFace Hub |
 | `--dry-run` | off | Run all pre-flight checks (adapter-exists on the base branch, architecture validation, base-branch exists), print what would be created, and exit without creating a worktree or launching sessions |
+| `--programmer-task <text>` | auto-generated from architecture | **Solo mode only.** Override the Session Task appended to the programmer prompt — used for scripted protocol tests |
+| `--reviewer-task <text>` | generic review focus | **Solo mode only.** Override the Session Task appended to the reviewer prompt — used for scripted protocol tests |
 | `-h`, `--help` | — | Print the full usage header from `launch.sh` |
 
 ## Pre-flight: Architecture Existence Check
