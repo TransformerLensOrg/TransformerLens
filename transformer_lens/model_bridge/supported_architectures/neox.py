@@ -16,6 +16,7 @@ from transformer_lens.conversion_utils.param_processing_conversion import (
 )
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
+    BlockBridge,
     EmbeddingBridge,
     JointQKVPositionEmbeddingsAttentionBridge,
     LinearBridge,
@@ -44,7 +45,13 @@ class NeoxArchitectureAdapter(ArchitectureAdapter):
         self.cfg.final_rms = False
         self.cfg.gated_mlp = False
         self.cfg.attn_only = False
-        self.cfg.parallel_attn_mlp = True
+
+        # GPTNeoX ships both parallel (Pythia, HF's default) and sequential
+        # variants. Hardcoding parallel drops hook_resid_mid on sequential
+        # checkpoints that genuinely have a post-attention residual.
+        use_parallel_residual = getattr(cfg, "use_parallel_residual", True)
+        self.cfg.parallel_attn_mlp = use_parallel_residual
+        block_cls = ParallelBlockBridge if use_parallel_residual else BlockBridge
 
         # NeoX/Pythia models were not trained with BOS tokens
         self.cfg.default_prepend_bos = False
@@ -138,7 +145,7 @@ class NeoxArchitectureAdapter(ArchitectureAdapter):
         self.component_mapping = {
             "embed": EmbeddingBridge(name="gpt_neox.embed_in"),
             "rotary_emb": RotaryEmbeddingBridge(name="gpt_neox.rotary_emb"),
-            "blocks": ParallelBlockBridge(
+            "blocks": block_cls(
                 name="gpt_neox.layers",
                 submodules={
                     "ln1": NormalizationBridge(

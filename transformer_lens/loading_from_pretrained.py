@@ -532,7 +532,8 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "use_attn_scale": True,
             "use_local_attn": False,
             "scale_attn_by_inverse_layer_idx": False,
-            "parallel_attn_mlp": True,
+            # GPTNeoX ships sequential variants too (use_parallel_residual=False).
+            "parallel_attn_mlp": getattr(hf_config, "use_parallel_residual", True),
             "positional_embedding_type": "rotary",
             "rotary_adjacent_pairs": False,
             "normalization_type": "LN",

@@ -40,6 +40,8 @@ _HF_PASSTHROUGH_ATTRS = [
     "new_decoder_architecture",
     "alibi",
     "num_ln_in_parallel_attn",
+    # GPTNeoX
+    "use_parallel_residual",
     # Mamba (SSM config)
     "state_size",
     "conv_kernel",
