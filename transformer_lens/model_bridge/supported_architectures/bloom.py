@@ -69,6 +69,10 @@ class BloomArchitectureAdapter(ArchitectureAdapter):
             "blocks": BloomBlockBridge(
                 name="transformer.h",
                 config=self.cfg,
+                hook_alias_overrides={
+                    "hook_attn_out": "attn.o.hook_out",
+                    "hook_mlp_out": "mlp.out.hook_out",
+                },
                 submodules={
                     "ln1": NormalizationBridge(name="input_layernorm", config=self.cfg),
                     "ln2": NormalizationBridge(name="post_attention_layernorm", config=self.cfg),
