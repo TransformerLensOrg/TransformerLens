@@ -369,6 +369,27 @@ for launcher in launch.sh launch-solo-pair.sh; do
   fi
 done
 
+# Per-agent model env overrides must be honored (dry-run prints resolved models)
+ENV_MODEL_OUT=$(PROGRAMMER_MODEL=env-test-prog REVIEWER_MODEL=env-test-rev \
+  "$PROJECT_ROOT/agents/launch-solo-pair.sh" \
+  --architecture FakeEnvTestForCausalLM --skip-arch-check --dry-run 2>&1 || true)
+if echo "$ENV_MODEL_OUT" | grep -q "env-test-prog" && echo "$ENV_MODEL_OUT" | grep -q "env-test-rev"; then
+  ok "PROGRAMMER_MODEL / REVIEWER_MODEL env overrides resolve in dry-run"
+else
+  fail "model env overrides not honored: $ENV_MODEL_OUT"
+fi
+
+# ...and CLI flags must beat env vars (flag > env > frontmatter)
+FLAG_MODEL_OUT=$(PROGRAMMER_MODEL=env-test-prog \
+  "$PROJECT_ROOT/agents/launch-solo-pair.sh" \
+  --architecture FakeEnvTestForCausalLM --skip-arch-check --dry-run \
+  --programmer-model flag-test-prog 2>&1 || true)
+if echo "$FLAG_MODEL_OUT" | grep -q "flag-test-prog" && ! echo "$FLAG_MODEL_OUT" | grep -q "env-test-prog"; then
+  ok "--programmer-model flag beats PROGRAMMER_MODEL env"
+else
+  fail "flag precedence broken: $FLAG_MODEL_OUT"
+fi
+
 # Summary
 echo ""
 echo "=========================================="

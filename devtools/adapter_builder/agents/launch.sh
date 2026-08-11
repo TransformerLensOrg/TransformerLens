@@ -25,6 +25,9 @@
 #     [--skip-arch-check]          Skip the pre-flight architecture existence check
 #     [--dry-run]                  Run all pre-flight checks, then exit without
 #                                  creating a worktree or launching sessions
+#     [--programmer-model <id>]    Model for the Programmer agent (default: PROGRAMMER_MODEL env, then frontmatter)
+#     [--reviewer-model <id>]      Model for the Reviewer agent (default: REVIEWER_MODEL env, then frontmatter)
+#     [--orchestrator-model <id>]  Model for the Orchestrator session (default: ORCHESTRATOR_MODEL env, then session default)
 #
 # Example:
 #   # Interactive (foreground)
@@ -71,6 +74,9 @@ BACKGROUND=false
 RETRY=false
 SKIP_ARCH_CHECK=false
 DRY_RUN=false
+PROGRAMMER_MODEL_ARG=""
+REVIEWER_MODEL_ARG=""
+ORCHESTRATOR_MODEL_ARG=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -88,6 +94,9 @@ while [[ $# -gt 0 ]]; do
     --auto-approve)       AUTO_APPROVE=true;        shift   ;;
     --skip-arch-check)    SKIP_ARCH_CHECK=true;     shift   ;;
     --dry-run)            DRY_RUN=true;             shift   ;;
+    --programmer-model)   PROGRAMMER_MODEL_ARG="$2";   shift 2 ;;
+    --reviewer-model)     REVIEWER_MODEL_ARG="$2";     shift 2 ;;
+    --orchestrator-model) ORCHESTRATOR_MODEL_ARG="$2"; shift 2 ;;
     -h|--help)            usage ;;
     *) err "Unknown argument: $1" ;;
   esac
@@ -99,6 +108,11 @@ if [[ -f "$ENV_FILE" ]]; then
   # shellcheck disable=SC1090
   source "$ENV_FILE"
 fi
+
+# Model precedence: CLI flag > env var (possibly from .env) > frontmatter.
+[[ -n "$PROGRAMMER_MODEL_ARG"   ]] && PROGRAMMER_MODEL="$PROGRAMMER_MODEL_ARG"
+[[ -n "$REVIEWER_MODEL_ARG"     ]] && REVIEWER_MODEL="$REVIEWER_MODEL_ARG"
+[[ -n "$ORCHESTRATOR_MODEL_ARG" ]] && ORCHESTRATOR_MODEL="$ORCHESTRATOR_MODEL_ARG"
 
 # The builder lives in devtools/adapter_builder inside TransformerLens, so the
 # containing repo is the default target. --target-repo / DEFAULT_TARGET_REPO
@@ -437,6 +451,19 @@ Always use \`overlord-request.sh run\` to wrap the command — do NOT source.
 BLOCK
 }
 
+# Rewrite the first frontmatter `model:` line so env overrides
+# (PROGRAMMER_MODEL / REVIEWER_MODEL, settable in .env) win over the
+# checked-in default. Claude Code reads the model from this frontmatter.
+_apply_model_override() {
+  local dest="$1" model="$2"
+  [[ -n "$model" ]] || return 0
+  local tmp
+  tmp=$(mktemp)
+  awk -v m="$model" '!done && /^model:/ { print "model: " m; done=1; next } { print }' \
+    "$dest" > "$tmp" && mv "$tmp" "$dest"
+  log "Model override: $(basename "$dest") → $model"
+}
+
 inject_agent() {
   local role="$1"
   local extension="$2"
@@ -475,6 +502,8 @@ MDEOF
 
 inject_agent "programmer" "$PROGRAMMER_PROMPT"
 inject_agent "reviewer"   "$REVIEWER_PROMPT"
+_apply_model_override "$AGENTS_DIR/programmer.md" "${PROGRAMMER_MODEL:-}"
+_apply_model_override "$AGENTS_DIR/reviewer.md"   "${REVIEWER_MODEL:-}"
 
 # --------------------------------------------------------------------------- #
 # Build the orchestration prompt from template + signals
@@ -518,6 +547,10 @@ CLAUDE_FLAGS=(
 if [[ "$AUTO_APPROVE" == true ]]; then
   CLAUDE_FLAGS+=("--allowedTools" "bash" "read" "write" "edit" "glob" "grep")
 fi
+# Orchestrator session model override (ORCHESTRATOR_MODEL, settable in .env).
+# Programmer/Reviewer models come from their agent-definition frontmatter,
+# overridable via PROGRAMMER_MODEL / REVIEWER_MODEL (see _apply_model_override).
+[[ -n "${ORCHESTRATOR_MODEL:-}" ]] && CLAUDE_FLAGS+=("--model" "$ORCHESTRATOR_MODEL")
 
 MODE="interactive"
 [[ "$BACKGROUND" == true ]] && MODE="background"

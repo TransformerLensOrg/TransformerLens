@@ -94,6 +94,9 @@ Use this after you've committed the adapter from a successful run and want to ti
 | `--dry-run` | off | Run all pre-flight checks (adapter-exists on the base branch, architecture validation, base-branch exists), print what would be created, and exit without creating a worktree or launching sessions |
 | `--programmer-task <text>` | auto-generated from architecture | **Solo mode only.** Override the Session Task appended to the programmer prompt — used for scripted protocol tests |
 | `--reviewer-task <text>` | generic review focus | **Solo mode only.** Override the Session Task appended to the reviewer prompt — used for scripted protocol tests |
+| `--programmer-model <id>` | `PROGRAMMER_MODEL` env, then frontmatter | Model for the Programmer agent (both modes) |
+| `--reviewer-model <id>` | `REVIEWER_MODEL` env, then frontmatter | Model for the Reviewer agent (both modes) |
+| `--orchestrator-model <id>` | `ORCHESTRATOR_MODEL` env, then session default | Model for the Orchestrator session (agent-teams only) |
 | `-h`, `--help` | — | Print the full usage header from `launch.sh` |
 
 ## Pre-flight: Architecture Existence Check
@@ -137,6 +140,16 @@ These control the runtime-enforcement hooks. See [hooks-reference.md](hooks-refe
 | `MAX_VERIFY_PARAMS` | `7500000000` (7.5B) | `guard-verify-models.sh` | Ceiling for models passed to `verify_models --model …` |
 
 ## Runtime Environment Variables
+
+Per-agent model selection resolves with precedence **CLI flag > env var >
+prompt frontmatter**: `--programmer-model`/`PROGRAMMER_MODEL` and
+`--reviewer-model`/`REVIEWER_MODEL` apply in both modes (solo passes them via
+`--model`; agent-teams rewrites the copied agent definition's frontmatter);
+`--orchestrator-model`/`ORCHESTRATOR_MODEL` sets the orchestrator session's
+model in agent-teams mode. Env vars are settable in `.env` as durable
+defaults; flags are for per-run overrides. Unset means the checked-in
+frontmatter (or session default) applies. `--dry-run` prints the resolved
+models without launching anything.
 
 Set automatically by `launch.sh` and exported into every agent session:
 

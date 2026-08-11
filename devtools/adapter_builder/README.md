@@ -170,6 +170,9 @@ Local defaults live in `.env`; see [`.env.example`](.env.example) for a template
 | `NOTIFICATION_WEBHOOK_URL` | — | Slack/Discord webhook URL for notifications |
 | `NOTIFICATION_NUMBER` | — | Phone number for iMessage fallback (macOS only) |
 | `HF_TOKEN` | repo root `.env` | HuggingFace API token; falls back to the repo root `.env` |
+| `PROGRAMMER_MODEL` | prompt frontmatter | Override the Programmer agent's model (both modes) |
+| `REVIEWER_MODEL` | prompt frontmatter | Override the Reviewer agent's model (both modes) |
+| `ORCHESTRATOR_MODEL` | session default | Override the Orchestrator session's model (agent-teams only) |
 
 Runtime hook tunables (optional, for advanced use): `MAX_REVIEW_ROUNDS` (default 3) and `MAX_VERIFY_PARAMS` (default 7.5B). See [`docs/cli-reference.md § Hook Tunables`](docs/cli-reference.md#hook-tunables-environment-variables).
 

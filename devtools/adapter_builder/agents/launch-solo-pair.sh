@@ -29,6 +29,10 @@
 #     [--auto-approve]             Skip Claude Code permission prompts
 #     [--dry-run]                  Run all pre-flight checks, then exit without
 #                                  creating a worktree or launching sessions
+#     [--programmer-model <id>]    Model for the programmer session
+#                                  (default: PROGRAMMER_MODEL env, then prompt frontmatter)
+#     [--reviewer-model <id>]      Model for the reviewer session
+#                                  (default: REVIEWER_MODEL env, then prompt frontmatter)
 # =============================================================================
 
 set -euo pipefail
@@ -63,6 +67,8 @@ SKIP_ARCH_CHECK=false
 DRY_RUN=false
 PROGRAMMER_TASK_OVERRIDE=""
 REVIEWER_TASK_OVERRIDE=""
+PROGRAMMER_MODEL_ARG=""
+REVIEWER_MODEL_ARG=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -78,6 +84,8 @@ while [[ $# -gt 0 ]]; do
     --dry-run)            DRY_RUN=true;             shift   ;;
     --programmer-task)    PROGRAMMER_TASK_OVERRIDE="$2"; shift 2 ;;
     --reviewer-task)      REVIEWER_TASK_OVERRIDE="$2";   shift 2 ;;
+    --programmer-model)   PROGRAMMER_MODEL_ARG="$2";     shift 2 ;;
+    --reviewer-model)     REVIEWER_MODEL_ARG="$2";       shift 2 ;;
     -h|--help)            usage ;;
     *) err "Unknown argument: $1" ;;
   esac
@@ -170,11 +178,23 @@ fi
 git -C "$REPO_ROOT" rev-parse --verify "$BASE_BRANCH" &>/dev/null \
   || err "Base branch '$BASE_BRANCH' does not exist."
 
+# Per-role model resolution, highest precedence first: CLI flag > env var
+# (settable in .env) > prompt-file frontmatter default. The frontmatter is
+# stripped before the content is passed as a prompt, so the model must be
+# re-applied via --model or both roles silently run the session default.
+_frontmatter_model() { sed -n 's/^model:[[:space:]]*//p' "$1" | head -1; }
+PROG_MODEL="${PROGRAMMER_MODEL_ARG:-${PROGRAMMER_MODEL:-$(_frontmatter_model "$SCRIPT_DIR/solo-programmer.md")}}"
+REV_MODEL="${REVIEWER_MODEL_ARG:-${REVIEWER_MODEL:-$(_frontmatter_model "$SCRIPT_DIR/solo-reviewer.md")}}"
+PROG_MODEL_FLAG=""; [[ -n "$PROG_MODEL" ]] && PROG_MODEL_FLAG="--model $PROG_MODEL"
+REV_MODEL_FLAG="";  [[ -n "$REV_MODEL"  ]] && REV_MODEL_FLAG="--model $REV_MODEL"
+
 if [[ "$DRY_RUN" == true ]]; then
   ok "Pre-flight passed (dry run) — no worktree created, no sessions launched."
   log "  would create : $WORKTREE_DIR (branch $NEW_BRANCH from $BASE_BRANCH)"
   log "  architecture : $ARCHITECTURE"
   log "  seed model   : ${SEED_MODEL:-none}"
+  log "  programmer   : ${PROG_MODEL:-session default}"
+  log "  reviewer     : ${REV_MODEL:-session default}"
   exit 0
 fi
 
@@ -348,15 +368,6 @@ CLAUDE_FLAGS=(
 if [[ "$AUTO_APPROVE" == true ]]; then
   CLAUDE_FLAGS+=("--allowedTools" "bash" "read" "write" "edit" "glob" "grep")
 fi
-
-# Per-role model pins from the prompt files' frontmatter (the frontmatter is
-# stripped before the content is passed as a prompt, so the model must be
-# re-applied via --model or both roles silently run the default model).
-_frontmatter_model() { sed -n 's/^model:[[:space:]]*//p' "$1" | head -1; }
-PROG_MODEL="$(_frontmatter_model "$SCRIPT_DIR/solo-programmer.md")"
-REV_MODEL="$(_frontmatter_model "$SCRIPT_DIR/solo-reviewer.md")"
-PROG_MODEL_FLAG=""; [[ -n "$PROG_MODEL" ]] && PROG_MODEL_FLAG="--model $PROG_MODEL"
-REV_MODEL_FLAG="";  [[ -n "$REV_MODEL"  ]] && REV_MODEL_FLAG="--model $REV_MODEL"
 
 # Common environment exports.
 #

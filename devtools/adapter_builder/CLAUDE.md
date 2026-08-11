@@ -114,6 +114,7 @@ Nothing is copied into the TransformerLens worktree except `.claude/agents/` (re
 - `WORKTREE_BASE` — where agent pair worktrees live; optional, defaults to `<parent-of-TransformerLens>/worktrees`
 - `NOTIFICATION_WEBHOOK_URL` — Slack webhook for notifications
 - `NOTIFICATION_NUMBER` — iMessage fallback
+- `PROGRAMMER_MODEL` / `REVIEWER_MODEL` / `ORCHESTRATOR_MODEL` — optional per-agent model overrides; default is the agent prompt frontmatter
 - Python managed via `uv`
 
 Runtime output (PID files, debug logs, raw tmux dumps, wrapper scripts, orchestration prompts) is written to `.logs/` in the project root and is gitignored.
