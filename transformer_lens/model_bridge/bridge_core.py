@@ -88,6 +88,7 @@ class BridgeCore:
         self._hook_registry_initialized = False
         self._hook_alias_registry: Dict[str, Union[str, List[str]]] = {}
         self._property_alias_registry: Dict[str, str] = {}
+        self.context_level = 0
         self._driver = driver
         if not hasattr(adapter, "component_mapping") or adapter.component_mapping is None:
             raise ValueError("Adapter must have a component_mapping attribute")
@@ -929,6 +930,8 @@ class BridgeCore:
         @contextmanager
         def _hooks_context() -> Iterator["BridgeCore"]:
             added_hooks: List[Tuple[HookPoint, Literal["fwd", "bwd"]]] = []
+            context_level = getattr(self, "context_level", 0) + 1
+            self.context_level = context_level
 
             def add_hook_to_point(
                 hook_point: HookPoint,
@@ -942,9 +945,14 @@ class BridgeCore:
                     if hook_point.name is not None:
                         alias_names_list.append(hook_point.name)
                     alias_names_list.append(name)
-                    hook_point.add_hook(hook_fn, dir=dir, alias_names=alias_names_list)
+                    hook_point.add_hook(
+                        hook_fn,
+                        dir=dir,
+                        level=context_level,
+                        alias_names=alias_names_list,
+                    )
                 else:
-                    hook_point.add_hook(hook_fn, dir=dir)
+                    hook_point.add_hook(hook_fn, dir=dir, level=context_level)
                 added_hooks.append((hook_point, dir))
 
             def apply_hooks(hook_list: List[Tuple[Any, Callable]], is_fwd: bool) -> None:
@@ -973,9 +981,12 @@ class BridgeCore:
                 apply_hooks(bwd_hooks, False)
                 yield self
             finally:
-                if reset_hooks_end:
-                    for hook_point, direction in added_hooks:
-                        hook_point.remove_hooks(dir=direction)
+                try:
+                    if reset_hooks_end:
+                        for hook_point, direction in added_hooks:
+                            hook_point.remove_hooks(dir=direction, level=context_level)
+                finally:
+                    self.context_level -= 1
 
         return _hooks_context()
 
@@ -1045,24 +1056,15 @@ class BridgeCore:
                 if hook_point.name is not None:
                     alias_names_list.append(hook_point.name)
                 alias_names_list.append(name)
-                hook_point.add_hook(hook_fn, dir=dir, alias_names=alias_names_list)
+                hook_point.add_hook(
+                    hook_fn,
+                    dir=dir,
+                    level=context_level,
+                    alias_names=alias_names_list,
+                )
             else:
-                hook_point.add_hook(hook_fn, dir=dir)
+                hook_point.add_hook(hook_fn, dir=dir, level=context_level)
             added_hooks.append((hook_point, dir))
-
-        if stop_at_layer is not None and hasattr(self, "blocks"):
-            if stop_at_layer < 0:
-                stop_at_layer = len(self.blocks) + stop_at_layer
-            if stop_at_layer >= 0 and stop_at_layer < len(self.blocks):
-
-                def stop_hook(tensor: Any, *, hook: Any) -> Any:
-                    raise StopAtLayerException(tensor)
-
-                # Stop at the beginning of the specified block, not at the end of the previous block
-                block_hook_name = f"blocks.{stop_at_layer}.hook_in"
-                hook_dict = self.hook_dict
-                if block_hook_name in hook_dict:
-                    add_hook_to_point(hook_dict[block_hook_name], stop_hook, block_hook_name, "fwd")
 
         def apply_hooks(
             hook_list: List[Tuple[Union[str, Callable], Callable]], is_fwd: bool
@@ -1102,7 +1104,25 @@ class BridgeCore:
                             hook_name_to_use = hook_point.name if hook_point.name else n
                             add_hook_to_point(hook_point, hook_fn, hook_name_to_use, direction)
 
+        context_level = getattr(self, "context_level", 0) + 1
+        self.context_level = context_level
         try:
+            if stop_at_layer is not None and hasattr(self, "blocks"):
+                if stop_at_layer < 0:
+                    stop_at_layer = len(self.blocks) + stop_at_layer
+                if stop_at_layer >= 0 and stop_at_layer < len(self.blocks):
+
+                    def stop_hook(tensor: Any, *, hook: Any) -> Any:
+                        raise StopAtLayerException(tensor)
+
+                    # Stop at the beginning of the specified block, not at the end of the previous block
+                    block_hook_name = f"blocks.{stop_at_layer}.hook_in"
+                    hook_dict = self.hook_dict
+                    if block_hook_name in hook_dict:
+                        add_hook_to_point(
+                            hook_dict[block_hook_name], stop_hook, block_hook_name, "fwd"
+                        )
+
             apply_hooks(fwd_hooks, True)
             apply_hooks(bwd_hooks, False)
             if start_at_layer is not None:
@@ -1115,9 +1135,12 @@ class BridgeCore:
                 output = e.layer_output
             return output
         finally:
-            if reset_hooks_end:
-                for hook_point, direction in added_hooks:
-                    hook_point.remove_hooks(dir=direction)
+            try:
+                if reset_hooks_end:
+                    for hook_point, direction in added_hooks:
+                        hook_point.remove_hooks(dir=direction, level=context_level)
+            finally:
+                self.context_level -= 1
 
     # ---- high-level execution: run_with_cache ----
 
@@ -1202,6 +1225,8 @@ class BridgeCore:
         cache: Dict[str, torch.Tensor] = {}
         hooks: List[Tuple[HookPoint, str]] = []
         visited: set[int] = set()
+        stop_hook_point: Optional[HookPoint] = None
+        stop_hook_fn: Optional[Callable] = None
 
         # None → no-op .to(None), tensors stay on their current device.
         cache_device = kwargs.pop("device", None)
@@ -1283,10 +1308,6 @@ class BridgeCore:
 
             return grad_hook
 
-        for hp, name in hooks:
-            hp.add_hook(make_cache_hook(name))
-            if incl_bwd:
-                hp.add_hook(make_grad_cache_hook(name), dir="bwd")
         processed_args = [input]
         # Driver-aware input placement: torch drivers move input_ids to the model's
         # device; remote drivers (no local parameters) leave them as-is.
@@ -1320,8 +1341,8 @@ class BridgeCore:
                 block_hook_name = f"blocks.{stop_at_layer}.hook_in"
                 hook_dict = self.hook_dict
                 if block_hook_name in hook_dict:
-                    hook_dict[block_hook_name].add_hook(stop_hook)
-                    hooks.append((hook_dict[block_hook_name], block_hook_name))
+                    stop_hook_point = hook_dict[block_hook_name]
+                    stop_hook_fn = stop_hook
         filtered_kwargs = kwargs.copy()
         # ``cache_device`` is honored by ``make_cache_hook`` above (``tensor.detach().to(cache_device)``);
         # the model and inputs stay where the caller put them, matching ``ActivationCache.to``.
@@ -1338,6 +1359,21 @@ class BridgeCore:
             )
         if start_at_layer is not None:
             filtered_kwargs["start_at_layer"] = start_at_layer
+        context_level = getattr(self, "context_level", 0) + 1
+        self.context_level = context_level
+        try:
+            for hp, name in hooks:
+                hp.add_hook(make_cache_hook(name), level=context_level)
+                if incl_bwd:
+                    hp.add_hook(make_grad_cache_hook(name), dir="bwd", level=context_level)
+            if stop_hook_point is not None and stop_hook_fn is not None:
+                stop_hook_point.add_hook(stop_hook_fn, level=context_level)
+        except Exception:
+            try:
+                self.remove_all_hook_fns(level=context_level)
+            finally:
+                self.context_level -= 1
+            raise
         try:
             if (
                 "output_attentions" not in filtered_kwargs
@@ -1377,8 +1413,10 @@ class BridgeCore:
         except Exception as e:
             raise e
         finally:
-            for hp, _ in hooks:
-                hp.remove_hooks(dir="both" if incl_bwd else "fwd")
+            try:
+                self.remove_all_hook_fns(level=context_level)
+            finally:
+                self.context_level -= 1
         if self.compatibility_mode == True:
             reverse_aliases = {}
             for old_name, new_name in aliases.items():
