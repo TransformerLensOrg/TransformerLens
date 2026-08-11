@@ -114,7 +114,7 @@ Prefer Bridge-native names in new code. Raw-HF-forward drivers comparing against
 
 ## 6. Adding a model
 
-Adapters are written **per architecture family**, not per individual model — adding `gpt2` registers all GPT-2 variants. Full workflow (starter-adapter table, 4-place registration, common gotchas, anti-patterns): **[supported_architectures/AGENTS.md](transformer_lens/model_bridge/supported_architectures/AGENTS.md)**. Verification flow: **[tools/model_registry/AGENTS.md](transformer_lens/tools/model_registry/AGENTS.md)**. Claude Code users: invoke `/add-model-support <hf_repo>`. For batch/autonomous adapter creation there is an agent-team harness in [devtools/adapter_builder/](devtools/adapter_builder/README.md) (Claude Code Max tier required).
+Adapters are written **per architecture family**, not per individual model — adding `gpt2` registers all GPT-2 variants. Full workflow (starter-adapter table, 4-place registration, common gotchas, anti-patterns): **[supported_architectures/AGENTS.md](transformer_lens/model_bridge/supported_architectures/AGENTS.md)**. Verification flow: **[tools/model_registry/AGENTS.md](transformer_lens/tools/model_registry/AGENTS.md)**. Claude Code users: invoke `/add-model-support <hf_repo>`. For batch/autonomous adapter creation there is an agent harness in [devtools/adapter_builder/](devtools/adapter_builder/README.md) — agent-teams mode needs Claude Code Max; its solo mode works on any tier.
 
 ## 7. Prioritization
 

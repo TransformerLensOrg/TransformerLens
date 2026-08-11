@@ -67,7 +67,7 @@ The agent prompts are authoritative and point at the `docs/` files rather than i
 
 In solo mode there is no Orchestrator — the coordinator daemon does the routing, and the Programmer/Reviewer prompts are the message-driven variants ([`agents/solo-programmer.md`](agents/solo-programmer.md), [`agents/solo-reviewer.md`](agents/solo-reviewer.md)).
 
-Agents do **not** make git commits, push to remotes, or create pull requests. All changes stay uncommitted for manual review. This is enforced at the framework level by `guard-git.sh` (see below), not just by the prompts.
+Agents **DO NOT** make git commits, push to remotes, or create pull requests. All changes stay uncommitted for manual review. This is enforced at the framework level by `guard-git.sh` (see below), not just by the prompts. The intention is that, even if Claude is helping you write the code, you should be reviewing every file & ensuring the code behaves as expected. **DO NOT** trust the LLM to do everything perfectly on the first try, it rarely does.
 
 ### Runtime Enforcement via Claude Code Hooks
 
