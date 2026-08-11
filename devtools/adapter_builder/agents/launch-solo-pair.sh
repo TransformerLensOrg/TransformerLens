@@ -61,6 +61,8 @@ WORKTREE_DIR=""
 AUTO_APPROVE=false
 SKIP_ARCH_CHECK=false
 DRY_RUN=false
+PROGRAMMER_TASK_OVERRIDE=""
+REVIEWER_TASK_OVERRIDE=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -74,6 +76,8 @@ while [[ $# -gt 0 ]]; do
     --skip-arch-check)    SKIP_ARCH_CHECK=true;     shift   ;;
     --auto-approve)       AUTO_APPROVE=true;        shift   ;;
     --dry-run)            DRY_RUN=true;             shift   ;;
+    --programmer-task)    PROGRAMMER_TASK_OVERRIDE="$2"; shift 2 ;;
+    --reviewer-task)      REVIEWER_TASK_OVERRIDE="$2";   shift 2 ;;
     -h|--help)            usage ;;
     *) err "Unknown argument: $1" ;;
   esac
@@ -290,8 +294,10 @@ fi
 PROGRAMMER_TASK="Create an Architecture Adapter for: ${ARCHITECTURE}
 ${SEED_MODEL_BLOCK}
 Memory limit: ${MAX_MEMORY_GB}GB"
+[[ -n "$PROGRAMMER_TASK_OVERRIDE" ]] && PROGRAMMER_TASK="$PROGRAMMER_TASK_OVERRIDE"
 
 REVIEWER_TASK="Review the adapter for architecture: ${ARCHITECTURE}"
+[[ -n "$REVIEWER_TASK_OVERRIDE" ]] && REVIEWER_TASK="$REVIEWER_TASK_OVERRIDE"
 
 # Read base prompts and append session-specific instructions
 SAFE_BRANCH_LOG=$(echo "$NEW_BRANCH" | tr '/' '-')

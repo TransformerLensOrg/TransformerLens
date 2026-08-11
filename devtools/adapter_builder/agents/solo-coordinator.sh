@@ -173,6 +173,13 @@ PANE_REVIEWER="$TMUX_SESSION:0.1"
 # Paste-buffer injection (same two-step idiom as ops.sh send: long payloads
 # staged via send-keys get stuck as an unsubmitted bracketed paste, so load
 # a buffer, paste it, then send Enter as a discrete key press).
+#
+# Do NOT send control characters (e.g. Ctrl-U) before the paste to "clear"
+# the input: Claude Code's TUI is not readline — empirically C-u at an idle
+# prompt triggers a session-level reset (SessionStart fires, permission mode
+# drops to manual) and the paste that follows is swallowed. Stale input-box
+# text (ghost suggestions) is harmless: it prefixes the message on submit
+# and agents parse past it.
 inject() {
   local pane="$1" message="$2"
   local buf="tl-coord-$$-$(date +%s)"
