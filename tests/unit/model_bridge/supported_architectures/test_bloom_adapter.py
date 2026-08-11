@@ -103,6 +103,11 @@ class TestBloomAdapterComponentMapping:
         assert isinstance(mapping["blocks"], BloomBlockBridge)
         assert mapping["blocks"].name == "transformer.h"
 
+    def test_residual_branch_hook_aliases(self, adapter: BloomArchitectureAdapter) -> None:
+        blocks = self._mapping(adapter)["blocks"]
+        assert blocks.hook_aliases["hook_attn_out"] == "attn.o.hook_out"
+        assert blocks.hook_aliases["hook_mlp_out"] == "mlp.out.hook_out"
+
     def test_ln_final_type_and_name(self, adapter: BloomArchitectureAdapter) -> None:
         mapping = self._mapping(adapter)
         assert isinstance(mapping["ln_final"], NormalizationBridge)
