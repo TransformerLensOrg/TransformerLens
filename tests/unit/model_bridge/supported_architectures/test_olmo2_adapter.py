@@ -302,6 +302,20 @@ class TestOlmo2HookAliasOverrides:
         block = _mapping(adapter)["blocks"]
         assert block.hook_aliases["hook_resid_mid"] == "mlp.hook_in"
 
+    def test_contribution_aliases_point_at_post_norm_outputs(
+        self, adapter: Olmo2ArchitectureAdapter
+    ) -> None:
+        """hook_attn_out / hook_mlp_out must expose the tensor added to the
+        residual stream, which under post-norm is the norm output (#1648)."""
+        block = _mapping(adapter)["blocks"]
+        assert block.hook_aliases["hook_attn_out"] == "ln1.hook_out"
+        assert block.hook_aliases["hook_mlp_out"] == "ln2.hook_out"
+
+    def test_hook_mlp_in_captures_on_mlp(self, adapter: Olmo2ArchitectureAdapter) -> None:
+        """No pre-MLP norm exists, so the hook_mlp_in capture sits on the MLP."""
+        block = _mapping(adapter)["blocks"]
+        assert block.mlp_reads_resid_directly is True
+
 
 class TestOlmo2GQAHookShapes:
     """Wire a fake attention module into the bridge and verify GQA hook shapes.

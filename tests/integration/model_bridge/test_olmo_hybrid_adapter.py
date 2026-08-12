@@ -104,6 +104,85 @@ class TestOlmoHybridHooks:
             assert captured.get(name) == shape, f"{name}: {captured.get(name)}"
 
 
+class TestOlmoHybridHookSemantics:
+    """hook_attn_out / hook_mlp_out must expose the tensor added to the residual
+    stream on both layer types: full-attention layers are OLMo2 post-norm
+    (contribution = norm output), linear-attention layers are pre-norm
+    (contribution = raw sublayer output). See issue #1648."""
+
+    def test_residual_contributions_decompose_stream(self, olmo_bridge, sample_tokens):
+        with torch.no_grad():
+            _, cache = olmo_bridge.run_with_cache(sample_tokens)
+
+        for layer in range(olmo_bridge.cfg.n_layers):
+            torch.testing.assert_close(
+                cache[f"blocks.{layer}.hook_resid_post"],
+                cache[f"blocks.{layer}.hook_resid_pre"]
+                + cache[f"blocks.{layer}.hook_attn_out"]
+                + cache[f"blocks.{layer}.hook_mlp_out"],
+            )
+
+    def test_full_attention_contributions_are_post_norm(self, olmo_bridge, sample_tokens):
+        """Layers 1/3 are full attention: aliases must differ from raw module outputs."""
+        with torch.no_grad():
+            _, cache = olmo_bridge.run_with_cache(sample_tokens)
+
+        for layer in (1, 3):
+            assert not torch.allclose(
+                cache[f"blocks.{layer}.attn.hook_out"],
+                cache[f"blocks.{layer}.hook_attn_out"],
+            )
+            assert not torch.allclose(
+                cache[f"blocks.{layer}.mlp.hook_out"],
+                cache[f"blocks.{layer}.hook_mlp_out"],
+            )
+
+    def test_hook_mlp_in_exposes_mid_residual_on_both_layer_types(
+        self, olmo_bridge, sample_tokens
+    ):
+        """hook_mlp_in must capture the mid-residual on both layouts: ln2's
+        input on pre-norm linear layers, the MLP's own input on post-norm
+        full-attention layers (where ln2's input is the raw attention output)."""
+        olmo_bridge.set_use_hook_mlp_in(True)
+        try:
+            with torch.no_grad():
+                _, cache = olmo_bridge.run_with_cache(sample_tokens)
+            for layer in range(olmo_bridge.cfg.n_layers):
+                torch.testing.assert_close(
+                    cache[f"blocks.{layer}.hook_mlp_in"],
+                    cache[f"blocks.{layer}.hook_resid_pre"]
+                    + cache[f"blocks.{layer}.hook_attn_out"],
+                )
+        finally:
+            olmo_bridge.set_use_hook_mlp_in(False)
+
+    def test_full_attention_attn_out_write_lands_unmodified(self, olmo_bridge, sample_tokens):
+        """Writing v to a full-attention layer's hook_attn_out must make the
+        contribution exactly v (mlp.hook_in fires on the post-attention stream)."""
+        torch.manual_seed(1)
+        replacement = torch.randn(1, sample_tokens.shape[1], olmo_bridge.cfg.d_model)
+        captured = {}
+
+        def grab(key):
+            def hook_fn(tensor, hook):
+                captured[key] = tensor.detach().clone()
+                return tensor
+
+            return hook_fn
+
+        with torch.no_grad():
+            olmo_bridge.run_with_hooks(
+                sample_tokens,
+                fwd_hooks=[
+                    ("blocks.1.hook_attn_out", lambda tensor, hook: replacement.clone()),
+                    ("blocks.1.hook_resid_pre", grab("resid_pre")),
+                    ("blocks.1.mlp.hook_in", grab("resid_mid")),
+                ],
+            )
+
+        torch.testing.assert_close(captured["resid_mid"] - captured["resid_pre"], replacement)
+
+
 class TestOlmoHybridGeneration:
     def test_generate_with_stateful_cache(self, olmo_bridge):
         text = olmo_bridge.generate("Hello", max_new_tokens=5, do_sample=False, verbose=False)

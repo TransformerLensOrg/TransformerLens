@@ -61,6 +61,9 @@ if TYPE_CHECKING:
 
 _BLOCK_PATTERN = re.compile("blocks\\.(\\d+)")
 
+# Block-list container attributes a bridge may expose.
+_BLOCK_LIST_ATTRS = ("blocks", "encoder_blocks", "decoder_blocks", "L_blocks", "H_blocks")
+
 
 def _resolve_attr_path(obj: nn.Module, attr_path: str) -> torch.Tensor:
     """Walk a dot-separated attribute path and return the final tensor."""
@@ -440,7 +443,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         d_head = self.cfg.d_head
         d_model = self.cfg.d_model
         blocks_iter = []
-        for bl_name in ("blocks", "encoder_blocks", "decoder_blocks", "L_blocks", "H_blocks"):
+        for bl_name in _BLOCK_LIST_ATTRS:
             if hasattr(self, bl_name):
                 blocks_iter.append(getattr(self, bl_name))
         if not blocks_iter:
@@ -578,8 +581,51 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             aliases_tuple = self._compute_hook_aliases_cached(
                 hook_names_tuple, component_aliases_tuple
             )
-            return dict(aliases_tuple)
+            aliases = dict(aliases_tuple)
+            aliases.update(self._collect_block_instance_aliases())
+            return aliases
         return {}
+
+    def _collect_block_instance_aliases(self) -> Dict[str, str]:
+        """Collect per-block-instance aliases, overriding template-derived ones.
+
+        The template collection above reads ``adapter.component_mapping`` and so
+        cannot see aliases a block rebinds per layer at bind time (heterogeneous
+        architectures like OlmoHybrid) or prunes for absent optional submodules.
+        """
+        aliases: Dict[str, str] = {}
+        unresolved: List[str] = []
+        for bl_name in _BLOCK_LIST_ATTRS:
+            block_list = getattr(self, bl_name, None)
+            if block_list is None:
+                continue
+            for i, block in enumerate(block_list):
+                block_aliases = getattr(block, "hook_aliases", None)
+                if not block_aliases:
+                    continue
+                # A block with no registered hooks means the registry hasn't
+                # scanned it yet — unresolved aliases there are timing, not drops.
+                block_prefix = f"{bl_name}.{i}."
+                if f"{block_prefix}hook_in" not in self._hook_registry:
+                    continue
+                for alias_name, target in block_aliases.items():
+                    targets = target if isinstance(target, list) else [target]
+                    for single_target in targets:
+                        full_target = f"{block_prefix}{single_target}"
+                        if full_target in self._hook_registry:
+                            aliases[f"{block_prefix}{alias_name}"] = full_target
+                            break
+                    else:
+                        unresolved.append(f"{block_prefix}{alias_name}")
+        if unresolved:
+            # Surface drops instead of silently swallowing, mirroring
+            # GeneralizedComponent._register_aliases.
+            warnings.warn(
+                f"{len(unresolved)} block hook alias(es) did not resolve to a "
+                f"registered hook (e.g. '{unresolved[0]}').",
+                stacklevel=2,
+            )
+        return aliases
 
     def _add_aliases_to_hooks(self, hooks: Dict[str, HookPoint]) -> None:
         """Add aliases to hooks in place."""

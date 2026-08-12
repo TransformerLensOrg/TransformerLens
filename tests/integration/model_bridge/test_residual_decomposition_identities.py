@@ -13,6 +13,8 @@ residual-wiring pattern the bridge handles:
 - gpt2: block-level residual adds, the HookedTransformer reference wiring
 - mistral: Llama-style pre-RMSNorm block-level adds
 - bloom: residual added *inside* the HF attention/MLP modules (the #1639 case)
+- olmo2: post-norm inside the residual branch — RMSNorm applies to the sublayer
+  output before the add, so the contributions are the norm outputs (the #1648 case)
 
 Parallel-residual architectures (Falcon, GPT-J, NeoX, Cohere) are out of scope:
 they have no ``hook_resid_mid``.
@@ -27,6 +29,7 @@ SEQUENTIAL_RESIDUAL_MODELS = [
     pytest.param("hf-internal-testing/tiny-random-gpt2", id="gpt2"),
     pytest.param("trl-internal-testing/tiny-MistralForCausalLM-0.2", id="mistral"),
     pytest.param("trl-internal-testing/tiny-BloomForCausalLM", id="bloom"),
+    pytest.param("hf-internal-testing/tiny-random-Olmo2ForCausalLM", id="olmo2"),
 ]
 
 
