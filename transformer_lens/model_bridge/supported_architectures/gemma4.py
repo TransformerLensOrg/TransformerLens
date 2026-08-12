@@ -145,14 +145,7 @@ class Gemma4ArchitectureAdapter(ArchitectureAdapter):
                             "v_norm": GeneralizedComponent(name="v_norm", optional=True),
                         },
                     ),
-                    "mlp": GeneralizedComponent(
-                        name="mlp",
-                        submodules={
-                            "gate": LinearBridge(name="gate_proj"),
-                            "in": LinearBridge(name="up_proj"),
-                            "out": LinearBridge(name="down_proj"),
-                        },
-                    ),
+                    "mlp": self._gated_mlp(),
                 },
             ),
             "ln_final": GeneralizedComponent(name="model.language_model.norm"),
