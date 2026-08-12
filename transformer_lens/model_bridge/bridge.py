@@ -903,7 +903,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
 
         apply_fn_to_all_components(self, set_compatibility_mode)
         self.clear_hook_registry()
-        # Drop pre-ln capture handles from any prior call so they don't accumulate.
+        # Drop block capture-hook handles from any prior call so they don't accumulate.
         if hasattr(self, "blocks"):
             for block in self.blocks:
                 if hasattr(block, "_teardown_capture_hooks"):
@@ -4149,7 +4149,8 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         self._propagate_attention_flag("use_attn_in", use_attn_in)
 
     def set_use_hook_mlp_in(self, use_hook_mlp_in: bool) -> None:
-        """Toggle the pre-ln2 ``hook_mlp_in`` HookPoint, matching legacy semantics.
+        """Toggle the ``hook_mlp_in`` HookPoint (the MLP-branch entry: pre-ln2, or
+        the MLP input on post-norm blocks), matching legacy semantics.
 
         See :py:meth:`HookedTransformer.set_use_hook_mlp_in`.
         """

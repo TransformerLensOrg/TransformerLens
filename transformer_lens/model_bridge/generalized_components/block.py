@@ -39,7 +39,8 @@ class BlockBridge(GeneralizedComponent):
     is_list_item: bool = True
     hook_out_is_single_residual_stream: bool = True
     # hook_mlp_in is a direct HookPoint on this class (not aliased) so it can
-    # fire pre-ln2; see __init__. The post-ln2 mlp input stays at block.mlp.hook_in.
+    # fire on the MLP-branch entry (pre-ln2, or the MLP input on post-norm
+    # blocks); see __init__. The normalized mlp input stays at block.mlp.hook_in.
     hook_aliases = {
         "hook_resid_pre": "hook_in",
         "hook_resid_mid": "ln2.hook_in",
@@ -119,9 +120,11 @@ class BlockBridge(GeneralizedComponent):
         self.hook_mlp_in = HookPoint()
 
     def _maybe_wire_capture_hooks(self) -> None:
-        """Install ln1/ln2 forward_pre_hooks that feed the bridge's pre-LN hooks (#1317).
+        """Install the block's capture hooks: the ln1 pre-hook feeding the
+        split-qkv fork and the MLP-branch-entry pre-hook feeding hook_mlp_in
+        (#1317). Subclasses extend this with their own captures.
 
-        Hooks register on the NormalizationBridge instance, not on
+        Hooks register on the bridge submodule instance, not on
         ``original_component`` — the manual (non-native-autograd) bridge
         forward never calls the raw module, so a hook there would silently miss
         on most adapters. Idempotent.
@@ -178,7 +181,7 @@ class BlockBridge(GeneralizedComponent):
         self._capture_hooks_wired = True
 
     def _teardown_capture_hooks(self) -> None:
-        """Remove the ln1/ln2 forward_pre_hooks installed by _maybe_wire_capture_hooks."""
+        """Remove the capture hooks installed by _maybe_wire_capture_hooks (and subclass extensions)."""
         for handle in self._capture_hook_handles:
             handle.remove()
         self._capture_hook_handles.clear()

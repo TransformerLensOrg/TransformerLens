@@ -26,7 +26,9 @@ class GraniteArchitectureAdapter(ArchitectureAdapter):
 
     Granite is a Llama-like architecture with RMSNorm, rotary position embeddings
     (RoPE), GQA, and a gated MLP (SiLU activation). Granite-specific scaling
-    multipliers are handled by the HF model's native forward pass.
+    multipliers are applied by the HF model's native forward pass;
+    ScaledResidualBlockBridge accounts for residual_multiplier so
+    hook_attn_out / hook_mlp_out expose the scaled residual contributions.
 
     Optional Parameters (may not exist in state_dict):
     -------------------------------------------------
