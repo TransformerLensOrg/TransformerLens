@@ -42,6 +42,14 @@ class GeneralizedComponent(nn.Module):
     compatibility_mode: bool = False
     disable_warnings: bool = False
     hook_aliases: Dict[str, Union[str, List[str]]] = {}
+
+    # Projection-hook protocol between container bridges (MLPBridge) and the
+    # projection bridges they wrap (LinearBridge / Conv1DBridge): the wrapper
+    # records that its hook_out fired so the container only re-fires it as a
+    # bypass fallback, and the container suppresses the wrapper's next hook_in
+    # after pre-firing it itself. See MLPBridge.forward.
+    _fired_hook_out: bool = False
+    _suppress_next_hook_in: bool = False
     property_aliases: Dict[str, str] = {}
 
     def __init__(

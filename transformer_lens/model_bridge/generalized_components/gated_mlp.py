@@ -127,6 +127,10 @@ class GatedMLPBridge(MLPBridge):
             output = torch.nn.functional.linear(
                 hidden, self._processed_W_out, self._processed_b_out
             )
+            # The functional path bypasses the wrapped `out` projection, so fire
+            # its hook_out here — it is the down-projection output.
+            if hasattr(self, "out") and hasattr(self.out, "hook_out"):
+                output = self.out.hook_out(output)
             output = self.hook_out(output)
             return output
         if self.original_component is None:

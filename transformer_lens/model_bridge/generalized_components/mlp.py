@@ -58,15 +58,30 @@ class MLPBridge(GeneralizedComponent):
         hidden_states = args[0]
         hidden_states = self.hook_in(hidden_states)
         in_module = getattr(self, "in", None) or getattr(self, "input", None)
-        if in_module is not None and hasattr(in_module, "hook_in"):
-            hidden_states = in_module.hook_in(hidden_states)  # type: ignore[misc]
+        if in_module is not None and not hasattr(in_module, "hook_in"):
+            in_module = None
+        if in_module is not None:
+            hidden_states = in_module.hook_in(hidden_states)
         new_args = (hidden_states,) + args[1:]
         original_component = self.original_component
         if original_component is None:
             raise RuntimeError(
                 f"Original component not set for {self.name}. Call set_original_component() first."
             )
-        output = original_component(*new_args, **kwargs)
+        out_module = getattr(self, "out", None)
+        if out_module is not None:
+            object.__setattr__(out_module, "_fired_hook_out", False)
+        # The pre-fire above already hooked the tensor entering the module; tell
+        # the replaced `in` projection to skip its own hook_in once so the same
+        # tensor is not double-hooked (wrapped forwards that bypass the
+        # projection leave the flag set; it is cleared below).
+        if in_module is not None:
+            object.__setattr__(in_module, "_suppress_next_hook_in", True)
+        try:
+            output = original_component(*new_args, **kwargs)
+        finally:
+            if in_module is not None:
+                object.__setattr__(in_module, "_suppress_next_hook_in", False)
         # Recurrent MLPs (RWKV's channel-mix) return (hidden, state). Hook the
         # hidden states and re-pack, or hook_out would hand users a tuple and
         # interventions on it would be silently dropped.
@@ -77,8 +92,12 @@ class MLPBridge(GeneralizedComponent):
             # different tensor, so re-firing would double-apply interventions.
             return (self.hook_out(output[0]),) + output[1:]
         output = self.hook_out(output)
-        if hasattr(self, "out") and hasattr(self.out, "hook_out"):
-            output = self.out.hook_out(output)
+        # Fallback only, for wrapped forwards that bypass the replaced `out`
+        # projection: if it did run, re-firing would double-apply interventions
+        # and, on residual-inside MLPs (MPT), stamp the residual-added module
+        # output over the additive contribution.
+        if out_module is not None and not out_module._fired_hook_out:
+            output = out_module.hook_out(output)
         return output
 
     def _weight_layout_in_out(self, proj: Any) -> Optional[bool]:

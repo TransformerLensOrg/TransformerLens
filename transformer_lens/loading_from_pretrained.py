@@ -1417,6 +1417,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "attn_types": ["global"] * 16,
             "positional_embedding_type": "rotary",
             "gated_mlp": True,
+            "clip_qkv": getattr(hf_config, "clip_qkv", None),
         }
     elif official_model_name.startswith("allenai/OLMo-7B") and official_model_name.endswith("hf"):
         cfg_dict = {
@@ -1435,6 +1436,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "attn_types": ["global"] * 32,
             "positional_embedding_type": "rotary",
             "gated_mlp": True,
+            "clip_qkv": getattr(hf_config, "clip_qkv", None),
         }
     elif official_model_name.startswith("allenai/OLMo-2-0425-1B"):
         cfg_dict = {
@@ -1557,6 +1559,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "rotary_dim": hf_config.hidden_size // hf_config.num_attention_heads,
             "gated_mlp": True,
             "normalization_type": "RMS",
+            "clip_qkv": getattr(hf_config, "clip_qkv", None),
         }
     elif architecture == "T5ForConditionalGeneration":
         cfg_dict = {

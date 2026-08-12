@@ -94,8 +94,14 @@ jobs:
             ~/.cache/huggingface/hub/models--ArthurConmy--redwood_attn_2l
             ~/.cache/huggingface/hub/models--stas--tiny-random-llama-2
             ~/.cache/huggingface/hub/models--microsoft--DialoGPT-medium
-          key: ${{ runner.os }}-huggingface-models-v4
+            ~/.cache/huggingface/hub/models--hf-internal-testing--tiny-random-gpt2
+            ~/.cache/huggingface/hub/models--hf-internal-testing--tiny-random-Olmo2ForCausalLM
+            ~/.cache/huggingface/hub/models--hf-internal-testing--tiny-random-MptForCausalLM
+            ~/.cache/huggingface/hub/models--trl-internal-testing--tiny-MistralForCausalLM-0.2
+            ~/.cache/huggingface/hub/models--trl-internal-testing--tiny-BloomForCausalLM
+          key: ${{ runner.os }}-huggingface-models-v5
           restore-keys: |
+            ${{ runner.os }}-huggingface-models-v4
             ${{ runner.os }}-huggingface-models-v2
             ${{ runner.os }}-huggingface-models-v1
             ${{ runner.os }}-huggingface-models
@@ -288,8 +294,14 @@ jobs:
             ~/.cache/huggingface/hub/models--ArthurConmy--redwood_attn_2l
             ~/.cache/huggingface/hub/models--stas--tiny-random-llama-2
             ~/.cache/huggingface/hub/models--microsoft--DialoGPT-medium
-          key: ${{ runner.os }}-huggingface-models-v4
+            ~/.cache/huggingface/hub/models--hf-internal-testing--tiny-random-gpt2
+            ~/.cache/huggingface/hub/models--hf-internal-testing--tiny-random-Olmo2ForCausalLM
+            ~/.cache/huggingface/hub/models--hf-internal-testing--tiny-random-MptForCausalLM
+            ~/.cache/huggingface/hub/models--trl-internal-testing--tiny-MistralForCausalLM-0.2
+            ~/.cache/huggingface/hub/models--trl-internal-testing--tiny-BloomForCausalLM
+          key: ${{ runner.os }}-huggingface-models-v5
           restore-keys: |
+            ${{ runner.os }}-huggingface-models-v4
             ${{ runner.os }}-huggingface-models-v2
             ${{ runner.os }}-huggingface-models-v1
             ${{ runner.os }}-huggingface-models
@@ -338,8 +350,9 @@ jobs:
         with:
           path: |
             ~/.cache/huggingface/hub/models--gpt2
-          key: ${{ runner.os }}-huggingface-models-v4
+          key: ${{ runner.os }}-huggingface-models-v5
           restore-keys: |
+            ${{ runner.os }}-huggingface-models-v4
             ${{ runner.os }}-huggingface-models-v2
             ${{ runner.os }}-huggingface-models-v1
             ${{ runner.os }}-huggingface-models
