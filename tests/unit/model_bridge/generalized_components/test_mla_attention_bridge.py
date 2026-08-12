@@ -183,3 +183,43 @@ class TestMLAAttentionBridgeForward:
 
         qk_rope_dim = mla_bridge._qk_rope_head_dim
         assert torch.allclose(q_values[0][..., -qk_rope_dim:], rot_q_values[0], atol=1e-5)
+
+
+class TestMLAAttentionBridgeScaling:
+    def test_bridge_tracks_hf_module_scaling(self, tiny_config, tiny_model):
+        """DeepSeek-V3 yarn configs set hf_attn.scaling to qk_head_dim^-0.5 * mscale^2;
+        the bridge must score with the module's scaling, not a recomputed base scale."""
+        hf_attn = tiny_model.model.layers[1].self_attn  # keep module-scoped fixtures pristine
+        original_scaling = hf_attn.scaling
+        batch, seq = 2, 8
+        # fork_rng: deterministic inputs without mutating the global RNG stream.
+        with torch.random.fork_rng(devices=[]):
+            torch.manual_seed(0)
+            hidden_states = torch.randn(batch, seq, tiny_config.hidden_size)
+        position_ids = torch.arange(seq).unsqueeze(0).expand(batch, -1)
+        position_embeddings = tiny_model.model.rotary_emb(hidden_states, position_ids)
+
+        try:
+            # mscale^2 for DeepSeek-V3/R1's yarn factor=40, mscale_all_dim=1
+            hf_attn.scaling = original_scaling * 1.87
+            bridge = MLAAttentionBridge(name="self_attn", config=tiny_config, submodules={})
+            bridge.set_original_component(hf_attn)
+            bridge.set_rotary_emb(tiny_model.model.rotary_emb)
+
+            with torch.no_grad():
+                hf_out = hf_attn(
+                    hidden_states, position_embeddings=position_embeddings, attention_mask=None
+                )[0]
+                bridge_out = bridge(
+                    hidden_states, position_embeddings=position_embeddings, attention_mask=None
+                )[0]
+                hf_attn.scaling = original_scaling
+                base_out = hf_attn(
+                    hidden_states, position_embeddings=position_embeddings, attention_mask=None
+                )[0]
+
+            assert (hf_out - bridge_out).abs().max().item() < 0.15
+            # The modified scale must actually change the reference, or parity is vacuous.
+            assert (hf_out - base_out).abs().max().item() > 1e-6
+        finally:
+            hf_attn.scaling = original_scaling

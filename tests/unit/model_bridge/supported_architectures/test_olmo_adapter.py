@@ -5,7 +5,7 @@ Tests cover:
 - component mapping structure and HF module names
 - weight conversion keys, types, and GQA head counts
 - PositionEmbeddingsAttentionBridge forward execution and hook shapes
-- prepare_model clamp patching
+- clip_qkv clamp parity with HF attention
 - setup_component_testing eager-attention and rotary wiring
 - factory registration
 """
@@ -94,21 +94,6 @@ class _FakeOlmoAttention(nn.Module):
         self.o_proj = nn.Linear(n_heads * head_dim, d_model, bias=False)
 
 
-class _RecordingClampAttention(nn.Module):
-    """Attention stub that records clip_qkv during forward."""
-
-    def __init__(self, config: Any) -> None:
-        """Keep a reference to the shared HF config and a call log."""
-        super().__init__()
-        self.config = config
-        self.seen_clip_qkv: list[Any] = []
-
-    def forward(self, *args: Any, **kwargs: Any) -> torch.Tensor:
-        """Record the current clip_qkv value and return a dummy tensor."""
-        self.seen_clip_qkv.append(self.config.clip_qkv)
-        return torch.tensor(0.0)
-
-
 def _make_position_embeddings(seq_len: int, head_dim: int) -> tuple[torch.Tensor, torch.Tensor]:
     """Return identity rotary embeddings for a deterministic attention path."""
     # Identity RoPE keeps the forward path simple while still exercising the
@@ -116,6 +101,13 @@ def _make_position_embeddings(seq_len: int, head_dim: int) -> tuple[torch.Tensor
     cos = torch.ones(1, seq_len, head_dim)
     sin = torch.zeros(1, seq_len, head_dim)
     return cos, sin
+
+
+def _make_additive_causal_mask(batch: int, seq_len: int) -> torch.Tensor:
+    """4D additive causal mask, the form HF eager and the bridge both add as-is."""
+    causal = torch.tril(torch.ones(seq_len, seq_len, dtype=torch.bool))
+    mask = torch.zeros(batch, 1, seq_len, seq_len)
+    return mask.masked_fill(~causal, torch.finfo(torch.float32).min)
 
 
 def _wire_attention_bridge(
@@ -319,47 +311,100 @@ class TestOlmoAttentionBridge:
         assert seen["z"] == torch.Size([batch, seq_len, cfg.n_heads, cfg.d_head])
 
 
-class TestOlmoPrepareModel:
-    """Behavioral tests for OLMo's in-place clamp patch."""
+class TestOlmoClipQkv:
+    """The reconstructed forward must clamp Q/K/V when config.clip_qkv is set."""
 
-    def test_prepare_model_patches_clip_qkv_forward(self, adapter: OlmoArchitectureAdapter) -> None:
-        """prepare_model should suppress in-place clamping during attention forward."""
-        config = SimpleNamespace(clip_qkv=128.0)
-        attn0 = _RecordingClampAttention(config)
-        attn1 = _RecordingClampAttention(config)
-        hf_model = SimpleNamespace(
-            config=config,
-            model=SimpleNamespace(
-                layers=[
-                    SimpleNamespace(self_attn=attn0),
-                    SimpleNamespace(self_attn=attn1),
-                ]
-            ),
-        )
-
-        adapter.prepare_model(hf_model)
-        attn0()
-        attn1()
-
-        assert attn0.seen_clip_qkv == [None]
-        assert attn1.seen_clip_qkv == [None]
-        assert config.clip_qkv == 128.0
-
-    def test_prepare_model_is_noop_when_clip_qkv_missing(
-        self, adapter: OlmoArchitectureAdapter
+    def test_bridge_matches_hf_with_active_clamp(
+        self, adapter: OlmoArchitectureAdapter, cfg: TransformerBridgeConfig
     ) -> None:
-        """No wrapper should be installed when clip_qkv is already disabled."""
-        config = SimpleNamespace(clip_qkv=None)
-        attn = _RecordingClampAttention(config)
-        original_forward = attn.__class__.forward
-        hf_model = SimpleNamespace(
-            config=config,
-            model=SimpleNamespace(layers=[SimpleNamespace(self_attn=attn)]),
-        )
+        from transformers import OlmoConfig
+        from transformers.models.olmo.modeling_olmo import OlmoAttention
 
-        adapter.prepare_model(hf_model)
+        # fork_rng: deterministic setup without mutating the global RNG stream.
+        with torch.random.fork_rng(devices=[]):
+            torch.manual_seed(0)
+            # clip_qkv well below the projection scale so the clamp is active.
+            hf_config = OlmoConfig(
+                hidden_size=cfg.d_model,
+                num_attention_heads=cfg.n_heads,
+                num_key_value_heads=cfg.n_key_value_heads,
+                clip_qkv=0.05,
+            )
+            hf_config._attn_implementation = "eager"
+            hf_attn = OlmoAttention(hf_config, layer_idx=0)
+            batch, seq = 2, 5
+            hidden_states = torch.randn(batch, seq, cfg.d_model)
 
-        assert attn.forward.__func__ is original_forward
+        attn_bridge = copy.deepcopy(adapter.get_generalized_component("blocks.0.attn"))
+        assert isinstance(attn_bridge, PositionEmbeddingsAttentionBridge)
+        attn_bridge.set_original_component(hf_attn)
+        setup_submodules(attn_bridge, adapter, hf_attn)
+        attn_bridge.setup_hook_compatibility()
+
+        position_embeddings = _make_position_embeddings(seq, cfg.d_head)
+        # 4D additive causal mask — authoritative for both HF eager and the bridge.
+        attention_mask = _make_additive_causal_mask(batch, seq)
+
+        with torch.no_grad():
+            hf_out = hf_attn(
+                hidden_states,
+                position_embeddings=position_embeddings,
+                attention_mask=attention_mask,
+            )[0]
+            bridge_out = attn_bridge(
+                hidden_states=hidden_states,
+                position_embeddings=position_embeddings,
+                attention_mask=attention_mask,
+            )[0]
+
+        torch.testing.assert_close(bridge_out, hf_out, atol=1e-5, rtol=1e-4)
+
+        # Disabling the clamp must change the bridge output, or parity is vacuous.
+        hf_config.clip_qkv = None
+        with torch.no_grad():
+            unclamped_out = attn_bridge(
+                hidden_states=hidden_states,
+                position_embeddings=position_embeddings,
+                attention_mask=attention_mask,
+            )[0]
+        assert not torch.allclose(unclamped_out, hf_out, atol=1e-5)
+
+    def test_clamp_is_out_of_place_under_backward_hooks(
+        self, adapter: OlmoArchitectureAdapter, cfg: TransformerBridgeConfig
+    ) -> None:
+        """Gradients must flow through the clamped forward (HF's clamp_ breaks this)."""
+        from transformers import OlmoConfig
+        from transformers.models.olmo.modeling_olmo import OlmoAttention
+
+        # fork_rng: deterministic setup without mutating the global RNG stream.
+        with torch.random.fork_rng(devices=[]):
+            torch.manual_seed(0)
+            hf_config = OlmoConfig(
+                hidden_size=cfg.d_model,
+                num_attention_heads=cfg.n_heads,
+                num_key_value_heads=cfg.n_key_value_heads,
+                clip_qkv=0.05,
+            )
+            hf_config._attn_implementation = "eager"
+            hf_attn = OlmoAttention(hf_config, layer_idx=0)
+            batch, seq = 1, 4
+            hidden_states = torch.randn(batch, seq, cfg.d_model, requires_grad=True)
+
+        attn_bridge = copy.deepcopy(adapter.get_generalized_component("blocks.0.attn"))
+        attn_bridge.set_original_component(hf_attn)
+        setup_submodules(attn_bridge, adapter, hf_attn)
+        attn_bridge.setup_hook_compatibility()
+
+        position_embeddings = _make_position_embeddings(seq, cfg.d_head)
+
+        output = attn_bridge(
+            hidden_states=hidden_states,
+            position_embeddings=position_embeddings,
+            attention_mask=None,
+        )[0]
+        output.sum().backward()
+        assert hidden_states.grad is not None
+        assert torch.isfinite(hidden_states.grad).all()
 
 
 class TestOlmoSetupComponentTesting:

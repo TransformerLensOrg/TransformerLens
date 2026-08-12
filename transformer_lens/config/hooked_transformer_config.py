@@ -235,6 +235,8 @@ class HookedTransformerConfig(TransformerLensConfig):
             which use different RoPE bases for local (10k) and global (1M) attention. Defaults
             to None, which means the standard rotary_base is used for all layers.
         norm_topk_prob (bool): Whether to normalize the top-k probabilities in the MoE layer.
+        clip_qkv (float, *optional*): Clamp Q/K/V activations to [-clip_qkv, clip_qkv] after
+            projection (and any qk-norm), as OLMo v1 and OLMoE do. Defaults to None (no clamp).
     """
 
     model_name: str = "custom"
@@ -245,6 +247,7 @@ class HookedTransformerConfig(TransformerLensConfig):
     use_hook_mlp_in: bool = False
     use_attn_in: bool = False
     use_qk_norm: bool = False
+    clip_qkv: Optional[float] = None
     use_local_attn: bool = False
     ungroup_grouped_query_attention: bool = False
     original_architecture: Optional[str] = None

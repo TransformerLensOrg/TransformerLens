@@ -397,6 +397,11 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
                     q_gate = q_gate.reshape(*input_shape, -1)
                     query_states = query_states.reshape(*input_shape, -1)
 
+        # Falcon-H1 scales K by a learned mup scalar between projection and RoPE.
+        key_multiplier = getattr(hf_attn, "key_multiplier", None)
+        if key_multiplier is not None:
+            key_states = key_states * key_multiplier
+
         has_q_norm = "q_norm" in self.submodules
         has_k_norm = "k_norm" in self.submodules
 
@@ -412,6 +417,16 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
                 key_states = self._apply_pre_reshape_qk_norm(
                     key_states, self.k_norm, self.hook_k_normed, head_dim
                 )
+
+        # OLMo v1 / OLMoE clamp Q/K/V when clip_qkv is set — after the qk-norm
+        # (OLMoE norms first) and before RoPE, matching HF order. Out-of-place
+        # (HF uses clamp_) so backward hooks stay legal.
+        hf_attn_config = getattr(hf_attn, "config", None)
+        clip_qkv = getattr(hf_attn_config, "clip_qkv", None) if hf_attn_config is not None else None
+        if clip_qkv is not None:
+            query_states = query_states.clamp(min=-clip_qkv, max=clip_qkv)
+            key_states = key_states.clamp(min=-clip_qkv, max=clip_qkv)
+            value_states = value_states.clamp(min=-clip_qkv, max=clip_qkv)
 
         # For the split path, tensors are already [B, S, H, d_head]; for the
         # default path they're flat [B, S, H*d_head] and need the view.

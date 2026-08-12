@@ -36,6 +36,10 @@ class LinearBridge(GeneralizedComponent):
         input = self.hook_in(input)
         output = self.original_component(input, *args, **kwargs)
         output = self.hook_out(output)
+        # Lets container bridges (MLPBridge) detect whether this projection ran
+        # inside the wrapped module's forward, so they only re-fire hook_out as
+        # a fallback when it did not.
+        self._fired_hook_out = True
         return output
 
     def __repr__(self) -> str:

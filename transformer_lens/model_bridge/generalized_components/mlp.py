@@ -66,6 +66,9 @@ class MLPBridge(GeneralizedComponent):
             raise RuntimeError(
                 f"Original component not set for {self.name}. Call set_original_component() first."
             )
+        out_module = getattr(self, "out", None)
+        if out_module is not None:
+            out_module._fired_hook_out = False
         output = original_component(*new_args, **kwargs)
         # Recurrent MLPs (RWKV's channel-mix) return (hidden, state). Hook the
         # hidden states and re-pack, or hook_out would hand users a tuple and
@@ -77,8 +80,16 @@ class MLPBridge(GeneralizedComponent):
             # different tensor, so re-firing would double-apply interventions.
             return (self.hook_out(output[0]),) + output[1:]
         output = self.hook_out(output)
-        if hasattr(self, "out") and hasattr(self.out, "hook_out"):
-            output = self.out.hook_out(output)
+        # Fallback only, for wrapped forwards that bypass the replaced `out`
+        # projection: if it did run, re-firing would double-apply interventions
+        # and, on residual-inside MLPs (MPT), stamp the residual-added module
+        # output over the additive contribution.
+        if (
+            out_module is not None
+            and hasattr(out_module, "hook_out")
+            and not getattr(out_module, "_fired_hook_out", False)
+        ):
+            output = out_module.hook_out(output)
         return output
 
     def _weight_layout_in_out(self, proj: Any) -> Optional[bool]:

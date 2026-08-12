@@ -379,3 +379,78 @@ class TestFalconH1Guards:
     def test_no_weight_conversions_defined(self, adapter: FalconH1ArchitectureAdapter) -> None:
         # Passthrough mode → HF applies the ~12 multipliers; no folding/rearrange.
         assert len(adapter.weight_processing_conversions) == 0
+
+
+# ---------------------------------------------------------------------------
+# Reconstructed-attention parity (key_multiplier)
+# ---------------------------------------------------------------------------
+
+
+class TestFalconH1AttentionParity:
+    """The reconstructed forward must carry FalconH1's learned key_multiplier."""
+
+    def test_bridge_matches_hf_with_key_multiplier(
+        self, adapter: FalconH1ArchitectureAdapter, cfg: TransformerBridgeConfig
+    ) -> None:
+        import copy
+
+        import torch
+        from transformers import FalconH1Config
+        from transformers.models.falcon_h1.modeling_falcon_h1 import FalconH1Attention
+
+        from transformer_lens.model_bridge.component_setup import setup_submodules
+
+        # fork_rng: deterministic setup without mutating the global RNG stream.
+        with torch.random.fork_rng(devices=[]):
+            torch.manual_seed(0)
+            hf_config = FalconH1Config(
+                hidden_size=cfg.d_model,
+                num_attention_heads=cfg.n_heads,
+                num_key_value_heads=cfg.n_key_value_heads,
+                key_multiplier=1.5,
+            )
+            hf_config._attn_implementation = "eager"
+            hf_attn = FalconH1Attention(hf_config, layer_idx=0)
+            batch, seq = 2, 5
+            hidden_states = torch.randn(batch, seq, cfg.d_model)
+
+        attn_bridge = copy.deepcopy(adapter.get_generalized_component("blocks.0.attn"))
+        assert isinstance(attn_bridge, PositionEmbeddingsAttentionBridge)
+        attn_bridge.set_original_component(hf_attn)
+        setup_submodules(attn_bridge, adapter, hf_attn)
+        attn_bridge.setup_hook_compatibility()
+
+        # Identity RoPE keeps the comparison focused on the K scaling.
+        position_embeddings = (
+            torch.ones(1, seq, cfg.d_head),
+            torch.zeros(1, seq, cfg.d_head),
+        )
+        # 4D additive causal mask — authoritative for both HF eager and the bridge.
+        causal = torch.tril(torch.ones(seq, seq, dtype=torch.bool))
+        attention_mask = torch.zeros(batch, 1, seq, seq).masked_fill(
+            ~causal, torch.finfo(torch.float32).min
+        )
+
+        with torch.no_grad():
+            hf_out = hf_attn(
+                hidden_states,
+                position_embeddings=position_embeddings,
+                attention_mask=attention_mask,
+            )[0]
+            bridge_out = attn_bridge(
+                hidden_states=hidden_states,
+                position_embeddings=position_embeddings,
+                attention_mask=attention_mask,
+            )[0]
+
+        torch.testing.assert_close(bridge_out, hf_out, atol=1e-5, rtol=1e-4)
+
+        # The multiplier must actually matter, or the parity above is vacuous.
+        hf_attn.key_multiplier = 1.0
+        with torch.no_grad():
+            unscaled_out = attn_bridge(
+                hidden_states=hidden_states,
+                position_embeddings=position_embeddings,
+                attention_mask=attention_mask,
+            )[0]
+        assert not torch.allclose(unscaled_out, hf_out, atol=1e-5)

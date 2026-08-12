@@ -9,7 +9,7 @@ Covered:
 - Factory registration and dispatch.
 - GQA forward hook shapes (Q uses n_heads, K/V use n_key_value_heads) with Q/K-norm wired.
 - setup_component_testing rotary-embedding wiring, eager forcing, and robustness.
-- prepare_model in-place-clamp patching (wraps attention forward only when clip_qkv is set).
+- clip_qkv clamp parity with HF attention (clamp applies after q/k norm, matching HF order).
 """
 
 from types import SimpleNamespace
@@ -463,59 +463,73 @@ class TestOlmoeSetupComponentTesting:
         assert attn_template._rotary_emb is rotary_emb
 
 
-class _ClampAttn:
-    """Fake OLMoE attention whose forward reports the clip_qkv seen at call time."""
+class TestOlmoeClipQkv:
+    """clip_qkv clamps after the q/k norms (HF order: norm first, then clamp)."""
 
-    def __init__(self, cfg: SimpleNamespace) -> None:
-        self._cfg = cfg
-        self.seen_clip_qkv: Any = "unset"
-
-    def forward(self, *args: Any, **kwargs: Any) -> Any:
-        self.seen_clip_qkv = self._cfg.clip_qkv
-        return None
-
-
-def _fake_clamp_model(clip_qkv: float | None) -> SimpleNamespace:
-    config = SimpleNamespace(clip_qkv=clip_qkv)
-    layer = SimpleNamespace()
-    attn = _ClampAttn(config)
-    layer.self_attn = attn
-    return SimpleNamespace(config=config, model=SimpleNamespace(layers=[layer]))
-
-
-class TestOlmoePrepareModel:
-    """prepare_model patches OLMoE's in-place clamp_ only when clip_qkv is configured."""
-
-    def test_no_op_when_clip_qkv_absent(self, adapter: OlmoeArchitectureAdapter) -> None:
-        """With clip_qkv=None there is no in-place clamp to patch, so forward is untouched."""
-        model = _fake_clamp_model(clip_qkv=None)
-        attn = model.model.layers[0].self_attn
-
-        adapter.prepare_model(model)
-
-        # The patch installs forward as an instance attribute; absent it, the class
-        # method is still in use. (Identity comparison can't be used: each access to
-        # a bound method yields a fresh object.)
-        assert "forward" not in attn.__dict__
-
-    def test_wraps_forward_and_disables_clip_during_call(
-        self, adapter: OlmoeArchitectureAdapter
+    def test_bridge_matches_hf_with_active_clamp(
+        self, adapter: OlmoeArchitectureAdapter, cfg: TransformerBridgeConfig
     ) -> None:
-        """With clip_qkv set, forward is wrapped so clip_qkv is None during the call
-        (skipping the in-place clamp_) and restored afterwards."""
-        model = _fake_clamp_model(clip_qkv=8.0)
-        attn = model.model.layers[0].self_attn
+        import copy
 
-        adapter.prepare_model(model)
-        assert "forward" in attn.__dict__  # an instance-level wrapper was installed
+        import torch
+        from transformers import OlmoeConfig
+        from transformers.models.olmoe.modeling_olmoe import OlmoeAttention
 
-        attn.forward()
-        assert attn.seen_clip_qkv is None
-        assert model.config.clip_qkv == 8.0
+        from transformer_lens.model_bridge.component_setup import setup_submodules
 
-    def test_tolerates_model_without_layers(self, adapter: OlmoeArchitectureAdapter) -> None:
-        """prepare_model must not raise on a model that exposes no layers."""
-        adapter.prepare_model(SimpleNamespace(config=SimpleNamespace(clip_qkv=8.0)))
+        # fork_rng: deterministic setup without mutating the global RNG stream.
+        with torch.random.fork_rng(devices=[]):
+            torch.manual_seed(0)
+            # RMSNorm output is unit-RMS scale, so clip_qkv=0.5 clamps aggressively —
+            # a clamp placed before the norms would be rescaled and fail parity.
+            hf_config = OlmoeConfig(
+                hidden_size=cfg.d_model,
+                num_attention_heads=cfg.n_heads,
+                num_key_value_heads=cfg.n_key_value_heads,
+                clip_qkv=0.5,
+            )
+            hf_config._attn_implementation = "eager"
+            hf_attn = OlmoeAttention(hf_config, layer_idx=0)
+            batch, seq = 2, 5
+            hidden_states = randn(batch, seq, cfg.d_model)
+
+        attn_bridge = copy.deepcopy(adapter.get_generalized_component("blocks.0.attn"))
+        assert isinstance(attn_bridge, PositionEmbeddingsAttentionBridge)
+        attn_bridge.set_original_component(hf_attn)
+        setup_submodules(attn_bridge, adapter, hf_attn)
+        attn_bridge.setup_hook_compatibility()
+
+        head_dim = cfg.d_model // cfg.n_heads
+        position_embeddings = (ones(1, seq, head_dim), zeros(1, seq, head_dim))
+        # 4D additive causal mask — authoritative for both HF eager and the bridge.
+        causal = torch.tril(torch.ones(seq, seq, dtype=torch.bool))
+        attention_mask = zeros(batch, 1, seq, seq).masked_fill(
+            ~causal, torch.finfo(torch.float32).min
+        )
+
+        with torch.no_grad():
+            hf_out = hf_attn(
+                hidden_states,
+                position_embeddings=position_embeddings,
+                attention_mask=attention_mask,
+            )[0]
+            bridge_out = attn_bridge(
+                hidden_states=hidden_states,
+                position_embeddings=position_embeddings,
+                attention_mask=attention_mask,
+            )[0]
+
+        torch.testing.assert_close(bridge_out, hf_out, atol=1e-5, rtol=1e-4)
+
+        # Disabling the clamp must change the bridge output, or parity is vacuous.
+        hf_config.clip_qkv = None
+        with torch.no_grad():
+            unclamped_out = attn_bridge(
+                hidden_states=hidden_states,
+                position_embeddings=position_embeddings,
+                attention_mask=attention_mask,
+            )[0]
+        assert not torch.allclose(unclamped_out, hf_out, atol=1e-5)
 
 
 class TestOlmoeArchitectureGuards:
