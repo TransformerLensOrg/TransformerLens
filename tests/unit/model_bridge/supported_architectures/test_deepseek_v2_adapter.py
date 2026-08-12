@@ -220,7 +220,24 @@ class TestDeepSeekV2AdapterMoE:
         """Gate and shared experts are bridged; DeepseekV2Moe.forward calls self.gate,
         so its routing logits are hookable."""
         mlp = adapter.component_mapping["blocks"].submodules["mlp"]
-        assert set(mlp.submodules.keys()) == {"gate", "shared_experts"}
+        assert set(mlp.submodules.keys()) == {
+            "gate",
+            "shared_experts",
+            "dense_gate",
+            "dense_in",
+            "dense_out",
+        }
+
+    def test_dense_projections_are_optional(self, adapter: DeepSeekV2ArchitectureAdapter) -> None:
+        mlp = adapter.component_mapping["blocks"].submodules["mlp"]
+        for key, path in {
+            "dense_gate": "gate_proj",
+            "dense_in": "up_proj",
+            "dense_out": "down_proj",
+        }.items():
+            assert isinstance(mlp.submodules[key], LinearBridge)
+            assert mlp.submodules[key].name == path
+            assert mlp.submodules[key].optional is True
 
     def test_shared_experts_is_optional(self, adapter: DeepSeekV2ArchitectureAdapter) -> None:
         """Dense layers (idx < first_k_dense_replace) have no shared_experts."""
