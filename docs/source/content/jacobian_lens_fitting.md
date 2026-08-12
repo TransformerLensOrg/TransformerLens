@@ -272,10 +272,12 @@ x  in R^d_model
         \-- non_j_space_component  x - Pi_S x     (orthogonal to the selected vectors)
 ```
 
-Two algorithms are available via `algorithm=`: `"nonnegative_orthogonal_matching_pursuit"`
-(default; an exact nonnegative least-squares re-solve on the selected set, optimal at the small
-sparsity used here) and `"gradient_pursuit"` (the directional update of Blumensath & Davies
-(2008) that the paper uses, which only pays off for large active sets).
+Two algorithms are available via `algorithm=`. The default,
+`"nonnegative_orthogonal_matching_pursuit"`, re-solves NNLS on the selected atoms in float64
+after each step. It checks the result against the KKT conditions and raises `RuntimeError` if
+the check fails. `"gradient_pursuit"` uses the directional update from Blumensath & Davies
+(2008). It avoids the small NNLS solve and is included for faithfulness to the paper and for
+larger active sets.
 
 ### Interpreting the numbers honestly
 

@@ -759,6 +759,8 @@ class JacobianLens:
         Raises:
             ValueError: On an invalid model, a mismatched activation shape, a batched prompt,
                 an unfitted layer, or an invalid ``k`` / ``algorithm``.
+            RuntimeError: If the default nonnegative least-squares solver cannot validate its
+                result against the KKT conditions.
         """
         self.validate_model(model)
         resolved_layer = _normalize_layer(layer, model.cfg.n_layers)
