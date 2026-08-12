@@ -49,7 +49,12 @@ class NeoxArchitectureAdapter(ArchitectureAdapter):
         # GPTNeoX ships both parallel (Pythia, HF's default) and sequential
         # variants. Hardcoding parallel drops hook_resid_mid on sequential
         # checkpoints that genuinely have a post-attention residual.
-        use_parallel_residual = getattr(cfg, "use_parallel_residual", True)
+        # HF-booted configs carry use_parallel_residual; a caller-supplied
+        # TransformerBridgeConfig only has parallel_attn_mlp, so fall back to
+        # it before defaulting to HF's True.
+        use_parallel_residual = getattr(
+            cfg, "use_parallel_residual", getattr(cfg, "parallel_attn_mlp", True)
+        )
         self.cfg.parallel_attn_mlp = use_parallel_residual
         block_cls = ParallelBlockBridge if use_parallel_residual else BlockBridge
 

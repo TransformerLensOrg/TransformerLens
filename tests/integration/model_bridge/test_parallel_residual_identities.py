@@ -101,16 +101,19 @@ def _run(hf_architecture: str, config_cls: Any, config_kwargs: dict[str, Any]):
     if key not in _CACHE:
         config = config_cls(**config_kwargs)
         config._attn_implementation = "eager"
-        torch.manual_seed(42)
-        hf = AutoModelForCausalLM.from_config(config).eval()
-        bridge = build_bridge_from_module(
-            hf, hf_architecture, hf_config=copy.deepcopy(config), tokenizer=None, device="cpu"
-        ).eval()
+        # Fork the RNG so seeding here stays deterministic on a cache miss
+        # without leaking state into later unseeded tests on this worker.
+        with torch.random.fork_rng(devices=[]):
+            torch.manual_seed(42)
+            hf = AutoModelForCausalLM.from_config(config).eval()
+            bridge = build_bridge_from_module(
+                hf, hf_architecture, hf_config=copy.deepcopy(config), tokenizer=None, device="cpu"
+            ).eval()
 
-        torch.manual_seed(0)
-        tokens = torch.randint(3, config_kwargs["vocab_size"], (1, 10))
-        with torch.no_grad():
-            logits, cache = bridge.run_with_cache(tokens)
+            torch.manual_seed(0)
+            tokens = torch.randint(3, config_kwargs["vocab_size"], (1, 10))
+            with torch.no_grad():
+                logits, cache = bridge.run_with_cache(tokens)
         assert torch.isfinite(logits).all(), f"{hf_architecture} produced non-finite logits"
         _CACHE[key] = (bridge, cache)
     return _CACHE[key]
