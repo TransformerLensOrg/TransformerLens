@@ -4,6 +4,11 @@ state_dict() emits TL-renamed keys (e.g. "blocks.0.attn.q.weight"), but
 load_state_dict() only matched raw native parameter names, so a
 state_dict() -> load_state_dict() round trip silently loaded nothing and
 strict=True was silently downgraded to strict=False.
+
+Also covers "copy-split staleness" (#1637): load_state_dict(..., assign=True)
+used to replace view-backed split-component parameters (e.g. gpt2's q/k/v,
+which are torch.tensor_split views into the combined c_attn weight) wholesale,
+desyncing them from the combined weight they share storage with.
 """
 from __future__ import annotations
 
@@ -12,6 +17,7 @@ import torch
 
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.model_bridge import TransformerBridge
+from transformer_lens.model_bridge.transformer_bridge import _is_view_backed
 
 
 def _native_cfg(**overrides) -> TransformerBridgeConfig:
@@ -143,6 +149,38 @@ def test_native_clean_key_dict_with_partial_aliases_does_not_raise_strict():
             ), f"{actual_key} (alias of {clean_key}) did not round-trip"
 
 
+def test_is_view_backed_detects_tensor_split_views():
+    """Core detection helper for #1637: a torch.tensor_split view shares storage
+    with a larger source tensor, even after nn.Parameter wrapping (which does not
+    reliably preserve Tensor._base view tracking, so this must not rely on it)."""
+    combined = torch.nn.Parameter(torch.randn(12, 4))
+    a, b, c = torch.tensor_split(combined, 3, dim=0)
+    split_param = torch.nn.Parameter(a)
+    assert split_param.untyped_storage().data_ptr() == combined.untyped_storage().data_ptr()
+    assert _is_view_backed(split_param)
+
+    assert not _is_view_backed(combined)
+    assert not _is_view_backed(torch.nn.Parameter(torch.randn(4, 4)))
+
+
+def test_native_assign_true_round_trip_no_split_components():
+    """boot_native's components are independent parameters (no split/view
+    components), so assign=True should take the ordinary passthrough path and
+    round-trip exactly like assign=False does."""
+    bridge = TransformerBridge.boot_native(_native_cfg())
+
+    sd = {k: v.clone() for k, v in bridge.state_dict().items()}
+    with torch.no_grad():
+        for p in bridge.parameters():
+            p.zero_()
+
+    bridge.load_state_dict(sd, strict=True, assign=True)
+
+    reloaded = bridge.state_dict()
+    for key, value in sd.items():
+        assert torch.equal(reloaded[key], value), f"{key} did not round-trip under assign=True"
+
+
 @pytest.mark.slow
 def test_boot_transformers_round_trip_matches_forward_pass():
     """GPT-2's Conv1D-combined attention makes the bridge's q/k/v components
@@ -194,3 +232,42 @@ def test_boot_transformers_clean_key_dict_does_not_raise_strict():
     result = bridge.load_state_dict(clean_sd, strict=True)
     assert result.missing_keys == []
     assert result.unexpected_keys == []
+
+
+@pytest.mark.slow
+def test_boot_transformers_assign_true_does_not_leave_combined_weight_stale():
+    """#1637 repro: assign=True on a split QKV component used to replace the
+    parameter object instead of copying into it, breaking the view relationship
+    with c_attn -- the bridge itself read the new value, but
+    original_model.state_dict() (what save_pretrained() exports) silently kept
+    the pre-load data for the combined weight."""
+    bridge = TransformerBridge.boot_transformers("gpt2", device="cpu")
+
+    sd = {k: v.clone() for k, v in bridge.state_dict().items()}
+    mutated = dict(sd)
+    mutated["blocks.0.attn.q.weight"] = sd["blocks.0.attn.q.weight"] + 100.0
+
+    bridge.load_state_dict(mutated, strict=True, assign=True)
+
+    assert torch.equal(
+        bridge.blocks[0].attn.q.original_component.weight, mutated["blocks.0.attn.q.weight"]
+    )
+
+    raw_sd = bridge.original_model.state_dict()
+    c_attn_w = raw_sd["transformer.h.0.attn._original_component.c_attn._original_component.weight"]
+    d_model = bridge.cfg.d_model
+    assert torch.allclose(c_attn_w[:, :d_model].T, mutated["blocks.0.attn.q.weight"])
+
+
+@pytest.mark.slow
+def test_boot_transformers_assign_true_shape_mismatch_raises_clear_error():
+    """A view-backed split component can only be loaded under assign=True via an
+    in-place copy, which requires a matching shape -- fail loudly instead of a
+    confusing error surfacing from deep inside copy_, or silently corrupting data."""
+    bridge = TransformerBridge.boot_transformers("gpt2", device="cpu")
+
+    sd = dict(bridge.state_dict())
+    sd["blocks.0.attn.q.weight"] = sd["blocks.0.attn.q.weight"][:-1]
+
+    with pytest.raises(RuntimeError, match="view sharing storage"):
+        bridge.load_state_dict(sd, strict=True, assign=True)
