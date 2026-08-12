@@ -18,7 +18,14 @@ from typing import Any
 import pytest
 import torch.nn as nn
 from torch import ones, randn, zeros
+from transformers import OlmoeConfig
+from transformers.models.olmoe.modeling_olmoe import OlmoeAttention
 
+from tests.unit.model_bridge.supported_architectures.helpers import (
+    identity_rope,
+    make_additive_causal_mask,
+    wire_attention_bridge,
+)
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.conversion_utils.conversion_steps.rearrange_tensor_conversion import (
     RearrangeTensorConversion,
@@ -469,13 +476,7 @@ class TestOlmoeClipQkv:
     def test_bridge_matches_hf_with_active_clamp(
         self, adapter: OlmoeArchitectureAdapter, cfg: TransformerBridgeConfig
     ) -> None:
-        import copy
-
         import torch
-        from transformers import OlmoeConfig
-        from transformers.models.olmoe.modeling_olmoe import OlmoeAttention
-
-        from transformer_lens.model_bridge.component_setup import setup_submodules
 
         # fork_rng: deterministic setup without mutating the global RNG stream.
         with torch.random.fork_rng(devices=[]):
@@ -493,19 +494,13 @@ class TestOlmoeClipQkv:
             batch, seq = 2, 5
             hidden_states = randn(batch, seq, cfg.d_model)
 
-        attn_bridge = copy.deepcopy(adapter.get_generalized_component("blocks.0.attn"))
-        assert isinstance(attn_bridge, PositionEmbeddingsAttentionBridge)
-        attn_bridge.set_original_component(hf_attn)
-        setup_submodules(attn_bridge, adapter, hf_attn)
-        attn_bridge.setup_hook_compatibility()
-
-        head_dim = cfg.d_model // cfg.n_heads
-        position_embeddings = (ones(1, seq, head_dim), zeros(1, seq, head_dim))
-        # 4D additive causal mask — authoritative for both HF eager and the bridge.
-        causal = torch.tril(torch.ones(seq, seq, dtype=torch.bool))
-        attention_mask = zeros(batch, 1, seq, seq).masked_fill(
-            ~causal, torch.finfo(torch.float32).min
+        attn_bridge = wire_attention_bridge(
+            adapter, hf_attn, expected_type=PositionEmbeddingsAttentionBridge
         )
+
+        position_embeddings = identity_rope(seq, cfg.d_model // cfg.n_heads)
+        # 4D additive causal mask — authoritative for both HF eager and the bridge.
+        attention_mask = make_additive_causal_mask(batch, seq)
 
         with torch.no_grad():
             hf_out = hf_attn(

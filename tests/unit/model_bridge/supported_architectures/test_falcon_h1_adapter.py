@@ -10,6 +10,11 @@ Structural-only: no weight load, no HF Hub access.
 
 import pytest
 
+from tests.unit.model_bridge.supported_architectures.helpers import (
+    identity_rope,
+    make_additive_causal_mask,
+    wire_attention_bridge,
+)
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.factories.architecture_adapter_factory import (
     ArchitectureAdapterFactory,
@@ -392,13 +397,9 @@ class TestFalconH1AttentionParity:
     def test_bridge_matches_hf_with_key_multiplier(
         self, adapter: FalconH1ArchitectureAdapter, cfg: TransformerBridgeConfig
     ) -> None:
-        import copy
-
         import torch
         from transformers import FalconH1Config
         from transformers.models.falcon_h1.modeling_falcon_h1 import FalconH1Attention
-
-        from transformer_lens.model_bridge.component_setup import setup_submodules
 
         # fork_rng: deterministic setup without mutating the global RNG stream.
         with torch.random.fork_rng(devices=[]):
@@ -414,22 +415,14 @@ class TestFalconH1AttentionParity:
             batch, seq = 2, 5
             hidden_states = torch.randn(batch, seq, cfg.d_model)
 
-        attn_bridge = copy.deepcopy(adapter.get_generalized_component("blocks.0.attn"))
-        assert isinstance(attn_bridge, PositionEmbeddingsAttentionBridge)
-        attn_bridge.set_original_component(hf_attn)
-        setup_submodules(attn_bridge, adapter, hf_attn)
-        attn_bridge.setup_hook_compatibility()
+        attn_bridge = wire_attention_bridge(
+            adapter, hf_attn, expected_type=PositionEmbeddingsAttentionBridge
+        )
 
         # Identity RoPE keeps the comparison focused on the K scaling.
-        position_embeddings = (
-            torch.ones(1, seq, cfg.d_head),
-            torch.zeros(1, seq, cfg.d_head),
-        )
+        position_embeddings = identity_rope(seq, cfg.d_head)
         # 4D additive causal mask — authoritative for both HF eager and the bridge.
-        causal = torch.tril(torch.ones(seq, seq, dtype=torch.bool))
-        attention_mask = torch.zeros(batch, 1, seq, seq).masked_fill(
-            ~causal, torch.finfo(torch.float32).min
-        )
+        attention_mask = make_additive_causal_mask(batch, seq)
 
         with torch.no_grad():
             hf_out = hf_attn(

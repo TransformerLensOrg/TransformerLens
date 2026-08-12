@@ -202,7 +202,8 @@ def test_attention_clip_qkv_clamps_between_projection_and_scores():
         k0 = torch.randn(batch, seq, 4, 8) * 2
         v0 = torch.randn(batch, seq, 4, 8) * 2
         x = torch.randn(batch, seq, 32)
-    assert (q0.abs() > 0.5).any() and (v0.abs() > 0.5).any()  # clamp is active
+    # clamp is active on all three of Q/K/V
+    assert (q0.abs() > 0.5).any() and (k0.abs() > 0.5).any() and (v0.abs() > 0.5).any()
 
     attn_clip.calculate_qkv_matrices = lambda *args, **kwargs: (q0, k0, v0)
     attn_ref.calculate_qkv_matrices = lambda *args, **kwargs: (

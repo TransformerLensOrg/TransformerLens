@@ -188,38 +188,104 @@ class TestMLAAttentionBridgeForward:
 class TestMLAAttentionBridgeScaling:
     def test_bridge_tracks_hf_module_scaling(self, tiny_config, tiny_model):
         """DeepSeek-V3 yarn configs set hf_attn.scaling to qk_head_dim^-0.5 * mscale^2;
-        the bridge must score with the module's scaling, not a recomputed base scale."""
-        hf_attn = tiny_model.model.layers[1].self_attn  # keep module-scoped fixtures pristine
-        original_scaling = hf_attn.scaling
+        the bridge must score with the module's scaling, not a recomputed base scale.
+
+        Eager attention plus an explicit 4D mask keeps parity tight enough
+        (~1e-6) that the ~mscale^2 effect on the output is well above tolerance —
+        a bridge that recomputes the base scale fails the assertion."""
+        import copy
+
+        from transformers.models.deepseek_v3.modeling_deepseek_v3 import (
+            DeepseekV3Attention,
+        )
+
+        # Private eager config/module: the module-scoped fixtures stay pristine.
+        eager_config = copy.deepcopy(tiny_config)
+        eager_config._attn_implementation = "eager"
         batch, seq = 2, 8
-        # fork_rng: deterministic inputs without mutating the global RNG stream.
+        # fork_rng: deterministic setup without mutating the global RNG stream.
         with torch.random.fork_rng(devices=[]):
             torch.manual_seed(0)
-            hidden_states = torch.randn(batch, seq, tiny_config.hidden_size)
+            hf_attn = DeepseekV3Attention(eager_config, layer_idx=0)
+            hidden_states = torch.randn(batch, seq, eager_config.hidden_size)
+        position_ids = torch.arange(seq).unsqueeze(0).expand(batch, -1)
+        position_embeddings = tiny_model.model.rotary_emb(hidden_states, position_ids)
+        # 4D additive causal mask — authoritative for both HF eager and the bridge.
+        causal = torch.tril(torch.ones(seq, seq, dtype=torch.bool))
+        attention_mask = torch.zeros(batch, 1, seq, seq).masked_fill(
+            ~causal, torch.finfo(torch.float32).min
+        )
+
+        # mscale^2 for DeepSeek-V3/R1's yarn factor=40, mscale_all_dim=1
+        original_scaling = hf_attn.scaling
+        hf_attn.scaling = original_scaling * 1.87
+        bridge = MLAAttentionBridge(name="self_attn", config=eager_config, submodules={})
+        bridge.set_original_component(hf_attn)
+
+        with torch.no_grad():
+            hf_out = hf_attn(
+                hidden_states,
+                position_embeddings=position_embeddings,
+                attention_mask=attention_mask,
+            )[0]
+            bridge_out = bridge(
+                hidden_states,
+                position_embeddings=position_embeddings,
+                attention_mask=attention_mask,
+            )[0]
+            hf_attn.scaling = original_scaling
+            base_out = hf_attn(
+                hidden_states,
+                position_embeddings=position_embeddings,
+                attention_mask=attention_mask,
+            )[0]
+
+        torch.testing.assert_close(bridge_out, hf_out, atol=1e-5, rtol=1e-4)
+        # A reverted bridge scores with original_scaling and so produces base_out;
+        # base_out must violate the parity tolerance or the assertion above is vacuous.
+        assert not torch.allclose(base_out, hf_out, atol=1e-5, rtol=1e-4)
+
+    def test_softmax_scale_fallback_for_remote_code_modules(self, tiny_config, tiny_model):
+        """trust_remote_code DeepSeek-V2 stores the resolved scale (base × yarn
+        mscale²) as softmax_scale, not scaling; the bridge must honor it rather
+        than silently recomputing the base scale."""
+        import copy
+
+        from transformers.models.deepseek_v3.modeling_deepseek_v3 import (
+            DeepseekV3Attention,
+        )
+
+        eager_config = copy.deepcopy(tiny_config)
+        eager_config._attn_implementation = "eager"
+        batch, seq = 2, 8
+        with torch.random.fork_rng(devices=[]):
+            torch.manual_seed(0)
+            hf_attn = DeepseekV3Attention(eager_config, layer_idx=0)
+            hidden_states = torch.randn(batch, seq, eager_config.hidden_size)
         position_ids = torch.arange(seq).unsqueeze(0).expand(batch, -1)
         position_embeddings = tiny_model.model.rotary_emb(hidden_states, position_ids)
 
-        try:
-            # mscale^2 for DeepSeek-V3/R1's yarn factor=40, mscale_all_dim=1
-            hf_attn.scaling = original_scaling * 1.87
-            bridge = MLAAttentionBridge(name="self_attn", config=tiny_config, submodules={})
-            bridge.set_original_component(hf_attn)
-            bridge.set_rotary_emb(tiny_model.model.rotary_emb)
+        bridge = MLAAttentionBridge(name="self_attn", config=eager_config, submodules={})
+        bridge.set_original_component(hf_attn)
+        modified = hf_attn.scaling * 1.87
 
+        def run() -> torch.Tensor:
             with torch.no_grad():
-                hf_out = hf_attn(
-                    hidden_states, position_embeddings=position_embeddings, attention_mask=None
-                )[0]
-                bridge_out = bridge(
-                    hidden_states, position_embeddings=position_embeddings, attention_mask=None
-                )[0]
-                hf_attn.scaling = original_scaling
-                base_out = hf_attn(
-                    hidden_states, position_embeddings=position_embeddings, attention_mask=None
+                return bridge(
+                    hidden_states,
+                    position_embeddings=position_embeddings,
+                    attention_mask=None,
                 )[0]
 
-            assert (hf_out - bridge_out).abs().max().item() < 0.15
-            # The modified scale must actually change the reference, or parity is vacuous.
-            assert (hf_out - base_out).abs().max().item() > 1e-6
-        finally:
-            hf_attn.scaling = original_scaling
+        hf_attn.scaling = modified
+        out_via_scaling = run()
+
+        del hf_attn.scaling  # remote-code module shape
+        hf_attn.softmax_scale = modified
+        out_via_softmax_scale = run()
+
+        del hf_attn.softmax_scale  # neither attr -> base-scale fallback
+        out_base = run()
+
+        torch.testing.assert_close(out_via_softmax_scale, out_via_scaling)
+        assert not torch.allclose(out_base, out_via_scaling, atol=1e-5, rtol=1e-4)

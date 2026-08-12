@@ -33,13 +33,17 @@ class LinearBridge(GeneralizedComponent):
             raise RuntimeError(
                 f"Original component not set for {self.name}. Call set_original_component() first."
             )
-        input = self.hook_in(input)
+        # Projection-hook protocol (see GeneralizedComponent): consume the
+        # container's hook_in suppression, and record that hook_out fired.
+        # object.__setattr__ skips the nn.Module setattr machinery on this
+        # per-call hot path.
+        if self._suppress_next_hook_in:
+            object.__setattr__(self, "_suppress_next_hook_in", False)
+        else:
+            input = self.hook_in(input)
         output = self.original_component(input, *args, **kwargs)
         output = self.hook_out(output)
-        # Lets container bridges (MLPBridge) detect whether this projection ran
-        # inside the wrapped module's forward, so they only re-fire hook_out as
-        # a fallback when it did not.
-        self._fired_hook_out = True
+        object.__setattr__(self, "_fired_hook_out", True)
         return output
 
     def __repr__(self) -> str:

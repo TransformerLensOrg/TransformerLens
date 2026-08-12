@@ -11,6 +11,7 @@ from packaging import version
 from transformer_lens.model_bridge.generalized_components.alibi_joint_qkv_attention import (
     ALiBiJointQKVAttentionBridge,
 )
+from transformer_lens.utilities.attention import clamp_qkv
 
 try:
     import transformers as _transformers
@@ -43,6 +44,7 @@ class MPTALiBiAttentionBridge(ALiBiJointQKVAttentionBridge):
     """ALiBi bridge for MPT: overrides ALiBi kwarg name, bias shape, mask format, and clip_qkv."""
 
     _clip_qkv: Optional[float] = None
+    _softmax_scale: Optional[float] = None
 
     def forward(
         self, *args: Any, **kwargs: Any
@@ -59,22 +61,25 @@ class MPTALiBiAttentionBridge(ALiBiJointQKVAttentionBridge):
             self.o.set_original_component(original_component.out_proj)
         clip = getattr(original_component, "clip_qkv", None)
         self._clip_qkv = float(clip) if clip is not None else None
+        # HF resolves config.attn_config.softmax_scale (or 1/sqrt(head_dim))
+        # onto the module at init; honor it instead of recomputing the default.
+        scale = getattr(original_component, "softmax_scale", None)
+        self._softmax_scale = float(scale) if scale is not None else None
 
     def _reconstruct_attention(
         self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, **kwargs: Any
     ) -> tuple[torch.Tensor, torch.Tensor]:
         # clip_qkv is post-projection, pre-head-split — must happen before reshape.
-        if self._clip_qkv is not None:
-            q = q.clamp(min=-self._clip_qkv, max=self._clip_qkv)
-            k = k.clamp(min=-self._clip_qkv, max=self._clip_qkv)
-            v = v.clamp(min=-self._clip_qkv, max=self._clip_qkv)
+        # Truthiness gate matches HF (`if self.clip_qkv:`): 0.0 means disabled.
+        if self._clip_qkv:
+            q, k, v = clamp_qkv(q, k, v, self._clip_qkv)
 
         num_heads = self.config.n_heads if self.config else 32
         q, k, v, batch_size, seq_len, head_dim = self._reshape_qkv_to_heads(
             q, k, v, num_heads, num_heads
         )
 
-        softmax_scale = head_dim**-0.5
+        softmax_scale = self._softmax_scale if self._softmax_scale is not None else head_dim**-0.5
         attn_scores = torch.matmul(q, k.transpose(-2, -1)) * softmax_scale
 
         # position_bias is [n_heads, 1, max_seq_len]; slice trailing kv_len, broadcast over batch.

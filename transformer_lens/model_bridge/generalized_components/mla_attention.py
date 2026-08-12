@@ -287,7 +287,10 @@ class MLAAttentionBridge(PositionEmbeddingHooksMixin, AttentionBridge):
         # --- Attention computation (no V padding — only needed for flash attention) ---
         # Read the HF module's scaling: DeepSeek-V2/V3 multiply the base
         # qk_head_dim^-0.5 by yarn mscale^2 under long-context rope configs.
+        # trust_remote_code DeepSeek-V2 names the same quantity softmax_scale.
         scaling = getattr(hf_attn, "scaling", None)
+        if scaling is None:
+            scaling = getattr(hf_attn, "softmax_scale", None)
         if scaling is None:
             scaling = self._qk_head_dim ** (-0.5)
         attn_scores = torch.matmul(query_states, key_states.transpose(-2, -1)) * scaling
