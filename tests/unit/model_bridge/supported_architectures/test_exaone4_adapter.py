@@ -95,6 +95,12 @@ class TestExaone4PostNormResidMid:
         block = adapter.component_mapping["blocks"]
         assert block.hook_aliases["hook_resid_mid"] == "mlp.hook_in"
 
+    def test_contribution_aliases_point_at_post_norm_outputs(self, adapter) -> None:
+        """Inherited from olmo2: contributions are the post-norm outputs (#1648)."""
+        block = adapter.component_mapping["blocks"]
+        assert block.hook_aliases["hook_attn_out"] == "ln1.hook_out"
+        assert block.hook_aliases["hook_mlp_out"] == "ln2.hook_out"
+
 
 class TestExaone4NoPEGating:
     """Hybrid checkpoints skip RoPE on full-attention layers."""

@@ -64,6 +64,16 @@ After `enable_compatibility_mode()`, these HT hook names fire on the **pre-norm 
 - **Post-norm architectures** (OLMo 2, BERT-style) read the **post-attention residual** instead, because the norm semantically lives elsewhere in the block.
 - **MLA blocks** (DeepSeek V2 / V3 / R1) do **not** expose the split-qkv aliases — MLA's compressed K/V doesn't have a clean split.
 
+On post-norm architectures (Gemma 2/3's `ln1_post`/`ln2_post`, OLMo 2/3's `ln1`/`ln2`),
+`blocks.{i}.hook_attn_out` / `hook_mlp_out` fire **after** the post-sublayer norm, so
+that they capture the tensor added to the residual stream and the identities
+`resid_pre + attn_out == resid_mid` and `resid_mid + mlp_out == resid_post` hold
+([issue #1648](https://github.com/TransformerLensOrg/TransformerLens/issues/1648)).
+One consequence for head-level direct logit attribution: per-head contributions from
+`attn.hook_result` no longer sum to `hook_attn_out`, because the norm sits between
+them. This is inherent to post-norm — decompose heads on the pre-norm side
+(`attn.hook_out` for the raw module output) or attribute through the norm explicitly.
+
 An adapter author for a new post-norm or MLA-style architecture must handle these carve-outs in `setup_hook_compatibility`. The Gemma1/Gemma2 adapters are exemplars of when **not** to override `setup_hook_compatibility` — `GemmaTextScaledWordEmbedding` already scales internally, so any added `hook_conversion` would double-scale `embed.hook_out`.
 
 ## The four-quadrant test matrix

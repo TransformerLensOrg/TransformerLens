@@ -58,6 +58,7 @@ class BlockBridge(GeneralizedComponent):
         config: Optional[Any] = None,
         submodules: Optional[Dict[str, GeneralizedComponent]] = None,
         hook_alias_overrides: Optional[Dict[str, str]] = None,
+        mlp_reads_resid_directly: bool = False,
     ):
         """Initialize the block bridge.
 
@@ -68,6 +69,10 @@ class BlockBridge(GeneralizedComponent):
             hook_alias_overrides: Optional dictionary to override default hook aliases.
                 For example, {"hook_attn_out": "ln1_post.hook_out"} will make hook_attn_out
                 point to ln1_post.hook_out instead of the default attn.hook_out.
+            mlp_reads_resid_directly: True for post-norm blocks where the MLP consumes
+                the mid-residual with no pre-MLP norm (OLMo 2 layout). Moves the
+                hook_mlp_in capture from ln2 (whose input there is the raw MLP output)
+                to the MLP itself.
         """
         # ln1_post/ln2_post redirect attn_out/mlp_out to match HookedTransformer's
         # placement (hook fires after the post-norm, not before).
@@ -108,7 +113,9 @@ class BlockBridge(GeneralizedComponent):
         self._pre_ln_capture_handles: list[torch.utils.hooks.RemovableHandle] = []
         # Fallback for _read_use_hook_mlp_in when block.config is None.
         self._use_hook_mlp_in: bool = False
-        # Fires pre-ln2 when use_hook_mlp_in is set. See #1317.
+        self.mlp_reads_resid_directly = mlp_reads_resid_directly
+        # Fires on the MLP-branch entry (pre-ln2, or the MLP input on post-norm
+        # blocks) when use_hook_mlp_in is set. See #1317.
         self.hook_mlp_in = HookPoint()
 
     def _maybe_wire_pre_ln_capture(self) -> None:
@@ -143,12 +150,21 @@ class BlockBridge(GeneralizedComponent):
             self._pre_ln_capture_handles.append(handle)
             attn._ln1_module = ln1.original_component
 
-        ln2 = self.submodules.get("ln2") if self.submodules else None
-        if ln2 is not None and getattr(ln2, "original_component", None) is not None:
+        # hook_mlp_in must capture the MLP-branch entry point: ln2's input on
+        # pre-norm blocks, the MLP's own input on post-norm blocks (where ln2
+        # follows the MLP and its input is the raw MLP output).
+        if self.mlp_reads_resid_directly:
+            capture_target = self.submodules.get("mlp") if self.submodules else None
+        else:
+            capture_target = self.submodules.get("ln2") if self.submodules else None
+        if (
+            capture_target is not None
+            and getattr(capture_target, "original_component", None) is not None
+        ):
             hook_mlp_in = self.hook_mlp_in
             block_ref = weakref.proxy(self)
 
-            def _capture_pre_ln2(_module: torch.nn.Module, args: tuple) -> Any:
+            def _capture_mlp_in(_module: torch.nn.Module, args: tuple) -> Any:
                 if not block_ref._read_use_hook_mlp_in():
                     return None
                 if args and isinstance(args[0], torch.Tensor):
@@ -156,7 +172,7 @@ class BlockBridge(GeneralizedComponent):
                     return (hooked,) + args[1:]
                 return None
 
-            handle = ln2.register_forward_pre_hook(_capture_pre_ln2)
+            handle = capture_target.register_forward_pre_hook(_capture_mlp_in)
             self._pre_ln_capture_handles.append(handle)
 
         self._pre_ln_capture_wired = True
