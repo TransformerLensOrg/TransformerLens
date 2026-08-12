@@ -157,6 +157,18 @@ class TestGraniteMoeAdapterComponentMapping:
         assert mapping["ln_final"].name == "model.norm"
         assert mapping["unembed"].name == "lm_head"
 
+    def test_scaled_residual_block(self, adapter: GraniteMoeArchitectureAdapter) -> None:
+        """hook_attn_out / hook_mlp_out fire on the scaled contribution (#1648)."""
+        from transformer_lens.model_bridge.generalized_components import (
+            ScaledResidualBlockBridge,
+        )
+
+        block = adapter.component_mapping["blocks"]
+        assert isinstance(block, ScaledResidualBlockBridge)
+        assert block.scaled_mlp_submodule == "mlp"
+        assert "hook_attn_out" not in block.hook_aliases
+        assert "hook_mlp_out" not in block.hook_aliases
+
     def test_block_submodule_keys(self, adapter: GraniteMoeArchitectureAdapter) -> None:
         blocks = adapter.component_mapping["blocks"]
         assert set(blocks.submodules.keys()) == {"ln1", "ln2", "attn", "mlp"}

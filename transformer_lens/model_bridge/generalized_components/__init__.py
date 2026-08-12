@@ -17,6 +17,7 @@ from transformer_lens.model_bridge.generalized_components.block import (
     DelegatedAttentionBlockBridge,
     MLABlockBridge,
     ParallelBlockBridge,
+    ScaledResidualBlockBridge,
 )
 from transformer_lens.model_bridge.generalized_components.bloom_attention import (
     BloomAttentionBridge,
@@ -152,6 +153,7 @@ __all__ = [
     "Lfm2ShortConvBridge",
     "MLABlockBridge",
     "ParallelBlockBridge",
+    "ScaledResidualBlockBridge",
     "BloomBlockBridge",
     "BloomAttentionBridge",
     "CodeGenAttentionBridge",

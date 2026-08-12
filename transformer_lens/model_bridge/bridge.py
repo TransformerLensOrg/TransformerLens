@@ -906,8 +906,8 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         # Drop pre-ln capture handles from any prior call so they don't accumulate.
         if hasattr(self, "blocks"):
             for block in self.blocks:
-                if hasattr(block, "_teardown_pre_ln_capture"):
-                    block._teardown_pre_ln_capture()
+                if hasattr(block, "_teardown_capture_hooks"):
+                    block._teardown_capture_hooks()
         try:
             if not no_processing:
                 self.process_weights(
