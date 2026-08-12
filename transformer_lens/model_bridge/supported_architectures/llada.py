@@ -190,15 +190,15 @@ class _LLaDABlockBridge(BlockBridge):
             return (self.hook_mlp_in(args[0]),) + args[1:]
         return None
 
-    def _maybe_wire_pre_ln_capture(self) -> None:
+    def _maybe_wire_capture_hooks(self) -> None:
         """Use deepcopy-safe bound hooks for LLaDA's pre-MLP residual hook."""
-        if self._pre_ln_capture_wired:
+        if self._capture_hooks_wired:
             return
         if self.ln2.original_component is not None:
-            self._pre_ln_capture_handles.append(
+            self._capture_hook_handles.append(
                 self.ln2.register_forward_pre_hook(self._route_pre_mlp_norm)
             )
-        self._pre_ln_capture_wired = True
+        self._capture_hooks_wired = True
 
     def _wire_llada_container_hooks(self) -> None:
         if self._llada_container_hooks_wired:

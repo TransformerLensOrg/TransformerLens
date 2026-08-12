@@ -73,6 +73,11 @@ One consequence for head-level direct logit attribution: per-head contributions 
 `attn.hook_result` no longer sum to `hook_attn_out`, because the norm sits between
 them. This is inherent to post-norm — decompose heads on the pre-norm side
 (`attn.hook_out` for the raw module output) or attribute through the norm explicitly.
+The Granite family has the same raw-vs-contribution split for a different reason:
+HF scales each sublayer output by `residual_multiplier` before the residual add, so
+`hook_attn_out` / `hook_mlp_out` fire on the scaled contribution while
+`attn.hook_out` / `mlp.hook_out` stay raw — `attn.hook_result` sums to the raw
+output, off from the contribution by the multiplier.
 
 An adapter author for a new post-norm or MLA-style architecture must handle these carve-outs in `setup_hook_compatibility`. The Gemma1/Gemma2 adapters are exemplars of when **not** to override `setup_hook_compatibility` — `GemmaTextScaledWordEmbedding` already scales internally, so any added `hook_conversion` would double-scale `embed.hook_out`.
 

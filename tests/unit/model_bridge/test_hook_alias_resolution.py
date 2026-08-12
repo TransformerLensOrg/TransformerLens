@@ -76,7 +76,6 @@ _KNOWN_DEAD_ALIASES = {
     "Gemma3ForConditionalGeneration": "audit H15 — multimodal vision encoder opaque",
     "Idefics3ForConditionalGeneration": "vision-encoder layer submodules unwired (same Siglip opacity as Llava/Gemma3 multimodal)",
     "OpenELMForCausalLM": "audit H23 — per-layer head counts break uniform q/k/v shape",
-    "GraniteMoeHybridForCausalLM": "new finding — MoE+shared-MLP block lacks proper submodule aliases",
 }
 
 

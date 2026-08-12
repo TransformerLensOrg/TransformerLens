@@ -35,6 +35,7 @@ _HF_PASSTHROUGH_ATTRS = [
     # Granite
     "position_embedding_type",
     "logits_scaling",
+    "residual_multiplier",
     # Falcon
     "parallel_attn",
     "multi_query",

@@ -128,6 +128,35 @@ class TestGraniteMoeHybridStructure:
         assert isinstance(mixer.inner_norm, GatedRMSNormBridge)
 
 
+class TestGraniteMoeHybridContributionHooks:
+    """hook_attn_out must exist and fire on attention layers only — a HookPoint
+    that exists but never fires is a silent-no-op intervention trap (#1648)."""
+
+    def test_mamba_layers_have_no_hook_attn_out(self, bridge: TransformerBridge) -> None:
+        hooks = bridge.hook_dict
+        for i in MAMBA_LAYERS:
+            assert f"blocks.{i}.hook_attn_out" not in hooks, (
+                f"block {i} is a mamba layer; a dead hook_attn_out would "
+                f"silently no-op interventions"
+            )
+        assert f"blocks.{ATTN_LAYER}.hook_attn_out" in hooks
+
+    def test_attention_layer_hook_attn_out_fires(self, bridge: TransformerBridge, tokens) -> None:
+        fired = {}
+
+        def grab(tensor, hook):
+            fired[hook.name] = tensor.detach().clone()
+            return tensor
+
+        with torch.no_grad():
+            bridge.run_with_hooks(
+                tokens,
+                fwd_hooks=[(f"blocks.{ATTN_LAYER}.hook_attn_out", grab)],
+            )
+
+        assert f"blocks.{ATTN_LAYER}.hook_attn_out" in fired
+
+
 # ---------------------------------------------------------------------------
 # Forward parity: bridge delegates fully, so logits match HF exactly
 # ---------------------------------------------------------------------------

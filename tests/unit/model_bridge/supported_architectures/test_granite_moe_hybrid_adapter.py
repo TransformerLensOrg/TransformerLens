@@ -143,6 +143,24 @@ class TestGraniteMoeHybridAdapterComponentMapping:
         assert mapping["ln_final"].name == "model.norm"
         assert mapping["unembed"].name == "lm_head"
 
+    def test_scaled_residual_block_mlp_wiring(self) -> None:
+        """With experts the MLP branch is moe + shared_mlp summed inline — no
+        single module produces the contribution, so hook_mlp_out stays absent.
+        Without experts it wires to shared_mlp (#1648)."""
+        from transformer_lens.model_bridge.generalized_components import (
+            ScaledResidualBlockBridge,
+        )
+
+        with_experts = GraniteMoeHybridArchitectureAdapter(_make_cfg(num_experts=4))
+        blocks = with_experts.component_mapping["blocks"]
+        assert isinstance(blocks, ScaledResidualBlockBridge)
+        assert blocks.scaled_mlp_submodule is None
+        assert not hasattr(blocks, "hook_mlp_out")
+        assert "hook_mlp_out" not in blocks.hook_aliases
+
+        without_experts = GraniteMoeHybridArchitectureAdapter(_make_cfg(num_experts=0))
+        assert without_experts.component_mapping["blocks"].scaled_mlp_submodule == "shared_mlp"
+
     def test_block_submodule_mapping(self, adapter: GraniteMoeHybridArchitectureAdapter) -> None:
         blocks = adapter.component_mapping["blocks"]
         assert set(blocks.submodules.keys()) == {

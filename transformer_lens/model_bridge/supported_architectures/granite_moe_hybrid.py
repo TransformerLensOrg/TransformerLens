@@ -15,7 +15,6 @@ from typing import Any
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
-    BlockBridge,
     EmbeddingBridge,
     GatedRMSNormBridge,
     LinearBridge,
@@ -23,6 +22,7 @@ from transformer_lens.model_bridge.generalized_components import (
     MoEBridge,
     RMSNormalizationBridge,
     RotaryEmbeddingBridge,
+    ScaledResidualBlockBridge,
     SSM2MixerBridge,
     UnembeddingBridge,
 )
@@ -104,9 +104,20 @@ class GraniteMoeHybridArchitectureAdapter(GraniteArchitectureAdapter):
                 config=self.cfg,
             )
 
+        # HF multiplies each sublayer output by residual_multiplier before the
+        # residual add. hook_attn_out fires on attention layers (mamba layers have
+        # no attention-position hook). With experts, the MLP branch is
+        # block_sparse_moe + shared_mlp summed inline — no single module produces
+        # the contribution, so hook_mlp_out stays absent; without experts it fires
+        # on the scaled shared_mlp output.
         mapping: dict = {
             "embed": EmbeddingBridge(name="model.embed_tokens"),
-            "blocks": BlockBridge(name="model.layers", submodules=block_submodules),
+            "blocks": ScaledResidualBlockBridge(
+                name="model.layers",
+                submodules=block_submodules,
+                residual_contribution_scale=getattr(self.cfg, "residual_multiplier", 1.0),
+                scaled_mlp_submodule=None if (num_experts and num_experts > 0) else "shared_mlp",
+            ),
             "ln_final": RMSNormalizationBridge(name="model.norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head", config=self.cfg),
         }
