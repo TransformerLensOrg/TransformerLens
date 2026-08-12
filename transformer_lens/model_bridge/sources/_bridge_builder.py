@@ -13,6 +13,7 @@ from transformer_lens.factories.architecture_adapter_factory import (
 )
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.bridge import TransformerBridge
+from transformer_lens.utilities.heterogeneous_config import per_layer_attr_names
 
 # Architecture-agnostic; do not extend per-architecture.
 _HF_PASSTHROUGH_ATTRS = [
@@ -180,7 +181,11 @@ def build_bridge_config_from_hf(
     bridge_config.dtype = dtype
 
     effective_config = get_effective_text_config(hf_config)
+    # Per-layer-registered attrs would raise on global access (transformers>=5.15).
+    _het_attrs = per_layer_attr_names(effective_config) | per_layer_attr_names(hf_config)
     for attr in _HF_PASSTHROUGH_ATTRS:
+        if attr in _het_attrs:
+            continue
         val = getattr(effective_config, attr, None)
         if val is None and effective_config is not hf_config:
             val = getattr(hf_config, attr, None)

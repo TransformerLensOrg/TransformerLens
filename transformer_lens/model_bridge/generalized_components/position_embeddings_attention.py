@@ -22,6 +22,7 @@ from transformer_lens.model_bridge.generalized_components.attention import (
 from transformer_lens.model_bridge.generalized_components.position_embedding_hooks_mixin import (
     PositionEmbeddingHooksMixin,
 )
+from transformer_lens.utilities.heterogeneous_config import safe_config_get
 from transformer_lens.utilities.hf_utils import get_rotary_pct_from_config
 
 # Global registry mapping HF attention modules to their bridge instances
@@ -669,12 +670,8 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
         inputs: Dict[str, Any] = {
             "hidden_states": torch.randn(batch_size, seq_len, d_model, device=device, dtype=dtype)
         }
-        num_heads = (
-            self.config.num_attention_heads
-            if self.config and hasattr(self.config, "num_attention_heads")
-            else 4
-        )
-        head_dim = self.config.head_dim if self.config and hasattr(self.config, "head_dim") else 256
+        num_heads = safe_config_get(self.config, "num_attention_heads", 4) if self.config else 4
+        head_dim = safe_config_get(self.config, "head_dim", 256) if self.config else 256
         dummy_qk = torch.randn(1, seq_len, num_heads, head_dim, device=device, dtype=dtype)
         position_ids = torch.arange(seq_len, device=device).unsqueeze(0)
         if self._rotary_emb is not None:
