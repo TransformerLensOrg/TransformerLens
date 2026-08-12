@@ -10,6 +10,7 @@ from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
+from transformer_lens.utilities.heterogeneous_config import safe_config_get
 
 
 class RotaryEmbeddingBridge(GeneralizedComponent):
@@ -62,14 +63,8 @@ class RotaryEmbeddingBridge(GeneralizedComponent):
             device = torch.device("cpu")
         if dtype is None:
             dtype = torch.float32
-        if self.config and hasattr(self.config, "num_attention_heads"):
-            num_heads = self.config.num_attention_heads
-        else:
-            num_heads = 4
-        if self.config and hasattr(self.config, "head_dim"):
-            head_dim = self.config.head_dim
-        else:
-            head_dim = 256
+        num_heads = safe_config_get(self.config, "num_attention_heads", 4) if self.config else 4
+        head_dim = safe_config_get(self.config, "head_dim", 256) if self.config else 256
         x = torch.randn(batch_size, seq_len, num_heads, head_dim, device=device, dtype=dtype)
         position_ids = torch.arange(seq_len, device=device).unsqueeze(0).expand(batch_size, -1)
         args: tuple = (x, position_ids)
