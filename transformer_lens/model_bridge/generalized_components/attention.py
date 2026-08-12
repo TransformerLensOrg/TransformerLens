@@ -766,12 +766,33 @@ class AttentionBridge(GeneralizedComponent):
 
     @property
     def W_Q(self) -> torch.Tensor:
-        """Get W_Q in 3D format [n_heads, d_model, d_head]."""
+        """Get W_Q in 3D format [n_heads, d_model, d_head].
+
+        Gated query projections retain their live query-and-gate parameter;
+        this analysis view selects the query rows interleaved within each head.
+        """
         weight = self.q.weight
         if weight.ndim == 2 and self.config is not None:
-            return self._reshape_weight_to_3d(
-                weight, self._get_n_heads(), in_out_layout=self._weight_layout_in_out(self.q)
-            )
+            n_heads = self._get_n_heads()
+            in_out_layout = self._weight_layout_in_out(self.q)
+            if getattr(self.config, "gated_q_proj", False):
+                d_head = int(self.config.d_head)
+                gated_width = n_heads * d_head * 2
+                if in_out_layout is True:
+                    output_first_weight = weight.T
+                elif in_out_layout is False or weight.shape[0] == gated_width:
+                    output_first_weight = weight
+                elif weight.shape[1] == gated_width:
+                    output_first_weight = weight.T
+                else:
+                    output_first_weight = None
+
+                if output_first_weight is not None and output_first_weight.shape[0] == gated_width:
+                    # Preserve the live query-gate projection; W_Q is an analysis-only query view.
+                    per_head_weight = output_first_weight.reshape(n_heads, d_head * 2, -1)
+                    return per_head_weight[:, :d_head, :].transpose(-1, -2)
+
+            return self._reshape_weight_to_3d(weight, n_heads, in_out_layout=in_out_layout)
         return weight
 
     @property

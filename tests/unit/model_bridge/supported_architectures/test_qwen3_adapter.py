@@ -4,14 +4,12 @@ Tests cover:
 - Config attributes
 - Component mapping structure and HF module names (incl. q_norm/k_norm)
 - Weight conversion keys/types (GQA: k/v use n_key_value_heads)
-- _preprocess_gated_q_proj static helper (gated q_proj slicing)
 - Factory registration
 """
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
-import torch
 
 from tests.unit.model_bridge.supported_architectures.helpers import make_bridge_cfg
 from transformer_lens.config import TransformerBridgeConfig
@@ -138,55 +136,6 @@ class TestQwen3AdapterComponentMapping:
     def test_no_linear_attn_when_dense(self, adapter: Qwen3ArchitectureAdapter) -> None:
         blocks = self._mapping(adapter)["blocks"]
         assert "linear_attn" not in blocks.submodules
-
-
-class TestPreprocessGatedQProj:
-    """Numerical correctness of the _preprocess_gated_q_proj static helper
-    on synthetic interleaved [query, gate] rows: asserts query-half slicing,
-    that unrelated state-dict keys are untouched, and that the rewrite
-    applies across all matching layers."""
-
-    def test_slices_query_half(self) -> None:
-        """Interleaved [query, gate] rows per head must be reduced to query-only."""
-        n_heads, d_head, d_model = 4, 8, 16
-        # Build q_proj.weight as (n_heads, d_head*2, d_model): query=1.0, gate=9.0
-        w = torch.empty(n_heads, d_head * 2, d_model)
-        w[:, :d_head, :] = 1.0
-        w[:, d_head:, :] = 9.0
-        w_flat = w.reshape(n_heads * d_head * 2, d_model)
-
-        state_dict = {"model.layers.0.self_attn.q_proj.weight": w_flat.clone()}
-        out = Qwen3ArchitectureAdapter._preprocess_gated_q_proj(state_dict, n_heads, d_head)
-
-        result = out["model.layers.0.self_attn.q_proj.weight"]
-        assert result.shape == (n_heads * d_head, d_model)
-        assert torch.all(result == 1.0), "gate rows must be dropped"
-
-    def test_only_q_proj_keys_modified(self) -> None:
-        n_heads, d_head, d_model = 2, 4, 8
-        q_w = torch.ones(n_heads * d_head * 2, d_model)
-        other = torch.full((d_model, d_model), 7.0)
-        state_dict = {
-            "model.layers.0.self_attn.q_proj.weight": q_w,
-            "model.layers.0.self_attn.k_proj.weight": other.clone(),
-            "model.layers.0.mlp.gate_proj.weight": other.clone(),
-        }
-        out = Qwen3ArchitectureAdapter._preprocess_gated_q_proj(state_dict, n_heads, d_head)
-        assert torch.equal(out["model.layers.0.self_attn.k_proj.weight"], other)
-        assert torch.equal(out["model.layers.0.mlp.gate_proj.weight"], other)
-
-    def test_multiple_layers(self) -> None:
-        n_heads, d_head, d_model = 2, 4, 8
-        state_dict = {
-            f"model.layers.{i}.self_attn.q_proj.weight": torch.ones(n_heads * d_head * 2, d_model)
-            for i in range(3)
-        }
-        out = Qwen3ArchitectureAdapter._preprocess_gated_q_proj(state_dict, n_heads, d_head)
-        for i in range(3):
-            assert out[f"model.layers.{i}.self_attn.q_proj.weight"].shape == (
-                n_heads * d_head,
-                d_model,
-            )
 
 
 class TestQwen3HybridConstructor:

@@ -335,117 +335,6 @@ class TestQwen3_5ConfigAttributes:
         )
 
 
-class TestQwen3_5PreprocessWeights:
-    """q_proj rows are interleaved per-head (query, gate, query, gate, ...) — naive first-half slice is wrong."""
-
-    N_HEADS = 4
-    D_HEAD = 8
-    HIDDEN_SIZE = 32
-
-    @pytest.fixture
-    def adapter(self, qwen3_5_dependency_available):
-        from transformer_lens.model_bridge.supported_architectures.qwen3_5 import (
-            Qwen3_5ArchitectureAdapter,
-        )
-
-        cfg = _make_bridge_cfg(
-            n_heads=self.N_HEADS,
-            d_head=self.D_HEAD,
-            d_model=self.HIDDEN_SIZE,
-            n_key_value_heads=self.N_HEADS,
-        )
-        return Qwen3_5ArchitectureAdapter(cfg)
-
-    def _make_q_proj_weight(self):
-        import torch
-
-        total_rows = self.N_HEADS * self.D_HEAD * 2
-        w = torch.zeros(total_rows, self.HIDDEN_SIZE)
-        for row_idx in range(total_rows):
-            w[row_idx] = float(row_idx)
-        return w
-
-    def test_q_proj_output_shape(self, adapter):
-        import torch
-
-        w = self._make_q_proj_weight()
-        state_dict = {"model.layers.3.self_attn.q_proj.weight": w}
-        result = adapter.preprocess_weights(state_dict)
-        out = result["model.layers.3.self_attn.q_proj.weight"]
-        assert out.shape == (self.N_HEADS * self.D_HEAD, self.HIDDEN_SIZE)
-
-    def test_q_proj_selects_query_rows_not_naive_first_half(self, adapter):
-        import torch
-
-        w = self._make_q_proj_weight()
-        state_dict = {"model.layers.0.self_attn.q_proj.weight": w}
-        result = adapter.preprocess_weights(state_dict)
-        out = result["model.layers.0.self_attn.q_proj.weight"]
-
-        for head_idx in range(self.N_HEADS):
-            out_rows = out[head_idx * self.D_HEAD : (head_idx + 1) * self.D_HEAD]
-            expected_start = head_idx * self.D_HEAD * 2
-            expected_rows = w[expected_start : expected_start + self.D_HEAD]
-            assert torch.equal(out_rows, expected_rows), (
-                f"Head {head_idx}: output rows do not match expected query rows. "
-                f"Got row values starting at {out_rows[0, 0].item()}, "
-                f"expected starting at {expected_rows[0, 0].item()}"
-            )
-
-    def test_naive_slice_would_be_wrong(self, adapter):
-        import torch
-
-        w = self._make_q_proj_weight()
-        state_dict = {"model.layers.0.self_attn.q_proj.weight": w}
-        result = adapter.preprocess_weights(state_dict)
-        correct_out = result["model.layers.0.self_attn.q_proj.weight"]
-        naive_out = w[: self.N_HEADS * self.D_HEAD]
-
-        if self.N_HEADS > 1:
-            assert not torch.equal(correct_out, naive_out), (
-                "Naive first-half slice gave the same result as per-head slice — "
-                "test setup may be wrong"
-            )
-
-    def test_non_q_proj_weights_unchanged(self, adapter):
-        import torch
-
-        k_proj = torch.randn(self.N_HEADS * self.D_HEAD, self.HIDDEN_SIZE)
-        down_proj = torch.randn(self.HIDDEN_SIZE, self.N_HEADS * self.D_HEAD)
-        state_dict = {
-            "model.layers.0.self_attn.k_proj.weight": k_proj.clone(),
-            "model.layers.0.mlp.down_proj.weight": down_proj.clone(),
-        }
-        result = adapter.preprocess_weights(state_dict)
-        assert torch.equal(result["model.layers.0.self_attn.k_proj.weight"], k_proj)
-        assert torch.equal(result["model.layers.0.mlp.down_proj.weight"], down_proj)
-
-    def test_multiple_layers_all_processed(self, adapter):
-        import torch
-
-        w0 = self._make_q_proj_weight()
-        w3 = self._make_q_proj_weight() * 2
-        state_dict = {
-            "model.layers.0.self_attn.q_proj.weight": w0,
-            "model.layers.3.self_attn.q_proj.weight": w3,
-        }
-        result = adapter.preprocess_weights(state_dict)
-        expected_shape = (self.N_HEADS * self.D_HEAD, self.HIDDEN_SIZE)
-        assert result["model.layers.0.self_attn.q_proj.weight"].shape == expected_shape
-        assert result["model.layers.3.self_attn.q_proj.weight"].shape == expected_shape
-
-    def test_empty_state_dict_returns_empty(self, adapter):
-        assert adapter.preprocess_weights({}) == {}
-
-    def test_state_dict_without_q_proj_unchanged(self, adapter):
-        import torch
-
-        state_dict = {"model.embed_tokens.weight": torch.randn(100, self.HIDDEN_SIZE)}
-        original_keys = set(state_dict.keys())
-        result = adapter.preprocess_weights(state_dict)
-        assert set(result.keys()) == original_keys
-
-
 @pytest.mark.skipif(
     not _QWEN3_5_AVAILABLE,
     reason="Qwen3_5TextConfig / Qwen3_5ForCausalLM not available in installed transformers",
@@ -508,7 +397,7 @@ class TestQwen3_5HybridSpecifics:
         return Qwen3_5ArchitectureAdapter(_make_bridge_cfg())
 
     def test_gated_q_proj_flag_set(self, adapter):
-        """Flag drives preprocess_weights to slice the gated half of q_proj."""
+        """Flag drives the query-only W_Q analysis view and gate hook path."""
         assert getattr(adapter.cfg, "gated_q_proj", False) is True
 
 
