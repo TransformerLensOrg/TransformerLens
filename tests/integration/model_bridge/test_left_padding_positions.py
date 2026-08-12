@@ -180,22 +180,23 @@ def test_unshifted_rows_keep_default_positions(distilgpt2_bridge, tokens) -> Non
 
 
 def test_one_left_padded_row_does_not_perturb_its_neighbours(distilgpt2_bridge, tokens) -> None:
-    """A whole-batch predicate would hand derived positions to every row; the
-    rows that needed no correction must come out bit-identical to running alone."""
+    """Derived positions for one row must not change its unshifted neighbours."""
     n_pad = 3
     batch, mask, (right, m_right), (plain, m_plain) = _mixed_batch(tokens, n_pad)
+    control_batch = torch.cat([right, right, plain], dim=0)
+    control_mask = torch.cat([m_right, m_right, m_plain], dim=0)
 
     with torch.no_grad():
         mixed = distilgpt2_bridge(batch, attention_mask=mask, return_type="logits")
-        alone_right = distilgpt2_bridge(right, attention_mask=m_right, return_type="logits")
-        alone_plain = distilgpt2_bridge(plain, attention_mask=m_plain, return_type="logits")
+        control = distilgpt2_bridge(
+            control_batch, attention_mask=control_mask, return_type="logits"
+        )
         unpadded = distilgpt2_bridge(tokens, return_type="logits")
 
-    # Not exact equality: batching alone perturbs float accumulation order. The
-    # regression this guards was 8e-01, so 1e-6 separates them decisively while
-    # staying above anything a different BLAS could introduce.
-    torch.testing.assert_close(mixed[0:1], alone_right, rtol=0, atol=1e-6)
-    torch.testing.assert_close(mixed[2:3], alone_plain, rtol=0, atol=1e-6)
+    # Matching batch shapes isolate derived-position handling from BLAS kernel
+    # changes caused by comparing batched and single-row matrix multiplications.
+    torch.testing.assert_close(mixed[0:1], control[0:1], rtol=0, atol=1e-6)
+    torch.testing.assert_close(mixed[2:3], control[2:3], rtol=0, atol=1e-6)
     # ...while the row that did need correcting still gets it.
     torch.testing.assert_close(mixed[1:2, n_pad:], unpadded, rtol=1e-3, atol=1e-3)
 
