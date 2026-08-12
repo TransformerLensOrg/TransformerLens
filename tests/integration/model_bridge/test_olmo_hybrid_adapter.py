@@ -137,9 +137,7 @@ class TestOlmoHybridHookSemantics:
                 cache[f"blocks.{layer}.hook_mlp_out"],
             )
 
-    def test_hook_mlp_in_exposes_mid_residual_on_both_layer_types(
-        self, olmo_bridge, sample_tokens
-    ):
+    def test_hook_mlp_in_exposes_mid_residual_on_both_layer_types(self, olmo_bridge, sample_tokens):
         """hook_mlp_in must capture the mid-residual on both layouts: ln2's
         input on pre-norm linear layers, the MLP's own input on post-norm
         full-attention layers (where ln2's input is the raw attention output)."""
