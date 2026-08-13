@@ -5,20 +5,16 @@ was an attention-implementation mismatch — bridge always uses eager, default H
 SDPA, which reorders ops in a fused kernel. Bridge vs HF *eager* matches to fp32-noise.
 """
 
-import platform
 from typing import Callable
 
 import pytest
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
+from tests.tiny_checkpoints import FP32_NOISE_TOL, parity_params
 from transformer_lens.model_bridge import TransformerBridge
 
 MODEL_NAME = "EleutherAI/pythia-70m"
-
-# Wider fp32 op-order noise floor on GH Actions macOS-arm64; ~3e-3 at output.
-_MACOS_ARM64 = platform.system() == "Darwin" and platform.machine() == "arm64"
-FP32_NOISE_TOL = 1e-2 if _MACOS_ARM64 else 1e-5
 
 
 @pytest.fixture(scope="module")
@@ -123,3 +119,33 @@ def test_bridge_attention_reconstruction_actually_runs(bridge, tokenize):
         "blocks.0.attn.hook_attn_scores did not fire — bridge no longer runs its "
         "own attention reconstruction, making the parity tests tautological."
     )
+
+
+@pytest.mark.parametrize("model_name", parity_params())
+def test_tiny_bridge_logits_match_hf_eager(model_name: str) -> None:
+    """The hooked forward must reproduce an independent HF eager load's logits."""
+    bridge = TransformerBridge.boot_transformers(model_name, device="cpu", dtype=torch.float32)
+    tokens = bridge.to_tokens("The quick brown fox jumps")
+    hf_eager = AutoModelForCausalLM.from_pretrained(
+        model_name, torch_dtype=torch.float32, attn_implementation="eager"
+    ).eval()
+
+    with torch.inference_mode():
+        bridge_logits = bridge(tokens)
+        hf_logits = hf_eager(tokens).logits
+    max_diff = (bridge_logits - hf_logits).abs().max().item()
+    assert max_diff < FP32_NOISE_TOL, (
+        f"{model_name!r} bridge vs HF eager drift={max_diff:.2e} exceeds "
+        f"fp32-noise tolerance {FP32_NOISE_TOL:.0e} — a reconstructed term "
+        "(scale, norm, clamp, sink, routing) may have been dropped."
+    )
+
+    # Non-tautology guard: on archs with a reconstructed attention path, its
+    # scores hook must fire, or the parity above proves nothing.
+    if "blocks.0.attn.hook_attn_scores" in bridge.hook_dict:
+        fired: list[bool] = []
+        bridge.run_with_hooks(
+            tokens,
+            fwd_hooks=[("blocks.0.attn.hook_attn_scores", lambda v, hook: fired.append(True))],
+        )
+        assert fired, f"{model_name!r}: hook_attn_scores did not fire — reconstruction bypassed."

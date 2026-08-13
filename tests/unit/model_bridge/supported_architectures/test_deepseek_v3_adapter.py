@@ -215,7 +215,13 @@ class TestDeepSeekV3AdapterMoE:
     def test_moe_submodule_keys(self, adapter: DeepSeekV3ArchitectureAdapter) -> None:
         """V3 bridges the router gate (a custom Module), unlike V2."""
         mlp = adapter.component_mapping["blocks"].submodules["mlp"]
-        assert set(mlp.submodules.keys()) == {"gate", "shared_experts"}
+        assert set(mlp.submodules.keys()) == {
+            "gate",
+            "shared_experts",
+            "dense_gate",
+            "dense_in",
+            "dense_out",
+        }
 
     def test_gate_is_optional_plain_component(self, adapter: DeepSeekV3ArchitectureAdapter) -> None:
         """The router gate is a custom Module (not nn.Linear) and absent on dense layers."""

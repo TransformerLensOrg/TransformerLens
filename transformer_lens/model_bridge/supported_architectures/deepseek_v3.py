@@ -75,16 +75,24 @@ class DeepSeekV3ArchitectureAdapter(ArchitectureAdapter):
                             "o": LinearBridge(name="o_proj"),
                         },
                     ),
-                    # On dense layers (idx < first_k_dense_replace), gate and
-                    # shared_experts are marked optional so setup gracefully
-                    # skips them when the layer is DeepseekV3MLP instead of MoE.
+                    # Dense-prefix layers (idx < first_k_dense_replace) bind as
+                    # gated MLPs with neuron-basis hooks; sparse layers keep the
+                    # MoE mapping with its optional router/shared experts (#1645).
                     "mlp": MoEBridge(
                         name="mlp",
                         config=self.cfg,
+                        sparse_required=("gate",),
                         submodules={
                             # Router is a custom Module, not nn.Linear
                             "gate": GeneralizedComponent(name="gate", optional=True),
                             "shared_experts": self._gated_mlp(name="shared_experts", optional=True),
+                            # Dense-layer projections (present only on the
+                            # dense layers of this interleaved stack); their
+                            # presence is what makes MoEBridge bind gated-MLP
+                            # neuron hooks there (#1645).
+                            "dense_gate": LinearBridge(name="gate_proj", optional=True),
+                            "dense_in": LinearBridge(name="up_proj", optional=True),
+                            "dense_out": LinearBridge(name="down_proj", optional=True),
                         },
                     ),
                 },

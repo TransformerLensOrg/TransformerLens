@@ -65,9 +65,17 @@ class GlmMoeDsaArchitectureAdapter(ArchitectureAdapter):
                     "mlp": MoEBridge(
                         name="mlp",
                         config=self.cfg,
+                        sparse_required=("gate",),
                         submodules={
                             "gate": GeneralizedComponent(name="gate", optional=True),
                             "shared_experts": self._gated_mlp(name="shared_experts", optional=True),
+                            # Dense-layer projections (present only on the
+                            # dense layers of this interleaved stack); their
+                            # presence is what makes MoEBridge bind gated-MLP
+                            # neuron hooks there (#1645).
+                            "dense_gate": LinearBridge(name="gate_proj", optional=True),
+                            "dense_in": LinearBridge(name="up_proj", optional=True),
+                            "dense_out": LinearBridge(name="down_proj", optional=True),
                         },
                     ),
                 },

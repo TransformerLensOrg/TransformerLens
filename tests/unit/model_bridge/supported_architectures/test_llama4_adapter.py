@@ -48,12 +48,21 @@ class TestLlama4ComponentMapping:
         assert attn.name == "self_attn"
 
     def test_moe_with_optional_shared_expert(self, adapter):
-        """The router returns a tuple so it stays unwrapped; non-MoE layers
-        hold a dense gated MLP under the same feed_forward name."""
+        """The router is mapped so a rename fails loudly; non-MoE layers hold a
+        dense gated MLP under the same feed_forward name."""
         mlp = adapter.component_mapping["blocks"].submodules["mlp"]
         assert isinstance(mlp, _Llama4MoEBridge)
         assert mlp.name == "feed_forward"
-        assert set(mlp.submodules) == {"shared_expert", "dense_gate", "dense_in", "dense_out"}
+        assert set(mlp.submodules) == {
+            "router",
+            "shared_expert",
+            "dense_gate",
+            "dense_in",
+            "dense_out",
+        }
+        # Optional so dense layers may skip it, required on sparse ones.
+        assert mlp.submodules["router"].optional is True
+        assert mlp._sparse_required == ("router",)
         for key in ("dense_gate", "dense_in", "dense_out"):
             assert mlp.submodules[key].optional is True
         shared = mlp.submodules["shared_expert"]

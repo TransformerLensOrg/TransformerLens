@@ -172,7 +172,15 @@ class TestQwen3_5MoeComponentMapping:
         mlp = adapter.component_mapping["blocks"].submodules["mlp"]
         assert isinstance(mlp, MoEBridge)
         assert not isinstance(mlp, GatedMLPBridge)
-        assert set(mlp.submodules) == {"gate", "experts", "shared_expert", "shared_expert_gate"}
+        assert set(mlp.submodules) == {
+            "gate",
+            "experts",
+            "shared_expert",
+            "shared_expert_gate",
+            "dense_gate",
+            "dense_in",
+            "dense_out",
+        }
         assert isinstance(mlp.submodules["gate"], MoERouterBridge)
 
     def test_gated_q_proj_flag_set(self, adapter):

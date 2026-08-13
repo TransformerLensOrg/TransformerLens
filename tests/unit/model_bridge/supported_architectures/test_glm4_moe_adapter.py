@@ -191,7 +191,7 @@ class TestGlm4MoeComponentMapping:
         gate = mlp.submodules["gate"]
         assert isinstance(gate, LinearBridge)
         assert getattr(gate, "optional", False) is True
-        assert set(mlp.submodules.keys()) == {"gate"}
+        assert set(mlp.submodules.keys()) == {"gate", "dense_gate", "dense_in", "dense_out"}
 
 
 class TestGlm4MoeComponentTypes:

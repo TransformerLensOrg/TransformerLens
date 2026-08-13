@@ -152,6 +152,12 @@ def setup_submodules(
         component.submodules.pop(name, None)
     if skipped_optional:
         _prune_hook_aliases_for_skipped(component, skipped_optional)
+    # Components whose submodules are optional only in some configurations
+    # validate here: which optionals were actually skipped is not knowable
+    # until every submodule has been resolved.
+    validate_after_setup = getattr(component, "validate_after_setup", None)
+    if callable(validate_after_setup):
+        validate_after_setup(skipped_optional)
 
 
 def _prune_hook_aliases_for_skipped(component: GeneralizedComponent, skipped: list[str]) -> None:

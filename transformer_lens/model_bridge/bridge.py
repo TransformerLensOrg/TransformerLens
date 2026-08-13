@@ -16,6 +16,7 @@ from typing import (
     Any,
     Callable,
     Dict,
+    FrozenSet,
     Iterator,
     List,
     Literal,
@@ -43,6 +44,7 @@ from transformer_lens.model_bridge.composition_scores import CompositionScores
 from transformer_lens.model_bridge.exceptions import StopAtLayerException
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
+    alias_generation,
 )
 from transformer_lens.model_bridge.generalized_components.block import (
     _BLOCK_INTERNAL_MODULES,
@@ -191,6 +193,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         self._hook_registry: Dict[str, HookPoint] = {}
         self._hook_registry_initialized = False
         self._hook_alias_registry: Dict[str, Union[str, List[str]]] = {}
+        self._block_alias_cache: Optional[Tuple[Tuple[int, int], Dict[str, str]]] = None
         self._property_alias_registry: Dict[str, str] = {}
         # real_components maps TL keys to (remote_path, actual_instance) tuples
         # For list components, actual_instance will be a list of component instances
@@ -523,23 +526,44 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         self._scan_existing_hooks(self, "")
         self._hook_registry_initialized = True
 
-    def _collect_component_aliases(self, component_mapping, prefix=""):
-        """Recursively collect aliases from components."""
-        aliases = {}
+    def _collect_component_aliases(self, component_mapping, prefix="", _ancestors=frozenset()):
+        """Recursively collect aliases from the architecture's component templates.
+
+        ``_ancestors`` holds the ids on the current path, cutting a component
+        reachable from itself (directly or mutually): the mapping is an
+        arbitrary object graph, and without the guard a cycle recurses until
+        RecursionError during hook-registry construction. Tracking the path
+        rather than every visited node keeps a component legitimately shared
+        under two names (a diamond) contributing aliases at both.
+        """
+        aliases: Dict[str, str] = {}
+        if id(component_mapping) in _ancestors:
+            return aliases
+        _ancestors = _ancestors | {id(component_mapping)}
         if isinstance(component_mapping, dict):
             for name, component in component_mapping.items():
                 sub_prefix = f"{prefix}.{name}" if prefix else name
-                aliases.update(self._collect_component_aliases(component, sub_prefix))
+                aliases.update(self._collect_component_aliases(component, sub_prefix, _ancestors))
         else:
             if hasattr(component_mapping, "hook_aliases") and component_mapping.hook_aliases:
                 for alias_name, target in component_mapping.hook_aliases.items():
+                    # Fallback-list targets are skipped here: the consumer
+                    # (_compute_hook_aliases_cached) reverse-matches with
+                    # str.endswith and is lru_cached, so a list is neither
+                    # matchable nor hashable. Component-level lists resolve
+                    # through _collect_block_instance_aliases (block subtrees)
+                    # and _add_aliases_to_hooks (bridge level) instead.
+                    if not isinstance(target, str):
+                        continue
                     full_alias = f"{prefix}.{alias_name}" if prefix else alias_name
                     full_target = f"{prefix}.{target}" if prefix else target
                     aliases[full_alias] = full_target
             if hasattr(component_mapping, "submodules") and component_mapping.submodules:
                 for sub_name, sub_component in component_mapping.submodules.items():
                     sub_prefix = f"{prefix}.{sub_name}" if prefix else sub_name
-                    aliases.update(self._collect_component_aliases(sub_component, sub_prefix))
+                    aliases.update(
+                        self._collect_component_aliases(sub_component, sub_prefix, _ancestors)
+                    )
         return aliases
 
     @staticmethod
@@ -591,8 +615,20 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
 
         The template collection above reads ``adapter.component_mapping`` and so
         cannot see aliases a block rebinds per layer at bind time (heterogeneous
-        architectures like OlmoHybrid) or prunes for absent optional submodules.
+        architectures like OlmoHybrid, MoEBridge's dense/sparse dispatch) or
+        prunes for absent optional submodules.
+
+        Memoized against (hook-registry size, alias generation): this walks
+        every block's submodule tree and hook_dict reads it on each access.
+        Size alone is not a sufficient key — a dense<->sparse rebind changes
+        what the aliases point at while leaving the registry the same size, so
+        the generation counter (bumped on every hook_aliases assignment) is
+        what makes a post-boot rebind visible here.
         """
+        cache_key = (len(self._hook_registry), alias_generation())
+        cached = self._block_alias_cache
+        if cached is not None and cached[0] == cache_key:
+            return cached[1]
         aliases: Dict[str, str] = {}
         unresolved: List[str] = []
         for bl_name in _BLOCK_LIST_ATTRS:
@@ -600,31 +636,51 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             if block_list is None:
                 continue
             for i, block in enumerate(block_list):
-                block_aliases = getattr(block, "hook_aliases", None)
-                if not block_aliases:
-                    continue
                 # A block with no registered hooks means the registry hasn't
                 # scanned it yet — unresolved aliases there are timing, not drops.
                 block_prefix = f"{bl_name}.{i}."
                 if f"{block_prefix}hook_in" not in self._hook_registry:
                     continue
-                for alias_name, target in block_aliases.items():
-                    targets = target if isinstance(target, list) else [target]
-                    for single_target in targets:
-                        full_target = f"{block_prefix}{single_target}"
-                        if full_target in self._hook_registry:
-                            aliases[f"{block_prefix}{alias_name}"] = full_target
-                            break
-                    else:
-                        unresolved.append(f"{block_prefix}{alias_name}")
+                # Walk the block and its submodule tree: components rebind
+                # aliases per layer at bind time either at block level
+                # (OlmoHybrid) or one level down (MoEBridge's dense/sparse
+                # dispatch). id()-seen guards against shared/cyclic submodule
+                # references, which would otherwise hang boot.
+                # (prefix, component, ids-on-this-path): path-scoped rather than
+                # globally-visited so a cycle is cut while a component shared
+                # under two names still contributes aliases at both.
+                stack: List[Tuple[str, Any, FrozenSet[int]]] = [("", block, frozenset())]
+                while stack:
+                    sub_prefix, component, ancestors = stack.pop()
+                    if id(component) in ancestors:
+                        continue
+                    ancestors = ancestors | {id(component)}
+                    component_aliases = getattr(component, "hook_aliases", None)
+                    if component_aliases:
+                        for alias_name, target in component_aliases.items():
+                            targets = target if isinstance(target, list) else [target]
+                            for single_target in targets:
+                                full_target = f"{block_prefix}{sub_prefix}{single_target}"
+                                if full_target in self._hook_registry:
+                                    aliases[f"{block_prefix}{sub_prefix}{alias_name}"] = full_target
+                                    break
+                            else:
+                                unresolved.append(f"{block_prefix}{sub_prefix}{alias_name}")
+                    for nested_name, nested in (
+                        getattr(component, "submodules", None) or {}
+                    ).items():
+                        stack.append((f"{sub_prefix}{nested_name}.", nested, ancestors))
         if unresolved:
             # Surface drops instead of silently swallowing, mirroring
             # GeneralizedComponent._register_aliases.
             warnings.warn(
                 f"{len(unresolved)} block hook alias(es) did not resolve to a "
-                f"registered hook (e.g. '{unresolved[0]}').",
+                f"registered hook (e.g. '{unresolved[0]}'). Any such alias falls "
+                "back to the architecture template's mapping, which for a "
+                "per-layer rebind is the wrong tensor for this layer.",
                 stacklevel=2,
             )
+        self._block_alias_cache = (cache_key, aliases)
         return aliases
 
     def _add_aliases_to_hooks(self, hooks: Dict[str, HookPoint]) -> None:
