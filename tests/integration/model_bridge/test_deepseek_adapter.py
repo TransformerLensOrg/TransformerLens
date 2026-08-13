@@ -79,12 +79,18 @@ class TestDeepSeekForwardPass:
 
 
 class TestDeepSeekDenseVsMoELayers:
-    def test_dense_layer_has_no_moe_hooks(self, tiny_deepseek_bridge):
+    def test_dense_layer_binds_gated_mlp_hooks(self, tiny_deepseek_bridge):
+        """Dense-prefix layers expose the gate PROJECTION under dense_gate
+        (d_mlp neuron basis) — `gate` stays the router name, so one hook name
+        never means two things across layers (#1645)."""
         tokens = torch.tensor([[1, 2, 3, 4]])
         _, cache = tiny_deepseek_bridge.run_with_cache(tokens)
-        cache_keys = set(cache.keys())
-        assert not any("blocks.0.mlp.gate" in k for k in cache_keys)
-        assert not any("blocks.0.mlp.shared_experts" in k for k in cache_keys)
+        d_mlp = tiny_deepseek_bridge.original_model.config.intermediate_size
+        assert cache["blocks.0.mlp.dense_gate.hook_out"].shape[-1] == d_mlp
+        torch.testing.assert_close(
+            cache["blocks.0.mlp.hook_pre"], cache["blocks.0.mlp.dense_gate.hook_out"]
+        )
+        assert not any("blocks.0.mlp.shared_experts" in k for k in cache.keys())
 
     def test_moe_layer_has_gate_hooks(self, tiny_deepseek_bridge):
         tokens = torch.tensor([[1, 2, 3, 4]])

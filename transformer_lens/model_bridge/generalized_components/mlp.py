@@ -11,6 +11,58 @@ from transformer_lens.model_bridge.generalized_components.base import (
 )
 
 
+def weight_layout_in_out(proj: Any) -> Optional[bool]:
+    """Whether proj's wrapped module stores its weight as [in, out].
+
+    Conv1D (GPT-2 style) stores [in_features, out_features]; nn.Linear stores
+    [out_features, in_features]. Returns None when the wrapped module is
+    neither, so callers fall back to in_features/out_features or a shape heuristic.
+    """
+    from transformers.pytorch_utils import Conv1D
+
+    component = getattr(proj, "original_component", None)
+    if isinstance(component, Conv1D):
+        return True
+    if isinstance(component, torch.nn.Linear):
+        return False
+    return None
+
+
+def normalize_mlp_weight(
+    weight: torch.Tensor, layout: Optional[bool], proj: Any, pattern: str = "in"
+) -> torch.Tensor:
+    """Normalize an MLP projection weight to TransformerLens orientation.
+
+    Args:
+        weight: 2D weight tensor from the projection
+        layout: True if [in, out] (Conv1D), False if [out, in] (nn.Linear),
+            None falls back to in_features/out_features or shape heuristic.
+        proj: The projection module (LinearBridge) for metadata fallback.
+        pattern: "in" for W_in/W_gate [d_model, d_mlp], "out" for W_out [d_mlp, d_model]
+
+    Note: the shape heuristic assumes d_model < d_mlp, which fails for
+    architectures like GIDD's ScaledLinear where d_mlp < d_model. When layout is
+    None, in_features/out_features are checked first; the heuristic is last resort.
+    """
+    if layout is None:
+        # Try in_features/out_features from the wrapped module (works for bare nn.Module)
+        component = getattr(proj, "original_component", None)
+        in_f = getattr(component, "in_features", None)
+        out_f = getattr(component, "out_features", None)
+        if in_f is not None and out_f is not None:
+            # Module declares its orientation; weight[0] == in_f means [in, out] layout
+            layout = weight.shape[0] == in_f
+        else:
+            # Last resort: shape heuristic. WARNING: assumes d_model < d_mlp.
+            if pattern == "in":
+                layout = weight.shape[0] < weight.shape[1]
+            else:
+                layout = weight.shape[0] > weight.shape[1]
+    if layout:
+        return weight  # Conv1D-style: already in TL orientation
+    return weight.T  # nn.Linear-style: transpose to TL orientation
+
+
 class MLPBridge(GeneralizedComponent):
     """Bridge component for MLP layers.
 
@@ -101,55 +153,14 @@ class MLPBridge(GeneralizedComponent):
         return output
 
     def _weight_layout_in_out(self, proj: Any) -> Optional[bool]:
-        """Whether proj's wrapped module stores its weight as [in, out].
-
-        Conv1D (GPT-2 style) stores [in_features, out_features]; nn.Linear stores
-        [out_features, in_features]. Returns None when the wrapped module is
-        neither, so callers can fall back to in_features/out_features or shape heuristic.
-        """
-        from transformers.pytorch_utils import Conv1D
-
-        component = getattr(proj, "original_component", None)
-        if isinstance(component, Conv1D):
-            return True
-        if isinstance(component, torch.nn.Linear):
-            return False
-        return None
+        """Whether proj's wrapped module stores its weight as [in, out]."""
+        return weight_layout_in_out(proj)
 
     def _normalize_mlp_weight(
         self, weight: torch.Tensor, layout: Optional[bool], proj: Any, pattern: str = "in"
     ) -> torch.Tensor:
-        """Normalize MLP weight to TL orientation.
-
-        Args:
-            weight: 2D weight tensor from the projection
-            layout: True if [in, out] (Conv1D), False if [out, in] (nn.Linear),
-                None falls back to in_features/out_features or shape heuristic.
-            proj: The projection module (LinearBridge) for metadata fallback.
-            pattern: "in" for W_in/W_gate [d_model, d_mlp], "out" for W_out [d_mlp, d_model]
-
-        Note: Shape heuristic assumes d_model < d_mlp, which fails for architectures
-        like GIDD's ScaledLinear where d_mlp < d_model. When layout is None, we first
-        check in_features/out_features; shape heuristic is last resort.
-        """
-        if layout is None:
-            # Try in_features/out_features from the wrapped module (works for bare nn.Module)
-            component = getattr(proj, "original_component", None)
-            in_f = getattr(component, "in_features", None)
-            out_f = getattr(component, "out_features", None)
-            if in_f is not None and out_f is not None:
-                # Module declares its orientation; weight[0] == out_f means [out, in] layout
-                layout = weight.shape[0] == in_f  # True if [in, out], False if [out, in]
-            else:
-                # Last resort: shape heuristic. WARNING: assumes d_model < d_mlp.
-                # This will mis-orient architectures where d_mlp < d_model.
-                if pattern == "in":
-                    layout = weight.shape[0] < weight.shape[1]
-                else:
-                    layout = weight.shape[0] > weight.shape[1]
-        if layout:
-            return weight  # Conv1D-style: already in TL orientation
-        return weight.T  # nn.Linear-style: transpose to TL orientation
+        """Normalize MLP weight to TL orientation."""
+        return normalize_mlp_weight(weight, layout, proj, pattern=pattern)
 
     @property
     def W_in(self) -> torch.Tensor:

@@ -28,12 +28,22 @@ class TestGlm4MoeLiteBridgeCreation:
         assert isinstance(glm_bridge.adapter, Glm4MoeLiteArchitectureAdapter)
 
     def test_dense_sparse_layer_mix(self, glm_bridge):
-        """The tiny checkpoint declares layer 0 dense, layer 1 sparse."""
+        """The tiny checkpoint declares layer 0 dense, layer 1 sparse; the mlp
+        template binds each accordingly (#1645)."""
         hf_model = glm_bridge.original_model
         assert hf_model.config.mlp_layer_types == ["dense", "sparse"]
-        assert not hasattr(hf_model.model.layers[0].mlp, "gate")
-        assert hasattr(hf_model.model.layers[1].mlp, "gate")
-        assert hasattr(hf_model.model.layers[1].mlp, "shared_experts")
+        dense_mlp = glm_bridge.blocks[0].mlp
+        sparse_mlp = glm_bridge.blocks[1].mlp
+        # Dense binding: gated-MLP neuron hooks via the dense_* projections.
+        assert not hasattr(dense_mlp.original_component, "experts")
+        assert dense_mlp._bound_dense is True
+        assert dense_mlp.hook_aliases["hook_pre"] == "dense_gate.hook_out"
+        assert not hasattr(dense_mlp, "hook_router_scores")
+        # Sparse binding: router + shared experts survive setup on the BRIDGE
+        # (a silently-popped optional router would otherwise stay green here).
+        assert hasattr(sparse_mlp.original_component, "experts")
+        assert {"gate", "shared_experts"} <= set(sparse_mlp.submodules)
+        assert hasattr(sparse_mlp, "hook_router_scores")
 
 
 class TestGlm4MoeLiteForwardEquivalence:

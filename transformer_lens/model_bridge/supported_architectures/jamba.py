@@ -200,10 +200,13 @@ class JambaArchitectureAdapter(ArchitectureAdapter):
             return MoEBridge(
                 name="feed_forward",
                 config=self.cfg,
+                sparse_required=("router",),
                 submodules={
-                    "gate": LinearBridge(name="gate_proj", optional=True),
-                    "in": LinearBridge(name="up_proj", optional=True),
-                    "out": LinearBridge(name="down_proj", optional=True),
+                    # Dense (JambaMLP) layers: dense_* is what makes MoEBridge
+                    # bind gated-MLP neuron hooks there (#1645).
+                    "dense_gate": LinearBridge(name="gate_proj", optional=True),
+                    "dense_in": LinearBridge(name="up_proj", optional=True),
+                    "dense_out": LinearBridge(name="down_proj", optional=True),
                     "router": LinearBridge(name="router", optional=True),
                 },
             )

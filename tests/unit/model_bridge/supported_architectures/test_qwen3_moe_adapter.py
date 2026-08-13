@@ -220,10 +220,14 @@ class TestQwen3MoeMoEStructure:
         assert isinstance(mlp, MoEBridge)
         assert not isinstance(mlp, GatedMLPBridge)
 
-    def test_mlp_has_only_gate_submodule(self, adapter: Qwen3MoeArchitectureAdapter) -> None:
-        """Experts are batched 3D tensors inside the MoE block — only the router is mapped."""
+    def test_mlp_maps_router_and_dense_projections(
+        self, adapter: Qwen3MoeArchitectureAdapter
+    ) -> None:
+        """Experts are batched 3D tensors inside the MoE block, so only the
+        router is mapped for sparse layers; the dense_* projections carry the
+        neuron hooks on mlp_only_layers / decoder_sparse_step dense layers."""
         mlp = adapter.component_mapping["blocks"].submodules["mlp"]
-        assert set(mlp.submodules.keys()) == {"gate"}
+        assert set(mlp.submodules.keys()) == {"gate", "dense_gate", "dense_in", "dense_out"}
 
 
 class TestQwen3MoeArchitectureGuards:

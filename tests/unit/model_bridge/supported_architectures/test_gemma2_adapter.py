@@ -7,7 +7,6 @@ that installed a hook_conversion would double-scale (cache R * d_model instead
 of R * sqrt(d_model)) — the dev-4.x vLLM-comparison investigation surfaced this.
 """
 
-import os
 
 import pytest
 import torch
@@ -47,7 +46,6 @@ class TestGemma2HookCompatibility:
         assert "setup_hook_compatibility" not in vars(type(adapter))
 
 
-@pytest.mark.skipif(bool(os.getenv("CI")), reason="Network/disk fetch of tiny Gemma2 — skip in CI")
 def test_gemma2_embed_hook_out_magnitude_matches_sqrt_d_model_scaling():
     """End-to-end regression for the embed double-scale bug.
 

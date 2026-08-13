@@ -46,7 +46,7 @@ class TestQwen3VLMoeComponentMapping:
 
         mlp = adapter.component_mapping["blocks"].submodules["mlp"]
         assert isinstance(mlp, MoEBridge)
-        assert set(mlp.submodules) == {"gate", "experts"}
+        assert set(mlp.submodules) == {"gate", "experts", "dense_gate", "dense_in", "dense_out"}
         assert isinstance(mlp.submodules["gate"], MoERouterBridge)
         assert mlp.submodules["gate"].optional is True
         assert mlp.submodules["experts"].optional is True

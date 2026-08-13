@@ -87,7 +87,13 @@ class TestGlm4MoeLiteComponentMapping:
         """Dense layers in mlp_layer_types have neither router nor shared expert."""
         mlp = adapter.component_mapping["blocks"].submodules["mlp"]
         assert isinstance(mlp, MoEBridge)
-        assert set(mlp.submodules.keys()) == {"gate", "shared_experts"}
+        assert set(mlp.submodules.keys()) == {
+            "gate",
+            "shared_experts",
+            "dense_gate",
+            "dense_in",
+            "dense_out",
+        }
         assert mlp.submodules["gate"].optional is True
         shared = mlp.submodules["shared_experts"]
         assert isinstance(shared, GatedMLPBridge)

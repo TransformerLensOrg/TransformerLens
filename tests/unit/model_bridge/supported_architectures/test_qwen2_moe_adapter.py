@@ -116,6 +116,9 @@ class TestQwen2MoeComponentMapping:
             "experts",
             "shared_expert",
             "shared_expert_gate",
+            "dense_gate",
+            "dense_in",
+            "dense_out",
         }
         assert isinstance(mlp.submodules["gate"], LinearBridge)
         assert isinstance(mlp.submodules["experts"], MoEBridge)
