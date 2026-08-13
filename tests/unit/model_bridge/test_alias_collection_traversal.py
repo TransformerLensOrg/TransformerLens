@@ -9,6 +9,7 @@ the second path.
 
 from __future__ import annotations
 
+import re
 import sys
 
 import pytest
@@ -117,19 +118,29 @@ class TestBoundBlockWalkTraversal:
             bridge._block_alias_cache = None
 
     def test_shared_submodule_aliases_at_every_path(self, bridge: TransformerBridge) -> None:
+        """A component reachable under two names must be walked at BOTH — a
+        globally-visited guard would silently skip the second path.
+
+        The shared component's alias targets are not in the hook registry (it is
+        attached for this test only), so the observable evidence that both paths
+        were walked is the unresolved-alias report: one entry per alias PER
+        PATH. Asserting on the resolved map instead would be vacuous — it is
+        empty for both paths, so any comparison between them holds trivially.
+        """
         mlp = bridge.blocks[0].mlp
         shared = _shared_component()
         mlp.submodules["alpha"] = shared
         mlp.submodules["beta"] = shared
         bridge._block_alias_cache = None
         try:
-            aliases = bridge._collect_block_instance_aliases()
+            with pytest.warns(UserWarning, match="did not resolve") as record:
+                bridge._collect_block_instance_aliases()
         finally:
             del mlp.submodules["alpha"]
             del mlp.submodules["beta"]
             bridge._block_alias_cache = None
-        # Targets resolve only if the hooks are registered; assert the walk
-        # reached both paths by checking it did not stop after the first.
-        alpha = [k for k in aliases if ".mlp.alpha." in k]
-        beta = [k for k in aliases if ".mlp.beta." in k]
-        assert (len(alpha) > 0) == (len(beta) > 0)
+
+        reported = " ".join(str(w.message) for w in record)
+        count = int(re.search(r"^(\d+) block hook alias", reported).group(1))
+        # _shared_component declares 2 aliases; both paths walked => 2 per path.
+        assert count == 4, f"expected 2 aliases x 2 paths, got {count}: {reported}"

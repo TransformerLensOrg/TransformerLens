@@ -96,11 +96,15 @@ class TestDenseBinding:
         and a missing accessor is silently zero-filled by get_params_util)."""
         module = _DenseMLP()
         bridge = _bind(module)
-        assert bridge.W_gate.shape == (D_MODEL, D_MLP)
-        assert bridge.W_in.shape == (D_MODEL, D_MLP)
-        assert bridge.W_out.shape == (D_MLP, D_MODEL)
+        # Pin each accessor to the projection it must read. Shape alone cannot:
+        # gate_proj and up_proj are both [d_model, d_mlp], so a W_gate that
+        # returned the UP projection would satisfy any shape-only assertion.
+        torch.testing.assert_close(bridge.W_gate, module.gate_proj.weight.T)
         torch.testing.assert_close(bridge.W_in, module.up_proj.weight.T)
         torch.testing.assert_close(bridge.W_out, module.down_proj.weight.T)
+        # Negative control: the two same-shaped projections are distinguishable
+        # in this fixture, so the assertions above are not trivially satisfiable.
+        assert not torch.equal(module.gate_proj.weight, module.up_proj.weight)
 
     def test_dense_layer_drops_the_router_hook(self) -> None:
         """A dense layer has no router; advertising hook_router_scores would be a
@@ -135,7 +139,11 @@ class TestSparseBinding:
     def test_sparse_layer_keeps_moe_semantics(self) -> None:
         bridge = _bind(_SparseMoE())
         assert bridge._bound_dense is False
-        assert bridge.hook_aliases == MoEBridge.hook_aliases
+        # Pin the concrete targets rather than comparing to
+        # MoEBridge.hook_aliases: that is the class constant this bind is
+        # supposed to reproduce, so the comparison holds even if the constant
+        # itself is wrong. hook_pre/hook_post are the MoE block boundaries.
+        assert bridge.hook_aliases == {"hook_pre": "hook_in", "hook_post": "hook_out"}
         assert hasattr(bridge, "hook_router_scores")
 
     def test_sparse_layer_has_no_dense_weight_accessors(self) -> None:
@@ -151,8 +159,14 @@ class TestSparseBinding:
         gate projection on another — that per-layer semantic flip is the #1645
         flaw class this dispatch removes."""
         dense, sparse = _bind(_DenseMLP()), _bind(_SparseMoE())
-        assert "gate" not in dense.submodules or "dense_gate" in dense.hook_aliases["hook_pre"]
-        assert dense.hook_aliases["hook_pre"].startswith("dense_gate")
+        # The two layers must not resolve the same hook name to different
+        # KINDS of tensor. Compare the resolved targets directly.
+        assert dense.hook_aliases["hook_pre"] == "dense_gate.hook_out"
+        assert sparse.hook_aliases["hook_pre"] == "hook_in"
+        # And `gate` must never be a dense projection: on the dense layer the
+        # key is absent entirely, so `blocks.N.mlp.gate.hook_out` means the
+        # router on every layer that has it.
+        assert "gate" not in dense.submodules
         assert "gate" in sparse.submodules
 
 
@@ -166,8 +180,8 @@ class TestDispatchRobustness:
         dense.set_original_component(_DenseMLP())
         sparse.set_original_component(_SparseMoE())
         assert dense.hook_aliases["hook_pre"] == "dense_gate.hook_out"
-        assert sparse.hook_aliases == MoEBridge.hook_aliases
-        assert template.hook_aliases == MoEBridge.hook_aliases
+        assert sparse.hook_aliases == {"hook_pre": "hook_in", "hook_post": "hook_out"}
+        assert template.hook_aliases == {"hook_pre": "hook_in", "hook_post": "hook_out"}
 
     def test_rebinding_sparse_after_dense_restores_moe_state(self) -> None:
         """The morph is symmetric: a rebinding harness must not leave a chimera
@@ -176,7 +190,7 @@ class TestDispatchRobustness:
         assert bridge._bound_dense is True
         bridge.set_original_component(_SparseMoE())
         assert bridge._bound_dense is False
-        assert bridge.hook_aliases == MoEBridge.hook_aliases
+        assert bridge.hook_aliases == {"hook_pre": "hook_in", "hook_post": "hook_out"}
         assert hasattr(bridge, "hook_router_scores")
 
     def test_alias_rebind_survives_the_attribute_passthrough(self) -> None:
@@ -194,7 +208,7 @@ class TestDispatchRobustness:
         bridge = MoEBridge(name="mlp", submodules={})
         bridge.set_original_component(_DenseMLP())
         assert bridge._bound_dense is False
-        assert bridge.hook_aliases == MoEBridge.hook_aliases
+        assert bridge.hook_aliases == {"hook_pre": "hook_in", "hook_post": "hook_out"}
 
 
 # Every adapter declaring dense_* projections. Kept in sync with
@@ -229,7 +243,10 @@ def test_roster_covers_every_dense_declaring_adapter() -> None:
     # Adapters whose dense mapping is reached through a different template shape
     # (a per-config builder or an encoder-decoder block list) rather than
     # blocks.mlp, so the blocks-based parametrization cannot construct them.
-    NOT_BLOCKS_MLP = {"jamba", "switch_transformers", "qwen3_5_moe"}
+    # jamba builds its MoEBridge only when num_experts > 1 (a per-config
+    # builder) and switch_transformers maps encoder/decoder block lists, so
+    # neither is reachable through a blocks.mlp template here.
+    NOT_BLOCKS_MLP = {"jamba", "switch_transformers"}
     # Walk the MRO: an arch string can resolve to a subclass in another module
     # (Llama4ForConditionalGeneration -> the multimodal adapter, which inherits
     # llama4's block mapping), and the declaration lives on the base.
@@ -341,14 +358,35 @@ class TestSparseRequiredGuard:
                 sparse_required=("rooter",),
             )
 
-    def test_templates_without_sparse_required_are_unaffected(self) -> None:
-        """jamba/switch-style templates that do not opt in must bind silently."""
-        bridge = MoEBridge(
-            name="mlp", submodules={"gate": LinearBridge(name="gate", optional=True)}
-        )
-        module = _DenseMLP()
-        bridge.set_original_component(module)
-        bridge.validate_after_setup(["gate"])  # must not raise
+    def test_opting_in_is_what_makes_a_missing_router_loud(self) -> None:
+        """Differential on the opt-in alone: the SAME template shape and the SAME
+        module bind silently without `sparse_required` and raise with it.
+
+        Driven through the real setup_submodules so the skipped set is computed
+        rather than hand-fed — hand-feeding it would exercise the guard's body
+        while skipping the machinery that decides when the guard applies.
+        """
+        adapter = _adapter()
+        module = _RenamedRouterSparseMoE()
+
+        def build(**kwargs) -> MoEBridge:
+            return MoEBridge(
+                name="mlp",
+                submodules={"gate": LinearBridge(name="gate", optional=True)},
+                **kwargs,
+            )
+
+        # jamba/switch-style: no opt-in, so a skipped optional stays silent.
+        opted_out = build()
+        opted_out.set_original_component(module)
+        setup_submodules(opted_out, adapter, module)
+        assert "gate" not in opted_out.submodules  # precondition: it WAS skipped
+
+        # Same template + same module, only the opt-in differs.
+        opted_in = build(sparse_required=("gate",))
+        opted_in.set_original_component(module)
+        with pytest.raises(ValueError, match="required submodule"):
+            setup_submodules(opted_in, adapter, module)
 
 
 @pytest.mark.parametrize("architecture", DENSE_AWARE_ARCHS)

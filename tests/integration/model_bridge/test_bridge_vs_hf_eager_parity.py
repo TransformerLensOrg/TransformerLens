@@ -11,7 +11,7 @@ import pytest
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from tests.tiny_checkpoints import FP32_NOISE_TOL, parity_params
+from tests.tiny_checkpoints import FP32_NOISE_TOL, assert_tiny_parity, parity_params
 from transformer_lens.model_bridge import TransformerBridge
 
 MODEL_NAME = "EleutherAI/pythia-70m"
@@ -133,12 +133,7 @@ def test_tiny_bridge_logits_match_hf_eager(model_name: str) -> None:
     with torch.inference_mode():
         bridge_logits = bridge(tokens)
         hf_logits = hf_eager(tokens).logits
-    max_diff = (bridge_logits - hf_logits).abs().max().item()
-    assert max_diff < FP32_NOISE_TOL, (
-        f"{model_name!r} bridge vs HF eager drift={max_diff:.2e} exceeds "
-        f"fp32-noise tolerance {FP32_NOISE_TOL:.0e} — a reconstructed term "
-        "(scale, norm, clamp, sink, routing) may have been dropped."
-    )
+    assert_tiny_parity(bridge_logits, hf_logits, model_name)
 
     # Non-tautology guard: on archs with a reconstructed attention path, its
     # scores hook must fire, or the parity above proves nothing.

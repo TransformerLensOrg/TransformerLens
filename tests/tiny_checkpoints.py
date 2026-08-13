@@ -15,17 +15,37 @@ import pytest
 # Wider fp32 op-order noise floor on GH Actions macOS-arm64.
 _MACOS_ARM64 = platform.system() == "Darwin" and platform.machine() == "arm64"
 
-# One tolerance policy for every bridge-vs-HF-eager comparison. Two files
-# previously asserted the same property with opposite policies (1e-2 vs a
-# hardcoded 1e-5), so one flaked on macOS while the other could not fail there.
-#
-# CALIBRATION CAVEAT: the macOS-arm64 value is an op-order noise floor measured
-# on real checkpoints (~3e-3 observed), which is ABOVE the ~1e-3 logits effect a
-# dropped attention term produces on a tiny checkpoint. The macOS lane therefore
-# cannot discriminate the #1618 failure class at the logits level — the Linux
-# 1e-5 lane is the discriminating one, and per-layer/structural assertions are
-# what catch regressions on macOS.
+# Tolerance for the REAL-model (pythia-70m) parity tests. The macOS-arm64 value
+# is an op-order noise floor measured on that checkpoint (~3e-3 observed).
+# Do not reuse it for the tiny roster — see TINY_PARITY_REL_TOL.
 FP32_NOISE_TOL = 1e-2 if _MACOS_ARM64 else 1e-5
+
+# Tolerance for the TINY roster, expressed RELATIVE to each checkpoint's logit
+# scale. Measured on macOS-arm64 (the noisier of the two CI platforms) across
+# all 12 roster entries: worst absolute drift 2.2e-07, worst relative 2.0e-06,
+# and 9 of 12 bit-identical. A 10% error injected into the reconstructed
+# attention scale produces ~0.35 relative on mistral, so this threshold sits
+# ~50x above real noise and ~3500x below the effect it must catch.
+#
+# It is relative because the roster's logit spreads differ by ~700x (qwen2 std
+# 0.0103 vs olmo 5.6540); a single absolute number cannot be both non-flaky on
+# the widest checkpoint and discriminating on the narrowest — which is exactly
+# how the previous platform-keyed 1e-2 became unable to fail.
+TINY_PARITY_REL_TOL = 1e-4
+
+
+def assert_tiny_parity(bridge_logits, hf_logits, model_name: str) -> None:
+    """Assert bridge-vs-HF logit parity scaled to this checkpoint's magnitude."""
+    max_diff = (bridge_logits - hf_logits).abs().max().item()
+    scale = max(1.0, hf_logits.abs().max().item())
+    limit = TINY_PARITY_REL_TOL * scale
+    assert max_diff < limit, (
+        f"{model_name!r} bridge vs HF eager drift={max_diff:.3e} exceeds "
+        f"{limit:.3e} (rel tol {TINY_PARITY_REL_TOL:.0e} x logit scale "
+        f"{scale:.3f}) — a reconstructed term (scale, norm, clamp, sink, "
+        "routing) may have been dropped."
+    )
+
 
 # One tiny checkpoint per reconstruction variant the bridge re-derives; each
 # carries a term a regression could silently drop (the #1618 failure class):

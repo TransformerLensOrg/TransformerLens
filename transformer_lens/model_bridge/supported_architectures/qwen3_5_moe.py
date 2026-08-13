@@ -31,16 +31,11 @@ def _sparse_moe_mlp(adapter):
     return MoEBridge(
         name="mlp",
         config=adapter.cfg,
-        sparse_required=("gate", "experts"),
         submodules={
-            "gate": MoERouterBridge(name="gate", optional=True),
-            "experts": MoEBridge(name="experts", config=adapter.cfg, optional=True),
-            "shared_expert": adapter._gated_mlp(name="shared_expert", optional=True),
-            "shared_expert_gate": LinearBridge(name="shared_expert_gate", optional=True),
-            # Dense fallback layers (mlp_only_layers / decoder_sparse_step) (#1645).
-            "dense_gate": LinearBridge(name="gate_proj", optional=True),
-            "dense_in": LinearBridge(name="up_proj", optional=True),
-            "dense_out": LinearBridge(name="down_proj", optional=True),
+            "gate": MoERouterBridge(name="gate"),
+            "experts": MoEBridge(name="experts", config=adapter.cfg),
+            "shared_expert": adapter._gated_mlp(name="shared_expert"),
+            "shared_expert_gate": LinearBridge(name="shared_expert_gate"),
         },
     )
 

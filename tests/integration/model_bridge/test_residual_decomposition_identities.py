@@ -16,8 +16,10 @@ residual-wiring pattern the bridge handles:
 - olmo2: post-norm inside the residual branch — RMSNorm applies to the sublayer
   output before the add, so the contributions are the norm outputs (the #1648 case)
 - mpt: residual added inside the HF MLP module only (attention adds at block level)
-- granite: sublayer outputs scaled by residual_multiplier before the add — the
-  contributions are the scaled tensors (the #1648 Granite case)
+- granite: the scaled-residual block wiring end to end. NOTE: the hub tiny ships
+  residual_multiplier=1.0, so this entry does NOT exercise the multiplier —
+  test_granite_hook_semantics.py builds a fixture with a real multiplier and is
+  the coverage for the #1648 Granite case.
 - gemma2: sandwich norms — a post-sublayer norm inside each residual branch, so
   the contributions are the post-norm outputs
 

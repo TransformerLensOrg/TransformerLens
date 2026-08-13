@@ -172,15 +172,17 @@ class TestQwen3_5MoeComponentMapping:
         mlp = adapter.component_mapping["blocks"].submodules["mlp"]
         assert isinstance(mlp, MoEBridge)
         assert not isinstance(mlp, GatedMLPBridge)
+        # No dense fallback exists for this arch — HF builds
+        # Qwen3_5MoeSparseMoeBlock unconditionally (modeling_qwen3_5_moe.py:849),
+        # so there are no dense_* projections to declare and all four MoE
+        # submodules are required rather than optional.
         assert set(mlp.submodules) == {
             "gate",
             "experts",
             "shared_expert",
             "shared_expert_gate",
-            "dense_gate",
-            "dense_in",
-            "dense_out",
         }
+        assert all(not sub.optional for sub in mlp.submodules.values())
         assert isinstance(mlp.submodules["gate"], MoERouterBridge)
 
     def test_gated_q_proj_flag_set(self, adapter):

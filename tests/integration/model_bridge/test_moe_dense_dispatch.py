@@ -8,7 +8,7 @@ both bindings of the DenseOrMoEBridge template.
 import torch
 from transformers import AutoModelForCausalLM
 
-from tests.tiny_checkpoints import FP32_NOISE_TOL, MIXED_DENSE_SPARSE_MOE
+from tests.tiny_checkpoints import MIXED_DENSE_SPARSE_MOE, assert_tiny_parity
 from transformer_lens.model_bridge import TransformerBridge
 
 MODEL_NAME = MIXED_DENSE_SPARSE_MOE
@@ -45,7 +45,7 @@ def test_mixed_checkpoint_dense_and_sparse_mlp_hooks() -> None:
     ).eval()
     with torch.no_grad():
         hf_logits = hf_eager(tokens).logits
-    assert (logits - hf_logits).abs().max().item() < FP32_NOISE_TOL
+    assert_tiny_parity(logits, hf_logits, MODEL_NAME)
 
 
 def test_dense_layer_neuron_intervention_targets_gate_output() -> None:
@@ -79,10 +79,18 @@ def test_dense_layer_weights_reach_get_params() -> None:
 
     dense = bridge.blocks[0].mlp
     assert dense.bound_dense is True
-    torch.testing.assert_close(params["blocks.0.mlp.W_in"], dense.W_in)
-    torch.testing.assert_close(params["blocks.0.mlp.W_gate"], dense.W_gate)
-    torch.testing.assert_close(params["blocks.0.mlp.W_out"], dense.W_out)
+    # Anchor on the wrapped HF module, NOT on dense.W_in/W_gate/W_out:
+    # get_params_util builds these entries by reading those very properties, so
+    # comparing the two would be the same expression evaluated twice and could
+    # not detect a projection being read from the wrong submodule.
+    hf_mlp = dense.original_component
+    torch.testing.assert_close(params["blocks.0.mlp.W_in"], hf_mlp.up_proj.weight.T)
+    torch.testing.assert_close(params["blocks.0.mlp.W_gate"], hf_mlp.gate_proj.weight.T)
+    torch.testing.assert_close(params["blocks.0.mlp.W_out"], hf_mlp.down_proj.weight.T)
     assert (params["blocks.0.mlp.W_in"] != 0).any()
+    # Negative control: gate and up are same-shaped, so this checkpoint can tell
+    # them apart only if their weights actually differ.
+    assert not torch.equal(hf_mlp.gate_proj.weight, hf_mlp.up_proj.weight)
 
     # Sparse layers legitimately have no single W_* and keep the placeholder.
     assert bridge.blocks[1].mlp.bound_dense is False
