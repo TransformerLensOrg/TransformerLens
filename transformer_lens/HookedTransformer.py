@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import os
+import warnings
 from collections.abc import Generator
 from typing import (
     Any,
@@ -164,6 +165,13 @@ class HookedTransformer(HookedRootModule):
             default_padding_side: Which side to pad on.
         """
         super().__init__()
+        warnings.warn(
+            "HookedTransformer is deprecated and will be removed in 4.0. Use "
+            "TransformerBridge.boot_transformers(...) instead, then call "
+            "enable_compatibility_mode() for HookedTransformer-equivalent numerics.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         if isinstance(cfg, str):
             raise ValueError(
                 "Please pass in a config dictionary or HookedTransformerConfig object. If you want to load a "
@@ -1316,8 +1324,8 @@ class HookedTransformer(HookedRootModule):
         import warnings
 
         warnings.warn(
-            "HookedTransformer.from_pretrained is deprecated and will be removed in a "
-            "future major release. Use TransformerBridge.boot_transformers(...) instead, "
+            "HookedTransformer.from_pretrained is deprecated and will be removed in "
+            "4.0. Use TransformerBridge.boot_transformers(...) instead, "
             "then call enable_compatibility_mode() for HookedTransformer-equivalent "
             "numerics. See docs/source/content/migrating_to_v3.md.",
             DeprecationWarning,

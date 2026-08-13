@@ -3,7 +3,7 @@
 ```{warning}
 `HookedTransformer` is deprecated as of TransformerLens 3.0 and will be removed in the next major version. New code should use [`TransformerBridge`](migrating_to_v3.md) instead. Existing `HookedTransformer` code continues to work through the 3.x branch via a compatibility layer. See the [migration guide](migrating_to_v3.md) for conversion recipes.
 
-The HookedTransformer **acceptance test suite is currently quarantined** due to a CI test-pollution issue (see `tests/QUARANTINES.md` in the repo). Changes that touch HookedTransformer internals therefore land essentially untested at the acceptance level — extra manual care is required until the suite is re-enabled.
+`HookedTransformer` **has no acceptance suite of its own** — `tests/acceptance/test_hooked_transformer.py` was removed when the Bridge tests were reanchored onto frozen golden datasets. Changes that touch HookedTransformer internals therefore land essentially untested at the acceptance level — extra manual care is required. The `HookedEncoder` (BERT) and `HookedEncoderDecoder` (T5) acceptance suites are unaffected and run normally.
 ```
 
 ## Contributing with AI coding agents
@@ -98,7 +98,7 @@ The flaky-retry policy (`--reruns 2 --reruns-delay 5`) wraps every `make` target
 
 Some tests carry persistent `skip` / `skipif` / `xfail` markers — for optional dependencies (LIT, bitsandbytes), hardware requirements (CUDA, MPS, multi-GPU), CI cost / network budget, or upstream platform bugs. The `tests/QUARANTINES.md` file in the repo inventories every one with an "un-skip when…" line. **Before debugging a failing test, check whether it's a known quarantine.**
 
-The HookedTransformer acceptance suite (`tests/acceptance/test_hooked_transformer.py`, `test_hooked_encoder.py`, `test_hooked_encoder_decoder.py`) is currently a whole-file quarantine — see the warning at the top of this page.
+There are currently no whole-file quarantines; every remaining marker is per-test and inventoried in `tests/QUARANTINES.md`.
 
 ## Formatting
 
@@ -277,6 +277,7 @@ Two guides walk through the process:
 - [Architecture Unit Test Suite Guide](adapter_development/adapter-unit-test-guide.md) — what to test (and what not to) in the per-adapter unit suite, so every test guards a real, adapter-specific regression.
 - [HuggingFace Model Analysis Guide](adapter_development/hf-model-analysis-guide.md) — a reference for reading an HF model's `config.json` and source files to extract the attributes you'll set on `self.cfg`.
 - [HuggingFace Model Scraper](adapter_development/hf-scraper.md) — how to run the scraper that discovers HF models for the registry, including the per-architecture targeted-scrape mode used after merging a new adapter.
+- [Automated Adapter Builder](adapter_development/adapter-builder-tool.md) — the `devtools/adapter_builder/` agent tool that runs this whole workflow autonomously (analysis, phased implementation, review at every checkpoint, parity verification), leaving the result uncommitted in a worktree for human review.
 
 Adapters live in `transformer_lens/model_bridge/supported_architectures/<model_name>.py` and need to be registered in **four** places. Each registration site has a different consequence if you skip it, which is why the next section's invariant test is worth running before you open the PR.
 
@@ -358,4 +359,5 @@ adapter_development/adapter-unit-test-guide
 adapter_development/hf-model-analysis-guide
 adapter_development/hf-scraper
 adapter_development/external-adapter-registration
+adapter_development/adapter-builder-tool
 ```

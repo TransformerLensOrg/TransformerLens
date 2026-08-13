@@ -52,7 +52,7 @@ logits, activations = bridge.run_with_cache("Hello World")
 
 > Gated models (Llama, Mistral, Gemma, ...) require `HF_TOKEN` in your environment. See [Environment Variables](https://TransformerLensOrg.github.io/TransformerLens/content/getting_started.html#environment-variables) for the full list.
 
-`TransformerBridge` is the recommended 3.0 path and supports 15,000+ models across 140+ architecture families (see [`supported_models.json`](transformer_lens/tools/model_registry/data/supported_models.json) for the full inventory). By default it preserves raw HuggingFace weights – logits and activations match HF, *not* legacy `HookedTransformer` (which folds LayerNorm and centers weights by default). Call `bridge.enable_compatibility_mode()` after booting for HookedTransformer-equivalent numerics. The legacy `HookedTransformer.from_pretrained` API is still available but deprecated — see the [Migrating to TransformerLens 3](https://TransformerLensOrg.github.io/TransformerLens/content/migrating_to_v3.html) guide.
+`TransformerBridge` is the recommended path and supports 15,000+ models across 140+ architecture families (see [`supported_models.json`](transformer_lens/tools/model_registry/data/supported_models.json) for the full inventory). By default it preserves raw HuggingFace weights – logits and activations match HF, *not* legacy `HookedTransformer` (which folds LayerNorm and centers weights by default). Call `bridge.enable_compatibility_mode()` after booting for HookedTransformer-equivalent numerics. The legacy `HookedTransformer.from_pretrained` API is still available but deprecated — see the [Migrating to TransformerLens 3](https://TransformerLensOrg.github.io/TransformerLens/content/migrating_to_v3.html) guide.
 
 ## Key Tutorials
 
@@ -172,7 +172,7 @@ TransformerLens includes bridge adapters for Mamba-1 (`state-spaces/mamba-*-hf`)
 and Mamba-2 (`AntonV/mamba2-130m-hf`, `state-spaces/mamba2-*`, etc.). The adapters
 cover:
 
-* Forward pass (bit-for-bit HF equivalent)
+* Forward pass (bit-for-bit HuggingFace equivalent)
 * Hook-based introspection of projection activations (`in_proj`, `conv1d`, `x_proj`,
   `dt_proj`, `out_proj` for Mamba-1; `in_proj`, `conv1d`, `inner_norm`, `out_proj` for
   Mamba-2)

@@ -7,8 +7,6 @@ optional attention mapping and fold_ln disabled.
 
 from typing import Any
 
-import torch
-
 from transformer_lens.model_bridge.supported_architectures.qwen3 import (
     Qwen3ArchitectureAdapter,
 )
@@ -19,7 +17,7 @@ class Qwen3_5ArchitectureAdapter(Qwen3ArchitectureAdapter):
 
     Inherits Qwen3 config/attention/MLP structure. Differences:
     - Attention + linear_attn are optional (per-layer type)
-    - Gated q_proj (2x wide) sliced by preprocess_weights for weight analysis
+    - Gated q_proj (2x wide); AttentionBridge exposes a query-only W_Q view
     """
 
     # Multimodal wrapper architecture this text-only adapter rejects; the MoE
@@ -58,12 +56,3 @@ class Qwen3_5ArchitectureAdapter(Qwen3ArchitectureAdapter):
                 f"TransformerBridge.boot_transformers(...) so {multimodal_arch} "
                 f"checkpoints route to the multimodal adapter automatically."
             )
-
-    def preprocess_weights(self, state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
-        """Slice query half from gated q_proj.weight for weight-space analysis.
-
-        In processed mode, W_Q is the pure query projection (for composition
-        scores, logit lens). Gate signal available in unprocessed mode on
-        full-attention layers via blocks.N.attn.hook_q_gate.
-        """
-        return self._preprocess_gated_q_proj(state_dict, self.cfg.n_heads, self.cfg.d_head)

@@ -1,9 +1,8 @@
 """run_with_cache(pos_slice=...) on TransformerBridge.
 
-Mirrors HookedTransformer's pos_slice: each cached activation is sliced along
-its position dimension (dim 1 for resid/per-head/token-id activations; the
-query position -2 for attention patterns/scores). An int slice keeps the
-position dim at size 1, matching HookedTransformer.
+Each cached activation is sliced along its position dimension (dim 1 for
+resid/per-head/token-id activations; the query position -2 for attention
+patterns/scores). An int slice keeps the position dim at size 1.
 """
 
 import pytest

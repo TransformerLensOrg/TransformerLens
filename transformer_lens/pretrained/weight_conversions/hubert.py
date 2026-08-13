@@ -1,9 +1,9 @@
 import einops
 
-from transformer_lens.config.hooked_transformer_config import HookedTransformerConfig
+from transformer_lens.config import TransformerLensConfig
 
 
-def convert_hubert_weights(hf_model, cfg: HookedTransformerConfig):
+def convert_hubert_weights(hf_model, cfg: TransformerLensConfig):
     """Convert transformer encoder weights from a HuggingFace HuBERT model
     into the state_dict expected by Transformer-Lens' HookedEncoder.
 

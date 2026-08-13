@@ -163,7 +163,7 @@ def test_split_qkv_applicability_raises_on_unsupported(monkeypatch, gpt2_bridge)
 
 
 def test_block_level_hook_alias_parity(gpt2_bridge):
-    """HookedTransformer parity: `blocks[i].hook_{attn_in,q_input,k_input,v_input}`
+    """Block-level aliases: `blocks[i].hook_{attn_in,q_input,k_input,v_input}`
     resolve to the four *independent* HookPoints on the attention bridge.
     """
     gpt2_bridge.enable_compatibility_mode(no_processing=True)

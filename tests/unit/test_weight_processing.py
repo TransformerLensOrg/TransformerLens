@@ -2,7 +2,7 @@
 """
 Unit tests for the ProcessWeights class.
 
-Comprehensive test coverage for all weight processing functions extracted from HookedTransformer.
+Comprehensive test coverage for all weight processing functions.
 """
 
 from unittest.mock import Mock, patch
@@ -736,7 +736,7 @@ class TestProcessWeights:
         """Test _fold_layer function with no adapter (TransformerLens format).
 
         This test locks in the current behavior of _fold_layer when no adapter is provided,
-        ensuring that HookedTransformer models continue to work correctly.
+        ensuring that TransformerLens-format state dicts continue to work correctly.
         """
         cfg = basic_config
         cfg.n_layers = 1  # Test with single layer for simplicity

@@ -3,17 +3,15 @@
 from unittest import mock
 
 from transformer_lens.hook_points import HookIntrospectionMixin, HookPoint
-from transformer_lens.HookedRootModule import HookedRootModule
 
 
-class _ToyModel(HookedRootModule):
-    """Minimal HookedRootModule with two hook points for testing."""
+class _ToyModel(HookIntrospectionMixin):
+    """Minimal hook_dict provider with two hook points for testing."""
 
     def __init__(self):
-        super().__init__()
         self.hook_a = HookPoint()
         self.hook_b = HookPoint()
-        self.setup()
+        self.hook_dict = {"hook_a": self.hook_a, "hook_b": self.hook_b}
 
 
 def _my_named_hook(activation, hook):

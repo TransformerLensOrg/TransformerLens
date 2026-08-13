@@ -1,10 +1,10 @@
 import einops
 import torch
 
-from transformer_lens.config.hooked_transformer_config import HookedTransformerConfig
+from transformer_lens.config import TransformerLensConfig
 
 
-def convert_nanogpt_weights(old_state_dict, cfg: HookedTransformerConfig):
+def convert_nanogpt_weights(old_state_dict, cfg: TransformerLensConfig):
     """For https://github.com/karpathy/nanoGPT
     There are two complications with converting nanogpt models:
     The first is that some state dicts have an unwanted prefix on keys that needs to be removed.

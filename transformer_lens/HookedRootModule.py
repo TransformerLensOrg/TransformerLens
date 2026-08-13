@@ -9,6 +9,7 @@ against it without the broader ``hook_points`` import surface.
 from __future__ import annotations
 
 import logging
+import warnings
 from collections.abc import Callable, Iterable
 from contextlib import contextmanager
 from functools import partial
@@ -54,6 +55,13 @@ class HookedRootModule(HookIntrospectionMixin, nn.Module):
 
     def __init__(self, *args: Any):
         super().__init__()
+        if type(self) is HookedRootModule:
+            warnings.warn(
+                "HookedRootModule is deprecated and will be removed in 4.0. Use "
+                "TransformerBridge.boot_transformers(...) instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         self.is_caching = False
         self.context_level = 0
 

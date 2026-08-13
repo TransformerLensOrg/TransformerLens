@@ -261,11 +261,7 @@ class BlockBridge(GeneralizedComponent):
         """Parse this block's layer index from its name (TL/GPT-2/LLaMA patterns)."""
         if self.name is None:
             return None
-        match = (
-            re.search(r"blocks\.(\d+)", self.name)
-            or re.search(r"\.h\.(\d+)", self.name)
-            or re.search(r"\.layers\.(\d+)", self.name)
-        )
+        match = re.search(r"(?:^|\.)(?:blocks|h|layers)\.(\d+)", self.name)
         return int(match.group(1)) if match else None
 
     def _check_stop_at_layer(self, *args: Any, **kwargs: Any) -> None:

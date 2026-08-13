@@ -64,7 +64,7 @@ BRIDGE_EXPECTED_MISSING_PATTERNS = [
     "attn.hook_attn_scores",
     "attn.hook_pattern",
     # MoE per-expert hooks: Bridge uses HF's batched MoE forward pass via MoEBridge,
-    # which wraps the entire MoE module. HookedTransformer creates individual expert
+    # which wraps the entire MoE module. The legacy reference created individual expert
     # modules with per-expert hooks (e.g., blocks.0.mlp.experts.3.hook_pre).
     "mlp.experts.",
     "mlp.hook_experts",
@@ -87,6 +87,54 @@ def filter_expected_missing_hooks(hook_names: Collection[str]) -> list[str]:
         for h in hook_names
         if not any(pattern in h for pattern in BRIDGE_EXPECTED_MISSING_PATTERNS)
     ]
+
+
+_DEFAULT_WAVEFORM_SAMPLES = 16000
+
+
+def build_modality_input(
+    bridge: Any,
+    batch_size: int = 1,
+    device: Optional[Union[str, torch.device]] = None,
+    dtype: Optional[torch.dtype] = None,
+) -> Optional[torch.Tensor]:
+    """Build a synthetic model input for a non-text bridge, or None for text models.
+
+    Audio and vision models take a raw tensor where text models take token ids, and
+    the shape is architecture-specific: spectrogram encoders (AST) need
+    ``[batch, max_length, num_mel_bins]`` where waveform encoders (HuBERT, wav2vec2)
+    need ``[batch, samples]``, and vision encoders need
+    ``[batch, num_channels, image_size, image_size]``. Shapes come from the HF config
+    so a checkpoint with non-default dimensions is still handled correctly.
+    """
+    cfg = getattr(bridge, "cfg", None)
+    if cfg is None:
+        return None
+
+    hf_config = getattr(getattr(bridge, "original_model", None), "config", None)
+
+    def _from_config(name: str, default: int) -> int:
+        value = getattr(hf_config, name, None) if hf_config is not None else None
+        if value is None:
+            value = getattr(cfg, name, None)
+        return int(value) if isinstance(value, int) else default
+
+    if getattr(cfg, "is_visual_model", False):
+        image_size = _from_config("image_size", 224)
+        num_channels = _from_config("num_channels", 3)
+        return torch.randn(
+            batch_size, num_channels, image_size, image_size, device=device, dtype=dtype
+        )
+
+    if getattr(cfg, "is_audio_model", False):
+        # num_mel_bins is what distinguishes a spectrogram encoder from a waveform one.
+        num_mel_bins = getattr(hf_config, "num_mel_bins", None) if hf_config is not None else None
+        if num_mel_bins is None:
+            return torch.randn(batch_size, _DEFAULT_WAVEFORM_SAMPLES, device=device, dtype=dtype)
+        max_length = _from_config("max_length", 1024)
+        return torch.randn(batch_size, max_length, int(num_mel_bins), device=device, dtype=dtype)
+
+    return None
 
 
 def safe_allclose(

@@ -14,6 +14,7 @@ back to these docs depending on what you need to do.
 from __future__ import annotations
 
 import logging
+from collections import Counter
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -60,7 +61,7 @@ class ActivationCache:
     The :class:`ActivationCache` is at the core of Transformer Lens. It is a wrapper that stores all
     important activations from a forward pass of the model, and provides a variety of helper
     functions to investigate them. The common way to access it is to run the model with
-    :meth:`transformer_lens.HookedTransformer.HookedTransformer.run_with_cache`.
+    :meth:`transformer_lens.model_bridge.TransformerBridge.run_with_cache`.
 
     Examples:
 
@@ -71,9 +72,9 @@ class ActivationCache:
     the model predicting "road". This kind of analysis commonly falls under the category of "logit
     attribution" or "direct logit attribution" (DLA).
 
-    >>> from transformer_lens import HookedTransformer
-    >>> model = HookedTransformer.from_pretrained("tiny-stories-1M")
-    Loaded pretrained model tiny-stories-1M into HookedTransformer
+    >>> from transformer_lens.model_bridge import TransformerBridge
+    >>> model = TransformerBridge.boot_transformers("roneneldan/TinyStories-1M")
+    >>> model.enable_compatibility_mode()
 
     >>> _logits, cache = model.run_with_cache("Why did the chicken cross the")
     >>> residual_stream, labels = cache.decompose_resid(return_labels=True, mode="attn")
@@ -101,9 +102,10 @@ class ActivationCache:
     Warning:
 
     :class:`ActivationCache` is designed to be used with
-    :class:`transformer_lens.HookedTransformer`, and will not work with other models. It's also
-    designed to be used with all activations of :class:`transformer_lens.HookedTransformer` being
-    cached, and some internal methods will break without that.
+    :class:`transformer_lens.HookedTransformer` or
+    :class:`transformer_lens.model_bridge.TransformerBridge`. Advanced helpers expect the model to
+    expose the TransformerLens weight-processing interface and generally expect a complete cache;
+    some internal methods may break with other models or partial caches.
 
     The biggest footgun and source of bugs in this code will be keeping track of indexes,
     dimensions, and the numbers of each. There are several kinds of activations:
@@ -153,6 +155,19 @@ class ActivationCache:
 
         # Note: model reference prevents garbage collection. Set cache.model = None if unneeded.
 
+    def _batch_size(self) -> int:
+        """The cache's batch size: the most common leading dim across entries.
+
+        Caches may hold non-batch entries alongside genuinely batched
+        activations — broadcast entries with a leading dim of 1 (e.g. the
+        bridge's position-index inputs) or position-indexed entries whose
+        leading dim is the sequence length (e.g. T5's relative position bias).
+        The batched activations vastly outnumber both, so the mode is the
+        reliable signal where max/min are not.
+        """
+        counts = Counter(v.size(0) for v in self.cache_dict.values() if v.ndim > 0)
+        return counts.most_common(1)[0][0] if counts else 1
+
     def remove_batch_dim(self) -> ActivationCache:
         """Remove the Batch Dimension (if a single batch item).
 
@@ -160,16 +175,13 @@ class ActivationCache:
             The ActivationCache with the batch dimension removed.
         """
         if self.has_batch_dim:
-            # Skip tensors without a batch dimension
-            has_batch_1 = any(v.size(0) == 1 for v in self.cache_dict.values())
+            batch_size = self._batch_size()
+            assert (
+                batch_size == 1
+            ), f"Cannot remove batch dimension from cache with batch size {batch_size}"
             for key in self.cache_dict:
-                if self.cache_dict[key].size(0) == 1:
+                if self.cache_dict[key].ndim > 0 and self.cache_dict[key].size(0) == 1:
                     self.cache_dict[key] = self.cache_dict[key][0]
-                else:
-                    assert has_batch_1, (
-                        f"Cannot remove batch dimension from cache with batch size > 1, "
-                        f"for key {key} with shape {self.cache_dict[key].shape}"
-                    )
             self.has_batch_dim = False
         else:
             logging.warning("Tried removing batch dimension after already having removed it.")
@@ -270,12 +282,14 @@ class ActivationCache:
 
         Examples:
 
-            >>> from transformer_lens import HookedTransformer
-            >>> model = HookedTransformer.from_pretrained("tiny-stories-1M")
-            Loaded pretrained model tiny-stories-1M into HookedTransformer
+            >>> from transformer_lens.model_bridge import TransformerBridge
+            >>> model = TransformerBridge.boot_transformers("roneneldan/TinyStories-1M")
+            >>> model.enable_compatibility_mode()
             >>> _logits, cache = model.run_with_cache("Some prompt")
-            >>> list(cache.keys())[0:3]
-            ['hook_embed', 'hook_pos_embed', 'blocks.0.hook_resid_pre']
+            >>> list(cache.keys())[0:8]
+            ['embed.hook_in', 'hook_embed', 'embed.hook_out', 'pos_embed.hook_in',
+             'hook_pos_embed', 'pos_embed.hook_out', 'blocks.0.hook_in',
+             'blocks.0.hook_resid_pre']
 
         Returns:
             List of all keys.
@@ -306,16 +320,18 @@ class ActivationCache:
 
         Examples:
 
-            >>> from transformer_lens import HookedTransformer
-            >>> model = HookedTransformer.from_pretrained("tiny-stories-1M")
-            Loaded pretrained model tiny-stories-1M into HookedTransformer
+            >>> from transformer_lens.model_bridge import TransformerBridge
+            >>> model = TransformerBridge.boot_transformers("roneneldan/TinyStories-1M")
+            >>> model.enable_compatibility_mode()
             >>> _logits, cache = model.run_with_cache("Some prompt")
             >>> cache_interesting_names = []
             >>> for key in cache:
             ...     if not key.startswith("blocks.") or key.startswith("blocks.0"):
             ...         cache_interesting_names.append(key)
-            >>> print(cache_interesting_names[0:3])
-            ['hook_embed', 'hook_pos_embed', 'blocks.0.hook_resid_pre']
+            >>> print(cache_interesting_names[0:8])
+            ['embed.hook_in', 'hook_embed', 'embed.hook_out', 'pos_embed.hook_in',
+             'hook_pos_embed', 'pos_embed.hook_out', 'blocks.0.hook_in',
+             'blocks.0.hook_resid_pre']
 
         Returns:
             Iterator over the cache.
@@ -339,8 +355,16 @@ class ActivationCache:
             self.has_batch_dim or batch_slice.mode == "empty"
         ), "Cannot index into a cache without a batch dim"
         still_has_batch_dim = (batch_slice.mode != "int") and self.has_batch_dim
+        batch_size = self._batch_size()
+        # Broadcast entries (leading dim 1 when the true batch is larger) are not
+        # batched — leave them untouched so slicing can't index out of bounds.
         new_cache_dict = {
-            name: batch_slice.apply(param, dim=0) for name, param in self.cache_dict.items()
+            name: (
+                batch_slice.apply(param, dim=0)
+                if param.ndim > 0 and param.size(0) == batch_size
+                else param
+            )
+            for name, param in self.cache_dict.items()
         }
         return ActivationCache(new_cache_dict, self.model, has_batch_dim=still_has_batch_dim)
 
@@ -392,12 +416,12 @@ class ActivationCache:
 
         Logit Lens analysis can be done as follows:
 
-        >>> from transformer_lens import HookedTransformer
+        >>> from transformer_lens.model_bridge import TransformerBridge
         >>> import torch
         >>> import pandas as pd
 
-        >>> model = HookedTransformer.from_pretrained("tiny-stories-1M", device="cpu", fold_ln=True)
-        Loaded pretrained model tiny-stories-1M into HookedTransformer
+        >>> model = TransformerBridge.boot_transformers("roneneldan/TinyStories-1M", device="cpu")
+        >>> model.enable_compatibility_mode()
 
         >>> prompt = "Why did the chicken cross the"
         >>> answer = " road"
@@ -421,10 +445,11 @@ class ActivationCache:
         >>> print(layers_logits.shape)
         torch.Size([9, 50257])
 
-        >>> # If you want to apply the unembedding bias, add b_U when present:
-        >>> # b_U = getattr(model, "b_U", None)
-        >>> # layers_logits = layers_logits + b_U if b_U is not None else layers_logits
-        >>> # print(layers_logits.shape)
+        >>> # The unembedding bias can be added on top when the model carries one
+        >>> # (the rank table below stays on the bias-free logits):
+        >>> b_U = getattr(model, "b_U", None)
+        >>> with_bias = layers_logits + b_U if b_U is not None else layers_logits
+        >>> print(with_bias.shape)
         torch.Size([9, 50257])
 
         >>> # Get the rank of the correct answer by layer

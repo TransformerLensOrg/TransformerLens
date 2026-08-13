@@ -31,7 +31,7 @@ Sub-folder rules: [tests/AGENTS.md](tests/AGENTS.md) · [supported_architectures
 | **`TransformerBridge`** | v3 — default for new work | [transformer_lens/model_bridge/](transformer_lens/model_bridge/) | Raw HF weights by default; `bridge.enable_compatibility_mode()` for HT-equivalent | [transformer_lens/tools/model_registry/data/supported_models.json](transformer_lens/tools/model_registry/data/supported_models.json) |
 | **`HookedTransformer`** | Legacy, maintenance mode, deprecated in 3.0 | [transformer_lens/HookedTransformer.py](transformer_lens/HookedTransformer.py) + [transformer_lens/components/](transformer_lens/components/) | Folds LayerNorm + centres weights → does NOT match HF | [transformer_lens/supported_models.py](transformer_lens/supported_models.py) (**HT-only**) |
 
-> ⚠ The **HookedTransformer acceptance suite is quarantined** ([test_hooked_transformer.py](tests/acceptance/test_hooked_transformer.py), [test_hooked_encoder.py](tests/acceptance/test_hooked_encoder.py), [test_hooked_encoder_decoder.py](tests/acceptance/test_hooked_encoder_decoder.py); see [QUARANTINES.md](tests/QUARANTINES.md)). HT changes land untested at the acceptance level — extra manual care required.
+> ⚠ `HookedTransformer` has no acceptance suite of its own — `test_hooked_transformer.py` was removed by the reanchoring in #1603, which moved Bridge tests onto frozen goldens. Changes to `HookedTransformer` itself land untested at the acceptance level; extra manual care required. The `HookedEncoder` (BERT) and `HookedEncoderDecoder` (T5) acceptance suites do cover those two classes. See [QUARANTINES.md](tests/QUARANTINES.md) for the remaining skips.
 
 Bridge architecture-adapter pattern: each HF architecture has one file in [supported_architectures/](transformer_lens/model_bridge/supported_architectures/) mapping HF module paths to canonical names. Bridge hooks are architecture-native (e.g. `blocks.{i}.hook_out`); HT-style aliases live in [bridge_core.py](transformer_lens/model_bridge/bridge_core.py).
 
@@ -99,6 +99,7 @@ Python: **>=3.10, <4.0**. CI tests 3.10, 3.11, 3.12. Format/type/docstring check
 | [demos/](demos/) | Jupyter notebooks; a subset runs in CI under `nbval` with sanitization from [demos/doc_sanitize.cfg](demos/doc_sanitize.cfg) |
 | [docs/source/content/](docs/source/content/) | Sphinx markdown sources |
 | [docs/source/content/adapter_development/](docs/source/content/adapter_development/) | Adapter-authoring guides — read these before adding a new architecture |
+| [devtools/adapter_builder/](devtools/adapter_builder/) | Contributor-only agent-team adapter builder (not shipped in the package) — see its [README](devtools/adapter_builder/README.md) |
 | [makefile](makefile) | Canonical test/format/docs targets |
 | [pyproject.toml](pyproject.toml) | Deps, pytest / mypy / format / build config |
 | [.github/workflows/checks.yml](.github/workflows/checks.yml) | CI gates |
@@ -113,7 +114,7 @@ Prefer Bridge-native names in new code. Raw-HF-forward drivers comparing against
 
 ## 6. Adding a model
 
-Adapters are written **per architecture family**, not per individual model — adding `gpt2` registers all GPT-2 variants. Full workflow (starter-adapter table, 4-place registration, common gotchas, anti-patterns): **[supported_architectures/AGENTS.md](transformer_lens/model_bridge/supported_architectures/AGENTS.md)**. Verification flow: **[tools/model_registry/AGENTS.md](transformer_lens/tools/model_registry/AGENTS.md)**. Claude Code users: invoke `/add-model-support <hf_repo>`.
+Adapters are written **per architecture family**, not per individual model — adding `gpt2` registers all GPT-2 variants. Full workflow (starter-adapter table, 4-place registration, common gotchas, anti-patterns): **[supported_architectures/AGENTS.md](transformer_lens/model_bridge/supported_architectures/AGENTS.md)**. Verification flow: **[tools/model_registry/AGENTS.md](transformer_lens/tools/model_registry/AGENTS.md)**. Claude Code users: invoke `/add-model-support <hf_repo>`. For batch/autonomous adapter creation there is an agent harness in [devtools/adapter_builder/](devtools/adapter_builder/README.md) — agent-teams mode needs Claude Code Max; its solo mode works on any tier.
 
 ## 7. Prioritization
 

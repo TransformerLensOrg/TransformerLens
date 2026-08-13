@@ -5,12 +5,12 @@ from unittest import mock
 import pytest
 import torch
 
-from transformer_lens.config.hooked_transformer_config import HookedTransformerConfig
+from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.pretrained.weight_conversions.hubert import convert_hubert_weights
 
 
 def make_cfg():
-    return HookedTransformerConfig(
+    return TransformerBridgeConfig(
         n_layers=1,
         d_model=64,
         d_head=16,

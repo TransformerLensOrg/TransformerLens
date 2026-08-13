@@ -39,9 +39,9 @@ class TestPhasesToRun:
         # 9 is gated by is_visual_model elsewhere, never filtered here.
         assert _phases_to_run("MambaForCausalLM", [1, 9]) == [1, 9]
 
-    def test_vision_arch_runs_only_phase_9(self):
-        # ViT/DeiT declare applicable_phases=[]; text phases filter out, 9 stays.
-        assert _phases_to_run("ViTModel", [1, 2, 3, 4, 9]) == [9]
+    def test_vision_arch_runs_phases_1_and_9(self):
+        # ViT/DeiT declare applicable_phases=[1]; phases 2-4 filter out, 1 and 9 stay.
+        assert _phases_to_run("ViTModel", [1, 2, 3, 4, 9]) == [1, 9]
 
     def test_unknown_architecture_defaults_to_all_phases(self):
         assert _phases_to_run("NotARealArchitecture", [1, 2, 3, 4]) == [1, 2, 3, 4]
@@ -67,14 +67,14 @@ class TestPhasesToRun:
 
 
 class TestVisionPhaseSets:
-    """Vision-only encoders verify through P9 alone — no text phases apply."""
+    """Vision-only encoders verify through P1 (HF pixel parity) + P9 — no text phases apply."""
 
     def test_full_and_core_phases_vision(self):
         for arch in ("ViTModel", "ViTForImageClassification", "DeiTForImageClassification"):
-            assert _full_and_core_phases(arch) == ({9}, {9})
+            assert _full_and_core_phases(arch) == ({1, 9}, {1, 9})
 
     def test_default_phases_vision(self):
-        assert _default_phases_for_architecture("ViTModel") == [9]
+        assert _default_phases_for_architecture("ViTModel") == [1, 9]
 
     def test_default_phases_text_unchanged(self):
         assert _default_phases_for_architecture("GPT2LMHeadModel") == [1, 2, 3, 4]
@@ -106,6 +106,23 @@ class TestCheckPhaseScores:
     def test_phase9_null_score_fails(self):
         error = _check_phase_scores({9: None}, [])
         assert error is not None and "P9=NULL" in error
+
+
+class TestCheckPhaseScores:
+    """A required modality phase must not pass by being absent from the scores."""
+
+    def test_required_modality_phase_absent_fails(self):
+        # All P7 tests SKIPPED -> phase 7 is omitted entirely (see
+        # test_all_skipped_phase_omitted), so the gate must not infer a pass.
+        scores = {1: 100.0, 2: 100.0, 3: 100.0, 4: 100.0}
+        assert _check_phase_scores(scores, []) is None
+        error = _check_phase_scores(scores, [], required_phases={1, 4, 7})
+        assert error is not None and "P7=NULL" in error
+
+    def test_absent_modality_phase_ignored_when_not_required(self):
+        # A partial run (--phases 1 2) must not be failed for a missing P7.
+        error = _check_phase_scores({1: 100.0, 2: 100.0}, [], required_phases={1})
+        assert error is None
 
 
 class TestIsSSMMixerInternal:

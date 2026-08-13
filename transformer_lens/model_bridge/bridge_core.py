@@ -23,6 +23,7 @@ from typing import (
 )
 
 import torch
+from torch.nn import functional as F
 
 from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.hook_points import HookPoint
@@ -87,6 +88,7 @@ class BridgeCore:
         self._hook_registry_initialized = False
         self._hook_alias_registry: Dict[str, Union[str, List[str]]] = {}
         self._property_alias_registry: Dict[str, str] = {}
+        self.context_level = 0
         self._driver = driver
         if not hasattr(adapter, "component_mapping") or adapter.component_mapping is None:
             raise ValueError("Adapter must have a component_mapping attribute")
@@ -221,7 +223,11 @@ class BridgeCore:
             if hasattr(component_mapping, "hook_aliases") and component_mapping.hook_aliases:
                 for alias_name, target in component_mapping.hook_aliases.items():
                     full_alias = f"{prefix}.{alias_name}" if prefix else alias_name
-                    full_target = f"{prefix}.{target}" if prefix else target
+                    if isinstance(target, list):
+                        # Fallback chain: candidates in declared priority order.
+                        full_target: Any = tuple(f"{prefix}.{t}" if prefix else t for t in target)
+                    else:
+                        full_target = f"{prefix}.{target}" if prefix else target
                     aliases[full_alias] = full_target
             if hasattr(component_mapping, "submodules") and component_mapping.submodules:
                 for sub_name, sub_component in component_mapping.submodules.items():
@@ -233,16 +239,24 @@ class BridgeCore:
     @lru_cache(maxsize=128)
     def _compute_hook_aliases_cached(
         hook_names_tuple: Tuple[str, ...],
-        component_aliases_tuple: Tuple[Tuple[str, str], ...],
+        component_aliases_tuple: Tuple[Tuple[str, Union[str, Tuple[str, ...]]], ...],
     ) -> Tuple[Tuple[str, str], ...]:
         """Cached computation of hook aliases."""
         aliases: dict = {}
+        # For list-valued (fallback-chain) targets, remember which candidate
+        # resolved each alias so an earlier (higher-priority) candidate wins.
+        alias_priority: dict = {}
         component_aliases = dict(component_aliases_tuple)
         for hook_name in hook_names_tuple:
-            for alias_pattern, target_pattern in component_aliases.items():
-                if "blocks." in target_pattern and "blocks." in hook_name:
-                    block_match = _BLOCK_PATTERN.search(hook_name)
-                    if block_match:
+            for alias_pattern, target_patterns in component_aliases.items():
+                candidates = (
+                    target_patterns if isinstance(target_patterns, tuple) else (target_patterns,)
+                )
+                for priority, target_pattern in enumerate(candidates):
+                    if "blocks." in target_pattern and "blocks." in hook_name:
+                        block_match = _BLOCK_PATTERN.search(hook_name)
+                        if not block_match:
+                            continue
                         block_num = block_match.group(1)
                         dynamic_alias_pattern = alias_pattern.replace(
                             "blocks.", f"blocks.{block_num}."
@@ -253,11 +267,15 @@ class BridgeCore:
                         if hook_name.endswith(dynamic_target_pattern):
                             target_len = len(dynamic_target_pattern)
                             alias_name = hook_name[:-target_len] + dynamic_alias_pattern
+                            if alias_priority.get(alias_name, len(candidates)) > priority:
+                                aliases[alias_name] = hook_name
+                                alias_priority[alias_name] = priority
+                    elif hook_name.endswith(target_pattern):
+                        target_len = len(target_pattern)
+                        alias_name = hook_name[:-target_len] + alias_pattern
+                        if alias_priority.get(alias_name, len(candidates)) > priority:
                             aliases[alias_name] = hook_name
-                elif hook_name.endswith(target_pattern):
-                    target_len = len(target_pattern)
-                    alias_name = hook_name[:-target_len] + alias_pattern
-                    aliases[alias_name] = hook_name
+                            alias_priority[alias_name] = priority
         return tuple(aliases.items())
 
     def _collect_hook_aliases_from_registry(self) -> dict:
@@ -345,7 +363,101 @@ class BridgeCore:
         """Cross-entropy loss matching HookedTransformer's formula (log_softmax + gather)."""
         if tokens.device != logits.device:
             tokens = tokens.to(logits.device)
+        if attention_mask is not None:
+            if attention_mask.device != logits.device:
+                attention_mask = attention_mask.to(logits.device)
+            attention_mask = self._prepare_loss_attention_mask(attention_mask, tokens)
         return lm_cross_entropy_loss(logits, tokens, attention_mask, per_token)
+
+    def _causal_labels_loss(
+        self,
+        logits: torch.Tensor,
+        labels: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        per_token: bool = False,
+    ) -> torch.Tensor:
+        """Compute shifted causal loss against explicit labels, ignoring ``-100``."""
+        if labels.device != logits.device:
+            labels = labels.to(logits.device)
+        if labels.shape != logits.shape[:-1]:
+            raise ValueError(
+                "causal labels must match the logits batch and position dimensions, "
+                f"got labels {tuple(labels.shape)} and logits {tuple(logits.shape)}"
+            )
+
+        losses = F.cross_entropy(
+            logits[:, :-1].flatten(0, 1),
+            labels[:, 1:].flatten(),
+            reduction="none",
+            ignore_index=-100,
+        ).view_as(labels[:, 1:])
+        valid_targets = labels[:, 1:] != -100
+        if attention_mask is not None:
+            if attention_mask.device != logits.device:
+                attention_mask = attention_mask.to(logits.device)
+            token_mask = self._prepare_loss_attention_mask(attention_mask, labels)
+            valid_targets &= token_mask[:, :-1] & token_mask[:, 1:]
+        losses = losses.masked_fill(~valid_targets, 0.0)
+        return losses if per_token else losses.sum() / valid_targets.sum()
+
+    @staticmethod
+    def _prepare_loss_attention_mask(
+        attention_mask: torch.Tensor, tokens: torch.Tensor
+    ) -> torch.Tensor:
+        """Reduce a forward attention mask to the token window scored by the loss."""
+        batch, pos = tokens.shape
+        if attention_mask.ndim not in (2, 4):
+            raise ValueError(
+                "attention_mask must be 2D [batch, key_pos] or 4D "
+                f"[batch, *, query_pos, key_pos], got shape {tuple(attention_mask.shape)}"
+            )
+        if attention_mask.shape[0] != batch:
+            raise ValueError(
+                "attention_mask batch dimension must match tokens, "
+                f"got {attention_mask.shape[0]} and {batch}"
+            )
+
+        if attention_mask.ndim == 2:
+            if attention_mask.shape[1] < pos:
+                raise ValueError(
+                    "attention_mask must cover every scored token, "
+                    f"got length {attention_mask.shape[1]} for {pos} tokens"
+                )
+            return attention_mask[:, -pos:].bool()
+
+        query_pos, key_pos = attention_mask.shape[-2:]
+        if key_pos < pos:
+            raise ValueError(
+                "attention_mask must cover every scored token, "
+                f"got key length {key_pos} for {pos} tokens"
+            )
+
+        blocked = attention_mask if attention_mask.dtype is torch.bool else attention_mask < -1.0
+        if query_pos == 1:
+            # Broadcast key-only masks use one query row for the full sequence.
+            keep = ~blocked[..., 0, -pos:]
+        else:
+            if query_pos < pos:
+                raise ValueError(
+                    "attention_mask must contain a query row for every scored token, "
+                    f"got {query_pos} rows for {pos} tokens"
+                )
+            # The aligned diagonal excludes causal masking while retaining padding.
+            diagonal = torch.diagonal(
+                blocked,
+                offset=key_pos - query_pos,
+                dim1=-2,
+                dim2=-1,
+            )
+            if diagonal.shape[-1] < pos:
+                raise ValueError(
+                    "attention_mask diagonal must cover every scored token, "
+                    f"got length {diagonal.shape[-1]} for {pos} tokens"
+                )
+            keep = ~diagonal[..., -pos:]
+
+        # A token is padding only when every broadcast/head mask blocks its key.
+        return keep.reshape(batch, -1, pos).any(dim=1)
 
     def _finalize_return(
         self,
@@ -353,6 +465,8 @@ class BridgeCore:
         logits: Optional[torch.Tensor],
         input_ids: Optional[torch.Tensor],
         *,
+        attention_mask: Optional[torch.Tensor] = None,
+        labels: Optional[torch.Tensor] = None,
         is_audio_model: bool = False,
         is_visual_model: bool = False,
         inputs_embeds_was_used: bool = False,
@@ -378,13 +492,25 @@ class BridgeCore:
                     "yourself from the returned logits, or use hf_generate()-style "
                     "direct access to self.original_model for HF's own loss."
                 )
-            if inputs_embeds_was_used:
+            if inputs_embeds_was_used and labels is None:
                 raise ValueError(
                     "Cannot compute loss with inputs_embeds — token IDs required for labels."
                 )
             assert isinstance(logits, torch.Tensor), f"Expected logits tensor, got {type(logits)}"
+            if labels is not None:
+                return self._causal_labels_loss(
+                    logits,
+                    labels,
+                    attention_mask=attention_mask,
+                    per_token=loss_per_token,
+                )
             assert input_ids is not None, "input_ids required for return_type='loss'"
-            return self.loss_fn(logits, input_ids, per_token=loss_per_token)
+            return self.loss_fn(
+                logits,
+                input_ids,
+                attention_mask=attention_mask,
+                per_token=loss_per_token,
+            )
         if return_type == "both":
             if is_audio_model:
                 raise ValueError(
@@ -398,13 +524,26 @@ class BridgeCore:
                     "classification). Compute cross-entropy against `labels` "
                     "yourself from the returned logits."
                 )
-            if inputs_embeds_was_used:
+            if inputs_embeds_was_used and labels is None:
                 raise ValueError(
                     "Cannot compute loss with inputs_embeds — token IDs required for labels."
                 )
             assert isinstance(logits, torch.Tensor), f"Expected logits tensor, got {type(logits)}"
-            assert input_ids is not None, "input_ids required for return_type='both'"
-            loss = self.loss_fn(logits, input_ids, per_token=loss_per_token)
+            if labels is not None:
+                loss = self._causal_labels_loss(
+                    logits,
+                    labels,
+                    attention_mask=attention_mask,
+                    per_token=loss_per_token,
+                )
+            else:
+                assert input_ids is not None, "input_ids required for return_type='both'"
+                loss = self.loss_fn(
+                    logits,
+                    input_ids,
+                    attention_mask=attention_mask,
+                    per_token=loss_per_token,
+                )
             return (logits, loss)
         if return_type == "predictions":
             assert self.tokenizer is not None, "Tokenizer required for return_type='predictions'"
@@ -791,6 +930,8 @@ class BridgeCore:
         @contextmanager
         def _hooks_context() -> Iterator["BridgeCore"]:
             added_hooks: List[Tuple[HookPoint, Literal["fwd", "bwd"]]] = []
+            context_level = getattr(self, "context_level", 0) + 1
+            self.context_level = context_level
 
             def add_hook_to_point(
                 hook_point: HookPoint,
@@ -804,9 +945,14 @@ class BridgeCore:
                     if hook_point.name is not None:
                         alias_names_list.append(hook_point.name)
                     alias_names_list.append(name)
-                    hook_point.add_hook(hook_fn, dir=dir, alias_names=alias_names_list)
+                    hook_point.add_hook(
+                        hook_fn,
+                        dir=dir,
+                        level=context_level,
+                        alias_names=alias_names_list,
+                    )
                 else:
-                    hook_point.add_hook(hook_fn, dir=dir)
+                    hook_point.add_hook(hook_fn, dir=dir, level=context_level)
                 added_hooks.append((hook_point, dir))
 
             def apply_hooks(hook_list: List[Tuple[Any, Callable]], is_fwd: bool) -> None:
@@ -835,9 +981,12 @@ class BridgeCore:
                 apply_hooks(bwd_hooks, False)
                 yield self
             finally:
-                if reset_hooks_end:
-                    for hook_point, direction in added_hooks:
-                        hook_point.remove_hooks(dir=direction)
+                try:
+                    if reset_hooks_end:
+                        for hook_point, direction in added_hooks:
+                            hook_point.remove_hooks(dir=direction, level=context_level)
+                finally:
+                    self.context_level -= 1
 
         return _hooks_context()
 
@@ -907,24 +1056,15 @@ class BridgeCore:
                 if hook_point.name is not None:
                     alias_names_list.append(hook_point.name)
                 alias_names_list.append(name)
-                hook_point.add_hook(hook_fn, dir=dir, alias_names=alias_names_list)
+                hook_point.add_hook(
+                    hook_fn,
+                    dir=dir,
+                    level=context_level,
+                    alias_names=alias_names_list,
+                )
             else:
-                hook_point.add_hook(hook_fn, dir=dir)
+                hook_point.add_hook(hook_fn, dir=dir, level=context_level)
             added_hooks.append((hook_point, dir))
-
-        if stop_at_layer is not None and hasattr(self, "blocks"):
-            if stop_at_layer < 0:
-                stop_at_layer = len(self.blocks) + stop_at_layer
-            if stop_at_layer >= 0 and stop_at_layer < len(self.blocks):
-
-                def stop_hook(tensor: Any, *, hook: Any) -> Any:
-                    raise StopAtLayerException(tensor)
-
-                # Stop at the beginning of the specified block, not at the end of the previous block
-                block_hook_name = f"blocks.{stop_at_layer}.hook_in"
-                hook_dict = self.hook_dict
-                if block_hook_name in hook_dict:
-                    add_hook_to_point(hook_dict[block_hook_name], stop_hook, block_hook_name, "fwd")
 
         def apply_hooks(
             hook_list: List[Tuple[Union[str, Callable], Callable]], is_fwd: bool
@@ -964,7 +1104,25 @@ class BridgeCore:
                             hook_name_to_use = hook_point.name if hook_point.name else n
                             add_hook_to_point(hook_point, hook_fn, hook_name_to_use, direction)
 
+        context_level = getattr(self, "context_level", 0) + 1
+        self.context_level = context_level
         try:
+            if stop_at_layer is not None and hasattr(self, "blocks"):
+                if stop_at_layer < 0:
+                    stop_at_layer = len(self.blocks) + stop_at_layer
+                if stop_at_layer >= 0 and stop_at_layer < len(self.blocks):
+
+                    def stop_hook(tensor: Any, *, hook: Any) -> Any:
+                        raise StopAtLayerException(tensor)
+
+                    # Stop at the beginning of the specified block, not at the end of the previous block
+                    block_hook_name = f"blocks.{stop_at_layer}.hook_in"
+                    hook_dict = self.hook_dict
+                    if block_hook_name in hook_dict:
+                        add_hook_to_point(
+                            hook_dict[block_hook_name], stop_hook, block_hook_name, "fwd"
+                        )
+
             apply_hooks(fwd_hooks, True)
             apply_hooks(bwd_hooks, False)
             if start_at_layer is not None:
@@ -977,9 +1135,12 @@ class BridgeCore:
                 output = e.layer_output
             return output
         finally:
-            if reset_hooks_end:
-                for hook_point, direction in added_hooks:
-                    hook_point.remove_hooks(dir=direction)
+            try:
+                if reset_hooks_end:
+                    for hook_point, direction in added_hooks:
+                        hook_point.remove_hooks(dir=direction, level=context_level)
+            finally:
+                self.context_level -= 1
 
     # ---- high-level execution: run_with_cache ----
 
@@ -1064,6 +1225,8 @@ class BridgeCore:
         cache: Dict[str, torch.Tensor] = {}
         hooks: List[Tuple[HookPoint, str]] = []
         visited: set[int] = set()
+        stop_hook_point: Optional[HookPoint] = None
+        stop_hook_fn: Optional[Callable] = None
 
         # None → no-op .to(None), tensors stay on their current device.
         cache_device = kwargs.pop("device", None)
@@ -1145,24 +1308,22 @@ class BridgeCore:
 
             return grad_hook
 
-        for hp, name in hooks:
-            hp.add_hook(make_cache_hook(name))
-            if incl_bwd:
-                hp.add_hook(make_grad_cache_hook(name), dir="bwd")
         processed_args = [input]
         # Driver-aware input placement: torch drivers move input_ids to the model's
         # device; remote drivers (no local parameters) leave them as-is.
         target_device = self._input_device()
         if processed_args and isinstance(processed_args[0], str):
             assert self.tokenizer is not None, "Tokenizer must be set to pass string input."
-            input_ids = self.to_tokens(processed_args[0])
+            prepend_bos = kwargs.pop("prepend_bos", None)
+            input_ids = self.to_tokens(processed_args[0], prepend_bos=prepend_bos)
             if target_device is not None:
                 input_ids = input_ids.to(target_device)
             kwargs["input_ids"] = input_ids
             processed_args = processed_args[1:]
         elif "input" in kwargs and isinstance(kwargs["input"], str):
             assert self.tokenizer is not None, "Tokenizer must be set to pass string input."
-            input_ids = self.to_tokens(kwargs["input"])
+            prepend_bos = kwargs.pop("prepend_bos", None)
+            input_ids = self.to_tokens(kwargs["input"], prepend_bos=prepend_bos)
             if target_device is not None:
                 input_ids = input_ids.to(target_device)
             kwargs["input_ids"] = input_ids
@@ -1180,8 +1341,8 @@ class BridgeCore:
                 block_hook_name = f"blocks.{stop_at_layer}.hook_in"
                 hook_dict = self.hook_dict
                 if block_hook_name in hook_dict:
-                    hook_dict[block_hook_name].add_hook(stop_hook)
-                    hooks.append((hook_dict[block_hook_name], block_hook_name))
+                    stop_hook_point = hook_dict[block_hook_name]
+                    stop_hook_fn = stop_hook
         filtered_kwargs = kwargs.copy()
         # ``cache_device`` is honored by ``make_cache_hook`` above (``tensor.detach().to(cache_device)``);
         # the model and inputs stay where the caller put them, matching ``ActivationCache.to``.
@@ -1198,6 +1359,21 @@ class BridgeCore:
             )
         if start_at_layer is not None:
             filtered_kwargs["start_at_layer"] = start_at_layer
+        context_level = getattr(self, "context_level", 0) + 1
+        self.context_level = context_level
+        try:
+            for hp, name in hooks:
+                hp.add_hook(make_cache_hook(name), level=context_level)
+                if incl_bwd:
+                    hp.add_hook(make_grad_cache_hook(name), dir="bwd", level=context_level)
+            if stop_hook_point is not None and stop_hook_fn is not None:
+                stop_hook_point.add_hook(stop_hook_fn, level=context_level)
+        except Exception:
+            try:
+                self.remove_all_hook_fns(level=context_level)
+            finally:
+                self.context_level -= 1
+            raise
         try:
             if (
                 "output_attentions" not in filtered_kwargs
@@ -1237,8 +1413,10 @@ class BridgeCore:
         except Exception as e:
             raise e
         finally:
-            for hp, _ in hooks:
-                hp.remove_hooks(dir="both" if incl_bwd else "fwd")
+            try:
+                self.remove_all_hook_fns(level=context_level)
+            finally:
+                self.context_level -= 1
         if self.compatibility_mode == True:
             reverse_aliases = {}
             for old_name, new_name in aliases.items():

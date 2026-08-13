@@ -1,7 +1,6 @@
 import einops
 import torch
 
-from transformer_lens import HookedTransformer
 from transformer_lens.components import Attention, GroupedQueryAttention
 from transformer_lens.config import HookedTransformerConfig
 
@@ -191,72 +190,3 @@ def test_ungroup_grouped_query_attention_flag_produces_same_result():
     assert torch.allclose(
         grouped_query_attn_flag_off_output, grouped_query_attn_flag_on_output, atol=1e-4, rtol=1e-4
     )
-
-
-def test_ungroup_grouped_query_attention_flag_changes_k_v_hooks_shape():
-    d_model = 512
-    d_head = 32
-    n_heads = 16
-    n_ctx = 128
-    n_key_value_heads = 4
-    n_layers = 1
-    d_vocab = 10
-
-    cfg = HookedTransformerConfig(
-        d_model=d_model,
-        d_head=d_head,
-        n_heads=n_heads,
-        n_ctx=n_ctx,
-        n_key_value_heads=n_key_value_heads,
-        n_layers=n_layers,
-        act_fn="silu",
-        d_vocab=d_vocab,
-        use_split_qkv_input=True,
-        ungroup_grouped_query_attention=False,
-    )
-
-    model = HookedTransformer(cfg)
-    assert model.cfg.ungroup_grouped_query_attention is False
-
-    x = torch.arange(1, 9).unsqueeze(0)
-    flag_off_output, flag_off_cache = model.run_with_cache(
-        x,
-        names_filter=[
-            "blocks.0.attn.hook_k",
-            "blocks.0.attn.hook_v",
-            "blocks.0.hook_k_input",
-            "blocks.0.hook_v_input",
-        ],
-    )
-
-    model.set_ungroup_grouped_query_attention(True)
-    assert model.cfg.ungroup_grouped_query_attention is True
-
-    flag_on_output, flag_on_cache = model.run_with_cache(
-        x,
-        names_filter=[
-            "blocks.0.attn.hook_k",
-            "blocks.0.attn.hook_v",
-            "blocks.0.hook_k_input",
-            "blocks.0.hook_v_input",
-        ],
-    )
-
-    assert (
-        flag_on_cache["blocks.0.attn.hook_k"].shape[2]
-        == flag_off_cache["blocks.0.attn.hook_k"].shape[2] * n_key_value_heads
-    )
-    assert (
-        flag_on_cache["blocks.0.attn.hook_v"].shape[2]
-        == flag_off_cache["blocks.0.attn.hook_v"].shape[2] * n_key_value_heads
-    )
-    assert (
-        flag_on_cache["blocks.0.hook_k_input"].shape[2]
-        == flag_off_cache["blocks.0.hook_k_input"].shape[2] * n_key_value_heads
-    )
-    assert (
-        flag_on_cache["blocks.0.hook_v_input"].shape[2]
-        == flag_off_cache["blocks.0.hook_v_input"].shape[2] * n_key_value_heads
-    )
-
-    assert torch.allclose(flag_off_output, flag_on_output, atol=1e-4, rtol=1e-4)

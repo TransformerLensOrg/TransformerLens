@@ -15,13 +15,16 @@ from typing import cast
 import einops
 import torch
 
-from transformer_lens.config.hooked_transformer_config import HookedTransformerConfig
+from transformer_lens.config import TransformerLensConfig
 
 
-def convert_olmo3_weights(olmo3, cfg: HookedTransformerConfig):
+def convert_olmo3_weights(olmo3, cfg: TransformerLensConfig):
     state_dict = {}
 
-    using_gqa = cfg.n_key_value_heads is not None and cfg.n_key_value_heads < cfg.n_heads
+    # Must match TransformerBlock's attention choice, which selects
+    # GroupedQueryAttention (underscore-prefixed params) whenever
+    # n_key_value_heads is set — including n_key_value_heads == n_heads.
+    using_gqa = cfg.n_key_value_heads is not None
     gqa_uscore = "_" if using_gqa else ""
     n_kv_heads = cast(int, cfg.n_key_value_heads if using_gqa else cfg.n_heads)
 

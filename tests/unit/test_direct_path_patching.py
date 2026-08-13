@@ -12,7 +12,8 @@ import warnings
 import pytest
 import torch
 
-from transformer_lens import HookedTransformer, HookedTransformerConfig
+from transformer_lens.config import TransformerBridgeConfig
+from transformer_lens.model_bridge import TransformerBridge
 from transformer_lens.tools.analysis.direct_path_patching import (
     _check_fold_ln,
     get_act_patch_direct_path,
@@ -24,15 +25,8 @@ from transformer_lens.tools.analysis.direct_path_patching import (
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture(scope="module")
-def tiny_model():
-    """A small, randomly-initialised transformer with LN folded in.
-
-    seed pins the weight init: without it the weights depend on the ambient
-    RNG state of the xdist worker, and unlucky draws push the linear-LN
-    approximation error past tolerance.
-    """
-    cfg = HookedTransformerConfig(
+def _tiny_cfg(**overrides):
+    defaults = dict(
         n_layers=3,
         d_model=64,
         d_head=16,
@@ -45,8 +39,22 @@ def tiny_model():
         attn_only=False,
         seed=0,
     )
-    model = HookedTransformer(cfg)
-    model.process_weights_()
+    defaults.update(overrides)
+    return TransformerBridgeConfig(**defaults)
+
+
+@pytest.fixture(scope="module")
+def tiny_model():
+    """A small, randomly-initialised native bridge with LN folded in.
+
+    seed pins the weight init: without it the weights depend on the ambient
+    RNG state of the xdist worker, and unlucky draws push the linear-LN
+    approximation error past tolerance.
+    """
+    model = TransformerBridge.boot_native(_tiny_cfg())
+    model.process_weights(
+        fold_ln=True, center_writing_weights=True, center_unembed=True, fold_value_biases=True
+    )
     model.eval()
     return model
 
@@ -77,7 +85,7 @@ def simple_metric(logits):
 
 class TestCheckFoldLn:
     def test_folded_model_no_warning(self, tiny_model):
-        """No warning when LN is already folded (tiny_model fixture calls process_weights_())."""
+        """No warning when LN is already folded (tiny_model fixture calls process_weights())."""
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
             _check_fold_ln(tiny_model)
@@ -86,24 +94,11 @@ class TestCheckFoldLn:
 
     def test_unfolded_model_warns(self):
         """UserWarning fires when LN has a non-unit learned scale (pretrained, pre-fold)."""
-        cfg = HookedTransformerConfig(
-            n_layers=2,
-            d_model=32,
-            d_head=8,
-            n_heads=4,
-            d_mlp=64,
-            d_vocab=50,
-            n_ctx=8,
-            act_fn="gelu",
-            normalization_type="LN",
-        )
-        model = HookedTransformer(cfg)
+        model = TransformerBridge.boot_native(_tiny_cfg(n_layers=2, seed=1))
         model.eval()
         # Simulate a pretrained model that has learned non-unit LN scale (not yet folded).
-        # After process_weights_(), LayerNorm is replaced with LayerNormPre (no .w),
-        # so the warning only fires in the pre-fold state with non-trivial .w.
         with torch.no_grad():
-            model.blocks[0].ln1.w.fill_(2.0)
+            model.blocks[0].ln1.weight.fill_(2.0)
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
             _check_fold_ln(model)
@@ -111,25 +106,23 @@ class TestCheckFoldLn:
         assert len(user_warnings) == 1
         assert "fold" in str(user_warnings[0].message).lower()
 
-    def test_hooked_transformer_w_attribute(self):
-        """Before process_weights_(), HookedTransformer LayerNorm exposes .w.
-        After folding, LayerNorm is replaced with LayerNormPre (no .w) — that's
-        why _check_fold_ln passes silently on a folded model.
-        """
-        cfg = HookedTransformerConfig(
-            n_layers=2,
-            d_model=32,
-            d_head=8,
-            n_heads=4,
-            d_mlp=64,
-            d_vocab=50,
-            n_ctx=8,
-            act_fn="gelu",
-            normalization_type="LN",
-        )
-        model = HookedTransformer(cfg)
-        ln1 = model.blocks[0].ln1
-        assert hasattr(ln1, "w"), "HookedTransformer LayerNorm should expose .w before folding"
+    def test_legacy_w_attribute_branch(self):
+        """The guard also reads the legacy ``.w`` layout when ``.weight`` is absent."""
+
+        class LegacyLN:
+            w = torch.full((8,), 2.0)
+
+        class Block:
+            ln1 = LegacyLN()
+
+        class LegacyModel:
+            blocks = [Block()]
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            _check_fold_ln(LegacyModel())
+        user_warnings = [x for x in w if issubclass(x.category, UserWarning)]
+        assert len(user_warnings) == 1
 
     def test_no_crash_on_missing_attribute(self):
         """_check_fold_ln silently passes when the model has no .blocks[0].ln1."""

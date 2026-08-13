@@ -551,8 +551,8 @@ class HookedEncoderDecoder(HookedRootModule):
         import warnings
 
         warnings.warn(
-            "HookedEncoderDecoder.from_pretrained is deprecated and will be removed in a "
-            "future major release. Use TransformerBridge.boot_transformers(...) instead — "
+            "HookedEncoderDecoder.from_pretrained is deprecated and will be removed in "
+            "4.0. Use TransformerBridge.boot_transformers(...) instead — "
             "the bridge supports T5-style encoder-decoder models. See "
             "docs/source/content/migrating_to_v3.md.",
             DeprecationWarning,

@@ -7,8 +7,6 @@ optional attention mapping, MoE MLP, and fold_ln disabled.
 
 from typing import Any
 
-import torch
-
 from transformer_lens.model_bridge.generalized_components import MoEBridge
 from transformer_lens.model_bridge.supported_architectures.qwen3 import (
     Qwen3ArchitectureAdapter,
@@ -28,7 +26,3 @@ class Qwen3NextArchitectureAdapter(Qwen3ArchitectureAdapter):
     def _build_mlp_bridge(self):
         """Sparse MoE MLP (router + batched experts + shared expert)."""
         return MoEBridge(name="mlp", config=self.cfg)
-
-    def preprocess_weights(self, state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
-        """Slice query half from gated q_proj.weight for weight-space analysis."""
-        return self._preprocess_gated_q_proj(state_dict, self.cfg.n_heads, self.cfg.d_head)

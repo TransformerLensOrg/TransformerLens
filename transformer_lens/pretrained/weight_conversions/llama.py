@@ -3,10 +3,10 @@ from typing import cast
 import einops
 import torch
 
-from transformer_lens.config.hooked_transformer_config import HookedTransformerConfig
+from transformer_lens.config import TransformerLensConfig
 
 
-def convert_llama_weights(llama, cfg: HookedTransformerConfig):
+def convert_llama_weights(llama, cfg: TransformerLensConfig):
     state_dict = {}
 
     state_dict["embed.W_E"] = llama.model.embed_tokens.weight
@@ -32,7 +32,7 @@ def convert_llama_weights(llama, cfg: HookedTransformerConfig):
 
         # in case of quantization,
         # parameters should stay as bitsandbytes.nn.modules.Params4bit
-        if not cfg.load_in_4bit:
+        if not getattr(cfg, "load_in_4bit", False):
             W_Q = einops.rearrange(W_Q, "(n h) m->n m h", n=cfg.n_heads)
             W_K = einops.rearrange(W_K, "(n h) m->n m h", n=n_kv_heads)
             W_V = einops.rearrange(W_V, "(n h) m->n m h", n=n_kv_heads)
@@ -59,7 +59,7 @@ def convert_llama_weights(llama, cfg: HookedTransformerConfig):
 
         W_O = llama.model.layers[l].self_attn.o_proj.weight
 
-        if not cfg.load_in_4bit:
+        if not getattr(cfg, "load_in_4bit", False):
             W_O = einops.rearrange(W_O, "m (n h)->n h m", n=cfg.n_heads)
 
         state_dict[f"blocks.{l}.attn.W_O"] = W_O.to(device=cfg.device)
@@ -72,7 +72,7 @@ def convert_llama_weights(llama, cfg: HookedTransformerConfig):
 
         # in case of quantization,
         # parameters should stay as bitsandbytes.nn.modules.Params4bit
-        if not cfg.load_in_4bit:
+        if not getattr(cfg, "load_in_4bit", False):
             state_dict[f"blocks.{l}.mlp.W_in"] = llama.model.layers[l].mlp.up_proj.weight.T
             state_dict[f"blocks.{l}.mlp.W_gate"] = llama.model.layers[l].mlp.gate_proj.weight.T
             state_dict[f"blocks.{l}.mlp.W_out"] = llama.model.layers[l].mlp.down_proj.weight.T

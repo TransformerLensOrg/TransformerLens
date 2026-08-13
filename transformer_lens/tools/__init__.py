@@ -7,17 +7,17 @@ Subpackages:
     - analysis: High-level interpretability analyses (e.g. Direct Logit Attribution)
     - model_registry: Tools for discovering and documenting supported models
 
-Subpackages load lazily (PEP 562): ``analysis`` imports HookedTransformer, so an
-eager import here would create a cycle for core modules that consume
-``model_registry`` data at import time.
+Subpackages load lazily (PEP 562): ``analysis`` pulls in torch-heavy core
+modules, so an eager import here would create a cycle for core modules that
+consume ``model_registry`` data at import time.
 """
 
 import importlib
 from typing import Any
 
-_SUBMODULES = ("analysis", "model_registry")
+_SUBMODULES = ("analysis", "model_registry", "training")
 
-__all__ = ["analysis", "model_registry"]
+__all__ = ["analysis", "model_registry", "training"]
 
 
 def __getattr__(name: str) -> Any:

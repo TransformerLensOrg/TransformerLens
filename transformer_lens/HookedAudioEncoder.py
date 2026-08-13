@@ -364,8 +364,8 @@ class HookedAudioEncoder(HookedRootModule):
         import warnings
 
         warnings.warn(
-            "HookedAudioEncoder.from_pretrained is deprecated and will be removed in a "
-            "future major release. Use TransformerBridge.boot_transformers(...) instead — "
+            "HookedAudioEncoder.from_pretrained is deprecated and will be removed in "
+            "4.0. Use TransformerBridge.boot_transformers(...) instead — "
             "HuBERT/Wav2Vec2 are supported via the bridge's audio adapter. See "
             "docs/source/content/migrating_to_v3.md.",
             DeprecationWarning,

@@ -1,189 +1,337 @@
-"""Vision benchmarks for TransformerBridge.
+"""Vision benchmarks for TransformerBridge (Phase 9).
 
-Tests that vision-only encoder models (ViT, DeiT) correctly handle image inputs
-through forward() and run_with_cache(). No generation benchmark — vision
-encoders don't generate.
+Tests that vision encoder models (ViT, DeiT) correctly handle pixel inputs
+through forward(), run_with_cache(), and produce stable representations —
+the hook/cache coverage that Phase 1 (HF parity on one forward) doesn't give
+non-text models. The audio analog is Phase 8 (audio.py).
 """
+
+from typing import List, Optional
 
 import torch
 
+from transformer_lens.benchmarks.encoder_common import (
+    benchmark_encoder_cache,
+    benchmark_encoder_forward,
+    benchmark_encoder_representation_stability,
+)
 from transformer_lens.benchmarks.utils import (
     BenchmarkResult,
     BenchmarkSeverity,
-    compare_tensors,
+    build_modality_input,
+    is_tiny_test_model,
 )
 from transformer_lens.model_bridge import TransformerBridge
 
-# Bridge wraps the real HF forward (hooked submodules substituted in place), so
-# parity should be near-exact; 1e-4 matches the ViT adapter integration tests.
-_VISION_PARITY_ATOL = 1e-4
-
-
-def _prepare_pixel_values(bridge: TransformerBridge) -> torch.Tensor:
-    """Synthetic pixel_values batch sized from the HF config's image geometry."""
-    hf_config = getattr(bridge.original_model, "config", None)
-    image_size = getattr(hf_config, "image_size", 224)
-    if isinstance(image_size, (list, tuple)):
-        img_h, img_w = image_size[0], image_size[1]
-    else:
-        img_h = img_w = image_size
-    num_channels = getattr(hf_config, "num_channels", 3)
-    dtype = getattr(bridge.cfg, "dtype", torch.float32)
-    return torch.randn(1, num_channels, img_h, img_w, device=bridge.cfg.device, dtype=dtype)
+# Top-level component-mapping names whose hook_out must be cached when the
+# architecture declares them (unembed = classifier head, absent on bare encoders).
+_CRITICAL_VISION_COMPONENTS = ("embed", "ln_final", "unembed")
 
 
 def benchmark_vision_forward(
     bridge: TransformerBridge,
-    reference_model=None,
+    test_pixels: torch.Tensor,
+    reference_model: Optional[torch.nn.Module] = None,
 ) -> BenchmarkResult:
-    """Benchmark forward() parity against the raw HF model for vision encoders.
+    """Benchmark forward pass with pixel input.
 
-    Feeds the same synthetic pixel_values to the bridge and the raw HF model and
-    compares logits (classifier heads) or last_hidden_state (bare encoders).
+    Compares bridge output against the HF native model on the same pixels.
+    Bare encoders (ViTModel) compare last_hidden_state; classification heads
+    compare logits.
 
     Args:
-        bridge: TransformerBridge model to test.
-        reference_model: Optional raw HF model; defaults to bridge.original_model.
-
-    Returns:
-        BenchmarkResult with forward parity details.
+        bridge: TransformerBridge model to test
+        test_pixels: Pixel tensor [batch, channels, height, width]
+        reference_model: Optional HF reference model for comparison
     """
-    if not getattr(bridge.cfg, "is_visual_model", False):
-        return BenchmarkResult(
-            name="vision_forward",
-            severity=BenchmarkSeverity.SKIPPED,
-            message="Skipped: model is not a vision model",
-        )
-
-    try:
-        pixel_values = _prepare_pixel_values(bridge)
-        hf_model = reference_model if reference_model is not None else bridge.original_model
-        with torch.no_grad():
-            bridge_out = bridge.forward(pixel_values, return_type="logits")
-            hf_out = hf_model(pixel_values)
-        # Classifier heads expose .logits; bare encoders only last_hidden_state.
-        hf_logits = getattr(hf_out, "logits", None)
-        hf_ref = hf_logits if hf_logits is not None else hf_out.last_hidden_state
-
-        if bridge_out is None:
-            return BenchmarkResult(
-                name="vision_forward",
-                severity=BenchmarkSeverity.DANGER,
-                message="Forward pass returned None",
-                passed=False,
-            )
-
-        has_nan = torch.isnan(bridge_out).any().item()
-        has_inf = torch.isinf(bridge_out).any().item()
-        if has_nan or has_inf:
-            return BenchmarkResult(
-                name="vision_forward",
-                severity=BenchmarkSeverity.DANGER,
-                message=f"Output contains NaN={has_nan}, Inf={has_inf}",
-                details={"shape": list(bridge_out.shape)},
-                passed=False,
-            )
-
-        # Shared comparator: handles the shape check plus device/dtype
-        # normalization a custom-device reference would otherwise mis-compare on.
-        return compare_tensors(
-            bridge_out,
-            hf_ref,
-            atol=_VISION_PARITY_ATOL,
-            rtol=0.0,
-            name="vision_forward",
-        )
-
-    except Exception as e:
-        return BenchmarkResult(
-            name="vision_forward",
-            severity=BenchmarkSeverity.ERROR,
-            message=f"Vision forward benchmark failed: {str(e)}",
-            passed=False,
-        )
+    return benchmark_encoder_forward(
+        bridge,
+        test_pixels,
+        name="vision_forward",
+        ref_input_key="pixel_values",
+        reference_model=reference_model,
+    )
 
 
 def benchmark_vision_cache(
     bridge: TransformerBridge,
-    reference_model=None,
+    test_pixels: torch.Tensor,
 ) -> BenchmarkResult:
-    """Benchmark run_with_cache() with pixel input for vision encoders.
+    """Benchmark run_with_cache() for vision models.
 
-    Tests that key hooks (embed input, block-0 attention projections, and the
-    classifier head or final norm) fired and captured finite activations.
+    Verifies that critical vision hooks fire and produce valid tensors: the
+    patch embeddings, final layernorm, classifier head (when present), and the
+    first and last block.
 
     Args:
-        bridge: TransformerBridge model to test.
-        reference_model: Not used, kept for API compatibility.
-
-    Returns:
-        BenchmarkResult with cache details.
+        bridge: TransformerBridge model to test
+        test_pixels: Pixel tensor [batch, channels, height, width]
     """
-    if not getattr(bridge.cfg, "is_visual_model", False):
-        return BenchmarkResult(
-            name="vision_cache",
-            severity=BenchmarkSeverity.SKIPPED,
-            message="Skipped: model is not a vision model",
-        )
+    return benchmark_encoder_cache(
+        bridge,
+        test_pixels,
+        name="vision_cache",
+        critical_components=_CRITICAL_VISION_COMPONENTS,
+    )
 
+
+def benchmark_vision_representation_stability(
+    bridge: TransformerBridge,
+    test_pixels: torch.Tensor,
+) -> BenchmarkResult:
+    """Benchmark representation stability under small pixel perturbations.
+
+    Args:
+        bridge: TransformerBridge model to test
+        test_pixels: Pixel tensor [batch, channels, height, width]
+    """
+    return benchmark_encoder_representation_stability(
+        bridge,
+        test_pixels,
+        name="vision_representation_stability",
+    )
+
+
+def benchmark_vision_embeddings(
+    bridge: TransformerBridge,
+    test_pixels: torch.Tensor,
+) -> BenchmarkResult:
+    """Verify patch-embedding hook outputs.
+
+    Checks that embed.hook_out produces [batch, seq, d_model] tensors with
+    non-degenerate values — the vision analog of the audio feature-extractor
+    check. Seq length is architecture-dependent (ViT: patches + CLS; DeiT:
+    patches + CLS + distillation token), so only lower-bounded here.
+
+    Args:
+        bridge: TransformerBridge model to test
+        test_pixels: Pixel tensor [batch, channels, height, width]
+    """
     try:
-        pixel_values = _prepare_pixel_values(bridge)
+        if "embed" not in (bridge.adapter.component_mapping or {}):
+            return BenchmarkResult(
+                name="vision_embeddings",
+                severity=BenchmarkSeverity.SKIPPED,
+                message="Skipped: architecture declares no embed component",
+            )
+
         with torch.no_grad():
-            _, cache = bridge.run_with_cache(pixel_values)
+            _, cache = bridge.run_with_cache(test_pixels)
 
-        if cache is None or len(cache) == 0:
+        hook_key = "embed.hook_out"
+        if hook_key not in cache:
             return BenchmarkResult(
-                name="vision_cache",
+                name="vision_embeddings",
                 severity=BenchmarkSeverity.DANGER,
-                message="run_with_cache() returned empty cache",
+                message=f"Hook '{hook_key}' not found in cache",
                 passed=False,
             )
 
-        required_hooks = [
-            "embed.hook_in",
-            "blocks.0.attn.q.hook_out",
-            "blocks.0.attn.o.hook_out",
-            # Classifier heads cache the head output; bare encoders stop at ln_final.
-            "unembed.hook_out" if hasattr(bridge, "unembed") else "ln_final.hook_normalized",
-        ]
-        missing = [k for k in required_hooks if k not in cache]
-        if missing:
+        embeddings = cache[hook_key]
+
+        if embeddings.dim() != 3:
             return BenchmarkResult(
-                name="vision_cache",
+                name="vision_embeddings",
                 severity=BenchmarkSeverity.DANGER,
-                message=f"Cache missing expected hooks: {missing}",
-                details={"missing_hooks": missing, "total_cache_entries": len(cache)},
+                message=f"Expected 3D tensor [batch, seq, d_model], got {embeddings.dim()}D",
                 passed=False,
+                details={"shape": str(embeddings.shape)},
             )
 
-        non_finite = [k for k in required_hooks if not torch.isfinite(cache[k]).all()]
-        if non_finite:
+        d_model = bridge.cfg.d_model
+        if embeddings.shape[0] != test_pixels.shape[0] or embeddings.shape[-1] != d_model:
             return BenchmarkResult(
-                name="vision_cache",
+                name="vision_embeddings",
                 severity=BenchmarkSeverity.DANGER,
-                message=f"Cached activations contain NaN/Inf: {non_finite}",
-                details={"non_finite_hooks": non_finite},
+                message=f"Embedding shape {tuple(embeddings.shape)} does not match "
+                f"[batch={test_pixels.shape[0]}, seq, d_model={d_model}]",
                 passed=False,
+                details={"shape": str(embeddings.shape), "d_model": d_model},
             )
 
-        cache_keys = list(cache.keys()) if hasattr(cache, "keys") else []
+        is_all_zeros = embeddings.abs().max().item() == 0
+        has_nan = torch.isnan(embeddings).any().item()
+        has_inf = torch.isinf(embeddings).any().item()
+
+        if is_all_zeros or has_nan or has_inf:
+            issues = []
+            if is_all_zeros:
+                issues.append("all zeros")
+            if has_nan:
+                issues.append("NaN")
+            if has_inf:
+                issues.append("Inf")
+            return BenchmarkResult(
+                name="vision_embeddings",
+                severity=BenchmarkSeverity.DANGER,
+                message=f"Degenerate embedding values: {', '.join(issues)}",
+                passed=False,
+                details={"shape": str(embeddings.shape), "issues": issues},
+            )
+
         return BenchmarkResult(
-            name="vision_cache",
+            name="vision_embeddings",
             severity=BenchmarkSeverity.INFO,
-            message=(
-                f"Vision cache populated: {len(cache_keys)} entries, " f"key hooks fired and finite"
-            ),
+            message=f"Patch embeddings OK: shape={embeddings.shape}, "
+            f"mean={embeddings.mean().item():.4f}, std={embeddings.std().item():.4f}",
             details={
-                "total_cache_entries": len(cache_keys),
-                "checked_hooks": required_hooks,
-                "sample_keys": cache_keys[:10],
+                "shape": str(embeddings.shape),
+                "mean": embeddings.mean().item(),
+                "std": embeddings.std().item(),
             },
         )
 
     except Exception as e:
         return BenchmarkResult(
-            name="vision_cache",
+            name="vision_embeddings",
             severity=BenchmarkSeverity.ERROR,
-            message=f"Vision cache test failed: {str(e)}",
+            message=f"Patch embedding check failed: {str(e)}",
             passed=False,
         )
+
+
+def benchmark_vision_classification_decode(
+    bridge: TransformerBridge,
+) -> BenchmarkResult:
+    """Benchmark image-classification decoding on a real image.
+
+    Loads the cats-image fixture, preprocesses it with the bridge's image
+    processor, and reports the top predicted labels — the vision analog of the
+    audio CTC decode, exercising the processor wiring that synthetic pixel
+    tensors don't. Skipped for bare encoders (no classifier head), tiny-random
+    models, and when no processor/datasets are available.
+
+    Args:
+        bridge: TransformerBridge model to test
+    """
+    model_name = getattr(bridge.cfg, "model_name", "")
+    if is_tiny_test_model(model_name):
+        return BenchmarkResult(
+            name="vision_classification_decode",
+            severity=BenchmarkSeverity.SKIPPED,
+            message="Skipped for tiny-random model (untrained classifier head)",
+        )
+
+    # Bare encoders return hidden states from return_type="logits", so gate on
+    # the adapter-declared classifier head rather than the output shape.
+    if "unembed" not in (bridge.adapter.component_mapping or {}):
+        return BenchmarkResult(
+            name="vision_classification_decode",
+            severity=BenchmarkSeverity.SKIPPED,
+            message="Skipped: bare encoder (no classifier head)",
+        )
+
+    processor = getattr(bridge, "processor", None)
+    if processor is None:
+        return BenchmarkResult(
+            name="vision_classification_decode",
+            severity=BenchmarkSeverity.SKIPPED,
+            message="Skipped: no image processor available on the bridge",
+        )
+
+    try:
+        from datasets import load_dataset
+
+        ds = load_dataset("huggingface/cats-image", split="test", trust_remote_code=True)
+        image = ds[0]["image"]
+
+        inputs = processor(images=image, return_tensors="pt")
+        pixel_values = inputs["pixel_values"].to(bridge.cfg.device)
+
+        with torch.no_grad():
+            # Classifier heads return the logits tensor directly; bare encoders
+            # fall through to a BaseModelOutput with no logits attribute.
+            output = bridge(pixel_values, return_type="logits")
+
+        logits = output if isinstance(output, torch.Tensor) else getattr(output, "logits", None)
+        if logits is None or logits.ndim != 2:
+            return BenchmarkResult(
+                name="vision_classification_decode",
+                severity=BenchmarkSeverity.DANGER,
+                message="Classifier model produced no [batch, num_labels] logits",
+                passed=False,
+            )
+
+        k = min(5, logits.shape[-1])
+        top = torch.topk(logits[0], k=k)
+        id2label = getattr(getattr(bridge, "original_model", None), "config", None)
+        id2label = getattr(id2label, "id2label", None) or {}
+        top_labels = [id2label.get(int(i), str(int(i))) for i in top.indices]
+
+        return BenchmarkResult(
+            name="vision_classification_decode",
+            severity=BenchmarkSeverity.INFO,
+            message=f"Classification decode successful: top-1 = {top_labels[0]!r}",
+            details={
+                "top_labels": top_labels,
+                "top_logits": [round(float(v), 4) for v in top.values],
+                "logits_shape": str(logits.shape),
+            },
+        )
+
+    except ImportError:
+        return BenchmarkResult(
+            name="vision_classification_decode",
+            severity=BenchmarkSeverity.SKIPPED,
+            message="Skipped: 'datasets' package not available",
+        )
+    except Exception as e:
+        return BenchmarkResult(
+            name="vision_classification_decode",
+            severity=BenchmarkSeverity.ERROR,
+            message=f"Classification decode failed: {str(e)}",
+            passed=False,
+        )
+
+
+def run_vision_benchmarks(
+    bridge: TransformerBridge,
+    test_pixels: Optional[torch.Tensor] = None,
+    verbose: bool = True,
+) -> List[BenchmarkResult]:
+    """Run all vision benchmarks.
+
+    Args:
+        bridge: TransformerBridge model to test
+        test_pixels: Optional pixel tensor. If None, generates a synthetic input
+            shaped for this architecture from the HF config.
+        verbose: Whether to print progress
+
+    Returns:
+        List of BenchmarkResult objects
+    """
+    if test_pixels is None:
+        test_pixels = build_modality_input(bridge, device=bridge.cfg.device, dtype=bridge.cfg.dtype)
+    if test_pixels is None:
+        return [
+            BenchmarkResult(
+                name="vision_forward",
+                severity=BenchmarkSeverity.ERROR,
+                message="Could not build a pixel input for this model",
+                passed=False,
+            )
+        ]
+
+    results = []
+
+    if verbose:
+        print("1. Vision Forward Pass")
+    results.append(benchmark_vision_forward(bridge, test_pixels))
+
+    if verbose:
+        print("2. Vision Cache Verification")
+    results.append(benchmark_vision_cache(bridge, test_pixels))
+
+    if verbose:
+        print("3. Representation Stability")
+    results.append(benchmark_vision_representation_stability(bridge, test_pixels))
+
+    if verbose:
+        print("4. Patch Embedding Verification")
+    results.append(benchmark_vision_embeddings(bridge, test_pixels))
+
+    if verbose:
+        print("5. Classification Decoding")
+    results.append(benchmark_vision_classification_decode(bridge))
+
+    return results

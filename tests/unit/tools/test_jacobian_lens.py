@@ -501,11 +501,135 @@ def test_load_official_format_without_metadata(tmp_path: Any) -> None:
     assert lens.jacobians[0].dtype == torch.float32
 
 
-def test_load_rejects_fit_checkpoints(tmp_path: Any) -> None:
+def test_load_checkpoint_with_zero_n_done_raises(tmp_path: Any) -> None:
+    """A checkpoint with n_done=0 cannot reconstruct the Jacobian mean."""
     path = str(tmp_path / "ckpt.pt")
-    torch.save({"jacobian_sum": {}, "n_done": 3}, path)
-    with pytest.raises(ValueError, match="no 'J' key"):
+    torch.save(
+        {
+            "jacobian_sum": {0: torch.zeros(D_MODEL, D_MODEL)},
+            "n_done": 0,
+            "next_idx": 0,
+            "source_layers": [0],
+            "target_layer": N_LAYERS - 1,
+            "skip_first": 0,
+        },
+        path,
+    )
+    with pytest.raises(ValueError, match="n_prompts=0"):
         JacobianLens.load(path)
+
+
+def test_load_checkpoint_with_empty_jacobian_sum_raises(tmp_path: Any) -> None:
+    """A checkpoint with an empty jacobian_sum cannot derive d_model."""
+    path = str(tmp_path / "ckpt.pt")
+    torch.save(
+        {
+            "jacobian_sum": {},
+            "n_done": 3,
+            "next_idx": 3,
+            "source_layers": [],
+            "target_layer": N_LAYERS - 1,
+            "skip_first": 0,
+        },
+        path,
+    )
+    with pytest.raises(ValueError, match="empty jacobian_sum"):
+        JacobianLens.load(path)
+
+
+def test_load_checkpoint_mirrors_fit_payload_schema(tmp_path: Any) -> None:
+    """Fixture uses the verbatim 6-key schema that write_checkpoint() produces.
+
+    The reference implementation (anthropics/jacobian-lens) writes exactly:
+    jacobian_sum, n_done, next_idx, source_layers, target_layer, skip_first —
+    no ``d_model`` key, no nested ``metadata`` dict.
+
+    After load():
+    - n_done drives the prompt count
+    - d_model is inferred from the first jacobian_sum matrix's shape
+    - target_layer is harvested from the top-level payload into metadata
+    - converted_from sentinel is set so merge() refuses to mix with fitted lenses
+    """
+    path = str(tmp_path / "fit_checkpoint.pt")
+    torch.save(
+        {
+            "jacobian_sum": {0: torch.ones(D_MODEL, D_MODEL) * 5.0},
+            "n_done": 5,
+            "next_idx": 5,
+            "source_layers": [0],
+            "target_layer": N_LAYERS - 1,
+            "skip_first": 0,
+        },
+        path,
+    )
+    lens = JacobianLens.load(path)
+
+    # jacobian_sum / n_done = ones*5 / 5 = ones
+    assert torch.allclose(lens.jacobians[0], torch.ones(D_MODEL, D_MODEL))
+    assert lens.n_prompts == 5
+    # d_model derived from matrix shape, not a payload key
+    assert lens.d_model == D_MODEL
+
+    # target_layer harvested from top-level payload into metadata
+    assert lens.metadata["target_layer"] == N_LAYERS - 1
+
+    # converted_from sentinel must be set so merge() refuses to mix with fitted lenses
+    assert lens.metadata["converted_from"] == "jacobian_lens_checkpoint"
+
+
+def test_load_checkpoint_harvests_flat_provenance_and_strips_fit_keys(
+    tmp_path: Any,
+) -> None:
+    """Flat provenance and nested fit-reserved keys are handled correctly.
+
+    Some checkpoint writers (e.g. alternative TL-based fitters) may include flat
+    provenance keys (model_name, corpus, model_revision) at the top level and/or
+    a nested metadata dict with fit-reserved fields. Verify the loader strips
+    fit-reserved keys and harvests safe provenance regardless of nesting.
+    """
+    path = str(tmp_path / "tl_checkpoint.pt")
+    torch.save(
+        {
+            "jacobian_sum": {0: torch.ones(D_MODEL, D_MODEL) * 5.0},
+            "n_done": 5,
+            "next_idx": 5,
+            "source_layers": [0],
+            "target_layer": N_LAYERS - 1,
+            "skip_first": 0,
+            # flat provenance at top level
+            "model_name": "toy-bridge",
+            "model_revision": "abc123def456",
+            "corpus": CORPUS,
+            # nested metadata with fit-reserved fields as an alternative writer might add
+            "metadata": {
+                "transformer_lens_fit": True,
+                "transformer_lens_version": "3.7.0",
+                "hook_convention": "blocks.{layer}.hook_out",
+                "fit_dtype": "float32",
+                "dim_batch": 8,
+                "max_seq_len": 128,
+                "skip_first_positions": 16,
+            },
+        },
+        path,
+    )
+    lens = JacobianLens.load(path)
+
+    # flat provenance harvested into metadata
+    assert lens.metadata["model_name"] == "toy-bridge"
+    assert lens.metadata["corpus"] == CORPUS
+
+    # fit-reserved internal keys must be stripped
+    assert "transformer_lens_fit" not in lens.metadata
+    assert "transformer_lens_version" not in lens.metadata
+    assert "hook_convention" not in lens.metadata
+    assert "fit_dtype" not in lens.metadata
+
+    # target_layer must be preserved (NOT stripped) so validate_model can check it
+    assert lens.metadata["target_layer"] == N_LAYERS - 1
+
+    # converted_from sentinel must be set
+    assert lens.metadata["converted_from"] == "jacobian_lens_checkpoint"
 
 
 def test_from_pretrained_uses_retry_and_forwards_hub_arguments(

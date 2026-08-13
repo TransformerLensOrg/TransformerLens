@@ -7,8 +7,6 @@ Qwen3, Qwen3.5, and Qwen3Next variants.
 
 from typing import Any
 
-import torch
-
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
@@ -93,19 +91,3 @@ class Qwen3ArchitectureAdapter(ArchitectureAdapter):
             "ln_final": RMSNormalizationBridge(name=f"{lm_prefix}.norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head"),
         }
-
-    @staticmethod
-    def _preprocess_gated_q_proj(
-        state_dict: dict[str, torch.Tensor], n_heads: int, d_head: int
-    ) -> dict[str, torch.Tensor]:
-        """Slice query half from gated q_proj.weight (interleaved per-head layout).
-
-        q_proj.weight has shape (n_heads * d_head * 2, hidden_size) with
-        interleaved [query, gate] rows per head. Extracts query-only half.
-        """
-        keys_to_update = [k for k in state_dict if k.endswith(".self_attn.q_proj.weight")]
-        for key in keys_to_update:
-            w = state_dict[key]
-            w = w.view(n_heads, d_head * 2, -1)
-            state_dict[key] = w[:, :d_head, :].reshape(n_heads * d_head, -1)
-        return state_dict

@@ -1,9 +1,7 @@
 """Tests for TransformerBridge tokenization methods.
 
-Mirrors the high- and medium-value cases from
-``tests/integration/test_tokenization_methods.py`` (HookedTransformer side).
-HT-specific cases (set_tokenizer flow, tokens_to_residual_directions) are
-omitted. Bridge-specific paths (tokenizer_appends_eos) are added.
+Covers the high- and medium-value tokenization cases, including
+bridge-specific paths (tokenizer_appends_eos).
 
 Uses the ``distilgpt2_bridge`` session fixture from conftest.py to avoid
 per-test model loads.

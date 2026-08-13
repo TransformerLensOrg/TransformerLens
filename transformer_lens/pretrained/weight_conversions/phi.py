@@ -1,9 +1,9 @@
 import einops
 
-from transformer_lens.config.hooked_transformer_config import HookedTransformerConfig
+from transformer_lens.config import TransformerLensConfig
 
 
-def convert_phi_weights(phi, cfg: HookedTransformerConfig):
+def convert_phi_weights(phi, cfg: TransformerLensConfig):
     state_dict = {}
 
     state_dict["embed.W_E"] = phi.model.embed_tokens.weight
