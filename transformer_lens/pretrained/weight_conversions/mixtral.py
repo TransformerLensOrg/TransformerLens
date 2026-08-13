@@ -45,25 +45,34 @@ def convert_mixtral_weights(mixtral, cfg: HookedTransformerConfig):
 
         state_dict[f"blocks.{l}.ln2.w"] = mixtral.model.layers[l].post_attention_layernorm.weight
 
-        state_dict[f"blocks.{l}.mlp.W_gate.weight"] = mixtral.model.layers[
-            l
-        ].block_sparse_moe.gate.weight
+        # transformers 5.x renamed the MoE block (block_sparse_moe -> mlp) and
+        # replaced the per-expert w1/w2/w3 Linears with batched Parameters on a
+        # single MixtralExperts module:
+        #   gate_up_proj: [num_experts, 2 * d_mlp, d_model]  (gate fused above up)
+        #   down_proj:    [num_experts, d_model, d_mlp]
+        moe = mixtral.model.layers[l].mlp
+        state_dict[f"blocks.{l}.mlp.W_gate.weight"] = moe.gate.weight
 
-        # The mapping here from wn to W_{in/out/gate} is a bit confusing:
-        # w1 -> W_gate
-        # w2 -> W_out
-        # w3 -> W_in
-        # See https://github.com/mistralai/mistral-inference/blob/8598cf582091a596671be31990448e0620017851/mistral/model.py#L128 for reference
+        experts = moe.experts
+        gate_up = experts.gate_up_proj
+        down = experts.down_proj
+        if not isinstance(gate_up, torch.Tensor) or not gate_up.dtype.is_floating_point:
+            # Quantized checkpoints wrap or pack these; slicing them silently
+            # drops the scales instead of failing (cf. the MXFP4 gpt-oss case).
+            raise NotImplementedError(
+                "convert_mixtral_weights needs plain floating-point expert "
+                f"weights; got {type(gate_up).__name__} with dtype "
+                f"{getattr(gate_up, 'dtype', None)}. Load the checkpoint "
+                "dequantized (e.g. without a quantization_config)."
+            )
+
+        # MixtralExperts.forward does
+        #   gate, up = F.linear(x, gate_up_proj[e]).chunk(2, dim=-1)
+        # so the FIRST half of dim 1 is the gate projection and the second is up.
         for e in range(cfg.num_experts):
-            state_dict[f"blocks.{l}.mlp.experts.{e}.W_in.weight"] = (
-                mixtral.model.layers[l].block_sparse_moe.experts[e].w3.weight
-            )
-            state_dict[f"blocks.{l}.mlp.experts.{e}.W_gate.weight"] = (
-                mixtral.model.layers[l].block_sparse_moe.experts[e].w1.weight
-            )
-            state_dict[f"blocks.{l}.mlp.experts.{e}.W_out.weight"] = (
-                mixtral.model.layers[l].block_sparse_moe.experts[e].w2.weight
-            )
+            state_dict[f"blocks.{l}.mlp.experts.{e}.W_gate.weight"] = gate_up[e, : cfg.d_mlp, :]
+            state_dict[f"blocks.{l}.mlp.experts.{e}.W_in.weight"] = gate_up[e, cfg.d_mlp :, :]
+            state_dict[f"blocks.{l}.mlp.experts.{e}.W_out.weight"] = down[e]
 
     state_dict["ln_final.w"] = mixtral.model.norm.weight.data
 

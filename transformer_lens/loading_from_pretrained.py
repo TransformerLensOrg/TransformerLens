@@ -651,6 +651,13 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "rotary_dim": hf_config.hidden_size // hf_config.num_attention_heads,
             "num_experts": hf_config.num_local_experts,
             "experts_per_token": hf_config.num_experts_per_tok,
+            # MixtralTopKRouter renormalizes the top-k weights unconditionally
+            # (modeling_mixtral.py: `router_top_value /= router_top_value.sum(...)`),
+            # and MixtralConfig has no norm_topk_prob field to read it from — so
+            # this is pinned to HF's behavior rather than sourced from the config.
+            # TL's MoE skips the renormalization unless this is set, which would
+            # leave routing weights unnormalized and the outputs silently wrong.
+            "norm_topk_prob": True,
         }
     elif architecture == "GptOssForCausalLM":
         cfg_dict = {
