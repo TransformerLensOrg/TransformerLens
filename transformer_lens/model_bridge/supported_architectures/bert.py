@@ -87,6 +87,7 @@ class BertArchitectureAdapter(ArchitectureAdapter):
         # MLM defaults; prepare_model() adjusts for other task heads (e.g., NSP).
         self.component_mapping = {
             "embed": EmbeddingBridge(name="bert.embeddings.word_embeddings"),
+            "token_type_embed": EmbeddingBridge(name="bert.embeddings.token_type_embeddings"),
             "pos_embed": PosEmbedBridge(name="bert.embeddings.position_embeddings"),
             "blocks": BlockBridge(
                 name="bert.encoder.layer",

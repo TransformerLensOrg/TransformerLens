@@ -74,6 +74,7 @@ class TestBertComponentMapping:
     def test_top_level_keys(self, adapter: BertArchitectureAdapter) -> None:
         assert set(adapter.component_mapping.keys()) == {
             "embed",
+            "token_type_embed",
             "pos_embed",
             "blocks",
             "ln_final",
@@ -83,6 +84,7 @@ class TestBertComponentMapping:
     def test_bridge_types(self, adapter: BertArchitectureAdapter) -> None:
         mapping = adapter.component_mapping
         assert isinstance(mapping["embed"], EmbeddingBridge)
+        assert isinstance(mapping["token_type_embed"], EmbeddingBridge)
         assert isinstance(mapping["pos_embed"], PosEmbedBridge)
         assert isinstance(mapping["blocks"], BlockBridge)
         assert isinstance(mapping["ln_final"], NormalizationBridge)
@@ -91,10 +93,41 @@ class TestBertComponentMapping:
     def test_top_level_hf_paths(self, adapter: BertArchitectureAdapter) -> None:
         mapping = adapter.component_mapping
         assert mapping["embed"].name == "bert.embeddings.word_embeddings"
+        assert mapping["token_type_embed"].name == "bert.embeddings.token_type_embeddings"
         assert mapping["pos_embed"].name == "bert.embeddings.position_embeddings"
         assert mapping["blocks"].name == "bert.encoder.layer"
         assert mapping["ln_final"].name == "cls.predictions.transform.LayerNorm"
         assert mapping["unembed"].name == "cls.predictions.decoder"
+
+    def test_token_type_embedding_is_cached_with_hf_output(self) -> None:
+        import torch
+        from transformers import BertForMaskedLM
+
+        from transformer_lens.model_bridge.sources import build_bridge_from_module
+
+        hf_model = BertForMaskedLM.from_pretrained("bert-base-cased").eval()
+        input_ids = torch.tensor([[101, 7592, 102, 2088, 102]])
+        token_type_ids = torch.tensor([[0, 0, 0, 1, 1]])
+        with torch.no_grad():
+            expected = hf_model.bert.embeddings.token_type_embeddings(token_type_ids).clone()
+
+        bridge = build_bridge_from_module(
+            hf_model,
+            "BertForMaskedLM",
+            hf_config=hf_model.config,
+            dtype=torch.float32,
+            device="cpu",
+            model_name="bert-base-cased",
+        )
+        with torch.no_grad():
+            _, cache = bridge.run_with_cache(
+                input_ids,
+                token_type_ids=token_type_ids,
+                names_filter=["token_type_embed.hook_out"],
+            )
+
+        assert "token_type_embed.hook_out" in cache
+        torch.testing.assert_close(cache["token_type_embed.hook_out"], expected)
 
     def test_block_submodule_keys(self, adapter: BertArchitectureAdapter) -> None:
         assert set(adapter.component_mapping["blocks"].submodules.keys()) == {
