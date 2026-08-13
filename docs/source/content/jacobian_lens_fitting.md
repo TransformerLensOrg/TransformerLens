@@ -236,9 +236,12 @@ include the fitting provenance and validation results.
 ## Sparse decomposition (J-space coordinates)
 
 A fitted lens also decomposes an activation into the concepts it is *disposed to say*.
-`JacobianLens.decompose` writes an activation `x` at layer ℓ as a `k`-sparse **nonnegative**
+`JacobianLens.decompose` writes an activation `x` at layer ℓ as a sparse **nonnegative**
 combination of J-lens vectors `v_t = J_ℓ^T W_U[:, t]` (one direction per vocabulary token),
-selected greedily:
+selected greedily. `k` is an **upper bound**, not a target: selection stops early once no
+unselected vector is materially positively correlated with the residual (under nonnegativity a
+negatively-correlated vector cannot reduce it), so fewer than `k` vectors may be selected and
+fewer still may be numerically active.
 
 ```python
 from transformer_lens.model_bridge import TransformerBridge
@@ -252,32 +255,49 @@ result = lens.decompose(model, "The Eiffel Tower is in the city of", layer=6, po
 # ... or a raw [d_model] activation you already have (leave position=None):
 #   result = lens.decompose(model, activation, layer=6, k=8)
 
-tokens = [model.to_string(int(t)) for t in result.support]  # the k selected J-lens vectors
+tokens = [model.to_string(int(t)) for t in result.support]  # the (up to k) *active* J-lens vectors
 coordinates = result.coordinates                            # their nonnegative coefficients
 ```
 
-The result carries two things that need not coincide (per the paper's appendix):
+The result exposes **two supports**, because the paper uses two inconsistent operationalizations
+(a main-text sparse nonnegative reconstruction and an appendix projection onto a selected span):
 
-- `coordinates` (the *local J-space coordinates*) -- the nonnegative pursuit coefficients on the
-  selected J-lens vectors, with `reconstruction = sum(coordinates * v_t)`.
-- `j_space_component` (the *J-space component*) -- the orthogonal projection of the activation
-  onto the span of the selected vectors -- and `non_j_space_component = x - j_space_component`,
-  the residual the interventions leave unchanged.
+- `support` -- the numerically **active** vectors: the selected vectors whose contribution
+  `coordinates[i] * ||v_t||` is a materially nonzero fraction of `||x||`. `coordinates` is aligned
+  with `support`, and `reconstruction = sum(coordinates * v_t)` over `support`.
+- `selected_support` -- **every** greedily selected vector, including any whose coordinate the
+  nonnegativity constraint drove to zero. It defines the span for `j_space_component`. Hence
+  `len(support) <= len(selected_support) <= k`.
+
+So two vector outputs also need not coincide:
+
+- `reconstruction` -- the nonnegative combination over the active `support`.
+- `j_space_component` (the *J-space component*) -- the orthogonal projection of the activation onto
+  the span of `selected_support` -- with `non_j_space_component = x - j_space_component`, the
+  residual the interventions leave unchanged.
+
+For the default exact NNLS re-solve the `reconstruction` equals the projection onto the *active*
+support (KKT stationarity), so it differs from `j_space_component` exactly when a selected vector
+has a zero coordinate (the projection then uses a strictly larger span).
 
 ```
 x  in R^d_model
    |-- decompose(x, layer, k)
-        |-- coordinates            a_t >= 0      (local J-space coordinates)
+        |-- support / coordinates  a_t >= 0      (active vectors; reconstruction = sum a_t v_t)
+        |-- selected_support       S             (all selected vectors; defines the span below)
         |-- j_space_component      Pi_S x        (orthogonal projection onto span of selected v_t)
         \-- non_j_space_component  x - Pi_S x     (orthogonal to the selected vectors)
 ```
 
 Two algorithms are available via `algorithm=`. The default,
-`"nonnegative_orthogonal_matching_pursuit"`, re-solves NNLS on the selected atoms in float64
-after each step. It checks the result against the KKT conditions and raises `RuntimeError` if
-the check fails. `"gradient_pursuit"` uses the directional update from Blumensath & Davies
-(2008). It avoids the small NNLS solve and is included for faithfulness to the paper and for
-larger active sets.
+`"nonnegative_orthogonal_matching_pursuit"`, solves a nonnegative least-squares (NNLS) problem
+over the selected atoms in float64 after each step. It checks the result against the KKT
+conditions and raises `RuntimeError` if the check fails. `"gradient_pursuit"` skips that solve
+and uses the directional update from Blumensath & Davies (2008), matching the update used in
+the paper; its projected step is accepted only when it does not increase the residual. The two
+algorithms share the same greedy selection *rule* but, because their coefficient residuals
+differ, may select different vectors at later steps and so return a different `support` and
+`reconstruction`.
 
 ### Interpreting the numbers honestly
 
@@ -288,13 +308,15 @@ exact values will not necessarily transfer.
 - The decomposition is **not** a top-k logit-lens readout: because the J-lens vectors are
   overcomplete and non-orthogonal, it gives "a different (and typically less redundant) set of
   active concepts than simply taking the top-k by inner product."
-- The J-space is a **small fraction** of the activation: its component "never [exceeds] more than
-  10%" of total activation variance, and for concept vectors carries "a median of only 6-7% ...
-  the remaining ~93% lying outside the J-space." Do not expect `j_space_component` to capture
-  most of `x`.
+- The J-space is a **small fraction** of the activation: the paper's span projection (the
+  `selected_support` operationalization here) "never [exceeds] more than 10%" of total activation
+  variance, and for concept vectors carries "a median of only 6-7% ... the remaining ~93% lying
+  outside the J-space." Those figures are the paper's own measurements on its models; do not read
+  them off this implementation's `j_space_component` without matching the operationalization.
 - `k` defaults to 25 because the paper "typically choose[s] it to be no more than 25, which we
   empirically observed to be the number of J-lens vectors that are meaningfully active at a given
-  time."
+  time." Here `k` is an **upper bound**: `support` returns *at most* `k` active vectors (often
+  fewer), never `k` padded with zero-coefficient slots.
 
 The full-vocabulary dictionary is cached on the model's device and is vocabulary-sized
 (gigabytes for large models); release it with `lens.clear_device_cache()`.

@@ -750,11 +750,17 @@ class JacobianLens:
             layer: Source layer (must be a fitted source layer).
             position: Token position when a prompt is given; must be ``None`` for a raw
                 activation vector.
-            k: Number of J-lens vectors to select.
+            k: Upper bound on the number of J-lens vectors to select; selection stops early
+                once no unselected vector is materially positively correlated, so fewer may be
+                returned.
             algorithm: Coefficient-update rule; see :func:`get_sparse_decomposition`.
 
         Returns:
-            A :class:`JSpaceDecomposition`.
+            A :class:`JSpaceDecomposition`. Its ``support`` (token ids here) holds only the
+            numerically active J-lens vectors and ``selected_support`` every selected vector,
+            with ``support.numel() <= selected_support.numel() <= k``. ``support`` and its
+            token-decoding tensors are on CPU; the vector-valued outputs stay on the model's
+            device.
 
         Raises:
             ValueError: On an invalid model, a mismatched activation shape, a batched prompt,

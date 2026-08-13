@@ -1197,8 +1197,11 @@ def test_decompose_raw_activation_returns_jspace_decomposition(
     activation = torch.randn(toy_model.cfg.d_model)
     result = fitted_lens.decompose(toy_model, activation, layer=0, k=3)
     assert isinstance(result, JSpaceDecomposition)
-    assert result.support.numel() == 3
-    assert (result.coordinates >= 0).all()
+    # ``k`` is an upper bound: only active atoms are returned, as a subset of the selected set.
+    assert result.support.numel() <= result.selected_support.numel() <= 3
+    assert set(result.support.tolist()).issubset(set(result.selected_support.tolist()))
+    assert result.coordinates.numel() == result.support.numel()
+    assert (result.coordinates > 0).all()
     assert result.j_space_component.shape == (toy_model.cfg.d_model,)
 
 
@@ -1218,6 +1221,7 @@ def test_decompose_prompt_matches_manual_activation(
     expected = get_sparse_decomposition(activation.float(), dictionary, k)
 
     assert torch.equal(result.support, expected.support)
+    assert torch.equal(result.selected_support, expected.selected_support)
     assert torch.allclose(result.coordinates, expected.coordinates, atol=1e-5)
 
 
@@ -1253,6 +1257,7 @@ def test_decompose_passes_algorithm_through(
         activation.float(), dictionary, 3, algorithm="gradient_pursuit"
     )
     assert torch.equal(result.support, expected.support)
+    assert torch.equal(result.selected_support, expected.selected_support)
     assert torch.allclose(result.coordinates, expected.coordinates, atol=1e-5)
 
 

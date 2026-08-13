@@ -429,13 +429,20 @@ def test_gemma_published_artifact_parity_topk_and_softcap():
 
 
 def test_decompose_gpt2_activation_reconstructs_and_is_orthogonal(published_gpt2_lens, gpt2_bridge):
-    """decompose on a real GPT-2 activation: k nonnegative atoms, the non-J-space residual is
-    orthogonal to the selected J-lens vectors, and component + residual recover the activation."""
+    """decompose on a real GPT-2 activation: up to k active nonnegative atoms, the non-J-space
+    residual is orthogonal to the selected J-lens vectors, and component + residual recover the
+    activation."""
     layer, k = 6, 8
     result = published_gpt2_lens.decompose(gpt2_bridge, PROMPT, layer=layer, position=-1, k=k)
 
-    assert result.support.numel() == k
-    assert (result.coordinates >= 0).all()
+    # ``k`` is an upper bound: ``support`` holds only numerically active atoms, a subset of the
+    # selected set. Do not assert a closed-model active count -- just record it on failure.
+    assert (
+        result.support.numel() <= result.selected_support.numel() <= k
+    ), f"active={result.support.numel()} selected={result.selected_support.numel()} k={k}"
+    assert set(result.support.tolist()).issubset(set(result.selected_support.tolist()))
+    assert result.coordinates.numel() == result.support.numel()
+    assert (result.coordinates > 0).all()  # every returned coordinate is active
     assert (result.support >= 0).all() and (result.support < gpt2_bridge.cfg.d_vocab).all()
 
     # the decomposed activation is the model's blocks.{layer}.hook_out at the last position
@@ -447,10 +454,11 @@ def test_decompose_gpt2_activation_reconstructs_and_is_orthogonal(published_gpt2
         result.j_space_component + result.non_j_space_component, activation, atol=1e-3
     )
 
-    # the non-J-space residual is orthogonal to every selected J-lens vector (cosine ~ 0)
+    # the non-J-space residual is orthogonal to every selected J-lens vector (the projection
+    # span is the whole selected support, not only the active atoms); cosine ~ 0
     dictionary = published_gpt2_lens.lens_vector_dictionary(gpt2_bridge, layer)
     residual = result.non_j_space_component
-    for atom_id in result.support.tolist():
+    for atom_id in result.selected_support.tolist():
         atom = dictionary[atom_id]
         cosine = torch.dot(residual, atom) / (residual.norm() * atom.norm())
         assert cosine.abs().item() < 1e-3
@@ -471,8 +479,11 @@ def test_decompose_gemma_activation_is_valid():
     k = 16
     result = lens.decompose(model, PROMPT, layer=layer, position=-1, k=k)
 
-    assert result.support.numel() == k
-    assert (result.coordinates >= 0).all()
+    assert (
+        result.support.numel() <= result.selected_support.numel() <= k
+    ), f"active={result.support.numel()} selected={result.selected_support.numel()} k={k}"
+    assert set(result.support.tolist()).issubset(set(result.selected_support.tolist()))
+    assert (result.coordinates > 0).all()
     assert (result.support >= 0).all() and (result.support < model.cfg.d_vocab).all()
 
     tokens = model.to_tokens(PROMPT)

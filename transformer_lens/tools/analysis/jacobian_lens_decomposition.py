@@ -4,10 +4,13 @@ Decomposes an activation (or a steering / sparse-autoencoder direction) into a s
 nonnegative combination of J-lens vectors, following Gurnee et al. (2026), "Verbalizable
 Representations Form a Global Workspace in Language Models" (Transformer Circuits Thread).
 
-The decomposition is greedy: at each step the atom most correlated with the current
-residual (using unit-normalised atoms, so high-norm atoms are not preferred for their scale
-alone) is added to the active set, and the active-set coefficients are updated under a
-nonnegativity constraint. Two coefficient-update rules are provided via ``algorithm``:
+The decomposition is greedy: at each of at most ``k`` steps the atom most correlated with the
+current residual (using unit-normalised atoms, so high-norm atoms are not preferred for their
+scale alone) is added to the *selected* set, and the selected-set coefficients are updated
+under a nonnegativity constraint. ``k`` is an upper bound, not a target: selection stops early
+once no unselected atom has a materially positive residual correlation (under nonnegativity a
+negatively-correlated atom cannot reduce the residual), so fewer than ``k`` atoms may be
+selected. Two coefficient-update rules are provided via ``algorithm``:
 
 - ``"nonnegative_orthogonal_matching_pursuit"`` (default) -- the active-set coefficients are
     re-solved with a float64 active-set nonnegative least-squares fit at each step, then checked
@@ -19,15 +22,24 @@ nonnegativity constraint. Two coefficient-update rules are provided via ``algori
 Both use the same greedy selection rule and both are nonnegative; they differ in the
 coefficient update and therefore can choose different atoms at later steps. At vocabulary
 scale, correlation over all atoms costs ``O(num_atoms * d_model)`` per step, while the exact
-re-solve adds float64 linear algebra on the small selected set. The exact re-solve is the
-default because it returns optimal coefficients on that set; ``"gradient_pursuit"`` avoids
-that solve and is provided for faithfulness to the paper and for larger active sets.
+re-solve adds float64 linear algebra on the small selected set. The NNLS update is the default
+because it optimizes all selected coefficients jointly. ``"gradient_pursuit"`` skips that solve
+and matches the update used in the paper.
 
-Two outputs are returned because they need not coincide: the J-space *component* is the
-orthogonal projection of the target onto the span of the selected atoms (the paper's
-appendix definition, and the residual its interventions use), while the *coordinates* are
-the nonnegative pursuit coefficients. They differ whenever a coefficient is driven to zero
-by the nonnegativity constraint.
+Two supports are exposed because the paper uses two inconsistent operationalizations. The
+``support`` is the numerically *active* set -- the selected atoms whose nonnegative
+coordinate materially contributes -- and ``coordinates`` are aligned with it; this is the
+paper's main-text sparse nonnegative reconstruction. The ``selected_support`` is every
+greedily selected atom, including any whose coordinate was driven to zero by the
+nonnegativity constraint; it defines the span for the paper's appendix projection. Hence
+``len(support) <= len(selected_support) <= k``.
+
+Two vector outputs correspondingly need not coincide: the ``reconstruction`` is the
+nonnegative combination over the active ``support``, while the J-space *component* is the
+orthogonal projection of the target onto the span of ``selected_support`` (the paper's
+appendix definition, and the residual its interventions use). For the exact NNLS re-solve
+the reconstruction equals the projection onto the *active* support (KKT stationarity), so the
+two vectors differ exactly when a selected atom has a zero coordinate.
 
 This module is model-free: it operates on a raw dictionary tensor, so it can be used and
 tested without loading a model.
@@ -62,26 +74,53 @@ DEFAULT_K = 25
 _NNLS_RELATIVE_TOLERANCE = math.sqrt(torch.finfo(torch.float64).eps)
 _NNLS_RANK_RTOL = _NNLS_RELATIVE_TOLERANCE
 
+#: A selected atom counts as numerically *active* when its contribution ``c_i * ||v_i||`` is a
+#: materially nonzero fraction of the target scale ``||x||``. Using the contribution (not the
+#: raw coefficient) keeps the test scale-invariant across J-lens vectors of different native
+#: norms. This is a numerical-activity threshold, not an interpretability one. It matches the
+#: default NNLS coefficient-zeroing scale (:data:`_NNLS_RELATIVE_TOLERANCE`), so the active
+#: support equals the set of strictly-positive NNLS coordinates and the reconstruction over the
+#: active support is the projection onto it.
+_ACTIVE_RELATIVE_TOLERANCE = _NNLS_RELATIVE_TOLERANCE
+
+_GRADIENT_BACKTRACK_STEPS = 20
+
+#: Early-stopping correlation threshold. Once the best unselected normalized correlation drops
+#: to this fraction of ``||x||``, no atom can materially reduce the residual and selection
+#: stops. It sits at the float32 residual noise floor (the residual is computed in float32),
+#: so a full-rank target stops instead of selecting noise atoms -- this is what makes the
+#: selected support scale-invariant. It is deliberately coarser than the activity threshold:
+#: selection is a float32 correlation decision, activity a check against the float64 solve.
+_CORRELATION_RELATIVE_TOLERANCE = math.sqrt(torch.finfo(torch.float32).eps)
+
 
 @dataclass
 class JSpaceDecomposition:
     """Result of a sparse J-space decomposition.
 
     Attributes:
-        support: Indices of the selected dictionary atoms (token ids when the
-            dictionary is the vocabulary of J-lens vectors).
+        support: Indices of the numerically *active* selected atoms -- those whose
+            nonnegative coordinate materially contributes (token ids when the dictionary is
+            the vocabulary of J-lens vectors). A subset of ``selected_support``.
         coordinates: Nonnegative pursuit coefficients aligned with ``support`` (the
-            "local J-space coordinates").
-        reconstruction: The nonnegative combination ``sum(coordinates * atoms)``.
-        j_space_component: The orthogonal projection of the target onto the span of the
-            selected atoms (the paper's "J-space component"). Differs from
-            ``reconstruction`` whenever a coordinate is clamped to zero.
+            "local J-space coordinates"); every entry is materially nonzero.
+        selected_support: Indices of every greedily selected atom, including any whose
+            coordinate was driven to zero by the nonnegativity constraint. Defines the span
+            for ``j_space_component``. Satisfies
+            ``support.numel() <= selected_support.numel() <= k``.
+        reconstruction: The nonnegative combination ``sum(coordinates * active atoms)`` over
+            ``support``.
+        j_space_component: The orthogonal projection of the target onto the span of
+            ``selected_support`` (the paper's "J-space component"). For the exact NNLS
+            re-solve it equals ``reconstruction`` unless a selected atom has a zero
+            coordinate, in which case the projection uses a larger span.
         non_j_space_component: The residual ``target - j_space_component`` (the
             "non-J-space component"), orthogonal to the selected span.
     """
 
     support: torch.Tensor
     coordinates: torch.Tensor
+    selected_support: torch.Tensor
     reconstruction: torch.Tensor
     j_space_component: torch.Tensor
     non_j_space_component: torch.Tensor
@@ -252,17 +291,30 @@ def _gradient_pursuit_step(
 
     ``active_atoms`` is ``[d_model, num_active]`` (the selected atoms as columns) and
     ``coefficients`` the current ``[num_active]`` coefficients (the newly added atom starts at
-    zero). Moves the coefficients along the steepest-descent direction ``active_atoms^T
-    residual`` with the exact line-search step, then projects onto the nonnegative orthant.
+    zero, so the incoming point is feasible and its residual is the previous residual). Moves
+    the coefficients along the steepest-descent direction ``active_atoms^T residual`` with the
+    exact line-search step, then projects onto the nonnegative orthant. The exact line search
+    happens before that projection, so the projected step can in principle increase the
+    residual. In that case the step is halved until the projected update no longer increases
+    the residual, with the feasible incoming point retained if the bounded search finds none.
     """
     residual = target - active_atoms @ coefficients
+    feasible = coefficients.clamp_min(0.0)
     direction = active_atoms.T @ residual  # [num_active]; gradient up to sign
     projected = active_atoms @ direction  # [d_model]
     denominator = float((projected @ projected).detach())
     if denominator <= 0.0:
-        return coefficients.clamp_min(0.0)
+        return feasible
     step = float((projected @ residual).detach()) / denominator
-    return (coefficients + step * direction).clamp_min(0.0)
+    current_residual_squared = float((residual @ residual).detach())
+    for _ in range(_GRADIENT_BACKTRACK_STEPS + 1):
+        candidate = (coefficients + step * direction).clamp_min(0.0)
+        candidate_residual = target - active_atoms @ candidate
+        candidate_residual_squared = float((candidate_residual @ candidate_residual).detach())
+        if candidate_residual_squared <= current_residual_squared:
+            return candidate
+        step *= 0.5
+    return feasible
 
 
 def get_sparse_decomposition(
@@ -277,16 +329,20 @@ def get_sparse_decomposition(
     Args:
         x: Target vector, shape ``[d_model]``.
         dictionary: Atom matrix, shape ``[num_atoms, d_model]`` (rows are atoms).
-        k: Number of atoms to select.
+        k: Upper bound on the number of atoms to select. Selection stops early once no
+            unselected atom is materially positively correlated with the residual, so fewer
+            than ``k`` atoms may be selected (and fewer still may be numerically active).
         algorithm: Coefficient-update rule.
-            ``"nonnegative_orthogonal_matching_pursuit"`` (default) re-solves the active-set
+            ``"nonnegative_orthogonal_matching_pursuit"`` (default) re-solves the selected-set
             coefficients exactly as a nonnegative least-squares fit;
             ``"gradient_pursuit"`` takes a single projected-gradient step per atom. See the
             module docstring for the trade-off (they use the same selection rule, while the
             exact re-solve is optimal on each selected set).
 
     Returns:
-        A :class:`JSpaceDecomposition`.
+        A :class:`JSpaceDecomposition`. Its ``support`` holds only the numerically active
+        atoms and ``selected_support`` every selected atom, with
+        ``support.numel() <= selected_support.numel() <= k``.
 
     Raises:
         ValueError: On an unknown ``algorithm``, complex or non-finite inputs, a non-2-D
@@ -323,43 +379,70 @@ def get_sparse_decomposition(
     if not bool(torch.isfinite(atom_norms).all()) or bool((atom_norms == 0).any()):
         raise ValueError("dictionary contains a non-finite or zero-norm atom")
 
+    x_norm = float(torch.linalg.vector_norm(target).detach())
+    correlation_tol = _CORRELATION_RELATIVE_TOLERANCE * x_norm
+
     residual = target.clone()
-    support: List[int] = []
+    selected: List[int] = []
     coordinates = target.new_zeros(0)
     for _ in range(k):
-        # Select the atom most correlated with the current residual, using unit-norm atoms
-        # so high-norm atoms are not preferred for their scale alone.
+        # Select the unselected atom most correlated with the current residual, using
+        # unit-norm atoms so high-norm atoms are not preferred for their scale alone.
         correlation = (atoms @ residual) / atom_norms
-        for chosen in support:
+        for chosen in selected:
             correlation[chosen] = float("-inf")
-        support.append(int(torch.argmax(correlation).item()))
+        candidate = int(torch.argmax(correlation).item())
+        # Stop early once no unselected atom is materially positively correlated: under the
+        # nonnegativity constraint a non-positive correlation cannot reduce the residual, so
+        # ``k`` is an upper bound on the number of selected atoms, not a target.
+        if float(correlation[candidate].detach()) <= correlation_tol:
+            break
+        selected.append(candidate)
 
-        active_atoms = atoms[support].T  # [d_model, len(support)]
+        selected_atoms = atoms[selected].T  # [d_model, len(selected)]
         if algorithm == "nonnegative_orthogonal_matching_pursuit":
-            # Re-solve the coefficients jointly over the active set as a nonnegative
+            # Re-solve the coefficients jointly over the selected set as a nonnegative
             # least-squares fit. Sequential per-atom updates are wrong once selected atoms
             # are correlated.
-            coordinates = _nonnegative_least_squares(active_atoms, target)
+            coordinates = _nonnegative_least_squares(selected_atoms, target)
         else:
             # Carry the coefficients forward, initialising the new atom at zero, and take a
-            # single projected-gradient step over the active set.
+            # single projected-gradient step over the selected set.
             coordinates = _gradient_pursuit_step(
-                active_atoms, target, torch.cat([coordinates, coordinates.new_zeros(1)])
+                selected_atoms, target, torch.cat([coordinates, coordinates.new_zeros(1)])
             )
-        residual = target - active_atoms @ coordinates
+        residual = target - selected_atoms @ coordinates
 
-    support_tensor = torch.tensor(support, dtype=torch.long)
-    active_atoms = atoms[support_tensor].T  # [d_model, len(support)]
-    reconstruction = active_atoms @ coordinates
-    # The J-space component is the orthogonal projection of the target onto the span of the
-    # selected atoms (paper appendix), computed with the same pseudoinverse construction as
-    # swap_hooks. It differs from the nonnegative reconstruction whenever a coordinate was
-    # clamped to zero.
-    j_space_component = active_atoms @ (torch.linalg.pinv(active_atoms) @ target)
+    # ``selected_support`` stays on CPU for token decoding; the vector-valued outputs stay on
+    # the computation device.
+    selected_support = torch.tensor(selected, dtype=torch.long)
+    selected_atoms = atoms[selected_support].T  # [d_model, num_selected] on atoms.device
+
+    # Public active support: selected atoms whose contribution ``c_i * ||v_i||`` is a
+    # materially nonzero fraction of ``||x||``. For the NNLS re-solve this is exactly the
+    # strictly-positive coordinate set (its coefficient-zeroing uses the same scale); for
+    # gradient pursuit it prunes atoms left at (near-)zero by the final projected step.
+    contribution = coordinates * torch.linalg.vector_norm(selected_atoms, dim=0)
+    active = contribution > _ACTIVE_RELATIVE_TOLERANCE * x_norm  # on the computation device
+    support = selected_support[active.cpu()]  # CPU, aligned with the token-decoding tensors
+    active_coordinates = coordinates[active]
+    active_atoms = selected_atoms[:, active]  # [d_model, num_active] on atoms.device
+
+    # Reconstruction is the nonnegative combination over the active support (empty -> zeros).
+    reconstruction = active_atoms @ active_coordinates
+    # The J-space component is the orthogonal projection of the target onto the span of every
+    # selected atom (paper appendix), computed with the same pseudoinverse construction as
+    # swap_hooks. That span can be larger than the active support when a selected coordinate is
+    # zero, so the projection differs from the nonnegative reconstruction in that case.
+    if selected:
+        j_space_component = selected_atoms @ (torch.linalg.pinv(selected_atoms) @ target)
+    else:
+        j_space_component = target.new_zeros(d_model)
     non_j_space_component = target - j_space_component
     return JSpaceDecomposition(
-        support=support_tensor,
-        coordinates=coordinates,
+        support=support,
+        coordinates=active_coordinates,
+        selected_support=selected_support,
         reconstruction=reconstruction,
         j_space_component=j_space_component,
         non_j_space_component=non_j_space_component,

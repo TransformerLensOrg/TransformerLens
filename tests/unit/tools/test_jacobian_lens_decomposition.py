@@ -5,12 +5,14 @@ dictionary tensors, so no model is loaded.
 """
 
 import itertools
+import warnings
 
 import pytest
 import torch
 
 from transformer_lens.tools.analysis.jacobian_lens_decomposition import (
     JSpaceDecomposition,
+    _gradient_pursuit_step,
     _nnls_tolerances,
     _nonnegative_least_squares,
     _validate_nnls_kkt,
@@ -58,11 +60,11 @@ def test_j_space_component_is_orthogonal_projection_onto_selected_span(algorithm
 
     result = get_sparse_decomposition(x, atoms, k=2, algorithm=algorithm)
 
-    assert set(result.support.tolist()) == {1, 2}
+    assert set(result.selected_support.tolist()) == {1, 2}
     assert torch.allclose(result.j_space_component + result.non_j_space_component, x, atol=1e-5)
-    for i in result.support.tolist():
+    for i in result.selected_support.tolist():
         assert torch.dot(result.non_j_space_component, atoms[i]).abs().item() < 1e-5
-    selected_atoms = atoms[result.support].T
+    selected_atoms = atoms[result.selected_support].T
     projection = selected_atoms @ torch.linalg.pinv(selected_atoms) @ x
     assert torch.allclose(result.j_space_component, projection, atol=1e-5)
 
@@ -86,6 +88,112 @@ def test_is_deterministic(algorithm):
     second = get_sparse_decomposition(x, dictionary, k=4, algorithm=algorithm)
     assert torch.equal(first.support, second.support)
     assert torch.allclose(first.coordinates, second.coordinates)
+
+
+# --------------------------------------------------------------------------- #
+# Active vs selected support contract (k is an upper bound)
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize("algorithm", ALGORITHMS)
+def test_support_is_the_active_subset_of_selected_support(algorithm):
+    """``support`` holds only numerically active atoms; it is a subset of ``selected_support``,
+    its ``coordinates`` are aligned and strictly positive, and
+    ``len(support) <= len(selected_support) <= k``."""
+    torch.manual_seed(2)
+    dictionary = torch.randn(40, 6)
+    x = torch.randn(6)
+    k = 10
+
+    result = get_sparse_decomposition(x, dictionary, k=k, algorithm=algorithm)
+
+    assert result.support.numel() <= result.selected_support.numel() <= k
+    assert set(result.support.tolist()).issubset(set(result.selected_support.tolist()))
+    assert result.coordinates.numel() == result.support.numel()
+    assert bool((result.coordinates > 0).all())
+
+
+def test_overcomplete_correlated_dictionary_has_no_dead_support_slots():
+    """The old failure mode -- ``support`` padded to ``k`` with mostly-zero coordinates -- is
+    gone. On an overcomplete correlated dictionary selection stops early and every returned
+    support atom is active, so ``len(support)`` equals the nonzero-coordinate count and is well
+    below ``k`` (the reviewer's "9 active tokens printed as 25")."""
+    torch.manual_seed(0)
+    bases = torch.randn(10, 32)
+    dictionary = torch.randn(400, 10).abs() @ bases + 0.05 * torch.randn(400, 32)
+    x = torch.randn(32)
+
+    result = get_sparse_decomposition(x, dictionary, k=25)
+
+    assert result.selected_support.numel() < 25  # selection stopped early
+    assert result.support.numel() == int((result.coordinates > 0).sum())
+    assert bool((result.coordinates > 0).all())
+
+
+@pytest.mark.parametrize("algorithm", ALGORITHMS)
+def test_zero_target_returns_empty_decomposition(algorithm):
+    """A zero target has no J-space content: empty supports and zero vector outputs."""
+    dictionary = torch.randn(6, 4)
+
+    result = get_sparse_decomposition(torch.zeros(4), dictionary, k=3, algorithm=algorithm)
+
+    assert result.support.numel() == 0
+    assert result.selected_support.numel() == 0
+    assert result.coordinates.numel() == 0
+    assert torch.allclose(result.reconstruction, torch.zeros(4))
+    assert torch.allclose(result.j_space_component, torch.zeros(4))
+    assert torch.allclose(result.non_j_space_component, torch.zeros(4))
+
+
+def test_target_orthogonal_to_all_atoms_gives_empty_active_support():
+    """No atom is positively correlated with a target orthogonal to the dictionary, so nothing
+    is selected: zero reconstruction and the whole target is the non-J-space component."""
+    atoms = torch.tensor([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
+    x = torch.tensor([0.0, 0.0, 5.0])  # orthogonal to both atoms
+
+    result = get_sparse_decomposition(x, atoms, k=2)
+
+    assert result.support.numel() == 0
+    assert torch.allclose(result.reconstruction, torch.zeros(3))
+    assert torch.allclose(result.non_j_space_component, x)
+
+
+@pytest.mark.parametrize("scale", [0.25, 3.0, 50.0])
+@pytest.mark.parametrize("algorithm", ALGORITHMS)
+def test_support_is_invariant_under_positive_rescaling_of_target(scale, algorithm):
+    """``argmin`` over ``c >= 0`` is scale-equivariant, and both the early-stop and activity
+    thresholds scale with ``||x||``, so the selected and active supports do not depend on
+    ``||x||`` and the coordinates scale linearly."""
+    torch.manual_seed(5)
+    dictionary = torch.randn(30, 6)
+    x = torch.randn(6)
+
+    base = get_sparse_decomposition(x, dictionary, k=10, algorithm=algorithm)
+    scaled = get_sparse_decomposition(scale * x, dictionary, k=10, algorithm=algorithm)
+
+    assert scaled.support.tolist() == base.support.tolist()
+    assert scaled.selected_support.tolist() == base.selected_support.tolist()
+    assert torch.allclose(scaled.coordinates, scale * base.coordinates, rtol=1e-4, atol=1e-4)
+
+
+def test_active_reconstruction_is_a_projection_while_selected_projection_can_differ():
+    """For the exact NNLS re-solve the reconstruction equals the orthogonal projection onto the
+    *active* support (KKT stationarity), while ``j_space_component`` projects onto the larger
+    *selected* span. When a selected atom is driven to a zero coordinate the two projections --
+    and hence ``reconstruction`` and ``j_space_component`` -- differ. This is a seeded system
+    whose first selected atom ends inactive."""
+    torch.manual_seed(7)
+    dictionary = torch.randn(6, 3)
+    x = torch.randn(3)
+
+    result = get_sparse_decomposition(x, dictionary, k=6)
+
+    assert result.selected_support.numel() > result.support.numel()  # a selected atom is inactive
+    active_atoms = dictionary[result.support].T
+    selected_atoms = dictionary[result.selected_support].T
+    projection_onto_active = active_atoms @ torch.linalg.pinv(active_atoms) @ x
+    projection_onto_selected = selected_atoms @ torch.linalg.pinv(selected_atoms) @ x
+    assert torch.allclose(result.reconstruction, projection_onto_active, atol=1e-4)
+    assert torch.allclose(result.j_space_component, projection_onto_selected, atol=1e-4)
+    assert not torch.allclose(result.reconstruction, result.j_space_component, atol=1e-3)
 
 
 # --------------------------------------------------------------------------- #
@@ -116,13 +224,12 @@ def test_exact_resolve_coordinates_match_joint_least_squares_on_correlated_dicti
     assert torch.allclose(result.reconstruction, x, atol=1e-4)
 
 
-def test_exact_resolve_returns_true_nonnegative_least_squares_when_unconstrained_is_negative():
-    """When the unconstrained fit assigns a negative coefficient, nonnegative OMP returns the true
-    nonnegative solution (drop that atom and re-solve), not a naive clamp of the negative
-    coefficient to zero. atoms span R^2 and the unconstrained fit of x is (3, -1); the
-    nonnegative optimum is (2, 0). Because the two atoms still span R^2, the orthogonal
-    projection recovers x and differs from the nonnegative reconstruction -- the
-    'return both' point."""
+def test_selection_stops_when_no_unselected_atom_is_positively_correlated():
+    """``k`` is an upper bound: under nonnegativity a negatively-correlated atom cannot reduce
+    the residual, so it is not selected even when ``k`` allows it. atoms span R^2 and the
+    unconstrained fit of x is (3, -1); after selecting atom 0 the only other atom correlates
+    negatively with the residual, so selection stops at a single atom -- and the coefficient is
+    the true nonnegative least squares 2.0, never the clamped unconstrained 3.0."""
     atoms = torch.tensor([[1.0, 0.0], [1.0, 1.0]])
     x = torch.tensor([2.0, -1.0])
 
@@ -130,13 +237,10 @@ def test_exact_resolve_returns_true_nonnegative_least_squares_when_unconstrained
         x, atoms, k=2, algorithm="nonnegative_orthogonal_matching_pursuit"
     )
 
-    assert (result.coordinates >= 0).all()
-    coefficient = dict(zip(result.support.tolist(), result.coordinates.tolist()))
-    assert coefficient.get(0, 0.0) == pytest.approx(2.0, abs=1e-4)  # not the clamped 3.0
-    assert coefficient.get(1, 0.0) == pytest.approx(0.0, abs=1e-4)
+    assert result.selected_support.tolist() == [0]
+    assert result.support.tolist() == [0]
+    assert result.coordinates.tolist() == pytest.approx([2.0], abs=1e-4)  # not the clamped 3.0
     assert torch.allclose(result.reconstruction, torch.tensor([2.0, 0.0]), atol=1e-4)
-    assert torch.allclose(result.j_space_component, x, atol=1e-5)
-    assert not torch.allclose(result.reconstruction, result.j_space_component, atol=1e-3)
 
 
 def _reference_nnls(active_atoms: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
@@ -472,8 +576,60 @@ def test_model_free_decomposition_preserves_autograd_contract():
     """The model-free primitive must not silently detach caller-owned tensors."""
     dictionary = torch.eye(3, requires_grad=True)
     x = torch.tensor([3.0, 2.0, 1.0], requires_grad=True)
-    result = get_sparse_decomposition(x, dictionary, k=2, algorithm="gradient_pursuit")
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "error", message="Converting a tensor with requires_grad=True to a scalar"
+        )
+        result = get_sparse_decomposition(x, dictionary, k=2, algorithm="gradient_pursuit")
     assert result.reconstruction.requires_grad
+    result.reconstruction.sum().backward()
+    assert x.grad is not None and bool(torch.isfinite(x.grad).all())
+    assert dictionary.grad is not None and bool(torch.isfinite(dictionary.grad).all())
+
+
+def test_gradient_pursuit_support_is_only_final_active_atoms():
+    """gradient_pursuit obeys the same public contract: ``support`` contains only atoms active
+    in the final coordinates (a transient zero is not pruned mid-iteration but the final
+    ``support`` excludes any still at zero), and is a subset of ``selected_support``."""
+    torch.manual_seed(3)
+    dictionary = torch.randn(20, 6)
+    x = torch.randn(6)
+
+    result = get_sparse_decomposition(x, dictionary, k=5, algorithm="gradient_pursuit")
+
+    assert bool((result.coordinates > 0).all())
+    assert result.coordinates.numel() == result.support.numel()
+    assert set(result.support.tolist()).issubset(set(result.selected_support.tolist()))
+
+
+def test_gradient_pursuit_step_never_increases_the_residual():
+    """The exact line search happens before the nonnegative projection, so a projected step can
+    increase the residual; the update is accepted only when it does not. Adding atoms one at a
+    time must therefore never increase the reconstruction residual."""
+    torch.manual_seed(1)
+    dictionary = torch.randn(12, 5)
+    x = torch.randn(5)
+
+    previous = x.norm().item()
+    for k in range(1, 6):
+        result = get_sparse_decomposition(x, dictionary, k=k, algorithm="gradient_pursuit")
+        current = (x - result.reconstruction).norm().item()
+        assert current <= previous + 1e-5
+        previous = current
+
+
+def test_gradient_pursuit_backtracks_when_projection_makes_the_full_step_ascend():
+    """Projection can make the unconstrained exact step ascend; a shorter step still descends."""
+    active_atoms = torch.tensor([[-2.0, -2.0], [-1.0, 1.0]])
+    target = torch.tensor([-2.0, -2.0])
+    coefficients = torch.tensor([1.0, 0.0])
+    initial_residual = (target - active_atoms @ coefficients).norm()
+
+    updated = _gradient_pursuit_step(active_atoms, target, coefficients)
+
+    updated_residual = (target - active_atoms @ updated).norm()
+    assert updated_residual < initial_residual
+    assert not torch.equal(updated, coefficients)
 
 
 # --------------------------------------------------------------------------- #
