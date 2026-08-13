@@ -21,8 +21,10 @@ residual-wiring pattern the bridge handles:
 - gemma2: sandwich norms — a post-sublayer norm inside each residual branch, so
   the contributions are the post-norm outputs
 
-Parallel-residual architectures (Falcon, GPT-J, NeoX, Cohere) are out of scope:
-they have no ``hook_resid_mid``.
+Parallel-residual architectures (Falcon, GPT-J, NeoX, Cohere) are out of scope
+here: they have no ``hook_resid_mid``. Their two-term identity
+(``resid_post == resid_pre + attn_out + mlp_out``) is covered by
+``test_parallel_residual_identities.py``.
 """
 
 import pytest
