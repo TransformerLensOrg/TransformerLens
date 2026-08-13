@@ -1324,8 +1324,8 @@ class HookedTransformer(HookedRootModule):
         import warnings
 
         warnings.warn(
-            "HookedTransformer.from_pretrained is deprecated and will be removed in a "
-            "future major release. Use TransformerBridge.boot_transformers(...) instead, "
+            "HookedTransformer.from_pretrained is deprecated and will be removed in "
+            "4.0. Use TransformerBridge.boot_transformers(...) instead, "
             "then call enable_compatibility_mode() for HookedTransformer-equivalent "
             "numerics. See docs/source/content/migrating_to_v3.md.",
             DeprecationWarning,

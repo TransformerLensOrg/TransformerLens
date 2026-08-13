@@ -4,7 +4,7 @@ TransformerLens 3 introduces **TransformerBridge**, a new way of loading and ins
 
 This page explains the differences and gives side-by-side migration recipes for the most common patterns.
 
-> **Deprecation status.** `HookedTransformer.from_pretrained` — along with the `HookedEncoderDecoder` and `HookedAudioEncoder` load paths — now emits a `DeprecationWarning`. `HookedTransformer` and the other `Hooked*` classes are slated for removal in a future major release; every feature is being migrated to `TransformerBridge` and the driver system (features that aren't a fit for a driver, such as train-from-scratch, are moving to bridge-based homes rather than staying on `HookedTransformer`). New code should use `TransformerBridge.boot_transformers(...)`. Follow the migration progress in the deprecation plan.
+> **Deprecation status.** `HookedTransformer.from_pretrained` — along with the `HookedEncoderDecoder` and `HookedAudioEncoder` load paths — now emits a `DeprecationWarning`. `HookedTransformer` and the other `Hooked*` classes are slated for removal in 4.0; every feature is being migrated to `TransformerBridge` and the driver system (features that aren't a fit for a driver, such as train-from-scratch, are moving to bridge-based homes rather than staying on `HookedTransformer`). New code should use `TransformerBridge.boot_transformers(...)`. Follow the migration progress in the deprecation plan.
 
 ## Why the change?
 
@@ -150,7 +150,35 @@ If your code only touches these APIs, the migration is genuinely just the loadin
 
 ### BERT Next Sentence Prediction
 
-The high-level NSP API (`BertNextSentencePrediction`) is not yet ported: it requires the legacy `HookedEncoder` surface (`encoder_output`, `pooler`, `nsp_head`), which `TransformerBridge` does not expose. The bridge's BERT adapter does load NSP HuggingFace checkpoints (it rewires the unembed to `cls.seq_relationship`), so the underlying weights are available — but sentence-pair tokenization, `[CLS]` pooling, and "sequential"/"not sequential" decoding are not. Until it is ported, NSP workflows need the legacy classes, which are slated for removal; if you rely on this API, please say so on the tracking issue.
+NSP runs on the bridge today — load the NSP head via `model_class` and pass the
+sentence-pair tokenization through:
+
+```python
+from transformers import AutoTokenizer, BertForNextSentencePrediction
+from transformer_lens.model_bridge import TransformerBridge
+
+tokenizer = AutoTokenizer.from_pretrained("google-bert/bert-base-cased")
+nsp = TransformerBridge.boot_transformers(
+    "google-bert/bert-base-cased",
+    model_class=BertForNextSentencePrediction,
+)
+nsp.enable_compatibility_mode()
+
+inputs = tokenizer("A man walked into a grocery store.", "He bought an apple.", return_tensors="pt")
+nsp(inputs["input_ids"], token_type_ids=inputs["token_type_ids"], return_type="predictions")
+# 'The sentences are sequential'
+```
+
+**Pass `token_type_ids`.** They are what tells BERT where the first sentence ends
+and the second begins; without them the NSP head scores a single undifferentiated
+span and can return the wrong verdict (on the pair above, dropping them collapses
+the logits from ±4.37 to ±0.58, and a genuinely non-sequential pair flips to
+"sequential"). With them, the bridge reproduces the raw HuggingFace NSP logits
+exactly.
+
+The legacy `BertNextSentencePrediction` wrapper is deprecated and cannot wrap a
+`TransformerBridge` — it reaches for `HookedEncoder`-only internals
+(`encoder_output`, `pooler`, `nsp_head`). Use the recipe above instead.
 
 ### New in 3.x: streaming generation
 
@@ -216,7 +244,7 @@ The cache, hook, and config APIs are the same. The only lines that had to change
 
 ## Migrating specific `HookedTransformer` APIs
 
-`HookedTransformer` is deprecated and will be removed in a future major release. The compatibility layer keeps existing code running in the meantime, but new work should target `TransformerBridge`, and migrating existing projects is the long-term supported path.
+`HookedTransformer` is deprecated and will be removed in 4.0. The compatibility layer keeps existing code running in the meantime, but new work should target `TransformerBridge`, and migrating existing projects is the long-term supported path.
 
 Most `HookedTransformer` methods and properties exist on `TransformerBridge` under the same name — see [APIs that are unchanged](#apis-that-are-unchanged). The table below covers the cases where the name or access path differs.
 
