@@ -57,6 +57,10 @@ from transformer_lens.utilities.activation_functions import softcap_enabled
 from transformer_lens.utilities.aliases import resolve_alias
 from transformer_lens.utilities.devices import move_to_and_update_config
 from transformer_lens.utilities.lm_utils import lm_cross_entropy_loss
+from transformer_lens.utilities.quantization import (
+    describe_quantization,
+    unreadable_weight_reason,
+)
 
 if TYPE_CHECKING:
     from transformer_lens.ActivationCache import ActivationCache
@@ -1039,6 +1043,21 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             fold_value_biases: Fold value biases into output bias. Default: True
             refactor_factored_attn_matrices: Experimental QK/OV factorization. Default: False
         """
+        # Folding and centering do arithmetic on raw weights, so packed or
+        # scale-separated storage would produce silent garbage. The forward
+        # path stays usable when quantized; only this transformation does not.
+        for name, param in self.original_model.named_parameters():
+            if not name.endswith(".weight"):
+                continue
+            reason = unreadable_weight_reason(param)
+            if reason is not None and param.device.type != "meta":
+                raise NotImplementedError(
+                    f"TransformerLens cannot process weights: {name} cannot be read "
+                    f"because {reason} (quantization: {describe_quantization(self.original_model)}). "
+                    "Load the model dequantized, or use the bridge without weight "
+                    "processing (enable_compatibility_mode(no_processing=True))."
+                )
+
         # A failed or partial processing attempt is no longer guaranteed to retain
         # the raw HuggingFace basis, so invalidate that contract before any work.
         self._weights_processed = True

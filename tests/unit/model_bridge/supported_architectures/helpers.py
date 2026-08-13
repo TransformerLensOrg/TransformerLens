@@ -9,6 +9,14 @@ import torch
 
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.model_bridge.component_setup import setup_submodules
+from transformer_lens.model_bridge.generalized_components import MoEBridge
+
+# The keys MoEBridge binds a dense layer's projections under. Adapter key-set
+# assertions subtract these and check only the sparse-side keys: that every
+# dense-aware adapter declares dense_* AND that each key reads the projection it
+# names is covered behaviorally, for all 14 of them, by the roster in
+# tests/unit/model_bridge/generalized_components/test_moe_dense_dispatch.py.
+DENSE_KEYS = frozenset({*MoEBridge.DENSE_SUBMODULE_KEYS, MoEBridge.DENSE_GATE_KEY})
 
 
 def make_bridge_cfg(architecture: str, **overrides) -> TransformerBridgeConfig:

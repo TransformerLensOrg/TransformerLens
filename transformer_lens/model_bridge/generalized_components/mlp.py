@@ -9,6 +9,7 @@ import torch
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
+from transformer_lens.utilities.quantization import require_readable_weight
 
 
 def weight_layout_in_out(proj: Any) -> Optional[bool]:
@@ -168,7 +169,9 @@ class MLPBridge(GeneralizedComponent):
         in_module = getattr(self, "in", None)
         if in_module is None:
             raise AttributeError("No 'in' submodule on this MLP bridge")
-        weight = in_module.weight
+        weight = require_readable_weight(
+            in_module.weight, operation=f"read W_in from {self.name}", owner=in_module
+        )
         layout = self._weight_layout_in_out(in_module)
         return self._normalize_mlp_weight(weight, layout, in_module, pattern="in")
 
@@ -178,7 +181,9 @@ class MLPBridge(GeneralizedComponent):
         gate_module = getattr(self, "gate", None)
         if gate_module is None:
             return None
-        weight = gate_module.weight
+        weight = require_readable_weight(
+            gate_module.weight, operation=f"read W_gate from {self.name}", owner=gate_module
+        )
         layout = self._weight_layout_in_out(gate_module)
         return self._normalize_mlp_weight(weight, layout, gate_module, pattern="in")
 
@@ -188,6 +193,8 @@ class MLPBridge(GeneralizedComponent):
         out_module = getattr(self, "out", None)
         if out_module is None:
             raise AttributeError("No 'out' submodule on this MLP bridge")
-        weight = out_module.weight
+        weight = require_readable_weight(
+            out_module.weight, operation=f"read W_out from {self.name}", owner=out_module
+        )
         layout = self._weight_layout_in_out(out_module)
         return self._normalize_mlp_weight(weight, layout, out_module, pattern="out")

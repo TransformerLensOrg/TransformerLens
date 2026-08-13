@@ -59,6 +59,7 @@ from transformer_lens.pretrained.weight_conversions import (
 )
 from transformer_lens.supported_models import MODEL_ALIASES, OFFICIAL_MODEL_NAMES
 from transformer_lens.utilities.hf_utils import get_rotary_pct_from_config
+from transformer_lens.utilities.quantization import quantization_method
 
 NON_HF_HOSTED_MODEL_NAMES = [
     "llama-7b-hf",
@@ -139,7 +140,9 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
     else:
         official_model_name = get_official_model_name(model_name)
 
-    # Load HuggingFace model config
+    # Load HuggingFace model config. Stays None on the name-based branches
+    # below, which infer the architecture from the model name and never fetch.
+    hf_config: Any = None
     if "llama" in official_model_name.lower():
         architecture = "LlamaForCausalLM"
     elif "gemma-3" in official_model_name.lower() or "medgemma" in official_model_name.lower():
@@ -1592,6 +1595,9 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
         raise NotImplementedError(f"{architecture} is not currently supported.")
     # All of these models use LayerNorm
     cfg_dict["original_architecture"] = architecture
+    # Carried on the cfg so the loader can act on the quantization without a
+    # second AutoConfig fetch (which would be a Hub round trip per load).
+    cfg_dict["quantization_method"] = quantization_method(hf_config)
     # The name such that AutoTokenizer.from_pretrained works
     cfg_dict["tokenizer_name"] = official_model_name
     if kwargs.get("trust_remote_code", False):
@@ -1788,6 +1794,13 @@ def get_pretrained_model_config(
 
     if hf_cfg is not None:
         cfg_dict["load_in_4bit"] = hf_cfg.get("quantization_config", {}).get("load_in_4bit", False)
+        # A user-supplied hf_model is the more authoritative source: it says how
+        # the weights in hand are actually stored, not how the Hub repo declares
+        # them. .get, not []: convert_neel_model_config builds cfg_dict without
+        # ever seeing an HF config, so the key need not be there.
+        cfg_dict["quantization_method"] = quantization_method(hf_cfg) or cfg_dict.get(
+            "quantization_method"
+        )
         cfg_dict["d_vocab"] = hf_cfg.get("vocab_size", cfg_dict["d_vocab"])
         if cfg_dict["original_architecture"] == "Qwen2ForCausalLM":
             rope_params = hf_cfg.get("rope_parameters", {}) or {}
@@ -1875,27 +1888,20 @@ def get_checkpoint_labels(model_name: str, **kwargs: Any) -> tuple[list[int], st
 
 
 # %% Loading state dicts
-def _mxfp4_dequantize_config(
-    official_model_name: str,
-    cfg: HookedTransformerConfig,
-    token: str | None,
-) -> Any | None:
-    """Return ``Mxfp4Config(dequantize=True)`` for packed-MXFP4 gpt-oss checkpoints.
+def _mxfp4_dequantize_config(cfg: HookedTransformerConfig) -> Any | None:
+    """Return ``Mxfp4Config(dequantize=True)`` for packed-MXFP4 checkpoints.
 
-    The gpt-oss weight converter slices expert tensors, which only works on
-    materialized torch.Tensors — packed MXFP4 weights stay wrapped in
-    triton-kernels objects. Returns None for anything else, including
-    already-dequantized gpt-oss finetunes.
+    Weight converters slice expert tensors, which only works on materialized
+    torch.Tensors — packed MXFP4 weights stay wrapped in triton-kernels objects.
+    Returns None for anything else, including already-dequantized finetunes.
+
+    Reads the method off ``cfg``, captured when the HF config was already loaded,
+    so this costs nothing. It used to short-circuit on
+    ``original_architecture == "GptOssForCausalLM"`` purely to avoid a second
+    AutoConfig fetch; with the fetch gone, the check applies to every
+    architecture — MXFP4 Qwen3-MoE checkpoints are in the registry too.
     """
-    if cfg.original_architecture != "GptOssForCausalLM":
-        return None
-    hf_cfg = AutoConfig.from_pretrained(official_model_name, token=token)
-    quant_cfg = getattr(hf_cfg, "quantization_config", None)
-    if isinstance(quant_cfg, dict):
-        quant_method = quant_cfg.get("quant_method")
-    else:
-        quant_method = getattr(quant_cfg, "quant_method", None)
-    if quant_method != "mxfp4":
+    if cfg.quantization_method != "mxfp4":
         return None
     return Mxfp4Config(dequantize=True)
 
@@ -2021,11 +2027,7 @@ def get_pretrained_state_dict(
                 )
             else:
                 if "quantization_config" not in kwargs:
-                    mxfp4_dequantize = _mxfp4_dequantize_config(
-                        official_model_name,
-                        cfg,
-                        huggingface_token if len(huggingface_token) > 0 else None,
-                    )
+                    mxfp4_dequantize = _mxfp4_dequantize_config(cfg)
                     if mxfp4_dequantize is not None:
                         kwargs = {**kwargs, "quantization_config": mxfp4_dequantize}
                 # Older models may lack pad_token_id (required in newer transformers)

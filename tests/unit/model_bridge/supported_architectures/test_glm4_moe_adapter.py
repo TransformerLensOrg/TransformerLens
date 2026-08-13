@@ -4,7 +4,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from tests.unit.model_bridge.supported_architectures.helpers import make_bridge_cfg
+from tests.unit.model_bridge.supported_architectures.helpers import (
+    DENSE_KEYS,
+    make_bridge_cfg,
+)
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion
 from transformer_lens.conversion_utils.conversion_steps.rearrange_tensor_conversion import (
@@ -191,7 +194,8 @@ class TestGlm4MoeComponentMapping:
         gate = mlp.submodules["gate"]
         assert isinstance(gate, LinearBridge)
         assert getattr(gate, "optional", False) is True
-        assert set(mlp.submodules.keys()) == {"gate", "dense_gate", "dense_in", "dense_out"}
+        # dense_* are covered by the roster in test_moe_dense_dispatch.py.
+        assert set(mlp.submodules) - DENSE_KEYS == {"gate"}
 
 
 class TestGlm4MoeComponentTypes:

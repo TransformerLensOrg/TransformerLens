@@ -11,6 +11,7 @@ from transformer_lens.model_bridge.generalized_components import (
 from transformer_lens.model_bridge.supported_architectures.llama import (
     LlamaArchitectureAdapter,
 )
+from transformer_lens.utilities.quantization import unreadable_weight_reason
 
 
 class _BitNetAttentionBridge(PositionEmbeddingsAttentionBridge):
@@ -46,3 +47,25 @@ class BitNetArchitectureAdapter(LlamaArchitectureAdapter):
         # standard LN folding and W_O centering do not model them.
         self.supports_fold_ln = False
         self.supports_center_writing_weights = False
+
+    def prepare_model(self, hf_model: Any) -> None:
+        """Refuse packed 1.58-bit checkpoints, which need BitNet dequant kernels.
+
+        The flagship microsoft/bitnet-b1.58-2B-4T stores `weight` as packed
+        uint8 with a collapsed first dim (out_features // 4) plus a separate
+        weight_scale, so every weight-space read reshapes it into a
+        wrong-but-plausible matrix rather than failing. The registry records
+        this checkpoint at 0% on the forward-pass phase for exactly that reason.
+        """
+        super().prepare_model(hf_model)
+        for name, module in hf_model.named_modules():
+            weight = getattr(module, "weight", None)
+            if weight is None:
+                continue
+            if unreadable_weight_reason(weight) is not None:
+                raise NotImplementedError(
+                    f"BitNet checkpoint stores packed weights ({name}); "
+                    "TransformerLens needs the dequantized sibling — use "
+                    "microsoft/bitnet-b1.58-2B-4T-bf16."
+                )
+            break

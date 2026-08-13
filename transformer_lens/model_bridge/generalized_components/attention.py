@@ -22,6 +22,7 @@ from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
 from transformer_lens.utilities.hf_utils import get_rotary_pct_from_config
+from transformer_lens.utilities.quantization import require_readable_weight
 
 
 class AttentionBridge(GeneralizedComponent):
@@ -331,6 +332,12 @@ class AttentionBridge(GeneralizedComponent):
         if hasattr(self, "k") and self.k is not None and hasattr(self.k, "hook_out"):
             k_reshape = ReshapeForAttentionHeads(n_kv_heads, d_head)
             self.k.hook_out.hook_conversion = k_reshape
+            # Subclasses that de-alias hook_k onto their own HookPoint (K-scaling
+            # architectures) need the same conversion, whichever order runs first.
+            if "hook_k" not in self.hook_aliases and isinstance(
+                getattr(self, "hook_k", None), HookPoint
+            ):
+                self.hook_k.hook_conversion = k_reshape
         if hasattr(self, "v") and self.v is not None and hasattr(self.v, "hook_out"):
             v_reshape = ReshapeForAttentionHeads(n_kv_heads, d_head)
             self.v.hook_out.hook_conversion = v_reshape
@@ -616,7 +623,11 @@ class AttentionBridge(GeneralizedComponent):
         """
         component = linear_bridge.original_component
         assert component is not None, "LinearBridge.original_component not set"
-        weight = component.weight
+        weight = require_readable_weight(
+            component.weight,
+            operation="project per head (use_split_qkv_input / use_attn_in)",
+            owner=component,
+        )
         bias = component.bias
         w3d = einops.rearrange(
             weight,
@@ -767,7 +778,9 @@ class AttentionBridge(GeneralizedComponent):
     @property
     def W_Q(self) -> torch.Tensor:
         """Get W_Q in 3D format [n_heads, d_model, d_head]."""
-        weight = self.q.weight
+        weight = require_readable_weight(
+            self.q.weight, operation=f"read W_Q from {self.name}", owner=self.q
+        )
         if weight.ndim == 2 and self.config is not None:
             return self._reshape_weight_to_3d(
                 weight, self._get_n_heads(), in_out_layout=self._weight_layout_in_out(self.q)
@@ -777,7 +790,9 @@ class AttentionBridge(GeneralizedComponent):
     @property
     def W_K(self) -> torch.Tensor:
         """Get W_K in 3D format [n_heads, d_model, d_head] (uses n_kv_heads for GQA)."""
-        weight = self.k.weight
+        weight = require_readable_weight(
+            self.k.weight, operation=f"read W_K from {self.name}", owner=self.k
+        )
         if weight.ndim == 2 and self.config is not None:
             return self._reshape_weight_to_3d(
                 weight,
@@ -789,7 +804,9 @@ class AttentionBridge(GeneralizedComponent):
     @property
     def W_V(self) -> torch.Tensor:
         """Get W_V in 3D format [n_heads, d_model, d_head] (uses n_kv_heads for GQA)."""
-        weight = self.v.weight
+        weight = require_readable_weight(
+            self.v.weight, operation=f"read W_V from {self.name}", owner=self.v
+        )
         if weight.ndim == 2 and self.config is not None:
             return self._reshape_weight_to_3d(
                 weight,
@@ -801,7 +818,9 @@ class AttentionBridge(GeneralizedComponent):
     @property
     def W_O(self) -> torch.Tensor:
         """Get W_O in 3D format [n_heads, d_head, d_model]."""
-        weight = self.o.weight
+        weight = require_readable_weight(
+            self.o.weight, operation=f"read W_O from {self.name}", owner=self.o
+        )
         if weight.ndim == 2 and self.config is not None:
             return self._reshape_weight_to_3d(
                 weight,

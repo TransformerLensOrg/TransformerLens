@@ -136,16 +136,24 @@ def test_router_weights_come_from_the_moe_gate(hf_model, state_dict) -> None:
     )
 
 
-def test_quantized_expert_weights_are_refused(hf_model, tl_cfg) -> None:
-    """Slicing packed/scaled expert weights would silently drop their scales, so
-    the converter must refuse rather than emit plausible garbage."""
+@pytest.mark.parametrize(
+    "dtype,reason",
+    [
+        (torch.int8, "packed integer storage"),
+        (torch.uint8, "packed integer storage"),
+        # float8 reports is_floating_point=True, so a plain float check admits
+        # it — and it is the one family that slices without complaint.
+        (torch.float8_e4m3fn, "narrow float"),
+    ],
+)
+def test_quantized_expert_weights_are_refused(hf_model, tl_cfg, dtype, reason) -> None:
+    """Slicing packed or scale-separated expert weights would silently drop the
+    scales, so the converter must refuse rather than emit plausible garbage."""
     experts = hf_model.model.layers[0].mlp.experts
     original = experts.gate_up_proj
     try:
-        experts.gate_up_proj = torch.nn.Parameter(
-            original.detach().to(torch.int8), requires_grad=False
-        )
-        with pytest.raises(NotImplementedError, match="floating-point"):
+        experts.gate_up_proj = torch.nn.Parameter(original.detach().to(dtype), requires_grad=False)
+        with pytest.raises(NotImplementedError, match=reason):
             convert_mixtral_weights(hf_model, tl_cfg)
     finally:
         experts.gate_up_proj = original

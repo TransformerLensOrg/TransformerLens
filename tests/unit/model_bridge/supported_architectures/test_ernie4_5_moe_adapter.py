@@ -7,7 +7,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from tests.unit.model_bridge.supported_architectures.helpers import make_bridge_cfg
+from tests.unit.model_bridge.supported_architectures.helpers import (
+    DENSE_KEYS,
+    make_bridge_cfg,
+)
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.factories.architecture_adapter_factory import (
     SUPPORTED_ARCHITECTURES,
@@ -55,13 +58,8 @@ class TestErnie4_5MoeComponentMapping:
         sigmoid router is fully delegated."""
         mlp = adapter.component_mapping["blocks"].submodules["mlp"]
         assert isinstance(mlp, MoEBridge)
-        assert set(mlp.submodules) == {
-            "gate",
-            "shared_experts",
-            "dense_gate",
-            "dense_in",
-            "dense_out",
-        }
+        # dense_* are covered by the roster in test_moe_dense_dispatch.py.
+        assert set(mlp.submodules) - DENSE_KEYS == {"gate", "shared_experts"}
         assert mlp.submodules["gate"].optional is True
         shared = mlp.submodules["shared_experts"]
         assert isinstance(shared, GatedMLPBridge)

@@ -14,6 +14,7 @@ from transformer_lens.model_bridge.generalized_components.gated_mlp import (
     resolve_activation_fn,
 )
 from transformer_lens.model_bridge.generalized_components.linear import LinearBridge
+from transformer_lens.utilities.quantization import require_readable_weight
 
 
 class JointGateUpMLPBridge(GatedMLPBridge):
@@ -78,7 +79,13 @@ class JointGateUpMLPBridge(GatedMLPBridge):
         original_mlp_component: Any,
     ) -> tuple[torch.nn.Module, torch.nn.Module]:
         """Split gate_up_proj [2*d_mlp, d_model] into (gate, up) nn.Linear modules."""
-        fused_weight = original_mlp_component.gate_up_proj.weight
+        # Guard before the split: float8 slices and survives nn.Parameter()
+        # silently, producing scale-less projections with no error anywhere.
+        fused_weight = require_readable_weight(
+            original_mlp_component.gate_up_proj.weight,
+            operation="split a fused gate/up projection at boot",
+            owner=original_mlp_component.gate_up_proj,
+        )
         gate_w, up_w = torch.tensor_split(fused_weight, 2, dim=0)
         d_model = fused_weight.shape[1]
         d_mlp = gate_w.shape[0]

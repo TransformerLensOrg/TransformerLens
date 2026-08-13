@@ -2,6 +2,7 @@ import einops
 import torch
 
 from transformer_lens.config.hooked_transformer_config import HookedTransformerConfig
+from transformer_lens.utilities.quantization import require_readable_weight
 
 
 def convert_olmoe_weights(olmoe, cfg: HookedTransformerConfig):
@@ -52,8 +53,16 @@ def convert_olmoe_weights(olmoe, cfg: HookedTransformerConfig):
         #   down_proj: [num_experts, hidden_size, intermediate_size]
         # The gate_up_proj fuses gate and up projections along dim 1.
         experts = olmoe_layer.mlp.experts
-        gate_up = experts.gate_up_proj  # [num_experts, 2*d_mlp, d_model]
-        down = experts.down_proj  # [num_experts, d_model, d_mlp]
+        gate_up = require_readable_weight(
+            experts.gate_up_proj,
+            operation="convert OLMoE expert weights (gate_up_proj)",
+            owner=olmoe,
+        )  # [num_experts, 2*d_mlp, d_model]
+        down = require_readable_weight(
+            experts.down_proj,
+            operation="convert OLMoE expert weights (down_proj)",
+            owner=olmoe,
+        )  # [num_experts, d_model, d_mlp]
 
         for e in range(cfg.num_experts):
             # Split fused gate_up into gate and up projections

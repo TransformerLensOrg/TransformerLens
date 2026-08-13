@@ -18,7 +18,9 @@ def get_default_config():
     )
 
 
-def _config_with_architecture(architecture: str) -> HookedTransformerConfig:
+def _config_with_architecture(
+    architecture: str, quantization_method: str | None = None
+) -> HookedTransformerConfig:
     return HookedTransformerConfig(
         d_model=128,
         d_head=8,
@@ -28,50 +30,165 @@ def _config_with_architecture(architecture: str) -> HookedTransformerConfig:
         d_vocab=50257,
         attn_only=True,
         original_architecture=architecture,
+        quantization_method=quantization_method,
     )
 
 
 class TestMxfp4DequantizeConfig:
-    """Packed-MXFP4 gpt-oss checkpoints must load dequantized so the weight
-    converter sees plain torch.Tensors instead of triton-kernels wrappers (#1619)."""
+    """Packed-MXFP4 checkpoints must load dequantized so the weight converter
+    sees plain torch.Tensors instead of triton-kernels wrappers (#1619)."""
+
+    def test_mxfp4_gets_dequantize_config(self):
+        result = _mxfp4_dequantize_config(_config_with_architecture("GptOssForCausalLM", "mxfp4"))
+        assert result is not None
+        assert result.dequantize is True
+
+    def test_applies_beyond_gpt_oss(self):
+        """The architecture gate this used to carry existed only to dodge a
+        second AutoConfig fetch. MXFP4 Qwen3-MoE checkpoints are in the registry
+        and pack their experts the same way, so they must dequantize too."""
+        result = _mxfp4_dequantize_config(_config_with_architecture("Qwen3MoeForCausalLM", "mxfp4"))
+        assert result is not None
+        assert result.dequantize is True
+
+    def test_unquantized_finetune_untouched(self):
+        assert _mxfp4_dequantize_config(_config_with_architecture("GptOssForCausalLM")) is None
+
+    def test_other_quantizations_are_not_dequantized_here(self):
+        """Only MXFP4 has a dequantize-on-load path; the rest are refused later
+        by the converter guards, which give a better-targeted message."""
+        for method in ("bitsandbytes", "gptq", "awq", "fp8"):
+            assert (
+                _mxfp4_dequantize_config(_config_with_architecture("LlamaForCausalLM", method))
+                is None
+            )
 
     @mock.patch("transformer_lens.loading_from_pretrained.AutoConfig")
-    def test_mxfp4_gpt_oss_gets_dequantize_config(self, mock_auto_config: mock.MagicMock):
-        mock_auto_config.from_pretrained.return_value = SimpleNamespace(
+    def test_costs_no_hub_round_trip(self, mock_auto_config: mock.MagicMock):
+        """The whole point of carrying the method on the cfg: this runs on every
+        load, and a fetch here would be a Hub HEAD request per model load."""
+        _mxfp4_dequantize_config(_config_with_architecture("GptOssForCausalLM", "mxfp4"))
+        mock_auto_config.from_pretrained.assert_not_called()
+
+
+class TestQuantizationMethodCapture:
+    """`convert_hf_model_config` must record the checkpoint's quant_method while
+    the HF config is in hand — that capture is what lets the loader act on the
+    quantization without refetching."""
+
+    @pytest.mark.parametrize(
+        "quantization_config",
+        [
+            {"quant_method": "mxfp4"},
+            SimpleNamespace(quant_method="mxfp4"),
+        ],
+        ids=["dict-style", "object-style"],
+    )
+    def test_capture_handles_both_config_shapes(self, quantization_config):
+        from transformer_lens.utilities.quantization import quantization_method
+
+        assert (
+            quantization_method(SimpleNamespace(quantization_config=quantization_config)) == "mxfp4"
+        )
+
+    def test_unquantized_config_captures_none(self):
+        from transformer_lens.utilities.quantization import quantization_method
+
+        assert quantization_method(SimpleNamespace()) is None
+        assert quantization_method(None) is None
+
+    @staticmethod
+    def _gpt2_shaped_config(**extra):
+        """The attributes convert_hf_model_config's GPT2 branch reads, so the
+        real function can run without touching the Hub."""
+        return SimpleNamespace(
+            architectures=["GPT2LMHeadModel"],
+            n_embd=128,
+            n_head=4,
+            n_layer=2,
+            n_ctx=1024,
+            layer_norm_epsilon=1e-5,
+            vocab_size=50257,
+            activation_function="gelu_new",
+            scale_attn_by_inverse_layer_idx=False,
+            **extra,
+        )
+
+    @mock.patch("transformer_lens.loading_from_pretrained.AutoConfig")
+    def test_convert_hf_model_config_records_the_method(self, mock_auto_config: mock.MagicMock):
+        """The wiring, not just the extractor: without this the loader would
+        silently stop dequantizing MXFP4 and the converter would raise instead."""
+        from transformer_lens.loading_from_pretrained import convert_hf_model_config
+
+        mock_auto_config.from_pretrained.return_value = self._gpt2_shaped_config(
             quantization_config={"quant_method": "mxfp4"}
         )
-        result = _mxfp4_dequantize_config(
-            "openai/gpt-oss-20b", _config_with_architecture("GptOssForCausalLM"), None
-        )
-        assert result is not None
-        assert result.dequantize is True
+        assert convert_hf_model_config("gpt2")["quantization_method"] == "mxfp4"
 
     @mock.patch("transformer_lens.loading_from_pretrained.AutoConfig")
-    def test_object_style_quantization_config(self, mock_auto_config: mock.MagicMock):
-        mock_auto_config.from_pretrained.return_value = SimpleNamespace(
-            quantization_config=SimpleNamespace(quant_method="mxfp4")
-        )
-        result = _mxfp4_dequantize_config(
-            "openai/gpt-oss-20b", _config_with_architecture("GptOssForCausalLM"), None
-        )
-        assert result is not None
-        assert result.dequantize is True
+    def test_convert_hf_model_config_records_none_when_unquantized(
+        self, mock_auto_config: mock.MagicMock
+    ):
+        from transformer_lens.loading_from_pretrained import convert_hf_model_config
+
+        mock_auto_config.from_pretrained.return_value = self._gpt2_shaped_config()
+        assert convert_hf_model_config("gpt2")["quantization_method"] is None
 
     @mock.patch("transformer_lens.loading_from_pretrained.AutoConfig")
-    def test_unquantized_gpt_oss_finetune_untouched(self, mock_auto_config: mock.MagicMock):
-        mock_auto_config.from_pretrained.return_value = SimpleNamespace()
-        result = _mxfp4_dequantize_config(
-            "someone/gpt-oss-finetune-bf16", _config_with_architecture("GptOssForCausalLM"), None
+    def test_user_supplied_hf_model_config_wins(self, mock_auto_config: mock.MagicMock):
+        """A user passing hf_model= says how the weights in hand are stored,
+        which can differ from the Hub repo's declaration (they may have loaded
+        it dequantized, or quantized one that ships in bf16)."""
+        mock_auto_config.from_pretrained.return_value = self._gpt2_shaped_config()
+
+        cfg = get_pretrained_model_config(
+            "gpt2", hf_cfg={"quantization_config": {"quant_method": "bitsandbytes"}}
         )
-        assert result is None
+        assert cfg.quantization_method == "bitsandbytes"
 
     @mock.patch("transformer_lens.loading_from_pretrained.AutoConfig")
-    def test_non_gpt_oss_skips_config_fetch(self, mock_auto_config: mock.MagicMock):
-        result = _mxfp4_dequantize_config(
-            "gpt2", _config_with_architecture("GPT2LMHeadModel"), None
+    def test_unquantized_hf_model_does_not_erase_the_repo_method(
+        self, mock_auto_config: mock.MagicMock
+    ):
+        """hf_cfg is often present but carries no quantization_config at all;
+        that absence must not wipe what the repo config declared."""
+        mock_auto_config.from_pretrained.return_value = self._gpt2_shaped_config(
+            quantization_config={"quant_method": "mxfp4"}
         )
-        assert result is None
-        mock_auto_config.from_pretrained.assert_not_called()
+
+        cfg = get_pretrained_model_config("gpt2", hf_cfg={"vocab_size": 50257})
+        assert cfg.quantization_method == "mxfp4"
+
+    @mock.patch("transformer_lens.loading_from_pretrained.convert_neel_model_config")
+    def test_config_builders_that_never_see_an_hf_config(self, mock_neel: mock.MagicMock):
+        """Not every cfg_dict comes from convert_hf_model_config.
+
+        `convert_neel_model_config` builds one from the model name alone, so the
+        quantization_method key is simply absent — reading it with [] raised
+        KeyError and broke every NeelNanda load.
+        """
+        mock_neel.return_value = {
+            "d_model": 128,
+            "d_head": 8,
+            "n_heads": 16,
+            "n_ctx": 128,
+            "n_layers": 1,
+            "d_vocab": 50257,
+            "attn_only": True,
+            "original_architecture": "neel",
+        }
+
+        cfg = get_pretrained_model_config("NeelNanda/SoLU_2L512W_C4_Code", hf_cfg={})
+        assert cfg.quantization_method is None
+
+    def test_name_based_architecture_branches_capture_none(self):
+        """Llama/gemma names never fetch a config, so nothing is there to read.
+        Pinned because the field must be present-and-None rather than missing —
+        HookedTransformerConfig.from_dict passes cfg_dict through unfiltered."""
+        from transformer_lens.loading_from_pretrained import convert_hf_model_config
+
+        cfg_dict = convert_hf_model_config("llama-7b-hf")
+        assert cfg_dict["quantization_method"] is None
 
 
 # Successes

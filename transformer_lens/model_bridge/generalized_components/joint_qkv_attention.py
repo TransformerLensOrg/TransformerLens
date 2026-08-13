@@ -18,6 +18,7 @@ from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
 from transformer_lens.model_bridge.generalized_components.linear import LinearBridge
+from transformer_lens.utilities.quantization import require_readable_weight
 
 
 class JointQKVAttentionBridge(AttentionBridge):
@@ -230,8 +231,14 @@ class JointQKVAttentionBridge(AttentionBridge):
 
         qkv_component = getattr(original_attention_component, qkv_name)
 
-        qkv_weights = qkv_component.weight
-        assert isinstance(qkv_weights, torch.Tensor)
+        # Before the tensor_split/nn.Parameter below: int8 and uint8 would die
+        # there with an opaque "Only Tensors of floating point ... can require
+        # gradients", and float8 would split SILENTLY into scale-less pieces.
+        qkv_weights = require_readable_weight(
+            qkv_component.weight,
+            operation="split a fused QKV projection at boot",
+            owner=qkv_component,
+        )
 
         # Original qkv_weights shape: [d_model, 3 * d_model]
         # Split into three equal parts along dimension 1 to get Q, K, V weights
