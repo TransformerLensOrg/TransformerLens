@@ -49,6 +49,14 @@ def tiny_deepseek_v2_bridge():
 
 
 @pytest.fixture(scope="module")
+def tiny_deepseek_v2_bridge_compat():
+    """V2-full with compatibility mode enabled without mutating shared state."""
+    bridge = _make_bridge(q_lora_rank=64)
+    bridge.enable_compatibility_mode(no_processing=True)
+    return bridge
+
+
+@pytest.fixture(scope="module")
 def tiny_deepseek_v2_lite_bridge():
     """V2-Lite: q_lora_rank=None — direct Q projection, no LoRA compression."""
     return _make_bridge(q_lora_rank=None)
@@ -123,6 +131,43 @@ class TestDeepSeekV2DenseVsMoELayers:
             assert f"blocks.{i}.mlp.hook_in" in cache
             assert f"blocks.{i}.mlp.hook_out" in cache
             assert not torch.isnan(cache[f"blocks.{i}.mlp.hook_out"]).any()
+
+    def test_dense_layer_compatibility_hooks_use_neuron_basis(self, tiny_deepseek_v2_bridge_compat):
+        dense_mlp = tiny_deepseek_v2_bridge_compat.original_model.model.layers[0].mlp
+        captured = {}
+        handles = [
+            dense_mlp.gate_proj.register_forward_hook(
+                lambda _module, _args, output: captured.__setitem__("pre", output.detach())
+            ),
+            dense_mlp.up_proj.register_forward_hook(
+                lambda _module, _args, output: captured.__setitem__("pre_linear", output.detach())
+            ),
+            dense_mlp.down_proj.register_forward_pre_hook(
+                lambda _module, args: captured.__setitem__("post", args[0].detach())
+            ),
+        ]
+        try:
+            _, cache = tiny_deepseek_v2_bridge_compat.run_with_cache(_tokens())
+        finally:
+            for handle in handles:
+                handle.remove()
+
+        for hook, expected in {
+            "hook_pre": "pre",
+            "hook_pre_linear": "pre_linear",
+            "hook_post": "post",
+        }.items():
+            actual = cache[f"blocks.0.mlp.{hook}"]
+            assert actual.shape[-1] == 512
+            torch.testing.assert_close(actual, captured[expected])
+
+    def test_sparse_layer_compatibility_hooks_remain_block_boundaries(
+        self, tiny_deepseek_v2_bridge_compat
+    ):
+        _, cache = tiny_deepseek_v2_bridge_compat.run_with_cache(_tokens())
+        assert torch.equal(cache["blocks.1.mlp.hook_pre"], cache["blocks.1.mlp.hook_in"])
+        assert torch.equal(cache["blocks.1.mlp.hook_post"], cache["blocks.1.mlp.hook_out"])
+        assert "blocks.1.mlp.hook_pre_linear" not in cache
 
 
 class TestDeepSeekV2AttentionHooks:

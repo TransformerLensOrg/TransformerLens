@@ -29,6 +29,16 @@ from transformer_lens.model_bridge.generalized_components.base import (
 )
 
 
+class _DeepSeekV2MLPBridge(MoEBridge):
+    """Expose neuron-basis hooks on dense-prefix layers and MoE boundaries elsewhere."""
+
+    hook_aliases = {
+        "hook_pre": ["dense_gate.hook_out", "hook_in"],
+        "hook_pre_linear": "dense_in.hook_out",
+        "hook_post": ["dense_out.hook_in", "hook_out"],
+    }
+
+
 class DeepSeekV2ArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for DeepSeek V2 / V2-Lite / Coder-V2 models.
 
@@ -100,12 +110,15 @@ class DeepSeekV2ArchitectureAdapter(ArchitectureAdapter):
 
     def _build_mlp_bridge(self):
         """Routed MoE with optional shared experts; Youtu (all-dense) overrides."""
-        return MoEBridge(
+        return _DeepSeekV2MLPBridge(
             name="mlp",
             config=self.cfg,
             submodules={
                 # Router is a custom Module, not nn.Linear.
                 "gate": GeneralizedComponent(name="gate", optional=True),
                 "shared_experts": self._gated_mlp(name="shared_experts", optional=True),
+                "dense_gate": LinearBridge(name="gate_proj", optional=True),
+                "dense_in": LinearBridge(name="up_proj", optional=True),
+                "dense_out": LinearBridge(name="down_proj", optional=True),
             },
         )
