@@ -278,3 +278,28 @@ class TestArchitectureConfigs:
             raise
         assert cfg.original_architecture == "ApertusForCausalLM"
         assert cfg.act_fn == "xielu"
+
+    @pytest.mark.parametrize("use_parallel_residual", [True, False])
+    def test_gpt_neox_parallel_residual_follows_hf_config(
+        self, tmp_path, use_parallel_residual: bool
+    ):
+        """GPTNeoX ships sequential variants; parallel_attn_mlp must not be hardcoded."""
+        from transformers import GPTNeoXConfig
+
+        from transformer_lens.loading_from_pretrained import convert_hf_model_config
+
+        hf_config = GPTNeoXConfig(
+            vocab_size=128,
+            hidden_size=64,
+            intermediate_size=128,
+            num_hidden_layers=2,
+            num_attention_heads=4,
+            max_position_embeddings=128,
+            use_parallel_residual=use_parallel_residual,
+        )
+        hf_config.architectures = ["GPTNeoXForCausalLM"]
+        hf_config.save_pretrained(tmp_path)
+
+        cfg_dict = convert_hf_model_config(str(tmp_path))
+
+        assert cfg_dict["parallel_attn_mlp"] is use_parallel_residual

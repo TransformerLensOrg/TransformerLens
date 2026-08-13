@@ -17,8 +17,10 @@ residual-wiring pattern the bridge handles:
   output before the add, so the contributions are the norm outputs (the #1648 case)
 - mpt: residual added inside the HF MLP module only (attention adds at block level)
 
-Parallel-residual architectures (Falcon, GPT-J, NeoX, Cohere) are out of scope:
-they have no ``hook_resid_mid``.
+Parallel-residual architectures (Falcon, GPT-J, NeoX, Cohere) are out of scope
+here: they have no ``hook_resid_mid``. Their two-term identity
+(``resid_post == resid_pre + attn_out + mlp_out``) is covered by
+``test_parallel_residual_identities.py``.
 """
 
 import pytest
