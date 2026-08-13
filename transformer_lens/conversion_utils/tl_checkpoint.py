@@ -24,12 +24,13 @@ def convert_tl_checkpoint(
     Returns:
         State dict in native bridge format (keys like tok_embed.weight, layers.0.attn.q.weight)
 
-    Example:
-        >>> cfg = TransformerBridgeConfig(n_layers=8, d_model=512, ...)
-        >>> bridge = TransformerBridge.boot_native(cfg)
-        >>> tl_sd = torch.load("model.pth")
-        >>> native_sd = convert_tl_checkpoint(tl_sd, cfg)
-        >>> bridge.load_state_dict(native_sd)
+    Example::
+
+        cfg = TransformerBridgeConfig(n_layers=8, d_model=512, ...)
+        bridge = TransformerBridge.boot_native(cfg)
+        tl_sd = torch.load("model.pth")
+        native_sd = convert_tl_checkpoint(tl_sd, cfg)
+        bridge.load_state_dict(native_sd)
     """
     out = {}
     n_heads = cfg.n_heads
