@@ -3824,9 +3824,10 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         Converts HuggingFace format keys to TransformerLens format and filters out
         _original_component references and nested HuggingFace components.
 
-        This returns a clean state dict with only bridge component paths converted to TL format,
-        excluding nested HF components (like c_fc, c_proj, c_attn) that exist inside
-        original_component modules.
+        A direct no-argument call returns a clean state dict with bridge component
+        paths converted to TL format. Calls that supply ``destination`` or
+        ``prefix`` use standard ``nn.Module`` recursive semantics so a Bridge can
+        compose inside a parent module.
 
         Args:
             destination: Optional dict to store state dict in
@@ -3834,14 +3835,17 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             keep_vars: Whether to keep variables as Variables instead of tensors
 
         Returns:
-            Dict containing the state dict with TransformerLens format keys
+            Direct calls return TransformerLens-format keys; recursive calls
+            return the supplied destination with standard module-tree keys.
         """
-        if destination is not None:
-            raw_state_dict = self.original_model.state_dict(
-                destination=destination, prefix=prefix, keep_vars=keep_vars
+        if destination is not None or prefix:
+            return super().state_dict(
+                destination=destination,
+                prefix=prefix,
+                keep_vars=keep_vars,
             )
-        else:
-            raw_state_dict = self.original_model.state_dict(prefix=prefix, keep_vars=keep_vars)
+
+        raw_state_dict = self.original_model.state_dict(keep_vars=keep_vars)
 
         # Clean _original_component references and convert to TL format
         # Also filter out nested HuggingFace components that are wrapped by bridge components

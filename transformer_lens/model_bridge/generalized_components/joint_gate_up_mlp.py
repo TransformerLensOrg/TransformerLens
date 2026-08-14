@@ -60,6 +60,9 @@ class JointGateUpMLPBridge(GatedMLPBridge):
         self._activation_fn: Any = None
 
         self._register_state_dict_hook(JointGateUpMLPBridge._filter_gate_up_state_dict)
+        self.register_load_state_dict_pre_hook(
+            JointGateUpMLPBridge._restore_filtered_gate_up_state_dict
+        )
 
     @staticmethod
     def _filter_gate_up_state_dict(
@@ -73,6 +76,29 @@ class JointGateUpMLPBridge(GatedMLPBridge):
         keys_to_remove = [k for k in state_dict if k.startswith(gate_up_prefix)]
         for k in keys_to_remove:
             del state_dict[k]
+
+    @staticmethod
+    def _restore_filtered_gate_up_state_dict(
+        module: torch.nn.Module,
+        state_dict: Dict[str, Any],
+        prefix: str,
+        local_metadata: Dict[str, Any],
+        strict: bool,
+        missing_keys: list[str],
+        unexpected_keys: list[str],
+        error_msgs: list[str],
+    ) -> None:
+        """Insert current combined weights only to satisfy strict key matching.
+
+        Production checkpoints restore authoritative values through the unfiltered
+        Hugging Face ``_original_component`` path.
+        """
+        del local_metadata, strict, missing_keys, unexpected_keys, error_msgs
+        gate_up = module._modules.get("gate_up")
+        if gate_up is None:
+            return
+        for key, value in gate_up.state_dict(prefix=f"{prefix}gate_up.").items():
+            state_dict.setdefault(key, value)
 
     @staticmethod
     def _default_split_gate_up(
