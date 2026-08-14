@@ -6,6 +6,7 @@ from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.model_bridge.generalized_components import (
     DelegatedAttentionBlockBridge,
     EmbeddingBridge,
+    GatedMLPBridge,
     LinearBridge,
     RotaryEmbeddingBridge,
     UnembeddingBridge,
@@ -161,6 +162,12 @@ def test_moe_submodules_are_optional():
 
 def test_gated_mlp_decomposition():
     mlp = _adapter().component_mapping["blocks"].submodules["mlp"]
+    assert isinstance(mlp, GatedMLPBridge)
     assert mlp.submodules["gate"].name == "gate_proj"
     assert mlp.submodules["in"].name == "up_proj"
     assert mlp.submodules["out"].name == "down_proj"
+    assert mlp.hook_aliases == {
+        "hook_pre": "gate.hook_out",
+        "hook_pre_linear": "in.hook_out",
+        "hook_post": "out.hook_in",
+    }

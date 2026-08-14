@@ -98,3 +98,16 @@ def test_run_with_cache_text_only(bridge):
         logits, cache = bridge.run_with_cache(IDS)
     assert torch.isfinite(logits).all()
     assert len(cache) > 0
+
+
+def test_gated_mlp_hooks_are_available(bridge):
+    names = {
+        "blocks.0.mlp.hook_pre",
+        "blocks.0.mlp.hook_pre_linear",
+        "blocks.0.mlp.hook_post",
+    }
+    assert names <= bridge.hook_dict.keys()
+
+    with torch.no_grad():
+        _, cache = bridge.run_with_cache(IDS, names_filter=lambda name: name in names)
+    assert names == cache.keys()
