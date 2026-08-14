@@ -125,8 +125,9 @@ def get_bridge_params(bridge) -> Dict[str, torch.Tensor]:
             mlp_in = getattr(block.mlp, "in", None) or getattr(block.mlp, "input", None)
             if mlp_in is None:
                 raise AttributeError("MLP has no 'in' or 'input' attribute")
-            params_dict[f"blocks.{layer_idx}.mlp.W_in"] = mlp_in.weight
-            params_dict[f"blocks.{layer_idx}.mlp.W_out"] = block.mlp.out.weight
+            # Use normalized accessors for consistent TL orientation
+            params_dict[f"blocks.{layer_idx}.mlp.W_in"] = block.mlp.W_in
+            params_dict[f"blocks.{layer_idx}.mlp.W_out"] = block.mlp.W_out
             mlp_in_bias = mlp_in.bias
             if mlp_in_bias is not None:
                 params_dict[f"blocks.{layer_idx}.mlp.b_in"] = mlp_in_bias
@@ -145,7 +146,9 @@ def get_bridge_params(bridge) -> Dict[str, torch.Tensor]:
                     bridge.cfg.d_model, device=device, dtype=dtype
                 )
             if hasattr(block.mlp, "gate") and hasattr(block.mlp.gate, "weight"):
-                params_dict[f"blocks.{layer_idx}.mlp.W_gate"] = block.mlp.gate.weight
+                w_gate = block.mlp.W_gate
+                if w_gate is not None:
+                    params_dict[f"blocks.{layer_idx}.mlp.W_gate"] = w_gate
                 if hasattr(block.mlp.gate, "bias") and block.mlp.gate.bias is not None:
                     params_dict[f"blocks.{layer_idx}.mlp.b_gate"] = block.mlp.gate.bias
         except AttributeError:
