@@ -279,6 +279,9 @@ class TestViTPrepareModel:
         """No 'vit'/'deit'/'classifier' attribute — mimics bare ViTModel/DeiTModel."""
         return SimpleNamespace()
 
+    def _bare_model_with_pooler(self) -> object:
+        return SimpleNamespace(pooler=SimpleNamespace(dense=SimpleNamespace()))
+
     def _vit_for_classification(self) -> object:
         return SimpleNamespace(vit=SimpleNamespace(), classifier=SimpleNamespace())
 
@@ -304,6 +307,12 @@ class TestViTPrepareModel:
     def test_bare_model_has_no_unembed(self, adapter: ViTArchitectureAdapter) -> None:
         adapter.prepare_model(self._bare_model())
         assert "unembed" not in adapter.component_mapping
+
+    def test_bare_model_maps_pooler_without_root_name_collision(
+        self, adapter: ViTArchitectureAdapter
+    ) -> None:
+        adapter.prepare_model(self._bare_model_with_pooler())
+        assert adapter.component_mapping["vision_pooler"].name == "pooler.dense"
 
     def test_bare_model_does_not_require_encoder_attribute(
         self, adapter: ViTArchitectureAdapter
