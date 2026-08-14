@@ -530,12 +530,9 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
     def _collect_component_aliases(self, component_mapping, prefix="", _ancestors=frozenset()):
         """Recursively collect aliases from the architecture's component templates.
 
-        ``_ancestors`` holds the ids on the current path, cutting a component
-        reachable from itself (directly or mutually): the mapping is an
-        arbitrary object graph, and without the guard a cycle recurses until
-        RecursionError during hook-registry construction. Tracking the path
-        rather than every visited node keeps a component legitimately shared
-        under two names (a diamond) contributing aliases at both.
+        ``_ancestors`` is path-scoped, not globally-visited: a cycle is cut
+        (else RecursionError at boot) while a diamond-shared component still
+        contributes aliases under both names.
         """
         aliases: Dict[str, str] = {}
         if id(component_mapping) in _ancestors:
@@ -548,12 +545,9 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         else:
             if hasattr(component_mapping, "hook_aliases") and component_mapping.hook_aliases:
                 for alias_name, target in component_mapping.hook_aliases.items():
-                    # Fallback-list targets are skipped here: the consumer
-                    # (_compute_hook_aliases_cached) reverse-matches with
-                    # str.endswith and is lru_cached, so a list is neither
-                    # matchable nor hashable. Component-level lists resolve
-                    # through _collect_block_instance_aliases (block subtrees)
-                    # and _add_aliases_to_hooks (bridge level) instead.
+                    # Skip fallback-list targets: the lru_cached consumer
+                    # endswith-matches strings, so a list is neither matchable
+                    # nor hashable; lists resolve via the instance walks instead.
                     if not isinstance(target, str):
                         continue
                     full_alias = f"{prefix}.{alias_name}" if prefix else alias_name
@@ -614,17 +608,9 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
     def _collect_block_instance_aliases(self) -> Dict[str, str]:
         """Collect per-block-instance aliases, overriding template-derived ones.
 
-        The template collection above reads ``adapter.component_mapping`` and so
-        cannot see aliases a block rebinds per layer at bind time (heterogeneous
-        architectures like OlmoHybrid, MoEBridge's dense/sparse dispatch) or
-        prunes for absent optional submodules.
-
-        Memoized against (hook-registry size, alias generation): this walks
-        every block's submodule tree and hook_dict reads it on each access.
-        Size alone is not a sufficient key — a dense<->sparse rebind changes
-        what the aliases point at while leaving the registry the same size, so
-        the generation counter (bumped on every hook_aliases assignment) is
-        what makes a post-boot rebind visible here.
+        Templates cannot see per-layer rebinds (OlmoHybrid, MoE dense/sparse).
+        Memoized on (registry size, alias generation): size alone misses a
+        dense<->sparse rebind, which changes targets without changing size.
         """
         cache_key = (len(self._hook_registry), alias_generation())
         cached = self._block_alias_cache

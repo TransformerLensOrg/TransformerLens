@@ -403,14 +403,9 @@ class TestPhi3ExplicitHeadDim:
 
 
 class TestPhi3FusedSplitRefusesQuantizedWeights:
-    """The splitters Phi-3, GLM and GLM-4V actually install must refuse packed
-    or scale-separated weights.
-
-    A guard was added to the *default* splitters in JointQKVAttentionBridge /
-    JointGateUpMLPBridge, but every in-tree user overrides those defaults with
-    these two methods — so the guard had no reachable caller for this family.
-    FP8 is the case that matters: `tensor_split` and `nn.Parameter` both accept
-    it, so the split silently yields scale-less halves.
+    """The splitters Phi-3/GLM/GLM-4V actually install must refuse packed weights:
+    every in-tree user overrides the guarded defaults, and FP8 slices silently
+    into scale-less halves.
     """
 
     QUANTIZED = [

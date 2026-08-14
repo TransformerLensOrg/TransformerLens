@@ -24,12 +24,9 @@ EXPERTS_PER_TOKEN = 2
 
 @pytest.fixture(scope="module")
 def hf_model() -> OlmoeForCausalLM:
-    """Tiny OLMoE with AMPLIFIED weights.
-
-    Same reason as the Mixtral fixture: SiLU is near-linear at small magnitudes,
-    so `act(gate) * up ~= act(up) * gate` and a swapped gate/up mapping reads as
-    noise at HF's default init. Do not lower without re-measuring the negative
-    control in test_expert_weights_reproduce_hf_expert_output.
+    """Tiny OLMoE with AMPLIFIED weights — same reason as the Mixtral fixture:
+    SiLU near-linearity hides a swapped gate/up at default init. Do not lower
+    without re-measuring the negative control.
     """
     with torch.random.fork_rng(devices=[]):
         torch.manual_seed(0)
@@ -72,11 +69,8 @@ def tl_cfg() -> HookedTransformerConfig:
 
 
 def test_expert_weights_reproduce_hf_expert_output(hf_model, tl_cfg) -> None:
-    """The decisive check on the fused-projection split.
-
-    Shapes cannot catch a swapped gate/up — both halves are [d_mlp, d_model] —
-    so this compares numerically and carries a negative control proving the
-    swapped assignment would differ.
+    """Shapes cannot catch a swapped gate/up (both halves [d_mlp, d_model]);
+    compare numerically with a swap negative control.
     """
     state_dict = convert_olmoe_weights(hf_model, tl_cfg)
 

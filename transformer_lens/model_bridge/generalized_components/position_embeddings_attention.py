@@ -194,14 +194,9 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
     def _own_scaled_hook_k(self, hf_attn: torch.nn.Module) -> None:
         """Replace the ``hook_k`` alias with a real HookPoint when K is scaled.
 
-        Falcon-H1 multiplies K by a learned mup scalar between the projection
-        and RoPE, so the aliased ``hook_k`` (= ``k.hook_out``) reports a tensor
-        that never reaches attention, and a value written there is silently
-        rescaled on the way in. Same split Granite's residual_multiplier
-        established: the TL-semantic name carries the scaled tensor, the
-        module-shaped ``k.hook_out`` stays the raw projection.
-
-        No-op for every other architecture, which keeps the alias.
+        Aliased hook_k reported Falcon-H1's pre-key_multiplier tensor and
+        silently rescaled writes; the owned hook carries the scaled value while
+        ``k.hook_out`` stays raw (Granite's split). No-op elsewhere.
         """
         if getattr(hf_attn, "key_multiplier", None) is None:
             return
@@ -216,10 +211,8 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
     def _fire_scaled_hook_k(self, key_states: torch.Tensor) -> torch.Tensor:
         """Fire an owned ``hook_k`` on the flat 3D tensor, preserving input rank.
 
-        The split-qkv path arrives 4D; the hook_conversion presents 4D to the
-        user either way, and its revert only fires on 4D returns, so a 4D input
-        has to be flattened first or a hook that edits the tensor would hand
-        back a shape the RoPE call below cannot use.
+        A 4D input must flatten first: the conversion's revert only fires on 4D
+        returns, so an edited tensor would reach RoPE with the wrong rank.
         """
         if "hook_k" in self.hook_aliases or not hasattr(self, "hook_k"):
             return key_states

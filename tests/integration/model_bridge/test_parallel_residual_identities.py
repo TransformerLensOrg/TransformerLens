@@ -164,11 +164,8 @@ def test_sequential_variant_exposes_resid_mid(
 
 @pytest.mark.parametrize("use_parallel_residual", [True, False])
 def test_hf_use_parallel_residual_reaches_the_bridge_config(use_parallel_residual: bool) -> None:
-    """The adapter reads HF's own flag, so the passthrough must carry it.
-
-    Without it the adapter falls back to the derived ``parallel_attn_mlp``,
-    which is only correct while ``TransformerBridgeConfig`` keeps defaulting it
-    to ``False`` — the wiring should not rest on two defaults agreeing.
+    """The adapter reads HF's own flag, so the passthrough must carry it — the
+    wiring must not rest on two defaults happening to agree.
     """
     bridge, _ = _run(
         "GPTNeoXForCausalLM", GPTNeoXConfig, dict(_MHA, use_parallel_residual=use_parallel_residual)

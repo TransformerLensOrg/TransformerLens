@@ -118,11 +118,9 @@ class TestNeoxAdapterComponentMapping:
         assert isinstance(mapping["unembed"], UnembeddingBridge)
 
     def test_sequential_config_builds_plain_block_bridge(self) -> None:
-        """A caller-supplied config with parallel_attn_mlp=False must not get the parallel block.
-
-        Only HF-booted configs carry ``use_parallel_residual``; the
-        ``build_bridge_from_module(..., tl_config=...)`` path has to fall back
-        to ``parallel_attn_mlp`` or the sequential wiring loses hook_resid_mid.
+        """A caller-supplied config with parallel_attn_mlp=False must not get the
+        parallel block: only HF-booted configs carry use_parallel_residual, so the
+        tl_config path falls back or sequential wiring loses hook_resid_mid.
         """
         cfg = _make_cfg()
         cfg.parallel_attn_mlp = False

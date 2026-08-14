@@ -217,13 +217,9 @@ class TestOpenElmAdapterWeightConversions:
 
 
 class TestOpenElmFusedProjections:
-    """OpenELM fuses both QKV and gate+up, and the mapping ignored both.
-
-    `qkv_proj` is a single module, so the inherited hook_q/hook_k/hook_v aliases
-    could never resolve — they showed up as dead aliases in the resolution audit
-    (and per-layer head counts mean a uniform split would be wrong anyway).
-    `proj_1` fuses gate and up, so a plain MLPBridge served `hook_pre` as the
-    concatenated pre-GLU tensor with no `hook_pre_linear` at all.
+    """OpenELM fuses both QKV and gate+up: the inherited q/k/v aliases could
+    never resolve (dead-alias audit noise), and a plain MLPBridge served
+    hook_pre as the concatenated pre-GLU tensor with no hook_pre_linear.
     """
 
     @staticmethod
@@ -283,14 +279,9 @@ class TestOpenElmFusedProjections:
 
 
 class TestOpenElmFFNNumericalParity:
-    """The reconstructed FFN must match HF numerically, not just structurally.
-
-    JointGateUpMLPBridge has no delegation branch, so it always recomputes
-    act(gate)*up — and both activation sources missed OpenELM: the module
-    stores `self.act` (probe expected activation_fn/act_fn) and the config
-    spells it `activation_fn_name` (conversion probed four other names). The
-    silent fallback was cfg.act_fn's "relu" default: ~30% FFN divergence on
-    every load, invisible to structural tests.
+    """The reconstructed FFN must match HF numerically, not just structurally:
+    both activation sources missed OpenELM (`self.act`, `activation_fn_name`), so
+    the silent relu fallback ran ~30% off on every load, invisible structurally.
     """
 
     class _FFN(torch.nn.Module):

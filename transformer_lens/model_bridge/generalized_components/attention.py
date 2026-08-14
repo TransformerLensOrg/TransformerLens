@@ -625,15 +625,9 @@ class AttentionBridge(GeneralizedComponent):
     def _check_head_split_width(self, mat: torch.Tensor, n_heads: int) -> None:
         """Refuse a head split whose width disagrees with the model's geometry.
 
-        einops only needs the width to DIVIDE by n_heads, so a layer whose
-        per-layer geometry differs from the cfg scalar (gemma4's KV-shared and
-        K==V layers vary num_key_value_heads and head_dim per layer) would
-        factorize into wrong-shaped heads with no error. Wrong numbers must
-        not come out of a weight accessor silently.
-
-        MLA is the legitimate two-dim case: cfg.d_head is the QK head dim
-        while o_proj is n_heads * v_head_dim wide, so the bind-time
-        ``_v_head_dim`` (captured from the HF module) is an allowed width too.
+        einops only needs divisibility, so per-layer geometry (gemma4 KV-shared
+        layers) would factorize into wrong-shaped heads silently. MLA's
+        bind-time ``_v_head_dim`` is a legitimate second width (o_proj).
         """
         d_head = getattr(self.config, "d_head", None)
         if not d_head:

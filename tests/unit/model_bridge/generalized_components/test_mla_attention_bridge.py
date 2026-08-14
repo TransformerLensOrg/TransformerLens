@@ -187,12 +187,10 @@ class TestMLAAttentionBridgeForward:
 
 class TestMLAAttentionBridgeScaling:
     def test_bridge_tracks_hf_module_scaling(self, tiny_config, tiny_model):
-        """DeepSeek-V3 yarn configs set hf_attn.scaling to qk_head_dim^-0.5 * mscale^2;
-        the bridge must score with the module's scaling, not a recomputed base scale.
-
-        Eager attention plus an explicit 4D mask keeps parity tight enough
-        (~1e-6) that the ~mscale^2 effect on the output is well above tolerance —
-        a bridge that recomputes the base scale fails the assertion."""
+        """Yarn sets hf_attn.scaling to qk_head_dim^-0.5 * mscale^2; the bridge must
+        score with the module's scaling. Eager + explicit 4D mask keeps parity ~1e-6,
+        so the mscale^2 effect is decisive.
+        """
         import copy
 
         from transformers.models.deepseek_v3.modeling_deepseek_v3 import (

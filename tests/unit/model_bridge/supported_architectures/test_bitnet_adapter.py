@@ -75,23 +75,16 @@ class TestBitNetComponentMapping:
 
 
 class TestBitNetPackedCheckpointGuard:
-    """`prepare_model` must refuse packed 1.58-bit checkpoints.
-
-    The flagship microsoft/bitnet-b1.58-2B-4T stores `weight` as packed uint8
-    with a collapsed first dim plus a separate weight_scale, so every
-    weight-space read reshapes it into a wrong-but-plausible matrix instead of
-    failing — the registry records that checkpoint at 0% on the forward phase.
+    """prepare_model must refuse packed 1.58-bit checkpoints: weight-space reads
+    reshape packed uint8 into wrong-but-plausible matrices (the flagship
+    checkpoint sits at 0% on the forward phase for exactly that).
     """
 
     @staticmethod
     def _model(dtype, packed_shape=(8, 1)):
-        """Mirrors BitNet's real layout: a FLOAT embedding, then packed linears.
-
-        The embedding is load-bearing. BitNet leaves it unquantized and it sorts
-        first in named_modules(), so a guard that samples only the first
-        weight-bearing module inspects the one weight that is never packed. A
-        fixture whose only weight is the quantized one passes such a guard for
-        the wrong reason — which is exactly how the `break` survived review.
+        """Mirrors BitNet's real layout: a FLOAT embedding first, then packed linears.
+        The embedding is load-bearing — a guard sampling one module sees only it,
+        which is how the old `break` survived review.
         """
 
         class _Tiny(torch.nn.Module):

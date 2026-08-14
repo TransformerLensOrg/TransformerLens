@@ -276,11 +276,8 @@ class TestDeepSeekV3AdapterWeightConversions:
 
 
 class TestMLAWeightAccessorGeometry:
-    """W_O must factorize on MLA's two-head-dim geometry.
-
-    cfg.d_head is the QK head dim while o_proj is n_heads * v_head_dim wide —
-    a legitimate mismatch the width guard must allow (via the bind-time
-    _v_head_dim), while still refusing widths that fit neither dim.
+    """W_O must factorize on MLA's two-dim geometry (cfg.d_head is the QK dim,
+    o_proj is n_heads*v_head_dim) while still refusing widths fitting neither.
     """
 
     N_HEADS, QK_D_HEAD, V_HEAD_DIM, D_MODEL = 8, 16, 64, 256

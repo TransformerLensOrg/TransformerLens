@@ -241,12 +241,9 @@ class TestGraniteMoeHybridAdapterWeightConversions:
 
 
 class TestGraniteMoeHybridSharedMLPAndRouter:
-    """The shared MLP is fused SwiGLU, and the MoE router was unmapped.
-
-    `shared_mlp.input_linear` emits [gate | up] concatenated, so a plain
-    MLPBridge made `hook_pre` the 2*d_mlp pre-GLU tensor and offered no
-    `hook_pre_linear` — the neuron basis was unreachable. Separately, the
-    sparse block declared no submodules, so its router logits had no hook.
+    """shared_mlp.input_linear is fused [gate | up] (a plain MLPBridge made
+    hook_pre the 2*d_mlp pre-GLU tensor, no hook_pre_linear), and the sparse
+    block's router logits had no hook at all.
     """
 
     def test_shared_mlp_exposes_the_split_neuron_basis(self) -> None:

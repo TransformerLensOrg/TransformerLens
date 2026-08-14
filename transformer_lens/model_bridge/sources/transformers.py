@@ -72,12 +72,9 @@ def map_default_transformer_lens_config(hf_config):
 
     tl_config = copy.deepcopy(hf_config)
 
-    # transformers>=5.15 heterogeneous configs (e.g. Gemma 4) refuse global reads of
-    # registered per-layer attributes — the raise is not an AttributeError, so hasattr()
-    # does not suppress it. The view resolves any registered field to its majority-layer
-    # value, keeping every probe below safe regardless of which fields a future
-    # architecture registers; geometry fields needing full per-layer detail are
-    # handled explicitly first.
+    # transformers>=5.15 het configs raise (not AttributeError, so hasattr does
+    # NOT suppress it) on global reads of per-layer attrs; the view resolves
+    # them to majority-layer values so every probe below stays safe.
     het_attrs = per_layer_attr_names(raw_source_config)
     source_config = het_safe_view(raw_source_config)
 

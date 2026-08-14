@@ -49,11 +49,9 @@ def test_mixed_checkpoint_dense_and_sparse_mlp_hooks() -> None:
 
 
 def test_dense_layer_neuron_intervention_targets_gate_output() -> None:
-    """A write on the dense layer's hook_pre must be a write on the gate
-    projection's output — the #1645 complaint was precisely that no
-    neuron-basis intervention point existed on dense layers. (Pre-fix,
-    hook_pre aliased the MLP *input*, so zeroing it also moved logits —
-    equivalence with the gate target is what pins the semantics.)"""
+    """A write on hook_pre must be a write on the gate projection's output —
+    #1645's complaint was that dense layers had no neuron-basis intervention point.
+    """
     bridge = TransformerBridge.boot_transformers(MODEL_NAME, device="cpu", dtype=torch.float32)
     tokens = bridge.to_tokens("The quick brown fox jumps")
 

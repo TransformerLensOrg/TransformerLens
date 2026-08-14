@@ -49,19 +49,15 @@ def test_d_head_falls_back_to_derived_when_head_dim_is_none() -> None:
 
 
 class _AmbiguousAccessError(Exception):
-    """Stand-in for transformers>=5.15 AmbiguousGlobalPerLayerAttributeError.
-
-    Deliberately not an AttributeError: neither hasattr() nor getattr(..., default)
-    suppresses the real exception, which is the crash mode of issue #1647.
+    """Stand-in for transformers>=5.15 AmbiguousGlobalPerLayerAttributeError —
+    deliberately NOT an AttributeError, so hasattr()/getattr(default) cannot
+    suppress it (#1647's crash mode).
     """
 
 
 class _HeterogeneousConfig:
-    """Minimal transformers>=5.15 heterogeneous-config contract.
-
-    Exposes ``is_heterogeneous`` / ``per_layer_attributes`` / ``per_layer_config``
-    and raises a non-AttributeError on any global read of a registered per-layer
-    attribute, proving the mapping never performs the forbidden access.
+    """Minimal >=5.15 heterogeneous-config contract: raises a non-AttributeError
+    on any global read of a registered per-layer attribute.
     """
 
     def __init__(self, per_layer: dict, **global_fields: object) -> None:
@@ -221,10 +217,9 @@ def test_majority_value_semantics() -> None:
 
 
 def test_heterogeneous_config_through_bridge_config_build() -> None:
-    """Full boot pipeline (map → from_dict → passthrough) on a heterogeneous config.
-
-    intermediate_size is both per-layer here and in _HF_PASSTHROUGH_ATTRS, so the
-    passthrough loop must skip it rather than perform the raising global read.
+    """Full boot pipeline on a het config: intermediate_size is per-layer AND in
+    _HF_PASSTHROUGH_ATTRS, so the passthrough loop must skip it rather than
+    perform the raising global read.
     """
     config = _HeterogeneousConfig(
         per_layer={

@@ -277,17 +277,9 @@ def test_adapter_templates_bind_dense_layers_as_gated_mlps(architecture: str) ->
 
 @pytest.mark.parametrize("architecture", DENSE_AWARE_ARCHS)
 def test_dense_keys_read_the_projection_they_name(architecture: str) -> None:
-    """`dense_gate` must be the gate projection, not the up projection.
-
-    Both are [d_model, d_mlp] and both bind without complaint, so a
-    dense_gate/dense_in swap in an adapter survives every shape check, key-set
-    check and the binding guard above — while making `hook_pre` report the
-    wrong tensor under the right name. That is #1645's own confusion one level
-    in, so it is checked here, once, for every adapter, rather than in the two
-    that happened to have bespoke assertions.
-
-    Hooks the concrete targets rather than the aliases; that the aliases point
-    here is asserted by TestDenseBinding, and the two compose.
+    """dense_gate must be the GATE projection: a dense_gate/dense_in swap keeps
+    both shapes [d_model, d_mlp] and survives every key-set check while hook_pre
+    reports the wrong tensor. Checked here once, for every adapter.
     """
     cfg = make_bridge_cfg(architecture, d_head=8)
     adapter = ArchitectureAdapterFactory.select_architecture_adapter(cfg)
@@ -411,12 +403,9 @@ class TestSparseRequiredGuard:
             )
 
     def test_opting_in_is_what_makes_a_missing_router_loud(self) -> None:
-        """Differential on the opt-in alone: the SAME template shape and the SAME
-        module bind silently without `sparse_required` and raise with it.
-
-        Driven through the real setup_submodules so the skipped set is computed
-        rather than hand-fed — hand-feeding it would exercise the guard's body
-        while skipping the machinery that decides when the guard applies.
+        """Differential on the opt-in alone: the same bind is silent without
+        `sparse_required` and raises with it. Driven through the real
+        setup_submodules so the skipped set is computed, not hand-fed.
         """
         adapter = _adapter()
         module = _RenamedRouterSparseMoE()

@@ -182,13 +182,9 @@ class TestDownloadFileFromHf:
 
 
 class TestRemotePostInitCompat:
-    """4.x-era remote-code configs must survive 5.x's __post_init__ contract.
-
-    transformers>=5 replaces config __init__ with dataclass machinery that
-    delivers every non-base field via __post_init__(**extras); a 4.x-era
-    argless __post_init__ (OpenELM) crashes on the first kwarg — and its own
-    fields would never be set even if it didn't, since 4.x-era classes rely
-    on the base to setattr them.
+    """4.x-era remote configs define argless __post_init__, which >=5.x calls
+    with the class's own fields as kwargs — crashing, and (even if not) never
+    setting those fields, since 4.x classes relied on the base to setattr them.
     """
 
     @staticmethod
