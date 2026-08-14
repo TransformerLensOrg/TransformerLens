@@ -70,3 +70,35 @@ def wire_attention_bridge(
     setup_submodules(bridge, adapter, hf_attn)
     bridge.setup_hook_compatibility()
     return bridge
+
+
+class FakeDelegatedAttention(torch.nn.Module):
+    """HF-shaped attention for delegated (maintain_native_attention) bridges.
+
+    Routes through every projection (bridge hooks fire from inside the wrapped
+    submodules) and returns (attn_output, attn_weights[B, H, S, S]) as eager HF
+    attention does. GQA widths, and o_proj takes n_heads * d_head — the real
+    models expand KV to full heads before the output projection, and a
+    narrower fake makes ReshapeForAttentionHeads silently no-op on hook_z.
+    """
+
+    def __init__(self, d_model: int, n_heads: int, n_kv_heads: int, d_head: int) -> None:
+        super().__init__()
+        self.n_heads, self.n_kv_heads, self.d_head = n_heads, n_kv_heads, d_head
+        self.q_proj = torch.nn.Linear(d_model, n_heads * d_head, bias=False)
+        self.k_proj = torch.nn.Linear(d_model, n_kv_heads * d_head, bias=False)
+        self.v_proj = torch.nn.Linear(d_model, n_kv_heads * d_head, bias=False)
+        self.o_proj = torch.nn.Linear(n_heads * d_head, d_model, bias=False)
+        for name in ("q_norm", "k_norm", "v_norm"):
+            setattr(self, name, torch.nn.Identity())
+
+    def forward(self, hidden_states, *args, **kwargs):
+        batch, seq, _ = hidden_states.shape
+        self.q_norm(self.q_proj(hidden_states))
+        self.k_norm(self.k_proj(hidden_states))
+        value = self.v_norm(self.v_proj(hidden_states))
+        expanded = value.view(batch, seq, self.n_kv_heads, self.d_head).repeat_interleave(
+            self.n_heads // self.n_kv_heads, dim=2
+        )
+        weights = torch.softmax(torch.zeros(batch, self.n_heads, seq, seq), dim=-1)
+        return self.o_proj(expanded.reshape(batch, seq, -1)), weights

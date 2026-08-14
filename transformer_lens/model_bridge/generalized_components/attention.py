@@ -70,6 +70,7 @@ class AttentionBridge(GeneralizedComponent):
         is_cross_attention: bool = False,
         is_causal: bool = True,
         optional: bool = False,
+        fused_qkv: bool = False,
     ):
         """Initialize the attention bridge.
 
@@ -104,6 +105,15 @@ class AttentionBridge(GeneralizedComponent):
             conversion_rule=conversion_rule,
             optional=optional,
         )
+        if fused_qkv:
+            # A combined QKV projection has no q/k/v submodules for the class
+            # aliases to resolve against; leaving them in place produces dead
+            # aliases and resolution-audit noise (raven Wqkv, OpenELM qkv_proj).
+            self.hook_aliases = {
+                key: value
+                for key, value in type(self).hook_aliases.items()
+                if key not in {"hook_q", "hook_k", "hook_v"}
+            }
         self.hook_attn_scores = HookPoint()
         self.hook_pattern = HookPoint()
         self.hook_hidden_states = HookPoint()
@@ -590,6 +600,7 @@ class AttentionBridge(GeneralizedComponent):
                     else weight.shape[0] // n_heads
                 )
             mat = weight if in_out_layout else weight.T
+            self._check_head_split_width(mat, n_heads)
             return einops.rearrange(
                 mat, "(n_heads d_head) d_model -> n_heads d_head d_model", n_heads=n_heads
             )
@@ -597,9 +608,30 @@ class AttentionBridge(GeneralizedComponent):
         if in_out_layout is None:
             in_out_layout = weight.shape[0] % n_heads != 0
         mat = weight.T if in_out_layout else weight
+        self._check_head_split_width(mat, n_heads)
         return einops.rearrange(
             mat, "(n_heads d_head) d_model -> n_heads d_model d_head", n_heads=n_heads
         )
+
+    def _check_head_split_width(self, mat: torch.Tensor, n_heads: int) -> None:
+        """Refuse a head split whose width disagrees with cfg geometry.
+
+        einops only needs the width to DIVIDE by n_heads, so a layer whose
+        per-layer geometry differs from the cfg scalar (gemma4's KV-shared and
+        K==V layers vary num_key_value_heads and head_dim per layer) would
+        factorize into wrong-shaped heads with no error. Wrong numbers must
+        not come out of a weight accessor silently.
+        """
+        d_head = getattr(self.config, "d_head", None)
+        if d_head and mat.shape[0] != n_heads * d_head:
+            raise ValueError(
+                f"Cannot split {tuple(mat.shape)} weight on '{self.name}' into "
+                f"{n_heads} heads of d_head={d_head}: this layer's attention "
+                "geometry differs from the config-level scalars (per-layer "
+                "num_key_value_heads/head_dim, e.g. gemma4 KV-shared or K==V "
+                "layers). Read the wrapped module's weight directly for this "
+                "layer instead."
+            )
 
     def _project_per_head_qkv(
         self,

@@ -12,7 +12,9 @@ from typing import Any
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
     AltUpBlockBridge,
+    AttentionBridge,
     EmbeddingBridge,
+    GatedMLPBridge,
     LinearBridge,
     RotaryEmbeddingBridge,
     UnembeddingBridge,
@@ -20,6 +22,23 @@ from transformer_lens.model_bridge.generalized_components import (
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
+
+
+class _SparsityPreservingGatedMLPBridge(GatedMLPBridge):
+    """GatedMLPBridge that always delegates, even under processed weights.
+
+    Gemma3nTextMLP applies `_gaussian_topk` activation sparsity (0.95 on the
+    first layers of E2B/E4B) before the activation; the functional
+    processed-weights branch computes plain act(gate)*up and inflates those
+    layers' output ~10x. Delegation stays numerically correct in compat mode
+    because set_processed_weights has already written the processed tensors
+    into the wrapped Linears — and the gate/in/out hooks still fire from
+    inside HF's forward, which is all the bridge swap wanted.
+    """
+
+    def set_processed_weights(self, weights, verbose: bool = False) -> None:
+        super().set_processed_weights(weights, verbose=verbose)
+        self._use_processed_weights = False
 
 
 class Gemma3nArchitectureAdapter(ArchitectureAdapter):
@@ -76,8 +95,16 @@ class Gemma3nArchitectureAdapter(ArchitectureAdapter):
                     "laurel": GeneralizedComponent(name="laurel"),
                     "per_layer_input_gate": GeneralizedComponent(name="per_layer_input_gate"),
                     "per_layer_projection": GeneralizedComponent(name="per_layer_projection"),
-                    "self_attn": GeneralizedComponent(
+                    # AttentionBridge for the hook surface a bare component lacks
+                    # (per-head q/k/v/z, weight accessors). Delegated semantics:
+                    # HF computes attention, so hook_pattern AND hook_attn_scores
+                    # both fire the returned post-softmax weights (no pre-softmax
+                    # tensor exists here, unlike gemma1/2/3), and writes to them
+                    # do not affect the output.
+                    "self_attn": AttentionBridge(
                         name="self_attn",
+                        config=self.cfg,
+                        maintain_native_attention=True,
                         submodules={
                             "q": LinearBridge(name="q_proj"),
                             # The last num_kv_shared_layers layers reuse earlier KV and
@@ -90,8 +117,9 @@ class Gemma3nArchitectureAdapter(ArchitectureAdapter):
                             "v_norm": GeneralizedComponent(name="v_norm", optional=True),
                         },
                     ),
-                    "mlp": GeneralizedComponent(
+                    "mlp": _SparsityPreservingGatedMLPBridge(
                         name="mlp",
+                        config=self.cfg,
                         submodules={
                             "gate": LinearBridge(name="gate_proj"),
                             "in": LinearBridge(name="up_proj"),

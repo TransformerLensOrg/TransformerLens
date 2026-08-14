@@ -142,9 +142,16 @@ class RWKV7ArchitectureAdapter(ArchitectureAdapter):
                     # Channel-mixing: token-shifted squared-ReLU MLP. Delegated
                     # passthrough exposing the up ("key") and down ("value")
                     # projections. HF confusingly names the output proj "value".
+                    # NOT MLPBridge (cf. rwkv4): its hook_in pre-fire would
+                    # suppress key.hook_in, the post-token-shift input — the one
+                    # interesting tensor here. Aliases give hook_pre/hook_post.
                     "ffn": GeneralizedComponent(
                         name="ffn",
                         config=self.cfg,
+                        hook_alias_overrides={
+                            "hook_pre": "key.hook_out",
+                            "hook_post": "value.hook_in",
+                        },
                         submodules={
                             "key": LinearBridge(name="key"),
                             "value": LinearBridge(name="value"),

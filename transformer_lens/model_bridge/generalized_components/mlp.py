@@ -108,6 +108,18 @@ class MLPBridge(GeneralizedComponent):
         Returns:
             Output hidden states
         """
+        if self.name is None:
+            # Containerless MLP (OPT/XGLM/BART/BERT: fc1/fc2 sit directly on
+            # the decoder layer): component setup binds the PARENT LAYER as
+            # original_component, so delegating from here would silently run
+            # the whole layer — attention included — and return its output
+            # under the mlp name. HF-driven execution reaches fc1/fc2 through
+            # their own LinearBridges; a direct call has no correct target.
+            raise RuntimeError(
+                f"{type(self).__name__} is containerless (name=None) — calling it "
+                "directly would execute the whole parent layer. Call the block, "
+                "or use the in/out submodules and their hooks."
+            )
         hidden_states = args[0]
         hidden_states = self.hook_in(hidden_states)
         in_module = getattr(self, "in", None) or getattr(self, "input", None)

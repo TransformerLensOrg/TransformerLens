@@ -20,7 +20,6 @@ from transformer_lens.model_bridge.generalized_components import (
     LinearBridge,
     NormalizationBridge,
     PosEmbedBridge,
-    SymbolicBridge,
     UnembeddingBridge,
 )
 from transformer_lens.model_bridge.sources.transformers import (
@@ -161,7 +160,8 @@ class TestBartEncoderBlock:
 
     def test_encoder_mlp_uses_symbolic_fc1_fc2(self, adapter: BartArchitectureAdapter) -> None:
         mlp = _encoder_block(adapter).submodules["mlp"]
-        assert isinstance(mlp, SymbolicBridge)
+        assert mlp.name is None
+        assert mlp.hook_aliases == {"hook_pre": "in.hook_out", "hook_post": "out.hook_in"}
         assert set(mlp.submodules) == {"in", "out"}
         assert mlp.submodules["in"].name == "fc1"
         assert mlp.submodules["out"].name == "fc2"
@@ -219,7 +219,8 @@ class TestBartDecoderBlock:
 
     def test_decoder_mlp_uses_symbolic_fc1_fc2(self, adapter: BartArchitectureAdapter) -> None:
         mlp = _decoder_block(adapter).submodules["mlp"]
-        assert isinstance(mlp, SymbolicBridge)
+        assert mlp.name is None
+        assert mlp.hook_aliases == {"hook_pre": "in.hook_out", "hook_post": "out.hook_in"}
         assert set(mlp.submodules) == {"in", "out"}
         assert mlp.submodules["in"].name == "fc1"
         assert mlp.submodules["out"].name == "fc2"

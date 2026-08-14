@@ -112,7 +112,7 @@ class ProcessWeights:
     ) -> str:
         """Resolve a bridge-style key to the actual key in the state_dict.
 
-        Some architectures (e.g., OPT with SymbolicBridge) store parameters
+        Some architectures (e.g., BD3LM's symbolic attention) store parameters
         with HF-style prefixes instead of bridge-style prefixes. This method
         handles the key resolution by falling back to a suffix search.
 

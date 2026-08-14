@@ -13,6 +13,8 @@ from transformer_lens.model_bridge.generalized_components import (
     EmbeddingBridge,
     GatedMLPBridge,
     LinearBridge,
+    MoEBridge,
+    MoERouterBridge,
     PositionEmbeddingsAttentionBridge,
     RMSNormalizationBridge,
     RotaryEmbeddingBridge,
@@ -74,6 +76,19 @@ class GraniteArchitectureAdapter(ArchitectureAdapter):
     def _build_mlp_bridge(self) -> GatedMLPBridge:
         """Build the dense gated MLP bridge."""
         return self._gated_mlp()
+
+    def _build_moe_bridge(self) -> MoEBridge:
+        """Sparse MoE block with a hookable router.
+
+        logits_index=-1: GraniteMoe-family routers return
+        (top_k_index, top_k_weights, router_logits) — index 0 is an int64
+        index tensor, so the default would hook the wrong element.
+        """
+        return MoEBridge(
+            name="block_sparse_moe",
+            config=self.cfg,
+            submodules={"gate": MoERouterBridge(name="router", logits_index=-1)},
+        )
 
     def _build_component_mapping(self) -> dict:
         """Build the full component mapping for dense Granite."""

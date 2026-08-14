@@ -277,6 +277,11 @@ def map_default_transformer_lens_config(hf_config):
     elif hasattr(source_config, "activation_type"):
         activation_type = source_config.activation_type
         tl_config.act_fn = getattr(activation_type, "value", activation_type)
+    elif getattr(source_config, "activation_fn_name", None) is not None:
+        # OpenELM spells it activation_fn_name ("swish"); without this the
+        # cfg keeps the "relu" default and reconstructed FFNs silently
+        # diverge ~30% from HF.
+        tl_config.act_fn = source_config.activation_fn_name
     if hasattr(source_config, "rope_theta"):
         tl_config.rotary_base = source_config.rope_theta
     if hasattr(source_config, "weight_tying"):
@@ -610,7 +615,10 @@ def boot(
             )
         revision = _resolve_checkpoint_to_revision(model_name, checkpoint_index, checkpoint_value)
     # Pass HF token for gated model access (e.g. meta-llama/*)
-    from transformer_lens.utilities.hf_utils import get_hf_token
+    from transformer_lens.utilities.hf_utils import (
+        autoconfig_with_remote_post_init_compat,
+        get_hf_token,
+    )
 
     _hf_token = get_hf_token()
     if hf_model is not None:
@@ -618,8 +626,12 @@ def boot(
         # is a Hub repo ID, but the model is already loaded locally.
         hf_config = copy.deepcopy(hf_model.config)
     else:
-        hf_config = AutoConfig.from_pretrained(
+        # Compat wrapper: 4.x-era remote-code configs (OpenELM) define an
+        # argless __post_init__ that 5.x's dataclass machinery calls with the
+        # class's own fields as kwargs — unloadable without the shim.
+        hf_config = autoconfig_with_remote_post_init_compat(
             model_name,
+            auto_config=AutoConfig,
             output_attentions=True,
             trust_remote_code=trust_remote_code,
             token=_hf_token,

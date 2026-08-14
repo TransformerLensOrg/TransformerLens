@@ -1,8 +1,13 @@
 """OPT architecture adapter."""
 
-from typing import Any
+from typing import Any, Iterator
+
+import torch
 
 from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion
+from transformer_lens.conversion_utils.conversion_steps.base_tensor_conversion import (
+    BaseTensorConversion,
+)
 from transformer_lens.conversion_utils.param_processing_conversion import (
     ParamProcessingConversion,
 )
@@ -12,15 +17,90 @@ from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
     LinearBridge,
+    MLPBridge,
     NormalizationBridge,
     PosEmbedBridge,
-    SymbolicBridge,
     UnembeddingBridge,
 )
 
 
+class _UnflattenTokens(BaseTensorConversion):
+    """Restore [batch, seq, d] on hooks inside OPT's flattened region.
+
+    OPTDecoderLayer reshapes hidden states to [batch*seq, d] before
+    final_layer_norm/fc1/fc2 and back only after the residual add, so the MLP
+    and ln2 hooks would otherwise fire 2D — silently wrong for
+    position-indexed patching, crashing for `b s d` einops. The block stamps
+    the live (batch, seq) at each forward entry; runs only while user hooks
+    are attached.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.batch_seq: tuple[int, int] | None = None
+
+    def handle_conversion(self, input_value, *full_context):
+        bs = self.batch_seq
+        if (
+            bs is not None
+            and isinstance(input_value, torch.Tensor)
+            and input_value.dim() == 2
+            and input_value.shape[0] == bs[0] * bs[1]
+        ):
+            return input_value.view(bs[0], bs[1], input_value.shape[-1])
+        return input_value
+
+    def revert(self, input_value, *full_context):
+        bs = self.batch_seq
+        if (
+            bs is not None
+            and isinstance(input_value, torch.Tensor)
+            and input_value.dim() == 3
+            and tuple(input_value.shape[:2]) == bs
+        ):
+            # reshape (not view) — hooks may return non-contiguous tensors
+            return input_value.reshape(-1, input_value.shape[-1])
+        return input_value
+
+
+class _OptBlockBridge(BlockBridge):
+    """BlockBridge that stamps (batch, seq) onto the unflatten conversions."""
+
+    def forward(self, *args: Any, **kwargs: Any) -> Any:
+        hidden = args[0] if args else kwargs.get("hidden_states")
+        if isinstance(hidden, torch.Tensor) and hidden.dim() == 3:
+            batch_seq = (hidden.shape[0], hidden.shape[1])
+            for conversion in self._unflatten_conversions():
+                conversion.batch_seq = batch_seq
+        return super().forward(*args, **kwargs)
+
+    def _unflatten_conversions(self) -> Iterator[_UnflattenTokens]:
+        for key in ("mlp", "ln2"):
+            component = self.submodules.get(key)
+            if component is None:
+                continue
+            members = [component, *getattr(component, "submodules", {}).values()]
+            for member in members:
+                for hook_name in ("hook_in", "hook_out"):
+                    hook_point = getattr(member, hook_name, None)
+                    conversion = getattr(hook_point, "hook_conversion", None)
+                    if isinstance(conversion, _UnflattenTokens):
+                        yield conversion
+
+
 class OptArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for OPT models."""
+
+    @staticmethod
+    def _with_unflatten(component: Any) -> Any:
+        """Attach _UnflattenTokens to the component's (and submodules') hooks."""
+        members = [component, *getattr(component, "submodules", {}).values()]
+        for member in members:
+            for hook_name in ("hook_in", "hook_out"):
+                hook_point = getattr(member, hook_name, None)
+                if hook_point is not None and hook_point.hook_conversion is None:
+                    hook_point.hook_conversion = _UnflattenTokens()
+        return component
 
     def __init__(self, cfg: Any) -> None:
         """Initialize the OPT architecture adapter."""
@@ -66,8 +146,11 @@ class OptArchitectureAdapter(ArchitectureAdapter):
         self.component_mapping = {
             "embed": EmbeddingBridge(name="model.decoder.embed_tokens"),
             "pos_embed": PosEmbedBridge(name="model.decoder.embed_positions"),
-            "blocks": BlockBridge(
+            "blocks": _OptBlockBridge(
                 name="model.decoder.layers",
+                # fc2 IS the mlp output (no container fires hook_out). No
+                # hook_mlp_in override: pre-norm, the block already provides it.
+                hook_alias_overrides={"hook_mlp_out": "mlp.out.hook_out"},
                 submodules={
                     "ln1": NormalizationBridge(
                         name="self_attn_layer_norm",
@@ -86,19 +169,24 @@ class OptArchitectureAdapter(ArchitectureAdapter):
                             "o": LinearBridge(name="out_proj"),
                         },
                     ),
-                    "ln2": NormalizationBridge(
-                        name="final_layer_norm",
-                        config=self.cfg,
-                        use_native_layernorm_autograd=True,
+                    "ln2": self._with_unflatten(
+                        NormalizationBridge(
+                            name="final_layer_norm",
+                            config=self.cfg,
+                            use_native_layernorm_autograd=True,
+                        )
                     ),
-                    # OPT has fc1/fc2 directly on the block, not in an MLP container.
-                    # Use SymbolicBridge to maintain TransformerLens structure while
-                    # correctly mapping to the underlying architecture.
-                    "mlp": SymbolicBridge(
-                        submodules={
-                            "in": LinearBridge(name="fc1"),
-                            "out": LinearBridge(name="fc2"),
-                        },
+                    # Containerless fc1/fc2, as BERT. ln2/fc1/fc2 run inside
+                    # HF's [batch*seq, d] region — hence the unflatten wrap.
+                    "mlp": self._with_unflatten(
+                        MLPBridge(
+                            name=None,
+                            config=self.cfg,
+                            submodules={
+                                "in": LinearBridge(name="fc1"),
+                                "out": LinearBridge(name="fc2"),
+                            },
+                        )
                     ),
                 },
             ),
