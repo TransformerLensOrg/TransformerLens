@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-07-31T10:36:39.286088",
+  "last_updated": "2026-08-14T15:51:08.675104",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -21055,6 +21055,226 @@
       "model_id": "google/vit-base-patch16-224",
       "architecture_id": "ViTForImageClassification",
       "verified_date": "2026-07-31",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "apple/OpenELM-270M",
+      "architecture_id": "OpenELMForCausalLM",
+      "verified_date": "2026-08-14",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues, low text quality: P2=76.9% (failed: generation, generation_with_kv_cache, multiple_generation_calls); P3=94.7% (failed: attention_output_centering)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "apple/OpenELM-270M-Instruct",
+      "architecture_id": "OpenELMForCausalLM",
+      "verified_date": "2026-08-14",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues, low text quality: P2=76.9% (failed: generation, generation_with_kv_cache, multiple_generation_calls); P3=94.7% (failed: attention_output_centering)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "apple/OpenELM-450M-Instruct",
+      "architecture_id": "OpenELMForCausalLM",
+      "verified_date": "2026-08-14",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues, low text quality: P2=76.9% (failed: generation, generation_with_kv_cache, multiple_generation_calls); P3=94.7% (failed: attention_output_centering)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "apple/OpenELM-1_1B",
+      "architecture_id": "OpenELMForCausalLM",
+      "verified_date": "2026-08-14",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues, low text quality: P2=76.9% (failed: generation, generation_with_kv_cache, multiple_generation_calls); P3=94.7% (failed: attention_output_centering)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "apple/OpenELM-1_1B-Instruct",
+      "architecture_id": "OpenELMForCausalLM",
+      "verified_date": "2026-08-14",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues, low text quality: P2=76.9% (failed: generation, generation_with_kv_cache, multiple_generation_calls); P3=94.7% (failed: attention_output_centering)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "apple/OpenELM-3B",
+      "architecture_id": "OpenELMForCausalLM",
+      "verified_date": "2026-08-14",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues, low text quality: P2=76.9% (failed: generation, generation_with_kv_cache, multiple_generation_calls); P3=94.7% (failed: attention_output_centering)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "apple/OpenELM-3B-Instruct",
+      "architecture_id": "OpenELMForCausalLM",
+      "verified_date": "2026-08-14",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues, low text quality: P2=76.9% (failed: generation, generation_with_kv_cache, multiple_generation_calls); P3=94.7% (failed: attention_output_centering)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "apple/OpenELM-270M",
+      "architecture_id": "OpenELMForCausalLM",
+      "verified_date": "2026-08-14",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P3=94.7% (failed: attention_output_centering)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "apple/OpenELM-270M-Instruct",
+      "architecture_id": "OpenELMForCausalLM",
+      "verified_date": "2026-08-14",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P3=94.7% (failed: attention_output_centering)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "apple/OpenELM-450M-Instruct",
+      "architecture_id": "OpenELMForCausalLM",
+      "verified_date": "2026-08-14",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P3=94.7% (failed: attention_output_centering)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "apple/OpenELM-1_1B",
+      "architecture_id": "OpenELMForCausalLM",
+      "verified_date": "2026-08-14",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P3=94.7% (failed: attention_output_centering)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "apple/OpenELM-1_1B-Instruct",
+      "architecture_id": "OpenELMForCausalLM",
+      "verified_date": "2026-08-14",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P3=94.7% (failed: attention_output_centering)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "apple/OpenELM-3B",
+      "architecture_id": "OpenELMForCausalLM",
+      "verified_date": "2026-08-14",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P3=94.7% (failed: attention_output_centering)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "apple/OpenELM-3B-Instruct",
+      "architecture_id": "OpenELMForCausalLM",
+      "verified_date": "2026-08-14",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P3=94.7% (failed: attention_output_centering)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "apple/OpenELM-270M",
+      "architecture_id": "OpenELMForCausalLM",
+      "verified_date": "2026-08-14",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "apple/OpenELM-270M-Instruct",
+      "architecture_id": "OpenELMForCausalLM",
+      "verified_date": "2026-08-14",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "apple/OpenELM-450M-Instruct",
+      "architecture_id": "OpenELMForCausalLM",
+      "verified_date": "2026-08-14",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "apple/OpenELM-1_1B",
+      "architecture_id": "OpenELMForCausalLM",
+      "verified_date": "2026-08-14",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "apple/OpenELM-1_1B-Instruct",
+      "architecture_id": "OpenELMForCausalLM",
+      "verified_date": "2026-08-14",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "apple/OpenELM-3B",
+      "architecture_id": "OpenELMForCausalLM",
+      "verified_date": "2026-08-14",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "apple/OpenELM-3B-Instruct",
+      "architecture_id": "OpenELMForCausalLM",
+      "verified_date": "2026-08-14",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "apple/OpenELM-270M",
+      "architecture_id": "OpenELMForCausalLM",
+      "verified_date": "2026-08-14",
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Full verification completed",

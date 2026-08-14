@@ -17,9 +17,8 @@ from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapt
 from transformer_lens.model_bridge.generalized_components import (
     EmbeddingBridge,
     GatedRMSNormBridge,
+    JointGateUpMLPBridge,
     LinearBridge,
-    MLPBridge,
-    MoEBridge,
     RMSNormalizationBridge,
     RotaryEmbeddingBridge,
     ScaledResidualBlockBridge,
@@ -85,11 +84,17 @@ class GraniteMoeHybridArchitectureAdapter(GraniteArchitectureAdapter):
             "ln2": RMSNormalizationBridge(name="post_attention_layernorm", config=self.cfg),
             "attn": self._build_attention_bridge(optional=True),
             "mixer": self._build_mamba_bridge(),
-            "shared_mlp": MLPBridge(
+            # Fused SwiGLU: input_linear emits [gate | up] concatenated, so a
+            # plain MLPBridge made hook_pre the 2*d_mlp pre-GLU tensor and gave
+            # no hook_pre_linear at all. JointGateUpMLPBridge splits it and
+            # registers "gate"/"in" itself, so only "out" is declared here.
+            # input_linear is a fused [gate | up]; the parametrized default
+            # splitter handles it (guarded, bias-aware).
+            "shared_mlp": JointGateUpMLPBridge(
                 name="shared_mlp",
                 config=self.cfg,
+                fused_attr="input_linear",
                 submodules={
-                    "in": LinearBridge(name="input_linear"),
                     "out": LinearBridge(name="output_linear"),
                 },
             ),
@@ -99,10 +104,7 @@ class GraniteMoeHybridArchitectureAdapter(GraniteArchitectureAdapter):
             self.cfg, "num_local_experts", 0
         )
         if num_experts and num_experts > 0:
-            block_submodules["moe"] = MoEBridge(
-                name="block_sparse_moe",
-                config=self.cfg,
-            )
+            block_submodules["moe"] = self._build_moe_bridge()
 
         # HF multiplies each sublayer output by residual_multiplier before the
         # residual add. hook_attn_out fires on attention layers (mamba layers have

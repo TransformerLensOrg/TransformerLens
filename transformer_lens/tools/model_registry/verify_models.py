@@ -245,15 +245,17 @@ def estimate_model_params(model_id: str) -> int:
     Raises:
         Exception: If config cannot be fetched or parsed
     """
-    from transformers import AutoConfig
 
     from transformer_lens.loading_from_pretrained import NEED_REMOTE_CODE_MODELS
 
     _all_remote_prefixes = NEED_REMOTE_CODE_MODELS + _BRIDGE_REMOTE_CODE_PREFIXES
     trust_remote_code = any(model_id.startswith(prefix) for prefix in _all_remote_prefixes)
-    from transformer_lens.utilities.hf_utils import get_hf_token
+    from transformer_lens.utilities.hf_utils import (
+        autoconfig_with_remote_post_init_compat,
+        get_hf_token,
+    )
 
-    config = AutoConfig.from_pretrained(
+    config = autoconfig_with_remote_post_init_compat(
         model_id, trust_remote_code=trust_remote_code, token=get_hf_token()
     )
 

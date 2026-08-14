@@ -31,6 +31,7 @@ from typing import Any
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
+    AttentionBridge,
     DelegatedAttentionBlockBridge,
     EmbeddingBridge,
     LinearBridge,
@@ -131,8 +132,15 @@ class Gemma4ArchitectureAdapter(ArchitectureAdapter):
                     "post_feedforward_layernorm_2": GeneralizedComponent(
                         name="post_feedforward_layernorm_2", optional=True
                     ),
-                    "attn": GeneralizedComponent(
+                    # AttentionBridge for the hook surface a bare component lacks
+                    # (per-head q/k/v/z, weight accessors). Delegated semantics:
+                    # pattern and scores both fire HF's post-softmax weights
+                    # (no pre-softmax tensor exists here, unlike gemma1/2/3),
+                    # and writes to them do not affect the output.
+                    "attn": AttentionBridge(
                         name="self_attn",
+                        config=self.cfg,
+                        maintain_native_attention=True,
                         submodules={
                             "q": LinearBridge(name="q_proj"),
                             # KV-shared layers (E2B/E4B) drop k/v projections and norms;

@@ -25,6 +25,15 @@ from transformer_lens.utilities.hf_utils import get_rotary_pct_from_config
 from transformer_lens.utilities.quantization import require_readable_weight
 
 
+class PerLayerGeometryError(ValueError):
+    """A weight accessor refused a head split on per-layer attention geometry.
+
+    Dedicated type so callers with a raw-weight fallback (the centering
+    benchmark) catch exactly this and nothing else — a generic ValueError
+    catch would silently mask unrelated accessor regressions.
+    """
+
+
 class AttentionBridge(GeneralizedComponent):
     """Bridge component for attention layers.
 
@@ -70,6 +79,7 @@ class AttentionBridge(GeneralizedComponent):
         is_cross_attention: bool = False,
         is_causal: bool = True,
         optional: bool = False,
+        fused_qkv: bool = False,
     ):
         """Initialize the attention bridge.
 
@@ -104,6 +114,15 @@ class AttentionBridge(GeneralizedComponent):
             conversion_rule=conversion_rule,
             optional=optional,
         )
+        if fused_qkv:
+            # A combined QKV projection has no q/k/v submodules for the class
+            # aliases to resolve against; leaving them in place produces dead
+            # aliases and resolution-audit noise (raven Wqkv, OpenELM qkv_proj).
+            self.hook_aliases = {
+                key: value
+                for key, value in type(self).hook_aliases.items()
+                if key not in {"hook_q", "hook_k", "hook_v"}
+            }
         self.hook_attn_scores = HookPoint()
         self.hook_pattern = HookPoint()
         self.hook_hidden_states = HookPoint()
@@ -590,6 +609,7 @@ class AttentionBridge(GeneralizedComponent):
                     else weight.shape[0] // n_heads
                 )
             mat = weight if in_out_layout else weight.T
+            self._check_head_split_width(mat, n_heads)
             return einops.rearrange(
                 mat, "(n_heads d_head) d_model -> n_heads d_head d_model", n_heads=n_heads
             )
@@ -597,8 +617,40 @@ class AttentionBridge(GeneralizedComponent):
         if in_out_layout is None:
             in_out_layout = weight.shape[0] % n_heads != 0
         mat = weight.T if in_out_layout else weight
+        self._check_head_split_width(mat, n_heads)
         return einops.rearrange(
             mat, "(n_heads d_head) d_model -> n_heads d_model d_head", n_heads=n_heads
+        )
+
+    def _check_head_split_width(self, mat: torch.Tensor, n_heads: int) -> None:
+        """Refuse a head split whose width disagrees with the model's geometry.
+
+        einops only needs the width to DIVIDE by n_heads, so a layer whose
+        per-layer geometry differs from the cfg scalar (gemma4's KV-shared and
+        K==V layers vary num_key_value_heads and head_dim per layer) would
+        factorize into wrong-shaped heads with no error. Wrong numbers must
+        not come out of a weight accessor silently.
+
+        MLA is the legitimate two-dim case: cfg.d_head is the QK head dim
+        while o_proj is n_heads * v_head_dim wide, so the bind-time
+        ``_v_head_dim`` (captured from the HF module) is an allowed width too.
+        """
+        d_head = getattr(self.config, "d_head", None)
+        if not d_head:
+            return
+        allowed_dims = {d_head}
+        v_head_dim = getattr(self, "_v_head_dim", None)
+        if v_head_dim:
+            allowed_dims.add(v_head_dim)
+        if mat.shape[0] % n_heads == 0 and mat.shape[0] // n_heads in allowed_dims:
+            return
+        raise PerLayerGeometryError(
+            f"Cannot split {tuple(mat.shape)} weight on '{self.name}' into "
+            f"{n_heads} heads of d_head in {sorted(allowed_dims)}: this "
+            "layer's attention geometry differs from the config-level scalars "
+            "(per-layer num_key_value_heads/head_dim, e.g. gemma4 KV-shared "
+            "or K==V layers). Read the wrapped module's weight directly for "
+            "this layer instead."
         )
 
     def _project_per_head_qkv(
