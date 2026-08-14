@@ -12,7 +12,6 @@ from transformer_lens.model_bridge.generalized_components.base import (
 from transformer_lens.utilities.quantization import require_readable_weight
 
 
-
 def weight_layout_in_out(proj: Any) -> Optional[bool]:
     """Whether proj's wrapped module stores its weight as [in, out].
 
