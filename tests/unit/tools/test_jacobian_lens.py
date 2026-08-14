@@ -18,7 +18,11 @@ from transformer_lens.model_bridge.generalized_components import AltUpBlockBridg
 from transformer_lens.model_bridge.supported_architectures.deepseek_v4 import (
     DeepseekV4BlockBridge,
 )
-from transformer_lens.tools.analysis import JacobianLens
+from transformer_lens.tools.analysis import (
+    JacobianLens,
+    JSpaceDecomposition,
+    get_sparse_decomposition,
+)
 from transformer_lens.utilities.activation_functions import apply_softcap
 
 D_MODEL = 6
@@ -1278,3 +1282,112 @@ class TestRegistry:
 
         assert len(set(filenames)) == 1, "All three aliases should resolve to the same filename"
         assert filenames[0].endswith("gpt2_jacobian_lens.pt")
+
+
+def test_lens_vector_dictionary_matches_lens_vectors_and_caches(toy_model: _ToyBridge) -> None:
+    """The full-vocabulary dictionary equals lens_vectors over every token, is cached per
+    (layer, device), and is released by clear_device_cache."""
+    torch.manual_seed(0)
+    d_model = toy_model.cfg.d_model
+    layer = 1
+    lens = JacobianLens({layer: torch.randn(d_model, d_model)}, n_prompts=1, d_model=d_model)
+    d_vocab = toy_model.W_U.shape[1]
+
+    dictionary = lens.lens_vector_dictionary(toy_model, layer)
+    assert dictionary.shape == (d_vocab, d_model)
+
+    all_vectors = lens.lens_vectors(toy_model, list(range(d_vocab)), layer)
+    assert torch.allclose(dictionary, all_vectors, atol=1e-5)
+
+    # cached: the same object is returned on a repeat call, and clearing releases it
+    assert lens.lens_vector_dictionary(toy_model, layer) is dictionary
+    lens.clear_device_cache()
+    assert lens.lens_vector_dictionary(toy_model, layer) is not dictionary
+
+
+def test_lens_vector_dictionary_rejects_unfitted_layer(toy_model: _ToyBridge) -> None:
+    """Requesting a layer the lens was not fitted at raises (delegated to _matrix_on)."""
+    d_model = toy_model.cfg.d_model
+    lens = JacobianLens({1: torch.randn(d_model, d_model)}, n_prompts=1, d_model=d_model)
+    with pytest.raises(ValueError):
+        lens.lens_vector_dictionary(toy_model, 0)  # layer 0 was not fitted
+
+
+def test_decompose_raw_activation_returns_jspace_decomposition(
+    toy_model: _ToyBridge, fitted_lens: JacobianLens
+) -> None:
+    """decompose on a raw activation vector runs the solver against the layer's dictionary."""
+    torch.manual_seed(0)
+    activation = torch.randn(toy_model.cfg.d_model)
+    result = fitted_lens.decompose(toy_model, activation, layer=0, k=3)
+    assert isinstance(result, JSpaceDecomposition)
+    # ``k`` is an upper bound: only active atoms are returned, as a subset of the selected set.
+    assert result.support.numel() <= result.selected_support.numel() <= 3
+    assert set(result.support.tolist()).issubset(set(result.selected_support.tolist()))
+    assert result.coordinates.numel() == result.support.numel()
+    assert (result.coordinates > 0).all()
+    assert result.j_space_component.shape == (toy_model.cfg.d_model,)
+
+
+def test_decompose_prompt_matches_manual_activation(
+    toy_model: _ToyBridge, fitted_lens: JacobianLens
+) -> None:
+    """decompose(prompt, position) decomposes the blocks.{layer}.hook_out activation at that
+    position -- identical to fetching it manually and decomposing directly."""
+    layer, position, k = 0, -1, 3
+    result = fitted_lens.decompose(toy_model, "a toy prompt", layer=layer, position=position, k=k)
+
+    tokens = toy_model.to_tokens("a toy prompt")
+    hook = f"blocks.{layer}.hook_out"
+    _, cache = toy_model.run_with_cache(tokens, names_filter=lambda name: name == hook)
+    activation = cache[hook][0, position, :]
+    dictionary = fitted_lens.lens_vector_dictionary(toy_model, layer)
+    expected = get_sparse_decomposition(activation.float(), dictionary, k)
+
+    assert torch.equal(result.support, expected.support)
+    assert torch.equal(result.selected_support, expected.selected_support)
+    assert torch.allclose(result.coordinates, expected.coordinates, atol=1e-5)
+
+
+def test_decompose_rejects_bad_inputs(toy_model: _ToyBridge, fitted_lens: JacobianLens) -> None:
+    d_model = toy_model.cfg.d_model
+    # a string with no position is neither a raw activation nor a positioned prompt
+    with pytest.raises(ValueError):
+        fitted_lens.decompose(toy_model, "a toy prompt", layer=0, k=3)
+    # raw activation of the wrong width
+    with pytest.raises(ValueError):
+        fitted_lens.decompose(toy_model, torch.randn(d_model + 1), layer=0, k=3)
+    # a batched prompt
+    with pytest.raises(ValueError):
+        fitted_lens.decompose(
+            toy_model, torch.zeros(2, 3, dtype=torch.long), layer=0, position=1, k=3
+        )
+    # a raw activation paired with a position is ambiguous
+    with pytest.raises(ValueError):
+        fitted_lens.decompose(toy_model, torch.randn(d_model), layer=0, position=0, k=3)
+
+
+def test_decompose_passes_algorithm_through(
+    toy_model: _ToyBridge, fitted_lens: JacobianLens
+) -> None:
+    """The wrapper forwards ``algorithm`` to the solver."""
+    torch.manual_seed(0)
+    activation = torch.randn(toy_model.cfg.d_model)
+    result = fitted_lens.decompose(
+        toy_model, activation, layer=0, k=3, algorithm="gradient_pursuit"
+    )
+    dictionary = fitted_lens.lens_vector_dictionary(toy_model, 0)
+    expected = get_sparse_decomposition(
+        activation.float(), dictionary, 3, algorithm="gradient_pursuit"
+    )
+    assert torch.equal(result.support, expected.support)
+    assert torch.equal(result.selected_support, expected.selected_support)
+    assert torch.allclose(result.coordinates, expected.coordinates, atol=1e-5)
+
+
+def test_decompose_rejects_unfitted_layer(toy_model: _ToyBridge, fitted_lens: JacobianLens) -> None:
+    """Decomposing at a layer the lens was not fitted at raises (the final layer is never fit)."""
+    with pytest.raises(ValueError):
+        fitted_lens.decompose(
+            toy_model, torch.randn(toy_model.cfg.d_model), layer=N_LAYERS - 1, k=3
+        )
