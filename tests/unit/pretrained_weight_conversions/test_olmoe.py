@@ -129,3 +129,22 @@ def test_quantized_expert_weights_are_refused(hf_model, tl_cfg, dtype, reason, t
             convert_olmoe_weights(hf_model, tl_cfg)
     finally:
         setattr(experts, tensor_name, original)
+
+
+@pytest.mark.parametrize(
+    "dtype,reason",
+    [
+        (torch.int8, "packed integer storage"),
+        (torch.float8_e4m3fn, "narrow float"),
+    ],
+)
+def test_quantized_router_weight_is_refused(hf_model, tl_cfg, dtype, reason) -> None:
+    """Same unguarded router read as Mixtral's, caught by the same guard."""
+    moe = hf_model.model.layers[0].mlp
+    original = moe.gate.weight
+    try:
+        moe.gate.weight = torch.nn.Parameter(original.detach().to(dtype), requires_grad=False)
+        with pytest.raises(NotImplementedError, match=reason):
+            convert_olmoe_weights(hf_model, tl_cfg)
+    finally:
+        moe.gate.weight = original

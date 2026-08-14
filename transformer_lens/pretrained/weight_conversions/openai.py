@@ -86,7 +86,12 @@ def convert_gpt_oss_weights(gpt_oss, cfg: HookedTransformerConfig):
             )
 
         # MoE - Router (GPT-OSS uses 'router' with bias)
-        state_dict[f"blocks.{l}.mlp.W_gate.weight"] = layer.mlp.router.weight
+        state_dict[f"blocks.{l}.mlp.W_gate.weight"] = require_readable_weight(
+            layer.mlp.router.weight,
+            operation="convert the gpt-oss router weight",
+            owner=gpt_oss,
+            remedy=_GPT_OSS_REMEDY,
+        )
         state_dict[f"blocks.{l}.mlp.W_gate.bias"] = layer.mlp.router.bias
 
         # MoE - Experts
@@ -95,9 +100,19 @@ def convert_gpt_oss_weights(gpt_oss, cfg: HookedTransformerConfig):
         #   down_proj: (num_experts, expert_dim, hidden_size)
         experts = layer.mlp.experts
         gate_up_proj = experts.gate_up_proj  # (num_experts, hidden_size, 2*expert_dim)
-        gate_up_bias = experts.gate_up_proj_bias  # (num_experts, 2*expert_dim)
+        gate_up_bias = require_readable_weight(
+            experts.gate_up_proj_bias,
+            operation=f"convert gpt-oss expert biases (blocks.{l}.mlp.experts.gate_up_proj_bias)",
+            owner=gpt_oss,
+            remedy=_GPT_OSS_REMEDY,
+        )  # (num_experts, 2*expert_dim)
         down_proj = experts.down_proj  # (num_experts, expert_dim, hidden_size)
-        down_bias = experts.down_proj_bias  # (num_experts, hidden_size)
+        down_bias = require_readable_weight(
+            experts.down_proj_bias,
+            operation=f"convert gpt-oss expert biases (blocks.{l}.mlp.experts.down_proj_bias)",
+            owner=gpt_oss,
+            remedy=_GPT_OSS_REMEDY,
+        )  # (num_experts, hidden_size)
 
         # Packed MXFP4 wraps these in a triton-kernels object (confusingly also
         # named "Tensor"), but int8 and FP8 gpt-oss finetunes slice without

@@ -85,9 +85,19 @@ class TestBitNetPackedCheckpointGuard:
 
     @staticmethod
     def _model(dtype, packed_shape=(8, 1)):
+        """Mirrors BitNet's real layout: a FLOAT embedding, then packed linears.
+
+        The embedding is load-bearing. BitNet leaves it unquantized and it sorts
+        first in named_modules(), so a guard that samples only the first
+        weight-bearing module inspects the one weight that is never packed. A
+        fixture whose only weight is the quantized one passes such a guard for
+        the wrong reason — which is exactly how the `break` survived review.
+        """
+
         class _Tiny(torch.nn.Module):
             def __init__(self) -> None:
                 super().__init__()
+                self.embed_tokens = torch.nn.Embedding(8, 4)
                 self.q_proj = torch.nn.Linear(4, 4, bias=False)
                 self.q_proj.weight = torch.nn.Parameter(
                     torch.zeros(*packed_shape, dtype=dtype), requires_grad=False
@@ -97,6 +107,18 @@ class TestBitNetPackedCheckpointGuard:
         # prepare_model's base implementation reads cfg.attn_implementation.
         model.config = SimpleNamespace(attn_implementation="eager")
         return model
+
+    def test_fixture_orders_the_float_embedding_first(self, adapter):
+        """Pins the property that makes the tests above meaningful: if the
+        packed weight were seen first, they would pass even with the guard
+        sampling a single module."""
+        weighted = [
+            (name, module.weight.dtype)
+            for name, module in self._model(torch.uint8).named_modules()
+            if getattr(module, "weight", None) is not None
+        ]
+        assert weighted[0][1].is_floating_point, weighted
+        assert any(not dtype.is_floating_point for _, dtype in weighted), weighted
 
     @pytest.mark.parametrize("dtype", [torch.uint8, torch.int8])
     def test_packed_weights_are_refused(self, adapter, dtype):

@@ -52,7 +52,12 @@ def convert_mixtral_weights(mixtral, cfg: HookedTransformerConfig):
         #   gate_up_proj: [num_experts, 2 * d_mlp, d_model]  (gate fused above up)
         #   down_proj:    [num_experts, d_model, d_mlp]
         moe = mixtral.model.layers[l].mlp
-        state_dict[f"blocks.{l}.mlp.W_gate.weight"] = moe.gate.weight
+        # Guarded like the experts below: load_state_dict accepts a SAME-SHAPE
+        # int8/FP8 router and silently casts it to float32, so nothing
+        # downstream catches it.
+        state_dict[f"blocks.{l}.mlp.W_gate.weight"] = require_readable_weight(
+            moe.gate.weight, operation="convert the Mixtral router weight", owner=mixtral
+        )
 
         experts = moe.experts
         gate_up = require_readable_weight(

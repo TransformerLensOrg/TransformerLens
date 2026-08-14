@@ -154,3 +154,92 @@ class TestBridgeAccessorsAreGuarded:
 
         with pytest.raises(NotImplementedError, match="W_Q"):
             _ = bridge.W_Q
+
+
+class TestBitsandbytesParameterSubclassIsNamed:
+    """bitsandbytes' Params4bit and Int8Params are nn.Parameter SUBCLASSES.
+
+    The class-name fallback used to be gated behind `not isinstance(weight,
+    nn.Parameter)`, which excluded exactly the classes it was written to
+    identify. transformers keys off the same two class names.
+    """
+
+    class _Params4bit(torch.nn.Parameter):
+        """Stands in for bitsandbytes; the real package is an optional extra."""
+
+    def test_parameter_subclass_is_named(self) -> None:
+        owner = nn.Linear(2, 2)
+        owner.weight = self._Params4bit(torch.zeros(2, 2))
+        assert describe_quantization(owner) == "_Params4bit"
+
+    def test_plain_parameter_stays_unknown(self) -> None:
+        """The negative control: an ordinary weight must not be reported as a
+        quantization method named 'Parameter'."""
+        assert describe_quantization(nn.Linear(2, 2)) == "an unknown quantization"
+
+    def test_hf_config_still_wins(self) -> None:
+        class _Owner:
+            class config:
+                class quantization_config:
+                    quant_method = "bitsandbytes"
+
+        owner = _Owner()
+        owner.weight = self._Params4bit(torch.zeros(2, 2))
+        assert describe_quantization(owner) == "bitsandbytes"
+
+
+class TestProcessWeightsScansBatchedMoEParameters:
+    """`process_weights` must see batched-MoE expert tensors.
+
+    Its guard filtered `named_parameters()` with `name.endswith(".weight")`,
+    but on transformers 5.x every batched-MoE family (Mixtral, OLMoE, gpt-oss)
+    stores experts as Parameters named `mlp.experts.gate_up_proj` /
+    `down_proj` — no `.weight` suffix — so the tensors the converters were
+    guarded for were the exact ones this filter skipped.
+
+    Calls the unbound method against a stub carrying only `original_model`:
+    the guard is the first statement in the body, so the raise happens before
+    anything else is touched. The no-raise direction needs no stub — every
+    bridge test in the suite runs process_weights on float weights.
+    """
+
+    @staticmethod
+    def _stub(dtype):
+        class _Experts(torch.nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                # Batched expert layout: a Parameter that is NOT named *.weight.
+                self.gate_up_proj = torch.nn.Parameter(
+                    torch.zeros(2, 8, 4, dtype=dtype), requires_grad=False
+                )
+
+        class _Stub:
+            original_model = _Experts()
+
+        return _Stub()
+
+    @pytest.mark.parametrize(
+        "dtype,reason",
+        [
+            (torch.int8, "packed integer storage"),
+            (torch.uint8, "packed integer storage"),
+            (torch.float8_e4m3fn, "narrow float"),
+        ],
+    )
+    def test_batched_expert_parameters_are_scanned(self, dtype, reason) -> None:
+        from transformer_lens.model_bridge.bridge import TransformerBridge
+
+        with pytest.raises(NotImplementedError, match=reason):
+            TransformerBridge.process_weights(self._stub(dtype))
+
+    def test_float_batched_experts_pass_the_guard(self) -> None:
+        """Positive control on the guard itself: a float batched Parameter must
+        not trip it (it then fails later, on the real processing this stub
+        cannot supply — which is why only the guard's verdict is asserted)."""
+        from transformer_lens.model_bridge.bridge import TransformerBridge
+
+        with pytest.raises(Exception) as excinfo:
+            TransformerBridge.process_weights(self._stub(torch.float32))
+        assert not isinstance(excinfo.value, NotImplementedError) or "cannot" not in str(
+            excinfo.value
+        )

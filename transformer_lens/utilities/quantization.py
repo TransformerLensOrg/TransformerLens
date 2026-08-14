@@ -106,9 +106,13 @@ def describe_quantization(owner: Any) -> str:
         if method is not None:
             return method
     weight = getattr(owner, "weight", None)
-    if weight is not None and not isinstance(weight, torch.nn.Parameter):
+    if weight is not None:
+        # Exclude the two uninformative names rather than nn.Parameter itself:
+        # bitsandbytes' Params4bit and Int8Params ARE Parameter subclasses, so
+        # an isinstance test excluded exactly the classes this identifies.
+        # transformers keys off the same class names (integrations/bitsandbytes).
         name = type(weight).__name__
-        if name not in ("Tensor",):
+        if name not in ("Tensor", "Parameter"):
             return name
     return "an unknown quantization"
 

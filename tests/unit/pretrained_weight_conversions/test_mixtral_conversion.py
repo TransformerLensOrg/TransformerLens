@@ -221,3 +221,27 @@ def test_routing_renormalization_matches_hf(hf_model, tl_cfg, state_dict) -> Non
     hf_out = hf_out[0] if isinstance(hf_out, tuple) else hf_out
 
     torch.testing.assert_close(tl_out, hf_out, atol=1e-5, rtol=1e-4)
+
+
+@pytest.mark.parametrize(
+    "dtype,reason",
+    [
+        (torch.int8, "packed integer storage"),
+        (torch.float8_e4m3fn, "narrow float"),
+    ],
+)
+def test_quantized_router_weight_is_refused(hf_model, tl_cfg, dtype, reason) -> None:
+    """The router sits next to the guarded expert reads and had no guard.
+
+    load_state_dict does not save it: a SAME-SHAPE int8/FP8 tensor is accepted
+    and silently cast to float32, so the router would land as garbage with no
+    error anywhere. Only the shape-changing 4-bit case is caught downstream.
+    """
+    moe = hf_model.model.layers[0].mlp
+    original = moe.gate.weight
+    try:
+        moe.gate.weight = torch.nn.Parameter(original.detach().to(dtype), requires_grad=False)
+        with pytest.raises(NotImplementedError, match=reason):
+            convert_mixtral_weights(hf_model, tl_cfg)
+    finally:
+        moe.gate.weight = original

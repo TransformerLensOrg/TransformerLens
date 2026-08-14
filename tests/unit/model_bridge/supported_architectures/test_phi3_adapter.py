@@ -400,3 +400,50 @@ class TestPhi3ExplicitHeadDim:
             N_KV_HEADS * D_HEAD,
             N_KV_HEADS * D_HEAD,
         ]
+
+
+class TestPhi3FusedSplitRefusesQuantizedWeights:
+    """The splitters Phi-3, GLM and GLM-4V actually install must refuse packed
+    or scale-separated weights.
+
+    A guard was added to the *default* splitters in JointQKVAttentionBridge /
+    JointGateUpMLPBridge, but every in-tree user overrides those defaults with
+    these two methods — so the guard had no reachable caller for this family.
+    FP8 is the case that matters: `tensor_split` and `nn.Parameter` both accept
+    it, so the split silently yields scale-less halves.
+    """
+
+    QUANTIZED = [
+        pytest.param(torch.int8, "packed integer storage", id="int8"),
+        pytest.param(torch.uint8, "packed integer storage", id="uint8"),
+        pytest.param(torch.float8_e4m3fn, "narrow float", id="fp8-e4m3fn"),
+    ]
+
+    @pytest.mark.parametrize("dtype,reason", QUANTIZED)
+    def test_qkv_split_refuses(self, dtype, reason) -> None:
+        adapter = Phi3ArchitectureAdapter(_make_cfg(d_model=16, n_heads=3, n_kv_heads=3, d_head=4))
+        fake = _FakeAttention(d_model=16, qkv_rows=36, bias=False)
+        fake.qkv_proj.weight = torch.nn.Parameter(
+            fake.qkv_proj.weight.detach().to(dtype), requires_grad=False
+        )
+        with pytest.raises(NotImplementedError, match=reason):
+            adapter._split_phi3_qkv(fake)
+
+    @pytest.mark.parametrize("dtype,reason", QUANTIZED)
+    def test_gate_up_split_refuses(self, dtype, reason) -> None:
+        class _FakeMLP(torch.nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.gate_up_proj = torch.nn.Linear(16, 32, bias=False)
+                self.gate_up_proj.weight = torch.nn.Parameter(
+                    torch.zeros(32, 16, dtype=dtype), requires_grad=False
+                )
+
+        with pytest.raises(NotImplementedError, match=reason):
+            Phi3ArchitectureAdapter._split_gate_up(_FakeMLP())
+
+    def test_float_weights_still_split(self) -> None:
+        """Positive control: the guard must not break ordinary Phi-3 boot."""
+        adapter = Phi3ArchitectureAdapter(_make_cfg(d_model=16, n_heads=3, n_kv_heads=3, d_head=4))
+        q, k, v = adapter._split_phi3_qkv(_FakeAttention(d_model=16, qkv_rows=36, bias=False))
+        assert q.weight.shape == (12, 16)

@@ -2,6 +2,7 @@ from types import SimpleNamespace
 from unittest import mock
 
 import pytest
+import torch
 
 from transformer_lens import HookedTransformer
 from transformer_lens.config import HookedTransformerConfig
@@ -69,6 +70,95 @@ class TestMxfp4DequantizeConfig:
         load, and a fetch here would be a Hub HEAD request per model load."""
         _mxfp4_dequantize_config(_config_with_architecture("GptOssForCausalLM", "mxfp4"))
         mock_auto_config.from_pretrained.assert_not_called()
+
+
+class TestUnsupportedQuantizationRefusal:
+    """The ordinary `from_pretrained("<name>")` path must refuse quantized
+    weights too.
+
+    The older refusal lived inside `if hf_model is not None:`, so it fired only
+    when a user handed TL a pre-loaded model. On the internal-load path nothing
+    stopped a quantized checkpoint reaching converters that slice `.weight`
+    directly — and same-shape int8/FP8 survives both the converter *and*
+    `load_state_dict`, which casts it to float32, so an int8 code of 107 lands
+    as the weight 107.0 with no error anywhere.
+    """
+
+    @staticmethod
+    def _model(dtype=None, quant_method="gptq"):
+        class _Tiny(torch.nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.q_proj = torch.nn.Linear(4, 4, bias=False)
+                if dtype is not None:
+                    self.q_proj.weight = torch.nn.Parameter(
+                        torch.zeros(4, 4, dtype=dtype), requires_grad=False
+                    )
+
+        model = _Tiny()
+        quantization_config = {"quant_method": quant_method} if quant_method is not None else None
+        model.config = SimpleNamespace(quantization_config=quantization_config)
+        return model
+
+    @pytest.mark.parametrize(
+        "dtype",
+        [torch.int8, torch.uint8, torch.float8_e4m3fn],
+    )
+    def test_quantized_storage_is_refused(self, dtype):
+        from transformer_lens.loading_from_pretrained import (
+            _refuse_unsupported_quantization,
+        )
+
+        cfg = _config_with_architecture("LlamaForCausalLM")
+        with pytest.raises(NotImplementedError, match="gptq"):
+            _refuse_unsupported_quantization(cfg, self._model(dtype))
+
+    def test_unquantized_model_passes(self):
+        """The positive control — every ordinary load goes through this."""
+        from transformer_lens.loading_from_pretrained import (
+            _refuse_unsupported_quantization,
+        )
+
+        cfg = _config_with_architecture("LlamaForCausalLM")
+        _refuse_unsupported_quantization(cfg, self._model(quant_method=None))
+
+    def test_dequantized_checkpoint_still_loads(self):
+        """A model loaded with dequantize=True keeps advertising its original
+        quant_method while holding real bf16 tensors. Refusing on the
+        declaration alone would break the MXFP4 auto-dequantize path."""
+        from transformer_lens.loading_from_pretrained import (
+            _refuse_unsupported_quantization,
+        )
+
+        cfg = _config_with_architecture("GptOssForCausalLM", "mxfp4")
+        _refuse_unsupported_quantization(cfg, self._model(quant_method="mxfp4"))
+
+    def test_bitsandbytes_4bit_llama_flow_is_preserved(self):
+        """The one supported quantized HT flow: weight conversion and
+        abstract_attention's matmul_4bit both depend on it."""
+        from transformer_lens.loading_from_pretrained import (
+            _refuse_unsupported_quantization,
+        )
+
+        cfg = _config_with_architecture("LlamaForCausalLM")
+        cfg.load_in_4bit = True
+        _refuse_unsupported_quantization(cfg, self._model(torch.uint8, quant_method="bitsandbytes"))
+
+    @mock.patch("transformer_lens.loading_from_pretrained.AutoModelForCausalLM")
+    def test_refusal_is_wired_into_the_internal_load_path(self, mock_auto_model: mock.MagicMock):
+        """The wiring, not just the helper.
+
+        This is the whole point of the finding: the refusal must fire on
+        `from_pretrained("<name>")`, where TL loads the model itself and the
+        caller never sees an hf_model to be checked against.
+        """
+        from transformer_lens.loading_from_pretrained import get_pretrained_state_dict
+
+        mock_auto_model.from_pretrained.return_value = self._model(torch.int8)
+
+        cfg = _config_with_architecture("LlamaForCausalLM")
+        with pytest.raises(NotImplementedError, match="gptq"):
+            get_pretrained_state_dict("meta-llama/Llama-2-7b-hf", cfg)
 
 
 class TestQuantizationMethodCapture:

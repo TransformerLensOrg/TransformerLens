@@ -46,7 +46,11 @@ def convert_olmoe_weights(olmoe, cfg: HookedTransformerConfig):
 
         state_dict[f"blocks.{l}.ln2.w"] = olmoe_layer.post_attention_layernorm.weight
 
-        state_dict[f"blocks.{l}.mlp.W_gate.weight"] = olmoe_layer.mlp.gate.weight
+        state_dict[f"blocks.{l}.mlp.W_gate.weight"] = require_readable_weight(
+            olmoe_layer.mlp.gate.weight,
+            operation="convert the OLMoE router weight",
+            owner=olmoe,
+        )
 
         # HF OLMoE uses batched expert weights:
         #   gate_up_proj: [num_experts, 2 * intermediate_size, hidden_size]

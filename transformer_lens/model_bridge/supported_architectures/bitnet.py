@@ -58,6 +58,9 @@ class BitNetArchitectureAdapter(LlamaArchitectureAdapter):
         this checkpoint at 0% on the forward-pass phase for exactly that reason.
         """
         super().prepare_model(hf_model)
+        # Every weight-bearing module, not just the first: BitNet leaves the
+        # embedding unquantized, and it sorts first in named_modules(), so
+        # sampling one module inspected the one weight that is never packed.
         for name, module in hf_model.named_modules():
             weight = getattr(module, "weight", None)
             if weight is None:
@@ -68,4 +71,3 @@ class BitNetArchitectureAdapter(LlamaArchitectureAdapter):
                     "TransformerLens needs the dequantized sibling — use "
                     "microsoft/bitnet-b1.58-2B-4T-bf16."
                 )
-            break

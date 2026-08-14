@@ -59,7 +59,10 @@ from transformer_lens.pretrained.weight_conversions import (
 )
 from transformer_lens.supported_models import MODEL_ALIASES, OFFICIAL_MODEL_NAMES
 from transformer_lens.utilities.hf_utils import get_rotary_pct_from_config
-from transformer_lens.utilities.quantization import quantization_method
+from transformer_lens.utilities.quantization import (
+    quantization_method,
+    unreadable_weight_reason,
+)
 
 NON_HF_HOSTED_MODEL_NAMES = [
     "llama-7b-hf",
@@ -1898,12 +1901,67 @@ def _mxfp4_dequantize_config(cfg: HookedTransformerConfig) -> Any | None:
     Reads the method off ``cfg``, captured when the HF config was already loaded,
     so this costs nothing. It used to short-circuit on
     ``original_architecture == "GptOssForCausalLM"`` purely to avoid a second
-    AutoConfig fetch; with the fetch gone, the check applies to every
-    architecture — MXFP4 Qwen3-MoE checkpoints are in the registry too.
+    AutoConfig fetch; dropping that reaches MXFP4 checkpoints of other
+    architectures, and Qwen3-MoE ones are in the registry.
+
+    One blind spot, by construction: ``convert_hf_model_config`` infers llama
+    and gemma from the model *name* and never fetches a config for them, so
+    ``cfg.quantization_method`` is always None there and an MXFP4 checkpoint
+    under such a name will not auto-dequantize. It is refused rather than
+    mis-read — ``_refuse_unsupported_quantization`` inspects the loaded model
+    instead of the cfg for exactly this reason.
     """
     if cfg.quantization_method != "mxfp4":
         return None
     return Mxfp4Config(dequantize=True)
+
+
+def _refuse_unsupported_quantization(cfg: HookedTransformerConfig, hf_model: Any) -> None:
+    """Refuse a quantized checkpoint before the weight converters read it.
+
+    The converters slice ``.weight`` directly, and only three of them guard the
+    read. Same-shape storage is the dangerous case: an int8 or FP8 weight
+    converts silently *and* survives ``load_state_dict``, which casts it to
+    float32 — an int8 code of 107 lands as the weight 107.0. Packed 4-bit is
+    caught late by a shape mismatch, and GPTQ/AWQ happen to fail loudly only
+    because their ``QuantLinear`` has no ``.weight`` at all.
+
+    Reads the *loaded model's* config rather than ``cfg.quantization_method``:
+    the latter is populated from ``convert_hf_model_config``, which infers
+    llama and gemma from the model name and never fetches a config for them —
+    exactly the family where bitsandbytes is most common.
+    """
+    if hf_model is None:
+        return
+    method = quantization_method(getattr(hf_model, "config", None))
+    if method is None:
+        return
+    # The one supported quantized HookedTransformer flow (weight conversion and
+    # abstract_attention's matmul_4bit both handle it).
+    if cfg.load_in_4bit and method == "bitsandbytes":
+        return
+    # Refuse on the stored weights, not the declaration: a checkpoint loaded
+    # with dequantize=True still advertises its original quant_method while
+    # holding perfectly readable bf16 tensors. Meta params are skipped — an
+    # offloaded load is a different problem with a different message.
+    offender = next(
+        (
+            (name, unreadable_weight_reason(param))
+            for name, param in hf_model.named_parameters()
+            if param.device.type != "meta" and unreadable_weight_reason(param) is not None
+        ),
+        None,
+    )
+    if offender is None:
+        return
+    name, reason = offender
+    raise NotImplementedError(
+        f"HookedTransformer cannot convert this {method!r}-quantized checkpoint: "
+        f"{name} cannot be read because {reason}. The weight converters read "
+        "weights directly, so packed or scale-separated storage silently "
+        "produces wrong values. Load the model dequantized, or use "
+        "TransformerBridge for a quantized forward pass."
+    )
 
 
 def get_pretrained_state_dict(
@@ -2059,6 +2117,8 @@ def get_pretrained_state_dict(
             if hf_model is not None:
                 for param in hf_model.parameters():
                     param.requires_grad = False
+
+        _refuse_unsupported_quantization(cfg, hf_model)
 
         if cfg.original_architecture == "GPT2LMHeadModel":
             state_dict = convert_gpt2_weights(hf_model, cfg)
