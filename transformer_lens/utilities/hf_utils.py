@@ -281,14 +281,9 @@ def autoconfig_with_remote_post_init_compat(
 ) -> Any:
     """``AutoConfig.from_pretrained`` tolerating 4.x-era remote-code configs.
 
-    transformers>=5 replaces config ``__init__`` with dataclass machinery that
-    delivers every non-base field to ``__post_init__(**extras)``. Remote-code
-    classes written for 4.x define ``__post_init__(self)`` argument-less
-    (OpenELM), so every instantiation dies with "__post_init__() got an
-    unexpected keyword argument" — their custom fields would never be set even
-    if it didn't. On exactly that failure, wrap the class's ``__post_init__``
-    to run ``PretrainedConfig.__post_init__`` (5.x's own extras handling, which
-    sets the attrs) before the original body, then retry once.
+    transformers>=5 delivers non-base fields via ``__post_init__(**extras)``;
+    a 4.x-era argless override (OpenELM) crashes on the first kwarg. On exactly
+    that TypeError, wrap the class's ``__post_init__`` and retry once.
     """
     if auto_config is None:
         # Callers with a patchable module-level AutoConfig (boot) pass it in so
@@ -323,10 +318,9 @@ def _resolve_remote_config_class(model_id: str, **kwargs: Any) -> Any:
 def make_post_init_kwarg_tolerant(config_class: Any) -> None:
     """Wrap an argless remote ``__post_init__`` to accept 5.x extras.
 
-    Base-first ordering is load-bearing: ``PretrainedConfig.__post_init__``
-    setattrs the extras (the remote class's own fields arrive this way under
-    5.x), and the original body computes derived fields FROM those attrs.
-    Idempotent via a marker so repeated loads don't stack wrappers.
+    Base-first ordering is load-bearing: the base handler setattrs the extras
+    (the class's own fields arrive that way under 5.x) and the original body
+    derives from them. Idempotent via marker.
     """
     from transformers.configuration_utils import PretrainedConfig
 

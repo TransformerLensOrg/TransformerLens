@@ -1894,22 +1894,10 @@ def get_checkpoint_labels(model_name: str, **kwargs: Any) -> tuple[list[int], st
 def _mxfp4_dequantize_config(cfg: HookedTransformerConfig) -> Any | None:
     """Return ``Mxfp4Config(dequantize=True)`` for packed-MXFP4 checkpoints.
 
-    Weight converters slice expert tensors, which only works on materialized
-    torch.Tensors — packed MXFP4 weights stay wrapped in triton-kernels objects.
-    Returns None for anything else, including already-dequantized finetunes.
-
-    Reads the method off ``cfg``, captured when the HF config was already loaded,
-    so this costs nothing. It used to short-circuit on
-    ``original_architecture == "GptOssForCausalLM"`` purely to avoid a second
-    AutoConfig fetch; dropping that reaches MXFP4 checkpoints of other
-    architectures, and Qwen3-MoE ones are in the registry.
-
-    One blind spot, by construction: ``convert_hf_model_config`` infers llama
-    and gemma from the model *name* and never fetches a config for them, so
-    ``cfg.quantization_method`` is always None there and an MXFP4 checkpoint
-    under such a name will not auto-dequantize. It is refused rather than
-    mis-read — ``_refuse_unsupported_quantization`` inspects the loaded model
-    instead of the cfg for exactly this reason.
+    Reads the method captured on ``cfg`` (no refetch). Blind spot by
+    construction: llama/gemma names never fetch a config, so their
+    quantization_method is always None there — such checkpoints are refused by
+    ``_refuse_unsupported_quantization`` rather than auto-dequantized.
     """
     if cfg.quantization_method != "mxfp4":
         return None
@@ -1919,17 +1907,11 @@ def _mxfp4_dequantize_config(cfg: HookedTransformerConfig) -> Any | None:
 def _refuse_unsupported_quantization(cfg: HookedTransformerConfig, hf_model: Any) -> None:
     """Refuse a quantized checkpoint before the weight converters read it.
 
-    The converters slice ``.weight`` directly, and only three of them guard the
-    read. Same-shape storage is the dangerous case: an int8 or FP8 weight
-    converts silently *and* survives ``load_state_dict``, which casts it to
-    float32 — an int8 code of 107 lands as the weight 107.0. Packed 4-bit is
-    caught late by a shape mismatch, and GPTQ/AWQ happen to fail loudly only
-    because their ``QuantLinear`` has no ``.weight`` at all.
-
-    Reads the *loaded model's* config rather than ``cfg.quantization_method``:
-    the latter is populated from ``convert_hf_model_config``, which infers
-    llama and gemma from the model name and never fetches a config for them —
-    exactly the family where bitsandbytes is most common.
+    Same-shape int8/FP8 converts silently AND survives load_state_dict (cast
+    to fp32), so refusal must happen here. Reads the LOADED model's config —
+    cfg.quantization_method is structurally None for name-based llama/gemma —
+    and refuses on stored weights, not the declaration, so dequantized loads
+    that still advertise a quant_method keep working.
     """
     if hf_model is None:
         return

@@ -84,12 +84,9 @@ class GraniteMoeHybridArchitectureAdapter(GraniteArchitectureAdapter):
             "ln2": RMSNormalizationBridge(name="post_attention_layernorm", config=self.cfg),
             "attn": self._build_attention_bridge(optional=True),
             "mixer": self._build_mamba_bridge(),
-            # Fused SwiGLU: input_linear emits [gate | up] concatenated, so a
-            # plain MLPBridge made hook_pre the 2*d_mlp pre-GLU tensor and gave
-            # no hook_pre_linear at all. JointGateUpMLPBridge splits it and
-            # registers "gate"/"in" itself, so only "out" is declared here.
-            # input_linear is a fused [gate | up]; the parametrized default
-            # splitter handles it (guarded, bias-aware).
+            # input_linear is fused [gate | up]: a plain MLPBridge made
+            # hook_pre the 2*d_mlp pre-GLU tensor with no hook_pre_linear. The
+            # bridge registers "gate"/"in" itself, so only "out" is declared.
             "shared_mlp": JointGateUpMLPBridge(
                 name="shared_mlp",
                 config=self.cfg,

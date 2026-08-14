@@ -265,13 +265,9 @@ class TestOpt350mProjectionMapping:
 
 
 class TestOptMLPHookShapes:
-    """OPT's MLP hooks must fire [batch, seq, d], not the layer's internal 2D.
-
-    OPTDecoderLayer reshapes hidden states to [batch*seq, d] before
-    final_layer_norm/fc1/fc2 and back only after the residual add, so the
-    newly-live hook_pre/hook_post/hook_mlp_out (and ln2 hooks) all fired
-    flattened — silently wrong for position-indexed patching, crashing for
-    `b s d` einops.
+    """OPT reshapes to [batch*seq, d] around ln2/fc1/fc2, so the newly-live MLP
+    hooks fired flattened — silently wrong for position-indexed patching,
+    crashing for `b s d` einops.
     """
 
     D_MODEL, BATCH, SEQ = 16, 2, 5
@@ -389,11 +385,9 @@ def test_containerless_mlp_direct_call_raises() -> None:
 
 
 class TestOptHookMlpInShape:
-    """hook_mlp_in fires from a ln2 pre-hook inside OPT's flattened region.
-
-    It is the block's own HookPoint (not an alias), so the submodule stamping
-    missed it: siblings gave [batch, seq, d] while it still delivered
-    [batch*seq, d], and a 3D write broadcast-failed.
+    """hook_mlp_in fires from a ln2 pre-hook inside the flattened region and is
+    the block's own HookPoint, so the submodule stamping missed it: 2D reads,
+    broadcast-failing 3D writes.
     """
 
     def _wired_block(self):

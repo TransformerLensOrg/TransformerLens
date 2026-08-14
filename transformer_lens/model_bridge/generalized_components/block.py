@@ -120,14 +120,10 @@ class BlockBridge(GeneralizedComponent):
         self.hook_mlp_in = HookPoint()
 
     def _maybe_wire_capture_hooks(self) -> None:
-        """Install the block's capture hooks: the ln1 pre-hook feeding the
-        split-qkv fork and the MLP-branch-entry pre-hook feeding hook_mlp_in
-        (#1317). Subclasses extend this with their own captures.
+        """Install the block's capture hooks (split-qkv fork, hook_mlp_in).
 
-        Hooks register on the bridge submodule instance, not on
-        ``original_component`` — the manual (non-native-autograd) bridge
-        forward never calls the raw module, so a hook there would silently miss
-        on most adapters. Idempotent.
+        Registered on the bridge submodule, not ``original_component`` — the
+        manual bridge forward never calls the raw module. Idempotent.
         """
         if self._capture_hooks_wired:
             return
@@ -456,17 +452,9 @@ class ScaledResidualBlockBridge(BlockBridge):
         scaled_attn_submodule: str = "attn",
         scaled_mlp_submodule: Optional[str] = "mlp",
     ):
-        """Initialize the scaled-residual block bridge.
-
-        Args:
-            residual_contribution_scale: The HF block's residual multiplier.
-            scaled_attn_submodule: Submodule whose output feeds the attention-side
-                residual add.
-            scaled_mlp_submodule: Submodule whose output feeds the MLP-side residual
-                add, or None when no single submodule produces it (e.g. GraniteMoeHybrid
-                with experts sums ``block_sparse_moe + shared_mlp`` inline) — then
-                hook_mlp_out stays absent rather than firing with a partial tensor.
-        """
+        """scaled_mlp_submodule=None when no single submodule feeds the MLP-side
+        add (GraniteMoeHybrid sums moe + shared_mlp inline) — hook_mlp_out then
+        stays absent rather than firing with a partial tensor."""
         super().__init__(
             name,
             config=config,

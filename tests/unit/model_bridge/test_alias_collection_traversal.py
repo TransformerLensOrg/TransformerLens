@@ -119,13 +119,8 @@ class TestBoundBlockWalkTraversal:
 
     def test_shared_submodule_aliases_at_every_path(self, bridge: TransformerBridge) -> None:
         """A component reachable under two names must be walked at BOTH — a
-        globally-visited guard would silently skip the second path.
-
-        The shared component's alias targets are not in the hook registry (it is
-        attached for this test only), so the observable evidence that both paths
-        were walked is the unresolved-alias report: one entry per alias PER
-        PATH. Asserting on the resolved map instead would be vacuous — it is
-        empty for both paths, so any comparison between them holds trivially.
+        globally-visited guard silently skips the second path. The unresolved-alias
+        report is the evidence; the resolved map is empty either way (vacuous).
         """
         mlp = bridge.blocks[0].mlp
         shared = _shared_component()

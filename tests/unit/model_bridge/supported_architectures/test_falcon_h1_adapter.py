@@ -453,13 +453,9 @@ KEY_MULTIPLIER = 1.5
 
 
 class TestFalconH1ScaledHookK:
-    """`hook_k` must carry the tensor that reaches attention, not the raw projection.
-
-    Falcon-H1 scales K between the projection and RoPE. While `hook_k` was an
-    alias for `k.hook_out` it reported the unscaled tensor, and a value written
-    there was silently multiplied by key_multiplier on its way in. This mirrors
-    the split Granite's residual_multiplier established: the TL-semantic name
-    carries the scaled value, the module-shaped `k.hook_out` stays raw.
+    """hook_k must carry the tensor that reaches attention. As an alias of
+    k.hook_out it reported the pre-key_multiplier value and silently rescaled
+    writes; Granite's split applies: semantic name scaled, k.hook_out raw.
     """
 
     @staticmethod

@@ -181,13 +181,9 @@ def test_gated_mlp_decomposition():
 
 
 class TestGemma4AttentionHookSurface:
-    """Attention must expose the gemma1/2/3 hook surface.
-
-    It was a bare `GeneralizedComponent` (hook_in/hook_out only), so
-    hook_pattern, hook_attn_scores and the hook_q/k/v/z aliases were all
-    absent and q/k/v fired flat rather than per-head. HF still does the
-    attention math; this is observability only. Gemma4's MLP got the
-    equivalent fix in #1650.
+    """Attention must expose the gemma1/2/3 hook surface; as a bare
+    GeneralizedComponent everything beyond hook_in/hook_out was absent and q/k/v
+    fired flat. Observability only — HF keeps the math (MLP fixed in #1650).
     """
 
     D_MODEL, N_HEADS, N_KV_HEADS, D_HEAD, BATCH, SEQ = 64, 8, 1, 8, 2, 4
@@ -241,13 +237,9 @@ class TestGemma4AttentionHookSurface:
 
 
 class TestGemma4HeterogeneousKVGeometry:
-    """Weight accessors must not silently mis-factorize minority-geometry layers.
-
-    Gemma4's config is genuinely per-layer (num_key_value_heads=4 with
-    head_dim=256 on sliding layers vs global_* variants on full-attention
-    layers); TL stores the majority scalar. On a minority layer the K width
-    still DIVIDES evenly by the majority head count, so einops would return a
-    wrong-shaped factorization with no error.
+    """Accessors must not silently mis-factorize minority-geometry layers: the
+    per-layer K width still divides evenly by the majority head count, so einops
+    would return a wrong-shaped factorization with no error.
     """
 
     def _bridge_with_kv_width(self, kv_out_features):

@@ -132,11 +132,10 @@ class Gemma4ArchitectureAdapter(ArchitectureAdapter):
                     "post_feedforward_layernorm_2": GeneralizedComponent(
                         name="post_feedforward_layernorm_2", optional=True
                     ),
-                    # AttentionBridge for the hook surface a bare component lacks
-                    # (per-head q/k/v/z, weight accessors). Delegated semantics:
-                    # pattern and scores both fire HF's post-softmax weights
-                    # (no pre-softmax tensor exists here, unlike gemma1/2/3),
-                    # and writes to them do not affect the output.
+                    # AttentionBridge for the per-head hook surface a bare
+                    # component lacks. Delegated semantics: pattern AND scores
+                    # both fire HF's post-softmax weights (no pre-softmax tensor
+                    # exists, unlike gemma1/2/3); writes to them are inert.
                     "attn": AttentionBridge(
                         name="self_attn",
                         config=self.cfg,

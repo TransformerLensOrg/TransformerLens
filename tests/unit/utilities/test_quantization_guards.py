@@ -157,11 +157,9 @@ class TestBridgeAccessorsAreGuarded:
 
 
 class TestBitsandbytesParameterSubclassIsNamed:
-    """bitsandbytes' Params4bit and Int8Params are nn.Parameter SUBCLASSES.
-
-    The class-name fallback used to be gated behind `not isinstance(weight,
-    nn.Parameter)`, which excluded exactly the classes it was written to
-    identify. transformers keys off the same two class names.
+    """bitsandbytes' Params4bit/Int8Params ARE nn.Parameter subclasses, so the
+    old `not isinstance(weight, Parameter)` gate excluded exactly the classes
+    the fallback was written to identify.
     """
 
     class _Params4bit(torch.nn.Parameter):
@@ -189,18 +187,10 @@ class TestBitsandbytesParameterSubclassIsNamed:
 
 
 class TestProcessWeightsScansBatchedMoEParameters:
-    """`process_weights` must see batched-MoE expert tensors.
-
-    Its guard filtered `named_parameters()` with `name.endswith(".weight")`,
-    but on transformers 5.x every batched-MoE family (Mixtral, OLMoE, gpt-oss)
-    stores experts as Parameters named `mlp.experts.gate_up_proj` /
-    `down_proj` — no `.weight` suffix — so the tensors the converters were
-    guarded for were the exact ones this filter skipped.
-
-    Calls the unbound method against a stub carrying only `original_model`:
-    the guard is the first statement in the body, so the raise happens before
-    anything else is touched. The no-raise direction needs no stub — every
-    bridge test in the suite runs process_weights on float weights.
+    """process_weights filtered on name.endswith('.weight'), which skips every
+    batched-MoE expert Parameter (mlp.experts.gate_up_proj) — the very tensors
+    the converters were guarded for. The guard is the body's first statement,
+    so a stub carrying only original_model exercises it.
     """
 
     @staticmethod

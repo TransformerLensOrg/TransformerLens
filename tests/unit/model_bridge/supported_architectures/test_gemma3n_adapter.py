@@ -121,13 +121,9 @@ def test_kv_shared_submodules_are_optional():
 
 
 class TestGemma3nAttentionAndMLPHookSurface:
-    """Attention and the gated MLP must expose the same hooks as gemma1/2/3.
-
-    Both were mapped as bare `GeneralizedComponent`s, whose entire surface is
-    hook_in/hook_out: no hook_pattern, no hook_attn_scores, no hook_q/k/v/z or
-    hook_pre/hook_post aliases, and q/k/v firing flat [batch, seq, d_model]
-    rather than per-head. Attention math still belongs to HF here — this only
-    restores observability.
+    """Attention and the gated MLP must expose the gemma1/2/3 hook surface; as
+    bare GeneralizedComponents everything beyond hook_in/hook_out was absent and
+    q/k/v fired flat. Observability only — HF keeps the math.
     """
 
     # Must match the adapter cfg below: the head-split conversion only applies
@@ -211,14 +207,9 @@ class TestGemma3nAttentionAndMLPHookSurface:
 
 
 class TestGemma3nProcessedWeightsPreserveSparsity:
-    """Compat mode must not bypass Gemma3n's activation sparsity.
-
-    HF's Gemma3nTextMLP applies `_gaussian_topk` to the gate projection
-    (0.95 sparsity on early E2B/E4B layers) before the activation. The
-    GatedMLPBridge functional processed-weights branch computes plain
-    act(gate)*up, which inflates those layers ~10x. The gemma3n bridge must
-    keep delegating after set_processed_weights — correct because the
-    processed tensors are written into the wrapped Linears.
+    """Compat mode must not bypass Gemma3n's `_gaussian_topk` activation sparsity:
+    the functional processed branch computes plain act(gate)*up (~10x inflation
+    on 0.95-sparsity layers), so this bridge keeps delegating.
     """
 
     class _SparseMLP(torch.nn.Module):

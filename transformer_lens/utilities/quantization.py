@@ -22,20 +22,11 @@ import torch
 
 
 def unreadable_weight_reason(weight: Any) -> Optional[str]:
-    """Why ``weight`` cannot be read as a plain weight matrix, or None if it can.
+    """Why ``weight`` cannot be read as a plain matrix (a fragment completing
+    "... cannot be read because <reason>"), or None if it can.
 
-    Readable means exactly the four full-width float dtypes (float16, bfloat16,
-    float32, float64); every 1-byte dtype in torch is either integer storage or
-    a narrow float that carries its scales separately.
-
-    Scope this to ``.weight`` reads. Complex dtypes also report
-    ``is_floating_point == False`` and would be described as integer storage —
-    they appear in this codebase only as rotary buffers, never as weights.
-
-    Returns a fragment that completes "... cannot be read because <reason>", or
-    None when the weight is usable. Meta-device tensors are reported here too,
-    but callers should surface them as a load problem, not a quantization one
-    (see :func:`require_readable_weight`).
+    Readable = exactly {fp16, bf16, fp32, fp64}: every 1-byte torch dtype is
+    integer storage or a scale-less narrow float.
     """
     if not isinstance(weight, torch.Tensor):
         # MXFP4 and similar hand back a wrapper object holding the packed
@@ -127,23 +118,11 @@ _GENERIC_REMEDY = (
 def require_readable_weight(
     weight: Any, *, operation: str, owner: Any = None, remedy: Optional[str] = None
 ) -> torch.Tensor:
-    """Return ``weight`` if it can be read as a plain matrix, else raise.
+    """Return ``weight`` if it can be read as a plain matrix, else raise loudly.
 
-    Args:
-        weight: the tensor (or packed stand-in) about to be read.
-        operation: what the caller is trying to do, phrased to complete
-            "TransformerLens cannot <operation> because ...".
-        owner: the component or module holding the weight, used to name the
-            quantization method in the error.
-        remedy: architecture-specific advice replacing the generic "reload
-            without a quantization_config". Pass this where a concrete recipe
-            exists, e.g. gpt-oss's ``Mxfp4Config(dequantize=True)``. Phrase it
-            so it holds for any quantization, since the caller cannot know
-            which one it caught.
-
-    Raises:
-        NotImplementedError: naming the quantization and how to proceed. This is
-            deliberately loud: every alternative silently produces wrong numbers.
+    ``operation`` completes "TransformerLens cannot <operation> because ...";
+    ``remedy`` replaces the generic advice — phrase it to hold for ANY
+    quantization, since the caller cannot know which one it caught.
     """
     reason = unreadable_weight_reason(weight)
     if reason is None:

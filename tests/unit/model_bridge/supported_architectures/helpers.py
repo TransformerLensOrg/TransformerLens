@@ -73,13 +73,9 @@ def wire_attention_bridge(
 
 
 class FakeDelegatedAttention(torch.nn.Module):
-    """HF-shaped attention for delegated (maintain_native_attention) bridges.
-
-    Routes through every projection (bridge hooks fire from inside the wrapped
-    submodules) and returns (attn_output, attn_weights[B, H, S, S]) as eager HF
-    attention does. GQA widths, and o_proj takes n_heads * d_head — the real
-    models expand KV to full heads before the output projection, and a
-    narrower fake makes ReshapeForAttentionHeads silently no-op on hook_z.
+    """HF-shaped attention for delegated bridges: routes through every projection
+    (hooks fire inside the wrapped submodules) and returns (out, weights[B,H,S,S]).
+    o_proj takes n_heads*d_head — a narrower fake silently no-ops the hook_z reshape.
     """
 
     def __init__(self, d_model: int, n_heads: int, n_kv_heads: int, d_head: int) -> None:

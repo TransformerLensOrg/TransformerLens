@@ -26,13 +26,9 @@ EXPERTS_PER_TOKEN = 2
 
 @pytest.fixture(scope="module")
 def hf_model() -> MixtralForCausalLM:
-    """Tiny Mixtral with AMPLIFIED weights.
-
-    The amplification is load-bearing, not cosmetic: SiLU is near-linear at small
-    magnitudes, so ``act(gate) * up ~= act(up) * gate`` and a swapped gate/up
-    mapping is only ~1.6e-05 off at HF's default init (0.02) — close enough to
-    read as noise. At std=0.3 the same swap is ~8e-02, a ~5000x margin. Do not
-    lower this without re-measuring the negative control below.
+    """Tiny Mixtral with AMPLIFIED weights (std=0.3): SiLU is near-linear at
+    default init, so a swapped gate/up is ~1.6e-05 off (reads as noise) vs
+    ~8e-02 amplified. Do not lower without re-measuring the negative control.
     """
     with torch.random.fork_rng(devices=[]):
         torch.manual_seed(0)
@@ -98,12 +94,9 @@ def test_converts_the_5x_batched_expert_layout(state_dict) -> None:
 
 
 def test_expert_weights_reproduce_hf_expert_output(hf_model, state_dict) -> None:
-    """The decisive check on the fused-projection split: the extracted weights
-    must reproduce HF's own expert computation.
-
-    Shapes cannot catch a swapped gate/up — both halves are [d_mlp, d_model] —
-    and the swap is silent, so this compares numerically and carries a negative
-    control proving the swapped assignment would differ.
+    """The decisive check on the fused split: shapes cannot catch a swapped
+    gate/up (both halves [d_mlp, d_model]), so compare numerically with a
+    negative control proving the swap would differ.
     """
     with torch.random.fork_rng(devices=[]):
         torch.manual_seed(1)
@@ -170,12 +163,8 @@ def test_config_pins_topk_renormalization() -> None:
 
 
 def test_converted_model_reproduces_hf_logits(hf_model, tl_cfg, state_dict) -> None:
-    """End-to-end: the converted weights must drive a HookedTransformer to the
-    same logits as the HF model they came from.
-
-    This is what catches an orientation or routing error that the per-tensor
-    assertions above would miss — notably the top-k renormalization, which is a
-    config-level behavior no weight assertion can see.
+    """End-to-end logits parity — catches orientation and routing errors the
+    per-tensor assertions can't see (notably top-k renormalization).
     """
     from transformer_lens import HookedTransformer
 
@@ -197,13 +186,9 @@ def test_converted_model_reproduces_hf_logits(hf_model, tl_cfg, state_dict) -> N
 
 
 def test_routing_renormalization_matches_hf(hf_model, tl_cfg, state_dict) -> None:
-    """TL's MoE block must reproduce HF's, which renormalizes the top-k routing
-    weights unconditionally.
-
-    Compares the blocks directly rather than hooking `hook_expert_weights`: that
-    hook fires on the full pre-top-k softmax, whose top-k slice sums to 1 by
-    construction, so an assertion on it holds whether or not the renormalization
-    ran.
+    """TL's MoE block must reproduce HF's unconditional top-k renormalization.
+    Compares blocks directly: hook_expert_weights fires pre-top-k, whose top-k
+    slice sums to 1 by construction, so asserting on it is vacuous.
     """
     from transformer_lens import HookedTransformer
 
@@ -231,11 +216,8 @@ def test_routing_renormalization_matches_hf(hf_model, tl_cfg, state_dict) -> Non
     ],
 )
 def test_quantized_router_weight_is_refused(hf_model, tl_cfg, dtype, reason) -> None:
-    """The router sits next to the guarded expert reads and had no guard.
-
-    load_state_dict does not save it: a SAME-SHAPE int8/FP8 tensor is accepted
-    and silently cast to float32, so the router would land as garbage with no
-    error anywhere. Only the shape-changing 4-bit case is caught downstream.
+    """The router sits next to guarded expert reads and had no guard;
+    load_state_dict accepts a same-shape int8/FP8 router and silently casts.
     """
     moe = hf_model.model.layers[0].mlp
     original = moe.gate.weight

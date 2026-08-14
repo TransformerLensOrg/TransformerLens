@@ -32,29 +32,17 @@ def weight_layout_in_out(proj: Any) -> Optional[bool]:
 def normalize_mlp_weight(
     weight: torch.Tensor, layout: Optional[bool], proj: Any, pattern: str = "in"
 ) -> torch.Tensor:
-    """Normalize an MLP projection weight to TransformerLens orientation.
-
-    Args:
-        weight: 2D weight tensor from the projection
-        layout: True if [in, out] (Conv1D), False if [out, in] (nn.Linear),
-            None falls back to in_features/out_features or shape heuristic.
-        proj: The projection module (LinearBridge) for metadata fallback.
-        pattern: "in" for W_in/W_gate [d_model, d_mlp], "out" for W_out [d_mlp, d_model]
-
-    Note: the shape heuristic assumes d_model < d_mlp, which fails for
-    architectures like GIDD's ScaledLinear where d_mlp < d_model. When layout is
-    None, in_features/out_features are checked first; the heuristic is last resort.
-    """
+    """Normalize an MLP projection weight to TL orientation ([d_model, d_mlp]
+    for "in"/W_gate, [d_mlp, d_model] for "out")."""
     if layout is None:
-        # Try in_features/out_features from the wrapped module (works for bare nn.Module)
         component = getattr(proj, "original_component", None)
         in_f = getattr(component, "in_features", None)
         out_f = getattr(component, "out_features", None)
         if in_f is not None and out_f is not None:
-            # Module declares its orientation; weight[0] == in_f means [in, out] layout
             layout = weight.shape[0] == in_f
         else:
-            # Last resort: shape heuristic. WARNING: assumes d_model < d_mlp.
+            # Last resort. WARNING: assumes d_model < d_mlp (false for GIDD's
+            # ScaledLinear, which is why in_features/out_features go first).
             if pattern == "in":
                 layout = weight.shape[0] < weight.shape[1]
             else:
@@ -109,12 +97,9 @@ class MLPBridge(GeneralizedComponent):
             Output hidden states
         """
         if self.name is None:
-            # Containerless MLP (OPT/XGLM/BART/BERT: fc1/fc2 sit directly on
-            # the decoder layer): component setup binds the PARENT LAYER as
-            # original_component, so delegating from here would silently run
-            # the whole layer — attention included — and return its output
-            # under the mlp name. HF-driven execution reaches fc1/fc2 through
-            # their own LinearBridges; a direct call has no correct target.
+            # Containerless (fc1/fc2 sit on the decoder layer): the PARENT
+            # LAYER is bound as original_component, so delegating would
+            # silently run the whole layer — attention included.
             raise RuntimeError(
                 f"{type(self).__name__} is containerless (name=None) — calling it "
                 "directly would execute the whole parent layer. Call the block, "

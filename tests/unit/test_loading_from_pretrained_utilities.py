@@ -73,15 +73,9 @@ class TestMxfp4DequantizeConfig:
 
 
 class TestUnsupportedQuantizationRefusal:
-    """The ordinary `from_pretrained("<name>")` path must refuse quantized
-    weights too.
-
-    The older refusal lived inside `if hf_model is not None:`, so it fired only
-    when a user handed TL a pre-loaded model. On the internal-load path nothing
-    stopped a quantized checkpoint reaching converters that slice `.weight`
-    directly — and same-shape int8/FP8 survives both the converter *and*
-    `load_state_dict`, which casts it to float32, so an int8 code of 107 lands
-    as the weight 107.0 with no error anywhere.
+    """The ordinary from_pretrained("<name>") path must refuse quantized weights:
+    the old refusal lived under `if hf_model is not None`, and same-shape
+    int8/FP8 survives converter AND load_state_dict (cast to fp32) silently.
     """
 
     @staticmethod
@@ -146,11 +140,8 @@ class TestUnsupportedQuantizationRefusal:
 
     @mock.patch("transformer_lens.loading_from_pretrained.AutoModelForCausalLM")
     def test_refusal_is_wired_into_the_internal_load_path(self, mock_auto_model: mock.MagicMock):
-        """The wiring, not just the helper.
-
-        This is the whole point of the finding: the refusal must fire on
-        `from_pretrained("<name>")`, where TL loads the model itself and the
-        caller never sees an hf_model to be checked against.
+        """The wiring, not just the helper: the refusal must fire where TL loads the
+        model itself and the caller never sees an hf_model.
         """
         from transformer_lens.loading_from_pretrained import get_pretrained_state_dict
 
@@ -251,11 +242,8 @@ class TestQuantizationMethodCapture:
 
     @mock.patch("transformer_lens.loading_from_pretrained.convert_neel_model_config")
     def test_config_builders_that_never_see_an_hf_config(self, mock_neel: mock.MagicMock):
-        """Not every cfg_dict comes from convert_hf_model_config.
-
-        `convert_neel_model_config` builds one from the model name alone, so the
-        quantization_method key is simply absent — reading it with [] raised
-        KeyError and broke every NeelNanda load.
+        """convert_neel_model_config builds cfg_dict from the name alone — reading
+        quantization_method with [] broke every NeelNanda load.
         """
         mock_neel.return_value = {
             "d_model": 128,
