@@ -4,7 +4,7 @@ The correctness anchor is a round trip: cache the residual entering block k
 from a full run, resume from it with start_at_layer=k, and require the logits
 and the downstream cache to match the full run bit-for-bit. Blocks below k
 execute internally (the bridge delegates to HF) but must not appear in the
-cache or fire hooks, matching HookedTransformer.
+cache or fire hooks.
 """
 
 import pytest

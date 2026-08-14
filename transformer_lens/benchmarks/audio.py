@@ -5,22 +5,58 @@ audio waveform inputs through forward(), run_with_cache(), and produce
 stable representations.
 """
 
-from typing import List, Optional
+from typing import Any, List, Optional
 
 import torch
 
+from transformer_lens.benchmarks.encoder_common import (
+    benchmark_encoder_cache,
+    benchmark_encoder_forward,
+    benchmark_encoder_representation_stability,
+)
 from transformer_lens.benchmarks.utils import (
     BenchmarkResult,
     BenchmarkSeverity,
-    compare_tensors,
+    build_modality_input,
     is_tiny_test_model,
 )
 from transformer_lens.model_bridge import TransformerBridge
 
-# Bridge-vs-HF parity tolerances for the audio forward; looser than vision's
-# 1e-4 atol because audio encoders run long conv front-ends before the blocks.
-_AUDIO_PARITY_ATOL = 1e-3
-_AUDIO_PARITY_RTOL = 3e-2
+# Component-mapping names whose hook_out must be cached when the architecture
+# declares them: waveform encoders (HuBERT, wav2vec2) have a conv feature
+# extractor, while spectrogram encoders (AST) patch-embed the spectrogram directly.
+_CRITICAL_AUDIO_COMPONENTS = ("audio_feature_extractor", "conv_pos_embed", "embed_ln", "embed")
+
+
+def _prepare_audio_encoder_input(
+    bridge: Any, test_audio: Optional[torch.Tensor] = None
+) -> torch.Tensor:
+    """Model-ready audio input via the bridge's feature extractor when available.
+
+    Non-wav2vec2-style architectures (e.g. AST) consume feature-extractor
+    outputs (spectrograms), not raw waveforms, and declare their own sampling
+    rate — so input prep must go through ``bridge.processor`` whenever the
+    boot attached one. Falls back to a raw 16 kHz waveform otherwise.
+    """
+    processor = getattr(bridge, "processor", None)
+    fe = getattr(processor, "feature_extractor", processor)
+    sampling_rate = int(getattr(fe, "sampling_rate", 16000) or 16000)
+
+    device = bridge.cfg.device
+    dtype = bridge.cfg.dtype
+    if test_audio is None:
+        test_audio = torch.randn(1, sampling_rate, device=device, dtype=dtype)
+
+    if fe is not None and callable(fe):
+        try:
+            waveforms = [w for w in test_audio.detach().cpu().float().numpy()]
+            out = fe(waveforms, sampling_rate=sampling_rate, return_tensors="pt")
+            prepared = out.get("input_values", out.get("input_features"))
+            if prepared is not None:
+                return prepared.to(device=device, dtype=dtype)
+        except Exception:
+            pass  # fall through to the raw waveform
+    return test_audio
 
 
 def _prepare_audio_text_inputs(bridge: TransformerBridge):
@@ -129,77 +165,13 @@ def benchmark_audio_forward(
         test_audio: Audio waveform tensor [batch, num_samples]
         reference_model: Optional HF reference model for comparison
     """
-    try:
-        with torch.no_grad():
-            # Use return_type="logits" — for audio encoders without logits, this
-            # returns the BaseModelOutput object (bridge falls through to logits=output).
-            bridge_output_raw = bridge(test_audio, return_type="logits")
-
-        # Extract the output tensor
-        if isinstance(bridge_output_raw, torch.Tensor):
-            bridge_output = bridge_output_raw
-            output_key = "logits"
-        elif hasattr(bridge_output_raw, "logits") and bridge_output_raw.logits is not None:
-            bridge_output = bridge_output_raw.logits
-            output_key = "logits"
-        elif hasattr(bridge_output_raw, "last_hidden_state"):
-            bridge_output = bridge_output_raw.last_hidden_state
-            output_key = "last_hidden_state"
-        else:
-            return BenchmarkResult(
-                name="audio_forward",
-                severity=BenchmarkSeverity.DANGER,
-                message="Bridge produced no recognizable output (no logits or last_hidden_state)",
-                passed=False,
-            )
-
-        if bridge_output.numel() == 0:
-            return BenchmarkResult(
-                name="audio_forward",
-                severity=BenchmarkSeverity.DANGER,
-                message="Bridge output is empty",
-                passed=False,
-            )
-
-        if torch.isnan(bridge_output).any() or torch.isinf(bridge_output).any():
-            return BenchmarkResult(
-                name="audio_forward",
-                severity=BenchmarkSeverity.DANGER,
-                message="Bridge output contains NaN or Inf values",
-                passed=False,
-            )
-
-        # Compare against HF reference if available
-        if reference_model is not None:
-            with torch.no_grad():
-                ref_output_raw = reference_model(input_values=test_audio)
-                if output_key == "logits":
-                    ref_output = ref_output_raw.logits
-                else:
-                    ref_output = ref_output_raw.last_hidden_state
-
-            return compare_tensors(
-                bridge_output,
-                ref_output,
-                atol=_AUDIO_PARITY_ATOL,
-                rtol=_AUDIO_PARITY_RTOL,
-                name="audio_forward",
-            )
-
-        return BenchmarkResult(
-            name="audio_forward",
-            severity=BenchmarkSeverity.INFO,
-            message=f"Audio forward pass successful ({output_key} shape: {bridge_output.shape})",
-            details={"output_shape": str(bridge_output.shape), "output_key": output_key},
-        )
-
-    except Exception as e:
-        return BenchmarkResult(
-            name="audio_forward",
-            severity=BenchmarkSeverity.ERROR,
-            message=f"Audio forward pass failed: {str(e)}",
-            passed=False,
-        )
+    return benchmark_encoder_forward(
+        bridge,
+        test_audio,
+        name="audio_forward",
+        ref_input_key="input_values",
+        reference_model=reference_model,
+    )
 
 
 def benchmark_audio_cache(
@@ -214,82 +186,12 @@ def benchmark_audio_cache(
         bridge: TransformerBridge model to test
         test_audio: Audio waveform tensor [batch, num_samples]
     """
-    try:
-        with torch.no_grad():
-            _, cache = bridge.run_with_cache(test_audio)
-
-        cache_keys = list(cache.keys())
-        if len(cache_keys) == 0:
-            return BenchmarkResult(
-                name="audio_cache",
-                severity=BenchmarkSeverity.DANGER,
-                message="run_with_cache returned empty cache",
-                passed=False,
-            )
-
-        # Check for critical audio-specific hooks
-        critical_hooks = [
-            "audio_feature_extractor.hook_out",
-            "conv_pos_embed.hook_out",
-            "embed_ln.hook_out",
-        ]
-        # Also check at least the first and last block
-        n_layers = bridge.cfg.n_layers
-        critical_hooks.append("blocks.0.hook_out")
-        critical_hooks.append(f"blocks.{n_layers - 1}.hook_out")
-
-        missing = [h for h in critical_hooks if h not in cache_keys]
-        found = len(critical_hooks) - len(missing)
-
-        # Check for NaN/Inf in cached values
-        nan_hooks = []
-        for key in cache_keys[:20]:  # Sample first 20 hooks
-            val = cache[key]
-            if isinstance(val, torch.Tensor) and (torch.isnan(val).any() or torch.isinf(val).any()):
-                nan_hooks.append(key)
-
-        if missing:
-            return BenchmarkResult(
-                name="audio_cache",
-                severity=BenchmarkSeverity.WARNING,
-                message=f"Missing {len(missing)} critical hooks: {missing[:3]}",
-                passed=found >= 3,  # Pass if at least 3 of 5 critical hooks present
-                details={
-                    "total_cached": len(cache_keys),
-                    "critical_found": found,
-                    "critical_expected": len(critical_hooks),
-                    "missing": missing,
-                },
-            )
-
-        if nan_hooks:
-            return BenchmarkResult(
-                name="audio_cache",
-                severity=BenchmarkSeverity.DANGER,
-                message=f"NaN/Inf found in {len(nan_hooks)} cached hooks",
-                passed=False,
-                details={"nan_hooks": nan_hooks[:5]},
-            )
-
-        return BenchmarkResult(
-            name="audio_cache",
-            severity=BenchmarkSeverity.INFO,
-            message=f"Audio cache successful: {len(cache_keys)} hooks captured, "
-            f"{found}/{len(critical_hooks)} critical hooks present",
-            details={
-                "total_cached": len(cache_keys),
-                "critical_found": found,
-                "critical_expected": len(critical_hooks),
-            },
-        )
-
-    except Exception as e:
-        return BenchmarkResult(
-            name="audio_cache",
-            severity=BenchmarkSeverity.ERROR,
-            message=f"Audio cache failed: {str(e)}",
-            passed=False,
-        )
+    return benchmark_encoder_cache(
+        bridge,
+        test_audio,
+        name="audio_cache",
+        critical_components=_CRITICAL_AUDIO_COMPONENTS,
+    )
 
 
 def benchmark_audio_representation_stability(
@@ -306,68 +208,11 @@ def benchmark_audio_representation_stability(
         bridge: TransformerBridge model to test
         test_audio: Audio waveform tensor [batch, num_samples]
     """
-    model_name = getattr(bridge.cfg, "model_name", "")
-    if is_tiny_test_model(model_name):
-        return BenchmarkResult(
-            name="audio_representation_stability",
-            severity=BenchmarkSeverity.SKIPPED,
-            message="Skipped for tiny-random model (random weights won't produce stable representations)",
-        )
-
-    try:
-        # Create a slightly perturbed version
-        noise = torch.randn_like(test_audio) * 0.01
-        perturbed_audio = test_audio + noise
-
-        with torch.no_grad():
-            output_orig = bridge(test_audio, return_type="logits")
-            output_pert = bridge(perturbed_audio, return_type="logits")
-
-        # Extract hidden states — handle tensor, BaseModelOutput, or CTC output
-        def _extract_states(out):
-            if isinstance(out, torch.Tensor):
-                return out
-            if hasattr(out, "last_hidden_state"):
-                return out.last_hidden_state
-            if hasattr(out, "logits") and out.logits is not None:
-                return out.logits
-            return None
-
-        orig_states = _extract_states(output_orig)
-        pert_states = _extract_states(output_pert)
-
-        if orig_states is None or pert_states is None:
-            return BenchmarkResult(
-                name="audio_representation_stability",
-                severity=BenchmarkSeverity.WARNING,
-                message="Could not extract hidden states for stability check",
-                passed=False,
-            )
-
-        # Compute cosine similarity (flatten to 2D: [batch, features])
-        orig_flat = orig_states.reshape(orig_states.shape[0], -1)
-        pert_flat = pert_states.reshape(pert_states.shape[0], -1)
-        cosine_sim = (
-            torch.nn.functional.cosine_similarity(orig_flat, pert_flat, dim=-1).mean().item()
-        )
-
-        passed = cosine_sim > 0.95
-        return BenchmarkResult(
-            name="audio_representation_stability",
-            severity=BenchmarkSeverity.INFO if passed else BenchmarkSeverity.WARNING,
-            message=f"Representation stability: cosine_similarity={cosine_sim:.4f} "
-            f"(threshold: 0.95)",
-            passed=passed,
-            details={"cosine_similarity": cosine_sim, "noise_std": 0.01},
-        )
-
-    except Exception as e:
-        return BenchmarkResult(
-            name="audio_representation_stability",
-            severity=BenchmarkSeverity.ERROR,
-            message=f"Representation stability check failed: {str(e)}",
-            passed=False,
-        )
+    return benchmark_encoder_representation_stability(
+        bridge,
+        test_audio,
+        name="audio_representation_stability",
+    )
 
 
 def benchmark_audio_feature_extractor(
@@ -384,6 +229,13 @@ def benchmark_audio_feature_extractor(
         test_audio: Audio waveform tensor [batch, num_samples]
     """
     try:
+        if "audio_feature_extractor" not in (bridge.adapter.component_mapping or {}):
+            return BenchmarkResult(
+                name="audio_feature_extractor",
+                severity=BenchmarkSeverity.SKIPPED,
+                message="Skipped: architecture has no conv feature extractor (spectrogram input)",
+            )
+
         with torch.no_grad():
             _, cache = bridge.run_with_cache(test_audio)
 
@@ -541,16 +393,24 @@ def run_audio_benchmarks(
 
     Args:
         bridge: TransformerBridge model to test
-        test_audio: Optional audio waveform tensor. If None, generates synthetic audio.
+        test_audio: Optional audio input tensor. If None, generates a synthetic input
+            shaped for this architecture (waveform or spectrogram).
         verbose: Whether to print progress
 
     Returns:
         List of BenchmarkResult objects
     """
     if test_audio is None:
-        device = bridge.cfg.device
-        dtype = bridge.cfg.dtype
-        test_audio = torch.randn(1, 16000, device=device, dtype=dtype)
+        test_audio = build_modality_input(bridge, device=bridge.cfg.device, dtype=bridge.cfg.dtype)
+    if test_audio is None:
+        return [
+            BenchmarkResult(
+                name="audio_forward",
+                severity=BenchmarkSeverity.ERROR,
+                message="Could not build an audio input for this model",
+                passed=False,
+            )
+        ]
 
     results = []
 

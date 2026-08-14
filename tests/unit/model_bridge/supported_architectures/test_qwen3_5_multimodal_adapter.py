@@ -9,7 +9,6 @@ from types import SimpleNamespace
 
 import torch
 
-from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.config.transformer_bridge_config import TransformerBridgeConfig
 from transformer_lens.model_bridge.generalized_components import (
     LinearBridge,
@@ -110,17 +109,26 @@ class TestVisionDecomposition:
             assert isinstance(block.submodules[comp].submodules[sub], LinearBridge)
 
 
-def test_gated_q_proj_query_half_is_sliced_under_nested_path():
-    """preprocess_weights slices the query half from the 2x-wide gated q_proj, matching the
-    nested model.language_model.* key."""
+def test_gated_q_proj_exposes_query_only_w_q_without_mutating_live_weight():
+    """The multimodal adapter shares the non-mutating gated W_Q analysis view."""
     adapter = Qwen3_5MultimodalArchitectureAdapter(_make_cfg())
+    attention = adapter.component_mapping["blocks"].submodules["attn"]
     n_heads, d_head, hidden = adapter.cfg.n_heads, adapter.cfg.d_head, adapter.cfg.d_model
-    key = "model.language_model.layers.1.self_attn.q_proj.weight"
-    # Per head: rows [query(d_head), gate(d_head)] -> 2*d_head wide.
-    full = torch.randn(n_heads * d_head * 2, hidden)
-    out = adapter.preprocess_weights({key: full.clone()})
-    assert out[key].shape == (n_heads * d_head, hidden)
-    expected = full.view(n_heads, d_head * 2, hidden)[:, :d_head, :].reshape(
-        n_heads * d_head, hidden
+    q_proj = torch.nn.Linear(hidden, n_heads * d_head * 2, bias=False)
+    with torch.no_grad():
+        values = torch.arange(q_proj.weight.numel(), dtype=q_proj.weight.dtype)
+        q_proj.weight.copy_(values.reshape_as(q_proj.weight))
+    original_weight = q_proj.weight.detach().clone()
+    query = attention.submodules["q"]
+    query.set_original_component(q_proj)
+    attention.add_module("q", query)
+
+    expected = (
+        original_weight.view(n_heads, d_head * 2, hidden)[:, :d_head, :]
+        .transpose(-1, -2)
+        .contiguous()
     )
-    assert torch.equal(out[key], expected)
+
+    assert attention.W_Q.shape == (n_heads, hidden, d_head)
+    torch.testing.assert_close(attention.W_Q, expected)
+    torch.testing.assert_close(q_proj.weight, original_weight)

@@ -4,7 +4,7 @@ TransformerLens 3 introduces **TransformerBridge**, a new way of loading and ins
 
 This page explains the differences and gives side-by-side migration recipes for the most common patterns.
 
-> **Deprecation status.** `HookedTransformer.from_pretrained` — along with the `HookedEncoderDecoder` and `HookedAudioEncoder` load paths — now emits a `DeprecationWarning`. `HookedTransformer` and the other `Hooked*` classes are slated for removal in a future major release; every feature is being migrated to `TransformerBridge` and the driver system (features that aren't a fit for a driver, such as train-from-scratch, are moving to bridge-based homes rather than staying on `HookedTransformer`). New code should use `TransformerBridge.boot_transformers(...)`. Follow the migration progress in the deprecation plan.
+> **Deprecation status.** `HookedTransformer.from_pretrained` — along with the `HookedEncoderDecoder` and `HookedAudioEncoder` load paths — now emits a `DeprecationWarning`. `HookedTransformer` and the other `Hooked*` classes are slated for removal in 4.0; every feature is being migrated to `TransformerBridge` and the driver system (features that aren't a fit for a driver, such as train-from-scratch, are moving to bridge-based homes rather than staying on `HookedTransformer`). New code should use `TransformerBridge.boot_transformers(...)`. Follow the migration progress in the deprecation plan.
 
 ## Why the change?
 
@@ -150,7 +150,35 @@ If your code only touches these APIs, the migration is genuinely just the loadin
 
 ### BERT Next Sentence Prediction
 
-`BertNextSentencePrediction` is not ported to `TransformerBridge`. Keep using `HookedEncoder` + `BertNextSentencePrediction` for NSP workflows. The bridge's BERT adapter does load NSP HuggingFace checkpoints (it rewires the unembed to `cls.seq_relationship`), but the high-level NSP API – sentence-pair tokenization, `[CLS]` pooling, "sequential"/"not sequential" decoding — is not exposed. If this is feature is something you'd like added to TransformerBridge, please file an issue.
+NSP runs on the bridge today — load the NSP head via `model_class` and pass the
+sentence-pair tokenization through:
+
+```python
+from transformers import AutoTokenizer, BertForNextSentencePrediction
+from transformer_lens.model_bridge import TransformerBridge
+
+tokenizer = AutoTokenizer.from_pretrained("google-bert/bert-base-cased")
+nsp = TransformerBridge.boot_transformers(
+    "google-bert/bert-base-cased",
+    model_class=BertForNextSentencePrediction,
+)
+nsp.enable_compatibility_mode()
+
+inputs = tokenizer("A man walked into a grocery store.", "He bought an apple.", return_tensors="pt")
+nsp(inputs["input_ids"], token_type_ids=inputs["token_type_ids"], return_type="predictions")
+# 'The sentences are sequential'
+```
+
+**Pass `token_type_ids`.** They are what tells BERT where the first sentence ends
+and the second begins; without them the NSP head scores a single undifferentiated
+span and can return the wrong verdict (on the pair above, dropping them collapses
+the logits from ±4.37 to ±0.58, and a genuinely non-sequential pair flips to
+"sequential"). With them, the bridge reproduces the raw HuggingFace NSP logits
+exactly.
+
+The legacy `BertNextSentencePrediction` wrapper is deprecated and cannot wrap a
+`TransformerBridge` — it reaches for `HookedEncoder`-only internals
+(`encoder_output`, `pooler`, `nsp_head`). Use the recipe above instead.
 
 ### New in 3.x: streaming generation
 
@@ -216,7 +244,7 @@ The cache, hook, and config APIs are the same. The only lines that had to change
 
 ## Migrating specific `HookedTransformer` APIs
 
-`HookedTransformer` is deprecated and will be removed in a future major release. The compatibility layer keeps existing code running in the meantime, but new work should target `TransformerBridge`, and migrating existing projects is the long-term supported path.
+`HookedTransformer` is deprecated and will be removed in 4.0. The compatibility layer keeps existing code running in the meantime, but new work should target `TransformerBridge`, and migrating existing projects is the long-term supported path.
 
 Most `HookedTransformer` methods and properties exist on `TransformerBridge` under the same name — see [APIs that are unchanged](#apis-that-are-unchanged). The table below covers the cases where the name or access path differs.
 
@@ -241,6 +269,36 @@ Weight-matrix rows return **raw** HuggingFace weights by default. `HookedTransfo
 | `model.all_head_labels()` | `bridge.all_head_labels` | This is a property on the bridge, so omit the call parentheses. |
 | `model.set_tokenizer(tokenizer)` | `TransformerBridge.boot_transformers(name, tokenizer=tokenizer)` | A bridge's tokenizer is fixed when it boots. Reboot to change it; assigning `bridge.tokenizer` directly bypasses tokenizer/config wiring. |
 | `from transformer_lens.train import train, HookedTransformerTrainConfig` | `from transformer_lens.tools.training import train, TrainConfig` | The training loop moved to `tools.training` and `HookedTransformerTrainConfig` renamed to `TrainConfig`. The old imports still work but emit `DeprecationWarning`. |
+
+The following example demonstrates the `W_pos` and `W_E_pos` equivalents under matching weight processing:
+
+```python
+import torch
+
+from transformer_lens import HookedTransformer
+from transformer_lens.model_bridge import TransformerBridge
+
+model = HookedTransformer.from_pretrained(
+    "gpt2", device="cpu", dtype=torch.float32
+)
+bridge = TransformerBridge.boot_transformers(
+    "openai-community/gpt2", device="cpu", dtype=torch.float32
+)
+bridge.enable_compatibility_mode()
+
+W_pos = bridge.pos_embed.W_pos
+W_E_pos = torch.cat([bridge.W_E, W_pos], dim=0)
+
+assert W_pos.shape == (bridge.cfg.n_ctx, bridge.cfg.d_model)
+assert W_E_pos.shape == (
+    bridge.cfg.d_vocab + bridge.cfg.n_ctx,
+    bridge.cfg.d_model,
+)
+torch.testing.assert_close(W_pos, model.W_pos)
+torch.testing.assert_close(W_E_pos, model.W_E_pos)
+```
+
+The equality checks use matching weight processing: `enable_compatibility_mode()` centers the bridge's writing weights in the same way as a default `HookedTransformer` load. A raw bridge load instead matches `HookedTransformer.from_pretrained_no_processing`; see [Will my numbers match HookedTransformer?](#will-my-numbers-match-hookedtransformer) for the broader rule.
 
 The loading, tokenization, generation, and basic hook calls listed under
 [APIs that are unchanged](#apis-that-are-unchanged) do not need wrappers. The
@@ -320,6 +378,30 @@ for position in range(tokens.shape[1]):
 HuggingFace model. It is not a `TransformerLensKeyValueCache`, and code should
 not depend on the latter's layout or methods.
 
+### Load a legacy TL-format checkpoint
+
+Historical training-run checkpoints (OthelloGPT, grokking demos, ARENA
+content) were saved via `HookedTransformer.state_dict()` before the bridge
+existed, using property-style keys (`blocks.0.attn.W_Q`, `embed.W_E`, ...)
+and per-head tensor shapes that `bridge.load_state_dict` doesn't recognize
+natively. `convert_tl_checkpoint` is a one-time converter for exactly this:
+convert once, load, then re-save in bridge format — `load_state_dict` itself
+stays native-only rather than carrying a second, permanent key convention.
+
+```python
+from transformer_lens.config import TransformerBridgeConfig
+from transformer_lens.model_bridge import TransformerBridge
+from transformer_lens.utilities.tl_checkpoint_conversion import convert_tl_checkpoint
+
+cfg = TransformerBridgeConfig(...)  # same hyperparameters the checkpoint was trained under
+legacy_state_dict = torch.load("othello_gpt.pth")
+
+bridge = TransformerBridge.boot_native(cfg)
+bridge.load_state_dict(convert_tl_checkpoint(legacy_state_dict, cfg), strict=True)
+
+torch.save(bridge.state_dict(), "othello_gpt_bridge_format.pth")  # re-save once, done
+```
+
 ### Type helpers for both model classes
 
 Use the structural protocol when a helper should accept either a
@@ -336,3 +418,54 @@ def cache_activations(model: TransformerLensModel, text: str):
 
 Use `TransformerLensModelWithWeights` instead when the helper also needs the
 weight-processing surface used by advanced `ActivationCache` operations.
+
+
+### Build a TL-native model from scratch
+
+For toy models and interpretability-research training loops, the bridge
+replaces `HookedTransformerConfig + HookedTransformer(cfg)` with
+`TransformerBridgeConfig + TransformerBridge.boot_native(cfg)`:
+
+```python
+# Before
+from transformer_lens import HookedTransformer, HookedTransformerConfig
+
+cfg = HookedTransformerConfig(
+    d_model=64,
+    d_head=8,
+    n_heads=8,
+    n_layers=2,
+    n_ctx=256,
+    d_vocab=50257,
+    act_fn="gelu_new",
+    seed=42,
+)
+model = HookedTransformer(cfg)
+
+# After
+from transformer_lens.config import TransformerBridgeConfig
+from transformer_lens.model_bridge import TransformerBridge
+
+cfg = TransformerBridgeConfig(
+    d_model=64,
+    d_head=8,
+    n_heads=8,
+    n_layers=2,
+    n_ctx=256,
+    d_vocab=50257,
+    act_fn="gelu_new",
+    seed=42,               # optional: makes initialisation reproducible
+)
+bridge = TransformerBridge.boot_native(cfg, device="cpu")
+```
+
+`boot_native` makes no HuggingFace Hub call and requires no `transformers`
+import. `cfg.seed` seeds the weight initialiser; omitting it lets the
+global RNG advance normally. Passing a `HookedTransformerConfig` (or any
+other legacy config object) to `boot_native` raises `TypeError` — construct
+a `TransformerBridgeConfig` directly. To reinitialize weights in place, call `bridge.init_weights()` — if `cfg.seed` is set,
+`init_weights()` rebuilds from that same seed and produces identical weights; clear or
+change `cfg.seed` first for a genuinely fresh draw. Unlike `HookedTransformer.init_weights()`,
+which calls `torch.manual_seed(cfg.seed)` globally, `boot_native` forks the RNG — training
+loops ported verbatim that rely on global seed state for data shuffling will silently
+lose reproducibility.

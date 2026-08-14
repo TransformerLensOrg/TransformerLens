@@ -1,80 +1,66 @@
 #!/usr/bin/env python3
-"""Acceptance tests for backward hook compatibility between TransformerBridge and HookedTransformer."""
+"""Acceptance tests for TransformerBridge backward-hook behavior."""
 
-import pytest
 import torch
 
 
-class TestBackwardHookCompatibility:
-    """Test backward hook compatibility between TransformerBridge and HookedTransformer."""
+class TestBackwardHookCorrectness:
+    """Backward hooks must report the true autograd gradient of the hooked activation."""
 
-    @pytest.mark.skip(
-        reason="hook_mlp_out has known gradient differences due to architectural bridging (0.875 diff, but forward pass matches perfectly)"
-    )
-    def test_backward_hook_gradients_match_hooked_transformer(
-        self, gpt2_hooked_unprocessed, gpt2_bridge_compat_no_processing
-    ):
-        """Test that backward hook gradients match between TransformerBridge and HookedTransformer.
+    def test_backward_hook_gradients_match_autograd(self, gpt2_bridge_compat_no_processing):
+        """The gradient a bwd hook sees must equal retain_grad ground truth.
 
-        This test ensures that backward hooks see identical gradient values in both
-        TransformerBridge and HookedTransformer when using no_processing mode.
+        This anchors the bwd-hook plumbing on autograd itself: capture the
+        activation with retain_grad in a forward hook, capture the hook-reported
+        gradient in a backward hook, and require them to be identical.
         """
-        hooked_model = gpt2_hooked_unprocessed
         bridge_model = gpt2_bridge_compat_no_processing
-
         test_input = torch.tensor([[1, 2, 3]])
 
-        hooked_grad_sum = torch.zeros(1)
-        bridge_grad_sum = torch.zeros(1)
+        captured: dict = {}
 
-        def sum_hooked_grads(grad, hook=None):
-            nonlocal hooked_grad_sum
-            hooked_grad_sum = grad.sum()
+        def retain_activation(tensor, hook=None):
+            tensor.retain_grad()
+            captured["activation"] = tensor
+            return tensor
+
+        def capture_grad(grad, hook=None):
+            captured["hook_grad"] = grad.detach().clone()
             return None
-
-        def sum_bridge_grads(grad, hook=None):
-            nonlocal bridge_grad_sum
-            bridge_grad_sum = grad.sum()
-            return None
-
-        hooked_model.zero_grad()
-        with hooked_model.hooks(bwd_hooks=[("blocks.0.hook_mlp_out", sum_hooked_grads)]):
-            out = hooked_model(test_input)
-            out.sum().backward()
 
         bridge_model.zero_grad()
-        with bridge_model.hooks(bwd_hooks=[("blocks.0.hook_mlp_out", sum_bridge_grads)]):
+        with bridge_model.hooks(
+            fwd_hooks=[("blocks.0.hook_mlp_out", retain_activation)],
+            bwd_hooks=[("blocks.0.hook_mlp_out", capture_grad)],
+        ):
             out = bridge_model(test_input)
             out.sum().backward()
 
-        assert torch.allclose(hooked_grad_sum, bridge_grad_sum, atol=1e-2, rtol=1e-2), (
-            f"Gradient sums should be identical but differ by "
-            f"{abs(hooked_grad_sum - bridge_grad_sum).item():.6f}"
+        assert "hook_grad" in captured, "backward hook never fired"
+        autograd_grad = captured["activation"].grad
+        assert autograd_grad is not None, "retain_grad produced no gradient"
+        max_diff = (captured["hook_grad"] - autograd_grad).abs().max().item()
+        assert max_diff < 1e-6, (
+            f"Backward hook reports a gradient {max_diff:.3e} away from the autograd "
+            f"ground truth for the same activation"
         )
 
 
 def test_transformer_bridge_hooks_context_cleans_up_backward_hooks(
-    gpt2_hooked_unprocessed, gpt2_bridge_compat_no_processing
+    gpt2_bridge_compat_no_processing,
 ):
     """Regression test for backward-hook cleanup on context exit."""
-    hooked_model = gpt2_hooked_unprocessed
     bridge_model = gpt2_bridge_compat_no_processing
-    hooked_hook = hooked_model.blocks[0].hook_resid_post
     bridge_hook = bridge_model.blocks[0].hook_resid_post
     test_input = torch.tensor([[1, 2, 3]])
 
     def noop_backward_hook(grad, hook=None):
         return None
 
-    hooked_model.zero_grad()
-    with hooked_model.hooks(bwd_hooks=[("blocks.0.hook_resid_post", noop_backward_hook)]):
-        hooked_model(test_input).sum().backward()
-
     bridge_model.zero_grad()
     with bridge_model.hooks(bwd_hooks=[("blocks.0.hook_resid_post", noop_backward_hook)]):
         bridge_model(test_input).sum().backward()
 
-    assert not hooked_hook.has_hooks(dir="bwd", including_permanent=False)
     assert not bridge_hook.has_hooks(dir="bwd", including_permanent=False)
 
 

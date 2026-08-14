@@ -133,12 +133,14 @@ def _full_and_core_phases(arch: str) -> tuple[set[int], set[int]]:
     kind = classify_architecture(arch)
     if kind == "audio":
         return {1, 8}, {1, 8}
+    if kind == "vision":
+        # Vision encoders have no tokenizer and no text tower: Phases 2/3 need
+        # HookedTransformer, Phase 4 needs text generation, and Phase 7 covers
+        # vision+text multimodal models, not these. Phase 1 (HF parity) plus
+        # Phase 9 (pixel forward/cache/stability) are the whole story.
+        return {1, 9}, {1, 9}
     if kind == "multimodal":
         return {1, 2, 3, 4, 7}, {1, 4, 7}
-    if kind == "vision":
-        # Vision-only encoders have no text tower; P9 (image forward/cache
-        # parity) is the whole verification — text phases 1-4 don't apply.
-        return {9}, {9}
     if arch in AUDIO_TEXT_ARCHITECTURES:
         # Phase 8 (audio-conditioned forward) out of the core set so a partial {1,4}
         # run still verifies; a full run records and gates it via _check_phase_scores.
@@ -213,7 +215,7 @@ def estimate_model_params(model_id: str) -> int:
     """Estimate parameter count using AutoConfig (lightweight, no model download).
 
     Fetches only the config JSON (~KB) and computes n_params from dimensions
-    using the same formula as HookedTransformerConfig.__post_init__.
+    using the standard TransformerLens parameter-count formula.
 
     Args:
         model_id: HuggingFace model ID
@@ -353,7 +355,7 @@ def estimate_model_params(model_id: str) -> int:
             n_params -= n_layers * (d_model * d_mlp * mlp_multiplier)
             n_params += n_layers * moe_per_layer
 
-    # Embedding parameters (not in HookedTransformerConfig formula but relevant for memory)
+    # Embedding parameters (not in the block-param formula but relevant for memory)
     n_params += d_vocab * d_model
 
     return n_params
@@ -372,8 +374,8 @@ def estimate_benchmark_memory_gb(
 
     Phase 1 (HF ref on):  HF ref + Bridge → 2.0x peak
     Phase 1 (HF ref off): Bridge only     → 1.0x peak
-    Phase 2: Bridge + HookedTransformer (separate copy) → 2.0x model + overhead
-    Phase 3: Same as Phase 2 (processed versions) → 2.0x model + overhead
+    Phase 2: Bridge only (runtime self-checks) → 1.0x model + overhead
+    Phase 3: Bridge + weight-processing state-dict transient → 2.0x model + overhead
     Phase 4: Bridge + GPT-2 scorer (~500MB) → ~1.0x model + 0.5 GB
 
     Args:
@@ -407,8 +409,11 @@ def estimate_benchmark_memory_gb(
             # HF ref + Bridge (2 copies) or Bridge alone
             multiplier = 2.0 if use_hf_reference else 1.0
             phase_peaks.append(model_size_gb * multiplier * (1 + overhead_fraction))
-        elif p in (2, 3):
-            # Bridge + HookedTransformer = 2 copies
+        elif p == 2:
+            # Bridge only (runtime self-checks + saved-HF equivalence)
+            phase_peaks.append(model_size_gb * 1.0 * (1 + overhead_fraction))
+        elif p == 3:
+            # Bridge + the full state-dict copy materialized during weight processing
             phase_peaks.append(model_size_gb * 2.0 * (1 + overhead_fraction))
         elif p == 4:
             # Bridge + GPT-2 scorer
@@ -559,13 +564,22 @@ _REQUIRED_PHASE_TESTS: dict[int, list[str]] = {
     3: ["logits_equivalence", "loss_equivalence"],
     7: ["multimodal_forward"],
     8: ["audio_forward", "audio_text_forward"],
-    9: ["vision_forward"],
+    9: ["vision_forward", "vision_cache"],
+}
+
+# Failure text for a modality phase that produced no score — either absent from
+# phase_scores (all tests skipped) or explicitly NULL.
+_MODALITY_NULL_MESSAGES: dict[int, str] = {
+    7: "P7=NULL (multimodal tests skipped — processor unavailable)",
+    8: "P8=NULL (audio tests skipped — no results)",
+    9: "P9=NULL (vision tests skipped — no results)",
 }
 
 
 def _check_phase_scores(
     phase_scores: dict[int, Optional[float]],
     all_results: list,
+    required_phases: Optional[set[int]] = None,
 ) -> Optional[str]:
     """Check phase scores against per-phase minimum thresholds and required tests.
 
@@ -577,23 +591,33 @@ def _check_phase_scores(
     correctness check.  Low text quality is surfaced in the verification
     note via _build_verified_note() but never causes a model to fail.
 
+    Args:
+        phase_scores: Per-phase scores; a phase whose tests all skipped is
+            absent entirely (``extract_phase_scores`` omits empty phases).
+        all_results: Benchmark results, used to name the failing tests.
+        required_phases: Phases this architecture must produce a score for —
+            the core set from ``_full_and_core_phases``.  A required modality
+            phase that is absent counts as NULL, not as a pass.
+
     Returns an error message if any phase fails, or None if all phases pass.
     The message includes the names of failed tests.
     """
     from transformer_lens.benchmarks.utils import BenchmarkSeverity
 
     failing_phases: list[str] = []
+
+    # A required modality phase whose tests all skipped never reaches phase_scores.
+    for phase in sorted((required_phases or set()) - set(phase_scores)):
+        if phase in _MODALITY_NULL_MESSAGES:
+            failing_phases.append(_MODALITY_NULL_MESSAGES[phase])
+
     for phase, score in sorted(phase_scores.items()):
         if score is None:
             # Phase 7 (multimodal), 8 (audio), or 9 (vision) with a NULL score
             # means the modality tests never ran.  This is a verification
             # failure, not something to silently skip.
-            if phase == 7:
-                failing_phases.append(f"P7=NULL (multimodal tests skipped — processor unavailable)")
-            elif phase == 8:
-                failing_phases.append(f"P8=NULL (audio tests skipped — no results)")
-            elif phase == 9:
-                failing_phases.append("P9=NULL (vision tests skipped — no results)")
+            if phase in _MODALITY_NULL_MESSAGES:
+                failing_phases.append(_MODALITY_NULL_MESSAGES[phase])
             continue
 
         # Phase 4 is a quality metric, not a pass/fail check — skip it here.
@@ -745,7 +769,6 @@ def verify_models(
     max_memory_gb: Optional[float] = None,
     dtype: str = "float32",
     use_hf_reference: bool = True,
-    use_ht_reference: bool = True,
     phases: Optional[list[int]] = None,
     quiet: bool = False,
     progress: Optional[VerificationProgress] = None,
@@ -758,7 +781,6 @@ def verify_models(
         max_memory_gb: Memory limit (auto-detected if None)
         dtype: Dtype for memory estimation
         use_hf_reference: Whether to compare against HuggingFace model
-        use_ht_reference: Whether to compare against HookedTransformer
         phases: Which benchmark phases to run
         quiet: Suppress verbose output
         progress: Existing progress for resume
@@ -903,7 +925,6 @@ def verify_models(
                 device=device,
                 dtype=torch_dtype,
                 use_hf_reference=use_hf_reference,
-                use_ht_reference=use_ht_reference,
                 verbose=not quiet,
                 phases=phases_to_run,
                 trust_remote_code=needs_remote_code,
@@ -918,7 +939,12 @@ def verify_models(
         phase_scores = extract_phase_scores(all_results)
 
         if not error_msg:
-            score_error = _check_phase_scores(phase_scores, all_results)
+            # Only require the core phases this run actually requested, so a
+            # partial run (e.g. --phases 1 2) isn't failed for a missing P7.
+            _, core_for_arch = _full_and_core_phases(arch)
+            score_error = _check_phase_scores(
+                phase_scores, all_results, required_phases=core_for_arch & set(eff_phases)
+            )
             if score_error:
                 error_msg = score_error
 
@@ -1365,11 +1391,6 @@ Examples:
         ),
     )
     parser.add_argument(
-        "--no-ht-reference",
-        action="store_true",
-        help="Skip HookedTransformer reference comparison",
-    )
-    parser.add_argument(
         "--phases",
         nargs="+",
         type=int,
@@ -1377,7 +1398,7 @@ Examples:
         help=(
             "Which benchmark phases to run (default: a full verification for each "
             "model's architecture — 1 2 3 4 for text, 1 2 3 4 7 for multimodal, "
-            "1 8 for audio, 9 for vision)"
+            "1 8 for audio, 1 9 for vision)"
         ),
     )
     parser.add_argument(
@@ -1510,7 +1531,6 @@ Examples:
         max_memory_gb=max_memory_gb,
         dtype=args.dtype,
         use_hf_reference=not args.no_hf_reference,
-        use_ht_reference=not args.no_ht_reference,
         phases=args.phases,
         quiet=args.quiet,
         progress=progress,

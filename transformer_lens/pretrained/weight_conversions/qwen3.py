@@ -3,10 +3,10 @@ from typing import Any
 import einops
 import torch
 
-from transformer_lens.config.hooked_transformer_config import HookedTransformerConfig
+from transformer_lens.config import TransformerLensConfig
 
 
-def convert_qwen3_weights(qwen: Any, cfg: HookedTransformerConfig):
+def convert_qwen3_weights(qwen: Any, cfg: TransformerLensConfig):
     """Convert Qwen3 weights to TransformerLens format."""
     state_dict = {}
 

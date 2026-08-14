@@ -75,6 +75,73 @@ def test_boot_native_returns_bridge_over_native_model():
     assert isinstance(bridge.original_model, NativeModel)
 
 
+@pytest.mark.parametrize("stop_at_layer", [0, 2, -1])
+def test_boot_native_direct_stop_matches_cached_stop(stop_at_layer: int):
+    bridge = TransformerBridge.boot_native(_cfg(n_layers=3))
+    bridge.eval()
+    tokens = torch.tensor([[1, 2, 3]])
+
+    with torch.no_grad():
+        expected, _ = bridge.run_with_cache(tokens, stop_at_layer=stop_at_layer)
+        actual = bridge(tokens, stop_at_layer=stop_at_layer)
+
+    assert actual.shape == (1, 3, bridge.cfg.d_model)
+    torch.testing.assert_close(actual, expected)
+
+
+def test_boot_native_input_to_embed_round_trip():
+    bridge = TransformerBridge.boot_native(_cfg(n_layers=3))
+    bridge.eval()
+    tokens = torch.tensor([[1, 2, 3]])
+
+    with torch.no_grad():
+        expected = bridge(tokens)
+        residual, returned_tokens, shortformer_pos_embed, attention_mask = bridge.input_to_embed(
+            tokens
+        )
+        actual = bridge(
+            residual,
+            start_at_layer=0,
+            attention_mask=attention_mask,
+        )
+
+    assert residual.shape == (1, 3, bridge.cfg.d_model)
+    assert torch.equal(returned_tokens, tokens)
+    assert shortformer_pos_embed is None
+    torch.testing.assert_close(actual, expected)
+
+
+def test_native_state_dict_round_trip_restores_parameters():
+    bridge = TransformerBridge.boot_native(_cfg())
+
+    saved_state_dict = {key: value.detach().clone() for key, value in bridge.state_dict().items()}
+    original_parameters = {
+        name: parameter.detach().clone() for name, parameter in bridge.named_parameters()
+    }
+
+    with torch.no_grad():
+        for parameter in bridge.parameters():
+            parameter.zero_()
+
+    result = bridge.load_state_dict(saved_state_dict, strict=True)
+
+    assert result.missing_keys == []
+    assert result.unexpected_keys == []
+
+    for name, parameter in bridge.named_parameters():
+        torch.testing.assert_close(parameter, original_parameters[name])
+
+
+def test_native_state_dict_strict_rejects_unexpected_keys():
+    bridge = TransformerBridge.boot_native(_cfg())
+
+    with pytest.raises(RuntimeError, match="Unexpected key"):
+        bridge.load_state_dict(
+            {"not.a.real.weight": torch.zeros(1)},
+            strict=True,
+        )
+
+
 def test_state_dict_round_trip_restores_native_bridge():
     bridge = TransformerBridge.boot_native(_cfg())
     expected = {key: value.clone() for key, value in bridge.state_dict().items()}
@@ -372,6 +439,35 @@ def test_boot_native_forward_and_cache():
     assert "blocks.0.attn.hook_pattern" in cache
 
 
+@pytest.mark.parametrize("prepend_bos", [True, False])
+def test_run_with_cache_forwards_prepend_bos_for_string_input(monkeypatch, prepend_bos):
+    cfg = _cfg()
+    bridge = TransformerBridge.boot_native(cfg)
+    bridge._tokenizer = object()
+    tokenization_calls = []
+
+    def to_tokens(input, prepend_bos=None, padding_side=None):
+        tokenization_calls.append((input, prepend_bos, padding_side))
+        if prepend_bos is None:
+            prepend_bos = bridge.cfg.default_prepend_bos
+        tokens = [0, 7] if prepend_bos else [7]
+        return torch.tensor([tokens])
+
+    monkeypatch.setattr(bridge, "to_tokens", to_tokens)
+    bridge.eval()
+
+    with torch.no_grad():
+        direct_logits = bridge("hello", prepend_bos=prepend_bos)
+        cached_logits, cache = bridge.run_with_cache("hello", prepend_bos=prepend_bos)
+
+    assert tokenization_calls == [
+        ("hello", prepend_bos, None),
+        ("hello", prepend_bos, None),
+    ]
+    torch.testing.assert_close(cached_logits, direct_logits)
+    assert cache["hook_embed"].shape[1] == direct_logits.shape[1]
+
+
 def test_boot_native_does_not_load_transformers_runtime():
     # Sanity that the native path doesn't depend on HuggingFace's `transformers`
     # for the runtime work — we check that calling boot_native doesn't trigger
@@ -524,8 +620,8 @@ def test_boot_native_does_not_mutate_supplied_config():
 
 
 def test_native_gelu_new_uses_tanh_approximation():
-    """gelu_new must compute the tanh-approximation that HF GPT-2 and
-    HookedTransformer use, not plain (erf-based) GELU. A plain alias would
+    """gelu_new must compute the tanh-approximation that HF GPT-2 uses,
+    not plain (erf-based) GELU. A plain alias would
     produce small but persistent drift in parity comparisons."""
     import torch.nn.functional as F
 

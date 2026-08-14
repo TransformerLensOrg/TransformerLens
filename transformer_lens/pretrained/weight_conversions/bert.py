@@ -1,9 +1,9 @@
 import einops
 
-from transformer_lens.config.hooked_transformer_config import HookedTransformerConfig
+from transformer_lens.config import TransformerLensConfig
 
 
-def convert_bert_weights(bert, cfg: HookedTransformerConfig):
+def convert_bert_weights(bert, cfg: TransformerLensConfig):
     embeddings = bert.bert.embeddings
     state_dict = {
         "embed.embed.W_E": embeddings.word_embeddings.weight,

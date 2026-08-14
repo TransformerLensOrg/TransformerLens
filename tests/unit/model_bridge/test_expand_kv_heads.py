@@ -2,7 +2,7 @@
 
 Regression for https://github.com/TransformerLensOrg/TransformerLens/issues/1553:
 weight circuits on GQA models must expand the grouped K/V head axis to n_heads
-(repeat_interleave, matching HookedTransformer's GroupedQueryAttention layout)
+(repeat_interleave, matching the grouped-query attention layout)
 before factoring, while MHA weights pass through untouched.
 """
 

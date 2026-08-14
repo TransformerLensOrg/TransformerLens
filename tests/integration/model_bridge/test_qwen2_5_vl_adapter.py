@@ -68,6 +68,52 @@ class TestQwen2_5_VLForwardEquivalence:
         max_diff = (bridge_out - hf_out).abs().max().item()
         assert max_diff < 1e-5, f"Bridge vs fresh HF max diff = {max_diff}"
 
+    def test_left_padded_multimodal_forward_matches_fresh_hf(self, bridge):
+        """The bridge derives position_ids from attention_mask for left-padded
+        input (#1609), but mRoPE models build their own 3-D index in
+        get_rope_index and only while position_ids is None — a supplied 2-D
+        tensor is silently broadcast across all three streams instead. Their
+        derivation already scatters positions onto attended slots only, so left
+        padding must be left entirely to HF here.
+        """
+        from PIL import Image
+        from transformers import AutoModelForImageTextToText, AutoProcessor
+
+        fresh = AutoModelForImageTextToText.from_pretrained(
+            MODEL, dtype=torch.float32, attn_implementation="eager"
+        )
+        fresh.eval()
+        proc = AutoProcessor.from_pretrained(MODEL)
+        img = Image.new("RGB", (56, 56), "red")
+        messages = [
+            {
+                "role": "user",
+                "content": [{"type": "image"}, {"type": "text", "text": "Describe"}],
+            }
+        ]
+        text = proc.apply_chat_template(messages, add_generation_prompt=True)
+        inputs = proc(text=[text], images=[img], return_tensors="pt")
+
+        n_pad = 4
+        ids = inputs["input_ids"]
+        padded = {k: v for k, v in inputs.items() if k != "input_ids"}
+        padded["attention_mask"] = torch.cat(
+            [torch.zeros(1, n_pad, dtype=torch.long), torch.ones_like(ids)], dim=1
+        )
+        # Per-token tensors have to grow with the padding or HF's own rope index
+        # rejects the mask outright.
+        token_type_ids = inputs["mm_token_type_ids"]
+        padded["mm_token_type_ids"] = torch.cat(
+            [torch.zeros(1, n_pad, dtype=token_type_ids.dtype), token_type_ids], dim=1
+        )
+        padded_ids = torch.cat([torch.zeros(1, n_pad, dtype=ids.dtype), ids], dim=1)
+
+        with torch.no_grad():
+            bridge_out = bridge(padded_ids, **padded)
+            hf_out = fresh(input_ids=padded_ids, **padded).logits
+        max_diff = (bridge_out - hf_out).abs().max().item()
+        assert max_diff < 1e-5, f"Bridge vs fresh HF max diff = {max_diff}"
+
 
 class TestQwen2_5_VLHooks:
     def test_hooks_fire(self, bridge, sample_tokens):

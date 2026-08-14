@@ -232,3 +232,93 @@ lens = JacobianLens.from_pretrained(
 To propose a short-name entry in TransformerLens, open a pull request that adds the
 published file to `transformer_lens/tools/analysis/jacobian_lens_registry.json` and
 include the fitting provenance and validation results.
+
+## Importing an existing lens
+
+`JacobianLens.load()` accepts two file schemas: the standard artifact format (four
+official keys — `J`, `n_prompts`, `source_layers`, `d_model`) written by
+`JacobianLens.save()` and compatible with the Anthropic reference package, and the
+fit-checkpoint format described below.
+
+### Fit checkpoint format
+
+A fit checkpoint holds the running Jacobian sums from an interrupted or staged fit,
+before the final per-prompt average is applied. `JacobianLens.load()` detects a
+checkpoint by the presence of a `jacobian_sum` key and reconstructs the per-layer
+means automatically:
+
+```python
+lens = JacobianLens.load("path/to/checkpoint.pt")
+```
+
+The reference implementation (`anthropics/jacobian-lens`) writes exactly six
+top-level keys. `load()` also accepts optional flat-provenance keys from alternative
+writers. The full set of recognised keys is:
+
+| Key | Type | Required | Description |
+|---|---|---|---|
+| `jacobian_sum` | `dict[int, Tensor[d, d]]` | yes | Running sum of per-prompt Jacobians (float32) |
+| `n_done` | `int` | yes | Number of prompts accumulated into the sums (must be > 0) |
+| `next_idx` | `int` | no | Index of the next prompt to process (informational; not used by `load()`) |
+| `source_layers` | `list[int]` | no | Documented layer indices (informational only) |
+| `target_layer` | `int` | no | Target layer fitted against — harvested into `metadata` so `validate_model()` can check it |
+| `skip_first` | `int` | no | Leading positions excluded from the source average (informational; not used by `load()`) |
+| `model_name` | `str` | no | Flat provenance shortcut (harvested into `metadata`) |
+| `model_revision` | `str` | no | Flat provenance shortcut (harvested into `metadata`) |
+| `corpus` | `str` | no | Flat provenance shortcut (harvested into `metadata`) |
+| `metadata` | `dict[str, ...]` | no | Nested provenance from alternative writers (scalars, lists, string-keyed dicts) |
+
+`d_model` is **not** read from the payload; it is inferred from the shape of the
+first matrix in `jacobian_sum`.
+
+`load()` always sets `converted_from: "jacobian_lens_checkpoint"` in the resulting
+lens's metadata. This sentinel prevents `merge()` from silently combining a
+converted checkpoint with a natively TL-fitted lens, since the two provenance
+dictionaries will differ. To merge shards that were all loaded from checkpoints, they
+must otherwise share identical provenance (same `model_name`, `corpus`, etc.):
+
+```python
+shards = [JacobianLens.load(str(p)) for p in checkpoint_paths]
+# All shards get converted_from="jacobian_lens_checkpoint";
+# merge() requires identical provenance apart from n_prompts.
+merged = JacobianLens.merge(shards)
+merged.save("merged_lens.pt")
+```
+
+### Metadata handling
+
+Three things are guaranteed when loading a checkpoint:
+
+**Fit-reserved keys are stripped.** Keys written by `JacobianLens.fit()` to record
+TransformerLens internals (`transformer_lens_fit`, `transformer_lens_version`,
+`model_system`, `hook_convention`, etc.) are not carried over, since they describe
+the *native* fitting pipeline and would be wrong for an imported lens.
+`target_layer` is a deliberate exception: it is preserved in the resulting metadata
+so `validate_model()` can detect and reject checkpoints fitted against a non-final
+target layer.
+
+**Tensor-valued fields are dropped.** `JacobianLens.save()` uses
+`weights_only=True` for reload safety, which restricts metadata to plain Python
+scalars, lists, and string-keyed dicts. Tensor-valued fields from the source
+checkpoint would silently corrupt a future load, so they are dropped and their names
+are recorded in a `dropped_fields` list in the lens's metadata:
+
+```python
+lens = JacobianLens.load("checkpoint_with_tensors.pt")
+if "dropped_fields" in lens.metadata:
+    print("fields not carried over:", lens.metadata["dropped_fields"])
+```
+
+**Dtype is not preserved.** `JacobianLens.__init__` casts all matrices to float32
+and `save()` defaults to float16, so the source checkpoint's storage dtype cannot
+be preserved end-to-end. Value precision is preserved within those two conversions.
+
+### Note on tuned-lens
+
+Tuned-lens checkpoints are not currently supported. Tuned-lens translators are
+affine (weight + bias), but the Jacobian artifact format has no bias slot to
+receive the translation component; importing would therefore silently drop the
+bias and produce wrong-but-plausible readouts. Layer indexing also differs
+(input-to-layer-ℓ vs. output-of-block-ℓ), which would yield misaligned
+readouts if not corrected. These issues are deferred; support can be added in a
+follow-up once a lossless mapping is established.

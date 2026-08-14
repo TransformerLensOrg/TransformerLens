@@ -5,6 +5,7 @@ Typed against nn.Module so both HookedTransformer and TransformerBridge
 work through this loop.
 """
 
+import dataclasses
 from dataclasses import dataclass
 from typing import Optional, Union
 
@@ -75,6 +76,10 @@ def train(
     Returns:
         The trained model
     """
+
+    # Work on a copy: mutating the caller's config (wandb_project_name/device
+    # defaults below) was a silent side effect the caller never asked for.
+    config = dataclasses.replace(config)
 
     torch.manual_seed(config.seed)
     model.train()

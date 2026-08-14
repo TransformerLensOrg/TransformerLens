@@ -6,12 +6,11 @@ from transformer_lens.evals import (
     make_mmlu_data_loader,
     mmlu_eval,
 )
-from transformer_lens.HookedTransformer import HookedTransformer
 
 
 @pytest.fixture(scope="module")
-def model():
-    return HookedTransformer.from_pretrained("gpt2-small", device="cpu")
+def model(gpt2_bridge_compat):
+    return gpt2_bridge_compat
 
 
 def test_basic_ioi_eval(model):

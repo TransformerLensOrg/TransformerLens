@@ -1,0 +1,111 @@
+"""Regression coverage for deprecated legacy entry points."""
+
+from __future__ import annotations
+
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+PROJECT_ROOT = Path(__file__).parents[2]
+
+
+def _small_config():
+    from transformer_lens import HookedTransformerConfig
+
+    return HookedTransformerConfig(
+        n_layers=1,
+        d_model=16,
+        d_head=4,
+        n_heads=4,
+        n_ctx=8,
+        d_vocab=20,
+        attn_only=True,
+    )
+
+
+def _assert_single_deprecation(constructor, class_name: str) -> None:
+    with pytest.warns(DeprecationWarning, match=class_name) as caught:
+        constructor()
+
+    assert len(caught) == 1
+    assert "TransformerBridge.boot_transformers" in str(caught[0].message)
+    assert "4.0" in str(caught[0].message)
+
+
+def test_importing_transformer_lens_emits_no_deprecation_warning():
+    code = "\n".join(
+        [
+            "import warnings",
+            "warnings.filterwarnings(",
+            "    'error',",
+            "    category=DeprecationWarning,",
+            "    module=r'^transformer_lens(?:\\.|$)',",
+            ")",
+            "import transformer_lens",
+        ]
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        cwd=PROJECT_ROOT,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_hooked_transformer_constructor_warns_once():
+    from transformer_lens import HookedTransformer
+
+    _assert_single_deprecation(lambda: HookedTransformer(_small_config()), "HookedTransformer")
+
+
+def test_hooked_encoder_constructor_warns_once():
+    from transformer_lens import HookedEncoder
+
+    _assert_single_deprecation(lambda: HookedEncoder(_small_config()), "HookedEncoder")
+
+
+def test_hooked_encoder_from_pretrained_warning_reaches_external_caller():
+    code = "\n".join(
+        [
+            "import importlib",
+            "hooked_encoder_module = importlib.import_module('transformer_lens.HookedEncoder')",
+            "HookedEncoder = hooked_encoder_module.HookedEncoder",
+            "def stop_loading(*args, **kwargs):",
+            "    raise RuntimeError('stop after deprecation warning')",
+            "hooked_encoder_module.loading.get_official_model_name = stop_loading",
+            "try:",
+            "    HookedEncoder.from_pretrained('bert-base-cased')",
+            "except RuntimeError as error:",
+            "    assert str(error) == 'stop after deprecation warning'",
+        ]
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        cwd=PROJECT_ROOT,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "<string>:" in result.stderr
+    assert "DeprecationWarning: HookedEncoder.from_pretrained is deprecated" in result.stderr
+
+
+def test_bert_next_sentence_prediction_constructor_warns_once():
+    from transformer_lens import BertNextSentencePrediction
+
+    _assert_single_deprecation(
+        lambda: BertNextSentencePrediction(object()), "BertNextSentencePrediction"
+    )
+
+
+def test_direct_hooked_root_module_construction_warns_once():
+    from transformer_lens import HookedRootModule
+
+    _assert_single_deprecation(HookedRootModule, "HookedRootModule")

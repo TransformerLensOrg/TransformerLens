@@ -1,13 +1,14 @@
+import pytest
 import torch
 
-from transformer_lens.config.hooked_transformer_config import HookedTransformerConfig
+from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.pretrained.weight_conversions.openai import (
     convert_gpt_oss_weights,
 )
 
 
 def make_cfg():
-    return HookedTransformerConfig(
+    return TransformerBridgeConfig(
         n_layers=1,
         d_model=32,
         d_head=8,
@@ -55,6 +56,7 @@ def make_mock_model(cfg):
     layer.post_attention_layernorm.weight = torch.randn(d)
 
     # Attention
+    layer.self_attn.sinks = torch.randn(n_heads)
     layer.self_attn.q_proj.weight = torch.randn(n_heads * d_head, d)
     layer.self_attn.k_proj.weight = torch.randn(n_kv * d_head, d)
     layer.self_attn.v_proj.weight = torch.randn(n_kv * d_head, d)
@@ -193,3 +195,111 @@ def test_state_dict_completeness():
             "W_out.bias",
         ]:
             assert f"blocks.0.mlp.experts.{e}.{name}" in state_dict
+
+
+class Tensor:
+    """Mimics triton_kernels.tensor.Tensor: named "Tensor", not a torch.Tensor,
+    not subscriptable — what packed-MXFP4 gpt-oss checkpoints expose (#1619)."""
+
+    def __init__(self, shape):
+        self.shape = shape
+        self.dtype = "mxfp4"
+        self.data = object()
+        self.storage = object()
+
+
+def test_packed_mxfp4_experts_raise_legible_error():
+    """Packed MXFP4 expert weights must raise naming MXFP4, not a bare TypeError."""
+    cfg = make_cfg()
+    model = make_mock_model(cfg)
+    model.model.layers[0].mlp.experts.gate_up_proj = Tensor(
+        (cfg.num_experts, cfg.d_model, 2 * cfg.d_mlp)
+    )
+
+    with pytest.raises(NotImplementedError, match="MXFP4"):
+        convert_gpt_oss_weights(model, cfg)
+
+
+def test_sinks_are_converted():
+    """The learned attention-sink logits must reach the state dict (#1619 follow-up)."""
+    cfg = make_cfg()
+    model = make_mock_model(cfg)
+
+    state_dict = convert_gpt_oss_weights(model, cfg)
+
+    assert torch.equal(state_dict["blocks.0.attn.sinks"], model.model.layers[0].self_attn.sinks)
+
+
+class TestGptOssHookedTransformerParity:
+    """End-to-end HT-vs-HF logit parity on a tiny random GPT-OSS.
+
+    Loading used to crash on MXFP4 (#1619); once past that, HookedTransformer
+    silently disagreed with HF because its attention lacked sinks, sliding-window
+    layers, and yarn RoPE with truncate=False. This locks in all three via the
+    production config-mapping path (convert_hf_model_config on a local dir).
+    """
+
+    def test_tiny_model_logit_parity(self, tmp_path):
+        from transformers import AutoModelForCausalLM, GptOssConfig, GptOssForCausalLM
+
+        from transformer_lens import HookedTransformer
+        from transformer_lens.config.hooked_transformer_config import (
+            HookedTransformerConfig,
+        )
+        from transformer_lens.loading_from_pretrained import convert_hf_model_config
+
+        hf_config = GptOssConfig(
+            hidden_size=64,
+            num_hidden_layers=2,  # one sliding_attention + one full_attention layer
+            num_attention_heads=4,
+            num_key_value_heads=2,
+            head_dim=16,
+            intermediate_size=32,
+            num_local_experts=4,
+            num_experts_per_tok=2,
+            vocab_size=256,
+            max_position_embeddings=128,
+            sliding_window=4,  # < seq len so the sliding-window mask actually bites
+            rope_parameters={
+                "rope_type": "yarn",
+                "rope_theta": 150000.0,
+                "factor": 4.0,
+                "original_max_position_embeddings": 32,
+                "beta_fast": 32.0,
+                "beta_slow": 1.0,
+                "truncate": False,
+            },
+        )
+        torch.manual_seed(0)
+        hf_model = GptOssForCausalLM(hf_config).eval().float()
+        hf_model.save_pretrained(tmp_path)
+
+        ids = torch.tensor([[5, 17, 29, 3, 11, 42, 7, 23]])
+        reference = AutoModelForCausalLM.from_pretrained(
+            str(tmp_path), dtype=torch.float32, attn_implementation="eager"
+        ).eval()
+        with torch.inference_mode():
+            ref_logits = reference(ids).logits
+
+        cfg_dict = convert_hf_model_config(str(tmp_path))
+        assert cfg_dict["use_attention_sinks"] is True
+        assert cfg_dict["attn_types"] == ["local", "global"]
+        assert cfg_dict["use_yarn_rope"] is True
+        assert cfg_dict["yarn_truncate"] is False
+        cfg_dict["dtype"] = torch.float32
+        cfg_dict["tokenizer_name"] = None  # keep the test download-free
+
+        cfg = HookedTransformerConfig.from_dict(cfg_dict)
+        model = HookedTransformer(cfg)
+        model.load_and_process_state_dict(
+            convert_gpt_oss_weights(hf_model, cfg),
+            fold_ln=False,
+            center_writing_weights=False,
+            center_unembed=False,
+            fold_value_biases=False,
+        )
+        with torch.inference_mode():
+            ht_logits = model(ids, return_type="logits")
+
+        max_diff = (ref_logits - ht_logits).abs().max().item()
+        assert max_diff < 1e-4, f"HT vs HF logit drift {max_diff:.2e}"

@@ -1,10 +1,10 @@
 import einops
 import torch
 
-from transformer_lens.config.hooked_transformer_config import HookedTransformerConfig
+from transformer_lens.config import TransformerLensConfig
 
 
-def convert_neox_weights(neox, cfg: HookedTransformerConfig):
+def convert_neox_weights(neox, cfg: TransformerLensConfig):
     state_dict = {}
 
     state_dict["embed.W_E"] = neox.gpt_neox.embed_in.weight

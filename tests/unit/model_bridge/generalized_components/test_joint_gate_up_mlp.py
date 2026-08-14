@@ -1,6 +1,7 @@
 """Tests for JointGateUpMLPBridge split logic."""
 
 import torch
+from accelerate.hooks import attach_align_device_hook
 
 from transformer_lens.model_bridge.generalized_components.joint_gate_up_mlp import (
     JointGateUpMLPBridge,
@@ -61,3 +62,37 @@ class TestDefaultSplitGateUp:
 
         assert gate_proj.bias is None
         assert up_proj.bias is None
+
+
+class TestSetOriginalComponentUnderOffload:
+    """set_original_component reads gate_up_proj's raw weight once, at setup, to
+    build the gate/up slices - the same setup-time pattern as
+    JointQKVAttentionBridge.set_original_component (#1280 review), which needs
+    real (not meta) data materialized under Accelerate CPU/disk offload."""
+
+    def test_split_materializes_offloaded_gate_up_proj(self):
+        d_model, d_mlp = 8, 16
+        mock_mlp = _MockMLP(d_model, d_mlp)
+        weights_map = {
+            k[len("gate_up_proj.") :]: v.clone()
+            for k, v in mock_mlp.state_dict().items()
+            if k.startswith("gate_up_proj.")
+        }
+        attach_align_device_hook(
+            mock_mlp.gate_up_proj,
+            execution_device=torch.device("cpu"),
+            offload=True,
+            weights_map=weights_map,
+        )
+        assert mock_mlp.gate_up_proj.weight.is_meta
+
+        bridge = JointGateUpMLPBridge(name="mlp")
+        bridge.set_original_component(mock_mlp)
+
+        gate_weight = bridge.gate.original_component.weight
+        up_weight = getattr(bridge, "in").original_component.weight
+        assert not gate_weight.is_meta
+        assert not up_weight.is_meta
+        torch.testing.assert_close(
+            torch.cat([gate_weight, up_weight], dim=0), weights_map["weight"]
+        )

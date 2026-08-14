@@ -121,6 +121,29 @@ DEFAULT_TOP_K = 10
 _SWAP_WARN_COSINE = 0.99
 _SWAP_ERROR_COSINE = 0.999
 
+# Keys written by fit() that must not appear in converted-lens metadata so that
+# merge() can refuse to mix TL-fitted lenses with externally converted ones.
+# Note: "target_layer" is intentionally NOT listed here — it must survive
+# conversion so that validate_model() can detect and refuse checkpoints that
+# were fitted against a non-final target layer.
+_FIT_RESERVED_KEYS: frozenset = frozenset(
+    {
+        "transformer_lens_fit",
+        "transformer_lens_version",
+        "model_system",
+        "processing",
+        "hook_convention",
+        "fit_dtype",
+        "dim_batch",
+        "max_seq_len",
+        "skip_first_positions",
+    }
+)
+
+# Top-level payload keys that some checkpoint writers store as flat provenance
+# (rather than nested under a "metadata" key).
+_CHECKPOINT_FLAT_PROVENANCE: frozenset = frozenset({"model_name", "model_revision", "corpus"})
+
 
 @dataclass
 class JacobianLensReadout:
@@ -266,27 +289,135 @@ class JacobianLens:
 
     @classmethod
     def load(cls, path: str) -> "JacobianLens":
-        """Load a lens artifact saved by this class or the reference package.
+        """Load a lens artifact or fit checkpoint saved in a supported schema.
+
+        Two file schemas are accepted:
+
+        **Artifact** (the reference format, written by :meth:`save` or the
+        Anthropic reference package): must contain a ``J`` key mapping layer
+        indices to transport matrices, plus ``n_prompts``, ``d_model``, and an
+        optional ``metadata`` dict.
+
+        **Fit checkpoint** (running-sum format, written by the reference
+        implementation's ``write_checkpoint()`` during fitting): must contain
+        a ``jacobian_sum`` key mapping layer indices to *running-sum* matrices
+        (i.e. the sum over prompts, not yet divided by the prompt count), plus
+        ``n_done``.  ``d_model`` is inferred from the first matrix's shape;
+        no explicit ``d_model`` key is required or expected.  The per-layer
+        means are reconstructed on load.  A
+        ``converted_from: "jacobian_lens_checkpoint"`` key is added to
+        metadata so :meth:`merge` refuses to silently combine checkpoints with
+        natively TL-fitted lenses.  Fit-reserved provenance keys
+        (``transformer_lens_fit``, etc.) are stripped; scalar fields that can
+        be serialised under ``weights_only=True`` are preserved.
+        Tensor-valued metadata fields that would fail :func:`_validate_metadata`
+        are recorded by name in a ``dropped_fields`` list.
+
+        Fit checkpoint schema (reference ``write_checkpoint()`` format)
+        ---------------------------------------------------------------
+        The reference implementation writes exactly six top-level keys; all
+        other keys in the payload are ignored::
+
+            {
+                "jacobian_sum":   {<layer int>: <float32 tensor [d, d]>, ...},
+                "n_done":         <int>,        # prompts accumulated into jacobian_sum
+                "next_idx":       <int>,        # next prompt index (informational)
+                "source_layers":  [<int>, ...], # documented layer indices (informational)
+                "target_layer":   <int>,        # target layer — harvested into metadata
+                "skip_first":     <int>,        # leading positions skipped (informational)
+                # optional flat provenance accepted from alternative checkpoint writers:
+                "model_name":     <str>,
+                "model_revision": <str>,
+                "corpus":         <str>,
+                # optional nested provenance accepted from alternative writers:
+                "metadata":       {<str>: <scalar/list/dict>, ...},
+            }
 
         Args:
-            path: Path to the ``.pt`` artifact.
+            path: Path to the ``.pt`` file.
 
         Raises:
-            ValueError: If the file lacks the ``J`` key (e.g. a fit checkpoint
-                rather than a saved lens).
+            ValueError: If the file lacks both a ``J`` key (artifact) and a
+                ``jacobian_sum`` key (checkpoint), or if a checkpoint records a
+                non-positive ``n_prompts``.
         """
         payload = torch.load(path, map_location="cpu", weights_only=True)
-        if "J" not in payload:
-            raise ValueError(
-                f"{path} does not look like a Jacobian lens artifact (no 'J' key). "
-                "Fit checkpoints and other formats are not supported."
+        if "J" in payload:
+            return cls(
+                {int(layer): matrix for layer, matrix in payload["J"].items()},
+                n_prompts=int(payload.get("n_prompts", 0)),
+                d_model=int(payload["d_model"]),
+                metadata=payload.get("metadata"),
             )
-        return cls(
-            {int(layer): matrix for layer, matrix in payload["J"].items()},
-            n_prompts=int(payload.get("n_prompts", 0)),
-            d_model=int(payload["d_model"]),
-            metadata=payload.get("metadata"),
+        if "jacobian_sum" in payload:
+            return cls._from_checkpoint_payload(path, payload)
+        raise ValueError(
+            f"{path} does not look like a Jacobian lens artifact or fit checkpoint. "
+            "Expected a 'J' key (artifact) or 'jacobian_sum' key (fit checkpoint). "
+            "See JacobianLens.load() for the supported file schemas."
         )
+
+    @classmethod
+    def _from_checkpoint_payload(cls, path: str, payload: Dict[str, Any]) -> "JacobianLens":
+        """Reconstruct a JacobianLens from a fit-checkpoint payload.
+
+        Divides the running Jacobian sums by ``n_prompts``, strips fit-reserved
+        provenance keys, harvests safe scalar metadata, records dropped tensor
+        fields, and marks the result as converted so :meth:`merge` refuses to
+        mix it with natively TL-fitted lenses.
+        """
+        n_prompts = int(payload.get("n_done", payload.get("n_prompts", 0)))
+        if n_prompts <= 0:
+            raise ValueError(
+                f"{path} is a fit checkpoint with n_prompts={n_prompts}; "
+                "a positive prompt count is required to reconstruct the Jacobian mean."
+            )
+        if not payload["jacobian_sum"]:
+            raise ValueError(
+                f"{path} is a fit checkpoint with an empty jacobian_sum; "
+                "at least one layer matrix is required to reconstruct d_model."
+            )
+        first_matrix = next(iter(payload["jacobian_sum"].values()))
+        d_model = first_matrix.shape[0]
+        jacobians = {
+            int(layer): matrix.float() / n_prompts
+            for layer, matrix in payload["jacobian_sum"].items()
+        }
+
+        # Collect raw provenance: first from nested "metadata", then supplement
+        # with flat top-level keys that some checkpoint writers place directly
+        # in the payload (model_name, model_revision, corpus).
+        raw_meta: Dict[str, Any] = dict(payload.get("metadata") or {})
+        for key in _CHECKPOINT_FLAT_PROVENANCE:
+            if key in payload and key not in raw_meta:
+                raw_meta[key] = payload[key]
+        # target_layer lives at the top level in the reference checkpoint format;
+        # harvest it into metadata so validate_model() can check the fitting target.
+        if "target_layer" in payload and "target_layer" not in raw_meta:
+            raw_meta["target_layer"] = payload["target_layer"]
+
+        # Build clean metadata: drop fit-reserved keys, record tensor-valued
+        # fields that _validate_metadata would reject (they cannot survive a
+        # weights_only=True reload), and keep everything else that validates.
+        dropped_fields: List[str] = []
+        clean_meta: Dict[str, Any] = {}
+        for key, value in raw_meta.items():
+            if key in _FIT_RESERVED_KEYS:
+                continue
+            if isinstance(value, torch.Tensor):
+                dropped_fields.append(f"{key}: shape={tuple(value.shape)} dtype={value.dtype}")
+                continue
+            try:
+                _validate_metadata({key: value})
+                clean_meta[key] = value
+            except ValueError:
+                dropped_fields.append(key)
+
+        clean_meta["converted_from"] = "jacobian_lens_checkpoint"
+        if dropped_fields:
+            clean_meta["dropped_fields"] = dropped_fields
+
+        return cls(jacobians, n_prompts=n_prompts, d_model=d_model, metadata=clean_meta)
 
     @classmethod
     def from_pretrained(

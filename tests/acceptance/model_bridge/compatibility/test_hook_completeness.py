@@ -1,32 +1,38 @@
-"""Test that all HookedTransformer hooks are available and functional in TransformerBridge.
+"""Test that all legacy HookedTransformer hooks are available and functional in TransformerBridge.
 
-This test ensures complete hook parity across different model architectures.
-It verifies that:
-1. All hooks from HookedTransformer exist in TransformerBridge
+This test ensures complete hook parity across different model architectures,
+anchored on the frozen HT goldens (tests/goldens.py). It verifies that:
+1. All hooks from the golden hook manifest exist in TransformerBridge
 2. All hooks actually fire during forward pass
-3. Hook activations match between the two implementations
+3. Hook activations match the frozen HT snapshot
 """
 
 import os
 
 import pytest
 
-from transformer_lens import HookedTransformer
+from tests import goldens
 from transformer_lens.benchmarks import benchmark_forward_hooks, benchmark_hook_registry
 from transformer_lens.model_bridge import TransformerBridge
 
 pytestmark = pytest.mark.slow
 
 # Diverse architectures for hook completeness testing.
-# Constraint: these tests compare bridge vs legacy HookedTransformer, so each
-# entry must be in HookedTransformer's OFFICIAL_MODEL_NAMES. Tiny Llama/Qwen/Gemma
-# families (under ~150M) aren't registered with HT; for those,
-# tests/unit/model_bridge/test_component_hooks_fire.py (Tier 2) provides
-# direct per-adapter hook-firing coverage without needing an HT counterpart.
+# Constraint: the reference-anchored tests need a golden cell for the model
+# (see scripts/capture_ht_goldens.py). Tiny Llama/Qwen/Gemma families have no
+# goldens; for those, tests/unit/model_bridge/test_component_hooks_fire.py
+# (Tier 2) provides direct per-adapter hook-firing coverage.
 MODELS_TO_TEST = [
     "gpt2",  # JointQKVAttentionBridge (standard decoder-only)
     "EleutherAI/pythia-14m",  # ParallelBlockBridge regression guard
 ]
+
+
+def _golden_cell(model_name):
+    if not goldens.goldens_available(model_name, "no_processing"):
+        pytest.skip("TL goldens dataset unavailable (set TL_GOLDENS_DIR or enable network)")
+    return goldens.GoldenCell(model_name, "no_processing")
+
 
 # Gemma2: local only (too large for CI)
 if not os.getenv("CI"):
@@ -38,18 +44,16 @@ class TestHookCompleteness:
 
     @pytest.mark.parametrize("model_name", MODELS_TO_TEST)
     def test_all_hooks_exist(self, model_name):
-        """Test that TransformerBridge has all hooks that HookedTransformer has.
+        """Test that TransformerBridge has all hooks that HookedTransformer had.
 
         This test verifies that the hook registry is complete - every hook in
-        HookedTransformer must exist in TransformerBridge.
+        the frozen golden manifest must exist in TransformerBridge.
         """
-        # Load both models
-        ht = HookedTransformer.from_pretrained_no_processing(model_name, device="cpu")
+        golden = _golden_cell(model_name)
         bridge = TransformerBridge.boot_transformers(model_name, device="cpu")
         bridge.enable_compatibility_mode(no_processing=True)
 
-        # Run benchmark
-        result = benchmark_hook_registry(bridge, reference_model=ht)
+        result = benchmark_hook_registry(bridge, reference_hooks=golden.hook_manifest.keys())
 
         # Must pass - no missing hooks allowed
         assert result.passed, (
@@ -67,18 +71,20 @@ class TestHookCompleteness:
         critical because hooks that don't fire indicate architectural bugs
         (e.g., missing ln2 calls in patched forward methods).
         """
-        # Load both models
-        ht = HookedTransformer.from_pretrained_no_processing(model_name, device="cpu")
+        golden = _golden_cell(model_name)
         bridge = TransformerBridge.boot_transformers(model_name, device="cpu")
         bridge.enable_compatibility_mode(no_processing=True)
 
-        # Use a short prompt to speed up testing
-        test_text = "The quick brown fox"
+        # The golden snapshot was captured on this prompt.
+        test_text = golden.scalars["short_prompt"]
+        reference_activations = golden.tensors("activations")
 
         # Run benchmark - this will fail if hooks don't fire
         # tolerance=1e-2: some architectures (e.g., pythia) accumulate small floating-point
         # differences across layers that exceed 1e-3 but are not meaningful divergences.
-        result = benchmark_forward_hooks(bridge, test_text, reference_model=ht, tolerance=1e-2)
+        result = benchmark_forward_hooks(
+            bridge, test_text, reference_activations=reference_activations, tolerance=1e-2
+        )
 
         # Must pass - all hooks must fire
         assert result.passed, (

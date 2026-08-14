@@ -28,6 +28,8 @@ import numpy as np
 import torch
 import tqdm
 from torch import nn
+from torch.nn import functional as F
+from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 
 from transformer_lens import utilities as utils
 from transformer_lens.ActivationCache import ActivationCache
@@ -62,8 +64,8 @@ if TYPE_CHECKING:
 _BLOCK_PATTERN = re.compile("blocks\\.(\\d+)")
 
 
-def _resolve_attr_path(obj: nn.Module, attr_path: str) -> torch.Tensor:
-    """Walk a dot-separated attribute path and return the final tensor."""
+def _resolve_attr_path(obj: nn.Module, attr_path: str) -> Optional[torch.Tensor]:
+    """Walk a dot-separated attribute path and return the final tensor (None if bias-free)."""
     result = obj
     for attr in attr_path.split("."):
         result = getattr(result, attr)
@@ -414,17 +416,33 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                     return getattr(self.__dict__["original_model"], name)
             except AttributeError:
                 pass  # type: ignore[operator,assignment]
+        # A class property whose fget raised AttributeError lands here with the
+        # informative message discarded (CPython drops it before __getattr__).
+        # Re-invoke the property so its own diagnostic (e.g. "bias-free
+        # projection") surfaces instead of a generic missing-attribute error.
+        descriptor = getattr(type(self), name, None)
+        if isinstance(descriptor, property) and descriptor.fget is not None:
+            descriptor.fget(self)
         raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
     def __str__(self) -> str:
-        """Get a string representation of the bridge.
-        # type: ignore[operator]
-               Returns:
-                   A string describing the bridge's components # type: ignore[operator]
+        """One-line-per-component summary of the bridge.
+
+        Returns:
+            A string describing the bridge's components.
         """
         lines = ["TransformerBridge:"]
         mapping = self.adapter.get_component_mapping()
-        lines.extend(self._format_component_mapping(mapping, indent=1))
+
+        def _describe(component_mapping, indent):
+            pad = "  " * indent
+            for name, component in component_mapping.items():
+                lines.append(f"{pad}{name}: {type(component).__name__}")
+                submodules = getattr(component, "submodules", None)
+                if submodules:
+                    _describe(submodules, indent + 1)
+
+        _describe(mapping, 1)
         return "\n".join(lines)
 
     def enable_compatibility_mode(
@@ -476,6 +494,34 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 f"{type(self.adapter).__name__} does not support compatibility mode: "
                 "its stored-processed-weights path is known to diverge from the "
                 "reference model. Use the default bridge forward instead."
+            )
+
+        hf_device_map = getattr(self.original_model, "hf_device_map", None)
+        if hf_device_map and not no_processing:
+            offloaded = {k for k, v in hf_device_map.items() if str(v).lower() in ("cpu", "disk")}
+            if offloaded:
+                raise RuntimeError(
+                    "enable_compatibility_mode() with weight processing "
+                    "(fold_ln/center_writing_weights/center_unembed/fold_value_biases) is not "
+                    "supported on a bridge with an offloaded device_map "
+                    f"({sorted(offloaded)} are CPU/disk-offloaded). Weight processing reads and "
+                    "rewrites parameters directly across many components at once, not through a "
+                    "single component's own forward() call the way the default (non-compat-mode) "
+                    "bridge forward does, so it isn't covered by GeneralizedComponent's per-call "
+                    "materialization and hits raw meta tensors. Load without a CPU/disk device_map "
+                    "for compatibility mode, or call enable_compatibility_mode(no_processing=True) "
+                    "for the hook/component compatibility layer without the weight transforms."
+                )
+
+        if getattr(self.cfg, "is_audio_model", False):
+            # Audio encoders have no text embed/unembed for the legacy weight
+            # processing to operate on; without this guard the processing path
+            # dies later with an opaque KeyError ('embed.weight').
+            raise NotImplementedError(
+                "enable_compatibility_mode() is not supported for audio encoder models: "
+                "the legacy weight processing (fold_ln/centering) assumes a text "
+                "embed/unembed, which audio encoders do not have. Use the bridge's "
+                "native hooks (run_with_cache / run_with_hooks) directly."
             )
 
         self.compatibility_mode = True
@@ -894,6 +940,11 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         weights: List[torch.Tensor] = []
         for idx, block in matching:
             w = _resolve_attr_path(block, attr_path)
+            if w is None:
+                raise AttributeError(
+                    f"blocks[{idx}].{attr_path} is None — this checkpoint has no such "
+                    f"parameter (bias-free projection)."
+                )
             if reshape_fn is not None:
                 w = reshape_fn(w)
             weights.append(w)
@@ -937,8 +988,17 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             )
 
         weights: List[torch.Tensor] = []
-        for _, block in matching_blocks:
+        for block_idx, block in matching_blocks:
             w = _resolve_attr_path(block, attr_path)
+            if w is None:
+                # Bias-free checkpoints (e.g. qkv_bias=False) expose None here;
+                # stacking would raise an opaque TypeError.
+                raise AttributeError(
+                    f"blocks[{block_idx}].{attr_path} is None — this checkpoint has no "
+                    f"such parameter (bias-free projection). Bias-free models expose no "
+                    f"stacked {attr_path.rsplit('.', 1)[-1]}; construct zeros explicitly "
+                    f"if your analysis needs one."
+                )
             if reshape_fn is not None:
                 w = reshape_fn(w)
             weights.append(w)
@@ -1202,8 +1262,13 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
 
         def _stack(attr_path: str, reshape_fn: Optional[Callable] = None) -> torch.Tensor:
             weights: List[torch.Tensor] = []
-            for block in blocks_list:
+            for block_idx, block in zip(indices, blocks_list):
                 w = _resolve_attr_path(block, attr_path)
+                if w is None:
+                    raise AttributeError(
+                        f"blocks[{block_idx}].{attr_path} is None — this checkpoint has "
+                        f"no such parameter (bias-free projection)."
+                    )
                 if reshape_fn is not None:
                     w = reshape_fn(w)
                 weights.append(w)
@@ -1383,6 +1448,127 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         residual = self.forward(tokens, stop_at_layer=0, attention_mask=attention_mask)
         return residual, tokens, None, attention_mask
 
+    def _accepts_derived_position_ids(self) -> bool:
+        """Whether it is safe to hand the wrapped model a mask-derived ``position_ids``.
+
+        Two families of model must be left alone, so the injection below is
+        gated on the target the same way ``output_attentions`` is in
+        :meth:`BridgeCore.run_with_cache`:
+
+        * **Fixed-signature models.** Remote-code forwards such as
+          ``LLaDAModelLM.forward`` take neither ``position_ids`` nor
+          ``**kwargs``, so passing it raises ``TypeError`` where the model
+          previously returned logits.
+        * **Models that own their position derivation.** mRoPE architectures
+          (Qwen2-VL, Qwen2.5-VL, Qwen3-VL, GLM-4V) build a 3-D temporal /
+          height / width index in ``get_rope_index``, and only while
+          ``position_ids is None``; a supplied 2-D tensor is silently expanded
+          across all three streams instead. Their derivation already scatters
+          positions onto attended slots only, so it handles left padding
+          correctly on its own and needs no help from us.
+        * **Mask-consuming positional embeddings.** OPT's
+          ``OPTLearnedPositionalEmbedding.forward`` takes the mask and derives
+          the same positions we would, so injection buys nothing — but it does
+          replace the model's own padding-slot convention with ours, which
+          shows up as a whole-tensor diff.
+
+        Non-torch drivers (vLLM, Inspect) expose no module to introspect and
+        manage positions internally, so they are excluded as well.
+        """
+        underlying = getattr(self._driver, "underlying_model", None)
+        if underlying is None:
+            return False
+
+        cached = self.__dict__.get("_derived_position_ids_ok")
+        if cached is not None and cached[0] is underlying:
+            return bool(cached[1])
+
+        def verdict() -> bool:
+            fwd_params = inspect.signature(underlying.forward).parameters
+            if "position_ids" not in fwd_params and not any(
+                p.kind is inspect.Parameter.VAR_KEYWORD for p in fwd_params.values()
+            ):
+                return False
+
+            # ``get_rope_index`` lives on the inner text model, not the
+            # ForConditionalGeneration wrapper that is usually original_model.
+            for module in (
+                underlying,
+                getattr(underlying, "model", None),
+                getattr(underlying, "language_model", None),
+            ):
+                if module is not None and hasattr(module, "get_rope_index"):
+                    return False
+
+            # Config-level backstop for mRoPE models that spell the derivation
+            # differently; the section list is what makes positions 3-D.
+            config = getattr(underlying, "config", None)
+            for candidate in (config, getattr(config, "text_config", None)):
+                scaling = getattr(candidate, "rope_scaling", None)
+                if isinstance(scaling, dict) and "mrope_section" in scaling:
+                    return False
+
+            # A positional embedding that takes the mask derives positions for
+            # itself. Only embeddings that override nn.Embedding.forward are
+            # worth inspecting, which keeps this to a handful per model.
+            for module in underlying.modules():
+                if not isinstance(module, nn.Embedding):
+                    continue
+                if type(module).forward is nn.Embedding.forward:
+                    continue
+                if "attention_mask" in inspect.signature(module.forward).parameters:
+                    return False
+            return True
+
+        accepts = verdict()
+        self.__dict__["_derived_position_ids_ok"] = (underlying, accepts)
+        return accepts
+
+    @staticmethod
+    def _seq2seq_loss(
+        logits: torch.Tensor,
+        labels: torch.Tensor,
+        native_loss: Any,
+        *,
+        per_token: bool,
+    ) -> torch.Tensor:
+        """Return encoder-decoder loss without the causal LM token shift."""
+        if labels.device != logits.device:
+            labels = labels.to(logits.device)
+        if labels.shape != logits.shape[:-1]:
+            raise ValueError(
+                "seq2seq labels must match the decoder logits batch and position "
+                f"dimensions, got labels {tuple(labels.shape)} and logits "
+                f"{tuple(logits.shape)}"
+            )
+        if not per_token and isinstance(native_loss, torch.Tensor):
+            return native_loss
+
+        losses = F.cross_entropy(
+            logits.flatten(0, 1),
+            labels.flatten(),
+            reduction="none" if per_token else "mean",
+            ignore_index=-100,
+        )
+        return losses.view_as(labels) if per_token else losses
+
+    def _finalize_seq2seq_return(
+        self,
+        return_type: str,
+        logits: torch.Tensor,
+        labels: torch.Tensor,
+        native_output: Any,
+        *,
+        loss_per_token: bool,
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
+        loss = self._seq2seq_loss(
+            logits,
+            labels,
+            getattr(native_output, "loss", None),
+            per_token=loss_per_token,
+        )
+        return (logits, loss) if return_type == "both" else loss
+
     def forward(
         self,
         input: Union[str, List[str], torch.Tensor],
@@ -1391,6 +1577,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         prepend_bos: Optional[bool] = None,
         padding_side: Optional[str] = None,
         attention_mask: Optional[torch.Tensor] = None,
+        labels: Optional[torch.Tensor] = None,
         start_at_layer: Optional[int] = None,
         stop_at_layer: Optional[int] = None,
         pixel_values: Optional[torch.Tensor] = None,
@@ -1409,6 +1596,8 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             loss_per_token: Whether to return loss per token
             prepend_bos: Whether to prepend BOS token
             padding_side: Which side to pad on
+            labels: Explicit language-model targets. Encoder-decoder models require
+                labels for loss; decoder-only models fall back to input IDs when omitted.
             past_key_values: HuggingFace KV cache from a prior ``use_cache=True`` step
                 (e.g. the second element of a ``return_type='logits_and_cache'`` return).
                 When provided, KV caching is enabled automatically and only the new
@@ -1435,13 +1624,29 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             Model output based on return_type
         """
 
-        if return_type in ("loss", "both") and not self.adapter.supports_causal_loss:
+        underlying_model = getattr(getattr(self, "_driver", None), "underlying_model", None)
+        model_config = getattr(underlying_model, "config", None)
+        is_encoder_decoder = bool(getattr(model_config, "is_encoder_decoder", False))
+        if return_type in ("loss", "both"):
+            if is_encoder_decoder and labels is None:
+                raise ValueError(
+                    "labels are required for seq2seq return_type='loss' or 'both'; "
+                    "encoder input_ids are not decoder targets"
+                )
+        if (
+            return_type in ("loss", "both")
+            and not is_encoder_decoder
+            and not self.adapter.supports_causal_loss
+        ):
             architecture = self.cfg.architecture or type(self.adapter).__name__
             raise NotImplementedError(
                 f"{architecture} does not support TransformerBridge's shifted causal "
                 "loss. Request return_type='logits' and compute the architecture-specific "
                 "masked-token objective explicitly."
             )
+
+        if labels is not None:
+            kwargs["labels"] = labels
 
         if start_at_layer is not None:
             input = self._setup_start_at_layer(input, start_at_layer)
@@ -1460,8 +1665,11 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                     "The bridge only supports stop_at_layer on 'blocks'."
                 )
             if hasattr(self, "blocks"):
+                effective_stop_at_layer = (
+                    len(self.blocks) + stop_at_layer if stop_at_layer < 0 else stop_at_layer
+                )
                 for block in self.blocks:
-                    block._stop_at_layer_idx = stop_at_layer
+                    block._stop_at_layer_idx = effective_stop_at_layer
 
         # Map HookedEncoderDecoder-style kwargs to HF-compatible names
         if "decoder_input" in kwargs:
@@ -1551,6 +1759,42 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                     position_ids.masked_fill_(attention_mask == 0, 1)
                     kwargs["position_ids"] = position_ids
 
+            # Any masked-out token shifts the absolute position of every real token
+            # after it, so positions must be derived from the mask rather than left
+            # to HF's default arange. This is the same derivation HookedTransformer
+            # applies in pos_embed; without it the bridge silently returns wrong
+            # logits. An all-ones mask reduces to arange, so this is a no-op there.
+            #
+            # The mask spans any cached prefix as well as the new tokens, so it is
+            # offset back to just the tokens actually being passed — matching how
+            # AbstractAttention/PosEmbed use past_kv_pos_offset.
+            if (
+                attention_mask is not None
+                and "position_ids" not in kwargs
+                and not _is_inputs_embeds
+                and attention_mask.ndim == 2
+                and isinstance(input_ids, torch.Tensor)
+                and input_ids.ndim == 2
+                and attention_mask.shape[1] >= input_ids.shape[1]
+                and self._accepts_derived_position_ids()
+            ):
+                # .long() because callers may hand in a float 0/1 mask, and
+                # positions index an embedding table.
+                _derived = utils.get_offset_position_ids(0, attention_mask.long())
+                _arange = torch.arange(attention_mask.shape[1], device=_derived.device)
+                # Decide per row, not per batch. A row only needs the derived
+                # positions when its mask actually moves one of its attended
+                # tokens off the default position — i.e. a masked token precedes
+                # a real one (left padding, or an interior gap). Rows that are
+                # unpadded or purely right-padded keep arange verbatim, so one
+                # left-padded row in a batch cannot perturb its neighbours.
+                _needs = ((_derived != _arange) & (attention_mask != 0)).any(dim=1, keepdim=True)
+                if bool(_needs.any()):
+                    _positions = torch.where(_needs, _derived, _arange.expand_as(_derived))
+                    kwargs["position_ids"] = _positions[
+                        :, attention_mask.shape[1] - input_ids.shape[1] :
+                    ]
+
             if attention_mask is not None:
                 kwargs["attention_mask"] = attention_mask
             if past_key_values is not None:
@@ -1561,11 +1805,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             if kwargs.pop("use_past_kv_cache", False) or kwargs.get("use_cache", False):
                 kwargs["use_cache"] = True
             # Auto-generate decoder_input_ids for encoder-decoder models
-            if (
-                "decoder_input_ids" not in kwargs
-                and hasattr(self.original_model, "config")
-                and getattr(self.original_model.config, "is_encoder_decoder", False)
-            ):
+            if "decoder_input_ids" not in kwargs and labels is None and is_encoder_decoder:
                 decoder_start_token_id = getattr(
                     self.original_model.config, "decoder_start_token_id", None
                 )
@@ -1654,10 +1894,24 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             if return_type == "logits_and_cache":
                 past_key_values = getattr(output, "past_key_values", None)
                 return (logits, past_key_values)
+            if is_encoder_decoder and return_type in ("loss", "both"):
+                assert isinstance(
+                    logits, torch.Tensor
+                ), f"Expected seq2seq logits tensor, got {type(logits)}"
+                assert isinstance(labels, torch.Tensor)
+                return self._finalize_seq2seq_return(
+                    return_type,
+                    logits,
+                    labels,
+                    output,
+                    loss_per_token=loss_per_token,
+                )
             return self._finalize_return(
                 return_type,
                 logits,
                 input_ids,
+                attention_mask=attention_mask,
+                labels=labels,
                 is_audio_model=getattr(self.cfg, "is_audio_model", False),
                 is_visual_model=getattr(self.cfg, "is_visual_model", False),
                 inputs_embeds_was_used=_is_inputs_embeds,
@@ -1837,6 +2091,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         multimodal_kwargs: Dict[str, Any],
         verbose: bool,
         stopping_criteria_list: Optional[Any] = None,
+        initial_attention_mask: Optional[torch.Tensor] = None,
     ) -> Generator[Tuple[torch.Tensor, torch.Tensor, bool], None, None]:
         """Core generation loop. Yields (sampled_tokens, final_logits, all_finished) per step.
 
@@ -1871,10 +2126,30 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                     )
                 else:
                     forward_kwargs: Dict[str, Any] = {}
+                    # A prompt mask covers only the prompt, so extend it by one
+                    # attended column per token generated so far. position_ids are
+                    # left to forward(), which derives them from the mask for the
+                    # models that can take them.
+                    running_attention_mask: Optional[torch.Tensor] = None
+                    if initial_attention_mask is not None:
+                        n_generated = current_tokens.shape[1] - initial_attention_mask.shape[1]
+                        running_attention_mask = torch.cat(
+                            [
+                                initial_attention_mask.to(current_tokens.device),
+                                torch.ones(
+                                    (current_tokens.shape[0], n_generated),
+                                    dtype=initial_attention_mask.dtype,
+                                    device=current_tokens.device,
+                                ),
+                            ],
+                            dim=1,
+                        )
+                        forward_kwargs["attention_mask"] = running_attention_mask
                     # Compute attention mask and position_ids for batched
                     # inputs with padding.
                     if (
-                        _is_batched_list
+                        initial_attention_mask is None
+                        and _is_batched_list
                         and self.tokenizer is not None
                         and self.tokenizer.pad_token_id is not None
                     ):
@@ -1947,6 +2222,13 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                                 forward_kwargs["position_ids"] = forward_kwargs["position_ids"][
                                     :, -1:
                                 ]
+                            elif running_attention_mask is not None:
+                                # total_len - 1 counts pad slots, so it is wrong
+                                # for a left-padded prompt. Derive the new token's
+                                # position from the mask instead.
+                                forward_kwargs["position_ids"] = utils.get_offset_position_ids(
+                                    0, running_attention_mask.long()
+                                )[:, -1:]
                             else:
                                 forward_kwargs["position_ids"] = torch.full(
                                     (batch_size, 1),
@@ -2108,6 +2390,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         pixel_values: Optional[torch.Tensor] = None,
         stop_strings: Optional[Union[str, List[str]]] = None,
         stopping_criteria: Optional[Any] = None,
+        attention_mask: Optional[torch.Tensor] = None,
         **multimodal_kwargs,
     ) -> (
         str
@@ -2184,6 +2467,20 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 Stateful/SSM models raise only when run with use_past_kv_cache=False (the
                 default keeps them on the hooked loop). Each error names the supported
                 alternative.
+            attention_mask: Optional ``[batch, pos]`` 0/1 mask over the prompt, marking
+                which prompt tokens are real. Required to generate correctly from an
+                already-padded token tensor: without it the pad tokens are treated as
+                real context and every real token's position is shifted, so the
+                continuation differs from the same prompt unpadded. The mask is extended
+                by one attended column per generated token. Takes precedence over the
+                ``padding_side`` heuristic, and unlike it can express an interior gap or
+                a pad id that also occurs as a real token. Passing ``padding_side``
+                instead reads the padding off the pad token, which is enough for the
+                common single-edge case, and raises if this bridge has no tokenizer
+                or pad id to read it from. On the encoder-decoder and inputs_embeds
+                paths the mask is forwarded to the model as-is rather than grown per
+                step, which is what processors emitting one alongside
+                ``pixel_values`` expect.
 
         Returns:
             Generated sequence as string, list of strings, or tensor depending on input type and return_type.
@@ -2239,6 +2536,63 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         else:
             input_tokens = input.to(self.cfg.device)
             input_type = "tokens"
+
+        # Without one of these a pre-padded tensor generates as though its pads were
+        # real context, shifting every real token's position (#1612). An explicit
+        # mask wins; otherwise the padding is read off the tokens, but only when the
+        # caller asked for that by passing padding_side. Deriving a mask on the
+        # default path would silently change behaviour for every existing caller,
+        # and would demand a real tokenizer where today none is required.
+        initial_attention_mask: Optional[torch.Tensor] = attention_mask
+        if initial_attention_mask is not None and (
+            _generate_from_embeds
+            or getattr(getattr(self.original_model, "config", None), "is_encoder_decoder", False)
+        ):
+            # Growing the mask per step only means something for decoder-only token
+            # generation. On these paths the mask used to arrive via
+            # **multimodal_kwargs and be forwarded to the model untouched — as
+            # processors emit it alongside pixel_values — so keep doing that rather
+            # than reject a call that worked before this parameter existed.
+            multimodal_kwargs = {**multimodal_kwargs, "attention_mask": initial_attention_mask}
+            initial_attention_mask = None
+        if initial_attention_mask is not None:
+            if initial_attention_mask.shape != input_tokens.shape:
+                raise ValueError(
+                    f"attention_mask shape {tuple(initial_attention_mask.shape)} does not "
+                    f"match the prompt shape {tuple(input_tokens.shape)}. Pass a 0/1 mask "
+                    "covering exactly the prompt tokens; generate() extends it itself."
+                )
+            initial_attention_mask = initial_attention_mask.to(self.cfg.device)
+        elif padding_side is not None and input_type == "tokens":
+            # Reading the padding off the tokens needs a tokenizer with a pad id.
+            # Without one the argument would be inert, leaving exactly the bug this
+            # fixes — silently, on a bridge booted without a tokenizer. Say so
+            # rather than generate something quietly wrong.
+            if not isinstance(self.tokenizer, PreTrainedTokenizerBase):
+                raise ValueError(
+                    "generate(padding_side=...) reads the padding off the pad token, "
+                    "which needs a tokenizer; this bridge has none. Pass "
+                    "attention_mask=... to state the padding directly instead."
+                )
+            if self.tokenizer.pad_token_id is None:
+                raise ValueError(
+                    "generate(padding_side=...) reads the padding off the pad token, "
+                    "but this tokenizer has no pad_token_id. Set one, or pass "
+                    "attention_mask=... to state the padding directly instead."
+                )
+            _prepend = self.cfg.default_prepend_bos if prepend_bos is None else prepend_bos
+            _orig_side = self.tokenizer.padding_side
+            self.tokenizer.padding_side = padding_side
+            try:
+                initial_attention_mask = utils.get_attention_mask(
+                    self.tokenizer, input_tokens, _prepend
+                ).to(self.cfg.device)
+            finally:
+                self.tokenizer.padding_side = _orig_side
+            # An all-ones mask is what the model assumes anyway; skipping it keeps
+            # the unpadded path byte-identical to before.
+            if initial_attention_mask is not None and bool(initial_attention_mask.all()):
+                initial_attention_mask = None
 
         # Determine return type
         if return_type == "input":
@@ -2490,6 +2844,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 multimodal_kwargs=multimodal_kwargs if multimodal_kwargs else {},
                 verbose=verbose,
                 stopping_criteria_list=stopping_criteria_list,
+                initial_attention_mask=initial_attention_mask,
             ):
                 sampled_tokens_list.append(sampled_tokens.unsqueeze(1))
                 if logits_seq_list is not None:
@@ -2888,7 +3243,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         output_hidden_states) directly to the underlying HF model. Use this when you need
         full HuggingFace generation features not supported by the standard generate() method.
 
-        For standard generation compatible with HookedTransformer, use generate() instead.
+        For the standard TransformerLens generation interface, use generate() instead.
 
         Args:
             input: Text string, list of strings, or tensor of tokens
@@ -2916,8 +3271,8 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         Example::
 
             # Get full HF ModelOutput with logits and attentions
-            from transformer_lens import HookedTransformer
-            model = HookedTransformer.from_pretrained("tiny-stories-1M")
+            from transformer_lens import TransformerBridge
+            model = TransformerBridge.boot_transformers("tiny-stories-1M")
             result = model.hf_generate(
                 "Hello world",
                 max_new_tokens=5,
@@ -3469,9 +3824,10 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         Converts HuggingFace format keys to TransformerLens format and filters out
         _original_component references and nested HuggingFace components.
 
-        This returns a clean state dict with only bridge component paths converted to TL format,
-        excluding nested HF components (like c_fc, c_proj, c_attn) that exist inside
-        original_component modules.
+        A direct no-argument call returns a clean state dict with bridge component
+        paths converted to TL format. Calls that supply ``destination`` or
+        ``prefix`` use standard ``nn.Module`` recursive semantics so a Bridge can
+        compose inside a parent module.
 
         Args:
             destination: Optional dict to store state dict in
@@ -3479,14 +3835,17 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             keep_vars: Whether to keep variables as Variables instead of tensors
 
         Returns:
-            Dict containing the state dict with TransformerLens format keys
+            Direct calls return TransformerLens-format keys; recursive calls
+            return the supplied destination with standard module-tree keys.
         """
-        if destination is not None:
-            raw_state_dict = self.original_model.state_dict(
-                destination=destination, prefix=prefix, keep_vars=keep_vars
+        if destination is not None or prefix:
+            return super().state_dict(
+                destination=destination,
+                prefix=prefix,
+                keep_vars=keep_vars,
             )
-        else:
-            raw_state_dict = self.original_model.state_dict(prefix=prefix, keep_vars=keep_vars)
+
+        raw_state_dict = self.original_model.state_dict(keep_vars=keep_vars)
 
         # Clean _original_component references and convert to TL format
         # Also filter out nested HuggingFace components that are wrapped by bridge components

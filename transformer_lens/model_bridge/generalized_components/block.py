@@ -110,6 +110,28 @@ class BlockBridge(GeneralizedComponent):
         # Fires pre-ln2 when use_hook_mlp_in is set. See #1317.
         self.hook_mlp_in = HookPoint()
 
+    def _wire_ln1_module(self) -> None:
+        """Keep the raw ln1 execution reference outside the ownership tree."""
+        from transformer_lens.model_bridge.generalized_components.attention import (
+            AttentionBridge,
+        )
+
+        ln1 = self.submodules.get("ln1") if self.submodules else None
+        attn = self.submodules.get("attn") if self.submodules else None
+        if not isinstance(attn, AttentionBridge):
+            return
+
+        ln1_module = None
+        if (
+            ln1 is not None
+            and getattr(attn, "supports_split_qkv_fork", False)
+            and getattr(ln1, "original_component", None) is not None
+        ):
+            ln1_module = ln1.original_component
+
+        attn._modules.pop("_ln1_module", None)
+        object.__setattr__(attn, "_ln1_module", ln1_module)
+
     def _maybe_wire_pre_ln_capture(self) -> None:
         """Install ln1/ln2 forward_pre_hooks that feed the bridge's pre-LN hooks (#1317).
 
@@ -118,6 +140,7 @@ class BlockBridge(GeneralizedComponent):
         forward never calls the raw module, so a hook there would silently miss
         on most adapters. Idempotent.
         """
+        self._wire_ln1_module()
         if self._pre_ln_capture_wired:
             return
         from transformer_lens.model_bridge.generalized_components.attention import (
@@ -140,7 +163,6 @@ class BlockBridge(GeneralizedComponent):
 
             handle = ln1.register_forward_pre_hook(_capture_pre_ln1)
             self._pre_ln_capture_handles.append(handle)
-            attn._ln1_module = ln1.original_component
 
         ln2 = self.submodules.get("ln2") if self.submodules else None
         if ln2 is not None and getattr(ln2, "original_component", None) is not None:
@@ -261,11 +283,7 @@ class BlockBridge(GeneralizedComponent):
         """Parse this block's layer index from its name (TL/GPT-2/LLaMA patterns)."""
         if self.name is None:
             return None
-        match = (
-            re.search(r"blocks\.(\d+)", self.name)
-            or re.search(r"\.h\.(\d+)", self.name)
-            or re.search(r"\.layers\.(\d+)", self.name)
-        )
+        match = re.search(r"(?:^|\.)(?:blocks|h|layers)\.(\d+)", self.name)
         return int(match.group(1)) if match else None
 
     def _check_stop_at_layer(self, *args: Any, **kwargs: Any) -> None:

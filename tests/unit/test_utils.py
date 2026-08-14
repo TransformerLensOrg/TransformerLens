@@ -6,7 +6,7 @@ import torch
 from torch import nn
 
 import transformer_lens.utils as utils
-from transformer_lens import HookedTransformer
+from transformer_lens.model_bridge import TransformerBridge
 
 ref_tensor = torch.tensor([[1, 2, 3, 4, 5], [6, 7, 8, 9, 10]])
 shape = ref_tensor.shape
@@ -200,7 +200,7 @@ class TestAttentionMask:
 
     @pytest.fixture(scope="class")
     def model(self, model_name):
-        return HookedTransformer.from_pretrained(model_name)
+        return TransformerBridge.boot_transformers(model_name)
 
     # tests
     @pytest.mark.parametrize("padding_side", ["left", "right"])

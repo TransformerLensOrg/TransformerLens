@@ -1,4 +1,4 @@
-"""HookedRootModule caching-hook API on TransformerBridge.
+"""Caching-hook API on TransformerBridge.
 
 get_caching_hooks / add_caching_hooks / cache_all / cache_some, plus
 run_with_cache(incl_bwd=...). The correctness anchor is that caches built via

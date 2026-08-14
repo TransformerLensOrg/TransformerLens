@@ -24,7 +24,6 @@ from transformers import (
     PreTrainedTokenizerBase,
 )
 
-from transformer_lens import HookedTransformer
 from transformer_lens.benchmarks.activation_cache import (
     benchmark_activation_cache,
     benchmark_run_with_cache,
@@ -36,8 +35,8 @@ from transformer_lens.benchmarks.backward_gradients import (
 )
 from transformer_lens.benchmarks.component_benchmark import benchmark_all_components
 from transformer_lens.benchmarks.forward_pass import (
+    _compute_self_target_loss,
     benchmark_forward_pass,
-    benchmark_logits_equivalence,
     benchmark_loss_equivalence,
 )
 from transformer_lens.benchmarks.generation import (
@@ -57,6 +56,7 @@ from transformer_lens.benchmarks.utils import (
     BenchmarkResult,
     BenchmarkSeverity,
     PhaseReferenceData,
+    build_modality_input,
     compare_tensors,
     format_results,
 )
@@ -69,8 +69,6 @@ from transformer_lens.benchmarks.weight_processing import (
     benchmark_value_bias_folding,
     benchmark_weight_magnitudes,
     benchmark_weight_modification,
-    benchmark_weight_processing,
-    benchmark_weight_sharing,
 )
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.factories.architecture_adapter_factory import (
@@ -81,25 +79,12 @@ from transformer_lens.tools.model_registry.registry_io import TEXT_PHASES
 
 # Architecture classification — single source of truth in utilities.architectures
 from transformer_lens.utilities.architectures import (
-    NO_HT_COMPARISON_ARCHITECTURES,
     get_architectures_for_config,
     is_audio_model,
     is_encoder_decoder_model,
     is_masked_lm_model,
 )
 from transformer_lens.utilities.hf_utils import get_hf_token as _hf_token
-
-
-def should_skip_ht_comparison(model_name: str, trust_remote_code: bool = False) -> bool:
-    """Benchmark-specific: skip Phase 2/3 for architectures with different hook shapes."""
-    try:
-        config = AutoConfig.from_pretrained(
-            model_name, trust_remote_code=trust_remote_code, token=_hf_token()
-        )
-        architectures = get_architectures_for_config(config)
-        return any(arch in NO_HT_COMPARISON_ARCHITECTURES for arch in architectures)
-    except Exception:
-        return False
 
 
 def _adapter_applicable_phases(model_name: str, trust_remote_code: bool = False) -> list[int]:
@@ -242,7 +227,6 @@ def _hf_forward_with_mask_fallback(hf_model, tokens):
 
 def run_comparison_benchmarks(
     bridge_model: TransformerBridge,
-    reference_model: Optional[HookedTransformer],
     test_text: str,
     phase_name: str,
     is_processed: bool,
@@ -250,14 +234,15 @@ def run_comparison_benchmarks(
     phase1_reference: Optional[PhaseReferenceData] = None,
     restore_dtype_after_equivalence: Optional[torch.dtype] = None,
 ) -> List[BenchmarkResult]:
-    """Run standardized comparison benchmarks between Bridge and reference model.
+    """Run standardized runtime benchmarks on the bridge.
 
     This function runs the same comprehensive test suite for both unprocessed (Phase 2)
-    and processed (Phase 3) modes to ensure parity in testing coverage.
+    and processed (Phase 3) modes: HF-anchored logits/loss equivalence (via the saved
+    Phase 1 reference) plus reference-free structural self-checks for hooks, cache,
+    and gradients.
 
     Args:
         bridge_model: TransformerBridge model to test
-        reference_model: HookedTransformer reference (same architecture) or None
         test_text: Input text for testing
         phase_name: Name of the phase ("Phase 2" or "Phase 3") for logging
         is_processed: Whether models have processed weights (for weight-specific tests)
@@ -278,9 +263,6 @@ def run_comparison_benchmarks(
         if verbose:
             result.print_immediate()
 
-    # Check if we have a same-architecture reference
-    ht_available = reference_model is not None
-
     # ========================================================================
     # 1. Weight Processing Benchmarks (only for processed mode)
     # MOST BASIC: Check weights are valid before testing anything else
@@ -300,32 +282,7 @@ def run_comparison_benchmarks(
             add_result(benchmark_unembed_centering(bridge_model, test_text))
             add_result(benchmark_value_bias_folding(bridge_model, test_text))
 
-            # Weight comparison tests (require reference model)
-            if ht_available:
-                add_result(
-                    benchmark_weight_processing(
-                        bridge_model, test_text, reference_model=reference_model
-                    )
-                )
-                add_result(
-                    benchmark_weight_sharing(
-                        bridge_model, test_text, reference_model=reference_model
-                    )
-                )
-            else:
-                if verbose:
-                    print("⏭️ weight_processing and weight_sharing skipped (no HT reference)")
-                for benchmark_name in ["weight_processing", "weight_sharing"]:
-                    add_result(
-                        BenchmarkResult(
-                            name=benchmark_name,
-                            severity=BenchmarkSeverity.SKIPPED,
-                            message="Skipped (HookedTransformer not available for this model)",
-                            passed=True,
-                        )
-                    )
-
-            # weight_modification doesn't need reference model
+            # weight_modification doesn't need a reference model
             add_result(benchmark_weight_modification(bridge_model, test_text))
             gc.collect()
         except Exception as e:
@@ -341,22 +298,8 @@ def run_comparison_benchmarks(
 
     has_phase1_ref = phase1_reference is not None and phase1_reference.hf_logits is not None
 
-    if ht_available:
-        try:
-            add_result(
-                benchmark_logits_equivalence(
-                    bridge_model, test_text, reference_model=reference_model
-                )
-            )
-            add_result(
-                benchmark_loss_equivalence(bridge_model, test_text, reference_model=reference_model)
-            )
-            gc.collect()
-        except Exception as e:
-            if verbose:
-                print(f"✗ Equivalence benchmark failed: {e}\n")
-    elif has_phase1_ref:
-        # Compare processed bridge against unprocessed Phase 1 reference.
+    if has_phase1_ref:
+        # Compare the bridge against the saved Phase 1 HF reference.
         # We use log_softmax because center_unembed shifts raw logits by a
         # softmax-invariant constant. Both passes run in float32 (no bf16 round-trip).
         try:
@@ -411,26 +354,21 @@ def run_comparison_benchmarks(
                 print(f"✗ Phase 1 reference comparison failed: {e}\n")
     else:
         if verbose:
-            print("⏭️ Skipped (no HookedTransformer reference)\n")
+            print("⏭️ Skipped (no Phase 1 HF reference)\n")
         for benchmark_name in ["logits_equivalence", "loss_equivalence"]:
             add_result(
                 BenchmarkResult(
                     name=benchmark_name,
                     severity=BenchmarkSeverity.SKIPPED,
-                    message="Skipped (HookedTransformer not available for this model)",
+                    message="Skipped (no Phase 1 HF reference available)",
                     passed=True,
                 )
             )
 
     # Restore native dtype so remaining tests run in the model's real dtype.
-    # Both bridge and reference must be downcast so hook comparisons use the
-    # same precision — otherwise bridge activations (bfloat16) are compared
-    # against reference activations (float32), producing spurious mismatches.
     if restore_dtype_after_equivalence is not None:
         try:
             bridge_model.to(restore_dtype_after_equivalence)
-            if reference_model is not None:
-                reference_model.to(restore_dtype_after_equivalence)
             if verbose:
                 print(f"  (restored to {restore_dtype_after_equivalence} for remaining tests)\n")
         except Exception as e:
@@ -444,20 +382,12 @@ def run_comparison_benchmarks(
     if verbose:
         print("3. Hook Registration Benchmarks")
 
-    if ht_available:
-        try:
-            add_result(benchmark_hook_registry(bridge_model, reference_model=reference_model))
-            gc.collect()
-        except Exception as e:
-            if verbose:
-                print(f"✗ Hook registry benchmark failed: {e}\n")
-    else:
-        try:
-            add_result(benchmark_hook_registry(bridge_model))
-            gc.collect()
-        except Exception as e:
-            if verbose:
-                print(f"✗ Hook registry benchmark failed: {e}\n")
+    try:
+        add_result(benchmark_hook_registry(bridge_model))
+        gc.collect()
+    except Exception as e:
+        if verbose:
+            print(f"✗ Hook registry benchmark failed: {e}\n")
 
     # ========================================================================
     # 4. Forward Hook Functionality Benchmarks
@@ -466,44 +396,18 @@ def run_comparison_benchmarks(
     if verbose:
         print("4. Forward Hook Functionality Benchmarks")
 
-    if ht_available:
-        try:
-            add_result(
-                benchmark_hook_functionality(
-                    bridge_model, test_text, reference_model=reference_model
-                )
-            )
-            add_result(
-                benchmark_critical_forward_hooks(
-                    bridge_model, test_text, reference_model=reference_model
-                )
-            )
-            add_result(
-                benchmark_forward_hooks(bridge_model, test_text, reference_model=reference_model)
-            )
-            add_result(benchmark_gated_hooks_fire(bridge_model, test_text))
-            # Reset hooks to prevent handle leaks
-            if hasattr(bridge_model, "reset_hooks"):
-                bridge_model.reset_hooks()
-            if reference_model is not None and hasattr(reference_model, "reset_hooks"):
-                reference_model.reset_hooks()
-            gc.collect()
-        except Exception as e:
-            if verbose:
-                print(f"✗ Forward hook benchmark failed: {e}\n")
-    else:
-        try:
-            add_result(benchmark_hook_functionality(bridge_model, test_text))
-            add_result(benchmark_critical_forward_hooks(bridge_model, test_text))
-            add_result(benchmark_forward_hooks(bridge_model, test_text))
-            add_result(benchmark_gated_hooks_fire(bridge_model, test_text))
-            # Reset hooks to prevent handle leaks
-            if hasattr(bridge_model, "reset_hooks"):
-                bridge_model.reset_hooks()
-            gc.collect()
-        except Exception as e:
-            if verbose:
-                print(f"✗ Forward hook benchmark failed: {e}\n")
+    try:
+        add_result(benchmark_hook_functionality(bridge_model, test_text))
+        add_result(benchmark_critical_forward_hooks(bridge_model, test_text))
+        add_result(benchmark_forward_hooks(bridge_model, test_text))
+        add_result(benchmark_gated_hooks_fire(bridge_model, test_text))
+        # Reset hooks to prevent handle leaks
+        if hasattr(bridge_model, "reset_hooks"):
+            bridge_model.reset_hooks()
+        gc.collect()
+    except Exception as e:
+        if verbose:
+            print(f"✗ Forward hook benchmark failed: {e}\n")
 
     # ========================================================================
     # 5. Activation Cache Benchmarks
@@ -512,34 +416,16 @@ def run_comparison_benchmarks(
     if verbose:
         print("5. Activation Cache Benchmarks")
 
-    if ht_available:
-        try:
-            add_result(
-                benchmark_run_with_cache(bridge_model, test_text, reference_model=reference_model)
-            )
-            add_result(
-                benchmark_activation_cache(bridge_model, test_text, reference_model=reference_model)
-            )
-            # Reset hooks to prevent handle leaks
-            if hasattr(bridge_model, "reset_hooks"):
-                bridge_model.reset_hooks()
-            if reference_model is not None and hasattr(reference_model, "reset_hooks"):
-                reference_model.reset_hooks()
-            gc.collect()
-        except Exception as e:
-            if verbose:
-                print(f"✗ Activation cache benchmark failed: {e}\n")
-    else:
-        try:
-            add_result(benchmark_run_with_cache(bridge_model, test_text))
-            add_result(benchmark_activation_cache(bridge_model, test_text))
-            # Reset hooks to prevent handle leaks
-            if hasattr(bridge_model, "reset_hooks"):
-                bridge_model.reset_hooks()
-            gc.collect()
-        except Exception as e:
-            if verbose:
-                print(f"✗ Activation cache benchmark failed: {e}\n")
+    try:
+        add_result(benchmark_run_with_cache(bridge_model, test_text))
+        add_result(benchmark_activation_cache(bridge_model, test_text))
+        # Reset hooks to prevent handle leaks
+        if hasattr(bridge_model, "reset_hooks"):
+            bridge_model.reset_hooks()
+        gc.collect()
+    except Exception as e:
+        if verbose:
+            print(f"✗ Activation cache benchmark failed: {e}\n")
 
     # ========================================================================
     # 6. Backward Gradient Benchmarks
@@ -555,53 +441,24 @@ def run_comparison_benchmarks(
     if mps_bf16_upcast:
         try:
             bridge_model.to(torch.float32)
-            if reference_model is not None:
-                reference_model.to(torch.float32)
         except Exception:
             mps_bf16_upcast = False  # Upcast failed; proceed as-is
 
-    if ht_available:
-        try:
-            add_result(
-                benchmark_gradient_computation(
-                    bridge_model, test_text, reference_model=reference_model
-                )
-            )
-            add_result(
-                benchmark_critical_backward_hooks(
-                    bridge_model, test_text, reference_model=reference_model
-                )
-            )
-            add_result(
-                benchmark_backward_hooks(bridge_model, test_text, reference_model=reference_model)
-            )
-            # Reset hooks to prevent handle leaks
-            if hasattr(bridge_model, "reset_hooks"):
-                bridge_model.reset_hooks()
-            if reference_model is not None and hasattr(reference_model, "reset_hooks"):
-                reference_model.reset_hooks()
-            gc.collect()
-        except Exception as e:
-            if verbose:
-                print(f"✗ Gradient benchmark failed: {e}\n")
-    else:
-        try:
-            add_result(benchmark_gradient_computation(bridge_model, test_text))
-            add_result(benchmark_critical_backward_hooks(bridge_model, test_text))
-            add_result(benchmark_backward_hooks(bridge_model, test_text))
-            # Reset hooks to prevent handle leaks
-            if hasattr(bridge_model, "reset_hooks"):
-                bridge_model.reset_hooks()
-            gc.collect()
-        except Exception as e:
-            if verbose:
-                print(f"✗ Gradient benchmark failed: {e}\n")
+    try:
+        add_result(benchmark_gradient_computation(bridge_model, test_text))
+        add_result(benchmark_critical_backward_hooks(bridge_model, test_text))
+        add_result(benchmark_backward_hooks(bridge_model, test_text))
+        # Reset hooks to prevent handle leaks
+        if hasattr(bridge_model, "reset_hooks"):
+            bridge_model.reset_hooks()
+        gc.collect()
+    except Exception as e:
+        if verbose:
+            print(f"✗ Gradient benchmark failed: {e}\n")
 
     if mps_bf16_upcast and bridge_grad_dtype is not None:
         try:
             bridge_model.to(bridge_grad_dtype)
-            if reference_model is not None:
-                reference_model.to(bridge_grad_dtype)
         except Exception:
             pass
 
@@ -614,11 +471,9 @@ def run_benchmark_suite(
     dtype: torch.dtype = torch.float32,
     test_text: Optional[str] = None,
     use_hf_reference: bool = True,
-    use_ht_reference: bool = True,
     enable_compatibility_mode: bool = True,
     verbose: bool = True,
     track_memory: bool = False,
-    test_weight_processing_individually: bool = False,
     phases: list[int] | None = None,
     trust_remote_code: bool = False,
     scoring_model: PreTrainedModel | None = None,
@@ -628,14 +483,9 @@ def run_benchmark_suite(
 
     This function implements an optimized multi-phase approach to minimize model reloading:
     Phase 1: HF + Bridge (unprocessed) - Compare against raw HuggingFace model
-    Phase 2: Bridge (unprocessed) + HT (unprocessed) - Compare unprocessed models
-    Phase 3: Bridge (processed) + HT (processed) - Full compatibility mode testing
+    Phase 2: Bridge (unprocessed) - Runtime self-checks + HF logits/loss equivalence
+    Phase 3: Bridge (processed) - Compatibility mode + HF logits/loss equivalence
     Phase 4: Text Quality - Perplexity-based legibility scoring via GPT-2
-    Phase 5: Individual Weight Processing Flags (optional)
-    Phase 6: Combined Weight Processing Flags (optional)
-
-    When test_weight_processing_individually=True, Phases 5 & 6 run after
-    Phase 3, testing each weight processing flag individually and in combinations.
 
     Args:
         model_name: Name of the model to benchmark (e.g., "gpt2")
@@ -645,12 +495,9 @@ def run_benchmark_suite(
             comparisons automatically upcast to float32 for precision.
         test_text: Optional test text (default: standard test prompt)
         use_hf_reference: Whether to compare against HuggingFace model
-        use_ht_reference: Whether to compare against HookedTransformer
         enable_compatibility_mode: Whether to enable compatibility mode on bridge
         verbose: Whether to print results to console
         track_memory: Whether to track and report memory usage (requires psutil)
-        test_weight_processing_individually: Whether to run granular weight processing
-            tests that check each processing flag individually (default: False)
         phases: Optional list of phase numbers to run (e.g., [1, 2, 3]). If None, runs all phases.
         trust_remote_code: Whether to trust remote code for custom architectures.
         scoring_model: Optional pre-loaded GPT-2 scoring model for Phase 4. When
@@ -695,57 +542,6 @@ def run_benchmark_suite(
         print(f"Model: {model_name}")
         print(f"Device: {device}")
         print(f"{'='*80}\n")
-
-    # Auto-skip HT comparison for architectures with intentionally different hook shapes
-    if use_ht_reference and should_skip_ht_comparison(model_name, trust_remote_code):
-        use_ht_reference = False
-        if verbose:
-            print(
-                "Note: Skipping HookedTransformer comparison (architecture uses "
-                "different hook shapes by design). Phase 1 is the gold standard.\n"
-            )
-
-    # Early exit if only running Phase 5/6 (they load their own models independently)
-    if phases is not None and all(p in [5, 6] for p in phases):
-        if verbose:
-            print(f"Skipping Phase 1-4 (only running Phase {', '.join(map(str, sorted(phases)))})")
-            print("Phase 5/6 load their own models independently\n")
-
-        from transformer_lens.benchmarks.granular_weight_processing import (
-            run_granular_weight_processing_benchmarks,
-        )
-
-        if 5 in phases and test_weight_processing_individually and enable_compatibility_mode:
-            phase5_results = run_granular_weight_processing_benchmarks(
-                model_name=model_name,
-                device=device,
-                test_text=test_text,
-                verbose=verbose,
-                phase=5,
-            )
-            for config_name, config_results in phase5_results.items():
-                for result in config_results:
-                    result.phase = 5
-                    results.append(result)
-                    if verbose:
-                        result.print_immediate()
-
-        if 6 in phases and test_weight_processing_individually and enable_compatibility_mode:
-            phase6_results = run_granular_weight_processing_benchmarks(
-                model_name=model_name,
-                device=device,
-                test_text=test_text,
-                verbose=verbose,
-                phase=6,
-            )
-            for config_name, config_results in phase6_results.items():
-                for result in config_results:
-                    result.phase = 6
-                    results.append(result)
-                    if verbose:
-                        result.print_immediate()
-
-        return results
 
     # Track current phase for result tagging
     current_phase: List[Optional[int]] = [None]  # Use list to allow modification in nested function
@@ -1089,12 +885,20 @@ def run_benchmark_suite(
             print(f"\nStack trace:\n{error_trace}")
         return results
 
-    # Detect audio model once for use across all phases
+    # Detect audio/vision models once for use across all phases
     _is_audio = bridge_unprocessed is not None and getattr(
         bridge_unprocessed.cfg, "is_audio_model", False
     )
-    # Shared waveform for audio model benchmarks (consistent across HF capture and bridge forward)
-    _test_audio = torch.randn(1, 16000, device=device, dtype=dtype) if _is_audio else None
+    _is_visual = bridge_unprocessed is not None and getattr(
+        bridge_unprocessed.cfg, "is_visual_model", False
+    )
+    # Shared non-text input (spectrogram, waveform, or pixels) — the same tensor is used
+    # for the HF reference capture and the bridge forward so they stay comparable.
+    _test_modality_input = (
+        build_modality_input(bridge_unprocessed, device=device, dtype=dtype)
+        if (_is_audio or _is_visual)
+        else None
+    )
 
     # Run Phase 1 benchmarks
     if should_run_phase(1) and bridge_unprocessed:
@@ -1126,20 +930,24 @@ def run_benchmark_suite(
             if verbose:
                 print("Capturing HF reference outputs to CPU...")
             try:
-                if _is_audio:
-                    # Audio models: use the shared waveform for HF vs bridge comparison
+                if _test_modality_input is not None:
+                    # Audio/vision models: use the shared non-text input for HF vs bridge
                     with torch.no_grad():
-                        hf_out = hf_model(input_values=_test_audio)
-                        # Audio encoders output last_hidden_state, not logits
+                        if _is_visual:
+                            hf_out = hf_model(pixel_values=_test_modality_input)
+                        else:
+                            hf_out = hf_model(input_values=_test_modality_input)
+                        # Bare encoders output last_hidden_state, not logits
                         if hasattr(hf_out, "logits") and hf_out.logits is not None:
                             hf_saved_logits = hf_out.logits.detach().cpu().clone()
                         else:
                             hf_saved_logits = hf_out.last_hidden_state.detach().cpu().clone()
-                        # No loss computation for audio — CTC requires aligned labels
+                        # No loss computation — there are no next-token labels here
                     if verbose:
+                        kind = "vision" if _is_visual else "audio"
                         print(
-                            f"✓ Captured HF audio output {hf_saved_logits.shape}, "
-                            f"loss=N/A (CTC requires labels)\n"
+                            f"✓ Captured HF {kind} output {hf_saved_logits.shape}, "
+                            f"loss=N/A (no token labels)\n"
                         )
                 else:
                     hf_tokens = bridge_unprocessed.to_tokens(test_text)
@@ -1169,10 +977,12 @@ def run_benchmark_suite(
                                 shift_labels.view(-1),
                             ).item()
 
-                if verbose:
-                    loss_str = f"{hf_saved_loss:.4f}" if hf_saved_loss is not None else "N/A"
-                    print(f"✓ Captured HF logits {hf_saved_logits.shape}, " f"loss={loss_str}\n")
-                del hf_tokens
+                    if verbose:
+                        loss_str = f"{hf_saved_loss:.4f}" if hf_saved_loss is not None else "N/A"
+                        print(
+                            f"✓ Captured HF logits {hf_saved_logits.shape}, " f"loss={loss_str}\n"
+                        )
+                    del hf_tokens
             except Exception as e:
                 if verbose:
                     print(f"⚠ Could not capture HF reference outputs: {e}\n")
@@ -1193,10 +1003,10 @@ def run_benchmark_suite(
         # matmul non-determinism can exceed the float32 default of 1e-3
         p1_atol = 1e-3 if dtype == torch.float32 else 5e-3
 
-        # For audio models, reuse the waveform from HF reference capture
+        # For audio/vision models, reuse the input from HF reference capture
         _p1_input: Union[str, torch.Tensor] = test_text
-        if _is_audio and _test_audio is not None:
-            _p1_input = _test_audio
+        if _test_modality_input is not None:
+            _p1_input = _test_modality_input
 
         if hf_saved_logits is not None:
             # Full mode: use pre-captured HF logits (bridge only, 1.0x)
@@ -1220,12 +1030,13 @@ def run_benchmark_suite(
                     print(f"✗ Forward pass benchmark failed: {e}\n")
 
         # Capture Phase 1 reference for Phase 3 equivalence comparison.
-        # Skip for audio models (Phase 3 won't run — no HookedTransformer support).
+        # Skip for audio/vision models (Phase 3 won't run — weight processing
+        # unsupported — and the capture below feeds text, which they cannot accept).
         # When dtype==float32 (default) and the model natively uses reduced
         # precision, upcast for maximum accuracy.  When the user explicitly
         # requested a non-float32 dtype, run the reference pass in that dtype
         # so the entire pipeline honours the requested precision.
-        if bridge_unprocessed is not None and not _is_audio:
+        if bridge_unprocessed is not None and not _is_audio and not _is_visual:
             try:
                 original_dtype = bridge_unprocessed.cfg.dtype
                 needs_upcast = dtype == torch.float32 and original_dtype not in (
@@ -1244,7 +1055,7 @@ def run_benchmark_suite(
                 with torch.no_grad():
                     bridge_logits = bridge_unprocessed(test_text, return_type="logits")
                     phase1_reference.hf_logits = bridge_logits.detach().cpu().clone()
-                    bridge_loss = bridge_unprocessed(test_text, return_type="loss")
+                    bridge_loss = _compute_self_target_loss(bridge_unprocessed, test_text)
                     phase1_reference.hf_loss = bridge_loss.item()
                     phase1_reference.test_text = test_text
                 if needs_upcast:
@@ -1279,7 +1090,7 @@ def run_benchmark_suite(
         hf_model = None
 
     # ========================================================================
-    # PHASE 2: Bridge (unprocessed) + HookedTransformer (unprocessed)
+    # PHASE 2: Bridge (unprocessed) — runtime self-checks + HF equivalence
     # ========================================================================
     current_phase[0] = 2
 
@@ -1288,7 +1099,7 @@ def run_benchmark_suite(
     if should_run_phase(2) and bridge_unprocessed:
         if verbose:
             print(f"\n{'='*80}")
-            print("PHASE 2: TransformerBridge (unprocessed) + HookedTransformer (unprocessed)")
+            print("PHASE 2: TransformerBridge (unprocessed) — runtime self-checks + HF equivalence")
             print(f"{'='*80}\n")
         if verbose:
             print("Running Phase 2 benchmarks...\n")
@@ -1372,40 +1183,10 @@ def run_benchmark_suite(
                 if verbose:
                     print(f"✗ Generation benchmark failed: {e}\n")
 
-    # Match bridge's default_prepend_bos setting in HookedTransformer.
-    ht_prepend_bos = None
-    if bridge_unprocessed is not None and hasattr(bridge_unprocessed, "cfg"):
-        bridge_bos = getattr(bridge_unprocessed.cfg, "default_prepend_bos", None)
-        if bridge_bos is not None:
-            ht_prepend_bos = bridge_bos
-
-    # Load HookedTransformer for comparison (after generation benchmarks)
-    ht_model_unprocessed = None
-    if should_run_phase(2) and use_ht_reference:
-        try:
-            if verbose:
-                print("Loading HookedTransformer (unprocessed) for comparison...")
-            ht_model_unprocessed = HookedTransformer.from_pretrained(
-                model_name,
-                device=device,
-                dtype=bridge_dtype,
-                fold_ln=False,
-                center_writing_weights=False,
-                center_unembed=False,
-                fold_value_biases=False,
-                refactor_factored_attn_matrices=False,
-                default_prepend_bos=ht_prepend_bos,
-            )
-            if verbose:
-                print("✓ HookedTransformer loaded (unprocessed)\n")
-        except Exception as e:
-            if verbose:
-                print(f"✗ Could not load unprocessed HookedTransformer: {str(e)}\n")
-
-    # Run Phase 2 comparison benchmarks using unified function
+    # Run Phase 2 runtime benchmarks using unified function
     if should_run_phase(2) and bridge_unprocessed:
         if verbose:
-            print("2. Running Unprocessed Model Comparison Benchmarks\n")
+            print("2. Running Unprocessed Model Runtime Benchmarks\n")
 
         # When dtype==float32 (default) but the model natively loaded in
         # reduced precision, upcast for maximum benchmark accuracy.  When the
@@ -1415,8 +1196,6 @@ def run_benchmark_suite(
         if dtype == torch.float32 and bridge_dtype in (torch.bfloat16, torch.float16):
             try:
                 bridge_unprocessed.to(torch.float32)
-                if ht_model_unprocessed is not None:
-                    ht_model_unprocessed.to(torch.float32)
                 phase2_restore_dtype = bridge_dtype
                 if verbose:
                     print(f"  (upcast from {bridge_dtype} to float32 for comparison)\n")
@@ -1425,11 +1204,11 @@ def run_benchmark_suite(
 
         phase2_results = run_comparison_benchmarks(
             bridge_model=bridge_unprocessed,
-            reference_model=ht_model_unprocessed,
             test_text=test_text,
             phase_name="Phase 2",
             is_processed=False,  # Unprocessed mode - skip weight processing tests
             verbose=verbose,
+            phase1_reference=phase1_reference,  # Saved HF logits/loss for equivalence testing
             restore_dtype_after_equivalence=phase2_restore_dtype,
         )
         # Tag all phase 2 results with phase number
@@ -1438,12 +1217,6 @@ def run_benchmark_suite(
                 result.phase = 2
         results.extend(phase2_results)
 
-        # Generation benchmarks already run above (before loading HT)
-
-    # Clean up unprocessed HT model - no longer needed
-    if ht_model_unprocessed is not None:
-        cleanup_model(ht_model_unprocessed, "HookedTransformer (unprocessed)")
-        ht_model_unprocessed = None
     # bridge_unprocessed is kept alive for Phase 3 and Phase 4 — reusing the
     # same instance avoids non-deterministic loading in some architectures
     # (e.g., OpenELM).
@@ -1564,10 +1337,9 @@ def run_benchmark_suite(
         try:
             from transformer_lens.benchmarks.audio import run_audio_benchmarks
 
-            test_audio = torch.randn(1, 16000, device=device, dtype=dtype)
             audio_results = run_audio_benchmarks(
                 bridge_unprocessed,
-                test_audio=test_audio,
+                test_audio=_test_modality_input,
                 verbose=verbose,
             )
             for result in audio_results:
@@ -1618,12 +1390,14 @@ def run_benchmark_suite(
         add_result(result)
 
     # ========================================================================
-    # Phase 9: Vision Tests (only for vision-only encoder models)
+    # Phase 9: Vision Tests (only for vision encoder models — ViT/DeiT, not
+    # vision+text multimodal models, which Phase 7 covers)
     # Runs before Phase 3 so we can reuse bridge_unprocessed before cleanup.
     # ========================================================================
     if (
         bridge_unprocessed is not None
         and getattr(bridge_unprocessed.cfg, "is_visual_model", False)
+        and not getattr(bridge_unprocessed.cfg, "is_multimodal", False)
         and should_run_phase(9)
     ):
         current_phase[0] = 9
@@ -1631,19 +1405,17 @@ def run_benchmark_suite(
             print("\n" + "=" * 80)
             print("PHASE 9: VISION TESTS")
             print("=" * 80)
-            print("Testing vision forward parity and caching with synthetic images.")
+            print("Testing pixel forward pass, caching, representation stability, and decoding.")
             print("=" * 80 + "\n")
 
         try:
-            from transformer_lens.benchmarks.vision import (
-                benchmark_vision_cache,
-                benchmark_vision_forward,
-            )
+            from transformer_lens.benchmarks.vision import run_vision_benchmarks
 
-            vision_results = [
-                benchmark_vision_forward(bridge_unprocessed),
-                benchmark_vision_cache(bridge_unprocessed),
-            ]
+            vision_results = run_vision_benchmarks(
+                bridge_unprocessed,
+                test_pixels=_test_modality_input,
+                verbose=verbose,
+            )
             for result in vision_results:
                 result.phase = 9
                 results.append(result)
@@ -1670,7 +1442,7 @@ def run_benchmark_suite(
             )
 
     # ========================================================================
-    # PHASE 3: Bridge (processed) + HookedTransformer (processed)
+    # PHASE 3: Bridge (processed/compatibility mode) — HF equivalence
     # ========================================================================
     current_phase[0] = 3
 
@@ -1699,12 +1471,11 @@ def run_benchmark_suite(
             print("\n⚠ Phase 3 skipped (encoder-decoder model - weight processing not supported)\n")
 
     bridge_processed = None
-    ht_model_processed = None
 
     if not _skip_phase3:
         if verbose:
             print(f"\n{'='*80}")
-            print("PHASE 3: TransformerBridge (processed) + HookedTransformer (processed)")
+            print("PHASE 3: TransformerBridge (processed/compatibility mode) — HF equivalence")
             print(f"{'='*80}\n")
 
     if not _skip_phase3:
@@ -1788,8 +1559,6 @@ def run_benchmark_suite(
                 "mlp_output_centering",
                 "unembed_centering",
                 "value_bias_folding",
-                "weight_processing",
-                "weight_sharing",
                 "weight_modification",
                 "logits_equivalence",
                 "loss_equivalence",
@@ -1818,32 +1587,6 @@ def run_benchmark_suite(
             if verbose:
                 print("\n" + format_results(results))
 
-        # Load HT in the same dtype that was requested for the benchmark.
-        # This ensures a fair comparison — both bridge and HT operate in
-        # the same precision throughout.
-        phase3_ht_dtype = dtype
-
-        if use_ht_reference:
-            try:
-                if verbose:
-                    print("Loading HookedTransformer (processed)...")
-                ht_model_processed = HookedTransformer.from_pretrained(
-                    model_name,
-                    device=device,
-                    dtype=phase3_ht_dtype,
-                    fold_ln=True,
-                    center_writing_weights=True,
-                    center_unembed=True,
-                    fold_value_biases=True,
-                    refactor_factored_attn_matrices=False,
-                    default_prepend_bos=ht_prepend_bos,
-                )
-                if verbose:
-                    print("✓ HookedTransformer loaded (processed)\n")
-            except Exception as e:
-                if verbose:
-                    print(f"✗ Could not load processed HookedTransformer: {str(e)}\n")
-
         # Run Phase 3 benchmarks using unified function
         if bridge_processed:
             if verbose:
@@ -1853,7 +1596,6 @@ def run_benchmark_suite(
             # operate in the same precision — no dtype restoration needed.
             phase3_results = run_comparison_benchmarks(
                 bridge_model=bridge_processed,
-                reference_model=ht_model_processed,
                 test_text=test_text,
                 phase_name="Phase 3",
                 is_processed=True,  # Processed mode - include weight processing tests
@@ -1870,58 +1612,6 @@ def run_benchmark_suite(
         if bridge_processed is not None:
             cleanup_model(bridge_processed, "TransformerBridge (processed)")
             bridge_processed = None
-        if ht_model_processed is not None:
-            cleanup_model(ht_model_processed, "HookedTransformer (processed)")
-            ht_model_processed = None
-
-    # ========================================================================
-    # Phase 5/6: Granular Weight Processing Tests (Optional)
-    # ========================================================================
-    if test_weight_processing_individually and enable_compatibility_mode:
-        if verbose:
-            print("\n" + "=" * 80)
-            print("PHASE 5/6: GRANULAR WEIGHT PROCESSING TESTS")
-            print("=" * 80)
-            print("Testing each weight processing flag individually and in combinations")
-            print("to isolate which specific processing steps cause issues.")
-            print("=" * 80 + "\n")
-
-        try:
-            from transformer_lens.benchmarks.granular_weight_processing import (
-                run_granular_weight_processing_benchmarks,
-            )
-
-            granular_results = run_granular_weight_processing_benchmarks(
-                model_name=model_name,
-                device=device,
-                test_text=test_text,
-                verbose=verbose,
-            )
-
-            # Convert granular results to BenchmarkResult format and add to main results
-            for config_name, config_results in granular_results.items():
-                for result in config_results:
-                    # Prefix the name with the config for clarity
-                    result.name = f"granular_{config_name}_{result.name}"
-                    results.append(result)
-
-            if verbose:
-                print("\n" + "=" * 80)
-                print("PHASE 5/6 COMPLETE")
-                print("=" * 80)
-
-        except Exception as e:
-            if verbose:
-                print(f"\n⚠ Granular weight processing tests failed: {e}\n")
-            results.append(
-                BenchmarkResult(
-                    name="granular_weight_processing_suite",
-                    passed=False,
-                    severity=BenchmarkSeverity.ERROR,
-                    message=f"Failed to run granular weight processing tests: {str(e)}",
-                    details={"error": str(e)},
-                )
-            )
 
     # Print summary (individual results already printed immediately)
     if verbose:
@@ -2108,11 +1798,6 @@ def main():
         help="Disable HuggingFace reference comparison",
     )
     parser.add_argument(
-        "--no-ht-reference",
-        action="store_true",
-        help="Disable HookedTransformer reference comparison",
-    )
-    parser.add_argument(
         "--no-compat",
         action="store_true",
         help="Disable compatibility mode",
@@ -2138,7 +1823,6 @@ def main():
         model_name=args.model,
         device=args.device,
         use_hf_reference=not args.no_hf_reference,
-        use_ht_reference=not args.no_ht_reference,
         enable_compatibility_mode=not args.no_compat,
         verbose=not args.quiet,
         trust_remote_code=args.trust_remote_code,

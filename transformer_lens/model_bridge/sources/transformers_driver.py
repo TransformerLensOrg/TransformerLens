@@ -66,7 +66,8 @@ class TransformersDriver(DriverBase):
             if hasattr(raw, "logits"):
                 logits = raw.logits
             elif isinstance(raw, tuple) and len(raw) > 0:
-                logits = raw[0]
+                # HF tuple outputs prepend loss when labels are supplied.
+                logits = raw[1] if kwargs.get("labels") is not None and len(raw) > 1 else raw[0]
             elif hasattr(raw, "last_hidden_state"):
                 # Bare encoder models (ViTModel, DeiTModel, BertModel, etc. without
                 # a task head) return e.g. BaseModelOutput/BaseModelOutputWithPooling,

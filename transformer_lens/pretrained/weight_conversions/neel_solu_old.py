@@ -1,7 +1,7 @@
-from transformer_lens.config.hooked_transformer_config import HookedTransformerConfig
+from transformer_lens.config import TransformerLensConfig
 
 
-def convert_neel_solu_old_weights(state_dict: dict, cfg: HookedTransformerConfig):
+def convert_neel_solu_old_weights(state_dict: dict, cfg: TransformerLensConfig):
     """
     Converts the weights of my old SoLU models to the HookedTransformer format.
     Takes as input a state dict, *not* a model object.

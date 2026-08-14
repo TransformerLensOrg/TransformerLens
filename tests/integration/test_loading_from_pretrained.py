@@ -1,5 +1,5 @@
 """
-Tests that verify than an arbitrary component (e.g. Embed) can be initialized using dict and object versions of HookedTransformerConfig and HookedEncoderConfig.
+Tests for the ``loading_from_pretrained`` helpers (basic config lookup).
 """
 
 from transformer_lens import loading_from_pretrained as loading

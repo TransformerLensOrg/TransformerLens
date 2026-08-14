@@ -1,7 +1,7 @@
 """Unit tests for Gemma 3 / MedGemma legacy `get_pretrained_model_config` lookup.
 
 Covers registration, config generation, hybrid attention, per-layer RoPE,
-and the HookedTransformerConfig rotary_base_local field.
+and the config's rotary_base_local field.
 """
 
 from unittest import mock
