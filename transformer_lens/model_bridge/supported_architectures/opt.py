@@ -66,6 +66,12 @@ class _UnflattenTokens(BaseTensorConversion):
 class _OptBlockBridge(BlockBridge):
     """BlockBridge that stamps (batch, seq) onto the unflatten conversions."""
 
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        # hook_mlp_in is the block's own HookPoint, fired from a ln2 pre-hook —
+        # inside OPT's flattened region, so it needs the conversion too.
+        self.hook_mlp_in.hook_conversion = _UnflattenTokens()
+
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         hidden = args[0] if args else kwargs.get("hidden_states")
         if isinstance(hidden, torch.Tensor) and hidden.dim() == 3:
@@ -75,6 +81,9 @@ class _OptBlockBridge(BlockBridge):
         return super().forward(*args, **kwargs)
 
     def _unflatten_conversions(self) -> Iterator[_UnflattenTokens]:
+        block_conversion = getattr(self.hook_mlp_in, "hook_conversion", None)
+        if isinstance(block_conversion, _UnflattenTokens):
+            yield block_conversion
         for key in ("mlp", "ln2"):
             component = self.submodules.get(key)
             if component is None:

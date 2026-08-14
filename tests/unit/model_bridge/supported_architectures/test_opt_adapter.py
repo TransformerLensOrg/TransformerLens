@@ -386,3 +386,54 @@ def test_containerless_mlp_direct_call_raises() -> None:
 
     with pytest.raises(RuntimeError, match="containerless"):
         block.submodules["mlp"](torch.randn(2, 5, 16))
+
+
+class TestOptHookMlpInShape:
+    """hook_mlp_in fires from a ln2 pre-hook inside OPT's flattened region.
+
+    It is the block's own HookPoint (not an alias), so the submodule stamping
+    missed it: siblings gave [batch, seq, d] while it still delivered
+    [batch*seq, d], and a 3D write broadcast-failed.
+    """
+
+    def _wired_block(self):
+        import copy
+
+        from transformer_lens.model_bridge.component_setup import setup_submodules
+
+        adapter = OptArchitectureAdapter(_make_cfg())
+        block = copy.deepcopy(adapter.component_mapping["blocks"])
+        layer = TestOptMLPHookShapes._FlatteningLayer(16)
+        block.set_original_component(layer)
+        setup_submodules(block, adapter, layer)
+        # The capture pre-hook is gated on this; the bridge normally toggles it
+        # via set_use_hook_mlp_in, which this harness bypasses.
+        block._use_hook_mlp_in = True
+        return block
+
+    def test_reads_are_3d(self) -> None:
+        block = self._wired_block()
+        seen: dict = {}
+        block.hook_mlp_in.add_hook(lambda t, hook: seen.__setitem__("mlp_in", tuple(t.shape)))
+        with torch.no_grad():
+            block(torch.randn(2, 5, 16))
+        assert seen.get("mlp_in") == (2, 5, 16), seen
+
+    def test_a_3d_write_lands_positionally(self) -> None:
+        block = self._wired_block()
+        with torch.random.fork_rng(devices=[]):
+            torch.manual_seed(0)
+            x = torch.randn(2, 5, 16)
+        with torch.no_grad():
+            reference = block(x)[0]
+
+        def zero_last_position(t, hook):
+            t = t.clone()
+            t[:, -1, :] = 0.0
+            return t
+
+        block.hook_mlp_in.add_hook(zero_last_position)
+        with torch.no_grad():
+            edited = block(x)[0]
+        torch.testing.assert_close(edited[:, :-1], reference[:, :-1])
+        assert not torch.allclose(edited[:, -1], reference[:, -1])

@@ -13,6 +13,7 @@ Behavioural coverage (forward pass, hook firing) lives in
 """
 
 import pytest
+import torch
 
 from tests.unit.model_bridge.supported_architectures.helpers import DENSE_KEYS
 from transformer_lens.config import TransformerBridgeConfig
@@ -272,3 +273,53 @@ class TestDeepSeekV3AdapterWeightConversions:
         self, adapter: DeepSeekV3ArchitectureAdapter
     ) -> None:
         assert adapter.weight_processing_conversions == {}
+
+
+class TestMLAWeightAccessorGeometry:
+    """W_O must factorize on MLA's two-head-dim geometry.
+
+    cfg.d_head is the QK head dim while o_proj is n_heads * v_head_dim wide —
+    a legitimate mismatch the width guard must allow (via the bind-time
+    _v_head_dim), while still refusing widths that fit neither dim.
+    """
+
+    N_HEADS, QK_D_HEAD, V_HEAD_DIM, D_MODEL = 8, 16, 64, 256
+
+    def _attn(self):
+        import copy
+
+        from tests.unit.model_bridge.supported_architectures.helpers import (
+            make_bridge_cfg,
+        )
+        from transformer_lens.factories.architecture_adapter_factory import (
+            ArchitectureAdapterFactory,
+        )
+
+        cfg = make_bridge_cfg(
+            "DeepseekV3ForCausalLM",
+            d_model=self.D_MODEL,
+            n_heads=self.N_HEADS,
+            d_head=self.QK_D_HEAD,
+        )
+        adapter = ArchitectureAdapterFactory.select_architecture_adapter(cfg)
+        attn = copy.deepcopy(adapter.component_mapping["blocks"].submodules["attn"])
+        attn._v_head_dim = self.V_HEAD_DIM  # as set_original_component captures it
+        return attn
+
+    def test_w_o_factorizes_with_v_head_dim(self) -> None:
+        attn = self._attn()
+        weight = torch.zeros(self.N_HEADS * self.V_HEAD_DIM, self.D_MODEL)
+        out = attn._reshape_weight_to_3d(weight.T, self.N_HEADS, pattern="o")
+        assert out.shape == (self.N_HEADS, self.V_HEAD_DIM, self.D_MODEL)
+
+    def test_widths_fitting_neither_dim_still_refuse(self) -> None:
+        from transformer_lens.model_bridge.generalized_components.attention import (
+            PerLayerGeometryError,
+        )
+
+        attn = self._attn()
+        # Divides evenly by n_heads (derived d_head 32) but matches neither
+        # the QK dim (16) nor v_head_dim (64) — the gemma4 silent case.
+        weight = torch.zeros(self.N_HEADS * 32, self.D_MODEL)
+        with pytest.raises(PerLayerGeometryError):
+            attn._reshape_weight_to_3d(weight.T, self.N_HEADS, pattern="o")

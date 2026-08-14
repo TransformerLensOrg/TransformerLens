@@ -12,6 +12,9 @@ from transformer_lens.benchmarks.utils import (
     safe_allclose,
 )
 from transformer_lens.model_bridge import TransformerBridge
+from transformer_lens.model_bridge.generalized_components.attention import (
+    PerLayerGeometryError,
+)
 
 
 def benchmark_weight_processing(
@@ -577,7 +580,7 @@ def benchmark_attention_output_centering(
             _ = first_attn_block.attn.W_O
         except AttributeError:
             w_o_missing = True
-        except ValueError:
+        except PerLayerGeometryError:
             pass  # per-layer geometry; the loop below reads the raw projection
         if w_o_missing:
             # No mapped output projection (JetMoe's MoA keeps per-expert W_O
@@ -602,7 +605,7 @@ def benchmark_attention_output_centering(
         for idx, block in attn_blocks:
             try:
                 column_means = torch.mean(block.attn.W_O, dim=-1)
-            except ValueError:
+            except PerLayerGeometryError:
                 # Per-layer attention geometry (OpenELM varies head counts per
                 # layer): the factorized accessor refuses, but centering is
                 # head-agnostic — the d_model mean reads straight off the 2D
