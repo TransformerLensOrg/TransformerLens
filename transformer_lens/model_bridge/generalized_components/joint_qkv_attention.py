@@ -157,7 +157,11 @@ class JointQKVAttentionBridge(AttentionBridge):
         unexpected_keys: list[str],
         error_msgs: list[str],
     ) -> None:
-        """Supply the intentionally filtered child during recursive loads."""
+        """Insert current combined weights only to satisfy strict key matching.
+
+        Production checkpoints restore authoritative values through the unfiltered
+        Hugging Face ``_original_component`` path.
+        """
         del local_metadata, strict, missing_keys, unexpected_keys, error_msgs
         qkv = module._modules.get("qkv")
         if qkv is None:

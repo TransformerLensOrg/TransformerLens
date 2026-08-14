@@ -108,12 +108,19 @@ def test_nested_joint_qkv_bridge_strict_round_trip() -> None:
     )
     parent = _parent_with_bridge(bridge)
 
-    checkpoint = parent.state_dict()
+    checkpoint = {key: value.clone() for key, value in parent.state_dict().items()}
     assert not any(".qkv." in key for key in checkpoint)
+    with torch.no_grad():
+        for parameter in parent.parameters():
+            parameter.zero_()
+
     result = parent.load_state_dict(checkpoint, strict=True)
 
     assert result.missing_keys == []
     assert result.unexpected_keys == []
+    reloaded = parent.state_dict()
+    for key, value in checkpoint.items():
+        assert torch.equal(reloaded[key], value), f"{key} did not round-trip"
 
 
 def _filtered_joint_component(kind: str) -> torch.nn.Module:
@@ -144,6 +151,7 @@ def _filtered_joint_component(kind: str) -> torch.nn.Module:
 @pytest.mark.parametrize("filtered_child_name", ["qkv", "gate_up"])
 def test_filtered_joint_component_strict_round_trip(filtered_child_name: str) -> None:
     component = _filtered_joint_component(filtered_child_name)
+    filtered_child = component.get_submodule(filtered_child_name)
     checkpoint = {key: value.clone() for key, value in component.state_dict().items()}
 
     assert checkpoint
@@ -159,3 +167,5 @@ def test_filtered_joint_component_strict_round_trip(filtered_child_name: str) ->
     reloaded = component.state_dict()
     for key, value in checkpoint.items():
         assert torch.equal(reloaded[key], value), f"{key} did not round-trip"
+    for parameter in filtered_child.parameters():
+        assert torch.count_nonzero(parameter) == 0
