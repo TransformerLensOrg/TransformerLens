@@ -2,6 +2,7 @@ import einops
 import torch
 
 from transformer_lens.config.hooked_transformer_config import HookedTransformerConfig
+from transformer_lens.utilities.quantization import require_readable_weight
 
 
 def convert_mixtral_weights(mixtral, cfg: HookedTransformerConfig):
@@ -51,20 +52,24 @@ def convert_mixtral_weights(mixtral, cfg: HookedTransformerConfig):
         #   gate_up_proj: [num_experts, 2 * d_mlp, d_model]  (gate fused above up)
         #   down_proj:    [num_experts, d_model, d_mlp]
         moe = mixtral.model.layers[l].mlp
-        state_dict[f"blocks.{l}.mlp.W_gate.weight"] = moe.gate.weight
+        # Guarded like the experts below: load_state_dict accepts a SAME-SHAPE
+        # int8/FP8 router and silently casts it to float32, so nothing
+        # downstream catches it.
+        state_dict[f"blocks.{l}.mlp.W_gate.weight"] = require_readable_weight(
+            moe.gate.weight, operation="convert the Mixtral router weight", owner=mixtral
+        )
 
         experts = moe.experts
-        gate_up = experts.gate_up_proj
-        down = experts.down_proj
-        if not isinstance(gate_up, torch.Tensor) or not gate_up.dtype.is_floating_point:
-            # Quantized checkpoints wrap or pack these; slicing them silently
-            # drops the scales instead of failing (cf. the MXFP4 gpt-oss case).
-            raise NotImplementedError(
-                "convert_mixtral_weights needs plain floating-point expert "
-                f"weights; got {type(gate_up).__name__} with dtype "
-                f"{getattr(gate_up, 'dtype', None)}. Load the checkpoint "
-                "dequantized (e.g. without a quantization_config)."
-            )
+        gate_up = require_readable_weight(
+            experts.gate_up_proj,
+            operation="convert Mixtral expert weights (gate_up_proj)",
+            owner=mixtral,
+        )
+        down = require_readable_weight(
+            experts.down_proj,
+            operation="convert Mixtral expert weights (down_proj)",
+            owner=mixtral,
+        )
 
         # MixtralExperts.forward does
         #   gate, up = F.linear(x, gate_up_proj[e]).chunk(2, dim=-1)

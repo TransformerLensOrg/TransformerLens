@@ -57,6 +57,7 @@ from transformer_lens.utilities.activation_functions import softcap_enabled
 from transformer_lens.utilities.aliases import resolve_alias
 from transformer_lens.utilities.devices import move_to_and_update_config
 from transformer_lens.utilities.lm_utils import lm_cross_entropy_loss
+from transformer_lens.utilities.quantization import require_readable_weight
 
 if TYPE_CHECKING:
     from transformer_lens.ActivationCache import ActivationCache
@@ -1039,6 +1040,28 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             fold_value_biases: Fold value biases into output bias. Default: True
             refactor_factored_attn_matrices: Experimental QK/OV factorization. Default: False
         """
+        # Folding and centering do arithmetic on raw weights, so packed or
+        # scale-separated storage would produce silent garbage. The forward
+        # path stays usable when quantized; only this transformation does not.
+        for name, param in self.original_model.named_parameters():
+            # No name filter: modern batched-MoE experts are Parameters that do
+            # NOT end in .weight (mlp.experts.gate_up_proj), and those are the
+            # very tensors the converters had to guard. unreadable_weight_reason
+            # is dtype-driven, so every full-width float parameter still passes.
+            # Routed through the shared helper so meta gets its own "load with
+            # real weights" message instead of being silently skipped — folding
+            # on meta tensors yields meta tensors, which is the same
+            # silent-garbage failure this guard exists to stop.
+            require_readable_weight(
+                param,
+                operation=f"process weights ({name})",
+                owner=self.original_model,
+                remedy=(
+                    "Load the model dequantized, or use the bridge without weight "
+                    "processing (enable_compatibility_mode(no_processing=True))."
+                ),
+            )
+
         # A failed or partial processing attempt is no longer guaranteed to retain
         # the raw HuggingFace basis, so invalidate that contract before any work.
         self._weights_processed = True

@@ -189,6 +189,45 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
         _setup_eager_attention_hook_wrapper()
         self._validate_submodule_declarations(component)
         self._qk_norm_phase = self._decide_qk_norm_phase(component)
+        self._own_scaled_hook_k(component)
+
+    def _own_scaled_hook_k(self, hf_attn: torch.nn.Module) -> None:
+        """Replace the ``hook_k`` alias with a real HookPoint when K is scaled.
+
+        Falcon-H1 multiplies K by a learned mup scalar between the projection
+        and RoPE, so the aliased ``hook_k`` (= ``k.hook_out``) reports a tensor
+        that never reaches attention, and a value written there is silently
+        rescaled on the way in. Same split Granite's residual_multiplier
+        established: the TL-semantic name carries the scaled tensor, the
+        module-shaped ``k.hook_out`` stays the raw projection.
+
+        No-op for every other architecture, which keeps the alias.
+        """
+        if getattr(hf_attn, "key_multiplier", None) is None:
+            return
+        if self.hook_aliases is type(self).hook_aliases:
+            self.hook_aliases = dict(self.hook_aliases)
+        self.hook_aliases.pop("hook_k", None)
+        # The per-head hook_conversion is attached later, by
+        # _setup_qkv_hook_reshaping — component binding always precedes hook
+        # compatibility setup (bridge.py wires components, then calls it).
+        self.hook_k = HookPoint()
+
+    def _fire_scaled_hook_k(self, key_states: torch.Tensor) -> torch.Tensor:
+        """Fire an owned ``hook_k`` on the flat 3D tensor, preserving input rank.
+
+        The split-qkv path arrives 4D; the hook_conversion presents 4D to the
+        user either way, and its revert only fires on 4D returns, so a 4D input
+        has to be flattened first or a hook that edits the tensor would hand
+        back a shape the RoPE call below cannot use.
+        """
+        if "hook_k" in self.hook_aliases or not hasattr(self, "hook_k"):
+            return key_states
+        if key_states.dim() == 4:
+            b, s, n_h, d_h = key_states.shape
+            flat = self.hook_k(key_states.reshape(b, s, n_h * d_h))
+            return flat.reshape(b, s, n_h, d_h)
+        return self.hook_k(key_states)
 
     def _validate_submodule_declarations(self, hf_attn: torch.nn.Module) -> None:
         """Raise if adapter omits q/k/v/o or a QK-norm the HF module has."""
@@ -399,9 +438,12 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
                     query_states = query_states.reshape(*input_shape, -1)
 
         # Falcon-H1 scales K by a learned mup scalar between projection and RoPE.
+        # hook_k fires after the scale (see _own_scaled_hook_k) so it carries the
+        # tensor that actually reaches attention; k.hook_out kept the raw one.
         key_multiplier = getattr(hf_attn, "key_multiplier", None)
         if key_multiplier is not None:
             key_states = key_states * key_multiplier
+            key_states = self._fire_scaled_hook_k(key_states)
 
         has_q_norm = "q_norm" in self.submodules
         has_k_norm = "k_norm" in self.submodules

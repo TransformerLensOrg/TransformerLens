@@ -6,6 +6,7 @@ Download-free: synthetic configs and structural assertions only.
 from types import SimpleNamespace
 
 import pytest
+import torch
 
 from tests.unit.model_bridge.supported_architectures.helpers import make_bridge_cfg
 from transformer_lens.config import TransformerBridgeConfig
@@ -71,6 +72,68 @@ class TestBitNetComponentMapping:
         x = torch.ones(1, 2, 4)
         out = attn._pre_output_projection(x)
         assert torch.equal(out, x * 2.0)
+
+
+class TestBitNetPackedCheckpointGuard:
+    """`prepare_model` must refuse packed 1.58-bit checkpoints.
+
+    The flagship microsoft/bitnet-b1.58-2B-4T stores `weight` as packed uint8
+    with a collapsed first dim plus a separate weight_scale, so every
+    weight-space read reshapes it into a wrong-but-plausible matrix instead of
+    failing — the registry records that checkpoint at 0% on the forward phase.
+    """
+
+    @staticmethod
+    def _model(dtype, packed_shape=(8, 1)):
+        """Mirrors BitNet's real layout: a FLOAT embedding, then packed linears.
+
+        The embedding is load-bearing. BitNet leaves it unquantized and it sorts
+        first in named_modules(), so a guard that samples only the first
+        weight-bearing module inspects the one weight that is never packed. A
+        fixture whose only weight is the quantized one passes such a guard for
+        the wrong reason — which is exactly how the `break` survived review.
+        """
+
+        class _Tiny(torch.nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.embed_tokens = torch.nn.Embedding(8, 4)
+                self.q_proj = torch.nn.Linear(4, 4, bias=False)
+                self.q_proj.weight = torch.nn.Parameter(
+                    torch.zeros(*packed_shape, dtype=dtype), requires_grad=False
+                )
+
+        model = _Tiny()
+        # prepare_model's base implementation reads cfg.attn_implementation.
+        model.config = SimpleNamespace(attn_implementation="eager")
+        return model
+
+    def test_fixture_orders_the_float_embedding_first(self, adapter):
+        """Pins the property that makes the tests above meaningful: if the
+        packed weight were seen first, they would pass even with the guard
+        sampling a single module."""
+        weighted = [
+            (name, module.weight.dtype)
+            for name, module in self._model(torch.uint8).named_modules()
+            if getattr(module, "weight", None) is not None
+        ]
+        assert weighted[0][1].is_floating_point, weighted
+        assert any(not dtype.is_floating_point for _, dtype in weighted), weighted
+
+    @pytest.mark.parametrize("dtype", [torch.uint8, torch.int8])
+    def test_packed_weights_are_refused(self, adapter, dtype):
+        with pytest.raises(NotImplementedError, match="packed weights"):
+            adapter.prepare_model(self._model(dtype))
+
+    def test_error_names_the_dequantized_sibling(self, adapter):
+        with pytest.raises(NotImplementedError, match="bitnet-b1.58-2B-4T-bf16"):
+            adapter.prepare_model(self._model(torch.uint8))
+
+    @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16, torch.float16])
+    def test_dequantized_checkpoints_still_load(self, adapter, dtype):
+        """The positive control: the bf16 sibling this error points users at
+        must pass, or the guard would make BitNet unusable entirely."""
+        adapter.prepare_model(self._model(dtype, packed_shape=(4, 4)))
 
 
 class TestBitNetRegistration:

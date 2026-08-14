@@ -2,7 +2,10 @@
 
 import pytest
 
-from tests.unit.model_bridge.supported_architectures.helpers import make_bridge_cfg
+from tests.unit.model_bridge.supported_architectures.helpers import (
+    DENSE_KEYS,
+    make_bridge_cfg,
+)
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.conversion_utils.conversion_steps.rearrange_tensor_conversion import (
     RearrangeTensorConversion,
@@ -224,10 +227,10 @@ class TestQwen3MoeMoEStructure:
         self, adapter: Qwen3MoeArchitectureAdapter
     ) -> None:
         """Experts are batched 3D tensors inside the MoE block, so only the
-        router is mapped for sparse layers; the dense_* projections carry the
-        neuron hooks on mlp_only_layers / decoder_sparse_step dense layers."""
+        router is mapped for sparse layers."""
         mlp = adapter.component_mapping["blocks"].submodules["mlp"]
-        assert set(mlp.submodules.keys()) == {"gate", "dense_gate", "dense_in", "dense_out"}
+        # dense_* are covered by the roster in test_moe_dense_dispatch.py.
+        assert set(mlp.submodules) - DENSE_KEYS == {"gate"}
 
 
 class TestQwen3MoeArchitectureGuards:

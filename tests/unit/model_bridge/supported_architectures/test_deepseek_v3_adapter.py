@@ -14,6 +14,7 @@ Behavioural coverage (forward pass, hook firing) lives in
 
 import pytest
 
+from tests.unit.model_bridge.supported_architectures.helpers import DENSE_KEYS
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.model_bridge.generalized_components import (
     EmbeddingBridge,
@@ -210,18 +211,13 @@ class TestDeepSeekV3AdapterMLAAttention:
 
 
 class TestDeepSeekV3AdapterMoE:
-    """Tests the MoE submodule mapping and its dense-layer fallback."""
+    """Tests the MoE submodule mapping."""
 
     def test_moe_submodule_keys(self, adapter: DeepSeekV3ArchitectureAdapter) -> None:
         """V3 bridges the router gate (a custom Module), unlike V2."""
         mlp = adapter.component_mapping["blocks"].submodules["mlp"]
-        assert set(mlp.submodules.keys()) == {
-            "gate",
-            "shared_experts",
-            "dense_gate",
-            "dense_in",
-            "dense_out",
-        }
+        # dense_* are covered by the roster in test_moe_dense_dispatch.py.
+        assert set(mlp.submodules) - DENSE_KEYS == {"gate", "shared_experts"}
 
     def test_gate_is_optional_plain_component(self, adapter: DeepSeekV3ArchitectureAdapter) -> None:
         """The router gate is a custom Module (not nn.Linear) and absent on dense layers."""

@@ -275,6 +275,58 @@ def test_adapter_templates_bind_dense_layers_as_gated_mlps(architecture: str) ->
     assert instance.hook_aliases["hook_pre"] == "dense_gate.hook_out"
 
 
+@pytest.mark.parametrize("architecture", DENSE_AWARE_ARCHS)
+def test_dense_keys_read_the_projection_they_name(architecture: str) -> None:
+    """`dense_gate` must be the gate projection, not the up projection.
+
+    Both are [d_model, d_mlp] and both bind without complaint, so a
+    dense_gate/dense_in swap in an adapter survives every shape check, key-set
+    check and the binding guard above — while making `hook_pre` report the
+    wrong tensor under the right name. That is #1645's own confusion one level
+    in, so it is checked here, once, for every adapter, rather than in the two
+    that happened to have bespoke assertions.
+
+    Hooks the concrete targets rather than the aliases; that the aliases point
+    here is asserted by TestDenseBinding, and the two compose.
+    """
+    cfg = make_bridge_cfg(architecture, d_head=8)
+    adapter = ArchitectureAdapterFactory.select_architecture_adapter(cfg)
+    blocks = adapter.component_mapping["blocks"]
+    template = blocks.submodules.get("mlp") or blocks.submodules["feed_forward"]
+    bridge = copy.deepcopy(template)
+    module = _DenseMLP()
+    bridge.set_original_component(module)
+    setup_submodules(bridge, adapter, module)
+
+    with torch.random.fork_rng(devices=[]):
+        torch.manual_seed(0)
+        x = torch.randn(1, 3, D_MODEL)
+
+    captured: dict = {}
+    for key in ("dense_gate", "dense_in"):
+        getattr(bridge, key).hook_out.add_hook(
+            lambda t, hook, key=key: captured.__setitem__(key, t.clone())
+        )
+    with torch.no_grad():
+        bridge(x)
+        expected_gate = module.gate_proj(x)
+        expected_in = module.up_proj(x)
+
+    torch.testing.assert_close(
+        captured["dense_gate"],
+        expected_gate,
+        msg=lambda m: f"{architecture}: dense_gate is not the gate projection\n{m}",
+    )
+    torch.testing.assert_close(
+        captured["dense_in"],
+        expected_in,
+        msg=lambda m: f"{architecture}: dense_in is not the up projection\n{m}",
+    )
+    # The fixture must be able to tell them apart, or neither assertion means
+    # anything (equal weights would satisfy both under a swap).
+    assert not torch.allclose(expected_gate, expected_in)
+
+
 class _UngatedDenseFF(nn.Module):
     """Switch-style ungated dense feed-forward (wi/wo, no gate projection)."""
 
