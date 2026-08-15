@@ -1,16 +1,18 @@
 """LiquidAI LFM2 MoE architecture adapter."""
 
-from typing import Any
+from typing import Any, Dict, Optional
+
+import torch
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     DepthwiseConv1DBridge,
     EmbeddingBridge,
-    GatedMLPBridge,
     Lfm2ShortConvBridge,
     LinearBridge,
     MoEBridge,
+    MoERouterBridge,
     PositionEmbeddingsAttentionBridge,
     RMSNormalizationBridge,
     RotaryEmbeddingBridge,
@@ -18,29 +20,41 @@ from transformer_lens.model_bridge.generalized_components import (
 )
 
 
-class Lfm2MoeBlockBridge(BlockBridge):
-    """FFN type varies per layer: the first `num_dense_layers` layers use a dense
-    Lfm2MoeMLP, the rest use Lfm2MoeSparseMoeBlock. Both live at `feed_forward`,
-    so the default `mlp` bridge (MoEBridge) is swapped for a GatedMLPBridge on the
-    dense layers only."""
+class Lfm2MoeGateBridge(MoERouterBridge):
+    def get_random_inputs(
+        self,
+        batch_size: int = 2,
+        seq_len: int = 8,
+        device: Optional[torch.device] = None,
+        dtype: Optional[torch.dtype] = None,
+    ) -> Dict[str, Any]:
+        """Random inputs for router component testing.
 
-    def set_original_component(self, original_component: Any) -> None:
-        super().set_original_component(original_component)
+        The router runs on the reshaped [N, d_model] hidden states and takes a
+        second `expert_bias` arg (use_expert_bias=True); its top-k gather is
+        hardcoded to dim=1, so the input must be 2D or the gather indexes the
+        sequence axis out of bounds.
 
-        ff = getattr(original_component, "feed_forward", None)
+        Args:
+            batch_size: Batch size for generated inputs
+            seq_len: Sequence length for generated inputs
+            device: Device to place tensors on
+            dtype: Dtype for generated tensors (defaults to float32)
 
-        if ff is None or type(ff).__name__ != "Lfm2MoeMLP":
-            return  # MoE layer (or unexpected) → keep the default MoEBridge
-
-        self.submodules["mlp"] = GatedMLPBridge(
-            name="feed_forward",
-            config=self.config,
-            submodules={
-                "gate": LinearBridge(name="w1"),
-                "in": LinearBridge(name="w3"),
-                "out": LinearBridge(name="w2"),
-            },
+        Returns:
+            Dictionary of input tensors matching the component's expected input signature
+        """
+        if device is None:
+            device = torch.device("cpu")
+        if dtype is None:
+            dtype = torch.float32
+        d_model = self.config.d_model if self.config and hasattr(self.config, "d_model") else 768
+        num_experts = (
+            self.config.num_experts if self.config and hasattr(self.config, "num_experts") else 0
         )
+        hidden_states = torch.randn(batch_size * seq_len, d_model, device=device, dtype=dtype)
+        expert_bias = torch.zeros(num_experts, device=device)
+        return {"args": (hidden_states, expert_bias)}
 
 
 class Lfm2MoeArchitectureAdapter(ArchitectureAdapter):
@@ -68,7 +82,7 @@ class Lfm2MoeArchitectureAdapter(ArchitectureAdapter):
         self.component_mapping = {
             "embed": EmbeddingBridge(name="model.embed_tokens"),
             "rotary_emb": RotaryEmbeddingBridge(name="model.pos_emb"),
-            "blocks": Lfm2MoeBlockBridge(
+            "blocks": BlockBridge(
                 name="model.layers",
                 config=self.cfg,
                 submodules={
@@ -108,7 +122,13 @@ class Lfm2MoeArchitectureAdapter(ArchitectureAdapter):
                     "mlp": MoEBridge(
                         name="feed_forward",
                         config=self.cfg,
-                        submodules={"gate": LinearBridge(name="gate")},
+                        sparse_required=("gate",),
+                        submodules={
+                            "gate": Lfm2MoeGateBridge(name="gate", config=self.cfg, optional=True),
+                            "dense_gate": LinearBridge(name="w1", optional=True),
+                            "dense_in": LinearBridge(name="w3", optional=True),
+                            "dense_out": LinearBridge(name="w2", optional=True),
+                        },
                     ),
                 },
             ),
