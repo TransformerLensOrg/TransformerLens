@@ -3,7 +3,7 @@
   <head><meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width,initial-scale=1"/>
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="../../genindex.html" /><link rel="search" title="Search" href="../../search.html" /><link rel="next" title="transformer_lens.tools.model_registry package" href="transformer_lens.tools.model_registry.html" /><link rel="prev" title="transformer_lens.tools.analysis.direct_path_patching module" href="transformer_lens.tools.analysis.direct_path_patching.html" />
+<link rel="index" title="Index" href="../../genindex.html" /><link rel="search" title="Search" href="../../search.html" /><link rel="next" title="transformer_lens.tools.analysis.jacobian_lens_decomposition module" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html" /><link rel="prev" title="transformer_lens.tools.analysis.direct_path_patching module" href="transformer_lens.tools.analysis.direct_path_patching.html" />
 
     <link rel="shortcut icon" href="../../_static/favicon.ico"/><!-- Generated with Sphinx 7.4.7 and Furo 2023.09.10 -->
         <title>transformer_lens.tools.analysis.jacobian_lens module - TransformerLens Documentation</title>
@@ -521,6 +521,7 @@
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.direct_logit_attribution.html">transformer_lens.tools.analysis.direct_logit_attribution module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.direct_path_patching.html">transformer_lens.tools.analysis.direct_path_patching module</a></li>
 <li class="toctree-l5 current current-page"><a class="current reference internal" href="#">transformer_lens.tools.analysis.jacobian_lens module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html">transformer_lens.tools.analysis.jacobian_lens_decomposition module</a></li>
 </ul>
 </li>
 <li class="toctree-l4 has-children"><a class="reference internal" href="transformer_lens.tools.model_registry.html">transformer_lens.tools.model_registry package</a><input class="toctree-checkbox" id="toctree-checkbox-21" name="toctree-checkbox-21" role="switch" type="checkbox"/><label for="toctree-checkbox-21"><div class="visually-hidden">Toggle navigation of transformer_lens.tools.model_registry package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
@@ -554,6 +555,7 @@
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.devices.html">transformer_lens.utilities.devices module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.exploratory_utils.html">transformer_lens.utilities.exploratory_utils module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.gpu_utils.html">transformer_lens.utilities.gpu_utils module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.heterogeneous_config.html">transformer_lens.utilities.heterogeneous_config module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.hf_utils.html">transformer_lens.utilities.hf_utils module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.initialization_utils.html">transformer_lens.utilities.initialization_utils module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.library_utils.html">transformer_lens.utilities.library_utils module</a></li>
@@ -561,6 +563,7 @@
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.logits_utils.html">transformer_lens.utilities.logits_utils module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.matrix.html">transformer_lens.utilities.matrix module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.multi_gpu.html">transformer_lens.utilities.multi_gpu module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.quantization.html">transformer_lens.utilities.quantization module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.slice.html">transformer_lens.utilities.slice module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.tensors.html">transformer_lens.utilities.tensors module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.tokenize_utils.html">transformer_lens.utilities.tokenize_utils module</a></li>
@@ -781,7 +784,53 @@ and normalized on every hook invocation). Defaults to all.</p></li>
 <dl class="py method">
 <dt class="sig sig-object py" id="transformer_lens.tools.analysis.jacobian_lens.JacobianLens.clear_device_cache">
 <span class="sig-name descname"><span class="pre">clear_device_cache</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.clear_device_cache" title="Link to this definition">¶</a></dt>
-<dd><p>Release lazily cached Jacobian copies on accelerator devices.</p>
+<dd><p>Release lazily cached Jacobian copies and full-vocabulary dictionaries on
+accelerator devices.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.jacobian_lens.JacobianLens.decompose">
+<span class="sig-name descname"><span class="pre">decompose</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">activation_or_prompt</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">layer</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">position</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">k</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">25</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">algorithm</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'nonnegative_orthogonal_matching_pursuit'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html#transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceDecomposition" title="transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceDecomposition"><span class="pre">JSpaceDecomposition</span></a></span></span><a class="headerlink" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.decompose" title="Link to this definition">¶</a></dt>
+<dd><p>Decompose an activation into its J-space content at <code class="docutils literal notranslate"><span class="pre">layer</span></code>.</p>
+<p><code class="docutils literal notranslate"><span class="pre">activation_or_prompt</span></code> is either:</p>
+<ul class="simple">
+<li><p>a raw activation vector of shape <code class="docutils literal notranslate"><span class="pre">[d_model]</span></code> (leave <code class="docutils literal notranslate"><span class="pre">position</span></code> as <code class="docutils literal notranslate"><span class="pre">None</span></code>), or</p></li>
+<li><p>a prompt – a string or a <code class="docutils literal notranslate"><span class="pre">[1,</span> <span class="pre">seq]</span></code> token tensor – in which case <code class="docutils literal notranslate"><span class="pre">position</span></code>
+selects the token whose <code class="docutils literal notranslate"><span class="pre">blocks.{layer}.hook_out</span></code> activation is decomposed.</p></li>
+</ul>
+<p>The full-vocabulary dictionary at <code class="docutils literal notranslate"><span class="pre">layer</span></code> is built (and cached) via
+<a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.lens_vector_dictionary" title="transformer_lens.tools.analysis.jacobian_lens.JacobianLens.lens_vector_dictionary"><code class="xref py py-meth docutils literal notranslate"><span class="pre">lens_vector_dictionary()</span></code></a>, then <code class="xref py py-func docutils literal notranslate"><span class="pre">get_sparse_decomposition()</span></code> solves for a
+<code class="docutils literal notranslate"><span class="pre">k</span></code>-sparse nonnegative combination of J-lens vectors.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> – A raw <code class="docutils literal notranslate"><span class="pre">TransformerBridge</span></code>.</p></li>
+<li><p><strong>activation_or_prompt</strong> – An activation vector, or a prompt (string / token tensor).</p></li>
+<li><p><strong>layer</strong> – Source layer (must be a fitted source layer).</p></li>
+<li><p><strong>position</strong> – Token position when a prompt is given; must be <code class="docutils literal notranslate"><span class="pre">None</span></code> for a raw
+activation vector.</p></li>
+<li><p><strong>k</strong> – Upper bound on the number of J-lens vectors to select; selection stops early
+once no unselected vector is materially positively correlated, so fewer may be
+returned.</p></li>
+<li><p><strong>algorithm</strong> – Coefficient-update rule; see <code class="xref py py-func docutils literal notranslate"><span class="pre">get_sparse_decomposition()</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A <code class="xref py py-class docutils literal notranslate"><span class="pre">JSpaceDecomposition</span></code>. Its <code class="docutils literal notranslate"><span class="pre">support</span></code> (token ids here) holds only the
+numerically active J-lens vectors and <code class="docutils literal notranslate"><span class="pre">selected_support</span></code> every selected vector,
+with <code class="docutils literal notranslate"><span class="pre">support.numel()</span> <span class="pre">&lt;=</span> <span class="pre">selected_support.numel()</span> <span class="pre">&lt;=</span> <span class="pre">k</span></code>. <code class="docutils literal notranslate"><span class="pre">support</span></code> and its
+token-decoding tensors are on CPU; the vector-valued outputs stay on the model’s
+device.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ValueError</strong> – On an invalid model, a mismatched activation shape, a batched prompt,
+    an unfitted layer, or an invalid <code class="docutils literal notranslate"><span class="pre">k</span></code> / <code class="docutils literal notranslate"><span class="pre">algorithm</span></code>.</p></li>
+<li><p><strong>RuntimeError</strong> – If the default nonnegative least-squares solver cannot validate its
+    result against the KKT conditions.</p></li>
+</ul>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py method">
@@ -903,6 +952,30 @@ weight-processing mismatches fail here rather than at first use.</p>
 </pre></div>
 </div>
 </section>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.jacobian_lens.JacobianLens.lens_vector_dictionary">
+<span class="sig-name descname"><span class="pre">lens_vector_dictionary</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">layer</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'d_vocab</span> <span class="pre">d_model'</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.lens_vector_dictionary" title="Link to this definition">¶</a></dt>
+<dd><p>Full-vocabulary J-lens dictionary at <code class="docutils literal notranslate"><span class="pre">layer</span></code>: <code class="docutils literal notranslate"><span class="pre">[d_vocab,</span> <span class="pre">d_model]</span></code>.</p>
+<p>Row <code class="docutils literal notranslate"><span class="pre">t</span></code> is the J-lens vector <code class="docutils literal notranslate"><span class="pre">v_t</span> <span class="pre">=</span> <span class="pre">J[layer]^T</span> <span class="pre">W_U[:,</span> <span class="pre">t]</span></code> – this is
+<a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.lens_vectors" title="transformer_lens.tools.analysis.jacobian_lens.JacobianLens.lens_vectors"><code class="xref py py-meth docutils literal notranslate"><span class="pre">lens_vectors()</span></code></a> over the entire vocabulary. The result is cached per
+(layer, device) so a sparse decomposition can reuse it; <a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.clear_device_cache" title="transformer_lens.tools.analysis.jacobian_lens.JacobianLens.clear_device_cache"><code class="xref py py-meth docutils literal notranslate"><span class="pre">clear_device_cache()</span></code></a>
+releases it.</p>
+<p>The dictionary is vocabulary-sized and cached on the model’s device
+(<code class="docutils literal notranslate"><span class="pre">d_vocab</span> <span class="pre">*</span> <span class="pre">d_model</span></code> fp32 values, on the order of gigabytes for a large
+vocabulary), one entry per requested layer.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> – The model supplying <code class="docutils literal notranslate"><span class="pre">W_U</span></code>.</p></li>
+<li><p><strong>layer</strong> – Source layer for the dictionary (must be a fitted source layer).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The dictionary, fp32, on the model’s device.</p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py method">
@@ -1354,12 +1427,12 @@ with the <code class="docutils literal notranslate"><span class="pre">pos</span>
       <footer>
         
         <div class="related-pages">
-          <a class="next-page" href="transformer_lens.tools.model_registry.html">
+          <a class="next-page" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html">
               <div class="page-info">
                 <div class="context">
                   <span>Next</span>
                 </div>
-                <div class="title">transformer_lens.tools.model_registry package</div>
+                <div class="title">transformer_lens.tools.analysis.jacobian_lens_decomposition module</div>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
@@ -1412,8 +1485,10 @@ with the <code class="docutils literal notranslate"><span class="pre">pos</span>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.metadata"><code class="docutils literal notranslate"><span class="pre">JacobianLens.metadata</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.ablation_hooks"><code class="docutils literal notranslate"><span class="pre">JacobianLens.ablation_hooks()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.clear_device_cache"><code class="docutils literal notranslate"><span class="pre">JacobianLens.clear_device_cache()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.decompose"><code class="docutils literal notranslate"><span class="pre">JacobianLens.decompose()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.fit"><code class="docutils literal notranslate"><span class="pre">JacobianLens.fit()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.from_pretrained"><code class="docutils literal notranslate"><span class="pre">JacobianLens.from_pretrained()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.lens_vector_dictionary"><code class="docutils literal notranslate"><span class="pre">JacobianLens.lens_vector_dictionary()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.lens_vectors"><code class="docutils literal notranslate"><span class="pre">JacobianLens.lens_vectors()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.load"><code class="docutils literal notranslate"><span class="pre">JacobianLens.load()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.merge"><code class="docutils literal notranslate"><span class="pre">JacobianLens.merge()</span></code></a></li>

@@ -521,6 +521,7 @@
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.direct_logit_attribution.html">transformer_lens.tools.analysis.direct_logit_attribution module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.direct_path_patching.html">transformer_lens.tools.analysis.direct_path_patching module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.jacobian_lens.html">transformer_lens.tools.analysis.jacobian_lens module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.jacobian_lens_decomposition.html">transformer_lens.tools.analysis.jacobian_lens_decomposition module</a></li>
 </ul>
 </li>
 <li class="toctree-l4 has-children"><a class="reference internal" href="../generated/code/transformer_lens.tools.model_registry.html">transformer_lens.tools.model_registry package</a><input class="toctree-checkbox" id="toctree-checkbox-21" name="toctree-checkbox-21" role="switch" type="checkbox"/><label for="toctree-checkbox-21"><div class="visually-hidden">Toggle navigation of transformer_lens.tools.model_registry package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
@@ -554,6 +555,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../generated/code/transformer_lens.utilities.devices.html">transformer_lens.utilities.devices module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../generated/code/transformer_lens.utilities.exploratory_utils.html">transformer_lens.utilities.exploratory_utils module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../generated/code/transformer_lens.utilities.gpu_utils.html">transformer_lens.utilities.gpu_utils module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../generated/code/transformer_lens.utilities.heterogeneous_config.html">transformer_lens.utilities.heterogeneous_config module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../generated/code/transformer_lens.utilities.hf_utils.html">transformer_lens.utilities.hf_utils module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../generated/code/transformer_lens.utilities.initialization_utils.html">transformer_lens.utilities.initialization_utils module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../generated/code/transformer_lens.utilities.library_utils.html">transformer_lens.utilities.library_utils module</a></li>
@@ -561,6 +563,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../generated/code/transformer_lens.utilities.logits_utils.html">transformer_lens.utilities.logits_utils module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../generated/code/transformer_lens.utilities.matrix.html">transformer_lens.utilities.matrix module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../generated/code/transformer_lens.utilities.multi_gpu.html">transformer_lens.utilities.multi_gpu module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../generated/code/transformer_lens.utilities.quantization.html">transformer_lens.utilities.quantization module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../generated/code/transformer_lens.utilities.slice.html">transformer_lens.utilities.slice module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../generated/code/transformer_lens.utilities.tensors.html">transformer_lens.utilities.tensors module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../generated/code/transformer_lens.utilities.tokenize_utils.html">transformer_lens.utilities.tokenize_utils module</a></li>
@@ -874,6 +877,90 @@ model repository:</p>
 published file to <code class="docutils literal notranslate"><span class="pre">transformer_lens/tools/analysis/jacobian_lens_registry.json</span></code> and
 include the fitting provenance and validation results.</p>
 </section>
+<section id="sparse-decomposition-j-space-coordinates">
+<h2>Sparse decomposition (J-space coordinates)<a class="headerlink" href="#sparse-decomposition-j-space-coordinates" title="Link to this heading">¶</a></h2>
+<p>A fitted lens also decomposes an activation into the concepts it is <em>disposed to say</em>.
+<code class="docutils literal notranslate"><span class="pre">JacobianLens.decompose</span></code> writes an activation <code class="docutils literal notranslate"><span class="pre">x</span></code> at layer ℓ as a sparse <strong>nonnegative</strong>
+combination of J-lens vectors <code class="docutils literal notranslate"><span class="pre">v_t</span> <span class="pre">=</span> <span class="pre">J_ℓ^T</span> <span class="pre">W_U[:,</span> <span class="pre">t]</span></code> (one direction per vocabulary token),
+selected greedily. <code class="docutils literal notranslate"><span class="pre">k</span></code> is an <strong>upper bound</strong>, not a target: selection stops early once no
+unselected vector is materially positively correlated with the residual (under nonnegativity a
+negatively-correlated vector cannot reduce it), so fewer than <code class="docutils literal notranslate"><span class="pre">k</span></code> vectors may be selected and
+fewer still may be numerically active.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">transformer_lens.model_bridge</span><span class="w"> </span><span class="kn">import</span> <span class="n">TransformerBridge</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">transformer_lens.tools.analysis</span><span class="w"> </span><span class="kn">import</span> <span class="n">JacobianLens</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">TransformerBridge</span><span class="o">.</span><span class="n">boot_transformers</span><span class="p">(</span><span class="s2">&quot;gpt2&quot;</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s2">&quot;cpu&quot;</span><span class="p">)</span>
+<span class="n">lens</span> <span class="o">=</span> <span class="n">JacobianLens</span><span class="o">.</span><span class="n">from_pretrained</span><span class="p">(</span><span class="s2">&quot;gpt2-small&quot;</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="n">model</span><span class="p">)</span>
+
+<span class="c1"># decompose the activation at a prompt position ...</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">lens</span><span class="o">.</span><span class="n">decompose</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="s2">&quot;The Eiffel Tower is in the city of&quot;</span><span class="p">,</span> <span class="n">layer</span><span class="o">=</span><span class="mi">6</span><span class="p">,</span> <span class="n">position</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="mi">8</span><span class="p">)</span>
+<span class="c1"># ... or a raw [d_model] activation you already have (leave position=None):</span>
+<span class="c1">#   result = lens.decompose(model, activation, layer=6, k=8)</span>
+
+<span class="n">tokens</span> <span class="o">=</span> <span class="p">[</span><span class="n">model</span><span class="o">.</span><span class="n">to_string</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">t</span><span class="p">))</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">result</span><span class="o">.</span><span class="n">support</span><span class="p">]</span>  <span class="c1"># the (up to k) *active* J-lens vectors</span>
+<span class="n">coordinates</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">coordinates</span>                            <span class="c1"># their nonnegative coefficients</span>
+</pre></div>
+</div>
+<p>The result exposes <strong>two supports</strong>, because the paper uses two inconsistent operationalizations
+(a main-text sparse nonnegative reconstruction and an appendix projection onto a selected span):</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">support</span></code> – the numerically <strong>active</strong> vectors: the selected vectors whose contribution
+<code class="docutils literal notranslate"><span class="pre">coordinates[i]</span> <span class="pre">*</span> <span class="pre">||v_t||</span></code> is a materially nonzero fraction of <code class="docutils literal notranslate"><span class="pre">||x||</span></code>. <code class="docutils literal notranslate"><span class="pre">coordinates</span></code> is aligned
+with <code class="docutils literal notranslate"><span class="pre">support</span></code>, and <code class="docutils literal notranslate"><span class="pre">reconstruction</span> <span class="pre">=</span> <span class="pre">sum(coordinates</span> <span class="pre">*</span> <span class="pre">v_t)</span></code> over <code class="docutils literal notranslate"><span class="pre">support</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">selected_support</span></code> – <strong>every</strong> greedily selected vector, including any whose coordinate the
+nonnegativity constraint drove to zero. It defines the span for <code class="docutils literal notranslate"><span class="pre">j_space_component</span></code>. Hence
+<code class="docutils literal notranslate"><span class="pre">len(support)</span> <span class="pre">&lt;=</span> <span class="pre">len(selected_support)</span> <span class="pre">&lt;=</span> <span class="pre">k</span></code>.</p></li>
+</ul>
+<p>So two vector outputs also need not coincide:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">reconstruction</span></code> – the nonnegative combination over the active <code class="docutils literal notranslate"><span class="pre">support</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">j_space_component</span></code> (the <em>J-space component</em>) – the orthogonal projection of the activation onto
+the span of <code class="docutils literal notranslate"><span class="pre">selected_support</span></code> – with <code class="docutils literal notranslate"><span class="pre">non_j_space_component</span> <span class="pre">=</span> <span class="pre">x</span> <span class="pre">-</span> <span class="pre">j_space_component</span></code>, the
+residual the interventions leave unchanged.</p></li>
+</ul>
+<p>For the default exact NNLS re-solve the <code class="docutils literal notranslate"><span class="pre">reconstruction</span></code> equals the projection onto the <em>active</em>
+support (KKT stationarity), so it differs from <code class="docutils literal notranslate"><span class="pre">j_space_component</span></code> exactly when a selected vector
+has a zero coordinate (the projection then uses a strictly larger span).</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">x</span>  <span class="ow">in</span> <span class="n">R</span><span class="o">^</span><span class="n">d_model</span>
+   <span class="o">|--</span> <span class="n">decompose</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">layer</span><span class="p">,</span> <span class="n">k</span><span class="p">)</span>
+        <span class="o">|--</span> <span class="n">support</span> <span class="o">/</span> <span class="n">coordinates</span>  <span class="n">a_t</span> <span class="o">&gt;=</span> <span class="mi">0</span>      <span class="p">(</span><span class="n">active</span> <span class="n">vectors</span><span class="p">;</span> <span class="n">reconstruction</span> <span class="o">=</span> <span class="nb">sum</span> <span class="n">a_t</span> <span class="n">v_t</span><span class="p">)</span>
+        <span class="o">|--</span> <span class="n">selected_support</span>       <span class="n">S</span>             <span class="p">(</span><span class="nb">all</span> <span class="n">selected</span> <span class="n">vectors</span><span class="p">;</span> <span class="n">defines</span> <span class="n">the</span> <span class="n">span</span> <span class="n">below</span><span class="p">)</span>
+        <span class="o">|--</span> <span class="n">j_space_component</span>      <span class="n">Pi_S</span> <span class="n">x</span>        <span class="p">(</span><span class="n">orthogonal</span> <span class="n">projection</span> <span class="n">onto</span> <span class="n">span</span> <span class="n">of</span> <span class="n">selected</span> <span class="n">v_t</span><span class="p">)</span>
+        \<span class="o">--</span> <span class="n">non_j_space_component</span>  <span class="n">x</span> <span class="o">-</span> <span class="n">Pi_S</span> <span class="n">x</span>     <span class="p">(</span><span class="n">orthogonal</span> <span class="n">to</span> <span class="n">the</span> <span class="n">selected</span> <span class="n">vectors</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Two algorithms are available via <code class="docutils literal notranslate"><span class="pre">algorithm=</span></code>. The default,
+<code class="docutils literal notranslate"><span class="pre">&quot;nonnegative_orthogonal_matching_pursuit&quot;</span></code>, solves a nonnegative least-squares (NNLS) problem
+over the selected atoms in float64 after each step. It checks the result against the KKT
+conditions and raises <code class="docutils literal notranslate"><span class="pre">RuntimeError</span></code> if the check fails. <code class="docutils literal notranslate"><span class="pre">&quot;gradient_pursuit&quot;</span></code> skips that solve
+and uses the directional update from Blumensath &amp; Davies (2008), matching the update used in
+the paper; its projected step is accepted only when it does not increase the residual. The two
+algorithms share the same greedy selection <em>rule</em> but, because their coefficient residuals
+differ, may select different vectors at later steps and so return a different <code class="docutils literal notranslate"><span class="pre">support</span></code> and
+<code class="docutils literal notranslate"><span class="pre">reconstruction</span></code>.</p>
+<section id="interpreting-the-numbers-honestly">
+<h3>Interpreting the numbers honestly<a class="headerlink" href="#interpreting-the-numbers-honestly" title="Link to this heading">¶</a></h3>
+<p>The quantitative findings below are from Gurnee et al. (2026) and were measured on <strong>closed
+Anthropic models</strong> (Sonnet / Haiku / Opus); on open-weight models the <em>shape</em> may hold but the
+exact values will not necessarily transfer.</p>
+<ul class="simple">
+<li><p>The decomposition is <strong>not</strong> a top-k logit-lens readout: because the J-lens vectors are
+overcomplete and non-orthogonal, it gives “a different (and typically less redundant) set of
+active concepts than simply taking the top-k by inner product.”</p></li>
+<li><p>The J-space is a <strong>small fraction</strong> of the activation: the paper’s span projection (the
+<code class="docutils literal notranslate"><span class="pre">selected_support</span></code> operationalization here) “never [exceeds] more than 10%” of total activation
+variance, and for concept vectors carries “a median of only 6-7% … the remaining ~93% lying
+outside the J-space.” Those figures are the paper’s own measurements on its models; do not read
+them off this implementation’s <code class="docutils literal notranslate"><span class="pre">j_space_component</span></code> without matching the operationalization.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">k</span></code> defaults to 25 because the paper “typically choose[s] it to be no more than 25, which we
+empirically observed to be the number of J-lens vectors that are meaningfully active at a given
+time.” Here <code class="docutils literal notranslate"><span class="pre">k</span></code> is an <strong>upper bound</strong>: <code class="docutils literal notranslate"><span class="pre">support</span></code> returns <em>at most</em> <code class="docutils literal notranslate"><span class="pre">k</span></code> active vectors (often
+fewer), never <code class="docutils literal notranslate"><span class="pre">k</span></code> padded with zero-coefficient slots.</p></li>
+</ul>
+<p>The full-vocabulary dictionary is cached on the model’s device and is vocabulary-sized
+(gigabytes for large models); release it with <code class="docutils literal notranslate"><span class="pre">lens.clear_device_cache()</span></code>.</p>
+</section>
+</section>
 <section id="importing-an-existing-lens">
 <h2>Importing an existing lens<a class="headerlink" href="#importing-an-existing-lens" title="Link to this heading">¶</a></h2>
 <p><code class="docutils literal notranslate"><span class="pre">JacobianLens.load()</span></code> accepts two file schemas: the standard artifact format (four
@@ -1068,6 +1155,10 @@ follow-up once a lossless mapping is established.</p>
 <li><a class="reference internal" href="#fit-one-shard">Fit one shard</a></li>
 <li><a class="reference internal" href="#merge-the-shards">Merge the shards</a></li>
 <li><a class="reference internal" href="#validate-and-publish">Validate and publish</a></li>
+<li><a class="reference internal" href="#sparse-decomposition-j-space-coordinates">Sparse decomposition (J-space coordinates)</a><ul>
+<li><a class="reference internal" href="#interpreting-the-numbers-honestly">Interpreting the numbers honestly</a></li>
+</ul>
+</li>
 <li><a class="reference internal" href="#importing-an-existing-lens">Importing an existing lens</a><ul>
 <li><a class="reference internal" href="#fit-checkpoint-format">Fit checkpoint format</a></li>
 <li><a class="reference internal" href="#metadata-handling">Metadata handling</a></li>

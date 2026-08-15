@@ -16,6 +16,7 @@ from typing import (
     Any,
     Callable,
     Dict,
+    FrozenSet,
     Iterator,
     List,
     Literal,
@@ -43,6 +44,7 @@ from transformer_lens.model_bridge.composition_scores import CompositionScores
 from transformer_lens.model_bridge.exceptions import StopAtLayerException
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
+    alias_generation,
 )
 from transformer_lens.model_bridge.generalized_components.block import (
     _BLOCK_INTERNAL_MODULES,
@@ -55,11 +57,15 @@ from transformer_lens.utilities.activation_functions import softcap_enabled
 from transformer_lens.utilities.aliases import resolve_alias
 from transformer_lens.utilities.devices import move_to_and_update_config
 from transformer_lens.utilities.lm_utils import lm_cross_entropy_loss
+from transformer_lens.utilities.quantization import require_readable_weight
 
 if TYPE_CHECKING:
     from transformer_lens.ActivationCache import ActivationCache
 
 _BLOCK_PATTERN = re.compile("blocks\\.(\\d+)")
+
+# Block-list container attributes a bridge may expose.
+_BLOCK_LIST_ATTRS = ("blocks", "encoder_blocks", "decoder_blocks", "L_blocks", "H_blocks")
 
 
 def _resolve_attr_path(obj: nn.Module, attr_path: str) -> torch.Tensor:
@@ -188,6 +194,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         self._hook_registry: Dict[str, HookPoint] = {}
         self._hook_registry_initialized = False
         self._hook_alias_registry: Dict[str, Union[str, List[str]]] = {}
+        self._block_alias_cache: Optional[Tuple[Tuple[int, int], Dict[str, str]]] = None
         self._property_alias_registry: Dict[str, str] = {}
         # real_components maps TL keys to (remote_path, actual_instance) tuples
         # For list components, actual_instance will be a list of component instances
@@ -440,7 +447,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         d_head = self.cfg.d_head
         d_model = self.cfg.d_model
         blocks_iter = []
-        for bl_name in ("blocks", "encoder_blocks", "decoder_blocks", "L_blocks", "H_blocks"):
+        for bl_name in _BLOCK_LIST_ATTRS:
             if hasattr(self, bl_name):
                 blocks_iter.append(getattr(self, bl_name))
         if not blocks_iter:
@@ -520,23 +527,38 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         self._scan_existing_hooks(self, "")
         self._hook_registry_initialized = True
 
-    def _collect_component_aliases(self, component_mapping, prefix=""):
-        """Recursively collect aliases from components."""
-        aliases = {}
+    def _collect_component_aliases(self, component_mapping, prefix="", _ancestors=frozenset()):
+        """Recursively collect aliases from the architecture's component templates.
+
+        ``_ancestors`` is path-scoped, not globally-visited: a cycle is cut
+        (else RecursionError at boot) while a diamond-shared component still
+        contributes aliases under both names.
+        """
+        aliases: Dict[str, str] = {}
+        if id(component_mapping) in _ancestors:
+            return aliases
+        _ancestors = _ancestors | {id(component_mapping)}
         if isinstance(component_mapping, dict):
             for name, component in component_mapping.items():
                 sub_prefix = f"{prefix}.{name}" if prefix else name
-                aliases.update(self._collect_component_aliases(component, sub_prefix))
+                aliases.update(self._collect_component_aliases(component, sub_prefix, _ancestors))
         else:
             if hasattr(component_mapping, "hook_aliases") and component_mapping.hook_aliases:
                 for alias_name, target in component_mapping.hook_aliases.items():
+                    # Skip fallback-list targets: the lru_cached consumer
+                    # endswith-matches strings, so a list is neither matchable
+                    # nor hashable; lists resolve via the instance walks instead.
+                    if not isinstance(target, str):
+                        continue
                     full_alias = f"{prefix}.{alias_name}" if prefix else alias_name
                     full_target = f"{prefix}.{target}" if prefix else target
                     aliases[full_alias] = full_target
             if hasattr(component_mapping, "submodules") and component_mapping.submodules:
                 for sub_name, sub_component in component_mapping.submodules.items():
                     sub_prefix = f"{prefix}.{sub_name}" if prefix else sub_name
-                    aliases.update(self._collect_component_aliases(sub_component, sub_prefix))
+                    aliases.update(
+                        self._collect_component_aliases(sub_component, sub_prefix, _ancestors)
+                    )
         return aliases
 
     @staticmethod
@@ -578,8 +600,75 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             aliases_tuple = self._compute_hook_aliases_cached(
                 hook_names_tuple, component_aliases_tuple
             )
-            return dict(aliases_tuple)
+            aliases = dict(aliases_tuple)
+            aliases.update(self._collect_block_instance_aliases())
+            return aliases
         return {}
+
+    def _collect_block_instance_aliases(self) -> Dict[str, str]:
+        """Collect per-block-instance aliases, overriding template-derived ones.
+
+        Templates cannot see per-layer rebinds (OlmoHybrid, MoE dense/sparse).
+        Memoized on (registry size, alias generation): size alone misses a
+        dense<->sparse rebind, which changes targets without changing size.
+        """
+        cache_key = (len(self._hook_registry), alias_generation())
+        cached = self._block_alias_cache
+        if cached is not None and cached[0] == cache_key:
+            return cached[1]
+        aliases: Dict[str, str] = {}
+        unresolved: List[str] = []
+        for bl_name in _BLOCK_LIST_ATTRS:
+            block_list = getattr(self, bl_name, None)
+            if block_list is None:
+                continue
+            for i, block in enumerate(block_list):
+                # A block with no registered hooks means the registry hasn't
+                # scanned it yet — unresolved aliases there are timing, not drops.
+                block_prefix = f"{bl_name}.{i}."
+                if f"{block_prefix}hook_in" not in self._hook_registry:
+                    continue
+                # Walk the block and its submodule tree: components rebind
+                # aliases per layer at bind time either at block level
+                # (OlmoHybrid) or one level down (MoEBridge's dense/sparse
+                # dispatch). id()-seen guards against shared/cyclic submodule
+                # references, which would otherwise hang boot.
+                # (prefix, component, ids-on-this-path): path-scoped rather than
+                # globally-visited so a cycle is cut while a component shared
+                # under two names still contributes aliases at both.
+                stack: List[Tuple[str, Any, FrozenSet[int]]] = [("", block, frozenset())]
+                while stack:
+                    sub_prefix, component, ancestors = stack.pop()
+                    if id(component) in ancestors:
+                        continue
+                    ancestors = ancestors | {id(component)}
+                    component_aliases = getattr(component, "hook_aliases", None)
+                    if component_aliases:
+                        for alias_name, target in component_aliases.items():
+                            targets = target if isinstance(target, list) else [target]
+                            for single_target in targets:
+                                full_target = f"{block_prefix}{sub_prefix}{single_target}"
+                                if full_target in self._hook_registry:
+                                    aliases[f"{block_prefix}{sub_prefix}{alias_name}"] = full_target
+                                    break
+                            else:
+                                unresolved.append(f"{block_prefix}{sub_prefix}{alias_name}")
+                    for nested_name, nested in (
+                        getattr(component, "submodules", None) or {}
+                    ).items():
+                        stack.append((f"{sub_prefix}{nested_name}.", nested, ancestors))
+        if unresolved:
+            # Surface drops instead of silently swallowing, mirroring
+            # GeneralizedComponent._register_aliases.
+            warnings.warn(
+                f"{len(unresolved)} block hook alias(es) did not resolve to a "
+                f"registered hook (e.g. '{unresolved[0]}'). Any such alias falls "
+                "back to the architecture template's mapping, which for a "
+                "per-layer rebind is the wrong tensor for this layer.",
+                stacklevel=2,
+            )
+        self._block_alias_cache = (cache_key, aliases)
+        return aliases
 
     def _add_aliases_to_hooks(self, hooks: Dict[str, HookPoint]) -> None:
         """Add aliases to hooks in place."""
@@ -857,11 +946,11 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
 
         apply_fn_to_all_components(self, set_compatibility_mode)
         self.clear_hook_registry()
-        # Drop pre-ln capture handles from any prior call so they don't accumulate.
+        # Drop block capture-hook handles from any prior call so they don't accumulate.
         if hasattr(self, "blocks"):
             for block in self.blocks:
-                if hasattr(block, "_teardown_pre_ln_capture"):
-                    block._teardown_pre_ln_capture()
+                if hasattr(block, "_teardown_capture_hooks"):
+                    block._teardown_capture_hooks()
         try:
             if not no_processing:
                 self.process_weights(
@@ -937,6 +1026,28 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             fold_value_biases: Fold value biases into output bias. Default: True
             refactor_factored_attn_matrices: Experimental QK/OV factorization. Default: False
         """
+        # Folding and centering do arithmetic on raw weights, so packed or
+        # scale-separated storage would produce silent garbage. The forward
+        # path stays usable when quantized; only this transformation does not.
+        for name, param in self.original_model.named_parameters():
+            # No name filter: modern batched-MoE experts are Parameters that do
+            # NOT end in .weight (mlp.experts.gate_up_proj), and those are the
+            # very tensors the converters had to guard. unreadable_weight_reason
+            # is dtype-driven, so every full-width float parameter still passes.
+            # Routed through the shared helper so meta gets its own "load with
+            # real weights" message instead of being silently skipped — folding
+            # on meta tensors yields meta tensors, which is the same
+            # silent-garbage failure this guard exists to stop.
+            require_readable_weight(
+                param,
+                operation=f"process weights ({name})",
+                owner=self.original_model,
+                remedy=(
+                    "Load the model dequantized, or use the bridge without weight "
+                    "processing (enable_compatibility_mode(no_processing=True))."
+                ),
+            )
+
         # A failed or partial processing attempt is no longer guaranteed to retain
         # the raw HuggingFace basis, so invalidate that contract before any work.
         self._weights_processed = True
@@ -4103,7 +4214,8 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         self._propagate_attention_flag("use_attn_in", use_attn_in)
 
     def set_use_hook_mlp_in(self, use_hook_mlp_in: bool) -> None:
-        """Toggle the pre-ln2 ``hook_mlp_in`` HookPoint, matching legacy semantics.
+        """Toggle the ``hook_mlp_in`` HookPoint (the MLP-branch entry: pre-ln2, or
+        the MLP input on post-norm blocks), matching legacy semantics.
 
         See :py:meth:`HookedTransformer.set_use_hook_mlp_in`.
         """

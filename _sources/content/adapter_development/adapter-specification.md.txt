@@ -276,6 +276,32 @@ Standard positional embeddings + LayerNorm + standard MLP + combined QKV. Used b
 
 Similar to Llama-like but with `MoEBridge` replacing the MLP. Used by: Mixtral, GraniteMoE, OLMoE.
 
+**Interleaved / dense-prefix stacks.** When the config can make some layers a plain
+gated MLP under the same attribute name (`first_k_dense_replace`,
+`mlp_only_layers`/`decoder_sparse_step`, `moe_layer_start_index`,
+`num_dense_layers`, `mlp_layer_types`), also declare the dense projections as
+optional submodules named `dense_gate` / `dense_in` / `dense_out`:
+
+```python
+"mlp": MoEBridge(
+    name="mlp",
+    config=self.cfg,
+    submodules={
+        "gate": MoERouterBridge(name="gate", optional=True),
+        "dense_gate": LinearBridge(name="gate_proj", optional=True),
+        "dense_in": LinearBridge(name="up_proj", optional=True),
+        "dense_out": LinearBridge(name="down_proj", optional=True),
+    },
+),
+```
+
+`MoEBridge` detects that binding per layer and gives the dense layers the
+gated-MLP hook set (`hook_pre`, `hook_pre_linear`, `hook_post`) and weight
+accessors (`W_gate`/`W_in`/`W_out`), while sparse layers keep MoE semantics.
+Without the declaration those layers report `d_model` boundary tensors under
+neuron-hook names (#1645). The keys are `dense_*` rather than `gate`/`in`/`out`
+because `gate` already means the *router* on the sparse layers of the same model.
+
 ### Pattern 4: Multimodal
 
 Extends a text-only pattern with vision encoder and projection bridges. Used by: LLaVA, LLaVA-Next, Gemma3 Multimodal.

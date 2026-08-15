@@ -521,6 +521,7 @@
 <li class="toctree-l5"><a class="reference internal" href="../../generated/code/transformer_lens.tools.analysis.direct_logit_attribution.html">transformer_lens.tools.analysis.direct_logit_attribution module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../../generated/code/transformer_lens.tools.analysis.direct_path_patching.html">transformer_lens.tools.analysis.direct_path_patching module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../../generated/code/transformer_lens.tools.analysis.jacobian_lens.html">transformer_lens.tools.analysis.jacobian_lens module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="../../generated/code/transformer_lens.tools.analysis.jacobian_lens_decomposition.html">transformer_lens.tools.analysis.jacobian_lens_decomposition module</a></li>
 </ul>
 </li>
 <li class="toctree-l4 has-children"><a class="reference internal" href="../../generated/code/transformer_lens.tools.model_registry.html">transformer_lens.tools.model_registry package</a><input class="toctree-checkbox" id="toctree-checkbox-21" name="toctree-checkbox-21" role="switch" type="checkbox"/><label for="toctree-checkbox-21"><div class="visually-hidden">Toggle navigation of transformer_lens.tools.model_registry package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
@@ -554,6 +555,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../generated/code/transformer_lens.utilities.devices.html">transformer_lens.utilities.devices module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../generated/code/transformer_lens.utilities.exploratory_utils.html">transformer_lens.utilities.exploratory_utils module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../generated/code/transformer_lens.utilities.gpu_utils.html">transformer_lens.utilities.gpu_utils module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../generated/code/transformer_lens.utilities.heterogeneous_config.html">transformer_lens.utilities.heterogeneous_config module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../generated/code/transformer_lens.utilities.hf_utils.html">transformer_lens.utilities.hf_utils module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../generated/code/transformer_lens.utilities.initialization_utils.html">transformer_lens.utilities.initialization_utils module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../generated/code/transformer_lens.utilities.library_utils.html">transformer_lens.utilities.library_utils module</a></li>
@@ -561,6 +563,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../generated/code/transformer_lens.utilities.logits_utils.html">transformer_lens.utilities.logits_utils module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../generated/code/transformer_lens.utilities.matrix.html">transformer_lens.utilities.matrix module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../generated/code/transformer_lens.utilities.multi_gpu.html">transformer_lens.utilities.multi_gpu module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../generated/code/transformer_lens.utilities.quantization.html">transformer_lens.utilities.quantization module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../generated/code/transformer_lens.utilities.slice.html">transformer_lens.utilities.slice module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../generated/code/transformer_lens.utilities.tensors.html">transformer_lens.utilities.tensors module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../generated/code/transformer_lens.utilities.tokenize_utils.html">transformer_lens.utilities.tokenize_utils module</a></li>
@@ -1101,6 +1104,29 @@
 <section id="pattern-3-moe-mixture-of-experts">
 <h3>Pattern 3: MoE (Mixture of Experts)<a class="headerlink" href="#pattern-3-moe-mixture-of-experts" title="Link to this heading">¶</a></h3>
 <p>Similar to Llama-like but with <code class="docutils literal notranslate"><span class="pre">MoEBridge</span></code> replacing the MLP. Used by: Mixtral, GraniteMoE, OLMoE.</p>
+<p><strong>Interleaved / dense-prefix stacks.</strong> When the config can make some layers a plain
+gated MLP under the same attribute name (<code class="docutils literal notranslate"><span class="pre">first_k_dense_replace</span></code>,
+<code class="docutils literal notranslate"><span class="pre">mlp_only_layers</span></code>/<code class="docutils literal notranslate"><span class="pre">decoder_sparse_step</span></code>, <code class="docutils literal notranslate"><span class="pre">moe_layer_start_index</span></code>,
+<code class="docutils literal notranslate"><span class="pre">num_dense_layers</span></code>, <code class="docutils literal notranslate"><span class="pre">mlp_layer_types</span></code>), also declare the dense projections as
+optional submodules named <code class="docutils literal notranslate"><span class="pre">dense_gate</span></code> / <code class="docutils literal notranslate"><span class="pre">dense_in</span></code> / <code class="docutils literal notranslate"><span class="pre">dense_out</span></code>:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="s2">&quot;mlp&quot;</span><span class="p">:</span> <span class="n">MoEBridge</span><span class="p">(</span>
+    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;mlp&quot;</span><span class="p">,</span>
+    <span class="n">config</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="p">,</span>
+    <span class="n">submodules</span><span class="o">=</span><span class="p">{</span>
+        <span class="s2">&quot;gate&quot;</span><span class="p">:</span> <span class="n">MoERouterBridge</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;gate&quot;</span><span class="p">,</span> <span class="n">optional</span><span class="o">=</span><span class="kc">True</span><span class="p">),</span>
+        <span class="s2">&quot;dense_gate&quot;</span><span class="p">:</span> <span class="n">LinearBridge</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;gate_proj&quot;</span><span class="p">,</span> <span class="n">optional</span><span class="o">=</span><span class="kc">True</span><span class="p">),</span>
+        <span class="s2">&quot;dense_in&quot;</span><span class="p">:</span> <span class="n">LinearBridge</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;up_proj&quot;</span><span class="p">,</span> <span class="n">optional</span><span class="o">=</span><span class="kc">True</span><span class="p">),</span>
+        <span class="s2">&quot;dense_out&quot;</span><span class="p">:</span> <span class="n">LinearBridge</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;down_proj&quot;</span><span class="p">,</span> <span class="n">optional</span><span class="o">=</span><span class="kc">True</span><span class="p">),</span>
+    <span class="p">},</span>
+<span class="p">),</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">MoEBridge</span></code> detects that binding per layer and gives the dense layers the
+gated-MLP hook set (<code class="docutils literal notranslate"><span class="pre">hook_pre</span></code>, <code class="docutils literal notranslate"><span class="pre">hook_pre_linear</span></code>, <code class="docutils literal notranslate"><span class="pre">hook_post</span></code>) and weight
+accessors (<code class="docutils literal notranslate"><span class="pre">W_gate</span></code>/<code class="docutils literal notranslate"><span class="pre">W_in</span></code>/<code class="docutils literal notranslate"><span class="pre">W_out</span></code>), while sparse layers keep MoE semantics.
+Without the declaration those layers report <code class="docutils literal notranslate"><span class="pre">d_model</span></code> boundary tensors under
+neuron-hook names (#1645). The keys are <code class="docutils literal notranslate"><span class="pre">dense_*</span></code> rather than <code class="docutils literal notranslate"><span class="pre">gate</span></code>/<code class="docutils literal notranslate"><span class="pre">in</span></code>/<code class="docutils literal notranslate"><span class="pre">out</span></code>
+because <code class="docutils literal notranslate"><span class="pre">gate</span></code> already means the <em>router</em> on the sparse layers of the same model.</p>
 </section>
 <section id="pattern-4-multimodal">
 <h3>Pattern 4: Multimodal<a class="headerlink" href="#pattern-4-multimodal" title="Link to this heading">¶</a></h3>

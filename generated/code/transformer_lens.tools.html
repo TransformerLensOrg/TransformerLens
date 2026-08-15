@@ -521,6 +521,7 @@
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.direct_logit_attribution.html">transformer_lens.tools.analysis.direct_logit_attribution module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.direct_path_patching.html">transformer_lens.tools.analysis.direct_path_patching module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens.html">transformer_lens.tools.analysis.jacobian_lens module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html">transformer_lens.tools.analysis.jacobian_lens_decomposition module</a></li>
 </ul>
 </li>
 <li class="toctree-l4 has-children"><a class="reference internal" href="transformer_lens.tools.model_registry.html">transformer_lens.tools.model_registry package</a><input class="toctree-checkbox" id="toctree-checkbox-21" name="toctree-checkbox-21" role="switch" type="checkbox"/><label for="toctree-checkbox-21"><div class="visually-hidden">Toggle navigation of transformer_lens.tools.model_registry package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
@@ -554,6 +555,7 @@
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.devices.html">transformer_lens.utilities.devices module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.exploratory_utils.html">transformer_lens.utilities.exploratory_utils module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.gpu_utils.html">transformer_lens.utilities.gpu_utils module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.heterogeneous_config.html">transformer_lens.utilities.heterogeneous_config module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.hf_utils.html">transformer_lens.utilities.hf_utils module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.initialization_utils.html">transformer_lens.utilities.initialization_utils module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.library_utils.html">transformer_lens.utilities.library_utils module</a></li>
@@ -561,6 +563,7 @@
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.logits_utils.html">transformer_lens.utilities.logits_utils module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.matrix.html">transformer_lens.utilities.matrix module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.multi_gpu.html">transformer_lens.utilities.multi_gpu module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.quantization.html">transformer_lens.utilities.quantization module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.slice.html">transformer_lens.utilities.slice module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.tensors.html">transformer_lens.utilities.tensors module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.tokenize_utils.html">transformer_lens.utilities.tokenize_utils module</a></li>
@@ -686,6 +689,12 @@
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens.html#transformer_lens.tools.analysis.jacobian_lens.JacobianLensReadout"><code class="docutils literal notranslate"><span class="pre">JacobianLensReadout</span></code></a></li>
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html">transformer_lens.tools.analysis.jacobian_lens_decomposition module</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html#transformer_lens.tools.analysis.jacobian_lens_decomposition.DEFAULT_K"><code class="docutils literal notranslate"><span class="pre">DEFAULT_K</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html#transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceDecomposition"><code class="docutils literal notranslate"><span class="pre">JSpaceDecomposition</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html#transformer_lens.tools.analysis.jacobian_lens_decomposition.get_sparse_decomposition"><code class="docutils literal notranslate"><span class="pre">get_sparse_decomposition()</span></code></a></li>
+</ul>
+</li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="transformer_lens.tools.analysis.html#module-transformer_lens.tools.analysis">Module contents</a><ul>
@@ -699,6 +708,21 @@
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.tools.analysis.html#id4"><code class="docutils literal notranslate"><span class="pre">DirectLogitAttribution.unit</span></code></a></li>
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.JSpaceDecomposition"><code class="docutils literal notranslate"><span class="pre">JSpaceDecomposition</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.JSpaceDecomposition.support"><code class="docutils literal notranslate"><span class="pre">JSpaceDecomposition.support</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.JSpaceDecomposition.coordinates"><code class="docutils literal notranslate"><span class="pre">JSpaceDecomposition.coordinates</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.JSpaceDecomposition.selected_support"><code class="docutils literal notranslate"><span class="pre">JSpaceDecomposition.selected_support</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.JSpaceDecomposition.reconstruction"><code class="docutils literal notranslate"><span class="pre">JSpaceDecomposition.reconstruction</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.JSpaceDecomposition.j_space_component"><code class="docutils literal notranslate"><span class="pre">JSpaceDecomposition.j_space_component</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.JSpaceDecomposition.non_j_space_component"><code class="docutils literal notranslate"><span class="pre">JSpaceDecomposition.non_j_space_component</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.tools.analysis.html#id5"><code class="docutils literal notranslate"><span class="pre">JSpaceDecomposition.coordinates</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.tools.analysis.html#id6"><code class="docutils literal notranslate"><span class="pre">JSpaceDecomposition.j_space_component</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.tools.analysis.html#id7"><code class="docutils literal notranslate"><span class="pre">JSpaceDecomposition.non_j_space_component</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.tools.analysis.html#id8"><code class="docutils literal notranslate"><span class="pre">JSpaceDecomposition.reconstruction</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.tools.analysis.html#id9"><code class="docutils literal notranslate"><span class="pre">JSpaceDecomposition.selected_support</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.tools.analysis.html#id10"><code class="docutils literal notranslate"><span class="pre">JSpaceDecomposition.support</span></code></a></li>
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.JacobianLens"><code class="docutils literal notranslate"><span class="pre">JacobianLens</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.JacobianLens.jacobians"><code class="docutils literal notranslate"><span class="pre">JacobianLens.jacobians</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.JacobianLens.n_prompts"><code class="docutils literal notranslate"><span class="pre">JacobianLens.n_prompts</span></code></a></li>
@@ -706,8 +730,10 @@
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.JacobianLens.metadata"><code class="docutils literal notranslate"><span class="pre">JacobianLens.metadata</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.JacobianLens.ablation_hooks"><code class="docutils literal notranslate"><span class="pre">JacobianLens.ablation_hooks()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.JacobianLens.clear_device_cache"><code class="docutils literal notranslate"><span class="pre">JacobianLens.clear_device_cache()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.JacobianLens.decompose"><code class="docutils literal notranslate"><span class="pre">JacobianLens.decompose()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.JacobianLens.fit"><code class="docutils literal notranslate"><span class="pre">JacobianLens.fit()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.JacobianLens.from_pretrained"><code class="docutils literal notranslate"><span class="pre">JacobianLens.from_pretrained()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.JacobianLens.lens_vector_dictionary"><code class="docutils literal notranslate"><span class="pre">JacobianLens.lens_vector_dictionary()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.JacobianLens.lens_vectors"><code class="docutils literal notranslate"><span class="pre">JacobianLens.lens_vectors()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.JacobianLens.load"><code class="docutils literal notranslate"><span class="pre">JacobianLens.load()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.JacobianLens.merge"><code class="docutils literal notranslate"><span class="pre">JacobianLens.merge()</span></code></a></li>
@@ -730,21 +756,22 @@
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.JacobianLensReadout.tokens"><code class="docutils literal notranslate"><span class="pre">JacobianLensReadout.tokens</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.JacobianLensReadout.positions"><code class="docutils literal notranslate"><span class="pre">JacobianLensReadout.positions</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.JacobianLensReadout.use_jacobian"><code class="docutils literal notranslate"><span class="pre">JacobianLensReadout.use_jacobian</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="transformer_lens.tools.analysis.html#id5"><code class="docutils literal notranslate"><span class="pre">JacobianLensReadout.lens_logits</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="transformer_lens.tools.analysis.html#id6"><code class="docutils literal notranslate"><span class="pre">JacobianLensReadout.lens_topk_indices</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="transformer_lens.tools.analysis.html#id7"><code class="docutils literal notranslate"><span class="pre">JacobianLensReadout.lens_topk_values</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="transformer_lens.tools.analysis.html#id8"><code class="docutils literal notranslate"><span class="pre">JacobianLensReadout.model_logits</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="transformer_lens.tools.analysis.html#id9"><code class="docutils literal notranslate"><span class="pre">JacobianLensReadout.model_topk_indices</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="transformer_lens.tools.analysis.html#id10"><code class="docutils literal notranslate"><span class="pre">JacobianLensReadout.model_topk_values</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="transformer_lens.tools.analysis.html#id11"><code class="docutils literal notranslate"><span class="pre">JacobianLensReadout.positions</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="transformer_lens.tools.analysis.html#id12"><code class="docutils literal notranslate"><span class="pre">JacobianLensReadout.tokens</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.tools.analysis.html#id11"><code class="docutils literal notranslate"><span class="pre">JacobianLensReadout.lens_logits</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.tools.analysis.html#id12"><code class="docutils literal notranslate"><span class="pre">JacobianLensReadout.lens_topk_indices</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.tools.analysis.html#id13"><code class="docutils literal notranslate"><span class="pre">JacobianLensReadout.lens_topk_values</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.tools.analysis.html#id14"><code class="docutils literal notranslate"><span class="pre">JacobianLensReadout.model_logits</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.tools.analysis.html#id15"><code class="docutils literal notranslate"><span class="pre">JacobianLensReadout.model_topk_indices</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.tools.analysis.html#id16"><code class="docutils literal notranslate"><span class="pre">JacobianLensReadout.model_topk_values</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.tools.analysis.html#id17"><code class="docutils literal notranslate"><span class="pre">JacobianLensReadout.positions</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.tools.analysis.html#id18"><code class="docutils literal notranslate"><span class="pre">JacobianLensReadout.tokens</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.JacobianLensReadout.top_tokens"><code class="docutils literal notranslate"><span class="pre">JacobianLensReadout.top_tokens()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="transformer_lens.tools.analysis.html#id13"><code class="docutils literal notranslate"><span class="pre">JacobianLensReadout.use_jacobian</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.tools.analysis.html#id19"><code class="docutils literal notranslate"><span class="pre">JacobianLensReadout.use_jacobian</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.direct_logit_attribution"><code class="docutils literal notranslate"><span class="pre">direct_logit_attribution()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.get_act_patch_direct_path"><code class="docutils literal notranslate"><span class="pre">get_act_patch_direct_path()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.get_act_patch_direct_path_all_sources"><code class="docutils literal notranslate"><span class="pre">get_act_patch_direct_path_all_sources()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.get_sparse_decomposition"><code class="docutils literal notranslate"><span class="pre">get_sparse_decomposition()</span></code></a></li>
 </ul>
 </li>
 </ul>

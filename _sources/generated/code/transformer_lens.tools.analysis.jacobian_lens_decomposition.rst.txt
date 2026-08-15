@@ -1,0 +1,7 @@
+transformer\_lens.tools.analysis.jacobian\_lens\_decomposition module
+=====================================================================
+
+.. automodule:: transformer_lens.tools.analysis.jacobian_lens_decomposition
+   :members:
+   :undoc-members:
+   :show-inheritance:

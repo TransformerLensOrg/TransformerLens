@@ -521,6 +521,7 @@
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.direct_logit_attribution.html">transformer_lens.tools.analysis.direct_logit_attribution module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.direct_path_patching.html">transformer_lens.tools.analysis.direct_path_patching module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens.html">transformer_lens.tools.analysis.jacobian_lens module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html">transformer_lens.tools.analysis.jacobian_lens_decomposition module</a></li>
 </ul>
 </li>
 <li class="toctree-l4 has-children"><a class="reference internal" href="transformer_lens.tools.model_registry.html">transformer_lens.tools.model_registry package</a><input class="toctree-checkbox" id="toctree-checkbox-21" name="toctree-checkbox-21" role="switch" type="checkbox"/><label for="toctree-checkbox-21"><div class="visually-hidden">Toggle navigation of transformer_lens.tools.model_registry package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
@@ -554,6 +555,7 @@
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.devices.html">transformer_lens.utilities.devices module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.exploratory_utils.html">transformer_lens.utilities.exploratory_utils module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.gpu_utils.html">transformer_lens.utilities.gpu_utils module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.heterogeneous_config.html">transformer_lens.utilities.heterogeneous_config module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.hf_utils.html">transformer_lens.utilities.hf_utils module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.initialization_utils.html">transformer_lens.utilities.initialization_utils module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.library_utils.html">transformer_lens.utilities.library_utils module</a></li>
@@ -561,6 +563,7 @@
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.logits_utils.html">transformer_lens.utilities.logits_utils module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.matrix.html">transformer_lens.utilities.matrix module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.multi_gpu.html">transformer_lens.utilities.multi_gpu module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.quantization.html">transformer_lens.utilities.quantization module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.slice.html">transformer_lens.utilities.slice module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.tensors.html">transformer_lens.utilities.tensors module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.tokenize_utils.html">transformer_lens.utilities.tokenize_utils module</a></li>
@@ -677,7 +680,8 @@
 <li><p>Non-learnable LayerNorm: Weight and bias are not trainable parameters.
 Delegating to HF’s native forward via NormalizationBridge handles this correctly.</p></li>
 <li><p>No Q/K normalization in attention.</p></li>
-<li><p>Optional QKV clipping (handled by HF’s native attention forward).</p></li>
+<li><p>Optional QKV clipping (applied out-of-place by the reconstructed
+attention forward when config.clip_qkv is set).</p></li>
 </ul>
 <section id="optional-parameters-may-not-exist-in-state-dict">
 <h2>Optional Parameters (may not exist in state_dict):<a class="headerlink" href="#optional-parameters-may-not-exist-in-state-dict" title="Link to this heading">¶</a></h2>
@@ -694,19 +698,6 @@ Delegating to HF’s native forward via NormalizationBridge handles this correct
 <dt class="sig sig-object py" id="transformer_lens.model_bridge.supported_architectures.olmo.OlmoArchitectureAdapter.__init__">
 <span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cfg</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#transformer_lens.model_bridge.supported_architectures.olmo.OlmoArchitectureAdapter.__init__" title="Link to this definition">¶</a></dt>
 <dd><p>Initialize the OLMo architecture adapter.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="transformer_lens.model_bridge.supported_architectures.olmo.OlmoArchitectureAdapter.prepare_model">
-<span class="sig-name descname"><span class="pre">prepare_model</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">hf_model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#transformer_lens.model_bridge.supported_architectures.olmo.OlmoArchitectureAdapter.prepare_model" title="Link to this definition">¶</a></dt>
-<dd><p>Patch OLMo’s in-place <a href="#id1"><span class="problematic" id="id2">clamp_</span></a> to avoid backward hook conflicts.</p>
-<p>OLMo v1 uses query_states.clamp_() when config.clip_qkv is set.
-In-place ops on tensors that pass through register_full_backward_hook
-trigger PyTorch’s “view modified inplace” error.  This patch disables
-the in-place clamp branch during attention forward passes.</p>
-<p>Note: clip_qkv clamping is skipped in the patched forward.  In practice
-clip_qkv values (typically 100+) rarely activate.  If exact clamping is
-needed, add out-of-place clamp hooks on hook_q/hook_k/hook_v.</p>
 </dd></dl>
 
 </section>
@@ -772,7 +763,6 @@ needed, add out-of-place clamp hooks on hook_q/hook_k/hook_v.</p>
 <li><a class="reference internal" href="#">transformer_lens.model_bridge.supported_architectures.olmo module</a><ul>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.olmo.OlmoArchitectureAdapter"><code class="docutils literal notranslate"><span class="pre">OlmoArchitectureAdapter</span></code></a><ul>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.olmo.OlmoArchitectureAdapter.__init__"><code class="docutils literal notranslate"><span class="pre">OlmoArchitectureAdapter.__init__()</span></code></a></li>
-<li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.olmo.OlmoArchitectureAdapter.prepare_model"><code class="docutils literal notranslate"><span class="pre">OlmoArchitectureAdapter.prepare_model()</span></code></a></li>
 </ul>
 </li>
 </ul>

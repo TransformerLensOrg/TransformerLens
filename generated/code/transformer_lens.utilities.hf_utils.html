@@ -3,7 +3,7 @@
   <head><meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width,initial-scale=1"/>
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="../../genindex.html" /><link rel="search" title="Search" href="../../search.html" /><link rel="next" title="transformer_lens.utilities.initialization_utils module" href="transformer_lens.utilities.initialization_utils.html" /><link rel="prev" title="transformer_lens.utilities.gpu_utils module" href="transformer_lens.utilities.gpu_utils.html" />
+<link rel="index" title="Index" href="../../genindex.html" /><link rel="search" title="Search" href="../../search.html" /><link rel="next" title="transformer_lens.utilities.initialization_utils module" href="transformer_lens.utilities.initialization_utils.html" /><link rel="prev" title="transformer_lens.utilities.heterogeneous_config module" href="transformer_lens.utilities.heterogeneous_config.html" />
 
     <link rel="shortcut icon" href="../../_static/favicon.ico"/><!-- Generated with Sphinx 7.4.7 and Furo 2023.09.10 -->
         <title>transformer_lens.utilities.hf_utils module - TransformerLens Documentation</title>
@@ -521,6 +521,7 @@
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.direct_logit_attribution.html">transformer_lens.tools.analysis.direct_logit_attribution module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.direct_path_patching.html">transformer_lens.tools.analysis.direct_path_patching module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens.html">transformer_lens.tools.analysis.jacobian_lens module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html">transformer_lens.tools.analysis.jacobian_lens_decomposition module</a></li>
 </ul>
 </li>
 <li class="toctree-l4 has-children"><a class="reference internal" href="transformer_lens.tools.model_registry.html">transformer_lens.tools.model_registry package</a><input class="toctree-checkbox" id="toctree-checkbox-21" name="toctree-checkbox-21" role="switch" type="checkbox"/><label for="toctree-checkbox-21"><div class="visually-hidden">Toggle navigation of transformer_lens.tools.model_registry package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
@@ -554,6 +555,7 @@
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.devices.html">transformer_lens.utilities.devices module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.exploratory_utils.html">transformer_lens.utilities.exploratory_utils module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.gpu_utils.html">transformer_lens.utilities.gpu_utils module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.heterogeneous_config.html">transformer_lens.utilities.heterogeneous_config module</a></li>
 <li class="toctree-l4 current current-page"><a class="current reference internal" href="#">transformer_lens.utilities.hf_utils module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.initialization_utils.html">transformer_lens.utilities.initialization_utils module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.library_utils.html">transformer_lens.utilities.library_utils module</a></li>
@@ -561,6 +563,7 @@
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.logits_utils.html">transformer_lens.utilities.logits_utils module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.matrix.html">transformer_lens.utilities.matrix module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.multi_gpu.html">transformer_lens.utilities.multi_gpu module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.quantization.html">transformer_lens.utilities.quantization module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.slice.html">transformer_lens.utilities.slice module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.tensors.html">transformer_lens.utilities.tensors module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.tokenize_utils.html">transformer_lens.utilities.tokenize_utils module</a></li>
@@ -666,6 +669,15 @@
 <p>hf_utils.</p>
 <p>This module contains utility functions related to HuggingFace</p>
 <dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.utilities.hf_utils.autoconfig_with_remote_post_init_compat">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utilities.hf_utils.</span></span><span class="sig-name descname"><span class="pre">autoconfig_with_remote_post_init_compat</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">auto_config</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#transformer_lens.utilities.hf_utils.autoconfig_with_remote_post_init_compat" title="Link to this definition">¶</a></dt>
+<dd><p><code class="docutils literal notranslate"><span class="pre">AutoConfig.from_pretrained</span></code> tolerating 4.x-era remote-code configs.</p>
+<p>transformers&gt;=5 delivers non-base fields via <code class="docutils literal notranslate"><span class="pre">__post_init__(**extras)</span></code>;
+a 4.x-era argless override (OpenELM) crashes on the first kwarg. On exactly
+that TypeError, wrap the class’s <code class="docutils literal notranslate"><span class="pre">__post_init__</span></code> and retry once.</p>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="transformer_lens.utilities.hf_utils.call_hf_with_retry">
 <span class="sig-prename descclassname"><span class="pre">transformer_lens.utilities.hf_utils.</span></span><span class="sig-name descname"><span class="pre">call_hf_with_retry</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">func</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">T</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_attempts</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">3</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">base_delay</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">10.0</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">T</span></span></span><a class="headerlink" href="#transformer_lens.utilities.hf_utils.call_hf_with_retry" title="Link to this definition">¶</a></dt>
 <dd><p>Retry <code class="docutils literal notranslate"><span class="pre">func(*args,</span> <span class="pre">**kwargs)</span></code> on HTTP 429, honoring <code class="docutils literal notranslate"><span class="pre">Retry-After</span></code>.</p>
@@ -734,6 +746,15 @@ This function handles both the old and new config formats.</p>
 <dd><p>Acts on a HuggingFace dataset to delete all columns apart from a single column name - useful when we want to tokenize and mix together different strings</p>
 </dd></dl>
 
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.utilities.hf_utils.make_post_init_kwarg_tolerant">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utilities.hf_utils.</span></span><span class="sig-name descname"><span class="pre">make_post_init_kwarg_tolerant</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config_class</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#transformer_lens.utilities.hf_utils.make_post_init_kwarg_tolerant" title="Link to this definition">¶</a></dt>
+<dd><p>Wrap an argless remote <code class="docutils literal notranslate"><span class="pre">__post_init__</span></code> to accept 5.x extras.</p>
+<p>Base-first ordering is load-bearing: the base handler setattrs the extras
+(the class’s own fields arrive that way under 5.x) and the original body
+derives from them. Idempotent via marker.</p>
+</dd></dl>
+
 </section>
 
         </article>
@@ -750,14 +771,14 @@ This function handles both the old and new config formats.</p>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
-          <a class="prev-page" href="transformer_lens.utilities.gpu_utils.html">
+          <a class="prev-page" href="transformer_lens.utilities.heterogeneous_config.html">
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
               <div class="page-info">
                 <div class="context">
                   <span>Previous</span>
                 </div>
                 
-                <div class="title">transformer_lens.utilities.gpu_utils module</div>
+                <div class="title">transformer_lens.utilities.heterogeneous_config module</div>
                 
               </div>
             </a>
@@ -792,6 +813,7 @@ This function handles both the old and new config formats.</p>
           <div class="toc-tree">
             <ul>
 <li><a class="reference internal" href="#">transformer_lens.utilities.hf_utils module</a><ul>
+<li><a class="reference internal" href="#transformer_lens.utilities.hf_utils.autoconfig_with_remote_post_init_compat"><code class="docutils literal notranslate"><span class="pre">autoconfig_with_remote_post_init_compat()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utilities.hf_utils.call_hf_with_retry"><code class="docutils literal notranslate"><span class="pre">call_hf_with_retry()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utilities.hf_utils.download_file_from_hf"><code class="docutils literal notranslate"><span class="pre">download_file_from_hf()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utilities.hf_utils.enable_hf_retry"><code class="docutils literal notranslate"><span class="pre">enable_hf_retry()</span></code></a></li>
@@ -799,6 +821,7 @@ This function handles both the old and new config formats.</p>
 <li><a class="reference internal" href="#transformer_lens.utilities.hf_utils.get_hf_token"><code class="docutils literal notranslate"><span class="pre">get_hf_token()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utilities.hf_utils.get_rotary_pct_from_config"><code class="docutils literal notranslate"><span class="pre">get_rotary_pct_from_config()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utilities.hf_utils.keep_single_column"><code class="docutils literal notranslate"><span class="pre">keep_single_column()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.utilities.hf_utils.make_post_init_kwarg_tolerant"><code class="docutils literal notranslate"><span class="pre">make_post_init_kwarg_tolerant()</span></code></a></li>
 </ul>
 </li>
 </ul>

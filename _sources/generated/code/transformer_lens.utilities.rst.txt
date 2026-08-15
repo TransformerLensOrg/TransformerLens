@@ -20,6 +20,7 @@ Submodules
    transformer_lens.utilities.devices
    transformer_lens.utilities.exploratory_utils
    transformer_lens.utilities.gpu_utils
+   transformer_lens.utilities.heterogeneous_config
    transformer_lens.utilities.hf_utils
    transformer_lens.utilities.initialization_utils
    transformer_lens.utilities.library_utils
@@ -27,6 +28,7 @@ Submodules
    transformer_lens.utilities.logits_utils
    transformer_lens.utilities.matrix
    transformer_lens.utilities.multi_gpu
+   transformer_lens.utilities.quantization
    transformer_lens.utilities.slice
    transformer_lens.utilities.tensors
    transformer_lens.utilities.tokenize_utils

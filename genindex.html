@@ -519,6 +519,7 @@
 <li class="toctree-l5"><a class="reference internal" href="generated/code/transformer_lens.tools.analysis.direct_logit_attribution.html">transformer_lens.tools.analysis.direct_logit_attribution module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="generated/code/transformer_lens.tools.analysis.direct_path_patching.html">transformer_lens.tools.analysis.direct_path_patching module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="generated/code/transformer_lens.tools.analysis.jacobian_lens.html">transformer_lens.tools.analysis.jacobian_lens module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="generated/code/transformer_lens.tools.analysis.jacobian_lens_decomposition.html">transformer_lens.tools.analysis.jacobian_lens_decomposition module</a></li>
 </ul>
 </li>
 <li class="toctree-l4 has-children"><a class="reference internal" href="generated/code/transformer_lens.tools.model_registry.html">transformer_lens.tools.model_registry package</a><input class="toctree-checkbox" id="toctree-checkbox-21" name="toctree-checkbox-21" role="switch" type="checkbox"/><label for="toctree-checkbox-21"><div class="visually-hidden">Toggle navigation of transformer_lens.tools.model_registry package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
@@ -552,6 +553,7 @@
 <li class="toctree-l4"><a class="reference internal" href="generated/code/transformer_lens.utilities.devices.html">transformer_lens.utilities.devices module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="generated/code/transformer_lens.utilities.exploratory_utils.html">transformer_lens.utilities.exploratory_utils module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="generated/code/transformer_lens.utilities.gpu_utils.html">transformer_lens.utilities.gpu_utils module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="generated/code/transformer_lens.utilities.heterogeneous_config.html">transformer_lens.utilities.heterogeneous_config module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="generated/code/transformer_lens.utilities.hf_utils.html">transformer_lens.utilities.hf_utils module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="generated/code/transformer_lens.utilities.initialization_utils.html">transformer_lens.utilities.initialization_utils module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="generated/code/transformer_lens.utilities.library_utils.html">transformer_lens.utilities.library_utils module</a></li>
@@ -559,6 +561,7 @@
 <li class="toctree-l4"><a class="reference internal" href="generated/code/transformer_lens.utilities.logits_utils.html">transformer_lens.utilities.logits_utils module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="generated/code/transformer_lens.utilities.matrix.html">transformer_lens.utilities.matrix module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="generated/code/transformer_lens.utilities.multi_gpu.html">transformer_lens.utilities.multi_gpu module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="generated/code/transformer_lens.utilities.quantization.html">transformer_lens.utilities.quantization module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="generated/code/transformer_lens.utilities.slice.html">transformer_lens.utilities.slice module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="generated/code/transformer_lens.utilities.tensors.html">transformer_lens.utilities.tensors module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="generated/code/transformer_lens.utilities.tokenize_utils.html">transformer_lens.utilities.tokenize_utils module</a></li>
@@ -754,6 +757,8 @@
 </li>
           <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.block.html#transformer_lens.model_bridge.generalized_components.block.BlockBridge.__init__">(transformer_lens.model_bridge.generalized_components.block.BlockBridge method)</a>
 </li>
+          <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.block.html#transformer_lens.model_bridge.generalized_components.block.ScaledResidualBlockBridge.__init__">(transformer_lens.model_bridge.generalized_components.block.ScaledResidualBlockBridge method)</a>
+</li>
           <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.html#transformer_lens.model_bridge.generalized_components.BlockBridge.__init__">(transformer_lens.model_bridge.generalized_components.BlockBridge method)</a>
 </li>
           <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.bloom_attention.html#transformer_lens.model_bridge.generalized_components.bloom_attention.BloomAttentionBridge.__init__">(transformer_lens.model_bridge.generalized_components.bloom_attention.BloomAttentionBridge method)</a>
@@ -819,6 +824,8 @@
           <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.rotary_embedding.html#transformer_lens.model_bridge.generalized_components.rotary_embedding.RotaryEmbeddingBridge.__init__">(transformer_lens.model_bridge.generalized_components.rotary_embedding.RotaryEmbeddingBridge method)</a>
 </li>
           <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.html#transformer_lens.model_bridge.generalized_components.RotaryEmbeddingBridge.__init__">(transformer_lens.model_bridge.generalized_components.RotaryEmbeddingBridge method)</a>
+</li>
+          <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.html#transformer_lens.model_bridge.generalized_components.ScaledResidualBlockBridge.__init__">(transformer_lens.model_bridge.generalized_components.ScaledResidualBlockBridge method)</a>
 </li>
           <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.siglip_vision_encoder.html#transformer_lens.model_bridge.generalized_components.siglip_vision_encoder.SiglipVisionEncoderBridge.__init__">(transformer_lens.model_bridge.generalized_components.siglip_vision_encoder.SiglipVisionEncoderBridge method)</a>
 </li>
@@ -1341,6 +1348,8 @@
           <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.afmoe.html#transformer_lens.model_bridge.supported_architectures.afmoe.AfmoeArchitectureAdapter">(class in transformer_lens.model_bridge.supported_architectures.afmoe)</a>
 </li>
         </ul></li>
+        <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.base.html#transformer_lens.model_bridge.generalized_components.base.alias_generation">alias_generation() (in module transformer_lens.model_bridge.generalized_components.base)</a>
+</li>
         <li><a href="generated/code/transformer_lens.components.abstract_attention.html#transformer_lens.components.abstract_attention.AbstractAttention.alibi">alibi (transformer_lens.components.abstract_attention.AbstractAttention attribute)</a>
 </li>
         <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.html#transformer_lens.model_bridge.generalized_components.ALiBiJointQKVAttentionBridge">ALiBiJointQKVAttentionBridge (class in transformer_lens.model_bridge.generalized_components)</a>
@@ -1675,6 +1684,8 @@
           <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.audio_flamingo3.html#transformer_lens.model_bridge.supported_architectures.audio_flamingo3.AudioFlamingo3ArchitectureAdapter">(class in transformer_lens.model_bridge.supported_architectures.audio_flamingo3)</a>
 </li>
         </ul></li>
+        <li><a href="generated/code/transformer_lens.utilities.hf_utils.html#transformer_lens.utilities.hf_utils.autoconfig_with_remote_post_init_compat">autoconfig_with_remote_post_init_compat() (in module transformer_lens.utilities.hf_utils)</a>
+</li>
         <li><a href="generated/code/transformer_lens.utilities.multi_gpu.html#transformer_lens.utilities.multi_gpu.AvailableDeviceMemory">AvailableDeviceMemory (in module transformer_lens.utilities.multi_gpu)</a>
 </li>
     </ul></td>
@@ -1913,14 +1924,14 @@
           <li><a href="generated/code/transformer_lens.benchmarks.generation.html#transformer_lens.benchmarks.generation.benchmark_generation">(in module transformer_lens.benchmarks.generation)</a>
 </li>
         </ul></li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="generated/code/transformer_lens.benchmarks.html#transformer_lens.benchmarks.benchmark_generation_with_kv_cache">benchmark_generation_with_kv_cache() (in module transformer_lens.benchmarks)</a>
 
         <ul>
           <li><a href="generated/code/transformer_lens.benchmarks.generation.html#transformer_lens.benchmarks.generation.benchmark_generation_with_kv_cache">(in module transformer_lens.benchmarks.generation)</a>
 </li>
         </ul></li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="generated/code/transformer_lens.benchmarks.html#transformer_lens.benchmarks.benchmark_gradient_computation">benchmark_gradient_computation() (in module transformer_lens.benchmarks)</a>
 
         <ul>
@@ -2129,6 +2140,14 @@
           <li><a href="generated/code/transformer_lens.model_bridge.html#transformer_lens.model_bridge.TransformerBridge.boot_transformers">(transformer_lens.model_bridge.TransformerBridge static method)</a>
 </li>
         </ul></li>
+        <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.moe.html#transformer_lens.model_bridge.generalized_components.moe.MoEBridge.bound_dense">bound_dense (transformer_lens.model_bridge.generalized_components.moe.MoEBridge property)</a>
+
+        <ul>
+          <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.html#transformer_lens.model_bridge.generalized_components.MoEBridge.bound_dense">(transformer_lens.model_bridge.generalized_components.MoEBridge property)</a>
+</li>
+          <li><a href="generated/code/transformer_lens.model_bridge.html#transformer_lens.model_bridge.MoEBridge.bound_dense">(transformer_lens.model_bridge.MoEBridge property)</a>
+</li>
+        </ul></li>
         <li><a href="generated/code/transformer_lens.model_bridge.bridge.html#transformer_lens.model_bridge.bridge.build_alias_to_canonical_map">build_alias_to_canonical_map() (in module transformer_lens.model_bridge.bridge)</a>
 </li>
         <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.alibi_utils.html#transformer_lens.model_bridge.generalized_components.alibi_utils.build_alibi_slopes">build_alibi_slopes() (in module transformer_lens.model_bridge.generalized_components.alibi_utils)</a>
@@ -2269,6 +2288,8 @@
 </li>
         <li><a href="generated/code/transformer_lens.config.hooked_transformer_config.html#transformer_lens.config.hooked_transformer_config.HookedTransformerConfig.checkpoint_value">checkpoint_value (transformer_lens.config.hooked_transformer_config.HookedTransformerConfig attribute)</a>
 </li>
+        <li><a href="generated/code/transformer_lens.utilities.attention.html#transformer_lens.utilities.attention.clamp_qkv">clamp_qkv() (in module transformer_lens.utilities.attention)</a>
+</li>
         <li><a href="generated/code/transformer_lens.utilities.architectures.html#transformer_lens.utilities.architectures.classify_architecture">classify_architecture() (in module transformer_lens.utilities.architectures)</a>
 </li>
         <li><a href="generated/code/transformer_lens.utilities.architectures.html#transformer_lens.utilities.architectures.classify_model_config">classify_model_config() (in module transformer_lens.utilities.architectures)</a>
@@ -2307,6 +2328,8 @@
           <li><a href="generated/code/transformer_lens.conversion_utils.conversion_steps.html#transformer_lens.conversion_utils.conversion_steps.AttentionAutoConversion.clear_state">(transformer_lens.conversion_utils.conversion_steps.AttentionAutoConversion method)</a>
 </li>
         </ul></li>
+        <li><a href="generated/code/transformer_lens.config.hooked_transformer_config.html#transformer_lens.config.hooked_transformer_config.HookedTransformerConfig.clip_qkv">clip_qkv (transformer_lens.config.hooked_transformer_config.HookedTransformerConfig attribute)</a>
+</li>
         <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.html#transformer_lens.model_bridge.generalized_components.CLIPVisionEncoderBridge">CLIPVisionEncoderBridge (class in transformer_lens.model_bridge.generalized_components)</a>
 
         <ul>
@@ -2631,6 +2654,12 @@
           <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.conv_pos_embed.html#transformer_lens.model_bridge.generalized_components.conv_pos_embed.ConvPosEmbedBridge">(class in transformer_lens.model_bridge.generalized_components.conv_pos_embed)</a>
 </li>
         </ul></li>
+        <li><a href="generated/code/transformer_lens.tools.analysis.jacobian_lens_decomposition.html#id0">coordinates (transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceDecomposition attribute)</a>, <a href="generated/code/transformer_lens.tools.analysis.jacobian_lens_decomposition.html#transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceDecomposition.coordinates">[1]</a>
+
+        <ul>
+          <li><a href="generated/code/transformer_lens.tools.analysis.html#id5">(transformer_lens.tools.analysis.JSpaceDecomposition attribute)</a>, <a href="generated/code/transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.JSpaceDecomposition.coordinates">[1]</a>
+</li>
+        </ul></li>
         <li><a href="generated/code/transformer_lens.model_bridge.sources.native.model.html#transformer_lens.model_bridge.sources.native.model.NativeRotary.cos_cached">cos_cached (transformer_lens.model_bridge.sources.native.model.NativeRotary attribute)</a>
 </li>
         <li><a href="generated/code/transformer_lens.utilities.multi_gpu.html#transformer_lens.utilities.multi_gpu.count_unique_devices">count_unique_devices() (in module transformer_lens.utilities.multi_gpu)</a>
@@ -2745,6 +2774,12 @@
 </li>
         <li><a href="generated/code/transformer_lens.config.hooked_transformer_config.html#transformer_lens.config.hooked_transformer_config.HookedTransformerConfig.decoder_start_token_id">decoder_start_token_id (transformer_lens.config.hooked_transformer_config.HookedTransformerConfig attribute)</a>
 </li>
+        <li><a href="generated/code/transformer_lens.tools.analysis.jacobian_lens.html#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.decompose">decompose() (transformer_lens.tools.analysis.jacobian_lens.JacobianLens method)</a>
+
+        <ul>
+          <li><a href="generated/code/transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.JacobianLens.decompose">(transformer_lens.tools.analysis.JacobianLens method)</a>
+</li>
+        </ul></li>
         <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.html#transformer_lens.model_bridge.supported_architectures.DeepSeekV2ArchitectureAdapter">DeepSeekV2ArchitectureAdapter (class in transformer_lens.model_bridge.supported_architectures)</a>
 
         <ul>
@@ -2777,6 +2812,8 @@
         </ul></li>
         <li><a href="generated/code/transformer_lens.lit.constants.html#transformer_lens.lit.constants.ServerConfig.DEFAULT_HOST">DEFAULT_HOST (transformer_lens.lit.constants.ServerConfig attribute)</a>
 </li>
+        <li><a href="generated/code/transformer_lens.tools.analysis.jacobian_lens_decomposition.html#transformer_lens.tools.analysis.jacobian_lens_decomposition.DEFAULT_K">DEFAULT_K (in module transformer_lens.tools.analysis.jacobian_lens_decomposition)</a>
+</li>
         <li><a href="generated/code/transformer_lens.lit.constants.html#transformer_lens.lit.constants.ServerConfig.DEFAULT_PORT">DEFAULT_PORT (transformer_lens.lit.constants.ServerConfig attribute)</a>
 </li>
         <li><a href="generated/code/transformer_lens.config.transformer_lens_config.html#transformer_lens.config.transformer_lens_config.TransformerLensConfig.default_prepend_bos">default_prepend_bos (transformer_lens.config.transformer_lens_config.TransformerLensConfig attribute)</a>
@@ -2791,6 +2828,24 @@
           <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.block.html#transformer_lens.model_bridge.generalized_components.block.DelegatedAttentionBlockBridge">(class in transformer_lens.model_bridge.generalized_components.block)</a>
 </li>
         </ul></li>
+        <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.moe.html#transformer_lens.model_bridge.generalized_components.moe.MoEBridge.DENSE_GATE_KEY">DENSE_GATE_KEY (transformer_lens.model_bridge.generalized_components.moe.MoEBridge attribute)</a>
+
+        <ul>
+          <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.html#transformer_lens.model_bridge.generalized_components.MoEBridge.DENSE_GATE_KEY">(transformer_lens.model_bridge.generalized_components.MoEBridge attribute)</a>
+</li>
+          <li><a href="generated/code/transformer_lens.model_bridge.html#transformer_lens.model_bridge.MoEBridge.DENSE_GATE_KEY">(transformer_lens.model_bridge.MoEBridge attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.moe.html#transformer_lens.model_bridge.generalized_components.moe.MoEBridge.DENSE_SUBMODULE_KEYS">DENSE_SUBMODULE_KEYS (transformer_lens.model_bridge.generalized_components.moe.MoEBridge attribute)</a>
+
+        <ul>
+          <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.html#transformer_lens.model_bridge.generalized_components.MoEBridge.DENSE_SUBMODULE_KEYS">(transformer_lens.model_bridge.generalized_components.MoEBridge attribute)</a>
+</li>
+          <li><a href="generated/code/transformer_lens.model_bridge.html#transformer_lens.model_bridge.MoEBridge.DENSE_SUBMODULE_KEYS">(transformer_lens.model_bridge.MoEBridge attribute)</a>
+</li>
+        </ul></li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.pretrain.html#transformer_lens.model_bridge.supported_architectures.pretrain.DenseOrMoEFeedForwardBridge">DenseOrMoEFeedForwardBridge (class in transformer_lens.model_bridge.supported_architectures.pretrain)</a>
 </li>
         <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.html#transformer_lens.model_bridge.generalized_components.DepthwiseConv1DBridge">DepthwiseConv1DBridge (class in transformer_lens.model_bridge.generalized_components)</a>
@@ -2799,6 +2854,8 @@
           <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.depthwise_conv1d.html#transformer_lens.model_bridge.generalized_components.depthwise_conv1d.DepthwiseConv1DBridge">(class in transformer_lens.model_bridge.generalized_components.depthwise_conv1d)</a>
 </li>
         </ul></li>
+        <li><a href="generated/code/transformer_lens.utilities.quantization.html#transformer_lens.utilities.quantization.describe_quantization">describe_quantization() (in module transformer_lens.utilities.quantization)</a>
+</li>
         <li><a href="generated/code/transformer_lens.lit.dataset.html#transformer_lens.lit.dataset.InductionDataset.description">description() (transformer_lens.lit.dataset.InductionDataset method)</a>
 
         <ul>
@@ -2821,8 +2878,6 @@
           <li><a href="generated/code/transformer_lens.lit.html#transformer_lens.lit.SimpleTextDataset.description">(transformer_lens.lit.SimpleTextDataset method)</a>
 </li>
         </ul></li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="generated/code/transformer_lens.benchmarks.html#transformer_lens.benchmarks.BenchmarkResult.details">details (transformer_lens.benchmarks.BenchmarkResult attribute)</a>
 
         <ul>
@@ -4029,6 +4084,12 @@
 </li>
         <li><a href="generated/code/transformer_lens.evals.html#transformer_lens.evals.IOIDataset.get_sample">get_sample() (transformer_lens.evals.IOIDataset method)</a>
 </li>
+        <li><a href="generated/code/transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.get_sparse_decomposition">get_sparse_decomposition() (in module transformer_lens.tools.analysis)</a>
+
+        <ul>
+          <li><a href="generated/code/transformer_lens.tools.analysis.jacobian_lens_decomposition.html#transformer_lens.tools.analysis.jacobian_lens_decomposition.get_sparse_decomposition">(in module transformer_lens.tools.analysis.jacobian_lens_decomposition)</a>
+</li>
+        </ul></li>
         <li><a href="generated/code/transformer_lens.tools.model_registry.api.html#transformer_lens.tools.model_registry.api.get_supported_architectures">get_supported_architectures() (in module transformer_lens.tools.model_registry.api)</a>
 </li>
         <li><a href="generated/code/transformer_lens.head_detector.html#transformer_lens.head_detector.get_supported_heads">get_supported_heads() (in module transformer_lens.head_detector)</a>
@@ -4292,6 +4353,10 @@
 </li>
         </ul></li>
         <li><a href="generated/code/transformer_lens.model_bridge.composition_scores.html#transformer_lens.model_bridge.composition_scores.CompositionScores.head_labels">head_labels (transformer_lens.model_bridge.composition_scores.CompositionScores attribute)</a>
+</li>
+        <li><a href="generated/code/transformer_lens.utilities.heterogeneous_config.html#transformer_lens.utilities.heterogeneous_config.het_safe_view">het_safe_view() (in module transformer_lens.utilities.heterogeneous_config)</a>
+</li>
+        <li><a href="generated/code/transformer_lens.utilities.heterogeneous_config.html#transformer_lens.utilities.heterogeneous_config.HetSafeConfigView">HetSafeConfigView (class in transformer_lens.utilities.heterogeneous_config)</a>
 </li>
         <li><a href="generated/code/transformer_lens.model_bridge.bridge.html#transformer_lens.model_bridge.bridge.TransformerBridge.hf_generate">hf_generate() (transformer_lens.model_bridge.bridge.TransformerBridge method)</a>
 
@@ -4803,6 +4868,12 @@
   <h2>J</h2>
   <table style="width: 100%" class="indextable genindextable"><tr>
     <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="generated/code/transformer_lens.tools.analysis.jacobian_lens_decomposition.html#id1">j_space_component (transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceDecomposition attribute)</a>, <a href="generated/code/transformer_lens.tools.analysis.jacobian_lens_decomposition.html#transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceDecomposition.j_space_component">[1]</a>
+
+        <ul>
+          <li><a href="generated/code/transformer_lens.tools.analysis.html#id6">(transformer_lens.tools.analysis.JSpaceDecomposition attribute)</a>, <a href="generated/code/transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.JSpaceDecomposition.j_space_component">[1]</a>
+</li>
+        </ul></li>
         <li><a href="generated/code/transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.JacobianLens">JacobianLens (class in transformer_lens.tools.analysis)</a>
 
         <ul>
@@ -4861,6 +4932,12 @@
 
         <ul>
           <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.joint_qkv_position_embeddings_attention.html#transformer_lens.model_bridge.generalized_components.joint_qkv_position_embeddings_attention.JointQKVPositionEmbeddingsAttentionBridge">(class in transformer_lens.model_bridge.generalized_components.joint_qkv_position_embeddings_attention)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/code/transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.JSpaceDecomposition">JSpaceDecomposition (class in transformer_lens.tools.analysis)</a>
+
+        <ul>
+          <li><a href="generated/code/transformer_lens.tools.analysis.jacobian_lens_decomposition.html#transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceDecomposition">(class in transformer_lens.tools.analysis.jacobian_lens_decomposition)</a>
 </li>
         </ul></li>
     </ul></td>
@@ -4958,19 +5035,25 @@
         <li><a href="generated/code/transformer_lens.tools.analysis.jacobian_lens.html#id0">lens_logits (transformer_lens.tools.analysis.jacobian_lens.JacobianLensReadout attribute)</a>, <a href="generated/code/transformer_lens.tools.analysis.jacobian_lens.html#transformer_lens.tools.analysis.jacobian_lens.JacobianLensReadout.lens_logits">[1]</a>
 
         <ul>
-          <li><a href="generated/code/transformer_lens.tools.analysis.html#id5">(transformer_lens.tools.analysis.JacobianLensReadout attribute)</a>, <a href="generated/code/transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.JacobianLensReadout.lens_logits">[1]</a>
+          <li><a href="generated/code/transformer_lens.tools.analysis.html#id11">(transformer_lens.tools.analysis.JacobianLensReadout attribute)</a>, <a href="generated/code/transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.JacobianLensReadout.lens_logits">[1]</a>
 </li>
         </ul></li>
         <li><a href="generated/code/transformer_lens.tools.analysis.jacobian_lens.html#id1">lens_topk_indices (transformer_lens.tools.analysis.jacobian_lens.JacobianLensReadout attribute)</a>, <a href="generated/code/transformer_lens.tools.analysis.jacobian_lens.html#transformer_lens.tools.analysis.jacobian_lens.JacobianLensReadout.lens_topk_indices">[1]</a>
 
         <ul>
-          <li><a href="generated/code/transformer_lens.tools.analysis.html#id6">(transformer_lens.tools.analysis.JacobianLensReadout attribute)</a>, <a href="generated/code/transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.JacobianLensReadout.lens_topk_indices">[1]</a>
+          <li><a href="generated/code/transformer_lens.tools.analysis.html#id12">(transformer_lens.tools.analysis.JacobianLensReadout attribute)</a>, <a href="generated/code/transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.JacobianLensReadout.lens_topk_indices">[1]</a>
 </li>
         </ul></li>
         <li><a href="generated/code/transformer_lens.tools.analysis.jacobian_lens.html#id2">lens_topk_values (transformer_lens.tools.analysis.jacobian_lens.JacobianLensReadout attribute)</a>, <a href="generated/code/transformer_lens.tools.analysis.jacobian_lens.html#transformer_lens.tools.analysis.jacobian_lens.JacobianLensReadout.lens_topk_values">[1]</a>
 
         <ul>
-          <li><a href="generated/code/transformer_lens.tools.analysis.html#id7">(transformer_lens.tools.analysis.JacobianLensReadout attribute)</a>, <a href="generated/code/transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.JacobianLensReadout.lens_topk_values">[1]</a>
+          <li><a href="generated/code/transformer_lens.tools.analysis.html#id13">(transformer_lens.tools.analysis.JacobianLensReadout attribute)</a>, <a href="generated/code/transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.JacobianLensReadout.lens_topk_values">[1]</a>
+</li>
+        </ul></li>
+        <li><a href="generated/code/transformer_lens.tools.analysis.jacobian_lens.html#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.lens_vector_dictionary">lens_vector_dictionary() (transformer_lens.tools.analysis.jacobian_lens.JacobianLens method)</a>
+
+        <ul>
+          <li><a href="generated/code/transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.JacobianLens.lens_vector_dictionary">(transformer_lens.tools.analysis.JacobianLens method)</a>
 </li>
         </ul></li>
         <li><a href="generated/code/transformer_lens.tools.analysis.jacobian_lens.html#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.lens_vectors">lens_vectors() (transformer_lens.tools.analysis.jacobian_lens.JacobianLens method)</a>
@@ -5179,6 +5262,8 @@
           <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.deepseek_v4.html#transformer_lens.model_bridge.supported_architectures.deepseek_v4.DeepseekV4BlockBridge.maintain_native_attention">(transformer_lens.model_bridge.supported_architectures.deepseek_v4.DeepseekV4BlockBridge attribute)</a>
 </li>
         </ul></li>
+        <li><a href="generated/code/transformer_lens.utilities.heterogeneous_config.html#transformer_lens.utilities.heterogeneous_config.majority_value">majority_value() (in module transformer_lens.utilities.heterogeneous_config)</a>
+</li>
         <li><a href="generated/code/transformer_lens.benchmarks.utils.html#transformer_lens.benchmarks.utils.make_capture_hook">make_capture_hook() (in module transformer_lens.benchmarks.utils)</a>
 </li>
         <li><a href="generated/code/transformer_lens.evals.html#transformer_lens.evals.make_code_data_loader">make_code_data_loader() (in module transformer_lens.evals)</a>
@@ -5190,6 +5275,8 @@
         <li><a href="generated/code/transformer_lens.evals.html#transformer_lens.evals.make_owt_data_loader">make_owt_data_loader() (in module transformer_lens.evals)</a>
 </li>
         <li><a href="generated/code/transformer_lens.evals.html#transformer_lens.evals.make_pile_data_loader">make_pile_data_loader() (in module transformer_lens.evals)</a>
+</li>
+        <li><a href="generated/code/transformer_lens.utilities.hf_utils.html#transformer_lens.utilities.hf_utils.make_post_init_kwarg_tolerant">make_post_init_kwarg_tolerant() (in module transformer_lens.utilities.hf_utils)</a>
 </li>
         <li><a href="generated/code/transformer_lens.utilities.tracr.html#transformer_lens.utilities.tracr.make_tracr_categorical_unembed">make_tracr_categorical_unembed() (in module transformer_lens.utilities.tracr)</a>
 </li>
@@ -5400,7 +5487,7 @@
         <li><a href="generated/code/transformer_lens.tools.analysis.jacobian_lens.html#id3">model_logits (transformer_lens.tools.analysis.jacobian_lens.JacobianLensReadout attribute)</a>, <a href="generated/code/transformer_lens.tools.analysis.jacobian_lens.html#transformer_lens.tools.analysis.jacobian_lens.JacobianLensReadout.model_logits">[1]</a>
 
         <ul>
-          <li><a href="generated/code/transformer_lens.tools.analysis.html#id8">(transformer_lens.tools.analysis.JacobianLensReadout attribute)</a>, <a href="generated/code/transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.JacobianLensReadout.model_logits">[1]</a>
+          <li><a href="generated/code/transformer_lens.tools.analysis.html#id14">(transformer_lens.tools.analysis.JacobianLensReadout attribute)</a>, <a href="generated/code/transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.JacobianLensReadout.model_logits">[1]</a>
 </li>
         </ul></li>
         <li><a href="generated/code/transformer_lens.benchmarks.component_outputs.html#transformer_lens.benchmarks.component_outputs.BenchmarkReport.model_name">model_name (transformer_lens.benchmarks.component_outputs.BenchmarkReport attribute)</a>
@@ -5412,13 +5499,13 @@
         <li><a href="generated/code/transformer_lens.tools.analysis.jacobian_lens.html#id4">model_topk_indices (transformer_lens.tools.analysis.jacobian_lens.JacobianLensReadout attribute)</a>, <a href="generated/code/transformer_lens.tools.analysis.jacobian_lens.html#transformer_lens.tools.analysis.jacobian_lens.JacobianLensReadout.model_topk_indices">[1]</a>
 
         <ul>
-          <li><a href="generated/code/transformer_lens.tools.analysis.html#id9">(transformer_lens.tools.analysis.JacobianLensReadout attribute)</a>, <a href="generated/code/transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.JacobianLensReadout.model_topk_indices">[1]</a>
+          <li><a href="generated/code/transformer_lens.tools.analysis.html#id15">(transformer_lens.tools.analysis.JacobianLensReadout attribute)</a>, <a href="generated/code/transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.JacobianLensReadout.model_topk_indices">[1]</a>
 </li>
         </ul></li>
         <li><a href="generated/code/transformer_lens.tools.analysis.jacobian_lens.html#id5">model_topk_values (transformer_lens.tools.analysis.jacobian_lens.JacobianLensReadout attribute)</a>, <a href="generated/code/transformer_lens.tools.analysis.jacobian_lens.html#transformer_lens.tools.analysis.jacobian_lens.JacobianLensReadout.model_topk_values">[1]</a>
 
         <ul>
-          <li><a href="generated/code/transformer_lens.tools.analysis.html#id10">(transformer_lens.tools.analysis.JacobianLensReadout attribute)</a>, <a href="generated/code/transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.JacobianLensReadout.model_topk_values">[1]</a>
+          <li><a href="generated/code/transformer_lens.tools.analysis.html#id16">(transformer_lens.tools.analysis.JacobianLensReadout attribute)</a>, <a href="generated/code/transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.JacobianLensReadout.model_topk_values">[1]</a>
 </li>
         </ul></li>
         <li><a href="generated/code/transformer_lens.tools.model_registry.verify_models.html#transformer_lens.tools.model_registry.verify_models.ModelCandidate">ModelCandidate (class in transformer_lens.tools.model_registry.verify_models)</a>
@@ -6107,6 +6194,8 @@
 </li>
           <li><a href="generated/code/transformer_lens.tools.analysis.jacobian_lens.html#module-transformer_lens.tools.analysis.jacobian_lens">transformer_lens.tools.analysis.jacobian_lens</a>
 </li>
+          <li><a href="generated/code/transformer_lens.tools.analysis.jacobian_lens_decomposition.html#module-transformer_lens.tools.analysis.jacobian_lens_decomposition">transformer_lens.tools.analysis.jacobian_lens_decomposition</a>
+</li>
           <li><a href="generated/code/transformer_lens.tools.model_registry.html#module-transformer_lens.tools.model_registry">transformer_lens.tools.model_registry</a>
 </li>
           <li><a href="generated/code/transformer_lens.tools.model_registry.alias_drift.html#module-transformer_lens.tools.model_registry.alias_drift">transformer_lens.tools.model_registry.alias_drift</a>
@@ -6163,6 +6252,8 @@
 </li>
           <li><a href="generated/code/transformer_lens.utilities.gpu_utils.html#module-transformer_lens.utilities.gpu_utils">transformer_lens.utilities.gpu_utils</a>
 </li>
+          <li><a href="generated/code/transformer_lens.utilities.heterogeneous_config.html#module-transformer_lens.utilities.heterogeneous_config">transformer_lens.utilities.heterogeneous_config</a>
+</li>
           <li><a href="generated/code/transformer_lens.utilities.hf_utils.html#module-transformer_lens.utilities.hf_utils">transformer_lens.utilities.hf_utils</a>
 </li>
           <li><a href="generated/code/transformer_lens.utilities.initialization_utils.html#module-transformer_lens.utilities.initialization_utils">transformer_lens.utilities.initialization_utils</a>
@@ -6176,6 +6267,8 @@
           <li><a href="generated/code/transformer_lens.utilities.matrix.html#module-transformer_lens.utilities.matrix">transformer_lens.utilities.matrix</a>
 </li>
           <li><a href="generated/code/transformer_lens.utilities.multi_gpu.html#module-transformer_lens.utilities.multi_gpu">transformer_lens.utilities.multi_gpu</a>
+</li>
+          <li><a href="generated/code/transformer_lens.utilities.quantization.html#module-transformer_lens.utilities.quantization">transformer_lens.utilities.quantization</a>
 </li>
           <li><a href="generated/code/transformer_lens.utilities.slice.html#module-transformer_lens.utilities.slice">transformer_lens.utilities.slice</a>
 </li>
@@ -6366,14 +6459,14 @@
           <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.html#transformer_lens.model_bridge.supported_architectures.LLaDA2MoeArchitectureAdapter.native_sampler_kwargs">(transformer_lens.model_bridge.supported_architectures.LLaDA2MoeArchitectureAdapter method)</a>
 </li>
         </ul></li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.html#transformer_lens.model_bridge.supported_architectures.NativeArchitectureAdapter">NativeArchitectureAdapter (class in transformer_lens.model_bridge.supported_architectures)</a>
 
         <ul>
           <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.native.html#transformer_lens.model_bridge.supported_architectures.native.NativeArchitectureAdapter">(class in transformer_lens.model_bridge.supported_architectures.native)</a>
 </li>
         </ul></li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="generated/code/transformer_lens.model_bridge.sources.native.html#transformer_lens.model_bridge.sources.native.NativeAttention">NativeAttention (class in transformer_lens.model_bridge.sources.native)</a>
 
         <ul>
@@ -6442,6 +6535,12 @@
 </li>
         <li><a href="generated/code/transformer_lens.loading_from_pretrained.html#transformer_lens.loading_from_pretrained.NON_HF_HOSTED_MODEL_NAMES">NON_HF_HOSTED_MODEL_NAMES (in module transformer_lens.loading_from_pretrained)</a>
 </li>
+        <li><a href="generated/code/transformer_lens.tools.analysis.jacobian_lens_decomposition.html#id2">non_j_space_component (transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceDecomposition attribute)</a>, <a href="generated/code/transformer_lens.tools.analysis.jacobian_lens_decomposition.html#transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceDecomposition.non_j_space_component">[1]</a>
+
+        <ul>
+          <li><a href="generated/code/transformer_lens.tools.analysis.html#id7">(transformer_lens.tools.analysis.JSpaceDecomposition attribute)</a>, <a href="generated/code/transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.JSpaceDecomposition.non_j_space_component">[1]</a>
+</li>
+        </ul></li>
         <li><a href="generated/code/transformer_lens.config.hooked_transformer_config.html#transformer_lens.config.hooked_transformer_config.HookedTransformerConfig.norm_topk_prob">norm_topk_prob (transformer_lens.config.hooked_transformer_config.HookedTransformerConfig attribute)</a>
 </li>
         <li><a href="generated/code/transformer_lens.config.hooked_transformer_config.html#transformer_lens.config.hooked_transformer_config.HookedTransformerConfig.normalization_type">normalization_type (transformer_lens.config.hooked_transformer_config.HookedTransformerConfig attribute)</a>
@@ -6458,6 +6557,8 @@
           <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.normalization.html#transformer_lens.model_bridge.generalized_components.normalization.NormalizationBridge">(class in transformer_lens.model_bridge.generalized_components.normalization)</a>
 </li>
         </ul></li>
+        <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.mlp.html#transformer_lens.model_bridge.generalized_components.mlp.normalize_mlp_weight">normalize_mlp_weight() (in module transformer_lens.model_bridge.generalized_components.mlp)</a>
+</li>
         <li><a href="generated/code/transformer_lens.tools.model_registry.html#id24">note (transformer_lens.tools.model_registry.ModelEntry attribute)</a>, <a href="generated/code/transformer_lens.tools.model_registry.html#transformer_lens.tools.model_registry.ModelEntry.note">[1]</a>
 
         <ul>
@@ -6708,7 +6809,13 @@
           <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.pegasus.html#transformer_lens.model_bridge.supported_architectures.pegasus.PegasusArchitectureAdapter">(class in transformer_lens.model_bridge.supported_architectures.pegasus)</a>
 </li>
         </ul></li>
+        <li><a href="generated/code/transformer_lens.utilities.heterogeneous_config.html#transformer_lens.utilities.heterogeneous_config.per_layer_attr_names">per_layer_attr_names() (in module transformer_lens.utilities.heterogeneous_config)</a>
+</li>
+        <li><a href="generated/code/transformer_lens.utilities.heterogeneous_config.html#transformer_lens.utilities.heterogeneous_config.per_layer_values">per_layer_values() (in module transformer_lens.utilities.heterogeneous_config)</a>
+</li>
         <li><a href="generated/code/transformer_lens.benchmarks.component_outputs.html#transformer_lens.benchmarks.component_outputs.ComponentTestResult.percentile_diffs">percentile_diffs (transformer_lens.benchmarks.component_outputs.ComponentTestResult attribute)</a>
+</li>
+        <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.attention.html#transformer_lens.model_bridge.generalized_components.attention.PerLayerGeometryError">PerLayerGeometryError</a>
 </li>
         <li><a href="generated/code/transformer_lens.benchmarks.html#transformer_lens.benchmarks.BenchmarkResult.phase">phase (transformer_lens.benchmarks.BenchmarkResult attribute)</a>
 
@@ -6817,7 +6924,7 @@
         <li><a href="generated/code/transformer_lens.tools.analysis.jacobian_lens.html#id6">positions (transformer_lens.tools.analysis.jacobian_lens.JacobianLensReadout attribute)</a>, <a href="generated/code/transformer_lens.tools.analysis.jacobian_lens.html#transformer_lens.tools.analysis.jacobian_lens.JacobianLensReadout.positions">[1]</a>
 
         <ul>
-          <li><a href="generated/code/transformer_lens.tools.analysis.html#id11">(transformer_lens.tools.analysis.JacobianLensReadout attribute)</a>, <a href="generated/code/transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.JacobianLensReadout.positions">[1]</a>
+          <li><a href="generated/code/transformer_lens.tools.analysis.html#id17">(transformer_lens.tools.analysis.JacobianLensReadout attribute)</a>, <a href="generated/code/transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.JacobianLensReadout.positions">[1]</a>
 </li>
         </ul></li>
         <li><a href="generated/code/transformer_lens.config.hooked_transformer_config.html#transformer_lens.config.hooked_transformer_config.HookedTransformerConfig.post_embedding_ln">post_embedding_ln (transformer_lens.config.hooked_transformer_config.HookedTransformerConfig attribute)</a>
@@ -6937,6 +7044,10 @@
 </li>
           <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.html#transformer_lens.model_bridge.supported_architectures.BertArchitectureAdapter.prepare_model">(transformer_lens.model_bridge.supported_architectures.BertArchitectureAdapter method)</a>
 </li>
+          <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.bitnet.html#transformer_lens.model_bridge.supported_architectures.bitnet.BitNetArchitectureAdapter.prepare_model">(transformer_lens.model_bridge.supported_architectures.bitnet.BitNetArchitectureAdapter method)</a>
+</li>
+          <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.html#transformer_lens.model_bridge.supported_architectures.BitNetArchitectureAdapter.prepare_model">(transformer_lens.model_bridge.supported_architectures.BitNetArchitectureAdapter method)</a>
+</li>
           <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.deepseek_v4.html#transformer_lens.model_bridge.supported_architectures.deepseek_v4.DeepSeekV4ArchitectureAdapter.prepare_model">(transformer_lens.model_bridge.supported_architectures.deepseek_v4.DeepSeekV4ArchitectureAdapter method)</a>
 </li>
           <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.exaone.html#transformer_lens.model_bridge.supported_architectures.exaone.ExaoneArchitectureAdapter.prepare_model">(transformer_lens.model_bridge.supported_architectures.exaone.ExaoneArchitectureAdapter method)</a>
@@ -6970,14 +7081,6 @@
           <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.native.html#transformer_lens.model_bridge.supported_architectures.native.NativeArchitectureAdapter.prepare_model">(transformer_lens.model_bridge.supported_architectures.native.NativeArchitectureAdapter method)</a>
 </li>
           <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.html#transformer_lens.model_bridge.supported_architectures.NativeArchitectureAdapter.prepare_model">(transformer_lens.model_bridge.supported_architectures.NativeArchitectureAdapter method)</a>
-</li>
-          <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.olmo.html#transformer_lens.model_bridge.supported_architectures.olmo.OlmoArchitectureAdapter.prepare_model">(transformer_lens.model_bridge.supported_architectures.olmo.OlmoArchitectureAdapter method)</a>
-</li>
-          <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.html#transformer_lens.model_bridge.supported_architectures.OlmoArchitectureAdapter.prepare_model">(transformer_lens.model_bridge.supported_architectures.OlmoArchitectureAdapter method)</a>
-</li>
-          <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.olmoe.html#transformer_lens.model_bridge.supported_architectures.olmoe.OlmoeArchitectureAdapter.prepare_model">(transformer_lens.model_bridge.supported_architectures.olmoe.OlmoeArchitectureAdapter method)</a>
-</li>
-          <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.html#transformer_lens.model_bridge.supported_architectures.OlmoeArchitectureAdapter.prepare_model">(transformer_lens.model_bridge.supported_architectures.OlmoeArchitectureAdapter method)</a>
 </li>
           <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.openelm.html#transformer_lens.model_bridge.supported_architectures.openelm.OpenElmArchitectureAdapter.prepare_model">(transformer_lens.model_bridge.supported_architectures.openelm.OpenElmArchitectureAdapter method)</a>
 </li>
@@ -7222,6 +7325,10 @@
         </ul></li>
         <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.gpt2.html#transformer_lens.model_bridge.supported_architectures.gpt2.QKVSplitRearrangeConversion">QKVSplitRearrangeConversion (class in transformer_lens.model_bridge.supported_architectures.gpt2)</a>
 </li>
+        <li><a href="generated/code/transformer_lens.config.hooked_transformer_config.html#transformer_lens.config.hooked_transformer_config.HookedTransformerConfig.quantization_method">quantization_method (transformer_lens.config.hooked_transformer_config.HookedTransformerConfig attribute)</a>
+</li>
+        <li><a href="generated/code/transformer_lens.utilities.quantization.html#transformer_lens.utilities.quantization.quantization_method">quantization_method() (in module transformer_lens.utilities.quantization)</a>
+</li>
         <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.html#transformer_lens.model_bridge.supported_architectures.Qwen2_5_VLArchitectureAdapter">Qwen2_5_VLArchitectureAdapter (class in transformer_lens.model_bridge.supported_architectures)</a>
 
         <ul>
@@ -7254,14 +7361,14 @@
           <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.qwen3_5.html#transformer_lens.model_bridge.supported_architectures.qwen3_5.Qwen3_5ArchitectureAdapter">(class in transformer_lens.model_bridge.supported_architectures.qwen3_5)</a>
 </li>
         </ul></li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.html#transformer_lens.model_bridge.supported_architectures.Qwen3_5MoeArchitectureAdapter">Qwen3_5MoeArchitectureAdapter (class in transformer_lens.model_bridge.supported_architectures)</a>
 
         <ul>
           <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.qwen3_5_moe.html#transformer_lens.model_bridge.supported_architectures.qwen3_5_moe.Qwen3_5MoeArchitectureAdapter">(class in transformer_lens.model_bridge.supported_architectures.qwen3_5_moe)</a>
 </li>
         </ul></li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.html#transformer_lens.model_bridge.supported_architectures.Qwen3_5MoeMultimodalArchitectureAdapter">Qwen3_5MoeMultimodalArchitectureAdapter (class in transformer_lens.model_bridge.supported_architectures)</a>
 
         <ul>
@@ -7434,6 +7541,12 @@
           <li><a href="generated/code/transformer_lens.conversion_utils.conversion_steps.rearrange_tensor_conversion.html#transformer_lens.conversion_utils.conversion_steps.rearrange_tensor_conversion.RearrangeTensorConversion">(class in transformer_lens.conversion_utils.conversion_steps.rearrange_tensor_conversion)</a>
 </li>
         </ul></li>
+        <li><a href="generated/code/transformer_lens.tools.analysis.jacobian_lens_decomposition.html#id3">reconstruction (transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceDecomposition attribute)</a>, <a href="generated/code/transformer_lens.tools.analysis.jacobian_lens_decomposition.html#transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceDecomposition.reconstruction">[1]</a>
+
+        <ul>
+          <li><a href="generated/code/transformer_lens.tools.analysis.html#id8">(transformer_lens.tools.analysis.JSpaceDecomposition attribute)</a>, <a href="generated/code/transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.JSpaceDecomposition.reconstruction">[1]</a>
+</li>
+        </ul></li>
         <li><a href="generated/code/transformer_lens.tools.model_registry.verification.html#id1">records (transformer_lens.tools.model_registry.verification.VerificationHistory attribute)</a>, <a href="generated/code/transformer_lens.tools.model_registry.verification.html#transformer_lens.tools.model_registry.verification.VerificationHistory.records">[1]</a>
 
         <ul>
@@ -7510,6 +7623,8 @@
           <li><a href="generated/code/transformer_lens.model_bridge.component_setup.html#transformer_lens.model_bridge.component_setup.replace_remote_component">(in module transformer_lens.model_bridge.component_setup)</a>
 </li>
         </ul></li>
+        <li><a href="generated/code/transformer_lens.utilities.quantization.html#transformer_lens.utilities.quantization.require_readable_weight">require_readable_weight() (in module transformer_lens.utilities.quantization)</a>
+</li>
         <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.bart.html#transformer_lens.model_bridge.supported_architectures.bart.BartFamilyArchitectureAdapter.require_symmetric_layers">require_symmetric_layers (transformer_lens.model_bridge.supported_architectures.bart.BartFamilyArchitectureAdapter attribute)</a>
 
         <ul>
@@ -7742,6 +7857,8 @@
     <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="generated/code/transformer_lens.benchmarks.utils.html#transformer_lens.benchmarks.utils.safe_allclose">safe_allclose() (in module transformer_lens.benchmarks.utils)</a>
 </li>
+        <li><a href="generated/code/transformer_lens.utilities.heterogeneous_config.html#transformer_lens.utilities.heterogeneous_config.safe_config_get">safe_config_get() (in module transformer_lens.utilities.heterogeneous_config)</a>
+</li>
         <li><a href="generated/code/transformer_lens.utilities.logits_utils.html#transformer_lens.utilities.logits_utils.sample_logits">sample_logits() (in module transformer_lens.utilities.logits_utils)</a>
 
         <ul>
@@ -7772,6 +7889,12 @@
 </li>
         <li><a href="generated/code/transformer_lens.config.hooked_transformer_config.html#transformer_lens.config.hooked_transformer_config.HookedTransformerConfig.scale_attn_by_inverse_layer_idx">scale_attn_by_inverse_layer_idx (transformer_lens.config.hooked_transformer_config.HookedTransformerConfig attribute)</a>
 </li>
+        <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.html#transformer_lens.model_bridge.generalized_components.ScaledResidualBlockBridge">ScaledResidualBlockBridge (class in transformer_lens.model_bridge.generalized_components)</a>
+
+        <ul>
+          <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.block.html#transformer_lens.model_bridge.generalized_components.block.ScaledResidualBlockBridge">(class in transformer_lens.model_bridge.generalized_components.block)</a>
+</li>
+        </ul></li>
         <li><a href="generated/code/transformer_lens.tools.model_registry.html#id39">scan_duration_seconds (transformer_lens.tools.model_registry.ScanInfo attribute)</a>, <a href="generated/code/transformer_lens.tools.model_registry.html#transformer_lens.tools.model_registry.ScanInfo.scan_duration_seconds">[1]</a>
 
         <ul>
@@ -7818,6 +7941,12 @@
 </li>
         <li><a href="generated/code/transformer_lens.tools.model_registry.verify_models.html#transformer_lens.tools.model_registry.verify_models.select_models_for_verification">select_models_for_verification() (in module transformer_lens.tools.model_registry.verify_models)</a>
 </li>
+        <li><a href="generated/code/transformer_lens.tools.analysis.jacobian_lens_decomposition.html#id4">selected_support (transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceDecomposition attribute)</a>, <a href="generated/code/transformer_lens.tools.analysis.jacobian_lens_decomposition.html#transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceDecomposition.selected_support">[1]</a>
+
+        <ul>
+          <li><a href="generated/code/transformer_lens.tools.analysis.html#id9">(transformer_lens.tools.analysis.JSpaceDecomposition attribute)</a>, <a href="generated/code/transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.JSpaceDecomposition.selected_support">[1]</a>
+</li>
+        </ul></li>
         <li><a href="generated/code/transformer_lens.lit.html#transformer_lens.lit.serve">serve() (in module transformer_lens.lit)</a>
 </li>
         <li><a href="generated/code/transformer_lens.lit.constants.html#transformer_lens.lit.constants.ServerConfig">ServerConfig (class in transformer_lens.lit.constants)</a>
@@ -7836,6 +7965,8 @@
           <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.html#transformer_lens.model_bridge.generalized_components.AttentionBridge.set_original_component">(transformer_lens.model_bridge.generalized_components.AttentionBridge method)</a>
 </li>
           <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.base.html#transformer_lens.model_bridge.generalized_components.base.GeneralizedComponent.set_original_component">(transformer_lens.model_bridge.generalized_components.base.GeneralizedComponent method)</a>
+</li>
+          <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.block.html#transformer_lens.model_bridge.generalized_components.block.ScaledResidualBlockBridge.set_original_component">(transformer_lens.model_bridge.generalized_components.block.ScaledResidualBlockBridge method)</a>
 </li>
           <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.bloom_mlp.html#transformer_lens.model_bridge.generalized_components.bloom_mlp.BloomMLPBridge.set_original_component">(transformer_lens.model_bridge.generalized_components.bloom_mlp.BloomMLPBridge method)</a>
 </li>
@@ -7857,6 +7988,10 @@
 </li>
           <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.html#transformer_lens.model_bridge.generalized_components.JointQKVAttentionBridge.set_original_component">(transformer_lens.model_bridge.generalized_components.JointQKVAttentionBridge method)</a>
 </li>
+          <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.moe.html#transformer_lens.model_bridge.generalized_components.moe.MoEBridge.set_original_component">(transformer_lens.model_bridge.generalized_components.moe.MoEBridge method)</a>
+</li>
+          <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.html#transformer_lens.model_bridge.generalized_components.MoEBridge.set_original_component">(transformer_lens.model_bridge.generalized_components.MoEBridge method)</a>
+</li>
           <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.mpt_alibi_attention.html#transformer_lens.model_bridge.generalized_components.mpt_alibi_attention.MPTALiBiAttentionBridge.set_original_component">(transformer_lens.model_bridge.generalized_components.mpt_alibi_attention.MPTALiBiAttentionBridge method)</a>
 </li>
           <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.html#transformer_lens.model_bridge.generalized_components.MPTALiBiAttentionBridge.set_original_component">(transformer_lens.model_bridge.generalized_components.MPTALiBiAttentionBridge method)</a>
@@ -7864,6 +7999,8 @@
           <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.position_embeddings_attention.html#transformer_lens.model_bridge.generalized_components.position_embeddings_attention.PositionEmbeddingsAttentionBridge.set_original_component">(transformer_lens.model_bridge.generalized_components.position_embeddings_attention.PositionEmbeddingsAttentionBridge method)</a>
 </li>
           <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.html#transformer_lens.model_bridge.generalized_components.PositionEmbeddingsAttentionBridge.set_original_component">(transformer_lens.model_bridge.generalized_components.PositionEmbeddingsAttentionBridge method)</a>
+</li>
+          <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.html#transformer_lens.model_bridge.generalized_components.ScaledResidualBlockBridge.set_original_component">(transformer_lens.model_bridge.generalized_components.ScaledResidualBlockBridge method)</a>
 </li>
           <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.siglip_vision_encoder.html#transformer_lens.model_bridge.generalized_components.siglip_vision_encoder.SiglipVisionEncoderBridge.set_original_component">(transformer_lens.model_bridge.generalized_components.siglip_vision_encoder.SiglipVisionEncoderBridge method)</a>
 </li>
@@ -7888,6 +8025,8 @@
           <li><a href="generated/code/transformer_lens.model_bridge.html#transformer_lens.model_bridge.JointGateUpMLPBridge.set_original_component">(transformer_lens.model_bridge.JointGateUpMLPBridge method)</a>
 </li>
           <li><a href="generated/code/transformer_lens.model_bridge.html#transformer_lens.model_bridge.JointQKVAttentionBridge.set_original_component">(transformer_lens.model_bridge.JointQKVAttentionBridge method)</a>
+</li>
+          <li><a href="generated/code/transformer_lens.model_bridge.html#transformer_lens.model_bridge.MoEBridge.set_original_component">(transformer_lens.model_bridge.MoEBridge method)</a>
 </li>
           <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.pretrain.html#transformer_lens.model_bridge.supported_architectures.pretrain.DenseOrMoEFeedForwardBridge.set_original_component">(transformer_lens.model_bridge.supported_architectures.pretrain.DenseOrMoEFeedForwardBridge method)</a>
 </li>
@@ -8100,6 +8239,8 @@
         </ul></li>
         <li><a href="generated/code/transformer_lens.utilities.attention.html#transformer_lens.utilities.attention.simple_attn_linear">simple_attn_linear() (in module transformer_lens.utilities.attention)</a>
 </li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="generated/code/transformer_lens.lit.html#transformer_lens.lit.SimpleTextDataset">SimpleTextDataset (class in transformer_lens.lit)</a>
 
         <ul>
@@ -8114,8 +8255,6 @@
           <li><a href="generated/code/transformer_lens.benchmarks.utils.html#transformer_lens.benchmarks.utils.BenchmarkSeverity.SKIPPED">(transformer_lens.benchmarks.utils.BenchmarkSeverity attribute)</a>
 </li>
         </ul></li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="generated/code/transformer_lens.tools.model_registry.verify_models.html#transformer_lens.tools.model_registry.verify_models.VerificationProgress.skipped">skipped (transformer_lens.tools.model_registry.verify_models.VerificationProgress attribute)</a>
 </li>
         <li><a href="generated/code/transformer_lens.utilities.slice.html#transformer_lens.utilities.slice.Slice">Slice (class in transformer_lens.utilities.slice)</a>
@@ -8274,6 +8413,12 @@
 
         <ul>
           <li><a href="generated/code/transformer_lens.tools.model_registry.html#transformer_lens.tools.model_registry.ModelNotFoundError.suggestion">(transformer_lens.tools.model_registry.ModelNotFoundError attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/code/transformer_lens.tools.analysis.jacobian_lens_decomposition.html#id5">support (transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceDecomposition attribute)</a>, <a href="generated/code/transformer_lens.tools.analysis.jacobian_lens_decomposition.html#transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceDecomposition.support">[1]</a>
+
+        <ul>
+          <li><a href="generated/code/transformer_lens.tools.analysis.html#id10">(transformer_lens.tools.analysis.JSpaceDecomposition attribute)</a>, <a href="generated/code/transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.JSpaceDecomposition.support">[1]</a>
 </li>
         </ul></li>
         <li><a href="generated/code/transformer_lens.tools.model_registry.html#transformer_lens.tools.model_registry.SupportedModelsReport">SupportedModelsReport (class in transformer_lens.tools.model_registry)</a>
@@ -8747,7 +8892,7 @@
         <li><a href="generated/code/transformer_lens.tools.analysis.jacobian_lens.html#id7">tokens (transformer_lens.tools.analysis.jacobian_lens.JacobianLensReadout attribute)</a>, <a href="generated/code/transformer_lens.tools.analysis.jacobian_lens.html#transformer_lens.tools.analysis.jacobian_lens.JacobianLensReadout.tokens">[1]</a>
 
         <ul>
-          <li><a href="generated/code/transformer_lens.tools.analysis.html#id12">(transformer_lens.tools.analysis.JacobianLensReadout attribute)</a>, <a href="generated/code/transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.JacobianLensReadout.tokens">[1]</a>
+          <li><a href="generated/code/transformer_lens.tools.analysis.html#id18">(transformer_lens.tools.analysis.JacobianLensReadout attribute)</a>, <a href="generated/code/transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.JacobianLensReadout.tokens">[1]</a>
 </li>
         </ul></li>
         <li><a href="generated/code/transformer_lens.model_bridge.bridge.html#transformer_lens.model_bridge.bridge.TransformerBridge.tokens_to_residual_directions">tokens_to_residual_directions() (transformer_lens.model_bridge.bridge.TransformerBridge method)</a>
@@ -9967,8 +10112,6 @@
           <li><a href="generated/code/transformer_lens.model_bridge.sources.native.model.html#module-transformer_lens.model_bridge.sources.native.model">module</a>
 </li>
         </ul></li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li>
     transformer_lens.model_bridge.sources.transformers
 
@@ -9976,6 +10119,8 @@
           <li><a href="generated/code/transformer_lens.model_bridge.sources.transformers.html#module-transformer_lens.model_bridge.sources.transformers">module</a>
 </li>
         </ul></li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li>
     transformer_lens.model_bridge.supported_architectures
 
@@ -11230,6 +11375,13 @@
 </li>
         </ul></li>
         <li>
+    transformer_lens.tools.analysis.jacobian_lens_decomposition
+
+        <ul>
+          <li><a href="generated/code/transformer_lens.tools.analysis.jacobian_lens_decomposition.html#module-transformer_lens.tools.analysis.jacobian_lens_decomposition">module</a>
+</li>
+        </ul></li>
+        <li>
     transformer_lens.tools.model_registry
 
         <ul>
@@ -11426,6 +11578,13 @@
 </li>
         </ul></li>
         <li>
+    transformer_lens.utilities.heterogeneous_config
+
+        <ul>
+          <li><a href="generated/code/transformer_lens.utilities.heterogeneous_config.html#module-transformer_lens.utilities.heterogeneous_config">module</a>
+</li>
+        </ul></li>
+        <li>
     transformer_lens.utilities.hf_utils
 
         <ul>
@@ -11472,6 +11631,13 @@
 
         <ul>
           <li><a href="generated/code/transformer_lens.utilities.multi_gpu.html#module-transformer_lens.utilities.multi_gpu">module</a>
+</li>
+        </ul></li>
+        <li>
+    transformer_lens.utilities.quantization
+
+        <ul>
+          <li><a href="generated/code/transformer_lens.utilities.quantization.html#module-transformer_lens.utilities.quantization">module</a>
 </li>
         </ul></li>
         <li>
@@ -11621,6 +11787,8 @@
           <li><a href="generated/code/transformer_lens.tools.analysis.html#id4">(transformer_lens.tools.analysis.DirectLogitAttribution attribute)</a>, <a href="generated/code/transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.DirectLogitAttribution.unit">[1]</a>
 </li>
         </ul></li>
+        <li><a href="generated/code/transformer_lens.utilities.quantization.html#transformer_lens.utilities.quantization.unreadable_weight_reason">unreadable_weight_reason() (in module transformer_lens.utilities.quantization)</a>
+</li>
         <li><a href="generated/code/transformer_lens.config.hooked_transformer_config.html#transformer_lens.config.hooked_transformer_config.HookedTransformerConfig.unwrap">unwrap() (transformer_lens.config.hooked_transformer_config.HookedTransformerConfig class method)</a>
 
         <ul>
@@ -11654,7 +11822,7 @@
         <li><a href="generated/code/transformer_lens.tools.analysis.jacobian_lens.html#id8">use_jacobian (transformer_lens.tools.analysis.jacobian_lens.JacobianLensReadout attribute)</a>, <a href="generated/code/transformer_lens.tools.analysis.jacobian_lens.html#transformer_lens.tools.analysis.jacobian_lens.JacobianLensReadout.use_jacobian">[1]</a>
 
         <ul>
-          <li><a href="generated/code/transformer_lens.tools.analysis.html#id13">(transformer_lens.tools.analysis.JacobianLensReadout attribute)</a>, <a href="generated/code/transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.JacobianLensReadout.use_jacobian">[1]</a>
+          <li><a href="generated/code/transformer_lens.tools.analysis.html#id19">(transformer_lens.tools.analysis.JacobianLensReadout attribute)</a>, <a href="generated/code/transformer_lens.tools.analysis.html#transformer_lens.tools.analysis.JacobianLensReadout.use_jacobian">[1]</a>
 </li>
         </ul></li>
         <li><a href="generated/code/transformer_lens.config.hooked_transformer_config.html#transformer_lens.config.hooked_transformer_config.HookedTransformerConfig.use_local_attn">use_local_attn (transformer_lens.config.hooked_transformer_config.HookedTransformerConfig attribute)</a>
@@ -11783,6 +11951,14 @@
 </li>
         <li><a href="generated/code/transformer_lens.tools.model_registry.validate.html#id5">valid (transformer_lens.tools.model_registry.validate.ValidationResult attribute)</a>, <a href="generated/code/transformer_lens.tools.model_registry.validate.html#transformer_lens.tools.model_registry.validate.ValidationResult.valid">[1]</a>
 </li>
+        <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.moe.html#transformer_lens.model_bridge.generalized_components.moe.MoEBridge.validate_after_setup">validate_after_setup() (transformer_lens.model_bridge.generalized_components.moe.MoEBridge method)</a>
+
+        <ul>
+          <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.html#transformer_lens.model_bridge.generalized_components.MoEBridge.validate_after_setup">(transformer_lens.model_bridge.generalized_components.MoEBridge method)</a>
+</li>
+          <li><a href="generated/code/transformer_lens.model_bridge.html#transformer_lens.model_bridge.MoEBridge.validate_after_setup">(transformer_lens.model_bridge.MoEBridge method)</a>
+</li>
+        </ul></li>
         <li><a href="generated/code/transformer_lens.tools.model_registry.validate.html#transformer_lens.tools.model_registry.validate.validate_architecture_gaps_report">validate_architecture_gaps_report() (in module transformer_lens.tools.model_registry.validate)</a>
 </li>
         <li><a href="generated/code/transformer_lens.tools.model_registry.validate.html#transformer_lens.tools.model_registry.validate.validate_data_directory">validate_data_directory() (in module transformer_lens.tools.model_registry.validate)</a>
@@ -11825,14 +12001,14 @@
           <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.vaultgemma.html#transformer_lens.model_bridge.supported_architectures.vaultgemma.VaultGemmaArchitectureAdapter">(class in transformer_lens.model_bridge.supported_architectures.vaultgemma)</a>
 </li>
         </ul></li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="generated/code/transformer_lens.tools.model_registry.html#transformer_lens.tools.model_registry.VerificationHistory">VerificationHistory (class in transformer_lens.tools.model_registry)</a>
 
         <ul>
           <li><a href="generated/code/transformer_lens.tools.model_registry.verification.html#transformer_lens.tools.model_registry.verification.VerificationHistory">(class in transformer_lens.tools.model_registry.verification)</a>
 </li>
         </ul></li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="generated/code/transformer_lens.tools.model_registry.verify_models.html#transformer_lens.tools.model_registry.verify_models.VerificationProgress">VerificationProgress (class in transformer_lens.tools.model_registry.verify_models)</a>
 </li>
         <li><a href="generated/code/transformer_lens.tools.model_registry.html#transformer_lens.tools.model_registry.VerificationRecord">VerificationRecord (class in transformer_lens.tools.model_registry)</a>
@@ -11918,7 +12094,13 @@
 </li>
           <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.html#transformer_lens.model_bridge.generalized_components.MLPBridge.W_gate">(transformer_lens.model_bridge.generalized_components.MLPBridge property)</a>
 </li>
+          <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.moe.html#transformer_lens.model_bridge.generalized_components.moe.MoEBridge.W_gate">(transformer_lens.model_bridge.generalized_components.moe.MoEBridge property)</a>
+</li>
+          <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.html#transformer_lens.model_bridge.generalized_components.MoEBridge.W_gate">(transformer_lens.model_bridge.generalized_components.MoEBridge property)</a>
+</li>
           <li><a href="generated/code/transformer_lens.model_bridge.html#transformer_lens.model_bridge.MLPBridge.W_gate">(transformer_lens.model_bridge.MLPBridge property)</a>
+</li>
+          <li><a href="generated/code/transformer_lens.model_bridge.html#transformer_lens.model_bridge.MoEBridge.W_gate">(transformer_lens.model_bridge.MoEBridge property)</a>
 </li>
           <li><a href="generated/code/transformer_lens.model_bridge.html#transformer_lens.model_bridge.TransformerBridge.W_gate">(transformer_lens.model_bridge.TransformerBridge property)</a>
 </li>
@@ -11932,7 +12114,13 @@
 </li>
           <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.html#transformer_lens.model_bridge.generalized_components.MLPBridge.W_in">(transformer_lens.model_bridge.generalized_components.MLPBridge property)</a>
 </li>
+          <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.moe.html#transformer_lens.model_bridge.generalized_components.moe.MoEBridge.W_in">(transformer_lens.model_bridge.generalized_components.moe.MoEBridge property)</a>
+</li>
+          <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.html#transformer_lens.model_bridge.generalized_components.MoEBridge.W_in">(transformer_lens.model_bridge.generalized_components.MoEBridge property)</a>
+</li>
           <li><a href="generated/code/transformer_lens.model_bridge.html#transformer_lens.model_bridge.MLPBridge.W_in">(transformer_lens.model_bridge.MLPBridge property)</a>
+</li>
+          <li><a href="generated/code/transformer_lens.model_bridge.html#transformer_lens.model_bridge.MoEBridge.W_in">(transformer_lens.model_bridge.MoEBridge property)</a>
 </li>
           <li><a href="generated/code/transformer_lens.model_bridge.html#transformer_lens.model_bridge.TransformerBridge.W_in">(transformer_lens.model_bridge.TransformerBridge property)</a>
 </li>
@@ -11976,7 +12164,13 @@
 </li>
           <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.html#transformer_lens.model_bridge.generalized_components.MLPBridge.W_out">(transformer_lens.model_bridge.generalized_components.MLPBridge property)</a>
 </li>
+          <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.moe.html#transformer_lens.model_bridge.generalized_components.moe.MoEBridge.W_out">(transformer_lens.model_bridge.generalized_components.moe.MoEBridge property)</a>
+</li>
+          <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.html#transformer_lens.model_bridge.generalized_components.MoEBridge.W_out">(transformer_lens.model_bridge.generalized_components.MoEBridge property)</a>
+</li>
           <li><a href="generated/code/transformer_lens.model_bridge.html#transformer_lens.model_bridge.MLPBridge.W_out">(transformer_lens.model_bridge.MLPBridge property)</a>
+</li>
+          <li><a href="generated/code/transformer_lens.model_bridge.html#transformer_lens.model_bridge.MoEBridge.W_out">(transformer_lens.model_bridge.MoEBridge property)</a>
 </li>
           <li><a href="generated/code/transformer_lens.model_bridge.html#transformer_lens.model_bridge.TransformerBridge.W_out">(transformer_lens.model_bridge.TransformerBridge property)</a>
 </li>
@@ -12029,10 +12223,10 @@
           <li><a href="generated/code/transformer_lens.model_bridge.html#transformer_lens.model_bridge.TransformerBridge.W_V">(transformer_lens.model_bridge.TransformerBridge property)</a>
 </li>
         </ul></li>
-        <li><a href="generated/code/transformer_lens.train.html#transformer_lens.train.HookedTransformerTrainConfig.wandb">wandb (transformer_lens.train.HookedTransformerTrainConfig attribute)</a>
-</li>
     </ul></td>
     <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="generated/code/transformer_lens.train.html#transformer_lens.train.HookedTransformerTrainConfig.wandb">wandb (transformer_lens.train.HookedTransformerTrainConfig attribute)</a>
+</li>
         <li><a href="generated/code/transformer_lens.train.html#transformer_lens.train.HookedTransformerTrainConfig.wandb_project_name">wandb_project_name (transformer_lens.train.HookedTransformerTrainConfig attribute)</a>
 </li>
         <li><a href="generated/code/transformer_lens.lit.constants.html#transformer_lens.lit.constants.ServerConfig.WARM_START">WARM_START (transformer_lens.lit.constants.ServerConfig attribute)</a>
@@ -12052,6 +12246,8 @@
 </li>
         </ul></li>
         <li><a href="generated/code/transformer_lens.train.html#transformer_lens.train.HookedTransformerTrainConfig.weight_decay">weight_decay (transformer_lens.train.HookedTransformerTrainConfig attribute)</a>
+</li>
+        <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.mlp.html#transformer_lens.model_bridge.generalized_components.mlp.weight_layout_in_out">weight_layout_in_out() (in module transformer_lens.model_bridge.generalized_components.mlp)</a>
 </li>
         <li><a href="generated/code/transformer_lens.model_bridge.architecture_adapter.html#transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter.weight_processing_conversions">weight_processing_conversions (transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter attribute)</a>
 
