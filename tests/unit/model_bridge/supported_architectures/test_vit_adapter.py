@@ -312,7 +312,7 @@ class TestViTPrepareModel:
         self, adapter: ViTArchitectureAdapter
     ) -> None:
         adapter.prepare_model(self._bare_model_with_pooler())
-        assert adapter.component_mapping["vision_pooler"].name == "pooler.dense"
+        assert adapter.component_mapping["pooler"].name == "pooler.dense"
 
     def test_bare_model_does_not_require_encoder_attribute(
         self, adapter: ViTArchitectureAdapter

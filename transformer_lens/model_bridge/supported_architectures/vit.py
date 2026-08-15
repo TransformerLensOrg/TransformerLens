@@ -205,4 +205,4 @@ class ViTArchitectureAdapter(ArchitectureAdapter):
             prefix=prefix, with_classifier=with_classifier
         )
         if not with_classifier and getattr(hf_model, "pooler", None) is not None:
-            self.component_mapping["vision_pooler"] = LinearBridge(name="pooler.dense")
+            self.component_mapping["pooler"] = LinearBridge(name="pooler.dense")

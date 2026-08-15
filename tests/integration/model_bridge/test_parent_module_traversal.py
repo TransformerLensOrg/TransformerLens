@@ -71,6 +71,35 @@ def _vit_config() -> ViTConfig:
     )
 
 
+def _bart_config() -> BartConfig:
+    return BartConfig(
+        vocab_size=32,
+        d_model=16,
+        encoder_layers=1,
+        decoder_layers=1,
+        encoder_attention_heads=4,
+        decoder_attention_heads=4,
+        encoder_ffn_dim=32,
+        decoder_ffn_dim=32,
+        max_position_embeddings=16,
+    )
+
+
+def _hubert_config() -> HubertConfig:
+    return HubertConfig(
+        vocab_size=32,
+        hidden_size=16,
+        num_hidden_layers=1,
+        num_attention_heads=4,
+        intermediate_size=32,
+        conv_dim=(8,),
+        conv_stride=(2,),
+        conv_kernel=(3,),
+        num_conv_pos_embeddings=4,
+        num_conv_pos_embedding_groups=2,
+    )
+
+
 ARCHITECTURE_CASES = (
     ArchitectureCase(
         "gpt2-joint-qkv",
@@ -163,17 +192,7 @@ ARCHITECTURE_CASES = (
     ArchitectureCase(
         "bart-encoder-decoder",
         BartForConditionalGeneration,
-        lambda: BartConfig(
-            vocab_size=32,
-            d_model=16,
-            encoder_layers=1,
-            decoder_layers=1,
-            encoder_attention_heads=4,
-            decoder_attention_heads=4,
-            encoder_ffn_dim=32,
-            decoder_ffn_dim=32,
-            max_position_embeddings=16,
-        ),
+        _bart_config,
         "BartForConditionalGeneration",
     ),
     ArchitectureCase(
@@ -202,18 +221,7 @@ ARCHITECTURE_CASES = (
     ArchitectureCase(
         "hubert-audio",
         HubertForCTC,
-        lambda: HubertConfig(
-            vocab_size=32,
-            hidden_size=16,
-            num_hidden_layers=1,
-            num_attention_heads=4,
-            intermediate_size=32,
-            conv_dim=(8,),
-            conv_stride=(2,),
-            conv_kernel=(3,),
-            num_conv_pos_embeddings=4,
-            num_conv_pos_embedding_groups=2,
-        ),
+        _hubert_config,
         "HubertForCTC",
     ),
     ArchitectureCase(
@@ -233,6 +241,8 @@ ARCHITECTURE_CASES = (
         "ASTForAudioClassification",
     ),
 )
+
+ARCHITECTURE_CASE_BY_NAME = {case.name: case for case in ARCHITECTURE_CASES}
 
 
 def _named_identities(named_values: Any) -> dict[int, str]:
@@ -274,17 +284,7 @@ def test_parent_and_direct_traversal_have_identical_state(case: ArchitectureCase
 
 
 def test_parent_dtype_conversion_updates_container_owned_state() -> None:
-    bart_config = BartConfig(
-        vocab_size=32,
-        d_model=16,
-        encoder_layers=1,
-        decoder_layers=1,
-        encoder_attention_heads=4,
-        decoder_attention_heads=4,
-        encoder_ffn_dim=32,
-        decoder_ffn_dim=32,
-        max_position_embeddings=16,
-    )
+    bart_config = _bart_config()
     bridge = build_bridge_from_module(
         BartForConditionalGeneration(bart_config),
         "BartForConditionalGeneration",
@@ -305,17 +305,7 @@ def test_parent_dtype_conversion_updates_container_owned_state() -> None:
 
 
 def test_parent_assign_load_updates_container_owned_state() -> None:
-    bart_config = BartConfig(
-        vocab_size=32,
-        d_model=16,
-        encoder_layers=1,
-        decoder_layers=1,
-        encoder_attention_heads=4,
-        decoder_attention_heads=4,
-        encoder_ffn_dim=32,
-        decoder_ffn_dim=32,
-        max_position_embeddings=16,
-    )
+    bart_config = _bart_config()
     bridge = build_bridge_from_module(
         BartForConditionalGeneration(bart_config),
         "BartForConditionalGeneration",
@@ -336,3 +326,72 @@ def test_parent_assign_load_updates_container_owned_state() -> None:
     assert id(bridge.original_model.final_logits_bias) in {
         id(buffer) for buffer in parent.buffers()
     }
+
+
+@pytest.mark.parametrize(
+    ("case_name", "container_path", "state_name", "state_key"),
+    (
+        ("bart-encoder-decoder", "", "final_logits_bias", "final_logits_bias"),
+        ("hubert-audio", "hubert", "masked_spec_embed", "hubert.masked_spec_embed"),
+    ),
+)
+def test_direct_assign_load_stays_current_after_apply(
+    case_name: str, container_path: str, state_name: str, state_key: str
+) -> None:
+    case = ARCHITECTURE_CASE_BY_NAME[case_name]
+    config = case.config_factory()
+    bridge = build_bridge_from_module(
+        case.model_type(config),
+        case.architecture,
+        hf_config=config,
+        dtype=torch.float32,
+        device="cpu",
+        model_name=f"tiny-{case.name}-direct-assign",
+    )
+    original_container = (
+        bridge.original_model.get_submodule(container_path)
+        if container_path
+        else bridge.original_model
+    )
+    owner_container = (
+        bridge._container_state_owners.get_submodule(container_path)
+        if container_path
+        else bridge._container_state_owners
+    )
+    replacement = torch.full_like(getattr(original_container, state_name), 7)
+
+    bridge.load_state_dict({state_key: replacement}, strict=False, assign=True)
+
+    assert getattr(owner_container, state_name) is getattr(original_container, state_name)
+    bridge.cpu()
+    assert torch.equal(getattr(original_container, state_name), replacement)
+
+
+@pytest.mark.parametrize(
+    ("case_name", "key_fragment", "expected_keys"),
+    (
+        ("bert-nsp", "pooler", {"pooler.weight", "pooler.bias"}),
+        ("vit-bare-pooler", "pooler", {"pooler.weight", "pooler.bias"}),
+        (
+            "ast-audio-classifier",
+            "classifier",
+            {"classifier_ln.weight", "classifier_ln.bias"},
+        ),
+    ),
+)
+def test_task_head_state_dict_keys_are_not_reexpanded(
+    case_name: str, key_fragment: str, expected_keys: set[str]
+) -> None:
+    case = ARCHITECTURE_CASE_BY_NAME[case_name]
+    config = case.config_factory()
+    bridge = build_bridge_from_module(
+        case.model_type(config),
+        case.architecture,
+        hf_config=config,
+        dtype=torch.float32,
+        device="cpu",
+        model_name=f"tiny-{case.name}-state-dict-keys",
+    )
+
+    actual_keys = {key for key in bridge.state_dict() if key_fragment in key}
+    assert actual_keys == expected_keys

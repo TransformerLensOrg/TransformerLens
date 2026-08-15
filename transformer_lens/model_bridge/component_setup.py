@@ -32,7 +32,15 @@ class _ContainerStateOwner(nn.Module):
         original_container._parameters.update(self._parameters)
         original_container._buffers.update(self._buffers)
 
+    def _refresh_from_original_container(self) -> None:
+        original_container = self.__dict__["_original_container"]
+        for name in self._parameters:
+            self._parameters[name] = original_container._parameters[name]
+        for name in self._buffers:
+            self._buffers[name] = original_container._buffers[name]
+
     def _apply(self, fn: Any, recurse: bool = True) -> "_ContainerStateOwner":
+        self._refresh_from_original_container()
         super()._apply(fn, recurse=recurse)
         self._sync_original_container()
         return self
@@ -57,6 +65,16 @@ class _ContainerStateOwner(nn.Module):
             error_msgs,
         )
         self._sync_original_container()
+
+
+def refresh_container_state_owners(bridge_module: nn.Module) -> None:
+    """Refresh registered container state from the original model tree."""
+    root_owner = bridge_module._modules.get("_container_state_owners")
+    if not isinstance(root_owner, _ContainerStateOwner):
+        return
+    for owner in root_owner.modules():
+        if isinstance(owner, _ContainerStateOwner):
+            owner._refresh_from_original_container()
 
 
 def replace_remote_component(
