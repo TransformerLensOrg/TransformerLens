@@ -26,6 +26,7 @@ from transformer_lens.model_bridge.generalized_components import (
     RotaryEmbeddingBridge,
     UnembeddingBridge,
 )
+from transformer_lens.utilities.quantization import require_readable_weight
 
 
 class _SizedSplitConversion(BaseTensorConversion):
@@ -134,7 +135,14 @@ class Phi3ArchitectureAdapter(ArchitectureAdapter):
         original_mlp_component: Any,
     ) -> tuple[torch.nn.Module, torch.nn.Module]:
         """Split Phi-3's fused gate_up_proj into separate gate and up Linear modules."""
-        fused_weight = original_mlp_component.gate_up_proj.weight
+        # This override, not the guarded default, is what Phi-3, GLM and GLM-4V
+        # install — so the guard has to be here too. FP8 is the case that needs
+        # it: tensor_split and nn.Parameter both accept it without complaint.
+        fused_weight = require_readable_weight(
+            original_mlp_component.gate_up_proj.weight,
+            operation="split a fused gate/up projection at boot",
+            owner=original_mlp_component.gate_up_proj,
+        )
         gate_w, up_w = torch.tensor_split(fused_weight, 2, dim=0)
         d_model = fused_weight.shape[1]
         d_mlp = gate_w.shape[0]
@@ -166,7 +174,11 @@ class Phi3ArchitectureAdapter(ArchitectureAdapter):
         self, original_attention_component: Any
     ) -> tuple[torch.nn.Module, torch.nn.Module, torch.nn.Module]:
         """Split Phi-3's fused qkv_proj into separate Q, K, V linear modules."""
-        qkv_weight = original_attention_component.qkv_proj.weight
+        qkv_weight = require_readable_weight(
+            original_attention_component.qkv_proj.weight,
+            operation="split a fused QKV projection at boot",
+            owner=original_attention_component.qkv_proj,
+        )
         d_model = qkv_weight.shape[1]
 
         # GQA: Q has n_heads * d_head, K/V have n_kv_heads * d_head each.

@@ -67,14 +67,23 @@ class Ernie4_5_MoeArchitectureAdapter(ArchitectureAdapter):
                         requires_position_embeddings=True,
                     ),
                     # Layers before moe_layer_start_index hold a plain gated
-                    # MLP; router and shared experts are absent there.
+                    # MLP; the dense_* projections bind there and carry the
+                    # neuron hooks, while router/shared experts are skipped.
                     "mlp": MoEBridge(
                         name="mlp",
                         config=self.cfg,
+                        sparse_required=("gate",),
                         submodules={
                             # Raw-Parameter router; tuple-safe hook via base.
                             "gate": GeneralizedComponent(name="gate", optional=True),
                             "shared_experts": self._gated_mlp(name="shared_experts", optional=True),
+                            # Dense-layer projections (present only on the
+                            # dense layers of this interleaved stack); their
+                            # presence is what makes MoEBridge bind gated-MLP
+                            # neuron hooks there (#1645).
+                            "dense_gate": LinearBridge(name="gate_proj", optional=True),
+                            "dense_in": LinearBridge(name="up_proj", optional=True),
+                            "dense_out": LinearBridge(name="down_proj", optional=True),
                         },
                     ),
                 },

@@ -35,6 +35,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+from transformer_lens.utilities.heterogeneous_config import het_safe_view
+
 # Exit code used for graceful interrupts (Ctrl+C).  The wrapper script
 # recognises this and stops without marking the in-flight model as failed.
 _EXIT_GRACEFUL_INTERRUPT = 42
@@ -243,15 +245,17 @@ def estimate_model_params(model_id: str) -> int:
     Raises:
         Exception: If config cannot be fetched or parsed
     """
-    from transformers import AutoConfig
 
     from transformer_lens.loading_from_pretrained import NEED_REMOTE_CODE_MODELS
 
     _all_remote_prefixes = NEED_REMOTE_CODE_MODELS + _BRIDGE_REMOTE_CODE_PREFIXES
     trust_remote_code = any(model_id.startswith(prefix) for prefix in _all_remote_prefixes)
-    from transformer_lens.utilities.hf_utils import get_hf_token
+    from transformer_lens.utilities.hf_utils import (
+        autoconfig_with_remote_post_init_compat,
+        get_hf_token,
+    )
 
-    config = AutoConfig.from_pretrained(
+    config = autoconfig_with_remote_post_init_compat(
         model_id, trust_remote_code=trust_remote_code, token=get_hf_token()
     )
 
@@ -269,6 +273,10 @@ def estimate_model_params(model_id: str) -> int:
             ):
                 lang_config = _subcfg
                 break
+
+    # Heterogeneous configs (transformers>=5.15 Gemma 4) raise on global reads of
+    # per-layer fields like head_dim; the view resolves them to majority values.
+    lang_config = het_safe_view(lang_config)
 
     # Extract dimensions from config (different models use different attribute names)
     d_model = (

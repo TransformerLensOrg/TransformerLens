@@ -91,8 +91,15 @@ class Qwen3MoeArchitectureAdapter(ArchitectureAdapter):
                     "mlp": MoEBridge(
                         name="mlp",
                         config=self.cfg,
+                        sparse_required=("gate",),
                         submodules={
-                            "gate": MoERouterBridge(name="gate"),
+                            # Dense fallback layers (mlp_only_layers /
+                            # decoder_sparse_step) have no router; their
+                            # projections bind gated-MLP neuron hooks (#1645).
+                            "gate": MoERouterBridge(name="gate", optional=True),
+                            "dense_gate": LinearBridge(name="gate_proj", optional=True),
+                            "dense_in": LinearBridge(name="up_proj", optional=True),
+                            "dense_out": LinearBridge(name="down_proj", optional=True),
                         },
                     ),
                 },

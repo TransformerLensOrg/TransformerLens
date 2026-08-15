@@ -94,8 +94,23 @@ jobs:
             ~/.cache/huggingface/hub/models--ArthurConmy--redwood_attn_2l
             ~/.cache/huggingface/hub/models--stas--tiny-random-llama-2
             ~/.cache/huggingface/hub/models--microsoft--DialoGPT-medium
-          key: ${{ runner.os }}-huggingface-models-v4
+            ~/.cache/huggingface/hub/models--hf-internal-testing--tiny-random-gpt2
+            ~/.cache/huggingface/hub/models--hf-internal-testing--tiny-random-Olmo2ForCausalLM
+            ~/.cache/huggingface/hub/models--hf-internal-testing--tiny-random-MptForCausalLM
+            ~/.cache/huggingface/hub/models--hf-internal-testing--tiny-random-Gemma2ForCausalLM
+            ~/.cache/huggingface/hub/models--hf-internal-testing--tiny-random-Gemma3ForCausalLM
+            ~/.cache/huggingface/hub/models--hf-internal-testing--tiny-random-GraniteForCausalLM
+            ~/.cache/huggingface/hub/models--hf-internal-testing--tiny-random-OlmoForCausalLM
+            ~/.cache/huggingface/hub/models--hf-internal-testing--tiny-random-OlmoeForCausalLM
+            ~/.cache/huggingface/hub/models--hf-internal-testing--tiny-random-DeepseekV3ForCausalLM
+            ~/.cache/huggingface/hub/models--katuni4ka--tiny-random-deepseek-v3
+            ~/.cache/huggingface/hub/models--trl-internal-testing--tiny-MistralForCausalLM-0.2
+            ~/.cache/huggingface/hub/models--trl-internal-testing--tiny-BloomForCausalLM
+            ~/.cache/huggingface/hub/models--trl-internal-testing--tiny-Qwen2ForCausalLM-2.5
+          key: ${{ runner.os }}-huggingface-models-v6
           restore-keys: |
+            ${{ runner.os }}-huggingface-models-v5
+            ${{ runner.os }}-huggingface-models-v4
             ${{ runner.os }}-huggingface-models-v2
             ${{ runner.os }}-huggingface-models-v1
             ${{ runner.os }}-huggingface-models
@@ -137,7 +152,22 @@ jobs:
         with:
           path: |
             ~/.cache/huggingface/hub/models--roneneldan--TinyStories-1M*
-          key: ${{ runner.os }}-huggingface-models-mps-v1
+            ~/.cache/huggingface/hub/models--hf-internal-testing--tiny-random-gpt2
+            ~/.cache/huggingface/hub/models--hf-internal-testing--tiny-random-Olmo2ForCausalLM
+            ~/.cache/huggingface/hub/models--hf-internal-testing--tiny-random-MptForCausalLM
+            ~/.cache/huggingface/hub/models--hf-internal-testing--tiny-random-Gemma2ForCausalLM
+            ~/.cache/huggingface/hub/models--hf-internal-testing--tiny-random-Gemma3ForCausalLM
+            ~/.cache/huggingface/hub/models--hf-internal-testing--tiny-random-GraniteForCausalLM
+            ~/.cache/huggingface/hub/models--hf-internal-testing--tiny-random-OlmoForCausalLM
+            ~/.cache/huggingface/hub/models--hf-internal-testing--tiny-random-OlmoeForCausalLM
+            ~/.cache/huggingface/hub/models--hf-internal-testing--tiny-random-DeepseekV3ForCausalLM
+            ~/.cache/huggingface/hub/models--katuni4ka--tiny-random-deepseek-v3
+            ~/.cache/huggingface/hub/models--trl-internal-testing--tiny-MistralForCausalLM-0.2
+            ~/.cache/huggingface/hub/models--trl-internal-testing--tiny-BloomForCausalLM
+            ~/.cache/huggingface/hub/models--trl-internal-testing--tiny-Qwen2ForCausalLM-2.5
+          key: ${{ runner.os }}-huggingface-models-mps-v2
+          restore-keys: |
+            ${{ runner.os }}-huggingface-models-mps-v1
       - name: Install dependencies
         run: |
           uv lock --check
@@ -288,8 +318,23 @@ jobs:
             ~/.cache/huggingface/hub/models--ArthurConmy--redwood_attn_2l
             ~/.cache/huggingface/hub/models--stas--tiny-random-llama-2
             ~/.cache/huggingface/hub/models--microsoft--DialoGPT-medium
-          key: ${{ runner.os }}-huggingface-models-v4
+            ~/.cache/huggingface/hub/models--hf-internal-testing--tiny-random-gpt2
+            ~/.cache/huggingface/hub/models--hf-internal-testing--tiny-random-Olmo2ForCausalLM
+            ~/.cache/huggingface/hub/models--hf-internal-testing--tiny-random-MptForCausalLM
+            ~/.cache/huggingface/hub/models--hf-internal-testing--tiny-random-Gemma2ForCausalLM
+            ~/.cache/huggingface/hub/models--hf-internal-testing--tiny-random-Gemma3ForCausalLM
+            ~/.cache/huggingface/hub/models--hf-internal-testing--tiny-random-GraniteForCausalLM
+            ~/.cache/huggingface/hub/models--hf-internal-testing--tiny-random-OlmoForCausalLM
+            ~/.cache/huggingface/hub/models--hf-internal-testing--tiny-random-OlmoeForCausalLM
+            ~/.cache/huggingface/hub/models--hf-internal-testing--tiny-random-DeepseekV3ForCausalLM
+            ~/.cache/huggingface/hub/models--katuni4ka--tiny-random-deepseek-v3
+            ~/.cache/huggingface/hub/models--trl-internal-testing--tiny-MistralForCausalLM-0.2
+            ~/.cache/huggingface/hub/models--trl-internal-testing--tiny-BloomForCausalLM
+            ~/.cache/huggingface/hub/models--trl-internal-testing--tiny-Qwen2ForCausalLM-2.5
+          key: ${{ runner.os }}-huggingface-models-v6
           restore-keys: |
+            ${{ runner.os }}-huggingface-models-v5
+            ${{ runner.os }}-huggingface-models-v4
             ${{ runner.os }}-huggingface-models-v2
             ${{ runner.os }}-huggingface-models-v1
             ${{ runner.os }}-huggingface-models
@@ -338,11 +383,10 @@ jobs:
         with:
           path: |
             ~/.cache/huggingface/hub/models--gpt2
-          key: ${{ runner.os }}-huggingface-models-v4
-          restore-keys: |
-            ${{ runner.os }}-huggingface-models-v2
-            ${{ runner.os }}-huggingface-models-v1
-            ${{ runner.os }}-huggingface-models
+          # Distinct key: this job needs only gpt2, and sharing the full-suite
+          # key let whichever job saved first pin the cache contents for all
+          # three (a one-path save then serves the suites that need the rest).
+          key: ${{ runner.os }}-huggingface-models-benchmark-v1
       - name: Install dependencies
         run: |
           uv lock --check

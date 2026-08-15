@@ -100,14 +100,3 @@ class OlmoeArchitectureAdapter(ArchitectureAdapter):
             "ln_final": RMSNormalizationBridge(name="model.norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head", config=self.cfg),
         }
-
-    def prepare_model(self, hf_model: Any) -> None:
-        """Patch OLMoE's in-place clamp_ to avoid backward hook conflicts.
-
-        Same issue as OLMo v1 — see OlmoArchitectureAdapter.prepare_model.
-        """
-        from transformer_lens.model_bridge.supported_architectures.olmo import (
-            _patch_olmo_inplace_clamp,
-        )
-
-        _patch_olmo_inplace_clamp(hf_model)

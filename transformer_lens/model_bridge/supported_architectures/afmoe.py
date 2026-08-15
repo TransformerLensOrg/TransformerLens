@@ -64,15 +64,24 @@ class AfmoeArchitectureAdapter(ArchitectureAdapter):
                         requires_attention_mask=True,
                     ),
                     # Dense layers (< num_dense_layers) hold a plain gated MLP
-                    # under the same name; router and shared experts are
-                    # optional. The tuple-returning router stays unwrapped —
-                    # only its inner gate Linear is hookable.
+                    # under the same name; the dense_* projections below make
+                    # MoEBridge bind gated-MLP neuron hooks there. The
+                    # tuple-returning router stays unwrapped — only its inner
+                    # gate Linear is hookable.
                     "mlp": MoEBridge(
                         name="mlp",
                         config=self.cfg,
+                        sparse_required=("router_gate",),
                         submodules={
                             "router_gate": LinearBridge(name="router.gate", optional=True),
                             "shared_experts": self._gated_mlp(name="shared_experts", optional=True),
+                            # Dense-layer projections (present only on the
+                            # dense layers of this interleaved stack); their
+                            # presence is what makes MoEBridge bind gated-MLP
+                            # neuron hooks there (#1645).
+                            "dense_gate": LinearBridge(name="gate_proj", optional=True),
+                            "dense_in": LinearBridge(name="up_proj", optional=True),
+                            "dense_out": LinearBridge(name="down_proj", optional=True),
                         },
                     ),
                 },

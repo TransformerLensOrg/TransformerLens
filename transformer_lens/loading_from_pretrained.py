@@ -59,6 +59,10 @@ from transformer_lens.pretrained.weight_conversions import (
 )
 from transformer_lens.supported_models import MODEL_ALIASES, OFFICIAL_MODEL_NAMES
 from transformer_lens.utilities.hf_utils import get_rotary_pct_from_config
+from transformer_lens.utilities.quantization import (
+    quantization_method,
+    unreadable_weight_reason,
+)
 
 NON_HF_HOSTED_MODEL_NAMES = [
     "llama-7b-hf",
@@ -139,7 +143,9 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
     else:
         official_model_name = get_official_model_name(model_name)
 
-    # Load HuggingFace model config
+    # Load HuggingFace model config. Stays None on the name-based branches
+    # below, which infer the architecture from the model name and never fetch.
+    hf_config: Any = None
     if "llama" in official_model_name.lower():
         architecture = "LlamaForCausalLM"
     elif "gemma-3" in official_model_name.lower() or "medgemma" in official_model_name.lower():
@@ -532,7 +538,8 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "use_attn_scale": True,
             "use_local_attn": False,
             "scale_attn_by_inverse_layer_idx": False,
-            "parallel_attn_mlp": True,
+            # GPTNeoX ships sequential variants too (use_parallel_residual=False).
+            "parallel_attn_mlp": getattr(hf_config, "use_parallel_residual", True),
             "positional_embedding_type": "rotary",
             "rotary_adjacent_pairs": False,
             "normalization_type": "LN",
@@ -650,6 +657,13 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "rotary_dim": hf_config.hidden_size // hf_config.num_attention_heads,
             "num_experts": hf_config.num_local_experts,
             "experts_per_token": hf_config.num_experts_per_tok,
+            # MixtralTopKRouter renormalizes the top-k weights unconditionally
+            # (modeling_mixtral.py: `router_top_value /= router_top_value.sum(...)`),
+            # and MixtralConfig has no norm_topk_prob field to read it from — so
+            # this is pinned to HF's behavior rather than sourced from the config.
+            # TL's MoE skips the renormalization unless this is set, which would
+            # leave routing weights unnormalized and the outputs silently wrong.
+            "norm_topk_prob": True,
         }
     elif architecture == "GptOssForCausalLM":
         cfg_dict = {
@@ -1417,6 +1431,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "attn_types": ["global"] * 16,
             "positional_embedding_type": "rotary",
             "gated_mlp": True,
+            "clip_qkv": getattr(hf_config, "clip_qkv", None),
         }
     elif official_model_name.startswith("allenai/OLMo-7B") and official_model_name.endswith("hf"):
         cfg_dict = {
@@ -1435,6 +1450,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "attn_types": ["global"] * 32,
             "positional_embedding_type": "rotary",
             "gated_mlp": True,
+            "clip_qkv": getattr(hf_config, "clip_qkv", None),
         }
     elif official_model_name.startswith("allenai/OLMo-2-0425-1B"):
         cfg_dict = {
@@ -1557,6 +1573,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "rotary_dim": hf_config.hidden_size // hf_config.num_attention_heads,
             "gated_mlp": True,
             "normalization_type": "RMS",
+            "clip_qkv": getattr(hf_config, "clip_qkv", None),
         }
     elif architecture == "T5ForConditionalGeneration":
         cfg_dict = {
@@ -1581,6 +1598,9 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
         raise NotImplementedError(f"{architecture} is not currently supported.")
     # All of these models use LayerNorm
     cfg_dict["original_architecture"] = architecture
+    # Carried on the cfg so the loader can act on the quantization without a
+    # second AutoConfig fetch (which would be a Hub round trip per load).
+    cfg_dict["quantization_method"] = quantization_method(hf_config)
     # The name such that AutoTokenizer.from_pretrained works
     cfg_dict["tokenizer_name"] = official_model_name
     if kwargs.get("trust_remote_code", False):
@@ -1777,6 +1797,13 @@ def get_pretrained_model_config(
 
     if hf_cfg is not None:
         cfg_dict["load_in_4bit"] = hf_cfg.get("quantization_config", {}).get("load_in_4bit", False)
+        # A user-supplied hf_model is the more authoritative source: it says how
+        # the weights in hand are actually stored, not how the Hub repo declares
+        # them. .get, not []: convert_neel_model_config builds cfg_dict without
+        # ever seeing an HF config, so the key need not be there.
+        cfg_dict["quantization_method"] = quantization_method(hf_cfg) or cfg_dict.get(
+            "quantization_method"
+        )
         cfg_dict["d_vocab"] = hf_cfg.get("vocab_size", cfg_dict["d_vocab"])
         if cfg_dict["original_architecture"] == "Qwen2ForCausalLM":
             rope_params = hf_cfg.get("rope_parameters", {}) or {}
@@ -1864,29 +1891,59 @@ def get_checkpoint_labels(model_name: str, **kwargs: Any) -> tuple[list[int], st
 
 
 # %% Loading state dicts
-def _mxfp4_dequantize_config(
-    official_model_name: str,
-    cfg: HookedTransformerConfig,
-    token: str | None,
-) -> Any | None:
-    """Return ``Mxfp4Config(dequantize=True)`` for packed-MXFP4 gpt-oss checkpoints.
+def _mxfp4_dequantize_config(cfg: HookedTransformerConfig) -> Any | None:
+    """Return ``Mxfp4Config(dequantize=True)`` for packed-MXFP4 checkpoints.
 
-    The gpt-oss weight converter slices expert tensors, which only works on
-    materialized torch.Tensors — packed MXFP4 weights stay wrapped in
-    triton-kernels objects. Returns None for anything else, including
-    already-dequantized gpt-oss finetunes.
+    Reads the method captured on ``cfg`` (no refetch). Blind spot by
+    construction: llama/gemma names never fetch a config, so their
+    quantization_method is always None there — such checkpoints are refused by
+    ``_refuse_unsupported_quantization`` rather than auto-dequantized.
     """
-    if cfg.original_architecture != "GptOssForCausalLM":
-        return None
-    hf_cfg = AutoConfig.from_pretrained(official_model_name, token=token)
-    quant_cfg = getattr(hf_cfg, "quantization_config", None)
-    if isinstance(quant_cfg, dict):
-        quant_method = quant_cfg.get("quant_method")
-    else:
-        quant_method = getattr(quant_cfg, "quant_method", None)
-    if quant_method != "mxfp4":
+    if cfg.quantization_method != "mxfp4":
         return None
     return Mxfp4Config(dequantize=True)
+
+
+def _refuse_unsupported_quantization(cfg: HookedTransformerConfig, hf_model: Any) -> None:
+    """Refuse a quantized checkpoint before the weight converters read it.
+
+    Same-shape int8/FP8 converts silently AND survives load_state_dict (cast
+    to fp32), so refusal must happen here. Reads the LOADED model's config —
+    cfg.quantization_method is structurally None for name-based llama/gemma —
+    and refuses on stored weights, not the declaration, so dequantized loads
+    that still advertise a quant_method keep working.
+    """
+    if hf_model is None:
+        return
+    method = quantization_method(getattr(hf_model, "config", None))
+    if method is None:
+        return
+    # The one supported quantized HookedTransformer flow (weight conversion and
+    # abstract_attention's matmul_4bit both handle it).
+    if cfg.load_in_4bit and method == "bitsandbytes":
+        return
+    # Refuse on the stored weights, not the declaration: a checkpoint loaded
+    # with dequantize=True still advertises its original quant_method while
+    # holding perfectly readable bf16 tensors. Meta params are skipped — an
+    # offloaded load is a different problem with a different message.
+    offender = next(
+        (
+            (name, unreadable_weight_reason(param))
+            for name, param in hf_model.named_parameters()
+            if param.device.type != "meta" and unreadable_weight_reason(param) is not None
+        ),
+        None,
+    )
+    if offender is None:
+        return
+    name, reason = offender
+    raise NotImplementedError(
+        f"HookedTransformer cannot convert this {method!r}-quantized checkpoint: "
+        f"{name} cannot be read because {reason}. The weight converters read "
+        "weights directly, so packed or scale-separated storage silently "
+        "produces wrong values. Load the model dequantized, or use "
+        "TransformerBridge for a quantized forward pass."
+    )
 
 
 def get_pretrained_state_dict(
@@ -2010,11 +2067,7 @@ def get_pretrained_state_dict(
                 )
             else:
                 if "quantization_config" not in kwargs:
-                    mxfp4_dequantize = _mxfp4_dequantize_config(
-                        official_model_name,
-                        cfg,
-                        huggingface_token if len(huggingface_token) > 0 else None,
-                    )
+                    mxfp4_dequantize = _mxfp4_dequantize_config(cfg)
                     if mxfp4_dequantize is not None:
                         kwargs = {**kwargs, "quantization_config": mxfp4_dequantize}
                 # Older models may lack pad_token_id (required in newer transformers)
@@ -2046,6 +2099,8 @@ def get_pretrained_state_dict(
             if hf_model is not None:
                 for param in hf_model.parameters():
                     param.requires_grad = False
+
+        _refuse_unsupported_quantization(cfg, hf_model)
 
         if cfg.original_architecture == "GPT2LMHeadModel":
             state_dict = convert_gpt2_weights(hf_model, cfg)

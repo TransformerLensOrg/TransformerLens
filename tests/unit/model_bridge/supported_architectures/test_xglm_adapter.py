@@ -9,7 +9,6 @@ from transformer_lens.model_bridge.generalized_components import (
     EmbeddingBridge,
     LinearBridge,
     NormalizationBridge,
-    SymbolicBridge,
     UnembeddingBridge,
 )
 from transformer_lens.model_bridge.supported_architectures.xglm import (
@@ -146,10 +145,15 @@ class TestXGLMBlockSubmodules:
             assert isinstance(sub, LinearBridge), f"attn.{sub_name} must be LinearBridge"
             assert sub.name == expected_path
 
-    def test_mlp_is_symbolic_bridge(self, blocks: BlockBridge) -> None:
-        # fc1/fc2 live directly on the decoder layer — SymbolicBridge holds the TL shape.
+    def test_mlp_exposes_neuron_hooks(self, blocks: BlockBridge) -> None:
+        """MLPBridge(name=None), not SymbolicBridge: fc1/fc2 sit directly on the
+        block with no MLP container, and SymbolicBridge exposed no
+        hook_pre/hook_post. Asserting the aliases rather than the class is
+        the point — the class is only the means to those hooks."""
         mlp = blocks.submodules["mlp"]
-        assert isinstance(mlp, SymbolicBridge)
+        assert mlp.name is None
+        assert mlp.hook_aliases == {"hook_pre": "in.hook_out", "hook_post": "out.hook_in"}
+        assert blocks.hook_aliases["hook_mlp_out"] == "mlp.out.hook_out"
 
     def test_mlp_submodules_are_linear_bridges(self, blocks: BlockBridge) -> None:
         mlp = blocks.submodules["mlp"]

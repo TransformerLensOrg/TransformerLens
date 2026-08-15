@@ -28,6 +28,12 @@ from transformer_lens.model_bridge.bridge import TransformerBridge
 from transformer_lens.model_bridge.sources._bridge_builder import _HF_PASSTHROUGH_ATTRS
 from transformer_lens.supported_models import MODEL_ALIASES
 from transformer_lens.utilities import get_device, get_tokenizer_with_bos
+from transformer_lens.utilities.heterogeneous_config import (
+    het_safe_view,
+    majority_value,
+    per_layer_attr_names,
+    per_layer_values,
+)
 
 # Suppress transformers warnings that go to stderr
 # This prevents notebook tests from failing due to unexpected stderr output
@@ -62,9 +68,28 @@ def map_default_transformer_lens_config(hf_config):
         A copy of hf_config with additional TransformerLens fields
     """
     # Extract language model config from text_config for multimodal models
-    source_config = get_effective_text_config(hf_config)
+    raw_source_config = get_effective_text_config(hf_config)
 
     tl_config = copy.deepcopy(hf_config)
+
+    # transformers>=5.15 het configs raise (not AttributeError, so hasattr does
+    # NOT suppress it) on global reads of per-layer attrs; the view resolves
+    # them to majority-layer values so every probe below stays safe.
+    het_attrs = per_layer_attr_names(raw_source_config)
+    source_config = het_safe_view(raw_source_config)
+
+    def legacy_per_layer(base_name: str, global_name: str) -> Any:
+        """Pre-5.15 Gemma 4 split geometry across <field> (sliding-attention layers)
+        and global_<field> (full-attention layers); rebuild the per-layer view."""
+        if base_name in het_attrs or "layer_types" in het_attrs:
+            return None
+        base = getattr(source_config, base_name, None)
+        full = getattr(source_config, global_name, None)
+        layer_types = getattr(source_config, "layer_types", None)
+        if base is None or full is None or full == base or not layer_types:
+            return None
+        return [full if t == "full_attention" else base for t in layer_types]
+
     if hasattr(source_config, "n_embd"):
         tl_config.d_model = source_config.n_embd
     elif hasattr(source_config, "hidden_size"):
@@ -90,7 +115,29 @@ def map_default_transformer_lens_config(hf_config):
         source_config.num_query_heads, list
     ):
         tl_config.n_heads = max(source_config.num_query_heads)
-    if (
+    if "num_key_value_heads" in het_attrs:
+        per_layer_kv = per_layer_values(source_config, "num_key_value_heads")
+    elif getattr(source_config, "attention_k_eq_v", True):
+        # HF applies num_global_key_value_heads only on attention_k_eq_v models;
+        # the 5.15 per-layer migration gates identically, defaulting True when absent.
+        per_layer_kv = legacy_per_layer("num_key_value_heads", "num_global_key_value_heads")
+    else:
+        per_layer_kv = None
+    kv_values = [v for v in per_layer_kv if v is not None] if per_layer_kv else []
+    if kv_values:
+        # Heterogeneous KV geometry (e.g. Gemma 4 31B: 16 KV heads on sliding layers,
+        # 4 on full-attention layers). The scalar keeps the majority-layer value —
+        # attention math is delegated to HF for these architectures — and the
+        # per-layer truth is preserved alongside it.
+        tl_config.per_layer_num_key_value_heads = per_layer_kv
+        try:
+            num_kv_heads = int(majority_value(kv_values))
+            num_heads = int(getattr(tl_config, "n_heads", 0))
+            if num_kv_heads != num_heads:
+                tl_config.n_key_value_heads = num_kv_heads
+        except (TypeError, ValueError):
+            pass
+    elif (
         hasattr(source_config, "num_key_value_heads")
         and source_config.num_key_value_heads is not None
     ):
@@ -178,6 +225,10 @@ def map_default_transformer_lens_config(hf_config):
         tl_config.n_ctx = 2048
     if hasattr(source_config, "n_inner"):
         tl_config.d_mlp = source_config.n_inner
+    elif "intermediate_size" in het_attrs:
+        # Same max collapse as the per-layer-list case below.
+        mlp_values = [v for v in per_layer_values(source_config, "intermediate_size") if v]
+        tl_config.d_mlp = max(mlp_values) if mlp_values else None
     elif hasattr(source_config, "intermediate_size"):
         intermediate_size = source_config.intermediate_size
         # Gemma 3n exposes a per-layer intermediate_size list (the MatFormer design permits
@@ -191,7 +242,18 @@ def map_default_transformer_lens_config(hf_config):
         tl_config.d_mlp = source_config.mlp_hidden_size
     elif hasattr(tl_config, "d_model"):
         tl_config.d_mlp = getattr(source_config, "n_inner", 4 * tl_config.d_model)
-    if hasattr(source_config, "head_dim") and source_config.head_dim is not None:
+    if "head_dim" in het_attrs:
+        per_layer_hd = per_layer_values(source_config, "head_dim")
+    else:
+        per_layer_hd = legacy_per_layer("head_dim", "global_head_dim")
+    hd_values = [v for v in per_layer_hd if v is not None] if per_layer_hd else []
+    if hd_values:
+        # Heterogeneous head_dim (e.g. Gemma 4: 256 on sliding layers, 512 on
+        # full-attention layers). Scalar d_head keeps the majority-layer value;
+        # the per-layer truth is preserved alongside it.
+        tl_config.per_layer_head_dim = per_layer_hd
+        tl_config.d_head = majority_value(hd_values)
+    elif hasattr(source_config, "head_dim") and source_config.head_dim is not None:
         tl_config.d_head = source_config.head_dim
     elif hasattr(tl_config, "d_model") and hasattr(tl_config, "n_heads"):
         tl_config.d_head = tl_config.d_model // tl_config.n_heads
@@ -212,6 +274,11 @@ def map_default_transformer_lens_config(hf_config):
     elif hasattr(source_config, "activation_type"):
         activation_type = source_config.activation_type
         tl_config.act_fn = getattr(activation_type, "value", activation_type)
+    elif getattr(source_config, "activation_fn_name", None) is not None:
+        # OpenELM spells it activation_fn_name ("swish"); without this the
+        # cfg keeps the "relu" default and reconstructed FFNs silently
+        # diverge ~30% from HF.
+        tl_config.act_fn = source_config.activation_fn_name
     if hasattr(source_config, "rope_theta"):
         tl_config.rotary_base = source_config.rope_theta
     if hasattr(source_config, "weight_tying"):
@@ -545,7 +612,10 @@ def boot(
             )
         revision = _resolve_checkpoint_to_revision(model_name, checkpoint_index, checkpoint_value)
     # Pass HF token for gated model access (e.g. meta-llama/*)
-    from transformer_lens.utilities.hf_utils import get_hf_token
+    from transformer_lens.utilities.hf_utils import (
+        autoconfig_with_remote_post_init_compat,
+        get_hf_token,
+    )
 
     _hf_token = get_hf_token()
     if hf_model is not None:
@@ -553,8 +623,12 @@ def boot(
         # is a Hub repo ID, but the model is already loaded locally.
         hf_config = copy.deepcopy(hf_model.config)
     else:
-        hf_config = AutoConfig.from_pretrained(
+        # Compat wrapper: 4.x-era remote-code configs (OpenELM) define an
+        # argless __post_init__ that 5.x's dataclass machinery calls with the
+        # class's own fields as kwargs — unloadable without the shim.
+        hf_config = autoconfig_with_remote_post_init_compat(
             model_name,
+            auto_config=AutoConfig,
             output_attentions=True,
             trust_remote_code=trust_remote_code,
             token=_hf_token,
@@ -624,7 +698,11 @@ def boot(
     # Propagate HF-specific config attributes that adapters may need.
     # Canonical list lives in sources/_bridge_builder.py (architecture-agnostic).
     effective_config = get_effective_text_config(hf_config)
+    # Per-layer-registered attrs would raise on global access (transformers>=5.15).
+    _het_attrs = per_layer_attr_names(effective_config) | per_layer_attr_names(hf_config)
     for attr in _HF_PASSTHROUGH_ATTRS:
+        if attr in _het_attrs:
+            continue
         val = getattr(effective_config, attr, None)
         if val is None and effective_config is not hf_config:
             val = getattr(hf_config, attr, None)

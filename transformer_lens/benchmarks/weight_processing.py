@@ -12,6 +12,9 @@ from transformer_lens.benchmarks.utils import (
     safe_allclose,
 )
 from transformer_lens.model_bridge import TransformerBridge
+from transformer_lens.model_bridge.generalized_components.attention import (
+    PerLayerGeometryError,
+)
 
 
 def benchmark_weight_processing(
@@ -567,9 +570,19 @@ def benchmark_attention_output_centering(
                 message="No blocks expose an attention submodule (SSM / passthrough-mixer hybrid)",
             )
 
-        # Check W_O accessibility on first attention block
+        # Check W_O accessibility on first attention block. Explicit probe,
+        # not hasattr: hasattr invokes the property and only swallows
+        # AttributeError, so the per-layer-geometry ValueError would escape to
+        # the generic handler before the loop's raw-weight fallback runs.
         first_idx, first_attn_block = attn_blocks[0]
-        if not hasattr(first_attn_block.attn, "W_O"):
+        w_o_missing = False
+        try:
+            _ = first_attn_block.attn.W_O
+        except AttributeError:
+            w_o_missing = True
+        except PerLayerGeometryError:
+            pass  # per-layer geometry; the loop below reads the raw projection
+        if w_o_missing:
             # No mapped output projection (JetMoe's MoA keeps per-expert W_O
             # inside the delegated module): structurally nothing to center —
             # skip like the SSM case above rather than fail.
@@ -590,8 +603,17 @@ def benchmark_attention_output_centering(
         tolerance = 0.01  # 1% tolerance
         worst_mean = 0.0
         for idx, block in attn_blocks:
-            w_o = block.attn.W_O
-            mean_abs = torch.mean(torch.abs(torch.mean(w_o, dim=-1))).item()
+            try:
+                column_means = torch.mean(block.attn.W_O, dim=-1)
+            except PerLayerGeometryError:
+                # Per-layer attention geometry (OpenELM varies head counts per
+                # layer): the factorized accessor refuses, but centering is
+                # head-agnostic — the d_model mean reads straight off the 2D
+                # projection.
+                raw = block.attn.o.weight
+                in_out = block.attn._weight_layout_in_out(block.attn.o)
+                column_means = raw.mean(dim=-1) if in_out else raw.mean(dim=0)
+            mean_abs = torch.mean(torch.abs(column_means)).item()
             worst_mean = max(worst_mean, mean_abs)
 
         n_attn = len(attn_blocks)

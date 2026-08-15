@@ -127,6 +127,31 @@ class TestGraniteAdapterComponentMapping:
         assert isinstance(mapping["ln_final"], RMSNormalizationBridge)
         assert isinstance(mapping["unembed"], UnembeddingBridge)
 
+    def test_scaled_residual_block(self, adapter: GraniteArchitectureAdapter) -> None:
+        """hook_attn_out / hook_mlp_out fire on the scaled contribution (#1648):
+        real HookPoints on the block, not aliases to raw module outputs."""
+        from transformer_lens.model_bridge.generalized_components import (
+            ScaledResidualBlockBridge,
+        )
+
+        block = adapter.component_mapping["blocks"]
+        assert isinstance(block, ScaledResidualBlockBridge)
+        assert "hook_attn_out" not in block.hook_aliases
+        assert "hook_mlp_out" not in block.hook_aliases
+
+    def test_scale_comes_from_residual_multiplier(self) -> None:
+        cfg = _make_cfg()
+        cfg.residual_multiplier = 0.22
+        adapter = GraniteArchitectureAdapter(cfg)
+        assert adapter.component_mapping["blocks"].residual_contribution_scale == 0.22
+
+    def test_zero_residual_multiplier_rejected(self) -> None:
+        """The write path divides by the scale, so zero must fail loudly."""
+        cfg = _make_cfg()
+        cfg.residual_multiplier = 0.0
+        with pytest.raises(ValueError, match="nonzero"):
+            GraniteArchitectureAdapter(cfg)
+
     def test_top_level_hf_paths(self, adapter: GraniteArchitectureAdapter) -> None:
         mapping = adapter.component_mapping
         assert mapping["embed"].name == "model.embed_tokens"

@@ -39,7 +39,8 @@ class BlockBridge(GeneralizedComponent):
     is_list_item: bool = True
     hook_out_is_single_residual_stream: bool = True
     # hook_mlp_in is a direct HookPoint on this class (not aliased) so it can
-    # fire pre-ln2; see __init__. The post-ln2 mlp input stays at block.mlp.hook_in.
+    # fire on the MLP-branch entry (pre-ln2, or the MLP input on post-norm
+    # blocks); see __init__. The normalized mlp input stays at block.mlp.hook_in.
     hook_aliases = {
         "hook_resid_pre": "hook_in",
         "hook_resid_mid": "ln2.hook_in",
@@ -58,6 +59,7 @@ class BlockBridge(GeneralizedComponent):
         config: Optional[Any] = None,
         submodules: Optional[Dict[str, GeneralizedComponent]] = None,
         hook_alias_overrides: Optional[Dict[str, str]] = None,
+        mlp_reads_resid_directly: bool = False,
     ):
         """Initialize the block bridge.
 
@@ -68,6 +70,10 @@ class BlockBridge(GeneralizedComponent):
             hook_alias_overrides: Optional dictionary to override default hook aliases.
                 For example, {"hook_attn_out": "ln1_post.hook_out"} will make hook_attn_out
                 point to ln1_post.hook_out instead of the default attn.hook_out.
+            mlp_reads_resid_directly: True for post-norm blocks where the MLP consumes
+                the mid-residual with no pre-MLP norm (OLMo 2 layout). Moves the
+                hook_mlp_in capture from ln2 (whose input there is the raw MLP output)
+                to the MLP itself.
         """
         # ln1_post/ln2_post redirect attn_out/mlp_out to match HookedTransformer's
         # placement (hook fires after the post-norm, not before).
@@ -104,22 +110,22 @@ class BlockBridge(GeneralizedComponent):
         )
 
         self._original_block_forward: Optional[Callable[..., Any]] = None
-        self._pre_ln_capture_wired: bool = False
-        self._pre_ln_capture_handles: list[torch.utils.hooks.RemovableHandle] = []
+        self._capture_hooks_wired: bool = False
+        self._capture_hook_handles: list[torch.utils.hooks.RemovableHandle] = []
         # Fallback for _read_use_hook_mlp_in when block.config is None.
         self._use_hook_mlp_in: bool = False
-        # Fires pre-ln2 when use_hook_mlp_in is set. See #1317.
+        self.mlp_reads_resid_directly = mlp_reads_resid_directly
+        # Fires on the MLP-branch entry (pre-ln2, or the MLP input on post-norm
+        # blocks) when use_hook_mlp_in is set. See #1317.
         self.hook_mlp_in = HookPoint()
 
-    def _maybe_wire_pre_ln_capture(self) -> None:
-        """Install ln1/ln2 forward_pre_hooks that feed the bridge's pre-LN hooks (#1317).
+    def _maybe_wire_capture_hooks(self) -> None:
+        """Install the block's capture hooks (split-qkv fork, hook_mlp_in).
 
-        Hooks register on the NormalizationBridge instance, not on
-        ``original_component`` — the manual (non-native-autograd) bridge
-        forward never calls the raw module, so a hook there would silently miss
-        on most adapters. Idempotent.
+        Registered on the bridge submodule, not ``original_component`` — the
+        manual bridge forward never calls the raw module. Idempotent.
         """
-        if self._pre_ln_capture_wired:
+        if self._capture_hooks_wired:
             return
         from transformer_lens.model_bridge.generalized_components.attention import (
             AttentionBridge,
@@ -140,15 +146,24 @@ class BlockBridge(GeneralizedComponent):
                     attn_ref._captured_pre_ln_residual = args[0]
 
             handle = ln1.register_forward_pre_hook(_capture_pre_ln1)
-            self._pre_ln_capture_handles.append(handle)
+            self._capture_hook_handles.append(handle)
             attn._ln1_module = ln1.original_component
 
-        ln2 = self.submodules.get("ln2") if self.submodules else None
-        if ln2 is not None and getattr(ln2, "original_component", None) is not None:
+        # hook_mlp_in must capture the MLP-branch entry point: ln2's input on
+        # pre-norm blocks, the MLP's own input on post-norm blocks (where ln2
+        # follows the MLP and its input is the raw MLP output).
+        if self.mlp_reads_resid_directly:
+            capture_target = self.submodules.get("mlp") if self.submodules else None
+        else:
+            capture_target = self.submodules.get("ln2") if self.submodules else None
+        if (
+            capture_target is not None
+            and getattr(capture_target, "original_component", None) is not None
+        ):
             hook_mlp_in = self.hook_mlp_in
             block_ref = weakref.proxy(self)
 
-            def _capture_pre_ln2(_module: torch.nn.Module, args: tuple) -> Any:
+            def _capture_mlp_in(_module: torch.nn.Module, args: tuple) -> Any:
                 if not block_ref._read_use_hook_mlp_in():
                     return None
                 if args and isinstance(args[0], torch.Tensor):
@@ -156,17 +171,17 @@ class BlockBridge(GeneralizedComponent):
                     return (hooked,) + args[1:]
                 return None
 
-            handle = ln2.register_forward_pre_hook(_capture_pre_ln2)
-            self._pre_ln_capture_handles.append(handle)
+            handle = capture_target.register_forward_pre_hook(_capture_mlp_in)
+            self._capture_hook_handles.append(handle)
 
-        self._pre_ln_capture_wired = True
+        self._capture_hooks_wired = True
 
-    def _teardown_pre_ln_capture(self) -> None:
-        """Remove the ln1/ln2 forward_pre_hooks installed by _maybe_wire_pre_ln_capture."""
-        for handle in self._pre_ln_capture_handles:
+    def _teardown_capture_hooks(self) -> None:
+        """Remove the capture hooks installed by _maybe_wire_capture_hooks (and subclass extensions)."""
+        for handle in self._capture_hook_handles:
             handle.remove()
-        self._pre_ln_capture_handles.clear()
-        self._pre_ln_capture_wired = False
+        self._capture_hook_handles.clear()
+        self._capture_hooks_wired = False
 
     def _read_use_hook_mlp_in(self) -> bool:
         """Prefer ``block.config.use_hook_mlp_in``; fall back to the block-local flag."""
@@ -193,7 +208,7 @@ class BlockBridge(GeneralizedComponent):
                 f"Original component not set for {self.name}. Call set_original_component() first."
             )
 
-        self._maybe_wire_pre_ln_capture()
+        self._maybe_wire_capture_hooks()
         self._check_stop_at_layer(*args, **kwargs)
         args, kwargs = self._hook_input_hidden_states(args, kwargs)
 
@@ -406,6 +421,136 @@ class ParallelBlockBridge(BlockBridge):
         if self.hook_aliases is BlockBridge.hook_aliases:
             self.hook_aliases = dict(self.hook_aliases)
         self.hook_aliases.pop("hook_resid_mid", None)
+
+
+class ScaledResidualBlockBridge(BlockBridge):
+    """Block whose sublayer outputs are scaled before the residual add.
+
+    Granite-family HF blocks compute ``residual + sublayer_out * residual_multiplier``
+    inline, so no submodule output equals the tensor added to the residual stream
+    and the legacy aliases cannot be fixed by re-pointing. ``hook_attn_out`` /
+    ``hook_mlp_out`` become real HookPoints on the block firing on the scaled
+    contribution:
+
+    - no hooks attached: the forward is untouched (bit-exact);
+    - read-only hooks: they observe ``module_out * scale``, forward stays bit-exact;
+    - a hook that changes the tensor (returned new or mutated in place): the module
+      output is rewritten to ``hooked / scale`` so HF's multiply reconstructs the
+      written value as the contribution (~1-ulp rounding; exact for zero-ablation);
+    - any backward hooks: the rewrite always happens so the autograd graph routes
+      through the HookPoint.
+    """
+
+    def __init__(
+        self,
+        name: str,
+        config: Optional[Any] = None,
+        submodules: Optional[Dict[str, GeneralizedComponent]] = None,
+        hook_alias_overrides: Optional[Dict[str, str]] = None,
+        mlp_reads_resid_directly: bool = False,
+        residual_contribution_scale: float = 1.0,
+        scaled_attn_submodule: str = "attn",
+        scaled_mlp_submodule: Optional[str] = "mlp",
+    ):
+        """scaled_mlp_submodule=None when no single submodule feeds the MLP-side
+        add (GraniteMoeHybrid sums moe + shared_mlp inline) — hook_mlp_out then
+        stays absent rather than firing with a partial tensor."""
+        super().__init__(
+            name,
+            config=config,
+            submodules=submodules,
+            hook_alias_overrides=hook_alias_overrides,
+            mlp_reads_resid_directly=mlp_reads_resid_directly,
+        )
+        scale = float(residual_contribution_scale)
+        if scale == 0.0:
+            raise ValueError(
+                f"ScaledResidualBlockBridge at '{name}': residual_contribution_scale "
+                f"must be nonzero (the write path divides by it)."
+            )
+        self.residual_contribution_scale = scale
+        self.scaled_attn_submodule = scaled_attn_submodule
+        self.scaled_mlp_submodule = scaled_mlp_submodule
+        if self.hook_aliases is BlockBridge.hook_aliases:
+            self.hook_aliases = dict(self.hook_aliases)
+        for alias in ("hook_attn_out", "hook_mlp_out"):
+            self.hook_aliases.pop(alias, None)
+        self.hook_attn_out = HookPoint()
+        if scaled_mlp_submodule is not None:
+            self.hook_mlp_out = HookPoint()
+
+    def set_original_component(self, original_component: torch.nn.Module) -> None:
+        """Prune contribution HookPoints the bound layer cannot fire.
+
+        Heterogeneous blocks (GraniteMoeHybrid mamba layers) lack the attn
+        submodule; a HookPoint that exists but never fires is a silent-no-op
+        intervention trap, so the name must be absent instead.
+        """
+        super().set_original_component(original_component)
+        targets = [(self.scaled_attn_submodule, "hook_attn_out")]
+        if self.scaled_mlp_submodule is not None:
+            targets.append((self.scaled_mlp_submodule, "hook_mlp_out"))
+        for sub_name, hook_name in targets:
+            sub = self.submodules.get(sub_name) if self.submodules else None
+            remote = getattr(sub, "name", None)
+            first = remote.split(".", 1)[0] if isinstance(remote, str) else None
+            missing = sub is None or (
+                first is not None and getattr(original_component, first, None) is None
+            )
+            if missing:
+                if hasattr(self, hook_name):
+                    delattr(self, hook_name)
+                # __setattr__ auto-registered the HookPoint; get_hooks() serves
+                # from this registry, so the module deletion alone is not enough.
+                self._hook_registry.pop(hook_name, None)
+
+    def _maybe_wire_capture_hooks(self) -> None:
+        """Extend the base wiring with the scaled-contribution forward hooks.
+
+        Shares the base flag and handle list so _teardown_capture_hooks also
+        removes these hooks and re-wiring stays idempotent.
+        """
+        if self._capture_hooks_wired:
+            return
+        super()._maybe_wire_capture_hooks()
+        targets = [(self.scaled_attn_submodule, "hook_attn_out")]
+        if self.scaled_mlp_submodule is not None:
+            targets.append((self.scaled_mlp_submodule, "hook_mlp_out"))
+        for sub_name, hook_name in targets:
+            hook_point = getattr(self, hook_name, None)
+            sub = self.submodules.get(sub_name) if self.submodules else None
+            if (
+                hook_point is None
+                or sub is None
+                or getattr(sub, "original_component", None) is None
+            ):
+                continue
+            handle = sub.register_forward_hook(self._make_scaled_contribution_hook(hook_point))
+            self._capture_hook_handles.append(handle)
+
+    def _make_scaled_contribution_hook(
+        self, hook_point: HookPoint
+    ) -> Callable[[torch.nn.Module, tuple, Any], Any]:
+        """Build a forward hook exposing ``output * scale`` through hook_point."""
+        scale = self.residual_contribution_scale
+
+        def _hook(_module: torch.nn.Module, _args: tuple, output: Any) -> Any:
+            if not hook_point.has_hooks(dir="both"):
+                return None
+            is_tuple = isinstance(output, tuple)
+            out = output[0] if is_tuple else output
+            if not isinstance(out, torch.Tensor):
+                return None
+            scaled = out * scale
+            hooked = hook_point(scaled)
+            # Compare against a freshly computed reference: an in-place mutation
+            # alters `scaled` itself, so an identity check would miss it.
+            if not hook_point.has_hooks(dir="bwd") and torch.equal(hooked, out * scale):
+                return None
+            new = hooked / scale
+            return ((new,) + output[1:]) if is_tuple else new
+
+        return _hook
 
 
 class DelegatedAttentionBlockBridge(BlockBridge):

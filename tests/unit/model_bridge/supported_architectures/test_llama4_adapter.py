@@ -7,7 +7,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from tests.unit.model_bridge.supported_architectures.helpers import make_bridge_cfg
+from tests.unit.model_bridge.supported_architectures.helpers import (
+    DENSE_KEYS,
+    make_bridge_cfg,
+)
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.factories.architecture_adapter_factory import (
     SUPPORTED_ARCHITECTURES,
@@ -48,14 +51,15 @@ class TestLlama4ComponentMapping:
         assert attn.name == "self_attn"
 
     def test_moe_with_optional_shared_expert(self, adapter):
-        """The router returns a tuple so it stays unwrapped; non-MoE layers
-        hold a dense gated MLP under the same feed_forward name."""
+        """The router is mapped so a rename fails loudly."""
         mlp = adapter.component_mapping["blocks"].submodules["mlp"]
         assert isinstance(mlp, _Llama4MoEBridge)
         assert mlp.name == "feed_forward"
-        assert set(mlp.submodules) == {"shared_expert", "dense_gate", "dense_in", "dense_out"}
-        for key in ("dense_gate", "dense_in", "dense_out"):
-            assert mlp.submodules[key].optional is True
+        # dense_* are covered by the roster in test_moe_dense_dispatch.py.
+        assert set(mlp.submodules) - DENSE_KEYS == {"router", "shared_expert"}
+        # Optional so dense layers may skip it, required on sparse ones.
+        assert mlp.submodules["router"].optional is True
+        assert mlp._sparse_required == ("router",)
         shared = mlp.submodules["shared_expert"]
         assert isinstance(shared, _Llama4SharedExpertBridge)
         assert shared.optional is True

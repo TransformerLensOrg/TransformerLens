@@ -88,9 +88,9 @@ class DeepSeekV2ArchitectureAdapter(ArchitectureAdapter):
                             "o": LinearBridge(name="o_proj"),
                         },
                     ),
-                    # On dense layers (idx < first_k_dense_replace), gate and
-                    # shared_experts are absent — marked optional so setup gracefully
-                    # skips them when the layer is DeepseekV2MLP instead of MoE.
+                    # Layers before first_k_dense_replace are DeepseekV2MLP:
+                    # the MoE parts are skipped and the dense_* projections bind,
+                    # which is what gives those layers gated-MLP neuron hooks.
                     "mlp": self._build_mlp_bridge(),
                 },
             ),
@@ -99,13 +99,24 @@ class DeepSeekV2ArchitectureAdapter(ArchitectureAdapter):
         }
 
     def _build_mlp_bridge(self):
-        """Routed MoE with optional shared experts; Youtu (all-dense) overrides."""
+        """Routed MoE with optional shared experts; Youtu (all-dense) overrides.
+
+        Dense-prefix layers (idx < first_k_dense_replace) bind as gated MLPs
+        with neuron-basis hook_pre/hook_pre_linear/hook_post (#1645).
+        """
         return MoEBridge(
             name="mlp",
             config=self.cfg,
+            sparse_required=("gate",),
             submodules={
                 # Router is a custom Module, not nn.Linear.
                 "gate": GeneralizedComponent(name="gate", optional=True),
                 "shared_experts": self._gated_mlp(name="shared_experts", optional=True),
+                # Dense-layer projections (present only on layers before
+                # first_k_dense_replace); their presence is what makes
+                # MoEBridge bind gated-MLP neuron hooks there (#1645).
+                "dense_gate": LinearBridge(name="gate_proj", optional=True),
+                "dense_in": LinearBridge(name="up_proj", optional=True),
+                "dense_out": LinearBridge(name="down_proj", optional=True),
             },
         )

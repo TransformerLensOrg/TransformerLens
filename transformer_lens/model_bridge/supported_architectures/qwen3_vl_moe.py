@@ -11,6 +11,7 @@ unwrapped and MoEBridge delegates the block. Layers listed in
 from typing import Any
 
 from transformer_lens.model_bridge.generalized_components import (
+    LinearBridge,
     MoEBridge,
     MoERouterBridge,
 )
@@ -27,8 +28,13 @@ class Qwen3VLMoeArchitectureAdapter(Qwen3VLArchitectureAdapter):
         return MoEBridge(
             name="mlp",
             config=self.cfg,
+            sparse_required=("gate", "experts"),
             submodules={
                 "gate": MoERouterBridge(name="gate", optional=True),
                 "experts": MoEBridge(name="experts", config=self.cfg, optional=True),
+                # Dense layers listed in mlp_only_layers (#1645).
+                "dense_gate": LinearBridge(name="gate_proj", optional=True),
+                "dense_in": LinearBridge(name="up_proj", optional=True),
+                "dense_out": LinearBridge(name="down_proj", optional=True),
             },
         )

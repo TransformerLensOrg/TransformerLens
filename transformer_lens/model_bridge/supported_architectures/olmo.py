@@ -1,6 +1,5 @@
 """OLMo architecture adapter."""
 
-import logging
 from typing import Any
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
@@ -26,7 +25,8 @@ class OlmoArchitectureAdapter(ArchitectureAdapter):
     - Non-learnable LayerNorm: Weight and bias are not trainable parameters.
       Delegating to HF's native forward via NormalizationBridge handles this correctly.
     - No Q/K normalization in attention.
-    - Optional QKV clipping (handled by HF's native attention forward).
+    - Optional QKV clipping (applied out-of-place by the reconstructed
+      attention forward when config.clip_qkv is set).
 
     Optional Parameters (may not exist in state_dict):
     -------------------------------------------------
@@ -104,72 +104,3 @@ class OlmoArchitectureAdapter(ArchitectureAdapter):
             ),
             "unembed": UnembeddingBridge(name="lm_head", config=self.cfg),
         }
-
-    def prepare_model(self, hf_model: Any) -> None:
-        """Patch OLMo's in-place clamp_ to avoid backward hook conflicts.
-
-        OLMo v1 uses query_states.clamp_() when config.clip_qkv is set.
-        In-place ops on tensors that pass through register_full_backward_hook
-        trigger PyTorch's "view modified inplace" error.  This patch disables
-        the in-place clamp branch during attention forward passes.
-
-        Note: clip_qkv clamping is skipped in the patched forward.  In practice
-        clip_qkv values (typically 100+) rarely activate.  If exact clamping is
-        needed, add out-of-place clamp hooks on hook_q/hook_k/hook_v.
-        """
-        _patch_olmo_inplace_clamp(hf_model)
-
-
-def _patch_olmo_inplace_clamp(hf_model: Any) -> None:
-    """Patch OLMo attention to avoid in-place clamp_ that conflicts with backward hooks.
-
-    PyTorch's register_full_backward_hook wraps module outputs in
-    BackwardHookFunctionBackward views.  OLMo's attention does
-    query_states.clamp_() on tensors derived from those views, which
-    PyTorch forbids.
-
-    Fix: wrap each attention layer's forward to temporarily clear
-    config.clip_qkv (preventing the in-place branch) and apply
-    out-of-place clamping via a forward hook instead.
-    """
-    if not hasattr(hf_model, "model") or not hasattr(hf_model.model, "layers"):
-        return
-
-    clip_qkv = getattr(hf_model.config, "clip_qkv", None)
-    if clip_qkv is None:
-        return
-
-    import functools
-
-    patched = 0
-    for layer in hf_model.model.layers:
-        attn = getattr(layer, "self_attn", None)
-        if attn is None:
-            continue
-
-        original_forward = attn.forward
-
-        def _make_patched_forward(orig_fwd, clip_val=clip_qkv):
-            @functools.wraps(orig_fwd)
-            def patched_forward(*args, **kwargs):
-                # Temporarily disable clip_qkv so HF's in-place clamp_ is skipped
-                cfg = hf_model.config
-                saved = cfg.clip_qkv
-                cfg.clip_qkv = None
-                try:
-                    return orig_fwd(*args, **kwargs)
-                finally:
-                    cfg.clip_qkv = saved
-
-            return patched_forward
-
-        attn.forward = _make_patched_forward(original_forward)
-        patched += 1
-
-    if patched > 0:
-        logging.info(
-            "Patched %d OLMo attention layer(s): disabled in-place clamp_ "
-            "(clip_qkv=%.1f) for backward hook compatibility.",
-            patched,
-            clip_qkv,
-        )

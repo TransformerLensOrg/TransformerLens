@@ -7,7 +7,9 @@ transformer_lens.loading_from_pretrained, so no convert_hf_model_config tests he
 
 import pytest
 
+from tests.unit.model_bridge.supported_architectures.helpers import DENSE_KEYS
 from transformer_lens.config import TransformerBridgeConfig
+from transformer_lens.model_bridge.generalized_components import MoEBridge
 
 
 def _make_bridge_cfg(**overrides):
@@ -82,15 +84,20 @@ class TestQwen3NextComponentMapping:
         submodules = adapter.component_mapping["blocks"].submodules
         assert submodules["mlp"].name == "mlp"
 
-    def test_mlp_has_no_submodules(self, adapter):
-        """Qwen3NextSparseMoeBlock has a non-Linear router and 3D batched experts; MoEBridge delegates to HF forward, so no internal subs are mapped."""
+    def test_mlp_maps_router_shared_expert_and_dense_projections(self, adapter):
+        """Qwen3NextSparseMoeBlock has 3D batched experts (delegated to HF), but
+        its router and shared expert are hookable."""
         mlp = adapter.component_mapping["blocks"].submodules["mlp"]
-        assert mlp.submodules == {}
+        # dense_* are covered by the roster in test_moe_dense_dispatch.py.
+        assert set(mlp.submodules) - DENSE_KEYS == {
+            "gate",
+            "shared_expert",
+            "shared_expert_gate",
+        }
+        assert all(sub.optional for sub in mlp.submodules.values())
 
     def test_mlp_bridge_type(self, adapter):
         """Every real checkpoint is sparse MoE."""
-        from transformer_lens.model_bridge.generalized_components import MoEBridge
-
         mlp = adapter.component_mapping["blocks"].submodules["mlp"]
         assert isinstance(mlp, MoEBridge)
 

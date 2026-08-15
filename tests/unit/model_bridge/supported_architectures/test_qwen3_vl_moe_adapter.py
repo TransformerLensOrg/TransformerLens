@@ -7,7 +7,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from tests.unit.model_bridge.supported_architectures.helpers import make_bridge_cfg
+from tests.unit.model_bridge.supported_architectures.helpers import (
+    DENSE_KEYS,
+    make_bridge_cfg,
+)
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.factories.architecture_adapter_factory import (
     SUPPORTED_ARCHITECTURES,
@@ -46,7 +49,8 @@ class TestQwen3VLMoeComponentMapping:
 
         mlp = adapter.component_mapping["blocks"].submodules["mlp"]
         assert isinstance(mlp, MoEBridge)
-        assert set(mlp.submodules) == {"gate", "experts"}
+        # dense_* are covered by the roster in test_moe_dense_dispatch.py.
+        assert set(mlp.submodules) - DENSE_KEYS == {"gate", "experts"}
         assert isinstance(mlp.submodules["gate"], MoERouterBridge)
         assert mlp.submodules["gate"].optional is True
         assert mlp.submodules["experts"].optional is True

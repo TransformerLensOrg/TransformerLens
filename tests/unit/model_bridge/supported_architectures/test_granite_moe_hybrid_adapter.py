@@ -143,6 +143,24 @@ class TestGraniteMoeHybridAdapterComponentMapping:
         assert mapping["ln_final"].name == "model.norm"
         assert mapping["unembed"].name == "lm_head"
 
+    def test_scaled_residual_block_mlp_wiring(self) -> None:
+        """With experts the MLP branch is moe + shared_mlp summed inline — no
+        single module produces the contribution, so hook_mlp_out stays absent.
+        Without experts it wires to shared_mlp (#1648)."""
+        from transformer_lens.model_bridge.generalized_components import (
+            ScaledResidualBlockBridge,
+        )
+
+        with_experts = GraniteMoeHybridArchitectureAdapter(_make_cfg(num_experts=4))
+        blocks = with_experts.component_mapping["blocks"]
+        assert isinstance(blocks, ScaledResidualBlockBridge)
+        assert blocks.scaled_mlp_submodule is None
+        assert not hasattr(blocks, "hook_mlp_out")
+        assert "hook_mlp_out" not in blocks.hook_aliases
+
+        without_experts = GraniteMoeHybridArchitectureAdapter(_make_cfg(num_experts=0))
+        assert without_experts.component_mapping["blocks"].scaled_mlp_submodule == "shared_mlp"
+
     def test_block_submodule_mapping(self, adapter: GraniteMoeHybridArchitectureAdapter) -> None:
         blocks = adapter.component_mapping["blocks"]
         assert set(blocks.submodules.keys()) == {
@@ -198,13 +216,12 @@ class TestGraniteMoeHybridAdapterComponentMapping:
         assert mixer.submodules["inner_norm"].name == "norm"
 
     def test_shared_mlp_mapping(self, adapter: GraniteMoeHybridArchitectureAdapter) -> None:
+        """input_linear is a FUSED [gate | up] projection, so the bridge splits
+        it and registers "gate"/"in" itself; only "out" is declared."""
         shared_mlp = adapter.component_mapping["blocks"].submodules["shared_mlp"]
-        assert set(shared_mlp.submodules.keys()) == {"in", "out"}
+        assert set(shared_mlp.submodules.keys()) == {"gate", "in", "out"}
 
-        assert isinstance(shared_mlp.submodules["in"], LinearBridge)
         assert isinstance(shared_mlp.submodules["out"], LinearBridge)
-
-        assert shared_mlp.submodules["in"].name == "input_linear"
         assert shared_mlp.submodules["out"].name == "output_linear"
 
 
@@ -221,3 +238,66 @@ class TestGraniteMoeHybridAdapterWeightConversions:
     ) -> None:
         assert adapter.weight_processing_conversions == {}
         assert adapter.supports_fold_ln is False
+
+
+class TestGraniteMoeHybridSharedMLPAndRouter:
+    """shared_mlp.input_linear is fused [gate | up] (a plain MLPBridge made
+    hook_pre the 2*d_mlp pre-GLU tensor, no hook_pre_linear), and the sparse
+    block's router logits had no hook at all.
+    """
+
+    def test_shared_mlp_exposes_the_split_neuron_basis(self) -> None:
+        from transformer_lens.model_bridge.generalized_components import (
+            JointGateUpMLPBridge,
+        )
+
+        mlp = (
+            GraniteMoeHybridArchitectureAdapter(_make_cfg(num_experts=4))
+            .component_mapping["blocks"]
+            .submodules["shared_mlp"]
+        )
+        # Alias constants live on the class and resolution is covered by
+        # test_hook_alias_resolution.py; the split direction is pinned by the
+        # halves test below.
+        assert isinstance(mlp, JointGateUpMLPBridge)
+        assert mlp.submodules["out"].name == "output_linear"
+
+    def test_fused_input_linear_splits_into_equal_halves(self) -> None:
+        """The splitter is what makes the hooks meaningful: gate and up must be
+        the two halves of input_linear, in that order."""
+        import torch
+
+        class _FusedMLP(torch.nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.input_linear = torch.nn.Linear(8, 32, bias=False)
+                self.output_linear = torch.nn.Linear(16, 8, bias=False)
+
+        module = _FusedMLP()
+        mlp = (
+            GraniteMoeHybridArchitectureAdapter(_make_cfg(num_experts=4))
+            .component_mapping["blocks"]
+            .submodules["shared_mlp"]
+        )
+        gate, up = mlp.split_gate_up_matrix(module)
+        fused = module.input_linear.weight
+        assert gate.weight.shape == (16, 8) and up.weight.shape == (16, 8)
+        torch.testing.assert_close(gate.weight, fused[:16])
+        torch.testing.assert_close(up.weight, fused[16:])
+        # Negative control: the halves must differ, or "in that order" is untestable.
+        assert not torch.allclose(gate.weight, up.weight)
+
+    def test_moe_router_is_hookable(self) -> None:
+        from transformer_lens.model_bridge.generalized_components import MoERouterBridge
+
+        moe = (
+            GraniteMoeHybridArchitectureAdapter(_make_cfg(num_experts=4))
+            .component_mapping["blocks"]
+            .submodules["moe"]
+        )
+        router = moe.submodules["gate"]
+        assert isinstance(router, MoERouterBridge)
+        assert router.name == "router"
+        # HF returns (top_k_index, top_k_weights, router_logits): index 0 is an
+        # int64 index tensor, so the default logits_index would hook the wrong one.
+        assert router.logits_index == -1

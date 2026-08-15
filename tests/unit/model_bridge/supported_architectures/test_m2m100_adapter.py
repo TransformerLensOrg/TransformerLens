@@ -18,7 +18,6 @@ from transformer_lens.model_bridge.generalized_components import (
     EmbeddingBridge,
     NormalizationBridge,
     PosEmbedBridge,
-    SymbolicBridge,
     UnembeddingBridge,
 )
 from transformer_lens.model_bridge.supported_architectures.m2m100 import (
@@ -113,7 +112,8 @@ class TestM2M100ComponentMapping:
         assert block.submodules["ln1"].name == "self_attn_layer_norm"
         assert block.submodules["ln2"].name == "final_layer_norm"
         mlp = block.submodules["mlp"]
-        assert isinstance(mlp, SymbolicBridge)
+        assert mlp.name is None
+        assert mlp.hook_aliases == {"hook_pre": "in.hook_out", "hook_post": "out.hook_in"}
         assert mlp.submodules["in"].name == "fc1"
         assert mlp.submodules["out"].name == "fc2"
 

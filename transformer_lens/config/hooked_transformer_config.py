@@ -173,6 +173,11 @@ class HookedTransformerConfig(TransformerLensConfig):
             We need this information to dynamically control bos prepending.
         load_in_4bit(bool): If this flag is set, then it's assumed that parameters are 4-bit quantized
             with bitsandbytes. Currently only supported for Llama.
+        quantization_method (str, *optional*): the ``quant_method`` declared by the checkpoint's
+            HF config ("mxfp4", "bitsandbytes", "gptq", ...), captured while that config is already
+            in hand so later load steps need not refetch it. None when unquantized, and also when
+            the config was never fetched (the llama/gemma name-based branches of
+            ``convert_hf_model_config`` infer the architecture from the model name instead).
         n_key_value_heads (int, *optional*): The number of groups of heads that use the same key and value matrix.
             Only for models that use Grouped Query Attention.
         post_embedding_ln (bool): Whether to apply layer normalization after embedding the tokens. Defaults
@@ -235,6 +240,8 @@ class HookedTransformerConfig(TransformerLensConfig):
             which use different RoPE bases for local (10k) and global (1M) attention. Defaults
             to None, which means the standard rotary_base is used for all layers.
         norm_topk_prob (bool): Whether to normalize the top-k probabilities in the MoE layer.
+        clip_qkv (float, *optional*): Clamp Q/K/V activations to [-clip_qkv, clip_qkv] after
+            projection (and any qk-norm), as OLMo v1 and OLMoE do. Defaults to None (no clamp).
     """
 
     model_name: str = "custom"
@@ -245,6 +252,7 @@ class HookedTransformerConfig(TransformerLensConfig):
     use_hook_mlp_in: bool = False
     use_attn_in: bool = False
     use_qk_norm: bool = False
+    clip_qkv: Optional[float] = None
     use_local_attn: bool = False
     ungroup_grouped_query_attention: bool = False
     original_architecture: Optional[str] = None
@@ -284,6 +292,7 @@ class HookedTransformerConfig(TransformerLensConfig):
     trust_remote_code: bool = False
     rotary_adjacent_pairs: bool = False
     load_in_4bit: bool = False
+    quantization_method: Optional[str] = None
     num_experts: Optional[int] = None
     experts_per_token: Optional[int] = None
     relative_attention_max_distance: Optional[int] = None

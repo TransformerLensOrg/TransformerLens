@@ -13,21 +13,29 @@ residual-wiring pattern the bridge handles:
 - gpt2: block-level residual adds, the HookedTransformer reference wiring
 - mistral: Llama-style pre-RMSNorm block-level adds
 - bloom: residual added *inside* the HF attention/MLP modules (the #1639 case)
+- olmo2: post-norm inside the residual branch — RMSNorm applies to the sublayer
+  output before the add, so the contributions are the norm outputs (the #1648 case)
+- mpt: residual added inside the HF MLP module only (attention adds at block level)
+- granite: the scaled-residual block wiring end to end. NOTE: the hub tiny ships
+  residual_multiplier=1.0, so this entry does NOT exercise the multiplier —
+  test_granite_hook_semantics.py builds a fixture with a real multiplier and is
+  the coverage for the #1648 Granite case.
+- gemma2: sandwich norms — a post-sublayer norm inside each residual branch, so
+  the contributions are the post-norm outputs
 
-Parallel-residual architectures (Falcon, GPT-J, NeoX, Cohere) are out of scope:
-they have no ``hook_resid_mid``.
+Parallel-residual architectures (Falcon, GPT-J, NeoX, Cohere) are out of scope
+here: they have no ``hook_resid_mid``. Their two-term identity
+(``resid_post == resid_pre + attn_out + mlp_out``) is covered by
+``test_parallel_residual_identities.py``.
 """
 
 import pytest
 import torch
 
+from tests.tiny_checkpoints import sequential_residual_params
 from transformer_lens.model_bridge import TransformerBridge
 
-SEQUENTIAL_RESIDUAL_MODELS = [
-    pytest.param("hf-internal-testing/tiny-random-gpt2", id="gpt2"),
-    pytest.param("trl-internal-testing/tiny-MistralForCausalLM-0.2", id="mistral"),
-    pytest.param("trl-internal-testing/tiny-BloomForCausalLM", id="bloom"),
-]
+SEQUENTIAL_RESIDUAL_MODELS = sequential_residual_params()
 
 
 @pytest.mark.parametrize("model_name", SEQUENTIAL_RESIDUAL_MODELS)

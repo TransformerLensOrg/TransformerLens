@@ -122,7 +122,21 @@ def get_bridge_params(bridge) -> Dict[str, torch.Tensor]:
                     e,
                 )
         try:
-            mlp_in = getattr(block.mlp, "in", None) or getattr(block.mlp, "input", None)
+            # Dense layers of an interleaved MoE stack keep their projections
+            # under dense_* — `gate` there is the sparse layers' ROUTER, so the
+            # standard names would either miss the weights (silently zero-filling
+            # a real dense MLP) or read the router as a gate projection.
+            # `is True`, not truthiness: auto-vivifying stand-ins (Mock blocks in
+            # this module's own tests) return a truthy object for any attribute
+            # and would take the dense branch with non-tensor projections.
+            if getattr(block.mlp, "bound_dense", False) is True:
+                mlp_in = getattr(block.mlp, "dense_in", None)
+                mlp_out = getattr(block.mlp, "dense_out", None)
+                mlp_gate = getattr(block.mlp, "dense_gate", None)
+            else:
+                mlp_in = getattr(block.mlp, "in", None) or getattr(block.mlp, "input", None)
+                mlp_out = getattr(block.mlp, "out", None)
+                mlp_gate = getattr(block.mlp, "gate", None)
             if mlp_in is None:
                 raise AttributeError("MLP has no 'in' or 'input' attribute")
             # Use normalized accessors for consistent TL orientation
@@ -137,7 +151,7 @@ def get_bridge_params(bridge) -> Dict[str, torch.Tensor]:
                 params_dict[f"blocks.{layer_idx}.mlp.b_in"] = torch.zeros(
                     d_mlp, device=device, dtype=dtype
                 )
-            mlp_out_bias = block.mlp.out.bias
+            mlp_out_bias = mlp_out.bias if mlp_out is not None else None
             if mlp_out_bias is not None:
                 params_dict[f"blocks.{layer_idx}.mlp.b_out"] = mlp_out_bias
             else:
@@ -145,13 +159,24 @@ def get_bridge_params(bridge) -> Dict[str, torch.Tensor]:
                 params_dict[f"blocks.{layer_idx}.mlp.b_out"] = torch.zeros(
                     bridge.cfg.d_model, device=device, dtype=dtype
                 )
-            if hasattr(block.mlp, "gate") and hasattr(block.mlp.gate, "weight"):
+            if mlp_gate is not None and hasattr(mlp_gate, "weight"):
                 w_gate = block.mlp.W_gate
                 if w_gate is not None:
                     params_dict[f"blocks.{layer_idx}.mlp.W_gate"] = w_gate
-                if hasattr(block.mlp.gate, "bias") and block.mlp.gate.bias is not None:
-                    params_dict[f"blocks.{layer_idx}.mlp.b_gate"] = block.mlp.gate.bias
-        except AttributeError:
+                if getattr(mlp_gate, "bias", None) is not None:
+                    params_dict[f"blocks.{layer_idx}.mlp.b_gate"] = mlp_gate.bias
+        except AttributeError as e:
+            # Zero-filling a real MLP silently yields wrong numbers downstream
+            # (SVD/weight analyses decompose zeros). Say so — the fill stays for
+            # architectures that genuinely have no MLP under this name.
+            logger.warning(
+                "Block %d MLP weights could not be extracted (%s) — emitting "
+                "ZEROS for blocks.%d.mlp.W_in/W_out/b_in/b_out. Any weight-space "
+                "analysis of this layer will be meaningless.",
+                layer_idx,
+                e,
+                layer_idx,
+            )
             device, dtype = _get_device_dtype()
             d_mlp = bridge.cfg.d_mlp if bridge.cfg.d_mlp is not None else 4 * bridge.cfg.d_model
             params_dict[f"blocks.{layer_idx}.mlp.W_in"] = torch.zeros(
