@@ -54,6 +54,7 @@ class Lfm2MoeArchitectureAdapter(ArchitectureAdapter):
 
         self.cfg.act_fn = "silu"
         self.cfg.attn_implementation = "eager"
+        self.cfg.default_prepend_bos = False
 
         self.weight_processing_conversions = {
             **self._qkvo_weight_conversions(),
