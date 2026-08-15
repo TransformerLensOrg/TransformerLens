@@ -22,6 +22,8 @@ from transformer_lens.model_bridge.generalized_components.attention import (
 from transformer_lens.model_bridge.generalized_components.position_embedding_hooks_mixin import (
     PositionEmbeddingHooksMixin,
 )
+from transformer_lens.utilities.attention import clamp_qkv
+from transformer_lens.utilities.heterogeneous_config import safe_config_get
 from transformer_lens.utilities.hf_utils import get_rotary_pct_from_config
 
 # Global registry mapping HF attention modules to their bridge instances
@@ -185,6 +187,38 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
         _setup_eager_attention_hook_wrapper()
         self._validate_submodule_declarations(component)
         self._qk_norm_phase = self._decide_qk_norm_phase(component)
+        self._own_scaled_hook_k(component)
+
+    def _own_scaled_hook_k(self, hf_attn: torch.nn.Module) -> None:
+        """Replace the ``hook_k`` alias with a real HookPoint when K is scaled.
+
+        Aliased hook_k reported Falcon-H1's pre-key_multiplier tensor and
+        silently rescaled writes; the owned hook carries the scaled value while
+        ``k.hook_out`` stays raw (Granite's split). No-op elsewhere.
+        """
+        if getattr(hf_attn, "key_multiplier", None) is None:
+            return
+        if self.hook_aliases is type(self).hook_aliases:
+            self.hook_aliases = dict(self.hook_aliases)
+        self.hook_aliases.pop("hook_k", None)
+        # The per-head hook_conversion is attached later, by
+        # _setup_qkv_hook_reshaping — component binding always precedes hook
+        # compatibility setup (bridge.py wires components, then calls it).
+        self.hook_k = HookPoint()
+
+    def _fire_scaled_hook_k(self, key_states: torch.Tensor) -> torch.Tensor:
+        """Fire an owned ``hook_k`` on the flat 3D tensor, preserving input rank.
+
+        A 4D input must flatten first: the conversion's revert only fires on 4D
+        returns, so an edited tensor would reach RoPE with the wrong rank.
+        """
+        if "hook_k" in self.hook_aliases or not hasattr(self, "hook_k"):
+            return key_states
+        if key_states.dim() == 4:
+            b, s, n_h, d_h = key_states.shape
+            flat = self.hook_k(key_states.reshape(b, s, n_h * d_h))
+            return flat.reshape(b, s, n_h, d_h)
+        return self.hook_k(key_states)
 
     def _validate_submodule_declarations(self, hf_attn: torch.nn.Module) -> None:
         """Raise if adapter omits q/k/v/o or a QK-norm the HF module has."""
@@ -393,6 +427,14 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
                     q_gate = q_gate.reshape(*input_shape, -1)
                     query_states = query_states.reshape(*input_shape, -1)
 
+        # Falcon-H1 scales K by a learned mup scalar between projection and RoPE.
+        # hook_k fires after the scale (see _own_scaled_hook_k) so it carries the
+        # tensor that actually reaches attention; k.hook_out kept the raw one.
+        key_multiplier = getattr(hf_attn, "key_multiplier", None)
+        if key_multiplier is not None:
+            key_states = key_states * key_multiplier
+            key_states = self._fire_scaled_hook_k(key_states)
+
         has_q_norm = "q_norm" in self.submodules
         has_k_norm = "k_norm" in self.submodules
 
@@ -408,6 +450,22 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
                 key_states = self._apply_pre_reshape_qk_norm(
                     key_states, self.k_norm, self.hook_k_normed, head_dim
                 )
+
+        # OLMo v1 / OLMoE clamp Q/K/V when clip_qkv is set — after the
+        # pre-reshape qk-norm (OLMoE norms first) and before RoPE, matching HF
+        # order. HF gates on `is not None` for these archs.
+        clip_qkv = getattr(getattr(hf_attn, "config", None), "clip_qkv", None)
+        if clip_qkv is not None:
+            if self._qk_norm_phase == "post_reshape":
+                # No arch pairs clip_qkv with a post-reshape norm; the HF
+                # ordering is unknowable here, so refuse rather than guess.
+                raise NotImplementedError(
+                    "clip_qkv with a post-reshape qk-norm has no reference "
+                    "ordering; add the architecture's HF order before enabling."
+                )
+            query_states, key_states, value_states = clamp_qkv(
+                query_states, key_states, value_states, clip_qkv
+            )
 
         # For the split path, tensors are already [B, S, H, d_head]; for the
         # default path they're flat [B, S, H*d_head] and need the view.
@@ -666,12 +724,8 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
         inputs: Dict[str, Any] = {
             "hidden_states": torch.randn(batch_size, seq_len, d_model, device=device, dtype=dtype)
         }
-        num_heads = (
-            self.config.num_attention_heads
-            if self.config and hasattr(self.config, "num_attention_heads")
-            else 4
-        )
-        head_dim = self.config.head_dim if self.config and hasattr(self.config, "head_dim") else 256
+        num_heads = safe_config_get(self.config, "num_attention_heads", 4) if self.config else 4
+        head_dim = safe_config_get(self.config, "head_dim", 256) if self.config else 256
         dummy_qk = torch.randn(1, seq_len, num_heads, head_dim, device=device, dtype=dtype)
         position_ids = torch.arange(seq_len, device=device).unsqueeze(0)
         if self._rotary_emb is not None:

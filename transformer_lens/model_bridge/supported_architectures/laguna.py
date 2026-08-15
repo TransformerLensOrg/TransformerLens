@@ -80,6 +80,7 @@ class LagunaArchitectureAdapter(ArchitectureAdapter):
                     "mlp": MoEBridge(
                         name="mlp",
                         config=self.cfg,
+                        sparse_required=("gate",),
                         submodules={
                             "gate": GeneralizedComponent(name="gate", optional=True),
                             "shared_experts": self._gated_mlp(name="shared_experts", optional=True),

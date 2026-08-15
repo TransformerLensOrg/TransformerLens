@@ -22,6 +22,16 @@ from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
 from transformer_lens.utilities.hf_utils import get_rotary_pct_from_config
+from transformer_lens.utilities.quantization import require_readable_weight
+
+
+class PerLayerGeometryError(ValueError):
+    """A weight accessor refused a head split on per-layer attention geometry.
+
+    Dedicated type so callers with a raw-weight fallback (the centering
+    benchmark) catch exactly this and nothing else — a generic ValueError
+    catch would silently mask unrelated accessor regressions.
+    """
 
 
 class AttentionBridge(GeneralizedComponent):
@@ -69,6 +79,7 @@ class AttentionBridge(GeneralizedComponent):
         is_cross_attention: bool = False,
         is_causal: bool = True,
         optional: bool = False,
+        fused_qkv: bool = False,
     ):
         """Initialize the attention bridge.
 
@@ -103,6 +114,15 @@ class AttentionBridge(GeneralizedComponent):
             conversion_rule=conversion_rule,
             optional=optional,
         )
+        if fused_qkv:
+            # A combined QKV projection has no q/k/v submodules for the class
+            # aliases to resolve against; leaving them in place produces dead
+            # aliases and resolution-audit noise (raven Wqkv, OpenELM qkv_proj).
+            self.hook_aliases = {
+                key: value
+                for key, value in type(self).hook_aliases.items()
+                if key not in {"hook_q", "hook_k", "hook_v"}
+            }
         self.hook_attn_scores = HookPoint()
         self.hook_pattern = HookPoint()
         self.hook_hidden_states = HookPoint()
@@ -331,6 +351,12 @@ class AttentionBridge(GeneralizedComponent):
         if hasattr(self, "k") and self.k is not None and hasattr(self.k, "hook_out"):
             k_reshape = ReshapeForAttentionHeads(n_kv_heads, d_head)
             self.k.hook_out.hook_conversion = k_reshape
+            # Subclasses that de-alias hook_k onto their own HookPoint (K-scaling
+            # architectures) need the same conversion, whichever order runs first.
+            if "hook_k" not in self.hook_aliases and isinstance(
+                getattr(self, "hook_k", None), HookPoint
+            ):
+                self.hook_k.hook_conversion = k_reshape
         if hasattr(self, "v") and self.v is not None and hasattr(self.v, "hook_out"):
             v_reshape = ReshapeForAttentionHeads(n_kv_heads, d_head)
             self.v.hook_out.hook_conversion = v_reshape
@@ -583,6 +609,7 @@ class AttentionBridge(GeneralizedComponent):
                     else weight.shape[0] // n_heads
                 )
             mat = weight if in_out_layout else weight.T
+            self._check_head_split_width(mat, n_heads)
             return einops.rearrange(
                 mat, "(n_heads d_head) d_model -> n_heads d_head d_model", n_heads=n_heads
             )
@@ -590,8 +617,34 @@ class AttentionBridge(GeneralizedComponent):
         if in_out_layout is None:
             in_out_layout = weight.shape[0] % n_heads != 0
         mat = weight.T if in_out_layout else weight
+        self._check_head_split_width(mat, n_heads)
         return einops.rearrange(
             mat, "(n_heads d_head) d_model -> n_heads d_model d_head", n_heads=n_heads
+        )
+
+    def _check_head_split_width(self, mat: torch.Tensor, n_heads: int) -> None:
+        """Refuse a head split whose width disagrees with the model's geometry.
+
+        einops only needs divisibility, so per-layer geometry (gemma4 KV-shared
+        layers) would factorize into wrong-shaped heads silently. MLA's
+        bind-time ``_v_head_dim`` is a legitimate second width (o_proj).
+        """
+        d_head = getattr(self.config, "d_head", None)
+        if not d_head:
+            return
+        allowed_dims = {d_head}
+        v_head_dim = getattr(self, "_v_head_dim", None)
+        if v_head_dim:
+            allowed_dims.add(v_head_dim)
+        if mat.shape[0] % n_heads == 0 and mat.shape[0] // n_heads in allowed_dims:
+            return
+        raise PerLayerGeometryError(
+            f"Cannot split {tuple(mat.shape)} weight on '{self.name}' into "
+            f"{n_heads} heads of d_head in {sorted(allowed_dims)}: this "
+            "layer's attention geometry differs from the config-level scalars "
+            "(per-layer num_key_value_heads/head_dim, e.g. gemma4 KV-shared "
+            "or K==V layers). Read the wrapped module's weight directly for "
+            "this layer instead."
         )
 
     def _project_per_head_qkv(
@@ -616,7 +669,11 @@ class AttentionBridge(GeneralizedComponent):
         """
         component = linear_bridge.original_component
         assert component is not None, "LinearBridge.original_component not set"
-        weight = component.weight
+        weight = require_readable_weight(
+            component.weight,
+            operation="project per head (use_split_qkv_input / use_attn_in)",
+            owner=component,
+        )
         bias = component.bias
         w3d = einops.rearrange(
             weight,
@@ -771,7 +828,9 @@ class AttentionBridge(GeneralizedComponent):
         Gated query projections retain their live query-and-gate parameter;
         this analysis view selects the query rows interleaved within each head.
         """
-        weight = self.q.weight
+        weight = require_readable_weight(
+            self.q.weight, operation=f"read W_Q from {self.name}", owner=self.q
+        )
         if weight.ndim == 2 and self.config is not None:
             n_heads = self._get_n_heads()
             in_out_layout = self._weight_layout_in_out(self.q)
@@ -798,7 +857,9 @@ class AttentionBridge(GeneralizedComponent):
     @property
     def W_K(self) -> torch.Tensor:
         """Get W_K in 3D format [n_heads, d_model, d_head] (uses n_kv_heads for GQA)."""
-        weight = self.k.weight
+        weight = require_readable_weight(
+            self.k.weight, operation=f"read W_K from {self.name}", owner=self.k
+        )
         if weight.ndim == 2 and self.config is not None:
             return self._reshape_weight_to_3d(
                 weight,
@@ -810,7 +871,9 @@ class AttentionBridge(GeneralizedComponent):
     @property
     def W_V(self) -> torch.Tensor:
         """Get W_V in 3D format [n_heads, d_model, d_head] (uses n_kv_heads for GQA)."""
-        weight = self.v.weight
+        weight = require_readable_weight(
+            self.v.weight, operation=f"read W_V from {self.name}", owner=self.v
+        )
         if weight.ndim == 2 and self.config is not None:
             return self._reshape_weight_to_3d(
                 weight,
@@ -822,7 +885,9 @@ class AttentionBridge(GeneralizedComponent):
     @property
     def W_O(self) -> torch.Tensor:
         """Get W_O in 3D format [n_heads, d_head, d_model]."""
-        weight = self.o.weight
+        weight = require_readable_weight(
+            self.o.weight, operation=f"read W_O from {self.name}", owner=self.o
+        )
         if weight.ndim == 2 and self.config is not None:
             return self._reshape_weight_to_3d(
                 weight,

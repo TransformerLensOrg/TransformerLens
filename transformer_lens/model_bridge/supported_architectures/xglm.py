@@ -12,8 +12,8 @@ from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
     LinearBridge,
+    MLPBridge,
     NormalizationBridge,
-    SymbolicBridge,
     UnembeddingBridge,
 )
 
@@ -64,6 +64,9 @@ class XGLMArchitectureAdapter(ArchitectureAdapter):
             # no learnable weights — embed_positions does not appear in state_dict.
             "blocks": BlockBridge(
                 name="model.layers",
+                # fc2 IS the mlp output (no container fires hook_out). No
+                # hook_mlp_in override: pre-norm, the block already provides it.
+                hook_alias_overrides={"hook_mlp_out": "mlp.out.hook_out"},
                 submodules={
                     "ln1": NormalizationBridge(
                         name="self_attn_layer_norm",  # pre-attn norm on XGLMDecoderLayer
@@ -88,8 +91,11 @@ class XGLMArchitectureAdapter(ArchitectureAdapter):
                         use_native_layernorm_autograd=True,
                     ),
                     # fc1/fc2 live directly on XGLMDecoderLayer — no "mlp" container.
-                    # SymbolicBridge preserves TL structure without a real HF submodule.
-                    "mlp": SymbolicBridge(
+                    # Containerless fc1/fc2, as BERT (XGLM stays 3D — no
+                    # unflatten needed, unlike OPT).
+                    "mlp": MLPBridge(
+                        name=None,
+                        config=self.cfg,
                         submodules={
                             "in": LinearBridge(name="fc1"),
                             "out": LinearBridge(name="fc2"),

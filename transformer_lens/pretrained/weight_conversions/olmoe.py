@@ -2,6 +2,7 @@ import einops
 import torch
 
 from transformer_lens.config import TransformerLensConfig
+from transformer_lens.utilities.quantization import require_readable_weight
 
 
 def convert_olmoe_weights(olmoe, cfg: TransformerLensConfig):
@@ -45,15 +46,27 @@ def convert_olmoe_weights(olmoe, cfg: TransformerLensConfig):
 
         state_dict[f"blocks.{l}.ln2.w"] = olmoe_layer.post_attention_layernorm.weight
 
-        state_dict[f"blocks.{l}.mlp.W_gate.weight"] = olmoe_layer.mlp.gate.weight
+        state_dict[f"blocks.{l}.mlp.W_gate.weight"] = require_readable_weight(
+            olmoe_layer.mlp.gate.weight,
+            operation="convert the OLMoE router weight",
+            owner=olmoe,
+        )
 
         # HF OLMoE uses batched expert weights:
         #   gate_up_proj: [num_experts, 2 * intermediate_size, hidden_size]
         #   down_proj: [num_experts, hidden_size, intermediate_size]
         # The gate_up_proj fuses gate and up projections along dim 1.
         experts = olmoe_layer.mlp.experts
-        gate_up = experts.gate_up_proj  # [num_experts, 2*d_mlp, d_model]
-        down = experts.down_proj  # [num_experts, d_model, d_mlp]
+        gate_up = require_readable_weight(
+            experts.gate_up_proj,
+            operation="convert OLMoE expert weights (gate_up_proj)",
+            owner=olmoe,
+        )  # [num_experts, 2*d_mlp, d_model]
+        down = require_readable_weight(
+            experts.down_proj,
+            operation="convert OLMoE expert weights (down_proj)",
+            owner=olmoe,
+        )  # [num_experts, d_model, d_mlp]
 
         for e in range(cfg.num_experts):
             state_dict[f"blocks.{l}.mlp.experts.{e}.W_gate.weight"] = gate_up[e, : cfg.d_mlp, :]

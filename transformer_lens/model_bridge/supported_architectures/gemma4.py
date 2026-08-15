@@ -31,6 +31,7 @@ from typing import Any
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
+    AttentionBridge,
     DelegatedAttentionBlockBridge,
     EmbeddingBridge,
     LinearBridge,
@@ -131,8 +132,14 @@ class Gemma4ArchitectureAdapter(ArchitectureAdapter):
                     "post_feedforward_layernorm_2": GeneralizedComponent(
                         name="post_feedforward_layernorm_2", optional=True
                     ),
-                    "attn": GeneralizedComponent(
+                    # AttentionBridge for the per-head hook surface a bare
+                    # component lacks. Delegated semantics: pattern AND scores
+                    # both fire HF's post-softmax weights (no pre-softmax tensor
+                    # exists, unlike gemma1/2/3); writes to them are inert.
+                    "attn": AttentionBridge(
                         name="self_attn",
+                        config=self.cfg,
+                        maintain_native_attention=True,
                         submodules={
                             "q": LinearBridge(name="q_proj"),
                             # KV-shared layers (E2B/E4B) drop k/v projections and norms;
@@ -145,14 +152,7 @@ class Gemma4ArchitectureAdapter(ArchitectureAdapter):
                             "v_norm": GeneralizedComponent(name="v_norm", optional=True),
                         },
                     ),
-                    "mlp": GeneralizedComponent(
-                        name="mlp",
-                        submodules={
-                            "gate": LinearBridge(name="gate_proj"),
-                            "in": LinearBridge(name="up_proj"),
-                            "out": LinearBridge(name="down_proj"),
-                        },
-                    ),
+                    "mlp": self._gated_mlp(),
                 },
             ),
             "ln_final": GeneralizedComponent(name="model.language_model.norm"),

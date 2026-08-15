@@ -76,8 +76,6 @@ _KNOWN_DEAD_ALIASES = {
     "LlavaOnevisionForConditionalGeneration": "vision-encoder submodules unwired; video-frame path opaque",
     "Gemma3ForConditionalGeneration": "multimodal vision encoder opaque",
     "Idefics3ForConditionalGeneration": "vision-encoder layer submodules unwired (same Siglip opacity as Llava/Gemma3 multimodal)",
-    "OpenELMForCausalLM": "per-layer head counts break uniform q/k/v shape",
-    "GraniteMoeHybridForCausalLM": "MoE+shared-MLP block lacks proper submodule aliases",
 }
 
 

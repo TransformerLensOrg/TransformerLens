@@ -25,6 +25,7 @@ from transformer_lens.model_bridge.generalized_components import (
 )
 from transformer_lens.model_bridge.generalized_components.base import (
     CloneOutputUnderGradMixin,
+    GeneralizedComponent,
 )
 
 
@@ -105,7 +106,12 @@ class Llama4ArchitectureAdapter(ArchitectureAdapter):
                     "mlp": _Llama4MoEBridge(
                         name="feed_forward",
                         config=self.cfg,
+                        sparse_required=("router",),
                         submodules={
+                            # HF creates the router unconditionally on MoE
+                            # layers; mapping it makes a rename loud and gives
+                            # the layer real router observability.
+                            "router": GeneralizedComponent(name="router", optional=True),
                             # Dense-layer projections (absent on MoE layers).
                             "dense_gate": LinearBridge(name="gate_proj", optional=True),
                             "dense_in": LinearBridge(name="up_proj", optional=True),

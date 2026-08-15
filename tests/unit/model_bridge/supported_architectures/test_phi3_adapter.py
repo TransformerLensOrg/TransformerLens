@@ -49,11 +49,12 @@ def _make_cfg(
     d_mlp: int = D_MLP,
     d_vocab: int = D_VOCAB,
     n_ctx: int = N_CTX,
+    d_head: int | None = None,
 ) -> TransformerBridgeConfig:
     """Return a minimal TransformerBridgeConfig for Phi-3 adapter tests."""
     return TransformerBridgeConfig(
         d_model=d_model,
-        d_head=d_model // n_heads,
+        d_head=d_head if d_head is not None else d_model // n_heads,
         n_layers=n_layers,
         n_ctx=n_ctx,
         n_heads=n_heads,
@@ -302,3 +303,142 @@ class TestPhi3PreprocessWeights:
         out = adapter.preprocess_weights(sd)
         assert torch.allclose(out["blocks.0.ln1.weight"], torch.full((D_MODEL,), 2.0))
         assert torch.allclose(out["blocks.0.attn.q.weight"], torch.ones(N_HEADS * D_HEAD, D_MODEL))
+
+
+# ---------------------------------------------------------------------------
+# Explicit head_dim: d_head decoupled from d_model // n_heads
+# ---------------------------------------------------------------------------
+
+
+class _FakeAttention(torch.nn.Module):
+    """Minimal stand-in for HF Phi3Attention exposing only qkv_proj."""
+
+    def __init__(self, d_model: int, qkv_rows: int, bias: bool) -> None:
+        super().__init__()
+        self.qkv_proj = torch.nn.Linear(d_model, qkv_rows, bias=bias)
+        with torch.no_grad():
+            self.qkv_proj.weight.copy_(
+                torch.arange(qkv_rows * d_model, dtype=torch.float32).reshape(qkv_rows, d_model)
+            )
+            if bias:
+                self.qkv_proj.bias.copy_(torch.arange(qkv_rows, dtype=torch.float32))
+
+
+class TestPhi3ExplicitHeadDim:
+    """HF configs may set head_dim explicitly, decoupled from d_model // n_heads.
+
+    Geometry is chosen so d_model // n_heads never equals d_head — the old
+    derived-d_head formula cannot accidentally produce the right split sizes.
+    """
+
+    # MHA: d_model=16, n_heads=3 → derived would be 5, explicit d_head=4
+    MHA = dict(d_model=16, n_heads=3, n_kv_heads=3, d_head=4)
+    # GQA: d_model=16, n_heads=4 → derived would be 4, explicit d_head=3
+    GQA = dict(d_model=16, n_heads=4, n_kv_heads=2, d_head=3)
+
+    def _split_sizes(self, adapter: Phi3ArchitectureAdapter) -> list[int]:
+        conv = adapter.weight_processing_conversions["blocks.{i}.attn.q"]
+        assert isinstance(conv.tensor_conversion, _SizedSplitConversion)
+        return conv.tensor_conversion.sizes
+
+    def test_mha_conversion_split_sizes(self) -> None:
+        """Q/K/V each get n_heads * d_head = 12 rows, not 3 * (16 // 3) = 15."""
+        adapter = Phi3ArchitectureAdapter(_make_cfg(**self.MHA))
+        assert self._split_sizes(adapter) == [12, 12, 12]
+
+    def test_gqa_conversion_split_sizes(self) -> None:
+        """Q gets n_heads * d_head = 12 rows; K/V get n_kv_heads * d_head = 6."""
+        adapter = Phi3ArchitectureAdapter(_make_cfg(**self.GQA))
+        assert self._split_sizes(adapter) == [12, 6, 6]
+
+    def test_conversion_split_sizes_consistent_across_qkv(self) -> None:
+        """All three conversions must share the same size list."""
+        adapter = Phi3ArchitectureAdapter(_make_cfg(**self.GQA))
+        for key in ["blocks.{i}.attn.q", "blocks.{i}.attn.k", "blocks.{i}.attn.v"]:
+            conv = adapter.weight_processing_conversions[key]
+            assert isinstance(conv.tensor_conversion, _SizedSplitConversion)
+            assert conv.tensor_conversion.sizes == [12, 6, 6]
+
+    def test_split_phi3_qkv_mha_with_bias(self) -> None:
+        """Live split of a fused 36-row qkv_proj into 12/12/12 with biases."""
+        adapter = Phi3ArchitectureAdapter(_make_cfg(**self.MHA))
+        fake = _FakeAttention(d_model=16, qkv_rows=36, bias=True)
+        q, k, v = adapter._split_phi3_qkv(fake)
+        assert q.weight.shape == (12, 16)
+        assert k.weight.shape == (12, 16)
+        assert v.weight.shape == (12, 16)
+        fused_w = fake.qkv_proj.weight
+        fused_b = fake.qkv_proj.bias
+        assert torch.equal(q.weight, fused_w[:12])
+        assert torch.equal(k.weight, fused_w[12:24])
+        assert torch.equal(v.weight, fused_w[24:])
+        assert torch.equal(q.bias, fused_b[:12])
+        assert torch.equal(k.bias, fused_b[12:24])
+        assert torch.equal(v.bias, fused_b[24:])
+
+    def test_split_phi3_qkv_gqa_without_bias(self) -> None:
+        """Live split of a fused 24-row GQA qkv_proj into 12/6/6 without biases."""
+        adapter = Phi3ArchitectureAdapter(_make_cfg(**self.GQA))
+        fake = _FakeAttention(d_model=16, qkv_rows=24, bias=False)
+        q, k, v = adapter._split_phi3_qkv(fake)
+        assert q.weight.shape == (12, 16)
+        assert k.weight.shape == (6, 16)
+        assert v.weight.shape == (6, 16)
+        fused_w = fake.qkv_proj.weight
+        assert torch.equal(q.weight, fused_w[:12])
+        assert torch.equal(k.weight, fused_w[12:18])
+        assert torch.equal(v.weight, fused_w[18:])
+        assert q.bias is None
+        assert k.bias is None
+        assert v.bias is None
+
+    def test_derived_geometry_unchanged(self) -> None:
+        """Ordinary configs (d_head == d_model // n_heads) keep the same sizes."""
+        adapter = Phi3ArchitectureAdapter(_make_cfg())
+        assert self._split_sizes(adapter) == [
+            N_HEADS * D_HEAD,
+            N_KV_HEADS * D_HEAD,
+            N_KV_HEADS * D_HEAD,
+        ]
+
+
+class TestPhi3FusedSplitRefusesQuantizedWeights:
+    """The splitters Phi-3/GLM/GLM-4V actually install must refuse packed weights:
+    every in-tree user overrides the guarded defaults, and FP8 slices silently
+    into scale-less halves.
+    """
+
+    QUANTIZED = [
+        pytest.param(torch.int8, "packed integer storage", id="int8"),
+        pytest.param(torch.uint8, "packed integer storage", id="uint8"),
+        pytest.param(torch.float8_e4m3fn, "narrow float", id="fp8-e4m3fn"),
+    ]
+
+    @pytest.mark.parametrize("dtype,reason", QUANTIZED)
+    def test_qkv_split_refuses(self, dtype, reason) -> None:
+        adapter = Phi3ArchitectureAdapter(_make_cfg(d_model=16, n_heads=3, n_kv_heads=3, d_head=4))
+        fake = _FakeAttention(d_model=16, qkv_rows=36, bias=False)
+        fake.qkv_proj.weight = torch.nn.Parameter(
+            fake.qkv_proj.weight.detach().to(dtype), requires_grad=False
+        )
+        with pytest.raises(NotImplementedError, match=reason):
+            adapter._split_phi3_qkv(fake)
+
+    @pytest.mark.parametrize("dtype,reason", QUANTIZED)
+    def test_gate_up_split_refuses(self, dtype, reason) -> None:
+        class _FakeMLP(torch.nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.gate_up_proj = torch.nn.Linear(16, 32, bias=False)
+                self.gate_up_proj.weight = torch.nn.Parameter(
+                    torch.zeros(32, 16, dtype=dtype), requires_grad=False
+                )
+
+        with pytest.raises(NotImplementedError, match=reason):
+            Phi3ArchitectureAdapter._split_gate_up(_FakeMLP())
+
+    def test_float_weights_still_split(self) -> None:
+        """Positive control: the guard must not break ordinary Phi-3 boot."""
+        adapter = Phi3ArchitectureAdapter(_make_cfg(d_model=16, n_heads=3, n_kv_heads=3, d_head=4))
+        q, k, v = adapter._split_phi3_qkv(_FakeAttention(d_model=16, qkv_rows=36, bias=False))
+        assert q.weight.shape == (12, 16)

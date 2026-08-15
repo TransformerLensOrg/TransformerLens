@@ -11,11 +11,13 @@ import torch
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
-    BlockBridge,
     EmbeddingBridge,
     GatedMLPBridge,
+    MoEBridge,
+    MoERouterBridge,
     RMSNormalizationBridge,
     RotaryEmbeddingBridge,
+    ScaledResidualBlockBridge,
     UnembeddingBridge,
 )
 
@@ -25,7 +27,9 @@ class GraniteArchitectureAdapter(ArchitectureAdapter):
 
     Granite is a Llama-like architecture with RMSNorm, rotary position embeddings
     (RoPE), GQA, and a gated MLP (SiLU activation). Granite-specific scaling
-    multipliers are handled by the HF model's native forward pass.
+    multipliers are applied by the HF model's native forward pass;
+    ScaledResidualBlockBridge accounts for residual_multiplier so
+    hook_attn_out / hook_mlp_out expose the scaled residual contributions.
 
     Optional Parameters (may not exist in state_dict):
     -------------------------------------------------
@@ -60,12 +64,28 @@ class GraniteArchitectureAdapter(ArchitectureAdapter):
         """Build the dense gated MLP bridge."""
         return self._gated_mlp()
 
+    def _build_moe_bridge(self) -> MoEBridge:
+        """Sparse MoE block with a hookable router.
+
+        logits_index=-1: GraniteMoe-family routers return
+        (top_k_index, top_k_weights, router_logits) — index 0 is an int64
+        index tensor, so the default would hook the wrong element.
+        """
+        return MoEBridge(
+            name="block_sparse_moe",
+            config=self.cfg,
+            submodules={"gate": MoERouterBridge(name="router", logits_index=-1)},
+        )
+
     def _build_component_mapping(self) -> dict:
         """Build the full component mapping for dense Granite."""
         return {
             "embed": EmbeddingBridge(name="model.embed_tokens"),
             "rotary_emb": RotaryEmbeddingBridge(name="model.rotary_emb"),
-            "blocks": BlockBridge(
+            # HF multiplies each sublayer output by residual_multiplier before the
+            # residual add, so hook_attn_out / hook_mlp_out must expose the scaled
+            # contribution, not the raw module output.
+            "blocks": ScaledResidualBlockBridge(
                 name="model.layers",
                 submodules={
                     "ln1": RMSNormalizationBridge(name="input_layernorm", config=self.cfg),
@@ -73,6 +93,7 @@ class GraniteArchitectureAdapter(ArchitectureAdapter):
                     "attn": self._build_attention_bridge(),
                     "mlp": self._build_mlp_bridge(),
                 },
+                residual_contribution_scale=getattr(self.cfg, "residual_multiplier", 1.0),
             ),
             "ln_final": RMSNormalizationBridge(name="model.norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head", config=self.cfg),

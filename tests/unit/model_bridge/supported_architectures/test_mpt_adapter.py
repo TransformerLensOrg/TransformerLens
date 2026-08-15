@@ -1,9 +1,14 @@
 """Unit tests for MPTArchitectureAdapter."""
 
+import copy
+
 import pytest
 import torch
 import torch.nn as nn
 
+from tests.unit.model_bridge.supported_architectures.helpers import (
+    wire_attention_bridge,
+)
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion
 from transformer_lens.conversion_utils.param_processing_conversion import (
@@ -410,3 +415,68 @@ class TestMPTHubRouting:
         assert determine_architecture_from_hf_config(native) == "MptForCausalLM"
         legacy = SimpleNamespace(model_type="mpt", architectures=["MPTForCausalLM"])
         assert determine_architecture_from_hf_config(legacy) == "MPTForCausalLM"
+
+
+class _FakeMptAttention(nn.Module):
+    """Fused-Wqkv MPT-style attention exposing the attrs the ALiBi bridge reads."""
+
+    def __init__(self, d_model: int) -> None:
+        super().__init__()
+        self.Wqkv = nn.Linear(d_model, 3 * d_model, bias=False)
+        self.out_proj = nn.Linear(d_model, d_model, bias=False)
+
+
+class TestMPTAttentionScaleAndClip:
+    """The bridge must honor the HF module's resolved softmax_scale and match
+    HF's truthiness gate on clip_qkv (0.0 means disabled, not clamp-to-zero)."""
+
+    @staticmethod
+    def _run(adapter: MPTArchitectureAdapter, fake: _FakeMptAttention, x: torch.Tensor):
+        bridge = wire_attention_bridge(adapter, fake)
+        scores: list[torch.Tensor] = []
+        handle = bridge.hook_attn_scores.add_hook(
+            lambda tensor, hook: scores.append(tensor.clone())
+        )
+        try:
+            with torch.no_grad():
+                output = bridge(x)[0]
+        finally:
+            bridge.hook_attn_scores.remove_hooks()
+        return output, scores[0]
+
+    def test_module_softmax_scale_honored(
+        self, adapter: MPTArchitectureAdapter, cfg: TransformerBridgeConfig
+    ) -> None:
+        with torch.random.fork_rng(devices=[]):
+            torch.manual_seed(0)
+            fake_a = _FakeMptAttention(cfg.d_model)
+            x = torch.randn(2, 5, cfg.d_model)
+        fake_b = copy.deepcopy(fake_a)
+        fake_a.softmax_scale = 0.05
+        fake_b.softmax_scale = 0.10
+
+        _, scores_a = self._run(adapter, fake_a, x)
+        _, scores_b = self._run(adapter, fake_b, x)
+
+        torch.testing.assert_close(scores_b, scores_a * 2.0)
+
+    def test_clip_qkv_zero_is_disabled(
+        self, adapter: MPTArchitectureAdapter, cfg: TransformerBridgeConfig
+    ) -> None:
+        with torch.random.fork_rng(devices=[]):
+            torch.manual_seed(0)
+            fake_none = _FakeMptAttention(cfg.d_model)
+            x = torch.randn(2, 5, cfg.d_model)
+        fake_zero = copy.deepcopy(fake_none)
+        fake_zero.clip_qkv = 0.0
+        fake_active = copy.deepcopy(fake_none)
+        fake_active.clip_qkv = 0.05
+
+        out_none, _ = self._run(adapter, fake_none, x)
+        out_zero, _ = self._run(adapter, fake_zero, x)
+        out_active, _ = self._run(adapter, fake_active, x)
+
+        # HF gates on truthiness (`if self.clip_qkv:`), so 0.0 is a no-op.
+        torch.testing.assert_close(out_zero, out_none)
+        # A genuinely active clip must change the output, or the check is vacuous.
+        assert not torch.allclose(out_active, out_none, atol=1e-5)

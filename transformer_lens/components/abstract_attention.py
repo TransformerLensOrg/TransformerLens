@@ -266,6 +266,13 @@ class AbstractAttention(ABC, nn.Module):
                 head_index=k.shape[2],
             )
 
+        # OLMo v1 / OLMoE clamp Q/K/V after projection (and any qk-norm),
+        # before RoPE and cache append. Out-of-place so hooks stay legal.
+        if self.cfg.clip_qkv is not None:
+            q = q.clamp(min=-self.cfg.clip_qkv, max=self.cfg.clip_qkv)
+            k = k.clamp(min=-self.cfg.clip_qkv, max=self.cfg.clip_qkv)
+            v = v.clamp(min=-self.cfg.clip_qkv, max=self.cfg.clip_qkv)
+
         if past_kv_cache_entry is not None:
             # Appends the new keys and values to the cached values, and automatically updates the cache
             kv_cache_pos_offset = past_kv_cache_entry.past_keys.size(1)

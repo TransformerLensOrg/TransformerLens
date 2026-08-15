@@ -242,6 +242,7 @@ Failure message names the missing set. (`INTENTIONAL_EXCLUDES` in the test handl
 | Combined QKV (`c_attn`) | `gpt2.py`, `bloom.py` | `QKVSplitRearrangeConversion` to split + rearrange |
 | Split Q/K/V (standard) | `llama.py`, `mistral.py`, most modern | `self._qkvo_weight_conversions()` helper |
 | MoE routing | `mixtral.py`, `deepseek_v3.py`, `qwen3_moe.py`, `granite_moe.py` | `MoEBridge` with `gate` + batched expert submodules |
+| MoE with dense layers (`first_k_dense_replace`, `mlp_only_layers`, `mlp_layer_types`) | `deepseek_v3.py`, `glm4_moe.py`, `qwen3_moe.py` | Add optional `dense_gate`/`dense_in`/`dense_out` LinearBridges — `MoEBridge` binds gated-MLP neuron hooks on those layers (#1645) |
 | Missing biases (RMSNorm has no `b`; Llama has no attn/MLP biases) | `llama.py` (documented in docstring) | Weight processing handles `None` via `ProcessWeights._safe_get_tensor()` |
 | KV cache layout | All (implicit) | Adapter delegates; HF module manages internally |
 

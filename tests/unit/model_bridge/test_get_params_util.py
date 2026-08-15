@@ -73,15 +73,19 @@ class TestGetBridgeParams:
             w_v = params[f"blocks.{layer_idx}.attn.W_V"]
             w_o = params[f"blocks.{layer_idx}.attn.W_O"]
 
-            # Should be reshaped to [n_heads, d_model, d_head] format
-            expected_shape = (12, 768, 64)  # n_heads=12, d_model=768, d_head=64
-            assert w_q.shape == expected_shape
-            assert w_k.shape == expected_shape
-            assert w_v.shape == expected_shape
-
-            # Output should be [n_heads, d_head, d_model]
-            expected_o_shape = (12, 64, 768)
-            assert w_o.shape == expected_o_shape
+            # Shape alone cannot catch Q/K/V being read from the wrong
+            # projection: pin the VALUES against the TL-layout properties the
+            # mock block exposes.
+            block = mock_bridge.blocks[layer_idx]
+            n_heads, d_model, d_head = 12, 768, 64
+            assert w_q.shape == (n_heads, d_model, d_head)
+            assert w_o.shape == (n_heads, d_head, d_model)
+            torch.testing.assert_close(w_q, block.attn.W_Q)
+            torch.testing.assert_close(w_o, block.attn.W_O)
+            # Negative control: Q and K must be distinguishable in this fixture,
+            # or reading either one would satisfy the assertions above.
+            assert not torch.equal(w_q, w_k)
+            assert not torch.equal(w_k, w_v)
 
     def test_get_bridge_params_bias_handling(self):
         """Test that biases are handled correctly, including None biases."""

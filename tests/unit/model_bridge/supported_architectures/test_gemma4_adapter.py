@@ -2,10 +2,18 @@
 
 from types import SimpleNamespace
 
+import pytest
+import torch
+
+from tests.unit.model_bridge.supported_architectures.helpers import (
+    wire_attention_bridge,
+)
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.model_bridge.generalized_components import (
+    AttentionBridge,
     DelegatedAttentionBlockBridge,
     EmbeddingBridge,
+    GatedMLPBridge,
     LinearBridge,
     RotaryEmbeddingBridge,
     UnembeddingBridge,
@@ -161,6 +169,111 @@ def test_moe_submodules_are_optional():
 
 def test_gated_mlp_decomposition():
     mlp = _adapter().component_mapping["blocks"].submodules["mlp"]
+    assert isinstance(mlp, GatedMLPBridge)
     assert mlp.submodules["gate"].name == "gate_proj"
     assert mlp.submodules["in"].name == "up_proj"
     assert mlp.submodules["out"].name == "down_proj"
+    assert mlp.hook_aliases == {
+        "hook_pre": "gate.hook_out",
+        "hook_pre_linear": "in.hook_out",
+        "hook_post": "out.hook_in",
+    }
+
+
+class TestGemma4AttentionHookSurface:
+    """Attention must expose the gemma1/2/3 hook surface; as a bare
+    GeneralizedComponent everything beyond hook_in/hook_out was absent and q/k/v
+    fired flat. Observability only — HF keeps the math (MLP fixed in #1650).
+    """
+
+    D_MODEL, N_HEADS, N_KV_HEADS, D_HEAD, BATCH, SEQ = 64, 8, 1, 8, 2, 4
+
+    def _small_adapter(self):
+        # Built from _cfg (which supplies vision_config) then shrunk: the
+        # head-split conversion is a no-op unless the flat width equals
+        # n_heads * d_head, so the fake's dims and the cfg must agree.
+        cfg = _cfg()
+        cfg.d_model, cfg.d_head = self.D_MODEL, self.D_HEAD
+        cfg.n_heads, cfg.n_key_value_heads = self.N_HEADS, self.N_KV_HEADS
+        cfg.n_layers, cfg.n_ctx, cfg.d_vocab = 2, 64, 128
+        return Gemma4ArchitectureAdapter(cfg)
+
+    def _wire(self):
+        from tests.unit.model_bridge.supported_architectures.helpers import (
+            FakeDelegatedAttention,
+        )
+
+        hf_attn = FakeDelegatedAttention(self.D_MODEL, self.N_HEADS, self.N_KV_HEADS, self.D_HEAD)
+        return wire_attention_bridge(
+            self._small_adapter(),
+            hf_attn,
+            component="blocks.0.attn",
+            expected_type=AttentionBridge,
+        )
+
+    def test_q_hook_is_head_split(self):
+        bridge = self._wire()
+        seen: dict = {}
+        bridge.q.hook_out.add_hook(lambda t, hook: seen.__setitem__("q", tuple(t.shape)))
+        with torch.no_grad():
+            bridge(hidden_states=torch.randn(self.BATCH, self.SEQ, self.D_MODEL))
+        assert seen["q"] == (self.BATCH, self.SEQ, self.N_HEADS, self.D_HEAD), seen
+
+    def test_pattern_scores_and_z_hooks_fire(self):
+        bridge = self._wire()
+        fired: dict = {}
+        for name in ("hook_pattern", "hook_attn_scores"):
+            assert hasattr(bridge, name), f"{name} missing"
+            getattr(bridge, name).add_hook(
+                lambda t, hook, n=name: fired.__setitem__(n, tuple(t.shape))
+            )
+        bridge.o.hook_in.add_hook(lambda t, hook: fired.__setitem__("z", tuple(t.shape)))
+        with torch.no_grad():
+            bridge(hidden_states=torch.randn(self.BATCH, self.SEQ, self.D_MODEL))
+        expected = (self.BATCH, self.N_HEADS, self.SEQ, self.SEQ)
+        assert fired.get("hook_pattern") == expected, fired
+        assert fired.get("hook_attn_scores") == expected, fired
+        assert fired.get("z") == (self.BATCH, self.SEQ, self.N_HEADS, self.D_HEAD), fired
+
+
+class TestGemma4HeterogeneousKVGeometry:
+    """Accessors must not silently mis-factorize minority-geometry layers: the
+    per-layer K width still divides evenly by the majority head count, so einops
+    would return a wrong-shaped factorization with no error.
+    """
+
+    def _bridge_with_kv_width(self, kv_out_features):
+        from tests.unit.model_bridge.supported_architectures.helpers import (
+            wire_attention_bridge,
+        )
+
+        cfg = _cfg()
+        cfg.d_model, cfg.d_head = 64, 8
+        cfg.n_heads, cfg.n_key_value_heads = 8, 4
+        cfg.n_layers, cfg.n_ctx, cfg.d_vocab = 2, 64, 128
+        adapter = Gemma4ArchitectureAdapter(cfg)
+
+        class _Attn(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.q_proj = torch.nn.Linear(64, 64, bias=False)
+                self.k_proj = torch.nn.Linear(64, kv_out_features, bias=False)
+                self.v_proj = torch.nn.Linear(64, kv_out_features, bias=False)
+                self.o_proj = torch.nn.Linear(64, 64, bias=False)
+                for name in ("q_norm", "k_norm", "v_norm"):
+                    setattr(self, name, torch.nn.Identity())
+
+        return wire_attention_bridge(
+            adapter, _Attn(), component="blocks.0.attn", expected_type=AttentionBridge
+        )
+
+    def test_majority_geometry_factorizes(self) -> None:
+        bridge = self._bridge_with_kv_width(4 * 8)  # n_kv * d_head
+        assert bridge.W_K.shape == (4, 64, 8)
+
+    def test_minority_geometry_raises_not_misfactorizes(self) -> None:
+        """64 divides evenly by n_kv=4 (d_head 16 != 8), so einops would have
+        happily produced a wrong [4, 64, 16] with no error."""
+        bridge = self._bridge_with_kv_width(64)
+        with pytest.raises(ValueError, match="geometry differs"):
+            _ = bridge.W_K

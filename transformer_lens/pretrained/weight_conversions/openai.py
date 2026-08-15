@@ -11,6 +11,17 @@ import einops
 import torch
 
 from transformer_lens.config import TransformerLensConfig
+from transformer_lens.utilities.quantization import require_readable_weight
+
+# Phrased to hold for any quantization: the guard catches int8 and FP8 too, and
+# cannot know which one it caught, so it must not assert this *is* MXFP4.
+_GPT_OSS_REMEDY = (
+    "If this is a packed-MXFP4 checkpoint, load it dequantized so the converter "
+    "sees plain tensors: pass hf_model=AutoModelForCausalLM.from_pretrained(name, "
+    "quantization_config=Mxfp4Config(dequantize=True)), or load by model name and "
+    "TransformerLens dequantizes automatically. Otherwise reload without a "
+    "quantization_config. Quantized *forward* passes remain supported."
+)
 
 
 def convert_gpt_oss_weights(gpt_oss, cfg: TransformerLensConfig):
@@ -75,7 +86,12 @@ def convert_gpt_oss_weights(gpt_oss, cfg: TransformerLensConfig):
             )
 
         # MoE - Router (GPT-OSS uses 'router' with bias)
-        state_dict[f"blocks.{l}.mlp.W_gate.weight"] = layer.mlp.router.weight
+        state_dict[f"blocks.{l}.mlp.W_gate.weight"] = require_readable_weight(
+            layer.mlp.router.weight,
+            operation="convert the gpt-oss router weight",
+            owner=gpt_oss,
+            remedy=_GPT_OSS_REMEDY,
+        )
         state_dict[f"blocks.{l}.mlp.W_gate.bias"] = layer.mlp.router.bias
 
         # MoE - Experts
@@ -84,22 +100,35 @@ def convert_gpt_oss_weights(gpt_oss, cfg: TransformerLensConfig):
         #   down_proj: (num_experts, expert_dim, hidden_size)
         experts = layer.mlp.experts
         gate_up_proj = experts.gate_up_proj  # (num_experts, hidden_size, 2*expert_dim)
-        gate_up_bias = experts.gate_up_proj_bias  # (num_experts, 2*expert_dim)
+        gate_up_bias = require_readable_weight(
+            experts.gate_up_proj_bias,
+            operation=f"convert gpt-oss expert biases (blocks.{l}.mlp.experts.gate_up_proj_bias)",
+            owner=gpt_oss,
+            remedy=_GPT_OSS_REMEDY,
+        )  # (num_experts, 2*expert_dim)
         down_proj = experts.down_proj  # (num_experts, expert_dim, hidden_size)
-        down_bias = experts.down_proj_bias  # (num_experts, hidden_size)
+        down_bias = require_readable_weight(
+            experts.down_proj_bias,
+            operation=f"convert gpt-oss expert biases (blocks.{l}.mlp.experts.down_proj_bias)",
+            owner=gpt_oss,
+            remedy=_GPT_OSS_REMEDY,
+        )  # (num_experts, hidden_size)
 
-        if not isinstance(gate_up_proj, torch.Tensor):
-            # Packed MXFP4 checkpoints wrap expert weights in a triton-kernels
-            # object (confusingly also named "Tensor") that cannot be sliced.
-            raise NotImplementedError(
-                f"blocks.{l}.mlp.experts.gate_up_proj is a "
-                f"{type(gate_up_proj).__module__}.{type(gate_up_proj).__name__}, not a "
-                "torch.Tensor — this gpt-oss checkpoint has packed MXFP4 expert weights. "
-                "Load it dequantized so the converter sees plain tensors: pass "
-                "hf_model=AutoModelForCausalLM.from_pretrained(name, "
-                "quantization_config=Mxfp4Config(dequantize=True)), or load by model "
-                "name and TransformerLens dequantizes automatically."
-            )
+        # Packed MXFP4 wraps these in a triton-kernels object (confusingly also
+        # named "Tensor"), but int8 and FP8 gpt-oss finetunes slice without
+        # complaint and would emit plausible garbage, so check the dtype too.
+        gate_up_proj = require_readable_weight(
+            gate_up_proj,
+            operation=f"convert gpt-oss expert weights (blocks.{l}.mlp.experts.gate_up_proj)",
+            owner=gpt_oss,
+            remedy=_GPT_OSS_REMEDY,
+        )
+        down_proj = require_readable_weight(
+            down_proj,
+            operation=f"convert gpt-oss expert weights (blocks.{l}.mlp.experts.down_proj)",
+            owner=gpt_oss,
+            remedy=_GPT_OSS_REMEDY,
+        )
 
         for e in range(cfg.num_experts):
             # Split interleaved gate_up_proj into separate gate and up (in) projections

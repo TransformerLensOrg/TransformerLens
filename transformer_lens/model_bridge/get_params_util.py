@@ -8,11 +8,15 @@ logger = logging.getLogger(__name__)
 
 
 def _tensor_attr(obj, *names: str) -> Optional[torch.Tensor]:
-    """First attribute of ``obj`` among ``names`` that is an actual tensor, else None."""
+    """First attribute of ``obj`` among ``names`` that is an actual tensor, else None.
+
+    NotImplementedError counts as absent: MLA attention raises it from W_Q/W_K/W_V/W_O
+    (compressed projections have no standard per-head form).
+    """
     for name in names:
         try:
             value = getattr(obj, name)
-        except (AttributeError, TypeError):
+        except (AttributeError, TypeError, NotImplementedError):
             continue
         if isinstance(value, torch.Tensor):
             return value
@@ -120,6 +124,17 @@ def get_bridge_params(bridge) -> Dict[str, torch.Tensor]:
         mlp = getattr(block, "mlp", None)
         w_in = _tensor_attr(mlp, "W_in")
         if w_in is None:
+            if mlp is not None:
+                # Zero-filling a real MLP silently yields wrong numbers downstream
+                # (SVD/weight analyses decompose zeros). Say so — the fill stays for
+                # architectures that genuinely have no MLP under this name.
+                logger.warning(
+                    "Block %d MLP weights could not be extracted — emitting ZEROS "
+                    "for blocks.%d.mlp.W_in/W_out/b_in/b_out. Any weight-space "
+                    "analysis of this layer will be meaningless.",
+                    layer_idx,
+                    layer_idx,
+                )
             params_dict[f"blocks.{layer_idx}.mlp.W_in"] = _zeros(cfg.d_model, d_mlp)
             params_dict[f"blocks.{layer_idx}.mlp.W_out"] = _zeros(d_mlp, cfg.d_model)
             params_dict[f"blocks.{layer_idx}.mlp.b_in"] = _zeros(d_mlp)
@@ -139,12 +154,16 @@ def get_bridge_params(bridge) -> Dict[str, torch.Tensor]:
                 b_out if b_out is not None else _zeros(cfg.d_model)
             )
             w_gate = _tensor_attr(mlp, "W_gate")
-            if w_gate is None:
+            # Raw-attribute fallback is for plain gated MLPs only: `gate` on an
+            # interleaved-MoE component (anything exposing bound_dense) is the
+            # sparse layers' ROUTER, never a gate projection.
+            is_moe = getattr(type(mlp), "bound_dense", None) is not None
+            if w_gate is None and not is_moe:
                 w_gate = _tensor_attr(getattr(mlp, "gate", None), "weight")
             if w_gate is not None:
                 params_dict[f"blocks.{layer_idx}.mlp.W_gate"] = w_gate
                 b_gate = _tensor_attr(mlp, "b_gate")
-                if b_gate is None:
+                if b_gate is None and not is_moe:
                     b_gate = _tensor_attr(getattr(mlp, "gate", None), "bias")
                 if b_gate is not None:
                     params_dict[f"blocks.{layer_idx}.mlp.b_gate"] = b_gate

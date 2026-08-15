@@ -10,6 +10,7 @@ from typing import (
     Any,
     Callable,
     Dict,
+    FrozenSet,
     Iterable,
     Iterator,
     List,
@@ -30,11 +31,15 @@ from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.driver_protocol import to_torch
 from transformer_lens.model_bridge.exceptions import StopAtLayerException
+from transformer_lens.model_bridge.generalized_components.base import alias_generation
 from transformer_lens.utilities.aliases import resolve_alias
 from transformer_lens.utilities.lm_utils import lm_cross_entropy_loss
 from transformer_lens.utilities.slice import Slice, SliceInput
 
 _BLOCK_PATTERN = re.compile("blocks\\.(\\d+)")
+
+# Block-list container attributes a bridge may expose.
+_BLOCK_LIST_ATTRS = ("blocks", "encoder_blocks", "decoder_blocks", "L_blocks", "H_blocks")
 
 
 def build_alias_to_canonical_map(hook_dict: Any, prefix: str = "") -> dict:
@@ -87,6 +92,7 @@ class BridgeCore:
         self._hook_registry: Dict[str, HookPoint] = {}
         self._hook_registry_initialized = False
         self._hook_alias_registry: Dict[str, Union[str, List[str]]] = {}
+        self._block_alias_cache: Optional[Tuple[Tuple[int, int], Dict[str, str]]] = None
         self._property_alias_registry: Dict[str, str] = {}
         self.context_level = 0
         self._driver = driver
@@ -212,13 +218,23 @@ class BridgeCore:
                 except AttributeError:
                     pass
 
-    def _collect_component_aliases(self, component_mapping: Any, prefix: str = "") -> dict:
-        """Recursively collect aliases from components."""
+    def _collect_component_aliases(
+        self, component_mapping: Any, prefix: str = "", _ancestors: FrozenSet[int] = frozenset()
+    ) -> dict:
+        """Recursively collect aliases from the architecture's component templates.
+
+        ``_ancestors`` is path-scoped, not globally-visited: a cycle is cut
+        (else RecursionError at boot) while a diamond-shared component still
+        contributes aliases under both names.
+        """
         aliases: dict = {}
+        if id(component_mapping) in _ancestors:
+            return aliases
+        _ancestors = _ancestors | {id(component_mapping)}
         if isinstance(component_mapping, dict):
             for name, component in component_mapping.items():
                 sub_prefix = f"{prefix}.{name}" if prefix else name
-                aliases.update(self._collect_component_aliases(component, sub_prefix))
+                aliases.update(self._collect_component_aliases(component, sub_prefix, _ancestors))
         else:
             if hasattr(component_mapping, "hook_aliases") and component_mapping.hook_aliases:
                 for alias_name, target in component_mapping.hook_aliases.items():
@@ -232,7 +248,9 @@ class BridgeCore:
             if hasattr(component_mapping, "submodules") and component_mapping.submodules:
                 for sub_name, sub_component in component_mapping.submodules.items():
                     sub_prefix = f"{prefix}.{sub_name}" if prefix else sub_name
-                    aliases.update(self._collect_component_aliases(sub_component, sub_prefix))
+                    aliases.update(
+                        self._collect_component_aliases(sub_component, sub_prefix, _ancestors)
+                    )
         return aliases
 
     @staticmethod
@@ -287,8 +305,75 @@ class BridgeCore:
             aliases_tuple = self._compute_hook_aliases_cached(
                 hook_names_tuple, component_aliases_tuple
             )
-            return dict(aliases_tuple)
+            aliases = dict(aliases_tuple)
+            aliases.update(self._collect_block_instance_aliases())
+            return aliases
         return {}
+
+    def _collect_block_instance_aliases(self) -> Dict[str, str]:
+        """Collect per-block-instance aliases, overriding template-derived ones.
+
+        Templates cannot see per-layer rebinds (OlmoHybrid, MoE dense/sparse).
+        Memoized on (registry size, alias generation): size alone misses a
+        dense<->sparse rebind, which changes targets without changing size.
+        """
+        cache_key = (len(self._hook_registry), alias_generation())
+        cached = self._block_alias_cache
+        if cached is not None and cached[0] == cache_key:
+            return cached[1]
+        aliases: Dict[str, str] = {}
+        unresolved: List[str] = []
+        for bl_name in _BLOCK_LIST_ATTRS:
+            block_list = getattr(self, bl_name, None)
+            if block_list is None:
+                continue
+            for i, block in enumerate(block_list):
+                # A block with no registered hooks means the registry hasn't
+                # scanned it yet — unresolved aliases there are timing, not drops.
+                block_prefix = f"{bl_name}.{i}."
+                if f"{block_prefix}hook_in" not in self._hook_registry:
+                    continue
+                # Walk the block and its submodule tree: components rebind
+                # aliases per layer at bind time either at block level
+                # (OlmoHybrid) or one level down (MoEBridge's dense/sparse
+                # dispatch). id()-seen guards against shared/cyclic submodule
+                # references, which would otherwise hang boot.
+                # (prefix, component, ids-on-this-path): path-scoped rather than
+                # globally-visited so a cycle is cut while a component shared
+                # under two names still contributes aliases at both.
+                stack: List[Tuple[str, Any, FrozenSet[int]]] = [("", block, frozenset())]
+                while stack:
+                    sub_prefix, component, ancestors = stack.pop()
+                    if id(component) in ancestors:
+                        continue
+                    ancestors = ancestors | {id(component)}
+                    component_aliases = getattr(component, "hook_aliases", None)
+                    if component_aliases:
+                        for alias_name, target in component_aliases.items():
+                            targets = target if isinstance(target, list) else [target]
+                            for single_target in targets:
+                                full_target = f"{block_prefix}{sub_prefix}{single_target}"
+                                if full_target in self._hook_registry:
+                                    aliases[f"{block_prefix}{sub_prefix}{alias_name}"] = full_target
+                                    break
+                            else:
+                                unresolved.append(f"{block_prefix}{sub_prefix}{alias_name}")
+                    for nested_name, nested in (
+                        getattr(component, "submodules", None) or {}
+                    ).items():
+                        stack.append((f"{sub_prefix}{nested_name}.", nested, ancestors))
+        if unresolved:
+            # Surface drops instead of silently swallowing, mirroring
+            # GeneralizedComponent._register_aliases.
+            warnings.warn(
+                f"{len(unresolved)} block hook alias(es) did not resolve to a "
+                f"registered hook (e.g. '{unresolved[0]}'). Any such alias falls "
+                "back to the architecture template's mapping, which for a "
+                "per-layer rebind is the wrong tensor for this layer.",
+                stacklevel=2,
+            )
+        self._block_alias_cache = (cache_key, aliases)
+        return aliases
 
     def _add_aliases_to_hooks(self, hooks: Dict[str, HookPoint]) -> None:
         """Add aliases to hooks in place. Registry-first so RemoteBridge works."""

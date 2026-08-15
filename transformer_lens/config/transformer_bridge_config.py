@@ -73,6 +73,11 @@ class TransformerBridgeConfig(TransformerLensConfig):
         num_experts: Optional[int] = None,
         experts_per_token: Optional[int] = None,
         n_key_value_heads: Optional[int] = None,
+        # Heterogeneous attention geometry (e.g. Gemma 4): per-layer values when
+        # they vary across layers; d_head / n_key_value_heads then hold the
+        # majority-layer scalar and attention math is delegated to HF.
+        per_layer_head_dim: Optional[list] = None,
+        per_layer_num_key_value_heads: Optional[list] = None,
         relative_attention_max_distance: Optional[int] = None,
         relative_attention_num_buckets: Optional[int] = None,
         decoder_start_token_id: Optional[int] = None,
@@ -167,6 +172,8 @@ class TransformerBridgeConfig(TransformerLensConfig):
         self.num_experts = num_experts
         self.experts_per_token = experts_per_token
         self.n_key_value_heads = n_key_value_heads
+        self.per_layer_head_dim = per_layer_head_dim
+        self.per_layer_num_key_value_heads = per_layer_num_key_value_heads
         self.relative_attention_max_distance = relative_attention_max_distance
         self.relative_attention_num_buckets = relative_attention_num_buckets
         self.decoder_start_token_id = decoder_start_token_id
