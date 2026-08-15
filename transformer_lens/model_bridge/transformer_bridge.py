@@ -36,7 +36,7 @@ from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookIntrospectionMixin, HookPoint
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
-from transformer_lens.model_bridge.bridge_core import BridgeCore
+from transformer_lens.model_bridge.bridge_core import _BLOCK_LIST_ATTRS, BridgeCore
 from transformer_lens.model_bridge.component_setup import (
     refresh_container_state_owners,
     set_original_components,
@@ -60,6 +60,7 @@ from transformer_lens.model_bridge.generalized_components.block import (
 from transformer_lens.model_bridge.get_params_util import get_bridge_params
 from transformer_lens.utilities.activation_functions import softcap_enabled
 from transformer_lens.utilities.devices import move_to_and_update_config
+from transformer_lens.utilities.quantization import require_readable_weight
 
 if TYPE_CHECKING:
     pass
@@ -234,7 +235,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         d_head = self.cfg.d_head
         d_model = self.cfg.d_model
         blocks_iter = []
-        for bl_name in ("blocks", "encoder_blocks", "decoder_blocks", "L_blocks", "H_blocks"):
+        for bl_name in _BLOCK_LIST_ATTRS:
             if hasattr(self, bl_name):
                 blocks_iter.append(getattr(self, bl_name))
         if not blocks_iter:
@@ -540,11 +541,11 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
 
         apply_fn_to_all_components(self, set_compatibility_mode)
         self.clear_hook_registry()
-        # Drop pre-ln capture handles from any prior call so they don't accumulate.
+        # Drop block capture-hook handles from any prior call so they don't accumulate.
         if hasattr(self, "blocks"):
             for block in self.blocks:
-                if hasattr(block, "_teardown_pre_ln_capture"):
-                    block._teardown_pre_ln_capture()
+                if hasattr(block, "_teardown_capture_hooks"):
+                    block._teardown_capture_hooks()
         try:
             if not no_processing:
                 self.process_weights(
@@ -620,6 +621,28 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             fold_value_biases: Fold value biases into output bias. Default: True
             refactor_factored_attn_matrices: Experimental QK/OV factorization. Default: False
         """
+        # Folding and centering do arithmetic on raw weights, so packed or
+        # scale-separated storage would produce silent garbage. The forward
+        # path stays usable when quantized; only this transformation does not.
+        for name, param in self.original_model.named_parameters():
+            # No name filter: modern batched-MoE experts are Parameters that do
+            # NOT end in .weight (mlp.experts.gate_up_proj), and those are the
+            # very tensors the converters had to guard. unreadable_weight_reason
+            # is dtype-driven, so every full-width float parameter still passes.
+            # Routed through the shared helper so meta gets its own "load with
+            # real weights" message instead of being silently skipped — folding
+            # on meta tensors yields meta tensors, which is the same
+            # silent-garbage failure this guard exists to stop.
+            require_readable_weight(
+                param,
+                operation=f"process weights ({name})",
+                owner=self.original_model,
+                remedy=(
+                    "Load the model dequantized, or use the bridge without weight "
+                    "processing (enable_compatibility_mode(no_processing=True))."
+                ),
+            )
+
         # A failed or partial processing attempt is no longer guaranteed to retain
         # the raw HuggingFace basis, so invalidate that contract before any work.
         self._weights_processed = True
@@ -3590,7 +3613,8 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         self._propagate_attention_flag("use_attn_in", use_attn_in)
 
     def set_use_hook_mlp_in(self, use_hook_mlp_in: bool) -> None:
-        """Toggle the pre-ln2 ``hook_mlp_in`` HookPoint, matching legacy semantics.
+        """Toggle the ``hook_mlp_in`` HookPoint (the MLP-branch entry: pre-ln2, or
+        the MLP input on post-norm blocks), matching legacy semantics.
 
         See :py:meth:`HookedTransformer.set_use_hook_mlp_in`.
         """

@@ -5,8 +5,8 @@ only laptop-scale densely-MLP'd Multi-head Latent Attention checkpoint —
 DeepSeek-V2's MLA (q LoRA + compressed KV with decoupled rope) with every
 layer dense. Module names match DeepSeek-V2 exactly and the MLA bridge
 already handles both q-projection variants, so this is a pure subclass:
-the MoE router/shared-expert submodules are optional and simply never
-bind on the dense MLPs.
+the MoE router/shared-expert submodules are optional and never bind, so
+every layer takes MoEBridge's dense path and exposes gated-MLP neuron hooks.
 """
 
 from transformer_lens.model_bridge.supported_architectures.deepseek_v2 import (

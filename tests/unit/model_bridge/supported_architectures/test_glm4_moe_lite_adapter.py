@@ -7,7 +7,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from tests.unit.model_bridge.supported_architectures.helpers import make_bridge_cfg
+from tests.unit.model_bridge.supported_architectures.helpers import (
+    DENSE_KEYS,
+    make_bridge_cfg,
+)
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.factories.architecture_adapter_factory import (
     SUPPORTED_ARCHITECTURES,
@@ -87,7 +90,8 @@ class TestGlm4MoeLiteComponentMapping:
         """Dense layers in mlp_layer_types have neither router nor shared expert."""
         mlp = adapter.component_mapping["blocks"].submodules["mlp"]
         assert isinstance(mlp, MoEBridge)
-        assert set(mlp.submodules.keys()) == {"gate", "shared_experts"}
+        # dense_* are covered by the roster in test_moe_dense_dispatch.py.
+        assert set(mlp.submodules) - DENSE_KEYS == {"gate", "shared_experts"}
         assert mlp.submodules["gate"].optional is True
         shared = mlp.submodules["shared_experts"]
         assert isinstance(shared, GatedMLPBridge)

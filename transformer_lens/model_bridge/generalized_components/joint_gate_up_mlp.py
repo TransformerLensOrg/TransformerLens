@@ -15,6 +15,7 @@ from transformer_lens.model_bridge.generalized_components.gated_mlp import (
     resolve_activation_fn,
 )
 from transformer_lens.model_bridge.generalized_components.linear import LinearBridge
+from transformer_lens.utilities.quantization import require_readable_weight
 
 
 class JointGateUpMLPBridge(GatedMLPBridge):
@@ -34,8 +35,13 @@ class JointGateUpMLPBridge(GatedMLPBridge):
         config: Optional[Any] = None,
         submodules: Optional[Dict[str, GeneralizedComponent]] = None,
         split_gate_up_matrix: Optional[Callable] = None,
+        fused_attr: str = "gate_up_proj",
     ):
         super().__init__(name, config, submodules=submodules)
+        # HF names the fused module differently per family (gate_up_proj,
+        # input_linear, proj_1); parametrizing the default splitter keeps one
+        # guarded, bias-aware implementation instead of per-adapter copies.
+        self.fused_attr = fused_attr
         self.split_gate_up_matrix = (
             split_gate_up_matrix
             if split_gate_up_matrix is not None
@@ -100,31 +106,37 @@ class JointGateUpMLPBridge(GatedMLPBridge):
         for key, value in gate_up.state_dict(prefix=f"{prefix}gate_up.").items():
             state_dict.setdefault(key, value)
 
-    @staticmethod
     def _default_split_gate_up(
+        self,
         original_mlp_component: Any,
     ) -> tuple[torch.nn.Module, torch.nn.Module]:
-        """Split gate_up_proj [2*d_mlp, d_model] into (gate, up) nn.Linear modules."""
-        fused_weight = original_mlp_component.gate_up_proj.weight
+        """Split the fused [2*d_mlp, d_model] projection into (gate, up) Linears."""
+        fused_module = getattr(original_mlp_component, self.fused_attr)
+        # Guard before the split: float8 slices and survives nn.Parameter()
+        # silently, producing scale-less projections with no error anywhere.
+        fused_weight = require_readable_weight(
+            fused_module.weight,
+            operation="split a fused gate/up projection at boot",
+            owner=fused_module,
+        )
         gate_w, up_w = torch.tensor_split(fused_weight, 2, dim=0)
         d_model = fused_weight.shape[1]
         d_mlp = gate_w.shape[0]
 
-        has_bias = (
-            hasattr(original_mlp_component.gate_up_proj, "bias")
-            and original_mlp_component.gate_up_proj.bias is not None
-        )
+        has_bias = getattr(fused_module, "bias", None) is not None
         gate_b: torch.Tensor | None = None
         up_b: torch.Tensor | None = None
         if has_bias:
-            gate_b, up_b = torch.tensor_split(original_mlp_component.gate_up_proj.bias, 2, dim=0)
+            gate_b, up_b = torch.tensor_split(fused_module.bias, 2, dim=0)
 
-        gate_proj = torch.nn.Linear(d_model, d_mlp, bias=has_bias)
+        # skip_init: these Linears exist only to carry the split views, so a
+        # kaiming init would be waste and would advance the global RNG.
+        gate_proj = torch.nn.utils.skip_init(torch.nn.Linear, d_model, d_mlp, bias=has_bias)
         gate_proj.weight = torch.nn.Parameter(gate_w)
         if gate_b is not None:
             gate_proj.bias = torch.nn.Parameter(gate_b)
 
-        up_proj = torch.nn.Linear(d_model, d_mlp, bias=has_bias)
+        up_proj = torch.nn.utils.skip_init(torch.nn.Linear, d_model, d_mlp, bias=has_bias)
         up_proj.weight = torch.nn.Parameter(up_w)
         if up_b is not None:
             up_proj.bias = torch.nn.Parameter(up_b)
@@ -145,11 +157,15 @@ class JointGateUpMLPBridge(GatedMLPBridge):
         self.gate.set_original_component(gate_proj)
         getattr(self, "in").set_original_component(up_proj)
 
-        # Capture activation function from original component
-        if hasattr(original_component, "activation_fn"):
-            self._activation_fn = original_component.activation_fn
-        elif hasattr(original_component, "act_fn"):
-            self._activation_fn = original_component.act_fn
+        # Capture activation function from original component. Attr names vary:
+        # activation_fn/act_fn (phi3, glm), act (OpenELM), activation
+        # (GraniteMoeHybrid shared_mlp). Missing one silently falls back to
+        # cfg.act_fn — which is how OpenELM ran ReLU instead of SiLU.
+        for attr in ("activation_fn", "act_fn", "act", "activation"):
+            candidate = getattr(original_component, attr, None)
+            if callable(candidate):
+                self._activation_fn = candidate
+                break
 
     def _resolve_activation_fn(self) -> Callable:
         """Resolve the activation function for the reconstructed forward pass."""

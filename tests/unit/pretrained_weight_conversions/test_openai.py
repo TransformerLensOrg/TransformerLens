@@ -220,6 +220,33 @@ def test_packed_mxfp4_experts_raise_legible_error():
         convert_gpt_oss_weights(model, cfg)
 
 
+@pytest.mark.parametrize(
+    "dtype,reason",
+    [
+        (torch.int8, "packed integer storage"),
+        (torch.uint8, "packed integer storage"),
+        # The one that a plain isinstance/is_floating_point check admits: FP8
+        # reports is_floating_point=True and slices without complaint, so this
+        # converter used to emit scale-less garbage for it silently.
+        (torch.float8_e4m3fn, "narrow float"),
+        (torch.float8_e5m2, "narrow float"),
+    ],
+)
+@pytest.mark.parametrize("tensor_name", ["gate_up_proj", "down_proj"])
+def test_quantized_expert_weights_are_refused(dtype, reason, tensor_name):
+    """Both fused expert tensors are sliced, so both must be guarded — a packed
+    down_proj would silently drop its scales just as gate_up_proj would."""
+    cfg = make_cfg()
+    model = make_mock_model(cfg)
+    experts = model.model.layers[0].mlp.experts
+    setattr(experts, tensor_name, getattr(experts, tensor_name).to(dtype))
+
+    with pytest.raises(NotImplementedError, match=reason) as excinfo:
+        convert_gpt_oss_weights(model, cfg)
+    # The gpt-oss remedy must survive the move onto the shared helper.
+    assert "Mxfp4Config(dequantize=True)" in str(excinfo.value)
+
+
 def test_sinks_are_converted():
     """The learned attention-sink logits must reach the state dict (#1619 follow-up)."""
     cfg = make_cfg()

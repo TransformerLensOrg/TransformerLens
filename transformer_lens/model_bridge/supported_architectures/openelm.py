@@ -5,11 +5,12 @@ from typing import Any
 import torch
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
+from transformer_lens.model_bridge.compat import patch_dynamic_cache_v5
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
+    JointGateUpMLPBridge,
     LinearBridge,
-    MLPBridge,
     RMSNormalizationBridge,
     UnembeddingBridge,
 )
@@ -80,12 +81,17 @@ class OpenElmArchitectureAdapter(ArchitectureAdapter):
                         },
                         maintain_native_attention=True,
                         requires_attention_mask=True,
+                        # Fused qkv_proj (and per-layer head counts): the q/k/v
+                        # aliases cannot resolve; hook_z stays via out_proj.
+                        fused_qkv=True,
                     ),
-                    "mlp": MLPBridge(
+                    # proj_1 is a FUSED gate+up projection: under a plain
+                    # MLPBridge, hook_pre was the concatenated pre-GLU tensor.
+                    "mlp": JointGateUpMLPBridge(
                         name="ffn",
                         config=self.cfg,
+                        fused_attr="proj_1",
                         submodules={
-                            "in": LinearBridge(name="proj_1"),
                             "out": LinearBridge(name="proj_2"),
                         },
                     ),
@@ -98,7 +104,11 @@ class OpenElmArchitectureAdapter(ArchitectureAdapter):
     def prepare_loading(self, model_name: str, model_kwargs: dict) -> None:
         """Patch OpenELM for compatibility with transformers v5.
 
-        Two patches are needed:
+        apple's forward also calls DynamicCache.from_legacy_cache /
+        to_legacy_cache (removed in v5) — restored by the shared
+        patch_dynamic_cache_v5, as phi3/internlm2/baichuan do.
+
+        Two module patches are needed besides that:
         1. RotaryEmbedding: Custom _compute_sin_cos_embeddings fails on meta device
            because it calls .cos() on meta tensors. We wrap it to catch NotImplementedError.
         2. Weight re-initialization: OpenELM's _init_weights re-randomizes ALL weights
@@ -110,6 +120,8 @@ class OpenElmArchitectureAdapter(ArchitectureAdapter):
             model_name: The HuggingFace model name/path
             model_kwargs: The kwargs dict for from_pretrained()
         """
+        patch_dynamic_cache_v5()
+
         # Force-import the modeling module so we can patch it
         if force_import_remote_class(model_name, "modeling_openelm.OpenELMForCausalLM") is None:
             return
@@ -169,6 +181,17 @@ class OpenElmArchitectureAdapter(ArchitectureAdapter):
         Args:
             hf_model: The loaded HuggingFace OpenELM model
         """
+        # ffn_with_glu=False (ungated FFN) would make the fused gate/up split
+        # halve a projection that is not fused: boot succeeds, then the first
+        # forward dies in a mat-mul far from the cause. All published OpenELM
+        # checkpoints use GLU; refuse the config loudly at boot instead.
+        for module_name, module in hf_model.named_modules():
+            if getattr(module, "ffn_with_glu", True) is False:
+                raise NotImplementedError(
+                    f"OpenELM ffn_with_glu=False on {module_name}: the adapter "
+                    "splits proj_1 as a fused gate+up projection, which an "
+                    "ungated FFN does not have."
+                )
         # Ensure use_cache is set on config (transformers v5 raises AttributeError
         # for missing config attributes, and OpenELM's custom config omits use_cache)
         if not hasattr(hf_model.config, "use_cache") or "use_cache" not in hf_model.config.__dict__:

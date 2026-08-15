@@ -178,20 +178,27 @@ def _register_unowned_container_state(bridge_module: nn.Module, original_model: 
     bridge_module.add_module("_container_state_owners", root_owner)
 
 
-def _wire_symbolic_hooks(symbolic: SymbolicBridge) -> None:
-    """Fire a SymbolicBridge's own hook_in/hook_out from its ``in``/``out`` subcomponents.
+def _wire_symbolic_hooks(symbolic: GeneralizedComponent) -> None:
+    """Fire a placeholder's own hook_in/hook_out from its ``in``/``out`` subcomponents.
 
-    Permanent hooks (survive reset_hooks) re-fire the subcomponent activation through the
-    placeholder's HookPoint, so ``blocks.{i}.mlp.hook_in/hook_out`` (and their compat
-    aliases) behave like every non-symbolic arch's. A hook that returns a modified tensor
-    on the symbolic point propagates: the mirror returns it into the subcomponent's chain.
+    Applies to SymbolicBridge and to containerless bridges (``name=None``, e.g.
+    OPT/XGLM's fc-split MLPBridge): neither has a forward in the execution path,
+    so their own HookPoints would otherwise never fire. Permanent hooks (survive
+    reset_hooks) re-fire the subcomponent activation through the placeholder's
+    HookPoint, so ``blocks.{i}.mlp.hook_in/hook_out`` (and their compat aliases)
+    behave like every non-symbolic arch's. A hook that returns a modified tensor
+    on the placeholder point propagates: the mirror returns it into the
+    subcomponent's chain.
     """
+    if getattr(symbolic, "_placeholder_hooks_wired", False):
+        return
     sub_in = symbolic.submodules.get("in")
     sub_out = symbolic.submodules.get("out")
     if sub_in is not None:
         sub_in.hook_in.add_hook(lambda tensor, hook: symbolic.hook_in(tensor), is_permanent=True)
     if sub_out is not None:
         sub_out.hook_out.add_hook(lambda tensor, hook: symbolic.hook_out(tensor), is_permanent=True)
+    object.__setattr__(symbolic, "_placeholder_hooks_wired", True)
 
 
 def setup_submodules(
@@ -287,6 +294,12 @@ def setup_submodules(
                 for sub_name, (sub_path, sub_comp) in submodule.real_components.items():
                     prefixed_key = f"{module_name}.{sub_name}"
                     component.real_components[prefixed_key] = (sub_path, sub_comp)
+                # And like SymbolicBridge, nothing in the execution path calls
+                # their forward, so mirror hook_in/hook_out from in/out.
+                # Opt-in flag: executable containerless views (LLaDA's gated
+                # MLP) fire their own hooks and must not be double-fired.
+                if getattr(submodule, "mirror_placeholder_hooks", False):
+                    _wire_symbolic_hooks(submodule)
             elif not submodule.is_list_item:
                 component.real_components[module_name] = (submodule.name, submodule)
 
@@ -295,6 +308,12 @@ def setup_submodules(
         component.submodules.pop(name, None)
     if skipped_optional:
         _prune_hook_aliases_for_skipped(component, skipped_optional)
+    # Components whose submodules are optional only in some configurations
+    # validate here: which optionals were actually skipped is not knowable
+    # until every submodule has been resolved.
+    validate_after_setup = getattr(component, "validate_after_setup", None)
+    if callable(validate_after_setup):
+        validate_after_setup(skipped_optional)
 
 
 def _prune_hook_aliases_for_skipped(component: GeneralizedComponent, skipped: list[str]) -> None:

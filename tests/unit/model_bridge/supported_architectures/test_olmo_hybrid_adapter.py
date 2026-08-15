@@ -74,3 +74,32 @@ class TestOlmoHybridResidMidDropped:
     def test_hook_resid_mid_alias_absent(self, adapter) -> None:
         block = adapter.component_mapping["blocks"]
         assert "hook_resid_mid" not in block.hook_aliases
+
+
+class TestOlmoHybridPerLayerContributionAliases:
+    """set_original_component selects hook_attn_out / hook_mlp_out per layer
+    type: full-attention layers are post-norm (contribution = norm output),
+    linear-attention layers are pre-norm (contribution = raw output). #1648."""
+
+    def _bind(self, adapter, hf_layer):
+        import copy
+
+        block = copy.deepcopy(adapter.component_mapping["blocks"])
+        block.set_original_component(hf_layer)
+        return block
+
+    def test_full_attention_layer_uses_post_norm_outputs(self, adapter) -> None:
+        import torch.nn as nn
+
+        hf_layer = nn.Module()
+        hf_layer.post_feedforward_layernorm = nn.LayerNorm(8)
+        block = self._bind(adapter, hf_layer)
+        assert block.hook_aliases["hook_attn_out"] == "ln2.hook_out"
+        assert block.hook_aliases["hook_mlp_out"] == "ln2_post.hook_out"
+
+    def test_linear_attention_layer_uses_raw_outputs(self, adapter) -> None:
+        import torch.nn as nn
+
+        block = self._bind(adapter, nn.Module())
+        assert block.hook_aliases["hook_attn_out"] == "linear_attn.hook_out"
+        assert block.hook_aliases["hook_mlp_out"] == "mlp.hook_out"

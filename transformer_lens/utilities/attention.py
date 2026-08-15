@@ -43,3 +43,18 @@ def complex_attn_linear(
         "batch pos head_index d_model, head_index d_model d_head -> batch pos head_index d_head",
     )
     return result + b
+
+
+def clamp_qkv(
+    q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, clip: float
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Clamp Q/K/V to [-clip, clip] out-of-place (OLMo/OLMoE/MPT clip_qkv).
+
+    Out-of-place rather than HF's clamp_ so tensors wrapped by full backward
+    hooks stay legal to use.
+    """
+    return (
+        q.clamp(min=-clip, max=clip),
+        k.clamp(min=-clip, max=clip),
+        v.clamp(min=-clip, max=clip),
+    )

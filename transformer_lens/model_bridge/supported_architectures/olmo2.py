@@ -90,12 +90,18 @@ class Olmo2ArchitectureAdapter(ArchitectureAdapter):
                     ),
                     "mlp": self._build_mlp_bridge(),
                 },
-                # Post-norm override: ln2 is post_feedforward_layernorm applied AFTER
-                # MLP, so "ln2.hook_in" captures the MLP output (wrong mid-point).
-                # The true residual mid-point (between attention and MLP) is mlp.hook_in.
+                # Post-norm overrides: ln1/ln2 are applied AFTER attention/MLP and
+                # BEFORE the residual add, so the residual mid-point is mlp.hook_in
+                # and the additive contributions are the norm outputs, not the raw
+                # module outputs (attn.hook_out / mlp.hook_out stay raw).
                 hook_alias_overrides={
                     "hook_resid_mid": "mlp.hook_in",
+                    "hook_attn_out": "ln1.hook_out",
+                    "hook_mlp_out": "ln2.hook_out",
                 },
+                # No pre-MLP norm: the MLP consumes the mid-residual directly, so
+                # the hook_mlp_in capture must sit on the MLP, not on ln2.
+                mlp_reads_resid_directly=True,
             ),
             "ln_final": RMSNormalizationBridge(name="model.norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head", config=self.cfg),

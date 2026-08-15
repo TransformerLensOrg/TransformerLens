@@ -2,7 +2,10 @@
 
 import pytest
 
-from tests.unit.model_bridge.supported_architectures.helpers import make_bridge_cfg
+from tests.unit.model_bridge.supported_architectures.helpers import (
+    DENSE_KEYS,
+    make_bridge_cfg,
+)
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.conversion_utils.conversion_steps.rearrange_tensor_conversion import (
     RearrangeTensorConversion,
@@ -220,10 +223,14 @@ class TestQwen3MoeMoEStructure:
         assert isinstance(mlp, MoEBridge)
         assert not isinstance(mlp, GatedMLPBridge)
 
-    def test_mlp_has_only_gate_submodule(self, adapter: Qwen3MoeArchitectureAdapter) -> None:
-        """Experts are batched 3D tensors inside the MoE block — only the router is mapped."""
+    def test_mlp_maps_router_and_dense_projections(
+        self, adapter: Qwen3MoeArchitectureAdapter
+    ) -> None:
+        """Experts are batched 3D tensors inside the MoE block, so only the
+        router is mapped for sparse layers."""
         mlp = adapter.component_mapping["blocks"].submodules["mlp"]
-        assert set(mlp.submodules.keys()) == {"gate"}
+        # dense_* are covered by the roster in test_moe_dense_dispatch.py.
+        assert set(mlp.submodules) - DENSE_KEYS == {"gate"}
 
 
 class TestQwen3MoeArchitectureGuards:

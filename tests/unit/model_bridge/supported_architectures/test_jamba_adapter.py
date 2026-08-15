@@ -204,10 +204,11 @@ class TestJambaMoEMapping:
         mlp = adapter.get_component_mapping()["blocks"].submodules["mlp"]
         assert isinstance(mlp, MoEBridge)
         assert mlp.name == "feed_forward"
-        assert set(mlp.submodules) == {"gate", "in", "out", "router"}
-        assert mlp.submodules["router"].name == "router"
-        assert mlp.submodules["router"].optional is True
-        assert mlp.submodules["gate"].optional is True
+        # Dense (JambaMLP) layers bind under dense_* so they get gated-MLP
+        # neuron hooks; `router` stays the sparse layers' router (#1645).
+        assert set(mlp.submodules) == {"dense_gate", "dense_in", "dense_out", "router"}
+        # A renamed router on a sparse layer must fail loudly, not bind silently.
+        assert mlp._sparse_required == ("router",)
 
 
 class TestJambaFactoryRegistration:

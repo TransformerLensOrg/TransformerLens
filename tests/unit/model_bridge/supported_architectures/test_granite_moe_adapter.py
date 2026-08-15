@@ -157,6 +157,18 @@ class TestGraniteMoeAdapterComponentMapping:
         assert mapping["ln_final"].name == "model.norm"
         assert mapping["unembed"].name == "lm_head"
 
+    def test_scaled_residual_block(self, adapter: GraniteMoeArchitectureAdapter) -> None:
+        """hook_attn_out / hook_mlp_out fire on the scaled contribution (#1648)."""
+        from transformer_lens.model_bridge.generalized_components import (
+            ScaledResidualBlockBridge,
+        )
+
+        block = adapter.component_mapping["blocks"]
+        assert isinstance(block, ScaledResidualBlockBridge)
+        assert block.scaled_mlp_submodule == "mlp"
+        assert "hook_attn_out" not in block.hook_aliases
+        assert "hook_mlp_out" not in block.hook_aliases
+
     def test_block_submodule_keys(self, adapter: GraniteMoeArchitectureAdapter) -> None:
         blocks = adapter.component_mapping["blocks"]
         assert set(blocks.submodules.keys()) == {"ln1", "ln2", "attn", "mlp"}
@@ -210,3 +222,16 @@ class TestGraniteMoeAdapterWeightConversions:
             "blocks.{i}.attn.v.weight",
             "blocks.{i}.attn.o.weight",
         }
+
+
+def test_moe_router_is_hookable(adapter: GraniteMoeArchitectureAdapter) -> None:
+    """The sparse block declared no submodules, so router logits — the tensor
+    every MoE routing analysis needs — had no hook at all."""
+    from transformer_lens.model_bridge.generalized_components import MoERouterBridge
+
+    mlp = adapter.component_mapping["blocks"].submodules["mlp"]
+    router = mlp.submodules["gate"]
+    assert isinstance(router, MoERouterBridge)
+    assert router.name == "router"
+    # (top_k_index, top_k_weights, router_logits) — index 0 is int64 indices.
+    assert router.logits_index == -1

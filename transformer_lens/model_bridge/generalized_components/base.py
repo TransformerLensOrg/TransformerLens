@@ -52,6 +52,23 @@ class CloneOutputUnderGradMixin(nn.Module):
         return out
 
 
+# Bumped whenever any component rebinds its hook_aliases (MoEBridge's dense/
+# sparse dispatch, OlmoHybrid's per-layer selection). Alias caches key on it:
+# a rebind can leave the hook REGISTRY unchanged while changing what the
+# aliases point at, so size-based cache keys cannot see it.
+_ALIAS_GENERATION = 0
+
+
+def alias_generation() -> int:
+    """Current global alias-rebind generation."""
+    return _ALIAS_GENERATION
+
+
+def _bump_alias_generation() -> None:
+    global _ALIAS_GENERATION
+    _ALIAS_GENERATION += 1
+
+
 class GeneralizedComponent(nn.Module):
     """Base class for generalized transformer components.
 
@@ -64,6 +81,14 @@ class GeneralizedComponent(nn.Module):
     compatibility_mode: bool = False
     disable_warnings: bool = False
     hook_aliases: Dict[str, Union[str, List[str]]] = {}
+
+    # Projection-hook protocol between container bridges (MLPBridge) and the
+    # projection bridges they wrap (LinearBridge / Conv1DBridge): the wrapper
+    # records that its hook_out fired so the container only re-fires it as a
+    # bypass fallback, and the container suppresses the wrapper's next hook_in
+    # after pre-firing it itself. See MLPBridge.forward.
+    _fired_hook_out: bool = False
+    _suppress_next_hook_in: bool = False
     property_aliases: Dict[str, str] = {}
 
     def __init__(
@@ -439,6 +464,9 @@ class GeneralizedComponent(nn.Module):
             self._register_hook(name, value)
             super().__setattr__(name, value)
             return
+        if name == "hook_aliases":
+            # Any alias rebind invalidates alias caches downstream.
+            _bump_alias_generation()
         if name.startswith("_") or name in [
             "name",
             "config",
@@ -447,6 +475,12 @@ class GeneralizedComponent(nn.Module):
             "compatibility_mode",
             "disable_warnings",
             "optional",
+            # Components rebind these per layer at bind time (MoEBridge's
+            # dense/sparse dispatch). Without the carve-out the assignment is
+            # forwarded to the wrapped HF module whenever it happens to expose
+            # the attribute — the rebind then silently vanishes.
+            "hook_aliases",
+            "property_aliases",
             # train()/eval() set self.training; redirecting it to the original
             # component leaves the wrapper stuck in training mode (dropout at
             # inference). Recursion still reaches the original via _modules.

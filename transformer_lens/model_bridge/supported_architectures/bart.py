@@ -9,9 +9,9 @@ from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
     LinearBridge,
+    MLPBridge,
     NormalizationBridge,
     PosEmbedBridge,
-    SymbolicBridge,
     UnembeddingBridge,
 )
 from transformer_lens.model_bridge.generalized_components.base import (
@@ -104,8 +104,15 @@ class BartFamilyArchitectureAdapter(ArchitectureAdapter):
         """Encoder self-attention seam; LED swaps in its Longformer variant."""
         return self._attention("self_attn")
 
-    def _mlp(self) -> SymbolicBridge:
-        return SymbolicBridge(
+    def _mlp(self) -> MLPBridge:
+        """MLPBridge(name=None), not SymbolicBridge: the latter exposes no
+        hook_pre/hook_post. fc1/fc2 sit directly on the block with no MLP
+        container, and component setup promotes on `name is None` rather than
+        on the bridge type, so the mlp.in/mlp.out weight paths are unchanged
+        and MLPBridge.forward is never invoked. Same shape as BERT."""
+        return MLPBridge(
+            name=None,
+            config=self.cfg,
             submodules={
                 "in": LinearBridge(name="fc1"),
                 "out": LinearBridge(name="fc2"),

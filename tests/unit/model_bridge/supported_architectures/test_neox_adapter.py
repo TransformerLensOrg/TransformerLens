@@ -14,6 +14,7 @@ import torch
 
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.model_bridge.generalized_components import (
+    BlockBridge,
     EmbeddingBridge,
     JointQKVPositionEmbeddingsAttentionBridge,
     LinearBridge,
@@ -51,6 +52,9 @@ def _make_cfg(
         d_mlp=d_mlp,
         default_prepend_bos=False,
         architecture="GPTNeoXForCausalLM",
+        # Explicit: the adapter now honours this, and TransformerBridgeConfig
+        # defaults it to False where HF's GPTNeoX default is True.
+        parallel_attn_mlp=True,
     )
 
 
@@ -112,6 +116,33 @@ class TestNeoxAdapterComponentMapping:
         assert isinstance(blocks, ParallelBlockBridge)
         assert isinstance(mapping["ln_final"], NormalizationBridge)
         assert isinstance(mapping["unembed"], UnembeddingBridge)
+
+    def test_sequential_config_builds_plain_block_bridge(self) -> None:
+        """A caller-supplied config with parallel_attn_mlp=False must not get the
+        parallel block: only HF-booted configs carry use_parallel_residual, so the
+        tl_config path falls back or sequential wiring loses hook_resid_mid.
+        """
+        cfg = _make_cfg()
+        cfg.parallel_attn_mlp = False
+
+        adapter = NeoxArchitectureAdapter(cfg)
+        blocks = adapter.component_mapping["blocks"]
+
+        assert isinstance(blocks, BlockBridge)
+        assert not isinstance(blocks, ParallelBlockBridge)
+        assert adapter.cfg.parallel_attn_mlp is False
+        assert "hook_resid_mid" in blocks.hook_aliases
+
+    def test_hf_use_parallel_residual_overrides_config_default(self) -> None:
+        """HF-booted configs carry use_parallel_residual; it wins over the TL default."""
+        cfg = _make_cfg()
+        cfg.parallel_attn_mlp = False
+        cfg.use_parallel_residual = True
+
+        adapter = NeoxArchitectureAdapter(cfg)
+
+        assert isinstance(adapter.component_mapping["blocks"], ParallelBlockBridge)
+        assert adapter.cfg.parallel_attn_mlp is True
 
     def test_top_level_hf_paths(self, adapter: NeoxArchitectureAdapter) -> None:
         mapping = adapter.component_mapping

@@ -90,12 +90,14 @@ class SwitchTransformersArchitectureAdapter(T5ArchitectureAdapter):
         return MoEBridge(
             name=f"{layer_prefix}.mlp",
             config=self.cfg,
+            sparse_required=("gate",),
             submodules={
                 "gate": GeneralizedComponent(name="router", optional=True),
-                # Dense-layer projections (absent on sparse layers); in/out per
-                # T5-family convention (nonstandard names dodge the component
-                # prober's down-projection skip and get crash-probed).
-                "in": LinearBridge(name="wi", optional=True),
-                "out": LinearBridge(name="wo", optional=True),
+                # Dense-layer projections (absent on sparse layers). The dense
+                # feed-forward here is UNGATED (wi/wo), so MoEBridge binds the
+                # two-key dense shape: hook_pre/hook_post over d_ff, no
+                # hook_pre_linear (#1645).
+                "dense_in": LinearBridge(name="wi", optional=True),
+                "dense_out": LinearBridge(name="wo", optional=True),
             },
         )

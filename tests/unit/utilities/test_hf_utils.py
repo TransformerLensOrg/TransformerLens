@@ -179,3 +179,50 @@ class TestDownloadFileFromHf:
         assert result == {"ok": True}
         assert state["calls"] == 2
         assert len(_no_sleep) == 1
+
+
+class TestRemotePostInitCompat:
+    """4.x-era remote configs define argless __post_init__, which >=5.x calls
+    with the class's own fields as kwargs — crashing, and (even if not) never
+    setting those fields, since 4.x classes relied on the base to setattr them.
+    """
+
+    @staticmethod
+    def _legacy_class():
+        from transformers.configuration_utils import PretrainedConfig
+
+        class _LegacyRemoteConfig(PretrainedConfig):
+            model_type = "tl-test-legacy"
+
+            def __post_init__(self) -> None:
+                # 4.x style: derives from fields the base was expected to set.
+                self.derived = getattr(self, "model_dim", 0) * 2
+
+        return _LegacyRemoteConfig
+
+    def test_legacy_class_crashes_without_the_shim(self) -> None:
+        """The premise: if this stops failing, transformers changed the
+        contract and the shim should be retired."""
+        cls = self._legacy_class()
+        with pytest.raises(TypeError, match="unexpected keyword argument"):
+            cls(model_dim=8, use_cache=True)
+
+    def test_tolerant_wrapper_sets_fields_then_derives(self) -> None:
+        from transformer_lens.utilities.hf_utils import make_post_init_kwarg_tolerant
+
+        cls = self._legacy_class()
+        make_post_init_kwarg_tolerant(cls)
+        config = cls(model_dim=8, use_cache=True)
+        # Base-first ordering is the load-bearing part: the original body must
+        # see model_dim already set, or every derived field silently zeroes.
+        assert config.model_dim == 8
+        assert config.derived == 16
+
+    def test_wrapper_is_idempotent(self) -> None:
+        from transformer_lens.utilities.hf_utils import make_post_init_kwarg_tolerant
+
+        cls = self._legacy_class()
+        make_post_init_kwarg_tolerant(cls)
+        first = cls.__post_init__
+        make_post_init_kwarg_tolerant(cls)
+        assert cls.__post_init__ is first

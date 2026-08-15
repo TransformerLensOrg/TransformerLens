@@ -4,6 +4,7 @@ import pytest
 import torch
 from transformers import Qwen2MoeConfig
 
+from tests.unit.model_bridge.supported_architectures.helpers import DENSE_KEYS
 from transformer_lens.conversion_utils.conversion_steps.rearrange_tensor_conversion import (
     RearrangeTensorConversion,
 )
@@ -111,7 +112,8 @@ class TestQwen2MoeComponentMapping:
 
     def test_moe_submodules(self, adapter: Qwen2MoeArchitectureAdapter) -> None:
         mlp = adapter.component_mapping["blocks"].submodules["mlp"]
-        assert set(mlp.submodules.keys()) == {
+        # dense_* are covered by the roster in test_moe_dense_dispatch.py.
+        assert set(mlp.submodules) - DENSE_KEYS == {
             "gate",
             "experts",
             "shared_expert",

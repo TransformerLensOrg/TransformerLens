@@ -80,13 +80,22 @@ class Glm4MoeArchitectureAdapter(ArchitectureAdapter):
                         requires_attention_mask=True,
                         requires_position_embeddings=True,
                     ),
-                    # Dense prefix layers expose `mlp` but no router; mark gate optional
-                    # for the dense-MoE boundary.
+                    # Dense prefix layers (idx < first_k_dense_replace) expose
+                    # `mlp` with no router; the dense_* projections bind there
+                    # and carry the gated-MLP neuron hooks.
                     "mlp": MoEBridge(
                         name="mlp",
                         config=self.cfg,
+                        sparse_required=("gate",),
                         submodules={
                             "gate": MoERouterBridge(name="gate", optional=True),
+                            # Dense-layer projections (present only on the
+                            # dense layers of this interleaved stack); their
+                            # presence is what makes MoEBridge bind gated-MLP
+                            # neuron hooks there (#1645).
+                            "dense_gate": LinearBridge(name="gate_proj", optional=True),
+                            "dense_in": LinearBridge(name="up_proj", optional=True),
+                            "dense_out": LinearBridge(name="down_proj", optional=True),
                         },
                     ),
                 },

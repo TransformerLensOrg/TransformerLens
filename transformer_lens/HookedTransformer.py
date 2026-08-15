@@ -1369,6 +1369,18 @@ class HookedTransformer(HookedRootModule):
                 assert (
                     qc.get("quant_method", "") == "bitsandbytes"
                 ), "Only bitsandbytes quantization is supported"
+            elif quant_method:
+                # Anything other than the supported bitsandbytes 4-bit Llama
+                # flow reaches the converters, which slice `.weight` directly:
+                # packed or scale-separated storage yields wrong numbers rather
+                # than an error. Refuse instead.
+                raise NotImplementedError(
+                    f"HookedTransformer cannot convert a {quant_method!r}-quantized "
+                    "checkpoint: its weight converters read weights directly, and "
+                    "packed or scale-separated storage would silently produce wrong "
+                    "values. Load the model dequantized, or use TransformerBridge "
+                    "for a quantized forward pass."
+                )
         else:
             hf_cfg = {}
 

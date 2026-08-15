@@ -36,10 +36,18 @@ class Qwen2MoeArchitectureAdapter(Qwen2ArchitectureAdapter):
         blocks.submodules["mlp"] = MoEBridge(
             name="mlp",
             config=self.cfg,
+            sparse_required=("gate", "experts"),
             submodules={
-                "gate": Qwen2MoeRouterBridge(name="gate"),
-                "experts": MoEBridge(name="experts", config=self.cfg),
-                "shared_expert": self._gated_mlp(name="shared_expert"),
-                "shared_expert_gate": LinearBridge(name="shared_expert_gate"),
+                # mlp_only_layers / decoder_sparse_step let HF build a dense
+                # Qwen2MoeMLP on some layers: the MoE parts are optional there,
+                # and the dense projections below make those layers bind
+                # gated-MLP neuron hooks instead of MoE boundary tensors (#1645).
+                "gate": Qwen2MoeRouterBridge(name="gate", optional=True),
+                "experts": MoEBridge(name="experts", config=self.cfg, optional=True),
+                "shared_expert": self._gated_mlp(name="shared_expert", optional=True),
+                "shared_expert_gate": LinearBridge(name="shared_expert_gate", optional=True),
+                "dense_gate": LinearBridge(name="gate_proj", optional=True),
+                "dense_in": LinearBridge(name="up_proj", optional=True),
+                "dense_out": LinearBridge(name="down_proj", optional=True),
             },
         )

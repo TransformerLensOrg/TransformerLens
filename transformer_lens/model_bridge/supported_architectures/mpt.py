@@ -41,6 +41,10 @@ class MPTArchitectureAdapter(ArchitectureAdapter):
             "embed": EmbeddingBridge(name="transformer.wte"),
             "blocks": BlockBridge(
                 name="transformer.blocks",
+                # MptMLP adds the residual inside its forward, so mlp.hook_out is
+                # resid_post, not the additive contribution; alias to the down_proj
+                # output instead (dropout between it and the add is an eval no-op).
+                hook_alias_overrides={"hook_mlp_out": "mlp.out.hook_out"},
                 submodules={
                     "ln1": NormalizationBridge(name="norm_1", config=self.cfg),
                     "attn": MPTALiBiAttentionBridge(
