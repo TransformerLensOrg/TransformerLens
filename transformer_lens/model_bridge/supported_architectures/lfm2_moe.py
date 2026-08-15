@@ -56,6 +56,11 @@ class Lfm2MoeArchitectureAdapter(ArchitectureAdapter):
         self.cfg.attn_implementation = "eager"
         self.cfg.default_prepend_bos = False
 
+        rope_parameters = getattr(cfg, "rope_parameters", None) or {}
+        rope_theta = rope_parameters.get("rope_theta") or getattr(cfg, "rope_theta", None)
+        if rope_theta is not None:
+            self.cfg.rotary_base = rope_theta
+
         self.weight_processing_conversions = {
             **self._qkvo_weight_conversions(),
         }
