@@ -28,15 +28,21 @@ from transformer_lens.tools.analysis.jacobian_lens import (
 )
 from transformer_lens.tools.analysis.jacobian_lens_decomposition import (
     JSpaceDecomposition,
+    JSpaceOccupancy,
+    JSpaceVarianceProfile,
+    estimate_occupancy,
     get_sparse_decomposition,
 )
 
 __all__ = [
     "DirectLogitAttribution",
     "JSpaceDecomposition",
+    "JSpaceOccupancy",
+    "JSpaceVarianceProfile",
     "JacobianLens",
     "JacobianLensReadout",
     "direct_logit_attribution",
+    "estimate_occupancy",
     "get_act_patch_direct_path",
     "get_act_patch_direct_path_all_sources",
     "get_sparse_decomposition",

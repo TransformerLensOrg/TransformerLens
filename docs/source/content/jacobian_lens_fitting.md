@@ -318,6 +318,43 @@ exact values will not necessarily transfer.
   time." Here `k` is an **upper bound**: `support` returns *at most* `k` active vectors (often
   fewer), never `k` padded with zero-coefficient slots.
 
+### Occupancy and fraction of variance
+
+Two statistics turn the honesty bullets above into numbers you can measure. Both build on the same
+greedy selection as `decompose`.
+
+`occupancy` estimates **how many J-lens vectors are meaningfully active** in a single activation —
+the quantity behind the paper's `k <= 25`. It runs the greedy selection up to `max_atoms`, records
+the per-step captured variance `||Pi_S x||^2 / ||x||^2`, and compares that curve against the same
+greedy run on `num_control_dictionaries` random unit-norm dictionaries. The occupancy is the step
+of **maximum separation** between the real and averaged-control *cumulative* captured variance — the
+point past which further vectors add no more than random directions would. It is deterministic given
+`seed` and needs no threshold.
+
+```python
+occ = lens.occupancy(model, "The Eiffel Tower is in the city of", layer=6, position=-1)
+occ.occupancy                    # int: meaningfully-active vector count (a small positive integer)
+occ.marginal_captured_variance   # [max_atoms] real per-step captured-variance gains (for plotting)
+occ.control_captured_variance    # [max_atoms] averaged random-control gains
+```
+
+`fraction_of_variance` profiles the **J-space share of activation variance over a prompt corpus**.
+For each `(layer, position)` at or past `skip_first` (mirroring the fit's early-position skip) it
+records `||j_space_component||^2 / ||activation||^2` — the `selected_support` span projection,
+matching the paper's appendix operationalization, **not** the nonnegative `reconstruction`. Per
+layer it reports the `median` of those fractions and the `pooled` ratio
+`sum(||j_space||^2) / sum(||activation||^2)`.
+
+```python
+profile = lens.fraction_of_variance(model, prompts, layers=[3, 6], k=8)
+profile.median   # {layer: median fraction}   -- the paper's "median 6-7%" quantity
+profile.pooled   # {layer: pooled ratio in [0, 1]}
+```
+
+Both are **shape** claims on open weights: expect a small occupancy and a small variance fraction,
+but do not expect the paper's closed-model figures (see *Interpreting the numbers honestly* above)
+to transfer numerically.
+
 The full-vocabulary dictionary is cached on the model's device and is vocabulary-sized
 (gigabytes for large models); release it with `lens.clear_device_cache()`.
 

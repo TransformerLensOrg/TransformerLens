@@ -61,7 +61,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import List
+from typing import Dict, List, Tuple
 
 import torch
 
@@ -447,3 +447,157 @@ def get_sparse_decomposition(
         j_space_component=j_space_component,
         non_j_space_component=non_j_space_component,
     )
+
+
+@dataclass
+class JSpaceOccupancy:
+    """Result of a J-space occupancy estimate.
+
+    Attributes:
+        occupancy: Estimated number of meaningfully-active atoms -- the step of maximum
+            separation between the real and random-control cumulative captured variance.
+        marginal_captured_variance: Per-step captured-variance gain of the real greedy selection,
+            shape ``[max_atoms]``.
+        control_captured_variance: Per-step captured-variance gain averaged over the random
+            control dictionaries, shape ``[max_atoms]``.
+        support: Greedily selected atom indices, shape ``[max_atoms]`` (token ids when the
+            dictionary is the vocabulary of J-lens vectors).
+    """
+
+    occupancy: int
+    marginal_captured_variance: torch.Tensor
+    control_captured_variance: torch.Tensor
+    support: torch.Tensor
+
+
+def _greedy_captured_variance_gains(
+    atoms: torch.Tensor, atom_norms: torch.Tensor, target: torch.Tensor, max_atoms: int
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Greedily select up to ``max_atoms`` atoms and return the per-step captured-variance gains.
+
+    Selection matches :func:`get_sparse_decomposition`: at each step the atom most correlated
+    with the running residual (using unit-normalised atoms) is added. The captured variance at a
+    step is the orthogonal projection of ``target`` onto the selected span,
+    ``||Pi_S target||^2 / ||target||^2``; the returned values are its per-step increments.
+    """
+    total_variance = float(target @ target)
+    support: List[int] = []
+    residual = target.clone()
+    captured_variance_gains: List[float] = []
+    previous_captured_variance = 0.0
+    for _ in range(max_atoms):
+        correlation = (atoms @ residual) / atom_norms
+        for chosen in support:
+            correlation[chosen] = float("-inf")
+        support.append(int(torch.argmax(correlation).item()))
+        active_atoms = atoms[support].T
+        projection = active_atoms @ (torch.linalg.pinv(active_atoms) @ target)
+        captured_variance = float((projection @ projection) / total_variance)
+        captured_variance_gains.append(captured_variance - previous_captured_variance)
+        previous_captured_variance = captured_variance
+        residual = target - projection
+    return torch.tensor(captured_variance_gains), torch.tensor(support, dtype=torch.long)
+
+
+def estimate_occupancy(
+    x: torch.Tensor,
+    dictionary: torch.Tensor,
+    *,
+    max_atoms: int = DEFAULT_K,
+    num_control_dictionaries: int = 32,
+    seed: int = 0,
+) -> JSpaceOccupancy:
+    """Estimate how many dictionary atoms are meaningfully active in ``x``.
+
+    Greedily selects up to ``max_atoms`` atoms and compares the real per-step captured-variance
+    curve against the same greedy run on ``num_control_dictionaries`` random unit-norm
+    dictionaries of the same size. The occupancy is the step of maximum separation between the
+    real and (averaged) control *cumulative* captured variance -- the point past which further
+    atoms add no more than random directions would. Deterministic given ``seed`` and needs no
+    threshold. (Captured variance is a projection, hence scale-free, so the random control atoms
+    are simply unit-norm.)
+
+    Args:
+        x: Target vector, shape ``[d_model]``.
+        dictionary: Atom matrix, shape ``[num_atoms, d_model]`` (rows are atoms).
+        max_atoms: Maximum number of atoms to consider.
+        num_control_dictionaries: Number of random control dictionaries to average over.
+        seed: Seed for the random control dictionaries (reproducibility).
+
+    Returns:
+        An :class:`JSpaceOccupancy`.
+
+    Raises:
+        ValueError: On a non-2-D dictionary, a target whose length does not match ``d_model``,
+            ``max_atoms`` outside ``[1, num_atoms]``, ``num_control_dictionaries < 1``, or a
+            dictionary with non-finite or zero-norm atoms.
+    """
+    if dictionary.ndim != 2:
+        raise ValueError(
+            f"dictionary must be 2-D [num_atoms, d_model], got shape {tuple(dictionary.shape)}"
+        )
+    num_atoms, d_model = dictionary.shape
+    if x.ndim != 1 or x.shape[0] != d_model:
+        raise ValueError(f"x must be 1-D of length d_model={d_model}, got shape {tuple(x.shape)}")
+    if not 1 <= max_atoms <= num_atoms:
+        raise ValueError(f"max_atoms must be between 1 and num_atoms={num_atoms}, got {max_atoms}")
+    if num_control_dictionaries < 1:
+        raise ValueError(
+            f"num_control_dictionaries must be at least 1, got {num_control_dictionaries}"
+        )
+
+    target = x.float()
+    atoms = dictionary.float()
+    if not bool(torch.isfinite(atoms).all()):
+        raise ValueError("dictionary contains non-finite entries")
+    atom_norms = (atoms * atoms).sum(dim=1).sqrt()
+    if bool((atom_norms == 0).any()):
+        raise ValueError("dictionary contains a zero-norm atom")
+
+    real_captured_variance, support = _greedy_captured_variance_gains(
+        atoms, atom_norms, target, max_atoms
+    )
+
+    generator = torch.Generator(device=atoms.device).manual_seed(seed)
+    control_atom_norms = torch.ones(num_atoms, device=atoms.device)
+    control_variance_runs: List[torch.Tensor] = []
+    for _ in range(num_control_dictionaries):
+        random_atoms = torch.randn(
+            num_atoms, d_model, generator=generator, device=atoms.device, dtype=atoms.dtype
+        )
+        random_atoms = random_atoms / (random_atoms * random_atoms).sum(dim=1, keepdim=True).sqrt()
+        control_run_variance, _ = _greedy_captured_variance_gains(
+            random_atoms, control_atom_norms, target, max_atoms
+        )
+        control_variance_runs.append(control_run_variance)
+    control_captured_variance = torch.stack(control_variance_runs).mean(dim=0)
+
+    separation = real_captured_variance.cumsum(dim=0) - control_captured_variance.cumsum(dim=0)
+    occupancy = int(torch.argmax(separation).item()) + 1
+    return JSpaceOccupancy(
+        occupancy=occupancy,
+        marginal_captured_variance=real_captured_variance,
+        control_captured_variance=control_captured_variance,
+        support=support,
+    )
+
+
+@dataclass
+class JSpaceVarianceProfile:
+    """Per-layer J-space variance profile over a prompt corpus.
+
+    Produced by :meth:`JacobianLens.fraction_of_variance`.
+
+    Attributes:
+        layers: The source layers profiled, in order.
+        median: Per-layer median over positions of the J-space variance fraction
+            ``||j_space_component||^2 / ||activation||^2``.
+        pooled: Per-layer pooled ratio ``sum(||j_space_component||^2) / sum(||activation||^2)``
+            across the corpus (the paper's "fraction of total variance").
+        per_position: Per-layer 1-D tensor of the raw per-position variance fractions.
+    """
+
+    layers: List[int]
+    median: Dict[int, float]
+    pooled: Dict[int, float]
+    per_position: Dict[int, torch.Tensor]

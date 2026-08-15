@@ -12,10 +12,12 @@ import torch
 
 from transformer_lens.tools.analysis.jacobian_lens_decomposition import (
     JSpaceDecomposition,
+    JSpaceOccupancy,
     _gradient_pursuit_step,
     _nnls_tolerances,
     _nonnegative_least_squares,
     _validate_nnls_kkt,
+    estimate_occupancy,
     get_sparse_decomposition,
 )
 
@@ -753,3 +755,75 @@ def test_rejects_non_2d_dictionary():
 def test_rejects_non_1d_target():
     with pytest.raises(ValueError):
         get_sparse_decomposition(torch.ones(2, 4), torch.eye(4), k=1)
+
+
+# --------------------------------------------------------------------------- #
+# Occupancy estimator (estimate_occupancy)
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize("planted_atom_count", [1, 4, 7])
+def test_occupancy_recovers_planted_sparsity_on_orthonormal_dictionary(planted_atom_count):
+    """On an orthonormal dictionary a k-sparse planted target has occupancy exactly k: the real
+    greedy captures the planted atoms then saturates, so the point of maximum separation from the
+    random control lands at k."""
+    torch.manual_seed(0)
+    d_model = 24
+    dictionary = torch.linalg.qr(torch.randn(d_model, d_model)).Q  # orthonormal atoms (rows)
+    target = torch.zeros(d_model)
+    for index in range(planted_atom_count):
+        target = target + (3.0 - 0.3 * index) * dictionary[2 * index + 1]
+
+    max_atoms = min(2 * planted_atom_count + 4, d_model)
+    result = estimate_occupancy(target, dictionary, max_atoms=max_atoms)
+
+    assert isinstance(result, JSpaceOccupancy)
+    assert result.occupancy == planted_atom_count
+    assert result.support.numel() == max_atoms
+
+
+def test_occupancy_increases_with_planted_sparsity():
+    """Occupancy tracks the planted sparsity: a 2-sparse target occupies fewer atoms than a
+    9-sparse one on the same orthonormal dictionary (both recovered exactly)."""
+    torch.manual_seed(1)
+    d_model = 24
+    dictionary = torch.linalg.qr(torch.randn(d_model, d_model)).Q
+
+    def planted(count):
+        target = torch.zeros(d_model)
+        for index in range(count):
+            target = target + (3.0 - 0.2 * index) * dictionary[2 * index + 1]
+        return target
+
+    assert (
+        estimate_occupancy(planted(2), dictionary, max_atoms=20).occupancy
+        < estimate_occupancy(planted(9), dictionary, max_atoms=20).occupancy
+    )
+
+
+def test_occupancy_is_deterministic():
+    """Identical inputs and seed give identical results (the random control is seeded)."""
+    torch.manual_seed(2)
+    dictionary = torch.randn(40, 8)
+    target = torch.randn(8)
+    first = estimate_occupancy(target, dictionary, seed=0)
+    second = estimate_occupancy(target, dictionary, seed=0)
+    assert first.occupancy == second.occupancy
+    assert torch.equal(first.support, second.support)
+    assert torch.allclose(first.control_captured_variance, second.control_captured_variance)
+
+
+def test_occupancy_rejects_invalid_inputs():
+    dictionary = torch.eye(6)
+    with pytest.raises(ValueError):
+        estimate_occupancy(torch.ones(6), dictionary, max_atoms=0)
+    with pytest.raises(ValueError):
+        estimate_occupancy(torch.ones(6), dictionary, max_atoms=99)
+    with pytest.raises(ValueError):
+        estimate_occupancy(torch.ones(6), dictionary, num_control_dictionaries=0)
+    with pytest.raises(ValueError):
+        estimate_occupancy(torch.ones(5), dictionary)  # target length != d_model
+    with pytest.raises(ValueError):
+        estimate_occupancy(torch.ones(2, 6), dictionary)  # non-1-D target
+    zero_norm_dictionary = torch.eye(6)
+    zero_norm_dictionary[2] = 0.0
+    with pytest.raises(ValueError):
+        estimate_occupancy(torch.ones(6), zero_norm_dictionary)
