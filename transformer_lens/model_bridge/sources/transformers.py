@@ -709,7 +709,9 @@ def boot(
         if val is not None:
             setattr(bridge_config, attr, val)
 
-    # Gemma2 softcapping: HF names differ from TL names, need explicit mapping
+    # Gemma2 softcapping: HF names differ from TL names. het view: per-layer
+    # fields raise (not AttributeError) on raw getattr.
+    effective_config = het_safe_view(effective_config)
     final_logit_softcapping = getattr(effective_config, "final_logit_softcapping", None)
     if final_logit_softcapping is not None:
         bridge_config.output_logits_soft_cap = float(final_logit_softcapping)

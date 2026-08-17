@@ -29,11 +29,23 @@ def per_layer_values(config: Any, name: str) -> list:
 
 
 def majority_value(values: list) -> Any:
-    """Most common value in a per-layer list; ties break toward the earliest layer."""
-    counts: dict = {}
-    for v in values:
-        counts[v] = counts.get(v, 0) + 1
-    return max(counts, key=lambda v: (counts[v], -values.index(v)))
+    """Most common value in a per-layer list; ties break toward the earliest layer.
+
+    Counts by equality, not hashing: per-layer values can be dicts
+    (rope_parameters in 5.x), and a TypeError here escapes hasattr
+    """
+    distinct: list = []
+    counts: list[int] = []
+    for value in values:
+        for index, seen in enumerate(distinct):
+            if seen == value:
+                counts[index] += 1
+                break
+        else:
+            distinct.append(value)
+            counts.append(1)
+    best = max(range(len(distinct)), key=lambda i: (counts[i], -values.index(distinct[i])))
+    return distinct[best]
 
 
 def safe_config_get(config: Any, name: str, default: Any = None) -> Any:
