@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import functools
 import gc
 import math
 import weakref
@@ -661,6 +662,54 @@ def test_left_padding_does_not_inject_unsupported_position_ids(models: TinyModel
         reference_logits = models.reference(tokens, attention_mask=attention_mask).logits
         bridge_logits = models.bridge(tokens, attention_mask=attention_mask)
     torch.testing.assert_close(bridge_logits, reference_logits, rtol=1e-5, atol=1e-6)
+
+
+def test_batched_list_input_does_not_inject_unsupported_position_ids() -> None:
+    """Batched list input builds its own attention_mask and position_ids so pad
+    tokens don't contaminate the forward (#1626). The mask is safe for any model;
+    the position_ids are not, and this forward takes neither them nor **kwargs.
+
+    A local bridge rather than the module fixture: this needs a tokenizer, and
+    attaching one to the shared instance would leak into the other tests. The
+    tokenizer is given a BOS so the path under test is reached independently of
+    BOS handling elsewhere.
+    """
+    local = _build_models()
+    tokenizer = _offline_tokenizer()
+    tokenizer.bos_token = "<bos>"
+    local.bridge.tokenizer = tokenizer
+
+    seen: dict = {}
+    original = local.bridge.original_model.forward
+
+    # functools.wraps so inspect.signature() still resolves to the real forward:
+    # the gate reads that signature, and a bare (*args, **kwargs) spy would look
+    # like it accepts position_ids and defeat the check under test.
+    @functools.wraps(original)
+    def _spy(*args, **kwargs):
+        seen.clear()
+        seen.update(kwargs)
+        return original(*args, **kwargs)
+
+    local.bridge.original_model.forward = _spy
+    try:
+        with torch.inference_mode():
+            logits = local.bridge(["token_5 token_7 token_9", "token_5"], return_type="logits")
+        batched = dict(seen)
+        with torch.inference_mode():
+            local.bridge("token_5 token_7 token_9", return_type="logits")
+        unbatched = dict(seen)
+    finally:
+        local.bridge.original_model.forward = original
+
+    assert logits.shape[0] == 2
+    assert "position_ids" not in batched
+    # The mask is still supplied — withholding it would reintroduce the padding
+    # contamination this branch exists to prevent.
+    assert "attention_mask" in batched
+    # Control: a single unbatched string never reached this branch, so the gate
+    # must not have changed anything for it either.
+    assert "position_ids" not in unbatched
 
 
 def test_run_with_cache_exposes_hooks_without_hf_output_attentions(

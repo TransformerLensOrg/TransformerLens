@@ -1777,7 +1777,11 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                     ).to(self.cfg.device)
                 finally:
                     self.tokenizer.padding_side = _prev_side
-                if "position_ids" not in kwargs:
+                # Gated on the target for the same reason the derivation below is:
+                # a fixed-signature forward raises TypeError on the kwarg, and a
+                # model that owns its own position derivation is overridden by it
+                # (#1626).
+                if "position_ids" not in kwargs and self._accepts_derived_position_ids():
                     position_ids = attention_mask.long().cumsum(-1) - 1
                     position_ids.masked_fill_(attention_mask == 0, 1)
                     kwargs["position_ids"] = position_ids
@@ -2185,9 +2189,12 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                         ).to(self.cfg.device)
                         self.tokenizer.padding_side = _prev_side
                         forward_kwargs["attention_mask"] = attn_mask
-                        position_ids = attn_mask.long().cumsum(-1) - 1
-                        position_ids.masked_fill_(attn_mask == 0, 1)
-                        forward_kwargs["position_ids"] = position_ids
+                        # Same target gate as the forward() path: the mask is safe
+                        # for every model, the derived positions are not (#1626).
+                        if self._accepts_derived_position_ids():
+                            position_ids = attn_mask.long().cumsum(-1) - 1
+                            position_ids.masked_fill_(attn_mask == 0, 1)
+                            forward_kwargs["position_ids"] = position_ids
                     if gen_step_idx == 0:
                         if pixel_values is not None:
                             forward_kwargs["pixel_values"] = pixel_values
@@ -2241,24 +2248,32 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                                     dtype=torch.long,
                                     device=device,
                                 )
-                            if "position_ids" in forward_kwargs:
-                                forward_kwargs["position_ids"] = forward_kwargs["position_ids"][
-                                    :, -1:
-                                ]
-                            elif running_attention_mask is not None:
-                                # total_len - 1 counts pad slots, so it is wrong
-                                # for a left-padded prompt. Derive the new token's
-                                # position from the mask instead.
-                                forward_kwargs["position_ids"] = utils.get_offset_position_ids(
-                                    0, running_attention_mask.long()
-                                )[:, -1:]
-                            else:
-                                forward_kwargs["position_ids"] = torch.full(
-                                    (batch_size, 1),
-                                    total_len - 1,
-                                    dtype=torch.long,
-                                    device=device,
-                                )
+                            # Gated as a whole (#1626): every branch below supplies
+                            # position_ids, so gating only the prompt derivation
+                            # above would divert a refused model into the
+                            # total_len - 1 fallback, which counts pad slots and is
+                            # wrong per row for a left-padded batch. A model that
+                            # owns its position derivation gets the mask alone,
+                            # matching the uncached path.
+                            if self._accepts_derived_position_ids():
+                                if "position_ids" in forward_kwargs:
+                                    forward_kwargs["position_ids"] = forward_kwargs["position_ids"][
+                                        :, -1:
+                                    ]
+                                elif running_attention_mask is not None:
+                                    # total_len - 1 counts pad slots, so it is wrong
+                                    # for a left-padded prompt. Derive the new token's
+                                    # position from the mask instead.
+                                    forward_kwargs["position_ids"] = utils.get_offset_position_ids(
+                                        0, running_attention_mask.long()
+                                    )[:, -1:]
+                                else:
+                                    forward_kwargs["position_ids"] = torch.full(
+                                        (batch_size, 1),
+                                        total_len - 1,
+                                        dtype=torch.long,
+                                        device=device,
+                                    )
                             logits = self(
                                 current_tokens[:, -1:],
                                 return_type="logits",
