@@ -514,6 +514,7 @@ class ActivationCache:
                 layer,
                 pos_slice=pos_slice,
                 mlp_input=mlp_input,
+                has_batch_dim=self.has_batch_dim,
                 recompute_ln=recompute_ln,
             )
         if return_labels:
@@ -1395,17 +1396,17 @@ class ActivationCache:
         # Logit lens: apply final layer norm to each component with recomputed statistics
         if recompute_ln and layer == self.model.cfg.n_layers and hasattr(self.model, "ln_final"):
             ln_final = self.model.ln_final
-            had_pos_dim = residual_stack.ndim == 4
             results = []
             for i in range(residual_stack.shape[0]):
                 x = residual_stack[i]
-                # ln_final expects (batch, pos, d_model); ensure pos dim present
+                original_shape = x.shape
+                # ln_final expects (batch, pos, d_model); restore missing structural dimensions
+                if not has_batch_dim:
+                    x = x.unsqueeze(0)
                 if x.ndim == 2:
                     x = x.unsqueeze(1)
                 out = ln_final(x)
-                if not had_pos_dim:
-                    out = out.squeeze(1)
-                results.append(out)
+                results.append(out.reshape(original_shape))
             return torch.stack(results, dim=0)
 
         # Center the stack onlny if the model uses LayerNorm
