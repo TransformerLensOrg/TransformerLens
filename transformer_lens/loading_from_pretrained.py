@@ -58,6 +58,7 @@ from transformer_lens.pretrained.weight_conversions import (
     convert_t5_weights,
 )
 from transformer_lens.supported_models import MODEL_ALIASES, OFFICIAL_MODEL_NAMES
+from transformer_lens.utilities.heterogeneous_config import het_safe_view
 from transformer_lens.utilities.hf_utils import get_rotary_pct_from_config
 from transformer_lens.utilities.quantization import (
     quantization_method,
@@ -170,6 +171,10 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             token=huggingface_token if len(huggingface_token) > 0 else None,
             **kwargs,
         )
+        # het view: transformers>=5.15 per-layer fields raise (not
+        # AttributeError) on global reads, so every hasattr/getattr probe in
+        # the branch chain below is a crash site without it.
+        hf_config = het_safe_view(hf_config)
         architecture = hf_config.architectures[0]
 
     cfg_dict: dict[str, Any]
@@ -2193,29 +2198,51 @@ def fill_missing_keys(
     # mismatch (e.g. W_K written where GroupedQueryAttention expects _W_K).
     # Filling it with an empty tensor silently zeroes the sublayer while every
     # downstream number still looks plausible — fail loudly instead.
-    attention_weight_names = {"W_Q", "W_K", "W_V", "W_O", "_W_K", "_W_V"}
-    missing_attention_weights = sorted(
+    # W_in/W_gate/W_out join the attention set: zero-filling an MLP matrix is
+    # the same silent-sublayer-death, just on the other branch.
+    fail_loud_weight_names = {
+        "W_Q",
+        "W_K",
+        "W_V",
+        "W_O",
+        "_W_K",
+        "_W_V",
+        "W_in",
+        "W_gate",
+        "W_out",
+    }
+    missing_fail_loud = sorted(
         key
         for key in missing_keys
-        if "hf_model" not in key and key.rsplit(".", 1)[-1] in attention_weight_names
+        if "hf_model" not in key and key.rsplit(".", 1)[-1] in fail_loud_weight_names
     )
-    if missing_attention_weights:
+    if missing_fail_loud:
         raise ValueError(
-            f"Pretrained state dict is missing attention weight matrices the model "
-            f"expects: {missing_attention_weights}. This usually means the weight "
-            f"converter and the instantiated attention module disagree on parameter "
+            f"Pretrained state dict is missing weight matrices the model "
+            f"expects: {missing_fail_loud}. This usually means the weight "
+            f"converter and the instantiated module disagree on parameter "
             f"naming (e.g. GQA's underscore-prefixed _W_K/_W_V vs W_K/W_V). Refusing "
             f"to zero-fill them, which would silently produce wrong outputs."
         )
+    # Norm weights fill with DEFAULTS (w=1, b=0), which is frequently correct
+    # (models without biases) but silently wrong when the checkpoint really has
+    # them — so the fill is named, not silent.
+    norm_key_names = {"w", "b"}
     for key in missing_keys:
         if "hf_model" in key:
             # Skip keys that are from the HuggingFace model, if loading from HF.
             continue
+        leaf = key.rsplit(".", 1)[-1]
         if "W_" in key:
             logging.warning(
                 "Missing key for a weight matrix in pretrained, filled in with an empty tensor: {}".format(
                     key
                 )
+            )
+        elif leaf in norm_key_names and ("ln" in key or "norm" in key):
+            logging.warning(
+                "Missing normalization key in pretrained, filled with its default "
+                "(identity norm): {}".format(key)
             )
         state_dict[key] = default_state_dict[key]
     return state_dict

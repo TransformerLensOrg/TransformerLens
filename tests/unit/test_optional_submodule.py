@@ -281,7 +281,7 @@ class TestStackBlockParams:
 
     def test_raises_when_no_blocks_match(self):
         bridge = _make_hybrid_bridge()
-        with pytest.raises(AttributeError, match="No blocks have"):
+        with pytest.raises(AttributeError, match="No blocks resolve"):
             bridge._stack_block_params("nonexistent")
 
     def test_succeeds_on_universal_submodule(self):

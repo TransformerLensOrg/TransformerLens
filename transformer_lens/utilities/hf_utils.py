@@ -136,6 +136,11 @@ def get_rotary_pct_from_config(config: Any) -> float:
     if config is None:
         return 1.0
 
+    # het view: hasattr does NOT suppress the per-layer-registered raise.
+    from transformer_lens.utilities.heterogeneous_config import het_safe_view
+
+    config = het_safe_view(config)
+
     # Try the old attribute first (transformers v4)
     if hasattr(config, "rotary_pct"):
         return getattr(config, "rotary_pct", 1.0)

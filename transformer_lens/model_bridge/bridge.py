@@ -1419,43 +1419,48 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
     ) -> torch.Tensor:
         """Stack a parameter across all blocks; falls back to matching-only on hybrids.
 
-        On hybrid models, logs a warning about index mapping and returns only
-        blocks that have the submodule. First path segment is checked against
-        _modules; deeper segments resolve via getattr (intentional — W_Q etc.
-        are exposed via __getattr__ delegation).
+        Filters on FULL-path resolution, not the first segment: on interleaved
+        MoE, every block has `mlp` but only dense layers expose `mlp.W_in`, so
+        a first-segment filter matched everything and the sparse layer's
+        AttributeError killed the accessor for the whole model.
         """
         first_attr = attr_path.split(".")[0]
-        matching_blocks = [
-            (i, block) for i, block in enumerate(self.blocks) if first_attr in block._modules
-        ]
+        matching_blocks = []
+        for i, block in enumerate(self.blocks):
+            if first_attr not in block._modules:
+                continue
+            try:
+                weight = _resolve_attr_path(block, attr_path)
+            except AttributeError:
+                continue
+            matching_blocks.append((i, weight))
 
         if len(matching_blocks) == 0:
             raise AttributeError(
-                f"No blocks have submodule '{first_attr}'. "
+                f"No blocks resolve '{attr_path}'. "
                 f"Use bridge.blocks_with('{first_attr}') to check availability."
             )
 
         if len(matching_blocks) < len(self.blocks):
             indices = [i for i, _ in matching_blocks]
             logging.warning(
-                "Hybrid model: only %d/%d blocks have '%s'. Returning stacked tensor "
+                "Hybrid model: only %d/%d blocks resolve '%s'. Returning stacked tensor "
                 "for layers %s only. Tensor index i corresponds to original layer "
                 "indices[i], not layer i. For explicit index mapping, use "
                 "bridge.stack_params_for('%s', '%s').",
                 len(matching_blocks),
                 len(self.blocks),
-                first_attr,
+                attr_path,
                 indices,
                 first_attr,
                 attr_path,
             )
 
         weights: List[torch.Tensor] = []
-        for _, block in matching_blocks:
-            w = _resolve_attr_path(block, attr_path)
+        for _, weight in matching_blocks:
             if reshape_fn is not None:
-                w = reshape_fn(w)
-            weights.append(w)
+                weight = reshape_fn(weight)
+            weights.append(weight)
         # Under a device_map split, per-block tensors live on different devices.
         # torch.stack requires a common device; gather onto cfg.device (the embedding /
         # input device — a natural "home" for cross-layer reductions).
