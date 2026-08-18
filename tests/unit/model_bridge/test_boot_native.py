@@ -1,4 +1,5 @@
 """Tests for ``TransformerBridge.boot_native`` classmethod."""
+
 from __future__ import annotations
 
 import sys
@@ -489,3 +490,35 @@ def test_boot_native_supports_training_step():
     ), "No non-zero gradients after backward"
     optimizer.step()
     optimizer.zero_grad()
+
+
+def test_boot_native_resolves_initializer_range_sentinel():
+    """Regression for #1568 — the -1.0 sentinel must be resolved on the
+    bridge config path the same way HookedTransformerConfig resolves it
+    (hooked_transformer_config.py), instead of silently falling back to the
+    unrelated std=0.02 default inside native/init.py."""
+    import math
+
+    cfg = _cfg(init_mode="gpt2")
+    # _cfg() doesn't set initializer_range, so it should still carry the
+    # -1.0 sentinel until __post_init__ resolves it.
+    expected = 0.8 / math.sqrt(cfg.d_model)
+    assert cfg.initializer_range == pytest.approx(expected)
+
+
+def test_boot_native_kaiming_gain_scales_weights():
+    """Regression for #1568 — xavier/kaiming init must use initializer_range
+    as a multiplicative gain. Without this, the config value is silently
+    ignored and every kaiming/xavier model gets the same fixed scale
+    regardless of what the caller asked for."""
+    cfg_gain_1 = _cfg(init_mode="kaiming_normal", initializer_range=1.0, seed=0)
+    cfg_gain_2 = _cfg(init_mode="kaiming_normal", initializer_range=2.0, seed=0)
+
+    bridge_1 = TransformerBridge.boot_native(cfg_gain_1)
+    bridge_2 = TransformerBridge.boot_native(cfg_gain_2)
+
+    std_1 = bridge_1.W_E.std().item()
+    std_2 = bridge_2.W_E.std().item()
+
+    # Same seed, only gain differs -> std should scale ~proportionally.
+    assert std_2 / std_1 == pytest.approx(2.0, rel=0.15)
