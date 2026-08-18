@@ -2247,10 +2247,13 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
     def run_with_cache(
         self,
         input: Union[str, List[str], torch.Tensor],
-        return_cache_object: Literal[False],
+        return_cache_object: bool = True,
         remove_batch_dim: bool = False,
+        names_filter: Optional[Union[str, List[str], Callable[[str], bool]]] = None,
+        stop_at_layer: Optional[int] = None,
+        incl_bwd: bool = False,
         **kwargs,
-    ) -> Tuple[Any, Dict[str, torch.Tensor]]:
+    ) -> Tuple[Any, Union[ActivationCache, Dict[str, torch.Tensor]]]:
         """Run with cache - placeholder implementation."""
         pass
 
@@ -2261,6 +2264,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         remove_batch_dim: bool = False,
         names_filter: Optional[Union[str, List[str], Callable[[str], bool]]] = None,
         stop_at_layer: Optional[int] = None,
+        incl_bwd: bool = False,
         **kwargs,
     ) -> Tuple[Any, Union[ActivationCache, Dict[str, torch.Tensor]]]:
         """Run the model and cache all activations.
@@ -2309,22 +2313,23 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
 
         # None → no-op .to(None), tensors stay on their current device.
         cache_device = kwargs.pop("device", None)
+        def make_cache_hook(name: str, is_backward: bool = False):
+            cache_name = f"{name}_grad" if is_backward else name
 
-        def make_cache_hook(name: str):
             def cache_hook(tensor: torch.Tensor, *, hook: Any) -> torch.Tensor:
                 if tensor is None:
-                    cache[name] = None
+                    cache[cache_name] = None
                 elif isinstance(tensor, torch.Tensor):
-                    cache[name] = tensor.detach().to(cache_device)
+                    cache[cache_name] = tensor.detach().to(cache_device)
                 elif isinstance(tensor, tuple):
                     if len(tensor) > 0 and isinstance(tensor[0], torch.Tensor):
-                        cache[name] = tensor[0].detach().to(cache_device)
+                        cache[cache_name] = tensor[0].detach().to(cache_device)
                     else:
                         pass
                 else:
                     try:
                         if hasattr(tensor, "detach"):
-                            cache[name] = tensor.detach().to(cache_device)
+                            cache[cache_name] = tensor.detach().to(cache_device)
                     except Exception:
                         pass
                 return tensor
@@ -2350,7 +2355,9 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                             pass
                 hooks.append((hook, hook_name))
         for hp, name in hooks:
-            hp.add_hook(make_cache_hook(name))
+            hp.add_hook(make_cache_hook(name), dir="fwd")
+            if incl_bwd:
+                hp.add_hook(make_cache_hook(name, is_backward=True), dir="bwd")
         processed_args = [input]
         if processed_args and isinstance(processed_args[0], str):
             assert self.tokenizer is not None, "Tokenizer must be set to pass string input."
@@ -2416,6 +2423,8 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                 output = self.forward(**filtered_kwargs)
             if hasattr(output, "logits"):
                 output = output.logits
+            if incl_bwd:
+                output.backward()
         except StopAtLayerException as e:
             output = e.layer_output
         except Exception as e:
@@ -2423,6 +2432,8 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         finally:
             for hp, _ in hooks:
                 hp.remove_hooks(dir="fwd")
+                if incl_bwd:
+                    hp.remove_hooks(dir="bwd")
         if self.compatibility_mode == True:
             reverse_aliases = {}
             for old_name, new_name in aliases.items():
