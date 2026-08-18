@@ -15,23 +15,36 @@ def gpt2_model():
     return HookedTransformer.from_pretrained("gpt2", device="cpu")
 
 
-@pytest.fixture(scope="session")
+# Module-scoped, not session: only one module uses these, and holding a bloom
+# pair resident costs ~4.5GB fp32 — enough to push the 7GB coverage runner into
+# the swap it already needs for xdist.
+@pytest.fixture(scope="module")
 def bloom_560m_hooked():
+    import gc
+
     from transformer_lens import HookedTransformer
 
-    return HookedTransformer.from_pretrained(
+    model = HookedTransformer.from_pretrained(
         "bigscience/bloom-560m", default_prepend_bos=False, device="cpu"
     )
+    yield model
+    del model
+    gc.collect()
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def bloom_560m_hf_model():
+    import gc
+
     import torch
     from transformers import AutoModelForCausalLM
 
     # transformers 5.x loads at the checkpoint's dtype (fp16 here) while TL loads
     # fp32; comparing across that gap measures HF's own fp16 error, not TL.
-    return AutoModelForCausalLM.from_pretrained("bigscience/bloom-560m", dtype=torch.float32)
+    model = AutoModelForCausalLM.from_pretrained("bigscience/bloom-560m", dtype=torch.float32)
+    yield model
+    del model
+    gc.collect()
 
 
 @pytest.fixture(scope="session")
