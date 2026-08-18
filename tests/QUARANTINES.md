@@ -81,22 +81,34 @@ Big-model adapter tests use `@pytest.mark.slow`, CI tier filters `-m "not slow"`
 |---|---|---|
 | [`unit/model_bridge/test_bridge_generate_no_tokenizer.py`:30,128](unit/model_bridge/test_bridge_generate_no_tokenizer.py) | `skipif(_MACOS_ARM64)` — KV-cache NaN | Upstream PyTorch/HF on M-series Macs |
 | [`integration/model_bridge/test_bridge_generate_stopping_criteria.py`](integration/model_bridge/test_bridge_generate_stopping_criteria.py) | `skipif(_MACOS_ARM64)`, KV-cache NaN (one `use_past_kv_cache=True` test) | Upstream PyTorch/HF on M-series Macs |
+| [`acceptance/test_hooked_transformer.py`](acceptance/test_hooked_transformer.py) | `redwood_attn_2l` (2 tests) — `ArthurConmy/redwood_tokenizer`'s merges name a token missing from its vocab (`Ġpati`), rejected by tokenizers >= 0.20 on both the fast and slow paths | Third-party repo; the weights load fine, only the tokenizer is unusable |
 
-**Un-skip:** when upstream resolves. Don't bypass — produces NaN logits.
+**Un-skip:** when upstream resolves. Don't bypass — produces NaN logits. The redwood skip is
+evaluated at collection by actually attempting the load, so it disappears on its own if the repo
+is fixed or the tokenizers constraint relaxes; substituting a different tokenizer is not a fix
+(it would change token ids and invalidate the pinned expected loss).
 
 ---
 
 ## ⚠️ Technical debt — whole-file
 
-Entire test modules quarantined via module-level `pytestmark`. Significant coverage gap — priority to re-enable.
+No modules are currently quarantined this way.
 
-| Path | Reason |
+**Resolved 2026-08-17.** `acceptance/test_hooked_transformer.py`, `test_hooked_encoder.py` and
+`test_hooked_encoder_decoder.py` had carried module-level `pytest.mark.skip(reason="CI test
+pollution")` since #1129. Re-running them found no pollution: each passes alone, and the full
+acceptance tier with all three enabled is green (231 passed, 39 skipped). What the skips were
+hiding was four genuine failures, all now fixed at the source:
+
+| Was failing | Actual cause |
 |---|---|
-| [`acceptance/test_hooked_transformer.py`:19](acceptance/test_hooked_transformer.py) | "CI test pollution" |
-| [`acceptance/test_hooked_encoder.py`:13](acceptance/test_hooked_encoder.py) | same |
-| [`acceptance/test_hooked_encoder_decoder.py`:10](acceptance/test_hooked_encoder_decoder.py) | same |
+| `test_bert_block` | transformers 5.x returns a tensor from `BertLayer.forward`, so the test's `[0]` took batch element 0 instead of tuple element 0 |
+| `test_bloom_similarity_*` (×2) | the HF fixture loaded bloom at its checkpoint dtype (fp16) while TL loads fp32 — the comparison measured HF's own fp16 error (0.259 log-softmax against *itself*), not TL |
+| `test_model[redwood_attn_2l]`, `test_from_pretrained_no_processing[redwood_attn_2l]` | `ArthurConmy/redwood_tokenizer` has merges referencing a token absent from its vocab, which tokenizers >= 0.20 rejects; see the per-test skip below |
 
-**Un-skip:** root-cause the test pollution (fixture-scope or import-ordering bug). Until then, these acceptance tiers are dark.
+Two silent TransformerLens bugs also lived in this blind spot the whole time: T5's decoder
+self-attention was never causally masked, and its relative-position bias used the encoder's
+bucketing. Both are fixed. Keep these modules enabled.
 
 ---
 

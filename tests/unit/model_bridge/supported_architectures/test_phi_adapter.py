@@ -8,10 +8,10 @@ Tests cover:
 - Setup component tests
 """
 
-from types import SimpleNamespace
 
 import pytest
 
+from tests.unit.model_bridge.supported_architectures.helpers import fake_hf_model
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion
 from transformer_lens.conversion_utils.param_processing_conversion import (
@@ -65,10 +65,6 @@ def cfg() -> TransformerBridgeConfig:
 @pytest.fixture
 def adapter(cfg: TransformerBridgeConfig) -> PhiArchitectureAdapter:
     return PhiArchitectureAdapter(cfg)
-
-
-def _fake_hf_model(rotary_emb: object) -> SimpleNamespace:
-    return SimpleNamespace(model=SimpleNamespace(rotary_emb=rotary_emb))
 
 
 class DummyAttention:
@@ -320,7 +316,7 @@ class TestPhiSetupComponentTesting:
         assert isinstance(attn_template, PositionEmbeddingsAttentionBridge)
         assert attn_template._rotary_emb is None
 
-        adapter.setup_component_testing(_fake_hf_model(rotary_emb))
+        adapter.setup_component_testing(fake_hf_model(rotary_emb))
 
         assert attn_template._rotary_emb is rotary_emb
 
@@ -330,7 +326,7 @@ class TestPhiSetupComponentTesting:
         rotary_emb = object()
         bridge_model = DummyBridgeModel([DummyBlock(), DummyBlock(), DummyBlock()])
 
-        adapter.setup_component_testing(_fake_hf_model(rotary_emb), bridge_model=bridge_model)
+        adapter.setup_component_testing(fake_hf_model(rotary_emb), bridge_model=bridge_model)
 
         for block in bridge_model.blocks:
             assert block.attn.rotary_emb is rotary_emb
@@ -339,6 +335,6 @@ class TestPhiSetupComponentTesting:
         rotary_emb = object()
         bridge_model = DummyBridgeModel([DummyBlock(), DummyBlock(has_attention=False)])
 
-        adapter.setup_component_testing(_fake_hf_model(rotary_emb), bridge_model=bridge_model)
+        adapter.setup_component_testing(fake_hf_model(rotary_emb), bridge_model=bridge_model)
 
         assert bridge_model.blocks[0].attn.rotary_emb is rotary_emb

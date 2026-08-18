@@ -26,9 +26,12 @@ def bloom_560m_hooked():
 
 @pytest.fixture(scope="session")
 def bloom_560m_hf_model():
+    import torch
     from transformers import AutoModelForCausalLM
 
-    return AutoModelForCausalLM.from_pretrained("bigscience/bloom-560m")
+    # transformers 5.x loads at the checkpoint's dtype (fp16 here) while TL loads
+    # fp32; comparing across that gap measures HF's own fp16 error, not TL.
+    return AutoModelForCausalLM.from_pretrained("bigscience/bloom-560m", dtype=torch.float32)
 
 
 @pytest.fixture(scope="session")

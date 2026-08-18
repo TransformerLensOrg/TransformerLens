@@ -9,13 +9,13 @@ Tests cover:
 - Factory registration
 """
 
-from types import SimpleNamespace
 
 import pytest
 import torch
 import torch.nn as nn
 from torch import ones, randn, zeros
 
+from tests.unit.model_bridge.supported_architectures.helpers import fake_hf_model
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
@@ -84,10 +84,6 @@ class FakeQwen2Attention(nn.Module):
         self.k_proj = nn.Linear(cfg.d_model, kv_width, bias=True)
         self.v_proj = nn.Linear(cfg.d_model, kv_width, bias=True)
         self.o_proj = nn.Linear(cfg.n_heads * cfg.d_head, cfg.d_model, bias=False)
-
-
-def _fake_hf_model(rotary_emb: object) -> SimpleNamespace:
-    return SimpleNamespace(model=SimpleNamespace(rotary_emb=rotary_emb))
 
 
 class DummyAttention:
@@ -282,7 +278,7 @@ class TestQwen2SetupComponentTesting:
         assert isinstance(attn_template, PositionEmbeddingsAttentionBridge)
         assert attn_template._rotary_emb is None
 
-        adapter.setup_component_testing(_fake_hf_model(rotary_emb))
+        adapter.setup_component_testing(fake_hf_model(rotary_emb))
 
         assert attn_template._rotary_emb is rotary_emb
 
@@ -292,7 +288,7 @@ class TestQwen2SetupComponentTesting:
         rotary_emb = object()
         bridge_model = DummyBridgeModel([DummyBlock(), DummyBlock(), DummyBlock()])
 
-        adapter.setup_component_testing(_fake_hf_model(rotary_emb), bridge_model=bridge_model)
+        adapter.setup_component_testing(fake_hf_model(rotary_emb), bridge_model=bridge_model)
 
         for block in bridge_model.blocks:
             assert block.attn.rotary_emb is rotary_emb
@@ -301,7 +297,7 @@ class TestQwen2SetupComponentTesting:
         rotary_emb = object()
         bridge_model = DummyBridgeModel([DummyBlock(), DummyBlock(has_attention=False)])
 
-        adapter.setup_component_testing(_fake_hf_model(rotary_emb), bridge_model=bridge_model)
+        adapter.setup_component_testing(fake_hf_model(rotary_emb), bridge_model=bridge_model)
 
         assert bridge_model.blocks[0].attn.rotary_emb is rotary_emb
 
