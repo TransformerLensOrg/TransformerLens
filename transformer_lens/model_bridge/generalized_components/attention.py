@@ -298,6 +298,10 @@ class AttentionBridge(GeneralizedComponent):
         class ReshapeForAttentionHeads(BaseTensorConversion):
             """Reshape tensors to split attention heads for Q/K/V/Z compatibility."""
 
+            # Marks the [batch, pos, head, d_head] layout so consumers (e.g. run_with_cache's
+            # pos_slice) know the position axis is two from the end, not one.
+            splits_attention_heads = True
+
             def __init__(self, n_heads: int, d_head: int):
                 super().__init__()
                 self.n_heads = n_heads
