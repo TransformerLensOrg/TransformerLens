@@ -12,7 +12,6 @@ Covered:
 - clip_qkv clamp parity with HF attention (clamp applies after q/k norm, matching HF order).
 """
 
-from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -22,6 +21,8 @@ from transformers import OlmoeConfig
 from transformers.models.olmoe.modeling_olmoe import OlmoeAttention
 
 from tests.unit.model_bridge.supported_architectures.helpers import (
+    fake_hf_model,
+    fake_hf_model_with_eager_targets,
     identity_rope,
     make_additive_causal_mask,
     wire_attention_bridge,
@@ -108,25 +109,6 @@ def _rearrange(adapter: OlmoeArchitectureAdapter, key: str) -> RearrangeTensorCo
     tensor_conversion = _param_conversion(adapter, key).tensor_conversion
     assert isinstance(tensor_conversion, RearrangeTensorConversion)
     return tensor_conversion
-
-
-def _fake_hf_model(rotary_emb: object) -> SimpleNamespace:
-    """Minimal HF model exposing only model.rotary_emb (no config/layers)."""
-    return SimpleNamespace(model=SimpleNamespace(rotary_emb=rotary_emb))
-
-
-def _fake_hf_model_with_eager_targets(rotary_emb: object) -> SimpleNamespace:
-    """HF model whose top-level and per-layer attention implementation start non-eager."""
-    layers = [
-        SimpleNamespace(
-            self_attn=SimpleNamespace(config=SimpleNamespace(_attn_implementation="sdpa"))
-        )
-        for _ in range(2)
-    ]
-    return SimpleNamespace(
-        config=SimpleNamespace(_attn_implementation="sdpa"),
-        model=SimpleNamespace(rotary_emb=rotary_emb, layers=layers),
-    )
 
 
 class DummyAttention:
@@ -424,7 +406,7 @@ class TestOlmoeSetupComponentTesting:
         assert isinstance(attn_template, PositionEmbeddingsAttentionBridge)
         assert attn_template._rotary_emb is None
 
-        adapter.setup_component_testing(_fake_hf_model(rotary_emb))
+        adapter.setup_component_testing(fake_hf_model(rotary_emb))
 
         assert attn_template._rotary_emb is rotary_emb
 
@@ -434,7 +416,7 @@ class TestOlmoeSetupComponentTesting:
         rotary_emb = object()
         bridge_model = DummyBridgeModel([DummyBlock(), DummyBlock(), DummyBlock()])
 
-        adapter.setup_component_testing(_fake_hf_model(rotary_emb), bridge_model=bridge_model)
+        adapter.setup_component_testing(fake_hf_model(rotary_emb), bridge_model=bridge_model)
 
         for block in bridge_model.blocks:
             assert block.attn.rotary_emb is rotary_emb
@@ -443,13 +425,13 @@ class TestOlmoeSetupComponentTesting:
         rotary_emb = object()
         bridge_model = DummyBridgeModel([DummyBlock(), DummyBlock(has_attention=False)])
 
-        adapter.setup_component_testing(_fake_hf_model(rotary_emb), bridge_model=bridge_model)
+        adapter.setup_component_testing(fake_hf_model(rotary_emb), bridge_model=bridge_model)
 
         assert bridge_model.blocks[0].attn.rotary_emb is rotary_emb
 
     def test_forces_eager_attention_implementation(self, adapter: OlmoeArchitectureAdapter) -> None:
         """Bridge attention only matches HF under eager attention, so it is forced on."""
-        hf_model = _fake_hf_model_with_eager_targets(object())
+        hf_model = fake_hf_model_with_eager_targets(object())
 
         adapter.setup_component_testing(hf_model)
 
@@ -462,8 +444,8 @@ class TestOlmoeSetupComponentTesting:
     ) -> None:
         """The defensive hasattr branches must not raise when config/layers are absent."""
         rotary_emb = object()
-        # _fake_hf_model exposes only model.rotary_emb (no config, no layers).
-        adapter.setup_component_testing(_fake_hf_model(rotary_emb))
+        # fake_hf_model exposes only model.rotary_emb (no config, no layers).
+        adapter.setup_component_testing(fake_hf_model(rotary_emb))
 
         attn_template = adapter.get_generalized_component("blocks.0.attn")
         assert isinstance(attn_template, PositionEmbeddingsAttentionBridge)

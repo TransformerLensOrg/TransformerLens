@@ -13,10 +13,10 @@ HF forward and are deliberately NOT mapped by the adapter; the top-level-keys
 test pins that scope (no "gate" / per-step components).
 """
 
-from types import SimpleNamespace
 
 import pytest
 
+from tests.unit.model_bridge.supported_architectures.helpers import fake_hf_model
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
@@ -64,10 +64,6 @@ def cfg() -> TransformerBridgeConfig:
 @pytest.fixture
 def adapter(cfg: TransformerBridgeConfig) -> OuroArchitectureAdapter:
     return OuroArchitectureAdapter(cfg)
-
-
-def _fake_hf_model(rotary_emb: object) -> SimpleNamespace:
-    return SimpleNamespace(model=SimpleNamespace(rotary_emb=rotary_emb))
 
 
 class DummyAttention:
@@ -231,7 +227,7 @@ class TestOuroSetupComponentTesting:
         assert isinstance(attn_template, PositionEmbeddingsAttentionBridge)
         assert attn_template._rotary_emb is None
 
-        adapter.setup_component_testing(_fake_hf_model(rotary_emb))
+        adapter.setup_component_testing(fake_hf_model(rotary_emb))
 
         assert attn_template._rotary_emb is rotary_emb
 
@@ -241,7 +237,7 @@ class TestOuroSetupComponentTesting:
         rotary_emb = object()
         bridge_model = DummyBridgeModel([DummyBlock(), DummyBlock(), DummyBlock()])
 
-        adapter.setup_component_testing(_fake_hf_model(rotary_emb), bridge_model=bridge_model)
+        adapter.setup_component_testing(fake_hf_model(rotary_emb), bridge_model=bridge_model)
 
         for block in bridge_model.blocks:
             assert block.attn.rotary_emb is rotary_emb
@@ -250,7 +246,7 @@ class TestOuroSetupComponentTesting:
         rotary_emb = object()
         bridge_model = DummyBridgeModel([DummyBlock(), DummyBlock(has_attention=False)])
 
-        adapter.setup_component_testing(_fake_hf_model(rotary_emb), bridge_model=bridge_model)
+        adapter.setup_component_testing(fake_hf_model(rotary_emb), bridge_model=bridge_model)
 
         assert bridge_model.blocks[0].attn.rotary_emb is rotary_emb
 

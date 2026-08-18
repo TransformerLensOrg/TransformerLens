@@ -26,7 +26,9 @@ class T5Block(nn.Module):
         self.is_decoder = is_decoder
 
         self.ln1 = RMSNorm(cfg)
-        self.attn = T5Attention(cfg, has_relative_attention_bias=block_index == 0)
+        self.attn = T5Attention(
+            cfg, has_relative_attention_bias=block_index == 0, is_decoder=is_decoder
+        )
         self.ln2 = RMSNorm(cfg)
         if self.is_decoder:
             self.cross_attn = T5Attention(cfg)
