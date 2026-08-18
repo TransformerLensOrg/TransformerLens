@@ -56,6 +56,37 @@ def test_full_model(our_model, huggingface_model, tokenizer, decoder_input_ids):
     assert_close(huggingface_model_out, our_model_out, rtol=1.3e-6, atol=4e-5)
 
 
+def test_full_model_multi_token_decoder(our_model, huggingface_model, tokenizer):
+    """Every other full-model test decodes a single pad token, where neither
+    causal masking nor relative-position bucketing can differ. Two bugs hid in
+    that gap: unmasked decoder self-attention (wrong from length 2) and
+    encoder-style bias buckets (wrong from offset 9); this binds both.
+    """
+    tokenized = tokenizer(
+        ["Hello, world!", "this is another sequence of tokens"], return_tensors="pt", padding=True
+    )
+    target = tokenizer(
+        "Das Haus ist wunderbar und sehr gross heute Abend am Fluss neben dem alten Turm",
+        return_tensors="pt",
+    )
+    decoder_ids = torch.cat(
+        [torch.LongTensor([[tokenizer.pad_token_id]]), target["input_ids"][:, :15]], dim=1
+    ).repeat(2, 1)
+    assert decoder_ids.shape[1] >= 12, "shorter than this and the bias buckets coincide"
+
+    huggingface_model_out = huggingface_model(
+        input_ids=tokenized["input_ids"],
+        attention_mask=tokenized["attention_mask"],
+        decoder_input_ids=decoder_ids,
+    ).logits
+    our_model_out = our_model(
+        tokenized["input_ids"],
+        decoder_input=decoder_ids,
+        one_zero_attention_mask=tokenized["attention_mask"],
+    )
+    assert_close(huggingface_model_out, our_model_out, rtol=1.3e-6, atol=4e-5)
+
+
 def test_encoder(our_model, huggingface_model, hello_world_tokens):
     our_embeds = our_model.embed(hello_world_tokens)
     pos_bias = our_model.encoder[0].attn.compute_relative_attention_bias(
@@ -161,6 +192,14 @@ def test_attention(our_model, huggingface_model, hello_world_tokens):
     assert_close(our_attn_out, huggingface_attn_out, rtol=5e-4, atol=1e-5)
 
 
+def _causal_float_mask(seq_len):
+    """The additive causal mask T5Stack builds for the decoder; passing HF's
+    attention module a bare call leaves it unmasked, which is not how the
+    decoder ever runs."""
+    allowed = torch.tril(torch.ones(seq_len, seq_len, dtype=torch.bool))
+    return torch.where(allowed, 0.0, torch.finfo(torch.float32).min)[None, None]
+
+
 def test_decoder_attention(our_model, huggingface_model, hello_world_tokens):
     huggingface_embed = huggingface_model.decoder.embed_tokens
     huggingface_attn = huggingface_model.decoder.block[1].layer[0].SelfAttention
@@ -172,7 +211,9 @@ def test_decoder_attention(our_model, huggingface_model, hello_world_tokens):
 
     input_len = hello_world_tokens.shape[1]
     cache_position = torch.arange(input_len)
-    huggingface_attn_out = huggingface_attn(embed_out, cache_position=cache_position)[0]
+    huggingface_attn_out = huggingface_attn(
+        embed_out, mask=_causal_float_mask(input_len), cache_position=cache_position
+    )[0]
     assert_close(our_attn_out, huggingface_attn_out, rtol=5e-4, atol=1e-5)
 
 
@@ -202,7 +243,9 @@ def test_decoder_attention_layer(our_model, huggingface_model, hello_world_token
 
     input_len = hello_world_tokens.shape[1]
     cache_position = torch.arange(input_len)
-    huggingface_attn_out = huggingface_attn(embed_out, cache_position=cache_position)[0]
+    huggingface_attn_out = huggingface_attn(
+        embed_out, attention_mask=_causal_float_mask(input_len), cache_position=cache_position
+    )[0]
     assert_close(our_attn_out, huggingface_attn_out, rtol=3e-4, atol=4e-5)
 
 

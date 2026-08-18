@@ -194,9 +194,16 @@ class RemoteBridge(BridgeCore, HookIntrospectionMixin):
             )
 
     def run_with_cache(self, *args: Any, **kwargs: Any) -> Any:
-        """Cache via driver captures; stop/start_at_layer rejected (full remote forward)."""
+        """Cache via driver captures; stop/start_at_layer and incl_bwd rejected."""
         self._reject_stop_at_layer(kwargs.get("stop_at_layer"))
         self._reject_start_at_layer(kwargs.get("start_at_layer"))
+        if kwargs.get("incl_bwd"):
+            # Captures come back as detached tensors from the remote engine, so there
+            # is no local graph for backward() to walk.
+            raise NotImplementedError(
+                "RemoteBridge has no backward pass; run_with_cache(incl_bwd=True) is "
+                "unsupported."
+            )
         return super().run_with_cache(*args, **kwargs)
 
     def to_tokens(self, input: Any, prepend_bos: bool | None = None, truncate: bool = True) -> Any:

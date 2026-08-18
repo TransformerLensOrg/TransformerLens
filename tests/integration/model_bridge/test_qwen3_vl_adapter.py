@@ -119,3 +119,17 @@ class TestQwen3VLGeneration:
         text = bridge.generate("Hello", max_new_tokens=5, do_sample=False, verbose=False)
         assert isinstance(text, str)
         assert text.startswith("Hello")
+
+    def test_generate_after_multimodal_forward(self, bridge):
+        """An image forward caches mrope deltas on the HF model; a later text-only
+        generation must not inherit them through the KV-cache position path."""
+        from transformers import AutoProcessor
+
+        proc = AutoProcessor.from_pretrained(MODEL)
+        inputs = _image_inputs(proc)
+        ids = inputs.pop("input_ids")
+        with torch.no_grad():
+            bridge(ids, **inputs)
+
+        text = bridge.generate("Hello", max_new_tokens=5, do_sample=False, verbose=False)
+        assert text.startswith("Hello")

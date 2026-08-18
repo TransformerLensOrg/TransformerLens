@@ -18,7 +18,11 @@ from transformer_lens.model_bridge.sources._hf_format import (
     map_default_transformer_lens_config,
     setup_tokenizer,
 )
-from transformer_lens.utilities.heterogeneous_config import per_layer_attr_names
+from transformer_lens.utilities.heterogeneous_config import (
+    het_safe_view,
+    per_layer_attr_names,
+    safe_config_get,
+)
 
 # Architecture-agnostic; do not extend per-architecture.
 _HF_PASSTHROUGH_ATTRS = [
@@ -195,7 +199,10 @@ def build_bridge_config_from_hf(
         if val is not None:
             setattr(bridge_config, attr, val)
 
-    # Gemma2: HF softcap field names differ from TL's.
+    # Gemma2: HF softcap field names differ from TL's. Read through the het
+    # view: a per-layer-registered field raises (not AttributeError) on raw
+    # getattr, so the default would not save us.
+    effective_config = het_safe_view(effective_config)
     final_logit_softcapping = getattr(effective_config, "final_logit_softcapping", None)
     if final_logit_softcapping is not None:
         bridge_config.output_logits_soft_cap = float(final_logit_softcapping)
@@ -209,9 +216,13 @@ def build_bridge_config_from_hf(
     # Nested encoder sub-configs (T5Gemma family): n_heads/n_key_value_heads are
     # decoder-effective, so expose encoder head counts for per-side conversions.
     # T5Gemma2 nests them one level deeper (encoder.text_config).
-    encoder_subconfig = getattr(hf_config, "encoder", None)
+    encoder_subconfig = safe_config_get(hf_config, "encoder")
+    if encoder_subconfig is not None:
+        encoder_subconfig = het_safe_view(encoder_subconfig)
     if encoder_subconfig is not None and not hasattr(encoder_subconfig, "num_attention_heads"):
-        encoder_subconfig = getattr(encoder_subconfig, "text_config", None)
+        encoder_subconfig = safe_config_get(encoder_subconfig, "text_config")
+        if encoder_subconfig is not None:
+            encoder_subconfig = het_safe_view(encoder_subconfig)
     if encoder_subconfig is not None:
         enc_heads = getattr(encoder_subconfig, "num_attention_heads", None)
         if enc_heads is not None:

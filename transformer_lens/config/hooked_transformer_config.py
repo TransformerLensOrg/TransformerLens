@@ -240,6 +240,14 @@ class HookedTransformerConfig(TransformerLensConfig):
             which use different RoPE bases for local (10k) and global (1M) attention. Defaults
             to None, which means the standard rotary_base is used for all layers.
         norm_topk_prob (bool): Whether to normalize the top-k probabilities in the MoE layer.
+        use_logn_attn (bool): Qwen-1's log-n attention: scale queries by
+            log_{train_len}(position) past the training length (eval only).
+        train_seq_length (int, *optional*): the length the model was trained at
+            (Qwen-1's ``seq_length``). Both log-n scaling and dynamic-NTK RoPE
+            threshold on it, and it stays fixed when n_ctx is overridden upward.
+        use_dynamic_ntk_rope (bool): Qwen-1's dynamic NTK: rescale the rotary
+            base by ``alpha ** (rotary_dim / (rotary_dim - 2))`` once the key
+            length exceeds the training length (eval only).
         clip_qkv (float, *optional*): Clamp Q/K/V activations to [-clip_qkv, clip_qkv] after
             projection (and any qk-norm), as OLMo v1 and OLMoE do. Defaults to None (no clamp).
     """
@@ -253,6 +261,9 @@ class HookedTransformerConfig(TransformerLensConfig):
     use_attn_in: bool = False
     use_qk_norm: bool = False
     clip_qkv: Optional[float] = None
+    use_logn_attn: bool = False
+    train_seq_length: Optional[int] = None
+    use_dynamic_ntk_rope: bool = False
     use_local_attn: bool = False
     ungroup_grouped_query_attention: bool = False
     original_architecture: Optional[str] = None

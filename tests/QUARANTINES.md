@@ -63,7 +63,7 @@ A `[vllm]` extra exists (Linux-only marker; declared conflicting with `[lit]` in
 | [`unit/test_weight_processing.py`:475](unit/test_weight_processing.py) | `skipif(not cuda and not mps)` (cross-device fold) | Any non-CPU accelerator |
 | [`acceptance/test_hooked_encoder.py`:171](acceptance/test_hooked_encoder.py) | `skipif(mps or not cuda)` (bf16/fp16) | CUDA, non-MPS |
 | [`acceptance/test_hooked_encoder.py`:226](acceptance/test_hooked_encoder.py) | `skipif(not cuda)` | Any CUDA |
-| [`acceptance/test_hooked_encoder_decoder.py`:417](acceptance/test_hooked_encoder_decoder.py) | `skipif(not cuda)` | Any CUDA |
+| [`acceptance/test_hooked_encoder_decoder.py`:460](acceptance/test_hooked_encoder_decoder.py) | `skipif(not cuda)` | Any CUDA |
 | [`acceptance/model_bridge/test_bridge_multigpu.py`](acceptance/model_bridge/test_bridge_multigpu.py) module-level | `multigpu` marker + `skipif(device_count < 2)` | 2+ CUDA |
 | [`acceptance/model_bridge/test_bridge_multigpu_device_map.py`](acceptance/model_bridge/test_bridge_multigpu_device_map.py) module-level | `multigpu` marker + `skipif(device_count < 2)` | 2+ CUDA |
 | [`mps/test_mps_basic.py`](mps/test_mps_basic.py) module-level | `skipif(not mps)` | Apple Silicon |
@@ -127,6 +127,32 @@ Big-model adapter tests use `@pytest.mark.slow`, CI tier filters `-m "not slow"`
 | [`integration/model_bridge/test_bridge_generate_stopping_criteria.py`:228](integration/model_bridge/test_bridge_generate_stopping_criteria.py) | `skipif(_MACOS_ARM64)`, KV-cache NaN (one `use_past_kv_cache=True` test) | Upstream PyTorch/HF on M-series Macs |
 
 **Un-skip:** when upstream resolves. Don't bypass — produces NaN logits.
+
+---
+
+## ⚠️ Technical debt — whole-file
+
+No modules are currently quarantined this way.
+
+**Resolved 2026-08-17.** `acceptance/test_hooked_encoder.py` and `test_hooked_encoder_decoder.py`
+had carried module-level `pytest.mark.skip(reason="CI test pollution")` since #1129, removed on
+this branch by #1606; `test_hooked_transformer.py` carried the same skip and was deleted outright
+by #1603, which re-anchored its coverage. Re-running them found no pollution: each passes alone
+and the acceptance tier is green. What the skips were hiding was four genuine failures:
+
+| Was failing | Actual cause |
+|---|---|
+| `test_bert_block` | transformers 5.x returns a tensor from `BertLayer.forward`, so the test's `[0]` took batch element 0 instead of tuple element 0 |
+| `test_bloom_similarity_*` (×2) | the HF fixture loaded bloom at its checkpoint dtype (fp16) while TL loads fp32 — the comparison measured HF's own fp16 error (0.259 log-softmax against *itself*), not TL. Went away with `test_hooked_transformer.py` |
+| `test_model[redwood_attn_2l]`, `test_from_pretrained_no_processing[redwood_attn_2l]` | `ArthurConmy/redwood_tokenizer` has merges referencing a token absent from its vocab (`Ġpati`), which tokenizers >= 0.20 rejects on both the fast and slow paths. Went away with `test_hooked_transformer.py` |
+
+Two silent TransformerLens bugs also lived in this blind spot the whole time: T5's decoder
+self-attention was never causally masked, and its relative-position bias used the encoder's
+bucketing. Both are fixed, and bound by
+[`acceptance/test_hooked_encoder_decoder.py`](acceptance/test_hooked_encoder_decoder.py)'s
+`test_full_model_multi_token_decoder` plus
+[`unit/model_bridge/test_t5_block_parity.py`](unit/model_bridge/test_t5_block_parity.py). Keep
+the encoder modules enabled.
 
 ---
 

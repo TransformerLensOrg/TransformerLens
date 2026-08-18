@@ -319,3 +319,40 @@ class TestGemmaDeviceConsistency:
             w_out = state_dict[f"blocks.{layer}.mlp.W_out"]
             b_out = state_dict[f"blocks.{layer}.mlp.b_out"]
             assert w_out.device == b_out.device
+
+
+class MockGemma5xMultimodalModel(nn.Module):
+    """transformers 5.x shape: language_model moved UNDER .model."""
+
+    def __init__(self, cfg: TransformerBridgeConfig):
+        super().__init__()
+        self.model = nn.Module()
+        self.model.language_model = nn.Module()
+        base = self.model.language_model
+        base.embed_tokens = nn.Embedding(cfg.d_vocab, cfg.d_model)
+        base.norm = nn.LayerNorm(cfg.d_model)
+        base.layers = nn.ModuleList(
+            [MockGemmaLayer(cfg, use_qk_norm=cfg.use_qk_norm) for _ in range(cfg.n_layers)]
+        )
+
+
+class TestGemma5xMultimodalDetection:
+    """5.x moved language_model under .model; the old top-level probe silently
+    reported text-only there and converted the multimodal model down the
+    wrong path (reading .model as if it were the text transformer)."""
+
+    def test_5x_shape_converts_the_language_model(self):
+        cfg = get_gemma3_config()
+        model = MockGemma5xMultimodalModel(cfg)
+        state_dict = convert_gemma_weights(model, cfg)
+        expected = model.model.language_model.embed_tokens.weight
+        # Gemma scales embeddings by sqrt(d_model); undo it to pin the source.
+        import math
+
+        torch.testing.assert_close(state_dict["embed.W_E"] / math.sqrt(cfg.d_model), expected)
+
+    def test_4x_shape_still_converts(self):
+        cfg = get_gemma3_config()
+        model = MockGemmaMultimodalModel(cfg)
+        state_dict = convert_gemma_weights(model, cfg)
+        assert "embed.W_E" in state_dict

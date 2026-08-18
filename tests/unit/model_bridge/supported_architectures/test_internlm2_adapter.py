@@ -623,3 +623,33 @@ class TestInternLM2ArchitectureGuards:
         blocks = adapter.component_mapping["blocks"]
         assert not isinstance(blocks, ParallelBlockBridge)
         assert isinstance(blocks, BlockBridge)
+
+
+def test_wqkv_split_reproduces_hf_interleaved_layout() -> None:
+    """TL's split must match HF's own rearrange: wqkv packs [h, groups+2, d]
+    interleaved per KV head (q rows first, then k, then v — NOT [Q|K|V]).
+    Row order was never source-verified before; pinned numerically here."""
+    from types import SimpleNamespace
+
+    import torch
+    from einops import rearrange
+
+    torch.manual_seed(0)
+    d_model, n_kv, groups, d_head = 32, 2, 4, 4  # n_heads = 8
+    wqkv = torch.nn.Linear(d_model, n_kv * (groups + 2) * d_head, bias=False)
+    x = torch.randn(2, 5, d_model)
+
+    qkv = rearrange(wqkv(x), "b q (h gs d) -> b q h gs d", gs=groups + 2, d=d_head)
+    q_hf = rearrange(qkv[..., :groups, :], "b q h gs d -> b q (h gs) d")
+    k_hf = qkv[..., -2, :]
+    v_hf = qkv[..., -1, :]
+
+    cfg = _make_cfg()
+    cfg.d_model, cfg.n_heads, cfg.d_head = d_model, 8, d_head
+    cfg.n_key_value_heads = n_kv
+    adapter = InternLM2ArchitectureAdapter(cfg)
+    q_mod, k_mod, v_mod = adapter._split_internlm2_wqkv(SimpleNamespace(wqkv=wqkv))
+    with torch.no_grad():
+        torch.testing.assert_close(q_mod(x).view(2, 5, 8, d_head), q_hf)
+        torch.testing.assert_close(k_mod(x).view(2, 5, n_kv, d_head), k_hf)
+        torch.testing.assert_close(v_mod(x).view(2, 5, n_kv, d_head), v_hf)

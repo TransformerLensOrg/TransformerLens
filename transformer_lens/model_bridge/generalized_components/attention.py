@@ -3,7 +3,7 @@
 This module contains the bridge component for attention layers.
 """
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import einops
 import torch
@@ -298,6 +298,10 @@ class AttentionBridge(GeneralizedComponent):
         class ReshapeForAttentionHeads(BaseTensorConversion):
             """Reshape tensors to split attention heads for Q/K/V/Z compatibility."""
 
+            # Marks the [batch, pos, head, d_head] layout so consumers (e.g. run_with_cache's
+            # pos_slice) know the position axis is two from the end, not one.
+            splits_attention_heads = True
+
             def __init__(self, n_heads: int, d_head: int):
                 super().__init__()
                 self.n_heads = n_heads
@@ -345,11 +349,40 @@ class AttentionBridge(GeneralizedComponent):
         n_kv_heads = n_heads
         if hasattr(self.config, "n_key_value_heads") and self.config.n_key_value_heads is not None:
             n_kv_heads = self.config.n_key_value_heads
+
+        # Per-layer d_head makes width division ambiguous (gemma4: 2048 = 8x256
+        # = 4x512), so dividing by the majority scalar mis-factorizes silently.
+        layer_d_head: Optional[int] = d_head
+        per_layer_hd = getattr(self.config, "per_layer_head_dim", None)
+        if per_layer_hd:
+            entry: Any = None
+            if self._layer_idx is not None and self._layer_idx < len(per_layer_hd):
+                entry = per_layer_hd[self._layer_idx]
+            if not (isinstance(entry, int) and entry > 0):
+                entry = getattr(self.original_component, "head_dim", None)
+            layer_d_head = entry if isinstance(entry, int) and entry > 0 else None
+
+        def conversion_dims(
+            proj: Any, cfg_heads: int, width_attr: str = "out_features"
+        ) -> Tuple[int, int]:
+            """(n_heads, d_head) from the BOUND module width, not the cfg scalars.
+
+            OpenELM/laguna vary head counts per layer; cfg-only dims no-op there,
+            flipping hook shapes mid-model. MLA excluded — its o-width is v_head_dim.
+            """
+            if getattr(self, "_v_head_dim", None):
+                return cfg_heads, d_head
+            component = getattr(proj, "original_component", None)
+            width = getattr(component, width_attr, None)
+            if width and layer_d_head and width % layer_d_head == 0:
+                return width // layer_d_head, layer_d_head
+            return cfg_heads, layer_d_head or d_head
+
         if hasattr(self, "q") and self.q is not None and hasattr(self.q, "hook_out"):
-            q_reshape = ReshapeForAttentionHeads(n_heads, d_head)
+            q_reshape = ReshapeForAttentionHeads(*conversion_dims(self.q, n_heads))
             self.q.hook_out.hook_conversion = q_reshape
         if hasattr(self, "k") and self.k is not None and hasattr(self.k, "hook_out"):
-            k_reshape = ReshapeForAttentionHeads(n_kv_heads, d_head)
+            k_reshape = ReshapeForAttentionHeads(*conversion_dims(self.k, n_kv_heads))
             self.k.hook_out.hook_conversion = k_reshape
             # Subclasses that de-alias hook_k onto their own HookPoint (K-scaling
             # architectures) need the same conversion, whichever order runs first.
@@ -358,10 +391,12 @@ class AttentionBridge(GeneralizedComponent):
             ):
                 self.hook_k.hook_conversion = k_reshape
         if hasattr(self, "v") and self.v is not None and hasattr(self.v, "hook_out"):
-            v_reshape = ReshapeForAttentionHeads(n_kv_heads, d_head)
+            v_reshape = ReshapeForAttentionHeads(*conversion_dims(self.v, n_kv_heads))
             self.v.hook_out.hook_conversion = v_reshape
         if hasattr(self, "o") and self.o is not None and hasattr(self.o, "hook_in"):
-            z_reshape = ReshapeForAttentionHeads(n_heads, d_head)
+            z_reshape = ReshapeForAttentionHeads(
+                *conversion_dims(self.o, n_heads, width_attr="in_features")
+            )
             self.o.hook_in.hook_conversion = z_reshape
 
         class TransposeRotaryHeads(BaseTensorConversion):
@@ -542,7 +577,10 @@ class AttentionBridge(GeneralizedComponent):
         if attention_mask.shape[-1] != seq_len:
             attention_mask = attention_mask[..., :seq_len]
         if attention_mask.ndim >= 3 and attention_mask.shape[-2] != q_seq_len:
-            attention_mask = attention_mask[..., :q_seq_len, :]
+            # Extra query rows mean a full-sequence mask on a cached decode step,
+            # where the live queries are the LAST rows; taking the first hands
+            # every step position 0 (Baichuan-13B fuses ALiBi slopes in here).
+            attention_mask = attention_mask[..., -q_seq_len:, :]
 
         if attention_mask.dtype == torch.bool:
             attention_mask = torch.where(

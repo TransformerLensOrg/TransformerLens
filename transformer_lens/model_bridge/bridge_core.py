@@ -4,7 +4,7 @@ from __future__ import annotations
 import inspect
 import re
 import warnings
-from contextlib import contextmanager, nullcontext
+from contextlib import contextmanager
 from functools import lru_cache, partial
 from typing import (
     Any,
@@ -1007,6 +1007,10 @@ class BridgeCore:
     ) -> Any:
         """Context manager for temporarily adding hooks.
 
+        ``reset_hooks_end`` removes the hooks this context added when it exits —
+        hooks the caller attached beforehand are left alone either way;
+        ``clear_contexts`` also wipes the touched hook points' ``ctx``.
+
         Example:
             with model.hooks(fwd_hooks=[("hook_embed", my_hook)]):
                 output = model("Hello world")
@@ -1067,9 +1071,13 @@ class BridgeCore:
                 yield self
             finally:
                 try:
-                    if reset_hooks_end:
-                        for hook_point, direction in added_hooks:
+                    for hook_point, direction in added_hooks:
+                        if reset_hooks_end:
+                            # `level` keeps this to the hooks added above — hooks the
+                            # caller attached before the context survive.
                             hook_point.remove_hooks(dir=direction, level=context_level)
+                        if clear_contexts:
+                            hook_point.clear_context()
                 finally:
                     self.context_level -= 1
 
@@ -1097,6 +1105,9 @@ class BridgeCore:
         residual entering block ``k`` (see :meth:`forward`); hooks on blocks below
         ``k`` are skipped to match HookedTransformer. ``remove_batch_dim``
         squeezes/unsqueezes the batch dim around hook callbacks (batch_size==1 only).
+        ``reset_hooks_end`` removes the hooks this call added when it finishes —
+        hooks the caller attached beforehand are left alone either way;
+        ``clear_contexts`` also wipes the touched hook points' ``ctx``.
         """
         if "names_filter" in kwargs:
             # **kwargs would silently absorb it; fail loud.
@@ -1221,9 +1232,13 @@ class BridgeCore:
             return output
         finally:
             try:
-                if reset_hooks_end:
-                    for hook_point, direction in added_hooks:
+                for hook_point, direction in added_hooks:
+                    if reset_hooks_end:
+                        # `level` keeps this to the hooks added above — hooks the caller
+                        # attached before the call survive.
                         hook_point.remove_hooks(dir=direction, level=context_level)
+                    if clear_contexts:
+                        hook_point.clear_context()
             finally:
                 self.context_level -= 1
 
@@ -1261,6 +1276,8 @@ class BridgeCore:
         start_at_layer: Optional[int] = None,
         pos_slice: Optional[Union[Slice, SliceInput]] = None,
         incl_bwd: bool = False,
+        reset_hooks_end: bool = True,
+        clear_contexts: bool = False,
         **kwargs,
     ) -> Tuple[Any, Union[ActivationCache, Dict[str, torch.Tensor]]]:
         """Run the model and cache activations. Returns ``(output, cache)``.
@@ -1273,10 +1290,24 @@ class BridgeCore:
         query position ``-2`` for attention patterns/scores). ``incl_bwd`` also
         caches gradients under ``"<name>_grad"`` by running ``output.backward()``;
         the caller must request a scalar output (``return_type="loss"``) and the
-        model must be on the gradients-capable transformers driver. ``device``
+        model must be on the gradients-capable transformers driver.
+        ``reset_hooks_end`` removes the hooks this call added when it finishes —
+        hooks the caller attached beforehand are left alone either way;
+        ``clear_contexts`` also wipes the touched hook points' ``ctx``. ``device``
         offloads cached activations (matches ``ActivationCache.to``); the model and
         inputs stay where the caller put them.
         """
+        if incl_bwd and stop_at_layer is not None:
+            raise ValueError(
+                "incl_bwd=True cannot be combined with stop_at_layer: the run returns the "
+                "intermediate activation at that layer, not a scalar to call backward() on."
+            )
+        if incl_bwd and not torch.is_grad_enabled():
+            raise ValueError(
+                "incl_bwd=True needs autograd, but gradient tracking is off "
+                "(torch.no_grad(), set_grad_enabled(False) or inference mode). "
+                "Run the call with gradients enabled."
+            )
         pos_slice_obj = Slice.unwrap(pos_slice)
         aliases = build_alias_to_canonical_map(self.hook_dict)
 
@@ -1316,14 +1347,15 @@ class BridgeCore:
         # None → no-op .to(None), tensors stay on their current device.
         cache_device = kwargs.pop("device", None)
 
-        def _store(name: str, value: torch.Tensor) -> None:
+        def _store(name: str, value: torch.Tensor, suffix: str = "") -> None:
             stored = value.detach().to(cache_device)
             if pos_slice_obj is not None and stored.dim() >= 2:
                 # Position is dim 1 for every bridge activation (resid [b,p,d], per-head
                 # [b,p,h,d], token ids [b,p]) except attention patterns/scores, which
-                # slice the query position at -2 — see _pos_slice_dim.
+                # slice the query position at -2 — see _pos_slice_dim. A gradient has its
+                # activation's layout, so the axis comes from the unsuffixed name.
                 stored = pos_slice_obj.apply(stored, dim=self._pos_slice_dim(name))
-            cache[name] = stored
+            cache[name + suffix] = stored
 
         def make_cache_hook(name: str):
             def cache_hook(tensor: torch.Tensor, *, hook: Any) -> torch.Tensor:
@@ -1386,10 +1418,11 @@ class BridgeCore:
             )
 
         def make_grad_cache_hook(name: str):
-            def grad_hook(tensor: torch.Tensor, *, hook: Any) -> torch.Tensor:
+            def grad_hook(tensor: torch.Tensor, *, hook: Any) -> None:
                 if isinstance(tensor, torch.Tensor):
-                    _store(name + "_grad", tensor)
-                return tensor
+                    _store(name, tensor, suffix="_grad")
+                # A non-None return from a backward hook replaces grad_input; stay read-only.
+                return None
 
             return grad_hook
 
@@ -1477,29 +1510,48 @@ class BridgeCore:
                         p.kind is inspect.Parameter.VAR_KEYWORD for p in fwd_params.values()
                     ):
                         filtered_kwargs["output_attentions"] = True
-            # incl_bwd needs grad to build the graph and run backward while the
-            # bwd cache hooks are still attached (i.e. before the finally below).
-            with torch.enable_grad() if incl_bwd else nullcontext():
-                if processed_args:
-                    output = self.forward(processed_args[0], **filtered_kwargs)
-                elif "input_ids" in filtered_kwargs:
-                    output = self.forward(
-                        filtered_kwargs["input_ids"],
-                        **{k: v for k, v in filtered_kwargs.items() if k != "input_ids"},
+            if processed_args:
+                output = self.forward(processed_args[0], **filtered_kwargs)
+            elif "input_ids" in filtered_kwargs:
+                output = self.forward(
+                    filtered_kwargs["input_ids"],
+                    **{k: v for k, v in filtered_kwargs.items() if k != "input_ids"},
+                )
+            else:
+                output = self.forward(**filtered_kwargs)
+            if hasattr(output, "logits"):
+                output = output.logits
+            if incl_bwd:
+                # Gradients land in the cache via the bwd hooks, which the finally below
+                # removes, so the backward pass has to happen inside this try.
+                if not isinstance(output, torch.Tensor) or output.numel() != 1:
+                    shape = tuple(output.shape) if isinstance(output, torch.Tensor) else None
+                    raise ValueError(
+                        "incl_bwd=True needs a scalar output to call backward() on, got "
+                        f"{type(output).__name__}{f' of shape {shape}' if shape else ''}. "
+                        'Pass return_type="loss".'
                     )
-                else:
-                    output = self.forward(**filtered_kwargs)
-                if hasattr(output, "logits"):
-                    output = output.logits
-                if incl_bwd:
-                    output.backward()
+                if not output.requires_grad:
+                    raise ValueError(
+                        "incl_bwd=True got an output with no grad_fn — the model's parameters "
+                        "have requires_grad=False, so there is nothing to differentiate."
+                    )
+                output.backward()
         except StopAtLayerException as e:
             output = e.layer_output
         except Exception as e:
             raise e
         finally:
             try:
-                self.remove_all_hook_fns(level=context_level)
+                if reset_hooks_end:
+                    # `level` keeps this to the hooks added above — hooks the caller
+                    # attached before the call survive.
+                    self.remove_all_hook_fns(level=context_level)
+                if clear_contexts:
+                    for hp, _ in hooks:
+                        hp.clear_context()
+                    if stop_hook_point is not None:
+                        stop_hook_point.clear_context()
             finally:
                 self.context_level -= 1
         if self.compatibility_mode == True:
@@ -1510,21 +1562,29 @@ class BridgeCore:
                         reverse_aliases[single_new_name] = old_name
                 else:
                     reverse_aliases[new_name] = old_name
+            # Gradient entries are keyed "<hook_name>_grad", so alias lookups run on the
+            # base name and the suffix is re-attached to the aliased key.
+            suffixes = ("", "_grad") if incl_bwd else ("",)
             cache_items_to_add = {}
             for cache_name, cached_value in cache.items():
-                for new_name, old_name in reverse_aliases.items():
-                    if cache_name == new_name:
-                        cache_items_to_add[old_name] = cached_value
-                        break
+                base_name, suffix = (
+                    (cache_name[: -len("_grad")], "_grad")
+                    if cache_name.endswith("_grad")
+                    else (cache_name, "")
+                )
+                old_name = reverse_aliases.get(base_name)
+                if old_name is not None:
+                    cache_items_to_add[old_name + suffix] = cached_value
             cache.update(cache_items_to_add)
             for alias_name, target_name in aliases.items():
-                if isinstance(target_name, list):
-                    for single_target in target_name:
-                        if single_target in cache and alias_name not in cache:
-                            cache[alias_name] = cache[single_target]
+                targets = target_name if isinstance(target_name, list) else [target_name]
+                for suffix in suffixes:
+                    if alias_name + suffix in cache:
+                        continue
+                    for single_target in targets:
+                        if single_target + suffix in cache:
+                            cache[alias_name + suffix] = cache[single_target + suffix]
                             break
-                elif target_name in cache and alias_name not in cache:
-                    cache[alias_name] = cache[target_name]
         if return_cache_object:
             activation_cache = ActivationCache(cache, self, has_batch_dim=True)
             if remove_batch_dim:

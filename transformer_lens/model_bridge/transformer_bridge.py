@@ -986,51 +986,55 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
     ) -> torch.Tensor:
         """Stack a parameter across all blocks; falls back to matching-only on hybrids.
 
-        On hybrid models, logs a warning about index mapping and returns only
-        blocks that have the submodule. First path segment is checked against
-        _modules; deeper segments resolve via getattr (intentional — W_Q etc.
-        are exposed via __getattr__ delegation).
+        Filters on FULL-path resolution, not the first segment: on interleaved
+        MoE, every block has `mlp` but only dense layers expose `mlp.W_in`, so
+        a first-segment filter matched everything and the sparse layer's
+        AttributeError killed the accessor for the whole model.
         """
         first_attr = attr_path.split(".")[0]
-        matching_blocks = [
-            (i, block) for i, block in enumerate(self.blocks) if first_attr in block._modules
-        ]
+        matching_blocks: List[Tuple[int, torch.Tensor]] = []
+        for i, block in enumerate(self.blocks):
+            if first_attr not in block._modules:
+                continue
+            try:
+                weight = _resolve_attr_path(block, attr_path)
+            except AttributeError:
+                continue
+            if weight is None:
+                # Bias-free checkpoints (e.g. qkv_bias=False) expose None here;
+                # stacking would raise an opaque TypeError.
+                raise AttributeError(
+                    f"blocks[{i}].{attr_path} is None — this checkpoint has no "
+                    f"such parameter (bias-free projection). Bias-free models expose no "
+                    f"stacked {attr_path.rsplit('.', 1)[-1]}; construct zeros explicitly "
+                    f"if your analysis needs one."
+                )
+            matching_blocks.append((i, weight))
 
         if len(matching_blocks) == 0:
             raise AttributeError(
-                f"No blocks have submodule '{first_attr}'. "
+                f"No blocks resolve '{attr_path}'. "
                 f"Use bridge.blocks_with('{first_attr}') to check availability."
             )
 
         if len(matching_blocks) < len(self.blocks):
             indices = [i for i, _ in matching_blocks]
             logging.warning(
-                "Hybrid model: only %d/%d blocks have '%s'. Returning stacked tensor "
+                "Hybrid model: only %d/%d blocks resolve '%s'. Returning stacked tensor "
                 "for layers %s only. Tensor index i corresponds to original layer "
                 "indices[i], not layer i. For explicit index mapping, use "
                 "bridge.stack_params_for('%s', '%s').",
                 len(matching_blocks),
                 len(self.blocks),
-                first_attr,
+                attr_path,
                 indices,
                 first_attr,
                 attr_path,
             )
 
         weights: List[torch.Tensor] = []
-        for block_idx, block in matching_blocks:
-            w = _resolve_attr_path(block, attr_path)
-            if w is None:
-                # Bias-free checkpoints (e.g. qkv_bias=False) expose None here;
-                # stacking would raise an opaque TypeError.
-                raise AttributeError(
-                    f"blocks[{block_idx}].{attr_path} is None — this checkpoint has no "
-                    f"such parameter (bias-free projection). Bias-free models expose no "
-                    f"stacked {attr_path.rsplit('.', 1)[-1]}; construct zeros explicitly "
-                    f"if your analysis needs one."
-                )
-            if reshape_fn is not None:
-                w = reshape_fn(w)
+        for _, weight in matching_blocks:
+            w = reshape_fn(weight) if reshape_fn is not None else weight
             weights.append(w)
         # Under a device_map split, per-block tensors live on different devices.
         # torch.stack requires a common device; gather onto cfg.device (the embedding /
@@ -2138,6 +2142,13 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         EOS, so when it is ``None`` the loop runs the EOS-only path unchanged.
         """
         _hf_kv_cache = None
+        # A prior multimodal forward caches mrope deltas on the wrapped model, and a
+        # text-only generation would inherit them through the KV-cache position path
+        # (HF's own generate recomputes them at prefill; driving forward() directly
+        # makes that reset this loop's job).
+        base = getattr(self.original_model, "base_model", self.original_model)
+        if getattr(base, "rope_deltas", None) is not None:
+            base.rope_deltas = None
         # A row may finish via EOS and/or any of the configured stopping criteria.
         any_stop_active = stop_at_eos or stopping_criteria_list is not None
 

@@ -10,21 +10,17 @@ def convert_gemma_weights(gemma, cfg: TransformerLensConfig):
     assert cfg.n_key_value_heads is not None  # keep mypy happy
     assert cfg.d_mlp is not None  # keep mypy happy
 
-    # Check if this is a multimodal model (Gemma3ForConditionalGeneration)
-    # Multimodal models have language_model attribute, text-only models don't
-    is_multimodal = hasattr(gemma, "language_model")
+    # Multimodal detection must survive transformers 5.x, which moved
+    # Gemma3ForConditionalGeneration's language_model under .model — the old
+    # top-level probe silently reported text-only there and converted the
+    # multimodal model down the wrong path.
+    language_model = getattr(gemma, "language_model", None)
+    if language_model is None:
+        language_model = getattr(getattr(gemma, "model", None), "language_model", None)
 
-    # Get the actual model
-    # For multimodal: gemma.language_model.model is Gemma3TextModel which has layers/embed_tokens
-    # For text-only: gemma has .model which contains layers/embed_tokens
-    if is_multimodal:
-        # Multimodal structure: gemma.language_model.model contains the text transformer
-        # We skip gemma.vision_tower entirely to save memory
-        if hasattr(gemma.language_model, "model"):
-            base_model = gemma.language_model.model
-        else:
-            # Fallback if structure is different
-            base_model = gemma.language_model
+    if language_model is not None:
+        # Vision tower is skipped entirely; only the text transformer converts.
+        base_model = getattr(language_model, "model", language_model)
     else:
         # Text-only Gemma3ForCausalLM has .model wrapper
         base_model = gemma.model
