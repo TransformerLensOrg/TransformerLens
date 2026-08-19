@@ -198,6 +198,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             tokenizer: The tokenizer to use (required)
         """
         super().__init__()
+        self._n_params_total = sum(parameter.numel() for parameter in model.parameters())
         self.__dict__["original_model"] = model
         self.adapter = adapter
         self.cfg = adapter.cfg
@@ -843,18 +844,17 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
 
     @property
     def n_params_total(self) -> int:
-        """Total number of parameters in the model, including embeddings, biases,
-        and layer norm weights.
+        """Number of parameters in the wrapped model before bridge instrumentation.
 
-        Mirrors :attr:`HookedTransformer.n_params_total`. Use this when you want
-        the actual parameter count for memory budgeting, comparison with
-        HuggingFace's ``model.num_parameters()``, or alignment with reported
-        model sizes in papers (e.g. the Pythia suite).
+        This follows PyTorch's parameter iteration semantics, counting tied
+        parameters once. Bridge-created split views and synthetic zero tensors
+        are excluded, so the result can differ from
+        :attr:`HookedTransformer.n_params_total` and :meth:`tl_parameters`.
 
         Returns:
-            int: ``sum(p.numel() for p in self.parameters())``
+            int: Parameter count of the uninstrumented wrapped model.
         """
-        return sum(p.numel() for p in self.parameters())
+        return self._n_params_total
 
     def clear_hook_registry(self) -> None:
         """Clear the hook registry and force re-initialization."""
