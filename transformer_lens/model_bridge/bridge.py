@@ -2631,7 +2631,12 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                 effective_stop_layer = stop_at_layer
 
         def add_hook_to_point(
-            hook_point: HookPoint, hook_fn: Callable, name: str, dir: Literal["fwd", "bwd"] = "fwd"
+            hook_point: HookPoint,
+            hook_fn: Callable,
+            name: str,
+            dir: Literal["fwd", "bwd"] = "fwd",
+            *,
+            is_explicit: bool = True,
         ):
             if effective_stop_layer is not None and name.startswith("blocks."):
                 try:
@@ -2640,7 +2645,15 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                         return
                 except (IndexError, ValueError):
                     pass
-            self.check_hooks_to_add(name)
+            if is_explicit:
+                self.check_hooks_to_add(name)
+            elif self._gated_hook_reason(name) is not None:
+                warnings.warn(
+                    f"run_with_hooks(): filter matched gated-off hook name '{name}', skipped. "
+                    "Call the relevant set_use_*(True) setter first to enable it.",
+                    stacklevel=2,
+                )
+                return
             if self.compatibility_mode and name != hook_point.name:
                 alias_names_list: list[str] = []
                 if hook_point.name is not None:
@@ -2652,6 +2665,15 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             else:
                 hook_point.add_hook(hook_fn, dir=dir, level=context_level)
             added_hooks.append((hook_point, dir))
+
+        def apply_hooks(hooks: List[Tuple[Union[str, Callable], Callable]], is_fwd: bool):
+            direction: Literal["fwd", "bwd"] = "fwd" if is_fwd else "bwd"
+            aliases = build_alias_to_canonical_map(self.hook_dict)
+            for hook_name_or_filter, hook_fn in hooks:
+                if remove_batch_dim:
+                    original_hook_fn = hook_fn
+
+                    # Default arg captures hook_fn by value (avoids closure issue)
 
         def apply_hooks(hooks: List[Tuple[Union[str, Callable], Callable]], is_fwd: bool):
             direction: Literal["fwd", "bwd"] = "fwd" if is_fwd else "bwd"
@@ -2679,7 +2701,11 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                         actual_hook_name = aliases[hook_name_or_filter]
                     if actual_hook_name in hook_dict:
                         add_hook_to_point(
-                            hook_dict[actual_hook_name], hook_fn, actual_hook_name, direction
+                            hook_dict[actual_hook_name],
+                            hook_fn,
+                            actual_hook_name,
+                            direction,
+                            is_explicit=True,
                         )
                 else:
                     hook_dict = self.hook_dict
@@ -2691,7 +2717,13 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                                 continue
                             seen_hooks.add(hook_id)
                             hook_name_to_use = hook_point.name if hook_point.name else name
-                            add_hook_to_point(hook_point, hook_fn, hook_name_to_use, direction)
+                            add_hook_to_point(
+                                hook_point,
+                                hook_fn,
+                                hook_name_to_use,
+                                direction,
+                                is_explicit=False,
+                            )
 
         try:
             self.context_level = context_level
@@ -4170,34 +4202,35 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             original.train(mode)
         return self
 
-    def check_hooks_to_add(self, hook_point_name: str) -> None:
-        """Raise a clear error if a hook is being added to a gated-off hook point.
-
-        Mirrors HookedTransformer.check_hooks_to_add, but raises a ValueError
-        naming the setter to call, instead of a bare assert.
-        """
+    def _gated_hook_reason(self, hook_point_name: str) -> Optional[str]:
+        """Return the disabled setter name if hook_point_name is gated off, else None."""
         if hook_point_name.endswith("attn.hook_result") and not self.cfg.use_attn_result:
-            raise ValueError(
-                f"Cannot add hook {hook_point_name} because use_attn_result is False. "
-                "Call set_use_attn_result(True) first."
-            )
+            return "use_attn_result"
         if (
             hook_point_name.endswith(("hook_q_input", "hook_k_input", "hook_v_input"))
             and not self.cfg.use_split_qkv_input
         ):
-            raise ValueError(
-                f"Cannot add hook {hook_point_name} because use_split_qkv_input is False. "
-                "Call set_use_split_qkv_input(True) first."
-            )
+            return "use_split_qkv_input"
         if hook_point_name.endswith("mlp_in") and not self.cfg.use_hook_mlp_in:
-            raise ValueError(
-                f"Cannot add hook {hook_point_name} because use_hook_mlp_in is False. "
-                "Call set_use_hook_mlp_in(True) first."
-            )
+            return "use_hook_mlp_in"
         if hook_point_name.endswith("attn_in") and not self.cfg.use_attn_in:
+            return "use_attn_in"
+        return None
+
+    def check_hooks_to_add(self, hook_point_name: str) -> None:
+        """Raise a clear error if a hook is being explicitly added to a gated-off hook point.
+
+        Mirrors HookedTransformer.check_hooks_to_add, but raises a ValueError
+        naming the setter to call, instead of a bare assert. Only for explicit,
+        user-named hook points — a filter/callable matching a gated name uses
+        _gated_hook_reason directly and skips with a warning instead, since the
+        filter was not necessarily targeting that name on purpose.
+        """
+        reason = self._gated_hook_reason(hook_point_name)
+        if reason is not None:
             raise ValueError(
-                f"Cannot add hook {hook_point_name} because use_attn_in is False. "
-                "Call set_use_attn_in(True) first."
+                f"Cannot add hook {hook_point_name} because {reason} is False. "
+                f"Call set_{reason}(True) first."
             )
 
     def add_hook(
@@ -4221,15 +4254,24 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         if callable(name) and not isinstance(name, str):
             hook_dict = self.hook_dict
             seen_hooks: set[int] = set()
+            gated_names_skipped: List[str] = []
             for hook_name, hook_point in hook_dict.items():
                 if name(hook_name):
                     hook_id = id(hook_point)
                     if hook_id in seen_hooks:
                         continue
                     seen_hooks.add(hook_id)
-                    self.check_hooks_to_add(hook_name)
+                    if self._gated_hook_reason(hook_name) is not None:
+                        gated_names_skipped.append(hook_name)
+                        continue
                     hook_point.add_hook(hook_fn, dir=dir, is_permanent=is_permanent)
-            return
+        if gated_names_skipped and names_filter is not None:
+            warnings.warn(
+                f"run_with_cache: skipped {len(gated_names_skipped)} gated-off hook name(s) "
+                f"that will never be cached: {gated_names_skipped}. Call the relevant "
+                "set_use_*(True) setter first to enable them.",
+                stacklevel=2,
+            )
             return
 
         component = self
@@ -4305,8 +4347,18 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                 hook_fn: Callable,
                 name: str,
                 dir: Literal["fwd", "bwd"] = "fwd",
+                *,
+                is_explicit: bool = True,
             ):
-                self.check_hooks_to_add(name)
+                if is_explicit:
+                    self.check_hooks_to_add(name)
+                elif self._gated_hook_reason(name) is not None:
+                    warnings.warn(
+                        f"hooks(): filter matched gated-off hook name '{name}', skipped. "
+                        "Call the relevant set_use_*(True) setter first to enable it.",
+                        stacklevel=2,
+                    )
+                    return
                 if self.compatibility_mode and name != hook_point.name:
                     alias_names_list: list[str] = []
                     if hook_point.name is not None:
@@ -4330,7 +4382,11 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                             actual_hook_name = aliases[hook_name_or_filter]
                         if actual_hook_name in hook_dict:
                             add_hook_to_point(
-                                hook_dict[actual_hook_name], hook_fn, actual_hook_name, direction
+                                hook_dict[actual_hook_name],
+                                hook_fn,
+                                actual_hook_name,
+                                direction,
+                                is_explicit=True,
                             )
                     else:
                         hook_dict = self.hook_dict
@@ -4342,7 +4398,13 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                                     continue
                                 seen_hooks.add(hook_id)
                                 hook_name_to_use = hook_point.name if hook_point.name else name
-                                add_hook_to_point(hook_point, hook_fn, hook_name_to_use, direction)
+                                add_hook_to_point(
+                                    hook_point,
+                                    hook_fn,
+                                    hook_name_to_use,
+                                    direction,
+                                    is_explicit=False,
+                                )
 
             try:
                 self.context_level = context_level
