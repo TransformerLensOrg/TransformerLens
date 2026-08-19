@@ -43,6 +43,22 @@ def test_to_tokens_honors_explicit_padding_side(compatibility_bridge) -> None:
         tokenizer.padding_side = original_side
 
 
+def test_default_right_padded_text_matches_pretokenized_logits(compatibility_bridge) -> None:
+    """Default text forwarding must match the public right-padded token layout."""
+    tokenizer = compatibility_bridge.tokenizer
+    original_side = tokenizer.padding_side
+    tokenizer.padding_side = "right"
+    try:
+        tokens = compatibility_bridge.to_tokens(PROMPTS)
+        with torch.no_grad():
+            text_logits = compatibility_bridge(PROMPTS)
+            token_logits = compatibility_bridge(tokens)
+
+        torch.testing.assert_close(text_logits, token_logits, rtol=0, atol=0)
+    finally:
+        tokenizer.padding_side = original_side
+
+
 @pytest.mark.parametrize("padding_side", ["left", "right"])
 def test_ragged_forward_matches_public_layout_and_single_sequences(
     compatibility_bridge, monkeypatch, padding_side: str

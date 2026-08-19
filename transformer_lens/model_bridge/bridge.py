@@ -1265,33 +1265,31 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             prepend_bos = getattr(self.cfg, "default_prepend_bos", True)
         if padding_side is None:
             padding_side = getattr(self.tokenizer, "padding_side", "right")
-        original_padding_side = self.tokenizer.padding_side
-        self.tokenizer.padding_side = padding_side
-        try:
-            tokenizer_prepends_bos = getattr(self.cfg, "tokenizer_prepends_bos", True)
-            if prepend_bos and (not tokenizer_prepends_bos):
-                input = utils.get_input_with_manually_prepended_bos(self.tokenizer.bos_token, input)
-            if isinstance(input, str):
-                input = [input]
-            tokens = self.tokenizer(
-                input,
-                return_tensors="pt",
-                padding=True,
-                truncation=truncate,
-                max_length=self.cfg.n_ctx if truncate else None,
-            )["input_ids"]
-            # Strip auto-appended EOS tokens (e.g., OLMo)
-            if (
-                getattr(self.cfg, "tokenizer_appends_eos", False)
-                and self.tokenizer.eos_token_id is not None
-            ):
-                # Remove trailing EOS, keep at least 1 token
-                while tokens.shape[-1] > 1 and (tokens[:, -1] == self.tokenizer.eos_token_id).all():
-                    tokens = tokens[:, :-1]
-            if not prepend_bos and tokenizer_prepends_bos:
-                tokens = utils.get_tokens_with_bos_removed(self.tokenizer, tokens)
-        finally:
-            self.tokenizer.padding_side = original_padding_side
+        tokenizer_prepends_bos = getattr(self.cfg, "tokenizer_prepends_bos", True)
+        if prepend_bos and (not tokenizer_prepends_bos):
+            input = utils.get_input_with_manually_prepended_bos(self.tokenizer.bos_token, input)
+        if isinstance(input, str):
+            input = [input]
+        tokens = self.tokenizer(
+            input,
+            return_tensors="pt",
+            padding=True,
+            padding_side=padding_side,
+            truncation=truncate,
+            max_length=self.cfg.n_ctx if truncate else None,
+        )["input_ids"]
+        # Strip auto-appended EOS tokens (e.g., OLMo)
+        if (
+            getattr(self.cfg, "tokenizer_appends_eos", False)
+            and self.tokenizer.eos_token_id is not None
+        ):
+            # Remove trailing EOS, keep at least 1 token
+            while tokens.shape[-1] > 1 and (tokens[:, -1] == self.tokenizer.eos_token_id).all():
+                tokens = tokens[:, :-1]
+        if not prepend_bos and tokenizer_prepends_bos:
+            tokens = utils.get_tokens_with_bos_removed(
+                self.tokenizer, tokens, padding_side=padding_side
+            )
         if move_to_device:
             tokens = tokens.to(self.cfg.device)
         return tokens
@@ -2094,14 +2092,17 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             else:
                 kwargs.pop("one_zero_attention_mask")
 
-        # Detect batched list input that may need padding. Auto-compute
-        # attention_mask + position_ids unless the caller passed them explicitly.
+        # Detect batched list input that may need padding. Forward follows the
+        # requested/tokenizer side; generation separately forces left-padding.
         _is_batched_list = (
             isinstance(input, list)
             and len(input) > 1
             and not getattr(self.cfg, "is_audio_model", False)
             and not getattr(self.cfg, "is_visual_model", False)
         )
+        _resolved_padding_side = padding_side
+        if _resolved_padding_side is None and self.tokenizer is not None:
+            _resolved_padding_side = getattr(self.tokenizer, "padding_side", "right")
 
         try:
             if isinstance(input, (str, list)):
@@ -2136,27 +2137,27 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                 isinstance(input_ids, torch.Tensor) and input_ids.is_floating_point()
             )
 
-            # Auto-compute attention_mask + position_ids for batched list input
-            # when the caller didn't supply them. Matches HF generation convention.
+            # Left padding needs a mask and corrected positions. Right padding is
+            # harmless for causal real-token positions and remains unmasked to
+            # match HookedTransformer; bidirectional/encoder inputs still need it.
             if (
                 _is_batched_list
                 and attention_mask is None
                 and self.tokenizer is not None
                 and self.tokenizer.pad_token_id is not None
                 and not _is_inputs_embeds
-            ):
-                _prev_side = self.tokenizer.padding_side
-                self.tokenizer.padding_side = (
-                    padding_side if padding_side is not None else _prev_side
+                and (
+                    _resolved_padding_side == "left"
+                    or is_encoder_decoder
+                    or not self.adapter.supports_causal_loss
                 )
-                try:
-                    attention_mask = utils.get_attention_mask(
-                        self.tokenizer,
-                        input_ids,
-                        prepend_bos=getattr(self.cfg, "default_prepend_bos", True),
-                    ).to(self.cfg.device)
-                finally:
-                    self.tokenizer.padding_side = _prev_side
+            ):
+                attention_mask = utils.get_attention_mask(
+                    self.tokenizer,
+                    input_ids,
+                    prepend_bos=getattr(self.cfg, "default_prepend_bos", True),
+                    padding_side=_resolved_padding_side,
+                ).to(self.cfg.device)
                 # Gated on the target for the same reason the derivation below is:
                 # a fixed-signature forward raises TypeError on the kwarg, and a
                 # model that owns its own position derivation is overridden by it
