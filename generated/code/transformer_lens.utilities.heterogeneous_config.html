@@ -694,6 +694,8 @@ per-field awareness of heterogeneity.</p>
 <dt class="sig sig-object py" id="transformer_lens.utilities.heterogeneous_config.majority_value">
 <span class="sig-prename descclassname"><span class="pre">transformer_lens.utilities.heterogeneous_config.</span></span><span class="sig-name descname"><span class="pre">majority_value</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">values</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#transformer_lens.utilities.heterogeneous_config.majority_value" title="Link to this definition">¶</a></dt>
 <dd><p>Most common value in a per-layer list; ties break toward the earliest layer.</p>
+<p>Counts by equality, not hashing: per-layer values can be dicts
+(rope_parameters in 5.x), and a TypeError here escapes hasattr</p>
 </dd></dl>
 
 <dl class="py function">

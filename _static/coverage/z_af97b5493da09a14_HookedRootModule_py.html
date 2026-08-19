@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>Coverage for transformer_lens/HookedRootModule.py: 73%</title>
+    <title>Coverage for transformer_lens/HookedRootModule.py: 75%</title>
     <link rel="icon" sizes="32x32" href="favicon_32_cb_58284776.png">
     <link rel="stylesheet" href="style_cb_6b508a39.css" type="text/css">
     <script src="coverage_html_cb_6fb7b396.js" defer></script>
@@ -12,7 +12,7 @@
     <div class="content">
         <h1>
             <span class="text">Coverage for </span><b>transformer_lens/HookedRootModule.py</b>:
-            <span class="pc_cov">73%</span>
+            <span class="pc_cov">75%</span>
         </h1>
         <aside id="help_panel_wrapper">
             <input id="help_panel_state" type="checkbox">
@@ -56,10 +56,10 @@
         </aside>
         <h2>
             <span class="text">178 statements &nbsp;</span>
-            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">138<span class="text"> run</span></button>
-            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">40<span class="text"> missing</span></button>
+            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">141<span class="text"> run</span></button>
+            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">37<span class="text"> missing</span></button>
             <button type="button" class="exc show_exc button_toggle_exc" value="exc" data-shortcut="x" title="Toggle lines excluded">0<span class="text"> excluded</span></button>
-            <button type="button" class="par run show_par button_toggle_par" value="par" data-shortcut="p" title="Toggle lines partially run">13<span class="text"> partial</span></button>
+            <button type="button" class="par run show_par button_toggle_par" value="par" data-shortcut="p" title="Toggle lines partially run">10<span class="text"> partial</span></button>
         </h2>
         <p class="text">
             <a id="prevFileLink" class="nav" href="z_af97b5493da09a14_HookedEncoderDecoder_py.html">&#xab; prev</a> &nbsp; &nbsp;
@@ -67,7 +67,7 @@
             <a id="nextFileLink" class="nav" href="z_af97b5493da09a14_HookedTransformer_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-08-15 01:49 +0000
+            created at 2026-08-19 01:00 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -521,8 +521,8 @@
     <p class="run run2"><span class="n"><a id="t437" href="#t437">437</a></span><span class="t">            <span class="nam">clear_contexts</span><span class="op">=</span><span class="nam">clear_contexts</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t438" href="#t438">438</a></span><span class="t">        <span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t439" href="#t439">439</a></span><span class="t">            <span class="nam">model_out</span> <span class="op">=</span> <span class="nam">self</span><span class="op">(</span><span class="op">*</span><span class="nam">model_args</span><span class="op">,</span> <span class="op">**</span><span class="nam">model_kwargs</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="par run show_par"><span class="n"><a id="t440" href="#t440">440</a></span><span class="t">            <span class="key">if</span> <span class="nam">incl_bwd</span><span class="op">:</span>&nbsp;</span><span class="r"><span class="annotate short">440&#x202F;&#x219B;&#x202F;441</span><span class="annotate long">line 440 didn't jump to line 441 because the condition on line 440 was never true</span></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t441" href="#t441">441</a></span><span class="t">                <span class="nam">model_out</span><span class="op">.</span><span class="nam">backward</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t440" href="#t440">440</a></span><span class="t">            <span class="key">if</span> <span class="nam">incl_bwd</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t441" href="#t441">441</a></span><span class="t">                <span class="nam">model_out</span><span class="op">.</span><span class="nam">backward</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t442" href="#t442">442</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t443" href="#t443">443</a></span><span class="t">        <span class="key">return</span> <span class="nam">model_out</span><span class="op">,</span> <span class="nam">cache_dict</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t444" href="#t444">444</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
@@ -578,8 +578,8 @@
     <p class="mis show_mis"><span class="n"><a id="t494" href="#t494">494</a></span><span class="t">                <span class="key">raise</span> <span class="nam">RuntimeError</span><span class="op">(</span><span class="str">"Hook should have been provided a name"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t495" href="#t495">495</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t496" href="#t496">496</a></span><span class="t">            <span class="nam">hook_name</span> <span class="op">=</span> <span class="nam">hook</span><span class="op">.</span><span class="nam">name</span>&nbsp;</span><span class="r"></span></p>
-    <p class="par run show_par"><span class="n"><a id="t497" href="#t497">497</a></span><span class="t">            <span class="key">if</span> <span class="nam">is_backward</span><span class="op">:</span>&nbsp;</span><span class="r"><span class="annotate short">497&#x202F;&#x219B;&#x202F;498</span><span class="annotate long">line 497 didn't jump to line 498 because the condition on line 497 was never true</span></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t498" href="#t498">498</a></span><span class="t">                <span class="nam">hook_name</span> <span class="op">+=</span> <span class="str">"_grad"</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t497" href="#t497">497</a></span><span class="t">            <span class="key">if</span> <span class="nam">is_backward</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t498" href="#t498">498</a></span><span class="t">                <span class="nam">hook_name</span> <span class="op">+=</span> <span class="str">"_grad"</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t499" href="#t499">499</a></span><span class="t">            <span class="nam">resid_stream</span> <span class="op">=</span> <span class="nam">tensor</span><span class="op">.</span><span class="nam">detach</span><span class="op">(</span><span class="op">)</span><span class="op">.</span><span class="nam">to</span><span class="op">(</span><span class="nam">device</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t500" href="#t500">500</a></span><span class="t">            <span class="key">if</span> <span class="nam">remove_batch_dim</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t501" href="#t501">501</a></span><span class="t">                <span class="nam">resid_stream</span> <span class="op">=</span> <span class="nam">resid_stream</span><span class="op">[</span><span class="num">0</span><span class="op">]</span>&nbsp;</span><span class="r"></span></p>
@@ -608,8 +608,8 @@
     <p class="run"><span class="n"><a id="t524" href="#t524">524</a></span><span class="t">        <span class="key">for</span> <span class="nam">name</span><span class="op">,</span> <span class="nam">_</span> <span class="key">in</span> <span class="nam">self</span><span class="op">.</span><span class="nam">hook_dict</span><span class="op">.</span><span class="nam">items</span><span class="op">(</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t525" href="#t525">525</a></span><span class="t">            <span class="key">if</span> <span class="nam">names_filter</span><span class="op">(</span><span class="nam">name</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t526" href="#t526">526</a></span><span class="t">                <span class="nam">fwd_hooks</span><span class="op">.</span><span class="nam">append</span><span class="op">(</span><span class="op">(</span><span class="nam">name</span><span class="op">,</span> <span class="nam">partial</span><span class="op">(</span><span class="nam">save_hook</span><span class="op">,</span> <span class="nam">is_backward</span><span class="op">=</span><span class="key">False</span><span class="op">)</span><span class="op">)</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="par run show_par"><span class="n"><a id="t527" href="#t527">527</a></span><span class="t">                <span class="key">if</span> <span class="nam">incl_bwd</span><span class="op">:</span>&nbsp;</span><span class="r"><span class="annotate short">527&#x202F;&#x219B;&#x202F;528</span><span class="annotate long">line 527 didn't jump to line 528 because the condition on line 527 was never true</span></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t528" href="#t528">528</a></span><span class="t">                    <span class="nam">bwd_hooks</span><span class="op">.</span><span class="nam">append</span><span class="op">(</span><span class="op">(</span><span class="nam">name</span><span class="op">,</span> <span class="nam">partial</span><span class="op">(</span><span class="nam">save_hook</span><span class="op">,</span> <span class="nam">is_backward</span><span class="op">=</span><span class="key">True</span><span class="op">)</span><span class="op">)</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t527" href="#t527">527</a></span><span class="t">                <span class="key">if</span> <span class="nam">incl_bwd</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t528" href="#t528">528</a></span><span class="t">                    <span class="nam">bwd_hooks</span><span class="op">.</span><span class="nam">append</span><span class="op">(</span><span class="op">(</span><span class="nam">name</span><span class="op">,</span> <span class="nam">partial</span><span class="op">(</span><span class="nam">save_hook</span><span class="op">,</span> <span class="nam">is_backward</span><span class="op">=</span><span class="key">True</span><span class="op">)</span><span class="op">)</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t529" href="#t529">529</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t530" href="#t530">530</a></span><span class="t">        <span class="key">return</span> <span class="nam">cache</span><span class="op">,</span> <span class="nam">fwd_hooks</span><span class="op">,</span> <span class="nam">bwd_hooks</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t531" href="#t531">531</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
@@ -659,7 +659,7 @@
             <a class="nav" href="z_af97b5493da09a14_HookedTransformer_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-08-15 01:49 +0000
+            created at 2026-08-19 01:00 +0000
         </p>
     </div>
 </footer>

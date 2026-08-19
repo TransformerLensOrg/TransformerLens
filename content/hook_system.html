@@ -703,6 +703,25 @@
 <span class="p">)</span>
 </pre></div>
 </div>
+<p>Pass <code class="docutils literal notranslate"><span class="pre">incl_bwd=True</span></code> to also cache gradients. This runs <code class="docutils literal notranslate"><span class="pre">backward()</span></code> on the output, so the
+run must return a scalar (<code class="docutils literal notranslate"><span class="pre">return_type=&quot;loss&quot;</span></code>); gradients land under a <code class="docutils literal notranslate"><span class="pre">_grad</span></code> suffix.
+Works on both <code class="docutils literal notranslate"><span class="pre">HookedTransformer</span></code> and <code class="docutils literal notranslate"><span class="pre">TransformerBridge</span></code>:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">loss</span><span class="p">,</span> <span class="n">cache</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">run_with_cache</span><span class="p">(</span>
+    <span class="s2">&quot;Hello, world&quot;</span><span class="p">,</span>
+    <span class="n">return_type</span><span class="o">=</span><span class="s2">&quot;loss&quot;</span><span class="p">,</span>
+    <span class="n">names_filter</span><span class="o">=</span><span class="s2">&quot;blocks.0.attn.hook_pattern&quot;</span><span class="p">,</span>
+    <span class="n">incl_bwd</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">cache</span><span class="p">[</span><span class="s2">&quot;blocks.0.attn.hook_pattern&quot;</span><span class="p">]</span>        <span class="c1"># attention probabilities</span>
+<span class="n">cache</span><span class="p">[</span><span class="s2">&quot;blocks.0.attn.hook_pattern_grad&quot;</span><span class="p">]</span>   <span class="c1"># d(loss) / d(attention probabilities)</span>
+</pre></div>
+</div>
+<p>Pass <code class="docutils literal notranslate"><span class="pre">pos_slice=</span></code> to keep only some positions, which cuts cache memory on long prompts. It
+takes an index, a <code class="docutils literal notranslate"><span class="pre">(start,</span> <span class="pre">stop)</span></code> or <code class="docutils literal notranslate"><span class="pre">(start,</span> <span class="pre">stop,</span> <span class="pre">step)</span></code> tuple, or a list of indices, and
+applies to gradients as well:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">logits</span><span class="p">,</span> <span class="n">cache</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">run_with_cache</span><span class="p">(</span><span class="s2">&quot;Hello, world&quot;</span><span class="p">,</span> <span class="n">pos_slice</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span>   <span class="c1"># final position only</span>
+</pre></div>
+</div>
 </section>
 <section id="run-with-hooks-intervene-during-the-forward-pass">
 <h3>2. <code class="docutils literal notranslate"><span class="pre">run_with_hooks</span></code> — intervene during the forward pass<a class="headerlink" href="#run-with-hooks-intervene-during-the-forward-pass" title="Link to this heading">¶</a></h3>
