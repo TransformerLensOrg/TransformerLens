@@ -197,15 +197,9 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         self.__dict__["original_model"] = model
         self.adapter = adapter
         self.cfg = adapter.cfg
-        self.tokenizer = tokenizer
-        if self.cfg.d_vocab == -1 and self.tokenizer is not None:
-            if hasattr(self.tokenizer, "get_vocab"):
-                vocab = self.tokenizer.get_vocab()
-                self.cfg.d_vocab = max(vocab.values()) + 1
-            elif hasattr(self.tokenizer, "vocab"):
-                self.cfg.d_vocab = max(self.tokenizer.vocab.values()) + 1
-            else:
-                self.cfg.d_vocab = getattr(self.tokenizer, "vocab_size", 50257)
+        self._tokenizer = None
+        if tokenizer is not None:
+            self.tokenizer = tokenizer  # Use the property setter
         if self.cfg.d_vocab_out == -1:
             self.cfg.d_vocab_out = self.cfg.d_vocab
         self.compatibility_mode = False
@@ -243,6 +237,57 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         # train() recurses, so this stamps the wrappers with the model's mode.
         original_model.train(original_model.training)
         self.train(original_model.training)
+
+    @property
+    def tokenizer(self) -> Any:
+        """The tokenizer used for encoding/decoding text."""
+        return self._tokenizer
+
+    @tokenizer.setter
+    def tokenizer(self, value: Any) -> None:
+        """Set tokenizer and re-run wiring (d_vocab, BOS/EOS detection, padding).
+
+        On initial assignment (during __init__), the boot path has already run
+        setup_tokenizer, so we skip calling it again. However, we still infer
+        d_vocab if it wasn't set from the model config (d_vocab == -1).
+
+        On reassignment, we re-run the tokenizer wiring and update d_vocab to
+        keep cfg in sync with the new tokenizer.
+        """
+        is_reassignment = getattr(self, "_tokenizer", None) is not None
+        cfg = getattr(self, "cfg", None)
+        if value is not None and cfg is not None:
+            if is_reassignment:
+                from transformer_lens.model_bridge.sources._bridge_builder import (
+                    detect_tokenizer_bos_eos,
+                )
+                from transformer_lens.model_bridge.sources.transformers import (
+                    setup_tokenizer,
+                )
+
+                value = setup_tokenizer(
+                    value, default_padding_side=getattr(cfg, "default_padding_side", None)
+                )
+                cfg.tokenizer_prepends_bos, cfg.tokenizer_appends_eos = (
+                    detect_tokenizer_bos_eos(value)
+                )
+
+            # Infer d_vocab: on initial assignment only if not set (-1),
+            # on reassignment always update to match new tokenizer.
+            # Use getattr for cfg attributes since tests may use SimpleNamespace.
+            d_vocab = getattr(cfg, "d_vocab", None)
+            if d_vocab == -1 or is_reassignment:
+                if hasattr(value, "get_vocab"):
+                    vocab = value.get_vocab()
+                    cfg.d_vocab = max(vocab.values()) + 1
+                elif hasattr(value, "vocab"):
+                    cfg.d_vocab = max(value.vocab.values()) + 1
+                else:
+                    cfg.d_vocab = getattr(value, "vocab_size", 50257)
+            d_vocab_out = getattr(cfg, "d_vocab_out", None)
+            if d_vocab_out == -1 or is_reassignment:
+                cfg.d_vocab_out = getattr(cfg, "d_vocab", d_vocab_out)
+        self._tokenizer = value
 
     @classmethod
     def boot_transformers(
