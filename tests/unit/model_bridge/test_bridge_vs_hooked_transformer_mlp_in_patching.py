@@ -105,20 +105,19 @@ def test_cross_run_mlp_in_patch_matches_legacy(model: str, layer: int, no_proces
 
 @pytest.mark.slow
 def test_mlp_in_gated_off_does_not_fire() -> None:
-    """When ``use_hook_mlp_in`` is False, the bridge pre-ln2 closure must skip firing."""
+    """When ``use_hook_mlp_in`` is False, explicitly adding hook_mlp_in
+    should fail with a clear error explaining how to enable the gated hook."""
     bridge = TransformerBridge.boot_transformers("gpt2", device="cpu")
     bridge.enable_compatibility_mode(no_processing=True)
     bridge.set_use_hook_mlp_in(False)
 
-    fire_count = {"n": 0}
-
     def _counter(tensor: torch.Tensor, hook: object) -> torch.Tensor:
-        fire_count["n"] += 1
         return tensor
 
     prompt = torch.arange(1, 9).unsqueeze(0)
-    bridge.run_with_hooks(prompt, fwd_hooks=[("blocks.0.hook_mlp_in", _counter)])
-    assert fire_count["n"] == 0, (
-        f"hook_mlp_in fired {fire_count['n']} times with use_hook_mlp_in=False; "
-        "should not fire when the flag is off"
-    )
+
+    with pytest.raises(ValueError, match="set_use_hook_mlp_in"):
+        bridge.run_with_hooks(
+            prompt,
+            fwd_hooks=[("blocks.0.hook_mlp_in", _counter)],
+        )
