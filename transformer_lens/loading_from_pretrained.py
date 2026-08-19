@@ -58,6 +58,7 @@ from transformer_lens.pretrained.weight_conversions import (
     convert_t5_weights,
 )
 from transformer_lens.supported_models import MODEL_ALIASES, OFFICIAL_MODEL_NAMES
+from transformer_lens.utilities.architectures import POST_NORM_ARCHITECTURES
 from transformer_lens.utilities.heterogeneous_config import het_safe_view
 from transformer_lens.utilities.hf_utils import get_rotary_pct_from_config
 from transformer_lens.utilities.quantization import (
@@ -1785,11 +1786,12 @@ def get_pretrained_model_config(
         )
         fold_ln = False
 
-    # OLMo 2 uses post-norm (norm after attention/MLP, not before), so folding
-    # the norm weights into adjacent linear layers is not mathematically valid.
-    if cfg_dict.get("original_architecture") == "Olmo2ForCausalLM" and fold_ln:
+    # Post-norm blocks normalize the sublayer output, so folding the norm weights
+    # into adjacent linear layers is not mathematically valid.
+    architecture = cfg_dict.get("original_architecture")
+    if architecture in POST_NORM_ARCHITECTURES and fold_ln:
         logging.warning(
-            "fold_ln=True is incompatible with OLMo 2's post-norm architecture. "
+            f"fold_ln=True is incompatible with {architecture}'s post-norm architecture. "
             "Setting fold_ln=False."
         )
         fold_ln = False
