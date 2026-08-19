@@ -32,6 +32,7 @@ import numpy as np
 import torch
 import tqdm
 from torch import nn
+from torch.nn import functional as F
 
 from transformer_lens import utilities as utils
 from transformer_lens.ActivationCache import ActivationCache
@@ -1877,6 +1878,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         prepend_bos: Optional[bool] = None,
         padding_side: Optional[str] = None,
         attention_mask: Optional[torch.Tensor] = None,
+        labels: Optional[torch.Tensor] = None,
         start_at_layer: Optional[int] = None,
         stop_at_layer: Optional[int] = None,
         pixel_values: Optional[torch.Tensor] = None,
@@ -1891,6 +1893,8 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             loss_per_token: Whether to return loss per token
             prepend_bos: Whether to prepend BOS token
             padding_side: Which side to pad on
+            labels: Explicit language-model targets. Encoder-decoder models require
+                labels for loss; decoder-only models fall back to input IDs when omitted.
             start_at_layer: Not implemented in TransformerBridge. The bridge delegates
                 to HuggingFace's model.forward() which owns the layer iteration loop,
                 making start_at_layer infeasible without monkey-patching HF internals
@@ -1910,13 +1914,27 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             Model output based on return_type
         """
 
-        if return_type in ("loss", "both") and not self.adapter.supports_causal_loss:
+        model_config = getattr(self.original_model, "config", None)
+        is_encoder_decoder = bool(getattr(model_config, "is_encoder_decoder", False))
+        if return_type in ("loss", "both") and is_encoder_decoder and labels is None:
+            raise ValueError(
+                "labels are required for seq2seq return_type='loss' or 'both'; "
+                "encoder input_ids are not decoder targets"
+            )
+        if (
+            return_type in ("loss", "both")
+            and not is_encoder_decoder
+            and not self.adapter.supports_causal_loss
+        ):
             architecture = self.cfg.architecture or type(self.adapter).__name__
             raise NotImplementedError(
                 f"{architecture} does not support TransformerBridge's shifted causal "
                 "loss. Request return_type='logits' and compute the architecture-specific "
                 "masked-token objective explicitly."
             )
+
+        if labels is not None:
+            kwargs["labels"] = labels
 
         if start_at_layer is not None:
             raise NotImplementedError(
@@ -2036,11 +2054,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             if kwargs.pop("use_past_kv_cache", False) or kwargs.get("use_cache", False):
                 kwargs["use_cache"] = True
             # Auto-generate decoder_input_ids for encoder-decoder models
-            if (
-                "decoder_input_ids" not in kwargs
-                and hasattr(self.original_model, "config")
-                and getattr(self.original_model.config, "is_encoder_decoder", False)
-            ):
+            if "decoder_input_ids" not in kwargs and labels is None and is_encoder_decoder:
                 decoder_start_token_id = getattr(
                     self.original_model.config, "decoder_start_token_id", None
                 )
@@ -2116,7 +2130,11 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             if hasattr(output, "logits"):
                 logits = output.logits
             elif isinstance(output, tuple) and len(output) > 0:
-                logits = output[0]
+                # With labels forwarded, HF tuple outputs are (loss, logits, ...).
+                if labels is not None and len(output) > 1:
+                    logits = output[1]
+                else:
+                    logits = output[0]
             elif hasattr(output, "last_hidden_state"):
                 # Bare encoder models (ViTModel, DeiTModel, BertModel, etc. without
                 # a task head) return e.g. BaseModelOutput/BaseModelOutputWithPooling,
@@ -2131,6 +2149,18 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             elif return_type == "logits_and_cache":
                 past_key_values = getattr(output, "past_key_values", None)
                 return (logits, past_key_values)
+            elif is_encoder_decoder and return_type in ("loss", "both"):
+                assert isinstance(
+                    logits, torch.Tensor
+                ), f"Expected seq2seq logits tensor, got {type(logits)}"
+                assert isinstance(labels, torch.Tensor)
+                return self._finalize_seq2seq_return(
+                    return_type,
+                    logits,
+                    labels,
+                    output,
+                    loss_per_token=loss_per_token,
+                )
             elif return_type == "loss":
                 if getattr(self.cfg, "is_audio_model", False):
                     raise ValueError(
@@ -2145,7 +2175,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                         "yourself from the returned logits, or use hf_generate()-style "
                         "direct access to self.original_model for HF's own loss."
                     )
-                if _is_inputs_embeds:
+                if _is_inputs_embeds and labels is None:
                     raise ValueError(
                         "Cannot compute loss with inputs_embeds — token IDs required for labels."
                     )
@@ -2155,21 +2185,46 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                 assert isinstance(
                     logits, torch.Tensor
                 ), f"Expected logits tensor, got {type(logits)}"
-                return self.loss_fn(logits, input_ids, per_token=loss_per_token)
+                if labels is not None:
+                    return self._causal_labels_loss(
+                        logits,
+                        labels,
+                        attention_mask=attention_mask,
+                        per_token=loss_per_token,
+                    )
+                return self.loss_fn(
+                    logits,
+                    input_ids,
+                    attention_mask=attention_mask,
+                    per_token=loss_per_token,
+                )
             elif return_type == "both":
                 if getattr(self.cfg, "is_audio_model", False):
                     raise ValueError(
                         "Audio models do not support return_type='both'. "
                         "CTC loss requires aligned frame-level labels."
                     )
-                if _is_inputs_embeds:
+                if _is_inputs_embeds and labels is None:
                     raise ValueError(
                         "Cannot compute loss with inputs_embeds — token IDs required for labels."
                     )
                 assert isinstance(
                     logits, torch.Tensor
                 ), f"Expected logits tensor, got {type(logits)}"
-                loss = self.loss_fn(logits, input_ids, per_token=loss_per_token)
+                if labels is not None:
+                    loss = self._causal_labels_loss(
+                        logits,
+                        labels,
+                        attention_mask=attention_mask,
+                        per_token=loss_per_token,
+                    )
+                else:
+                    loss = self.loss_fn(
+                        logits,
+                        input_ids,
+                        attention_mask=attention_mask,
+                        per_token=loss_per_token,
+                    )
                 return (logits, loss)
             elif return_type == "predictions":
                 assert (
@@ -2256,7 +2311,146 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         """
         if tokens.device != logits.device:
             tokens = tokens.to(logits.device)
+        if attention_mask is not None:
+            if attention_mask.device != logits.device:
+                attention_mask = attention_mask.to(logits.device)
+            attention_mask = self._prepare_loss_attention_mask(attention_mask, tokens)
         return lm_cross_entropy_loss(logits, tokens, attention_mask, per_token)
+
+    def _causal_labels_loss(
+        self,
+        logits: torch.Tensor,
+        labels: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        per_token: bool = False,
+    ) -> torch.Tensor:
+        """Compute shifted causal loss against explicit labels, ignoring ``-100``."""
+        if labels.device != logits.device:
+            labels = labels.to(logits.device)
+        if labels.shape != logits.shape[:-1]:
+            raise ValueError(
+                "causal labels must match the logits batch and position dimensions, "
+                f"got labels {tuple(labels.shape)} and logits {tuple(logits.shape)}"
+            )
+
+        losses = F.cross_entropy(
+            logits[:, :-1].flatten(0, 1),
+            labels[:, 1:].flatten(),
+            reduction="none",
+            ignore_index=-100,
+        ).view_as(labels[:, 1:])
+        valid_targets = labels[:, 1:] != -100
+        if attention_mask is not None:
+            if attention_mask.device != logits.device:
+                attention_mask = attention_mask.to(logits.device)
+            token_mask = self._prepare_loss_attention_mask(attention_mask, labels)
+            valid_targets &= token_mask[:, :-1] & token_mask[:, 1:]
+        losses = losses.masked_fill(~valid_targets, 0.0)
+        return losses if per_token else losses.sum() / valid_targets.sum()
+
+    @staticmethod
+    def _seq2seq_loss(
+        logits: torch.Tensor,
+        labels: torch.Tensor,
+        native_loss: Any,
+        *,
+        per_token: bool,
+    ) -> torch.Tensor:
+        """Return encoder-decoder loss without the causal LM token shift."""
+        if labels.device != logits.device:
+            labels = labels.to(logits.device)
+        if labels.shape != logits.shape[:-1]:
+            raise ValueError(
+                "seq2seq labels must match the decoder logits batch and position "
+                f"dimensions, got labels {tuple(labels.shape)} and logits "
+                f"{tuple(logits.shape)}"
+            )
+        if not per_token and isinstance(native_loss, torch.Tensor):
+            return native_loss
+
+        losses = F.cross_entropy(
+            logits.flatten(0, 1),
+            labels.flatten(),
+            reduction="none" if per_token else "mean",
+            ignore_index=-100,
+        )
+        return losses.view_as(labels) if per_token else losses
+
+    def _finalize_seq2seq_return(
+        self,
+        return_type: str,
+        logits: torch.Tensor,
+        labels: torch.Tensor,
+        native_output: Any,
+        *,
+        loss_per_token: bool,
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+        loss = self._seq2seq_loss(
+            logits,
+            labels,
+            getattr(native_output, "loss", None),
+            per_token=loss_per_token,
+        )
+        return (logits, loss) if return_type == "both" else loss
+
+    @staticmethod
+    def _prepare_loss_attention_mask(
+        attention_mask: torch.Tensor, tokens: torch.Tensor
+    ) -> torch.Tensor:
+        """Reduce a forward attention mask to the token window scored by the loss."""
+        batch, pos = tokens.shape
+        if attention_mask.ndim not in (2, 4):
+            raise ValueError(
+                "attention_mask must be 2D [batch, key_pos] or 4D "
+                f"[batch, *, query_pos, key_pos], got shape {tuple(attention_mask.shape)}"
+            )
+        if attention_mask.shape[0] != batch:
+            raise ValueError(
+                "attention_mask batch dimension must match tokens, "
+                f"got {attention_mask.shape[0]} and {batch}"
+            )
+
+        if attention_mask.ndim == 2:
+            if attention_mask.shape[1] < pos:
+                raise ValueError(
+                    "attention_mask must cover every scored token, "
+                    f"got length {attention_mask.shape[1]} for {pos} tokens"
+                )
+            return attention_mask[:, -pos:].bool()
+
+        query_pos, key_pos = attention_mask.shape[-2:]
+        if key_pos < pos:
+            raise ValueError(
+                "attention_mask must cover every scored token, "
+                f"got key length {key_pos} for {pos} tokens"
+            )
+
+        blocked = attention_mask if attention_mask.dtype is torch.bool else attention_mask < -1.0
+        if query_pos == 1:
+            # Broadcast key-only masks use one query row for the full sequence.
+            keep = ~blocked[..., 0, -pos:]
+        else:
+            if query_pos < pos:
+                raise ValueError(
+                    "attention_mask must contain a query row for every scored token, "
+                    f"got {query_pos} rows for {pos} tokens"
+                )
+            # The aligned diagonal excludes causal masking while retaining padding.
+            diagonal = torch.diagonal(
+                blocked,
+                offset=key_pos - query_pos,
+                dim1=-2,
+                dim2=-1,
+            )
+            if diagonal.shape[-1] < pos:
+                raise ValueError(
+                    "attention_mask diagonal must cover every scored token, "
+                    f"got length {diagonal.shape[-1]} for {pos} tokens"
+                )
+            keep = ~diagonal[..., -pos:]
+
+        # A token is padding only when every broadcast/head mask blocks its key.
+        return keep.reshape(batch, -1, pos).any(dim=1)
 
     @overload
     def run_with_cache(

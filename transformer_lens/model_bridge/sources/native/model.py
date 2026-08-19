@@ -281,6 +281,9 @@ class NativeAttention(nn.Module):
         scores = scores.masked_fill(block_mask, float("-inf"))
 
         pattern = F.softmax(scores, dim=-1)
+        # Fully masked padding queries softmax to NaN; overwrite masked entries
+        # so those rows contribute a zero attention update instead of poisoning later layers.
+        pattern = pattern.masked_fill(block_mask, 0.0)
 
         attn = torch.matmul(pattern, v).transpose(1, 2).contiguous().view(batch, seq, -1)
         out = self.o(attn)

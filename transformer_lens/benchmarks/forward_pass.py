@@ -14,6 +14,12 @@ from transformer_lens.benchmarks.utils import (
 from transformer_lens.model_bridge import TransformerBridge
 
 
+def _compute_self_target_loss(bridge: TransformerBridge, test_text: str) -> torch.Tensor:
+    """Compute loss with the tokenized input supplied as explicit labels."""
+    labels = bridge.to_tokens(test_text)
+    return bridge(test_text, labels=labels, return_type="loss")
+
+
 def _is_encoder_decoder(model: torch.nn.Module) -> bool:
     """Check if a model is an encoder-decoder architecture."""
     config = getattr(model, "config", None)
@@ -193,7 +199,7 @@ def benchmark_loss_equivalence(
         BenchmarkResult with comparison details
     """
     try:
-        bridge_loss = bridge(test_text, return_type="loss")
+        bridge_loss = _compute_self_target_loss(bridge, test_text)
 
         if reference_model is None and reference_loss is None:
             # No reference - just verify loss is valid
