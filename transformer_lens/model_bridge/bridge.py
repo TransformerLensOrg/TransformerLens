@@ -2414,6 +2414,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                 effective_stop_layer = len(self.blocks) + stop_at_layer
             else:
                 effective_stop_layer = stop_at_layer
+        gated_names_skipped: List[str] = []
         for hook_name, hook in hook_dict.items():
             if names_filter_fn(hook_name):
                 if effective_stop_layer is not None:
@@ -2424,7 +2425,19 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                                 continue
                         except (IndexError, ValueError):
                             pass
+                try:
+                    self.check_hooks_to_add(hook_name)
+                except ValueError:
+                    gated_names_skipped.append(hook_name)
+                    continue
                 hooks.append((hook, hook_name))
+        if gated_names_skipped:
+            warnings.warn(
+                f"run_with_cache: skipped {len(gated_names_skipped)} gated-off hook name(s) "
+                f"that will never be cached: {gated_names_skipped}. Call the relevant "
+                "set_use_*(True) setter first to enable them.",
+                stacklevel=2,
+            )
         self.context_level += 1
         context_level = self.context_level
         try:
@@ -2627,6 +2640,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                         return
                 except (IndexError, ValueError):
                     pass
+            self.check_hooks_to_add(name)
             if self.compatibility_mode and name != hook_point.name:
                 alias_names_list: list[str] = []
                 if hook_point.name is not None:
@@ -4156,6 +4170,36 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             original.train(mode)
         return self
 
+    def check_hooks_to_add(self, hook_point_name: str) -> None:
+        """Raise a clear error if a hook is being added to a gated-off hook point.
+
+        Mirrors HookedTransformer.check_hooks_to_add, but raises a ValueError
+        naming the setter to call, instead of a bare assert.
+        """
+        if hook_point_name.endswith("attn.hook_result") and not self.cfg.use_attn_result:
+            raise ValueError(
+                f"Cannot add hook {hook_point_name} because use_attn_result is False. "
+                "Call set_use_attn_result(True) first."
+            )
+        if (
+            hook_point_name.endswith(("hook_q_input", "hook_k_input", "hook_v_input"))
+            and not self.cfg.use_split_qkv_input
+        ):
+            raise ValueError(
+                f"Cannot add hook {hook_point_name} because use_split_qkv_input is False. "
+                "Call set_use_split_qkv_input(True) first."
+            )
+        if hook_point_name.endswith("mlp_in") and not self.cfg.use_hook_mlp_in:
+            raise ValueError(
+                f"Cannot add hook {hook_point_name} because use_hook_mlp_in is False. "
+                "Call set_use_hook_mlp_in(True) first."
+            )
+        if hook_point_name.endswith("attn_in") and not self.cfg.use_attn_in:
+            raise ValueError(
+                f"Cannot add hook {hook_point_name} because use_attn_in is False. "
+                "Call set_use_attn_in(True) first."
+            )
+
     def add_hook(
         self,
         name: Union[str, Callable[[str], bool]],
@@ -4183,7 +4227,9 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                     if hook_id in seen_hooks:
                         continue
                     seen_hooks.add(hook_id)
+                    self.check_hooks_to_add(hook_name)
                     hook_point.add_hook(hook_fn, dir=dir, is_permanent=is_permanent)
+            return
             return
 
         component = self
@@ -4197,6 +4243,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         if hasattr(component, hook_name):
             hook_point = getattr(component, hook_name)
             if isinstance(hook_point, HookPoint):
+                self.check_hooks_to_add(name)
                 hook_point.add_hook(hook_fn, dir=dir, is_permanent=is_permanent)
             else:
                 raise AttributeError(
@@ -4259,6 +4306,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                 name: str,
                 dir: Literal["fwd", "bwd"] = "fwd",
             ):
+                self.check_hooks_to_add(name)
                 if self.compatibility_mode and name != hook_point.name:
                     alias_names_list: list[str] = []
                     if hook_point.name is not None:
