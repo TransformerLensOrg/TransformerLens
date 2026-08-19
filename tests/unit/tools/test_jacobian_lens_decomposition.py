@@ -813,17 +813,63 @@ def test_occupancy_is_deterministic():
 
 def test_occupancy_rejects_invalid_inputs():
     dictionary = torch.eye(6)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="max_atoms must be between"):
         estimate_occupancy(torch.ones(6), dictionary, max_atoms=0)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="max_atoms must be between"):
         estimate_occupancy(torch.ones(6), dictionary, max_atoms=99)
-    with pytest.raises(ValueError):
-        estimate_occupancy(torch.ones(6), dictionary, num_control_dictionaries=0)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="num_control_dictionaries must be at least 1"):
+        estimate_occupancy(torch.ones(6), dictionary, max_atoms=6, num_control_dictionaries=0)
+    with pytest.raises(ValueError, match="x must be 1-D of length"):
         estimate_occupancy(torch.ones(5), dictionary)  # target length != d_model
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="x must be 1-D of length"):
         estimate_occupancy(torch.ones(2, 6), dictionary)  # non-1-D target
     zero_norm_dictionary = torch.eye(6)
     zero_norm_dictionary[2] = 0.0
-    with pytest.raises(ValueError):
-        estimate_occupancy(torch.ones(6), zero_norm_dictionary)
+    with pytest.raises(ValueError, match="dictionary contains a non-finite or zero-norm atom"):
+        estimate_occupancy(torch.ones(6), zero_norm_dictionary, max_atoms=6)
+
+
+@pytest.mark.parametrize("invalid_value", [float("nan"), float("inf"), float("-inf")])
+def test_occupancy_rejects_non_finite_target(invalid_value):
+    target = torch.ones(6)
+    target[0] = invalid_value
+    with pytest.raises(ValueError, match="x contains non-finite entries"):
+        estimate_occupancy(target, torch.eye(6), max_atoms=6)
+
+
+def test_occupancy_rejects_zero_norm_target():
+    with pytest.raises(ValueError, match="x must have non-zero norm"):
+        estimate_occupancy(torch.zeros(6), torch.eye(6), max_atoms=6)
+
+
+@pytest.mark.parametrize("invalid_value", [float("nan"), float("inf"), float("-inf")])
+def test_occupancy_rejects_non_finite_dictionary(invalid_value):
+    dictionary = torch.eye(6)
+    dictionary[0, 0] = invalid_value
+    with pytest.raises(ValueError, match="dictionary contains non-finite entries"):
+        estimate_occupancy(torch.ones(6), dictionary, max_atoms=6)
+
+
+def test_occupancy_rejects_non_finite_dictionary_norm():
+    dictionary = torch.eye(6)
+    dictionary[0] = torch.finfo(torch.float32).max
+    with pytest.raises(ValueError, match="dictionary contains a non-finite or zero-norm atom"):
+        estimate_occupancy(torch.ones(6), dictionary, max_atoms=6)
+
+
+@pytest.mark.parametrize("complex_input", ["x", "dictionary"])
+def test_occupancy_rejects_complex_inputs(complex_input):
+    target = torch.ones(6)
+    dictionary = torch.eye(6)
+    if complex_input == "x":
+        target = target.to(torch.complex64)
+    else:
+        dictionary = dictionary.to(torch.complex64)
+    with pytest.raises(ValueError, match="x and dictionary must be real-valued"):
+        estimate_occupancy(target, dictionary, max_atoms=6)
+
+
+def test_occupancy_rejects_non_finite_target_norm():
+    target = torch.full((6,), torch.finfo(torch.float32).max)
+    with pytest.raises(ValueError, match="x must have finite norm"):
+        estimate_occupancy(target, torch.eye(6), max_atoms=6)

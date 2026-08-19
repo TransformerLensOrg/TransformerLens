@@ -320,16 +320,20 @@ exact values will not necessarily transfer.
 
 ### Occupancy and fraction of variance
 
-Two statistics turn the honesty bullets above into numbers you can measure. Both build on the same
-greedy selection as `decompose`.
+Two statistics turn the honesty bullets above into numbers you can measure. Both build on J-lens
+vector dictionaries and sparse supports, but occupancy uses its own projection-residual recurrence.
 
 `occupancy` estimates **how many J-lens vectors are meaningfully active** in a single activation —
-the quantity behind the paper's `k <= 25`. It runs the greedy selection up to `max_atoms`, records
-the per-step captured variance `||Pi_S x||^2 / ||x||^2`, and compares that curve against the same
-greedy run on `num_control_dictionaries` random unit-norm dictionaries. The occupancy is the step
-of **maximum separation** between the real and averaged-control *cumulative* captured variance — the
-point past which further vectors add no more than random directions would. It is deterministic given
-`seed` and needs no threshold.
+the quantity behind the paper's `k <= 25`. At each step it admits the unused atom with the greatest
+signed, norm-normalized correlation with the current residual, projects the activation onto the full
+selected span, and sets the next residual to `x - Pi_S x`. This is the same per-step correlation
+*rule* as `decompose`, but `decompose` recurses on a nonnegative coefficient-fit residual and may
+stop early, whereas occupancy selects exactly `max_atoms` atoms, so their supports need not match.
+Occupancy records the per-step captured variance `||Pi_S x||^2 / ||x||^2` and compares that curve
+against the same occupancy recurrence on `num_control_dictionaries` random unit-norm dictionaries.
+The occupancy is the step of **maximum separation** between the real and averaged-control
+*cumulative* captured variance — the point past which further vectors add no more than random
+directions would. It is deterministic given `seed` and needs no threshold.
 
 ```python
 occ = lens.occupancy(model, "The Eiffel Tower is in the city of", layer=6, position=-1)

@@ -473,12 +473,16 @@ class JSpaceOccupancy:
 def _greedy_captured_variance_gains(
     atoms: torch.Tensor, atom_norms: torch.Tensor, target: torch.Tensor, max_atoms: int
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Greedily select up to ``max_atoms`` atoms and return the per-step captured-variance gains.
+    """Greedily select exactly ``max_atoms`` atoms and return captured-variance gains.
 
-    Selection matches :func:`get_sparse_decomposition`: at each step the atom most correlated
-    with the running residual (using unit-normalised atoms) is added. The captured variance at a
-    step is the orthogonal projection of ``target`` onto the selected span,
+    At each step, add the unused atom with the greatest signed, norm-normalized correlation with
+    the current residual. Project ``target`` orthogonally onto the full selected span using a
+    pseudoinverse, then set the next residual to ``target - projection``. The captured variance is
     ``||Pi_S target||^2 / ||target||^2``; the returned values are its per-step increments.
+
+    This shares the per-step correlation rule with :func:`get_sparse_decomposition`, but not its
+    residual recurrence: sparse decomposition uses a nonnegative coefficient-fit residual and may
+    stop early, while this recurrence does not stop early, so the selected supports can differ.
     """
     total_variance = float(target @ target)
     support: List[int] = []
@@ -509,18 +513,21 @@ def estimate_occupancy(
 ) -> JSpaceOccupancy:
     """Estimate how many dictionary atoms are meaningfully active in ``x``.
 
-    Greedily selects up to ``max_atoms`` atoms and compares the real per-step captured-variance
-    curve against the same greedy run on ``num_control_dictionaries`` random unit-norm
-    dictionaries of the same size. The occupancy is the step of maximum separation between the
-    real and (averaged) control *cumulative* captured variance -- the point past which further
-    atoms add no more than random directions would. Deterministic given ``seed`` and needs no
-    threshold. (Captured variance is a projection, hence scale-free, so the random control atoms
-    are simply unit-norm.)
+    Runs the projection-residual recurrence described in
+    :func:`_greedy_captured_variance_gains` for exactly ``max_atoms`` steps and compares the real
+    per-step captured-variance curve against the same recurrence on ``num_control_dictionaries``
+    random unit-norm dictionaries of the same size. This shares sparse decomposition's per-step
+    correlation rule, but uses an unconstrained span-projection residual rather than a nonnegative
+    coefficient-fit residual, so their supports need not match. The occupancy is the step of
+    maximum separation between the real and (averaged) control *cumulative* captured variance --
+    the point past which further atoms add no more than random directions would. Deterministic
+    given ``seed`` and needs no threshold. (Captured variance is a projection, hence scale-free,
+    so the random control atoms are simply unit-norm.)
 
     Args:
         x: Target vector, shape ``[d_model]``.
         dictionary: Atom matrix, shape ``[num_atoms, d_model]`` (rows are atoms).
-        max_atoms: Maximum number of atoms to consider.
+        max_atoms: Number of atoms to select in the real and control recurrences.
         num_control_dictionaries: Number of random control dictionaries to average over.
         seed: Seed for the random control dictionaries (reproducibility).
 
@@ -528,9 +535,10 @@ def estimate_occupancy(
         An :class:`JSpaceOccupancy`.
 
     Raises:
-        ValueError: On a non-2-D dictionary, a target whose length does not match ``d_model``,
-            ``max_atoms`` outside ``[1, num_atoms]``, ``num_control_dictionaries < 1``, or a
-            dictionary with non-finite or zero-norm atoms.
+        ValueError: On complex inputs, a non-2-D dictionary, a target whose length does not match
+            ``d_model``, ``max_atoms`` outside ``[1, num_atoms]``,
+            ``num_control_dictionaries < 1``, a target with non-finite entries or a non-finite or
+            zero norm, or a dictionary with non-finite or zero-norm atoms.
     """
     if dictionary.ndim != 2:
         raise ValueError(
@@ -545,14 +553,23 @@ def estimate_occupancy(
         raise ValueError(
             f"num_control_dictionaries must be at least 1, got {num_control_dictionaries}"
         )
+    if torch.is_complex(x) or torch.is_complex(dictionary):
+        raise ValueError("x and dictionary must be real-valued")
 
     target = x.float()
     atoms = dictionary.float()
+    if not bool(torch.isfinite(target).all()):
+        raise ValueError("x contains non-finite entries")
+    target_squared_norm = target @ target
+    if not bool(torch.isfinite(target_squared_norm)):
+        raise ValueError("x must have finite norm")
+    if float(target_squared_norm) <= 0.0:
+        raise ValueError("x must have non-zero norm")
     if not bool(torch.isfinite(atoms).all()):
         raise ValueError("dictionary contains non-finite entries")
     atom_norms = (atoms * atoms).sum(dim=1).sqrt()
-    if bool((atom_norms == 0).any()):
-        raise ValueError("dictionary contains a zero-norm atom")
+    if not bool(torch.isfinite(atom_norms).all()) or bool((atom_norms == 0).any()):
+        raise ValueError("dictionary contains a non-finite or zero-norm atom")
 
     real_captured_variance, support = _greedy_captured_variance_gains(
         atoms, atom_norms, target, max_atoms
