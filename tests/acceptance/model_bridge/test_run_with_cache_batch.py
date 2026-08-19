@@ -7,6 +7,19 @@ tests guard against that regression.
 
 import torch
 
+from transformer_lens.utilities import get_attention_mask
+
+
+def _last_real_token_positions(model, prompts: list[str]) -> torch.Tensor:
+    tokens = model.to_tokens(prompts)
+    attention_mask = get_attention_mask(
+        model.tokenizer,
+        tokens,
+        prepend_bos=getattr(model.cfg, "default_prepend_bos", True),
+    )
+    positions = torch.arange(tokens.shape[1], device=tokens.device).expand_as(tokens)
+    return positions.masked_fill(attention_mask == 0, -1).max(dim=1).values
+
 
 def test_run_with_cache_batch_matches_individual(gpt2_bridge):
     """Batched run_with_cache logits at the last real token should match per-prompt runs."""
@@ -23,9 +36,9 @@ def test_run_with_cache_batch_matches_individual(gpt2_bridge):
 
     # Batched run
     batched_logits, _ = gpt2_bridge.run_with_cache(prompts)
-    # With left-padding forced internally, position -1 is the last real token
-    for i in range(len(prompts)):
-        batched_last = batched_logits[i, -1, :]
+    last_real_positions = _last_real_token_positions(gpt2_bridge, prompts)
+    for i, position in enumerate(last_real_positions):
+        batched_last = batched_logits[i, position, :]
         assert torch.allclose(
             individual_logits[i], batched_last, atol=1e-4
         ), f"Prompt {i} logit mismatch between individual and batched run_with_cache"
@@ -54,11 +67,11 @@ def test_run_with_hooks_batch_matches_individual(gpt2_bridge):
 
     # Batched run
     captured_batched = []
+    last_real_positions = _last_real_token_positions(gpt2_bridge, prompts)
 
     def capture_batched(tensor, hook):
-        # For left-padded batch, last real token is at position -1 for all
-        for i in range(tensor.shape[0]):
-            captured_batched.append(tensor[i, -1, :].detach().clone())
+        for i, position in enumerate(last_real_positions):
+            captured_batched.append(tensor[i, position, :].detach().clone())
 
     gpt2_bridge.run_with_hooks(
         prompts,
