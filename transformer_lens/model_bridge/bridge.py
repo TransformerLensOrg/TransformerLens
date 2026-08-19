@@ -1265,28 +1265,33 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             prepend_bos = getattr(self.cfg, "default_prepend_bos", True)
         if padding_side is None:
             padding_side = getattr(self.tokenizer, "padding_side", "right")
-        tokenizer_prepends_bos = getattr(self.cfg, "tokenizer_prepends_bos", True)
-        if prepend_bos and (not tokenizer_prepends_bos):
-            input = utils.get_input_with_manually_prepended_bos(self.tokenizer.bos_token, input)
-        if isinstance(input, str):
-            input = [input]
-        tokens = self.tokenizer(
-            input,
-            return_tensors="pt",
-            padding=True,
-            truncation=truncate,
-            max_length=self.cfg.n_ctx if truncate else None,
-        )["input_ids"]
-        # Strip auto-appended EOS tokens (e.g., OLMo)
-        if (
-            getattr(self.cfg, "tokenizer_appends_eos", False)
-            and self.tokenizer.eos_token_id is not None
-        ):
-            # Remove trailing EOS, keep at least 1 token
-            while tokens.shape[-1] > 1 and (tokens[:, -1] == self.tokenizer.eos_token_id).all():
-                tokens = tokens[:, :-1]
-        if not prepend_bos and tokenizer_prepends_bos:
-            tokens = utils.get_tokens_with_bos_removed(self.tokenizer, tokens)
+        original_padding_side = self.tokenizer.padding_side
+        self.tokenizer.padding_side = padding_side
+        try:
+            tokenizer_prepends_bos = getattr(self.cfg, "tokenizer_prepends_bos", True)
+            if prepend_bos and (not tokenizer_prepends_bos):
+                input = utils.get_input_with_manually_prepended_bos(self.tokenizer.bos_token, input)
+            if isinstance(input, str):
+                input = [input]
+            tokens = self.tokenizer(
+                input,
+                return_tensors="pt",
+                padding=True,
+                truncation=truncate,
+                max_length=self.cfg.n_ctx if truncate else None,
+            )["input_ids"]
+            # Strip auto-appended EOS tokens (e.g., OLMo)
+            if (
+                getattr(self.cfg, "tokenizer_appends_eos", False)
+                and self.tokenizer.eos_token_id is not None
+            ):
+                # Remove trailing EOS, keep at least 1 token
+                while tokens.shape[-1] > 1 and (tokens[:, -1] == self.tokenizer.eos_token_id).all():
+                    tokens = tokens[:, :-1]
+            if not prepend_bos and tokenizer_prepends_bos:
+                tokens = utils.get_tokens_with_bos_removed(self.tokenizer, tokens)
+        finally:
+            self.tokenizer.padding_side = original_padding_side
         if move_to_device:
             tokens = tokens.to(self.cfg.device)
         return tokens
@@ -2089,10 +2094,8 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             else:
                 kwargs.pop("one_zero_attention_mask")
 
-        # Detect batched list input that will need padding. For this case we force
-        # left-padding internally and auto-compute attention_mask + position_ids
-        # (unless the caller passed them explicitly) so pad tokens don't contaminate
-        # attention or position embeddings.
+        # Detect batched list input that may need padding. Auto-compute
+        # attention_mask + position_ids unless the caller passed them explicitly.
         _is_batched_list = (
             isinstance(input, list)
             and len(input) > 1
@@ -2112,20 +2115,9 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                         "Visual models require tensor input (pixel values), not text. "
                         "Pass a torch.Tensor or use the pixel_values parameter."
                     )
-                if _is_batched_list and padding_side is None:
-                    # Force left-padding so real tokens are flush-right.
-                    _orig_padding_side = self.tokenizer.padding_side
-                    self.tokenizer.padding_side = "left"
-                    try:
-                        input_ids = self.to_tokens(
-                            input, prepend_bos=prepend_bos, padding_side=padding_side
-                        )
-                    finally:
-                        self.tokenizer.padding_side = _orig_padding_side
-                else:
-                    input_ids = self.to_tokens(
-                        input, prepend_bos=prepend_bos, padding_side=padding_side
-                    )
+                input_ids = self.to_tokens(
+                    input, prepend_bos=prepend_bos, padding_side=padding_side
+                )
             else:
                 input_ids = input
                 # Promote 1D integer token tensors to 2D [batch=1, seq] to match
@@ -2154,7 +2146,9 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                 and not _is_inputs_embeds
             ):
                 _prev_side = self.tokenizer.padding_side
-                self.tokenizer.padding_side = "left"
+                self.tokenizer.padding_side = (
+                    padding_side if padding_side is not None else _prev_side
+                )
                 try:
                     attention_mask = utils.get_attention_mask(
                         self.tokenizer,
