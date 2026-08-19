@@ -268,8 +268,8 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                 value = setup_tokenizer(
                     value, default_padding_side=getattr(cfg, "default_padding_side", None)
                 )
-                cfg.tokenizer_prepends_bos, cfg.tokenizer_appends_eos = (
-                    detect_tokenizer_bos_eos(value)
+                cfg.tokenizer_prepends_bos, cfg.tokenizer_appends_eos = detect_tokenizer_bos_eos(
+                    value
                 )
 
             # Infer d_vocab: on initial assignment only if not set (-1),
@@ -2793,13 +2793,15 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             processed_args = [input]
             if processed_args and isinstance(processed_args[0], str):
                 assert self.tokenizer is not None, "Tokenizer must be set to pass string input."
-                input_ids = self.to_tokens(processed_args[0])
+                prepend_bos = kwargs.pop("prepend_bos", None)
+                input_ids = self.to_tokens(processed_args[0], prepend_bos=prepend_bos)
                 input_ids = input_ids.to(next(self.original_model.parameters()).device)
                 kwargs["input_ids"] = input_ids
                 processed_args = processed_args[1:]
             elif "input" in kwargs and isinstance(kwargs["input"], str):
                 assert self.tokenizer is not None, "Tokenizer must be set to pass string input."
-                input_ids = self.to_tokens(kwargs["input"])
+                prepend_bos = kwargs.pop("prepend_bos", None)
+                input_ids = self.to_tokens(kwargs["input"], prepend_bos=prepend_bos)
                 input_ids = input_ids.to(next(self.original_model.parameters()).device)
                 kwargs["input_ids"] = input_ids
                 del kwargs["input"]

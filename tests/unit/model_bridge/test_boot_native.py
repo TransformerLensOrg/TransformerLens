@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import sys
 
+import pytest
 import torch
 
 from transformer_lens.config import TransformerBridgeConfig
@@ -135,6 +136,35 @@ def test_boot_native_forward_and_cache():
     assert logits.shape == (2, cfg.n_ctx, cfg.d_vocab)
     _, cache = bridge.run_with_cache(inputs, return_type="logits")
     assert "blocks.0.attn.hook_pattern" in cache
+
+
+@pytest.mark.parametrize("prepend_bos", [True, False])
+def test_run_with_cache_forwards_prepend_bos_for_string_input(monkeypatch, prepend_bos):
+    cfg = _cfg()
+    bridge = TransformerBridge.boot_native(cfg)
+    bridge._tokenizer = object()
+    tokenization_calls = []
+
+    def to_tokens(input, prepend_bos=None, padding_side=None):
+        tokenization_calls.append((input, prepend_bos, padding_side))
+        if prepend_bos is None:
+            prepend_bos = bridge.cfg.default_prepend_bos
+        tokens = [0, 7] if prepend_bos else [7]
+        return torch.tensor([tokens])
+
+    monkeypatch.setattr(bridge, "to_tokens", to_tokens)
+    bridge.eval()
+
+    with torch.no_grad():
+        direct_logits = bridge("hello", prepend_bos=prepend_bos)
+        cached_logits, cache = bridge.run_with_cache("hello", prepend_bos=prepend_bos)
+
+    assert tokenization_calls == [
+        ("hello", prepend_bos, None),
+        ("hello", prepend_bos, None),
+    ]
+    torch.testing.assert_close(cached_logits, direct_logits)
+    assert cache["hook_embed"].shape[1] == direct_logits.shape[1]
 
 
 def test_boot_native_does_not_load_transformers_runtime():
