@@ -1036,11 +1036,12 @@ class JacobianLens:
 
         Args:
             model: A raw ``TransformerBridge``.
-            prompts: A prompt, or a sequence of prompts (strings and/or ``[1, seq]`` token tensors).
+            prompts: A prompt, or a sequence of prompts. Each token tensor must represent exactly
+                one prompt and have shape ``[1, seq]``.
             layers: Source layers to profile; defaults to all fitted ``source_layers``.
             k: Number of J-lens vectors per decomposition.
-            skip_first: Skip positions before this index (mirrors the fit's early-position skip);
-                ignored when ``positions`` is given.
+            skip_first: Non-negative index before which positions are skipped (mirrors the fit's
+                early-position skip); not used for sampling when ``positions`` is given.
             positions: Explicit positions to sample instead of ``skip_first`` onward.
             show_progress: Show a tqdm progress bar over prompts.
 
@@ -1048,9 +1049,12 @@ class JacobianLens:
             A :class:`JSpaceVarianceProfile`.
 
         Raises:
-            ValueError: On an invalid model, an unfitted layer, or an empty corpus.
+            ValueError: On an invalid model, an unfitted layer, an empty corpus, a negative
+                ``skip_first``, or a token tensor that does not have shape ``[1, seq]``.
         """
         self.validate_model(model)
+        if skip_first < 0:
+            raise ValueError(f"skip_first must be non-negative, got {skip_first}")
         if layers is None:
             resolved_layers = list(self.source_layers)
         else:
@@ -1078,6 +1082,11 @@ class JacobianLens:
 
         for prompt in tqdm(prompt_list, desc="J-space variance", disable=not show_progress):
             tokens = model.to_tokens(prompt) if isinstance(prompt, str) else prompt
+            if tokens.ndim != 2 or tokens.shape[0] != 1:
+                raise ValueError(
+                    "fraction_of_variance expects each tokenized prompt to have shape "
+                    f"[1, seq], got {tuple(tokens.shape)}"
+                )
             _, cache = model.run_with_cache(tokens, names_filter=lambda name: name in wanted_hooks)
             seq_len = tokens.shape[1]
             sampled = (

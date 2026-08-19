@@ -4,7 +4,7 @@ from contextlib import contextmanager
 from enum import IntEnum
 from inspect import Parameter, signature
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, Optional, Sequence
 
 import numpy as np
 import pytest
@@ -1451,6 +1451,37 @@ def test_fraction_of_variance_rejects_empty_corpus(
 ) -> None:
     with pytest.raises(ValueError):
         fitted_lens.fraction_of_variance(toy_model, [])
+
+
+@pytest.mark.parametrize(
+    "tokens",
+    [
+        torch.zeros(4, dtype=torch.long),
+        torch.zeros((2, 4), dtype=torch.long),
+        torch.zeros((1, 1, 4), dtype=torch.long),
+    ],
+    ids=["missing-batch-dimension", "multiple-prompts", "extra-dimension"],
+)
+def test_fraction_of_variance_rejects_invalid_token_shape(
+    toy_model: _ToyBridge, fitted_lens: JacobianLens, tokens: torch.Tensor
+) -> None:
+    with pytest.raises(
+        ValueError,
+        match=r"fraction_of_variance expects each tokenized prompt to have shape \[1, seq\]",
+    ):
+        fitted_lens.fraction_of_variance(toy_model, tokens, k=3, skip_first=0)
+
+
+@pytest.mark.parametrize("positions", [None, [0]], ids=["default-sampling", "explicit-positions"])
+def test_fraction_of_variance_rejects_negative_skip_first(
+    toy_model: _ToyBridge,
+    fitted_lens: JacobianLens,
+    positions: Optional[Sequence[int]],
+) -> None:
+    with pytest.raises(ValueError, match="skip_first must be non-negative"):
+        fitted_lens.fraction_of_variance(
+            toy_model, "a toy prompt", k=3, skip_first=-1, positions=positions
+        )
 
 
 def test_fraction_of_variance_yields_nan_when_no_positions_are_sampled(

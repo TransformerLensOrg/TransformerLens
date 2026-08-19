@@ -348,6 +348,8 @@ records `||j_space_component||^2 / ||activation||^2` — the `selected_support` 
 matching the paper's appendix operationalization, **not** the nonnegative `reconstruction`. Per
 layer it reports the `median` of those fractions and the `pooled` ratio
 `sum(||j_space||^2) / sum(||activation||^2)`.
+Each token tensor must represent one prompt and have shape `[1, seq]`; `skip_first` must be
+non-negative even when explicit `positions` override its sampling behavior.
 
 ```python
 profile = lens.fraction_of_variance(model, prompts, layers=[3, 6], k=8)
