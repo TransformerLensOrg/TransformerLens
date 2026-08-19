@@ -17,6 +17,7 @@ from typing import (
     Callable,
     Dict,
     FrozenSet,
+    Iterable,
     Iterator,
     List,
     Literal,
@@ -4710,16 +4711,52 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         """
         self.add_hook(name, hook_fn, dir=dir, is_permanent=True)
 
-    def reset_hooks(self, clear_contexts=True):
-        """Remove all hooks from the model."""
+    def hook_points(self) -> Iterable[HookPoint]:
+        """All registered :class:`HookPoint` instances."""
+        return self._hook_registry.values()
 
-        def remove_hooks_recursive(module):
-            if isinstance(module, GeneralizedComponent):
-                module.remove_hooks()
-            for child in module.children():
-                remove_hooks_recursive(child)
+    def clear_contexts(self) -> None:
+        """Clear the stored ``ctx`` on every registered hook point."""
+        for hp in self._hook_registry.values():
+            hp.clear_context()
 
-        remove_hooks_recursive(self)
+    def remove_all_hook_fns(
+        self,
+        direction: Literal["fwd", "bwd", "both"] = "both",
+        including_permanent: bool = False,
+        level: Optional[int] = None,
+    ) -> None:
+        """Remove hook functions from every registered hook point."""
+        for hp in self._hook_registry.values():
+            hp.remove_hooks(dir=direction, including_permanent=including_permanent, level=level)
+
+    def reset_hooks(
+        self,
+        clear_contexts: bool = True,
+        direction: Literal["fwd", "bwd", "both"] = "both",
+        including_permanent: bool = False,
+        level: Optional[int] = None,
+    ) -> None:
+        """Remove hooks from the model; mirrors ``HookedRootModule.reset_hooks``.
+
+        Clears through the hook registry (which holds hook points the component
+        walk cannot reach, e.g. alias-registered points) and, on a full reset,
+        additionally walks the component tree — dev's registry is not asserted
+        canonical, so both passes run belt-and-suspenders.
+        """
+        if clear_contexts:
+            self.clear_contexts()
+        self.remove_all_hook_fns(direction, including_permanent=including_permanent, level=level)
+
+        if direction == "both" and level is None:
+
+            def remove_hooks_recursive(module):
+                if isinstance(module, GeneralizedComponent):
+                    module.remove_hooks()
+                for child in module.children():
+                    remove_hooks_recursive(child)
+
+            remove_hooks_recursive(self)
 
     def hooks(self, fwd_hooks=[], bwd_hooks=[], reset_hooks_end=True, clear_contexts=False):
         """Context manager for temporarily adding hooks.
