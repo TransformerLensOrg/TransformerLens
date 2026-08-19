@@ -1,8 +1,8 @@
 """Tests that batched run_with_cache and run_with_hooks produce correct results.
 
-Without an attention mask, HF models attend to padding tokens and contaminate
-both logits and cached activations for shorter sequences in a batch. These
-tests guard against that regression.
+The default right-padded layout places each row's last real token at a
+different batch position. These tests compare each row at that position rather
+than assuming that every real sequence ends at index ``-1``.
 """
 
 import torch
@@ -14,6 +14,7 @@ def test_run_with_cache_batch_matches_individual(gpt2_bridge):
         "Hello, my dog is cute",
         "This is a much longer text. Hello, my cat is cute",
     ]
+    last_token_positions = [gpt2_bridge.to_tokens(prompt).shape[1] - 1 for prompt in prompts]
 
     # Individual runs
     individual_logits = []
@@ -23,9 +24,8 @@ def test_run_with_cache_batch_matches_individual(gpt2_bridge):
 
     # Batched run
     batched_logits, _ = gpt2_bridge.run_with_cache(prompts)
-    # With left-padding forced internally, position -1 is the last real token
     for i in range(len(prompts)):
-        batched_last = batched_logits[i, -1, :]
+        batched_last = batched_logits[i, last_token_positions[i], :]
         assert torch.allclose(
             individual_logits[i], batched_last, atol=1e-4
         ), f"Prompt {i} logit mismatch between individual and batched run_with_cache"
@@ -38,6 +38,7 @@ def test_run_with_hooks_batch_matches_individual(gpt2_bridge):
         "Hello, my dog is cute",
         "This is a much longer text. Hello, my cat is cute",
     ]
+    last_token_positions = [gpt2_bridge.to_tokens(prompt).shape[1] - 1 for prompt in prompts]
 
     # Capture resid_post at last layer for last token
     captured_individual = []
@@ -56,9 +57,8 @@ def test_run_with_hooks_batch_matches_individual(gpt2_bridge):
     captured_batched = []
 
     def capture_batched(tensor, hook):
-        # For left-padded batch, last real token is at position -1 for all
         for i in range(tensor.shape[0]):
-            captured_batched.append(tensor[i, -1, :].detach().clone())
+            captured_batched.append(tensor[i, last_token_positions[i], :].detach().clone())
 
     gpt2_bridge.run_with_hooks(
         prompts,

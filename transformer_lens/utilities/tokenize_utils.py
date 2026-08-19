@@ -202,7 +202,9 @@ def get_input_with_manually_prepended_bos(
 
 
 def get_tokens_with_bos_removed(
-    tokenizer: PreTrainedTokenizerBase, tokens: torch.Tensor
+    tokenizer: PreTrainedTokenizerBase,
+    tokens: torch.Tensor,
+    padding_side: str | None = None,
 ) -> torch.Tensor:
     """
     Removes the bos token from the beginning of each sequence in `tokens`.
@@ -211,11 +213,15 @@ def get_tokens_with_bos_removed(
     Args:
         tokenizer (PreTrainedTokenizerBase): The tokenizer used to tokenize the input.
         tokens (torch.Tensor): The tokenized input.
+        padding_side: The side used to pad ``tokens``. Defaults to the tokenizer setting.
 
     Returns:
         torch.Tensor: The tokenized input with the bos token removed.
     """
-    if tokenizer.padding_side == "right":
+    if padding_side is None:
+        padding_side = tokenizer.padding_side
+
+    if padding_side == "right":
         return tokens[..., 1:]
 
     else:
@@ -234,7 +240,10 @@ def get_tokens_with_bos_removed(
 
 
 def get_attention_mask(
-    tokenizer: PreTrainedTokenizerBase, tokens: torch.Tensor, prepend_bos: bool
+    tokenizer: PreTrainedTokenizerBase,
+    tokens: torch.Tensor,
+    prepend_bos: bool,
+    padding_side: str | None = None,
 ) -> torch.Tensor:
     """
     Computes the attention mask for the tokenized input.
@@ -246,6 +255,7 @@ def get_attention_mask(
         tokenizer (PreTrainedTokenizerBase): The tokenizer used for tokenization.
         tokens (torch.Tensor): The tokenized input.
         prepend_bos (bool): If True, a BOS token is prepended to the input.
+        padding_side: The side used to pad ``tokens``. Defaults to the tokenizer setting.
 
     Returns:
         torch.Tensor: The attention mask for the input.
@@ -255,9 +265,11 @@ def get_attention_mask(
     attention_mask = torch.ones_like(tokens)
     if tokenizer is None:
         return attention_mask
+    if padding_side is None:
+        padding_side = tokenizer.padding_side
     is_not_pad_token = tokens.ne(tokenizer.pad_token_id)
 
-    if tokenizer.padding_side == "right":
+    if padding_side == "right":
         # Zero-out the rightmost trailing pad tokens
         is_trailing_pad = get_cumsum_along_dim(is_not_pad_token, -1, reverse=True) == 0
         attention_mask[is_trailing_pad] = 0
