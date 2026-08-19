@@ -41,7 +41,10 @@ from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookIntrospectionMixin, HookPoint
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
-from transformer_lens.model_bridge.component_setup import set_original_components
+from transformer_lens.model_bridge.component_setup import (
+    refresh_container_state_owners,
+    set_original_components,
+)
 from transformer_lens.model_bridge.composition_scores import CompositionScores
 from transformer_lens.model_bridge.exceptions import StopAtLayerException
 from transformer_lens.model_bridge.generalized_components.base import (
@@ -929,6 +932,10 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         # Use __dict__ directly to avoid recursion
         if "_modules" in self.__dict__ and name in self.__dict__["_modules"]:  # type: ignore[arg-type]
             return self.__dict__["_modules"][name]
+        adapter = self.__dict__.get("adapter")
+        component_mapping = getattr(adapter, "component_mapping", None)
+        if component_mapping is not None and name in component_mapping:
+            raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
         if "original_model" in self.__dict__ and self.__dict__["original_model"] is not None:
             try:
                 name_split = name.split(".")
@@ -5051,8 +5058,8 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         block_list_names = {"blocks", "L_blocks", "H_blocks", "encoder_blocks", "decoder_blocks"}
         for tl_name, component in component_mapping.items():
             if component.name and tl_name not in block_list_names:
-                # Skip if TL name is already a suffix of the HF path (avoids doubling).
-                if tl_name != component.name and not component.name.endswith("." + tl_name):
+                # Skip if TL name is already a segment of its HF path (avoids doubling).
+                if tl_name != component.name and tl_name not in component.name.split("."):
                     attr_to_hf[tl_name] = component.name
 
         # Map block-level components (ln1, ln2, attn, mlp) for all block lists
@@ -5229,6 +5236,8 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             )
 
         result = self.original_model.load_state_dict(mapped_state_dict, strict=False, assign=assign)
+        if assign:
+            refresh_container_state_owners(self)
         return type(result)(missing_keys=missing_keys, unexpected_keys=unexpected_keys)
 
     def get_params(self):
