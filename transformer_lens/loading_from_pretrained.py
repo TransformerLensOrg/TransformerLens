@@ -1801,6 +1801,17 @@ def get_pretrained_model_config(
 
     cfg_dict["dtype"] = dtype
 
+    # process_weights_ refuses to fold MoE experts, so flipping the norm to its
+    # gain-less *Pre variant here would drop the gains with nothing folding them
+    # in — the model silently loses its norm weights entirely.
+    num_experts = cfg_dict.get("num_experts")
+    if fold_ln and num_experts and num_experts > 1:
+        logging.warning(
+            "fold_ln=True is not supported for MoE models (experts are never folded). "
+            "Setting fold_ln=False."
+        )
+        fold_ln = False
+
     if fold_ln:
         if cfg_dict["normalization_type"] in ["LN", "LNPre"]:
             cfg_dict["normalization_type"] = "LNPre"
