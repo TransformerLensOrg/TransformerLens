@@ -128,9 +128,8 @@ class TestCacheEqualityWithHookedTransformer:
     def test_cache_values_match(self, bridge_compat, reference_ht):
         """Cache activations should match between bridge and HookedTransformer.
 
-        Note: Raw attention scores use different masking sentinels:
-        HookedTransformer uses -inf, Bridge uses torch.finfo(dtype).min.
-        Unmasked scores and resulting patterns should still match.
+        Compatibility mode normalizes masked attention scores to -inf, matching
+        HookedTransformer. Unmasked scores and resulting patterns should match.
         """
         prompt = "Hello World!"
         _, bridge_cache = bridge_compat.run_with_cache(prompt)
@@ -148,7 +147,7 @@ class TestCacheEqualityWithHookedTransformer:
             ), f"Shape mismatch for {hook}: {ht_act.shape} vs {bridge_act.shape}"
 
             if hook == "blocks.0.attn.hook_attn_scores":
-                # Different masking sentinels — compare only unmasked positions
+                # Compare the informative, unmasked scores separately.
                 masked = torch.isinf(ht_act)
                 unmasked = ~masked
                 assert torch.allclose(

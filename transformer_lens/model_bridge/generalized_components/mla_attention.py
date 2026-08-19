@@ -296,6 +296,7 @@ class MLAAttentionBridge(PositionEmbeddingHooksMixin, AttentionBridge):
         attn_scores = torch.matmul(query_states, key_states.transpose(-2, -1)) * scaling
 
         if attention_mask is not None:
+            attention_mask = self._normalize_compatibility_mask_sentinel(attention_mask)
             attn_scores = attn_scores + attention_mask
 
         attn_scores = self.hook_attn_scores(attn_scores)
