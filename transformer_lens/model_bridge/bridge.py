@@ -3132,6 +3132,23 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         # A row may finish via EOS and/or any of the configured stopping criteria.
         any_stop_active = stop_at_eos or stopping_criteria_list is not None
 
+        # Models that own their position derivation (the gate refuses them) cache
+        # mRoPE deltas on the module between calls; a text-only prefill never
+        # refreshes them, so a stale delta from an earlier multimodal forward gets
+        # added to every cached-step position. HF's generate recomputes them at
+        # prefill via prepare_inputs_for_generation, which this loop bypasses —
+        # so match it by clearing before the prompt pass. A multimodal prefill
+        # recomputes its own fresh deltas regardless.
+        if not self._accepts_derived_position_ids():
+            underlying = getattr(self, "original_model", None)
+            for module in (
+                underlying,
+                getattr(underlying, "model", None),
+                getattr(underlying, "language_model", None),
+            ):
+                if module is not None and hasattr(module, "rope_deltas"):
+                    module.rope_deltas = None
+
         # Pure-SSM models (Mamba-1/2) take the stateful cache as `cache_params`;
         # modern hybrids (Bamba, NemotronH, FalconH1) take `past_key_values` and
         # would receive a duplicate cache_params via **kwargs cascade otherwise.
