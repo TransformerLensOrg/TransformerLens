@@ -68,7 +68,6 @@ class Lfm2MoeArchitectureAdapter(ArchitectureAdapter):
 
         self.cfg.act_fn = "silu"
         self.cfg.attn_implementation = "eager"
-        self.cfg.default_prepend_bos = False
 
         rope_parameters = getattr(cfg, "rope_parameters", None) or {}
         rope_theta = rope_parameters.get("rope_theta") or getattr(cfg, "rope_theta", None)
