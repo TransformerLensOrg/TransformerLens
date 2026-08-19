@@ -2155,7 +2155,12 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                 assert isinstance(
                     logits, torch.Tensor
                 ), f"Expected logits tensor, got {type(logits)}"
-                return self.loss_fn(logits, input_ids, per_token=loss_per_token)
+                return self.loss_fn(
+                    logits,
+                    input_ids,
+                    attention_mask=attention_mask,
+                    per_token=loss_per_token,
+                )
             elif return_type == "both":
                 if getattr(self.cfg, "is_audio_model", False):
                     raise ValueError(
@@ -2169,7 +2174,12 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                 assert isinstance(
                     logits, torch.Tensor
                 ), f"Expected logits tensor, got {type(logits)}"
-                loss = self.loss_fn(logits, input_ids, per_token=loss_per_token)
+                loss = self.loss_fn(
+                    logits,
+                    input_ids,
+                    attention_mask=attention_mask,
+                    per_token=loss_per_token,
+                )
                 return (logits, loss)
             elif return_type == "predictions":
                 assert (
@@ -2256,7 +2266,70 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         """
         if tokens.device != logits.device:
             tokens = tokens.to(logits.device)
+        if attention_mask is not None:
+            if attention_mask.device != logits.device:
+                attention_mask = attention_mask.to(logits.device)
+            attention_mask = self._prepare_loss_attention_mask(attention_mask, tokens)
         return lm_cross_entropy_loss(logits, tokens, attention_mask, per_token)
+
+    @staticmethod
+    def _prepare_loss_attention_mask(
+        attention_mask: torch.Tensor, tokens: torch.Tensor
+    ) -> torch.Tensor:
+        """Reduce a forward attention mask to the token window scored by the loss."""
+        batch, pos = tokens.shape
+        if attention_mask.ndim not in (2, 4):
+            raise ValueError(
+                "attention_mask must be 2D [batch, key_pos] or 4D "
+                f"[batch, *, query_pos, key_pos], got shape {tuple(attention_mask.shape)}"
+            )
+        if attention_mask.shape[0] != batch:
+            raise ValueError(
+                "attention_mask batch dimension must match tokens, "
+                f"got {attention_mask.shape[0]} and {batch}"
+            )
+
+        if attention_mask.ndim == 2:
+            if attention_mask.shape[1] < pos:
+                raise ValueError(
+                    "attention_mask must cover every scored token, "
+                    f"got length {attention_mask.shape[1]} for {pos} tokens"
+                )
+            return attention_mask[:, -pos:].bool()
+
+        query_pos, key_pos = attention_mask.shape[-2:]
+        if key_pos < pos:
+            raise ValueError(
+                "attention_mask must cover every scored token, "
+                f"got key length {key_pos} for {pos} tokens"
+            )
+
+        blocked = attention_mask if attention_mask.dtype is torch.bool else attention_mask < -1.0
+        if query_pos == 1:
+            # Broadcast key-only masks use one query row for the full sequence.
+            keep = ~blocked[..., 0, -pos:]
+        else:
+            if query_pos < pos:
+                raise ValueError(
+                    "attention_mask must contain a query row for every scored token, "
+                    f"got {query_pos} rows for {pos} tokens"
+                )
+            # The aligned diagonal excludes causal masking while retaining padding.
+            diagonal = torch.diagonal(
+                blocked,
+                offset=key_pos - query_pos,
+                dim1=-2,
+                dim2=-1,
+            )
+            if diagonal.shape[-1] < pos:
+                raise ValueError(
+                    "attention_mask diagonal must cover every scored token, "
+                    f"got length {diagonal.shape[-1]} for {pos} tokens"
+                )
+            keep = ~diagonal[..., -pos:]
+
+        # A token is padding only when every broadcast/head mask blocks its key.
+        return keep.reshape(batch, -1, pos).any(dim=1)
 
     @overload
     def run_with_cache(
