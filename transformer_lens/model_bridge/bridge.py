@@ -2674,15 +2674,6 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                     original_hook_fn = hook_fn
 
                     # Default arg captures hook_fn by value (avoids closure issue)
-
-        def apply_hooks(hooks: List[Tuple[Union[str, Callable], Callable]], is_fwd: bool):
-            direction: Literal["fwd", "bwd"] = "fwd" if is_fwd else "bwd"
-            aliases = build_alias_to_canonical_map(self.hook_dict)
-            for hook_name_or_filter, hook_fn in hooks:
-                if remove_batch_dim:
-                    original_hook_fn = hook_fn
-
-                    # Default arg captures hook_fn by value (avoids closure issue)
                     def wrapped_hook_fn(tensor, hook, _orig_fn=original_hook_fn):
                         if tensor.shape[0] == 1:
                             tensor_no_batch = tensor.squeeze(0)
@@ -4265,13 +4256,13 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                         gated_names_skipped.append(hook_name)
                         continue
                     hook_point.add_hook(hook_fn, dir=dir, is_permanent=is_permanent)
-        if gated_names_skipped and names_filter is not None:
-            warnings.warn(
-                f"run_with_cache: skipped {len(gated_names_skipped)} gated-off hook name(s) "
-                f"that will never be cached: {gated_names_skipped}. Call the relevant "
-                "set_use_*(True) setter first to enable them.",
-                stacklevel=2,
-            )
+            if gated_names_skipped:
+                warnings.warn(
+                    f"add_hook: filter matched {len(gated_names_skipped)} gated-off hook "
+                    f"name(s) that were skipped: {gated_names_skipped}. Call the relevant "
+                    "set_use_*(True) setter first to enable them.",
+                    stacklevel=2,
+                )
             return
 
         component = self
