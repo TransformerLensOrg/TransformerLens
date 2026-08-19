@@ -3,6 +3,7 @@
 Parameterized over Pythia (native autograd LN) and GPT-2 (manual LN), and over
 ``no_processing`` so both folded and unfolded compat-mode setups are covered.
 """
+
 from __future__ import annotations
 
 import pytest
