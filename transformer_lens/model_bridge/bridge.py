@@ -2425,13 +2425,20 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                                 continue
                         except (IndexError, ValueError):
                             pass
-                try:
-                    self.check_hooks_to_add(hook_name)
-                except ValueError:
-                    gated_names_skipped.append(hook_name)
-                    continue
+
+                # Only validate gated hooks when the caller explicitly supplied
+                # a names_filter. The default filter matches every hook and must
+                # not cause gated hooks to be treated as explicitly requested.
+                if names_filter is not None:
+                    try:
+                        self.check_hooks_to_add(hook_name)
+                    except ValueError:
+                        gated_names_skipped.append(hook_name)
+                        continue
+
                 hooks.append((hook, hook_name))
-        if gated_names_skipped:
+
+        if names_filter is not None and gated_names_skipped:
             warnings.warn(
                 f"run_with_cache: skipped {len(gated_names_skipped)} gated-off hook name(s) "
                 f"that will never be cached: {gated_names_skipped}. Call the relevant "
