@@ -119,12 +119,35 @@ class BlockBridge(GeneralizedComponent):
         # blocks) when use_hook_mlp_in is set. See #1317.
         self.hook_mlp_in = HookPoint()
 
+    def _wire_ln1_module(self) -> None:
+        """Keep the raw ln1 execution reference outside the ownership tree."""
+        from transformer_lens.model_bridge.generalized_components.attention import (
+            AttentionBridge,
+        )
+
+        ln1 = self.submodules.get("ln1") if self.submodules else None
+        attn = self.submodules.get("attn") if self.submodules else None
+        if not isinstance(attn, AttentionBridge):
+            return
+
+        ln1_module = None
+        if (
+            ln1 is not None
+            and getattr(attn, "supports_split_qkv_fork", False)
+            and getattr(ln1, "original_component", None) is not None
+        ):
+            ln1_module = ln1.original_component
+
+        attn._modules.pop("_ln1_module", None)
+        object.__setattr__(attn, "_ln1_module", ln1_module)
+
     def _maybe_wire_capture_hooks(self) -> None:
         """Install the block's capture hooks (split-qkv fork, hook_mlp_in).
 
         Registered on the bridge submodule, not ``original_component`` — the
         manual bridge forward never calls the raw module. Idempotent.
         """
+        self._wire_ln1_module()
         if self._capture_hooks_wired:
             return
         from transformer_lens.model_bridge.generalized_components.attention import (
@@ -147,7 +170,6 @@ class BlockBridge(GeneralizedComponent):
 
             handle = ln1.register_forward_pre_hook(_capture_pre_ln1)
             self._capture_hook_handles.append(handle)
-            attn._ln1_module = ln1.original_component
 
         # hook_mlp_in must capture the MLP-branch entry point: ln2's input on
         # pre-norm blocks, the MLP's own input on post-norm blocks (where ln2

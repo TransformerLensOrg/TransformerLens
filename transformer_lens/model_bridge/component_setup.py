@@ -286,6 +286,8 @@ def setup_blocks_bridge(
         block_bridge.name = f"{blocks_template.name}.{i}"
         block_bridge.set_original_component(original_block)
         setup_submodules(block_bridge, architecture_adapter, original_block)
+        if hasattr(block_bridge, "_wire_ln1_module"):
+            block_bridge._wire_ln1_module()
         bridged_blocks.append(block_bridge)
     replace_remote_component(bridged_blocks, blocks_template.name, original_model)
     return bridged_blocks
