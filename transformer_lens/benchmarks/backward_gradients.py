@@ -169,6 +169,10 @@ def benchmark_backward_hooks(
                 "k_norm",  # QK norm: Bridge uses 4D, HT uses 2D (shape convention)
                 "ln1.hook_",
                 "ln2.hook_",
+                # Sandwich norms (gemma-2/3): same class as ln1/ln2 above, which
+                # predate them.
+                "ln1_post.hook_",
+                "ln2_post.hook_",
                 "ln_final.hook_",
                 "hook_resid_mid",
                 "hook_resid_pre",
@@ -402,6 +406,9 @@ def benchmark_critical_backward_hooks(
                 "k_norm",  # QK norm: Bridge uses 4D, HT uses 2D (shape convention)
                 "ln1.hook_",
                 "ln2.hook_",
+                # Sandwich norms (gemma-2/3): same class as ln1/ln2 above.
+                "ln1_post.hook_",
+                "ln2_post.hook_",
                 "hook_resid_pre",
                 "hook_resid_mid",
                 "hook_resid_post",
