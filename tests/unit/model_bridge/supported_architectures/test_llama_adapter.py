@@ -7,10 +7,10 @@ Tests cover:
 - setup_component_testing rotary embedding wiring
 """
 
-from types import SimpleNamespace
 
 import pytest
 
+from tests.unit.model_bridge.supported_architectures.helpers import fake_hf_model
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.config.transformer_bridge_config import TransformerBridgeConfig
 from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion
@@ -219,10 +219,6 @@ class _DummyBridgeModel:
         self.blocks = blocks
 
 
-def _fake_hf_model(rotary_emb: object) -> SimpleNamespace:
-    return SimpleNamespace(model=SimpleNamespace(rotary_emb=rotary_emb))
-
-
 class TestLlamaSetupComponentTesting:
     """setup_component_testing wires rotary_emb onto every block's attention bridge."""
 
@@ -231,7 +227,7 @@ class TestLlamaSetupComponentTesting:
         rotary_emb = object()
         bridge_model = _DummyBridgeModel([_DummyBlock(), _DummyBlock(), _DummyBlock()])
 
-        adapter.setup_component_testing(_fake_hf_model(rotary_emb), bridge_model=bridge_model)
+        adapter.setup_component_testing(fake_hf_model(rotary_emb), bridge_model=bridge_model)
 
         for block in bridge_model.blocks:
             assert block.attn.rotary_emb is rotary_emb
@@ -241,14 +237,14 @@ class TestLlamaSetupComponentTesting:
         rotary_emb = object()
         bridge_model = _DummyBridgeModel([_DummyBlock(), _DummyBlock(has_attn=False)])
 
-        adapter.setup_component_testing(_fake_hf_model(rotary_emb), bridge_model=bridge_model)
+        adapter.setup_component_testing(fake_hf_model(rotary_emb), bridge_model=bridge_model)
 
         assert bridge_model.blocks[0].attn.rotary_emb is rotary_emb
 
     def test_no_bridge_model_does_not_raise(self) -> None:
         """setup_component_testing without a bridge_model must not raise."""
         adapter = LlamaArchitectureAdapter(_make_cfg())
-        adapter.setup_component_testing(_fake_hf_model(object()))
+        adapter.setup_component_testing(fake_hf_model(object()))
 
 
 class TestLlamaGQASupport:

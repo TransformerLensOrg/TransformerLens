@@ -15,8 +15,26 @@ from transformer_lens.loading_from_pretrained import (
 )
 from transformer_lens.utils import clear_huggingface_cache
 
-# Skip entire module in coverage tests due to test pollution issues
-pytestmark = pytest.mark.skip(reason="Temporarily skipped due to CI test pollution issues")
+
+def _tokenizer_loads(name: str) -> bool:
+    try:
+        AutoTokenizer.from_pretrained(name)
+        return True
+    except Exception:
+        return False
+
+
+def _skip_if_redwood_tokenizer_broken(name: str) -> None:
+    """Skip one parameter, never the whole parametrized test.
+
+    ArthurConmy/redwood_tokenizer's merges reference a token absent from its
+    vocab ("Ġpati"), which tokenizers >= 0.20 rejects on both the fast and slow
+    paths. The repo is third-party and unfixable from here; the weights load
+    fine, so this gates only on the tokenizer actually being instantiable.
+    """
+    if name == "redwood_attn_2l" and not _tokenizer_loads("ArthurConmy/redwood_tokenizer"):
+        pytest.skip("upstream ArthurConmy/redwood_tokenizer is invalid under tokenizers>=0.20")
+
 
 TINY_STORIES_MODEL_NAMES = [
     name for name in OFFICIAL_MODEL_NAMES if name.startswith("roneneldan/TinyStories")
@@ -112,6 +130,7 @@ no_processing = [
 @pytest.mark.parametrize("name,expected_loss", list(loss_store.items()))
 def test_model(name, expected_loss):
     # Runs the model on short text and checks if the loss is as expected
+    _skip_if_redwood_tokenizer_broken(name)
     model = HookedTransformer.from_pretrained(name)
     loss = model(text, return_type="loss")
     assert (loss.item() - expected_loss) < 4e-5
@@ -147,6 +166,7 @@ def test_othello_gpt():
 def test_from_pretrained_no_processing(name, expected_loss):
     # Checks if manually overriding the boolean flags in from_pretrained
     # is equivalent to using from_pretrained_no_processing
+    _skip_if_redwood_tokenizer_broken(name)
 
     model_ref = HookedTransformer.from_pretrained_no_processing(name)
     model_ref_config = model_ref.cfg

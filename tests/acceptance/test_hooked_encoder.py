@@ -9,9 +9,6 @@ from transformers import AutoTokenizer, BertForPreTraining
 
 from transformer_lens import HookedEncoder
 
-# Skip entire module in coverage tests due to test pollution issues
-pytestmark = pytest.mark.skip(reason="Temporarily skipped due to CI test pollution issues")
-
 MODEL_NAME = "bert-base-cased"
 
 
@@ -99,7 +96,9 @@ def test_bert_block(our_bert, huggingface_bert, tokens):
     our_block = our_bert.blocks[0]
 
     our_block_out = our_block(embed_out)
-    huggingface_block_out = huggingface_block(embed_out)[0]
+    # transformers 5.x returns the tensor directly; [0] used to take tuple
+    # element 0 and now takes batch element 0.
+    huggingface_block_out = huggingface_block(embed_out)
     assert_close(our_block_out, huggingface_block_out)
 
 

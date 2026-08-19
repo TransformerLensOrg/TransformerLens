@@ -306,7 +306,7 @@ def test_fill_missing_keys_raises_on_missing_attention_weights():
         k: v for k, v in default_state_dict.items() if not k.endswith("attn.W_K")
     }
 
-    with pytest.raises(ValueError, match="attention weight matrices"):
+    with pytest.raises(ValueError, match="missing weight matrices"):
         fill_missing_keys(model, incomplete_state_dict)
 
 
@@ -498,3 +498,72 @@ class TestArchitectureConfigs:
         cfg_dict = convert_hf_model_config(str(tmp_path))
 
         assert cfg_dict["parallel_attn_mlp"] is use_parallel_residual
+
+
+class TestHetConfigThroughConvertHfModelConfig:
+    """convert_hf_model_config had zero het protection: transformers>=5.15
+    per-layer fields raise (not AttributeError) on global reads, so the branch
+    chain's own hasattr probes were crash sites."""
+
+    @mock.patch("transformer_lens.loading_from_pretrained.AutoConfig")
+    def test_per_layer_field_resolves_to_majority(self, mock_auto_config: mock.MagicMock):
+        from tests.unit.model_bridge.test_config_mapping import _HeterogeneousConfig
+        from transformer_lens.loading_from_pretrained import convert_hf_model_config
+
+        mock_auto_config.from_pretrained.return_value = _HeterogeneousConfig(
+            {"scale_attn_by_inverse_layer_idx": [False, False]},
+            architectures=["GPT2LMHeadModel"],
+            n_embd=128,
+            n_head=4,
+            n_layer=2,
+            num_hidden_layers=2,
+            n_ctx=1024,
+            layer_norm_epsilon=1e-5,
+            vocab_size=50257,
+            activation_function="gelu_new",
+        )
+        cfg_dict = convert_hf_model_config("gpt2")
+        assert cfg_dict["scale_attn_by_inverse_layer_idx"] is False
+
+
+class TestFillMissingKeysFailLoud:
+    """Zero-filling an MLP weight matrix is the same silent-sublayer-death as
+    the attention case; norm fills are frequently right but must be named."""
+
+    @staticmethod
+    def _model_and_state(missing_leaf):
+        cfg = get_default_config()
+        cfg.attn_only = False
+        model = HookedTransformer(
+            HookedTransformerConfig(
+                d_model=128,
+                d_head=8,
+                n_heads=16,
+                n_ctx=128,
+                n_layers=1,
+                d_vocab=50257,
+                d_mlp=256,
+                act_fn="relu",
+            )
+        )
+        state_dict = model.state_dict()
+        removed = [key for key in state_dict if key.rsplit(".", 1)[-1] == missing_leaf]
+        assert removed, f"fixture produced no {missing_leaf} keys"
+        for key in removed:
+            del state_dict[key]
+        return model, state_dict
+
+    @pytest.mark.parametrize("leaf", ["W_in", "W_out"])
+    def test_missing_mlp_matrices_raise(self, leaf):
+        model, state_dict = self._model_and_state(leaf)
+        with pytest.raises(ValueError, match=leaf):
+            fill_missing_keys(model, state_dict)
+
+    @mock.patch("logging.warning")
+    def test_missing_norm_keys_warn_by_name(self, mock_warning: mock.MagicMock):
+        model, state_dict = self._model_and_state("w")
+        fill_missing_keys(model, state_dict)
+        norm_warnings = [
+            call for call in mock_warning.call_args_list if "normalization" in str(call.args[0])
+        ]
+        assert norm_warnings, "norm fills must be named, not silent"

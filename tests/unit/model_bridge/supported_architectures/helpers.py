@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+from types import SimpleNamespace
 from typing import Any
 
 import torch
@@ -98,3 +99,22 @@ class FakeDelegatedAttention(torch.nn.Module):
         )
         weights = torch.softmax(torch.zeros(batch, self.n_heads, seq, seq), dim=-1)
         return self.o_proj(expanded.reshape(batch, seq, -1)), weights
+
+
+def fake_hf_model(rotary_emb: object) -> SimpleNamespace:
+    """Minimal HF model exposing only model.rotary_emb (no config, no layers)."""
+    return SimpleNamespace(model=SimpleNamespace(rotary_emb=rotary_emb))
+
+
+def fake_hf_model_with_eager_targets(rotary_emb: object) -> SimpleNamespace:
+    """HF model whose top-level and per-layer attention implementation start non-eager."""
+    layers = [
+        SimpleNamespace(
+            self_attn=SimpleNamespace(config=SimpleNamespace(_attn_implementation="sdpa"))
+        )
+        for _ in range(2)
+    ]
+    return SimpleNamespace(
+        config=SimpleNamespace(_attn_implementation="sdpa"),
+        model=SimpleNamespace(rotary_emb=rotary_emb, layers=layers),
+    )
