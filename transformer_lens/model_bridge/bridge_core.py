@@ -974,10 +974,14 @@ class BridgeCore:
             remove_batch_dim=remove_batch_dim,
             cache=cache,
         )
+        # Gated-off hook points never fire, so caching them is a no-op; skip
+        # them rather than trip add_hook's explicit-name guard when enumerating.
         for name, hook_fn in fwd_hooks:
-            self.add_hook(name, hook_fn, dir="fwd")
+            if self._gated_hook_reason(name) is None:
+                self.add_hook(name, hook_fn, dir="fwd")
         for name, hook_fn in bwd_hooks:
-            self.add_hook(name, hook_fn, dir="bwd")
+            if self._gated_hook_reason(name) is None:
+                self.add_hook(name, hook_fn, dir="bwd")
         return cache
 
     def cache_all(
