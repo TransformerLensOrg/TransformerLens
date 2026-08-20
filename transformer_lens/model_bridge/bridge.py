@@ -387,10 +387,34 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             checkpoint_value=checkpoint_value,
         )
 
+    @overload
     @classmethod
     def boot_native(
         cls,
-        config: Union[TransformerBridgeConfig, dict],
+        config: TransformerBridgeConfig,
+        tokenizer: Optional[Any] = None,
+        device: Optional[Union[str, torch.device]] = None,
+        dtype: Optional[torch.dtype] = None,
+        model_name: str = "native",
+    ) -> "TransformerBridge":
+        ...
+
+    @overload
+    @classmethod
+    def boot_native(
+        cls,
+        config: Dict[str, Any],
+        tokenizer: Optional[Any] = None,
+        device: Optional[Union[str, torch.device]] = None,
+        dtype: Optional[torch.dtype] = None,
+        model_name: str = "native",
+    ) -> "TransformerBridge":
+        ...
+
+    @classmethod
+    def boot_native(
+        cls,
+        config: Any,
         tokenizer: Optional[Any] = None,
         device: Optional[Union[str, torch.device]] = None,
         dtype: Optional[torch.dtype] = None,
@@ -401,6 +425,15 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         No HuggingFace Hub call, no ``transformers`` import. ``config.init_mode``
         and ``config.seed`` control reproducibility.
         """
+        # Impl signature stays Any so this guard is reachable — a Union hint
+        # would have beartype reject foreign configs with its own error first.
+        if not isinstance(config, (TransformerBridgeConfig, dict)):
+            raise TypeError(
+                "boot_native expected a TransformerBridgeConfig or dict, "
+                f"got {type(config).__name__}. Construct a TransformerBridgeConfig "
+                "with the same fields."
+            )
+
         import copy as _copy
 
         from transformer_lens.config import TransformerBridgeConfig as _Cfg
