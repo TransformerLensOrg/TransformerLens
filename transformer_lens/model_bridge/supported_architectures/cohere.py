@@ -185,6 +185,9 @@ class _Cohere2AttentionBridge(PositionEmbeddingsAttentionBridge):
     reconstruction path.
     """
 
+    # Nulls position_embeddings on NoPE layers by design.
+    rope_optional = True
+
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Drop position_embeddings on Cohere2 full-attention NoPE layers."""
         if self._is_nope_layer():
