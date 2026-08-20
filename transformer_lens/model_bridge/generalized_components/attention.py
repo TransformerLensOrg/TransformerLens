@@ -430,13 +430,18 @@ class AttentionBridge(GeneralizedComponent):
         """
         past_key_values = kwargs.get("past_key_values", None)
         if past_key_values is None:
+            # GPT-NeoX/GPT-J/Bloom/Falcon/MPT/CodeGen/GPTBigCode still name the
+            # cache `layer_past`; missing it leaves the cache empty, so every
+            # decode step attends to itself alone and generation ignores the prompt.
+            past_key_values = kwargs.get("layer_past", None)
+        if past_key_values is None:
             return k, v
         layer_idx = getattr(self, "_layer_idx", None)
         if layer_idx is None:
             logger.warning(
                 "%s: past_key_values provided but _layer_idx is None "
-                "(HF component missing layer_idx attribute). "
-                "KV cache update skipped — generation will be slow.",
+                "(HF component missing layer_idx attribute). KV cache update "
+                "skipped — cached generation will ignore earlier tokens.",
                 self.name,
             )
             return k, v

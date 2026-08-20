@@ -14,6 +14,59 @@ from transformer_lens.benchmarks.utils import (
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge import TransformerBridge
 
+# Grading band for numerical (non-convention) gradient mismatches. Registering
+# backward hooks forces normalization off HF's native autograd onto the python
+# norm, which shifts results at float-rounding scale; measured noise is ~1e-5
+# rel_l2 with a single over-tolerance element, while injected bugs start at
+# ~1e-3 rel_l2 with 60+ elements over. Valid for fp32 gradients only — the
+# gradient section upcasts reduced-precision models before comparing.
+REL_L2_TOLERANCE = 1e-4
+OVER_TOLERANCE_MAX_ELEMENTS = 3
+
+
+def needs_fp32_gradients(dtype: Optional[torch.dtype]) -> bool:
+    """Reduced-precision gradients cannot be graded against the fp32-calibrated
+    band — bf16's rounding floor alone is ~2e-3 rel_l2, inside the bug band."""
+    return dtype is not None and dtype not in (torch.float32, torch.float64)
+
+
+def gradient_mismatch_stats(
+    bridge_finite: torch.Tensor,
+    reference_finite: torch.Tensor,
+    abs_tolerance: float,
+    rel_tolerance: float,
+) -> dict:
+    """Scale-aware statistics for grading one recorded gradient mismatch.
+
+    A zero reference with a nonzero bridge gradient is the maximally divergent
+    case, not perfect agreement, so rel_l2 is inf there rather than 0.
+    """
+    bf, rf = bridge_finite.float(), reference_finite.float()
+    ref_norm = torch.norm(rf)
+    diff_norm = torch.norm(bf - rf)
+    if ref_norm > 0:
+        rel_l2 = (diff_norm / ref_norm).item()
+    else:
+        rel_l2 = 0.0 if diff_norm == 0 else float("inf")
+    over_count = int(
+        (torch.abs(bf - rf) > abs_tolerance + rel_tolerance * torch.abs(rf)).sum().item()
+    )
+    return {"rel_l2": rel_l2, "over_count": over_count}
+
+
+def gradient_mismatch_is_numerical_noise(rel_l2: float, over_count: int) -> bool:
+    """True when a gradient mismatch is diffuse and tiny rather than a divergence.
+
+    Elementwise worst-case cannot separate the two: one element of 55k crossing
+    the tolerance scores the same as a head scaled by 1%. rel_l2 separates them
+    by 58x or more, and the element COUNT guards the localized case rel_l2 would
+    dilute. A count (not a fraction) keeps the band reachable on small tensors:
+    detection guarantees count >= 1, so a fractional guard of 1e-4 was
+    arithmetically unsatisfiable below 10,000 elements (gemma-3-270m's MQA
+    hook_rot_k is 6,912).
+    """
+    return rel_l2 <= REL_L2_TOLERANCE and over_count <= OVER_TOLERANCE_MAX_ELEMENTS
+
 
 def benchmark_backward_hooks(
     bridge: TransformerBridge,
@@ -119,6 +172,7 @@ def benchmark_backward_hooks(
         ]
 
         mismatches = []
+        mismatch_stats: dict = {}
         for hook_name in sorted(common_hooks):
             if hook_name in excluded_hooks:
                 continue
@@ -148,8 +202,16 @@ def benchmark_backward_hooks(
                     mean_diff = torch.mean(torch.abs(bf - rf)).item()
                     rel_diff = torch.abs(bf - rf) / (torch.abs(bf) + 1e-8)
                     mean_rel = rel_diff.mean().item()
+                    # Scale-aware stats for grading. Elementwise worst-case alone
+                    # cannot separate a real divergence from the float-rounding
+                    # shift the python-norm fallback introduces when backward
+                    # hooks force normalization off HF's native autograd path.
+                    stats = gradient_mismatch_stats(bf, rf, abs_tolerance, rel_tolerance)
+                    mismatch_stats[hook_name] = stats
                     mismatches.append(
-                        f"{hook_name}: Value mismatch - max_diff={max_diff:.6f}, mean_diff={mean_diff:.6f}, mean_rel={mean_rel:.6f}"
+                        f"{hook_name}: Value mismatch - max_diff={max_diff:.6f}, mean_diff={mean_diff:.6f}, "
+                        f"mean_rel={mean_rel:.6f}, rel_l2={stats['rel_l2']:.3e}, "
+                        f"over_count={stats['over_count']}"
                     )
 
         tested_hooks = len(common_hooks) - len(excluded_hooks)
@@ -169,6 +231,10 @@ def benchmark_backward_hooks(
                 "k_norm",  # QK norm: Bridge uses 4D, HT uses 2D (shape convention)
                 "ln1.hook_",
                 "ln2.hook_",
+                # Sandwich norms (gemma-2/3): same class as ln1/ln2 above, which
+                # predate them.
+                "ln1_post.hook_",
+                "ln2_post.hook_",
                 "ln_final.hook_",
                 "hook_resid_mid",
                 "hook_resid_pre",
@@ -180,8 +246,25 @@ def benchmark_backward_hooks(
                 "mlp.hook_pre",
                 "hook_mlp_out",
             ]
+
+            def within_noise_band(entry: str) -> bool:
+                """Diffuse, tiny deviation — the fallback's rounding, not a divergence.
+
+                Measured noise across architectures is rel_l2 ~1e-5 with a single
+                over-tolerance element on the rotary hooks (the only ones outside
+                the pattern list); injected bugs of a 1% head scale or a 0.1%
+                uniform scale land at rel_l2 1e-3+ with 60+ elements over.
+                """
+                name = entry.split(":")[0]
+                stats = mismatch_stats.get(name)
+                if stats is None:
+                    return False
+                return gradient_mismatch_is_numerical_noise(stats["rel_l2"], stats["over_count"])
+
             acceptable_mismatches = [
-                m for m in mismatches if any(pattern in m for pattern in acceptable_patterns)
+                m
+                for m in mismatches
+                if any(pattern in m for pattern in acceptable_patterns) or within_noise_band(m)
             ]
 
             if len(acceptable_mismatches) == len(mismatches):
@@ -402,6 +485,9 @@ def benchmark_critical_backward_hooks(
                 "k_norm",  # QK norm: Bridge uses 4D, HT uses 2D (shape convention)
                 "ln1.hook_",
                 "ln2.hook_",
+                # Sandwich norms (gemma-2/3): same class as ln1/ln2 above.
+                "ln1_post.hook_",
+                "ln2_post.hook_",
                 "hook_resid_pre",
                 "hook_resid_mid",
                 "hook_resid_post",
