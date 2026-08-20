@@ -31,6 +31,7 @@ from transformer_lens.benchmarks.backward_gradients import (
     benchmark_backward_hooks,
     benchmark_critical_backward_hooks,
     benchmark_gradient_computation,
+    needs_fp32_gradients,
 )
 from transformer_lens.benchmarks.component_benchmark import benchmark_all_components
 from transformer_lens.benchmarks.forward_pass import (
@@ -512,17 +513,20 @@ def run_comparison_benchmarks(
     if verbose:
         print("6. Backward Gradient Benchmarks")
 
-    # MPS does not support bfloat16 autograd. Upcast to float32 for gradient tests if needed.
+    # Gradient comparisons are graded against fp32-calibrated thresholds
+    # (REL_L2_TOLERANCE): bf16's rounding floor alone is ~2e-3 rel_l2, inside the
+    # measured bug band, so reduced-precision gradients cannot be graded at all.
+    # Upcast for the gradient section on every device (MPS additionally lacks
+    # bf16 autograd), then restore below.
     bridge_grad_dtype = bridge_model.cfg.dtype if hasattr(bridge_model, "cfg") else None
-    bridge_device = next(bridge_model.parameters()).device
-    mps_bf16_upcast = str(bridge_device).startswith("mps") and bridge_grad_dtype == torch.bfloat16
-    if mps_bf16_upcast:
+    grad_fp32_upcast = needs_fp32_gradients(bridge_grad_dtype)
+    if grad_fp32_upcast:
         try:
             bridge_model.to(torch.float32)
             if reference_model is not None:
                 reference_model.to(torch.float32)
         except Exception:
-            mps_bf16_upcast = False  # Upcast failed; proceed as-is
+            grad_fp32_upcast = False  # Upcast failed; proceed as-is
 
     if ht_available:
         try:
@@ -561,7 +565,7 @@ def run_comparison_benchmarks(
             if verbose:
                 print(f"✗ Gradient benchmark failed: {e}\n")
 
-    if mps_bf16_upcast and bridge_grad_dtype is not None:
+    if grad_fp32_upcast and bridge_grad_dtype is not None:
         try:
             bridge_model.to(bridge_grad_dtype)
             if reference_model is not None:
