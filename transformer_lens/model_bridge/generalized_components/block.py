@@ -135,6 +135,8 @@ class BlockBridge(GeneralizedComponent):
         attn = self.submodules.get("attn") if self.submodules else None
         if (
             ln1 is not None
+            # Post-norm blocks reuse ln1 for the attention output, not its input.
+            and not self.mlp_reads_resid_directly
             and isinstance(attn, AttentionBridge)
             and getattr(attn, "supports_split_qkv_fork", False)
             and getattr(ln1, "original_component", None) is not None

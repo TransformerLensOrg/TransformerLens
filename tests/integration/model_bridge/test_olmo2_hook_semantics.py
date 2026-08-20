@@ -191,3 +191,40 @@ def test_compatibility_mode_preserves_residual_semantics() -> None:
             cache[f"blocks.{layer}.hook_resid_post"],
             cache[f"blocks.{layer}.hook_resid_mid"] + cache[f"blocks.{layer}.hook_mlp_out"],
         )
+
+
+@pytest.mark.parametrize("use_split_qkv", [True, False], ids=["split_qkv", "attn_in"])
+def test_attention_input_forks_are_stateless(use_split_qkv: bool) -> None:
+    """OLMo 2 has no pre-attention norm, so input forks must read resid_pre
+    directly and must not retain the preceding forward's post-norm output.
+    """
+    bridge = TransformerBridge.boot_transformers(MODEL, device="cpu", dtype=torch.float32)
+    tokens = torch.tensor([[1, 2, 3, 4, 5]])
+
+    with torch.no_grad():
+        expected = bridge(tokens).clone()
+
+    if use_split_qkv:
+        bridge.set_use_split_qkv_input(True)
+        hook_name = "blocks.1.attn.hook_q_input"
+    else:
+        bridge.set_use_attn_in(True)
+        hook_name = "blocks.1.attn.hook_attn_in"
+
+    try:
+        with torch.no_grad():
+            first_logits, first_cache = bridge.run_with_cache(tokens)
+            second_logits, second_cache = bridge.run_with_cache(tokens)
+    finally:
+        if use_split_qkv:
+            bridge.set_use_split_qkv_input(False)
+        else:
+            bridge.set_use_attn_in(False)
+
+    for cache in (first_cache, second_cache):
+        expected_input = cache["blocks.1.hook_resid_pre"].unsqueeze(2)
+        torch.testing.assert_close(cache[hook_name], expected_input.expand_as(cache[hook_name]))
+
+    torch.testing.assert_close(first_logits, expected, atol=1e-4, rtol=1e-5)
+    torch.testing.assert_close(second_logits, expected, atol=1e-4, rtol=1e-5)
+    torch.testing.assert_close(second_logits, first_logits, atol=0, rtol=0)
