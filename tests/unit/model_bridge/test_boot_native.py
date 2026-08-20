@@ -5,9 +5,12 @@ import sys
 
 import pytest
 import torch
+import torch.nn as nn
 
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.model_bridge import TransformerBridge
+from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
+from transformer_lens.model_bridge.generalized_components import LinearBridge
 from transformer_lens.model_bridge.sources.native import NativeModel
 
 
@@ -150,6 +153,70 @@ def test_boot_native_distinct_seeds_diverge():
         for (_, pa), (_, pb) in zip(a.named_parameters(), b.named_parameters())
     ]
     assert any(diffs), "Two different seeds produced identical params"
+
+
+def test_boot_native_skips_custom_init_when_disabled(monkeypatch):
+    def fail_if_called(*_args, **_kwargs):
+        pytest.fail("initialize_native_model was called with init_weights=False")
+
+    def fail_if_forked(*_args, **_kwargs):
+        pytest.fail("fork_rng was called with init_weights=False")
+
+    monkeypatch.setattr(
+        "transformer_lens.model_bridge.sources.native.initialize_native_model",
+        fail_if_called,
+    )
+    monkeypatch.setattr(torch.random, "fork_rng", fail_if_forked)
+    bridge = TransformerBridge.boot_native(_cfg(init_weights=False))
+
+    assert isinstance(bridge.original_model, NativeModel)
+    assert torch.count_nonzero(bridge.original_model.layers[0].attn.q.bias) > 0
+
+
+def test_native_bridge_init_weights_reinitializes_in_place_and_honors_seed():
+    bridge = TransformerBridge.boot_native(_cfg(seed=123))
+    model = bridge.original_model
+    expected = {name: param.detach().clone() for name, param in model.named_parameters()}
+
+    with torch.no_grad():
+        for param in model.parameters():
+            param.fill_(42)
+
+    bridge.init_weights()
+
+    assert bridge.original_model is model
+    for name, param in model.named_parameters():
+        assert torch.equal(param, expected[name]), f"Seed mismatch on {name}"
+
+
+def test_native_bridge_init_weights_does_not_perturb_global_rng():
+    bridge = TransformerBridge.boot_native(_cfg(seed=42))
+    torch.manual_seed(0)
+    expected_after = torch.randn(5)
+
+    torch.manual_seed(0)
+    bridge.init_weights()
+    actual_after = torch.randn(5)
+
+    assert torch.equal(actual_after, expected_after)
+
+
+def test_init_weights_rejects_non_native_bridge():
+    class StubModel(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.proj = nn.Linear(4, 4)
+
+    class StubAdapter(ArchitectureAdapter):
+        def __init__(self, cfg):
+            super().__init__(cfg)
+            self.component_mapping = {"stub_proj": LinearBridge(name="proj")}
+
+    cfg = _cfg(architecture="StubForTest")
+    bridge = TransformerBridge(StubModel(), StubAdapter(cfg), tokenizer=None)
+
+    with pytest.raises(RuntimeError, match=r"boot_native.*StubModel"):
+        bridge.init_weights()
 
 
 def test_boot_native_forward_and_cache():

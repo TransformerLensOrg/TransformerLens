@@ -467,14 +467,16 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
 
         # Fork RNG around construction + init when seeded so neither nn.Linear's
         # default reset_parameters nor our scoped init perturb the caller's RNG.
-        # Unseeded calls let global RNG advance normally.
-        if cfg.seed is not None:
+        # When custom init is disabled, construction keeps PyTorch's normal global
+        # RNG semantics and cfg.seed has no initialization work to control.
+        if cfg.init_weights and cfg.seed is not None:
             with torch.random.fork_rng(devices=[]):
                 model = NativeModel(cfg)
                 initialize_native_model(model, cfg)
         else:
             model = NativeModel(cfg)
-            initialize_native_model(model, cfg)
+            if cfg.init_weights:
+                initialize_native_model(model, cfg)
 
         if device is not None:
             model = model.to(device)
@@ -490,6 +492,22 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             device=device,
             model_name=model_name,
         )
+
+    def init_weights(self) -> None:
+        """Reinitialize a TL-native model in place using the bridge config."""
+        from transformer_lens.model_bridge.sources.native.init import (
+            initialize_native_model,
+        )
+        from transformer_lens.model_bridge.sources.native.model import NativeModel
+
+        model = self.original_model
+        if not isinstance(model, NativeModel):
+            raise RuntimeError(
+                "TransformerBridge.init_weights() is only supported for TL-native "
+                "bridges created with TransformerBridge.boot_native(...); this bridge "
+                f"wraps {type(model).__name__}."
+            )
+        initialize_native_model(model, self.cfg)
 
     @property
     def original_model(self) -> nn.Module:
