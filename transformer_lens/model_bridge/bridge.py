@@ -241,6 +241,12 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         # train() recurses, so this stamps the wrappers with the model's mode.
         original_model.train(original_model.training)
         self.train(original_model.training)
+        self.cfg._bind_bridge(self)
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        """Restore runtime config routing after deepcopy or deserialization."""
+        super().__setstate__(state)
+        self.cfg._bind_bridge(self)
 
     @property
     def tokenizer(self) -> Any:
@@ -4951,7 +4957,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         """
         if use_attn_result:
             self._validate_attention_fork_supported("use_attn_result")
-        self.cfg.use_attn_result = use_attn_result
+        self.cfg._set_bridge_managed_hook_flag("use_attn_result", use_attn_result)
         self._propagate_attention_flag("use_attn_result", use_attn_result)
 
     def set_use_split_qkv_input(self, use_split_qkv_input: bool):
@@ -4966,7 +4972,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                     "Call set_use_attn_in(False) before enabling use_split_qkv_input."
                 )
             self._validate_attention_fork_supported("use_split_qkv_input")
-        self.cfg.use_split_qkv_input = use_split_qkv_input
+        self.cfg._set_bridge_managed_hook_flag("use_split_qkv_input", use_split_qkv_input)
         self._propagate_attention_flag("use_split_qkv_input", use_split_qkv_input)
 
     def set_use_attn_in(self, use_attn_in: bool):
@@ -4984,7 +4990,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                     "Call set_use_split_qkv_input(False) before enabling use_attn_in."
                 )
             self._validate_attention_fork_supported("use_attn_in")
-        self.cfg.use_attn_in = use_attn_in
+        self.cfg._set_bridge_managed_hook_flag("use_attn_in", use_attn_in)
         self._propagate_attention_flag("use_attn_in", use_attn_in)
 
     def set_use_hook_mlp_in(self, use_hook_mlp_in: bool) -> None:
@@ -4993,7 +4999,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
 
         See :py:meth:`HookedTransformer.set_use_hook_mlp_in`.
         """
-        self.cfg.use_hook_mlp_in = use_hook_mlp_in
+        self.cfg._set_bridge_managed_hook_flag("use_hook_mlp_in", use_hook_mlp_in)
         if not hasattr(self, "blocks"):
             return
         for block in self.blocks:
