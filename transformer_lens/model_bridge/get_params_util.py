@@ -1,48 +1,50 @@
 """Utility function for getting model parameters in TransformerLens format."""
 import logging
-from typing import Dict
+from typing import Dict, Optional
 
 import torch
 
 logger = logging.getLogger(__name__)
 
 
-def _get_n_kv_heads(cfg) -> int:
-    """Resolve the number of key/value heads, falling back to n_heads."""
-    if hasattr(cfg, "n_key_value_heads") and isinstance(cfg.n_key_value_heads, int):
-        return cfg.n_key_value_heads
-    return cfg.n_heads
+def _tensor_attr(obj, *names: str) -> Optional[torch.Tensor]:
+    """First attribute of ``obj`` among ``names`` that is an actual tensor, else None.
 
-
-def _reshape_kv_weight(weight: torch.Tensor, cfg, device, dtype) -> torch.Tensor:
-    """Reshape a K or V weight matrix to (n_heads, d_model, d_head)."""
-    d_head = cfg.d_model // cfg.n_heads
-    if weight.shape == (cfg.d_model, cfg.d_model):
-        return weight.reshape(cfg.n_heads, cfg.d_model, d_head)
-    if weight.shape == (cfg.d_head, cfg.d_model) or weight.shape == (
-        cfg.d_model // cfg.n_heads,
-        cfg.d_model,
-    ):
-        return weight.transpose(0, 1).unsqueeze(0).expand(cfg.n_heads, -1, -1)
-    if weight.numel() == cfg.n_heads * cfg.d_model * cfg.d_head:
-        return weight.view(cfg.n_heads, cfg.d_model, cfg.d_head)
-    return torch.zeros(cfg.n_heads, cfg.d_model, cfg.d_head, device=device, dtype=dtype)
-
-
-def _get_or_create_bias(bias, n_heads: int, d_head: int, device, dtype) -> torch.Tensor:
-    """Reshape existing bias to (n_heads, d_head), or create zeros if None."""
-    if bias is not None:
-        return bias.reshape(n_heads, -1)
-    return torch.zeros(n_heads, d_head, device=device, dtype=dtype)
+    NotImplementedError counts as absent: MLA attention raises it from W_Q/W_K/W_V/W_O
+    (compressed projections have no standard per-head form).
+    """
+    for name in names:
+        try:
+            value = getattr(obj, name)
+        except (AttributeError, TypeError, NotImplementedError):
+            continue
+        if isinstance(value, torch.Tensor):
+            return value
+    return None
 
 
 def get_bridge_params(bridge) -> Dict[str, torch.Tensor]:
-    """Model parameters in SVDInterpreter format. Skips attn keys for non-attention layers."""
-    params_dict = {}
+    """Model parameters in SVDInterpreter format.
+
+    Reads the bridge components' TL-layout weight properties (``W_Q``,
+    ``W_in``, ...), which already account for layout conversion and weight
+    processing. For missing weights, returns zero tensors of appropriate shape
+    instead of raising exceptions. Skips attn keys for non-attention layers.
+    LayerNorm params (``blocks.{i}.ln1.w`` etc.) are included when the modules
+    still carry them (i.e. before folding) so consumers can detect fold state.
+
+    Returns:
+        dict: Dictionary of parameter tensors with TransformerLens naming convention
+
+    Raises:
+        ValueError: If configuration is inconsistent (e.g., cfg.n_layers != len(blocks))
+    """
+    cfg = bridge.cfg
+    params_dict: Dict[str, torch.Tensor] = {}
 
     def _get_device_dtype():
         """Infer device/dtype from the first available model parameter."""
-        device = getattr(bridge.cfg, "device", None) or torch.device("cpu")
+        device = getattr(cfg, "device", None) or torch.device("cpu")
         dtype = torch.float32
         try:
             first_param = next(bridge.parameters())
@@ -52,24 +54,21 @@ def get_bridge_params(bridge) -> Dict[str, torch.Tensor]:
             pass
         return (device, dtype)
 
-    try:
-        params_dict["embed.W_E"] = bridge.embed.weight
-    except AttributeError:
+    def _zeros(*shape) -> torch.Tensor:
         device, dtype = _get_device_dtype()
-        params_dict["embed.W_E"] = torch.zeros(
-            bridge.cfg.d_vocab, bridge.cfg.d_model, device=device, dtype=dtype
-        )
-    try:
-        params_dict["pos_embed.W_pos"] = bridge.pos_embed.weight
-    except AttributeError:
-        device, dtype = _get_device_dtype()
-        params_dict["pos_embed.W_pos"] = torch.zeros(
-            bridge.cfg.n_ctx, bridge.cfg.d_model, device=device, dtype=dtype
-        )
-    for layer_idx in range(bridge.cfg.n_layers):
+        return torch.zeros(*shape, device=device, dtype=dtype)
+
+    embed = _tensor_attr(getattr(bridge, "embed", None), "W_E", "weight")
+    params_dict["embed.W_E"] = embed if embed is not None else _zeros(cfg.d_vocab, cfg.d_model)
+
+    pos = _tensor_attr(getattr(bridge, "pos_embed", None), "W_pos", "weight")
+    params_dict["pos_embed.W_pos"] = pos if pos is not None else _zeros(cfg.n_ctx, cfg.d_model)
+
+    for layer_idx in range(cfg.n_layers):
         if layer_idx >= len(bridge.blocks):
             raise ValueError(
-                f"Configuration mismatch: cfg.n_layers={bridge.cfg.n_layers} but only {len(bridge.blocks)} blocks found. Layer {layer_idx} does not exist."
+                f"Configuration mismatch: cfg.n_layers={cfg.n_layers} but only "
+                f"{len(bridge.blocks)} blocks found. Layer {layer_idx} does not exist."
             )
         block = bridge.blocks[layer_idx]
 
@@ -79,128 +78,120 @@ def get_bridge_params(bridge) -> Dict[str, torch.Tensor]:
         except (TypeError, AttributeError):
             has_attn = hasattr(block, "attn")  # Mock fallback
         if has_attn:
-            try:
-                w_q = block.attn.q.weight
-                w_k = block.attn.k.weight
-                w_v = block.attn.v.weight
-                w_o = block.attn.o.weight
-                if w_q.shape == (bridge.cfg.d_model, bridge.cfg.d_model):
-                    d_head = bridge.cfg.d_model // bridge.cfg.n_heads
-                    w_q = w_q.reshape(bridge.cfg.n_heads, bridge.cfg.d_model, d_head)
-                    w_o = w_o.reshape(bridge.cfg.n_heads, d_head, bridge.cfg.d_model)
-                    device, dtype = _get_device_dtype()
-                    w_k = _reshape_kv_weight(w_k, bridge.cfg, device, dtype)
-                    w_v = _reshape_kv_weight(w_v, bridge.cfg, device, dtype)
+            attn = block.attn
+            w_q = _tensor_attr(attn, "W_Q")
+            w_k = _tensor_attr(attn, "W_K")
+            w_v = _tensor_attr(attn, "W_V")
+            w_o = _tensor_attr(attn, "W_O")
+            if w_q is None or w_k is None or w_v is None or w_o is None:
+                logger.debug(
+                    "Block %d has 'attn' but no TL-layout W_Q/W_K/W_V/W_O properties — "
+                    "skipping attention weights for this layer",
+                    layer_idx,
+                )
+            else:
+                # GQA: expand grouped K/V (and their biases below) to n_heads so
+                # per-head pairings like SVDInterpreter's OV = W_V[h] @ W_O[h]
+                # line up — the legacy HT convention repeat_interleaved these.
+                n_kv_heads = w_k.shape[0]
+                if w_k.ndim == 3 and 0 < n_kv_heads < cfg.n_heads:
+                    if cfg.n_heads % n_kv_heads != 0:
+                        raise ValueError(
+                            f"blocks.{layer_idx}.attn: n_heads ({cfg.n_heads}) is not "
+                            f"divisible by n_kv_heads ({n_kv_heads}); cannot expand "
+                            "grouped K/V to per-query heads."
+                        )
+                    repeats = cfg.n_heads // n_kv_heads
+                    w_k = torch.repeat_interleave(w_k, repeats, dim=0)
+                    w_v = torch.repeat_interleave(w_v, repeats, dim=0)
                 params_dict[f"blocks.{layer_idx}.attn.W_Q"] = w_q
                 params_dict[f"blocks.{layer_idx}.attn.W_K"] = w_k
                 params_dict[f"blocks.{layer_idx}.attn.W_V"] = w_v
                 params_dict[f"blocks.{layer_idx}.attn.W_O"] = w_o
-                device, dtype = _get_device_dtype()
-                n_kv_heads = _get_n_kv_heads(bridge.cfg)
-                params_dict[f"blocks.{layer_idx}.attn.b_Q"] = _get_or_create_bias(
-                    block.attn.q.bias, bridge.cfg.n_heads, bridge.cfg.d_head, device, dtype
+                for bias_name in ("b_Q", "b_K", "b_V"):
+                    bias = _tensor_attr(attn, bias_name)
+                    if bias is None:
+                        bias = _zeros(cfg.n_heads, cfg.d_head)
+                    elif bias.ndim == 2 and 0 < bias.shape[0] < cfg.n_heads:
+                        bias = torch.repeat_interleave(bias, cfg.n_heads // bias.shape[0], dim=0)
+                    params_dict[f"blocks.{layer_idx}.attn.{bias_name}"] = bias
+                b_O = _tensor_attr(attn, "b_O")
+                params_dict[f"blocks.{layer_idx}.attn.b_O"] = (
+                    b_O if b_O is not None else _zeros(cfg.d_model)
                 )
-                params_dict[f"blocks.{layer_idx}.attn.b_K"] = _get_or_create_bias(
-                    block.attn.k.bias, n_kv_heads, bridge.cfg.d_head, device, dtype
-                )
-                params_dict[f"blocks.{layer_idx}.attn.b_V"] = _get_or_create_bias(
-                    block.attn.v.bias, n_kv_heads, bridge.cfg.d_head, device, dtype
-                )
-                if block.attn.o.bias is not None:
-                    params_dict[f"blocks.{layer_idx}.attn.b_O"] = block.attn.o.bias
-                else:
-                    device, dtype = _get_device_dtype()
-                    params_dict[f"blocks.{layer_idx}.attn.b_O"] = torch.zeros(
-                        bridge.cfg.d_model, device=device, dtype=dtype
-                    )
-            except AttributeError as e:
-                logger.debug(
-                    "Block %d has 'attn' in _modules but attention params could not "
-                    "be extracted (missing q/k/v/o?): %s — skipping attention weights "
-                    "for this layer",
+
+        d_mlp = cfg.d_mlp if cfg.d_mlp is not None else 4 * cfg.d_model
+        mlp = getattr(block, "mlp", None)
+        w_in = _tensor_attr(mlp, "W_in")
+        if w_in is None:
+            if mlp is not None:
+                # Zero-filling a real MLP silently yields wrong numbers downstream
+                # (SVD/weight analyses decompose zeros). Say so — the fill stays for
+                # architectures that genuinely have no MLP under this name.
+                logger.warning(
+                    "Block %d MLP weights could not be extracted — emitting ZEROS "
+                    "for blocks.%d.mlp.W_in/W_out/b_in/b_out. Any weight-space "
+                    "analysis of this layer will be meaningless.",
                     layer_idx,
-                    e,
+                    layer_idx,
                 )
-        try:
-            # Dense layers of an interleaved MoE stack keep their projections
-            # under dense_* — `gate` there is the sparse layers' ROUTER, so the
-            # standard names would either miss the weights (silently zero-filling
-            # a real dense MLP) or read the router as a gate projection.
-            # `is True`, not truthiness: auto-vivifying stand-ins (Mock blocks in
-            # this module's own tests) return a truthy object for any attribute
-            # and would take the dense branch with non-tensor projections.
-            if getattr(block.mlp, "bound_dense", False) is True:
-                mlp_in = getattr(block.mlp, "dense_in", None)
-                mlp_out = getattr(block.mlp, "dense_out", None)
-                mlp_gate = getattr(block.mlp, "dense_gate", None)
-            else:
-                mlp_in = getattr(block.mlp, "in", None) or getattr(block.mlp, "input", None)
-                mlp_out = getattr(block.mlp, "out", None)
-                mlp_gate = getattr(block.mlp, "gate", None)
-            if mlp_in is None:
-                raise AttributeError("MLP has no 'in' or 'input' attribute")
-            # Use normalized accessors for consistent TL orientation
-            params_dict[f"blocks.{layer_idx}.mlp.W_in"] = block.mlp.W_in
-            params_dict[f"blocks.{layer_idx}.mlp.W_out"] = block.mlp.W_out
-            mlp_in_bias = mlp_in.bias
-            if mlp_in_bias is not None:
-                params_dict[f"blocks.{layer_idx}.mlp.b_in"] = mlp_in_bias
-            else:
-                device, dtype = _get_device_dtype()
-                d_mlp = bridge.cfg.d_mlp if bridge.cfg.d_mlp is not None else 4 * bridge.cfg.d_model
-                params_dict[f"blocks.{layer_idx}.mlp.b_in"] = torch.zeros(
-                    d_mlp, device=device, dtype=dtype
-                )
-            mlp_out_bias = mlp_out.bias if mlp_out is not None else None
-            if mlp_out_bias is not None:
-                params_dict[f"blocks.{layer_idx}.mlp.b_out"] = mlp_out_bias
-            else:
-                device, dtype = _get_device_dtype()
-                params_dict[f"blocks.{layer_idx}.mlp.b_out"] = torch.zeros(
-                    bridge.cfg.d_model, device=device, dtype=dtype
-                )
-            if mlp_gate is not None and hasattr(mlp_gate, "weight"):
-                w_gate = block.mlp.W_gate
-                if w_gate is not None:
-                    params_dict[f"blocks.{layer_idx}.mlp.W_gate"] = w_gate
-                if getattr(mlp_gate, "bias", None) is not None:
-                    params_dict[f"blocks.{layer_idx}.mlp.b_gate"] = mlp_gate.bias
-        except AttributeError as e:
-            # Zero-filling a real MLP silently yields wrong numbers downstream
-            # (SVD/weight analyses decompose zeros). Say so — the fill stays for
-            # architectures that genuinely have no MLP under this name.
-            logger.warning(
-                "Block %d MLP weights could not be extracted (%s) — emitting "
-                "ZEROS for blocks.%d.mlp.W_in/W_out/b_in/b_out. Any weight-space "
-                "analysis of this layer will be meaningless.",
-                layer_idx,
-                e,
-                layer_idx,
+            params_dict[f"blocks.{layer_idx}.mlp.W_in"] = _zeros(cfg.d_model, d_mlp)
+            params_dict[f"blocks.{layer_idx}.mlp.W_out"] = _zeros(d_mlp, cfg.d_model)
+            params_dict[f"blocks.{layer_idx}.mlp.b_in"] = _zeros(d_mlp)
+            params_dict[f"blocks.{layer_idx}.mlp.b_out"] = _zeros(cfg.d_model)
+        else:
+            params_dict[f"blocks.{layer_idx}.mlp.W_in"] = w_in
+            w_out = _tensor_attr(mlp, "W_out")
+            params_dict[f"blocks.{layer_idx}.mlp.W_out"] = (
+                w_out if w_out is not None else _zeros(d_mlp, cfg.d_model)
             )
-            device, dtype = _get_device_dtype()
-            d_mlp = bridge.cfg.d_mlp if bridge.cfg.d_mlp is not None else 4 * bridge.cfg.d_model
-            params_dict[f"blocks.{layer_idx}.mlp.W_in"] = torch.zeros(
-                bridge.cfg.d_model, d_mlp, device=device, dtype=dtype
+            b_in = _tensor_attr(mlp, "b_in")
+            params_dict[f"blocks.{layer_idx}.mlp.b_in"] = (
+                b_in if b_in is not None else _zeros(d_mlp)
             )
-            params_dict[f"blocks.{layer_idx}.mlp.W_out"] = torch.zeros(
-                d_mlp, bridge.cfg.d_model, device=device, dtype=dtype
+            b_out = _tensor_attr(mlp, "b_out")
+            params_dict[f"blocks.{layer_idx}.mlp.b_out"] = (
+                b_out if b_out is not None else _zeros(cfg.d_model)
             )
-            params_dict[f"blocks.{layer_idx}.mlp.b_in"] = torch.zeros(
-                d_mlp, device=device, dtype=dtype
-            )
-            params_dict[f"blocks.{layer_idx}.mlp.b_out"] = torch.zeros(
-                bridge.cfg.d_model, device=device, dtype=dtype
-            )
-    try:
-        params_dict["unembed.W_U"] = bridge.unembed.weight.T
-    except AttributeError:
-        device, dtype = _get_device_dtype()
-        params_dict["unembed.W_U"] = torch.zeros(
-            bridge.cfg.d_model, bridge.cfg.d_vocab, device=device, dtype=dtype
-        )
-    try:
-        params_dict["unembed.b_U"] = bridge.unembed.b_U
-    except AttributeError:
-        device, dtype = _get_device_dtype()
-        params_dict["unembed.b_U"] = torch.zeros(bridge.cfg.d_vocab, device=device, dtype=dtype)
+            w_gate = _tensor_attr(mlp, "W_gate")
+            # Raw-attribute fallback is for plain gated MLPs only: `gate` on an
+            # interleaved-MoE component (anything exposing bound_dense) is the
+            # sparse layers' ROUTER, never a gate projection.
+            is_moe = getattr(type(mlp), "bound_dense", None) is not None
+            if w_gate is None and not is_moe:
+                w_gate = _tensor_attr(getattr(mlp, "gate", None), "weight")
+            if w_gate is not None:
+                params_dict[f"blocks.{layer_idx}.mlp.W_gate"] = w_gate
+                b_gate = _tensor_attr(mlp, "b_gate")
+                if b_gate is None and not is_moe:
+                    b_gate = _tensor_attr(getattr(mlp, "gate", None), "bias")
+                if b_gate is not None:
+                    params_dict[f"blocks.{layer_idx}.mlp.b_gate"] = b_gate
+
+        # LN params (present pre-folding; folded models carry identities or none).
+        for ln_name in ("ln1", "ln2"):
+            ln = getattr(block, ln_name, None)
+            ln_w = _tensor_attr(ln, "w", "weight")
+            if ln_w is not None:
+                params_dict[f"blocks.{layer_idx}.{ln_name}.w"] = ln_w
+            ln_b = _tensor_attr(ln, "b", "bias")
+            if ln_b is not None:
+                params_dict[f"blocks.{layer_idx}.{ln_name}.b"] = ln_b
+
+    ln_final_w = _tensor_attr(getattr(bridge, "ln_final", None), "w", "weight")
+    if ln_final_w is not None:
+        params_dict["ln_final.w"] = ln_final_w
+    ln_final_b = _tensor_attr(getattr(bridge, "ln_final", None), "b", "bias")
+    if ln_final_b is not None:
+        params_dict["ln_final.b"] = ln_final_b
+
+    unembed = getattr(bridge, "unembed", None)
+    w_u = _tensor_attr(unembed, "W_U")
+    if w_u is None:
+        raw = _tensor_attr(unembed, "weight")
+        w_u = raw.T if raw is not None else _zeros(cfg.d_model, cfg.d_vocab)
+    params_dict["unembed.W_U"] = w_u
+    b_u = _tensor_attr(unembed, "b_U")
+    params_dict["unembed.b_U"] = b_u if b_u is not None else _zeros(cfg.d_vocab)
+
     return params_dict

@@ -128,6 +128,11 @@ class ASTArchitectureAdapter(ArchitectureAdapter):
                 and hasattr(hf_model, "classifier")
                 and hasattr(hf_model.classifier, "dense")
             ):
+                self.component_mapping["classifier_ln"] = NormalizationBridge(
+                    name="classifier.layernorm",
+                    config=self.cfg,
+                    use_native_layernorm_autograd=True,
+                )
                 self.component_mapping["unembed"] = UnembeddingBridge(name="classifier.dense")
                 self.cfg.d_vocab = num_labels
                 self.cfg.d_vocab_out = num_labels

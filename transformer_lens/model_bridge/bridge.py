@@ -17,6 +17,7 @@ from typing import (
     Callable,
     Dict,
     FrozenSet,
+    Iterable,
     Iterator,
     List,
     Literal,
@@ -41,7 +42,10 @@ from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookIntrospectionMixin, HookPoint
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
-from transformer_lens.model_bridge.component_setup import set_original_components
+from transformer_lens.model_bridge.component_setup import (
+    refresh_container_state_owners,
+    set_original_components,
+)
 from transformer_lens.model_bridge.composition_scores import CompositionScores
 from transformer_lens.model_bridge.exceptions import StopAtLayerException
 from transformer_lens.model_bridge.generalized_components.base import (
@@ -929,6 +933,10 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         # Use __dict__ directly to avoid recursion
         if "_modules" in self.__dict__ and name in self.__dict__["_modules"]:  # type: ignore[arg-type]
             return self.__dict__["_modules"][name]
+        adapter = self.__dict__.get("adapter")
+        component_mapping = getattr(adapter, "component_mapping", None)
+        if component_mapping is not None and name in component_mapping:
+            raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
         if "original_model" in self.__dict__ and self.__dict__["original_model"] is not None:
             try:
                 name_split = name.split(".")
@@ -4785,16 +4793,52 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         """
         self.add_hook(name, hook_fn, dir=dir, is_permanent=True)
 
-    def reset_hooks(self, clear_contexts=True):
-        """Remove all hooks from the model."""
+    def hook_points(self) -> Iterable[HookPoint]:
+        """All registered :class:`HookPoint` instances."""
+        return self._hook_registry.values()
 
-        def remove_hooks_recursive(module):
-            if isinstance(module, GeneralizedComponent):
-                module.remove_hooks()
-            for child in module.children():
-                remove_hooks_recursive(child)
+    def clear_contexts(self) -> None:
+        """Clear the stored ``ctx`` on every registered hook point."""
+        for hp in self._hook_registry.values():
+            hp.clear_context()
 
-        remove_hooks_recursive(self)
+    def remove_all_hook_fns(
+        self,
+        direction: Literal["fwd", "bwd", "both"] = "both",
+        including_permanent: bool = False,
+        level: Optional[int] = None,
+    ) -> None:
+        """Remove hook functions from every registered hook point."""
+        for hp in self._hook_registry.values():
+            hp.remove_hooks(dir=direction, including_permanent=including_permanent, level=level)
+
+    def reset_hooks(
+        self,
+        clear_contexts: bool = True,
+        direction: Literal["fwd", "bwd", "both"] = "both",
+        including_permanent: bool = False,
+        level: Optional[int] = None,
+    ) -> None:
+        """Remove hooks from the model; mirrors ``HookedRootModule.reset_hooks``.
+
+        Clears through the hook registry (which holds hook points the component
+        walk cannot reach, e.g. alias-registered points) and, on a full reset,
+        additionally walks the component tree — dev's registry is not asserted
+        canonical, so both passes run belt-and-suspenders.
+        """
+        if clear_contexts:
+            self.clear_contexts()
+        self.remove_all_hook_fns(direction, including_permanent=including_permanent, level=level)
+
+        if direction == "both" and level is None:
+
+            def remove_hooks_recursive(module):
+                if isinstance(module, GeneralizedComponent):
+                    module.remove_hooks()
+                for child in module.children():
+                    remove_hooks_recursive(child)
+
+            remove_hooks_recursive(self)
 
     def hooks(self, fwd_hooks=[], bwd_hooks=[], reset_hooks_end=True, clear_contexts=False):
         """Context manager for temporarily adding hooks.
@@ -5154,8 +5198,8 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         block_list_names = {"blocks", "L_blocks", "H_blocks", "encoder_blocks", "decoder_blocks"}
         for tl_name, component in component_mapping.items():
             if component.name and tl_name not in block_list_names:
-                # Skip if TL name is already a suffix of the HF path (avoids doubling).
-                if tl_name != component.name and not component.name.endswith("." + tl_name):
+                # Skip if TL name is already a segment of its HF path (avoids doubling).
+                if tl_name != component.name and tl_name not in component.name.split("."):
                     attr_to_hf[tl_name] = component.name
 
         # Map block-level components (ln1, ln2, attn, mlp) for all block lists
@@ -5187,9 +5231,10 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         Converts HuggingFace format keys to TransformerLens format and filters out
         _original_component references and nested HuggingFace components.
 
-        This returns a clean state dict with only bridge component paths converted to TL format,
-        excluding nested HF components (like c_fc, c_proj, c_attn) that exist inside
-        original_component modules.
+        A direct no-argument call returns a clean state dict with bridge component
+        paths converted to TL format. Calls that supply ``destination`` or
+        ``prefix`` use standard ``nn.Module`` recursive semantics so a Bridge can
+        compose inside a parent module.
 
         Args:
             destination: Optional dict to store state dict in
@@ -5197,14 +5242,17 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             keep_vars: Whether to keep variables as Variables instead of tensors
 
         Returns:
-            Dict containing the state dict with TransformerLens format keys
+            Direct calls return TransformerLens-format keys; recursive calls
+            return the supplied destination with standard module-tree keys.
         """
-        if destination is not None:
-            raw_state_dict = self.original_model.state_dict(
-                destination=destination, prefix=prefix, keep_vars=keep_vars
+        if destination is not None or prefix:
+            return super().state_dict(
+                destination=destination,
+                prefix=prefix,
+                keep_vars=keep_vars,
             )
-        else:
-            raw_state_dict = self.original_model.state_dict(prefix=prefix, keep_vars=keep_vars)
+
+        raw_state_dict = self.original_model.state_dict(keep_vars=keep_vars)
 
         # Clean _original_component references and convert to TL format
         # Also filter out nested HuggingFace components that are wrapped by bridge components
@@ -5235,8 +5283,38 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
 
         return tl_state_dict
 
+    def _tl_key_to_actual_keys(self) -> dict[str, list[str]]:
+        """Inverse of the renaming state_dict() applies: map each TL-format key
+        back to every raw parameter/buffer path that represents it.
+
+        Mirrors the filtering and key-conversion in state_dict() exactly, except
+        it keeps every raw key for a given TL key instead of only the first-seen
+        one. Bridge components frequently expose the same underlying parameter
+        through more than one attribute path (e.g. GPT-2's split q/k/v weights
+        are views into the wrapped module's combined c_attn weight, reachable
+        both via a block-level shortcut and via the nested _original_component
+        chain) - all of those aliases must be written for the round trip to
+        actually change what forward() reads, not just what state_dict() shows.
+        """
+        mapping: dict[str, list[str]] = {}
+        for actual_key in self.original_model.state_dict():
+            if actual_key == "_original_component" or actual_key.startswith("_original_component."):
+                continue
+            clean_key = actual_key.replace("._original_component", "")
+            if not self._is_valid_bridge_path(clean_key):
+                continue
+            hf_key = self._normalize_bridge_key_to_hf(clean_key)
+            tl_key = self.adapter.convert_hf_key_to_tl_key(hf_key)
+            mapping.setdefault(tl_key, []).append(actual_key)
+        return mapping
+
     def load_state_dict(self, state_dict, strict=True, assign=False):
         """Load state dict into the model, handling both clean keys and original keys with _original_component references.
+
+        Accepts three key formats: TL-format keys as emitted by state_dict()
+        (e.g. "blocks.0.attn.q.weight"), raw native parameter paths (e.g. for
+        ``boot_native`` / tracr-style loading), and raw paths with
+        "_original_component" segments stripped.
 
         Args:
             state_dict: Dictionary containing a whole state of the module
@@ -5248,26 +5326,59 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         """
         current_state_dict = self.original_model.state_dict()
         clean_to_actual = {}
-        actual_to_clean = {}
         for actual_key in current_state_dict.keys():
             if actual_key != "_original_component":
-                clean_key = actual_key.replace("._original_component", "")
-                clean_to_actual[clean_key] = actual_key
-                actual_to_clean[actual_key] = clean_key
+                clean_to_actual[actual_key.replace("._original_component", "")] = actual_key
+
+        tl_to_actual = self._tl_key_to_actual_keys()
+
         mapped_state_dict = {}
+        unexpected_keys = []
         for input_key, value in state_dict.items():
             if input_key in current_state_dict:
                 mapped_state_dict[input_key] = value
-            else:
-                if input_key in clean_to_actual:
-                    actual_key = clean_to_actual[input_key]
+            elif input_key in clean_to_actual:
+                mapped_state_dict[clean_to_actual[input_key]] = value
+            elif input_key in tl_to_actual:
+                for actual_key in tl_to_actual[input_key]:
                     mapped_state_dict[actual_key] = value
-                else:
-                    mapped_state_dict[input_key] = value
-        effective_strict = strict and len(mapped_state_dict) == len(current_state_dict)
-        return self.original_model.load_state_dict(
-            mapped_state_dict, strict=effective_strict, assign=assign
+            else:
+                unexpected_keys.append(input_key)
+
+        # A TL key's actual-key aliases share the same underlying storage (see
+        # _tl_key_to_actual_keys), so writing any one of them already updates
+        # what forward() reads for all of them. Treat the group as satisfied
+        # if any alias was written -- e.g. a caller supplying clean/raw keys
+        # (the branch above maps each clean key to exactly one actual key)
+        # shouldn't have the *other*, unwritten aliases reported as missing.
+        missing_keys = sorted(
+            actual_key
+            for actual_keys in tl_to_actual.values()
+            if not any(k in mapped_state_dict for k in actual_keys)
+            for actual_key in actual_keys
         )
+
+        if strict and (missing_keys or unexpected_keys):
+            error_msgs = []
+            if unexpected_keys:
+                error_msgs.append(
+                    "Unexpected key(s) in state_dict: "
+                    + ", ".join(f'"{k}"' for k in sorted(unexpected_keys))
+                )
+            if missing_keys:
+                error_msgs.append(
+                    "Missing key(s) in state_dict: " + ", ".join(f'"{k}"' for k in missing_keys)
+                )
+            raise RuntimeError(
+                "Error(s) in loading state_dict for {}:\n\t{}".format(
+                    type(self.original_model).__name__, "\n\t".join(error_msgs)
+                )
+            )
+
+        result = self.original_model.load_state_dict(mapped_state_dict, strict=False, assign=assign)
+        if assign:
+            refresh_container_state_owners(self)
+        return type(result)(missing_keys=missing_keys, unexpected_keys=unexpected_keys)
 
     def get_params(self):
         """Access to model parameters in the format expected by SVDInterpreter.
