@@ -8,6 +8,7 @@ from transformer_lens import HookedTransformer
 from transformer_lens.benchmarks.utils import (
     BenchmarkResult,
     BenchmarkSeverity,
+    bridge_self_target_loss,
     is_tiny_test_model,
     safe_allclose,
 )
@@ -147,7 +148,7 @@ def benchmark_weight_sharing(
     """
     try:
         # Get baseline loss
-        bridge_original = bridge(test_text, return_type="loss")
+        bridge_original = bridge_self_target_loss(bridge, test_text)
 
         if reference_model is not None:
             reference_original = reference_model(test_text, return_type="loss")
@@ -212,7 +213,7 @@ def benchmark_weight_sharing(
                 reference_model.blocks[bridge_attn_idx].attn.W_V[0, :, :] = 0
 
             # Test modified losses
-            bridge_modified = bridge(test_text, return_type="loss")
+            bridge_modified = bridge_self_target_loss(bridge, test_text)
             reference_modified = reference_model(test_text, return_type="loss")
 
             bridge_change = bridge_modified - bridge_original
@@ -254,7 +255,7 @@ def benchmark_weight_sharing(
         with torch.no_grad():
             ws_attn_block.attn.W_V[0, :, :] = 0
 
-        bridge_modified = bridge(test_text, return_type="loss")
+        bridge_modified = bridge_self_target_loss(bridge, test_text)
         change = abs(bridge_modified - bridge_original)
 
         # Restore weights
@@ -302,7 +303,7 @@ def benchmark_weight_modification(
     """
     try:
         # Get original loss
-        original_loss = bridge(test_text, return_type="loss")
+        original_loss = bridge_self_target_loss(bridge, test_text)
 
         # Find first block with attention (hybrid models may not have attn on block 0)
         wm_attn_blocks = bridge.blocks_with("attn")
@@ -334,7 +335,7 @@ def benchmark_weight_modification(
 
         # Get modified loss (with error handling to restore weights)
         try:
-            modified_loss = bridge(test_text, return_type="loss")
+            modified_loss = bridge_self_target_loss(bridge, test_text)
         except Exception as forward_error:
             # Restore weights before reporting error
             with torch.no_grad():
@@ -369,7 +370,7 @@ def benchmark_weight_modification(
                 with torch.no_grad():
                     original_mlp_w = mlp_block.mlp.out.weight.clone()
                     mlp_block.mlp.out.weight[0, :] = 0
-                mlp_modified_loss = bridge(test_text, return_type="loss")
+                mlp_modified_loss = bridge_self_target_loss(bridge, test_text)
                 with torch.no_grad():
                     mlp_block.mlp.out.weight.copy_(original_mlp_w)
                 mlp_change = abs(mlp_modified_loss - original_loss)
