@@ -51,7 +51,7 @@ def llama_bridge():
 
 
 @pytest.fixture(scope="module")
-def gpt2_bridge():
+def tiny_gpt2_bridge():
     """Tiny GPT-2: square Conv1D c_proj (control — no-transpose path must stay correct)."""
     from transformers import GPT2Config, GPT2LMHeadModel
 
@@ -116,8 +116,8 @@ class TestLinearAccessorParity:
 
 
 class TestConv1DAccessorParity:
-    def test_w_o_reproduces_c_proj(self, gpt2_bridge):
-        bridge, hf_model = gpt2_bridge
+    def test_w_o_reproduces_c_proj(self, tiny_gpt2_bridge):
+        bridge, hf_model = tiny_gpt2_bridge
         attn = bridge.blocks[0].attn
         w_o = attn.W_O
         assert w_o.shape == (4, 16, 64)
@@ -126,3 +126,59 @@ class TestConv1DAccessorParity:
         expected = c_proj(z.reshape(2, 64))
         actual = torch.einsum("bhd,hdm->bm", z, w_o) + attn.b_O
         assert torch.allclose(actual, expected, atol=1e-5)
+
+
+class TestWeightCircuitsGQA:
+    """QK/OV/composition circuits expand grouped K/V to n_heads (issue #1553).
+
+    Pre-fix, every property below raised at FactoredMatrix construction on GQA
+    models because the grouped [n_kv_heads] axis cannot broadcast against the
+    per-query-head [n_heads] axis.
+    """
+
+    def test_qk_factors_align_to_query_heads(self, llama_bridge):
+        bridge, _ = llama_bridge
+        QK = bridge.QK
+        assert QK.A.shape == (2, 4, 64, 16)
+        assert QK.B.shape == (2, 4, 16, 64)
+        # Query head h reads kv head h // (n_heads // n_kv_heads).
+        for h in range(4):
+            assert torch.equal(QK.B[0, h], bridge.blocks[0].attn.W_K[h // 2].T)
+
+    def test_ov_factors_align_to_query_heads(self, llama_bridge):
+        bridge, _ = llama_bridge
+        OV = bridge.OV
+        assert OV.A.shape == (2, 4, 64, 16)
+        assert OV.B.shape == (2, 4, 16, 64)
+        for h in range(4):
+            assert torch.equal(OV.A[1, h], bridge.blocks[1].attn.W_V[h // 2])
+
+    def test_for_attn_layers_variants_align(self, llama_bridge):
+        bridge, _ = llama_bridge
+        indices, QK = bridge.QK_for_attn_layers()
+        assert indices == [0, 1]
+        assert QK.A.shape == (2, 4, 64, 16)
+        assert QK.B.shape == (2, 4, 16, 64)
+        _, OV = bridge.OV_for_attn_layers()
+        assert OV.A.shape == (2, 4, 64, 16)
+        assert OV.B.shape == (2, 4, 16, 64)
+
+    @pytest.mark.parametrize("mode", ["Q", "K", "V"])
+    def test_composition_scores_cover_all_query_heads(self, llama_bridge, mode):
+        bridge, _ = llama_bridge
+        result = bridge.all_composition_scores(mode)
+        assert result.scores.shape == (2, 4, 2, 4)
+        assert len(result.head_labels) == 8
+
+    def test_raw_kv_stacks_stay_grouped(self, llama_bridge):
+        bridge, _ = llama_bridge
+        assert bridge.W_K.shape == (2, 2, 64, 16)
+        assert bridge.W_V.shape == (2, 2, 64, 16)
+
+    def test_mha_circuits_untouched(self, tiny_gpt2_bridge):
+        bridge, _ = tiny_gpt2_bridge
+        QK, OV = bridge.QK, bridge.OV
+        assert torch.equal(QK.A, bridge.W_Q)
+        assert torch.equal(QK.B, bridge.W_K.transpose(-2, -1))
+        assert torch.equal(OV.A, bridge.W_V)
+        assert torch.equal(OV.B, bridge.W_O)
