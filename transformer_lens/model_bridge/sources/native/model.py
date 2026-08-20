@@ -439,15 +439,27 @@ class NativeModel(nn.Module):
 
     def forward(
         self,
-        input_ids: torch.Tensor,
+        input_ids: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.Tensor] = None,
+        inputs_embeds: Optional[torch.Tensor] = None,
         **kwargs,
     ) -> torch.Tensor:
         """Returns logits directly."""
+        if input_ids is not None and inputs_embeds is not None:
+            raise ValueError("Exactly one of input_ids or inputs_embeds must be provided.")
+        if input_ids is not None:
+            model_input = input_ids
+            hidden_states = self.tok_embed(input_ids)
+        elif inputs_embeds is not None:
+            model_input = inputs_embeds
+            hidden_states = inputs_embeds
+        else:
+            raise ValueError("Exactly one of input_ids or inputs_embeds must be provided.")
+
         # Bounds check up front so both absolute and rotary paths produce a
         # self-explanatory error rather than IndexError / shape mismatch.
-        seq_len = input_ids.shape[-1]
+        seq_len = model_input.shape[1]
         if seq_len > self.cfg.n_ctx:
             raise ValueError(
                 f"input length {seq_len} exceeds n_ctx={self.cfg.n_ctx}; "
@@ -456,11 +468,12 @@ class NativeModel(nn.Module):
 
         # Resolve position_ids before the block loop so rotary sees the caller's
         # positions, not the dense default.
-        batch, seq = input_ids.shape
+        batch, seq = model_input.shape[:2]
         if position_ids is None:
-            position_ids = torch.arange(seq, device=input_ids.device).unsqueeze(0).expand(batch, -1)
+            position_ids = (
+                torch.arange(seq, device=model_input.device).unsqueeze(0).expand(batch, -1)
+            )
 
-        hidden_states = self.tok_embed(input_ids)
         if self.pos is not None:
             hidden_states = hidden_states + self.pos(position_ids)
 

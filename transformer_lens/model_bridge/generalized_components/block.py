@@ -308,6 +308,13 @@ class BlockBridge(GeneralizedComponent):
             and isinstance(kwargs["hidden_states"], torch.Tensor)
         )
 
+    def _extract_layer_idx(self) -> Optional[int]:
+        """Parse this block's layer index from its name (TL/GPT-2/LLaMA patterns)."""
+        if self.name is None:
+            return None
+        match = re.search(r"(?:^|\.)(?:blocks|h|layers)\.(\d+)", self.name)
+        return int(match.group(1)) if match else None
+
     def _check_stop_at_layer(self, *args: Any, **kwargs: Any) -> None:
         """Check if execution should stop before this block. Raises StopAtLayerException.
 
@@ -317,11 +324,9 @@ class BlockBridge(GeneralizedComponent):
         if not (hasattr(self, "_stop_at_layer_idx") and self._stop_at_layer_idx is not None):
             return
         if self.name is not None:
-            match = (
-                re.search(r"blocks\.(\d+)", self.name)
-                or re.search(r"\.h\.(\d+)", self.name)
-                or re.search(r"\.layers\.(\d+)", self.name)
-            )
+            # Anchored alternation: native models name blocks top-level
+            # ("layers.0"), which the old leading-dot pattern missed entirely.
+            match = re.search(r"(?:^|\.)(?:blocks|h|layers)\.(\d+)", self.name)
         else:
             match = None
         if match:

@@ -2159,8 +2159,11 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                     "The bridge only supports stop_at_layer on 'blocks'."
                 )
             if hasattr(self, "blocks"):
+                effective_stop_at_layer = (
+                    len(self.blocks) + stop_at_layer if stop_at_layer < 0 else stop_at_layer
+                )
                 for block in self.blocks:
-                    block._stop_at_layer_idx = stop_at_layer
+                    block._stop_at_layer_idx = effective_stop_at_layer
 
         # Map HookedEncoderDecoder-style kwargs to HF-compatible names
         if "decoder_input" in kwargs:
