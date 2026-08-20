@@ -781,31 +781,18 @@ class BridgeCore:
         if callable(name) and not isinstance(name, str):
             hook_dict = self.hook_dict
             seen_hooks: set = set()
-            gated_names_skipped: List[str] = []
             for hook_name, hook_point in hook_dict.items():
                 if name(hook_name):
                     hook_id = id(hook_point)
                     if hook_id in seen_hooks:
                         continue
                     seen_hooks.add(hook_id)
-                    # A filter was not necessarily targeting a gated name on
-                    # purpose — skip with a warning instead of raising.
-                    if self._gated_hook_reason(hook_name) is not None:
-                        gated_names_skipped.append(hook_name)
-                        continue
                     self._add_fn_to_hook_point(hook_point, hook_name, hook_fn, dir, is_permanent)
-            if gated_names_skipped:
-                warnings.warn(
-                    f"add_hook: skipped {len(gated_names_skipped)} gated-off hook name(s) "
-                    f"that will never fire: {gated_names_skipped}. Call the relevant "
-                    "set_use_*(True) setter first to enable them.",
-                    stacklevel=2,
-                )
             return
 
         # An explicitly named gated-off hook point is a caller error: the hook
-        # would silently never fire. Raise naming the setter to call
-        # (mirrors HookedTransformer.check_hooks_to_add, with a clearer error).
+        # would silently never fire. Raise naming the setter to call (filters
+        # above add freely — they were not necessarily targeting gated names).
         reason = self._gated_hook_reason(name)
         if reason is not None:
             raise ValueError(
@@ -1223,6 +1210,16 @@ class BridgeCore:
 
                     hook_fn = wrapped_hook_fn
                 if isinstance(hook_name_or_filter, str):
+                    # An explicitly named gated-off hook point is a caller error:
+                    # the hook would silently never fire. Raise naming the setter
+                    # (a filter matching a gated name is left alone — it was not
+                    # necessarily targeting that name on purpose).
+                    reason = self._gated_hook_reason(hook_name_or_filter)
+                    if reason is not None:
+                        raise ValueError(
+                            f"Cannot add hook {hook_name_or_filter} because {reason} is False. "
+                            f"Call set_{reason}(True) first."
+                        )
                     actual_hook_name, hook_point = self._resolve_hook_point(
                         hook_name_or_filter, aliases, hook_dict
                     )

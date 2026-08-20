@@ -106,7 +106,11 @@ class TestAddHookAliasResolution:
             (
                 name
                 for name, hp in bridge.hook_dict.items()
-                if hp.name is not None and hp.name != name
+                # Gated-off names raise by design (see test_gated_hooks) — this
+                # test's subject is alias resolution, so pick an ungated one.
+                if hp.name is not None
+                and hp.name != name
+                and bridge._gated_hook_reason(name) is None
             ),
             None,
         )
