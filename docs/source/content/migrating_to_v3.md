@@ -144,7 +144,35 @@ If your code only touches these APIs, the migration is genuinely just the loadin
 
 ### BERT Next Sentence Prediction
 
-`BertNextSentencePrediction` is not ported to `TransformerBridge`. Keep using `HookedEncoder` + `BertNextSentencePrediction` for NSP workflows. The bridge's BERT adapter does load NSP HuggingFace checkpoints (it rewires the unembed to `cls.seq_relationship`), but the high-level NSP API – sentence-pair tokenization, `[CLS]` pooling, "sequential"/"not sequential" decoding — is not exposed. If this is feature is something you'd like added to TransformerBridge, please file an issue.
+NSP runs on the bridge today — load the NSP head via `model_class` and pass the
+sentence-pair tokenization through:
+
+```python
+from transformers import AutoTokenizer, BertForNextSentencePrediction
+from transformer_lens.model_bridge import TransformerBridge
+
+tokenizer = AutoTokenizer.from_pretrained("google-bert/bert-base-cased")
+nsp = TransformerBridge.boot_transformers(
+    "google-bert/bert-base-cased",
+    model_class=BertForNextSentencePrediction,
+)
+nsp.enable_compatibility_mode()
+
+inputs = tokenizer("A man walked into a grocery store.", "He bought an apple.", return_tensors="pt")
+nsp(inputs["input_ids"], token_type_ids=inputs["token_type_ids"], return_type="predictions")
+# 'The sentences are sequential'
+```
+
+**Pass `token_type_ids`.** They are what tells BERT where the first sentence ends
+and the second begins; without them the NSP head scores a single undifferentiated
+span and can return the wrong verdict (on the pair above, dropping them collapses
+the logits from ±4.37 to ±0.58, and a genuinely non-sequential pair flips to
+"sequential"). With them, the bridge reproduces the raw HuggingFace NSP logits
+exactly.
+
+The legacy `BertNextSentencePrediction` wrapper is deprecated and cannot wrap a
+`TransformerBridge` — it reaches for `HookedEncoder`-only internals
+(`encoder_output`, `pooler`, `nsp_head`). Use the recipe above instead.
 
 ### New in 3.x: streaming generation
 
