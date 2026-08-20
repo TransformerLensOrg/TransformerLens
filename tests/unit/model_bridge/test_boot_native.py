@@ -5,9 +5,12 @@ import sys
 
 import pytest
 import torch
+import torch.nn as nn
 
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.model_bridge import TransformerBridge
+from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
+from transformer_lens.model_bridge.generalized_components import LinearBridge
 from transformer_lens.model_bridge.sources.native import NativeModel
 
 
@@ -72,6 +75,51 @@ def test_boot_native_returns_bridge_over_native_model():
     assert isinstance(bridge.original_model, NativeModel)
 
 
+@pytest.mark.parametrize("stop_at_layer", [0, 2, -1])
+def test_boot_native_direct_stop_matches_cached_stop(stop_at_layer: int):
+    bridge = TransformerBridge.boot_native(_cfg(n_layers=3))
+    bridge.eval()
+    tokens = torch.tensor([[1, 2, 3]])
+
+    with torch.no_grad():
+        expected, _ = bridge.run_with_cache(tokens, stop_at_layer=stop_at_layer)
+        actual = bridge(tokens, stop_at_layer=stop_at_layer)
+
+    assert actual.shape == (1, 3, bridge.cfg.d_model)
+    torch.testing.assert_close(actual, expected)
+
+
+def test_native_state_dict_round_trip_restores_parameters():
+    bridge = TransformerBridge.boot_native(_cfg())
+
+    saved_state_dict = {key: value.detach().clone() for key, value in bridge.state_dict().items()}
+    original_parameters = {
+        name: parameter.detach().clone() for name, parameter in bridge.named_parameters()
+    }
+
+    with torch.no_grad():
+        for parameter in bridge.parameters():
+            parameter.zero_()
+
+    result = bridge.load_state_dict(saved_state_dict, strict=True)
+
+    assert result.missing_keys == []
+    assert result.unexpected_keys == []
+
+    for name, parameter in bridge.named_parameters():
+        torch.testing.assert_close(parameter, original_parameters[name])
+
+
+def test_native_state_dict_strict_rejects_unexpected_keys():
+    bridge = TransformerBridge.boot_native(_cfg())
+
+    with pytest.raises(RuntimeError, match="Unexpected key"):
+        bridge.load_state_dict(
+            {"not.a.real.weight": torch.zeros(1)},
+            strict=True,
+        )
+
+
 def test_boot_native_accepts_dict_config():
     cfg_dict = dict(
         d_model=32,
@@ -87,6 +135,30 @@ def test_boot_native_accepts_dict_config():
     bridge = TransformerBridge.boot_native(cfg_dict)
     assert bridge.cfg.d_model == 32
     assert bridge.cfg.architecture == "TransformerLensNative"
+
+
+def test_boot_native_rejects_legacy_config_with_actionable_error():
+    import pytest
+
+    from transformer_lens import HookedTransformerConfig
+
+    legacy_config = HookedTransformerConfig(
+        n_layers=1,
+        d_model=32,
+        n_ctx=8,
+        d_head=16,
+        n_heads=2,
+        d_vocab=16,
+        act_fn="gelu",
+    )
+
+    with pytest.raises(
+        TypeError,
+        match=(
+            "boot_native expected a TransformerBridgeConfig or dict, " "got HookedTransformerConfig"
+        ),
+    ):
+        TransformerBridge.boot_native(legacy_config)
 
 
 def test_boot_native_does_not_perturb_global_rng():
@@ -126,6 +198,70 @@ def test_boot_native_distinct_seeds_diverge():
         for (_, pa), (_, pb) in zip(a.named_parameters(), b.named_parameters())
     ]
     assert any(diffs), "Two different seeds produced identical params"
+
+
+def test_boot_native_skips_custom_init_when_disabled(monkeypatch):
+    def fail_if_called(*_args, **_kwargs):
+        pytest.fail("initialize_native_model was called with init_weights=False")
+
+    def fail_if_forked(*_args, **_kwargs):
+        pytest.fail("fork_rng was called with init_weights=False")
+
+    monkeypatch.setattr(
+        "transformer_lens.model_bridge.sources.native.initialize_native_model",
+        fail_if_called,
+    )
+    monkeypatch.setattr(torch.random, "fork_rng", fail_if_forked)
+    bridge = TransformerBridge.boot_native(_cfg(init_weights=False))
+
+    assert isinstance(bridge.original_model, NativeModel)
+    assert torch.count_nonzero(bridge.original_model.layers[0].attn.q.bias) > 0
+
+
+def test_native_bridge_init_weights_reinitializes_in_place_and_honors_seed():
+    bridge = TransformerBridge.boot_native(_cfg(seed=123))
+    model = bridge.original_model
+    expected = {name: param.detach().clone() for name, param in model.named_parameters()}
+
+    with torch.no_grad():
+        for param in model.parameters():
+            param.fill_(42)
+
+    bridge.init_weights()
+
+    assert bridge.original_model is model
+    for name, param in model.named_parameters():
+        assert torch.equal(param, expected[name]), f"Seed mismatch on {name}"
+
+
+def test_native_bridge_init_weights_does_not_perturb_global_rng():
+    bridge = TransformerBridge.boot_native(_cfg(seed=42))
+    torch.manual_seed(0)
+    expected_after = torch.randn(5)
+
+    torch.manual_seed(0)
+    bridge.init_weights()
+    actual_after = torch.randn(5)
+
+    assert torch.equal(actual_after, expected_after)
+
+
+def test_init_weights_rejects_non_native_bridge():
+    class StubModel(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.proj = nn.Linear(4, 4)
+
+    class StubAdapter(ArchitectureAdapter):
+        def __init__(self, cfg):
+            super().__init__(cfg)
+            self.component_mapping = {"stub_proj": LinearBridge(name="proj")}
+
+    cfg = _cfg(architecture="StubForTest")
+    bridge = TransformerBridge(StubModel(), StubAdapter(cfg), tokenizer=None)
+
+    with pytest.raises(RuntimeError, match=r"boot_native.*StubModel"):
+        bridge.init_weights()
 
 
 def test_boot_native_forward_and_cache():
