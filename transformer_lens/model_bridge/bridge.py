@@ -1326,7 +1326,16 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             padding_side = getattr(self.tokenizer, "padding_side", "right")
         tokenizer_prepends_bos = getattr(self.cfg, "tokenizer_prepends_bos", True)
         if prepend_bos and (not tokenizer_prepends_bos):
-            input = utils.get_input_with_manually_prepended_bos(self.tokenizer.bos_token, input)
+            bos = self.tokenizer.bos_token
+            encodes_atomically = (
+                bos is not None
+                and len(self.tokenizer(bos, add_special_tokens=False)["input_ids"]) == 1
+            )
+            if encodes_atomically:
+                input = utils.get_input_with_manually_prepended_bos(bos, input)
+            # else: the fallback BOS is not an atom in this vocab (e.g.
+            # '<|endoftext|>' installed on BERT); prepending the string would
+            # tokenize to subword garbage, so skip rather than pollute the input.
         if isinstance(input, str):
             input = [input]
         tokens = self.tokenizer(

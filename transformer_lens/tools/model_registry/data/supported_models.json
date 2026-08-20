@@ -9,7 +9,7 @@
   "total_architectures": 143,
   "total_models": 15670,
   "total_provisional": 7,
-  "total_verified": 1203,
+  "total_verified": 1204,
   "models": [
     {
       "architecture_id": "FalconH1ForCausalLM",
@@ -92426,16 +92426,17 @@
     {
       "architecture_id": "BertForMaskedLM",
       "model_id": "google-bert/bert-base-cased",
-      "status": 3,
-      "verified_date": "2026-06-25",
+      "status": 1,
+      "verified_date": "2026-08-20",
       "metadata": null,
-      "note": "Below threshold: P2=66.7% < 75.0% (failed: logits_equivalence, loss_equivalence, hook_functionality, \u2014 Shape mismatch: torch.Size([1, 40, 28996]) vs torch.Size([1, 32, 28996])",
+      "note": "Full verification completed",
       "phase1_score": 100.0,
-      "phase2_score": 66.7,
+      "phase2_score": 100.0,
       "phase3_score": 100.0,
       "phase4_score": null,
       "phase7_score": null,
-      "phase8_score": null
+      "phase8_score": null,
+      "phase9_score": null
     },
     {
       "architecture_id": "BertForMaskedLM",
