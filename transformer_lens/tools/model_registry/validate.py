@@ -310,7 +310,15 @@ def _validate_model_entry(data: dict, path: str) -> list[ValidationError]:
             errors.extend(_validate_model_metadata(data["metadata"], f"{path}.metadata"))
 
     # phase scores (optional floats, 0-100 or None)
-    for phase_field in ("phase1_score", "phase2_score", "phase3_score"):
+    for phase_field in (
+        "phase1_score",
+        "phase2_score",
+        "phase3_score",
+        "phase4_score",
+        "phase7_score",
+        "phase8_score",
+        "phase9_score",
+    ):
         if phase_field in data and data[phase_field] is not None:
             val = data[phase_field]
             if not isinstance(val, (int, float)) or isinstance(val, bool):

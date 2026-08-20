@@ -9,6 +9,8 @@ Phase 4: Text Quality - Perplexity-based legibility scoring via GPT-2 Medium
 Phase 5: Granular Weight Processing Tests (optional, individual flags)
 Phase 6: Granular Weight Processing Tests (optional, combined flags)
 Phase 7: Multimodal Tests (only for multimodal models with pixel_values support)
+Phase 8: Audio Tests (only for audio encoder models / audio-conditioned decoders)
+Phase 9: Vision Tests (only for vision-only encoder models, e.g. ViT/DeiT)
 """
 
 import gc
@@ -1668,7 +1670,7 @@ def run_benchmark_suite(
         _cleanup_bridge_unprocessed()
         _skip_phase3 = True
         if verbose:
-            print("\n⚠ Phase 3 skipped (not in phases list)\n")
+            print("\n⚠ Phase 3 skipped (excluded by phases filter or adapter applicable_phases)\n")
     elif is_encoder_decoder_model(model_name):
         _cleanup_bridge_unprocessed()
         _skip_phase3 = True
@@ -1981,34 +1983,48 @@ def run_benchmark_suite(
     return results
 
 
-def update_model_registry(model_name: str, results: List[BenchmarkResult]) -> bool:
+def update_model_registry(
+    model_name: str, results: List[BenchmarkResult], use_hf_reference: bool = False
+) -> bool:
     """Update the model registry with benchmark results.
 
     Args:
         model_name: The model that was benchmarked
         results: List of benchmark results
+        use_hf_reference: Whether the run numerically compared against an HF
+            reference. Defaults to False so an unstated reference state records
+            a passing run as PROVISIONAL, never VERIFIED.
 
     Returns:
         True if registry was updated successfully
     """
     from transformer_lens.tools.model_registry.registry_io import (
-        STATUS_VERIFIED,
+        STATUS_FAILED,
+        STATUS_PROVISIONAL,
         add_verification_record,
         update_model_status,
     )
 
-    # Calculate phase scores (percentage of passed tests per phase)
-    phase_results: Dict[int, List[bool]] = {1: [], 2: [], 3: []}
-    for result in results:
-        if result.phase in phase_results and result.severity != BenchmarkSeverity.SKIPPED:
-            phase_results[result.phase].append(result.passed)
+    # Threshold/note logic shared with verify_models so the two paths can't drift.
+    from transformer_lens.tools.model_registry.verify_models import (
+        _build_verified_note,
+        _check_phase_scores,
+        _extract_phase_scores,
+        _pass_status,
+        _sanitize_note,
+    )
 
-    phase_scores: Dict[int, Optional[float]] = {}
-    for phase, passed_list in phase_results.items():
-        if passed_list:
-            phase_scores[phase] = round(sum(passed_list) / len(passed_list) * 100, 1)
-        else:
-            phase_scores[phase] = None
+    phase_scores = _extract_phase_scores(results)
+
+    score_error = _check_phase_scores(phase_scores, results)
+    if score_error:
+        status = STATUS_FAILED
+        note = score_error
+    else:
+        status = _pass_status(use_hf_reference)
+        note = _build_verified_note(phase_scores, results)
+        if status == STATUS_PROVISIONAL:
+            note = f"Structural only (no HF reference): {note}"
 
     # Try to determine architecture
     architecture_id = "Unknown"
@@ -2025,21 +2041,26 @@ def update_model_registry(model_name: str, results: List[BenchmarkResult]) -> bo
     updated = update_model_status(
         model_id=model_name,
         arch_id=architecture_id,
-        status=STATUS_VERIFIED,
+        status=status,
         phase_scores=phase_scores,
+        note=note,
+        sanitize_fn=_sanitize_note,
     )
 
-    add_verification_record(
-        model_id=model_name,
-        arch_id=architecture_id,
-        notes="Benchmark passed",
-        verified_by="main_benchmark",
-    )
+    # No history record for provisional runs — VerificationHistory.is_verified()
+    # treats any record as verified, which would bypass the provisional gate.
+    if status != STATUS_PROVISIONAL:
+        add_verification_record(
+            model_id=model_name,
+            arch_id=architecture_id,
+            notes=note,
+            verified_by="main_benchmark",
+            sanitize_fn=_sanitize_note,
+        )
 
-    print(
-        f"Updated registry for {model_name}: "
-        f"P1={phase_scores.get(1)}%, P2={phase_scores.get(2)}%, P3={phase_scores.get(3)}%"
-    )
+    label = {STATUS_FAILED: "FAILED", STATUS_PROVISIONAL: "PROVISIONAL"}.get(status, "VERIFIED")
+    score_parts = ", ".join(f"P{p}={s}%" for p, s in sorted(phase_scores.items()))
+    print(f"Updated registry for {model_name} ({label}): {score_parts or 'no phase results'}")
     return updated
 
 
@@ -2103,7 +2124,9 @@ def main():
     )
 
     if args.update_registry:
-        update_model_registry(args.model, results)
+        # Same requested-reference state verify_models feeds pass_status(): a
+        # --no-hf-reference run can only mint PROVISIONAL, never VERIFIED.
+        update_model_registry(args.model, results, use_hf_reference=not args.no_hf_reference)
 
 
 if __name__ == "__main__":
