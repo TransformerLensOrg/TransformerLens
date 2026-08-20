@@ -130,6 +130,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 compatibility with direct ``TransformerBridge(...)`` callers.
         """
         nn.Module.__init__(self)
+        self._n_params_total = sum(parameter.numel() for parameter in model.parameters())
         self.__dict__["original_model"] = model
         # Production sources construct their Driver and pass it via ``driver=``.
         # The fallback covers tests / direct callers with a hand-rolled triple.
@@ -382,18 +383,17 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
 
     @property
     def n_params_total(self) -> int:
-        """Total number of parameters in the model, including embeddings, biases,
-        and layer norm weights.
+        """Number of parameters in the wrapped model before bridge instrumentation.
 
-        Mirrors :attr:`HookedTransformer.n_params_total`. Use this when you want
-        the actual parameter count for memory budgeting, comparison with
-        HuggingFace's ``model.num_parameters()``, or alignment with reported
-        model sizes in papers (e.g. the Pythia suite).
+        This follows PyTorch's parameter iteration semantics, counting tied
+        parameters once. Bridge-created split views and synthetic zero tensors
+        are excluded, so the result can differ from
+        :attr:`HookedTransformer.n_params_total` and :meth:`tl_parameters`.
 
         Returns:
-            int: ``sum(p.numel() for p in self.parameters())``
+            int: Parameter count of the uninstrumented wrapped model.
         """
-        return sum(p.numel() for p in self.parameters())
+        return self._n_params_total
 
     def __getattr__(self, name: str) -> Any:
         """Provide a clear error message for missing attributes."""
@@ -768,6 +768,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             input,
             return_tensors="pt",
             padding=True,
+            padding_side=padding_side,
             truncation=truncate,
             max_length=self.cfg.n_ctx if truncate else None,
         )["input_ids"]
@@ -780,7 +781,9 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             while tokens.shape[-1] > 1 and (tokens[:, -1] == self.tokenizer.eos_token_id).all():
                 tokens = tokens[:, :-1]
         if not prepend_bos and tokenizer_prepends_bos:
-            tokens = utils.get_tokens_with_bos_removed(self.tokenizer, tokens)
+            tokens = utils.get_tokens_with_bos_removed(
+                self.tokenizer, tokens, padding_side=padding_side
+            )
         if move_to_device:
             tokens = tokens.to(self.cfg.device)
         return tokens
@@ -1714,16 +1717,17 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             else:
                 kwargs.pop("one_zero_attention_mask")
 
-        # Detect batched list input that will need padding. For this case we force
-        # left-padding internally and auto-compute attention_mask + position_ids
-        # (unless the caller passed them explicitly) so pad tokens don't contaminate
-        # attention or position embeddings.
+        # Detect batched list input that may need padding. Forward follows the
+        # requested/tokenizer side; generation separately forces left-padding.
         _is_batched_list = (
             isinstance(input, list)
             and len(input) > 1
             and not getattr(self.cfg, "is_audio_model", False)
             and not getattr(self.cfg, "is_visual_model", False)
         )
+        _resolved_padding_side = padding_side
+        if _resolved_padding_side is None and self.tokenizer is not None:
+            _resolved_padding_side = getattr(self.tokenizer, "padding_side", "right")
 
         try:
             if isinstance(input, (str, list)):
@@ -1737,20 +1741,9 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                         "Visual models require tensor input (pixel values), not text. "
                         "Pass a torch.Tensor or use the pixel_values parameter."
                     )
-                if _is_batched_list and padding_side is None:
-                    # Force left-padding so real tokens are flush-right.
-                    _orig_padding_side = self.tokenizer.padding_side
-                    self.tokenizer.padding_side = "left"
-                    try:
-                        input_ids = self.to_tokens(
-                            input, prepend_bos=prepend_bos, padding_side=padding_side
-                        )
-                    finally:
-                        self.tokenizer.padding_side = _orig_padding_side
-                else:
-                    input_ids = self.to_tokens(
-                        input, prepend_bos=prepend_bos, padding_side=padding_side
-                    )
+                input_ids = self.to_tokens(
+                    input, prepend_bos=prepend_bos, padding_side=padding_side
+                )
             else:
                 input_ids = input
                 # Promote 1D integer token tensors to 2D [batch=1, seq] to match
@@ -1769,25 +1762,27 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 isinstance(input_ids, torch.Tensor) and input_ids.is_floating_point()
             )
 
-            # Auto-compute attention_mask + position_ids for batched list input
-            # when the caller didn't supply them. Matches HF generation convention.
+            # Left padding needs a mask and corrected positions. Right padding is
+            # harmless for causal real-token positions and remains unmasked to
+            # match HookedTransformer; bidirectional/encoder inputs still need it.
             if (
                 _is_batched_list
                 and attention_mask is None
                 and self.tokenizer is not None
                 and self.tokenizer.pad_token_id is not None
                 and not _is_inputs_embeds
+                and (
+                    _resolved_padding_side == "left"
+                    or is_encoder_decoder
+                    or not self.adapter.supports_causal_loss
+                )
             ):
-                _prev_side = self.tokenizer.padding_side
-                self.tokenizer.padding_side = "left"
-                try:
-                    attention_mask = utils.get_attention_mask(
-                        self.tokenizer,
-                        input_ids,
-                        prepend_bos=getattr(self.cfg, "default_prepend_bos", True),
-                    ).to(self.cfg.device)
-                finally:
-                    self.tokenizer.padding_side = _prev_side
+                attention_mask = utils.get_attention_mask(
+                    self.tokenizer,
+                    input_ids,
+                    prepend_bos=getattr(self.cfg, "default_prepend_bos", True),
+                    padding_side=_resolved_padding_side,
+                ).to(self.cfg.device)
                 # Gated on the target for the same reason the derivation below is:
                 # a fixed-signature forward raises TypeError on the kwarg, and a
                 # model that owns its own position derivation is overridden by it
@@ -2151,6 +2146,23 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             base.rope_deltas = None
         # A row may finish via EOS and/or any of the configured stopping criteria.
         any_stop_active = stop_at_eos or stopping_criteria_list is not None
+
+        # Models that own their position derivation (the gate refuses them) cache
+        # mRoPE deltas on the module between calls; a text-only prefill never
+        # refreshes them, so a stale delta from an earlier multimodal forward gets
+        # added to every cached-step position. HF's generate recomputes them at
+        # prefill via prepare_inputs_for_generation, which this loop bypasses —
+        # so match it by clearing before the prompt pass. A multimodal prefill
+        # recomputes its own fresh deltas regardless.
+        if not self._accepts_derived_position_ids():
+            underlying = getattr(self, "original_model", None)
+            for module in (
+                underlying,
+                getattr(underlying, "model", None),
+                getattr(underlying, "language_model", None),
+            ):
+                if module is not None and hasattr(module, "rope_deltas"):
+                    module.rope_deltas = None
 
         # Pure-SSM models (Mamba-1/2) take the stateful cache as `cache_params`;
         # modern hybrids (Bamba, NemotronH, FalconH1) take `past_key_values` and

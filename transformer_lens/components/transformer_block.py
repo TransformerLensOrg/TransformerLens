@@ -25,6 +25,7 @@ from transformer_lens.config.hooked_transformer_config import HookedTransformerC
 from transformer_lens.factories.mlp_factory import MLPFactory
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.utilities import repeat_along_head_dimension
+from transformer_lens.utilities.architectures import POST_NORM_ARCHITECTURES
 
 
 class TransformerBlock(nn.Module):
@@ -154,7 +155,7 @@ class TransformerBlock(nn.Module):
             key_input = attn_in
             value_input = attn_in
 
-        if self.cfg.original_architecture in ("Olmo2ForCausalLM", "Olmo3ForCausalLM"):
+        if self.cfg.original_architecture in POST_NORM_ARCHITECTURES:
             attn_out = self.attn(
                 query_input=query_input,
                 key_input=key_input,
@@ -182,7 +183,7 @@ class TransformerBlock(nn.Module):
             # and before the hook. We do it before the hook so hook_attn_out captures "that which
             # is added to the residual stream"
             attn_out = self.ln1_post(attn_out)
-        if self.cfg.original_architecture in ("Olmo2ForCausalLM", "Olmo3ForCausalLM"):
+        if self.cfg.original_architecture in POST_NORM_ARCHITECTURES:
             # OLMo 2/3 post-norm: ln1 applies before the residual add, so it must
             # precede the hook for hook_attn_out to capture the additive contribution.
             attn_out = self.ln1(attn_out)
@@ -196,7 +197,7 @@ class TransformerBlock(nn.Module):
             mlp_in = (
                 resid_mid if not self.cfg.use_hook_mlp_in else self.hook_mlp_in(resid_mid.clone())
             )
-            if self.cfg.original_architecture in ("Olmo2ForCausalLM", "Olmo3ForCausalLM"):
+            if self.cfg.original_architecture in POST_NORM_ARCHITECTURES:
                 # Post-norm: apply_mlp applies ln2 before hook_mlp_out internally.
                 mlp_out = self.apply_mlp(mlp_in)
             else:
@@ -228,7 +229,7 @@ class TransformerBlock(nn.Module):
         mlp_out = self.mlp(normalized_resid)  # [batch, pos, d_model]
         if self.cfg.use_normalization_before_and_after:
             mlp_out = self.ln2_post(mlp_out)
-        if self.cfg.original_architecture in ("Olmo2ForCausalLM", "Olmo3ForCausalLM"):
+        if self.cfg.original_architecture in POST_NORM_ARCHITECTURES:
             # OLMo 2/3 post-norm: ln2 applies before the residual add, so it must
             # precede the hook for hook_mlp_out to capture the additive contribution.
             mlp_out = self.ln2(mlp_out)

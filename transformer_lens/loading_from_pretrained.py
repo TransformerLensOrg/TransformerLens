@@ -63,6 +63,7 @@ from transformer_lens.tools.model_registry.checkpoints import (
     PYTHIA_V0_CHECKPOINTS,
     STANFORD_CRFM_CHECKPOINTS,
 )
+from transformer_lens.utilities.architectures import POST_NORM_ARCHITECTURES
 from transformer_lens.utilities.heterogeneous_config import het_safe_view
 from transformer_lens.utilities.hf_utils import get_rotary_pct_from_config
 from transformer_lens.utilities.quantization import (
@@ -1790,11 +1791,12 @@ def get_pretrained_model_config(
         )
         fold_ln = False
 
-    # OLMo 2 uses post-norm (norm after attention/MLP, not before), so folding
-    # the norm weights into adjacent linear layers is not mathematically valid.
-    if cfg_dict.get("original_architecture") == "Olmo2ForCausalLM" and fold_ln:
+    # Post-norm blocks normalize the sublayer output, so folding the norm weights
+    # into adjacent linear layers is not mathematically valid.
+    architecture = cfg_dict.get("original_architecture")
+    if architecture in POST_NORM_ARCHITECTURES and fold_ln:
         logging.warning(
-            "fold_ln=True is incompatible with OLMo 2's post-norm architecture. "
+            f"fold_ln=True is incompatible with {architecture}'s post-norm architecture. "
             "Setting fold_ln=False."
         )
         fold_ln = False
@@ -1803,6 +1805,17 @@ def get_pretrained_model_config(
         cfg_dict["device"] = device
 
     cfg_dict["dtype"] = dtype
+
+    # process_weights_ refuses to fold MoE experts, so flipping the norm to its
+    # gain-less *Pre variant here would drop the gains with nothing folding them
+    # in — the model silently loses its norm weights entirely.
+    num_experts = cfg_dict.get("num_experts")
+    if fold_ln and num_experts and num_experts > 1:
+        logging.warning(
+            "fold_ln=True is not supported for MoE models (experts are never folded). "
+            "Setting fold_ln=False."
+        )
+        fold_ln = False
 
     if fold_ln:
         if cfg_dict["normalization_type"] in ["LN", "LNPre"]:

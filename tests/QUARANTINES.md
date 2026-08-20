@@ -123,8 +123,6 @@ Big-model adapter tests use `@pytest.mark.slow`, CI tier filters `-m "not slow"`
 
 | Path | Reason | Issue |
 |---|---|---|
-| [`unit/model_bridge/test_bridge_generate_no_tokenizer.py`:30,167](unit/model_bridge/test_bridge_generate_no_tokenizer.py) | `skipif(_MACOS_ARM64)` — KV-cache NaN | Upstream PyTorch/HF on M-series Macs |
-| [`integration/model_bridge/test_bridge_generate_stopping_criteria.py`:228](integration/model_bridge/test_bridge_generate_stopping_criteria.py) | `skipif(_MACOS_ARM64)`, KV-cache NaN (one `use_past_kv_cache=True` test) | Upstream PyTorch/HF on M-series Macs |
 
 **Un-skip:** when upstream resolves. Don't bypass — produces NaN logits.
 

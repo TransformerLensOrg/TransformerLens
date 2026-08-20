@@ -211,6 +211,16 @@ class BlockBridge(GeneralizedComponent):
             return bool(cfg.use_hook_mlp_in)
         return self._use_hook_mlp_in
 
+    def _clear_attention_capture(self) -> None:
+        """Release the transient residual captured for attention input forks."""
+        from transformer_lens.model_bridge.generalized_components.attention import (
+            AttentionBridge,
+        )
+
+        attn = self.submodules.get("attn") if self.submodules else None
+        if isinstance(attn, AttentionBridge):
+            attn._captured_pre_ln_residual = None
+
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Forward pass through the block bridge.
 
@@ -230,6 +240,7 @@ class BlockBridge(GeneralizedComponent):
             )
 
         self._maybe_wire_capture_hooks()
+        self._clear_attention_capture()
         args, kwargs = self._maybe_inject_start_residual(args, kwargs)
         self._check_stop_at_layer(*args, **kwargs)
         args, kwargs = self._hook_input_hidden_states(args, kwargs)
@@ -238,7 +249,10 @@ class BlockBridge(GeneralizedComponent):
         # This prevents errors when passing encoder-specific params to decoder-only models
         filtered_kwargs = self._filter_kwargs_for_forward(kwargs, len(args))
 
-        output = self.original_component(*args, **filtered_kwargs)
+        try:
+            output = self.original_component(*args, **filtered_kwargs)
+        finally:
+            self._clear_attention_capture()
         force_tuple_for_bare_tensor = self._is_standalone_hidden_state_call(args, filtered_kwargs)
         return self._apply_output_hook(
             output, force_tuple_for_bare_tensor=force_tuple_for_bare_tensor

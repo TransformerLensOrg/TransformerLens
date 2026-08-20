@@ -745,6 +745,21 @@ class BridgeCore:
         self.check_hooks_to_add(hook_point, name, hook_fn, dir=dir, is_permanent=is_permanent)
         hook_point.add_hook(hook_fn, dir=dir, is_permanent=is_permanent)
 
+    def _gated_hook_reason(self, hook_point_name: str) -> Optional[str]:
+        """Return the disabled setter name if hook_point_name is gated off, else None."""
+        if hook_point_name.endswith("attn.hook_result") and not self.cfg.use_attn_result:
+            return "use_attn_result"
+        if (
+            hook_point_name.endswith(("hook_q_input", "hook_k_input", "hook_v_input"))
+            and not self.cfg.use_split_qkv_input
+        ):
+            return "use_split_qkv_input"
+        if hook_point_name.endswith("mlp_in") and not self.cfg.use_hook_mlp_in:
+            return "use_hook_mlp_in"
+        if hook_point_name.endswith("attn_in") and not self.cfg.use_attn_in:
+            return "use_attn_in"
+        return None
+
     def add_hook(
         self,
         name: Union[str, Callable[[str], bool]],
@@ -766,14 +781,37 @@ class BridgeCore:
         if callable(name) and not isinstance(name, str):
             hook_dict = self.hook_dict
             seen_hooks: set = set()
+            gated_names_skipped: List[str] = []
             for hook_name, hook_point in hook_dict.items():
                 if name(hook_name):
                     hook_id = id(hook_point)
                     if hook_id in seen_hooks:
                         continue
                     seen_hooks.add(hook_id)
+                    # A filter was not necessarily targeting a gated name on
+                    # purpose — skip with a warning instead of raising.
+                    if self._gated_hook_reason(hook_name) is not None:
+                        gated_names_skipped.append(hook_name)
+                        continue
                     self._add_fn_to_hook_point(hook_point, hook_name, hook_fn, dir, is_permanent)
+            if gated_names_skipped:
+                warnings.warn(
+                    f"add_hook: skipped {len(gated_names_skipped)} gated-off hook name(s) "
+                    f"that will never fire: {gated_names_skipped}. Call the relevant "
+                    "set_use_*(True) setter first to enable them.",
+                    stacklevel=2,
+                )
             return
+
+        # An explicitly named gated-off hook point is a caller error: the hook
+        # would silently never fire. Raise naming the setter to call
+        # (mirrors HookedTransformer.check_hooks_to_add, with a clearer error).
+        reason = self._gated_hook_reason(name)
+        if reason is not None:
+            raise ValueError(
+                f"Cannot add hook {name} because {reason} is False. "
+                f"Call set_{reason}(True) first."
+            )
 
         # Fast path: canonical registry names skip the alias-map build (hook_dict +
         # map construction cost ~ms on large models; add_hook is often called per layer).
@@ -1477,6 +1515,25 @@ class BridgeCore:
             )
         if start_at_layer is not None:
             filtered_kwargs["start_at_layer"] = start_at_layer
+        # Only validate gated hooks when the caller explicitly supplied a
+        # names_filter. The default filter matches every hook and must not
+        # cause gated hooks to be treated as explicitly requested.
+        gated_names_skipped: List[str] = []
+        if names_filter is not None:
+            kept = []
+            for hp, name in hooks:
+                if self._gated_hook_reason(name) is not None:
+                    gated_names_skipped.append(name)
+                else:
+                    kept.append((hp, name))
+            hooks = kept
+        if gated_names_skipped:
+            warnings.warn(
+                f"run_with_cache: skipped {len(gated_names_skipped)} gated-off hook name(s) "
+                f"that will never be cached: {gated_names_skipped}. Call the relevant "
+                "set_use_*(True) setter first to enable them.",
+                stacklevel=2,
+            )
         context_level = getattr(self, "context_level", 0) + 1
         self.context_level = context_level
         try:

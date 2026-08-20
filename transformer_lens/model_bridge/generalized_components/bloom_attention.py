@@ -101,10 +101,15 @@ class BloomAttentionBridge(JointQKVAttentionBridge):
         # Apply input hook
         hooked_input = self.hook_in(hidden_states)
 
-        # Run through split Q/K/V projections (these fire hook_q, hook_k, hook_v)
-        q_output = self.q(hooked_input)
-        k_output = self.k(hooked_input)
-        v_output = self.v(hooked_input)
+        # Run through split Q/K/V projections (these fire hook_q, hook_k, hook_v),
+        # via the per-head fork when use_split_qkv_input / use_attn_in is set so
+        # those gated hooks fire here as they do on every other joint-QKV bridge.
+        if self._is_split_qkv_fork_active():
+            q_output, k_output, v_output = self._split_forward_qkv(hooked_input)
+        else:
+            q_output = self.q(hooked_input)
+            k_output = self.k(hooked_input)
+            v_output = self.v(hooked_input)
 
         # Reconstruct attention with ALiBi (fires hook_attn_scores, hook_pattern)
         attn_output, attn_weights = self._reconstruct_attention(
@@ -199,7 +204,18 @@ class BloomAttentionBridge(JointQKVAttentionBridge):
         attn_output = self._reshape_attn_output(
             attn_output, batch_size, seq_len, num_heads, head_dim
         )
-        attn_output = self._apply_output_projection(attn_output)
+        if (
+            bool(getattr(self.config, "use_attn_result", False))
+            and hasattr(self, "o")
+            and self.o.original_component is not None
+        ):
+            # Fire hook_z on the flat pre-projection tensor first, so patches at
+            # hook_z reach the per-head computation (same order as the parent).
+            attn_output = self.o.hook_in(attn_output)
+            z_4d = attn_output.view(batch_size, seq_len, num_heads, head_dim)
+            attn_output = self._compute_per_head_result(z_4d, num_heads, head_dim)
+        else:
+            attn_output = self._apply_output_projection(attn_output)
 
         return (attn_output, attn_weights)
 

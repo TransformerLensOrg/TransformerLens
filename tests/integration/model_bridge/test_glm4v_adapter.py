@@ -109,6 +109,29 @@ class TestGlm4vHooks:
 
 
 class TestGlm4vGeneration:
+    def test_generate_after_multimodal_forward(self, bridge, snapshot_path):
+        """A multimodal forward caches mRoPE rope_deltas on the HF module; text-only
+        generate must not add that stale delta to its cached-step positions."""
+        from PIL import Image
+        from transformers import AutoProcessor
+
+        proc = AutoProcessor.from_pretrained(snapshot_path)
+        img = Image.new("RGB", (112, 112), "red")
+        messages = [
+            {
+                "role": "user",
+                "content": [{"type": "image"}, {"type": "text", "text": "Describe"}],
+            }
+        ]
+        text = proc.apply_chat_template(messages, add_generation_prompt=True)
+        inputs = dict(proc(text=[text], images=[img], return_tensors="pt"))
+        bridge_inputs = {k: v for k, v in inputs.items() if k != "input_ids"}
+        with torch.no_grad():
+            bridge(inputs["input_ids"], **bridge_inputs)
+
+        text_out = bridge.generate("Hello", max_new_tokens=5, do_sample=False, verbose=False)
+        assert isinstance(text_out, str)
+
     def test_generate(self, bridge):
         text = bridge.generate("Hello", max_new_tokens=5, do_sample=False, verbose=False)
         assert isinstance(text, str)

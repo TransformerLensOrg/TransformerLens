@@ -60,7 +60,6 @@ class RavenArchitectureAdapter(ArchitectureAdapter):
     # state make the phases non-meaningful. Correctness lives in the
     # integration tests (seed pinned before bridge and HF calls).
     applicable_phases: list[int] = []
-
     # HuginnDynamicCache decode freezes K/V from earlier stochastic calls (fresh
     # randn latent per forward), so cached logits can't seed-match the full HF
     # forward we verify against; full-prefix recompute per step is exact.

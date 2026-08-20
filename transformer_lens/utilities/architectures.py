@@ -25,6 +25,14 @@ SEQ2SEQ_ARCHITECTURES: set[str] = {
     "SwitchTransformersForConditionalGeneration",
 }
 
+# Post-norm decoders: ln1/ln2 normalize each sublayer's OUTPUT before the residual
+# add, so LN folding and writing-weight centering (which assume the gain sits on a
+# sublayer's INPUT) are not valid algebra for them.
+POST_NORM_ARCHITECTURES: set[str] = {
+    "Olmo2ForCausalLM",
+    "Olmo3ForCausalLM",
+}
+
 # Masked language models (BERT-style, no text generation)
 MASKED_LM_ARCHITECTURES: set[str] = {
     "BertForMaskedLM",
