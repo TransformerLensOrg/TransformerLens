@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import copy
+import gc
 
 import pytest
 import torch
 from torch import nn
-from transformers import GPT2Config, GPT2LMHeadModel
+from transformers import GPT2Config, GPT2LMHeadModel, LlamaConfig, LlamaForCausalLM
 
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.model_bridge import TransformerBridge
@@ -50,6 +51,34 @@ def _tiny_gpt2_bridge() -> TransformerBridge:
     )
 
 
+def _tiny_llama_bridge() -> TransformerBridge:
+    hf_config = LlamaConfig(
+        hidden_size=32,
+        intermediate_size=64,
+        num_hidden_layers=1,
+        num_attention_heads=2,
+        num_key_value_heads=2,
+        vocab_size=16,
+        max_position_embeddings=8,
+    )
+    hf_model = LlamaForCausalLM(hf_config).eval()
+    return build_bridge_from_module(
+        hf_model,
+        "LlamaForCausalLM",
+        hf_config=hf_config,
+        tokenizer=None,
+        device="cpu",
+    )
+
+
+@pytest.fixture(params=["gpt2", "llama"], ids=["shared-config", "cloned-config"])
+def bridge_with_config_mode(request: pytest.FixtureRequest) -> TransformerBridge:
+    bridge = _tiny_gpt2_bridge() if request.param == "gpt2" else _tiny_llama_bridge()
+    attn_config_is_shared = bridge.blocks[0].attn.config is bridge.cfg
+    assert attn_config_is_shared is (request.param == "gpt2")
+    return bridge
+
+
 @pytest.mark.parametrize(
     ("flag_name", "hook_name"),
     [
@@ -59,8 +88,10 @@ def _tiny_gpt2_bridge() -> TransformerBridge:
         ("use_split_qkv_input", "blocks.0.attn.hook_q_input"),
     ],
 )
-def test_direct_assignment_matches_setter_hook_behavior(flag_name: str, hook_name: str) -> None:
-    bridge = _tiny_gpt2_bridge()
+def test_direct_assignment_matches_setter_hook_behavior(
+    bridge_with_config_mode: TransformerBridge, flag_name: str, hook_name: str
+) -> None:
+    bridge = bridge_with_config_mode
     tokens = torch.randint(0, bridge.cfg.d_vocab, (1, 8))
 
     setattr(bridge.cfg, flag_name, True)
@@ -127,3 +158,43 @@ def test_deepcopied_bridge_rebinds_its_config() -> None:
     assert copied_bridge.cfg.use_hook_mlp_in is True
     assert copied_bridge.blocks[0].config.use_hook_mlp_in is True
     assert bridge.cfg.use_hook_mlp_in is False
+
+
+def test_shallow_copied_bridge_does_not_replace_live_config_binding() -> None:
+    bridge = TransformerBridge.boot_native(_cfg())
+    copied_bridge = copy.copy(bridge)
+
+    assert copied_bridge.cfg is bridge.cfg
+    assert bridge.cfg._bridge_ref() is bridge
+
+    del copied_bridge
+    gc.collect()
+    bridge.cfg.use_hook_mlp_in = True
+
+    assert bridge.blocks[0].config.use_hook_mlp_in is True
+
+
+def test_attention_flag_propagation_does_not_dispatch_bound_cloned_config() -> None:
+    bridge = _tiny_llama_bridge()
+    cloned_cfg = bridge.blocks[0].attn.config
+    other_bridge = TransformerBridge.boot_native(_cfg())
+    assert cloned_cfg is not bridge.cfg
+    cloned_cfg._bind_bridge(other_bridge)
+
+    bridge.set_use_attn_in(True)
+
+    assert cloned_cfg.use_attn_in is True
+    assert other_bridge.cfg.use_attn_in is False
+
+
+def test_mlp_flag_propagation_does_not_dispatch_bound_cloned_config() -> None:
+    bridge = _tiny_gpt2_bridge()
+    cloned_cfg = bridge.blocks[0].config
+    other_bridge = TransformerBridge.boot_native(_cfg())
+    assert cloned_cfg is not bridge.cfg
+    cloned_cfg._bind_bridge(other_bridge)
+
+    bridge.set_use_hook_mlp_in(True)
+
+    assert cloned_cfg.use_hook_mlp_in is True
+    assert other_bridge.cfg.use_hook_mlp_in is False

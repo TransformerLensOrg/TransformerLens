@@ -240,7 +240,9 @@ class TransformerBridgeConfig(TransformerLensConfig):
 
     def _bind_bridge(self, bridge: Any) -> None:
         """Bind runtime hook-flag assignments to a constructed Bridge."""
-        object.__setattr__(self, "_bridge_ref", weakref.ref(bridge))
+        bridge_ref = getattr(self, "_bridge_ref", None)
+        if bridge_ref is None or bridge_ref() is None:
+            object.__setattr__(self, "_bridge_ref", weakref.ref(bridge))
 
     def _set_bridge_managed_hook_flag(self, name: str, value: bool) -> None:
         """Set a managed flag without re-entering the Bridge setter."""

@@ -5006,10 +5006,18 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             block_cfg = getattr(block, "config", None)
             if block_cfg is not None and block_cfg is not self.cfg:
                 try:
-                    block_cfg.use_hook_mlp_in = use_hook_mlp_in
-                except Exception:
+                    self._write_propagated_hook_flag(block_cfg, "use_hook_mlp_in", use_hook_mlp_in)
+                except (AttributeError, TypeError):
                     pass
             block._use_hook_mlp_in = use_hook_mlp_in
+
+    @staticmethod
+    def _write_propagated_hook_flag(config: Any, flag_name: str, value: bool) -> None:
+        """Write a cloned config flag without dispatching through its live Bridge."""
+        if isinstance(config, TransformerBridgeConfig):
+            config._set_bridge_managed_hook_flag(flag_name, value)
+        else:
+            object.__setattr__(config, flag_name, value)
 
     def _propagate_attention_flag(self, flag_name: str, value: bool) -> None:
         """Mirror `bridge.cfg.<flag>` onto every block's attention config.
@@ -5031,8 +5039,8 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             attn_cfg = getattr(attn, "config", None)
             if attn_cfg is not None and attn_cfg is not self.cfg:
                 try:
-                    setattr(attn_cfg, flag_name, value)
-                except Exception:
+                    self._write_propagated_hook_flag(attn_cfg, flag_name, value)
+                except (AttributeError, TypeError):
                     # Some cfg objects may be frozen/immutable. Skip silently —
                     # the block simply won't honor the flag, which is the
                     # same outcome as before this fix.
