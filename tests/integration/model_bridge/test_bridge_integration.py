@@ -729,5 +729,68 @@ def test_TransformerBridge_gemma2_forward():
     assert hasattr(bridge.rotary_emb, "hook_sin"), "rotary_emb should have hook_sin"
 
 
+class TestCastFloatingParamsSkipsQuantizerOwnedScales:
+    """Regression tests for the MXFP4 bug: cast_floating_params_to_dtype must not
+    corrupt quantizer-owned FP8 scale tensors.
+
+    The fix has two layers:
+    1. cast_floating_params_to_dtype itself skips one-byte floats (FP8)
+    2. The boot call site skips the cast entirely when model has quantization_config
+    """
+
+    def test_quantization_method_detects_mxfp4_config(self):
+        """Verify quantization_method correctly identifies MXFP4 configs."""
+        from types import SimpleNamespace
+
+        from transformer_lens.utilities.quantization import quantization_method
+
+        config = SimpleNamespace(quantization_config=SimpleNamespace(quant_method="mxfp4"))
+        assert quantization_method(config) == "mxfp4"
+
+    def test_quantization_method_returns_none_for_unquantized(self):
+        """Verify quantization_method returns None for unquantized models."""
+        from types import SimpleNamespace
+
+        from transformer_lens.utilities.quantization import quantization_method
+
+        config = SimpleNamespace(quantization_config=None)
+        assert quantization_method(config) is None
+
+        config = SimpleNamespace()  # No quantization_config attr
+        assert quantization_method(config) is None
+
+    def test_cast_skips_fp8_scales_even_if_called(self):
+        """Even if cast_floating_params_to_dtype is called on a mixed module,
+        FP8 scale tensors must be preserved.
+        """
+        import torch.nn as nn
+
+        from transformer_lens.utilities.multi_gpu import cast_floating_params_to_dtype
+
+        class MixedQuantizedModule(nn.Module):
+            def __init__(self):
+                super().__init__()
+                # Packed int8 weights (untouched because not floating)
+                self.packed_weight = nn.Parameter(
+                    torch.zeros(4, 4, dtype=torch.int8), requires_grad=False
+                )
+                # FP8 scale (MUST be preserved)
+                self.fp8_scale = nn.Parameter(
+                    torch.ones(4, dtype=torch.float8_e4m3fn), requires_grad=False
+                )
+                # Normal float weight (should be cast)
+                self.normal_weight = nn.Parameter(torch.zeros(4, 4, dtype=torch.float32))
+
+        module = MixedQuantizedModule()
+        cast_floating_params_to_dtype(module, torch.bfloat16)
+
+        # FP8 scale must NOT be cast
+        assert module.fp8_scale.dtype == torch.float8_e4m3fn
+        # Int8 packed weight must NOT be cast
+        assert module.packed_weight.dtype == torch.int8
+        # Normal weight SHOULD be cast
+        assert module.normal_weight.dtype == torch.bfloat16
+
+
 if __name__ == "__main__":
     pytest.main([__file__])

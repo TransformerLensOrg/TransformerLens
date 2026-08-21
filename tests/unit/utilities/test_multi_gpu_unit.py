@@ -5,13 +5,17 @@ from unittest.mock import Mock
 
 import pytest
 import torch
+import torch.nn as nn
 
 from transformer_lens.utilities import (
     calculate_available_device_cuda_memory,
     determine_available_memory_for_available_devices,
     sort_devices_based_on_available_memory,
 )
-from transformer_lens.utilities.multi_gpu import get_device_for_block_index
+from transformer_lens.utilities.multi_gpu import (
+    cast_floating_params_to_dtype,
+    get_device_for_block_index,
+)
 
 
 def mock_available_devices(memory_stats: list[tuple[int, int]]):
@@ -129,3 +133,74 @@ class TestGetDeviceForBlockIndex:
         cfg = _cuda_cfg(n_layers=62, n_devices=8)
         result = get_device_for_block_index(30, cfg, device="cpu")
         assert result.type == "cpu"
+
+
+class TestCastFloatingParamsToDtype:
+    """Regression tests for cast_floating_params_to_dtype.
+
+    Issue: #<MXFP4> — the function was casting quantizer-owned FP8 scale tensors
+    (float8_e8m0fnu) to bfloat16, which corrupts the weight/scale pair relationship
+    and breaks MXFP4 checkpoints.
+    """
+
+    def test_casts_standard_floats_to_target_dtype(self):
+        """Positive control: standard float dtypes should be cast."""
+        model = nn.Linear(4, 4)
+        model.weight = nn.Parameter(torch.zeros(4, 4, dtype=torch.float32))
+        cast_floating_params_to_dtype(model, torch.bfloat16)
+        assert model.weight.dtype == torch.bfloat16
+
+    def test_skips_params_already_at_target_dtype(self):
+        """Params already at target dtype are left untouched."""
+        model = nn.Linear(4, 4)
+        original = torch.zeros(4, 4, dtype=torch.bfloat16)
+        model.weight = nn.Parameter(original)
+        cast_floating_params_to_dtype(model, torch.bfloat16)
+        assert model.weight.dtype == torch.bfloat16
+        assert model.weight.data_ptr() == original.data_ptr()
+
+    def test_skips_non_floating_point_params(self):
+        """Integer params (packed quantized weights) are left untouched."""
+        model = nn.Linear(4, 4, bias=False)
+        model.weight = nn.Parameter(torch.zeros(4, 4, dtype=torch.int8), requires_grad=False)
+        cast_floating_params_to_dtype(model, torch.bfloat16)
+        assert model.weight.dtype == torch.int8
+
+    @pytest.mark.parametrize(
+        "fp8_dtype",
+        [
+            torch.float8_e4m3fn,
+            torch.float8_e5m2,
+        ],
+    )
+    def test_skips_one_byte_floats_fp8_scales(self, fp8_dtype):
+        """FP8 scale tensors must NOT be cast — they are quantizer-owned.
+
+        This is the key regression test for the MXFP4 bug: casting float8_e8m0fnu
+        scales to bfloat16 breaks the weight/scale pair relationship.
+        """
+        model = nn.Linear(4, 4, bias=False)
+        model.weight = nn.Parameter(torch.zeros(4, 4, dtype=fp8_dtype), requires_grad=False)
+        cast_floating_params_to_dtype(model, torch.bfloat16)
+        assert model.weight.dtype == fp8_dtype
+
+    def test_mixed_module_casts_selectively(self):
+        """A module with both standard and FP8 params: only standard params cast."""
+
+        class MixedModule(nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.standard_weight = nn.Parameter(torch.zeros(4, 4, dtype=torch.float32))
+                self.fp8_scale = nn.Parameter(
+                    torch.zeros(4, 4, dtype=torch.float8_e4m3fn), requires_grad=False
+                )
+                self.packed_weight = nn.Parameter(
+                    torch.zeros(4, 4, dtype=torch.int8), requires_grad=False
+                )
+
+        model = MixedModule()
+        cast_floating_params_to_dtype(model, torch.bfloat16)
+
+        assert model.standard_weight.dtype == torch.bfloat16
+        assert model.fp8_scale.dtype == torch.float8_e4m3fn
+        assert model.packed_weight.dtype == torch.int8
