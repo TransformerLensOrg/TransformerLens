@@ -493,17 +493,14 @@ def test_boot_native_supports_training_step():
 
 
 def test_boot_native_resolves_initializer_range_sentinel():
-    """Regression for #1568 — the -1.0 sentinel must be resolved on the
-    bridge config path the same way HookedTransformerConfig resolves it
-    (hooked_transformer_config.py), instead of silently falling back to the
-    unrelated std=0.02 default inside native/init.py."""
+    """Regression for #1568 — the resolved initializer range must be used by boot_native."""
     import math
 
     cfg = _cfg(init_mode="gpt2")
-    # _cfg() doesn't set initializer_range, so it should still carry the
-    # -1.0 sentinel until __post_init__ resolves it.
+    bridge = TransformerBridge.boot_native(cfg)
+
     expected = 0.8 / math.sqrt(cfg.d_model)
-    assert cfg.initializer_range == pytest.approx(expected)
+    assert bridge.W_E.std().item() == pytest.approx(expected, rel=0.15)
 
 
 def test_boot_native_kaiming_gain_scales_weights():
@@ -521,4 +518,4 @@ def test_boot_native_kaiming_gain_scales_weights():
     std_2 = bridge_2.W_E.std().item()
 
     # Same seed, only gain differs -> std should scale ~proportionally.
-    assert std_2 / std_1 == pytest.approx(2.0, rel=0.15)
+    assert std_2 / std_1 == pytest.approx(2.0)
