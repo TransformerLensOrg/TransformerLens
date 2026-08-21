@@ -497,10 +497,18 @@ def test_boot_native_resolves_initializer_range_sentinel():
     import math
 
     cfg = _cfg(init_mode="gpt2")
-    bridge = TransformerBridge.boot_native(cfg)
-
     expected = 0.8 / math.sqrt(cfg.d_model)
+
+    assert cfg.initializer_range == pytest.approx(expected)
+
+    bridge = TransformerBridge.boot_native(cfg)
     assert bridge.W_E.std().item() == pytest.approx(expected, rel=0.15)
+
+
+def test_boot_native_resolves_non_gpt2_initializer_range_sentinel():
+    cfg = _cfg(init_mode="kaiming_normal")
+
+    assert cfg.initializer_range == pytest.approx(1.0)
 
 
 def test_boot_native_kaiming_gain_scales_weights():
