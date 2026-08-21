@@ -138,9 +138,10 @@ class TestGetDeviceForBlockIndex:
 class TestCastFloatingParamsToDtype:
     """Regression tests for cast_floating_params_to_dtype.
 
-    Issue: #<MXFP4> — the function was casting quantizer-owned FP8 scale tensors
-    (float8_e8m0fnu) to bfloat16, which corrupts the weight/scale pair relationship
-    and breaks MXFP4 checkpoints.
+    See: https://github.com/TransformerLensOrg/TransformerLens/issues/1713
+    The function was casting quantizer-owned FP8 scale tensors (float8_e8m0fnu)
+    to bfloat16, which corrupts the weight/scale pair relationship and breaks
+    MXFP4 checkpoints.
     """
 
     def test_casts_standard_floats_to_target_dtype(self):
@@ -171,6 +172,12 @@ class TestCastFloatingParamsToDtype:
         [
             torch.float8_e4m3fn,
             torch.float8_e5m2,
+            pytest.param(
+                getattr(torch, "float8_e8m0fnu", None),
+                marks=pytest.mark.skipif(
+                    not hasattr(torch, "float8_e8m0fnu"), reason="torch < 2.7"
+                ),
+            ),
         ],
     )
     def test_skips_one_byte_floats_fp8_scales(self, fp8_dtype):
@@ -204,3 +211,49 @@ class TestCastFloatingParamsToDtype:
         assert model.standard_weight.dtype == torch.bfloat16
         assert model.fp8_scale.dtype == torch.float8_e4m3fn
         assert model.packed_weight.dtype == torch.int8
+
+
+class TestMaybeCastFloatingParams:
+    """Tests for maybe_cast_floating_params helper.
+
+    See: https://github.com/TransformerLensOrg/TransformerLens/issues/1713
+    The helper wraps cast_floating_params_to_dtype with a quantization check,
+    skipping the cast entirely when the model has an active quantization_config.
+    """
+
+    def test_casts_unquantized_model(self):
+        """Unquantized models should have their params cast."""
+        from types import SimpleNamespace
+
+        from transformer_lens.utilities.multi_gpu import maybe_cast_floating_params
+
+        model = nn.Linear(4, 4)
+        model.weight = nn.Parameter(torch.zeros(4, 4, dtype=torch.float32))
+        model.config = SimpleNamespace(quantization_config=None)
+
+        maybe_cast_floating_params(model, torch.bfloat16)
+        assert model.weight.dtype == torch.bfloat16
+
+    def test_skips_quantized_model(self):
+        """Quantized models should NOT have their params cast."""
+        from types import SimpleNamespace
+
+        from transformer_lens.utilities.multi_gpu import maybe_cast_floating_params
+
+        model = nn.Linear(4, 4)
+        model.weight = nn.Parameter(torch.zeros(4, 4, dtype=torch.float32))
+        model.config = SimpleNamespace(quantization_config=SimpleNamespace(quant_method="mxfp4"))
+
+        maybe_cast_floating_params(model, torch.bfloat16)
+        assert model.weight.dtype == torch.float32  # NOT cast
+
+    def test_skips_model_without_config(self):
+        """Models without a config attribute should be cast (no quantization)."""
+        from transformer_lens.utilities.multi_gpu import maybe_cast_floating_params
+
+        model = nn.Linear(4, 4)
+        model.weight = nn.Parameter(torch.zeros(4, 4, dtype=torch.float32))
+        # No model.config attribute
+
+        maybe_cast_floating_params(model, torch.bfloat16)
+        assert model.weight.dtype == torch.bfloat16
