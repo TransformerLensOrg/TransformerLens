@@ -1,6 +1,8 @@
 """Configuration class for TransformerBridge."""
 
-from typing import Optional
+import warnings
+import weakref
+from typing import Any, Optional
 
 import torch
 
@@ -17,6 +19,17 @@ class TransformerBridgeConfig(TransformerLensConfig):
     particularly architecture information needed for adapter selection.
     Also includes all HookedTransformerConfig fields for compatibility.
     """
+
+    __slots__ = ("_bridge_ref",)
+
+    _BRIDGE_MANAGED_HOOK_FLAGS = frozenset(
+        {
+            "use_attn_result",
+            "use_attn_in",
+            "use_hook_mlp_in",
+            "use_split_qkv_input",
+        }
+    )
 
     def __init__(
         self,
@@ -109,6 +122,7 @@ class TransformerBridgeConfig(TransformerLensConfig):
         **kwargs,
     ):
         """Initialize TransformerBridgeConfig."""
+        object.__setattr__(self, "_bridge_ref", None)
         super().__init__(
             d_model=d_model,
             d_head=d_head,
@@ -204,8 +218,47 @@ class TransformerBridgeConfig(TransformerLensConfig):
         self.vision_num_layers = vision_num_layers
         self.vision_num_heads = vision_num_heads
         self.mm_tokens_per_image = mm_tokens_per_image
-
         self.__post_init__()
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        """Route live Bridge hook-flag assignments through their public setters."""
+        if name in self._BRIDGE_MANAGED_HOOK_FLAGS:
+            bridge_ref = getattr(self, "_bridge_ref", None)
+            bridge = bridge_ref() if bridge_ref is not None else None
+            if bridge is not None:
+                getattr(bridge, f"set_{name}")(value)
+                return
+        super().__setattr__(name, value)
+
+    def __getstate__(self) -> dict[str, Any]:
+        """Serialize config data without retaining its live Bridge binding."""
+        return self.__dict__.copy()
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        """Restore an unbound config copy."""
+        self.__dict__.update(state)
+        object.__setattr__(self, "_bridge_ref", None)
+
+    def _bind_bridge(self, bridge: Any) -> None:
+        """Bind runtime hook-flag assignments to a constructed Bridge."""
+        bridge_ref = getattr(self, "_bridge_ref", None)
+        bound_bridge = bridge_ref() if bridge_ref is not None else None
+        if bound_bridge is None:
+            object.__setattr__(self, "_bridge_ref", weakref.ref(bridge))
+        elif bound_bridge is not bridge:
+            warnings.warn(
+                "TransformerBridgeConfig is already bound to another live "
+                "TransformerBridge; declining to bind it to this instance. "
+                "Direct assignments to Bridge-managed hook flags will continue "
+                "to configure the existing TransformerBridge.",
+                stacklevel=3,
+            )
+
+    def _set_bridge_managed_hook_flag(self, name: str, value: bool) -> None:
+        """Set a managed flag without re-entering the Bridge setter."""
+        if name not in self._BRIDGE_MANAGED_HOOK_FLAGS:
+            raise ValueError(f"Unknown Bridge-managed hook flag: {name}")
+        object.__setattr__(self, name, value)
 
     def __post_init__(self):
         """Post-initialization processing."""

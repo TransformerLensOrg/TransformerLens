@@ -22980,6 +22980,66 @@
       "invalidation_reason": null,
       "p4_scoring_version": 2,
       "prompt_profile": "task:denoise"
+    },
+    {
+      "model_id": "google-bert/bert-base-cased",
+      "architecture_id": "BertForMaskedLM",
+      "verified_date": "2026-08-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: all_components); P2=68.8% < 75.0% (failed: logits_equiva — 1/79 components failed (1 critical)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "google-bert/bert-base-cased",
+      "architecture_id": "BertForMaskedLM",
+      "verified_date": "2026-08-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: all_components); P2=68.8% < 75.0% (failed: logits_equiva — 1/79 components failed (1 critical)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "google-bert/bert-base-cased",
+      "architecture_id": "BertForMaskedLM",
+      "verified_date": "2026-08-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: all_components); P2=68.8% < 75.0% (failed: logits_equiva — 2/79 components failed (2 critical)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "google-bert/bert-base-cased",
+      "architecture_id": "BertForMaskedLM",
+      "verified_date": "2026-08-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: all_components); P2=68.8% < 75.0% (failed: logits_equiva — 1/79 components failed (1 critical)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "google-bert/bert-base-cased",
+      "architecture_id": "BertForMaskedLM",
+      "verified_date": "2026-08-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P2=68.8% < 75.0% (failed: logits_equivalence, loss_equivalence, hook_functionality, — Tensors differ: max_diff=29.631586, mean_rel=1.923156",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "google-bert/bert-base-cased",
+      "architecture_id": "BertForMaskedLM",
+      "verified_date": "2026-08-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
     }
   ]
 }
