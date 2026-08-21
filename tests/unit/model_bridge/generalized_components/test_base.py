@@ -377,5 +377,31 @@ class TestGeneralizedComponentEdgeCases:
         assert component.complex_attr["nested"]["deep"] == [1, 2, 3]
 
 
+@pytest.mark.parametrize("use_keyword", [False, True])
+def test_forward_preserves_input_dtype(use_keyword: bool):
+    """Parameter storage dtype must not determine the component compute dtype."""
+
+    class MixedPrecisionComponent(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.auxiliary = nn.Parameter(torch.ones((), dtype=torch.float32))
+            self.received_dtype = None
+
+        def forward(self, hidden_states):
+            self.received_dtype = hidden_states.dtype
+            return hidden_states.clone()
+
+    original = MixedPrecisionComponent()
+    component = MockGeneralizedComponent("mixed_precision")
+    component.set_original_component(original)
+    inputs = torch.ones(2, 3, dtype=torch.bfloat16)
+
+    output = component(hidden_states=inputs) if use_keyword else component(inputs)
+
+    assert original.received_dtype == torch.bfloat16
+    assert output.dtype == torch.bfloat16
+    torch.testing.assert_close(output, inputs)
+
+
 if __name__ == "__main__":
     pytest.main([__file__])
