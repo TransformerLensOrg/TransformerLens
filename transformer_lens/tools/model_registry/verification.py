@@ -29,6 +29,10 @@ class VerificationRecord:
     architecture_id: str = "Unknown"
     verified_by: Optional[str] = None
     transformerlens_version: Optional[str] = None
+    # P4 verdict flips are undiagnosable without knowing which profile and
+    # scoring scale produced the record.
+    prompt_profile: Optional[str] = None
+    p4_scoring_version: Optional[int] = None
     notes: Optional[str] = None
     invalidated: bool = False
     invalidation_reason: Optional[str] = None
@@ -41,6 +45,8 @@ class VerificationRecord:
             "verified_date": self.verified_date.isoformat(),
             "verified_by": self.verified_by,
             "transformerlens_version": self.transformerlens_version,
+            "prompt_profile": self.prompt_profile,
+            "p4_scoring_version": self.p4_scoring_version,
             "notes": self.notes,
             "invalidated": self.invalidated,
             "invalidation_reason": self.invalidation_reason,
@@ -55,6 +61,8 @@ class VerificationRecord:
             verified_date=date.fromisoformat(data["verified_date"]),
             verified_by=data.get("verified_by"),
             transformerlens_version=data.get("transformerlens_version"),
+            prompt_profile=data.get("prompt_profile"),
+            p4_scoring_version=data.get("p4_scoring_version"),
             notes=data.get("notes"),
             invalidated=data.get("invalidated", False),
             invalidation_reason=data.get("invalidation_reason"),

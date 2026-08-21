@@ -10,7 +10,7 @@ If an agent is here because the user asked to "update the registry" or "verify a
 
 ## What this directory IS for
 
-- The phase-by-phase benchmark implementations (`forward_pass.py`, `generation.py`, `hook_registration.py`, `weight_processing.py`, `multimodal.py`, `audio.py`, `vision.py`, `encoder_common.py`, `text_quality.py`, `granular_weight_processing.py`, `component_outputs.py`, `backward_gradients.py`, `activation_cache.py`, `component_benchmark.py`, `hook_structure.py`).
+- The phase-by-phase benchmark implementations (`forward_pass.py`, `generation.py`, `hook_registration.py`, `weight_processing.py`, `multimodal.py`, `audio.py`, `vision.py`, `encoder_common.py`, `text_quality.py`, `text_quality_profiles.py` (Phase-4 prompt-profile data + resolver), `granular_weight_processing.py`, `component_outputs.py`, `backward_gradients.py`, `activation_cache.py`, `component_benchmark.py`, `hook_structure.py`).
 - `main_benchmark.py` — exploratory benchmark runner for ad-hoc comparison. Useful for debugging a single model's phase scores without touching the registry.
 - `utils.py` — shared helpers including `BenchmarkSeverity`.
 

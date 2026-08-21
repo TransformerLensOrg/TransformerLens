@@ -5,7 +5,7 @@ against reference implementations in an optimized multi-phase approach:
 Phase 1: HF + Bridge (unprocessed) - Compare against raw HuggingFace model
 Phase 2: Bridge (unprocessed) + HT (unprocessed) - Compare unprocessed models
 Phase 3: Bridge (processed) + HT (processed) - Full compatibility mode testing
-Phase 4: Text Quality - Perplexity-based legibility scoring via GPT-2 Medium
+Phase 4: Text Quality - profile prompts scored by a pinned judge's perplexity ratio
 Phase 5: Granular Weight Processing Tests (optional, individual flags)
 Phase 6: Granular Weight Processing Tests (optional, combined flags)
 Phase 7: Multimodal Tests (only for multimodal models with pixel_values support)
@@ -592,8 +592,9 @@ def run_benchmark_suite(
     test_weight_processing_individually: bool = False,
     phases: list[int] | None = None,
     trust_remote_code: bool = False,
-    scoring_model: PreTrainedModel | None = None,
-    scoring_tokenizer: PreTrainedTokenizerBase | None = None,
+    judge_model: PreTrainedModel | None = None,
+    judge_tokenizer: PreTrainedTokenizerBase | None = None,
+    prompt_profile: str | None = None,
 ) -> List[BenchmarkResult]:
     """Run comprehensive benchmark suite for TransformerBridge.
 
@@ -601,7 +602,7 @@ def run_benchmark_suite(
     Phase 1: HF + Bridge (unprocessed) - Compare against raw HuggingFace model
     Phase 2: Bridge (unprocessed) + HT (unprocessed) - Compare unprocessed models
     Phase 3: Bridge (processed) + HT (processed) - Full compatibility mode testing
-    Phase 4: Text Quality - Perplexity-based legibility scoring via GPT-2
+    Phase 4: Text Quality - profile prompts scored by a pinned judge's perplexity ratio
     Phase 5: Individual Weight Processing Flags (optional)
     Phase 6: Combined Weight Processing Flags (optional)
 
@@ -624,9 +625,12 @@ def run_benchmark_suite(
             tests that check each processing flag individually (default: False)
         phases: Optional list of phase numbers to run (e.g., [1, 2, 3]). If None, runs all phases.
         trust_remote_code: Whether to trust remote code for custom architectures.
-        scoring_model: Optional pre-loaded GPT-2 scoring model for Phase 4. When
-            provided with scoring_tokenizer, avoids reloading for each model in batch.
-        scoring_tokenizer: Optional pre-loaded tokenizer for Phase 4 scoring model.
+        judge_model: Optional pre-loaded Phase-4 judge. When provided with
+            judge_tokenizer, avoids reloading for each model in batch.
+        judge_tokenizer: Optional pre-loaded tokenizer for the Phase-4 judge.
+        prompt_profile: Optional Phase-4 prompt profile (e.g. "chat",
+            "task:translation@en-de"). Resolved from curation + the registry
+            when None.
 
     Returns:
         List of BenchmarkResult objects
@@ -1433,7 +1437,7 @@ def run_benchmark_suite(
     # (e.g., OpenELM).
 
     # ========================================================================
-    # PHASE 4: Text Quality (GPT-2 perplexity scoring)
+    # PHASE 4: Text Quality (profile prompts, judge perplexity-ratio scoring)
     # Runs before Phase 3 so it can reuse bridge_unprocessed (Phase 3
     # destructively processes the weights, consuming the bridge).
     # ========================================================================
@@ -1452,21 +1456,34 @@ def run_benchmark_suite(
         and not is_masked_lm_model(model_name, trust_remote_code=trust_remote_code)
         and not is_audio_model(model_name, trust_remote_code=trust_remote_code)
     ):
+        if prompt_profile is None:
+            from transformer_lens.benchmarks.text_quality_profiles import (
+                resolve_profile,
+            )
+            from transformer_lens.tools.model_registry.registry_io import (
+                registry_prompt_profile,
+            )
+
+            config = getattr(bridge_unprocessed, "original_model", None)
+            archs = getattr(getattr(config, "config", None), "architectures", None) or []
+            prompt_profile = str(
+                resolve_profile(
+                    model_name, archs[0] if archs else None, registry_prompt_profile(model_name)
+                )
+            )
+
         if verbose:
             print(f"\n{'='*80}")
-            print("PHASE 2.5: Text Quality (GPT-2 perplexity scoring)")
+            print(f"PHASE 2.5: Text Quality (profile {prompt_profile}, judge ratio scoring)")
             print(f"{'='*80}\n")
 
         try:
             text_quality_result = benchmark_text_quality(
                 bridge_unprocessed,
-                test_text,
-                max_new_tokens=50,
-                scoring_model_name="gpt2",
-                pass_threshold=85.0,
-                device=device,
-                scoring_model=scoring_model,
-                scoring_tokenizer=scoring_tokenizer,
+                prompt_profile,
+                judge_model=judge_model,
+                judge_tokenizer=judge_tokenizer,
+                model_name=model_name,
             )
             text_quality_result.phase = 4
             add_result(text_quality_result)
@@ -2014,6 +2031,7 @@ def update_model_registry(
         _build_verified_note,
         _check_phase_scores,
         _extract_phase_scores,
+        _extract_prompt_profile,
         _pass_status,
         _sanitize_note,
     )
@@ -2049,6 +2067,7 @@ def update_model_registry(
         phase_scores=phase_scores,
         note=note,
         sanitize_fn=_sanitize_note,
+        prompt_profile=_extract_prompt_profile(results),
     )
 
     # No history record for provisional runs — VerificationHistory.is_verified()

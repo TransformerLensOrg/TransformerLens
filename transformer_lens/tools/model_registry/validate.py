@@ -290,6 +290,31 @@ def _validate_model_entry(data: dict, path: str) -> list[ValidationError]:
     if "note" in data and data["note"] is not None:
         errors.extend(_validate_string(data["note"], f"{path}.note", min_length=1))
 
+    # p4_scoring_version (optional sparse int; absent = old GPT-2 scale)
+    if "p4_scoring_version" in data and data["p4_scoring_version"] is not None:
+        version = data["p4_scoring_version"]
+        if not isinstance(version, int) or isinstance(version, bool) or version < 2:
+            errors.append(
+                ValidationError(f"{path}.p4_scoring_version", "must be an int >= 2", version)
+            )
+
+    # prompt_profile (optional sparse string; must parse as a profile spec)
+    if "prompt_profile" in data and data["prompt_profile"] is not None:
+        errors.extend(
+            _validate_string(data["prompt_profile"], f"{path}.prompt_profile", min_length=1)
+        )
+        if isinstance(data["prompt_profile"], str):
+            try:
+                from transformer_lens.benchmarks.text_quality_profiles import (
+                    ProfileSpec,
+                )
+
+                ProfileSpec.parse(data["prompt_profile"])
+            except ValueError as e:
+                errors.append(
+                    ValidationError(f"{path}.prompt_profile", str(e), data["prompt_profile"])
+                )
+
     # verified_date (optional date string)
     if "verified_date" in data and data["verified_date"] is not None:
         errors.extend(
