@@ -191,11 +191,12 @@ def test_one_left_padded_row_does_not_perturb_its_neighbours(distilgpt2_bridge, 
         alone_plain = distilgpt2_bridge(plain, attention_mask=m_plain, return_type="logits")
         unpadded = distilgpt2_bridge(tokens, return_type="logits")
 
-    # Not exact equality: batching alone perturbs float accumulation order. The
-    # regression this guards was 8e-01, so 1e-6 separates them decisively while
-    # staying above anything a different BLAS could introduce.
-    torch.testing.assert_close(mixed[0:1], alone_right, rtol=0, atol=1e-6)
-    torch.testing.assert_close(mixed[2:3], alone_plain, rtol=0, atol=1e-6)
+    # Not exact equality: batching changes GEMM blocking, so these logits drift by
+    # a few float32 ULP — ~1e-4 at |logit| ~ 90, where atol=1e-6 was a tenth of one
+    # ULP and only ever passed when the BLAS happened to be bit-identical. The
+    # regression this guards was 8e-01, two orders the other side of this tolerance.
+    torch.testing.assert_close(mixed[0:1], alone_right, rtol=1e-4, atol=1e-4)
+    torch.testing.assert_close(mixed[2:3], alone_plain, rtol=1e-4, atol=1e-4)
     # ...while the row that did need correcting still gets it.
     torch.testing.assert_close(mixed[1:2, n_pad:], unpadded, rtol=1e-3, atol=1e-3)
 
