@@ -5041,9 +5041,8 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                 try:
                     self._write_propagated_hook_flag(attn_cfg, flag_name, value)
                 except (AttributeError, TypeError):
-                    # Some cfg objects may be frozen/immutable. Skip silently —
-                    # the block simply won't honor the flag, which is the
-                    # same outcome as before this fix.
+                    # Some config-like objects reject attributes even when
+                    # bypassing their custom __setattr__ implementation.
                     pass
 
     def _validate_attention_fork_supported(self, flag_name: str) -> None:

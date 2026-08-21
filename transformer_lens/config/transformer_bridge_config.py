@@ -1,5 +1,6 @@
 """Configuration class for TransformerBridge."""
 
+import warnings
 import weakref
 from typing import Any, Optional
 
@@ -241,8 +242,17 @@ class TransformerBridgeConfig(TransformerLensConfig):
     def _bind_bridge(self, bridge: Any) -> None:
         """Bind runtime hook-flag assignments to a constructed Bridge."""
         bridge_ref = getattr(self, "_bridge_ref", None)
-        if bridge_ref is None or bridge_ref() is None:
+        bound_bridge = bridge_ref() if bridge_ref is not None else None
+        if bound_bridge is None:
             object.__setattr__(self, "_bridge_ref", weakref.ref(bridge))
+        elif bound_bridge is not bridge:
+            warnings.warn(
+                "TransformerBridgeConfig is already bound to another live "
+                "TransformerBridge; declining to bind it to this instance. "
+                "Direct assignments to Bridge-managed hook flags will continue "
+                "to configure the existing TransformerBridge.",
+                stacklevel=3,
+            )
 
     def _set_bridge_managed_hook_flag(self, name: str, value: bool) -> None:
         """Set a managed flag without re-entering the Bridge setter."""

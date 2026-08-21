@@ -11,10 +11,14 @@ from torch import nn
 from transformers import GPT2Config, GPT2LMHeadModel, LlamaConfig, LlamaForCausalLM
 
 from transformer_lens.config import TransformerBridgeConfig
+from transformer_lens.factories.architecture_adapter_factory import (
+    ArchitectureAdapterFactory,
+)
 from transformer_lens.model_bridge import TransformerBridge
 from transformer_lens.model_bridge.sources._bridge_builder import (
     build_bridge_from_module,
 )
+from transformer_lens.model_bridge.sources.native import NativeModel
 
 
 def _cfg() -> TransformerBridgeConfig:
@@ -162,7 +166,8 @@ def test_deepcopied_bridge_rebinds_its_config() -> None:
 
 def test_shallow_copied_bridge_does_not_replace_live_config_binding() -> None:
     bridge = TransformerBridge.boot_native(_cfg())
-    copied_bridge = copy.copy(bridge)
+    with pytest.warns(UserWarning, match="already bound to another live"):
+        copied_bridge = copy.copy(bridge)
 
     assert copied_bridge.cfg is bridge.cfg
     assert bridge.cfg._bridge_ref() is bridge
@@ -172,6 +177,24 @@ def test_shallow_copied_bridge_does_not_replace_live_config_binding() -> None:
     bridge.cfg.use_hook_mlp_in = True
 
     assert bridge.blocks[0].config.use_hook_mlp_in is True
+
+
+def test_constructor_warns_when_live_bridge_already_owns_config() -> None:
+    cfg = _cfg()
+    cfg.architecture = "TransformerLensNative"
+    first_model = NativeModel(cfg)
+    second_model = NativeModel(cfg)
+    first_adapter = ArchitectureAdapterFactory.select_architecture_adapter(cfg)
+    second_adapter = ArchitectureAdapterFactory.select_architecture_adapter(cfg)
+    first_adapter.prepare_model(first_model)
+    second_adapter.prepare_model(second_model)
+    first_bridge = TransformerBridge(first_model, first_adapter, tokenizer=None)
+
+    with pytest.warns(UserWarning, match="already bound to another live"):
+        second_bridge = TransformerBridge(second_model, second_adapter, tokenizer=None)
+
+    assert second_bridge.cfg is first_bridge.cfg
+    assert cfg._bridge_ref() is first_bridge
 
 
 def test_attention_flag_propagation_does_not_dispatch_bound_cloned_config() -> None:
