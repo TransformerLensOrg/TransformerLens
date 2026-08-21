@@ -797,42 +797,14 @@ class AttentionBridge(GeneralizedComponent):
             raise RuntimeError(
                 f"Original component not set for {self.name}. Call set_original_component() first."
             )
-        # Skip non-fp params: quantized weights (bnb uint8/int8, GPTQ/AWQ int32,
-        # HQQ, torchao) are stored in integer dtypes and dequantized internally
-        # during matmul. The compute dtype must come from a fp parameter; casting
-        # fp inputs to an integer storage dtype destroys precision.
-        target_dtype = None
-        for p in self.original_component.parameters():
-            if not p.dtype.is_floating_point:
-                continue
-            target_dtype = p.dtype
-            break
         if "query_input" in kwargs:
             hooked = self.hook_in(kwargs["query_input"])
-            if (
-                target_dtype is not None
-                and isinstance(hooked, torch.Tensor)
-                and hooked.is_floating_point()
-            ):
-                hooked = hooked.to(dtype=target_dtype)
             kwargs["query_input"] = hooked
         elif "hidden_states" in kwargs:
             hooked = self.hook_in(kwargs["hidden_states"])
-            if (
-                target_dtype is not None
-                and isinstance(hooked, torch.Tensor)
-                and hooked.is_floating_point()
-            ):
-                hooked = hooked.to(dtype=target_dtype)
             kwargs["hidden_states"] = hooked
         elif len(args) > 0 and isinstance(args[0], torch.Tensor):
             hooked = self.hook_in(args[0])
-            if (
-                target_dtype is not None
-                and isinstance(hooked, torch.Tensor)
-                and hooked.is_floating_point()
-            ):
-                hooked = hooked.to(dtype=target_dtype)
             args = (hooked,) + args[1:]
         # try/finally so the captured tensor (and its autograd graph) is
         # released even if original_component raises.

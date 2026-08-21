@@ -5,8 +5,14 @@ import torch
 import torch.nn as nn
 
 from transformer_lens.hook_points import HookPoint
+from transformer_lens.model_bridge.generalized_components.attention import (
+    AttentionBridge,
+)
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
+)
+from transformer_lens.model_bridge.generalized_components.unembedding import (
+    UnembeddingBridge,
 )
 
 
@@ -401,6 +407,55 @@ def test_forward_preserves_input_dtype(use_keyword: bool):
     assert original.received_dtype == torch.bfloat16
     assert output.dtype == torch.bfloat16
     torch.testing.assert_close(output, inputs)
+
+
+@pytest.mark.parametrize("input_name", ["positional", "hidden_states", "query_input"])
+def test_attention_forward_preserves_input_dtype(input_name: str):
+    class MixedPrecisionAttention(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.auxiliary = nn.Parameter(torch.ones((), dtype=torch.float32))
+            self.received_dtype = None
+
+        def forward(self, hidden_states=None, query_input=None):
+            value = query_input if query_input is not None else hidden_states
+            self.received_dtype = value.dtype
+            return value
+
+    original = MixedPrecisionAttention()
+    bridge = AttentionBridge(name="attention", config=None)
+    bridge.set_original_component(original)
+    inputs = torch.ones(2, 3, dtype=torch.bfloat16)
+
+    if input_name == "positional":
+        output = bridge(inputs)
+    else:
+        output = bridge(**{input_name: inputs})
+
+    assert original.received_dtype == torch.bfloat16
+    assert output.dtype == torch.bfloat16
+
+
+def test_unembedding_forward_preserves_input_dtype():
+    class MixedPrecisionUnembedding(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.auxiliary = nn.Parameter(torch.ones((), dtype=torch.float32))
+            self.received_dtype = None
+
+        def forward(self, hidden_states):
+            self.received_dtype = hidden_states.dtype
+            return hidden_states
+
+    original = MixedPrecisionUnembedding()
+    bridge = UnembeddingBridge(name="unembed")
+    bridge.set_original_component(original)
+    inputs = torch.ones(2, 3, dtype=torch.bfloat16)
+
+    output = bridge(inputs)
+
+    assert original.received_dtype == torch.bfloat16
+    assert output.dtype == torch.bfloat16
 
 
 if __name__ == "__main__":
