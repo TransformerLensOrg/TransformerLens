@@ -1363,6 +1363,14 @@ def run_benchmark_suite(
         if bridge_bos is not None:
             ht_prepend_bos = bridge_bos
 
+    # HookedTransformer is a causal decoder: loading a masked LM into it runs a
+    # bidirectional model under a causal mask, so it can never be a valid
+    # reference — numerical comparisons fall back to the Phase 1 HF logits.
+    if use_ht_reference and is_masked_lm_model(model_name, trust_remote_code=trust_remote_code):
+        if verbose:
+            print("Skipping HookedTransformer reference: masked-LM is not representable causally.")
+        use_ht_reference = False
+
     # Load HookedTransformer for comparison (after generation benchmarks)
     ht_model_unprocessed = None
     if should_run_phase(2) and use_ht_reference:

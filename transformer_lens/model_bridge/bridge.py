@@ -242,6 +242,12 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         # train() recurses, so this stamps the wrappers with the model's mode.
         original_model.train(original_model.training)
         self.train(original_model.training)
+        self.cfg._bind_bridge(self)
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        """Restore runtime config routing after deepcopy or deserialization."""
+        super().__setstate__(state)
+        self.cfg._bind_bridge(self)
 
     @property
     def tokenizer(self) -> Any:
@@ -1326,7 +1332,16 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             padding_side = getattr(self.tokenizer, "padding_side", "right")
         tokenizer_prepends_bos = getattr(self.cfg, "tokenizer_prepends_bos", True)
         if prepend_bos and (not tokenizer_prepends_bos):
-            input = utils.get_input_with_manually_prepended_bos(self.tokenizer.bos_token, input)
+            bos = self.tokenizer.bos_token
+            encodes_atomically = (
+                bos is not None
+                and len(self.tokenizer(bos, add_special_tokens=False)["input_ids"]) == 1
+            )
+            if encodes_atomically:
+                input = utils.get_input_with_manually_prepended_bos(bos, input)
+            # else: the fallback BOS is not an atom in this vocab (e.g.
+            # '<|endoftext|>' installed on BERT); prepending the string would
+            # tokenize to subword garbage, so skip rather than pollute the input.
         if isinstance(input, str):
             input = [input]
         tokens = self.tokenizer(
@@ -5025,7 +5040,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         """
         if use_attn_result:
             self._validate_attention_fork_supported("use_attn_result")
-        self.cfg.use_attn_result = use_attn_result
+        self.cfg._set_bridge_managed_hook_flag("use_attn_result", use_attn_result)
         self._propagate_attention_flag("use_attn_result", use_attn_result)
 
     def set_use_split_qkv_input(self, use_split_qkv_input: bool):
@@ -5040,7 +5055,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                     "Call set_use_attn_in(False) before enabling use_split_qkv_input."
                 )
             self._validate_attention_fork_supported("use_split_qkv_input")
-        self.cfg.use_split_qkv_input = use_split_qkv_input
+        self.cfg._set_bridge_managed_hook_flag("use_split_qkv_input", use_split_qkv_input)
         self._propagate_attention_flag("use_split_qkv_input", use_split_qkv_input)
 
     def set_use_attn_in(self, use_attn_in: bool):
@@ -5058,7 +5073,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                     "Call set_use_split_qkv_input(False) before enabling use_attn_in."
                 )
             self._validate_attention_fork_supported("use_attn_in")
-        self.cfg.use_attn_in = use_attn_in
+        self.cfg._set_bridge_managed_hook_flag("use_attn_in", use_attn_in)
         self._propagate_attention_flag("use_attn_in", use_attn_in)
 
     def set_use_hook_mlp_in(self, use_hook_mlp_in: bool) -> None:
@@ -5067,17 +5082,25 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
 
         See :py:meth:`HookedTransformer.set_use_hook_mlp_in`.
         """
-        self.cfg.use_hook_mlp_in = use_hook_mlp_in
+        self.cfg._set_bridge_managed_hook_flag("use_hook_mlp_in", use_hook_mlp_in)
         if not hasattr(self, "blocks"):
             return
         for block in self.blocks:
             block_cfg = getattr(block, "config", None)
             if block_cfg is not None and block_cfg is not self.cfg:
                 try:
-                    block_cfg.use_hook_mlp_in = use_hook_mlp_in
-                except Exception:
+                    self._write_propagated_hook_flag(block_cfg, "use_hook_mlp_in", use_hook_mlp_in)
+                except (AttributeError, TypeError):
                     pass
             block._use_hook_mlp_in = use_hook_mlp_in
+
+    @staticmethod
+    def _write_propagated_hook_flag(config: Any, flag_name: str, value: bool) -> None:
+        """Write a cloned config flag without dispatching through its live Bridge."""
+        if isinstance(config, TransformerBridgeConfig):
+            config._set_bridge_managed_hook_flag(flag_name, value)
+        else:
+            object.__setattr__(config, flag_name, value)
 
     def _propagate_attention_flag(self, flag_name: str, value: bool) -> None:
         """Mirror `bridge.cfg.<flag>` onto every block's attention config.
@@ -5099,11 +5122,10 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             attn_cfg = getattr(attn, "config", None)
             if attn_cfg is not None and attn_cfg is not self.cfg:
                 try:
-                    setattr(attn_cfg, flag_name, value)
-                except Exception:
-                    # Some cfg objects may be frozen/immutable. Skip silently —
-                    # the block simply won't honor the flag, which is the
-                    # same outcome as before this fix.
+                    self._write_propagated_hook_flag(attn_cfg, flag_name, value)
+                except (AttributeError, TypeError):
+                    # Some config-like objects reject attributes even when
+                    # bypassing their custom __setattr__ implementation.
                     pass
 
     def _validate_attention_fork_supported(self, flag_name: str) -> None:

@@ -118,6 +118,7 @@ class ALiBiJointQKVAttentionBridge(JointQKVAttentionBridge):
         # Add attention mask
         attention_mask = kwargs.get("attention_mask", None)
         if attention_mask is not None:
+            attention_mask = self._normalize_compatibility_mask_sentinel(attention_mask)
             attn_scores = attn_scores + attention_mask[:, :, :, : attn_scores.shape[-1]]
 
         attn_scores = self.hook_attn_scores(attn_scores)

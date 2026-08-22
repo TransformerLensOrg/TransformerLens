@@ -959,10 +959,16 @@ def boot(
     if tokenizer is not None:
         # Detect BOS/EOS behavior (use non-empty string; empty is unreliable with token aliasing)
         encoded_test = tokenizer.encode("a")
+        leading_special_ids = {
+            token_id
+            for token_id in (tokenizer.bos_token_id, getattr(tokenizer, "cls_token_id", None))
+            if token_id is not None
+        }
+        # CLS counts: BERT-style tokenizers prepend [CLS], which HookedTransformer
+        # treats as the BOS-like token; comparing only against bos_token_id (a
+        # fallback string on such tokenizers) concludes False and desyncs the stacks.
         adapter.cfg.tokenizer_prepends_bos = (
-            len(encoded_test) > 1
-            and tokenizer.bos_token_id is not None
-            and encoded_test[0] == tokenizer.bos_token_id
+            len(encoded_test) > 1 and encoded_test[0] in leading_special_ids
         )
         adapter.cfg.tokenizer_appends_eos = (
             len(encoded_test) > 1

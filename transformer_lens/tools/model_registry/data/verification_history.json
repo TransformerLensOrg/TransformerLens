@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-08-20T12:42:17.596091",
+  "last_updated": "2026-08-20T13:20:36.439867",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -22794,6 +22794,66 @@
     {
       "model_id": "internlm/internlm2-chat-1_8b",
       "architecture_id": "InternLM2ForCausalLM",
+      "verified_date": "2026-08-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "google-bert/bert-base-cased",
+      "architecture_id": "BertForMaskedLM",
+      "verified_date": "2026-08-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: all_components); P2=68.8% < 75.0% (failed: logits_equiva \u2014 1/79 components failed (1 critical)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "google-bert/bert-base-cased",
+      "architecture_id": "BertForMaskedLM",
+      "verified_date": "2026-08-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: all_components); P2=68.8% < 75.0% (failed: logits_equiva \u2014 1/79 components failed (1 critical)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "google-bert/bert-base-cased",
+      "architecture_id": "BertForMaskedLM",
+      "verified_date": "2026-08-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: all_components); P2=68.8% < 75.0% (failed: logits_equiva \u2014 2/79 components failed (2 critical)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "google-bert/bert-base-cased",
+      "architecture_id": "BertForMaskedLM",
+      "verified_date": "2026-08-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: all_components); P2=68.8% < 75.0% (failed: logits_equiva \u2014 1/79 components failed (1 critical)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "google-bert/bert-base-cased",
+      "architecture_id": "BertForMaskedLM",
+      "verified_date": "2026-08-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P2=68.8% < 75.0% (failed: logits_equivalence, loss_equivalence, hook_functionality, \u2014 Tensors differ: max_diff=29.631586, mean_rel=1.923156",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "google-bert/bert-base-cased",
+      "architecture_id": "BertForMaskedLM",
       "verified_date": "2026-08-20",
       "verified_by": "verify_models",
       "transformerlens_version": null,

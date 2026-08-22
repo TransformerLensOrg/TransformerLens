@@ -92,9 +92,10 @@ class MPTALiBiAttentionBridge(ALiBiJointQKVAttentionBridge):
         # MPT passes a bool 4D mask (True = masked), not an additive float mask.
         attention_mask = kwargs.get("attention_mask", None)
         if attention_mask is not None:
-            attn_scores = attn_scores.masked_fill(
-                attention_mask, torch.finfo(attn_scores.dtype).min
+            mask_value = (
+                -torch.inf if self.compatibility_mode else torch.finfo(attn_scores.dtype).min
             )
+            attn_scores = attn_scores.masked_fill(attention_mask, mask_value)
 
         attn_scores = self.hook_attn_scores(attn_scores)
 
