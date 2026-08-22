@@ -3268,6 +3268,21 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
 
         return criteria if len(criteria) > 0 else None
 
+    def _encdec_ngram_processor(self) -> Optional[Any]:
+        """generation_config.no_repeat_ngram_size as transformers' own
+        processor, or None. HF applies it by default; parity for models whose
+        greedy decode needs it to escape token attractors."""
+        size = getattr(
+            getattr(self.original_model, "generation_config", None),
+            "no_repeat_ngram_size",
+            None,
+        )
+        if not size:
+            return None
+        from transformers.generation.logits_process import NoRepeatNGramLogitsProcessor
+
+        return NoRepeatNGramLogitsProcessor(size)
+
     def _generate_tokens(
         self,
         current_tokens: torch.Tensor,
@@ -3300,6 +3315,9 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         verbose: bool,
         stopping_criteria_list: Optional[Any] = None,
         initial_attention_mask: Optional[torch.Tensor] = None,
+        min_decoder_length: Optional[int] = None,
+        ngram_processor: Optional[Any] = None,
+        encoder_attention_mask: Optional[torch.Tensor] = None,
     ) -> Generator[Tuple[torch.Tensor, torch.Tensor, bool], None, None]:
         """Core generation loop. Yields (sampled_tokens, final_logits, all_finished) per step.
 
@@ -3344,10 +3362,17 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         for gen_step_idx in tqdm.tqdm(range(max_new_tokens), disable=not verbose):
             with torch.no_grad():
                 if is_encoder_decoder:
+                    assert encoder_input is not None
+                    encdec_kwargs: Dict[str, Any] = {}
+                    if encoder_attention_mask is not None:
+                        encdec_kwargs["attention_mask"] = encoder_attention_mask.to(
+                            encoder_input.device
+                        )
                     logits = self(
                         encoder_input,
                         return_type="logits",
                         decoder_input=decoder_tokens,
+                        **encdec_kwargs,
                     )
                 else:
                     forward_kwargs: Dict[str, Any] = {}
@@ -3496,6 +3521,23 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                     if _generate_from_embeds and generated_token_ids
                     else None
                 )
+                # transformers' own NoRepeatNGramLogitsProcessor, honoring
+                # generation_config (bart-large-cnn pins 3; without it greedy
+                # decoding falls into a BOS attractor and emits nothing).
+                if ngram_processor is not None and decoder_tokens is not None:
+                    final_logits = ngram_processor(decoder_tokens, final_logits)
+                # HF's generate() suppresses EOS below generation_config.min_length
+                # (bart-large-cnn pins 56); without this the loop can EOS on step
+                # one and emit an empty summary.
+                if (
+                    min_decoder_length is not None
+                    and is_encoder_decoder
+                    and decoder_tokens is not None
+                    and decoder_tokens.shape[1] < min_decoder_length
+                    and stop_tokens
+                ):
+                    final_logits = final_logits.clone()
+                    final_logits[:, stop_tokens] = float("-inf")
                 if do_sample:
                     sampled_tokens = utils.sample_logits(
                         final_logits,
@@ -3631,6 +3673,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         stop_strings: Optional[Union[str, List[str]]] = None,
         stopping_criteria: Optional[Any] = None,
         attention_mask: Optional[torch.Tensor] = None,
+        forced_bos_token_id: Optional[int] = None,
         **multimodal_kwargs,
     ) -> (
         str
@@ -3721,6 +3764,10 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                 paths the mask is forwarded to the model as-is rather than grown per
                 step, which is what processors emitting one alongside
                 ``pixel_values`` expect.
+            forced_bos_token_id: Optional token id seeded as the first decoder token
+                after ``decoder_start`` on encoder-decoder models. Multilingual
+                translators (M2M100/MBart/NLLB) select their target language this way.
+                Raises ValueError on decoder-only models.
 
         Returns:
             Generated sequence as string, list of strings, or tensor depending on input type and return_type.
@@ -3751,22 +3798,44 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         use_past_kv_cache = self._resolve_generation_caching(use_past_kv_cache, _is_batched_list)
 
         _generate_from_embeds = False
+        _encdec_early = hasattr(self.original_model, "config") and getattr(
+            self.original_model.config, "is_encoder_decoder", False
+        )
         if isinstance(input, str):
-            input_tokens = self.to_tokens(
-                input, prepend_bos=prepend_bos, move_to_device=True, truncate=False
-            )
+            if _encdec_early:
+                # Deliberate divergence: prepend_bos is IGNORED for enc-dec
+                # string/list input. Encoder input follows the tokenizer's own
+                # recipe (lang token + trailing </s>); to_tokens' decoder-style
+                # BOS policy corrupts it — m2m100 degenerates to loops.
+                input_tokens = self.tokenizer(input, return_tensors="pt")["input_ids"].to(
+                    self.cfg.device
+                )
+            else:
+                input_tokens = self.to_tokens(
+                    input, prepend_bos=prepend_bos, move_to_device=True, truncate=False
+                )
             input_type = "str"
         elif isinstance(input, list):
-            # Force left-padding for batched generation so real tokens are
-            # flush-right and logits[:, -1, :] is always the last real token.
-            if _is_batched_list:
-                _orig_padding_side = self.tokenizer.padding_side
-                self.tokenizer.padding_side = "left"
-            input_tokens = self.to_tokens(
-                input, prepend_bos=prepend_bos, move_to_device=True, truncate=False
-            )
-            if _is_batched_list:
-                self.tokenizer.padding_side = _orig_padding_side
+            if _encdec_early:
+                # Same native-recipe rule as the str branch: to_tokens' BOS
+                # policy corrupts encoder inputs (stray <s>, dropped </s>).
+                # Keep the tokenizer's mask too — unequal rows otherwise
+                # attend over pads in the encoder.
+                _enc_batch = self.tokenizer(input, return_tensors="pt", padding=True)
+                input_tokens = _enc_batch["input_ids"].to(self.cfg.device)
+                if attention_mask is None and "attention_mask" in _enc_batch:
+                    attention_mask = _enc_batch["attention_mask"].to(self.cfg.device)
+            else:
+                # Force left-padding for batched generation so real tokens are
+                # flush-right and logits[:, -1, :] is always the last real token.
+                if _is_batched_list:
+                    _orig_padding_side = self.tokenizer.padding_side
+                    self.tokenizer.padding_side = "left"
+                input_tokens = self.to_tokens(
+                    input, prepend_bos=prepend_bos, move_to_device=True, truncate=False
+                )
+                if _is_batched_list:
+                    self.tokenizer.padding_side = _orig_padding_side
             input_type = "list"
         elif isinstance(input, torch.Tensor) and input.is_floating_point():
             # inputs_embeds: pre-computed embeddings (e.g., from multimodal models)
@@ -3885,6 +3954,18 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         is_encoder_decoder = hasattr(self.original_model, "config") and getattr(
             self.original_model.config, "is_encoder_decoder", False
         )
+        if forced_bos_token_id is None and is_encoder_decoder:
+            # HF's generate() applies generation_config defaults; bart-large-cnn
+            # pins forced_bos_token_id=0 there and degrades without it.
+            forced_bos_token_id = getattr(
+                getattr(self.original_model, "generation_config", None),
+                "forced_bos_token_id",
+                None,
+            )
+        if forced_bos_token_id is not None and not is_encoder_decoder:
+            # Raise before any state mutation (_capture_hf_cache) and before
+            # the stateful hf_generate early-return would drop the kwarg.
+            raise ValueError("forced_bos_token_id is only meaningful for encoder-decoder models")
 
         # return_cache recomputes run_with_cache on the generated output (see issue #697).
         # That is well-defined only for single-sequence, decoder-only text generation, so
@@ -4053,6 +4134,16 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                 dtype=input_tokens.dtype,
                 device=self.cfg.device,
             )
+            if forced_bos_token_id is not None:
+                # Multilingual seq2seq (M2M100/MBart/NLLB) selects the target
+                # language via the first decoder token after decoder_start.
+                forced = torch.full(
+                    (batch_size, 1),
+                    forced_bos_token_id,
+                    dtype=input_tokens.dtype,
+                    device=self.cfg.device,
+                )
+                decoder_tokens = torch.cat([decoder_tokens, forced], dim=1)
 
         try:
             for sampled_tokens, final_logits, all_finished in self._generate_tokens(
@@ -4085,6 +4176,17 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                 verbose=verbose,
                 stopping_criteria_list=stopping_criteria_list,
                 initial_attention_mask=initial_attention_mask,
+                min_decoder_length=(
+                    getattr(
+                        getattr(self.original_model, "generation_config", None),
+                        "min_length",
+                        None,
+                    )
+                    if is_encoder_decoder
+                    else None
+                ),
+                ngram_processor=(self._encdec_ngram_processor() if is_encoder_decoder else None),
+                encoder_attention_mask=(attention_mask if is_encoder_decoder else None),
             ):
                 sampled_tokens_list.append(sampled_tokens.unsqueeze(1))
                 if logits_seq_list is not None:
@@ -4100,7 +4202,8 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         sampled_tokens = torch.cat(sampled_tokens_list, dim=1)
         if is_encoder_decoder:
             # Reconstruct full decoder sequence: start token + generated tokens
-            output_tokens = torch.cat([decoder_tokens[:, :1], sampled_tokens], dim=1)
+            decoder_seed_len = 2 if forced_bos_token_id is not None else 1
+            output_tokens = torch.cat([decoder_tokens[:, :decoder_seed_len], sampled_tokens], dim=1)
         elif _generate_from_embeds:
             # For inputs_embeds, we only have the generated token IDs (no input token IDs)
             output_tokens = sampled_tokens
@@ -4297,22 +4400,38 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         _is_batched_list = isinstance(input, list) and len(input) > 1
         use_past_kv_cache = self._resolve_generation_caching(use_past_kv_cache, _is_batched_list)
 
+        _encdec_early = hasattr(self.original_model, "config") and getattr(
+            self.original_model.config, "is_encoder_decoder", False
+        )
         if isinstance(input, str):
-            input_tokens = self.to_tokens(
-                input, prepend_bos=prepend_bos, move_to_device=True, truncate=False
-            )
-            input_type = "str"
-        elif isinstance(input, list):
-            if _is_batched_list:
-                _orig_ps = self.tokenizer.padding_side
-                self.tokenizer.padding_side = "left"
-            try:
+            if _encdec_early:
+                # Native recipe: to_tokens' BOS policy corrupts encoder inputs.
+                input_tokens = self.tokenizer(input, return_tensors="pt")["input_ids"].to(
+                    self.cfg.device
+                )
+            else:
                 input_tokens = self.to_tokens(
                     input, prepend_bos=prepend_bos, move_to_device=True, truncate=False
                 )
-            finally:
-                if _is_batched_list:
+            input_type = "str"
+        elif isinstance(input, list):
+            if _encdec_early:
+                input_tokens = self.tokenizer(input, return_tensors="pt", padding=True)[
+                    "input_ids"
+                ].to(self.cfg.device)
+            elif _is_batched_list:
+                _orig_ps = self.tokenizer.padding_side
+                self.tokenizer.padding_side = "left"
+                try:
+                    input_tokens = self.to_tokens(
+                        input, prepend_bos=prepend_bos, move_to_device=True, truncate=False
+                    )
+                finally:
                     self.tokenizer.padding_side = _orig_ps
+            else:
+                input_tokens = self.to_tokens(
+                    input, prepend_bos=prepend_bos, move_to_device=True, truncate=False
+                )
             input_type = "list"
         else:
             input_tokens = input.to(self.cfg.device)

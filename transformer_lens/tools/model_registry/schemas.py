@@ -64,6 +64,8 @@ class ModelEntry:
         verified_date: Date when verification was performed
         metadata: Optional metadata from HuggingFace
         note: Optional note (skip/fail reason, e.g. "Estimated 48 GB exceeds 16 GB limit")
+        prompt_profile: Phase-4 prompt profile used (e.g. "task:translation@en-de");
+            omitted from JSON for the default continuation profile
         phase1_score: Benchmark Phase 1 score (HF vs Bridge), 0-100 or None
         phase2_score: Benchmark Phase 2 score (Bridge vs HT unprocessed), 0-100 or None
         phase3_score: Benchmark Phase 3 score (Bridge vs HT processed), 0-100 or None
@@ -79,6 +81,8 @@ class ModelEntry:
     verified_date: Optional[date] = None
     metadata: Optional[ModelMetadata] = None
     note: Optional[str] = None
+    prompt_profile: Optional[str] = None
+    p4_scoring_version: Optional[int] = None
     phase1_score: Optional[float] = None
     phase2_score: Optional[float] = None
     phase3_score: Optional[float] = None
@@ -88,8 +92,9 @@ class ModelEntry:
     phase9_score: Optional[float] = None
 
     def to_dict(self) -> dict:
-        """Convert to a JSON-serializable dictionary."""
-        return {
+        """Convert to a JSON-serializable dictionary. prompt_profile is sparse:
+        omitted when None so default-profile entries carry no key."""
+        result = {
             "architecture_id": self.architecture_id,
             "model_id": self.model_id,
             "status": self.status,
@@ -104,6 +109,18 @@ class ModelEntry:
             "phase8_score": self.phase8_score,
             "phase9_score": self.phase9_score,
         }
+        extras: list[tuple[str, object]] = []
+        if self.prompt_profile is not None:
+            extras.append(("prompt_profile", self.prompt_profile))
+        if self.p4_scoring_version is not None:
+            extras.append(("p4_scoring_version", self.p4_scoring_version))
+        if extras:
+            note_index = list(result).index("note") + 1
+            items = list(result.items())
+            for offset, pair in enumerate(extras):
+                items.insert(note_index + offset, pair)
+            result = dict(items)
+        return result
 
     @classmethod
     def from_dict(cls, data: dict) -> "ModelEntry":
@@ -128,6 +145,8 @@ class ModelEntry:
             verified_date=verified_date,
             metadata=metadata,
             note=data.get("note"),
+            prompt_profile=data.get("prompt_profile"),
+            p4_scoring_version=data.get("p4_scoring_version"),
             phase1_score=data.get("phase1_score"),
             phase2_score=data.get("phase2_score"),
             phase3_score=data.get("phase3_score"),
