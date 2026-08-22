@@ -320,16 +320,6 @@ class GeneralizedComponent(nn.Module):
             raise RuntimeError(
                 f"Original component not set for {self.name}. Call set_original_component() first."
             )
-        # Skip non-fp params: quantized weights (bnb uint8/int8, GPTQ/AWQ int32,
-        # HQQ, torchao) are stored in integer dtypes and dequantized internally
-        # during matmul. The compute dtype must come from a fp parameter; casting
-        # fp inputs to an integer storage dtype destroys precision.
-        target_dtype = None
-        for p in original_component.parameters():
-            if not p.dtype.is_floating_point:
-                continue
-            target_dtype = p.dtype
-            break
         input_arg_names = [
             "input",
             "hidden_states",
@@ -342,19 +332,11 @@ class GeneralizedComponent(nn.Module):
         for name in input_arg_names:
             if name in kwargs:
                 hooked = self.hook_in(kwargs[name])
-                if (
-                    target_dtype is not None
-                    and isinstance(hooked, torch.Tensor)
-                    and hooked.is_floating_point()
-                ):
-                    hooked = hooked.to(dtype=target_dtype)
                 kwargs[name] = hooked
                 input_found = True
                 break
         if not input_found and len(args) > 0 and isinstance(args[0], torch.Tensor):
             hooked_input = self.hook_in(args[0])
-            if target_dtype is not None and hooked_input.is_floating_point():
-                hooked_input = hooked_input.to(dtype=target_dtype)
             args = (hooked_input,) + args[1:]
             input_found = True
         output = original_component(*args, **kwargs)
