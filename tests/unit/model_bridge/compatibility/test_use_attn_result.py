@@ -70,21 +70,19 @@ def test_hook_result_shape_and_sum_equals_hook_out(gpt2_bridge):
 
 
 def test_hook_result_does_not_fire_when_flag_off(gpt2_bridge):
-    """When `use_attn_result=False` the per-head einsum path is skipped, so
-    `hook_result` must NOT fire (no activation captured)."""
+    """When `use_attn_result=False`, explicitly adding hook_result should fail
+    with a clear error explaining how to enable the gated hook."""
     x = torch.arange(1, 9).unsqueeze(0)
     assert gpt2_bridge.cfg.use_attn_result is False
-    fired = {"result": False}
 
     def _hook(tensor, hook):
-        fired["result"] = True
         return tensor
 
-    gpt2_bridge.run_with_hooks(x, fwd_hooks=[("blocks.0.attn.hook_result", _hook)])
-    assert fired["result"] is False, (
-        "hook_result fired when use_attn_result was False; the flag is "
-        "supposed to skip the per-head computation."
-    )
+    with pytest.raises(ValueError, match="set_use_attn_result"):
+        gpt2_bridge.run_with_hooks(
+            x,
+            fwd_hooks=[("blocks.0.attn.hook_result", _hook)],
+        )
 
 
 def test_use_attn_result_applicability_raises_on_unsupported(monkeypatch, gpt2_bridge):

@@ -122,7 +122,7 @@ For the full mapping of legacy → canonical names and the expected tensor shape
 
 Two semantic differences inside `enable_compatibility_mode()` worth knowing if you are porting activation-patching, DLA, or attribution-patching code:
 
-- **`blocks.{i}.hook_mlp_in` fires pre-ln2** (matching legacy `HookedTransformer`). Use `bridge.set_use_hook_mlp_in(True)` to enable it — setting `cfg.use_hook_mlp_in = True` directly is honored when blocks share the bridge's `cfg`, but the setter is the supported entry point. The pre-ln2 placement means cached values from one run can be patched into another and re-flow through `ln2 → mlp` consistently across the bridge and `HookedTransformer`.
+- **`blocks.{i}.hook_mlp_in` fires pre-ln2** (matching legacy `HookedTransformer`). Enable it with `bridge.set_use_hook_mlp_in(True)` or `bridge.cfg.use_hook_mlp_in = True`; direct config assignment routes through the same validation and propagation path as the setter. The pre-ln2 placement means cached values from one run can be patched into another and re-flow through `ln2 → mlp` consistently across the bridge and `HookedTransformer`.
 - **`hook_q_input` / `hook_k_input` / `hook_v_input` / `hook_attn_in`** also fire pre-ln1 in compat mode. On the per-head LN application that follows, the bridge routes through the raw HF norm rather than the `NormalizationBridge` wrapper, so `ln1`'s sub-hooks (`hook_in`, `hook_normalized`, `hook_scale`) do **not** fire once per head the way legacy `LayerNormPre` would. Q/K/V projections downstream still match legacy numerically; only the intermediate LN sub-hook firing is suppressed.
 
 Post-norm architectures (OLMo 2, BERT-style encoders) and MLA blocks (DeepSeek V2/V3/R1) do not participate in the pre-ln1 capture — `MLABlockBridge` does not expose those aliases, and post-norm models would read the post-attention residual instead of the block input.
@@ -144,7 +144,35 @@ If your code only touches these APIs, the migration is genuinely just the loadin
 
 ### BERT Next Sentence Prediction
 
-`BertNextSentencePrediction` is not ported to `TransformerBridge`. Keep using `HookedEncoder` + `BertNextSentencePrediction` for NSP workflows. The bridge's BERT adapter does load NSP HuggingFace checkpoints (it rewires the unembed to `cls.seq_relationship`), but the high-level NSP API – sentence-pair tokenization, `[CLS]` pooling, "sequential"/"not sequential" decoding — is not exposed. If this is feature is something you'd like added to TransformerBridge, please file an issue.
+NSP runs on the bridge today — load the NSP head via `model_class` and pass the
+sentence-pair tokenization through:
+
+```python
+from transformers import AutoTokenizer, BertForNextSentencePrediction
+from transformer_lens.model_bridge import TransformerBridge
+
+tokenizer = AutoTokenizer.from_pretrained("google-bert/bert-base-cased")
+nsp = TransformerBridge.boot_transformers(
+    "google-bert/bert-base-cased",
+    model_class=BertForNextSentencePrediction,
+)
+nsp.enable_compatibility_mode()
+
+inputs = tokenizer("A man walked into a grocery store.", "He bought an apple.", return_tensors="pt")
+nsp(inputs["input_ids"], token_type_ids=inputs["token_type_ids"], return_type="predictions")
+# 'The sentences are sequential'
+```
+
+**Pass `token_type_ids`.** They are what tells BERT where the first sentence ends
+and the second begins; without them the NSP head scores a single undifferentiated
+span and can return the wrong verdict (on the pair above, dropping them collapses
+the logits from ±4.37 to ±0.58, and a genuinely non-sequential pair flips to
+"sequential"). With them, the bridge reproduces the raw HuggingFace NSP logits
+exactly.
+
+The legacy `BertNextSentencePrediction` wrapper is deprecated and cannot wrap a
+`TransformerBridge` — it reaches for `HookedEncoder`-only internals
+(`encoder_output`, `pooler`, `nsp_head`). Use the recipe above instead.
 
 ### New in 3.x: streaming generation
 

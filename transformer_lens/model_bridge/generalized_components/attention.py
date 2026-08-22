@@ -430,13 +430,18 @@ class AttentionBridge(GeneralizedComponent):
         """
         past_key_values = kwargs.get("past_key_values", None)
         if past_key_values is None:
+            # GPT-NeoX/GPT-J/Bloom/Falcon/MPT/CodeGen/GPTBigCode still name the
+            # cache `layer_past`; missing it leaves the cache empty, so every
+            # decode step attends to itself alone and generation ignores the prompt.
+            past_key_values = kwargs.get("layer_past", None)
+        if past_key_values is None:
             return k, v
         layer_idx = getattr(self, "_layer_idx", None)
         if layer_idx is None:
             logger.warning(
                 "%s: past_key_values provided but _layer_idx is None "
-                "(HF component missing layer_idx attribute). "
-                "KV cache update skipped — generation will be slow.",
+                "(HF component missing layer_idx attribute). KV cache update "
+                "skipped — cached generation will ignore earlier tokens.",
                 self.name,
             )
             return k, v
@@ -518,9 +523,24 @@ class AttentionBridge(GeneralizedComponent):
             attn_weights = torch.nn.functional.softmax(attn_scores, dim=-1)
             if target_dtype is not None:
                 attn_weights = attn_weights.to(target_dtype)
+        attn_weights = self._scrub_compatibility_pattern_nans(attn_weights)
         attn_weights = self._apply_attn_dropout(attn_weights)
         attn_weights = self.hook_pattern(attn_weights)
         return attn_weights
+
+    def _scrub_compatibility_pattern_nans(self, pattern: torch.Tensor) -> torch.Tensor:
+        """Match HookedTransformer for fully masked attention rows."""
+        if self.compatibility_mode:
+            pattern = torch.where(torch.isnan(pattern), torch.zeros_like(pattern), pattern)
+        return pattern
+
+    def _normalize_compatibility_mask_sentinel(self, attention_mask: torch.Tensor) -> torch.Tensor:
+        """Normalize additive mask sentinels before dtype conversion or addition."""
+        if self.compatibility_mode and attention_mask.is_floating_point():
+            attention_mask = attention_mask.masked_fill(
+                attention_mask <= torch.finfo(attention_mask.dtype).min, -torch.inf
+            )
+        return attention_mask
 
     def _reshape_attn_output(
         self,
@@ -558,6 +578,7 @@ class AttentionBridge(GeneralizedComponent):
         if q_seq_len is None:
             q_seq_len = seq_len
         min_dtype = torch.finfo(attn_scores.dtype).min
+        mask_value = -torch.inf if self.compatibility_mode else min_dtype
         use_direct_hf_mask = attention_mask is not None and attention_mask.ndim >= 4
         # Bidirectional attention (encoders) and cross-attention have no causal
         # structure, so only synthesize the triangular mask for causal self-attention.
@@ -569,29 +590,29 @@ class AttentionBridge(GeneralizedComponent):
                 q_seq_len, seq_len, device=attn_scores.device, dtype=torch.bool
             )
             causal_mask = torch.tril(causal_mask, diagonal=seq_len - q_seq_len)
-            attn_scores = attn_scores.masked_fill(~causal_mask, min_dtype)
+            attn_scores = attn_scores.masked_fill(~causal_mask, mask_value)
 
-        if attention_mask is None:
-            return attn_scores
+        if attention_mask is not None:
+            if attention_mask.shape[-1] != seq_len:
+                attention_mask = attention_mask[..., :seq_len]
+            if attention_mask.ndim >= 3 and attention_mask.shape[-2] != q_seq_len:
+                # Extra query rows mean a full-sequence mask on a cached decode step,
+                # where the live queries are the LAST rows; taking the first hands
+                # every step position 0 (Baichuan-13B fuses ALiBi slopes in here).
+                attention_mask = attention_mask[..., -q_seq_len:, :]
 
-        if attention_mask.shape[-1] != seq_len:
-            attention_mask = attention_mask[..., :seq_len]
-        if attention_mask.ndim >= 3 and attention_mask.shape[-2] != q_seq_len:
-            # Extra query rows mean a full-sequence mask on a cached decode step,
-            # where the live queries are the LAST rows; taking the first hands
-            # every step position 0 (Baichuan-13B fuses ALiBi slopes in here).
-            attention_mask = attention_mask[..., -q_seq_len:, :]
+            if attention_mask.dtype == torch.bool:
+                attention_mask = torch.where(
+                    attention_mask,
+                    torch.zeros((), dtype=attn_scores.dtype, device=attn_scores.device),
+                    torch.full((), mask_value, dtype=attn_scores.dtype, device=attn_scores.device),
+                )
+            else:
+                attention_mask = self._normalize_compatibility_mask_sentinel(attention_mask)
+                attention_mask = attention_mask.to(dtype=attn_scores.dtype)
+            attn_scores = attn_scores + attention_mask
 
-        if attention_mask.dtype == torch.bool:
-            attention_mask = torch.where(
-                attention_mask,
-                torch.zeros((), dtype=attn_scores.dtype, device=attn_scores.device),
-                torch.full((), min_dtype, dtype=attn_scores.dtype, device=attn_scores.device),
-            )
-        else:
-            attention_mask = attention_mask.to(dtype=attn_scores.dtype)
-
-        return attn_scores + attention_mask
+        return attn_scores
 
     def _get_n_heads(self, use_kv: bool = False) -> int:
         """Resolve the number of attention heads from config.
@@ -792,42 +813,14 @@ class AttentionBridge(GeneralizedComponent):
             raise RuntimeError(
                 f"Original component not set for {self.name}. Call set_original_component() first."
             )
-        # Skip non-fp params: quantized weights (bnb uint8/int8, GPTQ/AWQ int32,
-        # HQQ, torchao) are stored in integer dtypes and dequantized internally
-        # during matmul. The compute dtype must come from a fp parameter; casting
-        # fp inputs to an integer storage dtype destroys precision.
-        target_dtype = None
-        for p in self.original_component.parameters():
-            if not p.dtype.is_floating_point:
-                continue
-            target_dtype = p.dtype
-            break
         if "query_input" in kwargs:
             hooked = self.hook_in(kwargs["query_input"])
-            if (
-                target_dtype is not None
-                and isinstance(hooked, torch.Tensor)
-                and hooked.is_floating_point()
-            ):
-                hooked = hooked.to(dtype=target_dtype)
             kwargs["query_input"] = hooked
         elif "hidden_states" in kwargs:
             hooked = self.hook_in(kwargs["hidden_states"])
-            if (
-                target_dtype is not None
-                and isinstance(hooked, torch.Tensor)
-                and hooked.is_floating_point()
-            ):
-                hooked = hooked.to(dtype=target_dtype)
             kwargs["hidden_states"] = hooked
         elif len(args) > 0 and isinstance(args[0], torch.Tensor):
             hooked = self.hook_in(args[0])
-            if (
-                target_dtype is not None
-                and isinstance(hooked, torch.Tensor)
-                and hooked.is_floating_point()
-            ):
-                hooked = hooked.to(dtype=target_dtype)
             args = (hooked,) + args[1:]
         # try/finally so the captured tensor (and its autograd graph) is
         # released even if original_component raises.

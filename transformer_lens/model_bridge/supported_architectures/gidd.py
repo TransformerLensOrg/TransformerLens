@@ -57,6 +57,8 @@ class GiddArchitectureAdapter(ArchitectureAdapter):
 
     applicable_phases: list[int] = [1, 2, 3, 4]
     supports_generation: bool = False
+    # Bidirectional masked-denoising objective; shifted causal CE is undefined.
+    supports_causal_loss: bool = False
     # Block-wise denoising with self-correction, shipped on the model class.
     native_sampler: str = "generate"
     # ScaledLinear applies a runtime weight scale; folding norms into those

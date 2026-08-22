@@ -277,7 +277,7 @@ jobs:
   coverage-test:
     name: Full Code Coverage Test
     runs-on: ubuntu-latest
-    # Suite runs under pytest-xdist on a 2-vCPU runner (~45 min with swap);
+    # Suite runs under pytest-xdist on a 2-vCPU runner (~35 min with swap);
     # 75 catches a real hang well below the old serial 90.
     timeout-minutes: 75
     steps:
@@ -285,14 +285,20 @@ jobs:
       - name: Add swap space
         # The 2-vCPU runner has ~7GB RAM; two xdist workers each holding
         # torch + resident models overflow it. Swap absorbs the model-load
-        # spikes (mirrors the notebook-checks job).
+        # spikes. 8G left the suite's heavy tail one xdist scheduling roll
+        # from the runner killing the step at ~95% (identical SHAs pass and
+        # fail), so 16G — on the ~65G /mnt temp disk, keeping the OS disk
+        # free for the uv env and model caches.
         run: |
           sudo swapoff /swapfile 2>/dev/null || true
           sudo rm -f /swapfile
-          sudo fallocate -l 8G /swapfile
-          sudo chmod 600 /swapfile
-          sudo mkswap /swapfile
-          sudo swapon /swapfile
+          sudo swapoff /mnt/swapfile 2>/dev/null || true
+          sudo rm -f /mnt/swapfile
+          sudo fallocate -l 16G /mnt/swapfile
+          sudo chmod 600 /mnt/swapfile
+          sudo mkswap /mnt/swapfile
+          sudo swapon /mnt/swapfile
+          free -h && df -h / /mnt
       - name: Install uv
         uses: astral-sh/setup-uv@v7
         with:
@@ -358,6 +364,15 @@ jobs:
           # Worker count knob (this runner is 2-vCPU, so -n auto = 2). If swap
           # still can't hold peak memory, drop to "-n 1" or grow the swapfile.
           XDIST_ARGS: "-n auto --dist loadscope"
+      - name: Memory post-mortem
+        # The tail-of-suite kills leave no cause in the step log; dmesg names
+        # the killer (kernel OOM, systemd-oomd, or neither) for the next one.
+        if: failure()
+        run: |
+          sudo dmesg | tail -n 80 || true
+          free -h || true
+          swapon --show || true
+          df -h / /mnt || true
       - name: Build check
         run: uv build
       - name: Upload Coverage Report Artifact

@@ -36,6 +36,16 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Optional
 
+from transformer_lens.benchmarks.text_quality_profiles import (
+    ARCHITECTURE_PROFILE_KINDS,
+    MODEL_PROFILE_OVERRIDES,
+    HFSignals,
+    extract_languages,
+    is_default_profile,
+    profile_from_hf_signals,
+    resolve_profile,
+)
+
 from . import HF_SUPPORTED_ARCHITECTURES
 from .registry_io import is_quantized_model
 
@@ -158,9 +168,33 @@ def _load_existing_gaps(output_dir: Path) -> dict[str, dict]:
     return by_arch
 
 
-def _build_model_entry(model_id: str, architecture_id: str) -> dict:
-    """Build a model entry dict matching the ModelEntry schema."""
-    return {
+def _extract_profile_signals(model_info) -> HFSignals:  # type: ignore[no-untyped-def]
+    """Distill pipeline_tag/tags/cardData off a listing payload (no extra request).
+
+    Args:
+        model_info: ModelInfo object from list_models(expand=[..., 'pipeline_tag',
+            'tags', 'cardData'])
+    """
+    pipeline_tag = getattr(model_info, "pipeline_tag", None)
+    tags = tuple(getattr(model_info, "tags", None) or [])
+    card_data = getattr(model_info, "card_data", None)
+    card_language = getattr(card_data, "language", None) if card_data is not None else None
+    if card_language is None and card_data is not None and hasattr(card_data, "get"):
+        card_language = card_data.get("language")
+    languages = extract_languages(card_language, tags)
+    return HFSignals(pipeline_tag=pipeline_tag, languages=languages, tags=tags)
+
+
+def _build_model_entry(
+    model_id: str, architecture_id: str, signals: Optional[HFSignals] = None
+) -> dict:
+    """Build a model entry dict matching the ModelEntry schema.
+
+    ``signals``, when given, resolves and stores a sparse ``prompt_profile`` key
+    (omitted when it's just the default) and warns on tag/curation disagreement
+    — the warning is how curation gaps (missing override/architecture rule) surface.
+    """
+    entry = {
         "architecture_id": architecture_id,
         "model_id": model_id,
         "status": 0,
@@ -175,6 +209,25 @@ def _build_model_entry(model_id: str, architecture_id: str) -> dict:
         "phase8_score": None,
         "phase9_score": None,
     }
+    if signals is not None:
+        hinted = profile_from_hf_signals(model_id, architecture_id, signals)
+        resolved = resolve_profile(model_id, architecture_id, signals=signals)
+        deliberately_curated = (
+            model_id in MODEL_PROFILE_OVERRIDES or architecture_id in ARCHITECTURE_PROFILE_KINDS
+        )
+        if hinted is not None and hinted.kind != resolved.kind and not deliberately_curated:
+            # A disagreement nothing deliberate explains is a curation gap.
+            logger.warning(
+                f"Profile mismatch for {model_id} ({architecture_id}): Hub tags say "
+                f"{hinted.kind!r}, curation resolves {resolved.kind!r}"
+            )
+        if not is_default_profile(resolved):
+            # Keep key position consistent with ModelEntry.to_dict (after note).
+            items = list(entry.items())
+            items.insert([k for k, _ in items].index("note") + 1, ("prompt_profile", str(resolved)))
+            entry.clear()
+            entry.update(items)
+    return entry
 
 
 def _canonical_author_sweep(
@@ -182,6 +235,7 @@ def _canonical_author_sweep(
     supported_models: list[dict],
     seen_models: set[str],
     architecture: Optional[str] = None,
+    refresh_profiles: bool = False,
 ) -> int:
     """Admit canonical-org supported-arch models regardless of downloads. Returns count added.
 
@@ -201,15 +255,31 @@ def _canonical_author_sweep(
         if architecture is not None and architecture not in expected_archs:
             continue
         try:
-            models_iter = api.list_models(author=author, expand=["config", "safetensors"])
+            models_iter = api.list_models(
+                author=author,
+                expand=["config", "safetensors", "pipeline_tag", "tags", "cardData"],
+            )
         except Exception as exc:  # pragma: no cover — network/transient
             logger.warning(f"Canonical sweep: list_models(author={author!r}) failed: {exc}")
             continue
 
         # Iterate paginated results; a single timeout shouldn't lose every prior author.
+        existing_by_id = {m["model_id"]: m for m in supported_models} if refresh_profiles else {}
         try:
             for model in models_iter:
                 if model.id in seen_models:
+                    # Below-threshold canonical models are reachable only here;
+                    # the main scan's backfill never sees them.
+                    if refresh_profiles:
+                        existing_entry = existing_by_id.get(model.id)
+                        if existing_entry is not None and "prompt_profile" not in existing_entry:
+                            resolved = resolve_profile(
+                                model.id,
+                                existing_entry.get("architecture_id"),
+                                signals=_extract_profile_signals(model),
+                            )
+                            if not is_default_profile(resolved):
+                                existing_entry["prompt_profile"] = str(resolved)
                     continue
                 if is_quantized_model(model.id):
                     continue
@@ -221,7 +291,8 @@ def _canonical_author_sweep(
                 # Reject e.g. mistralai's non-Mistral checkpoints.
                 if model_arch not in expected_archs:
                     continue
-                supported_models.append(_build_model_entry(model.id, model_arch))
+                signals = _extract_profile_signals(model)
+                supported_models.append(_build_model_entry(model.id, model_arch, signals))
                 seen_models.add(model.id)
                 added += 1
                 logger.info(f"Canonical sweep added: {model.id} ({model_arch})")
@@ -242,6 +313,7 @@ def scrape_all_models(
     min_downloads: int = 500,
     canonical_sweep: bool = True,
     architecture: Optional[str] = None,
+    refresh_profiles: bool = False,
 ) -> tuple[dict, dict]:
     """Scrape ALL models from HuggingFace and categorize by architecture.
 
@@ -269,6 +341,9 @@ def scrape_all_models(
             this class (e.g. ``"LlamaForCausalLM"``). Applies to both the main scan and
             the canonical-author sweep. Useful for populating the registry after adding
             a single new adapter without rescanning every architecture.
+        refresh_profiles: If True, backfill a missing ``prompt_profile`` key onto
+            already-seen registry entries using the listing payload already in hand — no
+            extra requests (default: False).
 
     Returns:
         Tuple of (supported_models_dict, architecture_gaps_dict)
@@ -292,6 +367,9 @@ def scrape_all_models(
 
     # Track all models by architecture (start with existing models)
     supported_models: list[dict] = list(existing_models)  # Preserve existing
+    # Same dict objects as supported_models — mutating via this index (--refresh-profiles)
+    # is reflected in the final write.
+    existing_by_id: dict[str, dict] = {m["model_id"]: m for m in supported_models}
     unsupported_arch_counts: dict[str, int] = {}  # arch -> count
     unsupported_arch_samples: dict[str, list[str]] = {}  # arch -> top model IDs
     unsupported_arch_downloads: dict[str, int] = {}  # arch -> total downloads
@@ -361,19 +439,22 @@ def scrape_all_models(
             logger.info("Will scan ALL new models (this may take a while)")
 
     try:
-        # Use expand=['config', 'safetensors'] to get architecture and parameter
-        # count data inline with the listing, avoiding per-model API calls.
-        # With ~1000 models per page, a full scan of 200K+ models needs only
-        # ~200 paginated requests (well within the 1000 req / 5 min limit).
-        # Use ``filter`` rather than ``pipeline_tag`` so encoder-decoder models
-        # are discoverable: HF assigns T5/mT5 a primary pipeline_tag of
-        # "translation" (or None for mT5) and only lists "text2text-generation"
-        # in the broader tag list. ``filter`` matches against tags, ``pipeline_tag``
-        # only against the canonical primary tag.
+        # Use expand=['config', 'safetensors', 'pipeline_tag', 'tags', 'cardData'] to get
+        # architecture, parameter count, and prompt-profile signals inline with the
+        # listing, avoiding per-model API calls. With ~1000 models per page, a full
+        # scan of 200K+ models needs only ~200 paginated requests (well within the
+        # 1000 req / 5 min limit).
+        # Use ``filter`` rather than ``pipeline_tag`` (the query param) so
+        # encoder-decoder models are discoverable: HF assigns T5/mT5 a primary
+        # pipeline_tag of "translation" (or None for mT5) and only lists
+        # "text2text-generation" in the broader tag list. ``filter`` matches against
+        # tags, ``pipeline_tag`` only against the canonical primary tag. The
+        # expanded ``pipeline_tag`` *field* below is a different thing — it's per-model
+        # metadata fed to profile_from_hf_signals, not a query filter.
         list_kwargs: dict = {
             "filter": task,
             "sort": "downloads",
-            "expand": ["config", "safetensors"],
+            "expand": ["config", "safetensors", "pipeline_tag", "tags", "cardData"],
         }
         if max_models is not None:
             list_kwargs["limit"] = max_models + len(seen_models)
@@ -393,6 +474,19 @@ def scrape_all_models(
                     # Skip if already in our JSON or processed in this run
                     if model.id in seen_models:
                         skipped += 1
+                        if refresh_profiles:
+                            existing_entry = existing_by_id.get(model.id)
+                            if (
+                                existing_entry is not None
+                                and "prompt_profile" not in existing_entry
+                            ):
+                                resolved = resolve_profile(
+                                    model.id,
+                                    existing_entry.get("architecture_id"),
+                                    signals=_extract_profile_signals(model),
+                                )
+                                if not is_default_profile(resolved):
+                                    existing_entry["prompt_profile"] = str(resolved)
                         continue
 
                     # Filter by minimum download count. Since results are sorted
@@ -430,7 +524,8 @@ def scrape_all_models(
                     if arch is None:
                         errors += 1
                     elif arch in HF_SUPPORTED_ARCHITECTURES:
-                        supported_models.append(_build_model_entry(model.id, arch))
+                        signals = _extract_profile_signals(model)
+                        supported_models.append(_build_model_entry(model.id, arch, signals))
                         new_supported += 1
                     else:
                         unsupported_arch_counts[arch] = unsupported_arch_counts.get(arch, 0) + 1
@@ -537,7 +632,11 @@ def scrape_all_models(
         # Don't lose the main-scan registry on a sweep-time failure.
         try:
             canonical_added = _canonical_author_sweep(
-                api, supported_models, seen_models, architecture=architecture
+                api,
+                supported_models,
+                seen_models,
+                architecture=architecture,
+                refresh_profiles=refresh_profiles,
             )
             new_supported += canonical_added
             logger.info(f"Canonical sweep added {canonical_added} models.")
@@ -830,6 +929,12 @@ Examples:
         "(e.g. 'LlamaForCausalLM'). Use after adding a new adapter to populate the "
         "registry with that architecture's models without rescanning everything.",
     )
+    parser.add_argument(
+        "--refresh-profiles",
+        action="store_true",
+        help="Backfill a missing prompt_profile key onto already-seen registry entries "
+        "from the listing payload already in hand (no extra requests).",
+    )
 
     args = parser.parse_args()
 
@@ -843,6 +948,7 @@ Examples:
         min_downloads=args.min_downloads,
         canonical_sweep=not args.no_canonical_sweep,
         architecture=args.architecture,
+        refresh_profiles=args.refresh_profiles,
     )
 
 

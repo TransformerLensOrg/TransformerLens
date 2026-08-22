@@ -750,7 +750,6 @@ def boot(
     # resolved values.
     from transformer_lens.utilities.multi_gpu import (
         MIXED_CPU_GPU_ERROR,
-        cast_floating_params_to_dtype,
         count_unique_devices,
         find_embedding_device,
         find_misplaced_modules,
@@ -847,7 +846,11 @@ def boot(
         # Cast params to dtype; preserve float32 buffers (e.g., RotaryEmbedding.inv_freq).
         # Use module-level alignment so Accelerate can temporarily materialize offloaded
         # parameters before we touch them.
-        cast_floating_params_to_dtype(hf_model, dtype)
+        # Skip dtype normalization entirely when model has an active quantizer: the
+        # quantizer owns specific dtypes (e.g., FP8 scales) that must not be overwritten.
+        from transformer_lens.utilities.multi_gpu import maybe_cast_floating_params
+
+        maybe_cast_floating_params(hf_model, dtype)
     # Derive cfg.device / cfg.n_devices from hf_device_map when present. This covers:
     #   - fresh loads with a resolved device_map (set above)
     #   - pre-loaded hf_model that the caller dispatched themselves (e.g., device_map="auto")
@@ -959,10 +962,16 @@ def boot(
     if tokenizer is not None:
         # Detect BOS/EOS behavior (use non-empty string; empty is unreliable with token aliasing)
         encoded_test = tokenizer.encode("a")
+        leading_special_ids = {
+            token_id
+            for token_id in (tokenizer.bos_token_id, getattr(tokenizer, "cls_token_id", None))
+            if token_id is not None
+        }
+        # CLS counts: BERT-style tokenizers prepend [CLS], which HookedTransformer
+        # treats as the BOS-like token; comparing only against bos_token_id (a
+        # fallback string on such tokenizers) concludes False and desyncs the stacks.
         adapter.cfg.tokenizer_prepends_bos = (
-            len(encoded_test) > 1
-            and tokenizer.bos_token_id is not None
-            and encoded_test[0] == tokenizer.bos_token_id
+            len(encoded_test) > 1 and encoded_test[0] in leading_special_ids
         )
         adapter.cfg.tokenizer_appends_eos = (
             len(encoded_test) > 1

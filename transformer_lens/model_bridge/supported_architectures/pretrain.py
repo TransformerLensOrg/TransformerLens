@@ -368,11 +368,10 @@ class PretrainArchitectureAdapter(ArchitectureAdapter):
     def __init__(self, cfg: Any) -> None:
         super().__init__(cfg)
 
-        self.cfg.normalization_type = "RMS"
-        self.cfg.positional_embedding_type = "rotary"
-        self.cfg.final_rms = True
-        self.cfg.gated_mlp = True
-        self.cfg.attn_only = False
+        # Also sets uses_rms_norm=True: norm bridges fall back to it when the
+        # wrapped norm's class name doesn't identify itself as RMSNorm, and a
+        # False fallback would mean-center RMS hook intermediates.
+        self._set_rms_rotary_defaults()
 
         self.component_mapping = {
             # "inner." because this adapter expects the source model to

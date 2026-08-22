@@ -39,6 +39,23 @@ def _bridge_with_stub(fake_forward) -> MoEBridge:
 
 
 class TestMoEBridgeTupleOutput:
+    @pytest.mark.parametrize("use_keyword", [False, True])
+    def test_preserves_input_dtype(self, use_keyword: bool) -> None:
+        received_dtype = None
+
+        def fake_forward(hidden_states):
+            nonlocal received_dtype
+            received_dtype = hidden_states.dtype
+            return hidden_states
+
+        bridge = _bridge_with_stub(fake_forward)
+        hidden_states = torch.ones(1, 3, 4, dtype=torch.bfloat16)
+
+        output = bridge(hidden_states=hidden_states) if use_keyword else bridge(hidden_states)
+
+        assert received_dtype == torch.bfloat16
+        assert output.dtype == torch.bfloat16
+
     def test_empty_tuple_raises_clear_type_error(self) -> None:
         bridge = _bridge_with_stub(lambda *a, **kw: ())
         with pytest.raises(TypeError, match="torch.Tensor"):

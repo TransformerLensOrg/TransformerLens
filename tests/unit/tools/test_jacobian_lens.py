@@ -4,7 +4,7 @@ from contextlib import contextmanager
 from enum import IntEnum
 from inspect import Parameter, signature
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, Optional, Sequence
 
 import numpy as np
 import pytest
@@ -21,6 +21,8 @@ from transformer_lens.model_bridge.supported_architectures.deepseek_v4 import (
 from transformer_lens.tools.analysis import (
     JacobianLens,
     JSpaceDecomposition,
+    JSpaceOccupancy,
+    JSpaceVarianceProfile,
     get_sparse_decomposition,
 )
 from transformer_lens.utilities.activation_functions import apply_softcap
@@ -1391,3 +1393,107 @@ def test_decompose_rejects_unfitted_layer(toy_model: _ToyBridge, fitted_lens: Ja
         fitted_lens.decompose(
             toy_model, torch.randn(toy_model.cfg.d_model), layer=N_LAYERS - 1, k=3
         )
+
+
+def test_occupancy_on_toy_model_raw_activation(
+    toy_model: _ToyBridge, fitted_lens: JacobianLens
+) -> None:
+    """occupancy on a raw activation returns a JSpaceOccupancy with a count in [1, max_atoms]."""
+    layer = fitted_lens.source_layers[0]
+    activation = torch.randn(toy_model.cfg.d_model)
+    result = fitted_lens.occupancy(toy_model, activation, layer, max_atoms=5, seed=0)
+    assert isinstance(result, JSpaceOccupancy)
+    assert 1 <= result.occupancy <= 5
+    assert result.support.numel() == 5
+    assert result.marginal_captured_variance.shape == result.control_captured_variance.shape
+
+
+def test_occupancy_prompt_path_runs(toy_model: _ToyBridge, fitted_lens: JacobianLens) -> None:
+    """occupancy accepts a prompt plus position, running the model to fetch the activation."""
+    layer = fitted_lens.source_layers[0]
+    result = fitted_lens.occupancy(
+        toy_model, "a toy prompt", layer, position=-1, max_atoms=5, seed=0
+    )
+    assert isinstance(result, JSpaceOccupancy)
+    assert 1 <= result.occupancy <= 5
+
+
+def test_occupancy_rejects_unfitted_layer(toy_model: _ToyBridge, fitted_lens: JacobianLens) -> None:
+    """occupancy shares decompose's validation: an unfitted layer raises."""
+    with pytest.raises(ValueError):
+        fitted_lens.occupancy(toy_model, torch.randn(toy_model.cfg.d_model), layer=N_LAYERS - 1)
+
+
+def test_fraction_of_variance_on_toy_model(
+    toy_model: _ToyBridge, fitted_lens: JacobianLens
+) -> None:
+    """fraction_of_variance returns per-layer median and pooled ratios in [0, 1] over a corpus."""
+    profile = fitted_lens.fraction_of_variance(
+        toy_model, ["a toy prompt here", "another toy prompt goes here"], k=3, skip_first=0
+    )
+    assert isinstance(profile, JSpaceVarianceProfile)
+    assert profile.layers == list(fitted_lens.source_layers)
+    for layer in profile.layers:
+        assert 0.0 <= profile.median[layer] <= 1.0
+        assert 0.0 <= profile.pooled[layer] <= 1.0
+        assert profile.per_position[layer].numel() > 0
+
+
+def test_fraction_of_variance_rejects_unfitted_layer(
+    toy_model: _ToyBridge, fitted_lens: JacobianLens
+) -> None:
+    with pytest.raises(ValueError):
+        fitted_lens.fraction_of_variance(toy_model, "a toy prompt", layers=[N_LAYERS - 1])
+
+
+def test_fraction_of_variance_rejects_empty_corpus(
+    toy_model: _ToyBridge, fitted_lens: JacobianLens
+) -> None:
+    with pytest.raises(ValueError):
+        fitted_lens.fraction_of_variance(toy_model, [])
+
+
+@pytest.mark.parametrize(
+    "tokens",
+    [
+        torch.zeros(4, dtype=torch.long),
+        torch.zeros((2, 4), dtype=torch.long),
+        torch.zeros((1, 1, 4), dtype=torch.long),
+    ],
+    ids=["missing-batch-dimension", "multiple-prompts", "extra-dimension"],
+)
+def test_fraction_of_variance_rejects_invalid_token_shape(
+    toy_model: _ToyBridge, fitted_lens: JacobianLens, tokens: torch.Tensor
+) -> None:
+    with pytest.raises(
+        ValueError,
+        match=r"fraction_of_variance expects each tokenized prompt to have shape \[1, seq\]",
+    ):
+        fitted_lens.fraction_of_variance(toy_model, tokens, k=3, skip_first=0)
+
+
+@pytest.mark.parametrize("positions", [None, [0]], ids=["default-sampling", "explicit-positions"])
+def test_fraction_of_variance_rejects_negative_skip_first(
+    toy_model: _ToyBridge,
+    fitted_lens: JacobianLens,
+    positions: Optional[Sequence[int]],
+) -> None:
+    with pytest.raises(ValueError, match="skip_first must be non-negative"):
+        fitted_lens.fraction_of_variance(
+            toy_model, "a toy prompt", k=3, skip_first=-1, positions=positions
+        )
+
+
+def test_fraction_of_variance_yields_nan_when_no_positions_are_sampled(
+    toy_model: _ToyBridge, fitted_lens: JacobianLens
+) -> None:
+    """When ``skip_first`` exceeds every prompt's length no position is sampled, so each layer's
+    ``median`` and ``pooled`` are NaN and ``per_position`` is empty (the documented contract)."""
+    import math
+
+    profile = fitted_lens.fraction_of_variance(toy_model, "a toy prompt", k=3, skip_first=999)
+    assert profile.layers == list(fitted_lens.source_layers)
+    for layer in profile.layers:
+        assert math.isnan(profile.median[layer])
+        assert math.isnan(profile.pooled[layer])
+        assert profile.per_position[layer].numel() == 0

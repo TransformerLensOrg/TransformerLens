@@ -1,12 +1,17 @@
 """Tests for ``TransformerBridge.boot_native`` classmethod."""
+
 from __future__ import annotations
 
 import sys
 
+import pytest
 import torch
+import torch.nn as nn
 
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.model_bridge import TransformerBridge
+from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
+from transformer_lens.model_bridge.generalized_components import LinearBridge
 from transformer_lens.model_bridge.sources.native import NativeModel
 
 
@@ -71,6 +76,51 @@ def test_boot_native_returns_bridge_over_native_model():
     assert isinstance(bridge.original_model, NativeModel)
 
 
+@pytest.mark.parametrize("stop_at_layer", [0, 2, -1])
+def test_boot_native_direct_stop_matches_cached_stop(stop_at_layer: int):
+    bridge = TransformerBridge.boot_native(_cfg(n_layers=3))
+    bridge.eval()
+    tokens = torch.tensor([[1, 2, 3]])
+
+    with torch.no_grad():
+        expected, _ = bridge.run_with_cache(tokens, stop_at_layer=stop_at_layer)
+        actual = bridge(tokens, stop_at_layer=stop_at_layer)
+
+    assert actual.shape == (1, 3, bridge.cfg.d_model)
+    torch.testing.assert_close(actual, expected)
+
+
+def test_native_state_dict_round_trip_restores_parameters():
+    bridge = TransformerBridge.boot_native(_cfg())
+
+    saved_state_dict = {key: value.detach().clone() for key, value in bridge.state_dict().items()}
+    original_parameters = {
+        name: parameter.detach().clone() for name, parameter in bridge.named_parameters()
+    }
+
+    with torch.no_grad():
+        for parameter in bridge.parameters():
+            parameter.zero_()
+
+    result = bridge.load_state_dict(saved_state_dict, strict=True)
+
+    assert result.missing_keys == []
+    assert result.unexpected_keys == []
+
+    for name, parameter in bridge.named_parameters():
+        torch.testing.assert_close(parameter, original_parameters[name])
+
+
+def test_native_state_dict_strict_rejects_unexpected_keys():
+    bridge = TransformerBridge.boot_native(_cfg())
+
+    with pytest.raises(RuntimeError, match="Unexpected key"):
+        bridge.load_state_dict(
+            {"not.a.real.weight": torch.zeros(1)},
+            strict=True,
+        )
+
+
 def test_boot_native_accepts_dict_config():
     cfg_dict = dict(
         d_model=32,
@@ -86,6 +136,30 @@ def test_boot_native_accepts_dict_config():
     bridge = TransformerBridge.boot_native(cfg_dict)
     assert bridge.cfg.d_model == 32
     assert bridge.cfg.architecture == "TransformerLensNative"
+
+
+def test_boot_native_rejects_legacy_config_with_actionable_error():
+    import pytest
+
+    from transformer_lens import HookedTransformerConfig
+
+    legacy_config = HookedTransformerConfig(
+        n_layers=1,
+        d_model=32,
+        n_ctx=8,
+        d_head=16,
+        n_heads=2,
+        d_vocab=16,
+        act_fn="gelu",
+    )
+
+    with pytest.raises(
+        TypeError,
+        match=(
+            "boot_native expected a TransformerBridgeConfig or dict, " "got HookedTransformerConfig"
+        ),
+    ):
+        TransformerBridge.boot_native(legacy_config)
 
 
 def test_boot_native_does_not_perturb_global_rng():
@@ -127,6 +201,70 @@ def test_boot_native_distinct_seeds_diverge():
     assert any(diffs), "Two different seeds produced identical params"
 
 
+def test_boot_native_skips_custom_init_when_disabled(monkeypatch):
+    def fail_if_called(*_args, **_kwargs):
+        pytest.fail("initialize_native_model was called with init_weights=False")
+
+    def fail_if_forked(*_args, **_kwargs):
+        pytest.fail("fork_rng was called with init_weights=False")
+
+    monkeypatch.setattr(
+        "transformer_lens.model_bridge.sources.native.initialize_native_model",
+        fail_if_called,
+    )
+    monkeypatch.setattr(torch.random, "fork_rng", fail_if_forked)
+    bridge = TransformerBridge.boot_native(_cfg(init_weights=False))
+
+    assert isinstance(bridge.original_model, NativeModel)
+    assert torch.count_nonzero(bridge.original_model.layers[0].attn.q.bias) > 0
+
+
+def test_native_bridge_init_weights_reinitializes_in_place_and_honors_seed():
+    bridge = TransformerBridge.boot_native(_cfg(seed=123))
+    model = bridge.original_model
+    expected = {name: param.detach().clone() for name, param in model.named_parameters()}
+
+    with torch.no_grad():
+        for param in model.parameters():
+            param.fill_(42)
+
+    bridge.init_weights()
+
+    assert bridge.original_model is model
+    for name, param in model.named_parameters():
+        assert torch.equal(param, expected[name]), f"Seed mismatch on {name}"
+
+
+def test_native_bridge_init_weights_does_not_perturb_global_rng():
+    bridge = TransformerBridge.boot_native(_cfg(seed=42))
+    torch.manual_seed(0)
+    expected_after = torch.randn(5)
+
+    torch.manual_seed(0)
+    bridge.init_weights()
+    actual_after = torch.randn(5)
+
+    assert torch.equal(actual_after, expected_after)
+
+
+def test_init_weights_rejects_non_native_bridge():
+    class StubModel(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.proj = nn.Linear(4, 4)
+
+    class StubAdapter(ArchitectureAdapter):
+        def __init__(self, cfg):
+            super().__init__(cfg)
+            self.component_mapping = {"stub_proj": LinearBridge(name="proj")}
+
+    cfg = _cfg(architecture="StubForTest")
+    bridge = TransformerBridge(StubModel(), StubAdapter(cfg), tokenizer=None)
+
+    with pytest.raises(RuntimeError, match=r"boot_native.*StubModel"):
+        bridge.init_weights()
+
+
 def test_boot_native_forward_and_cache():
     cfg = _cfg()
     bridge = TransformerBridge.boot_native(cfg)
@@ -135,6 +273,35 @@ def test_boot_native_forward_and_cache():
     assert logits.shape == (2, cfg.n_ctx, cfg.d_vocab)
     _, cache = bridge.run_with_cache(inputs, return_type="logits")
     assert "blocks.0.attn.hook_pattern" in cache
+
+
+@pytest.mark.parametrize("prepend_bos", [True, False])
+def test_run_with_cache_forwards_prepend_bos_for_string_input(monkeypatch, prepend_bos):
+    cfg = _cfg()
+    bridge = TransformerBridge.boot_native(cfg)
+    bridge._tokenizer = object()
+    tokenization_calls = []
+
+    def to_tokens(input, prepend_bos=None, padding_side=None):
+        tokenization_calls.append((input, prepend_bos, padding_side))
+        if prepend_bos is None:
+            prepend_bos = bridge.cfg.default_prepend_bos
+        tokens = [0, 7] if prepend_bos else [7]
+        return torch.tensor([tokens])
+
+    monkeypatch.setattr(bridge, "to_tokens", to_tokens)
+    bridge.eval()
+
+    with torch.no_grad():
+        direct_logits = bridge("hello", prepend_bos=prepend_bos)
+        cached_logits, cache = bridge.run_with_cache("hello", prepend_bos=prepend_bos)
+
+    assert tokenization_calls == [
+        ("hello", prepend_bos, None),
+        ("hello", prepend_bos, None),
+    ]
+    torch.testing.assert_close(cached_logits, direct_logits)
+    assert cache["hook_embed"].shape[1] == direct_logits.shape[1]
 
 
 def test_boot_native_does_not_load_transformers_runtime():
@@ -323,3 +490,40 @@ def test_boot_native_supports_training_step():
     ), "No non-zero gradients after backward"
     optimizer.step()
     optimizer.zero_grad()
+
+
+def test_boot_native_resolves_initializer_range_sentinel():
+    """Regression for #1568 — the resolved initializer range must be used by boot_native."""
+    import math
+
+    cfg = _cfg(init_mode="gpt2")
+    expected = 0.8 / math.sqrt(cfg.d_model)
+
+    assert cfg.initializer_range == pytest.approx(expected)
+
+    bridge = TransformerBridge.boot_native(cfg)
+    assert bridge.W_E.std().item() == pytest.approx(expected, rel=0.15)
+
+
+def test_boot_native_resolves_non_gpt2_initializer_range_sentinel():
+    cfg = _cfg(init_mode="kaiming_normal")
+
+    assert cfg.initializer_range == pytest.approx(1.0)
+
+
+def test_boot_native_kaiming_gain_scales_weights():
+    """Regression for #1568 — xavier/kaiming init must use initializer_range
+    as a multiplicative gain. Without this, the config value is silently
+    ignored and every kaiming/xavier model gets the same fixed scale
+    regardless of what the caller asked for."""
+    cfg_gain_1 = _cfg(init_mode="kaiming_normal", initializer_range=1.0, seed=0)
+    cfg_gain_2 = _cfg(init_mode="kaiming_normal", initializer_range=2.0, seed=0)
+
+    bridge_1 = TransformerBridge.boot_native(cfg_gain_1)
+    bridge_2 = TransformerBridge.boot_native(cfg_gain_2)
+
+    std_1 = bridge_1.W_E.std().item()
+    std_2 = bridge_2.W_E.std().item()
+
+    # Same seed, only gain differs -> std should scale ~proportionally.
+    assert std_2 / std_1 == pytest.approx(2.0)

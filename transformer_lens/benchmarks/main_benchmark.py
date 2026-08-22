@@ -5,10 +5,12 @@ against reference implementations in an optimized multi-phase approach:
 Phase 1: HF + Bridge (unprocessed) - Compare against raw HuggingFace model
 Phase 2: Bridge (unprocessed) + HT (unprocessed) - Compare unprocessed models
 Phase 3: Bridge (processed) + HT (processed) - Full compatibility mode testing
-Phase 4: Text Quality - Perplexity-based legibility scoring via GPT-2 Medium
+Phase 4: Text Quality - profile prompts scored by a pinned judge's perplexity ratio
 Phase 5: Granular Weight Processing Tests (optional, individual flags)
 Phase 6: Granular Weight Processing Tests (optional, combined flags)
 Phase 7: Multimodal Tests (only for multimodal models with pixel_values support)
+Phase 8: Audio Tests (only for audio encoder models / audio-conditioned decoders)
+Phase 9: Vision Tests (only for vision-only encoder models, e.g. ViT/DeiT)
 """
 
 import gc
@@ -31,9 +33,11 @@ from transformer_lens.benchmarks.backward_gradients import (
     benchmark_backward_hooks,
     benchmark_critical_backward_hooks,
     benchmark_gradient_computation,
+    needs_fp32_gradients,
 )
 from transformer_lens.benchmarks.component_benchmark import benchmark_all_components
 from transformer_lens.benchmarks.forward_pass import (
+    _compute_self_target_loss,
     benchmark_forward_pass,
     benchmark_logits_equivalence,
     benchmark_loss_equivalence,
@@ -512,17 +516,20 @@ def run_comparison_benchmarks(
     if verbose:
         print("6. Backward Gradient Benchmarks")
 
-    # MPS does not support bfloat16 autograd. Upcast to float32 for gradient tests if needed.
+    # Gradient comparisons are graded against fp32-calibrated thresholds
+    # (REL_L2_TOLERANCE): bf16's rounding floor alone is ~2e-3 rel_l2, inside the
+    # measured bug band, so reduced-precision gradients cannot be graded at all.
+    # Upcast for the gradient section on every device (MPS additionally lacks
+    # bf16 autograd), then restore below.
     bridge_grad_dtype = bridge_model.cfg.dtype if hasattr(bridge_model, "cfg") else None
-    bridge_device = next(bridge_model.parameters()).device
-    mps_bf16_upcast = str(bridge_device).startswith("mps") and bridge_grad_dtype == torch.bfloat16
-    if mps_bf16_upcast:
+    grad_fp32_upcast = needs_fp32_gradients(bridge_grad_dtype)
+    if grad_fp32_upcast:
         try:
             bridge_model.to(torch.float32)
             if reference_model is not None:
                 reference_model.to(torch.float32)
         except Exception:
-            mps_bf16_upcast = False  # Upcast failed; proceed as-is
+            grad_fp32_upcast = False  # Upcast failed; proceed as-is
 
     if ht_available:
         try:
@@ -561,7 +568,7 @@ def run_comparison_benchmarks(
             if verbose:
                 print(f"✗ Gradient benchmark failed: {e}\n")
 
-    if mps_bf16_upcast and bridge_grad_dtype is not None:
+    if grad_fp32_upcast and bridge_grad_dtype is not None:
         try:
             bridge_model.to(bridge_grad_dtype)
             if reference_model is not None:
@@ -585,8 +592,9 @@ def run_benchmark_suite(
     test_weight_processing_individually: bool = False,
     phases: list[int] | None = None,
     trust_remote_code: bool = False,
-    scoring_model: PreTrainedModel | None = None,
-    scoring_tokenizer: PreTrainedTokenizerBase | None = None,
+    judge_model: PreTrainedModel | None = None,
+    judge_tokenizer: PreTrainedTokenizerBase | None = None,
+    prompt_profile: str | None = None,
 ) -> List[BenchmarkResult]:
     """Run comprehensive benchmark suite for TransformerBridge.
 
@@ -594,7 +602,7 @@ def run_benchmark_suite(
     Phase 1: HF + Bridge (unprocessed) - Compare against raw HuggingFace model
     Phase 2: Bridge (unprocessed) + HT (unprocessed) - Compare unprocessed models
     Phase 3: Bridge (processed) + HT (processed) - Full compatibility mode testing
-    Phase 4: Text Quality - Perplexity-based legibility scoring via GPT-2
+    Phase 4: Text Quality - profile prompts scored by a pinned judge's perplexity ratio
     Phase 5: Individual Weight Processing Flags (optional)
     Phase 6: Combined Weight Processing Flags (optional)
 
@@ -617,9 +625,12 @@ def run_benchmark_suite(
             tests that check each processing flag individually (default: False)
         phases: Optional list of phase numbers to run (e.g., [1, 2, 3]). If None, runs all phases.
         trust_remote_code: Whether to trust remote code for custom architectures.
-        scoring_model: Optional pre-loaded GPT-2 scoring model for Phase 4. When
-            provided with scoring_tokenizer, avoids reloading for each model in batch.
-        scoring_tokenizer: Optional pre-loaded tokenizer for Phase 4 scoring model.
+        judge_model: Optional pre-loaded Phase-4 judge. When provided with
+            judge_tokenizer, avoids reloading for each model in batch.
+        judge_tokenizer: Optional pre-loaded tokenizer for the Phase-4 judge.
+        prompt_profile: Optional Phase-4 prompt profile (e.g. "chat",
+            "task:translation@en-de"). Resolved from curation + the registry
+            when None.
 
     Returns:
         List of BenchmarkResult objects
@@ -1221,7 +1232,7 @@ def run_benchmark_suite(
                 with torch.no_grad():
                     bridge_logits = bridge_unprocessed(test_text, return_type="logits")
                     phase1_reference.hf_logits = bridge_logits.detach().cpu().clone()
-                    bridge_loss = bridge_unprocessed(test_text, return_type="loss")
+                    bridge_loss = _compute_self_target_loss(bridge_unprocessed, test_text)
                     phase1_reference.hf_loss = bridge_loss.item()
                     phase1_reference.test_text = test_text
                 if needs_upcast:
@@ -1356,6 +1367,14 @@ def run_benchmark_suite(
         if bridge_bos is not None:
             ht_prepend_bos = bridge_bos
 
+    # HookedTransformer is a causal decoder: loading a masked LM into it runs a
+    # bidirectional model under a causal mask, so it can never be a valid
+    # reference — numerical comparisons fall back to the Phase 1 HF logits.
+    if use_ht_reference and is_masked_lm_model(model_name, trust_remote_code=trust_remote_code):
+        if verbose:
+            print("Skipping HookedTransformer reference: masked-LM is not representable causally.")
+        use_ht_reference = False
+
     # Load HookedTransformer for comparison (after generation benchmarks)
     ht_model_unprocessed = None
     if should_run_phase(2) and use_ht_reference:
@@ -1426,7 +1445,7 @@ def run_benchmark_suite(
     # (e.g., OpenELM).
 
     # ========================================================================
-    # PHASE 4: Text Quality (GPT-2 perplexity scoring)
+    # PHASE 4: Text Quality (profile prompts, judge perplexity-ratio scoring)
     # Runs before Phase 3 so it can reuse bridge_unprocessed (Phase 3
     # destructively processes the weights, consuming the bridge).
     # ========================================================================
@@ -1445,21 +1464,34 @@ def run_benchmark_suite(
         and not is_masked_lm_model(model_name, trust_remote_code=trust_remote_code)
         and not is_audio_model(model_name, trust_remote_code=trust_remote_code)
     ):
+        if prompt_profile is None:
+            from transformer_lens.benchmarks.text_quality_profiles import (
+                resolve_profile,
+            )
+            from transformer_lens.tools.model_registry.registry_io import (
+                registry_prompt_profile,
+            )
+
+            config = getattr(bridge_unprocessed, "original_model", None)
+            archs = getattr(getattr(config, "config", None), "architectures", None) or []
+            prompt_profile = str(
+                resolve_profile(
+                    model_name, archs[0] if archs else None, registry_prompt_profile(model_name)
+                )
+            )
+
         if verbose:
             print(f"\n{'='*80}")
-            print("PHASE 2.5: Text Quality (GPT-2 perplexity scoring)")
+            print(f"PHASE 2.5: Text Quality (profile {prompt_profile}, judge ratio scoring)")
             print(f"{'='*80}\n")
 
         try:
             text_quality_result = benchmark_text_quality(
                 bridge_unprocessed,
-                test_text,
-                max_new_tokens=50,
-                scoring_model_name="gpt2",
-                pass_threshold=85.0,
-                device=device,
-                scoring_model=scoring_model,
-                scoring_tokenizer=scoring_tokenizer,
+                prompt_profile,
+                judge_model=judge_model,
+                judge_tokenizer=judge_tokenizer,
+                model_name=model_name,
             )
             text_quality_result.phase = 4
             add_result(text_quality_result)
@@ -1667,7 +1699,7 @@ def run_benchmark_suite(
         _cleanup_bridge_unprocessed()
         _skip_phase3 = True
         if verbose:
-            print("\n⚠ Phase 3 skipped (not in phases list)\n")
+            print("\n⚠ Phase 3 skipped (excluded by phases filter or adapter applicable_phases)\n")
     elif is_encoder_decoder_model(model_name):
         _cleanup_bridge_unprocessed()
         _skip_phase3 = True
@@ -1980,34 +2012,49 @@ def run_benchmark_suite(
     return results
 
 
-def update_model_registry(model_name: str, results: List[BenchmarkResult]) -> bool:
+def update_model_registry(
+    model_name: str, results: List[BenchmarkResult], use_hf_reference: bool = False
+) -> bool:
     """Update the model registry with benchmark results.
 
     Args:
         model_name: The model that was benchmarked
         results: List of benchmark results
+        use_hf_reference: Whether the run numerically compared against an HF
+            reference. Defaults to False so an unstated reference state records
+            a passing run as PROVISIONAL, never VERIFIED.
 
     Returns:
         True if registry was updated successfully
     """
     from transformer_lens.tools.model_registry.registry_io import (
-        STATUS_VERIFIED,
+        STATUS_FAILED,
+        STATUS_PROVISIONAL,
         add_verification_record,
         update_model_status,
     )
 
-    # Calculate phase scores (percentage of passed tests per phase)
-    phase_results: Dict[int, List[bool]] = {1: [], 2: [], 3: []}
-    for result in results:
-        if result.phase in phase_results and result.severity != BenchmarkSeverity.SKIPPED:
-            phase_results[result.phase].append(result.passed)
+    # Threshold/note logic shared with verify_models so the two paths can't drift.
+    from transformer_lens.tools.model_registry.verify_models import (
+        _build_verified_note,
+        _check_phase_scores,
+        _extract_phase_scores,
+        _extract_prompt_profile,
+        _pass_status,
+        _sanitize_note,
+    )
 
-    phase_scores: Dict[int, Optional[float]] = {}
-    for phase, passed_list in phase_results.items():
-        if passed_list:
-            phase_scores[phase] = round(sum(passed_list) / len(passed_list) * 100, 1)
-        else:
-            phase_scores[phase] = None
+    phase_scores = _extract_phase_scores(results)
+
+    score_error = _check_phase_scores(phase_scores, results)
+    if score_error:
+        status = STATUS_FAILED
+        note = score_error
+    else:
+        status = _pass_status(use_hf_reference)
+        note = _build_verified_note(phase_scores, results)
+        if status == STATUS_PROVISIONAL:
+            note = f"Structural only (no HF reference): {note}"
 
     # Try to determine architecture
     architecture_id = "Unknown"
@@ -2024,21 +2071,27 @@ def update_model_registry(model_name: str, results: List[BenchmarkResult]) -> bo
     updated = update_model_status(
         model_id=model_name,
         arch_id=architecture_id,
-        status=STATUS_VERIFIED,
+        status=status,
         phase_scores=phase_scores,
+        note=note,
+        sanitize_fn=_sanitize_note,
+        prompt_profile=_extract_prompt_profile(results),
     )
 
-    add_verification_record(
-        model_id=model_name,
-        arch_id=architecture_id,
-        notes="Benchmark passed",
-        verified_by="main_benchmark",
-    )
+    # No history record for provisional runs — VerificationHistory.is_verified()
+    # treats any record as verified, which would bypass the provisional gate.
+    if status != STATUS_PROVISIONAL:
+        add_verification_record(
+            model_id=model_name,
+            arch_id=architecture_id,
+            notes=note,
+            verified_by="main_benchmark",
+            sanitize_fn=_sanitize_note,
+        )
 
-    print(
-        f"Updated registry for {model_name}: "
-        f"P1={phase_scores.get(1)}%, P2={phase_scores.get(2)}%, P3={phase_scores.get(3)}%"
-    )
+    label = {STATUS_FAILED: "FAILED", STATUS_PROVISIONAL: "PROVISIONAL"}.get(status, "VERIFIED")
+    score_parts = ", ".join(f"P{p}={s}%" for p, s in sorted(phase_scores.items()))
+    print(f"Updated registry for {model_name} ({label}): {score_parts or 'no phase results'}")
     return updated
 
 
@@ -2102,7 +2155,9 @@ def main():
     )
 
     if args.update_registry:
-        update_model_registry(args.model, results)
+        # Same requested-reference state verify_models feeds pass_status(): a
+        # --no-hf-reference run can only mint PROVISIONAL, never VERIFIED.
+        update_model_registry(args.model, results, use_hf_reference=not args.no_hf_reference)
 
 
 if __name__ == "__main__":

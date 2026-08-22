@@ -464,6 +464,74 @@ def test_decompose_gpt2_activation_reconstructs_and_is_orthogonal(published_gpt2
         assert cosine.abs().item() < 1e-3
 
 
+def test_occupancy_gpt2_activation_is_a_small_positive_integer(published_gpt2_lens, gpt2_bridge):
+    """occupancy on a real GPT-2 activation returns a positive integer within ``[1, max_atoms]``,
+    with per-step real and control captured-variance curves of the right shape. We assert shape and
+    bounds -- not the paper's closed-model count (an open-weight observation, recorded on failure).
+    A reduced control count keeps CI fast."""
+    layer, max_atoms = 6, 12
+    result = published_gpt2_lens.occupancy(
+        gpt2_bridge,
+        PROMPT,
+        layer=layer,
+        position=-1,
+        max_atoms=max_atoms,
+        num_control_dictionaries=8,
+    )
+
+    assert isinstance(result.occupancy, int)
+    assert 1 <= result.occupancy <= max_atoms, f"occupancy={result.occupancy} max_atoms={max_atoms}"
+    assert result.marginal_captured_variance.shape == (max_atoms,)
+    assert result.control_captured_variance.shape == (max_atoms,)
+    assert result.support.shape == (max_atoms,)
+    assert (result.support >= 0).all() and (result.support < gpt2_bridge.cfg.d_vocab).all()
+
+    # Cumulative captured variance is a projection ratio: non-decreasing and bounded to [0, 1].
+    real_cumulative = result.marginal_captured_variance.cumsum(0)
+    assert (result.marginal_captured_variance >= -1e-4).all()
+    assert (real_cumulative >= -1e-4).all() and (real_cumulative <= 1.0 + 1e-4).all()
+
+    # Deterministic given the seed: an identical call reproduces the count and both curves exactly.
+    repeat = published_gpt2_lens.occupancy(
+        gpt2_bridge,
+        PROMPT,
+        layer=layer,
+        position=-1,
+        max_atoms=max_atoms,
+        num_control_dictionaries=8,
+    )
+    assert repeat.occupancy == result.occupancy
+    assert torch.equal(repeat.marginal_captured_variance, result.marginal_captured_variance)
+    assert torch.equal(repeat.control_captured_variance, result.control_captured_variance)
+
+
+def test_fraction_of_variance_gpt2_is_a_small_ratio(published_gpt2_lens, gpt2_bridge):
+    """fraction_of_variance over a small corpus: each layer's median and pooled ratio land in
+    ``[0, 1]`` with samples recorded, consistent with the paper's "J-space is a small fraction of
+    total variance" (an open-weight observation, not a numeric match to the closed-model figures).
+    FIT_PROMPTS are long enough to clear the default 16-position skip."""
+    layers = [3, 6]
+    profile = published_gpt2_lens.fraction_of_variance(gpt2_bridge, FIT_PROMPTS, layers=layers, k=8)
+
+    assert profile.layers == layers
+    for layer in layers:
+        per_position = profile.per_position[layer]
+        assert per_position.numel() > 0
+        # Each fraction is ||projection||^2 / ||activation||^2, a variance ratio in [0, 1].
+        assert (per_position >= 0.0).all() and (per_position <= 1.0).all()
+        assert 0.0 <= profile.median[layer] <= 1.0
+        assert 0.0 <= profile.pooled[layer] <= 1.0
+
+    # positions= overrides the skip_first sweep: one explicit position per prompt over the
+    # two-prompt corpus exercises the override path and cross-prompt pooling (one sample each).
+    pinned = published_gpt2_lens.fraction_of_variance(
+        gpt2_bridge, FIT_PROMPTS, layers=layers, k=8, positions=[-1]
+    )
+    for layer in layers:
+        assert pinned.per_position[layer].numel() == len(FIT_PROMPTS)
+        assert 0.0 <= pinned.pooled[layer] <= 1.0
+
+
 @pytest.mark.slow
 def test_decompose_gemma_activation_is_valid():
     """Decompose a real gemma-2-2b-it activation via its published lens (slow: real download)."""

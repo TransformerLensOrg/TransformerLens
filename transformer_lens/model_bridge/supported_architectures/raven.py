@@ -135,6 +135,10 @@ class RavenArchitectureAdapter(ArchitectureAdapter):
     # state make the phases non-meaningful. Correctness lives in the
     # integration tests (seed pinned before bridge and HF calls).
     applicable_phases: list[int] = []
+    # Depth-recurrent core: HF-style past_key_values stepping cannot represent
+    # the re-injected recurrence, and batched left-padded stepping compounds it.
+    supports_kv_cache = False
+    supports_batched_generation = False
 
     def __init__(self, cfg: Any) -> None:
         """Initialize the Raven / Huginn architecture adapter."""
