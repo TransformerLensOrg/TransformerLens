@@ -4,6 +4,7 @@ import warnings
 import weakref
 from typing import Any, Optional
 
+import numpy as np
 import torch
 
 from transformer_lens.utilities.activation_functions import SOFTCAP_DISABLED
@@ -271,6 +272,18 @@ class TransformerBridgeConfig(TransformerLensConfig):
             and not isinstance(self.architecture, str)
         ):
             raise ValueError(f"architecture must be a string, got {type(self.architecture)}")
+
+        # Resolve the initializer_range sentinel (-1.0 means "not set by the user").
+        # Mirrors HookedTransformerConfig.__post_init__ (hooked_transformer_config.py).
+        # Guarded with getattr: this method also runs once from the dataclass
+        # parent's __init__, before self.initializer_range is assigned below.
+        if getattr(self, "initializer_range", None) is not None:
+            if self.initializer_range < 0 and self.init_mode == "gpt2":
+                # Roughly copy the GPT-2 value, but proportional to sqrt(1/d_model)
+                self.initializer_range = 0.8 / np.sqrt(self.d_model)
+            if self.initializer_range < 0 and self.init_mode != "gpt2":
+                # This is the gain parameter for the weight initialisation
+                self.initializer_range = 1.0
 
         # Call parent's __post_init__ after our validation
         if hasattr(super(), "__post_init__"):

@@ -72,7 +72,7 @@ def initialize_native_model(
         generator = None
 
     def _staged(
-        fn: Callable[[torch.Tensor], torch.Tensor]
+        fn: Callable[[torch.Tensor], torch.Tensor],
     ) -> Callable[[torch.Tensor], torch.Tensor]:
         def apply(t: torch.Tensor) -> torch.Tensor:
             staging = torch.empty(t.shape, dtype=torch.float32)
@@ -97,6 +97,14 @@ def initialize_native_model(
         # std = 0.8/sqrt(d_model), not GPT-2's paper 0.02 — toy-model training
         # dynamics (e.g. the grokking demo) depend on this scale.
         std = cfg.initializer_range if cfg.initializer_range > 0 else 0.8 / math.sqrt(cfg.d_model)
+
+        # NOTE: this residual output scaling (1/sqrt(2*n_layers), applied only
+        # to output projections below) is NOT present in HookedTransformer's
+        # _init_weights_gpt2 (see transformer_lens/HookedTransformer.py).
+        # Intentional delta for NativeModel: kept because it follows the
+        # original GPT-2 paper's residual-scaling convention and improves
+        # training stability at init for deeper models. Flagged in issue #1568
+        # as a maintainer call; kept + documented rather than removed.
         residual_scale = 1.0 / math.sqrt(2 * cfg.n_layers)
         weight_init = lambda t: nn.init.normal_(
             t, mean=0.0, std=std, generator=generator
