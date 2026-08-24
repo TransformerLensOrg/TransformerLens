@@ -1,8 +1,8 @@
-"""Backward Lens gradient-factor contracts and GPT-2 Bridge capture.
+"""Backward Lens gradient-factor capture and vocabulary projection.
 
 The Backward Lens represents a linear weight gradient as a sum of token-position
-outer products. This module provides independently testable tensor algebra and
-the raw GPT-2 capture path; vocabulary projection is added separately.
+outer products and projects residual-width factors into the model vocabulary.
+The public API currently supports raw GPT-2 ``TransformerBridge`` models.
 """
 
 from __future__ import annotations
@@ -16,6 +16,7 @@ import torch
 import torch.nn.functional as F
 
 WeightLayout = Literal["in_out", "out_in"]
+ProjectedFactor = Literal["forward_inputs", "output_gradients"]
 
 
 @dataclass(frozen=True)
@@ -23,8 +24,10 @@ class LinearGradientFactors:
     """Detached factors and reconstruction for one linear weight gradient.
 
     ``forward_inputs`` and ``output_gradients`` have shapes ``[position, in]``
-    and ``[position, out]``. Gradient tensors use the requested storage layout.
-    All tensors are cloned to CPU in float32 so the result owns no autograd graph.
+    and ``[position, out]``. ``output_gradients`` and ``weight_gradient`` preserve
+    the raw ``d(loss)/d(tensor)`` sign; they are not negated into update directions.
+    Gradient tensors use the requested storage layout. All tensors are cloned to
+    CPU in float32 so the result owns no autograd graph.
     """
 
     forward_inputs: torch.Tensor
@@ -46,6 +49,129 @@ class VocabularyRanking:
 
     values: torch.Tensor
     indices: torch.Tensor
+
+
+@dataclass(frozen=True)
+class BackwardLensMatrixResult:
+    """Factors and vocabulary readouts for one GPT-2 MLP weight matrix.
+
+    ``factors`` contains the full linear factorization. ``projected_factor`` says
+    whether its residual-width ``forward_inputs`` or raw-gradient
+    ``output_gradients`` were decoded. ``factor_norms`` and ``zero_norm_mask``
+    have shape ``[position]`` with float32 and bool dtypes. ``vocabulary_logits``
+    has shape ``[position, d_vocab]`` and contains signed, pre-softmax raw logits.
+    ``normalized_vocabulary_logits`` has the same shape when requested. Every
+    tensor is a detached CPU-owned value; gradient descent subtracts raw gradients.
+    """
+
+    factors: LinearGradientFactors
+    projected_factor: ProjectedFactor
+    factor_norms: torch.Tensor
+    zero_norm_mask: torch.Tensor
+    vocabulary_logits: torch.Tensor
+    normalized_vocabulary_logits: torch.Tensor | None = None
+
+    def logits(self, *, normalized: bool = False) -> torch.Tensor:
+        """Return raw or requested Normalized Logit Lens logits."""
+        if not isinstance(normalized, bool):
+            raise TypeError("normalized must be a bool")
+        if not normalized:
+            return self.vocabulary_logits
+        if self.normalized_vocabulary_logits is None:
+            raise ValueError("normalized logits were not requested during analysis")
+        return self.normalized_vocabulary_logits
+
+    def top(self, *, k: int, normalized: bool = False) -> VocabularyRanking:
+        """Return the largest signed logits and token ids per position."""
+        return _rank_vocabulary_logits(self.logits(normalized=normalized), k=k, largest=True)
+
+    def bottom(self, *, k: int, normalized: bool = False) -> VocabularyRanking:
+        """Return the smallest signed logits and token ids per position."""
+        return _rank_vocabulary_logits(self.logits(normalized=normalized), k=k, largest=False)
+
+    def top_tokens(self, tokenizer: Any, *, k: int, normalized: bool = False) -> list[list[str]]:
+        """Decode the largest-``k`` vocabulary ids for every position."""
+        return _decode_vocabulary_ranking(self.top(k=k, normalized=normalized), tokenizer)
+
+    def bottom_tokens(self, tokenizer: Any, *, k: int, normalized: bool = False) -> list[list[str]]:
+        """Decode the smallest-``k`` vocabulary ids for every position."""
+        return _decode_vocabulary_ranking(self.bottom(k=k, normalized=normalized), tokenizer)
+
+    def target_ranks(
+        self,
+        target_token_id: int,
+        *,
+        largest: bool,
+        normalized: bool = False,
+    ) -> torch.Tensor:
+        """Return zero-based target ranks per position in the requested ordering.
+
+        ``largest=True`` gives rank zero to the largest logit. ``largest=False``
+        gives rank zero to the smallest, which is the useful raw-gradient
+        convention for the second MLP matrix because gradient descent subtracts it.
+        Ties receive the same competition rank.
+        """
+        logits = self.logits(normalized=normalized)
+        if isinstance(target_token_id, bool) or not isinstance(target_token_id, int):
+            raise TypeError("target_token_id must be an integer")
+        if not 0 <= target_token_id < logits.shape[-1]:
+            raise ValueError(
+                f"target_token_id must be in [0, {logits.shape[-1] - 1}]; " f"got {target_token_id}"
+            )
+        if not isinstance(largest, bool):
+            raise TypeError("largest must be a bool")
+        target = logits[:, target_token_id].unsqueeze(-1)
+        comparisons = logits > target if largest else logits < target
+        return comparisons.sum(dim=-1, dtype=torch.int64).cpu().clone()
+
+    def gradient_descent_target_ranks(
+        self, target_token_id: int, *, normalized: bool = False
+    ) -> torch.Tensor:
+        """Return ascending raw-gradient target ranks (rank zero is smallest)."""
+        return self.target_ranks(target_token_id, largest=False, normalized=normalized)
+
+
+@dataclass(frozen=True)
+class BackwardLensLayerResult:
+    """Vocabulary-facing input/output MLP matrix results for one indexed layer."""
+
+    layer: int
+    input_projection: BackwardLensMatrixResult
+    output_projection: BackwardLensMatrixResult
+
+
+@dataclass(frozen=True)
+class BackwardLensResult:
+    """Detached result of one :meth:`BackwardLens.analyze` call.
+
+    ``prompt`` and ``target_token`` echo the analyzed inputs; ``target_token_id``
+    is the single vocabulary id the target text encodes to. ``loss`` is the raw
+    scalar cross-entropy of the final-position next-token prediction against the
+    target; it preserves the ``d(loss)/d(...)`` sign convention and is not negated.
+    ``prompt_token_ids`` is an owned CPU int64 tensor with shape ``[position]``;
+    position zero is the prepended BOS, and every residual-width factor in
+    ``layers`` is aligned to these same positions. ``layers`` preserves requested
+    order. Maximum errors summarize both matrices over every requested layer.
+    ``includes_normalized_logits`` records whether the Normalized Logit Lens was
+    computed. No model or tokenizer reference is retained.
+    """
+
+    prompt: str
+    prompt_token_ids: torch.Tensor
+    target_token: str
+    target_token_id: int
+    loss: float
+    layers: tuple[BackwardLensLayerResult, ...]
+    max_absolute_reconstruction_error: float
+    max_relative_reconstruction_error: float
+    includes_normalized_logits: bool
+
+    def layer(self, layer: int) -> BackwardLensLayerResult:
+        """Return one requested layer result or raise ``KeyError``."""
+        for result in self.layers:
+            if result.layer == layer:
+                return result
+        raise KeyError(f"layer {layer} was not analyzed")
 
 
 @dataclass(frozen=True)
@@ -194,6 +320,84 @@ def _rank_vocabulary_logits(logits: torch.Tensor, *, k: int, largest: bool) -> V
     ranked = torch.topk(logits.detach(), k=k, dim=-1, largest=largest, sorted=True)
     return VocabularyRanking(
         values=ranked.values.cpu().clone(), indices=ranked.indices.cpu().clone()
+    )
+
+
+def _decode_vocabulary_ranking(ranking: VocabularyRanking, tokenizer: Any) -> list[list[str]]:
+    """Decode a two-dimensional vocabulary ranking without retaining a tokenizer."""
+    decode = getattr(tokenizer, "decode", None)
+    if not callable(decode):
+        raise TypeError("tokenizer must provide a callable decode method")
+    if ranking.indices.ndim != 2:
+        raise ValueError("decoded matrix rankings must have shape [position, k]")
+    return [[str(decode([token_id])) for token_id in row.tolist()] for row in ranking.indices]
+
+
+@torch.no_grad()
+def _project_residual_factors(model: Any, factors: torch.Tensor) -> torch.Tensor:
+    """Apply fresh final normalization and unembedding to residual-width rows."""
+    _validate_floating_matrix("factors", factors)
+    if factors.shape[-1] != int(model.cfg.d_model):
+        raise ValueError(
+            f"factors must have width d_model={model.cfg.d_model}; got {factors.shape[-1]}"
+        )
+    unembed_weight = model.W_U
+    if not isinstance(unembed_weight, torch.Tensor) or unembed_weight.ndim != 2:
+        raise ValueError("the GPT-2 Bridge must expose a rank-2 unembedding weight")
+    batched = (
+        factors.detach().to(device=unembed_weight.device, dtype=unembed_weight.dtype).unsqueeze(0)
+    )
+    logits = model.unembed(model.ln_final(batched)).squeeze(0)
+    if logits.ndim != 2 or logits.shape != (factors.shape[0], unembed_weight.shape[1]):
+        raise RuntimeError(
+            "final normalization and unembedding must return [position, d_vocab]; "
+            f"got {tuple(logits.shape)}"
+        )
+    projected = logits.detach().float()
+    if not bool(torch.isfinite(projected).all()):
+        raise ValueError("vocabulary projection must remain finite in float32")
+    return projected.cpu().clone()
+
+
+def _factor_norms_and_normalized_rows(
+    factors: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Return original L2 norms, exact-zero mask, and safely unit-normalized rows."""
+    _validate_floating_matrix("factors", factors)
+    rows = _to_detached_float32("factors", factors).cpu().clone()
+    norms = rows.norm(dim=-1)
+    zero_mask = norms == 0
+    denominators = torch.where(zero_mask, torch.ones_like(norms), norms)
+    normalized = rows / denominators.unsqueeze(-1)
+    return norms.clone(), zero_mask.clone(), normalized
+
+
+def _build_matrix_result(
+    model: Any,
+    factors: LinearGradientFactors,
+    *,
+    projected_factor: ProjectedFactor,
+    include_normalized_logits: bool,
+) -> BackwardLensMatrixResult:
+    if projected_factor not in ("forward_inputs", "output_gradients"):
+        raise ValueError("projected_factor must be 'forward_inputs' or 'output_gradients'")
+    if not isinstance(include_normalized_logits, bool):
+        raise TypeError("include_normalized_logits must be a bool")
+    rows = (
+        factors.forward_inputs if projected_factor == "forward_inputs" else factors.output_gradients
+    )
+    norms, zero_mask, normalized_rows = _factor_norms_and_normalized_rows(rows)
+    raw_logits = _project_residual_factors(model, rows)
+    normalized_logits = (
+        _project_residual_factors(model, normalized_rows) if include_normalized_logits else None
+    )
+    return BackwardLensMatrixResult(
+        factors=factors,
+        projected_factor=projected_factor,
+        factor_norms=norms,
+        zero_norm_mask=zero_mask,
+        vocabulary_logits=raw_logits,
+        normalized_vocabulary_logits=normalized_logits,
     )
 
 
@@ -464,3 +668,88 @@ def _capture_gpt2_mlp_gradient_factors(
         loss=float(loss.detach()),
         layers=tuple(layer_results),
     )
+
+
+class BackwardLens:
+    """Analyze GPT-2 MLP weight gradients in the output vocabulary basis.
+
+    The analyzer accepts a fresh, raw GPT-2 :class:`TransformerBridge`. Results
+    retain no model or tokenizer reference and contain detached CPU-owned tensors.
+    Raw backward signals are loss gradients; gradient descent subtracts them.
+    """
+
+    def __init__(self, model: Any):
+        """Validate and retain the raw GPT-2 Bridge used for analyses."""
+        _require_raw_gpt2_bridge(model)
+        self._model = model
+
+    def analyze(
+        self,
+        prompt: str,
+        target_token: str,
+        layers: Sequence[int],
+        *,
+        normalized: bool = False,
+    ) -> BackwardLensResult:
+        """Analyze one final-position, one-token target loss.
+
+        Args:
+            prompt: Non-empty unbatched prompt text.
+            target_token: Text encoding to exactly one token without BOS.
+            layers: Unique GPT-2 layer indices in desired result order.
+            normalized: Also project unit-normalized nonzero factors using the
+                Normalized Logit Lens. Raw projections are always returned.
+
+        Returns:
+            Detached gradient factors, vocabulary logits, norms, reconstruction
+            errors, and target metadata.
+        """
+        if not isinstance(normalized, bool):
+            raise TypeError("normalized must be a bool")
+        capture = _capture_gpt2_mlp_gradient_factors(self._model, prompt, target_token, layers)
+        layer_results: list[BackwardLensLayerResult] = []
+        absolute_errors: list[float] = []
+        relative_errors: list[float] = []
+        for layer in capture.layers:
+            input_result = _build_matrix_result(
+                self._model,
+                layer.input_projection,
+                projected_factor="forward_inputs",
+                include_normalized_logits=normalized,
+            )
+            output_result = _build_matrix_result(
+                self._model,
+                layer.output_projection,
+                projected_factor="output_gradients",
+                include_normalized_logits=normalized,
+            )
+            layer_results.append(
+                BackwardLensLayerResult(
+                    layer=layer.layer,
+                    input_projection=input_result,
+                    output_projection=output_result,
+                )
+            )
+            absolute_errors.extend(
+                (
+                    layer.input_projection.absolute_reconstruction_error,
+                    layer.output_projection.absolute_reconstruction_error,
+                )
+            )
+            relative_errors.extend(
+                (
+                    layer.input_projection.relative_reconstruction_error,
+                    layer.output_projection.relative_reconstruction_error,
+                )
+            )
+        return BackwardLensResult(
+            prompt=prompt,
+            prompt_token_ids=capture.prompt_token_ids[0].clone(),
+            target_token=target_token,
+            target_token_id=capture.target_token_id,
+            loss=capture.loss,
+            layers=tuple(layer_results),
+            max_absolute_reconstruction_error=max(absolute_errors),
+            max_relative_reconstruction_error=max(relative_errors),
+            includes_normalized_logits=normalized,
+        )

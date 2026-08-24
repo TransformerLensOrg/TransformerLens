@@ -34,6 +34,13 @@ def gradient_capture(gpt2_bridge):
     return _capture_gpt2_mlp_gradient_factors(gpt2_bridge, PROMPT, TARGET, LAYERS)
 
 
+@pytest.fixture(scope="module")
+def backward_result(gpt2_bridge):
+    from transformer_lens.tools.analysis import BackwardLens
+
+    return BackwardLens(gpt2_bridge).analyze(PROMPT, TARGET, LAYERS, normalized=True)
+
+
 def _projection_hook_snapshots(model, layer: int) -> list[tuple[int, ...]]:
     mlp = model.blocks[layer].mlp
     projections = (getattr(mlp, "in"), mlp.out)
@@ -106,6 +113,106 @@ def test_final_layer_has_the_expected_rank_one_position_structure(
 
     assert relative_earlier_norm <= 1e-6
     assert int(torch.linalg.matrix_rank(factors.output_gradients)) == 1
+
+
+def test_public_result_metadata_and_error_summaries(backward_result) -> None:
+    from transformer_lens.tools.analysis import BackwardLensResult
+
+    assert isinstance(backward_result, BackwardLensResult)
+    assert backward_result.prompt == PROMPT
+    assert backward_result.target_token == TARGET
+    assert backward_result.target_token_id == 6342
+    assert backward_result.prompt_token_ids.shape == (6,)
+    assert [layer.layer for layer in backward_result.layers] == list(LAYERS)
+    assert backward_result.includes_normalized_logits is True
+    assert backward_result.max_absolute_reconstruction_error <= 2e-6
+    assert backward_result.max_relative_reconstruction_error <= 2e-5
+    assert backward_result.layer(11) is backward_result.layers[-1]
+    assert not hasattr(backward_result, "model")
+    with pytest.raises(KeyError, match="was not analyzed"):
+        backward_result.layer(5)
+
+
+def test_public_projections_match_fresh_model_readout(backward_result, gpt2_bridge) -> None:
+    unembed_weight = gpt2_bridge.W_U
+    for layer in backward_result.layers:
+        matrices = (
+            (layer.input_projection, layer.input_projection.factors.forward_inputs),
+            (layer.output_projection, layer.output_projection.factors.output_gradients),
+        )
+        for matrix, rows in matrices:
+            rows_on_model = rows.to(
+                device=unembed_weight.device, dtype=unembed_weight.dtype
+            ).unsqueeze(0)
+            with torch.no_grad():
+                direct = gpt2_bridge.unembed(gpt2_bridge.ln_final(rows_on_model)).squeeze(0)
+            torch.testing.assert_close(matrix.vocabulary_logits, direct.float().cpu())
+
+            norms = rows.norm(dim=-1)
+            zero_mask = norms == 0
+            normalized_rows = rows / torch.where(
+                zero_mask, torch.ones_like(norms), norms
+            ).unsqueeze(-1)
+            with torch.no_grad():
+                direct_normalized = gpt2_bridge.unembed(
+                    gpt2_bridge.ln_final(
+                        normalized_rows.to(
+                            device=unembed_weight.device,
+                            dtype=unembed_weight.dtype,
+                        ).unsqueeze(0)
+                    )
+                ).squeeze(0)
+            assert matrix.normalized_vocabulary_logits is not None
+            torch.testing.assert_close(
+                matrix.normalized_vocabulary_logits,
+                direct_normalized.float().cpu(),
+            )
+            torch.testing.assert_close(matrix.factor_norms, norms)
+            assert torch.equal(matrix.zero_norm_mask, zero_mask)
+            for logits in (matrix.vocabulary_logits, matrix.normalized_vocabulary_logits):
+                assert logits.shape == (6, gpt2_bridge.cfg.d_vocab)
+                assert logits.dtype == torch.float32
+                assert logits.device.type == "cpu"
+                assert logits.grad_fn is None
+                assert torch.isfinite(logits).all()
+
+
+def test_public_rankings_decoding_and_target_ranks(backward_result, gpt2_bridge) -> None:
+    output = backward_result.layer(11).output_projection
+    direct_top = torch.topk(output.vocabulary_logits, k=3, dim=-1, largest=True)
+    direct_bottom = torch.topk(output.vocabulary_logits, k=3, dim=-1, largest=False)
+
+    assert torch.equal(output.top(k=3).indices, direct_top.indices)
+    assert torch.equal(output.bottom(k=3).indices, direct_bottom.indices)
+    assert output.top_tokens(gpt2_bridge.tokenizer, k=3)[0] == [
+        gpt2_bridge.tokenizer.decode([token_id]) for token_id in direct_top.indices[0].tolist()
+    ]
+    assert output.bottom_tokens(gpt2_bridge.tokenizer, k=3)[0] == [
+        gpt2_bridge.tokenizer.decode([token_id]) for token_id in direct_bottom.indices[0].tolist()
+    ]
+    target_ranks = output.gradient_descent_target_ranks(backward_result.target_token_id)
+    normalized_target_ranks = output.gradient_descent_target_ranks(
+        backward_result.target_token_id, normalized=True
+    )
+    assert target_ranks.shape == (6,)
+    assert normalized_target_ranks.shape == (6,)
+    assert target_ranks.dtype == torch.int64
+
+
+def test_public_api_defaults_to_raw_projection_only(gpt2_bridge) -> None:
+    from transformer_lens.tools.analysis import BackwardLens
+
+    result = BackwardLens(gpt2_bridge).analyze(PROMPT, TARGET, [0])
+    assert result.includes_normalized_logits is False
+    for matrix in (
+        result.layers[0].input_projection,
+        result.layers[0].output_projection,
+    ):
+        assert matrix.normalized_vocabulary_logits is None
+        with pytest.raises(ValueError, match="were not requested"):
+            matrix.logits(normalized=True)
+    with pytest.raises(TypeError):
+        BackwardLens(gpt2_bridge).analyze(PROMPT, TARGET, [0], normalized=1)
 
 
 @pytest.mark.parametrize(
@@ -381,9 +488,7 @@ def test_tiny_gpt2_capture_supports_available_devices_and_reduced_precision(
     from transformers import GPT2Config, GPT2LMHeadModel
 
     from transformer_lens.model_bridge import TransformerBridge
-    from transformer_lens.tools.analysis.backward_lens import (
-        _capture_gpt2_mlp_gradient_factors,
-    )
+    from transformer_lens.tools.analysis import BackwardLens
 
     config = GPT2Config(
         n_layer=2,
@@ -411,7 +516,7 @@ def test_tiny_gpt2_capture_supports_available_devices_and_reduced_precision(
     else:
         rng_before = torch.random.get_rng_state()
 
-    result = _capture_gpt2_mlp_gradient_factors(bridge, "Small test", " token", [0, 1])
+    result = BackwardLens(bridge).analyze("Small test", " token", [0, 1], normalized=True)
 
     if device == "cuda":
         rng_after = torch.cuda.get_rng_state()
@@ -421,6 +526,10 @@ def test_tiny_gpt2_capture_supports_available_devices_and_reduced_precision(
         rng_after = torch.random.get_rng_state()
     assert torch.equal(rng_after, rng_before)
     for layer in result.layers:
-        for factors in (layer.input_projection, layer.output_projection):
+        for matrix in (layer.input_projection, layer.output_projection):
+            factors = matrix.factors
             assert torch.isfinite(factors.weight_gradient).all()
             assert factors.relative_reconstruction_error <= 5e-2
+            assert torch.isfinite(matrix.vocabulary_logits).all()
+            assert matrix.normalized_vocabulary_logits is not None
+            assert torch.isfinite(matrix.normalized_vocabulary_logits).all()

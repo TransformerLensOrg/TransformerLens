@@ -1,6 +1,7 @@
 """Model-free tests for Backward Lens gradient-factor contracts."""
 
 from dataclasses import FrozenInstanceError
+from types import SimpleNamespace
 from typing import cast
 
 import pytest
@@ -8,11 +9,44 @@ import torch
 import torch.nn.functional as F
 
 from transformer_lens.tools.analysis.backward_lens import (
+    BackwardLensMatrixResult,
     LinearGradientFactors,
     WeightLayout,
     _build_linear_gradient_factors,
+    _factor_norms_and_normalized_rows,
+    _project_residual_factors,
     _rank_vocabulary_logits,
 )
+
+
+class _ReadoutModel:
+    def __init__(self, *, affine: bool = True):
+        self.cfg = SimpleNamespace(d_model=3)
+        self.ln_final = torch.nn.LayerNorm(3, elementwise_affine=affine)
+        self.unembed = torch.nn.Linear(3, 5, bias=False)
+        with torch.no_grad():
+            self.unembed.weight.copy_(torch.arange(15, dtype=torch.float32).reshape(5, 3) / 10)
+
+    @property
+    def W_U(self) -> torch.Tensor:
+        return self.unembed.weight.T
+
+
+def _matrix_result(logits: torch.Tensor) -> BackwardLensMatrixResult:
+    factors = _build_linear_gradient_factors(
+        torch.tensor([[1.0, 2.0], [3.0, 4.0]]),
+        torch.tensor([[0.5, -1.0], [2.0, 1.5]]),
+        torch.tensor([[6.5, 3.5], [9.0, 4.0]]),
+        weight_layout="in_out",
+    )
+    return BackwardLensMatrixResult(
+        factors=factors,
+        projected_factor="forward_inputs",
+        factor_norms=torch.tensor([1.0, 2.0]),
+        zero_norm_mask=torch.tensor([False, False]),
+        vocabulary_logits=logits.clone(),
+        normalized_vocabulary_logits=(logits * 2).clone(),
+    )
 
 
 def test_reconstructs_gpt2_style_in_out_gradient_from_autograd() -> None:
@@ -238,3 +272,105 @@ def test_vocabulary_ranking_rejects_invalid_logits(logits) -> None:
 def test_vocabulary_ranking_rejects_non_tensor_logits() -> None:
     with pytest.raises(TypeError, match="torch.Tensor"):
         _rank_vocabulary_logits(cast(torch.Tensor, [1.0, 2.0]), k=1, largest=True)
+
+
+def test_projection_matches_fresh_final_norm_and_unembedding() -> None:
+    model = _ReadoutModel()
+    factors = torch.tensor([[1.0, -2.0, 4.0], [0.25, 0.5, -0.75]])
+
+    actual = _project_residual_factors(model, factors)
+    expected = model.unembed(model.ln_final(factors.unsqueeze(0))).squeeze(0)
+
+    torch.testing.assert_close(actual, expected)
+    assert actual.dtype == torch.float32
+    assert actual.device.type == "cpu"
+    assert actual.grad_fn is None
+
+
+def test_normalized_rows_preserve_norms_and_handle_zero_without_nan() -> None:
+    factors = torch.tensor([[3.0, 4.0, 0.0], [0.0, 0.0, 0.0]])
+
+    norms, zero_mask, normalized = _factor_norms_and_normalized_rows(factors)
+
+    assert norms.tolist() == [5.0, 0.0]
+    assert zero_mask.tolist() == [False, True]
+    torch.testing.assert_close(normalized[0], torch.tensor([0.6, 0.8, 0.0]))
+    assert torch.equal(normalized[1], torch.zeros(3))
+    assert torch.isfinite(normalized).all()
+
+
+def test_normalized_projection_changes_low_norm_readout_but_keeps_zero_finite() -> None:
+    model = _ReadoutModel()
+    factors = torch.tensor([[1e-6, -2e-6, 1e-6], [0.0, 0.0, 0.0]])
+    _, _, normalized = _factor_norms_and_normalized_rows(factors)
+
+    raw_logits = _project_residual_factors(model, factors)
+    normalized_logits = _project_residual_factors(model, normalized)
+
+    assert not torch.allclose(raw_logits[0], normalized_logits[0])
+    assert torch.isfinite(normalized_logits).all()
+
+
+def test_projection_sign_symmetry_depends_on_final_norm_bias() -> None:
+    factors = torch.tensor([[1.0, -2.0, 4.0]])
+    bias_free = _ReadoutModel(affine=False)
+    biased = _ReadoutModel(affine=True)
+    with torch.no_grad():
+        biased.ln_final.bias.fill_(0.25)
+
+    torch.testing.assert_close(
+        _project_residual_factors(bias_free, -factors),
+        -_project_residual_factors(bias_free, factors),
+    )
+    assert not torch.allclose(
+        _project_residual_factors(biased, -factors),
+        -_project_residual_factors(biased, factors),
+    )
+
+
+def test_matrix_result_rankings_decoding_and_target_rank_conventions() -> None:
+    logits = torch.tensor([[3.0, 1.0, -2.0, 0.0], [0.0, -1.0, 4.0, 2.0]])
+    result = _matrix_result(logits)
+
+    assert result.top(k=2).indices.tolist() == [[0, 1], [2, 3]]
+    assert result.bottom(k=2).indices.tolist() == [[2, 3], [1, 0]]
+    assert result.target_ranks(2, largest=True).tolist() == [3, 0]
+    assert result.gradient_descent_target_ranks(2).tolist() == [0, 3]
+    assert torch.equal(result.logits(normalized=True), logits * 2)
+
+    tokenizer = SimpleNamespace(decode=lambda ids: f"token-{ids[0]}")
+    assert result.top_tokens(tokenizer, k=1) == [["token-0"], ["token-2"]]
+    assert result.bottom_tokens(tokenizer, k=1) == [["token-2"], ["token-1"]]
+
+
+def test_matrix_result_rejects_missing_normalized_logits_and_invalid_target() -> None:
+    logits = torch.randn(2, 4)
+    result = _matrix_result(logits)
+    result_without_normalized = BackwardLensMatrixResult(
+        factors=result.factors,
+        projected_factor=result.projected_factor,
+        factor_norms=result.factor_norms,
+        zero_norm_mask=result.zero_norm_mask,
+        vocabulary_logits=result.vocabulary_logits,
+    )
+
+    with pytest.raises(ValueError, match="were not requested"):
+        result_without_normalized.logits(normalized=True)
+    with pytest.raises(ValueError, match="target_token_id"):
+        result.target_ranks(4, largest=True)
+    with pytest.raises(TypeError, match="decode"):
+        result.top_tokens(object(), k=1)
+
+
+def test_public_backward_lens_symbols_are_exported() -> None:
+    from transformer_lens.tools.analysis import (
+        BackwardLens,
+        BackwardLensLayerResult,
+        BackwardLensMatrixResult,
+        BackwardLensResult,
+    )
+
+    assert BackwardLens.__name__ == "BackwardLens"
+    assert BackwardLensLayerResult.__name__ == "BackwardLensLayerResult"
+    assert BackwardLensMatrixResult.__name__ == "BackwardLensMatrixResult"
+    assert BackwardLensResult.__name__ == "BackwardLensResult"
