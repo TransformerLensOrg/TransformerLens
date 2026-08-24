@@ -229,6 +229,7 @@ DENSE_AWARE_ARCHS = [
     "Qwen3VLMoeForConditionalGeneration",
     "LLaDA2MoeModelLM",
     "LagunaForCausalLM",
+    "Lfm2MoeForCausalLM",
     "Llama4ForConditionalGeneration",
 ]
 
