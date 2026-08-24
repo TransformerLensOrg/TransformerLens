@@ -2,7 +2,7 @@
 
 Projection Kernel (PK) measures overlap between two linear subspaces without depending on
 the choice of basis within either subspace. TransformerLens provides a model-independent
-numerical API for comparing linear subspaces.
+numerical API and a TransformerBridge wrapper for comparing attention-head weight spaces.
 
 ## Definition
 
@@ -55,6 +55,62 @@ singular subspace, but the requested rank cannot exceed the measured numerical r
 Float64 inputs remain float64. Float32 inputs remain float32. Float16 and bfloat16 inputs are
 promoted to float32 before SVD, and outputs remain float32. Inputs must be finite,
 two-dimensional, real floating-point tensors.
+
+## Attention-head affinity
+
+The TransformerBridge wrapper computes OQ, OK, or OV affinity for every selected head pair:
+
+```python
+from transformer_lens.model_bridge import TransformerBridge
+from transformer_lens.tools.analysis import attention_head_subspace_affinity
+
+model = TransformerBridge.boot_transformers("gpt2", device="cpu")
+result = attention_head_subspace_affinity(
+    model,
+    source_role="O",
+    target_role="Q",
+    layer_order="forward",
+)
+
+print(result.scores.shape)
+print(result.normalized.shape)
+print(result.top_pairs(20, normalized=True))
+```
+
+The axes are
+`[source_attention_layer, source_head, target_attention_layer, target_head]`.
+`source_layer_indices` and `target_layer_indices` map tensor positions to original block
+numbers. `valid_mask` has the same shape as the score tensors. Invalid entries are zero.
+
+With `layer_order="forward"`, only strict earlier-to-later pairs are valid. Use
+`layer_order="all"` to include every source-target layer pair.
+
+## Weight orientation
+
+TransformerLens exposes each basis-generating matrix in residual-stream coordinates:
+
+| Role | Matrix used as a basis | Per-head shape |
+|---|---|---|
+| Q | `W_Q` | `[d_model, d_head]` |
+| K | `W_K` | `[d_model, d_head]` |
+| V | `W_V` | `[d_model, d_head]` |
+| O | `W_O.T` | `[d_model, d_head]` |
+
+The O transpose is required: `W_O` itself has shape `[d_head, d_model]`.
+
+## MHA, GQA, and hybrid models
+
+- Multi-head attention produces query-head axes for O and Q and K/V role axes of the same
+  size.
+- Grouped-query attention preserves native K/V heads. OK and OV are therefore rectangular:
+  query heads by KV heads. K/V weights are not repeated to query-head count.
+- Hybrid models include only blocks exposing bridged attention and retain original block
+  numbers in their layer metadata.
+- Architectures without readable standard Q/K/V/O projections, such as MLA or opaque
+  native-forward attention, fail with a role- and layer-specific error.
+
+By default, every head must be full column rank. An explicit `rank` applies the same
+truncation to both roles and must not exceed any participating head's measured rank.
 
 ## Random-subspace reference
 

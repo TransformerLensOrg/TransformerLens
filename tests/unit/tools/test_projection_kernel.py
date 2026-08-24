@@ -1,16 +1,44 @@
-"""Unit tests for Projection Kernel subspace geometry."""
+"""Unit tests for Projection Kernel subspace geometry and head affinity."""
 
 import math
+from types import SimpleNamespace
 
 import pytest
 import torch
 
 from transformer_lens.tools.analysis.projection_kernel import (
     SubspaceBasis,
+    _pairwise_projection_kernel,
+    attention_head_subspace_affinity,
     orthonormal_subspace,
     projection_kernel,
     random_projection_kernel_moments,
 )
+
+
+class SyntheticAttention:
+    def __init__(self, seed: int, *, d_model: int = 5, d_head: int = 2):
+        generator = torch.Generator().manual_seed(seed)
+        self.W_Q = torch.randn(2, d_model, d_head, generator=generator, dtype=torch.float64)
+        self.W_K = torch.randn(1, d_model, d_head, generator=generator, dtype=torch.float64)
+        self.W_V = torch.randn(1, d_model, d_head, generator=generator, dtype=torch.float64)
+        self.W_O = torch.randn(2, d_head, d_model, generator=generator, dtype=torch.float64)
+
+
+class SyntheticBlock:
+    def __init__(self, attention):
+        self.attn = attention
+
+
+class SyntheticBridge:
+    def __init__(self, layer_indices=(0, 2, 5)):
+        self.cfg = SimpleNamespace(device="cpu", original_architecture="SyntheticArchitecture")
+        self.attention_blocks = [
+            (layer, SyntheticBlock(SyntheticAttention(10 + layer))) for layer in layer_indices
+        ]
+
+    def blocks_with(self, submodule):
+        return self.attention_blocks if submodule == "attn" else []
 
 
 class TestOrthonormalSubspace:
@@ -280,3 +308,190 @@ class TestRandomProjectionKernelMoments:
         standard_error = math.sqrt(reference.variance / samples)
 
         assert empirical_mean == pytest.approx(reference.mean, abs=6 * standard_error)
+
+
+class TestPairwiseProjectionKernel:
+    @pytest.mark.parametrize("max_temp_bytes", [1, 48, 96, 10_000])
+    def test_tiled_scores_match_nested_loop_for_unequal_ranks(self, max_temp_bytes):
+        generator = torch.Generator().manual_seed(23)
+        source, _ = torch.linalg.qr(torch.randn(5, 7, 2, generator=generator, dtype=torch.float64))
+        target, _ = torch.linalg.qr(torch.randn(4, 7, 3, generator=generator, dtype=torch.float64))
+
+        actual = _pairwise_projection_kernel(source, target, max_temp_bytes=max_temp_bytes)
+        expected = torch.empty(5, 4, dtype=torch.float64)
+        for source_index in range(5):
+            for target_index in range(4):
+                overlap = source[source_index].T @ target[target_index]
+                expected[source_index, target_index] = overlap.square().sum()
+
+        assert torch.allclose(actual, expected)
+
+
+class TestAttentionHeadSubspaceAffinity:
+    def test_gqa_roles_have_native_rectangular_axes_and_hybrid_indices(self):
+        model = SyntheticBridge()
+
+        oq = attention_head_subspace_affinity(model, target_role="Q")
+        ok = attention_head_subspace_affinity(model, target_role="K")
+        ov = attention_head_subspace_affinity(model, target_role="V")
+
+        assert oq.scores.shape == (3, 2, 3, 2)
+        assert ok.scores.shape == (3, 2, 3, 1)
+        assert ov.scores.shape == (3, 2, 3, 1)
+        assert oq.source_layer_indices == (0, 2, 5)
+        assert oq.target_layer_indices == (0, 2, 5)
+        assert oq.source_head_kind == "query"
+        assert oq.target_head_kind == "query"
+        assert ok.target_head_kind == "kv"
+        assert ov.target_head_kind == "kv"
+        assert int(oq.valid_mask.sum()) == 12
+        assert int(ok.valid_mask.sum()) == 6
+        assert int(ov.valid_mask.sum()) == 6
+
+    @pytest.mark.parametrize(("role", "attribute"), [("Q", "W_Q"), ("K", "W_K"), ("V", "W_V")])
+    def test_sample_matches_independent_o_to_target_calculation(self, role, attribute):
+        model = SyntheticBridge()
+
+        result = attention_head_subspace_affinity(model, target_role=role)
+        source_matrix = model.attention_blocks[0][1].attn.W_O[0].T
+        target_matrix = getattr(model.attention_blocks[1][1].attn, attribute)[-1]
+        expected = projection_kernel(
+            orthonormal_subspace(source_matrix), orthonormal_subspace(target_matrix)
+        )
+
+        assert result.scores[0, 0, 1, -1].item() == pytest.approx(expected.score.item())
+        assert result.normalized[0, 0, 1, -1].item() == pytest.approx(expected.normalized.item())
+
+    def test_all_layer_order_includes_every_pair(self):
+        result = attention_head_subspace_affinity(
+            SyntheticBridge((1, 4)), target_role="K", layer_order="all"
+        )
+
+        assert bool(result.valid_mask.all())
+        assert int(result.valid_mask.sum()) == 8
+
+    def test_invalid_entries_are_zero(self):
+        result = attention_head_subspace_affinity(SyntheticBridge(), target_role="Q")
+
+        assert torch.equal(result.scores[~result.valid_mask], torch.zeros(24, dtype=torch.float64))
+        assert torch.equal(
+            result.normalized[~result.valid_mask], torch.zeros(24, dtype=torch.float64)
+        )
+
+    def test_wrapper_does_not_retain_weight_autograd_graph(self):
+        model = SyntheticBridge((0, 1))
+        for _, block in model.attention_blocks:
+            block.attn.W_Q.requires_grad_()
+            block.attn.W_O.requires_grad_()
+
+        result = attention_head_subspace_affinity(model, target_role="Q")
+
+        assert not result.scores.requires_grad
+        assert not result.normalized.requires_grad
+
+    def test_result_dtype_device_and_rank_metadata(self):
+        model = SyntheticBridge((0, 1))
+        for _, block in model.attention_blocks:
+            block.attn.W_Q = block.attn.W_Q.float()
+            block.attn.W_O = block.attn.W_O.float()
+
+        result = attention_head_subspace_affinity(model, target_role="Q")
+
+        assert result.scores.dtype == torch.float32
+        assert result.scores.device == torch.device("cpu")
+        assert result.source_ranks.dtype == torch.long
+        assert result.source_ranks.shape == (2, 2)
+        assert result.target_ranks.shape == (2, 2)
+        assert result.source_rank == 2
+        assert result.target_rank == 2
+
+    def test_rank_deficiency_names_role_layer_and_head(self):
+        model = SyntheticBridge()
+        deficient = model.attention_blocks[1][1].attn.W_Q[1]
+        deficient[:, 1] = deficient[:, 0]
+
+        with pytest.raises(ValueError, match="role Q at layer 2, head 1"):
+            attention_head_subspace_affinity(model, target_role="Q")
+
+    def test_explicit_common_truncation_accepts_rank_one_head(self):
+        model = SyntheticBridge()
+        deficient = model.attention_blocks[1][1].attn.W_Q[1]
+        deficient[:, 1] = deficient[:, 0]
+
+        result = attention_head_subspace_affinity(model, target_role="Q", rank=1)
+
+        assert result.source_rank == 1
+        assert result.target_rank == 1
+        assert result.target_ranks[1, 1].item() == 1
+        assert bool((result.normalized[result.valid_mask] <= 1 + 1e-12).all())
+
+    def test_top_pairs_excludes_masked_entries_and_breaks_ties_lexicographically(self):
+        model = SyntheticBridge((0, 3))
+        common_q = torch.eye(4, dtype=torch.float64)[:, :2].expand(2, -1, -1).clone()
+        common_o = common_q.transpose(-2, -1).clone()
+        for _, block in model.attention_blocks:
+            block.attn.W_Q = common_q
+            block.attn.W_O = common_o
+
+        result = attention_head_subspace_affinity(model, target_role="Q")
+        pairs = result.top_pairs(10)
+
+        assert len(pairs) == 4
+        assert [
+            (pair.source.layer, pair.source.head, pair.target.layer, pair.target.head)
+            for pair in pairs
+        ] == [(0, 0, 3, 0), (0, 0, 3, 1), (0, 1, 3, 0), (0, 1, 3, 1)]
+        assert all(pair.score == pytest.approx(2.0) for pair in pairs)
+
+    @pytest.mark.parametrize("k", [0, -1, True])
+    def test_top_pairs_rejects_invalid_k(self, k):
+        result = attention_head_subspace_affinity(SyntheticBridge(), target_role="Q")
+
+        with pytest.raises(ValueError, match="k must be"):
+            result.top_pairs(k)
+
+    def test_rejects_unsupported_pairing_and_layer_order(self):
+        model = SyntheticBridge()
+
+        with pytest.raises(ValueError, match="source_role must be 'O'"):
+            attention_head_subspace_affinity(model, source_role="Q", target_role="K")
+        with pytest.raises(ValueError, match="target_role must be one of"):
+            attention_head_subspace_affinity(model, target_role="O")
+        with pytest.raises(ValueError, match="layer_order must be one of"):
+            attention_head_subspace_affinity(model, target_role="Q", layer_order="backward")
+
+    def test_rejects_no_attention_and_invalid_weight_shape(self):
+        empty = SyntheticBridge(())
+        invalid = SyntheticBridge()
+        invalid.attention_blocks[0][1].attn.W_K = torch.ones(5, 2)
+
+        with pytest.raises(ValueError, match="No attention layers"):
+            attention_head_subspace_affinity(empty, target_role="Q")
+        with pytest.raises(ValueError, match="role K at layer 0.*expected a three-dimensional"):
+            attention_head_subspace_affinity(invalid, target_role="K")
+
+    def test_rejects_missing_and_nonfinite_weights(self):
+        missing = SyntheticBridge()
+        nonfinite = SyntheticBridge()
+        del missing.attention_blocks[0][1].attn.W_K
+        nonfinite.attention_blocks[1][1].attn.W_K[0, 0, 0] = float("nan")
+
+        with pytest.raises(ValueError, match="cannot expose role K at layer 0"):
+            attention_head_subspace_affinity(missing, target_role="K")
+        with pytest.raises(ValueError, match="role K at layer 2 must contain only finite"):
+            attention_head_subspace_affinity(nonfinite, target_role="K")
+
+    @pytest.mark.parametrize("shape", [(2, 5, 2), (1, 6, 2), (1, 5, 3)])
+    def test_rejects_inconsistent_role_shapes(self, shape):
+        model = SyntheticBridge()
+        model.attention_blocks[1][1].attn.W_K = torch.ones(shape, dtype=torch.float64)
+
+        with pytest.raises(ValueError, match="consistent.*shape"):
+            attention_head_subspace_affinity(model, target_role="K")
+
+    def test_rejects_empty_head_axis(self):
+        model = SyntheticBridge((0,))
+        model.attention_blocks[0][1].attn.W_K = torch.empty(0, 5, 2)
+
+        with pytest.raises(ValueError, match="must have non-empty head"):
+            attention_head_subspace_affinity(model, target_role="K", layer_order="all")
