@@ -275,6 +275,50 @@ def test_adapter_templates_bind_dense_layers_as_gated_mlps(architecture: str) ->
     assert instance.hook_aliases["hook_pre"] == "dense_gate.hook_out"
 
 
+@pytest.mark.parametrize("architecture", DENSE_AWARE_ARCHS)
+def test_dense_keys_read_the_projection_they_name(architecture: str) -> None:
+    """dense_gate must be the GATE projection: a dense_gate/dense_in swap keeps
+    both shapes [d_model, d_mlp] and survives every key-set check while hook_pre
+    reports the wrong tensor. Checked here once, for every adapter.
+    """
+    cfg = make_bridge_cfg(architecture, d_head=8)
+    adapter = ArchitectureAdapterFactory.select_architecture_adapter(cfg)
+    blocks = adapter.component_mapping["blocks"]
+    template = blocks.submodules.get("mlp") or blocks.submodules["feed_forward"]
+    bridge = copy.deepcopy(template)
+    module = _DenseMLP()
+    bridge.set_original_component(module)
+    setup_submodules(bridge, adapter, module)
+
+    with torch.random.fork_rng(devices=[]):
+        torch.manual_seed(0)
+        x = torch.randn(1, 3, D_MODEL)
+
+    captured: dict = {}
+    for key in ("dense_gate", "dense_in"):
+        getattr(bridge, key).hook_out.add_hook(
+            lambda t, hook, key=key: captured.__setitem__(key, t.clone())
+        )
+    with torch.no_grad():
+        bridge(x)
+        expected_gate = module.gate_proj(x)
+        expected_in = module.up_proj(x)
+
+    torch.testing.assert_close(
+        captured["dense_gate"],
+        expected_gate,
+        msg=lambda m: f"{architecture}: dense_gate is not the gate projection\n{m}",
+    )
+    torch.testing.assert_close(
+        captured["dense_in"],
+        expected_in,
+        msg=lambda m: f"{architecture}: dense_in is not the up projection\n{m}",
+    )
+    # The fixture must be able to tell them apart, or neither assertion means
+    # anything (equal weights would satisfy both under a swap).
+    assert not torch.allclose(expected_gate, expected_in)
+
+
 class _UngatedDenseFF(nn.Module):
     """Switch-style ungated dense feed-forward (wi/wo, no gate projection)."""
 
@@ -359,12 +403,9 @@ class TestSparseRequiredGuard:
             )
 
     def test_opting_in_is_what_makes_a_missing_router_loud(self) -> None:
-        """Differential on the opt-in alone: the SAME template shape and the SAME
-        module bind silently without `sparse_required` and raise with it.
-
-        Driven through the real setup_submodules so the skipped set is computed
-        rather than hand-fed — hand-feeding it would exercise the guard's body
-        while skipping the machinery that decides when the guard applies.
+        """Differential on the opt-in alone: the same bind is silent without
+        `sparse_required` and raises with it. Driven through the real
+        setup_submodules so the skipped set is computed, not hand-fed.
         """
         adapter = _adapter()
         module = _RenamedRouterSparseMoE()

@@ -207,9 +207,6 @@ class TestJambaMoEMapping:
         # Dense (JambaMLP) layers bind under dense_* so they get gated-MLP
         # neuron hooks; `router` stays the sparse layers' router (#1645).
         assert set(mlp.submodules) == {"dense_gate", "dense_in", "dense_out", "router"}
-        assert mlp.submodules["router"].name == "router"
-        assert mlp.submodules["router"].optional is True
-        assert mlp.submodules["dense_gate"].optional is True
         # A renamed router on a sparse layer must fail loudly, not bind silently.
         assert mlp._sparse_required == ("router",)
 

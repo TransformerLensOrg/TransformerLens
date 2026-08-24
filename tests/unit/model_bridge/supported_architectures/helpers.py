@@ -3,12 +3,21 @@
 from __future__ import annotations
 
 import copy
+from types import SimpleNamespace
 from typing import Any
 
 import torch
 
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.model_bridge.component_setup import setup_submodules
+from transformer_lens.model_bridge.generalized_components import MoEBridge
+
+# The keys MoEBridge binds a dense layer's projections under. Adapter key-set
+# assertions subtract these and check only the sparse-side keys: that every
+# dense-aware adapter declares dense_* AND that each key reads the projection it
+# names is covered behaviorally, for all 14 of them, by the roster in
+# tests/unit/model_bridge/generalized_components/test_moe_dense_dispatch.py.
+DENSE_KEYS = frozenset({*MoEBridge.DENSE_SUBMODULE_KEYS, MoEBridge.DENSE_GATE_KEY})
 
 
 def make_bridge_cfg(architecture: str, **overrides) -> TransformerBridgeConfig:
@@ -62,3 +71,50 @@ def wire_attention_bridge(
     setup_submodules(bridge, adapter, hf_attn)
     bridge.setup_hook_compatibility()
     return bridge
+
+
+class FakeDelegatedAttention(torch.nn.Module):
+    """HF-shaped attention for delegated bridges: routes through every projection
+    (hooks fire inside the wrapped submodules) and returns (out, weights[B,H,S,S]).
+    o_proj takes n_heads*d_head — a narrower fake silently no-ops the hook_z reshape.
+    """
+
+    def __init__(self, d_model: int, n_heads: int, n_kv_heads: int, d_head: int) -> None:
+        super().__init__()
+        self.n_heads, self.n_kv_heads, self.d_head = n_heads, n_kv_heads, d_head
+        self.q_proj = torch.nn.Linear(d_model, n_heads * d_head, bias=False)
+        self.k_proj = torch.nn.Linear(d_model, n_kv_heads * d_head, bias=False)
+        self.v_proj = torch.nn.Linear(d_model, n_kv_heads * d_head, bias=False)
+        self.o_proj = torch.nn.Linear(n_heads * d_head, d_model, bias=False)
+        for name in ("q_norm", "k_norm", "v_norm"):
+            setattr(self, name, torch.nn.Identity())
+
+    def forward(self, hidden_states, *args, **kwargs):
+        batch, seq, _ = hidden_states.shape
+        self.q_norm(self.q_proj(hidden_states))
+        self.k_norm(self.k_proj(hidden_states))
+        value = self.v_norm(self.v_proj(hidden_states))
+        expanded = value.view(batch, seq, self.n_kv_heads, self.d_head).repeat_interleave(
+            self.n_heads // self.n_kv_heads, dim=2
+        )
+        weights = torch.softmax(torch.zeros(batch, self.n_heads, seq, seq), dim=-1)
+        return self.o_proj(expanded.reshape(batch, seq, -1)), weights
+
+
+def fake_hf_model(rotary_emb: object) -> SimpleNamespace:
+    """Minimal HF model exposing only model.rotary_emb (no config, no layers)."""
+    return SimpleNamespace(model=SimpleNamespace(rotary_emb=rotary_emb))
+
+
+def fake_hf_model_with_eager_targets(rotary_emb: object) -> SimpleNamespace:
+    """HF model whose top-level and per-layer attention implementation start non-eager."""
+    layers = [
+        SimpleNamespace(
+            self_attn=SimpleNamespace(config=SimpleNamespace(_attn_implementation="sdpa"))
+        )
+        for _ in range(2)
+    ]
+    return SimpleNamespace(
+        config=SimpleNamespace(_attn_implementation="sdpa"),
+        model=SimpleNamespace(rotary_emb=rotary_emb, layers=layers),
+    )

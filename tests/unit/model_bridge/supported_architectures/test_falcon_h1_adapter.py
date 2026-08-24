@@ -447,3 +447,151 @@ class TestFalconH1AttentionParity:
                 attention_mask=attention_mask,
             )[0]
         assert not torch.allclose(unscaled_out, hf_out, atol=1e-5)
+
+
+KEY_MULTIPLIER = 1.5
+
+
+class TestFalconH1ScaledHookK:
+    """hook_k must carry the tensor that reaches attention. As an alias of
+    k.hook_out it reported the pre-key_multiplier value and silently rescaled
+    writes; Granite's split applies: semantic name scaled, k.hook_out raw.
+    """
+
+    @staticmethod
+    def _wire(adapter, cfg):
+        import torch
+        from transformers import FalconH1Config
+        from transformers.models.falcon_h1.modeling_falcon_h1 import FalconH1Attention
+
+        with torch.random.fork_rng(devices=[]):
+            torch.manual_seed(0)
+            hf_config = FalconH1Config(
+                hidden_size=cfg.d_model,
+                num_attention_heads=cfg.n_heads,
+                num_key_value_heads=cfg.n_key_value_heads,
+                key_multiplier=KEY_MULTIPLIER,
+            )
+            hf_config._attn_implementation = "eager"
+            hf_attn = FalconH1Attention(hf_config, layer_idx=0)
+            batch, seq = 2, 5
+            hidden_states = torch.randn(batch, seq, cfg.d_model)
+
+        bridge = wire_attention_bridge(
+            adapter, hf_attn, expected_type=PositionEmbeddingsAttentionBridge
+        )
+        return bridge, hf_attn, hidden_states, batch, seq
+
+    @staticmethod
+    def _run(bridge, hidden_states, seq, d_head):
+        import torch
+
+        batch = hidden_states.shape[0]
+        with torch.no_grad():
+            bridge(
+                hidden_states=hidden_states,
+                position_embeddings=identity_rope(seq, d_head),
+                attention_mask=make_additive_causal_mask(batch, seq),
+            )
+
+    def test_hook_k_is_scaled_and_k_hook_out_stays_raw(self, adapter, cfg) -> None:
+        """Both legs are asserted: checking only the ratio would still pass if
+        `k.hook_out` had been scaled too, which is the wrong fix."""
+        import torch
+
+        bridge, hf_attn, hidden_states, batch, seq = self._wire(adapter, cfg)
+
+        captured: dict = {}
+        bridge.hook_k.add_hook(lambda t, hook: captured.__setitem__("scaled", t.clone()))
+        bridge.k.hook_out.add_hook(lambda t, hook: captured.__setitem__("raw", t.clone()))
+        self._run(bridge, hidden_states, seq, cfg.d_head)
+
+        with torch.no_grad():
+            expected_raw = hf_attn.k_proj(hidden_states).view(
+                batch, seq, cfg.n_key_value_heads, cfg.d_head
+            )
+        torch.testing.assert_close(captured["raw"], expected_raw)
+        torch.testing.assert_close(captured["scaled"], expected_raw * KEY_MULTIPLIER)
+
+    def test_hook_k_matches_the_tensor_entering_rope(self, adapter, cfg) -> None:
+        """Under identity RoPE, hook_rot_k is what attention consumes; hook_k
+        must already agree with it."""
+        import torch
+
+        bridge, _, hidden_states, _, seq = self._wire(adapter, cfg)
+
+        captured: dict = {}
+        bridge.hook_k.add_hook(lambda t, hook: captured.__setitem__("k", t.clone()))
+        bridge.hook_rot_k.add_hook(lambda t, hook: captured.__setitem__("rot_k", t.clone()))
+        self._run(bridge, hidden_states, seq, cfg.d_head)
+
+        torch.testing.assert_close(captured["k"], captured["rot_k"])
+
+    def test_a_value_written_at_hook_k_is_not_rescaled(self, adapter, cfg) -> None:
+        """The write path is the half users hit when patching. Previously a
+        write landed as value * key_multiplier."""
+        import torch
+
+        bridge, _, hidden_states, batch, seq = self._wire(adapter, cfg)
+
+        with torch.random.fork_rng(devices=[]):
+            torch.manual_seed(7)
+            written = torch.randn(batch, seq, cfg.n_key_value_heads, cfg.d_head)
+
+        captured: dict = {}
+        bridge.hook_k.add_hook(lambda t, hook: written)
+        bridge.hook_rot_k.add_hook(lambda t, hook: captured.__setitem__("rot_k", t.clone()))
+        self._run(bridge, hidden_states, seq, cfg.d_head)
+
+        torch.testing.assert_close(captured["rot_k"], written)
+
+    def test_hook_k_keeps_the_per_head_cache_shape(self, adapter, cfg) -> None:
+        """A real HookPoint has to inherit k's ReshapeForAttentionHeads, or the
+        de-aliasing silently changes hook_k's shape from 4D to flat 3D."""
+        bridge, _, hidden_states, batch, seq = self._wire(adapter, cfg)
+
+        captured: dict = {}
+        bridge.hook_k.add_hook(lambda t, hook: captured.__setitem__("k", t))
+        self._run(bridge, hidden_states, seq, cfg.d_head)
+
+        assert captured["k"].shape == (batch, seq, cfg.n_key_value_heads, cfg.d_head)
+
+    def test_unscaled_architectures_keep_the_alias(self, adapter, cfg) -> None:
+        """The de-aliasing is opt-in on the HF module carrying key_multiplier;
+        every other architecture must still resolve hook_k to k.hook_out."""
+        import torch
+        from transformers import LlamaConfig
+        from transformers.models.llama.modeling_llama import LlamaAttention
+
+        from transformer_lens.factories.architecture_adapter_factory import (
+            ArchitectureAdapterFactory,
+        )
+
+        llama_cfg = TransformerBridgeConfig(
+            d_model=cfg.d_model,
+            d_head=cfg.d_head,
+            n_heads=cfg.n_heads,
+            n_key_value_heads=cfg.n_key_value_heads,
+            n_layers=1,
+            n_ctx=16,
+            d_vocab=16,
+            architecture="LlamaForCausalLM",
+            original_architecture="LlamaForCausalLM",
+        )
+        llama_adapter = ArchitectureAdapterFactory.select_architecture_adapter(llama_cfg)
+        hf_attn = LlamaAttention(
+            LlamaConfig(
+                hidden_size=cfg.d_model,
+                num_attention_heads=cfg.n_heads,
+                num_key_value_heads=cfg.n_key_value_heads,
+                head_dim=cfg.d_head,
+            ),
+            layer_idx=0,
+        )
+        assert getattr(hf_attn, "key_multiplier", None) is None
+
+        bridge = wire_attention_bridge(
+            llama_adapter, hf_attn, expected_type=PositionEmbeddingsAttentionBridge
+        )
+        assert bridge.hook_aliases.get("hook_k") == "k.hook_out"
+        assert not isinstance(bridge.__dict__.get("_modules", {}).get("hook_k"), torch.nn.Module)

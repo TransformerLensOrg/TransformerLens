@@ -189,6 +189,38 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
         _setup_eager_attention_hook_wrapper()
         self._validate_submodule_declarations(component)
         self._qk_norm_phase = self._decide_qk_norm_phase(component)
+        self._own_scaled_hook_k(component)
+
+    def _own_scaled_hook_k(self, hf_attn: torch.nn.Module) -> None:
+        """Replace the ``hook_k`` alias with a real HookPoint when K is scaled.
+
+        Aliased hook_k reported Falcon-H1's pre-key_multiplier tensor and
+        silently rescaled writes; the owned hook carries the scaled value while
+        ``k.hook_out`` stays raw (Granite's split). No-op elsewhere.
+        """
+        if getattr(hf_attn, "key_multiplier", None) is None:
+            return
+        if self.hook_aliases is type(self).hook_aliases:
+            self.hook_aliases = dict(self.hook_aliases)
+        self.hook_aliases.pop("hook_k", None)
+        # The per-head hook_conversion is attached later, by
+        # _setup_qkv_hook_reshaping — component binding always precedes hook
+        # compatibility setup (bridge.py wires components, then calls it).
+        self.hook_k = HookPoint()
+
+    def _fire_scaled_hook_k(self, key_states: torch.Tensor) -> torch.Tensor:
+        """Fire an owned ``hook_k`` on the flat 3D tensor, preserving input rank.
+
+        A 4D input must flatten first: the conversion's revert only fires on 4D
+        returns, so an edited tensor would reach RoPE with the wrong rank.
+        """
+        if "hook_k" in self.hook_aliases or not hasattr(self, "hook_k"):
+            return key_states
+        if key_states.dim() == 4:
+            b, s, n_h, d_h = key_states.shape
+            flat = self.hook_k(key_states.reshape(b, s, n_h * d_h))
+            return flat.reshape(b, s, n_h, d_h)
+        return self.hook_k(key_states)
 
     def _validate_submodule_declarations(self, hf_attn: torch.nn.Module) -> None:
         """Raise if adapter omits q/k/v/o or a QK-norm the HF module has."""
@@ -316,20 +348,6 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
         # Apply input hook
         hidden_states = self.hook_in(hidden_states)
 
-        # Match dtype of HF module. Skip non-fp params: quantized weights (bnb
-        # uint8/int8, GPTQ/AWQ int32, HQQ, torchao) are stored in integer dtypes
-        # and dequantized internally during matmul. The compute dtype must come
-        # from a fp parameter; casting fp inputs to an integer storage dtype
-        # destroys precision.
-        target_dtype = None
-        for p in hf_attn.parameters():
-            if not p.dtype.is_floating_point:
-                continue
-            target_dtype = p.dtype
-            break
-        if target_dtype is not None and hidden_states.is_floating_point():
-            hidden_states = hidden_states.to(dtype=target_dtype)
-
         input_shape = hidden_states.shape[:-1]
         head_dim = hf_attn.head_dim
         hidden_shape = (*input_shape, -1, head_dim)
@@ -399,9 +417,12 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
                     query_states = query_states.reshape(*input_shape, -1)
 
         # Falcon-H1 scales K by a learned mup scalar between projection and RoPE.
+        # hook_k fires after the scale (see _own_scaled_hook_k) so it carries the
+        # tensor that actually reaches attention; k.hook_out kept the raw one.
         key_multiplier = getattr(hf_attn, "key_multiplier", None)
         if key_multiplier is not None:
             key_states = key_states * key_multiplier
+            key_states = self._fire_scaled_hook_k(key_states)
 
         has_q_norm = "q_norm" in self.submodules
         has_k_norm = "k_norm" in self.submodules
@@ -587,6 +608,7 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
             attn_weights = torch.nn.functional.softmax(attn_scores, dim=-1, dtype=torch.float32).to(
                 query_states.dtype
             )
+        attn_weights = self._scrub_compatibility_pattern_nans(attn_weights)
 
         # --- Dropout ---
         dropout_rate = getattr(hf_attn, "attention_dropout", 0.0)

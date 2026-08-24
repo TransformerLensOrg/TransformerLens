@@ -28,12 +28,20 @@ class T5Attention(AbstractAttention):
         has_relative_attention_bias: bool = False,
         attn_type: str = "global",
         layer_id: Optional[int] = None,
+        is_decoder: bool = False,
     ):
         super().__init__(cfg, attn_type, layer_id)
         if isinstance(cfg, Dict):
             cfg = HookedTransformerConfig.from_dict(cfg)
         self.cfg = cfg
         self.has_relative_attention_bias: bool = has_relative_attention_bias
+        # Decoder buckets are unidirectional: every key sits at a non-positive
+        # offset, so bidirectional bucketing halves the usable resolution.
+        self.is_decoder: bool = is_decoder
+        if is_decoder:
+            # T5's cfg carries attention_dir="bidirectional" for the encoder;
+            # decoder self-attention must still mask the future.
+            self._attention_dir_override = "causal"
 
         if self.has_relative_attention_bias:
             if (
@@ -127,7 +135,7 @@ class T5Attention(AbstractAttention):
         relative_position = memory_position - context_position  # shape (query_length, key_length)
         relative_position_bucket = self._relative_position_bucket(
             relative_position,  # shape (query_length, key_length)
-            bidirectional=True,
+            bidirectional=not self.is_decoder,
             num_buckets=self.relative_attention_num_buckets,
             max_distance=self.relative_attention_max_distance,
         )

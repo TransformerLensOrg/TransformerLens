@@ -16,6 +16,7 @@ from transformer_lens.config.transformer_lens_config import TransformerLensConfi
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.utilities import filter_dict_by_prefix
+from transformer_lens.utilities.architectures import POST_NORM_ARCHITECTURES
 
 
 class ProcessWeights:
@@ -112,7 +113,7 @@ class ProcessWeights:
     ) -> str:
         """Resolve a bridge-style key to the actual key in the state_dict.
 
-        Some architectures (e.g., OPT with SymbolicBridge) store parameters
+        Some architectures (e.g., BD3LM's symbolic attention) store parameters
         with HF-style prefixes instead of bridge-style prefixes. This method
         handles the key resolution by falling back to a suffix search.
 
@@ -1130,9 +1131,11 @@ class ProcessWeights:
         Returns:
             Dict[str, torch.Tensor]: Modified state dict with centered writing weights.
         """
-        # Skip centering for Olmo2 models - input of attn of 1st layer is not normed
-        if getattr(cfg, "original_architecture", None) == "Olmo2ForCausalLM":
-            print("Not centering embedding weights for Olmo2ForCausalLM")
+        # Post-norm models leave the first attention's input un-normed, so centering
+        # the embedding would shift a residual stream nothing re-normalizes.
+        architecture = getattr(cfg, "original_architecture", None)
+        if architecture in POST_NORM_ARCHITECTURES:
+            print(f"Not centering embedding weights for {architecture}")
         else:
             # Make a deep copy to avoid modifying the original
             embed_W_E_key = ProcessWeights._get_param_key("embed.W_E", adapter)

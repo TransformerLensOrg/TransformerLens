@@ -75,6 +75,7 @@ from transformer_lens.utilities import (
     init_xavier_uniform_,
     softcap_enabled,
 )
+from transformer_lens.utilities.architectures import POST_NORM_ARCHITECTURES
 from transformer_lens.utilities.devices import move_to_and_update_config
 from transformer_lens.weight_processing import ProcessWeights
 
@@ -1369,6 +1370,18 @@ class HookedTransformer(HookedRootModule):
                 assert (
                     qc.get("quant_method", "") == "bitsandbytes"
                 ), "Only bitsandbytes quantization is supported"
+            elif quant_method:
+                # Anything other than the supported bitsandbytes 4-bit Llama
+                # flow reaches the converters, which slice `.weight` directly:
+                # packed or scale-separated storage yields wrong numbers rather
+                # than an error. Refuse instead.
+                raise NotImplementedError(
+                    f"HookedTransformer cannot convert a {quant_method!r}-quantized "
+                    "checkpoint: its weight converters read weights directly, and "
+                    "packed or scale-separated storage would silently produce wrong "
+                    "values. Load the model dequantized, or use TransformerBridge "
+                    "for a quantized forward pass."
+                )
         else:
             hf_cfg = {}
 
@@ -1423,18 +1436,20 @@ class HookedTransformer(HookedRootModule):
                     "Setting center_writing_weights=False instead."
                 )
                 center_writing_weights = False
-        # OLMo 2 post-norm is incompatible with fold_ln/center_writing_weights (pre-norm only)
-        if cfg.original_architecture == "Olmo2ForCausalLM":
+        # Post-norm architectures are incompatible with fold_ln/center_writing_weights,
+        # both of which assume the norm gain sits on a sublayer's input.
+        if cfg.original_architecture in POST_NORM_ARCHITECTURES:
             if fold_ln:
                 logging.warning(
-                    "fold_ln=True is incompatible with OLMo 2's post-norm architecture. "
-                    "Setting fold_ln=False."
+                    f"fold_ln=True is incompatible with {cfg.original_architecture}'s "
+                    "post-norm architecture. Setting fold_ln=False."
                 )
                 fold_ln = False
             if center_writing_weights:
                 logging.warning(
-                    "center_writing_weights=True is incompatible with OLMo 2's post-norm "
-                    "architecture. Setting center_writing_weights=False."
+                    f"center_writing_weights=True is incompatible with "
+                    f"{cfg.original_architecture}'s post-norm architecture. "
+                    "Setting center_writing_weights=False."
                 )
                 center_writing_weights = False
         if center_unembed and softcap_enabled(cfg.output_logits_soft_cap):
@@ -1674,12 +1689,7 @@ class HookedTransformer(HookedRootModule):
 
         state_dict = self.fill_missing_keys(state_dict)
         if fold_ln:
-            if self.cfg.num_experts and self.cfg.num_experts > 1:
-                logging.warning(
-                    "You are using MoE, so the layer norm weights can't be folded! Skipping"
-                )
-                fold_ln = False
-            elif self.cfg.normalization_type not in ["LN", "LNPre", "RMS", "RMSPre"]:
+            if self.cfg.normalization_type not in ["LN", "LNPre", "RMS", "RMSPre"]:
                 logging.warning(
                     "You are not using LayerNorm or RMSNorm, so the layer norm weights can't be folded! Skipping"
                 )

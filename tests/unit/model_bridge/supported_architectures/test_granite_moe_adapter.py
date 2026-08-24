@@ -222,3 +222,16 @@ class TestGraniteMoeAdapterWeightConversions:
             "blocks.{i}.attn.v.weight",
             "blocks.{i}.attn.o.weight",
         }
+
+
+def test_moe_router_is_hookable(adapter: GraniteMoeArchitectureAdapter) -> None:
+    """The sparse block declared no submodules, so router logits — the tensor
+    every MoE routing analysis needs — had no hook at all."""
+    from transformer_lens.model_bridge.generalized_components import MoERouterBridge
+
+    mlp = adapter.component_mapping["blocks"].submodules["mlp"]
+    router = mlp.submodules["gate"]
+    assert isinstance(router, MoERouterBridge)
+    assert router.name == "router"
+    # (top_k_index, top_k_weights, router_logits) — index 0 is int64 indices.
+    assert router.logits_index == -1

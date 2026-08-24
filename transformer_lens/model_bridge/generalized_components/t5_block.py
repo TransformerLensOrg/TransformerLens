@@ -16,6 +16,19 @@ from transformer_lens.model_bridge.generalized_components.base import (
 )
 
 
+def _clamp_fp16_inf(hidden_states: torch.Tensor) -> torch.Tensor:
+    """HF T5Block clamps fp16 hidden states after every sublayer; the patched
+    forward must too, or fp16 runs overflow exactly where HF's do not."""
+    if hidden_states.dtype == torch.float16:
+        clamp_value = torch.where(
+            torch.isinf(hidden_states).any(),
+            torch.finfo(hidden_states.dtype).max - 1000,
+            torch.finfo(hidden_states.dtype).max,
+        )
+        hidden_states = torch.clamp(hidden_states, min=-clamp_value, max=clamp_value)
+    return hidden_states
+
+
 class T5BlockBridge(GeneralizedComponent):
     """Bridge component for T5 transformer blocks.
 
@@ -45,6 +58,19 @@ class T5BlockBridge(GeneralizedComponent):
             is_decoder: Whether this is a decoder block (has cross-attention)
         """
         super().__init__(name, config, submodules=submodules or {})
+        # T5 adds the residual INSIDE each sublayer, so the wrapped module's
+        # output already IS the added contribution. Keyed to what this adapter
+        # declared, since names differ across the family.
+        self.hook_aliases = dict(type(self).hook_aliases)
+        declared = submodules or {}
+        if "attn" in declared:
+            self.hook_aliases["hook_attn_out"] = "attn.hook_out"
+        elif "self_attn" in declared:
+            self.hook_aliases["hook_attn_out"] = "self_attn.hook_out"
+        if "cross_attn" in declared:
+            self.hook_aliases["hook_cross_attn_out"] = "cross_attn.hook_out"
+        if "mlp" in declared:
+            self.hook_aliases["hook_mlp_out"] = "mlp.hook_out"
         self.is_decoder = is_decoder
         self.hook_resid_mid = HookPoint()
         self._register_hook("hook_resid_mid", self.hook_resid_mid)
@@ -127,7 +153,7 @@ class T5BlockBridge(GeneralizedComponent):
             if "layer_head_mask" in self_attn_params:
                 self_attn_kwargs["layer_head_mask"] = layer_head_mask
             self_attention_outputs = layers[0](**self_attn_kwargs)
-            hidden_states = self_attention_outputs[0]
+            hidden_states = _clamp_fp16_inf(self_attention_outputs[0])
             # Keep self-attention outputs and relative position weights
             # attention_outputs contains: (position_bias,) or (position_bias, attn_weights)
             attention_outputs = self_attention_outputs[1:]
@@ -149,7 +175,7 @@ class T5BlockBridge(GeneralizedComponent):
                 if "layer_head_mask" in cross_attn_params:
                     cross_attn_kwargs["layer_head_mask"] = cross_attn_layer_head_mask
                 cross_attention_outputs = layers[1](**cross_attn_kwargs)
-                hidden_states = cross_attention_outputs[0]
+                hidden_states = _clamp_fp16_inf(cross_attention_outputs[0])
                 if hasattr(self, "hook_resid_mid2"):
                     hidden_states = self.hook_resid_mid2(hidden_states)
                 # Keep cross-attention outputs and relative position weights
@@ -161,6 +187,7 @@ class T5BlockBridge(GeneralizedComponent):
                 hidden_states = feed_forward_outputs[0]
             else:
                 hidden_states = feed_forward_outputs
+            hidden_states = _clamp_fp16_inf(hidden_states)
             hidden_states = self.hook_out(hidden_states)
             outputs: tuple[Any, ...] = (hidden_states,)
             # Return: hidden-states, (self-attention position bias), (self-attention weights),

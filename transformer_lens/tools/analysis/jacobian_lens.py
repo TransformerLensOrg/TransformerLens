@@ -70,6 +70,14 @@ import torch
 from jaxtyping import Float, Int
 from tqdm.auto import tqdm
 
+from transformer_lens.tools.analysis.jacobian_lens_decomposition import (
+    DEFAULT_K,
+    JSpaceDecomposition,
+    JSpaceOccupancy,
+    JSpaceVarianceProfile,
+    estimate_occupancy,
+    get_sparse_decomposition,
+)
 from transformer_lens.utilities.hf_utils import call_hf_with_retry
 
 TokenInput = Union[str, int]
@@ -245,6 +253,7 @@ class JacobianLens:
         self.d_model = int(d_model)
         self.metadata: Dict[str, Any] = dict(metadata or {})
         self._device_jacobians: Dict[Tuple[int, torch.device], torch.Tensor] = {}
+        self._dictionary_cache: Dict[Tuple[int, torch.device], torch.Tensor] = {}
 
     @property
     def source_layers(self) -> List[int]:
@@ -633,8 +642,10 @@ class JacobianLens:
     # ------------------------------------------------------------------ #
 
     def clear_device_cache(self) -> None:
-        """Release lazily cached Jacobian copies on accelerator devices."""
+        """Release lazily cached Jacobian copies and full-vocabulary dictionaries on
+        accelerator devices."""
         self._device_jacobians.clear()
+        self._dictionary_cache.clear()
 
     def _matrix_on(self, layer: int, device: Union[str, torch.device]) -> torch.Tensor:
         """Return one cached fp32 Jacobian copy for a layer/device pair."""
@@ -811,6 +822,310 @@ class JacobianLens:
         unembed_columns = model.W_U[:, token_ids].float()  # [d_model, n]
         matrix = self._matrix_on(layer, unembed_columns.device)
         return (matrix.T @ unembed_columns).T
+
+    @torch.no_grad()
+    def lens_vector_dictionary(
+        self, model: Any, layer: int
+    ) -> Float[torch.Tensor, "d_vocab d_model"]:
+        """Full-vocabulary J-lens dictionary at ``layer``: ``[d_vocab, d_model]``.
+
+        Row ``t`` is the J-lens vector ``v_t = J[layer]^T W_U[:, t]`` -- this is
+        :meth:`lens_vectors` over the entire vocabulary. The result is cached per
+        (layer, device) so a sparse decomposition can reuse it; :meth:`clear_device_cache`
+        releases it.
+
+        The dictionary is vocabulary-sized and cached on the model's device
+        (``d_vocab * d_model`` fp32 values, on the order of gigabytes for a large
+        vocabulary), one entry per requested layer.
+
+        Args:
+            model: The model supplying ``W_U``.
+            layer: Source layer for the dictionary (must be a fitted source layer).
+
+        Returns:
+            The dictionary, fp32, on the model's device.
+        """
+        self.validate_model(model)
+        layer = _normalize_layer(layer, model.cfg.n_layers)
+        device = torch.device(model.W_U.device)
+        cached = self._dictionary_cache.get((layer, device))
+        if cached is None:
+            matrix = self._matrix_on(layer, device)  # [d_model, d_model]
+            cached = (matrix.T @ model.W_U.float()).T  # [d_vocab, d_model]
+            self._dictionary_cache[(layer, device)] = cached
+        return cached
+
+    @torch.no_grad()
+    def decompose(
+        self,
+        model: Any,
+        activation_or_prompt: Union[torch.Tensor, str],
+        layer: int,
+        *,
+        position: Optional[int] = None,
+        k: int = DEFAULT_K,
+        algorithm: str = "nonnegative_orthogonal_matching_pursuit",
+    ) -> JSpaceDecomposition:
+        """Decompose an activation into its J-space content at ``layer``.
+
+        ``activation_or_prompt`` is either:
+
+        - a raw activation vector of shape ``[d_model]`` (leave ``position`` as ``None``), or
+        - a prompt -- a string or a ``[1, seq]`` token tensor -- in which case ``position``
+          selects the token whose ``blocks.{layer}.hook_out`` activation is decomposed.
+
+        The full-vocabulary dictionary at ``layer`` is built (and cached) via
+        :meth:`lens_vector_dictionary`, then :func:`get_sparse_decomposition` solves for a
+        ``k``-sparse nonnegative combination of J-lens vectors.
+
+        Args:
+            model: A raw ``TransformerBridge``.
+            activation_or_prompt: An activation vector, or a prompt (string / token tensor).
+            layer: Source layer (must be a fitted source layer).
+            position: Token position when a prompt is given; must be ``None`` for a raw
+                activation vector.
+            k: Upper bound on the number of J-lens vectors to select; selection stops early
+                once no unselected vector is materially positively correlated, so fewer may be
+                returned.
+            algorithm: Coefficient-update rule; see :func:`get_sparse_decomposition`.
+
+        Returns:
+            A :class:`JSpaceDecomposition`. Its ``support`` (token ids here) holds only the
+            numerically active J-lens vectors and ``selected_support`` every selected vector,
+            with ``support.numel() <= selected_support.numel() <= k``. ``support`` and its
+            token-decoding tensors are on CPU; the vector-valued outputs stay on the model's
+            device.
+
+        Raises:
+            ValueError: On an invalid model, a mismatched activation shape, a batched prompt,
+                an unfitted layer, or an invalid ``k`` / ``algorithm``.
+            RuntimeError: If the default nonnegative least-squares solver cannot validate its
+                result against the KKT conditions.
+        """
+        activation, resolved_layer = self._resolve_activation(
+            model, activation_or_prompt, layer, position
+        )
+        dictionary = self.lens_vector_dictionary(model, resolved_layer)
+        return get_sparse_decomposition(
+            activation.float().to(dictionary.device), dictionary, k, algorithm=algorithm
+        )
+
+    def _resolve_activation(
+        self,
+        model: Any,
+        activation_or_prompt: Union[torch.Tensor, str],
+        layer: int,
+        position: Optional[int],
+    ) -> Tuple[torch.Tensor, int]:
+        """Validate the model and layer, then resolve either a raw ``[d_model]`` activation or a
+        prompt plus ``position`` to the activation vector to analyse.
+
+        Returns ``(activation, resolved_layer)``. Shared by :meth:`decompose` and
+        :meth:`occupancy` so both accept the same input forms with identical validation.
+        """
+        self.validate_model(model)
+        resolved_layer = _normalize_layer(layer, model.cfg.n_layers)
+        if resolved_layer not in self.jacobians:
+            raise ValueError(
+                f"layer {layer} is not in this lens's source layers; "
+                f"available: {self.source_layers}"
+            )
+
+        if position is None:
+            if not isinstance(activation_or_prompt, torch.Tensor):
+                raise ValueError(
+                    "decompose expects a raw activation tensor when position is None; pass a "
+                    "prompt together with a position to decompose a model activation"
+                )
+            activation = activation_or_prompt
+            if activation.ndim != 1 or activation.shape[0] != self.d_model:
+                raise ValueError(
+                    f"activation must be 1-D of length d_model={self.d_model}, "
+                    f"got shape {tuple(activation.shape)}"
+                )
+        else:
+            if isinstance(activation_or_prompt, torch.Tensor) and activation_or_prompt.ndim == 1:
+                raise ValueError(
+                    "position is only valid with a prompt (string or [1, seq] tokens); "
+                    "pass a raw 1-D activation with position=None instead"
+                )
+            tokens = (
+                model.to_tokens(activation_or_prompt)
+                if isinstance(activation_or_prompt, str)
+                else activation_or_prompt
+            )
+            if tokens.ndim != 2 or tokens.shape[0] != 1:
+                raise ValueError(
+                    f"decompose expects a single prompt; got shape {tuple(tokens.shape)}"
+                )
+            hook_name = _resid_post_hook_name(resolved_layer)
+            _, cache = model.run_with_cache(tokens, names_filter=lambda name: name == hook_name)
+            norm_position = _normalize_positions([position], tokens.shape[1])[0]
+            activation = cache[hook_name][0, norm_position, :]
+        return activation, resolved_layer
+
+    @torch.no_grad()
+    def occupancy(
+        self,
+        model: Any,
+        activation_or_prompt: Union[torch.Tensor, str],
+        layer: int,
+        *,
+        position: Optional[int] = None,
+        max_atoms: int = DEFAULT_K,
+        num_control_dictionaries: int = 32,
+        seed: int = 0,
+    ) -> JSpaceOccupancy:
+        """Estimate how many J-lens vectors are meaningfully active in an activation at ``layer``.
+
+        Resolves ``activation_or_prompt`` (a raw ``[d_model]`` vector, or a prompt plus
+        ``position``) exactly as :meth:`decompose`, builds the cached full-vocabulary dictionary
+        via :meth:`lens_vector_dictionary`, and calls :func:`estimate_occupancy`.
+
+        Args:
+            model: A raw ``TransformerBridge``.
+            activation_or_prompt: An activation vector, or a prompt (string / token tensor).
+            layer: Source layer (must be a fitted source layer).
+            position: Token position when a prompt is given; ``None`` for a raw activation.
+            max_atoms: Maximum number of J-lens vectors to consider.
+            num_control_dictionaries: Number of random control dictionaries to average over.
+            seed: Seed for the random control dictionaries (reproducibility).
+
+        Returns:
+            A :class:`JSpaceOccupancy`.
+        """
+        activation, resolved_layer = self._resolve_activation(
+            model, activation_or_prompt, layer, position
+        )
+        dictionary = self.lens_vector_dictionary(model, resolved_layer)
+        return estimate_occupancy(
+            activation.float().to(dictionary.device),
+            dictionary,
+            max_atoms=max_atoms,
+            num_control_dictionaries=num_control_dictionaries,
+            seed=seed,
+        )
+
+    @torch.no_grad()
+    def fraction_of_variance(
+        self,
+        model: Any,
+        prompts: Union[str, torch.Tensor, Sequence[Union[str, torch.Tensor]]],
+        layers: Optional[Sequence[int]] = None,
+        *,
+        k: int = DEFAULT_K,
+        skip_first: int = 16,
+        positions: Optional[Sequence[int]] = None,
+        show_progress: bool = False,
+    ) -> JSpaceVarianceProfile:
+        """Profile the J-space share of activation variance over a prompt corpus.
+
+        Each prompt is run once (caching ``blocks.{layer}.hook_out`` for every requested layer).
+        At each sampled position the activation is decomposed and its J-space variance fraction
+        ``||j_space_component||^2 / ||activation||^2`` is recorded. The numerator is the
+        ``j_space_component`` -- the orthogonal projection of the activation onto the span of the
+        selected support (the paper's appendix "J-space component"), *not* the nonnegative
+        ``reconstruction``; the two coincide only when every selected atom stays active. Per layer
+        the profile reports the median of those fractions and the pooled ratio
+        ``sum(||j_space_component||^2) / sum(||activation||^2)`` (the paper's "fraction of total
+        variance").
+
+        A layer that samples no positions -- every prompt shorter than ``skip_first``, or only
+        zero-norm activations -- contributes no fractions: its ``median`` and ``pooled`` are
+        ``float("nan")`` and its ``per_position`` tensor is empty.
+
+        Args:
+            model: A raw ``TransformerBridge``.
+            prompts: A prompt, or a sequence of prompts. Each token tensor must represent exactly
+                one prompt and have shape ``[1, seq]``.
+            layers: Source layers to profile; defaults to all fitted ``source_layers``.
+            k: Number of J-lens vectors per decomposition.
+            skip_first: Non-negative index before which positions are skipped (mirrors the fit's
+                early-position skip); not used for sampling when ``positions`` is given.
+            positions: Explicit positions to sample instead of ``skip_first`` onward.
+            show_progress: Show a tqdm progress bar over prompts.
+
+        Returns:
+            A :class:`JSpaceVarianceProfile`.
+
+        Raises:
+            ValueError: On an invalid model, an unfitted layer, an empty corpus, a negative
+                ``skip_first``, or a token tensor that does not have shape ``[1, seq]``.
+        """
+        self.validate_model(model)
+        if skip_first < 0:
+            raise ValueError(f"skip_first must be non-negative, got {skip_first}")
+        if layers is None:
+            resolved_layers = list(self.source_layers)
+        else:
+            resolved_layers = [_normalize_layer(layer, model.cfg.n_layers) for layer in layers]
+            for layer in resolved_layers:
+                if layer not in self.jacobians:
+                    raise ValueError(
+                        f"layer {layer} is not in this lens's source layers; "
+                        f"available: {self.source_layers}"
+                    )
+        prompt_list: List[Union[str, torch.Tensor]] = (
+            [prompts] if isinstance(prompts, (str, torch.Tensor)) else list(prompts)
+        )
+        if not prompt_list:
+            raise ValueError("prompts must be a non-empty prompt or sequence of prompts")
+
+        hook_names = {layer: _resid_post_hook_name(layer) for layer in resolved_layers}
+        wanted_hooks = set(hook_names.values())
+        dictionaries = {
+            layer: self.lens_vector_dictionary(model, layer) for layer in resolved_layers
+        }
+        fractions: Dict[int, List[float]] = {layer: [] for layer in resolved_layers}
+        pooled_j_space: Dict[int, float] = {layer: 0.0 for layer in resolved_layers}
+        pooled_total: Dict[int, float] = {layer: 0.0 for layer in resolved_layers}
+
+        for prompt in tqdm(prompt_list, desc="J-space variance", disable=not show_progress):
+            tokens = model.to_tokens(prompt) if isinstance(prompt, str) else prompt
+            if tokens.ndim != 2 or tokens.shape[0] != 1:
+                raise ValueError(
+                    "fraction_of_variance expects each tokenized prompt to have shape "
+                    f"[1, seq], got {tuple(tokens.shape)}"
+                )
+            _, cache = model.run_with_cache(tokens, names_filter=lambda name: name in wanted_hooks)
+            seq_len = tokens.shape[1]
+            sampled = (
+                list(range(skip_first, seq_len))
+                if positions is None
+                else _normalize_positions(positions, seq_len)
+            )
+            for layer in resolved_layers:
+                dictionary = dictionaries[layer]
+                activations = cache[hook_names[layer]][0]  # [seq, d_model]
+                for position in sampled:
+                    activation = activations[position].float().to(dictionary.device)
+                    total = float(activation @ activation)
+                    if total <= 0.0:
+                        continue
+                    decomposition = get_sparse_decomposition(activation, dictionary, k)
+                    j_space = float(
+                        decomposition.j_space_component @ decomposition.j_space_component
+                    )
+                    fractions[layer].append(j_space / total)
+                    pooled_j_space[layer] += j_space
+                    pooled_total[layer] += total
+
+        median = {
+            layer: float(torch.tensor(fractions[layer]).median())
+            if fractions[layer]
+            else float("nan")
+            for layer in resolved_layers
+        }
+        pooled = {
+            layer: pooled_j_space[layer] / pooled_total[layer]
+            if pooled_total[layer] > 0
+            else float("nan")
+            for layer in resolved_layers
+        }
+        per_position = {layer: torch.tensor(fractions[layer]) for layer in resolved_layers}
+        return JSpaceVarianceProfile(
+            layers=resolved_layers, median=median, pooled=pooled, per_position=per_position
+        )
 
     # ------------------------------------------------------------------ #
     # interventions                                                      #

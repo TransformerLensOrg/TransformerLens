@@ -894,6 +894,16 @@ class ComponentBenchmarker:
                 except AttributeError:
                     # Skip this component
                     raise ValueError("Cannot test pos_embed - unclear interface")
+        elif isinstance(getattr(component, "original_component", component), torch.nn.Embedding):
+            # Any other embedding table (BERT's token_type_embed) rejects the
+            # float default: embeddings index with integer ids. The HF side is
+            # the bare nn.Embedding, the bridge side wraps one. Ids are derived
+            # from test_input so both sides index identically.
+            embedding_table = getattr(component, "original_component", component)
+            assert isinstance(embedding_table, torch.nn.Embedding)  # narrowed by the elif
+            num_ids = int(embedding_table.num_embeddings)
+            id_input = (test_input.abs().sum(dim=-1) * 1e3).long() % num_ids
+            return component(id_input)
         elif component_path == "project_in":
             # project_in expects word_embed_proj_dim, not d_model.
             word_embed_proj_dim = getattr(self.cfg, "word_embed_proj_dim", None)

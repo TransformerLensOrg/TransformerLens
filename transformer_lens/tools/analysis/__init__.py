@@ -11,7 +11,7 @@ Tools:
       analysis.
     - jacobian_lens: The Jacobian lens (J-lens) — per-layer causal transport to
       the output vocabulary basis, with loading of published lens artifacts,
-      native fitting, readouts, and interventions.
+      native fitting, readouts, interventions, and J-space sparse decomposition.
 """
 
 from transformer_lens.tools.analysis.direct_logit_attribution import (
@@ -26,12 +26,24 @@ from transformer_lens.tools.analysis.jacobian_lens import (
     JacobianLens,
     JacobianLensReadout,
 )
+from transformer_lens.tools.analysis.jacobian_lens_decomposition import (
+    JSpaceDecomposition,
+    JSpaceOccupancy,
+    JSpaceVarianceProfile,
+    estimate_occupancy,
+    get_sparse_decomposition,
+)
 
 __all__ = [
     "DirectLogitAttribution",
+    "JSpaceDecomposition",
+    "JSpaceOccupancy",
+    "JSpaceVarianceProfile",
     "JacobianLens",
     "JacobianLensReadout",
     "direct_logit_attribution",
+    "estimate_occupancy",
     "get_act_patch_direct_path",
     "get_act_patch_direct_path_all_sources",
+    "get_sparse_decomposition",
 ]

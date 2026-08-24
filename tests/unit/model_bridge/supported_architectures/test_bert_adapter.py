@@ -8,9 +8,10 @@ Tests cover:
 - Anti-drift config flags
 """
 
+from types import SimpleNamespace
+
 import pytest
 
-from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.config.transformer_bridge_config import TransformerBridgeConfig
 from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion
 from transformer_lens.conversion_utils.param_processing_conversion import (
@@ -74,8 +75,11 @@ class TestBertComponentMapping:
     def test_top_level_keys(self, adapter: BertArchitectureAdapter) -> None:
         assert set(adapter.component_mapping.keys()) == {
             "embed",
+            "token_type_embed",
             "pos_embed",
+            "embed_ln",
             "blocks",
+            "mlm_head",
             "ln_final",
             "unembed",
         }
@@ -83,18 +87,54 @@ class TestBertComponentMapping:
     def test_bridge_types(self, adapter: BertArchitectureAdapter) -> None:
         mapping = adapter.component_mapping
         assert isinstance(mapping["embed"], EmbeddingBridge)
+        assert isinstance(mapping["token_type_embed"], EmbeddingBridge)
         assert isinstance(mapping["pos_embed"], PosEmbedBridge)
+        assert isinstance(mapping["embed_ln"], NormalizationBridge)
         assert isinstance(mapping["blocks"], BlockBridge)
+        assert isinstance(mapping["mlm_head"], LinearBridge)
         assert isinstance(mapping["ln_final"], NormalizationBridge)
         assert isinstance(mapping["unembed"], UnembeddingBridge)
 
     def test_top_level_hf_paths(self, adapter: BertArchitectureAdapter) -> None:
         mapping = adapter.component_mapping
         assert mapping["embed"].name == "bert.embeddings.word_embeddings"
+        assert mapping["token_type_embed"].name == "bert.embeddings.token_type_embeddings"
         assert mapping["pos_embed"].name == "bert.embeddings.position_embeddings"
+        assert mapping["embed_ln"].name == "bert.embeddings.LayerNorm"
         assert mapping["blocks"].name == "bert.encoder.layer"
+        assert mapping["mlm_head"].name == "cls.predictions.transform.dense"
         assert mapping["ln_final"].name == "cls.predictions.transform.LayerNorm"
         assert mapping["unembed"].name == "cls.predictions.decoder"
+
+    def test_token_type_embedding_is_cached_with_hf_output(self) -> None:
+        import torch
+        from transformers import BertForMaskedLM
+
+        from transformer_lens.model_bridge.sources import build_bridge_from_module
+
+        hf_model = BertForMaskedLM.from_pretrained("bert-base-cased").eval()
+        input_ids = torch.tensor([[101, 7592, 102, 2088, 102]])
+        token_type_ids = torch.tensor([[0, 0, 0, 1, 1]])
+        with torch.no_grad():
+            expected = hf_model.bert.embeddings.token_type_embeddings(token_type_ids).clone()
+
+        bridge = build_bridge_from_module(
+            hf_model,
+            "BertForMaskedLM",
+            hf_config=hf_model.config,
+            dtype=torch.float32,
+            device="cpu",
+            model_name="bert-base-cased",
+        )
+        with torch.no_grad():
+            _, cache = bridge.run_with_cache(
+                input_ids,
+                token_type_ids=token_type_ids,
+                names_filter=["token_type_embed.hook_out"],
+            )
+
+        assert "token_type_embed.hook_out" in cache
+        torch.testing.assert_close(cache["token_type_embed.hook_out"], expected)
 
     def test_block_submodule_keys(self, adapter: BertArchitectureAdapter) -> None:
         assert set(adapter.component_mapping["blocks"].submodules.keys()) == {
@@ -138,6 +178,36 @@ class TestBertComponentMapping:
         mlp = adapter.component_mapping["blocks"].submodules["mlp"]
         assert mlp.submodules["in"].name == "intermediate.dense"
         assert mlp.submodules["out"].name == "output.dense"
+
+
+class TestBertTaskHeadMappings:
+    def test_nsp_only_model_uses_hooked_encoder_names(self) -> None:
+        adapter = BertArchitectureAdapter(_make_cfg())
+        hf_model = SimpleNamespace(
+            bert=SimpleNamespace(pooler=object()),
+            cls=SimpleNamespace(seq_relationship=object()),
+        )
+
+        adapter.prepare_model(hf_model)
+
+        assert adapter.components["pooler"].name == "bert.pooler.dense"
+        assert adapter.components["unembed"].name == "cls.seq_relationship"
+        assert "mlm_head" not in adapter.components
+        assert "ln_final" not in adapter.components
+
+    def test_combined_mlm_nsp_model_registers_both_heads(self) -> None:
+        adapter = BertArchitectureAdapter(_make_cfg())
+        hf_model = SimpleNamespace(
+            bert=SimpleNamespace(pooler=object()),
+            cls=SimpleNamespace(predictions=object(), seq_relationship=object()),
+        )
+
+        adapter.prepare_model(hf_model)
+
+        assert adapter.components["pooler"].name == "bert.pooler.dense"
+        assert adapter.components["mlm_head"].name == "cls.predictions.transform.dense"
+        assert adapter.components["nsp_head"].name == "cls.seq_relationship"
+        assert adapter.components["unembed"].name == "cls.predictions.decoder"
 
 
 # ---------------------------------------------------------------------------

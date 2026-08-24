@@ -459,3 +459,13 @@ def format_results(results: List[BenchmarkResult]) -> str:
     output.append("=" * 80)
 
     return "\n".join(output)
+
+
+def bridge_self_target_loss(bridge, test_text: str):
+    """Loss with the tokenized input as explicit labels.
+
+    Seq2seq bridges refuse label-less return_type="loss" (encoder input_ids are
+    not decoder targets), so every benchmark loss call routes through here.
+    """
+    labels = bridge.to_tokens(test_text)
+    return bridge(test_text, labels=labels, return_type="loss")

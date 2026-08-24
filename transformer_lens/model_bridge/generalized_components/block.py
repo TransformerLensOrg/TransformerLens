@@ -119,16 +119,35 @@ class BlockBridge(GeneralizedComponent):
         # blocks) when use_hook_mlp_in is set. See #1317.
         self.hook_mlp_in = HookPoint()
 
-    def _maybe_wire_capture_hooks(self) -> None:
-        """Install the block's capture hooks: the ln1 pre-hook feeding the
-        split-qkv fork and the MLP-branch-entry pre-hook feeding hook_mlp_in
-        (#1317). Subclasses extend this with their own captures.
+    def _wire_ln1_module(self) -> None:
+        """Keep the raw ln1 execution reference outside the ownership tree."""
+        from transformer_lens.model_bridge.generalized_components.attention import (
+            AttentionBridge,
+        )
 
-        Hooks register on the bridge submodule instance, not on
-        ``original_component`` — the manual (non-native-autograd) bridge
-        forward never calls the raw module, so a hook there would silently miss
-        on most adapters. Idempotent.
+        ln1 = self.submodules.get("ln1") if self.submodules else None
+        attn = self.submodules.get("attn") if self.submodules else None
+        if not isinstance(attn, AttentionBridge):
+            return
+
+        ln1_module = None
+        if (
+            ln1 is not None
+            and getattr(attn, "supports_split_qkv_fork", False)
+            and getattr(ln1, "original_component", None) is not None
+        ):
+            ln1_module = ln1.original_component
+
+        attn._modules.pop("_ln1_module", None)
+        object.__setattr__(attn, "_ln1_module", ln1_module)
+
+    def _maybe_wire_capture_hooks(self) -> None:
+        """Install the block's capture hooks (split-qkv fork, hook_mlp_in).
+
+        Registered on the bridge submodule, not ``original_component`` — the
+        manual bridge forward never calls the raw module. Idempotent.
         """
+        self._wire_ln1_module()
         if self._capture_hooks_wired:
             return
         from transformer_lens.model_bridge.generalized_components.attention import (
@@ -151,7 +170,6 @@ class BlockBridge(GeneralizedComponent):
 
             handle = ln1.register_forward_pre_hook(_capture_pre_ln1)
             self._capture_hook_handles.append(handle)
-            attn._ln1_module = ln1.original_component
 
         # hook_mlp_in must capture the MLP-branch entry point: ln2's input on
         # pre-norm blocks, the MLP's own input on post-norm blocks (where ln2
@@ -194,6 +212,16 @@ class BlockBridge(GeneralizedComponent):
             return bool(cfg.use_hook_mlp_in)
         return self._use_hook_mlp_in
 
+    def _clear_attention_capture(self) -> None:
+        """Release the transient residual captured for attention input forks."""
+        from transformer_lens.model_bridge.generalized_components.attention import (
+            AttentionBridge,
+        )
+
+        attn = self.submodules.get("attn") if self.submodules else None
+        if isinstance(attn, AttentionBridge):
+            attn._captured_pre_ln_residual = None
+
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Forward pass through the block bridge.
 
@@ -213,6 +241,7 @@ class BlockBridge(GeneralizedComponent):
             )
 
         self._maybe_wire_capture_hooks()
+        self._clear_attention_capture()
         self._check_stop_at_layer(*args, **kwargs)
         args, kwargs = self._hook_input_hidden_states(args, kwargs)
 
@@ -220,7 +249,10 @@ class BlockBridge(GeneralizedComponent):
         # This prevents errors when passing encoder-specific params to decoder-only models
         filtered_kwargs = self._filter_kwargs_for_forward(kwargs, len(args))
 
-        output = self.original_component(*args, **filtered_kwargs)
+        try:
+            output = self.original_component(*args, **filtered_kwargs)
+        finally:
+            self._clear_attention_capture()
         force_tuple_for_bare_tensor = self._is_standalone_hidden_state_call(args, filtered_kwargs)
         return self._apply_output_hook(
             output, force_tuple_for_bare_tensor=force_tuple_for_bare_tensor
@@ -276,6 +308,13 @@ class BlockBridge(GeneralizedComponent):
             and isinstance(kwargs["hidden_states"], torch.Tensor)
         )
 
+    def _extract_layer_idx(self) -> Optional[int]:
+        """Parse this block's layer index from its name (TL/GPT-2/LLaMA patterns)."""
+        if self.name is None:
+            return None
+        match = re.search(r"(?:^|\.)(?:blocks|h|layers)\.(\d+)", self.name)
+        return int(match.group(1)) if match else None
+
     def _check_stop_at_layer(self, *args: Any, **kwargs: Any) -> None:
         """Check if execution should stop before this block. Raises StopAtLayerException.
 
@@ -285,11 +324,9 @@ class BlockBridge(GeneralizedComponent):
         if not (hasattr(self, "_stop_at_layer_idx") and self._stop_at_layer_idx is not None):
             return
         if self.name is not None:
-            match = (
-                re.search(r"blocks\.(\d+)", self.name)
-                or re.search(r"\.h\.(\d+)", self.name)
-                or re.search(r"\.layers\.(\d+)", self.name)
-            )
+            # Anchored alternation: native models name blocks top-level
+            # ("layers.0"), which the old leading-dot pattern missed entirely.
+            match = re.search(r"(?:^|\.)(?:blocks|h|layers)\.(\d+)", self.name)
         else:
             match = None
         if match:
@@ -456,17 +493,9 @@ class ScaledResidualBlockBridge(BlockBridge):
         scaled_attn_submodule: str = "attn",
         scaled_mlp_submodule: Optional[str] = "mlp",
     ):
-        """Initialize the scaled-residual block bridge.
-
-        Args:
-            residual_contribution_scale: The HF block's residual multiplier.
-            scaled_attn_submodule: Submodule whose output feeds the attention-side
-                residual add.
-            scaled_mlp_submodule: Submodule whose output feeds the MLP-side residual
-                add, or None when no single submodule produces it (e.g. GraniteMoeHybrid
-                with experts sums ``block_sparse_moe + shared_mlp`` inline) — then
-                hook_mlp_out stays absent rather than firing with a partial tensor.
-        """
+        """scaled_mlp_submodule=None when no single submodule feeds the MLP-side
+        add (GraniteMoeHybrid sums moe + shared_mlp inline) — hook_mlp_out then
+        stays absent rather than firing with a partial tensor."""
         super().__init__(
             name,
             config=config,

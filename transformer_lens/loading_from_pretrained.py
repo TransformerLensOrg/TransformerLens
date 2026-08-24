@@ -58,7 +58,13 @@ from transformer_lens.pretrained.weight_conversions import (
     convert_t5_weights,
 )
 from transformer_lens.supported_models import MODEL_ALIASES, OFFICIAL_MODEL_NAMES
+from transformer_lens.utilities.architectures import POST_NORM_ARCHITECTURES
+from transformer_lens.utilities.heterogeneous_config import het_safe_view
 from transformer_lens.utilities.hf_utils import get_rotary_pct_from_config
+from transformer_lens.utilities.quantization import (
+    quantization_method,
+    unreadable_weight_reason,
+)
 
 NON_HF_HOSTED_MODEL_NAMES = [
     "llama-7b-hf",
@@ -95,6 +101,23 @@ def _get_rope_theta(hf_config: Any, default: float = 10000.0) -> float | int:
     if rope_params is not None and isinstance(rope_params, dict):
         return rope_params.get("rope_theta", default)
     return default
+
+
+def _apply_llama3_rope_scaling(cfg_dict: dict[str, Any], hf_config: Any) -> None:
+    """Populate the NTK-by-parts fields when a config requests llama3 rope scaling."""
+    rope_scaling = getattr(hf_config, "rope_scaling", None)
+    if not rope_scaling:
+        return
+    rope_type = (rope_scaling.get("type") or rope_scaling.get("rope_type") or "").lower()
+    if rope_type != "llama3":
+        return
+    cfg_dict["use_NTK_by_parts_rope"] = True
+    cfg_dict["NTK_original_ctx_len"] = rope_scaling.get(
+        "original_max_position_embeddings", hf_config.max_position_embeddings
+    )
+    cfg_dict["NTK_by_parts_low_freq_factor"] = rope_scaling.get("low_freq_factor", 1.0)
+    cfg_dict["NTK_by_parts_high_freq_factor"] = rope_scaling.get("high_freq_factor", 4.0)
+    cfg_dict["NTK_by_parts_factor"] = rope_scaling.get("factor", 1.0)
 
 
 def make_model_alias_map() -> dict[str, str]:
@@ -139,7 +162,9 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
     else:
         official_model_name = get_official_model_name(model_name)
 
-    # Load HuggingFace model config
+    # Load HuggingFace model config. Stays None on the name-based branches
+    # below, which infer the architecture from the model name and never fetch.
+    hf_config: Any = None
     if "llama" in official_model_name.lower():
         architecture = "LlamaForCausalLM"
     elif "gemma-3" in official_model_name.lower() or "medgemma" in official_model_name.lower():
@@ -164,6 +189,10 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             token=huggingface_token if len(huggingface_token) > 0 else None,
             **kwargs,
         )
+        # het view: transformers>=5.15 per-layer fields raise (not
+        # AttributeError) on global reads, so every hasattr/getattr probe in
+        # the branch chain below is a crash site without it.
+        hf_config = het_safe_view(hf_config)
         architecture = hf_config.architectures[0]
 
     cfg_dict: dict[str, Any]
@@ -477,7 +506,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "eps": hf_config.layer_norm_epsilon,
             "d_vocab": hf_config.vocab_size,
             "act_fn": hf_config.activation_function,
-            "use_attn_scale": True,
+            "use_attn_scale": getattr(hf_config, "scale_attn_weights", True),
             "use_local_attn": False,
             "scale_attn_by_inverse_layer_idx": hf_config.scale_attn_by_inverse_layer_idx,
             "normalization_type": "LN",
@@ -642,12 +671,15 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "normalization_type": "RMS",
             "positional_embedding_type": "rotary",
             "rotary_base": _get_rope_theta(hf_config),
-            "window_size": hf_config.sliding_window,  # This is None, as no sliding window was used
-            "attn_types": ["global"] * 32,
+            # None on the released 8x7B, but a variant that sets it must window.
+            "window_size": hf_config.sliding_window,
+            "attn_types": (
+                ["local" if hf_config.sliding_window else "global"] * hf_config.num_hidden_layers
+            ),
             "eps": hf_config.rms_norm_eps,
             "n_key_value_heads": hf_config.num_key_value_heads,
             "gated_mlp": True,
-            "use_local_attn": False,
+            "use_local_attn": bool(hf_config.sliding_window),
             "rotary_dim": hf_config.hidden_size // hf_config.num_attention_heads,
             "num_experts": hf_config.num_local_experts,
             "experts_per_token": hf_config.num_experts_per_tok,
@@ -768,9 +800,13 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "positional_embedding_type": "rotary",
             "rotary_adjacent_pairs": False,
             "rotary_dim": hf_config.hidden_size // hf_config.num_attention_heads,
+            # Llama-arch checkpoints without a name-matched branch above (Yi ships
+            # 5e6) reach here; the config default would silently be 10000.
+            "rotary_base": _get_rope_theta(hf_config),
             "final_rms": True,
             "gated_mlp": True,
         }
+        _apply_llama3_rope_scaling(cfg_dict, hf_config)
     elif architecture == "QWenLMHeadModel":
         cfg_dict = {
             "d_model": hf_config.hidden_size,
@@ -780,6 +816,9 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "n_layers": hf_config.num_hidden_layers,
             # QWenLMHeadModel uses seq_length in its remote-code attention/rotary logic.
             "n_ctx": hf_config.seq_length,
+            "use_logn_attn": getattr(hf_config, "use_logn_attn", False),
+            "use_dynamic_ntk_rope": getattr(hf_config, "use_dynamic_ntk", False),
+            "train_seq_length": hf_config.seq_length,
             "eps": hf_config.layer_norm_epsilon,
             "d_vocab": hf_config.vocab_size,
             "act_fn": "silu",
@@ -904,6 +943,15 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "gated_mlp": True,
             "parallel_attn_mlp": False,
             "rotary_dim": hf_config.hidden_size // hf_config.num_attention_heads,
+            # Phi-3-mini-4k ships sliding_window=2047 inside its 4096 n_ctx, and
+            # HF windows every layer (no layer_types).
+            "window_size": getattr(hf_config, "sliding_window", None),
+            "use_local_attn": bool(getattr(hf_config, "sliding_window", None)),
+            "attn_types": (
+                ["local"] * hf_config.num_hidden_layers
+                if getattr(hf_config, "sliding_window", None)
+                else None
+            ),
         }
     elif architecture == "ApertusForCausalLM":
         n_heads = hf_config.num_attention_heads
@@ -927,7 +975,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "rotary_base": _get_rope_theta(hf_config),
             "gated_mlp": False,
             "final_rms": True,
-            "use_qk_norm": getattr(hf_config, "qk_norm", False),
+            "use_qk_norm": True,  # HF applies q_norm/k_norm unconditionally; no config gate exists
         }
         rope_scaling = getattr(hf_config, "rope_scaling", None)
         if rope_scaling:
@@ -1008,7 +1056,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "n_key_value_heads": 4,
             "window_size": 4096,
             "use_local_attn": True,
-            "attn_types": ["global", "local"] * 13,  # Alternate global and local attn
+            "attn_types": ["local", "global"] * 13,  # HF makes even layers sliding
             "attn_scores_soft_cap": 50.0,
             "output_logits_soft_cap": 30.0,
             "gated_mlp": True,
@@ -1035,7 +1083,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "n_key_value_heads": 8,
             "window_size": 4096,
             "use_local_attn": True,
-            "attn_types": ["global", "local"] * 21,  # Alternate global and local attn
+            "attn_types": ["local", "global"] * 21,  # HF makes even layers sliding
             "attn_scores_soft_cap": 50.0,
             "output_logits_soft_cap": 30.0,
             "gated_mlp": True,
@@ -1063,7 +1111,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "n_key_value_heads": 16,
             "window_size": 4096,
             "use_local_attn": True,
-            "attn_types": ["global", "local"] * 23,  # Alternate global and local attn
+            "attn_types": ["local", "global"] * 23,  # HF makes even layers sliding
             "attn_scores_soft_cap": 50.0,
             "output_logits_soft_cap": 30.0,
             "gated_mlp": True,
@@ -1592,6 +1640,9 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
         raise NotImplementedError(f"{architecture} is not currently supported.")
     # All of these models use LayerNorm
     cfg_dict["original_architecture"] = architecture
+    # Carried on the cfg so the loader can act on the quantization without a
+    # second AutoConfig fetch (which would be a Hub round trip per load).
+    cfg_dict["quantization_method"] = quantization_method(hf_config)
     # The name such that AutoTokenizer.from_pretrained works
     cfg_dict["tokenizer_name"] = official_model_name
     if kwargs.get("trust_remote_code", False):
@@ -1735,11 +1786,12 @@ def get_pretrained_model_config(
         )
         fold_ln = False
 
-    # OLMo 2 uses post-norm (norm after attention/MLP, not before), so folding
-    # the norm weights into adjacent linear layers is not mathematically valid.
-    if cfg_dict.get("original_architecture") == "Olmo2ForCausalLM" and fold_ln:
+    # Post-norm blocks normalize the sublayer output, so folding the norm weights
+    # into adjacent linear layers is not mathematically valid.
+    architecture = cfg_dict.get("original_architecture")
+    if architecture in POST_NORM_ARCHITECTURES and fold_ln:
         logging.warning(
-            "fold_ln=True is incompatible with OLMo 2's post-norm architecture. "
+            f"fold_ln=True is incompatible with {architecture}'s post-norm architecture. "
             "Setting fold_ln=False."
         )
         fold_ln = False
@@ -1788,6 +1840,13 @@ def get_pretrained_model_config(
 
     if hf_cfg is not None:
         cfg_dict["load_in_4bit"] = hf_cfg.get("quantization_config", {}).get("load_in_4bit", False)
+        # A user-supplied hf_model is the more authoritative source: it says how
+        # the weights in hand are actually stored, not how the Hub repo declares
+        # them. .get, not []: convert_neel_model_config builds cfg_dict without
+        # ever seeing an HF config, so the key need not be there.
+        cfg_dict["quantization_method"] = quantization_method(hf_cfg) or cfg_dict.get(
+            "quantization_method"
+        )
         cfg_dict["d_vocab"] = hf_cfg.get("vocab_size", cfg_dict["d_vocab"])
         if cfg_dict["original_architecture"] == "Qwen2ForCausalLM":
             rope_params = hf_cfg.get("rope_parameters", {}) or {}
@@ -1875,29 +1934,59 @@ def get_checkpoint_labels(model_name: str, **kwargs: Any) -> tuple[list[int], st
 
 
 # %% Loading state dicts
-def _mxfp4_dequantize_config(
-    official_model_name: str,
-    cfg: HookedTransformerConfig,
-    token: str | None,
-) -> Any | None:
-    """Return ``Mxfp4Config(dequantize=True)`` for packed-MXFP4 gpt-oss checkpoints.
+def _mxfp4_dequantize_config(cfg: HookedTransformerConfig) -> Any | None:
+    """Return ``Mxfp4Config(dequantize=True)`` for packed-MXFP4 checkpoints.
 
-    The gpt-oss weight converter slices expert tensors, which only works on
-    materialized torch.Tensors — packed MXFP4 weights stay wrapped in
-    triton-kernels objects. Returns None for anything else, including
-    already-dequantized gpt-oss finetunes.
+    Reads the method captured on ``cfg`` (no refetch). Blind spot by
+    construction: llama/gemma names never fetch a config, so their
+    quantization_method is always None there — such checkpoints are refused by
+    ``_refuse_unsupported_quantization`` rather than auto-dequantized.
     """
-    if cfg.original_architecture != "GptOssForCausalLM":
-        return None
-    hf_cfg = AutoConfig.from_pretrained(official_model_name, token=token)
-    quant_cfg = getattr(hf_cfg, "quantization_config", None)
-    if isinstance(quant_cfg, dict):
-        quant_method = quant_cfg.get("quant_method")
-    else:
-        quant_method = getattr(quant_cfg, "quant_method", None)
-    if quant_method != "mxfp4":
+    if cfg.quantization_method != "mxfp4":
         return None
     return Mxfp4Config(dequantize=True)
+
+
+def _refuse_unsupported_quantization(cfg: HookedTransformerConfig, hf_model: Any) -> None:
+    """Refuse a quantized checkpoint before the weight converters read it.
+
+    Same-shape int8/FP8 converts silently AND survives load_state_dict (cast
+    to fp32), so refusal must happen here. Reads the LOADED model's config —
+    cfg.quantization_method is structurally None for name-based llama/gemma —
+    and refuses on stored weights, not the declaration, so dequantized loads
+    that still advertise a quant_method keep working.
+    """
+    if hf_model is None:
+        return
+    method = quantization_method(getattr(hf_model, "config", None))
+    if method is None:
+        return
+    # The one supported quantized HookedTransformer flow (weight conversion and
+    # abstract_attention's matmul_4bit both handle it).
+    if cfg.load_in_4bit and method == "bitsandbytes":
+        return
+    # Refuse on the stored weights, not the declaration: a checkpoint loaded
+    # with dequantize=True still advertises its original quant_method while
+    # holding perfectly readable bf16 tensors. Meta params are skipped — an
+    # offloaded load is a different problem with a different message.
+    offender = next(
+        (
+            (name, unreadable_weight_reason(param))
+            for name, param in hf_model.named_parameters()
+            if param.device.type != "meta" and unreadable_weight_reason(param) is not None
+        ),
+        None,
+    )
+    if offender is None:
+        return
+    name, reason = offender
+    raise NotImplementedError(
+        f"HookedTransformer cannot convert this {method!r}-quantized checkpoint: "
+        f"{name} cannot be read because {reason}. The weight converters read "
+        "weights directly, so packed or scale-separated storage silently "
+        "produces wrong values. Load the model dequantized, or use "
+        "TransformerBridge for a quantized forward pass."
+    )
 
 
 def get_pretrained_state_dict(
@@ -2021,11 +2110,7 @@ def get_pretrained_state_dict(
                 )
             else:
                 if "quantization_config" not in kwargs:
-                    mxfp4_dequantize = _mxfp4_dequantize_config(
-                        official_model_name,
-                        cfg,
-                        huggingface_token if len(huggingface_token) > 0 else None,
-                    )
+                    mxfp4_dequantize = _mxfp4_dequantize_config(cfg)
                     if mxfp4_dequantize is not None:
                         kwargs = {**kwargs, "quantization_config": mxfp4_dequantize}
                 # Older models may lack pad_token_id (required in newer transformers)
@@ -2057,6 +2142,8 @@ def get_pretrained_state_dict(
             if hf_model is not None:
                 for param in hf_model.parameters():
                     param.requires_grad = False
+
+        _refuse_unsupported_quantization(cfg, hf_model)
 
         if cfg.original_architecture == "GPT2LMHeadModel":
             state_dict = convert_gpt2_weights(hf_model, cfg)
@@ -2149,29 +2236,51 @@ def fill_missing_keys(
     # mismatch (e.g. W_K written where GroupedQueryAttention expects _W_K).
     # Filling it with an empty tensor silently zeroes the sublayer while every
     # downstream number still looks plausible — fail loudly instead.
-    attention_weight_names = {"W_Q", "W_K", "W_V", "W_O", "_W_K", "_W_V"}
-    missing_attention_weights = sorted(
+    # W_in/W_gate/W_out join the attention set: zero-filling an MLP matrix is
+    # the same silent-sublayer-death, just on the other branch.
+    fail_loud_weight_names = {
+        "W_Q",
+        "W_K",
+        "W_V",
+        "W_O",
+        "_W_K",
+        "_W_V",
+        "W_in",
+        "W_gate",
+        "W_out",
+    }
+    missing_fail_loud = sorted(
         key
         for key in missing_keys
-        if "hf_model" not in key and key.rsplit(".", 1)[-1] in attention_weight_names
+        if "hf_model" not in key and key.rsplit(".", 1)[-1] in fail_loud_weight_names
     )
-    if missing_attention_weights:
+    if missing_fail_loud:
         raise ValueError(
-            f"Pretrained state dict is missing attention weight matrices the model "
-            f"expects: {missing_attention_weights}. This usually means the weight "
-            f"converter and the instantiated attention module disagree on parameter "
+            f"Pretrained state dict is missing weight matrices the model "
+            f"expects: {missing_fail_loud}. This usually means the weight "
+            f"converter and the instantiated module disagree on parameter "
             f"naming (e.g. GQA's underscore-prefixed _W_K/_W_V vs W_K/W_V). Refusing "
             f"to zero-fill them, which would silently produce wrong outputs."
         )
+    # Norm weights fill with DEFAULTS (w=1, b=0), which is frequently correct
+    # (models without biases) but silently wrong when the checkpoint really has
+    # them — so the fill is named, not silent.
+    norm_key_names = {"w", "b"}
     for key in missing_keys:
         if "hf_model" in key:
             # Skip keys that are from the HuggingFace model, if loading from HF.
             continue
+        leaf = key.rsplit(".", 1)[-1]
         if "W_" in key:
             logging.warning(
                 "Missing key for a weight matrix in pretrained, filled in with an empty tensor: {}".format(
                     key
                 )
+            )
+        elif leaf in norm_key_names and ("ln" in key or "norm" in key):
+            logging.warning(
+                "Missing normalization key in pretrained, filled with its default "
+                "(identity norm): {}".format(key)
             )
         state_dict[key] = default_state_dict[key]
     return state_dict

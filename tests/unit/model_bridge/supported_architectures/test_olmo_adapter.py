@@ -100,6 +100,14 @@ class _FakeOlmoAttention(nn.Module):
         self.o_proj = nn.Linear(n_heads * head_dim, d_model, bias=False)
 
 
+class _RecordingLinear(nn.Linear):
+    """Record the bridge input dtype while handling conversion internally."""
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        self.received_dtype = input.dtype
+        return super().forward(input.to(self.weight.dtype))
+
+
 def _wire_attention_bridge(
     adapter: OlmoArchitectureAdapter,
     cfg: TransformerBridgeConfig,
@@ -296,6 +304,32 @@ class TestOlmoAttentionBridge:
         assert seen["k"] == torch.Size([batch, seq_len, cfg.n_key_value_heads, cfg.d_head])
         assert seen["v"] == torch.Size([batch, seq_len, cfg.n_key_value_heads, cfg.d_head])
         assert seen["z"] == torch.Size([batch, seq_len, cfg.n_heads, cfg.d_head])
+
+    def test_forward_preserves_input_dtype_at_projection_boundary(
+        self, adapter: OlmoArchitectureAdapter, cfg: TransformerBridgeConfig
+    ) -> None:
+        attn_bridge = _wire_attention_bridge(adapter, cfg)
+        recordings = []
+        for name in ("q", "k", "v"):
+            projection = getattr(attn_bridge, name)
+            original = projection.original_component
+            assert isinstance(original, nn.Linear)
+            recording = _RecordingLinear(original.in_features, original.out_features, bias=False)
+            recording.load_state_dict(original.state_dict())
+            projection.set_original_component(recording)
+            recordings.append(recording)
+
+        hidden_states = torch.randn(1, 3, cfg.d_model, dtype=torch.bfloat16)
+        position_embeddings = identity_rope(3, cfg.d_head)
+
+        attn_bridge(
+            hidden_states=hidden_states,
+            position_embeddings=position_embeddings,
+            attention_mask=None,
+        )
+
+        for projection in recordings:
+            assert projection.received_dtype == torch.bfloat16
 
 
 class TestOlmoClipQkv:

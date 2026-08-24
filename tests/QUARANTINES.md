@@ -79,24 +79,17 @@ Big-model adapter tests use `@pytest.mark.slow`, CI tier filters `-m "not slow"`
 
 | Path | Reason | Issue |
 |---|---|---|
-| [`unit/model_bridge/test_bridge_generate_no_tokenizer.py`:30,128](unit/model_bridge/test_bridge_generate_no_tokenizer.py) | `skipif(_MACOS_ARM64)` — KV-cache NaN | Upstream PyTorch/HF on M-series Macs |
-| [`integration/model_bridge/test_bridge_generate_stopping_criteria.py`](integration/model_bridge/test_bridge_generate_stopping_criteria.py) | `skipif(_MACOS_ARM64)`, KV-cache NaN (one `use_past_kv_cache=True` test) | Upstream PyTorch/HF on M-series Macs |
+| [`acceptance/test_hooked_transformer.py`](acceptance/test_hooked_transformer.py) | `redwood_attn_2l` (2 tests) — `ArthurConmy/redwood_tokenizer`'s merges name a token missing from its vocab (`Ġpati`), rejected by tokenizers >= 0.20 on both the fast and slow paths | Third-party repo; the weights load fine, only the tokenizer is unusable |
 
-**Un-skip:** when upstream resolves. Don't bypass — produces NaN logits.
+**Un-skip:** evaluated at collection by actually attempting the load, so it disappears on its own
+if the repo is fixed or the tokenizers constraint relaxes; substituting a different tokenizer is
+not a fix (it would change token ids and invalidate the pinned expected loss).
 
 ---
 
 ## ⚠️ Technical debt — whole-file
 
-Entire test modules quarantined via module-level `pytestmark`. Significant coverage gap — priority to re-enable.
-
-| Path | Reason |
-|---|---|
-| [`acceptance/test_hooked_transformer.py`:19](acceptance/test_hooked_transformer.py) | "CI test pollution" |
-| [`acceptance/test_hooked_encoder.py`:13](acceptance/test_hooked_encoder.py) | same |
-| [`acceptance/test_hooked_encoder_decoder.py`:10](acceptance/test_hooked_encoder_decoder.py) | same |
-
-**Un-skip:** root-cause the test pollution (fixture-scope or import-ordering bug). Until then, these acceptance tiers are dark.
+No modules are currently quarantined this way.
 
 ---
 

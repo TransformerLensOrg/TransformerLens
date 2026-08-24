@@ -233,6 +233,137 @@ To propose a short-name entry in TransformerLens, open a pull request that adds 
 published file to `transformer_lens/tools/analysis/jacobian_lens_registry.json` and
 include the fitting provenance and validation results.
 
+## Sparse decomposition (J-space coordinates)
+
+A fitted lens also decomposes an activation into the concepts it is *disposed to say*.
+`JacobianLens.decompose` writes an activation `x` at layer ℓ as a sparse **nonnegative**
+combination of J-lens vectors `v_t = J_ℓ^T W_U[:, t]` (one direction per vocabulary token),
+selected greedily. `k` is an **upper bound**, not a target: selection stops early once no
+unselected vector is materially positively correlated with the residual (under nonnegativity a
+negatively-correlated vector cannot reduce it), so fewer than `k` vectors may be selected and
+fewer still may be numerically active.
+
+```python
+from transformer_lens.model_bridge import TransformerBridge
+from transformer_lens.tools.analysis import JacobianLens
+
+model = TransformerBridge.boot_transformers("gpt2", device="cpu")
+lens = JacobianLens.from_pretrained("gpt2-small", model=model)
+
+# decompose the activation at a prompt position ...
+result = lens.decompose(model, "The Eiffel Tower is in the city of", layer=6, position=-1, k=8)
+# ... or a raw [d_model] activation you already have (leave position=None):
+#   result = lens.decompose(model, activation, layer=6, k=8)
+
+tokens = [model.to_string(int(t)) for t in result.support]  # the (up to k) *active* J-lens vectors
+coordinates = result.coordinates                            # their nonnegative coefficients
+```
+
+The result exposes **two supports**, because the paper uses two inconsistent operationalizations
+(a main-text sparse nonnegative reconstruction and an appendix projection onto a selected span):
+
+- `support` -- the numerically **active** vectors: the selected vectors whose contribution
+  `coordinates[i] * ||v_t||` is a materially nonzero fraction of `||x||`. `coordinates` is aligned
+  with `support`, and `reconstruction = sum(coordinates * v_t)` over `support`.
+- `selected_support` -- **every** greedily selected vector, including any whose coordinate the
+  nonnegativity constraint drove to zero. It defines the span for `j_space_component`. Hence
+  `len(support) <= len(selected_support) <= k`.
+
+So two vector outputs also need not coincide:
+
+- `reconstruction` -- the nonnegative combination over the active `support`.
+- `j_space_component` (the *J-space component*) -- the orthogonal projection of the activation onto
+  the span of `selected_support` -- with `non_j_space_component = x - j_space_component`, the
+  residual the interventions leave unchanged.
+
+For the default exact NNLS re-solve the `reconstruction` equals the projection onto the *active*
+support (KKT stationarity), so it differs from `j_space_component` exactly when a selected vector
+has a zero coordinate (the projection then uses a strictly larger span).
+
+```
+x  in R^d_model
+   |-- decompose(x, layer, k)
+        |-- support / coordinates  a_t >= 0      (active vectors; reconstruction = sum a_t v_t)
+        |-- selected_support       S             (all selected vectors; defines the span below)
+        |-- j_space_component      Pi_S x        (orthogonal projection onto span of selected v_t)
+        \-- non_j_space_component  x - Pi_S x     (orthogonal to the selected vectors)
+```
+
+Two algorithms are available via `algorithm=`. The default,
+`"nonnegative_orthogonal_matching_pursuit"`, solves a nonnegative least-squares (NNLS) problem
+over the selected atoms in float64 after each step. It checks the result against the KKT
+conditions and raises `RuntimeError` if the check fails. `"gradient_pursuit"` skips that solve
+and uses the directional update from Blumensath & Davies (2008), matching the update used in
+the paper; its projected step is accepted only when it does not increase the residual. The two
+algorithms share the same greedy selection *rule* but, because their coefficient residuals
+differ, may select different vectors at later steps and so return a different `support` and
+`reconstruction`.
+
+### Interpreting the numbers honestly
+
+The quantitative findings below are from Gurnee et al. (2026) and were measured on **closed
+Anthropic models** (Sonnet / Haiku / Opus); on open-weight models the *shape* may hold but the
+exact values will not necessarily transfer.
+
+- The decomposition is **not** a top-k logit-lens readout: because the J-lens vectors are
+  overcomplete and non-orthogonal, it gives "a different (and typically less redundant) set of
+  active concepts than simply taking the top-k by inner product."
+- The J-space is a **small fraction** of the activation: the paper's span projection (the
+  `selected_support` operationalization here) "never [exceeds] more than 10%" of total activation
+  variance, and for concept vectors carries "a median of only 6-7% ... the remaining ~93% lying
+  outside the J-space." Those figures are the paper's own measurements on its models; do not read
+  them off this implementation's `j_space_component` without matching the operationalization.
+- `k` defaults to 25 because the paper "typically choose[s] it to be no more than 25, which we
+  empirically observed to be the number of J-lens vectors that are meaningfully active at a given
+  time." Here `k` is an **upper bound**: `support` returns *at most* `k` active vectors (often
+  fewer), never `k` padded with zero-coefficient slots.
+
+### Occupancy and fraction of variance
+
+Two statistics turn the honesty bullets above into numbers you can measure. Both build on J-lens
+vector dictionaries and sparse supports, but occupancy uses its own projection-residual recurrence.
+
+`occupancy` estimates **how many J-lens vectors are meaningfully active** in a single activation —
+the quantity behind the paper's `k <= 25`. At each step it admits the unused atom with the greatest
+signed, norm-normalized correlation with the current residual, projects the activation onto the full
+selected span, and sets the next residual to `x - Pi_S x`. This is the same per-step correlation
+*rule* as `decompose`, but `decompose` recurses on a nonnegative coefficient-fit residual and may
+stop early, whereas occupancy selects exactly `max_atoms` atoms, so their supports need not match.
+Occupancy records the per-step captured variance `||Pi_S x||^2 / ||x||^2` and compares that curve
+against the same occupancy recurrence on `num_control_dictionaries` random unit-norm dictionaries.
+The occupancy is the step of **maximum separation** between the real and averaged-control
+*cumulative* captured variance — the point past which further vectors add no more than random
+directions would. It is deterministic given `seed` and needs no threshold.
+
+```python
+occ = lens.occupancy(model, "The Eiffel Tower is in the city of", layer=6, position=-1)
+occ.occupancy                    # int: meaningfully-active vector count (a small positive integer)
+occ.marginal_captured_variance   # [max_atoms] real per-step captured-variance gains (for plotting)
+occ.control_captured_variance    # [max_atoms] averaged random-control gains
+```
+
+`fraction_of_variance` profiles the **J-space share of activation variance over a prompt corpus**.
+For each `(layer, position)` at or past `skip_first` (mirroring the fit's early-position skip) it
+records `||j_space_component||^2 / ||activation||^2` — the `selected_support` span projection,
+matching the paper's appendix operationalization, **not** the nonnegative `reconstruction`. Per
+layer it reports the `median` of those fractions and the `pooled` ratio
+`sum(||j_space||^2) / sum(||activation||^2)`.
+Each token tensor must represent one prompt and have shape `[1, seq]`; `skip_first` must be
+non-negative even when explicit `positions` override its sampling behavior.
+
+```python
+profile = lens.fraction_of_variance(model, prompts, layers=[3, 6], k=8)
+profile.median   # {layer: median fraction}   -- the paper's "median 6-7%" quantity
+profile.pooled   # {layer: pooled ratio in [0, 1]}
+```
+
+Both are **shape** claims on open weights: expect a small occupancy and a small variance fraction,
+but do not expect the paper's closed-model figures (see *Interpreting the numbers honestly* above)
+to transfer numerically.
+
+The full-vocabulary dictionary is cached on the model's device and is vocabulary-sized
+(gigabytes for large models); release it with `lens.clear_device_cache()`.
+
 ## Importing an existing lens
 
 `JacobianLens.load()` accepts two file schemas: the standard artifact format (four

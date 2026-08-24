@@ -18,13 +18,10 @@ use_past_kv_cache=False so the tests stay robust on macOS-arm64 CI where the
 cached-eager-attention path can NaN (issue #1322).
 """
 
-import platform
 
 import pytest
 import torch
 from transformers import StoppingCriteria, StoppingCriteriaList
-
-_MACOS_ARM64 = platform.system() == "Darwin" and platform.machine() == "arm64"
 
 # Common kwargs for the greedy, macOS-safe, token-returning generate calls below.
 _GEN = dict(do_sample=False, use_past_kv_cache=False, return_type="tokens", verbose=False)
@@ -225,7 +222,6 @@ def test_batched_generation_stops(bridge_with_pad):
     assert torch.equal(out1, out2), "batched greedy generation must be deterministic"
 
 
-@pytest.mark.skipif(_MACOS_ARM64, reason="Upstream macOS-arm64 KV-cache NaN, see issue #1322.")
 def test_stop_string_with_kv_cache(bridge):
     """stop_strings also works on the default KV-cache path (not only the no-cache path)."""
     tokens = bridge.to_tokens("The quick brown")

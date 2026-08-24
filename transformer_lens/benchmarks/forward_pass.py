@@ -8,10 +8,16 @@ from transformer_lens import HookedTransformer
 from transformer_lens.benchmarks.utils import (
     BenchmarkResult,
     BenchmarkSeverity,
+    bridge_self_target_loss,
     compare_scalars,
     compare_tensors,
 )
 from transformer_lens.model_bridge import TransformerBridge
+
+
+def _compute_self_target_loss(bridge: TransformerBridge, test_text: str) -> torch.Tensor:
+    """Compute loss with the tokenized input supplied as explicit labels."""
+    return bridge_self_target_loss(bridge, test_text)
 
 
 def _is_encoder_decoder(model: torch.nn.Module) -> bool:
@@ -193,7 +199,7 @@ def benchmark_loss_equivalence(
         BenchmarkResult with comparison details
     """
     try:
-        bridge_loss = bridge(test_text, return_type="loss")
+        bridge_loss = _compute_self_target_loss(bridge, test_text)
 
         if reference_model is None and reference_loss is None:
             # No reference - just verify loss is valid

@@ -136,6 +136,11 @@ def get_rotary_pct_from_config(config: Any) -> float:
     if config is None:
         return 1.0
 
+    # het view: hasattr does NOT suppress the per-layer-registered raise.
+    from transformer_lens.utilities.heterogeneous_config import het_safe_view
+
+    config = het_safe_view(config)
+
     # Try the old attribute first (transformers v4)
     if hasattr(config, "rotary_pct"):
         return getattr(config, "rotary_pct", 1.0)
@@ -274,3 +279,63 @@ def get_dataset(dataset_name: str, **kwargs) -> Dataset:
     else:
         raise ValueError(f"Dataset {dataset_name} not supported")
     return dataset
+
+
+def autoconfig_with_remote_post_init_compat(
+    model_id: str, auto_config: Any = None, **kwargs: Any
+) -> Any:
+    """``AutoConfig.from_pretrained`` tolerating 4.x-era remote-code configs.
+
+    transformers>=5 delivers non-base fields via ``__post_init__(**extras)``;
+    a 4.x-era argless override (OpenELM) crashes on the first kwarg. On exactly
+    that TypeError, wrap the class's ``__post_init__`` and retry once.
+    """
+    if auto_config is None:
+        # Callers with a patchable module-level AutoConfig (boot) pass it in so
+        # test seams keep seeing the call; others get the real one.
+        from transformers import AutoConfig as auto_config  # noqa: N813
+
+    try:
+        return auto_config.from_pretrained(model_id, **kwargs)
+    except TypeError as err:
+        if "__post_init__() got an unexpected keyword argument" not in str(err):
+            raise
+        config_class = _resolve_remote_config_class(model_id, **kwargs)
+        if config_class is None:
+            raise
+        make_post_init_kwarg_tolerant(config_class)
+        return auto_config.from_pretrained(model_id, **kwargs)
+
+
+def _resolve_remote_config_class(model_id: str, **kwargs: Any) -> Any:
+    """The repo's auto_map AutoConfig class, or None if there is none."""
+    from transformers.configuration_utils import PretrainedConfig
+    from transformers.dynamic_module_utils import get_class_from_dynamic_module
+
+    passthrough = {key: kwargs[key] for key in ("token", "revision") if key in kwargs}
+    config_dict, _ = PretrainedConfig.get_config_dict(model_id, **passthrough)
+    class_ref = (config_dict.get("auto_map") or {}).get("AutoConfig")
+    if not class_ref:
+        return None
+    return get_class_from_dynamic_module(class_ref, model_id, **passthrough)
+
+
+def make_post_init_kwarg_tolerant(config_class: Any) -> None:
+    """Wrap an argless remote ``__post_init__`` to accept 5.x extras.
+
+    Base-first ordering is load-bearing: the base handler setattrs the extras
+    (the class's own fields arrive that way under 5.x) and the original body
+    derives from them. Idempotent via marker.
+    """
+    from transformers.configuration_utils import PretrainedConfig
+
+    original = config_class.__post_init__
+    if getattr(original, "_tl_kwarg_tolerant", False):
+        return
+
+    def tolerant_post_init(self: Any, **extras: Any) -> None:
+        PretrainedConfig.__post_init__(self, **extras)
+        original(self)
+
+    tolerant_post_init._tl_kwarg_tolerant = True  # type: ignore[attr-defined]
+    config_class.__post_init__ = tolerant_post_init

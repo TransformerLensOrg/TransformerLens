@@ -72,12 +72,9 @@ def map_default_transformer_lens_config(hf_config):
 
     tl_config = copy.deepcopy(hf_config)
 
-    # transformers>=5.15 heterogeneous configs (e.g. Gemma 4) refuse global reads of
-    # registered per-layer attributes — the raise is not an AttributeError, so hasattr()
-    # does not suppress it. The view resolves any registered field to its majority-layer
-    # value, keeping every probe below safe regardless of which fields a future
-    # architecture registers; geometry fields needing full per-layer detail are
-    # handled explicitly first.
+    # transformers>=5.15 het configs raise (not AttributeError, so hasattr does
+    # NOT suppress it) on global reads of per-layer attrs; the view resolves
+    # them to majority-layer values so every probe below stays safe.
     het_attrs = per_layer_attr_names(raw_source_config)
     source_config = het_safe_view(raw_source_config)
 
@@ -277,6 +274,11 @@ def map_default_transformer_lens_config(hf_config):
     elif hasattr(source_config, "activation_type"):
         activation_type = source_config.activation_type
         tl_config.act_fn = getattr(activation_type, "value", activation_type)
+    elif getattr(source_config, "activation_fn_name", None) is not None:
+        # OpenELM spells it activation_fn_name ("swish"); without this the
+        # cfg keeps the "relu" default and reconstructed FFNs silently
+        # diverge ~30% from HF.
+        tl_config.act_fn = source_config.activation_fn_name
     if hasattr(source_config, "rope_theta"):
         tl_config.rotary_base = source_config.rope_theta
     if hasattr(source_config, "weight_tying"):
@@ -610,7 +612,10 @@ def boot(
             )
         revision = _resolve_checkpoint_to_revision(model_name, checkpoint_index, checkpoint_value)
     # Pass HF token for gated model access (e.g. meta-llama/*)
-    from transformer_lens.utilities.hf_utils import get_hf_token
+    from transformer_lens.utilities.hf_utils import (
+        autoconfig_with_remote_post_init_compat,
+        get_hf_token,
+    )
 
     _hf_token = get_hf_token()
     if hf_model is not None:
@@ -618,8 +623,12 @@ def boot(
         # is a Hub repo ID, but the model is already loaded locally.
         hf_config = copy.deepcopy(hf_model.config)
     else:
-        hf_config = AutoConfig.from_pretrained(
+        # Compat wrapper: 4.x-era remote-code configs (OpenELM) define an
+        # argless __post_init__ that 5.x's dataclass machinery calls with the
+        # class's own fields as kwargs — unloadable without the shim.
+        hf_config = autoconfig_with_remote_post_init_compat(
             model_name,
+            auto_config=AutoConfig,
             output_attentions=True,
             trust_remote_code=trust_remote_code,
             token=_hf_token,
@@ -700,7 +709,9 @@ def boot(
         if val is not None:
             setattr(bridge_config, attr, val)
 
-    # Gemma2 softcapping: HF names differ from TL names, need explicit mapping
+    # Gemma2 softcapping: HF names differ from TL names. het view: per-layer
+    # fields raise (not AttributeError) on raw getattr.
+    effective_config = het_safe_view(effective_config)
     final_logit_softcapping = getattr(effective_config, "final_logit_softcapping", None)
     if final_logit_softcapping is not None:
         bridge_config.output_logits_soft_cap = float(final_logit_softcapping)
@@ -739,7 +750,6 @@ def boot(
     # resolved values.
     from transformer_lens.utilities.multi_gpu import (
         MIXED_CPU_GPU_ERROR,
-        cast_floating_params_to_dtype,
         count_unique_devices,
         find_embedding_device,
         find_misplaced_modules,
@@ -836,7 +846,11 @@ def boot(
         # Cast params to dtype; preserve float32 buffers (e.g., RotaryEmbedding.inv_freq).
         # Use module-level alignment so Accelerate can temporarily materialize offloaded
         # parameters before we touch them.
-        cast_floating_params_to_dtype(hf_model, dtype)
+        # Skip dtype normalization entirely when model has an active quantizer: the
+        # quantizer owns specific dtypes (e.g., FP8 scales) that must not be overwritten.
+        from transformer_lens.utilities.multi_gpu import maybe_cast_floating_params
+
+        maybe_cast_floating_params(hf_model, dtype)
     # Derive cfg.device / cfg.n_devices from hf_device_map when present. This covers:
     #   - fresh loads with a resolved device_map (set above)
     #   - pre-loaded hf_model that the caller dispatched themselves (e.g., device_map="auto")
@@ -948,10 +962,16 @@ def boot(
     if tokenizer is not None:
         # Detect BOS/EOS behavior (use non-empty string; empty is unreliable with token aliasing)
         encoded_test = tokenizer.encode("a")
+        leading_special_ids = {
+            token_id
+            for token_id in (tokenizer.bos_token_id, getattr(tokenizer, "cls_token_id", None))
+            if token_id is not None
+        }
+        # CLS counts: BERT-style tokenizers prepend [CLS], which HookedTransformer
+        # treats as the BOS-like token; comparing only against bos_token_id (a
+        # fallback string on such tokenizers) concludes False and desyncs the stacks.
         adapter.cfg.tokenizer_prepends_bos = (
-            len(encoded_test) > 1
-            and tokenizer.bos_token_id is not None
-            and encoded_test[0] == tokenizer.bos_token_id
+            len(encoded_test) > 1 and encoded_test[0] in leading_special_ids
         )
         adapter.cfg.tokenizer_appends_eos = (
             len(encoded_test) > 1

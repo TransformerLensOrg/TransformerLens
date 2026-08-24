@@ -124,6 +124,11 @@ class AbstractAttention(ABC, nn.Module):
         elif self.attn_type != "global":
             raise ValueError(f"Invalid attention type: {self.attn_type}")
 
+        # Encoder-decoder models share one cfg across stacks whose directions
+        # differ, so a stack that must mask sets this rather than cfg.
+        self._attention_dir_override: Optional[str] = None
+        self._ntk_alpha_cached: float = 1.0
+
         # Kept as a tiny buffer for state-dict/device compatibility. The actual
         # causal mask is built at forward time for the current sequence length.
         self.register_buffer("mask", torch.empty((0, 0), dtype=torch.bool))
@@ -287,6 +292,9 @@ class AbstractAttention(ABC, nn.Module):
                 self.apply_rotary(k, 0, attention_mask)
             )  # keys are cached so no offset
 
+        if self.cfg.use_logn_attn and not self.training:
+            q = self._apply_logn_scaling(q, kv_cache_pos_offset)
+
         attn_scores = self.calculate_attention_scores(
             q, k
         )  # [batch, head_index, query_pos, key_pos]
@@ -324,7 +332,7 @@ class AbstractAttention(ABC, nn.Module):
 
             if position_bias is not None:  # Add None check
                 attn_scores += position_bias
-        if self.cfg.attention_dir == "causal":
+        if (self._attention_dir_override or self.cfg.attention_dir) == "causal":
             # If causal attention, we mask it to only attend backwards. If bidirectional, we don't mask.
             attn_scores = self.apply_causal_mask(
                 attn_scores, kv_cache_pos_offset, attention_mask
@@ -540,6 +548,27 @@ class AbstractAttention(ABC, nn.Module):
             "4-bit QKV projection input must have shape [batch, pos, d_model] or "
             "[batch, pos, head_index, d_model]."
         )
+
+    def _apply_logn_scaling(self, q: torch.Tensor, kv_cache_pos_offset: int) -> torch.Tensor:
+        """Qwen-1's log-n query scaling past the training length (eval only).
+
+        Thresholds on the training length, never n_ctx — reaching these contexts
+        requires overriding n_ctx upward, which must not move the threshold.
+        """
+        train_length = self.cfg.train_seq_length or self.cfg.n_ctx
+        query_length = q.size(1)
+        key_length = kv_cache_pos_offset + query_length
+        if key_length <= train_length:
+            return q
+        positions = torch.arange(
+            kv_cache_pos_offset + 1, key_length + 1, device=q.device, dtype=torch.float32
+        )
+        scale = torch.where(
+            positions > train_length,
+            positions.log() / math.log(train_length),
+            torch.ones((), device=q.device),
+        ).to(q.dtype)
+        return q * scale[None, :, None, None]
 
     def calculate_attention_scores(
         self,
@@ -778,6 +807,9 @@ class AbstractAttention(ABC, nn.Module):
             x = x.to(cast(torch.device, self.rotary_sin.device))
 
         x_pos = x.size(1)
+        if self.cfg.use_dynamic_ntk_rope and not self.training:
+            self._rescale_rotary_for_ntk(past_kv_pos_offset + x_pos)
+
         x_rot = x[..., : self.cfg.rotary_dim]
         x_pass = x[..., self.cfg.rotary_dim :]
         x_flip = self.rotate_every_two(x_rot)
@@ -807,6 +839,35 @@ class AbstractAttention(ABC, nn.Module):
             x_rotated = x_rot * mask_rotary_cos + x_flip * mask_rotary_sin
 
         return torch.cat([x_rotated, x_pass], dim=-1)
+
+    def _ntk_alpha(self, key_length: int, train_length: int) -> float:
+        """Qwen-1's ``get_ntk_alpha``: 1 up to the training length, then 3, 7, 15, …"""
+        if key_length <= train_length:
+            return 1.0
+        return float(max(2 ** math.ceil(math.log(key_length / train_length, 2) + 1) - 1, 1))
+
+    def _rescale_rotary_for_ntk(self, key_length: int) -> None:
+        """Rebuild the rotary cache on a widened base for long contexts.
+
+        Qwen-1 stretches the base, not the positions, so the table is rebuilt
+        rather than extended; alpha steps rarely, so this fires rarely.
+        """
+        assert self.cfg.rotary_dim is not None, "rotary_dim must be set for rotary embeddings"
+        train_length = self.cfg.train_seq_length or self.cfg.n_ctx
+        alpha = self._ntk_alpha(key_length, train_length)
+        cached_rows = self.rotary_cos.shape[0]
+        if alpha == self._ntk_alpha_cached and key_length <= cached_rows:
+            return
+        self._ntk_alpha_cached = alpha
+        base = self._rotary_base() * alpha ** (self.cfg.rotary_dim / (self.cfg.rotary_dim - 2))
+        sin, cos = self.calculate_sin_cos_rotary(
+            self.cfg.rotary_dim,
+            max(key_length, cached_rows),
+            base=base,
+            dtype=self.cfg.dtype,
+        )
+        self.rotary_sin = sin.to(self.rotary_sin.device)
+        self.rotary_cos = cos.to(self.rotary_cos.device)
 
     def _extend_rotary_embeddings(self, new_size: int):
         """Extend rotary embeddings to support longer contexts dynamically."""

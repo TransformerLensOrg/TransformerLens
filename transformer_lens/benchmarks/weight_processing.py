@@ -8,10 +8,14 @@ from transformer_lens import HookedTransformer
 from transformer_lens.benchmarks.utils import (
     BenchmarkResult,
     BenchmarkSeverity,
+    bridge_self_target_loss,
     is_tiny_test_model,
     safe_allclose,
 )
 from transformer_lens.model_bridge import TransformerBridge
+from transformer_lens.model_bridge.generalized_components.attention import (
+    PerLayerGeometryError,
+)
 
 
 def benchmark_weight_processing(
@@ -144,7 +148,7 @@ def benchmark_weight_sharing(
     """
     try:
         # Get baseline loss
-        bridge_original = bridge(test_text, return_type="loss")
+        bridge_original = bridge_self_target_loss(bridge, test_text)
 
         if reference_model is not None:
             reference_original = reference_model(test_text, return_type="loss")
@@ -209,7 +213,7 @@ def benchmark_weight_sharing(
                 reference_model.blocks[bridge_attn_idx].attn.W_V[0, :, :] = 0
 
             # Test modified losses
-            bridge_modified = bridge(test_text, return_type="loss")
+            bridge_modified = bridge_self_target_loss(bridge, test_text)
             reference_modified = reference_model(test_text, return_type="loss")
 
             bridge_change = bridge_modified - bridge_original
@@ -251,7 +255,7 @@ def benchmark_weight_sharing(
         with torch.no_grad():
             ws_attn_block.attn.W_V[0, :, :] = 0
 
-        bridge_modified = bridge(test_text, return_type="loss")
+        bridge_modified = bridge_self_target_loss(bridge, test_text)
         change = abs(bridge_modified - bridge_original)
 
         # Restore weights
@@ -299,7 +303,7 @@ def benchmark_weight_modification(
     """
     try:
         # Get original loss
-        original_loss = bridge(test_text, return_type="loss")
+        original_loss = bridge_self_target_loss(bridge, test_text)
 
         # Find first block with attention (hybrid models may not have attn on block 0)
         wm_attn_blocks = bridge.blocks_with("attn")
@@ -331,7 +335,7 @@ def benchmark_weight_modification(
 
         # Get modified loss (with error handling to restore weights)
         try:
-            modified_loss = bridge(test_text, return_type="loss")
+            modified_loss = bridge_self_target_loss(bridge, test_text)
         except Exception as forward_error:
             # Restore weights before reporting error
             with torch.no_grad():
@@ -366,7 +370,7 @@ def benchmark_weight_modification(
                 with torch.no_grad():
                     original_mlp_w = mlp_block.mlp.out.weight.clone()
                     mlp_block.mlp.out.weight[0, :] = 0
-                mlp_modified_loss = bridge(test_text, return_type="loss")
+                mlp_modified_loss = bridge_self_target_loss(bridge, test_text)
                 with torch.no_grad():
                     mlp_block.mlp.out.weight.copy_(original_mlp_w)
                 mlp_change = abs(mlp_modified_loss - original_loss)
@@ -567,9 +571,19 @@ def benchmark_attention_output_centering(
                 message="No blocks expose an attention submodule (SSM / passthrough-mixer hybrid)",
             )
 
-        # Check W_O accessibility on first attention block
+        # Check W_O accessibility on first attention block. Explicit probe,
+        # not hasattr: hasattr invokes the property and only swallows
+        # AttributeError, so the per-layer-geometry ValueError would escape to
+        # the generic handler before the loop's raw-weight fallback runs.
         first_idx, first_attn_block = attn_blocks[0]
-        if not hasattr(first_attn_block.attn, "W_O"):
+        w_o_missing = False
+        try:
+            _ = first_attn_block.attn.W_O
+        except AttributeError:
+            w_o_missing = True
+        except PerLayerGeometryError:
+            pass  # per-layer geometry; the loop below reads the raw projection
+        if w_o_missing:
             # No mapped output projection (JetMoe's MoA keeps per-expert W_O
             # inside the delegated module): structurally nothing to center —
             # skip like the SSM case above rather than fail.
@@ -590,8 +604,17 @@ def benchmark_attention_output_centering(
         tolerance = 0.01  # 1% tolerance
         worst_mean = 0.0
         for idx, block in attn_blocks:
-            w_o = block.attn.W_O
-            mean_abs = torch.mean(torch.abs(torch.mean(w_o, dim=-1))).item()
+            try:
+                column_means = torch.mean(block.attn.W_O, dim=-1)
+            except PerLayerGeometryError:
+                # Per-layer attention geometry (OpenELM varies head counts per
+                # layer): the factorized accessor refuses, but centering is
+                # head-agnostic — the d_model mean reads straight off the 2D
+                # projection.
+                raw = block.attn.o.weight
+                in_out = block.attn._weight_layout_in_out(block.attn.o)
+                column_means = raw.mean(dim=-1) if in_out else raw.mean(dim=0)
+            mean_abs = torch.mean(torch.abs(column_means)).item()
             worst_mean = max(worst_mean, mean_abs)
 
         n_attn = len(attn_blocks)

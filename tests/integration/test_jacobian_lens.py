@@ -426,3 +426,138 @@ def test_gemma_published_artifact_parity_topk_and_softcap():
     )
     torch.testing.assert_close(result.model_logits[0], expected_final_logits, atol=1e-5, rtol=1e-5)
     torch.testing.assert_close(result.lens_logits[final_layer], result.model_logits)
+
+
+def test_decompose_gpt2_activation_reconstructs_and_is_orthogonal(published_gpt2_lens, gpt2_bridge):
+    """decompose on a real GPT-2 activation: up to k active nonnegative atoms, the non-J-space
+    residual is orthogonal to the selected J-lens vectors, and component + residual recover the
+    activation."""
+    layer, k = 6, 8
+    result = published_gpt2_lens.decompose(gpt2_bridge, PROMPT, layer=layer, position=-1, k=k)
+
+    # ``k`` is an upper bound: ``support`` holds only numerically active atoms, a subset of the
+    # selected set. Do not assert a closed-model active count -- just record it on failure.
+    assert (
+        result.support.numel() <= result.selected_support.numel() <= k
+    ), f"active={result.support.numel()} selected={result.selected_support.numel()} k={k}"
+    assert set(result.support.tolist()).issubset(set(result.selected_support.tolist()))
+    assert result.coordinates.numel() == result.support.numel()
+    assert (result.coordinates > 0).all()  # every returned coordinate is active
+    assert (result.support >= 0).all() and (result.support < gpt2_bridge.cfg.d_vocab).all()
+
+    # the decomposed activation is the model's blocks.{layer}.hook_out at the last position
+    tokens = gpt2_bridge.to_tokens(PROMPT)
+    hook = f"blocks.{layer}.hook_out"
+    _, cache = gpt2_bridge.run_with_cache(tokens, names_filter=lambda name: name == hook)
+    activation = cache[hook][0, -1, :].float()
+    assert torch.allclose(
+        result.j_space_component + result.non_j_space_component, activation, atol=1e-3
+    )
+
+    # the non-J-space residual is orthogonal to every selected J-lens vector (the projection
+    # span is the whole selected support, not only the active atoms); cosine ~ 0
+    dictionary = published_gpt2_lens.lens_vector_dictionary(gpt2_bridge, layer)
+    residual = result.non_j_space_component
+    for atom_id in result.selected_support.tolist():
+        atom = dictionary[atom_id]
+        cosine = torch.dot(residual, atom) / (residual.norm() * atom.norm())
+        assert cosine.abs().item() < 1e-3
+
+
+def test_occupancy_gpt2_activation_is_a_small_positive_integer(published_gpt2_lens, gpt2_bridge):
+    """occupancy on a real GPT-2 activation returns a positive integer within ``[1, max_atoms]``,
+    with per-step real and control captured-variance curves of the right shape. We assert shape and
+    bounds -- not the paper's closed-model count (an open-weight observation, recorded on failure).
+    A reduced control count keeps CI fast."""
+    layer, max_atoms = 6, 12
+    result = published_gpt2_lens.occupancy(
+        gpt2_bridge,
+        PROMPT,
+        layer=layer,
+        position=-1,
+        max_atoms=max_atoms,
+        num_control_dictionaries=8,
+    )
+
+    assert isinstance(result.occupancy, int)
+    assert 1 <= result.occupancy <= max_atoms, f"occupancy={result.occupancy} max_atoms={max_atoms}"
+    assert result.marginal_captured_variance.shape == (max_atoms,)
+    assert result.control_captured_variance.shape == (max_atoms,)
+    assert result.support.shape == (max_atoms,)
+    assert (result.support >= 0).all() and (result.support < gpt2_bridge.cfg.d_vocab).all()
+
+    # Cumulative captured variance is a projection ratio: non-decreasing and bounded to [0, 1].
+    real_cumulative = result.marginal_captured_variance.cumsum(0)
+    assert (result.marginal_captured_variance >= -1e-4).all()
+    assert (real_cumulative >= -1e-4).all() and (real_cumulative <= 1.0 + 1e-4).all()
+
+    # Deterministic given the seed: an identical call reproduces the count and both curves exactly.
+    repeat = published_gpt2_lens.occupancy(
+        gpt2_bridge,
+        PROMPT,
+        layer=layer,
+        position=-1,
+        max_atoms=max_atoms,
+        num_control_dictionaries=8,
+    )
+    assert repeat.occupancy == result.occupancy
+    assert torch.equal(repeat.marginal_captured_variance, result.marginal_captured_variance)
+    assert torch.equal(repeat.control_captured_variance, result.control_captured_variance)
+
+
+def test_fraction_of_variance_gpt2_is_a_small_ratio(published_gpt2_lens, gpt2_bridge):
+    """fraction_of_variance over a small corpus: each layer's median and pooled ratio land in
+    ``[0, 1]`` with samples recorded, consistent with the paper's "J-space is a small fraction of
+    total variance" (an open-weight observation, not a numeric match to the closed-model figures).
+    FIT_PROMPTS are long enough to clear the default 16-position skip."""
+    layers = [3, 6]
+    profile = published_gpt2_lens.fraction_of_variance(gpt2_bridge, FIT_PROMPTS, layers=layers, k=8)
+
+    assert profile.layers == layers
+    for layer in layers:
+        per_position = profile.per_position[layer]
+        assert per_position.numel() > 0
+        # Each fraction is ||projection||^2 / ||activation||^2, a variance ratio in [0, 1].
+        assert (per_position >= 0.0).all() and (per_position <= 1.0).all()
+        assert 0.0 <= profile.median[layer] <= 1.0
+        assert 0.0 <= profile.pooled[layer] <= 1.0
+
+    # positions= overrides the skip_first sweep: one explicit position per prompt over the
+    # two-prompt corpus exercises the override path and cross-prompt pooling (one sample each).
+    pinned = published_gpt2_lens.fraction_of_variance(
+        gpt2_bridge, FIT_PROMPTS, layers=layers, k=8, positions=[-1]
+    )
+    for layer in layers:
+        assert pinned.per_position[layer].numel() == len(FIT_PROMPTS)
+        assert 0.0 <= pinned.pooled[layer] <= 1.0
+
+
+@pytest.mark.slow
+def test_decompose_gemma_activation_is_valid():
+    """Decompose a real gemma-2-2b-it activation via its published lens (slow: real download)."""
+    from transformer_lens.model_bridge import TransformerBridge
+    from transformer_lens.tools.analysis import JacobianLens
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    model = TransformerBridge.boot_transformers(GEMMA_MODEL, dtype=torch.bfloat16, device=device)
+    lens = JacobianLens.from_pretrained(
+        LENS_REPO, filename=GEMMA_LENS_FILE, revision=LENS_REVISION, model=model
+    )
+    layer = lens.source_layers[len(lens.source_layers) // 2]
+    k = 16
+    result = lens.decompose(model, PROMPT, layer=layer, position=-1, k=k)
+
+    assert (
+        result.support.numel() <= result.selected_support.numel() <= k
+    ), f"active={result.support.numel()} selected={result.selected_support.numel()} k={k}"
+    assert set(result.support.tolist()).issubset(set(result.selected_support.tolist()))
+    assert (result.coordinates > 0).all()
+    assert (result.support >= 0).all() and (result.support < model.cfg.d_vocab).all()
+
+    tokens = model.to_tokens(PROMPT)
+    hook = f"blocks.{layer}.hook_out"
+    _, cache = model.run_with_cache(tokens, names_filter=lambda name: name == hook)
+    activation = cache[hook][0, -1, :].float()
+    assert torch.allclose(
+        result.j_space_component + result.non_j_space_component, activation, atol=1e-2
+    )

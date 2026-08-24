@@ -18,6 +18,7 @@ from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
 from transformer_lens.model_bridge.generalized_components.linear import LinearBridge
+from transformer_lens.utilities.quantization import require_readable_weight
 
 
 class JointQKVAttentionBridge(AttentionBridge):
@@ -99,6 +100,9 @@ class JointQKVAttentionBridge(AttentionBridge):
 
         # Exclude stale qkv combined weights from state_dict after splitting.
         self._register_state_dict_hook(JointQKVAttentionBridge._filter_qkv_state_dict)
+        self.register_load_state_dict_pre_hook(
+            JointQKVAttentionBridge._restore_filtered_qkv_state_dict
+        )
 
     def __deepcopy__(self, memo):
         """Share split_qkv_matrix and config across clones instead of copying.
@@ -141,6 +145,29 @@ class JointQKVAttentionBridge(AttentionBridge):
         keys_to_remove = [k for k in state_dict if k.startswith(qkv_prefix)]
         for k in keys_to_remove:
             del state_dict[k]
+
+    @staticmethod
+    def _restore_filtered_qkv_state_dict(
+        module: torch.nn.Module,
+        state_dict: Dict[str, Any],
+        prefix: str,
+        local_metadata: Dict[str, Any],
+        strict: bool,
+        missing_keys: list[str],
+        unexpected_keys: list[str],
+        error_msgs: list[str],
+    ) -> None:
+        """Insert current combined weights only to satisfy strict key matching.
+
+        Production checkpoints restore authoritative values through the unfiltered
+        Hugging Face ``_original_component`` path.
+        """
+        del local_metadata, strict, missing_keys, unexpected_keys, error_msgs
+        qkv = module._modules.get("qkv")
+        if qkv is None:
+            return
+        for key, value in qkv.state_dict(prefix=f"{prefix}qkv.").items():
+            state_dict.setdefault(key, value)
 
     def _create_qkv_conversion_rule(self) -> BaseTensorConversion:
         """Create the appropriate conversion rule for the individual q, k, and v matrices.
@@ -230,8 +257,14 @@ class JointQKVAttentionBridge(AttentionBridge):
 
         qkv_component = getattr(original_attention_component, qkv_name)
 
-        qkv_weights = qkv_component.weight
-        assert isinstance(qkv_weights, torch.Tensor)
+        # Before the tensor_split/nn.Parameter below: int8 and uint8 would die
+        # there with an opaque "Only Tensors of floating point ... can require
+        # gradients", and float8 would split SILENTLY into scale-less pieces.
+        qkv_weights = require_readable_weight(
+            qkv_component.weight,
+            operation="split a fused QKV projection at boot",
+            owner=qkv_component,
+        )
 
         # Original qkv_weights shape: [d_model, 3 * d_model]
         # Split into three equal parts along dimension 1 to get Q, K, V weights

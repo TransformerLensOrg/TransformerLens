@@ -68,6 +68,7 @@ class TestASTComponentMapping:
         adapter.prepare_model(model)
 
         assert adapter.component_mapping["blocks"].name == "audio_spectrogram_transformer.layers"
+        assert adapter.component_mapping["classifier_ln"].name == "classifier.layernorm"
         assert adapter.component_mapping["unembed"].name == "classifier.dense"
         assert adapter.cfg.d_vocab_out == 2
 

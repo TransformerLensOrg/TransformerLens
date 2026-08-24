@@ -12,6 +12,7 @@ Behavioural coverage (forward pass, hook firing) lives in
 
 import pytest
 
+from tests.unit.model_bridge.supported_architectures.helpers import DENSE_KEYS
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.model_bridge.generalized_components import (
     EmbeddingBridge,
@@ -214,30 +215,14 @@ class TestDeepSeekV2AdapterMLAAttention:
 
 
 class TestDeepSeekV2AdapterMoE:
-    """Tests the MoE submodule mapping and its dense-layer fallback."""
+    """Tests the MoE submodule mapping."""
 
     def test_moe_submodule_keys(self, adapter: DeepSeekV2ArchitectureAdapter) -> None:
         """Gate and shared experts are bridged; DeepseekV2Moe.forward calls self.gate,
         so its routing logits are hookable."""
         mlp = adapter.component_mapping["blocks"].submodules["mlp"]
-        assert set(mlp.submodules.keys()) == {
-            "gate",
-            "shared_experts",
-            "dense_gate",
-            "dense_in",
-            "dense_out",
-        }
-
-    def test_dense_projections_are_optional(self, adapter: DeepSeekV2ArchitectureAdapter) -> None:
-        mlp = adapter.component_mapping["blocks"].submodules["mlp"]
-        for key, path in {
-            "dense_gate": "gate_proj",
-            "dense_in": "up_proj",
-            "dense_out": "down_proj",
-        }.items():
-            assert isinstance(mlp.submodules[key], LinearBridge)
-            assert mlp.submodules[key].name == path
-            assert mlp.submodules[key].optional is True
+        # dense_* are covered by the roster in test_moe_dense_dispatch.py.
+        assert set(mlp.submodules) - DENSE_KEYS == {"gate", "shared_experts"}
 
     def test_shared_experts_is_optional(self, adapter: DeepSeekV2ArchitectureAdapter) -> None:
         """Dense layers (idx < first_k_dense_replace) have no shared_experts."""

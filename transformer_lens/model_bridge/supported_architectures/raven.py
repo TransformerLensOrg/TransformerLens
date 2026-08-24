@@ -135,6 +135,10 @@ class RavenArchitectureAdapter(ArchitectureAdapter):
     # state make the phases non-meaningful. Correctness lives in the
     # integration tests (seed pinned before bridge and HF calls).
     applicable_phases: list[int] = []
+    # Depth-recurrent core: HF-style past_key_values stepping cannot represent
+    # the re-injected recurrence, and batched left-padded stepping compounds it.
+    supports_kv_cache = False
+    supports_batched_generation = False
 
     def __init__(self, cfg: Any) -> None:
         """Initialize the Raven / Huginn architecture adapter."""
@@ -213,15 +217,9 @@ class RavenArchitectureAdapter(ArchitectureAdapter):
             },
             maintain_native_attention=True,
             requires_attention_mask=True,
+            # Combined Wqkv projection — no q/k/v submodules to resolve against.
+            fused_qkv=True,
         )
-        # Raven uses a combined Wqkv projection; no separate q/k/v submodules exist.
-        # Strip the default hook_q/hook_k/hook_v aliases so they don't appear as
-        # dead (unresolvable) aliases in the hook-alias resolution audit.
-        attn.hook_aliases = {
-            k: v
-            for k, v in AttentionBridge.hook_aliases.items()
-            if k not in {"hook_q", "hook_k", "hook_v"}
-        }
         return {
             "norm_1": RMSNormalizationBridge(name="norm_1", config=self.cfg),
             "attn": attn,

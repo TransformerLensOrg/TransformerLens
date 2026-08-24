@@ -3,7 +3,7 @@
 This module contains the bridge component for attention layers.
 """
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import einops
 import torch
@@ -22,6 +22,16 @@ from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
 from transformer_lens.utilities.hf_utils import get_rotary_pct_from_config
+from transformer_lens.utilities.quantization import require_readable_weight
+
+
+class PerLayerGeometryError(ValueError):
+    """A weight accessor refused a head split on per-layer attention geometry.
+
+    Dedicated type so callers with a raw-weight fallback (the centering
+    benchmark) catch exactly this and nothing else — a generic ValueError
+    catch would silently mask unrelated accessor regressions.
+    """
 
 
 class AttentionBridge(GeneralizedComponent):
@@ -69,6 +79,7 @@ class AttentionBridge(GeneralizedComponent):
         is_cross_attention: bool = False,
         is_causal: bool = True,
         optional: bool = False,
+        fused_qkv: bool = False,
     ):
         """Initialize the attention bridge.
 
@@ -103,6 +114,15 @@ class AttentionBridge(GeneralizedComponent):
             conversion_rule=conversion_rule,
             optional=optional,
         )
+        if fused_qkv:
+            # A combined QKV projection has no q/k/v submodules for the class
+            # aliases to resolve against; leaving them in place produces dead
+            # aliases and resolution-audit noise (raven Wqkv, OpenELM qkv_proj).
+            self.hook_aliases = {
+                key: value
+                for key, value in type(self).hook_aliases.items()
+                if key not in {"hook_q", "hook_k", "hook_v"}
+            }
         self.hook_attn_scores = HookPoint()
         self.hook_pattern = HookPoint()
         self.hook_hidden_states = HookPoint()
@@ -278,6 +298,10 @@ class AttentionBridge(GeneralizedComponent):
         class ReshapeForAttentionHeads(BaseTensorConversion):
             """Reshape tensors to split attention heads for Q/K/V/Z compatibility."""
 
+            # Marks the [batch, pos, head, d_head] layout so consumers (e.g. run_with_cache's
+            # pos_slice) know the position axis is two from the end, not one.
+            splits_attention_heads = True
+
             def __init__(self, n_heads: int, d_head: int):
                 super().__init__()
                 self.n_heads = n_heads
@@ -325,17 +349,54 @@ class AttentionBridge(GeneralizedComponent):
         n_kv_heads = n_heads
         if hasattr(self.config, "n_key_value_heads") and self.config.n_key_value_heads is not None:
             n_kv_heads = self.config.n_key_value_heads
+
+        # Per-layer d_head makes width division ambiguous (gemma4: 2048 = 8x256
+        # = 4x512), so dividing by the majority scalar mis-factorizes silently.
+        layer_d_head: Optional[int] = d_head
+        per_layer_hd = getattr(self.config, "per_layer_head_dim", None)
+        if per_layer_hd:
+            entry: Any = None
+            if self._layer_idx is not None and self._layer_idx < len(per_layer_hd):
+                entry = per_layer_hd[self._layer_idx]
+            if not (isinstance(entry, int) and entry > 0):
+                entry = getattr(self.original_component, "head_dim", None)
+            layer_d_head = entry if isinstance(entry, int) and entry > 0 else None
+
+        def conversion_dims(
+            proj: Any, cfg_heads: int, width_attr: str = "out_features"
+        ) -> Tuple[int, int]:
+            """(n_heads, d_head) from the BOUND module width, not the cfg scalars.
+
+            OpenELM/laguna vary head counts per layer; cfg-only dims no-op there,
+            flipping hook shapes mid-model. MLA excluded — its o-width is v_head_dim.
+            """
+            if getattr(self, "_v_head_dim", None):
+                return cfg_heads, d_head
+            component = getattr(proj, "original_component", None)
+            width = getattr(component, width_attr, None)
+            if width and layer_d_head and width % layer_d_head == 0:
+                return width // layer_d_head, layer_d_head
+            return cfg_heads, layer_d_head or d_head
+
         if hasattr(self, "q") and self.q is not None and hasattr(self.q, "hook_out"):
-            q_reshape = ReshapeForAttentionHeads(n_heads, d_head)
+            q_reshape = ReshapeForAttentionHeads(*conversion_dims(self.q, n_heads))
             self.q.hook_out.hook_conversion = q_reshape
         if hasattr(self, "k") and self.k is not None and hasattr(self.k, "hook_out"):
-            k_reshape = ReshapeForAttentionHeads(n_kv_heads, d_head)
+            k_reshape = ReshapeForAttentionHeads(*conversion_dims(self.k, n_kv_heads))
             self.k.hook_out.hook_conversion = k_reshape
+            # Subclasses that de-alias hook_k onto their own HookPoint (K-scaling
+            # architectures) need the same conversion, whichever order runs first.
+            if "hook_k" not in self.hook_aliases and isinstance(
+                getattr(self, "hook_k", None), HookPoint
+            ):
+                self.hook_k.hook_conversion = k_reshape
         if hasattr(self, "v") and self.v is not None and hasattr(self.v, "hook_out"):
-            v_reshape = ReshapeForAttentionHeads(n_kv_heads, d_head)
+            v_reshape = ReshapeForAttentionHeads(*conversion_dims(self.v, n_kv_heads))
             self.v.hook_out.hook_conversion = v_reshape
         if hasattr(self, "o") and self.o is not None and hasattr(self.o, "hook_in"):
-            z_reshape = ReshapeForAttentionHeads(n_heads, d_head)
+            z_reshape = ReshapeForAttentionHeads(
+                *conversion_dims(self.o, n_heads, width_attr="in_features")
+            )
             self.o.hook_in.hook_conversion = z_reshape
 
         class TransposeRotaryHeads(BaseTensorConversion):
@@ -369,13 +430,18 @@ class AttentionBridge(GeneralizedComponent):
         """
         past_key_values = kwargs.get("past_key_values", None)
         if past_key_values is None:
+            # GPT-NeoX/GPT-J/Bloom/Falcon/MPT/CodeGen/GPTBigCode still name the
+            # cache `layer_past`; missing it leaves the cache empty, so every
+            # decode step attends to itself alone and generation ignores the prompt.
+            past_key_values = kwargs.get("layer_past", None)
+        if past_key_values is None:
             return k, v
         layer_idx = getattr(self, "_layer_idx", None)
         if layer_idx is None:
             logger.warning(
                 "%s: past_key_values provided but _layer_idx is None "
-                "(HF component missing layer_idx attribute). "
-                "KV cache update skipped — generation will be slow.",
+                "(HF component missing layer_idx attribute). KV cache update "
+                "skipped — cached generation will ignore earlier tokens.",
                 self.name,
             )
             return k, v
@@ -457,9 +523,24 @@ class AttentionBridge(GeneralizedComponent):
             attn_weights = torch.nn.functional.softmax(attn_scores, dim=-1)
             if target_dtype is not None:
                 attn_weights = attn_weights.to(target_dtype)
+        attn_weights = self._scrub_compatibility_pattern_nans(attn_weights)
         attn_weights = self._apply_attn_dropout(attn_weights)
         attn_weights = self.hook_pattern(attn_weights)
         return attn_weights
+
+    def _scrub_compatibility_pattern_nans(self, pattern: torch.Tensor) -> torch.Tensor:
+        """Match HookedTransformer for fully masked attention rows."""
+        if self.compatibility_mode:
+            pattern = torch.where(torch.isnan(pattern), torch.zeros_like(pattern), pattern)
+        return pattern
+
+    def _normalize_compatibility_mask_sentinel(self, attention_mask: torch.Tensor) -> torch.Tensor:
+        """Normalize additive mask sentinels before dtype conversion or addition."""
+        if self.compatibility_mode and attention_mask.is_floating_point():
+            attention_mask = attention_mask.masked_fill(
+                attention_mask <= torch.finfo(attention_mask.dtype).min, -torch.inf
+            )
+        return attention_mask
 
     def _reshape_attn_output(
         self,
@@ -497,6 +578,7 @@ class AttentionBridge(GeneralizedComponent):
         if q_seq_len is None:
             q_seq_len = seq_len
         min_dtype = torch.finfo(attn_scores.dtype).min
+        mask_value = -torch.inf if self.compatibility_mode else min_dtype
         use_direct_hf_mask = attention_mask is not None and attention_mask.ndim >= 4
         # Bidirectional attention (encoders) and cross-attention have no causal
         # structure, so only synthesize the triangular mask for causal self-attention.
@@ -508,26 +590,29 @@ class AttentionBridge(GeneralizedComponent):
                 q_seq_len, seq_len, device=attn_scores.device, dtype=torch.bool
             )
             causal_mask = torch.tril(causal_mask, diagonal=seq_len - q_seq_len)
-            attn_scores = attn_scores.masked_fill(~causal_mask, min_dtype)
+            attn_scores = attn_scores.masked_fill(~causal_mask, mask_value)
 
-        if attention_mask is None:
-            return attn_scores
+        if attention_mask is not None:
+            if attention_mask.shape[-1] != seq_len:
+                attention_mask = attention_mask[..., :seq_len]
+            if attention_mask.ndim >= 3 and attention_mask.shape[-2] != q_seq_len:
+                # Extra query rows mean a full-sequence mask on a cached decode step,
+                # where the live queries are the LAST rows; taking the first hands
+                # every step position 0 (Baichuan-13B fuses ALiBi slopes in here).
+                attention_mask = attention_mask[..., -q_seq_len:, :]
 
-        if attention_mask.shape[-1] != seq_len:
-            attention_mask = attention_mask[..., :seq_len]
-        if attention_mask.ndim >= 3 and attention_mask.shape[-2] != q_seq_len:
-            attention_mask = attention_mask[..., :q_seq_len, :]
+            if attention_mask.dtype == torch.bool:
+                attention_mask = torch.where(
+                    attention_mask,
+                    torch.zeros((), dtype=attn_scores.dtype, device=attn_scores.device),
+                    torch.full((), mask_value, dtype=attn_scores.dtype, device=attn_scores.device),
+                )
+            else:
+                attention_mask = self._normalize_compatibility_mask_sentinel(attention_mask)
+                attention_mask = attention_mask.to(dtype=attn_scores.dtype)
+            attn_scores = attn_scores + attention_mask
 
-        if attention_mask.dtype == torch.bool:
-            attention_mask = torch.where(
-                attention_mask,
-                torch.zeros((), dtype=attn_scores.dtype, device=attn_scores.device),
-                torch.full((), min_dtype, dtype=attn_scores.dtype, device=attn_scores.device),
-            )
-        else:
-            attention_mask = attention_mask.to(dtype=attn_scores.dtype)
-
-        return attn_scores + attention_mask
+        return attn_scores
 
     def _get_n_heads(self, use_kv: bool = False) -> int:
         """Resolve the number of attention heads from config.
@@ -583,6 +668,7 @@ class AttentionBridge(GeneralizedComponent):
                     else weight.shape[0] // n_heads
                 )
             mat = weight if in_out_layout else weight.T
+            self._check_head_split_width(mat, n_heads)
             return einops.rearrange(
                 mat, "(n_heads d_head) d_model -> n_heads d_head d_model", n_heads=n_heads
             )
@@ -590,8 +676,34 @@ class AttentionBridge(GeneralizedComponent):
         if in_out_layout is None:
             in_out_layout = weight.shape[0] % n_heads != 0
         mat = weight.T if in_out_layout else weight
+        self._check_head_split_width(mat, n_heads)
         return einops.rearrange(
             mat, "(n_heads d_head) d_model -> n_heads d_model d_head", n_heads=n_heads
+        )
+
+    def _check_head_split_width(self, mat: torch.Tensor, n_heads: int) -> None:
+        """Refuse a head split whose width disagrees with the model's geometry.
+
+        einops only needs divisibility, so per-layer geometry (gemma4 KV-shared
+        layers) would factorize into wrong-shaped heads silently. MLA's
+        bind-time ``_v_head_dim`` is a legitimate second width (o_proj).
+        """
+        d_head = getattr(self.config, "d_head", None)
+        if not d_head:
+            return
+        allowed_dims = {d_head}
+        v_head_dim = getattr(self, "_v_head_dim", None)
+        if v_head_dim:
+            allowed_dims.add(v_head_dim)
+        if mat.shape[0] % n_heads == 0 and mat.shape[0] // n_heads in allowed_dims:
+            return
+        raise PerLayerGeometryError(
+            f"Cannot split {tuple(mat.shape)} weight on '{self.name}' into "
+            f"{n_heads} heads of d_head in {sorted(allowed_dims)}: this "
+            "layer's attention geometry differs from the config-level scalars "
+            "(per-layer num_key_value_heads/head_dim, e.g. gemma4 KV-shared "
+            "or K==V layers). Read the wrapped module's weight directly for "
+            "this layer instead."
         )
 
     def _project_per_head_qkv(
@@ -616,7 +728,11 @@ class AttentionBridge(GeneralizedComponent):
         """
         component = linear_bridge.original_component
         assert component is not None, "LinearBridge.original_component not set"
-        weight = component.weight
+        weight = require_readable_weight(
+            component.weight,
+            operation="project per head (use_split_qkv_input / use_attn_in)",
+            owner=component,
+        )
         bias = component.bias
         w3d = einops.rearrange(
             weight,
@@ -697,42 +813,14 @@ class AttentionBridge(GeneralizedComponent):
             raise RuntimeError(
                 f"Original component not set for {self.name}. Call set_original_component() first."
             )
-        # Skip non-fp params: quantized weights (bnb uint8/int8, GPTQ/AWQ int32,
-        # HQQ, torchao) are stored in integer dtypes and dequantized internally
-        # during matmul. The compute dtype must come from a fp parameter; casting
-        # fp inputs to an integer storage dtype destroys precision.
-        target_dtype = None
-        for p in self.original_component.parameters():
-            if not p.dtype.is_floating_point:
-                continue
-            target_dtype = p.dtype
-            break
         if "query_input" in kwargs:
             hooked = self.hook_in(kwargs["query_input"])
-            if (
-                target_dtype is not None
-                and isinstance(hooked, torch.Tensor)
-                and hooked.is_floating_point()
-            ):
-                hooked = hooked.to(dtype=target_dtype)
             kwargs["query_input"] = hooked
         elif "hidden_states" in kwargs:
             hooked = self.hook_in(kwargs["hidden_states"])
-            if (
-                target_dtype is not None
-                and isinstance(hooked, torch.Tensor)
-                and hooked.is_floating_point()
-            ):
-                hooked = hooked.to(dtype=target_dtype)
             kwargs["hidden_states"] = hooked
         elif len(args) > 0 and isinstance(args[0], torch.Tensor):
             hooked = self.hook_in(args[0])
-            if (
-                target_dtype is not None
-                and isinstance(hooked, torch.Tensor)
-                and hooked.is_floating_point()
-            ):
-                hooked = hooked.to(dtype=target_dtype)
             args = (hooked,) + args[1:]
         # try/finally so the captured tensor (and its autograd graph) is
         # released even if original_component raises.
@@ -767,7 +855,9 @@ class AttentionBridge(GeneralizedComponent):
     @property
     def W_Q(self) -> torch.Tensor:
         """Get W_Q in 3D format [n_heads, d_model, d_head]."""
-        weight = self.q.weight
+        weight = require_readable_weight(
+            self.q.weight, operation=f"read W_Q from {self.name}", owner=self.q
+        )
         if weight.ndim == 2 and self.config is not None:
             return self._reshape_weight_to_3d(
                 weight, self._get_n_heads(), in_out_layout=self._weight_layout_in_out(self.q)
@@ -777,7 +867,9 @@ class AttentionBridge(GeneralizedComponent):
     @property
     def W_K(self) -> torch.Tensor:
         """Get W_K in 3D format [n_heads, d_model, d_head] (uses n_kv_heads for GQA)."""
-        weight = self.k.weight
+        weight = require_readable_weight(
+            self.k.weight, operation=f"read W_K from {self.name}", owner=self.k
+        )
         if weight.ndim == 2 and self.config is not None:
             return self._reshape_weight_to_3d(
                 weight,
@@ -789,7 +881,9 @@ class AttentionBridge(GeneralizedComponent):
     @property
     def W_V(self) -> torch.Tensor:
         """Get W_V in 3D format [n_heads, d_model, d_head] (uses n_kv_heads for GQA)."""
-        weight = self.v.weight
+        weight = require_readable_weight(
+            self.v.weight, operation=f"read W_V from {self.name}", owner=self.v
+        )
         if weight.ndim == 2 and self.config is not None:
             return self._reshape_weight_to_3d(
                 weight,
@@ -801,7 +895,9 @@ class AttentionBridge(GeneralizedComponent):
     @property
     def W_O(self) -> torch.Tensor:
         """Get W_O in 3D format [n_heads, d_head, d_model]."""
-        weight = self.o.weight
+        weight = require_readable_weight(
+            self.o.weight, operation=f"read W_O from {self.name}", owner=self.o
+        )
         if weight.ndim == 2 and self.config is not None:
             return self._reshape_weight_to_3d(
                 weight,

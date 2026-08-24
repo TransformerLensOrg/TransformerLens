@@ -1,7 +1,5 @@
 from typing import Any
 
-import torch
-
 from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion
 from transformer_lens.conversion_utils.param_processing_conversion import (
     ParamProcessingConversion,
@@ -88,16 +86,3 @@ class NanogptArchitectureAdapter(ArchitectureAdapter):
             ),  # Final layer norm
             "unembed": UnembeddingBridge(name="lm_head"),
         }
-
-    def convert_weights(self, remote_module: Any) -> dict[str, torch.Tensor]:
-        # Nanogpt models saved after torch.compile() have this unwanted prefix
-        # This is a simple way to remove it
-        unwanted_prefix = "_orig_mod."
-        state_dict: dict[str, torch.Tensor] = (
-            remote_module.state_dict() if hasattr(remote_module, "state_dict") else remote_module
-        )
-        for k, v in list(state_dict.items()):
-            if k.startswith(unwanted_prefix):
-                state_dict[k[len(unwanted_prefix) :]] = state_dict.pop(k)
-
-        return super().convert_weights(remote_module)  # type: ignore[misc]

@@ -49,19 +49,15 @@ def test_d_head_falls_back_to_derived_when_head_dim_is_none() -> None:
 
 
 class _AmbiguousAccessError(Exception):
-    """Stand-in for transformers>=5.15 AmbiguousGlobalPerLayerAttributeError.
-
-    Deliberately not an AttributeError: neither hasattr() nor getattr(..., default)
-    suppresses the real exception, which is the crash mode of issue #1647.
+    """Stand-in for transformers>=5.15 AmbiguousGlobalPerLayerAttributeError —
+    deliberately NOT an AttributeError, so hasattr()/getattr(default) cannot
+    suppress it (#1647's crash mode).
     """
 
 
 class _HeterogeneousConfig:
-    """Minimal transformers>=5.15 heterogeneous-config contract.
-
-    Exposes ``is_heterogeneous`` / ``per_layer_attributes`` / ``per_layer_config``
-    and raises a non-AttributeError on any global read of a registered per-layer
-    attribute, proving the mapping never performs the forbidden access.
+    """Minimal >=5.15 heterogeneous-config contract: raises a non-AttributeError
+    on any global read of a registered per-layer attribute.
     """
 
     def __init__(self, per_layer: dict, **global_fields: object) -> None:
@@ -221,10 +217,9 @@ def test_majority_value_semantics() -> None:
 
 
 def test_heterogeneous_config_through_bridge_config_build() -> None:
-    """Full boot pipeline (map → from_dict → passthrough) on a heterogeneous config.
-
-    intermediate_size is both per-layer here and in _HF_PASSTHROUGH_ATTRS, so the
-    passthrough loop must skip it rather than perform the raising global read.
+    """Full boot pipeline on a het config: intermediate_size is per-layer AND in
+    _HF_PASSTHROUGH_ATTRS, so the passthrough loop must skip it rather than
+    perform the raising global read.
     """
     config = _HeterogeneousConfig(
         per_layer={
@@ -263,3 +258,57 @@ def test_bridge_config_retains_per_layer_fields() -> None:
     )
     assert bridge_config.per_layer_head_dim == [256] * 5 + [512]
     assert bridge_config.per_layer_num_key_value_heads == [16] * 5 + [4]
+
+
+def test_softcap_reads_survive_per_layer_registration() -> None:
+    """The softcap getattrs sat below the het-protected passthrough loop; a
+    per-layer-registered softcap field raised straight through the default."""
+    config = _HeterogeneousConfig(
+        {"final_logit_softcapping": [30.0, 30.0, 30.0, 30.0, 30.0, 30.0]},
+        **_GEMMA4_GLOBALS,
+        num_attention_heads=4,
+        head_dim=4,
+    )
+    from transformer_lens.model_bridge.sources._bridge_builder import (
+        build_bridge_config_from_hf,
+    )
+
+    bridge_config = build_bridge_config_from_hf(config, "TestArch", "test-model", torch.float32)
+    assert bridge_config.output_logits_soft_cap == 30.0
+
+
+def test_rotary_pct_chain_survives_per_layer_registration() -> None:
+    """hasattr does NOT suppress the het raise; the chain probes rotary_pct
+    and rope_parameters directly."""
+    from transformer_lens.utilities.hf_utils import get_rotary_pct_from_config
+
+    config = _HeterogeneousConfig(
+        {"rotary_pct": [0.25, 0.25, 0.25, 0.25, 0.25, 0.25]},
+        **_GEMMA4_GLOBALS,
+    )
+    assert get_rotary_pct_from_config(config) == 0.25
+
+
+def test_rotary_chain_survives_dict_valued_per_layer_rope() -> None:
+    """rope_parameters is dict-valued in 5.x, and per-layer rope is the natural
+    shape for layer-typed models. majority_value counted by HASHING, so the
+    unhashable value raised TypeError inside the safety machinery itself —
+    which hasattr does not suppress."""
+    from transformer_lens.utilities.hf_utils import get_rotary_pct_from_config
+
+    config = _HeterogeneousConfig(
+        {"rope_parameters": [{"partial_rotary_factor": 0.5}] * 6},
+        **_GEMMA4_GLOBALS,
+    )
+    assert get_rotary_pct_from_config(config) == 0.5
+
+
+def test_majority_value_counts_unhashables_by_equality() -> None:
+    from transformer_lens.utilities.heterogeneous_config import majority_value
+
+    sliding = {"rope_theta": 10_000.0}
+    full = {"rope_theta": 1_000_000.0}
+    assert majority_value([sliding, full, sliding]) == sliding
+    # Tie-break toward the earliest layer, as before for hashables.
+    assert majority_value([full, sliding]) == full
+    assert majority_value([3, 3, 7]) == 3

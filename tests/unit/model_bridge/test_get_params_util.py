@@ -73,15 +73,15 @@ class TestGetBridgeParams:
             w_v = params[f"blocks.{layer_idx}.attn.W_V"]
             w_o = params[f"blocks.{layer_idx}.attn.W_O"]
 
-            # Shape alone cannot catch a reshape that scrambles the elements,
-            # nor Q/K/V being read from the wrong projection: pin the VALUES
-            # against the source weights the mock block exposes.
+            # Shape alone cannot catch Q/K/V being read from the wrong
+            # projection: pin the VALUES against the TL-layout properties the
+            # mock block exposes.
             block = mock_bridge.blocks[layer_idx]
             n_heads, d_model, d_head = 12, 768, 64
             assert w_q.shape == (n_heads, d_model, d_head)
             assert w_o.shape == (n_heads, d_head, d_model)
-            torch.testing.assert_close(w_q, block.attn.q.weight.reshape(n_heads, d_model, d_head))
-            torch.testing.assert_close(w_o, block.attn.o.weight.reshape(n_heads, d_head, d_model))
+            torch.testing.assert_close(w_q, block.attn.W_Q)
+            torch.testing.assert_close(w_o, block.attn.W_O)
             # Negative control: Q and K must be distinguishable in this fixture,
             # or reading either one would satisfy the assertions above.
             assert not torch.equal(w_q, w_k)
@@ -197,13 +197,12 @@ class TestGetBridgeParams:
 
         # Set all biases to None
         for block in mock_bridge.blocks:
-            block.attn.q.bias = None
-            block.attn.k.bias = None
-            block.attn.v.bias = None
-            block.attn.o.bias = None
-            setattr(block.mlp, "in", Mock())
-            getattr(block.mlp, "in").bias = None
-            block.mlp.out.bias = None
+            block.attn.b_Q = None
+            block.attn.b_K = None
+            block.attn.b_V = None
+            block.attn.b_O = None
+            block.mlp.b_in = None
+            block.mlp.b_out = None
 
         return mock_bridge
 
@@ -231,45 +230,99 @@ class TestGetBridgeParams:
 
         # Add gate weights to MLP
         for block in mock_bridge.blocks:
-            block.mlp.gate = Mock()
-            block.mlp.gate.weight = torch.randn(3072, 768)
-            block.mlp.gate.bias = torch.randn(3072)
-            block.mlp.W_gate = torch.randn(3072, 768)
+            block.mlp.W_gate = torch.randn(768, 3072)
+            block.mlp.b_gate = torch.randn(3072)
 
         return mock_bridge
 
     def _create_mock_block(self):
-        """Create a mock transformer block."""
+        """Create a mock transformer block exposing TL-layout weight properties."""
         block = Mock()
 
-        # Mock attention
+        # Mock attention (TL-layout properties, as the component bridges expose)
         block.attn = Mock()
-        block.attn.q = Mock()
-        block.attn.q.weight = torch.randn(768, 768)
-        block.attn.q.bias = torch.randn(768)
+        block.attn.W_Q = torch.randn(12, 768, 64)
+        block.attn.W_K = torch.randn(12, 768, 64)
+        block.attn.W_V = torch.randn(12, 768, 64)
+        block.attn.W_O = torch.randn(12, 64, 768)
+        block.attn.b_Q = torch.randn(12, 64)
+        block.attn.b_K = torch.randn(12, 64)
+        block.attn.b_V = torch.randn(12, 64)
+        block.attn.b_O = torch.randn(768)
 
-        block.attn.k = Mock()
-        block.attn.k.weight = torch.randn(768, 768)
-        block.attn.k.bias = torch.randn(768)
-
-        block.attn.v = Mock()
-        block.attn.v.weight = torch.randn(768, 768)
-        block.attn.v.bias = torch.randn(768)
-
-        block.attn.o = Mock()
-        block.attn.o.weight = torch.randn(768, 768)
-        block.attn.o.bias = torch.randn(768)
-
-        # Mock MLP (mirrors MLPBridge's normalized accessor API)
+        # Mock MLP
         block.mlp = Mock()
         block.mlp.W_in = torch.randn(768, 3072)
         block.mlp.W_out = torch.randn(3072, 768)
-        setattr(block.mlp, "in", Mock())
-        getattr(block.mlp, "in").weight = torch.randn(768, 3072)
-        getattr(block.mlp, "in").bias = torch.randn(3072)
-
-        block.mlp.out = Mock()
-        block.mlp.out.weight = torch.randn(3072, 768)
-        block.mlp.out.bias = torch.randn(768)
+        block.mlp.b_in = torch.randn(3072)
+        block.mlp.b_out = torch.randn(768)
 
         return block
+
+
+class TestGQAExpansion:
+    """Grouped K/V must be expanded to n_heads (legacy HT convention)."""
+
+    def _make_gqa_bridge(self):
+        mock_bridge = Mock()
+        mock_bridge.cfg = Mock()
+        mock_bridge.cfg.n_layers = 1
+        mock_bridge.cfg.d_model = 64
+        mock_bridge.cfg.n_heads = 4
+        mock_bridge.cfg.d_head = 16
+        mock_bridge.cfg.d_vocab = 100
+        mock_bridge.cfg.n_ctx = 32
+        mock_bridge.cfg.d_mlp = 128
+        mock_bridge.cfg.device = torch.device("cpu")
+
+        mock_bridge.embed = Mock()
+        mock_bridge.embed.weight = torch.randn(100, 64)
+        mock_bridge.pos_embed = Mock()
+        mock_bridge.pos_embed.weight = torch.randn(32, 64)
+        mock_bridge.unembed = Mock()
+        mock_bridge.unembed.weight = torch.randn(100, 64)
+
+        block = Mock()
+        block.attn = Mock()
+        block.attn.W_Q = torch.randn(4, 64, 16)
+        block.attn.W_K = torch.randn(2, 64, 16)  # grouped: n_kv_heads=2
+        block.attn.W_V = torch.randn(2, 64, 16)
+        block.attn.W_O = torch.randn(4, 16, 64)
+        block.attn.b_Q = torch.randn(4, 16)
+        block.attn.b_K = torch.randn(2, 16)
+        block.attn.b_V = torch.randn(2, 16)
+        block.attn.b_O = torch.randn(64)
+        block.mlp = Mock()
+        block.mlp.W_in = torch.randn(64, 128)
+        block.mlp.W_out = torch.randn(128, 64)
+        block.mlp.b_in = torch.randn(128)
+        block.mlp.b_out = torch.randn(64)
+        mock_bridge.blocks = [block]
+        return mock_bridge
+
+    def test_grouped_kv_expanded_to_n_heads(self):
+        bridge = self._make_gqa_bridge()
+        params = get_bridge_params(bridge)
+
+        w_k = params["blocks.0.attn.W_K"]
+        w_v = params["blocks.0.attn.W_V"]
+        assert w_k.shape == (4, 64, 16)
+        assert w_v.shape == (4, 64, 16)
+        # repeat_interleave semantics: heads 0,1 share kv head 0; heads 2,3 share kv head 1
+        assert torch.equal(w_k[0], w_k[1])
+        assert torch.equal(w_k[0], bridge.blocks[0].attn.W_K[0])
+        assert torch.equal(w_k[2], bridge.blocks[0].attn.W_K[1])
+
+    def test_grouped_biases_expanded(self):
+        bridge = self._make_gqa_bridge()
+        params = get_bridge_params(bridge)
+        b_k = params["blocks.0.attn.b_K"]
+        assert b_k.shape == (4, 16)
+        assert params["blocks.0.attn.b_V"].shape == (4, 16)
+        # Pairing must be repeat_interleave (blocked), not tiling: heads 0,1
+        # share kv head 0 and heads 2,3 share kv head 1.
+        grouped = bridge.blocks[0].attn.b_K
+        assert torch.equal(b_k[0], b_k[1])
+        assert torch.equal(b_k[0], grouped[0])
+        assert torch.equal(b_k[2], grouped[1])
+        assert torch.equal(params["blocks.0.attn.b_Q"], bridge.blocks[0].attn.b_Q)

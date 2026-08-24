@@ -34,15 +34,11 @@ class MoEBridge(GeneralizedComponent):
 
     hook_aliases = {"hook_pre": "hook_in", "hook_post": "hook_out"}
 
-    # Dense-layer alias set, adopted per layer at bind time (see
-    # set_original_component). The keys are deliberately NOT gate/in/out: on a
-    # sparse layer of the same model ``gate`` is the ROUTER, so reusing it would
-    # make blocks.N.mlp.gate.hook_out mean the router on some layers and a d_mlp
-    # gate projection on others — the per-layer semantic flip this dispatch
-    # exists to remove. ``dense_*`` matches what llada2_moe/llama4/laguna already
-    # declare. dense_in/dense_out are what make a layer dense; dense_gate is
-    # present only for gated (SwiGLU) MLPs — ungated dense feed-forwards exist
-    # too (Switch Transformers' wi/wo), so the alias set follows the bound shape.
+    # Deliberately NOT gate/in/out: ``gate`` is the ROUTER on sparse layers of
+    # the same model, so reusing it would flip the meaning of
+    # blocks.N.mlp.gate.hook_out per layer (#1645's own confusion). dense_gate
+    # is absent on ungated feed-forwards (Switch's wi/wo); the alias set
+    # follows the bound shape.
     DENSE_SUBMODULE_KEYS = ("dense_in", "dense_out")
     DENSE_GATE_KEY = "dense_gate"
     _DENSE_HOOK_ALIASES = {
@@ -113,13 +109,11 @@ class MoEBridge(GeneralizedComponent):
         )
 
     def _binds_dense_gate(self, component: torch.nn.Module) -> bool:
-        """Whether the bound dense MLP is gated (SwiGLU) rather than plain.
+        """Whether the bound dense MLP is gated (SiLU-gated) rather than plain.
 
-        Declaring ``dense_gate`` is the adapter asserting this architecture's
-        dense layers ARE gated, so a declared-but-unresolvable gate means the HF
-        attribute was renamed — not that the MLP is ungated. Binding it as
-        ungated would silently alias hook_pre to the UP projection, which is the
-        #1645 defect class in a subtler form; raise instead.
+        A declared-but-unresolvable gate means the HF attribute was renamed,
+        not that the MLP is ungated — binding it as ungated would silently
+        alias hook_pre to the UP projection, so raise instead.
         """
         gate = self.submodules.get(self.DENSE_GATE_KEY)
         if gate is None or gate.name is None:
@@ -138,11 +132,8 @@ class MoEBridge(GeneralizedComponent):
     def set_original_component(self, component: torch.nn.Module) -> None:
         """Bind the layer, adopting gated-MLP semantics on dense layers.
 
-        Interleaved/dense-prefix MoE architectures build a plain gated MLP on
-        some layers under the same attribute name as the sparse block. Those
-        layers get the neuron-basis hooks (and weight accessors) every all-dense
-        architecture exposes, instead of MoE boundary tensors under
-        neuron-hook names (#1645).
+        Dense layers of interleaved MoE stacks get neuron-basis hooks and
+        weight accessors instead of MoE boundary tensors under those names.
         """
         super().set_original_component(component)
         is_dense = self._binds_dense_projections(component)
@@ -211,11 +202,8 @@ class MoEBridge(GeneralizedComponent):
     def _dense_projection(self, key: str) -> Any:
         """Return a bound dense projection.
 
-        Raises AttributeError on sparse layers, which have per-expert weights
-        and no single W_*: that keeps ``hasattr`` False so weight-collection
-        helpers skip the layer as they always have. (The base __getattr__
-        substitutes its own message for property AttributeErrors, so this text
-        is a code comment in practice, not user-facing.)
+        Raises AttributeError on sparse layers (per-expert weights, no single
+        W_*) so ``hasattr`` stays False and weight collection skips them.
         """
         if not self._bound_dense:
             raise AttributeError(f"{self.name}: {key} exists only on dense layers")
@@ -293,28 +281,11 @@ class MoEBridge(GeneralizedComponent):
             raise RuntimeError(
                 f"Original component not set for {self.name}. Call set_original_component() first."
             )
-        target_dtype = None
-        try:
-            target_dtype = next(self.original_component.parameters()).dtype
-        except StopIteration:
-            pass
         if len(args) > 0:
             hooked = self.hook_in(args[0])
-            if (
-                target_dtype is not None
-                and isinstance(hooked, torch.Tensor)
-                and hooked.is_floating_point()
-            ):
-                hooked = hooked.to(dtype=target_dtype)
             args = (hooked,) + args[1:]
         elif "hidden_states" in kwargs:
             hooked = self.hook_in(kwargs["hidden_states"])
-            if (
-                target_dtype is not None
-                and isinstance(hooked, torch.Tensor)
-                and hooked.is_floating_point()
-            ):
-                hooked = hooked.to(dtype=target_dtype)
             kwargs = {**kwargs, "hidden_states": hooked}
         output = self.original_component(*args, **kwargs)
         if isinstance(output, tuple):

@@ -17,9 +17,8 @@ from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapt
 from transformer_lens.model_bridge.generalized_components import (
     EmbeddingBridge,
     GatedRMSNormBridge,
+    JointGateUpMLPBridge,
     LinearBridge,
-    MLPBridge,
-    MoEBridge,
     RMSNormalizationBridge,
     RotaryEmbeddingBridge,
     ScaledResidualBlockBridge,
@@ -85,11 +84,14 @@ class GraniteMoeHybridArchitectureAdapter(GraniteArchitectureAdapter):
             "ln2": RMSNormalizationBridge(name="post_attention_layernorm", config=self.cfg),
             "attn": self._build_attention_bridge(optional=True),
             "mixer": self._build_mamba_bridge(),
-            "shared_mlp": MLPBridge(
+            # input_linear is fused [gate | up]: a plain MLPBridge made
+            # hook_pre the 2*d_mlp pre-GLU tensor with no hook_pre_linear. The
+            # bridge registers "gate"/"in" itself, so only "out" is declared.
+            "shared_mlp": JointGateUpMLPBridge(
                 name="shared_mlp",
                 config=self.cfg,
+                fused_attr="input_linear",
                 submodules={
-                    "in": LinearBridge(name="input_linear"),
                     "out": LinearBridge(name="output_linear"),
                 },
             ),
@@ -99,10 +101,7 @@ class GraniteMoeHybridArchitectureAdapter(GraniteArchitectureAdapter):
             self.cfg, "num_local_experts", 0
         )
         if num_experts and num_experts > 0:
-            block_submodules["moe"] = MoEBridge(
-                name="block_sparse_moe",
-                config=self.cfg,
-            )
+            block_submodules["moe"] = self._build_moe_bridge()
 
         # HF multiplies each sublayer output by residual_multiplier before the
         # residual add. hook_attn_out fires on attention layers (mamba layers have

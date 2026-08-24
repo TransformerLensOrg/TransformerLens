@@ -21,6 +21,10 @@ import pytest
 import torch.nn as nn
 from torch import ones, randn, zeros
 
+from tests.unit.model_bridge.supported_architectures.helpers import (
+    fake_hf_model,
+    fake_hf_model_with_eager_targets,
+)
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion
 from transformer_lens.conversion_utils.conversion_steps.rearrange_tensor_conversion import (
@@ -103,25 +107,6 @@ class FakeSmolLM3Attention(nn.Module):
         self.k_proj = nn.Linear(cfg.d_model, kv_width, bias=False)
         self.v_proj = nn.Linear(cfg.d_model, kv_width, bias=False)
         self.o_proj = nn.Linear(cfg.n_heads * cfg.d_head, cfg.d_model, bias=False)
-
-
-def _fake_hf_model(rotary_emb: object) -> SimpleNamespace:
-    """Minimal HF model exposing only model.rotary_emb (no config/layers)."""
-    return SimpleNamespace(model=SimpleNamespace(rotary_emb=rotary_emb))
-
-
-def _fake_hf_model_with_eager_targets(rotary_emb: object) -> SimpleNamespace:
-    """HF model whose top-level and per-layer attention impl start non-eager."""
-    layers = [
-        SimpleNamespace(
-            self_attn=SimpleNamespace(config=SimpleNamespace(_attn_implementation="sdpa"))
-        )
-        for _ in range(2)
-    ]
-    return SimpleNamespace(
-        config=SimpleNamespace(_attn_implementation="sdpa"),
-        model=SimpleNamespace(rotary_emb=rotary_emb, layers=layers),
-    )
 
 
 class DummyAttention:
@@ -564,7 +549,7 @@ class TestSmolLM3SetupComponentTesting:
         assert isinstance(attn_template, _SmolLM3AttentionBridge)
         assert attn_template._rotary_emb is None
 
-        adapter.setup_component_testing(_fake_hf_model(rotary_emb))
+        adapter.setup_component_testing(fake_hf_model(rotary_emb))
 
         assert attn_template._rotary_emb is rotary_emb
 
@@ -574,7 +559,7 @@ class TestSmolLM3SetupComponentTesting:
         rotary_emb = object()
         bridge_model = DummyBridgeModel([DummyBlock(), DummyBlock(), DummyBlock()])
 
-        adapter.setup_component_testing(_fake_hf_model(rotary_emb), bridge_model=bridge_model)
+        adapter.setup_component_testing(fake_hf_model(rotary_emb), bridge_model=bridge_model)
 
         for block in bridge_model.blocks:
             assert block.attn.rotary_emb is rotary_emb
@@ -585,7 +570,7 @@ class TestSmolLM3SetupComponentTesting:
         rotary_emb = object()
         bridge_model = DummyBridgeModel([DummyBlock(), DummyBlock(has_attention=False)])
 
-        adapter.setup_component_testing(_fake_hf_model(rotary_emb), bridge_model=bridge_model)
+        adapter.setup_component_testing(fake_hf_model(rotary_emb), bridge_model=bridge_model)
 
         assert bridge_model.blocks[0].attn.rotary_emb is rotary_emb
 
@@ -593,7 +578,7 @@ class TestSmolLM3SetupComponentTesting:
         self, adapter: SmolLM3ArchitectureAdapter
     ) -> None:
         """Bridge attention only matches HF under eager attention, so it is forced on."""
-        hf_model = _fake_hf_model_with_eager_targets(object())
+        hf_model = fake_hf_model_with_eager_targets(object())
 
         adapter.setup_component_testing(hf_model)
 
@@ -606,7 +591,7 @@ class TestSmolLM3SetupComponentTesting:
     ) -> None:
         """The defensive hasattr branches must not raise when config/layers are absent."""
         rotary_emb = object()
-        adapter.setup_component_testing(_fake_hf_model(rotary_emb))
+        adapter.setup_component_testing(fake_hf_model(rotary_emb))
 
         attn_template = adapter.get_generalized_component("blocks.0.attn")
         assert isinstance(attn_template, _SmolLM3AttentionBridge)

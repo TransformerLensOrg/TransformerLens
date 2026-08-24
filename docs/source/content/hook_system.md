@@ -47,6 +47,29 @@ logits, cache = model.run_with_cache(
 )
 ```
 
+Pass `incl_bwd=True` to also cache gradients. This runs `backward()` on the output, so the
+run must return a scalar (`return_type="loss"`); gradients land under a `_grad` suffix.
+Works on both `HookedTransformer` and `TransformerBridge`:
+
+```python
+loss, cache = model.run_with_cache(
+    "Hello, world",
+    return_type="loss",
+    names_filter="blocks.0.attn.hook_pattern",
+    incl_bwd=True,
+)
+cache["blocks.0.attn.hook_pattern"]        # attention probabilities
+cache["blocks.0.attn.hook_pattern_grad"]   # d(loss) / d(attention probabilities)
+```
+
+Pass `pos_slice=` to keep only some positions, which cuts cache memory on long prompts. It
+takes an index, a `(start, stop)` or `(start, stop, step)` tuple, or a list of indices, and
+applies to gradients as well:
+
+```python
+logits, cache = model.run_with_cache("Hello, world", pos_slice=-1)   # final position only
+```
+
 ### 2. `run_with_hooks` — intervene during the forward pass
 
 Attach temporary hooks for one forward pass, then auto-remove them.
