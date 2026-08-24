@@ -1,4 +1,5 @@
 """Tests for ``TransformerBridge.boot_native`` classmethod."""
+
 from __future__ import annotations
 
 import sys
@@ -738,3 +739,40 @@ def test_boot_native_lnpre_has_hooks():
     assert "blocks.0.ln1.hook_normalized" in cache, "LNPre should have hook_normalized"
     assert "ln_final.hook_scale" in cache, "ln_final should have hook_scale"
     assert "ln_final.hook_normalized" in cache, "ln_final should have hook_normalized"
+
+
+def test_boot_native_resolves_initializer_range_sentinel():
+    """Regression for #1568 — the resolved initializer range must be used by boot_native."""
+    import math
+
+    cfg = _cfg(init_mode="gpt2")
+    expected = 0.8 / math.sqrt(cfg.d_model)
+
+    assert cfg.initializer_range == pytest.approx(expected)
+
+    bridge = TransformerBridge.boot_native(cfg)
+    assert bridge.W_E.std().item() == pytest.approx(expected, rel=0.15)
+
+
+def test_boot_native_resolves_non_gpt2_initializer_range_sentinel():
+    cfg = _cfg(init_mode="kaiming_normal")
+
+    assert cfg.initializer_range == pytest.approx(1.0)
+
+
+def test_boot_native_kaiming_gain_scales_weights():
+    """Regression for #1568 — xavier/kaiming init must use initializer_range
+    as a multiplicative gain. Without this, the config value is silently
+    ignored and every kaiming/xavier model gets the same fixed scale
+    regardless of what the caller asked for."""
+    cfg_gain_1 = _cfg(init_mode="kaiming_normal", initializer_range=1.0, seed=0)
+    cfg_gain_2 = _cfg(init_mode="kaiming_normal", initializer_range=2.0, seed=0)
+
+    bridge_1 = TransformerBridge.boot_native(cfg_gain_1)
+    bridge_2 = TransformerBridge.boot_native(cfg_gain_2)
+
+    std_1 = bridge_1.W_E.std().item()
+    std_2 = bridge_2.W_E.std().item()
+
+    # Same seed, only gain differs -> std should scale ~proportionally.
+    assert std_2 / std_1 == pytest.approx(2.0)

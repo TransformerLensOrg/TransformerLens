@@ -35,6 +35,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+from transformer_lens.benchmarks.text_quality_profiles import (
+    P4_SCORING_VERSION,
+    p4_pass_threshold,
+)
 from transformer_lens.utilities.heterogeneous_config import het_safe_view
 
 # Exit code used for graceful interrupts (Ctrl+C).  The wrapper script
@@ -374,6 +378,7 @@ def estimate_benchmark_memory_gb(
     dtype: str = "float32",
     phases: Optional[list[int]] = None,
     use_hf_reference: bool = True,
+    device: str = "cpu",
 ) -> float:
     """Estimate peak memory needed for benchmark suite.
 
@@ -400,8 +405,12 @@ def estimate_benchmark_memory_gb(
     bpp = bytes_per_param.get(dtype, 4)
     model_size_gb = n_params * bpp / (1024**3)
 
-    # GPT-2 scorer overhead (loaded during Phase 4)
-    gpt2_overhead_gb = 0.5
+    # Phase-4 judge overhead: measured 2.33 GB RSS loading Qwen2.5-0.5B fp32
+    # on CPU (494M params). Kept slightly above the measurement; over-counting
+    # is the safe direction.
+    # The CPU-pinned judge never occupies accelerator memory; charging it to
+    # a cuda budget produces spurious VRAM skips.
+    judge_overhead_gb = 2.5 if device == "cpu" else 0.0
 
     # Activation/framework overhead as a fraction of model size
     overhead_fraction = 0.2
@@ -424,8 +433,8 @@ def estimate_benchmark_memory_gb(
             # Bridge + the full state-dict copy materialized during weight processing
             phase_peaks.append(model_size_gb * 2.0 * (1 + overhead_fraction))
         elif p == 4:
-            # Bridge + GPT-2 scorer
-            phase_peaks.append(model_size_gb * (1 + overhead_fraction) + gpt2_overhead_gb)
+            # Bridge + judge
+            phase_peaks.append(model_size_gb * (1 + overhead_fraction) + judge_overhead_gb)
 
     return max(phase_peaks) if phase_peaks else model_size_gb
 
@@ -546,6 +555,19 @@ def select_models_for_verification(
 # (extract_phase_scores / pass_status) — the shared home for both
 # registry-writing paths, this module and main_benchmark.update_model_registry.
 
+
+def _extract_prompt_profile(results: list) -> Optional[str]:
+    """Effective Phase-4 prompt profile from the benchmark details, or None
+    when no Phase-4 result exists. The default "continuation" is reported so
+    the registry write can clear a stale non-default key."""
+    for result in results:
+        if result.phase == 4 and result.details:
+            profile = result.details.get("prompt_profile")
+            if isinstance(profile, str):
+                return profile
+    return None
+
+
 # Per-phase minimum score thresholds (0-100).
 # Phase 1: Core correctness (bridge vs HF) — must pass everything.
 # Phase 2: Hook/cache/gradient tests — most should pass.
@@ -555,7 +577,9 @@ _MIN_PHASE_SCORES: dict[int, float] = {
     1: 100.0,
     2: 75.0,
     3: 75.0,
-    4: 50.0,
+    # Phase 4 floor == the benchmark pass line; a gap between them lets a
+    # failing score carry a clean "completed" note.
+    4: p4_pass_threshold(),
     7: 75.0,
     8: 75.0,
     9: 75.0,
@@ -703,15 +727,89 @@ def _build_verified_note(
             else:
                 issue_parts.append(f"P{phase}={score}%")
 
+    p4_uncovered = next(
+        (
+            r.message
+            for r in all_results
+            if r.phase == 4
+            and r.severity == BenchmarkSeverity.SKIPPED
+            and r.message.startswith("P4 skipped:")
+        ),
+        None,
+    )
+    suffix = ""
+    if p4_uncovered:
+        # Keep the gap visible in the registry until prompt coverage is added.
+        reason = p4_uncovered.split("—")[0].replace("P4 skipped:", "").strip()
+        suffix = f"; P4 skipped (uncovered: {reason} — file a coverage issue)"
+
     if issue_parts and low_text_quality:
         return (
             f"Full verification completed with issues, low text quality: {'; '.join(issue_parts)}"
+            + suffix
         )
     if issue_parts:
-        return f"Full verification completed with issues: {'; '.join(issue_parts)}"
+        return f"Full verification completed with issues: {'; '.join(issue_parts)}" + suffix
     if low_text_quality:
-        return "Full verification completed with issues, low text quality"
-    return "Full verification completed"
+        return "Full verification completed with issues, low text quality" + suffix
+    return "Full verification completed" + suffix
+
+
+def _preserved_issue_suffix(model_id: str, eff_phases) -> str:
+    """Sub-100 scores from phases not re-run this pass stay visible in the
+    note; a partial pass must not overwrite tracked residue."""
+    from transformer_lens.tools.model_registry.registry_io import (
+        load_supported_models_raw,
+    )
+
+    try:
+        entry = next(
+            (
+                m
+                for m in load_supported_models_raw().get("models", [])
+                if m.get("model_id") == model_id
+            ),
+            None,
+        )
+    except OSError:
+        return ""
+    if entry is None:
+        return ""
+    residue = []
+    for phase in (2, 3, 7, 8, 9):
+        if phase in (eff_phases or []):
+            continue
+        score = entry.get(f"phase{phase}_score")
+        if score is not None and score < 100.0:
+            residue.append(f"P{phase}={score}%")
+    if not residue:
+        return ""
+    return f" (prior issues retained: {', '.join(residue)})"
+
+
+def _p1_only_core_note(p4_score, all_results: list) -> str:
+    """Note for a core run where P1 passed but P4 did not contribute a pass.
+
+    A skipped P4 is a coverage gap, not a quality failure — the stale
+    (possibly old-scale) score must not be relabeled "poor"."""
+    from transformer_lens.benchmarks.utils import BenchmarkSeverity
+
+    p4_skip_msg = next(
+        (
+            r.message
+            for r in all_results
+            if r.phase == 4
+            and r.severity == BenchmarkSeverity.SKIPPED
+            and r.message.startswith("P4 skipped:")
+        ),
+        None,
+    )
+    if p4_skip_msg is not None:
+        reason = p4_skip_msg.split("—")[0].replace("P4 skipped:", "").strip()
+        return f"Core verification passed; P4 skipped ({reason})"
+    if p4_score is None:
+        return "Core verification passed, but text quality benchmark errored. Needs review"
+    return f"Core verification passed, but text quality poor (P4={p4_score}). Needs review"
 
 
 def _clear_hf_cache(quiet: bool = False) -> None:
@@ -722,8 +820,16 @@ def _clear_hf_cache(quiet: bool = False) -> None:
     if not cache_dir.exists():
         return
 
+    from transformer_lens.benchmarks.text_quality import JUDGE_MODEL_ID
+
+    # The pinned Phase-4 judge is needed by every run; deleting it here would
+    # force a re-download per family.
+    judge_dir = "models--" + JUDGE_MODEL_ID.replace("/", "--")
+
     freed = 0
     for blobs_dir in cache_dir.glob("models--*/blobs"):
+        if blobs_dir.parent.name == judge_dir:
+            continue
         for blob in blobs_dir.iterdir():
             try:
                 size = blob.stat().st_size
@@ -808,21 +914,25 @@ def verify_models(
 
     # phases stays None = full verification for the model.
 
-    # Pre-load the GPT-2 scoring model for Phase 4 so it persists across all
-    # models in the batch instead of being loaded and destroyed for each one.
-    _scoring_model = None
-    _scoring_tokenizer = None
+    # Pre-load the Phase-4 judge so it persists across all models in the batch
+    # instead of being loaded and destroyed for each one.
+    _judge_model = None
+    _judge_tokenizer = None
     if phases is None or 4 in phases:
         try:
-            from transformer_lens.benchmarks.text_quality import _load_scoring_model
+            from transformer_lens.benchmarks.text_quality import (
+                JUDGE_MODEL_ID,
+                JUDGE_REVISION,
+                load_judge,
+            )
 
-            _scoring_model, _scoring_tokenizer = _load_scoring_model("gpt2", device)
+            _judge_model, _judge_tokenizer = load_judge()
             if not quiet:
-                print("Pre-loaded GPT-2 scoring model for Phase 4")
+                print(f"Pre-loaded Phase 4 judge {JUDGE_MODEL_ID}@{JUDGE_REVISION[:8]}")
         except Exception as e:
             if not quiet:
-                print(f"Warning: Could not pre-load GPT-2 scorer: {e}")
-                print("  Phase 4 will load its own scorer per model.")
+                print(f"Warning: Could not pre-load Phase 4 judge: {e}")
+                print("  Phase 4 will load its own judge per model.")
 
     total = len(candidates)
     for i, candidate in enumerate(candidates, 1):
@@ -894,7 +1004,7 @@ def verify_models(
 
         # Step 2: Check memory
         estimated_mem = estimate_benchmark_memory_gb(
-            n_params, dtype, phases=phases_to_run, use_hf_reference=use_hf_reference
+            n_params, dtype, phases=phases_to_run, use_hf_reference=use_hf_reference, device=device
         )
         candidate.estimated_memory_gb = estimated_mem
         if not quiet:
@@ -925,7 +1035,14 @@ def verify_models(
         }
         torch_dtype = _dtype_map[dtype]
 
+        from transformer_lens.benchmarks.text_quality_profiles import resolve_profile
+        from transformer_lens.tools.model_registry.registry_io import (
+            registry_prompt_profile,
+        )
+
+        resolved_profile = str(resolve_profile(model_id, arch, registry_prompt_profile(model_id)))
         if not quiet:
+            print(f"  Prompt profile: {resolved_profile}")
             print(f"  Running phases {phases} in a single benchmark call...")
         try:
             all_results = run_benchmark_suite(
@@ -936,8 +1053,9 @@ def verify_models(
                 verbose=not quiet,
                 phases=phases_to_run,
                 trust_remote_code=needs_remote_code,
-                scoring_model=_scoring_model,
-                scoring_tokenizer=_scoring_tokenizer,
+                judge_model=_judge_model,
+                judge_tokenizer=_judge_tokenizer,
+                prompt_profile=resolved_profile,
             )
         except Exception as e:
             error_msg = str(e)
@@ -1049,7 +1167,9 @@ def verify_models(
 
                     if p1_pass and p4_pass and p7_pass and p8_pass and p9_pass:
                         partial_status = STATUS_VERIFIED
-                        partial_note = "Core verification completed"
+                        partial_note = "Core verification completed" + _preserved_issue_suffix(
+                            model_id, eff_phases
+                        )
                     elif p1_pass and p4_pass and not p7_pass:
                         p7_score = filtered_scores.get(7)
                         if p7_score is None:
@@ -1080,9 +1200,7 @@ def verify_models(
                             )
                     elif p1_pass:
                         partial_status = STATUS_VERIFIED
-                        partial_note = (
-                            "Core verification passed, but text quality poor. Needs review"
-                        )
+                        partial_note = _p1_only_core_note(p4, all_results)
                     else:
                         # P1 failed — build a descriptive failure note
                         partial_status = STATUS_FAILED
@@ -1119,6 +1237,7 @@ def verify_models(
                     status=partial_status,
                     phase_scores=filtered_scores,
                     note=partial_note,
+                    prompt_profile=_extract_prompt_profile(all_results),
                 )
                 # A provisional run was not numerically verified; do not write a
                 # verification-history record (VerificationHistory.is_verified()
@@ -1129,6 +1248,8 @@ def verify_models(
                         arch,
                         notes=partial_note,
                         sanitize_fn=_sanitize_note,
+                        prompt_profile=_extract_prompt_profile(all_results),
+                        p4_scoring_version=(P4_SCORING_VERSION if 4 in filtered_scores else None),
                     )
                 if partial_status == STATUS_FAILED:
                     progress.failed.append(model_id)
@@ -1173,6 +1294,7 @@ def verify_models(
                 written_status,
                 phase_scores=phase_scores,
                 note=note,
+                prompt_profile=_extract_prompt_profile(all_results),
             )
             # Provisional runs are not numerically verified — no history record
             # (is_verified() would otherwise report them as verified).
@@ -1181,6 +1303,8 @@ def verify_models(
                     model_id,
                     arch,
                     notes=note,
+                    prompt_profile=_extract_prompt_profile(all_results),
+                    p4_scoring_version=(P4_SCORING_VERSION if 4 in phase_scores else None),
                 )
             if is_provisional:
                 progress.provisional.append(model_id)
@@ -1203,12 +1327,15 @@ def verify_models(
                 note=note,
                 phase_scores=phase_scores,
                 sanitize_fn=_sanitize_note,
+                prompt_profile=_extract_prompt_profile(all_results),
             )
             add_verification_record(
                 model_id,
                 arch,
                 notes=note,
                 sanitize_fn=_sanitize_note,
+                prompt_profile=_extract_prompt_profile(all_results),
+                p4_scoring_version=(P4_SCORING_VERSION if 4 in phase_scores else None),
             )
             progress.failed.append(model_id)
 
@@ -1243,9 +1370,9 @@ def verify_models(
         _save_checkpoint(progress)
 
     # Clean up pre-loaded scoring model
-    if _scoring_model is not None:
-        del _scoring_model
-        del _scoring_tokenizer
+    if _judge_model is not None:
+        del _judge_model
+        del _judge_tokenizer
         gc.collect()
 
     return progress
@@ -1257,6 +1384,7 @@ def _print_dry_run(
     max_memory_gb: float,
     phases: Optional[list[int]] = None,
     use_hf_reference: bool = True,
+    device: str = "cpu",
 ) -> None:
     """Print what would be tested in a dry run."""
     print(f"\nDry run: {len(candidates)} models would be tested")
@@ -1282,7 +1410,11 @@ def _print_dry_run(
             try:
                 n_params = estimate_model_params(c.model_id)
                 mem = estimate_benchmark_memory_gb(
-                    n_params, dtype, phases=phases_to_run, use_hf_reference=use_hf_reference
+                    n_params,
+                    dtype,
+                    phases=phases_to_run,
+                    use_hf_reference=use_hf_reference,
+                    device=device,
                 )
                 status = "OK" if mem <= max_memory_gb else "SKIP (too large)"
                 if mem > max_memory_gb:
@@ -1525,6 +1657,7 @@ Examples:
             max_memory_gb,
             phases=args.phases,
             use_hf_reference=not args.no_hf_reference,
+            device=args.device,
         )
         return
 

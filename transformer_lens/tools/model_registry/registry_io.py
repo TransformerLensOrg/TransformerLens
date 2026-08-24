@@ -207,7 +207,14 @@ def _get_tl_version() -> Optional[str]:
     try:
         import transformer_lens
 
-        return getattr(transformer_lens, "__version__", None)
+        version = getattr(transformer_lens, "__version__", None)
+        if version:
+            return str(version)
+        # The package exports no __version__; installed-distribution
+        # metadata is the fallback (dev installs record 0.0.0).
+        from importlib.metadata import version as dist_version
+
+        return dist_version("transformer-lens")
     except Exception:
         return None
 
@@ -276,6 +283,7 @@ def update_model_status(
     note: Optional[str] = None,
     phase_scores: Optional[dict[int, Optional[float]]] = None,
     sanitize_fn: Optional[Callable[[Optional[str]], Optional[str]]] = None,
+    prompt_profile: Optional[str] = None,
 ) -> bool:
     """Update a single model entry in supported_models.json.
 
@@ -292,10 +300,22 @@ def update_model_status(
         note: Optional note for skip/fail reason
         phase_scores: Phase score dict {1: float, 2: float, 3: float, 4: float}
         sanitize_fn: Optional callable to sanitize note strings
+        prompt_profile: Phase-4 prompt profile actually used (e.g.
+            "task:translation@en-de"). Sparse: the default "continuation"
+            removes the key (clearing a stale non-default value), None (no
+            Phase-4 result) leaves it untouched.
 
     Returns:
         True if entry was found/created and updated
     """
+    # Deferred: benchmarks imports model_bridge, and this module loads during
+    # `import transformer_lens` (via supported_models) — importing it at module
+    # scope closes an import cycle back through the bridge's HF source.
+    from transformer_lens.benchmarks.text_quality_profiles import (
+        P4_SCORING_VERSION,
+        is_default_profile,
+    )
+
     if phase_scores is None:
         phase_scores = {}
 
@@ -325,6 +345,12 @@ def update_model_status(
                     entry[key] = phase_scores[phase_num]
                 elif key not in entry:
                     entry[key] = None
+            if prompt_profile is not None and is_default_profile(prompt_profile):
+                entry.pop("prompt_profile", None)
+            elif prompt_profile is not None:
+                entry["prompt_profile"] = prompt_profile
+            if 4 in phase_scores:
+                entry["p4_scoring_version"] = P4_SCORING_VERSION
             # Reorder keys so phase scores are always in numerical order
             _KEY_ORDER = [
                 "architecture_id",
@@ -333,6 +359,8 @@ def update_model_status(
                 "verified_date",
                 "metadata",
                 "note",
+                "prompt_profile",
+                "p4_scoring_version",
                 *[f"phase{p}_score" for p in PHASES],
             ]
             reordered = {k: entry[k] for k in _KEY_ORDER if k in entry}
@@ -359,6 +387,20 @@ def update_model_status(
                 **{f"phase{p}_score": phase_scores.get(p) for p in PHASES},
             }
         )
+        new_entry = data["models"][-1]
+        extras: list[tuple[str, object]] = []
+        if prompt_profile is not None and not is_default_profile(prompt_profile):
+            extras.append(("prompt_profile", prompt_profile))
+        if phase_scores.get(4) is not None:
+            extras.append(("p4_scoring_version", P4_SCORING_VERSION))
+        if extras:
+            # Keep key position consistent with _KEY_ORDER (after "note").
+            items = list(new_entry.items())
+            idx = [k for k, _ in items].index("note") + 1
+            for offset, pair in enumerate(extras):
+                items.insert(idx + offset, pair)
+            new_entry.clear()
+            new_entry.update(items)
         updated = True
 
     if updated:
@@ -368,12 +410,28 @@ def update_model_status(
     return updated
 
 
+def registry_prompt_profile(model_id: str) -> Optional[str]:
+    """Stored prompt_profile for a model, or None. Uncached read: the sweep
+    rewrites the registry between models."""
+    try:
+        data = load_supported_models_raw()
+    except Exception:
+        return None
+    for entry in data.get("models", []):
+        if entry.get("model_id") == model_id:
+            profile = entry.get("prompt_profile")
+            return profile if isinstance(profile, str) else None
+    return None
+
+
 def add_verification_record(
     model_id: str,
     arch_id: str,
     notes: Optional[str] = None,
     verified_by: str = "verify_models",
     sanitize_fn: Optional[Callable[[Optional[str]], Optional[str]]] = None,
+    prompt_profile: Optional[str] = None,
+    p4_scoring_version: Optional[int] = None,
 ) -> None:
     """Append a VerificationRecord to verification_history.json.
 
@@ -397,6 +455,8 @@ def add_verification_record(
         verified_by=verified_by,
         transformerlens_version=_get_tl_version(),
         notes=notes,
+        prompt_profile=prompt_profile,
+        p4_scoring_version=p4_scoring_version,
     )
 
     history = load_verification_history()

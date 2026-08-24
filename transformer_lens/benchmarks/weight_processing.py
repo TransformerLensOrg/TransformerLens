@@ -6,6 +6,7 @@ import torch
 from transformer_lens.benchmarks.utils import (
     BenchmarkResult,
     BenchmarkSeverity,
+    bridge_self_target_loss,
     is_tiny_test_model,
 )
 from transformer_lens.model_bridge import TransformerBridge
@@ -29,7 +30,7 @@ def benchmark_weight_modification(
     """
     try:
         # Get original loss
-        original_loss = bridge(test_text, return_type="loss")
+        original_loss = bridge_self_target_loss(bridge, test_text)
 
         # Find first block with attention (hybrid models may not have attn on block 0)
         wm_attn_blocks = bridge.blocks_with("attn")
@@ -61,7 +62,7 @@ def benchmark_weight_modification(
 
         # Get modified loss (with error handling to restore weights)
         try:
-            modified_loss = bridge(test_text, return_type="loss")
+            modified_loss = bridge_self_target_loss(bridge, test_text)
         except Exception as forward_error:
             # Restore weights before reporting error
             with torch.no_grad():
@@ -96,7 +97,7 @@ def benchmark_weight_modification(
                 with torch.no_grad():
                     original_mlp_w = mlp_block.mlp.out.weight.clone()
                     mlp_block.mlp.out.weight[0, :] = 0
-                mlp_modified_loss = bridge(test_text, return_type="loss")
+                mlp_modified_loss = bridge_self_target_loss(bridge, test_text)
                 with torch.no_grad():
                     mlp_block.mlp.out.weight.copy_(original_mlp_w)
                 mlp_change = abs(mlp_modified_loss - original_loss)

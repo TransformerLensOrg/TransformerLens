@@ -7,6 +7,7 @@ import torch
 from transformer_lens.benchmarks.utils import (
     BenchmarkResult,
     BenchmarkSeverity,
+    bridge_self_target_loss,
     compare_scalars,
     compare_tensors,
 )
@@ -15,8 +16,7 @@ from transformer_lens.model_bridge import TransformerBridge
 
 def _compute_self_target_loss(bridge: TransformerBridge, test_text: str) -> torch.Tensor:
     """Compute loss with the tokenized input supplied as explicit labels."""
-    labels = bridge.to_tokens(test_text)
-    return bridge(test_text, labels=labels, return_type="loss")
+    return bridge_self_target_loss(bridge, test_text)
 
 
 def _is_encoder_decoder(model: torch.nn.Module) -> bool:

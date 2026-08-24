@@ -229,11 +229,11 @@ def boot(
     # max_memory pair here so downstream code only needs to check the resolved values.
     from transformer_lens.utilities.multi_gpu import (
         MIXED_OFFLOAD_GPU_ERROR,
-        cast_floating_params_to_dtype,
         count_unique_devices,
         find_embedding_device,
         find_misplaced_modules,
         is_mixed_offload_gpu,
+        maybe_cast_floating_params,
         resolve_device_map,
     )
 
@@ -334,7 +334,10 @@ def boot(
         # Cast params to dtype; preserve float32 buffers (e.g. RotaryEmbedding.inv_freq).
         # Use module-level alignment so Accelerate can temporarily materialize offloaded
         # parameters before we touch them.
-        cast_floating_params_to_dtype(hf_model, dtype)
+        # Skip dtype normalization entirely when the model has an active quantizer:
+        # the quantizer owns specific dtypes (e.g., FP8 scales) that must not be
+        # overwritten.
+        maybe_cast_floating_params(hf_model, dtype)
     # Derive cfg.device / cfg.n_devices from hf_device_map when present. Covers fresh loads
     # with a resolved device_map AND pre-loaded models with caller-dispatched device_map="auto".
     hf_device_map_post = getattr(hf_model, "hf_device_map", None)

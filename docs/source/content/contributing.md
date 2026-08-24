@@ -329,7 +329,7 @@ set -a; source .env; set +a
 uv run python -m transformer_lens.tools.model_registry.verify_models --model <hf_repo>
 ```
 
-`verify_models` runs phases 1–4 (forward correctness vs HF, hook firing + gradients, weight processing, generation quality) and updates `data/supported_models.json` with the resulting status and per-phase scores. We recommend running `--dry-run` first to project memory and parameter count without loading the model, and verifying one model at a time — concurrent loads tend to OOM a single device.
+`verify_models` runs phases 1–4 (forward correctness vs HF, hook firing + gradients, weight processing, text-generation quality) and updates `data/supported_models.json` with the resulting status and per-phase scores. We recommend running `--dry-run` first to project memory and parameter count without loading the model, and verifying one model at a time — concurrent loads tend to OOM a single device.
 
 Running with `--no-hf-reference` skips the HuggingFace numerical comparison (Phase 1 becomes structural-only). A passing run is then recorded as **provisional** (status 4), which does *not* count as verified — re-run without the flag for a real HF-compared verification.
 
@@ -342,11 +342,11 @@ It's worth reading the per-phase scores in addition to the final status — the 
 | 1 | 100% | — | Verification fails |
 | 2 | 75% | `logits_equivalence`, `loss_equivalence` | Verification fails |
 | 3 | 75% | `logits_equivalence`, `loss_equivalence` | Verification fails |
-| 4 | 50% | — | **Non-gating** — below 50% adds `"low text quality"` to the registry `note`; never fails verification. |
+| 4 | 54.5% (measured pass line, `p4_pass_threshold()`) | — | **Non-gating** — below the line adds a `"text quality poor (P4=…)"` note; never fails verification. |
 | 7 | 75% | `multimodal_forward` | Verification fails. A NULL score also fails. |
 | 8 | 75% | `audio_forward` | Verification fails. A NULL score also fails. |
 
-Phase 4 is intentionally lenient — it's a coherence metric, not a correctness check. A sub-100% Phase-4 score on a small parity-test model can still indicate a real adapter bug that the gates don't catch (missing `preprocess_weights` fold, wrong `default_prepend_bos`, and so on); the model can pass verification overall and still be worth a manual look.
+Phase 4 prompts each model with its resolved prompt profile (chat template, translation, code, own-language continuation, ...) and scores the generation against a known-good reference with one pinned multilingual judge, via the perplexity ratio `PPL(generated)/PPL(reference)`. It's intentionally lenient — a coherence metric, not a correctness check. A sub-100% Phase-4 score on a small parity-test model can still indicate a real adapter bug that the gates don't catch (missing `preprocess_weights` fold, wrong `default_prepend_bos`, and so on); the model can pass verification overall and still be worth a manual look.
 
 If verification fails by `~1e-3` or more against the HF reference, the bisection workflow lives at [Debugging Numerical Divergence](debugging_numerical_divergence.md).
 

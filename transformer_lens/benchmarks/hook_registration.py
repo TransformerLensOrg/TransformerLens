@@ -7,6 +7,7 @@ import torch
 from transformer_lens.benchmarks.utils import (
     BenchmarkResult,
     BenchmarkSeverity,
+    bridge_self_target_loss,
     compare_activation_dicts,
     compare_scalars,
     filter_expected_missing_hooks,
@@ -661,9 +662,26 @@ def benchmark_hook_functionality(
             return activation
 
         # Test bridge
-        bridge_original = bridge(test_text, return_type="loss")
+        # Encoder-decoder bridges name their stacks; a bare blocks.* hook would
+        # silently no-op and make the ablation vacuous.
+        ablation_target = next(
+            (
+                name
+                for name in (
+                    "blocks.0.attn.hook_v",
+                    "encoder_blocks.0.attn.hook_v",
+                    "decoder_blocks.0.attn.hook_v",
+                )
+                if name in bridge.hook_dict
+            ),
+            "blocks.0.attn.hook_v",
+        )
+        bridge_original = bridge_self_target_loss(bridge, test_text)
         bridge_ablated = bridge.run_with_hooks(
-            test_text, return_type="loss", fwd_hooks=[("blocks.0.attn.hook_v", ablation_hook)]
+            test_text,
+            return_type="loss",
+            labels=bridge.to_tokens(test_text),
+            fwd_hooks=[(ablation_target, ablation_hook)],
         )
         bridge_effect = bridge_ablated - bridge_original
 

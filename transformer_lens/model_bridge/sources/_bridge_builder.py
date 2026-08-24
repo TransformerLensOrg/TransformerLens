@@ -238,11 +238,15 @@ def detect_tokenizer_bos_eos(tokenizer: Any) -> tuple[bool, bool]:
     """Detect whether the tokenizer prepends BOS and/or appends EOS."""
     # Non-empty test string — "" is unreliable with token aliasing.
     encoded_test = tokenizer.encode("a")
-    prepends_bos = (
-        len(encoded_test) > 1
-        and tokenizer.bos_token_id is not None
-        and encoded_test[0] == tokenizer.bos_token_id
-    )
+    # CLS counts: BERT-style tokenizers prepend [CLS], which the legacy stack
+    # treats as the BOS-like token; comparing only against bos_token_id (a
+    # fallback string on such tokenizers) concludes False and desyncs the stacks.
+    leading_special_ids = {
+        token_id
+        for token_id in (tokenizer.bos_token_id, getattr(tokenizer, "cls_token_id", None))
+        if token_id is not None
+    }
+    prepends_bos = len(encoded_test) > 1 and encoded_test[0] in leading_special_ids
     appends_eos = (
         len(encoded_test) > 1
         and tokenizer.eos_token_id is not None

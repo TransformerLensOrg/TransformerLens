@@ -124,6 +124,7 @@ class _LLaDAAttentionBridge(AttentionBridge):
         attn_scores = self.hook_attn_scores(attn_scores)
 
         pattern = torch.nn.functional.softmax(attn_scores, dim=-1, dtype=torch.float32).to(q.dtype)
+        pattern = self._scrub_compatibility_pattern_nans(pattern)
         dropout = float(getattr(block.config, "attention_dropout", 0.0))
         if block.training and dropout > 0.0:
             pattern = torch.nn.functional.dropout(pattern, p=dropout, training=True)

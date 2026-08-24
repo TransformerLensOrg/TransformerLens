@@ -244,7 +244,11 @@ def is_mixed_offload_gpu(values: Any) -> bool:
 
 
 def cast_floating_params_to_dtype(model: nn.Module, dtype: torch.dtype) -> None:
-    """Cast materialized floating parameters while preserving Accelerate offload hooks."""
+    """Cast materialized floating parameters while preserving Accelerate offload hooks.
+
+    Skips one-byte floats (FP8 dtypes like float8_e8m0fnu) which are quantizer-owned
+    scale parameters — casting them corrupts the quantization format.
+    """
     from accelerate.utils import align_module_device
 
     for module in model.modules():
@@ -254,7 +258,26 @@ def cast_floating_params_to_dtype(model: nn.Module, dtype: torch.dtype) -> None:
                     continue
                 if param.device.type == "meta":
                     continue
+                # Skip one-byte floats (FP8 scale tensors): they are quantizer-owned
+                # and casting them breaks the weight/scale pair relationship.
+                if param.dtype.itemsize < 2:
+                    continue
                 param.data = param.data.to(dtype=dtype)
+
+
+def maybe_cast_floating_params(model: nn.Module, dtype: torch.dtype) -> None:
+    """Cast floating params to dtype, skipping models with active quantization.
+
+    When a model has an active quantization_config, the quantizer owns specific
+    dtypes (e.g., FP8 scales) that must not be overwritten. This helper wraps
+    the cast with that check.
+
+    See: https://github.com/TransformerLensOrg/TransformerLens/issues/1713
+    """
+    from transformer_lens.utilities.quantization import quantization_method
+
+    if quantization_method(getattr(model, "config", None)) is None:
+        cast_floating_params_to_dtype(model, dtype)
 
 
 def find_embedding_device(hf_model: Any) -> Optional[torch.device]:

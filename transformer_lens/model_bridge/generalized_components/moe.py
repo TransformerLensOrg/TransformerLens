@@ -281,28 +281,11 @@ class MoEBridge(GeneralizedComponent):
             raise RuntimeError(
                 f"Original component not set for {self.name}. Call set_original_component() first."
             )
-        target_dtype = None
-        try:
-            target_dtype = next(self.original_component.parameters()).dtype
-        except StopIteration:
-            pass
         if len(args) > 0:
             hooked = self.hook_in(args[0])
-            if (
-                target_dtype is not None
-                and isinstance(hooked, torch.Tensor)
-                and hooked.is_floating_point()
-            ):
-                hooked = hooked.to(dtype=target_dtype)
             args = (hooked,) + args[1:]
         elif "hidden_states" in kwargs:
             hooked = self.hook_in(kwargs["hidden_states"])
-            if (
-                target_dtype is not None
-                and isinstance(hooked, torch.Tensor)
-                and hooked.is_floating_point()
-            ):
-                hooked = hooked.to(dtype=target_dtype)
             kwargs = {**kwargs, "hidden_states": hooked}
         output = self.original_component(*args, **kwargs)
         if isinstance(output, tuple):

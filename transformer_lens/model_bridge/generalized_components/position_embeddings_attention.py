@@ -345,20 +345,6 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
 
         hidden_states = self.hook_in(hidden_states)
 
-        # Match dtype of HF module. Skip non-fp params: quantized weights (bnb
-        # uint8/int8, GPTQ/AWQ int32, HQQ, torchao) are stored in integer dtypes
-        # and dequantized internally during matmul. The compute dtype must come
-        # from a fp parameter; casting fp inputs to an integer storage dtype
-        # destroys precision.
-        target_dtype = None
-        for p in hf_attn.parameters():
-            if not p.dtype.is_floating_point:
-                continue
-            target_dtype = p.dtype
-            break
-        if target_dtype is not None and hidden_states.is_floating_point():
-            hidden_states = hidden_states.to(dtype=target_dtype)
-
         input_shape = hidden_states.shape[:-1]
         head_dim = hf_attn.head_dim
         hidden_shape = (*input_shape, -1, head_dim)
@@ -619,6 +605,7 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
             attn_weights = torch.nn.functional.softmax(attn_scores, dim=-1, dtype=torch.float32).to(
                 query_states.dtype
             )
+        attn_weights = self._scrub_compatibility_pattern_nans(attn_weights)
 
         # --- Dropout ---
         dropout_rate = getattr(hf_attn, "attention_dropout", 0.0)

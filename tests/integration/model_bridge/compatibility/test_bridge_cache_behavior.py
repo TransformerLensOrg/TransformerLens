@@ -128,9 +128,8 @@ class TestCacheEqualityWithHookedTransformer:
     def test_cache_values_match(self, bridge_compat, golden):
         """Cache activations should match the golden HT snapshot.
 
-        Note: Raw attention scores use different masking sentinels:
-        the golden HT capture uses -inf, Bridge uses torch.finfo(dtype).min.
-        Unmasked scores and resulting patterns should still match.
+        Compatibility mode normalizes masked attention scores to -inf, matching
+        HookedTransformer. Unmasked scores and resulting patterns should match.
         """
         ht_cache = golden.tensors("activations")
         _, bridge_cache = bridge_compat.run_with_cache(golden.scalars["short_prompt"])
@@ -147,7 +146,7 @@ class TestCacheEqualityWithHookedTransformer:
             ), f"Shape mismatch for {hook}: {ht_act.shape} vs {bridge_act.shape}"
 
             if hook == "blocks.0.attn.hook_attn_scores":
-                # Different masking sentinels — compare only unmasked positions
+                # Compare the informative, unmasked scores separately.
                 masked = torch.isinf(ht_act)
                 unmasked = ~masked
                 assert torch.allclose(

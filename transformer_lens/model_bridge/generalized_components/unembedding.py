@@ -94,18 +94,7 @@ class UnembeddingBridge(GeneralizedComponent):
             raise RuntimeError(
                 f"Original component not set for {self.name}. Call set_original_component() first."
             )
-        target_dtype = None
-        try:
-            target_dtype = next(self.original_component.parameters()).dtype
-        except StopIteration:
-            pass
         hidden_states = self.hook_in(hidden_states)
-        if (
-            target_dtype is not None
-            and isinstance(hidden_states, torch.Tensor)
-            and hidden_states.is_floating_point()
-        ):
-            hidden_states = hidden_states.to(dtype=target_dtype)
         output = self.original_component(hidden_states, **kwargs)
 
         output = self.hook_out(output)

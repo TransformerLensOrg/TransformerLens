@@ -33,6 +33,7 @@ from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 
 from transformer_lens import utilities as utils
 from transformer_lens.ActivationCache import ActivationCache
+from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookIntrospectionMixin, HookPoint
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
@@ -173,6 +174,12 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         # train() recurses, so this stamps the wrappers with the model's mode.
         model.train(model.training)
         self.train(model.training)
+        self.cfg._bind_bridge(self)
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        """Restore runtime config routing after deepcopy or deserialization."""
+        super().__setstate__(state)
+        self.cfg._bind_bridge(self)
 
     # boot_transformers / list_supported_models / check_model_support are
     # attached by sources.transformers.__init__ (setattr on this class) so the
@@ -761,7 +768,16 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             padding_side = getattr(self.tokenizer, "padding_side", "right")
         tokenizer_prepends_bos = getattr(self.cfg, "tokenizer_prepends_bos", True)
         if prepend_bos and (not tokenizer_prepends_bos):
-            input = utils.get_input_with_manually_prepended_bos(self.tokenizer.bos_token, input)
+            bos = self.tokenizer.bos_token
+            encodes_atomically = (
+                bos is not None
+                and len(self.tokenizer(bos, add_special_tokens=False)["input_ids"]) == 1
+            )
+            if encodes_atomically:
+                input = utils.get_input_with_manually_prepended_bos(bos, input)
+            # else: the fallback BOS is not an atom in this vocab (e.g.
+            # '<|endoftext|>' installed on BERT); prepending the string would
+            # tokenize to subword garbage, so skip rather than pollute the input.
         if isinstance(input, str):
             input = [input]
         tokens = self.tokenizer(
@@ -2093,6 +2109,21 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
 
         return criteria if len(criteria) > 0 else None
 
+    def _encdec_ngram_processor(self) -> Optional[Any]:
+        """generation_config.no_repeat_ngram_size as transformers' own
+        processor, or None. HF applies it by default; parity for models whose
+        greedy decode needs it to escape token attractors."""
+        size = getattr(
+            getattr(self.original_model, "generation_config", None),
+            "no_repeat_ngram_size",
+            None,
+        )
+        if not size:
+            return None
+        from transformers.generation.logits_process import NoRepeatNGramLogitsProcessor
+
+        return NoRepeatNGramLogitsProcessor(size)
+
     def _generate_tokens(
         self,
         current_tokens: torch.Tensor,
@@ -2125,6 +2156,9 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         verbose: bool,
         stopping_criteria_list: Optional[Any] = None,
         initial_attention_mask: Optional[torch.Tensor] = None,
+        min_decoder_length: Optional[int] = None,
+        ngram_processor: Optional[Any] = None,
+        encoder_attention_mask: Optional[torch.Tensor] = None,
     ) -> Generator[Tuple[torch.Tensor, torch.Tensor, bool], None, None]:
         """Core generation loop. Yields (sampled_tokens, final_logits, all_finished) per step.
 
@@ -2176,10 +2210,17 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         for gen_step_idx in tqdm.tqdm(range(max_new_tokens), disable=not verbose):
             with torch.no_grad():
                 if is_encoder_decoder:
+                    assert encoder_input is not None
+                    encdec_kwargs: Dict[str, Any] = {}
+                    if encoder_attention_mask is not None:
+                        encdec_kwargs["attention_mask"] = encoder_attention_mask.to(
+                            encoder_input.device
+                        )
                     logits = self(
                         encoder_input,
                         return_type="logits",
                         decoder_input=decoder_tokens,
+                        **encdec_kwargs,
                     )
                 else:
                     forward_kwargs: Dict[str, Any] = {}
@@ -2328,6 +2369,23 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                     if _generate_from_embeds and generated_token_ids
                     else None
                 )
+                # transformers' own NoRepeatNGramLogitsProcessor, honoring
+                # generation_config (bart-large-cnn pins 3; without it greedy
+                # decoding falls into a BOS attractor and emits nothing).
+                if ngram_processor is not None and decoder_tokens is not None:
+                    final_logits = ngram_processor(decoder_tokens, final_logits)
+                # HF's generate() suppresses EOS below generation_config.min_length
+                # (bart-large-cnn pins 56); without this the loop can EOS on step
+                # one and emit an empty summary.
+                if (
+                    min_decoder_length is not None
+                    and is_encoder_decoder
+                    and decoder_tokens is not None
+                    and decoder_tokens.shape[1] < min_decoder_length
+                    and stop_tokens
+                ):
+                    final_logits = final_logits.clone()
+                    final_logits[:, stop_tokens] = float("-inf")
                 if do_sample:
                     sampled_tokens = utils.sample_logits(
                         final_logits,
@@ -2459,6 +2517,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         stop_strings: Optional[Union[str, List[str]]] = None,
         stopping_criteria: Optional[Any] = None,
         attention_mask: Optional[torch.Tensor] = None,
+        forced_bos_token_id: Optional[int] = None,
         **multimodal_kwargs,
     ) -> (
         str
@@ -2549,6 +2608,10 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 paths the mask is forwarded to the model as-is rather than grown per
                 step, which is what processors emitting one alongside
                 ``pixel_values`` expect.
+            forced_bos_token_id: Optional token id seeded as the first decoder token
+                after ``decoder_start`` on encoder-decoder models. Multilingual
+                translators (M2M100/MBart/NLLB) select their target language this way.
+                Raises ValueError on decoder-only models.
 
         Returns:
             Generated sequence as string, list of strings, or tensor depending on input type and return_type.
@@ -2579,22 +2642,44 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         use_past_kv_cache = self._resolve_generation_caching(use_past_kv_cache, _is_batched_list)
 
         _generate_from_embeds = False
+        _encdec_early = hasattr(self.original_model, "config") and getattr(
+            self.original_model.config, "is_encoder_decoder", False
+        )
         if isinstance(input, str):
-            input_tokens = self.to_tokens(
-                input, prepend_bos=prepend_bos, move_to_device=True, truncate=False
-            )
+            if _encdec_early:
+                # Deliberate divergence: prepend_bos is IGNORED for enc-dec
+                # string/list input. Encoder input follows the tokenizer's own
+                # recipe (lang token + trailing </s>); to_tokens' decoder-style
+                # BOS policy corrupts it — m2m100 degenerates to loops.
+                input_tokens = self.tokenizer(input, return_tensors="pt")["input_ids"].to(
+                    self.cfg.device
+                )
+            else:
+                input_tokens = self.to_tokens(
+                    input, prepend_bos=prepend_bos, move_to_device=True, truncate=False
+                )
             input_type = "str"
         elif isinstance(input, list):
-            # Force left-padding for batched generation so real tokens are
-            # flush-right and logits[:, -1, :] is always the last real token.
-            if _is_batched_list:
-                _orig_padding_side = self.tokenizer.padding_side
-                self.tokenizer.padding_side = "left"
-            input_tokens = self.to_tokens(
-                input, prepend_bos=prepend_bos, move_to_device=True, truncate=False
-            )
-            if _is_batched_list:
-                self.tokenizer.padding_side = _orig_padding_side
+            if _encdec_early:
+                # Same native-recipe rule as the str branch: to_tokens' BOS
+                # policy corrupts encoder inputs (stray <s>, dropped </s>).
+                # Keep the tokenizer's mask too — unequal rows otherwise
+                # attend over pads in the encoder.
+                _enc_batch = self.tokenizer(input, return_tensors="pt", padding=True)
+                input_tokens = _enc_batch["input_ids"].to(self.cfg.device)
+                if attention_mask is None and "attention_mask" in _enc_batch:
+                    attention_mask = _enc_batch["attention_mask"].to(self.cfg.device)
+            else:
+                # Force left-padding for batched generation so real tokens are
+                # flush-right and logits[:, -1, :] is always the last real token.
+                if _is_batched_list:
+                    _orig_padding_side = self.tokenizer.padding_side
+                    self.tokenizer.padding_side = "left"
+                input_tokens = self.to_tokens(
+                    input, prepend_bos=prepend_bos, move_to_device=True, truncate=False
+                )
+                if _is_batched_list:
+                    self.tokenizer.padding_side = _orig_padding_side
             input_type = "list"
         elif isinstance(input, torch.Tensor) and input.is_floating_point():
             # inputs_embeds: pre-computed embeddings (e.g., from multimodal models)
@@ -2713,6 +2798,18 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         is_encoder_decoder = hasattr(self.original_model, "config") and getattr(
             self.original_model.config, "is_encoder_decoder", False
         )
+        if forced_bos_token_id is None and is_encoder_decoder:
+            # HF's generate() applies generation_config defaults; bart-large-cnn
+            # pins forced_bos_token_id=0 there and degrades without it.
+            forced_bos_token_id = getattr(
+                getattr(self.original_model, "generation_config", None),
+                "forced_bos_token_id",
+                None,
+            )
+        if forced_bos_token_id is not None and not is_encoder_decoder:
+            # Raise before any state mutation (_capture_hf_cache) and before
+            # the stateful hf_generate early-return would drop the kwarg.
+            raise ValueError("forced_bos_token_id is only meaningful for encoder-decoder models")
 
         # return_cache recomputes run_with_cache on the generated output (see issue #697).
         # That is well-defined only for single-sequence, decoder-only text generation, so
@@ -2881,6 +2978,16 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 dtype=input_tokens.dtype,
                 device=self.cfg.device,
             )
+            if forced_bos_token_id is not None:
+                # Multilingual seq2seq (M2M100/MBart/NLLB) selects the target
+                # language via the first decoder token after decoder_start.
+                forced = torch.full(
+                    (batch_size, 1),
+                    forced_bos_token_id,
+                    dtype=input_tokens.dtype,
+                    device=self.cfg.device,
+                )
+                decoder_tokens = torch.cat([decoder_tokens, forced], dim=1)
 
         try:
             for sampled_tokens, final_logits, all_finished in self._generate_tokens(
@@ -2913,6 +3020,17 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 verbose=verbose,
                 stopping_criteria_list=stopping_criteria_list,
                 initial_attention_mask=initial_attention_mask,
+                min_decoder_length=(
+                    getattr(
+                        getattr(self.original_model, "generation_config", None),
+                        "min_length",
+                        None,
+                    )
+                    if is_encoder_decoder
+                    else None
+                ),
+                ngram_processor=(self._encdec_ngram_processor() if is_encoder_decoder else None),
+                encoder_attention_mask=(attention_mask if is_encoder_decoder else None),
             ):
                 sampled_tokens_list.append(sampled_tokens.unsqueeze(1))
                 if logits_seq_list is not None:
@@ -2927,7 +3045,8 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         sampled_tokens = torch.cat(sampled_tokens_list, dim=1)
         if is_encoder_decoder:
             # Reconstruct full decoder sequence: start token + generated tokens
-            output_tokens = torch.cat([decoder_tokens[:, :1], sampled_tokens], dim=1)
+            decoder_seed_len = 2 if forced_bos_token_id is not None else 1
+            output_tokens = torch.cat([decoder_tokens[:, :decoder_seed_len], sampled_tokens], dim=1)
         elif _generate_from_embeds:
             # For inputs_embeds, we only have the generated token IDs (no input token IDs)
             output_tokens = sampled_tokens
@@ -3124,22 +3243,38 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         _is_batched_list = isinstance(input, list) and len(input) > 1
         use_past_kv_cache = self._resolve_generation_caching(use_past_kv_cache, _is_batched_list)
 
+        _encdec_early = hasattr(self.original_model, "config") and getattr(
+            self.original_model.config, "is_encoder_decoder", False
+        )
         if isinstance(input, str):
-            input_tokens = self.to_tokens(
-                input, prepend_bos=prepend_bos, move_to_device=True, truncate=False
-            )
-            input_type = "str"
-        elif isinstance(input, list):
-            if _is_batched_list:
-                _orig_ps = self.tokenizer.padding_side
-                self.tokenizer.padding_side = "left"
-            try:
+            if _encdec_early:
+                # Native recipe: to_tokens' BOS policy corrupts encoder inputs.
+                input_tokens = self.tokenizer(input, return_tensors="pt")["input_ids"].to(
+                    self.cfg.device
+                )
+            else:
                 input_tokens = self.to_tokens(
                     input, prepend_bos=prepend_bos, move_to_device=True, truncate=False
                 )
-            finally:
-                if _is_batched_list:
+            input_type = "str"
+        elif isinstance(input, list):
+            if _encdec_early:
+                input_tokens = self.tokenizer(input, return_tensors="pt", padding=True)[
+                    "input_ids"
+                ].to(self.cfg.device)
+            elif _is_batched_list:
+                _orig_ps = self.tokenizer.padding_side
+                self.tokenizer.padding_side = "left"
+                try:
+                    input_tokens = self.to_tokens(
+                        input, prepend_bos=prepend_bos, move_to_device=True, truncate=False
+                    )
+                finally:
                     self.tokenizer.padding_side = _orig_ps
+            else:
+                input_tokens = self.to_tokens(
+                    input, prepend_bos=prepend_bos, move_to_device=True, truncate=False
+                )
             input_type = "list"
         else:
             input_tokens = input.to(self.cfg.device)
@@ -3614,7 +3749,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         """
         if use_attn_result:
             self._validate_attention_fork_supported("use_attn_result")
-        self.cfg.use_attn_result = use_attn_result
+        self.cfg._set_bridge_managed_hook_flag("use_attn_result", use_attn_result)
         self._propagate_attention_flag("use_attn_result", use_attn_result)
 
     def set_use_split_qkv_input(self, use_split_qkv_input: bool):
@@ -3629,7 +3764,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                     "Call set_use_attn_in(False) before enabling use_split_qkv_input."
                 )
             self._validate_attention_fork_supported("use_split_qkv_input")
-        self.cfg.use_split_qkv_input = use_split_qkv_input
+        self.cfg._set_bridge_managed_hook_flag("use_split_qkv_input", use_split_qkv_input)
         self._propagate_attention_flag("use_split_qkv_input", use_split_qkv_input)
 
     def set_use_attn_in(self, use_attn_in: bool):
@@ -3647,7 +3782,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                     "Call set_use_split_qkv_input(False) before enabling use_attn_in."
                 )
             self._validate_attention_fork_supported("use_attn_in")
-        self.cfg.use_attn_in = use_attn_in
+        self.cfg._set_bridge_managed_hook_flag("use_attn_in", use_attn_in)
         self._propagate_attention_flag("use_attn_in", use_attn_in)
 
     def set_use_hook_mlp_in(self, use_hook_mlp_in: bool) -> None:
@@ -3656,17 +3791,25 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
 
         See :py:meth:`HookedTransformer.set_use_hook_mlp_in`.
         """
-        self.cfg.use_hook_mlp_in = use_hook_mlp_in
+        self.cfg._set_bridge_managed_hook_flag("use_hook_mlp_in", use_hook_mlp_in)
         if not hasattr(self, "blocks"):
             return
         for block in self.blocks:
             block_cfg = getattr(block, "config", None)
             if block_cfg is not None and block_cfg is not self.cfg:
                 try:
-                    block_cfg.use_hook_mlp_in = use_hook_mlp_in
-                except Exception:
+                    self._write_propagated_hook_flag(block_cfg, "use_hook_mlp_in", use_hook_mlp_in)
+                except (AttributeError, TypeError):
                     pass
             block._use_hook_mlp_in = use_hook_mlp_in
+
+    @staticmethod
+    def _write_propagated_hook_flag(config: Any, flag_name: str, value: bool) -> None:
+        """Write a cloned config flag without dispatching through its live Bridge."""
+        if isinstance(config, TransformerBridgeConfig):
+            config._set_bridge_managed_hook_flag(flag_name, value)
+        else:
+            object.__setattr__(config, flag_name, value)
 
     def _propagate_attention_flag(self, flag_name: str, value: bool) -> None:
         """Mirror `bridge.cfg.<flag>` onto every block's attention config.
@@ -3688,11 +3831,10 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             attn_cfg = getattr(attn, "config", None)
             if attn_cfg is not None and attn_cfg is not self.cfg:
                 try:
-                    setattr(attn_cfg, flag_name, value)
-                except Exception:
-                    # Some cfg objects may be frozen/immutable. Skip silently —
-                    # the block simply won't honor the flag, which is the
-                    # same outcome as before this fix.
+                    self._write_propagated_hook_flag(attn_cfg, flag_name, value)
+                except (AttributeError, TypeError):
+                    # Some config-like objects reject attributes even when
+                    # bypassing their custom __setattr__ implementation.
                     pass
 
     def _validate_attention_fork_supported(self, flag_name: str) -> None:
