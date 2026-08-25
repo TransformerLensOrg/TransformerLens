@@ -7,6 +7,7 @@ from typing import cast
 import pytest
 import torch
 import torch.nn.functional as F
+from beartype.roar import BeartypeCallHintParamViolation
 
 from transformer_lens.tools.analysis.backward_lens import (
     BackwardLensMatrixResult,
@@ -162,7 +163,7 @@ def test_factor_validation_errors(inputs, gradients, weight, message) -> None:
 
 
 def test_rejects_invalid_layout_and_integer_factors() -> None:
-    with pytest.raises(TypeError, match="parameter 'weight_layout'"):
+    with pytest.raises((TypeError, BeartypeCallHintParamViolation), match="weight_layout"):
         _build_linear_gradient_factors(
             torch.randn(3, 2),
             torch.randn(3, 4),
@@ -179,7 +180,7 @@ def test_rejects_invalid_layout_and_integer_factors() -> None:
 
 
 def test_rejects_non_tensor_factors() -> None:
-    with pytest.raises(TypeError, match="torch.Tensor"):
+    with pytest.raises((TypeError, BeartypeCallHintParamViolation), match="torch.Tensor"):
         _build_linear_gradient_factors(
             cast(torch.Tensor, "not a tensor"),
             torch.randn(3, 4),
@@ -244,13 +245,13 @@ def test_vocabulary_ranking_rejects_invalid_k(k) -> None:
 
 
 def test_vocabulary_ranking_runtime_typechecking_rejects_non_integer_k() -> None:
-    with pytest.raises(TypeError, match="parameter 'k'"):
+    with pytest.raises((TypeError, BeartypeCallHintParamViolation), match="parameter.*k"):
         _rank_vocabulary_logits(torch.randn(2, 4), k=cast(int, 1.5), largest=True)
 
 
 @pytest.mark.parametrize("largest", [1, "yes", None])
 def test_vocabulary_ranking_rejects_non_boolean_largest(largest) -> None:
-    with pytest.raises(TypeError, match="parameter 'largest'"):
+    with pytest.raises((TypeError, BeartypeCallHintParamViolation), match="parameter.*largest"):
         _rank_vocabulary_logits(torch.randn(2, 4), k=1, largest=cast(bool, largest))
 
 
@@ -270,7 +271,7 @@ def test_vocabulary_ranking_rejects_invalid_logits(logits) -> None:
 
 
 def test_vocabulary_ranking_rejects_non_tensor_logits() -> None:
-    with pytest.raises(TypeError, match="torch.Tensor"):
+    with pytest.raises((TypeError, BeartypeCallHintParamViolation), match="torch.Tensor"):
         _rank_vocabulary_logits(cast(torch.Tensor, [1.0, 2.0]), k=1, largest=True)
 
 
