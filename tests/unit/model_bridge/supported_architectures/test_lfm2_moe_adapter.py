@@ -1,85 +1,469 @@
-"""Unit tests for the Lfm2MoeArchitectureAdapter — no model downloads."""
+"""Unit tests for Lfm2MoeArchitectureAdapter.
+
+Tests cover:
+- Config attribute validation
+- Component mapping structure
+- Weight conversion keys and rearrange patterns
+- Architecture guards
+- Setup component tests
+"""
+
+from types import SimpleNamespace
 
 import pytest
 
-from tests.unit.model_bridge.supported_architectures.helpers import make_bridge_cfg
 from transformer_lens.config import TransformerBridgeConfig
+from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion
+from transformer_lens.conversion_utils.param_processing_conversion import (
+    ParamProcessingConversion,
+)
 from transformer_lens.model_bridge.generalized_components import (
+    BlockBridge,
+    DepthwiseConv1DBridge,
     EmbeddingBridge,
+    Lfm2ShortConvBridge,
+    LinearBridge,
+    MoEBridge,
+    PositionEmbeddingsAttentionBridge,
     RMSNormalizationBridge,
+    RotaryEmbeddingBridge,
     UnembeddingBridge,
 )
 from transformer_lens.model_bridge.supported_architectures.lfm2_moe import (
     Lfm2MoeArchitectureAdapter,
-    Lfm2MoeBlockBridge,
+    Lfm2MoeGateBridge,
 )
 
+# ---------------------------------------------------------------------------
+# Fixtures & Helpers
+# ---------------------------------------------------------------------------
 
-@pytest.fixture(scope="class")
-def cfg() -> TransformerBridgeConfig:
-    bridge_cfg = make_bridge_cfg(
-        "Lfm2MoeForCausalLM",
-        d_model=64,
-        d_head=16,
-        n_layers=4,
-        n_ctx=128,
-        n_heads=4,
-        n_key_value_heads=2,
-        d_vocab=256,
-        d_mlp=224,
-        default_prepend_bos=True,
+
+def _make_cfg(
+    n_heads: int = 32,
+    n_key_value_heads: int = 4,
+    d_model: int = 128,
+    n_layers: int = 4,
+    d_mlp: int = 256,
+    d_vocab: int = 1000,
+    n_ctx: int = 512,
+    layer_types: list[str] = ["conv", "full_attention", "conv", "conv"],
+    moe_intermediate_size=512,
+    num_experts=8,
+    experts_per_token=2,
+    rope_parameters={"rope_theta": 5_000_000, "rope_type": "default"},
+) -> TransformerBridgeConfig:
+    """Return a minimal TransformerBridgeConfig for Lfm2Moe adapter tests."""
+    cfg = TransformerBridgeConfig(
+        d_model=d_model,
+        d_head=d_model // n_heads,
+        n_layers=n_layers,
+        n_ctx=n_ctx,
+        n_heads=n_heads,
+        n_key_value_heads=n_key_value_heads,
+        d_vocab=d_vocab,
+        d_mlp=d_mlp,
+        architecture="Lfm2MoeForCausalLM",
     )
-    bridge_cfg.layer_types = ["conv", "conv", "full_attention", "conv"]
-    bridge_cfg.moe_intermediate_size = 56
-    bridge_cfg.num_experts = 8
-    bridge_cfg.experts_per_token = 2
-    bridge_cfg.norm_eps = 1e-5
-    bridge_cfg.rope_parameters = {"rope_theta": 5_000_000, "rope_type": "default"}
-    return bridge_cfg
+
+    cfg.experts_per_token = (experts_per_token,)
+    cfg.layer_types = layer_types
+    cfg.moe_intermediate_size = moe_intermediate_size
+    cfg.num_experts = (num_experts,)
+    cfg.rope_parameters = rope_parameters
+
+    return cfg
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture
+def cfg() -> TransformerBridgeConfig:
+    return _make_cfg()
+
+
+@pytest.fixture
 def adapter(cfg: TransformerBridgeConfig) -> Lfm2MoeArchitectureAdapter:
     return Lfm2MoeArchitectureAdapter(cfg)
 
 
+# For rotary embedding and attention implementation check in setup component testing
+
+layer_types = ["conv", "full_attention", "conv", "conv"]
+
+
+def _fake_attn(layer_idx: int) -> SimpleNamespace:
+    """Per-layer self_attn with a mutable .config so the eager flip is observable."""
+    return SimpleNamespace(
+        config=SimpleNamespace(_attn_implementation="sdpa"),
+        layer_idx=layer_idx,
+    )
+
+
+def _fake_hf_model(pos_emb: object, n_layers: int = 2) -> SimpleNamespace:
+    """Stub hf_model exposing everything setup_component_testing walks:
+    - .model.pos_emb                                           -> rotary wiring (lfm2MoE names rotary "pos_emb")
+    - .config._attn_implementation                             -> top-level eager flip
+    - .model.layers[*].self_attn.config._attn_implementation   -> per-layer eager flip
+    """
+    return SimpleNamespace(
+        config=SimpleNamespace(_attn_implementation="sdpa"),
+        model=SimpleNamespace(
+            pos_emb=pos_emb,
+            layers=[
+                SimpleNamespace(self_attn=_fake_attn(i))
+                for i in range(n_layers)
+                if layer_types[i] == "full_attention"
+            ],
+        ),
+    )
+
+
+class DummyAttention:
+    def __init__(self) -> None:
+        self.pos_emb = None
+
+    def set_rotary_emb(self, pos_emb: object) -> None:
+        self.pos_emb = pos_emb
+
+
+class DummyBlock:
+    def __init__(self, has_attention: bool = True) -> None:
+        if has_attention:
+            self.attn = DummyAttention()
+
+
+class DummyBridgeModel:
+    def __init__(self, blocks: list[DummyBlock]) -> None:
+        self.blocks = blocks
+
+
+# ---------------------------------------------------------------------------
+# Config attribute tests
+# ---------------------------------------------------------------------------
+
+
 class TestLfm2MoeAdapterConfig:
-    def test_norm_and_rope_config(self, adapter: Lfm2MoeArchitectureAdapter) -> None:
-        assert adapter.cfg.normalization_type == "RMS"
-        assert adapter.cfg.positional_embedding_type == "rotary"
-        assert adapter.cfg.eps == 1e-5
+    """Adapter must set all required config flags to the values Lfm2Moe expects."""
+
+    def test_attn_implementation_is_eager(self, adapter: Lfm2MoeArchitectureAdapter) -> None:
+        assert adapter.cfg.attn_implementation == "eager"
+
+    def test_act_fn_is_silu(self, adapter: Lfm2MoeArchitectureAdapter) -> None:
+        assert adapter.cfg.act_fn == "silu"
+
+    def test_rotary_base_value(self, adapter: Lfm2MoeArchitectureAdapter) -> None:
         assert adapter.cfg.rotary_base == 5_000_000
 
-    def test_default_prepend_bos_is_false(self, adapter: Lfm2MoeArchitectureAdapter) -> None:
-        assert adapter.cfg.default_prepend_bos is False
+
+# ---------------------------------------------------------------------------
+# Component mapping structure tests
+# ---------------------------------------------------------------------------
 
 
-class TestLfm2MoeComponentMapping:
-    def test_has_residual_only_top_level_mapping(self, adapter: Lfm2MoeArchitectureAdapter) -> None:
-        mapping = adapter.component_mapping
-        assert mapping is not None
-        assert set(mapping) == {"embed", "blocks", "ln_final", "unembed"}
+class TestLfm2MoeAdapterComponentMapping:
+    """Component mapping must have the correct bridge types and HF module names."""
 
-    def test_component_types(self, adapter: Lfm2MoeArchitectureAdapter) -> None:
-        mapping = adapter.component_mapping
-        assert isinstance(mapping["embed"], EmbeddingBridge)
-        assert isinstance(mapping["blocks"], Lfm2MoeBlockBridge)
-        assert isinstance(mapping["ln_final"], RMSNormalizationBridge)
-        assert isinstance(mapping["unembed"], UnembeddingBridge)
+    # -- Top-level keys --
 
-    def test_hf_module_paths(self, adapter: Lfm2MoeArchitectureAdapter) -> None:
-        mapping = adapter.component_mapping
-        assert mapping["embed"].name == "model.embed_tokens"
-        assert mapping["blocks"].name == "model.layers"
-        assert mapping["ln_final"].name == "model.embedding_norm"
-        assert mapping["unembed"].name == "lm_head"
+    def test_embed_is_embedding_bridge(self, adapter: Lfm2MoeArchitectureAdapter) -> None:
+        assert isinstance(adapter.component_mapping["embed"], EmbeddingBridge)
 
-    def test_blocks_only_advertise_supported_residual_aliases(
+    def test_embed_name(self, adapter: Lfm2MoeArchitectureAdapter) -> None:
+        assert adapter.component_mapping["embed"].name == "model.embed_tokens"
+
+    def test_rotary_emb_is_rotary_embedding_bridge(
+        self, adapter: Lfm2MoeArchitectureAdapter
+    ) -> None:
+        assert isinstance(adapter.component_mapping["rotary_emb"], RotaryEmbeddingBridge)
+
+    def test_rotary_emb_name(self, adapter: Lfm2MoeArchitectureAdapter) -> None:
+        assert adapter.component_mapping["rotary_emb"].name == "model.pos_emb"
+
+    def test_blocks_is_block_bridge(self, adapter: Lfm2MoeArchitectureAdapter) -> None:
+        """Sequential attn/conv & MLP requires BlockBridge, not ParallelBlockBridge."""
+        assert isinstance(adapter.component_mapping["blocks"], BlockBridge)
+
+    def test_blocks_name(self, adapter: Lfm2MoeArchitectureAdapter) -> None:
+        assert adapter.component_mapping["blocks"].name == "model.layers"
+
+    def test_ln_final_is_rms_normalization_bridge(
+        self, adapter: Lfm2MoeArchitectureAdapter
+    ) -> None:
+        assert isinstance(adapter.component_mapping["ln_final"], RMSNormalizationBridge)
+
+    def test_ln_final_name(self, adapter: Lfm2MoeArchitectureAdapter) -> None:
+        assert adapter.component_mapping["ln_final"].name == "model.embedding_norm"
+
+    def test_unembed_is_unembedding_bridge(self, adapter: Lfm2MoeArchitectureAdapter) -> None:
+        assert isinstance(adapter.component_mapping["unembed"], UnembeddingBridge)
+
+    def test_unembed_name(self, adapter: Lfm2MoeArchitectureAdapter) -> None:
+        assert adapter.component_mapping["unembed"].name == "lm_head"
+
+    # -- Block submodules --
+
+    def test_blocks_ln1_is_rms_normalization_bridge(
         self, adapter: Lfm2MoeArchitectureAdapter
     ) -> None:
         blocks = adapter.component_mapping["blocks"]
-        assert blocks.hook_aliases == {
-            "hook_resid_pre": "hook_in",
-            "hook_resid_post": "hook_out",
+        assert isinstance(blocks.submodules["ln1"], RMSNormalizationBridge)
+
+    def test_blocks_ln1_name(self, adapter: Lfm2MoeArchitectureAdapter) -> None:
+        blocks = adapter.component_mapping["blocks"]
+        assert blocks.submodules["ln1"].name == "operator_norm"
+
+    def test_blocks_ln2_is_rms_normalization_bridge(
+        self, adapter: Lfm2MoeArchitectureAdapter
+    ) -> None:
+        blocks = adapter.component_mapping["blocks"]
+        assert isinstance(blocks.submodules["ln2"], RMSNormalizationBridge)
+
+    def test_blocks_ln2_name(self, adapter: Lfm2MoeArchitectureAdapter) -> None:
+        blocks = adapter.component_mapping["blocks"]
+        assert blocks.submodules["ln2"].name == "ffn_norm"
+
+    def test_attn_is_position_embeddings_attention_bridge(
+        self, adapter: Lfm2MoeArchitectureAdapter
+    ) -> None:
+        blocks = adapter.component_mapping["blocks"]
+        assert isinstance(blocks.submodules["attn"], PositionEmbeddingsAttentionBridge)
+
+    def test_attn_name(self, adapter: Lfm2MoeArchitectureAdapter) -> None:
+        blocks = adapter.component_mapping["blocks"]
+        assert blocks.submodules["attn"].name == "self_attn"
+
+    def test_attn_requires_attention_mask_is_true(
+        self, adapter: Lfm2MoeArchitectureAdapter
+    ) -> None:
+        blocks = adapter.component_mapping["blocks"]
+        assert blocks.submodules["attn"].requires_attention_mask is True
+
+    def test_attn_requires_position_embeddings_is_true(
+        self, adapter: Lfm2MoeArchitectureAdapter
+    ) -> None:
+        blocks = adapter.component_mapping["blocks"]
+        assert blocks.submodules["attn"].requires_position_embeddings is True
+
+    def test_conv_is_lfm2shortconv_bridge(self, adapter: Lfm2MoeArchitectureAdapter) -> None:
+        blocks = adapter.component_mapping["blocks"]
+        assert isinstance(blocks.submodules["conv"], Lfm2ShortConvBridge)
+
+    def test_conv_name(self, adapter: Lfm2MoeArchitectureAdapter) -> None:
+        blocks = adapter.component_mapping["blocks"]
+        assert blocks.submodules["conv"].name == "conv"
+
+    def test_mlp_is_moe_bridge(self, adapter: Lfm2MoeArchitectureAdapter) -> None:
+        blocks = adapter.component_mapping["blocks"]
+        assert isinstance(blocks.submodules["mlp"], MoEBridge)
+
+    def test_mlp_name(self, adapter: Lfm2MoeArchitectureAdapter) -> None:
+        blocks = adapter.component_mapping["blocks"]
+        assert blocks.submodules["mlp"].name == "feed_forward"
+
+    # -- Attention submodules --
+
+    @pytest.mark.parametrize("slot", ["q", "k", "v", "o"])
+    def test_attn_submodule_is_linear_bridge(
+        self, adapter: Lfm2MoeArchitectureAdapter, slot: str
+    ) -> None:
+        attn = adapter.component_mapping["blocks"].submodules["attn"]
+        assert isinstance(attn.submodules[slot], LinearBridge)
+
+    @pytest.mark.parametrize("slot", ["q_norm", "k_norm"])
+    def test_attn_submodule_is_rms_normalization_bridge(
+        self, adapter: Lfm2MoeArchitectureAdapter, slot: str
+    ) -> None:
+        attn = adapter.component_mapping["blocks"].submodules["attn"]
+        assert isinstance(attn.submodules[slot], RMSNormalizationBridge)
+
+    @pytest.mark.parametrize(
+        "slot, hf_name",
+        [
+            ("q", "q_proj"),
+            ("k", "k_proj"),
+            ("v", "v_proj"),
+            ("o", "out_proj"),
+            ("q_norm", "q_layernorm"),
+            ("k_norm", "k_layernorm"),
+        ],
+    )
+    def test_attn_submodule_name(
+        self, adapter: Lfm2MoeArchitectureAdapter, slot: str, hf_name: str
+    ) -> None:
+        attn = adapter.component_mapping["blocks"].submodules["attn"]
+        assert attn.submodules[slot].name == hf_name
+
+    # -- Conv submodules --
+
+    def test_conv_in_is_linear_bridge(self, adapter: Lfm2MoeArchitectureAdapter) -> None:
+        conv = adapter.component_mapping["blocks"].submodules["conv"]
+        assert isinstance(conv.submodules["in"], LinearBridge)
+
+    def test_conv_in_name(self, adapter: Lfm2MoeArchitectureAdapter) -> None:
+        conv = adapter.component_mapping["blocks"].submodules["conv"]
+        assert conv.submodules["in"].name == "in_proj"
+
+    def test_conv_conv_is_depthwise_conv1d_bridge(
+        self, adapter: Lfm2MoeArchitectureAdapter
+    ) -> None:
+        conv = adapter.component_mapping["blocks"].submodules["conv"]
+        assert isinstance(conv.submodules["conv"], DepthwiseConv1DBridge)
+
+    def test_conv_conv_name(self, adapter: Lfm2MoeArchitectureAdapter) -> None:
+        conv = adapter.component_mapping["blocks"].submodules["conv"]
+        assert conv.submodules["conv"].name == "conv"
+
+    def test_conv_out_is_linear_bridge(self, adapter: Lfm2MoeArchitectureAdapter) -> None:
+        conv = adapter.component_mapping["blocks"].submodules["conv"]
+        assert isinstance(conv.submodules["out"], LinearBridge)
+
+    def test_conv_out_name(self, adapter: Lfm2MoeArchitectureAdapter) -> None:
+        conv = adapter.component_mapping["blocks"].submodules["conv"]
+        assert conv.submodules["out"].name == "out_proj"
+
+    # -- MLP submodules --
+
+    def test_mlp_gate_is_lfm2_moe_gate_bridge(self, adapter: Lfm2MoeArchitectureAdapter) -> None:
+        mlp = adapter.component_mapping["blocks"].submodules["mlp"]
+        assert isinstance(mlp.submodules["gate"], Lfm2MoeGateBridge)
+
+    def test_mlp_gate_name(self, adapter: Lfm2MoeArchitectureAdapter) -> None:
+        mlp = adapter.component_mapping["blocks"].submodules["mlp"]
+        assert mlp.submodules["gate"].name == "gate"
+
+    def test_mlp_dense_gate_is_linear_bridge(self, adapter: Lfm2MoeArchitectureAdapter) -> None:
+        mlp = adapter.component_mapping["blocks"].submodules["mlp"]
+        assert isinstance(mlp.submodules["dense_gate"], LinearBridge)
+
+    def test_mlp_dense_gate_name(self, adapter: Lfm2MoeArchitectureAdapter) -> None:
+        mlp = adapter.component_mapping["blocks"].submodules["mlp"]
+        assert mlp.submodules["dense_gate"].name == "w1"
+
+    def test_mlp_dense_in_is_linear_bridge(self, adapter: Lfm2MoeArchitectureAdapter) -> None:
+        mlp = adapter.component_mapping["blocks"].submodules["mlp"]
+        assert isinstance(mlp.submodules["dense_in"], LinearBridge)
+
+    def test_mlp_dense_in_name(self, adapter: Lfm2MoeArchitectureAdapter) -> None:
+        mlp = adapter.component_mapping["blocks"].submodules["mlp"]
+        assert mlp.submodules["dense_in"].name == "w3"
+
+    def test_mlp_dense_out_is_linear_bridge(self, adapter: Lfm2MoeArchitectureAdapter) -> None:
+        mlp = adapter.component_mapping["blocks"].submodules["mlp"]
+        assert isinstance(mlp.submodules["dense_out"], LinearBridge)
+
+    def test_mlp_dense_out_name(self, adapter: Lfm2MoeArchitectureAdapter) -> None:
+        mlp = adapter.component_mapping["blocks"].submodules["mlp"]
+        assert mlp.submodules["dense_out"].name == "w2"
+
+
+# ---------------------------------------------------------------------------
+# Weight processing conversion tests
+# ---------------------------------------------------------------------------
+
+
+class TestLfm2AdapterWeightConversions:
+    """Adapter must define exactly the four QKVO weight conversions."""
+
+    def test_conversion_keys_present(self, adapter: Lfm2MoeArchitectureAdapter) -> None:
+        """Lfm2 has 4 weight matrices (QKVO) per attention layer"""
+        assert adapter.weight_processing_conversions.keys() == {
+            "blocks.{i}.attn.q.weight",
+            "blocks.{i}.attn.k.weight",
+            "blocks.{i}.attn.v.weight",
+            "blocks.{i}.attn.o.weight",
         }
-        assert blocks.submodules == {}
+
+    @pytest.mark.parametrize("slot", ["q", "k", "v"])
+    def test_qkv_weight_uses_split_heads_pattern(
+        self, adapter: Lfm2MoeArchitectureAdapter, slot: str
+    ) -> None:
+        conv = adapter.weight_processing_conversions[f"blocks.{{i}}.attn.{slot}.weight"]
+        expected = adapter.cfg.n_key_value_heads if slot in ["k", "v"] else adapter.cfg.n_heads
+        assert isinstance(conv, ParamProcessingConversion)
+        assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)
+        assert conv.tensor_conversion.pattern == "(n h) m -> n m h"
+        assert conv.tensor_conversion.axes_lengths["n"] == expected
+
+    def test_o_uses_merge_heads_pattern(self, adapter: Lfm2MoeArchitectureAdapter) -> None:
+        conv = adapter.weight_processing_conversions["blocks.{i}.attn.o.weight"]
+        assert isinstance(conv, ParamProcessingConversion)
+        assert isinstance(conv.tensor_conversion, RearrangeTensorConversion)
+        assert conv.tensor_conversion.pattern == "m (n h) -> n h m"
+        assert conv.tensor_conversion.axes_lengths["n"] == adapter.cfg.n_heads
+
+
+# ---------------------------------------------------------------------------
+# Architecture guards
+# ---------------------------------------------------------------------------
+
+
+class TestLfm2ArchitectureGuards:
+    """Guard against accidental introduction of features Lfm2 does not have."""
+
+    def test_no_pos_embed_component(self, adapter: Lfm2MoeArchitectureAdapter) -> None:
+        """Lfm2 uses rotary embeddings, so there is no learned positional embedding."""
+        assert "pos_embed" not in adapter.component_mapping
+
+
+# ---------------------------------------------------------------------------
+# Setup component testing tests
+# ---------------------------------------------------------------------------
+
+
+class TestLfm2SetupComponentTesting:
+    """setup_component_testing must wire Lfm2's shared rotary embedding into attention bridges."""
+
+    def test_setup_flips_top_level_attn_implementation_to_eager(
+        self, adapter: Lfm2MoeArchitectureAdapter
+    ) -> None:
+        """HF reference defaults to sdpa; setup must flip the top-level config to eager."""
+        hf = _fake_hf_model(object())
+        assert hf.config._attn_implementation == "sdpa"
+
+        adapter.setup_component_testing(hf)
+
+        assert hf.config._attn_implementation == "eager"
+
+    def test_setup_flips_per_layer_attn_implementation_to_eager(
+        self, adapter: Lfm2MoeArchitectureAdapter
+    ) -> None:
+        """Each already-built attn layer caches its own config; setup must flip all of them."""
+        hf = _fake_hf_model(object(), n_layers=2)
+        assert all(l.self_attn.config._attn_implementation == "sdpa" for l in hf.model.layers)
+
+        adapter.setup_component_testing(hf)
+
+        for layer in hf.model.layers:
+            assert layer.self_attn.config._attn_implementation == "eager"
+
+    def test_sets_rotary_emb_on_template_attention(
+        self, adapter: Lfm2MoeArchitectureAdapter
+    ) -> None:
+        rotary_emb = object()
+        attn_template = adapter.get_generalized_component("blocks.0.attn")
+        assert isinstance(attn_template, PositionEmbeddingsAttentionBridge)
+        assert attn_template._rotary_emb is None
+
+        adapter.setup_component_testing(_fake_hf_model(rotary_emb))
+
+        assert attn_template._rotary_emb is rotary_emb
+
+    def test_sets_rotary_emb_on_each_bridge_model_attention(
+        self, adapter: Lfm2MoeArchitectureAdapter
+    ) -> None:
+        pos_emb = object()
+        bridge_model = DummyBridgeModel([DummyBlock(), DummyBlock(), DummyBlock()])
+
+        adapter.setup_component_testing(_fake_hf_model(pos_emb), bridge_model=bridge_model)
+
+        for block in bridge_model.blocks:
+            assert block.attn.pos_emb is pos_emb
+
+    def test_skips_bridge_blocks_without_attention(
+        self, adapter: Lfm2MoeArchitectureAdapter
+    ) -> None:
+        pos_emb = object()
+        bridge_model = DummyBridgeModel([DummyBlock(), DummyBlock(has_attention=False)])
+
+        adapter.setup_component_testing(_fake_hf_model(pos_emb), bridge_model=bridge_model)
+
+        assert bridge_model.blocks[0].attn.pos_emb is pos_emb

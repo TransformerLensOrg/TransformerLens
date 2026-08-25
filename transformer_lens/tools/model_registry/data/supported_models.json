@@ -9,7 +9,7 @@
   "total_architectures": 143,
   "total_models": 15670,
   "total_provisional": 7,
-  "total_verified": 1205,
+  "total_verified": 1204,
   "models": [
     {
       "architecture_id": "FalconH1ForCausalLM",
@@ -30400,16 +30400,17 @@
     {
       "architecture_id": "Lfm2MoeForCausalLM",
       "model_id": "LiquidAI/LFM2.5-8B-A1B",
-      "status": 1,
-      "verified_date": "2026-06-26",
+      "status": 3,
+      "verified_date": "2026-08-15",
       "metadata": null,
-      "note": "Full verification completed with issues, low text quality",
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null,
-      "phase4_score": 23.6,
+      "note": "Below threshold: P3=85.0% but required tests failed: logits_equivalence, loss_equivalence — Text quality score: 24.7/100 (avg perplexity: 19.6) — generated text may be incoherent",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 85.0,
+      "phase4_score": 24.7,
       "phase7_score": null,
-      "phase8_score": null
+      "phase8_score": null,
+      "phase9_score": null
     },
     {
       "architecture_id": "LlamaForCausalLM",
