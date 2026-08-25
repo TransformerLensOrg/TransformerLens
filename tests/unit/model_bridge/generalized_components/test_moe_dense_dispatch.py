@@ -27,19 +27,29 @@ from transformer_lens.model_bridge.generalized_components import LinearBridge, M
 
 D_MODEL, D_MLP = 8, 16
 
+# Some architectures name gate/up/down differently
+DEFAULT_DENSE_NAMES: tuple[str, str, str] = ("gate_proj", "up_proj", "down_proj")
+DENSE_PROJECTION_NAMES: dict[str, tuple[str, str, str]] = {
+    "Lfm2MoeForCausalLM": ("w1", "w3", "w2"),
+}
+
 
 class _DenseMLP(nn.Module):
     """Standard SwiGLU gated MLP — the dense-prefix layer shape."""
 
-    def __init__(self) -> None:
+    def __init__(self, names: tuple[str, str, str] = DEFAULT_DENSE_NAMES) -> None:
         super().__init__()
-        self.gate_proj = nn.Linear(D_MODEL, D_MLP, bias=False)
-        self.up_proj = nn.Linear(D_MODEL, D_MLP, bias=False)
-        self.down_proj = nn.Linear(D_MLP, D_MODEL, bias=False)
+        self.names = names
+        gate, up, down = names
+        setattr(self, gate, nn.Linear(D_MODEL, D_MLP, bias=False))
+        setattr(self, up, nn.Linear(D_MODEL, D_MLP, bias=False))
+        setattr(self, down, nn.Linear(D_MLP, D_MODEL, bias=False))
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        return self.down_proj(
-            torch.nn.functional.silu(self.gate_proj(hidden_states)) * self.up_proj(hidden_states)
+        gate, up, down = self.names
+        return getattr(self, down)(
+            torch.nn.functional.silu(getattr(self, gate)(hidden_states))
+            * getattr(self, up)(hidden_states)
         )
 
 
@@ -271,7 +281,8 @@ def test_adapter_templates_bind_dense_layers_as_gated_mlps(architecture: str) ->
     blocks = adapter.component_mapping["blocks"]
     template = blocks.submodules.get("mlp") or blocks.submodules["feed_forward"]
     instance = copy.deepcopy(template)
-    instance.set_original_component(_DenseMLP())
+    names = DENSE_PROJECTION_NAMES.get(architecture, DEFAULT_DENSE_NAMES)
+    instance.set_original_component(_DenseMLP(names))
     assert instance._bound_dense is True, f"{architecture} did not declare dense projections"
     assert instance.hook_aliases["hook_pre"] == "dense_gate.hook_out"
 
@@ -287,7 +298,9 @@ def test_dense_keys_read_the_projection_they_name(architecture: str) -> None:
     blocks = adapter.component_mapping["blocks"]
     template = blocks.submodules.get("mlp") or blocks.submodules["feed_forward"]
     bridge = copy.deepcopy(template)
-    module = _DenseMLP()
+    names = DENSE_PROJECTION_NAMES.get(architecture, DEFAULT_DENSE_NAMES)
+    gate_name, in_name, _ = names
+    module = _DenseMLP(names)
     bridge.set_original_component(module)
     setup_submodules(bridge, adapter, module)
 
@@ -302,8 +315,8 @@ def test_dense_keys_read_the_projection_they_name(architecture: str) -> None:
         )
     with torch.no_grad():
         bridge(x)
-        expected_gate = module.gate_proj(x)
-        expected_in = module.up_proj(x)
+        expected_gate = getattr(module, gate_name)(x)
+        expected_in = getattr(module, in_name)(x)
 
     torch.testing.assert_close(
         captured["dense_gate"],
