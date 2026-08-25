@@ -91,6 +91,28 @@ class MoEBridge(GeneralizedComponent):
                 f"submodules (declared: {sorted(submodules or {})})"
             )
         self._sparse_required = sparse_required
+        # HookedTransformer exposes the routing observables on the MoE block
+        # itself; the bridge fires them on the router submodule, whose adapter
+        # key differs ("gate" on 5.13 SparseMoeBlocks, "router" on GPT-OSS).
+        # Alias so code migrated from HT finds them under the HT name.
+        self._router_hook_aliases = self._build_router_hook_aliases(submodules or {})
+        self.hook_aliases = {**self.hook_aliases, **self._router_hook_aliases}
+
+    @staticmethod
+    def _build_router_hook_aliases(
+        submodules: Mapping[str, GeneralizedComponent],
+    ) -> Dict[str, str]:
+        """Map HT's block-level routing hook names onto the router submodule."""
+        aliases: Dict[str, str] = {}
+        for key, component in submodules.items():
+            if not isinstance(component, MoERouterBridge):
+                continue
+            if component.weights_index is not None:
+                aliases["hook_expert_weights"] = f"{key}.hook_expert_weights"
+            if component.indices_index is not None:
+                aliases["hook_expert_indices"] = f"{key}.hook_expert_indices"
+            break
+        return aliases
 
     def _binds_dense_projections(self, component: torch.nn.Module) -> bool:
         """Whether this layer is the dense variant of an interleaved MoE stack.
@@ -160,7 +182,7 @@ class MoEBridge(GeneralizedComponent):
                 del self.hook_router_scores
         else:
             # Symmetric restore so a rebinding harness cannot leave a chimera.
-            self.hook_aliases = dict(type(self).hook_aliases)
+            self.hook_aliases = {**type(self).hook_aliases, **self._router_hook_aliases}
             self.property_aliases = {
                 key: value
                 for key, value in self.property_aliases.items()
@@ -329,11 +351,33 @@ class MoERouterBridge(LinearBridge):
     5.13 TopKRouters return ``(router_logits, topk_weights, topk_indices)``;
     hook_out fires on the logits (element ``logits_index`` — JetMoe puts them
     last) and the tuple is re-packed so HF's unpacking is undisturbed.
+
+    ``hook_expert_weights`` / ``hook_expert_indices`` mirror the HookedTransformer
+    MoE routing hooks. HF routers hand back top-k-shaped weights
+    ``[tokens, top_k]``, so the weights are scattered to HT's
+    ``[tokens, num_experts]`` before firing and gathered back afterwards — an
+    unedited round trip returns the values bit-for-bit, and an edit reaches HF.
     """
 
-    def __init__(self, *args: Any, logits_index: int = 0, **kwargs: Any):
+    def __init__(
+        self,
+        *args: Any,
+        logits_index: int = 0,
+        weights_index: Optional[int] = 1,
+        indices_index: Optional[int] = 2,
+        **kwargs: Any,
+    ):
         super().__init__(*args, **kwargs)
         self.logits_index = logits_index
+        self.weights_index = weights_index
+        self.indices_index = indices_index
+        # None means this router's tuple has no clean [tokens, top_k] pair
+        # (JetMoe returns a sorted-expert layout); registering the hook anyway
+        # would advertise an intervention point that can never fire.
+        if weights_index is not None:
+            self.hook_expert_weights = HookPoint()
+        if indices_index is not None:
+            self.hook_expert_indices = HookPoint()
 
     def forward(self, input: torch.Tensor, *args: Any, **kwargs: Any) -> Any:
         if self.original_component is None:
@@ -344,9 +388,73 @@ class MoERouterBridge(LinearBridge):
         output = self.original_component(input, *args, **kwargs)
         if not isinstance(output, tuple) or len(output) == 0:
             return self.hook_out(output)
-        idx = self.logits_index % len(output)
-        router_logits = self.hook_out(output[idx])
-        return output[:idx] + (router_logits,) + output[idx + 1 :]
+        parts = list(output)
+        count = len(parts)
+        logits_at = self.logits_index % count
+        parts[logits_at] = self.hook_out(parts[logits_at])
+
+        weights_at = None if self.weights_index is None else self.weights_index % count
+        indices_at = None if self.indices_index is None else self.indices_index % count
+        if weights_at is None and indices_at is None:
+            return tuple(parts)
+
+        indices = None if indices_at is None else parts[indices_at]
+        expanded = None
+        if weights_at is not None:
+            expanded = self._expand_expert_weights(parts[weights_at], indices, parts[logits_at])
+            expanded = self.hook_expert_weights(expanded)
+        if indices_at is not None:
+            indices = self.hook_expert_indices(indices)
+            parts[indices_at] = indices
+        if weights_at is not None:
+            # Gathered after the indices hook so re-routing picks up the weight
+            # sitting at the newly selected expert, as HookedTransformer does.
+            parts[weights_at] = self._collapse_expert_weights(expanded, indices, parts[weights_at])
+        return tuple(parts)
+
+    def _expand_expert_weights(
+        self,
+        weights: torch.Tensor,
+        indices: Optional[torch.Tensor],
+        logits: torch.Tensor,
+    ) -> torch.Tensor:
+        """Scatter top-k weights into HT's ``[tokens, num_experts]`` layout."""
+        if not self._is_top_k_shaped(weights, indices, logits):
+            return weights
+        assert indices is not None
+        scattered = torch.zeros(
+            (*weights.shape[:-1], logits.shape[-1]),
+            dtype=weights.dtype,
+            device=weights.device,
+        )
+        scattered.scatter_(-1, indices.long(), weights)
+        return scattered
+
+    def _collapse_expert_weights(
+        self,
+        expanded: Optional[torch.Tensor],
+        indices: Optional[torch.Tensor],
+        original: torch.Tensor,
+    ) -> torch.Tensor:
+        """Gather the expanded weights back to the top-k layout HF expects."""
+        if expanded is None or indices is None or expanded.shape == original.shape:
+            return expanded if expanded is not None else original
+        return expanded.gather(-1, indices.long())
+
+    @staticmethod
+    def _is_top_k_shaped(
+        weights: torch.Tensor,
+        indices: Optional[torch.Tensor],
+        logits: torch.Tensor,
+    ) -> bool:
+        """Whether the weights are the top-k slice rather than full expert width."""
+        return (
+            indices is not None
+            and isinstance(weights, torch.Tensor)
+            and isinstance(logits, torch.Tensor)
+            and weights.shape == indices.shape
+            and weights.shape[-1] != logits.shape[-1]
+        )
 
     def set_processed_weights(
         self, weights: Mapping[str, Optional[torch.Tensor]], verbose: bool = False

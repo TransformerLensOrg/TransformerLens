@@ -77,7 +77,12 @@ class JetMoeArchitectureAdapter(ArchitectureAdapter):
                                 name="experts",
                                 submodules={
                                     # JetMoeTopKGating puts logits last in its 5-tuple.
-                                    "router": MoERouterBridge(name="router", logits_index=-1),
+                                    "router": MoERouterBridge(
+                                        name="router",
+                                        logits_index=-1,
+                                        weights_index=None,
+                                        indices_index=None,
+                                    ),
                                 },
                             ),
                         },
@@ -87,7 +92,12 @@ class JetMoeArchitectureAdapter(ArchitectureAdapter):
                         name="mlp",
                         config=self.cfg,
                         submodules={
-                            "gate": MoERouterBridge(name="router", logits_index=-1),
+                            "gate": MoERouterBridge(
+                                name="router",
+                                logits_index=-1,
+                                weights_index=None,
+                                indices_index=None,
+                            ),
                         },
                     ),
                 },

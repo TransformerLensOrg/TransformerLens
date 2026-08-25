@@ -40,6 +40,9 @@ _BLOCK_PATTERN = re.compile("blocks\\.(\\d+)")
 
 # Block-list container attributes a bridge may expose.
 _BLOCK_LIST_ATTRS = ("blocks", "encoder_blocks", "decoder_blocks", "L_blocks", "H_blocks")
+# Encoder blocks name self-attention ``attn``; decoder blocks name it ``self_attn``
+# (``cross_attn`` is a separate submodule, deliberately excluded from stacking).
+_SELF_ATTENTION_NAMES = {"attn": ("attn", "self_attn")}
 
 
 def build_alias_to_canonical_map(hook_dict: Any, prefix: str = "") -> dict:
@@ -781,18 +784,33 @@ class BridgeCore:
         if callable(name) and not isinstance(name, str):
             hook_dict = self.hook_dict
             seen_hooks: set = set()
+            gated_names_skipped: List[str] = []
             for hook_name, hook_point in hook_dict.items():
                 if name(hook_name):
                     hook_id = id(hook_point)
                     if hook_id in seen_hooks:
                         continue
                     seen_hooks.add(hook_id)
+                    # A filter is a sweep, not a targeted request, so a gated-off
+                    # match is skipped rather than raised on — but silently
+                    # attaching here would leave a dead hook that never fires,
+                    # which is the failure this warns about.
+                    if self._gated_hook_reason(hook_name) is not None:
+                        gated_names_skipped.append(hook_name)
+                        continue
                     self._add_fn_to_hook_point(hook_point, hook_name, hook_fn, dir, is_permanent)
+            if gated_names_skipped:
+                warnings.warn(
+                    f"add_hook: skipped {len(gated_names_skipped)} gated-off hook name(s) "
+                    f"that would never fire: {gated_names_skipped}. Call the relevant "
+                    "set_use_*(True) setter first to enable them.",
+                    stacklevel=2,
+                )
             return
 
         # An explicitly named gated-off hook point is a caller error: the hook
         # would silently never fire. Raise naming the setter to call (filters
-        # above add freely — they were not necessarily targeting gated names).
+        # above skip with a warning — they were not necessarily targeting gated names).
         reason = self._gated_hook_reason(name)
         if reason is not None:
             raise ValueError(

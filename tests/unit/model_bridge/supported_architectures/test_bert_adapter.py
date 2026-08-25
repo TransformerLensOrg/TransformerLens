@@ -198,7 +198,10 @@ class TestBertTaskHeadMappings:
 
         adapter.prepare_model(hf_model)
 
-        assert adapter.components["pooler"].name == "bert.pooler.dense"
+        # The pooler module itself is wrapped so hook_out is the post-tanh
+        # pooled [CLS]; the projection stays hookable underneath.
+        assert adapter.components["pooler"].name == "bert.pooler"
+        assert adapter.components["pooler"].submodules["dense"].name == "dense"
         assert adapter.components["unembed"].name == "cls.seq_relationship"
         assert "mlm_head" not in adapter.components
         assert "ln_final" not in adapter.components
@@ -212,7 +215,10 @@ class TestBertTaskHeadMappings:
 
         adapter.prepare_model(hf_model)
 
-        assert adapter.components["pooler"].name == "bert.pooler.dense"
+        # The pooler module itself is wrapped so hook_out is the post-tanh
+        # pooled [CLS]; the projection stays hookable underneath.
+        assert adapter.components["pooler"].name == "bert.pooler"
+        assert adapter.components["pooler"].submodules["dense"].name == "dense"
         assert adapter.components["mlm_head"].name == "cls.predictions.transform.dense"
         assert adapter.components["nsp_head"].name == "cls.seq_relationship"
         assert adapter.components["unembed"].name == "cls.predictions.decoder"
