@@ -37,7 +37,11 @@ from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookIntrospectionMixin, HookPoint
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
-from transformer_lens.model_bridge.bridge_core import _BLOCK_LIST_ATTRS, BridgeCore
+from transformer_lens.model_bridge.bridge_core import (
+    _BLOCK_LIST_ATTRS,
+    _SELF_ATTENTION_NAMES,
+    BridgeCore,
+)
 from transformer_lens.model_bridge.component_setup import (
     refresh_container_state_owners,
     set_original_components,
@@ -804,6 +808,153 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             tokens = tokens.to(self.cfg.device)
         return tokens
 
+    def encoder_output(
+        self,
+        frames: torch.Tensor,
+        one_zero_attention_mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """Run the audio encoder from precomputed frames, skipping feature extraction.
+
+        The audio-path analogue of ``start_at_layer``: ``frames`` is
+        ``[batch, frames, d_model]``, the tensor the conv front end would have
+        produced (observable at ``feat_proj.hook_out``), so callers can inject or
+        reuse frames without re-running the waveform convolutions. Positional
+        convolution and the encoder layer norm are applied first, exactly as the
+        full path does, then the blocks run. Mirrors
+        ``HookedAudioEncoder.encoder_output``.
+
+        Hooks on the bridged components fire as usual, so this composes with
+        ``add_hook`` / ``get_caching_hooks``.
+
+        Args:
+            frames: ``[batch, frames, d_model]`` precomputed encoder frames.
+            one_zero_attention_mask: Optional ``[batch, frames]`` mask, 1 for
+                real frames and 0 for padding.
+
+        Returns:
+            The residual stream leaving the final block, ``[batch, frames, d_model]``.
+        """
+        self._require_frame_entry_support()
+        if frames.ndim != 3:
+            raise ValueError(
+                "encoder_output expects precomputed frames [batch, frames, d_model]; "
+                f"got a {frames.ndim}D tensor. Pass a waveform to forward() instead."
+            )
+        frames = frames.to(self.cfg.device)
+
+        resid = frames + self.conv_pos_embed(frames)
+        resid = self.embed_ln(resid)
+
+        additive_attention_mask = None
+        if one_zero_attention_mask is not None:
+            mask = one_zero_attention_mask.to(self.cfg.device)
+            additive_attention_mask = torch.where(
+                mask[:, None, None, :] == 0,
+                torch.tensor(float("-inf"), dtype=resid.dtype, device=resid.device),
+                torch.tensor(0.0, dtype=resid.dtype, device=resid.device),
+            )
+
+        for block in self.blocks:
+            output = block(resid, attention_mask=additive_attention_mask)
+            resid = output[0] if isinstance(output, tuple) else output
+        return resid
+
+    def _require_frame_entry_support(self) -> None:
+        """Reject models with no conv-frame stage to re-enter."""
+        if not getattr(self.cfg, "is_audio_model", False):
+            raise NotImplementedError(
+                "encoder_output is an audio-encoder entry point; this bridge is not an "
+                "audio model. Use start_at_layer for residual re-entry on text models."
+            )
+        missing = [
+            name
+            for name in ("conv_pos_embed", "embed_ln", "blocks")
+            if self._modules.get(name) is None
+        ]
+        if missing:
+            raise NotImplementedError(
+                "encoder_output needs a waveform encoder with a convolutional front end "
+                f"(missing {missing}). Spectrogram encoders such as AST have no "
+                "precomputed-frame stage to re-enter, so there is nothing to bypass."
+            )
+
+    def to_sentence_pair_tokens(
+        self,
+        sentence_a: str,
+        sentence_b: str,
+        move_to_device: bool = True,
+        truncate: bool = True,
+    ) -> Dict[str, torch.Tensor]:
+        """Pair-tokenize two sentences as ``[CLS] a [SEP] b [SEP]``.
+
+        Returns ``input_ids``, ``token_type_ids`` and ``attention_mask``. The
+        segment ids are not decorative: without them a BERT NSP head sees both
+        sentences as one segment and its logits collapse. Mirrors
+        ``BertNextSentencePrediction.to_tokens``.
+
+        Args:
+            sentence_a: First sentence of the pair.
+            sentence_b: Second sentence of the pair.
+            move_to_device: Move the returned tensors to ``cfg.device``.
+            truncate: Truncate to the model's context window.
+        """
+        assert self.tokenizer is not None, "Cannot pair-tokenize without a tokenizer"
+        encodings = self.tokenizer(
+            sentence_a,
+            sentence_b,
+            return_tensors="pt",
+            padding=True,
+            truncation=truncate,
+            max_length=self.cfg.n_ctx if truncate else None,
+        )
+        if "token_type_ids" not in encodings:
+            raise ValueError(
+                f"{type(self.tokenizer).__name__} emits no token_type_ids, so it cannot "
+                "express a sentence pair. Next-sentence prediction needs a "
+                "segment-aware tokenizer (e.g. BERT's)."
+            )
+        keys = ("input_ids", "token_type_ids", "attention_mask")
+        tokens = {key: encodings[key] for key in keys if key in encodings}
+        if move_to_device:
+            tokens = {key: value.to(self.cfg.device) for key, value in tokens.items()}
+        return tokens
+
+    def predict_next_sentence(
+        self,
+        sentence_a: str,
+        sentence_b: str,
+        return_type: Optional[str] = "predictions",
+        truncate: bool = True,
+    ) -> Any:
+        """Run next-sentence prediction over a sentence pair given as strings.
+
+        Owns the ``token_type_ids`` plumbing that a hand-rolled pair forward has
+        to remember. Requires a bridge booted onto an NSP head — otherwise the
+        model has no 2-class output to decode. Mirrors
+        ``BertNextSentencePrediction.forward``.
+
+        Args:
+            sentence_a: First sentence of the pair.
+            sentence_b: Second sentence of the pair.
+            return_type: ``"predictions"`` for the decoded verdict, or
+                ``"logits"`` for the raw 2-class scores.
+            truncate: Truncate to the model's context window.
+        """
+        tokens = self.to_sentence_pair_tokens(sentence_a, sentence_b, truncate=truncate)
+        forward_kwargs: Dict[str, Any] = {
+            key: value for key, value in tokens.items() if key != "input_ids"
+        }
+        logits = self(tokens["input_ids"], return_type="logits", **forward_kwargs)
+        if logits.shape[-1] != 2:
+            raise ValueError(
+                "predict_next_sentence needs a next-sentence-prediction head, but this "
+                f"bridge produces {logits.shape[-1]} output classes. Boot it with "
+                "model_class=BertForNextSentencePrediction."
+            )
+        if return_type == "logits":
+            return logits
+        return self._finalize_return(return_type, logits, tokens["input_ids"])
+
     def to_string(
         self, tokens: Union[List[int], torch.Tensor, np.ndarray]
     ) -> Union[str, List[str]]:
@@ -962,15 +1113,58 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             return str(token[0])
         raise AssertionError("Expected a single string token.")
 
+    def _enumerate_blocks(self) -> List[Tuple[int, Any]]:
+        """(index, block) over every registered block list, encoder before decoder.
+
+        Decoder-only models register a single ``blocks``, so the indices are the
+        plain layer indices. Encoder-decoder models register ``encoder_blocks``
+        and ``decoder_blocks`` instead; those are concatenated into one index
+        space, matching ``HookedEncoderDecoder``'s ``chain(encoder, decoder)``.
+        """
+        pairs: List[Tuple[int, Any]] = []
+        for list_name in _BLOCK_LIST_ATTRS:
+            block_list = self._modules.get(list_name)
+            if not isinstance(block_list, nn.ModuleList):
+                continue
+            for block in block_list:
+                pairs.append((len(pairs), block))
+        return pairs
+
+    def _resolve_submodule_name(self, block: Any, submodule: str) -> Optional[str]:
+        """The block's actual name for ``submodule``.
+
+        Encoder blocks name self-attention ``attn`` while decoder blocks name it
+        ``self_attn``, so a caller asking for ``attn`` means "this block's
+        self-attention" on either side. Cross-attention is never resolved here:
+        ``HookedEncoderDecoder`` omits it from stacked weights, and this mirrors
+        that so the two stacks line up layer for layer.
+        """
+        for candidate in _SELF_ATTENTION_NAMES.get(submodule, (submodule,)):
+            if candidate in block._modules:
+                return candidate
+        return None
+
+    def _rewrite_submodule_path(self, attr_path: str, submodule: str, actual: Optional[str]) -> str:
+        """Re-point ``attr_path``'s leading segment at the block's actual submodule."""
+        if actual is None or actual == submodule:
+            return attr_path
+        if attr_path.split(".")[0] != submodule:
+            return attr_path
+        return actual + attr_path[len(submodule) :]
+
     def blocks_with(self, submodule: str) -> List[Tuple[int, "GeneralizedComponent"]]:
         """Return (index, block) pairs for blocks with the named bridged submodule.
 
         Checks _modules (not hasattr) so HF-internal attrs don't match.
         Use instead of assuming blocks[0] is representative on hybrid models.
+        On encoder-decoder models the indices span encoder then decoder blocks,
+        and ``"attn"`` matches the decoder's ``self_attn`` too.
         """
-        if not hasattr(self, "blocks"):
-            return []
-        return [(i, block) for i, block in enumerate(self.blocks) if submodule in block._modules]
+        return [
+            (index, block)
+            for index, block in self._enumerate_blocks()
+            if self._resolve_submodule_name(block, submodule) is not None
+        ]
 
     def stack_params_for(
         self, submodule: str, attr_path: str, reshape_fn: Optional[Callable] = None
@@ -988,7 +1182,10 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         indices: List[int] = []
         weights: List[torch.Tensor] = []
         for idx, block in matching:
-            w = _resolve_attr_path(block, attr_path)
+            resolved = self._resolve_submodule_name(block, submodule)
+            w = _resolve_attr_path(
+                block, self._rewrite_submodule_path(attr_path, submodule, resolved)
+            )
             if w is None:
                 raise AttributeError(
                     f"blocks[{idx}].{attr_path} is None — this checkpoint has no such "
@@ -1011,12 +1208,16 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         AttributeError killed the accessor for the whole model.
         """
         first_attr = attr_path.split(".")[0]
+        all_blocks = self._enumerate_blocks()
         matching_blocks: List[Tuple[int, torch.Tensor]] = []
-        for i, block in enumerate(self.blocks):
-            if first_attr not in block._modules:
+        for i, block in all_blocks:
+            resolved = self._resolve_submodule_name(block, first_attr)
+            if resolved is None:
                 continue
             try:
-                weight = _resolve_attr_path(block, attr_path)
+                weight = _resolve_attr_path(
+                    block, self._rewrite_submodule_path(attr_path, first_attr, resolved)
+                )
             except AttributeError:
                 continue
             if weight is None:
@@ -1036,7 +1237,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 f"Use bridge.blocks_with('{first_attr}') to check availability."
             )
 
-        if len(matching_blocks) < len(self.blocks):
+        if len(matching_blocks) < len(all_blocks):
             indices = [i for i, _ in matching_blocks]
             logging.warning(
                 "Hybrid model: only %d/%d blocks resolve '%s'. Returning stacked tensor "
@@ -1044,7 +1245,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 "indices[i], not layer i. For explicit index mapping, use "
                 "bridge.stack_params_for('%s', '%s').",
                 len(matching_blocks),
-                len(self.blocks),
+                len(all_blocks),
                 attr_path,
                 indices,
                 first_attr,
@@ -1389,7 +1590,19 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
 
     @property
     def all_head_labels(self) -> list[str]:
-        """Human-readable labels for all attention heads, e.g. ['L0H0', 'L0H1', ...]."""
+        """Human-readable labels for all attention heads, e.g. ['L0H0', 'L0H1', ...].
+
+        Encoder-decoder models use ``HookedEncoderDecoder``'s ``EL{l}H{h}`` /
+        ``DL{l}H{h}`` scheme so encoder and decoder heads stay distinguishable;
+        a plain ``L{l}H{h}`` list would name only half of them.
+        """
+        encoder_blocks = self._modules.get("encoder_blocks")
+        decoder_blocks = self._modules.get("decoder_blocks")
+        if isinstance(encoder_blocks, nn.ModuleList) and isinstance(decoder_blocks, nn.ModuleList):
+            heads = range(self.cfg.n_heads)
+            return [f"EL{l}H{h}" for l in range(len(encoder_blocks)) for h in heads] + [
+                f"DL{l}H{h}" for l in range(len(decoder_blocks)) for h in heads
+            ]
         return [f"L{l}H{h}" for l in range(self.cfg.n_layers) for h in range(self.cfg.n_heads)]
 
     @property

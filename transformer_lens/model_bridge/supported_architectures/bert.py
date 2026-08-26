@@ -12,6 +12,7 @@ from transformer_lens.conversion_utils.param_processing_conversion import (
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
+    BertPoolerBridge,
     BlockBridge,
     EmbeddingBridge,
     LinearBridge,
@@ -152,7 +153,14 @@ class BertArchitectureAdapter(ArchitectureAdapter):
         and no MLM-specific LayerNorm.
         """
         if getattr(getattr(hf_model, "bert", None), "pooler", None) is not None:
-            self.components["pooler"] = LinearBridge(name="bert.pooler.dense")
+            # Wrap the pooler itself, not its inner Linear: HF applies tanh after
+            # the projection, so hook_out here is the pooled [CLS] that
+            # HookedEncoder's BertPooler exposes as hook_pooler_out. The dense
+            # stays hookable as a submodule for the pre-activation projection.
+            self.components["pooler"] = BertPoolerBridge(
+                name="bert.pooler",
+                submodules={"dense": LinearBridge(name="dense")},
+            )
 
         has_predictions = hasattr(getattr(hf_model, "cls", None), "predictions")
         has_nsp_head = hasattr(getattr(hf_model, "cls", None), "seq_relationship")

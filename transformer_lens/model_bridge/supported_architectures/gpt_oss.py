@@ -8,6 +8,7 @@ from transformer_lens.model_bridge.generalized_components import (
     EmbeddingBridge,
     LinearBridge,
     MoEBridge,
+    MoERouterBridge,
     PositionEmbeddingsAttentionBridge,
     RMSNormalizationBridge,
     RotaryEmbeddingBridge,
@@ -67,7 +68,12 @@ class GPTOSSArchitectureAdapter(ArchitectureAdapter):
                     ),
                     # GPT-OSS uses batched MoE experts with router scores
                     # MoEBridge handles the (hidden_states, router_scores) tuple returns
-                    "mlp": MoEBridge(name="mlp", config=self.cfg),
+                    "mlp": MoEBridge(
+                        name="mlp",
+                        config=self.cfg,
+                        submodules={"router": MoERouterBridge(name="router")},
+                        sparse_required=("router",),
+                    ),
                 },
             ),
             "ln_final": RMSNormalizationBridge(

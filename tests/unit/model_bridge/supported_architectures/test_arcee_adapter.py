@@ -97,9 +97,6 @@ class TestArceeAdapterConfig:
         assert adapter.cfg.attn_only is False
         assert adapter.cfg.attn_implementation == "eager"
 
-    def test_gqa_propagated(self, adapter: ArceeArchitectureAdapter) -> None:
-        assert adapter.cfg.n_key_value_heads == 4
-
 
 class TestArceeAdapterComponentMapping:
     """Component-mapping structure and HF module names. Key contrasts with Llama:

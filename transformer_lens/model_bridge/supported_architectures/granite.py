@@ -74,7 +74,11 @@ class GraniteArchitectureAdapter(ArchitectureAdapter):
         return MoEBridge(
             name="block_sparse_moe",
             config=self.cfg,
-            submodules={"gate": MoERouterBridge(name="router", logits_index=-1)},
+            submodules={
+                "gate": MoERouterBridge(
+                    name="router", logits_index=-1, indices_index=0, weights_index=1
+                )
+            },
         )
 
     def _build_component_mapping(self) -> dict:

@@ -88,3 +88,65 @@ def test_run_with_cache_warns_on_fully_gated_names_filter():
     assert any("gated-off" in str(w.message) for w in caught), (
         "Expected a warning naming the gated-off hook, got: " f"{[str(w.message) for w in caught]}"
     )
+
+
+def test_add_hook_callable_filter_warns_and_skips_gated_points():
+    """A callable filter matching only gated-off points attaches nothing and warns,
+    rather than leaving dead hooks that never fire."""
+    bridge = TransformerBridge.boot_native(_cfg())
+    tokens = torch.randint(0, 16, (1, 8))
+
+    fired = []
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        bridge.add_hook(
+            lambda name: name.endswith("hook_mlp_in"),
+            lambda t, hook=None: fired.append(1) or t,
+        )
+    bridge(tokens, return_type="logits")
+
+    # Not merely "did not fire" — a gated point never fires even when a dead
+    # hook is attached, so assert nothing was attached in the first place.
+    assert not bridge.hook_dict["blocks.0.hook_mlp_in"].fwd_hooks
+    assert not fired, "Gated-off hook fired; the filter should have skipped it"
+    assert any("gated-off" in str(w.message) for w in caught), (
+        "Expected a warning naming the skipped gated-off hook, got: "
+        f"{[str(w.message) for w in caught]}"
+    )
+
+
+def test_add_hook_callable_filter_attaches_once_flag_enabled():
+    """The same filter attaches and fires — silently — once the setter enables the flag."""
+    bridge = TransformerBridge.boot_native(_cfg())
+    bridge.set_use_hook_mlp_in(True)
+    tokens = torch.randint(0, 16, (1, 8))
+
+    fired = []
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        bridge.add_hook(
+            lambda name: name.endswith("hook_mlp_in"),
+            lambda t, hook=None: fired.append(1) or t,
+        )
+    bridge(tokens, return_type="logits")
+
+    assert fired, "Hook did not fire after enabling use_hook_mlp_in via the setter"
+    assert not [w for w in caught if "gated-off" in str(w.message)]
+
+
+def test_add_hook_callable_filter_leaves_ungated_points_alone():
+    """Control: a filter over an ungated point attaches and fires without warning."""
+    bridge = TransformerBridge.boot_native(_cfg())
+    tokens = torch.randint(0, 16, (1, 8))
+
+    fired = []
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        bridge.add_hook(
+            lambda name: name == "blocks.0.hook_resid_post",
+            lambda t, hook=None: fired.append(1) or t,
+        )
+    bridge(tokens, return_type="logits")
+
+    assert fired, "Ungated hook should still attach and fire"
+    assert not [w for w in caught if "gated-off" in str(w.message)]

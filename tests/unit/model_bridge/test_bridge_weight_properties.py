@@ -8,6 +8,12 @@ from transformer_lens.model_bridge.generalized_components.attention import (
 )
 from transformer_lens.model_bridge.transformer_bridge import TransformerBridge
 
+_BORROWED_HELPERS = (
+    "_enumerate_blocks",
+    "_resolve_submodule_name",
+    "_rewrite_submodule_path",
+)
+
 
 class TestReshapeBias:
     """Tests for AttentionBridge._reshape_bias()."""
@@ -67,13 +73,22 @@ class TestStackBlockParams:
 
     class _FakeBridge:
         def __init__(self, biases):
-            self.blocks = [TestStackBlockParams._Block(b) for b in biases]
+            self.blocks = torch.nn.ModuleList([TestStackBlockParams._Block(b) for b in biases])
+            # _stack_block_params walks the registered block lists, so the stub
+            # exposes the same _modules shape a real bridge does.
+            self._modules = {"blocks": self.blocks}
 
             class Cfg:
                 n_devices = 1
                 device = None
 
             self.cfg = Cfg()
+
+        def __getattr__(self, name):
+            """Borrow the real block-walking helpers rather than reimplementing them."""
+            if name in _BORROWED_HELPERS:
+                return getattr(TransformerBridge, name).__get__(self)
+            raise AttributeError(name)
 
     def test_stacks_present_params(self):
         fake = self._FakeBridge([torch.ones(2, 3), torch.zeros(2, 3)])
