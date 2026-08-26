@@ -23,8 +23,11 @@ def test_gpt2_compatibility_scores_use_negative_infinity(
     causal_mask = torch.isneginf(hooked_scores)
     assert causal_mask.any()
     assert torch.isneginf(bridge_scores[causal_mask]).all()
+    # The goldens were captured on different hardware, so the unmasked scores
+    # agree to fp32 accumulation noise rather than bit-exactly. Same tolerance
+    # the sibling golden comparison uses for this hook.
     torch.testing.assert_close(
-        bridge_scores[~causal_mask], hooked_scores[~causal_mask], rtol=0, atol=0
+        bridge_scores[~causal_mask], hooked_scores[~causal_mask], rtol=1e-4, atol=1e-4
     )
 
 
