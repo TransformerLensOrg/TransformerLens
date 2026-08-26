@@ -6,6 +6,7 @@ from collections.abc import Sequence
 import pytest
 import torch
 import torch.nn.functional as F
+from beartype.roar import BeartypeCallHintParamViolation
 
 PROMPT = "The capital of France is"
 TARGET = " Paris"
@@ -211,7 +212,7 @@ def test_public_api_defaults_to_raw_projection_only(gpt2_bridge) -> None:
         assert matrix.normalized_vocabulary_logits is None
         with pytest.raises(ValueError, match="were not requested"):
             matrix.logits(normalized=True)
-    with pytest.raises(TypeError):
+    with pytest.raises((TypeError, BeartypeCallHintParamViolation), match="normalized"):
         BackwardLens(gpt2_bridge).analyze(PROMPT, TARGET, [0], normalized=1)
 
 
