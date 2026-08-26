@@ -7,12 +7,17 @@ PATTERN = "blocks.0.attn.hook_pattern"
 
 
 def test_gpt2_compatibility_scores_use_negative_infinity(
-    gpt2_bridge_compat, gpt2_hooked_processed
+    gpt2_bridge_compat, gpt2_goldens_processed
 ) -> None:
-    """GPT-2's direct HF mask is normalized before the compatibility hook."""
-    tokens = gpt2_hooked_processed.to_tokens("The capital of France is")
+    """GPT-2's direct HF mask is normalized before the compatibility hook.
+
+    Anchored on the frozen HookedTransformer goldens rather than a live
+    HookedTransformer, matching the rest of the compatibility suite.
+    """
+    golden = gpt2_goldens_processed
+    tokens = golden.scalars["short_prompt"]
     _, bridge_cache = gpt2_bridge_compat.run_with_cache(tokens, names_filter=[SCORES])
-    _, hooked_cache = gpt2_hooked_processed.run_with_cache(tokens, names_filter=[SCORES])
+    hooked_cache = golden.tensors("activations")
 
     bridge_scores, hooked_scores = bridge_cache[SCORES], hooked_cache[SCORES]
     causal_mask = torch.isneginf(hooked_scores)
