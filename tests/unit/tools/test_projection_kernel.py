@@ -90,6 +90,30 @@ class TestOrthonormalSubspace:
 
         assert result.basis.dtype == torch.float32
         assert result.singular_values.dtype == torch.float32
+        assert result.rtol == pytest.approx(torch.finfo(dtype).eps)
+
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_low_precision_default_detects_rank_deficiency(self, dtype):
+        matrix = torch.tensor([[1.0, 1.0], [2.0, 2.0], [3.0, 3.0], [4.0, 4.0]], dtype=dtype)
+
+        result = orthonormal_subspace(matrix)
+
+        assert result.measured_rank == 1
+        assert result.rtol == pytest.approx(torch.finfo(dtype).eps)
+
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_low_precision_default_handles_realistic_ambient_dimension(self, dtype):
+        generator = torch.Generator().manual_seed(7)
+        full_rank = torch.randn(4096, 8, generator=generator, dtype=torch.float64)
+        rank_deficient = full_rank.clone()
+        rank_deficient[:, -1] = 0.3 * full_rank[:, 0] + 0.7 * full_rank[:, 1]
+
+        full_result = orthonormal_subspace(full_rank.to(dtype))
+        deficient_result = orthonormal_subspace(rank_deficient.to(dtype))
+
+        assert full_result.measured_rank == 8
+        assert deficient_result.measured_rank == 7
+        assert full_result.rtol == pytest.approx(torch.finfo(dtype).eps)
 
     @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
     def test_preserves_supported_dtype_and_cpu_device(self, dtype):
@@ -164,6 +188,19 @@ class TestProjectionKernel:
         assert result.cosines.tolist() == pytest.approx([1.0, 0.5])
         assert result.angles.tolist() == pytest.approx([0.0, math.pi / 3])
         assert result.score.item() == pytest.approx(1.25)
+
+    def test_rank_deficient_input_has_exact_score_and_angle(self):
+        rank_deficient = torch.tensor([[1.0, 2.0], [0.0, 0.0], [0.0, 0.0]], dtype=torch.float64)
+        tilted = torch.tensor([[3.0], [4.0], [0.0]], dtype=torch.float64)
+
+        result = projection_kernel(
+            orthonormal_subspace(rank_deficient), orthonormal_subspace(tilted)
+        )
+
+        assert result.rank_a == 1
+        assert result.score.item() == pytest.approx(0.36)
+        assert result.cosines.tolist() == pytest.approx([0.6])
+        assert result.angles.tolist() == pytest.approx([math.acos(0.6)])
 
     def test_nested_unequal_rank_spaces(self):
         small = orthonormal_subspace(torch.eye(4)[:, :2])
@@ -251,6 +288,8 @@ class TestProjectionKernel:
 
         assert result.score.item() == 2.0
         assert result.normalized.item() == 1.0
+        assert result.cosines.tolist() == [1.0, 1.0]
+        assert result.angles.tolist() == [0.0, 0.0]
 
     def test_rejects_large_score_bound_violation(self):
         valid = orthonormal_subspace(torch.eye(2))
@@ -266,6 +305,21 @@ class TestProjectionKernel:
 
         with pytest.raises(ValueError, match="outside its theoretical bounds"):
             projection_kernel(invalid, invalid, check_orthonormal=False)
+
+    def test_rejects_large_principal_cosine_bound_violation(self):
+        valid = orthonormal_subspace(torch.eye(2))
+        invalid = SubspaceBasis(
+            basis=torch.diag(torch.tensor([1.01, 0.1])),
+            singular_values=valid.singular_values,
+            rank=valid.rank,
+            measured_rank=valid.measured_rank,
+            rtol=valid.rtol,
+            threshold=valid.threshold,
+            input_shape=valid.input_shape,
+        )
+
+        with pytest.raises(ValueError, match="Principal-angle cosine"):
+            projection_kernel(valid, invalid, check_orthonormal=False)
 
     def test_rejects_ambient_dimension_mismatch(self):
         first = orthonormal_subspace(torch.eye(3))
@@ -293,8 +347,8 @@ class TestRandomProjectionKernelMoments:
         with pytest.raises(ValueError):
             random_projection_kernel_moments(ambient_dim, rank)
 
-    def test_seeded_monte_carlo_matches_mean(self):
-        ambient_dim, rank, samples = 8, 2, 1000
+    def test_seeded_monte_carlo_matches_moments(self):
+        ambient_dim, rank, samples = 8, 2, 5000
         generator = torch.Generator().manual_seed(17)
         first, _ = torch.linalg.qr(
             torch.randn(samples, ambient_dim, rank, generator=generator, dtype=torch.float64)
@@ -303,11 +357,14 @@ class TestRandomProjectionKernelMoments:
             torch.randn(samples, ambient_dim, rank, generator=generator, dtype=torch.float64)
         )
         overlap = torch.einsum("sdr,sdk->srk", first, second)
-        empirical_mean = overlap.square().sum(dim=(-2, -1)).mean().item()
+        scores = overlap.square().sum(dim=(-2, -1))
+        empirical_mean = scores.mean().item()
+        empirical_variance = scores.var(unbiased=False).item()
         reference = random_projection_kernel_moments(ambient_dim, rank)
         standard_error = math.sqrt(reference.variance / samples)
 
         assert empirical_mean == pytest.approx(reference.mean, abs=6 * standard_error)
+        assert empirical_variance == pytest.approx(reference.variance, rel=0.1)
 
 
 class TestPairwiseProjectionKernel:
@@ -370,6 +427,17 @@ class TestAttentionHeadSubspaceAffinity:
         assert bool(result.valid_mask.all())
         assert int(result.valid_mask.sum()) == 8
 
+    def test_forward_valid_mask_is_contiguous_and_independently_writable(self):
+        result = attention_head_subspace_affinity(SyntheticBridge((0, 3)), target_role="Q")
+
+        assert result.valid_mask.is_contiguous()
+        assert result.valid_mask[0, 0, 1, 0]
+        assert result.valid_mask[0, 1, 1, 0]
+
+        result.valid_mask[0, 0, 1, 0] = False
+
+        assert result.valid_mask[0, 1, 1, 0]
+
     def test_invalid_entries_are_zero(self):
         result = attention_head_subspace_affinity(SyntheticBridge(), target_role="Q")
 
@@ -404,6 +472,16 @@ class TestAttentionHeadSubspaceAffinity:
         assert result.target_ranks.shape == (2, 2)
         assert result.source_rank == 2
         assert result.target_rank == 2
+
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_wrapper_uses_least_precise_storage_dtype_for_default_rtol(self, dtype):
+        model = SyntheticBridge((0, 1))
+        for _, block in model.attention_blocks:
+            block.attn.W_Q = block.attn.W_Q.to(dtype=dtype)
+
+        result = attention_head_subspace_affinity(model, target_role="Q")
+
+        assert result.rtol == pytest.approx(torch.finfo(dtype).eps)
 
     def test_rank_deficiency_names_role_layer_and_head(self):
         model = SyntheticBridge()
@@ -480,6 +558,26 @@ class TestAttentionHeadSubspaceAffinity:
             attention_head_subspace_affinity(missing, target_role="K")
         with pytest.raises(ValueError, match="role K at layer 2 must contain only finite"):
             attention_head_subspace_affinity(nonfinite, target_role="K")
+
+    def test_preserves_not_implemented_error_from_weight_property(self):
+        model = SyntheticBridge()
+        original = model.attention_blocks[0][1].attn
+
+        class UnsupportedAttention:
+            W_O = original.W_O
+
+            @property
+            def W_K(self):
+                raise NotImplementedError("K weights are not supported")
+
+        model.attention_blocks[0] = (0, SyntheticBlock(UnsupportedAttention()))
+
+        with pytest.raises(
+            NotImplementedError, match="cannot expose role K at layer 0"
+        ) as exc_info:
+            attention_head_subspace_affinity(model, target_role="K")
+
+        assert isinstance(exc_info.value.__cause__, NotImplementedError)
 
     @pytest.mark.parametrize("shape", [(2, 5, 2), (1, 6, 2), (1, 5, 3)])
     def test_rejects_inconsistent_role_shapes(self, shape):

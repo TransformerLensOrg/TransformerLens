@@ -174,9 +174,16 @@ def _compute_dtype(dtype: torch.dtype) -> torch.dtype:
     return torch.float64 if dtype == torch.float64 else torch.float32
 
 
+def _rank_tolerance_dtype(dtypes: Sequence[torch.dtype]) -> torch.dtype:
+    """Return the least precise storage dtype for a shared rank tolerance."""
+    return max(dtypes, key=lambda dtype: torch.finfo(dtype).eps)
+
+
 def _validate_rtol(rtol: Optional[float], shape: Tuple[int, int], dtype: torch.dtype) -> float:
     if rtol is None:
-        return max(shape) * torch.finfo(dtype).eps
+        compute_epsilon = torch.finfo(_compute_dtype(dtype)).eps
+        storage_epsilon = torch.finfo(dtype).eps
+        return max(max(shape) * compute_epsilon, storage_epsilon)
     if isinstance(rtol, bool) or not isinstance(rtol, Real):
         raise ValueError(f"rtol must be a finite non-negative real number, got {rtol!r}")
     value = float(rtol)
@@ -204,9 +211,10 @@ def orthonormal_subspace(
     """Extract an explicitly ranked orthonormal column-space basis.
 
     Low-precision inputs are promoted to float32 before the reduced SVD. With no
-    explicit ``rtol``, numerical rank uses ``max(matrix.shape) * eps`` relative
-    to the largest singular value. An explicit ``rank`` truncates the measured
-    subspace but may not exceed its measured rank.
+    explicit ``rtol``, numerical rank uses the larger of the compute-SVD error
+    scale and one input-storage epsilon, relative to the largest singular value.
+    An explicit ``rank`` truncates the measured subspace but may not exceed its
+    measured rank.
 
     Args:
         matrix: Finite floating-point matrix with shape ``[ambient_dim, width]``.
@@ -233,7 +241,7 @@ def orthonormal_subspace(
     input_shape = (matrix.shape[0], matrix.shape[1])
     requested_rank = _validate_rank(rank, min(input_shape))
     compute_dtype = _compute_dtype(matrix.dtype)
-    effective_rtol = _validate_rtol(rtol, input_shape, compute_dtype)
+    effective_rtol = _validate_rtol(rtol, input_shape, matrix.dtype)
     work = matrix.to(dtype=compute_dtype)
     left, singular_values, _ = torch.linalg.svd(work, full_matrices=False)
     threshold = float(singular_values[0].item()) * effective_rtol
@@ -336,6 +344,27 @@ def _clamp_projection_scores(scores: torch.Tensor, upper_bound: int) -> torch.Te
     return scores.clamp(min=0.0, max=float(upper_bound))
 
 
+def _clamp_principal_cosines(cosines: torch.Tensor) -> torch.Tensor:
+    """Clamp roundoff-scale cosine violations and reject larger violations."""
+    tolerance = 100 * torch.finfo(cosines.dtype).eps * max(1, cosines.numel())
+    minimum = float(cosines.detach().min().item())
+    maximum = float(cosines.detach().max().item())
+    if minimum < -tolerance or maximum > 1 + tolerance:
+        raise ValueError(
+            "Principal-angle cosine lies outside its theoretical bounds: "
+            f"observed [{minimum:.6g}, {maximum:.6g}], expected [0, 1] "
+            f"within tolerance {tolerance:.6g}"
+        )
+    return cosines.clamp(min=0.0, max=1.0)
+
+
+def _singular_values(matrix: torch.Tensor) -> torch.Tensor:
+    """Compute singular values with an explicit MPS CPU fallback."""
+    if matrix.device.type == "mps":
+        return torch.linalg.svdvals(matrix.cpu()).to(device=matrix.device)
+    return torch.linalg.svdvals(matrix)
+
+
 def projection_kernel(
     subspace_a: SubspaceBasis,
     subspace_b: SubspaceBasis,
@@ -379,8 +408,8 @@ def projection_kernel(
 
     overlap = first.T @ second
     score = _clamp_projection_scores(overlap.square().sum(), min(subspace_a.rank, subspace_b.rank))
-    cosines = torch.linalg.svdvals(overlap)
-    angles = torch.acos(cosines.clamp(min=0.0, max=1.0))
+    cosines = _clamp_principal_cosines(_singular_values(overlap))
+    angles = torch.acos(cosines)
     denominator = math.sqrt(subspace_a.rank * subspace_b.rank)
     return ProjectionKernelResult(
         score=score,
@@ -477,6 +506,10 @@ def _read_role_matrix(model: Any, block: Any, layer: int, role: AttentionRole) -
     attribute = f"W_{role}"
     try:
         matrix = getattr(attn, attribute)
+    except NotImplementedError as error:
+        raise NotImplementedError(
+            f"{_architecture_name(model)} cannot expose role {role} at layer {layer}: {error}"
+        ) from error
     except (AttributeError, RuntimeError, ValueError) as error:
         raise ValueError(
             f"{_architecture_name(model)} cannot expose role {role} at layer {layer}: {error}"
@@ -613,11 +646,15 @@ def attention_head_subspace_affinity(
             f"{source_ambient} and {target_ambient}"
         )
 
-    dtype = source_matrices[0].dtype
-    for matrix in source_matrices[1:] + target_matrices:
+    matrices = source_matrices + target_matrices
+    tolerance_dtype = _rank_tolerance_dtype([matrix.dtype for matrix in matrices])
+    dtype = matrices[0].dtype
+    for matrix in matrices[1:]:
         dtype = torch.promote_types(dtype, matrix.dtype)
     dtype = _compute_dtype(dtype)
-    effective_rtol = _validate_rtol(rtol, (source_ambient, max(source_width, target_width)), dtype)
+    effective_rtol = _validate_rtol(
+        rtol, (source_ambient, max(source_width, target_width)), tolerance_dtype
+    )
     requested_rank = _validate_rank(rank, min(source_ambient, source_width, target_width))
     source_rank = source_width if requested_rank is None else requested_rank
     target_rank = target_width if requested_rank is None else requested_rank
@@ -659,7 +696,7 @@ def attention_head_subspace_affinity(
     if validated_layer_order == "forward":
         layer_tensor = torch.tensor(layer_indices, device=result_device)
         layer_mask = layer_tensor[:, None] < layer_tensor[None, :]
-        valid_mask = layer_mask[:, None, :, None].expand_as(scores)
+        valid_mask = layer_mask[:, None, :, None].expand_as(scores).contiguous()
     else:
         valid_mask = torch.ones_like(scores, dtype=torch.bool)
     scores = torch.where(valid_mask, scores, torch.zeros_like(scores))
