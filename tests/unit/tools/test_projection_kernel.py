@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 import torch
+from beartype.roar import BeartypeCallHintParamViolation
 
 from transformer_lens.tools.analysis.projection_kernel import (
     SubspaceBasis,
@@ -14,6 +15,12 @@ from transformer_lens.tools.analysis.projection_kernel import (
     projection_kernel,
     random_projection_kernel_moments,
 )
+
+
+def test_analysis_exports_are_alphabetized():
+    from transformer_lens.tools import analysis
+
+    assert analysis.__all__ == sorted(analysis.__all__)
 
 
 class SyntheticAttention:
@@ -124,11 +131,21 @@ class TestOrthonormalSubspace:
         assert result.basis.device == torch.device("cpu")
 
     @pytest.mark.parametrize(
+        "matrix",
+        [
+            [[1.0]],
+            torch.ones(3),
+            torch.ones(2, 2, dtype=torch.int64),
+            torch.ones(2, 2, dtype=torch.complex64),
+        ],
+    )
+    def test_runtime_typecheck_rejects_invalid_matrices(self, matrix):
+        with pytest.raises(BeartypeCallHintParamViolation):
+            orthonormal_subspace(matrix)
+
+    @pytest.mark.parametrize(
         ("matrix", "message"),
         [
-            (torch.ones(3), "two-dimensional"),
-            (torch.ones(2, 2, dtype=torch.int64), "floating-point"),
-            (torch.ones(2, 2, dtype=torch.complex64), "floating-point"),
             (torch.empty(0, 2), "non-empty"),
             (torch.tensor([[1.0, float("nan")]]), "finite"),
             (torch.zeros(2, 2), "numerical rank is zero"),

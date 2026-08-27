@@ -49,8 +49,8 @@ from transformer_lens.tools.analysis.projection_kernel import (
 )
 
 __all__ = [
-    "DirectLogitAttribution",
     "AttentionHeadRef",
+    "DirectLogitAttribution",
     "HeadAffinityPair",
     "HeadAffinityResult",
     "JSpaceDecomposition",

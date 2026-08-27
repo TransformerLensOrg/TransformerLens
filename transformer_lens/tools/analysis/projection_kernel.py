@@ -13,6 +13,7 @@ from numbers import Real
 from typing import Any, List, Literal, Optional, Sequence, Tuple, cast
 
 import torch
+from jaxtyping import Bool, Float, Int
 
 AttentionRole = Literal["Q", "K", "V", "O"]
 LayerOrder = Literal["forward", "all"]
@@ -35,8 +36,8 @@ class SubspaceBasis:
         input_shape: Shape of the matrix from which the basis was extracted.
     """
 
-    basis: torch.Tensor
-    singular_values: torch.Tensor
+    basis: Float[torch.Tensor, "ambient rank"]
+    singular_values: Float[torch.Tensor, "spectrum"]
     rank: int
     measured_rank: int
     rtol: float
@@ -53,10 +54,10 @@ class SubspaceBasis:
 class ProjectionKernelResult:
     """Projection Kernel score and its principal-angle decomposition."""
 
-    score: torch.Tensor
-    normalized: torch.Tensor
-    cosines: torch.Tensor
-    angles: torch.Tensor
+    score: Float[torch.Tensor, ""]
+    normalized: Float[torch.Tensor, ""]
+    cosines: Float[torch.Tensor, "principal_angle"]
+    angles: Float[torch.Tensor, "principal_angle"]
     rank_a: int
     rank_b: int
     ambient_dim: int
@@ -104,19 +105,23 @@ class HeadAffinityResult:
     Score tensors have shape
     ``[source_layer, source_head, target_layer, target_head]``. Layer index
     tuples map tensor positions to original model block numbers.
+
+    ``source_ranks`` and ``target_ranks`` are measured numerical ranks for each
+    head before optional truncation. Scalar ``source_rank`` and ``target_rank``
+    are the retained basis widths used for their respective roles.
     """
 
-    scores: torch.Tensor
-    normalized: torch.Tensor
-    valid_mask: torch.Tensor
+    scores: Float[torch.Tensor, "source_layer source_head target_layer target_head"]
+    normalized: Float[torch.Tensor, "source_layer source_head target_layer target_head"]
+    valid_mask: Bool[torch.Tensor, "source_layer source_head target_layer target_head"]
     source_role: AttentionRole
     target_role: AttentionRole
     source_layer_indices: Tuple[int, ...]
     target_layer_indices: Tuple[int, ...]
     source_head_kind: HeadKind
     target_head_kind: HeadKind
-    source_ranks: torch.Tensor
-    target_ranks: torch.Tensor
+    source_ranks: Int[torch.Tensor, "source_layer source_head"]
+    target_ranks: Int[torch.Tensor, "target_layer target_head"]
     source_rank: int
     target_rank: int
     rank: Optional[int]
@@ -203,7 +208,7 @@ def _validate_rank(rank: Optional[int], max_rank: int) -> Optional[int]:
 
 
 def orthonormal_subspace(
-    matrix: torch.Tensor,
+    matrix: Float[torch.Tensor, "ambient width"],
     *,
     rank: Optional[int] = None,
     rtol: Optional[float] = None,
