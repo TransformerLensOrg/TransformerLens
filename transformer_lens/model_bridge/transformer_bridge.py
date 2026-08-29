@@ -91,9 +91,18 @@ def _storage_group_keys(state_dict: dict[str, torch.Tensor]) -> set[str]:
     same-size tied pair (e.g. tied embed/unembed weights, #1725) -- none of
     which reliably show up via ``Tensor._base``, since wrapping in
     ``nn.Parameter`` doesn't preserve that tracking here.
+
+    Meta tensors are excluded from the comparison: every meta tensor reports
+    ``untyped_storage().data_ptr() == 0`` (it has no real backing memory), so
+    comparing meta tensors by data pointer would spuriously group every
+    unrelated offloaded parameter in the model together. A key whose current
+    target is meta falls through to ordinary ``assign=True`` handling instead
+    (the standard way to materialize a meta tensor from a real one).
     """
     by_storage: dict[int, list[str]] = {}
     for key, tensor in state_dict.items():
+        if tensor.is_meta:
+            continue
         by_storage.setdefault(tensor.untyped_storage().data_ptr(), []).append(key)
     return {key for keys in by_storage.values() if len(keys) > 1 for key in keys}
 
@@ -4451,9 +4460,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 )
             else:
                 if tuple(target.shape) != tuple(value.shape):
-                    problems.append(
-                        f"shape {tuple(value.shape)} != expected {tuple(target.shape)}"
-                    )
+                    problems.append(f"shape {tuple(value.shape)} != expected {tuple(target.shape)}")
                 if target.dtype != value.dtype:
                     problems.append(f"dtype {value.dtype} != expected {target.dtype}")
                 if target.device != value.device:
@@ -4469,8 +4476,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 "storage with another parameter/buffer (e.g. a split QKV/"
                 "gate-up component's view into a combined weight, or a tied "
                 "pair like embed/unembed), so it can only be loaded via an "
-                "in-place copy, which requires an exact match.\n\t"
-                + "\n\t".join(errors)
+                "in-place copy, which requires an exact match.\n\t" + "\n\t".join(errors)
             )
 
         for target, value in copy_items.values():
