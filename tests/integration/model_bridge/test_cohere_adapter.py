@@ -17,15 +17,62 @@ from typing import Any
 
 import pytest
 import torch
-from transformers import AutoModelForCausalLM
+from transformers import AutoModelForCausalLM, CohereConfig, CohereForCausalLM
 
 from transformer_lens.model_bridge.bridge import TransformerBridge
 from transformer_lens.model_bridge.generalized_components import NormalizationBridge
 from transformer_lens.model_bridge.generalized_components.position_embeddings_attention import (
     PositionEmbeddingsAttentionBridge,
 )
+from transformer_lens.model_bridge.sources import build_bridge_from_module
 
 MODEL = "trl-internal-testing/tiny-CohereForCausalLM"
+
+
+def _tiny_cohere_bridge(logit_scale: float = 0.5) -> TransformerBridge:
+    config = CohereConfig(
+        vocab_size=32,
+        hidden_size=16,
+        intermediate_size=32,
+        num_hidden_layers=1,
+        num_attention_heads=4,
+        num_key_value_heads=2,
+        max_position_embeddings=32,
+        logit_scale=logit_scale,
+        attention_bias=False,
+        use_qk_norm=False,
+        tie_word_embeddings=True,
+        bos_token_id=1,
+        eos_token_id=2,
+        pad_token_id=0,
+    )
+    return build_bridge_from_module(
+        CohereForCausalLM(config).eval(),
+        "CohereForCausalLM",
+        hf_config=config,
+        dtype=torch.float32,
+        device="cpu",
+    )
+
+
+def _enable_fold_only_compatibility(bridge: TransformerBridge) -> None:
+    bridge.enable_compatibility_mode(
+        disable_warnings=True,
+        fold_ln=False,
+        center_writing_weights=False,
+        center_unembed=False,
+        fold_value_biases=False,
+    )
+
+
+def _process_only_logit_scale(bridge: TransformerBridge) -> None:
+    bridge.process_weights(
+        fold_ln=False,
+        center_writing_weights=False,
+        center_unembed=False,
+        fold_value_biases=False,
+        refactor_factored_attn_matrices=False,
+    )
 
 
 @pytest.fixture(scope="module")
@@ -256,6 +303,34 @@ class TestCohereLogitScaleEndToEnd:
 
         with pytest.raises(ValueError, match="process_weights"):
             lens.validate_model(cohere_bridge_processed)
+
+    def test_process_weights_preserves_forward_logits(self) -> None:
+        bridge = _tiny_cohere_bridge()
+        tokens = torch.tensor([[1, 2, 3, 4]])
+        raw_embed = bridge.embed.W_E.detach().clone()
+        raw_unembed = bridge.unembed.original_component.weight.detach().clone()
+
+        with torch.no_grad():
+            raw_logits = bridge(tokens)
+            _process_only_logit_scale(bridge)
+            processed_logits = bridge(tokens)
+
+        torch.testing.assert_close(processed_logits, raw_logits)
+        torch.testing.assert_close(bridge.embed.W_E, raw_embed)
+        torch.testing.assert_close(bridge.unembed.original_component.weight, raw_unembed * 0.5)
+        assert bridge.original_model.logit_scale == 1.0
+        assert bridge.cfg.logit_scale == 0.5
+
+    def test_compatibility_mode_preserves_forward_logits(self) -> None:
+        bridge = _tiny_cohere_bridge()
+        tokens = torch.tensor([[1, 2, 3, 4]])
+
+        with torch.no_grad():
+            raw_logits = bridge(tokens)
+            _enable_fold_only_compatibility(bridge)
+            processed_logits = bridge(tokens)
+
+        torch.testing.assert_close(processed_logits, raw_logits)
 
 
 # ---------------------------------------------------------------------------
