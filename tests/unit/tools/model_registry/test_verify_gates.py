@@ -18,8 +18,8 @@ from transformer_lens.tools.model_registry.registry_io import (
 )
 from transformer_lens.tools.model_registry.verify_models import (
     _check_phase_scores,
-    _measured_nothing,
     _extract_phase_scores,
+    _measured_nothing,
     _pass_status,
     _phases_to_run,
 )
@@ -155,7 +155,6 @@ class TestMeasuredNothing:
         assert _measured_nothing({1: 100.0, 4: None}) is False
 
 
-
 class TestPublishedParamCount:
     """The config formula bills every layer for full attention and an MLP, which
     over-counts a hybrid Mamba/attention stack about fourfold and skips the model
@@ -172,15 +171,22 @@ class TestPublishedParamCount:
 
         monkeypatch.setattr(verify_models, "published_param_count", lambda _mid: 8_889_000_000)
         monkeypatch.setattr(hf_utils, "autoconfig_with_remote_post_init_compat", _explode)
-        assert verify_models.estimate_model_params("nvidia/NVIDIA-Nemotron-Nano-9B-v2") == 8_889_000_000
+        assert (
+            verify_models.estimate_model_params("nvidia/NVIDIA-Nemotron-Nano-9B-v2")
+            == 8_889_000_000
+        )
 
     def test_falls_back_to_the_formula_when_unpublished(self, monkeypatch):
         import transformer_lens.utilities.hf_utils as hf_utils
         from transformer_lens.tools.model_registry import verify_models
 
         config = SimpleNamespace(
-            hidden_size=768, num_attention_heads=12, num_hidden_layers=12,
-            intermediate_size=3072, vocab_size=50257, hidden_act="gelu",
+            hidden_size=768,
+            num_attention_heads=12,
+            num_hidden_layers=12,
+            intermediate_size=3072,
+            vocab_size=50257,
+            hidden_act="gelu",
         )
         monkeypatch.setattr(verify_models, "published_param_count", lambda _mid: None)
         monkeypatch.setattr(
@@ -191,6 +197,7 @@ class TestPublishedParamCount:
     def test_hub_failure_returns_none_rather_than_raising(self, monkeypatch):
         """A gated repo or network blip must fall through to the formula."""
         import huggingface_hub
+
         from transformer_lens.tools.model_registry import verify_models
 
         class _Boom:

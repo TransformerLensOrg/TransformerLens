@@ -36,19 +36,27 @@ def _classify(driver, tail_line):
 
 class TestOutcomeMarkers:
     def test_masked_lm_is_not_a_failure(self, driver):
-        assert _classify(
-            driver, "Skipping HookedTransformer reference: masked-LM is not representable causally."
-        ) == "not_applicable"
+        assert (
+            _classify(
+                driver,
+                "Skipping HookedTransformer reference: masked-LM is not representable causally.",
+            )
+            == "not_applicable"
+        )
 
     def test_pinned_judge_is_not_a_failure(self, driver):
-        assert _classify(
-            driver, "P4 skipped: Qwen/Qwen2.5-0.5B is the pinned judge — cannot self-score"
-        ) == "not_applicable"
+        assert (
+            _classify(
+                driver, "P4 skipped: Qwen/Qwen2.5-0.5B is the pinned judge — cannot self-score"
+            )
+            == "not_applicable"
+        )
 
     def test_adapter_excluded_phase_is_not_a_failure(self, driver):
-        assert _classify(
-            driver, "No phase produced a score (requested [4]) — status left unchanged"
-        ) == "not_applicable"
+        assert (
+            _classify(driver, "No phase produced a score (requested [4]) — status left unchanged")
+            == "not_applicable"
+        )
 
     def test_missing_profile_beats_the_generic_marker(self, driver):
         """A profile gap also reports "No phase produced a score", but it is the

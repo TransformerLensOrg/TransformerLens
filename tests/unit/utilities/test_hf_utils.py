@@ -276,6 +276,7 @@ class TestNumericTowerCompat:
 
     def test_float_fields_still_reject_non_numbers(self) -> None:
         from huggingface_hub.errors import StrictDataclassFieldValidationError
+
         from transformer_lens.utilities.hf_utils import enable_hf_numeric_tower
 
         enable_hf_numeric_tower()
@@ -285,6 +286,7 @@ class TestNumericTowerCompat:
     def test_bool_is_not_widened_into_an_int_field(self) -> None:
         """bool is an int subclass; widening floats must not loosen that check."""
         from huggingface_hub.errors import StrictDataclassFieldValidationError
+
         from transformer_lens.utilities.hf_utils import enable_hf_numeric_tower
 
         enable_hf_numeric_tower()
@@ -293,6 +295,7 @@ class TestNumericTowerCompat:
 
     def test_is_idempotent(self) -> None:
         from huggingface_hub import dataclasses as hub_dataclasses
+
         from transformer_lens.utilities.hf_utils import enable_hf_numeric_tower
 
         enable_hf_numeric_tower()
@@ -344,6 +347,7 @@ class TestOutputAttentionsCompat:
 
     def test_unrelated_strict_error_propagates(self) -> None:
         from huggingface_hub.errors import StrictDataclassError
+
         from transformer_lens.utilities.hf_utils import (
             autoconfig_with_remote_post_init_compat,
         )
@@ -359,6 +363,7 @@ class TestOutputAttentionsCompat:
     def test_caller_choice_of_implementation_is_not_overridden(self) -> None:
         """An explicit attn_implementation means the caller has already decided."""
         from huggingface_hub.errors import StrictDataclassError
+
         from transformer_lens.utilities.hf_utils import (
             autoconfig_with_remote_post_init_compat,
         )

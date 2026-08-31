@@ -62,9 +62,7 @@ from transformer_lens.tools.model_registry.registry_io import (  # noqa: E402
 from transformer_lens.tools.model_registry.verify_models import (  # noqa: E402
     _full_and_core_phases,
 )
-from transformer_lens.utilities.architectures import (  # noqa: E402
-    classify_architecture,
-)
+from transformer_lens.utilities.architectures import classify_architecture  # noqa: E402
 
 import transformer_lens  # noqa: E402  isort:skip
 
