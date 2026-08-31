@@ -14,14 +14,12 @@ sparse-probing guide for composition with ``run_with_cache``.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
-import math
-
 import torch
 import torch.nn.functional as F
-
 
 # ---------------------------------------------------------------------------
 # Result containers
@@ -176,6 +174,7 @@ def _validate_labels(y: torch.Tensor, positive_label) -> Tuple[List[int], torch.
     # positive_label must be one of the values; y must contain exactly two values
     # Handle bool y: values are 0/1 internally but positive_label may be True/False/0/1
     # Normalise y to int64 for bookkeeping
+    pos_int: int = 0
     if y.dtype == torch.bool:
         y_int = y.to(torch.int64)
         # map positive_label to 0/1 if it's bool
@@ -188,7 +187,9 @@ def _validate_labels(y: torch.Tensor, positive_label) -> Tuple[List[int], torch.
             except Exception as e:
                 raise TypeError(f"positive_label {positive_label!r} not in y values") from e
             if pos_int not in (0, 1):
-                raise ValueError(f"positive_label {positive_label!r} not in y values (bool y has 0/1)")
+                raise ValueError(
+                    f"positive_label {positive_label!r} not in y values (bool y has 0/1)"
+                )
         labels = [0, 1]
         # check exactly two values present
         uniq = torch.unique(y_int)
@@ -212,7 +213,7 @@ def _validate_labels(y: torch.Tensor, positive_label) -> Tuple[List[int], torch.
         pos_candidates = [positive_label]
     # also try int coercion
     found = False
-    pos_int: int = 0
+    pos_int = 0
     for c in uniq.tolist():
         if c == positive_label or (isinstance(positive_label, (int,)) and c == int(positive_label)):
             found = True
@@ -428,7 +429,14 @@ def _fit_logistic_lbfgs(
         )
 
     # Check w,b finite already
-    return w.detach(), float(b.detach().item()), float(objective), float(grad_norm), int(n_iter_val), bool(converged)
+    return (
+        w.detach(),
+        float(b.detach().item()),
+        float(objective),
+        float(grad_norm),
+        int(n_iter_val),
+        bool(converged),
+    )
 
 
 def _compute_metrics(
@@ -446,7 +454,9 @@ def _compute_metrics(
     prec = tp / (tp + fp) if (tp + fp) > 0 else 0.0
     rec = tp / (tp + fn) if (tp + fn) > 0 else 0.0
     f1 = (2 * prec * rec / (prec + rec)) if (prec + rec) > 0 else 0.0
-    return SparseProbeMetrics(accuracy=acc, precision=prec, recall=rec, f1=f1, tp=tp, tn=tn, fp=fp, fn=fn)
+    return SparseProbeMetrics(
+        accuracy=acc, precision=prec, recall=rec, f1=f1, tp=tp, tn=tn, fp=fp, fn=fn
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -531,10 +541,14 @@ def fit_sparse_probe(
     _check_class_counts(y_int)
     # Determine positive int value for internal use
     if y.dtype == torch.bool:
-        pos_int = int(bool(positive_label)) if isinstance(positive_label, bool) else int(positive_label)
+        pos_int = (
+            int(bool(positive_label)) if isinstance(positive_label, bool) else int(positive_label)
+        )
     else:
         # y_int already mapped; find which label equals positive_label
-        pos_int = int(positive_label) if not isinstance(positive_label, bool) else int(positive_label)
+        pos_int = (
+            int(positive_label) if not isinstance(positive_label, bool) else int(positive_label)
+        )
         # Ensure pos_int is one of the two labels
         if pos_int not in labels:
             # try exact match for original positive_label (e.g., if y has 2/3)
@@ -706,9 +720,17 @@ def sweep_sparse_probe(
         raise ValueError(f"ks must be strictly increasing unique, got {ks_list}")
     if len(set(ks_list)) != len(ks_list):
         raise ValueError(f"ks must not contain duplicates, got {ks_list}")
-    if not isinstance(n_random_subsets, int) or isinstance(n_random_subsets, bool) or n_random_subsets < 0:
+    if (
+        not isinstance(n_random_subsets, int)
+        or isinstance(n_random_subsets, bool)
+        or n_random_subsets < 0
+    ):
         raise ValueError(f"n_random_subsets must be nonnegative int, got {n_random_subsets}")
-    if not isinstance(n_label_shuffles, int) or isinstance(n_label_shuffles, bool) or n_label_shuffles < 0:
+    if (
+        not isinstance(n_label_shuffles, int)
+        or isinstance(n_label_shuffles, bool)
+        or n_label_shuffles < 0
+    ):
         raise ValueError(f"n_label_shuffles must be nonnegative int, got {n_label_shuffles}")
 
     labels, y_int = _validate_labels(y, positive_label)
@@ -716,9 +738,13 @@ def sweep_sparse_probe(
 
     # Resolve positive int
     if y.dtype == torch.bool:
-        pos_int = int(bool(positive_label)) if isinstance(positive_label, bool) else int(positive_label)
+        pos_int = (
+            int(bool(positive_label)) if isinstance(positive_label, bool) else int(positive_label)
+        )
     else:
-        pos_int = int(positive_label) if not isinstance(positive_label, bool) else int(positive_label)
+        pos_int = (
+            int(positive_label) if not isinstance(positive_label, bool) else int(positive_label)
+        )
         if pos_int not in labels:
             for lab in labels:
                 if lab == positive_label:
@@ -763,7 +789,9 @@ def sweep_sparse_probe(
         y_train_bin = (y_train_int == pos_int).to(torch.int64)
         y_test_bin = (y_test_int == pos_int).to(torch.int64)
         total_n = int(train_indices.shape[0])
-        class_weights = {int(lab): total_n / (2.0 * int((y_train_int == lab).sum().item())) for lab in labels}
+        class_weights = {
+            int(lab): total_n / (2.0 * int((y_train_int == lab).sum().item())) for lab in labels
+        }
 
         w, b, objective, grad_norm, n_iter, converged = _fit_logistic_lbfgs(
             Xtr_sel,
@@ -832,7 +860,15 @@ def sweep_sparse_probe(
                 Xr_tr = (Xr_tr - m) / sc
                 Xr_te = (Xr_te - m.to(Xr_te.device)) / sc.to(Xr_te.device)
             w2, b2, obj2, gn2, ni2, cv2 = _fit_logistic_lbfgs(
-                Xr_tr, y_train_bin, Xr_te, float(l2_strength), class_weights, pos_int, y_train_int, float(grad_threshold), max_iter=max_iter
+                Xr_tr,
+                y_train_bin,
+                Xr_te,
+                float(l2_strength),
+                class_weights,
+                pos_int,
+                y_train_int,
+                float(grad_threshold),
+                max_iter=max_iter,
             )
             Xte2 = Xr_te.to(dtype=torch.float64, device=torch.device("cpu"))
             logits2 = Xte2 @ w2.to(dtype=torch.float64) + b2
@@ -893,11 +929,21 @@ def sweep_sparse_probe(
                 Xs_te = (Xs_te - m.to(Xs_te.device)) / sc.to(Xs_te.device)
             y_shuf_bin = (y_shuf == pos_int).to(torch.int64)
             # class weights based on shuffled train distribution
-            cw_shuf = {int(lab): total_n / (2.0 * int((y_shuf == lab).sum().item())) for lab in labels}
+            cw_shuf = {
+                int(lab): total_n / (2.0 * int((y_shuf == lab).sum().item())) for lab in labels
+            }
             # If a class disappears after shuffle (unlikely with stratification but possible), skip?
             # y_shuf is permuted, so counts preserved; safe.
             w3, b3, obj3, gn3, ni3, cv3 = _fit_logistic_lbfgs(
-                Xs_tr, y_shuf_bin, Xs_te, float(l2_strength), cw_shuf, pos_int, y_shuf, float(grad_threshold), max_iter=max_iter
+                Xs_tr,
+                y_shuf_bin,
+                Xs_te,
+                float(l2_strength),
+                cw_shuf,
+                pos_int,
+                y_shuf,
+                float(grad_threshold),
+                max_iter=max_iter,
             )
             Xte3 = Xs_te.to(dtype=torch.float64, device=torch.device("cpu"))
             logits3 = Xte3 @ w3.to(dtype=torch.float64) + b3

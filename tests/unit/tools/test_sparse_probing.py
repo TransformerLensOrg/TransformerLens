@@ -2,10 +2,7 @@
 
 import torch
 
-from transformer_lens.tools.analysis import (
-    fit_sparse_probe,
-    sweep_sparse_probe,
-)
+from transformer_lens.tools.analysis import fit_sparse_probe, sweep_sparse_probe
 
 
 def test_selector_oracle_exact_indices():
@@ -85,8 +82,12 @@ def test_controls_deterministic_and_margins():
     assert [p.metrics.f1 for p in sweep.probes] == [p.metrics.f1 for p in sweep2.probes]
     # controls are on average below planted result (stochastic; allow outliers)
     planted_f1 = sweep.probes[0].metrics.f1
-    rand_mean = sum(rc.metrics.f1 for rc in sweep.random_controls[0]) / max(1, len(sweep.random_controls[0]))
-    shuf_mean = sum(lc.metrics.f1 for lc in sweep.label_shuffle_controls[0]) / max(1, len(sweep.label_shuffle_controls[0]))
+    rand_mean = sum(rc.metrics.f1 for rc in sweep.random_controls[0]) / max(
+        1, len(sweep.random_controls[0])
+    )
+    shuf_mean = sum(lc.metrics.f1 for lc in sweep.label_shuffle_controls[0]) / max(
+        1, len(sweep.label_shuffle_controls[0])
+    )
     assert rand_mean < planted_f1 - 0.1
     assert shuf_mean < planted_f1 - 0.1
 
