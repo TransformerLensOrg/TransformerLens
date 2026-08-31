@@ -59,6 +59,7 @@ content/compatibility_mode
 content/ssm_interpretability
 content/jacobian_lens_fitting
 content/debugging_numerical_divergence
+content/sparse_probing
 generated/demos/Main_Demo
 generated/demos/Exploratory_Analysis_Demo
 content/special_cases
