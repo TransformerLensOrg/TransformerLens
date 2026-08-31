@@ -81,6 +81,32 @@ def _resolve_attr_path(obj: nn.Module, attr_path: str) -> Optional[torch.Tensor]
     return cast(torch.Tensor, result)
 
 
+def _storage_group_keys(state_dict: dict[str, torch.Tensor]) -> set[str]:
+    """Keys whose current tensor shares underlying storage with another key's.
+
+    Covers every direction of the desync #1637 reported: a partial view onto
+    a combined weight (e.g. a split QKV/gate-up component's ``torch.tensor_split``
+    view into ``c_attn``/``gate_up_proj``), the combined weight itself (writing
+    it directly would silently orphan the views that share its storage), and a
+    same-size tied pair (e.g. tied embed/unembed weights, #1725) -- none of
+    which reliably show up via ``Tensor._base``, since wrapping in
+    ``nn.Parameter`` doesn't preserve that tracking here.
+
+    Meta tensors are excluded from the comparison: every meta tensor reports
+    ``untyped_storage().data_ptr() == 0`` (it has no real backing memory), so
+    comparing meta tensors by data pointer would spuriously group every
+    unrelated offloaded parameter in the model together. A key whose current
+    target is meta falls through to ordinary ``assign=True`` handling instead
+    (the standard way to materialize a meta tensor from a real one).
+    """
+    by_storage: dict[int, list[str]] = {}
+    for key, tensor in state_dict.items():
+        if tensor.is_meta:
+            continue
+        by_storage.setdefault(tensor.untyped_storage().data_ptr(), []).append(key)
+    return {key for keys in by_storage.values() if len(keys) > 1 for key in keys}
+
+
 class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
     """Torch-backed bridge: HF, vLLM-via-torch, anything that wraps an ``nn.Module``.
 
@@ -4341,7 +4367,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         Returns:
             NamedTuple with missing_keys and unexpected_keys fields
         """
-        current_state_dict = self.original_model.state_dict()
+        current_state_dict = self.original_model.state_dict(keep_vars=True)
         clean_to_actual = {}
         for actual_key in current_state_dict.keys():
             if actual_key != "_original_component":
@@ -4392,9 +4418,73 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 )
             )
 
-        result = self.original_model.load_state_dict(mapped_state_dict, strict=False, assign=assign)
-        if assign:
-            refresh_container_state_owners(self)
+        if not assign:
+            result = self.original_model.load_state_dict(
+                mapped_state_dict, strict=False, assign=False
+            )
+            return type(result)(missing_keys=missing_keys, unexpected_keys=unexpected_keys)
+
+        # assign=True normally makes nn.Module.load_state_dict *replace* each
+        # target parameter/buffer with the incoming tensor rather than copying
+        # into existing storage. Any key whose current tensor shares storage
+        # with another key -- a split QKV/gate-up component's view into a
+        # combined weight, the combined weight itself (writing it directly
+        # would silently orphan the views), or a tied pair like embed/unembed
+        # -- would desync from whatever it shares storage with: the bridge
+        # might keep reading a stale value, or a live view not even part of
+        # this load would silently keep the pre-load data while
+        # original_model.state_dict() (what save_pretrained() exports) shows
+        # the new one. Route every key in a storage-sharing group through an
+        # explicit in-place .data.copy_() instead, regardless of the caller's
+        # assign=True, so those relationships survive.
+        shared_keys = _storage_group_keys(current_state_dict)
+
+        copy_items: dict[str, tuple[torch.Tensor, torch.Tensor]] = {}
+        passthrough_items = {}
+        errors = []
+        for key, value in mapped_state_dict.items():
+            target = current_state_dict.get(key)
+            if target is None or key not in shared_keys:
+                passthrough_items[key] = value
+                continue
+            problems = []
+            if target.is_meta:
+                # copy_() onto a meta tensor silently no-ops rather than
+                # raising, so a meta target would otherwise report a
+                # successful load while never actually materializing.
+                problems.append(
+                    "the current parameter is a meta tensor; an in-place copy "
+                    "can't materialize it, and this key shares storage with "
+                    "another parameter so ordinary assign=True replacement "
+                    "isn't safe here either"
+                )
+            else:
+                if tuple(target.shape) != tuple(value.shape):
+                    problems.append(f"shape {tuple(value.shape)} != expected {tuple(target.shape)}")
+                if target.dtype != value.dtype:
+                    problems.append(f"dtype {value.dtype} != expected {target.dtype}")
+                if target.device != value.device:
+                    problems.append(f"device {value.device} != expected {target.device}")
+            if problems:
+                errors.append(f'"{key}": ' + "; ".join(problems))
+            else:
+                copy_items[key] = (target, value)
+
+        if errors:
+            raise RuntimeError(
+                "Cannot load the following key(s) with assign=True: each shares "
+                "storage with another parameter/buffer (e.g. a split QKV/"
+                "gate-up component's view into a combined weight, or a tied "
+                "pair like embed/unembed), so it can only be loaded via an "
+                "in-place copy, which requires an exact match.\n\t" + "\n\t".join(errors)
+            )
+
+        for target, value in copy_items.values():
+            with torch.no_grad():
+                target.data.copy_(value)
+
+        result = self.original_model.load_state_dict(passthrough_items, strict=False, assign=True)
+        refresh_container_state_owners(self)
         return type(result)(missing_keys=missing_keys, unexpected_keys=unexpected_keys)
 
     def get_params(self):
