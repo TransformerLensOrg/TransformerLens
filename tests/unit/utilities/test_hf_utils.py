@@ -226,3 +226,232 @@ class TestRemotePostInitCompat:
         first = cls.__post_init__
         make_post_init_kwarg_tolerant(cls)
         assert cls.__post_init__ is first
+
+
+class TestNumericTowerCompat:
+    """huggingface_hub's strict dataclasses type-check with a bare isinstance, so
+    an int in a float field is rejected where PEP 484 accepts it. Real configs
+    write integral values -- ai-sage/GigaChat3-10B-A1.8B ships
+    ``"routed_scaling_factor": 1`` -- and without the shim they cannot load.
+    """
+
+    @staticmethod
+    def _strict_class():
+        from dataclasses import make_dataclass
+
+        from huggingface_hub.dataclasses import strict
+
+        # make_dataclass, not a class body: this module postpones annotations, and
+        # hub's validator skips any field whose type arrives as a string.
+        return strict(make_dataclass("_Scaled", [("scale", float), ("enabled", int, 0)]))
+
+    @pytest.fixture
+    def unpatched(self):
+        """Hub's own validator, restored for the duration of the test.
+
+        transformer_lens installs the shim at import, so the premise can only be
+        shown by putting the original back.
+        """
+        from huggingface_hub import dataclasses as hub_dataclasses
+
+        installed = hub_dataclasses._validate_simple_type
+        original = getattr(installed, "__wrapped__", installed)
+        hub_dataclasses._validate_simple_type = original
+        yield
+        hub_dataclasses._validate_simple_type = installed
+
+    def test_int_in_float_field_is_rejected_without_the_shim(self, unpatched) -> None:
+        """The premise: if this stops failing, huggingface_hub fixed it upstream
+        and the shim should be retired."""
+        from huggingface_hub.errors import StrictDataclassFieldValidationError
+
+        with pytest.raises(StrictDataclassFieldValidationError, match="expected float, got int"):
+            self._strict_class()(scale=1)
+
+    def test_int_in_float_field_is_accepted(self) -> None:
+        from transformer_lens.utilities.hf_utils import enable_hf_numeric_tower
+
+        enable_hf_numeric_tower()
+        assert self._strict_class()(scale=1).scale == 1
+
+    def test_float_fields_still_reject_non_numbers(self) -> None:
+        from huggingface_hub.errors import StrictDataclassFieldValidationError
+        from transformer_lens.utilities.hf_utils import enable_hf_numeric_tower
+
+        enable_hf_numeric_tower()
+        with pytest.raises(StrictDataclassFieldValidationError):
+            self._strict_class()(scale="1.0")
+
+    def test_bool_is_not_widened_into_an_int_field(self) -> None:
+        """bool is an int subclass; widening floats must not loosen that check."""
+        from huggingface_hub.errors import StrictDataclassFieldValidationError
+        from transformer_lens.utilities.hf_utils import enable_hf_numeric_tower
+
+        enable_hf_numeric_tower()
+        with pytest.raises(StrictDataclassFieldValidationError):
+            self._strict_class()(scale=1.0, enabled=True)
+
+    def test_is_idempotent(self) -> None:
+        from huggingface_hub import dataclasses as hub_dataclasses
+        from transformer_lens.utilities.hf_utils import enable_hf_numeric_tower
+
+        enable_hf_numeric_tower()
+        first = hub_dataclasses._validate_simple_type
+        enable_hf_numeric_tower()
+        assert hub_dataclasses._validate_simple_type is first
+
+
+class TestOutputAttentionsCompat:
+    """A repo that pins flash_attention_2 in its config cannot also be asked for
+    output_attentions (zstanjj/HTML-Pruner-Phi-3.8B). The bridge needs attention
+    outputs and loads the model eager anyway, so the config request should follow.
+    """
+
+    @staticmethod
+    def _raiser(message, validator="validate_output_attentions", sentinel="config"):
+        """An AutoConfig double that fails until asked for eager attention."""
+        from huggingface_hub.errors import StrictDataclassClassValidationError
+
+        calls = []
+
+        class _AutoConfig:
+            @staticmethod
+            def from_pretrained(model_id, **kwargs):
+                calls.append(kwargs)
+                if kwargs.get("attn_implementation") == "eager":
+                    return sentinel
+                raise StrictDataclassClassValidationError(
+                    validator=validator, cause=ValueError(message)
+                )
+
+        return _AutoConfig, calls
+
+    def test_retries_with_eager_attention(self) -> None:
+        from transformer_lens.utilities.hf_utils import (
+            autoconfig_with_remote_post_init_compat,
+        )
+
+        auto_config, calls = self._raiser(
+            "The `output_attentions` attribute is not supported when using the "
+            "`attn_implementation` set to flash_attention_2."
+        )
+        result = autoconfig_with_remote_post_init_compat(
+            "repo/pinned-fa2", auto_config=auto_config, output_attentions=True
+        )
+        assert result == "config"
+        assert calls[0] == {"output_attentions": True}
+        assert calls[1]["attn_implementation"] == "eager"
+
+    def test_unrelated_strict_error_propagates(self) -> None:
+        from huggingface_hub.errors import StrictDataclassError
+        from transformer_lens.utilities.hf_utils import (
+            autoconfig_with_remote_post_init_compat,
+        )
+
+        auto_config, _ = self._raiser(
+            "some unrelated validator complaint", validator="validate_rope_parameters"
+        )
+        with pytest.raises(StrictDataclassError):
+            autoconfig_with_remote_post_init_compat(
+                "repo/other", auto_config=auto_config, output_attentions=True
+            )
+
+    def test_caller_choice_of_implementation_is_not_overridden(self) -> None:
+        """An explicit attn_implementation means the caller has already decided."""
+        from huggingface_hub.errors import StrictDataclassError
+        from transformer_lens.utilities.hf_utils import (
+            autoconfig_with_remote_post_init_compat,
+        )
+
+        auto_config, _ = self._raiser("output_attentions is not supported with fa2")
+        with pytest.raises(StrictDataclassError):
+            autoconfig_with_remote_post_init_compat(
+                "repo/pinned-fa2",
+                auto_config=auto_config,
+                output_attentions=True,
+                attn_implementation="sdpa",
+            )
+
+
+class TestSpecialTokenCompat:
+    """Some repos declare special tokens their own tokenizer.json already contains
+    (catherinearnett/B-GPT lists ~1200 of them), and re-adding raises TypeError.
+    The serialized fast tokenizer is intact, so rebuild from it.
+    """
+
+    @pytest.fixture
+    def repo_files(self, tmp_path, monkeypatch):
+        """A tokenizer.json + config on disk, standing in for a hub repo."""
+        import json as json_mod
+
+        from tokenizers import Tokenizer, models, pre_tokenizers
+
+        vocab = {"[CLS]": 0, "[SEP]": 1, "<pad>": 2, "hello": 3, "world": 4}
+        tokenizer = Tokenizer(models.WordLevel(vocab=vocab, unk_token="[CLS]"))
+        tokenizer.pre_tokenizer = pre_tokenizers.Whitespace()
+        tokenizer_file = tmp_path / "tokenizer.json"
+        tokenizer.save(str(tokenizer_file))
+        config_file = tmp_path / "tokenizer_config.json"
+        config_file.write_text(
+            json_mod.dumps(
+                {
+                    "bos_token": "[CLS]",
+                    "eos_token": {"content": "[SEP]", "special": True},
+                    "pad_token": "<pad>",
+                    "model_max_length": 512,
+                }
+            )
+        )
+        monkeypatch.setattr(
+            hf_utils,
+            "hf_hub_download",
+            lambda repo, filename, **kw: str(tmp_path / filename),
+        )
+        return tmp_path
+
+    @staticmethod
+    def _rejecting_tokenizer(message):
+        class _AutoTokenizer:
+            @staticmethod
+            def from_pretrained(model_id, **kwargs):
+                raise TypeError(message)
+
+        return _AutoTokenizer
+
+    def test_rebuilds_from_tokenizer_json(self, repo_files) -> None:
+        from transformer_lens.utilities.hf_utils import (
+            autotokenizer_with_special_token_compat,
+        )
+
+        auto = self._rejecting_tokenizer(
+            "argument 'special_tokens': Expected Union[Tuple[str, int], Tuple[int, str], dict]"
+        )
+        tokenizer = autotokenizer_with_special_token_compat("repo/b-gpt", auto_tokenizer=auto)
+        assert tokenizer("hello world")["input_ids"] == [3, 4]
+        # Roles from tokenizer_config must survive the rebuild, dict form included.
+        assert tokenizer.bos_token == "[CLS]"
+        assert tokenizer.eos_token == "[SEP]"
+        assert tokenizer.pad_token == "<pad>"
+
+    def test_unrelated_type_error_propagates(self, repo_files) -> None:
+        from transformer_lens.utilities.hf_utils import (
+            autotokenizer_with_special_token_compat,
+        )
+
+        auto = self._rejecting_tokenizer("unexpected keyword argument 'foo'")
+        with pytest.raises(TypeError, match="foo"):
+            autotokenizer_with_special_token_compat("repo/other", auto_tokenizer=auto)
+
+    def test_repo_without_tokenizer_json_reraises(self, monkeypatch) -> None:
+        """Nothing to rebuild from: the original error must stand."""
+        from transformer_lens.utilities.hf_utils import (
+            autotokenizer_with_special_token_compat,
+        )
+
+        def _missing(*args, **kwargs):
+            raise OSError("404")
+
+        monkeypatch.setattr(hf_utils, "hf_hub_download", _missing)
+        auto = self._rejecting_tokenizer("argument 'special_tokens': Expected Union[...]")
+        with pytest.raises(TypeError, match="special_tokens"):
+            autotokenizer_with_special_token_compat("repo/no-json", auto_tokenizer=auto)
