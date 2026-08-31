@@ -62,11 +62,16 @@ class DeepSeekV3ArchitectureAdapter(ArchitectureAdapter):
                         name="self_attn",
                         config=self.cfg,
                         submodules={
-                            "q_a_proj": LinearBridge(name="q_a_proj"),
+                            # Two-stage LoRA Q compression, built only when
+                            # q_lora_rank is set; a config that leaves it null
+                            # gets a single q_proj instead, and MLAAttentionBridge
+                            # already forwards down whichever path exists.
+                            "q_a_proj": LinearBridge(name="q_a_proj", optional=True),
                             "q_a_layernorm": RMSNormalizationBridge(
-                                name="q_a_layernorm", config=self.cfg
+                                name="q_a_layernorm", config=self.cfg, optional=True
                             ),
-                            "q_b_proj": LinearBridge(name="q_b_proj"),
+                            "q_b_proj": LinearBridge(name="q_b_proj", optional=True),
+                            "q_proj": LinearBridge(name="q_proj", optional=True),
                             "kv_a_proj_with_mqa": LinearBridge(name="kv_a_proj_with_mqa"),
                             "kv_a_layernorm": RMSNormalizationBridge(
                                 name="kv_a_layernorm", config=self.cfg

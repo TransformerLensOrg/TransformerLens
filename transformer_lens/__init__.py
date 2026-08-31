@@ -35,6 +35,12 @@ from .SVDInterpreter import SVDInterpreter
 
 import os as _os  # noqa: E402
 
+# Unconditional: without it, any model whose config writes an integral value for
+# a float field cannot be loaded at all. See enable_hf_numeric_tower.
+from .utilities.hf_utils import enable_hf_numeric_tower as _enable_hf_numeric_tower  # noqa: E402
+
+_enable_hf_numeric_tower()
+
 if _os.environ.get("TRANSFORMERLENS_HF_RETRY") == "1":
     from .utilities.hf_utils import enable_hf_retry as _enable_hf_retry  # noqa: E402
 
