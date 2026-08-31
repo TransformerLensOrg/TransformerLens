@@ -5,7 +5,7 @@ import pytest
 import torch
 from torch import nn
 
-import transformer_lens.utils as utils
+from transformer_lens import utilities as utils
 from transformer_lens import HookedTransformer
 
 ref_tensor = torch.tensor([[1, 2, 3, 4, 5], [6, 7, 8, 9, 10]])

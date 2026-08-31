@@ -1,6 +1,6 @@
 import torch
 
-from transformer_lens import utils
+from transformer_lens import utilities as utils
 from transformer_lens.config import HookedTransformerConfig
 from transformer_lens.HookedTransformer import HookedTransformer
 

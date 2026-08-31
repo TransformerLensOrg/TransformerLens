@@ -15,6 +15,7 @@ from transformer_lens.tools.analysis.projection_kernel import (
     projection_kernel,
     random_projection_kernel_moments,
 )
+from tests.typecheck_errors import TYPECHECK_ERRORS
 
 
 def test_analysis_exports_are_alphabetized():
@@ -140,7 +141,7 @@ class TestOrthonormalSubspace:
         ],
     )
     def test_runtime_typecheck_rejects_invalid_matrices(self, matrix):
-        with pytest.raises(BeartypeCallHintParamViolation):
+        with pytest.raises(TYPECHECK_ERRORS):
             orthonormal_subspace(matrix)
 
     @pytest.mark.parametrize(

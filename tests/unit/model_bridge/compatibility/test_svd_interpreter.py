@@ -4,6 +4,7 @@ from beartype.roar import BeartypeCallHintParamViolation
 
 from transformer_lens import SVDInterpreter
 from transformer_lens.model_bridge import TransformerBridge
+from tests.typecheck_errors import TYPECHECK_ERRORS
 
 MODEL = "Intel/tiny-random-gpt2"  # Use a model that works with TransformerBridge
 VECTOR_TYPES = ["OV", "w_in", "w_out"]
@@ -103,7 +104,7 @@ def test_svd_interpreter_fails_on_invalid_vector_type(model):
     from typeguard import TypeCheckError
 
     svd_interpreter = SVDInterpreter(model)
-    with pytest.raises((BeartypeCallHintParamViolation, TypeCheckError)):
+    with pytest.raises(TYPECHECK_ERRORS):
         svd_interpreter.get_singular_vectors("test", layer_index=0, num_vectors=4, head_index=0)
 
 

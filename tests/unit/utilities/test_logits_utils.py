@@ -8,6 +8,7 @@ from transformer_lens.utilities.logits_utils import (
     logits_to_df,
     sample_logits,
 )
+from tests.typecheck_errors import TYPECHECK_ERRORS
 
 
 class _StubTokenizer:
@@ -80,9 +81,12 @@ class TestLogitsToDf:
 
     def test_rejects_non_1d_input(self):
         # Shape constraint enforced by jaxtyping/beartype on Float[Tensor, "d_vocab"].
+        # jaxtyping <0.3 let beartype's violation propagate; >=0.3 re-raises its own
+        # TypeCheckError around it. The rejection is what matters, not which wrapper.
         from beartype.roar import BeartypeCallHintParamViolation
+        from jaxtyping import TypeCheckError
 
-        with pytest.raises(BeartypeCallHintParamViolation):
+        with pytest.raises(TYPECHECK_ERRORS):
             logits_to_df(torch.zeros(3, 4))
 
 
