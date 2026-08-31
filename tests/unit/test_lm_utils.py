@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import pytest
 import torch
-from beartype.roar import BeartypeCallHintParamViolation
 
-from transformer_lens.utilities.lm_utils import lm_accuracy, lm_cross_entropy_loss
 from tests.typecheck_errors import TYPECHECK_ERRORS
+from transformer_lens.utilities.lm_utils import lm_accuracy, lm_cross_entropy_loss
 
 
 def test_lm_cross_entropy_loss_rejects_mismatched_attention_mask() -> None:

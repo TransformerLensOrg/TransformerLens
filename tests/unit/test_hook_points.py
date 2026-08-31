@@ -1,7 +1,7 @@
 from unittest import mock
 
-from transformer_lens.hook_points import HookPoint
 from tests.typecheck_errors import TYPECHECK_ERRORS
+from transformer_lens.hook_points import HookPoint
 
 
 def setup_hook_point_and_hook():
@@ -460,7 +460,6 @@ class TestHookPointHasHooks:
         """Test that invalid direction parameter raises error (caught by type checking)."""
         # Note: beartype catches this at the parameter level before reaching the ValueError
         import pytest
-        from beartype.roar import BeartypeCallHintParamViolation
 
         with pytest.raises(TYPECHECK_ERRORS):
             self.hook_point.has_hooks(dir="invalid")  # type: ignore

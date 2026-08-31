@@ -5,8 +5,8 @@ import pytest
 import torch
 from torch import nn
 
-from transformer_lens import utilities as utils
 from transformer_lens import HookedTransformer
+from transformer_lens import utilities as utils
 
 ref_tensor = torch.tensor([[1, 2, 3, 4, 5], [6, 7, 8, 9, 10]])
 shape = ref_tensor.shape

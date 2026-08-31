@@ -5,8 +5,8 @@ from types import SimpleNamespace
 
 import pytest
 import torch
-from beartype.roar import BeartypeCallHintParamViolation
 
+from tests.typecheck_errors import TYPECHECK_ERRORS
 from transformer_lens.tools.analysis.projection_kernel import (
     SubspaceBasis,
     _pairwise_projection_kernel,
@@ -15,7 +15,6 @@ from transformer_lens.tools.analysis.projection_kernel import (
     projection_kernel,
     random_projection_kernel_moments,
 )
-from tests.typecheck_errors import TYPECHECK_ERRORS
 
 
 def test_analysis_exports_are_alphabetized():

@@ -4,8 +4,8 @@ import numpy as np
 import pytest
 import torch
 
-from transformer_lens import utilities as utils
 from transformer_lens import HookedTransformer
+from transformer_lens import utilities as utils
 
 MODEL = "solu-1l"
 

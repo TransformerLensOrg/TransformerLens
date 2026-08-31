@@ -6,13 +6,13 @@ from unittest.mock import Mock, patch
 import pytest
 import torch
 
+from transformer_lens.utilities import get_device, warn_if_mps
 from transformer_lens.utilities.devices import (
     ModelWithCfg,
     get_device,
     move_to_and_update_config,
     warn_if_mps,
 )
-from transformer_lens.utilities import get_device, warn_if_mps
 
 
 class MockModelWithCfg:
