@@ -73,8 +73,9 @@ _KNOWN_DEAD_ALIASES = {
     "LlavaForConditionalGeneration": "audit H15 — vision-encoder layer submodules unwired",
     "LlavaNextForConditionalGeneration": "audit H15 + M24 — vision encoder + tiling opaque",
     "LlavaOnevisionForConditionalGeneration": "audit H15 + M25 — vision encoder + video frames opaque",
-    "Gemma3ForConditionalGeneration": "audit H15 — multimodal vision encoder opaque",
-    "Idefics3ForConditionalGeneration": "vision-encoder layer submodules unwired (same Siglip opacity as Llava/Gemma3 multimodal)",
+    # Gemma3 and Idefics3 both build their tower from SiglipVisionEncoderBridge,
+    # whose layers now wire attn/mlp submodules, so their aliases resolve. The
+    # Llava family above still routes through its own opaque vision path.
 }
 
 
