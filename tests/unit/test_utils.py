@@ -465,6 +465,9 @@ class TestTokenizeAndConcatenate:
             streaming=False,
             max_length=64,
             add_bos_token=False,
+            # Chunk boundaries are what's under test; any num_proc makes datasets
+            # fork a dill-pickling pool that chokes on pytest's captured stdout.
+            num_proc=None,
         )
 
         # Tokenize the same text cleanly in one shot (no chunking)

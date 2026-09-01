@@ -27,7 +27,7 @@ def tokenize_and_concatenate(
     max_length: int = 1024,
     column_name: str = "text",
     add_bos_token: bool = True,
-    num_proc: int = 10,
+    num_proc: Optional[int] = 10,
     set_format: bool = True,
 ) -> Dataset | IterableDataset:
     """Tokenize each document, join with token-level EOS between docs, and reshape into ``(batch, sequence_length)`` rows.
@@ -44,7 +44,9 @@ def tokenize_and_concatenate(
         max_length (int, optional): The length of the context window of the sequence. Defaults to 1024.
         column_name (str, optional): The name of the text column in the dataset. Defaults to 'text'.
         add_bos_token (bool, optional): Whether to prepend ``bos_token_id`` to each output row. Defaults to True.
-        num_proc (int, optional): Number of processes for parallel tokenization. Ignored when ``streaming=True``. Defaults to 10.
+        num_proc (int, optional): Number of processes for parallel tokenization. ``None``
+            runs in-process -- datasets forks a dill-pickling pool for any int, 1 included.
+            Ignored when ``streaming=True``. Defaults to 10.
         set_format (bool, optional): If True, calls ``set_format(type="torch")`` on the result. Set False
             for ``IterableDataset`` (which doesn't support format setting); wrap the output in
             ``(torch.LongTensor(ex["tokens"]) for ex in tokenized_dataset)`` instead. Defaults to True.

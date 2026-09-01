@@ -217,6 +217,7 @@ class HookPoint(nn.Module):
                 # Call the hook once for each alias name
                 # Create a simple wrapper that acts like a HookPoint but with a different name
                 hook_result = None
+                hook_changed_output = False
                 for alias_name in alias_names:
                     # Create a view of this HookPoint with the alias name
                     hook_with_alias = _AliasedHookPoint(alias_name, self)
@@ -225,6 +226,9 @@ class HookPoint(nn.Module):
                     # If the hook modified the output, use that for subsequent calls
                     if hook_result is not None:
                         module_output = hook_result
+                        hook_changed_output = True
+                if hook_changed_output:
+                    hook_result = module_output
             else:
                 # Call the hook once with the canonical name (self)
                 hook_result = hook(module_output, hook=self)

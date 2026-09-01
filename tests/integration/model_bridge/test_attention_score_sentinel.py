@@ -18,8 +18,12 @@ def test_gpt2_compatibility_scores_use_negative_infinity(
     causal_mask = torch.isneginf(hooked_scores)
     assert causal_mask.any()
     assert torch.isneginf(bridge_scores[causal_mask]).all()
+    # The two paths reach these scores by different op sequences, so on some
+    # runners they agree to fp32 accumulation noise rather than bit-exactly.
+    # Same tolerance the sibling comparison of this hook already uses in
+    # compatibility/test_bridge_cache_behavior.py.
     torch.testing.assert_close(
-        bridge_scores[~causal_mask], hooked_scores[~causal_mask], rtol=0, atol=0
+        bridge_scores[~causal_mask], hooked_scores[~causal_mask], rtol=1e-4, atol=1e-4
     )
 
 
