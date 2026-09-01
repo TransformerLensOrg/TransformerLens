@@ -58,6 +58,7 @@ content/hook_system
 content/drivers
 content/compatibility_mode
 content/ssm_interpretability
+content/projection_kernel
 content/jacobian_lens_fitting
 content/debugging_numerical_divergence
 generated/demos/Main_Demo

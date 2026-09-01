@@ -3,8 +3,8 @@
 Tests cover:
 - Config flags set by the adapter
 - Component mapping structure (bridge types and HF module names)
-- The MLA attention submodule mapping (V3 always compresses Q, so unlike V2
-  every Q/KV projection is required and there is no direct ``q_proj`` fallback)
+- The MLA attention submodule mapping (Q is compressed only when q_lora_rank is
+  set, so like V2 both Q paths are mapped and optional; the KV path is required)
 - The MoE mapping, including the bridged (optional) router ``gate``
 - Weight conversion key set
 
@@ -158,8 +158,8 @@ class TestDeepSeekV3AdapterComponentMapping:
 class TestDeepSeekV3AdapterMLAAttention:
     """Tests the Multi-Head Latent Attention submodule mapping.
 
-    Unlike V2, V3 always compresses Q via the two-stage LoRA path, so there is
-    no direct ``q_proj`` fallback and every projection is required.
+    HF builds the two-stage LoRA Q path only when ``q_lora_rank`` is set and a
+    single ``q_proj`` otherwise, so both are mapped and optional -- as in V2.
     """
 
     def test_attention_submodule_keys(self, adapter: DeepSeekV3ArchitectureAdapter) -> None:
@@ -168,6 +168,7 @@ class TestDeepSeekV3AdapterMLAAttention:
             "q_a_proj",
             "q_a_layernorm",
             "q_b_proj",
+            "q_proj",
             "kv_a_proj_with_mqa",
             "kv_a_layernorm",
             "kv_b_proj",
@@ -194,16 +195,23 @@ class TestDeepSeekV3AdapterMLAAttention:
         assert isinstance(attn.submodules["q_a_layernorm"], RMSNormalizationBridge)
         assert isinstance(attn.submodules["kv_a_layernorm"], RMSNormalizationBridge)
 
-    def test_no_direct_q_proj(self, adapter: DeepSeekV3ArchitectureAdapter) -> None:
-        """V3 has no V2-Lite-style direct Q projection."""
+    def test_direct_q_proj_is_mapped(self, adapter: DeepSeekV3ArchitectureAdapter) -> None:
+        """A null q_lora_rank (ai-sage/GigaChat3-10B-A1.8B) builds a single q_proj."""
         attn = adapter.component_mapping["blocks"].submodules["attn"]
-        assert "q_proj" not in attn.submodules
+        assert isinstance(attn.submodules["q_proj"], LinearBridge)
+        assert attn.submodules["q_proj"].name == "q_proj"
 
-    def test_all_projections_required(self, adapter: DeepSeekV3ArchitectureAdapter) -> None:
-        """Every attention submodule is present in all V3 layers, so none are optional."""
+    def test_q_path_submodules_are_optional(self, adapter: DeepSeekV3ArchitectureAdapter) -> None:
+        """Which Q path exists depends on q_lora_rank, so all four are optional."""
         attn = adapter.component_mapping["blocks"].submodules["attn"]
-        for key, submodule in attn.submodules.items():
-            assert submodule.optional is False, f"{key} should be required"
+        for key in ("q_a_proj", "q_a_layernorm", "q_b_proj", "q_proj"):
+            assert attn.submodules[key].optional is True, f"{key} should be optional"
+
+    def test_kv_path_submodules_are_required(self, adapter: DeepSeekV3ArchitectureAdapter) -> None:
+        """The KV compression path is present whichever Q path a config selects."""
+        attn = adapter.component_mapping["blocks"].submodules["attn"]
+        for key in ("kv_a_proj_with_mqa", "kv_a_layernorm", "kv_b_proj", "o"):
+            assert attn.submodules[key].optional is False, f"{key} should be required"
 
 
 # ---------------------------------------------------------------------------

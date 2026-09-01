@@ -97,6 +97,14 @@ class LlavaArchitectureAdapter(ArchitectureAdapter):
                             "k": LinearBridge(name="k_proj"),
                             "v": LinearBridge(name="v_proj"),
                             "o": LinearBridge(name="o_proj"),
+                            # The text tower decides: Llama and Qwen2 towers have no
+                            # QK-norm, a Qwen3 one does (NCSOFT/VARCO-VISION-2.0).
+                            "q_norm": RMSNormalizationBridge(
+                                name="q_norm", config=self.cfg, optional=True
+                            ),
+                            "k_norm": RMSNormalizationBridge(
+                                name="k_norm", config=self.cfg, optional=True
+                            ),
                         },
                         requires_attention_mask=True,
                         requires_position_embeddings=True,

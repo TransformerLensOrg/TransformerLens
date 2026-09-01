@@ -1,5 +1,6 @@
 from unittest import mock
 
+from tests.typecheck_errors import TYPECHECK_ERRORS
 from transformer_lens.hook_points import HookPoint
 
 
@@ -211,6 +212,84 @@ def test_reshape_functionality_hook_returns_none_integration():
     assert torch.equal(result, test_input)
 
 
+def test_alias_hook_preserves_earlier_replacement_when_later_alias_returns_none():
+    """A later no-op alias must not discard an earlier alias replacement."""
+    import torch
+
+    hook_point = HookPoint()
+    seen = []
+
+    def selective_hook(activation, hook):
+        seen.append((hook.name, activation.item()))
+        if hook.name == "replace":
+            return activation + 10
+        return None
+
+    hook_point.add_hook(selective_hook, alias_names=["replace", "observe"])
+
+    result = hook_point(torch.tensor(1.0))
+
+    assert seen == [("replace", 1.0), ("observe", 11.0)]
+    assert result.item() == 11.0
+
+
+def test_alias_hook_reverts_conversion_after_earlier_replacement():
+    """Alias replacement remains eligible for output conversion reversion."""
+    import torch
+
+    from transformer_lens.conversion_utils.conversion_steps.base_tensor_conversion import (
+        BaseTensorConversion,
+    )
+
+    class ScaleThenShift(BaseTensorConversion):
+        def handle_conversion(self, input_value, *full_context):
+            return input_value * 2
+
+        def revert(self, input_value, *full_context):
+            return input_value + 100
+
+    hook_point = HookPoint()
+    hook_point.enable_reshape(ScaleThenShift())
+
+    def selective_hook(activation, hook):
+        if hook.name == "replace":
+            return activation + 10
+        return None
+
+    hook_point.add_hook(selective_hook, alias_names=["replace", "observe"])
+
+    result = hook_point(torch.tensor(1.0))
+
+    assert result.item() == 112.0
+
+
+def test_backward_alias_hook_preserves_earlier_gradient_replacement():
+    """A later no-op alias must not discard an earlier gradient replacement."""
+    import torch
+
+    hook_point = HookPoint()
+    seen = []
+
+    def selective_hook(gradient, hook):
+        seen.append((hook.name, gradient.item()))
+        if hook.name == "replace":
+            return gradient + 10
+        return None
+
+    hook_point.add_hook(
+        selective_hook,
+        dir="bwd",
+        alias_names=["replace", "observe"],
+    )
+    input_value = torch.tensor(2.0, requires_grad=True)
+
+    (hook_point(input_value) * 3).backward()
+
+    assert seen == [("replace", 3.0), ("observe", 13.0)]
+    assert input_value.grad is not None
+    assert input_value.grad.item() == 13.0
+
+
 class TestHookPointHasHooks:
     """Comprehensive test suite for HookPoint.has_hooks method."""
 
@@ -381,9 +460,8 @@ class TestHookPointHasHooks:
         """Test that invalid direction parameter raises error (caught by type checking)."""
         # Note: beartype catches this at the parameter level before reaching the ValueError
         import pytest
-        from beartype.roar import BeartypeCallHintParamViolation
 
-        with pytest.raises(BeartypeCallHintParamViolation):
+        with pytest.raises(TYPECHECK_ERRORS):
             self.hook_point.has_hooks(dir="invalid")  # type: ignore
 
     def test_multiple_hooks_same_criteria(self):

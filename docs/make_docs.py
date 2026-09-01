@@ -763,7 +763,7 @@ def copy_demos(_app: Optional[Any] = None):
         shutil.copy(DEMOS_DIR / filename, copy_to_dir)
 
 
-BRIDGE_MODELS_PAGE: str = """---
+BRIDGE_MODELS_PAGE: str = r"""---
 title: TransformerBridge Models
 hide-toc: true
 ---

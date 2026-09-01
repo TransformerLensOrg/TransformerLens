@@ -8,7 +8,9 @@
         "einops>=0.6.0",
         "fancy-einsum>=0.0.3",
         "huggingface-hub>=0.23.2",
-        "jaxtyping>=0.2.11",
+        # >=0.3: 0.2.x's import hook uses ast.Str, removed in Python 3.14, and it
+        # emits a DeprecationWarning per instrumented module until then.
+        "jaxtyping>=0.3",
         "numpy>=1.24; python_version >= '3.10' and python_version < '3.12'",
         "numpy>=1.26; python_version >= '3.12' and python_version < '3.13'",
         "packaging>=23.0",
@@ -113,9 +115,12 @@
     # Capping it would just reintroduce the Python-3.13 block on the next torch/torchvision bump.
     multimodal=["timm>=1.0.27", "torchvision>=0.22"]
     quantization=["bitsandbytes>=0.46.1", "optimum-quanto>=0.2.7"]
+    # Marian's tokenizer asks for sacremoses on every load; without it the suite
+    # carries the recommendation as a warning on each Marian test.
+    tokenizers=["sacremoses>=0.1.1"]
 
 [tool.uv]
-    default-groups=["dev", "docs", "jupyter", "multimodal"]
+    default-groups=["dev", "docs", "jupyter", "multimodal", "tokenizers"]
     # vllm and lit cannot co-install (numpy>=2 vs numpy<2); forking the resolution
     # lets each extra lock cleanly on its own.
     conflicts=[[{extra="vllm"}, {extra="lit"}]]
@@ -134,7 +139,17 @@
         filterwarnings=[
             "ignore:distutils Version classes are deprecated:DeprecationWarning",
             "ignore:pkg_resources is deprecated as an API:DeprecationWarning",
-            "ignore:Hooked(Transformer|EncoderDecoder|AudioEncoder)\\.from_pretrained is deprecated:DeprecationWarning",
+            # Tests still exercise the deprecated Hooked* stack on purpose, so the
+            # notice is noise here while staying visible to users. Delete these
+            # when the classes go in 4.0.
+            "ignore:HookedTransformer is deprecated:DeprecationWarning",
+            "ignore:HookedTransformer.from_pretrained is deprecated:DeprecationWarning",
+            "ignore:HookedEncoder is deprecated:DeprecationWarning",
+            "ignore:HookedEncoder.from_pretrained is deprecated:DeprecationWarning",
+            "ignore:HookedEncoderDecoder.from_pretrained is deprecated:DeprecationWarning",
+            "ignore:HookedAudioEncoder.from_pretrained is deprecated:DeprecationWarning",
+            "ignore:HookedRootModule is deprecated:DeprecationWarning",
+            "ignore:BertNextSentencePrediction is deprecated:DeprecationWarning",
         ]
         markers=[
             "slow: marks tests as slow (deselect with '-m \"not slow\"')",

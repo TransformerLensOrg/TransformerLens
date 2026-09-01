@@ -132,6 +132,7 @@ def boot(
     # Pass HF token for gated model access (e.g. meta-llama/*)
     from transformer_lens.utilities.hf_utils import (
         autoconfig_with_remote_post_init_compat,
+        autotokenizer_with_special_token_compat,
         get_hf_token,
     )
 
@@ -414,8 +415,9 @@ def boot(
             tokenizer_source = adapter.cfg.tokenizer_name
         # Encoder-decoder models like T5 don't have a BOS token and raise on add_bos_token=True.
         try:
-            base_tokenizer = AutoTokenizer.from_pretrained(
+            base_tokenizer = autotokenizer_with_special_token_compat(
                 tokenizer_source,
+                auto_tokenizer=AutoTokenizer,
                 add_bos_token=True,
                 use_fast=use_fast,
                 token=token_arg,

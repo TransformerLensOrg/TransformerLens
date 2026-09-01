@@ -217,21 +217,48 @@ class VerificationProgress:
         )
 
 
-def estimate_model_params(model_id: str) -> int:
-    """Estimate parameter count using AutoConfig (lightweight, no model download).
+def published_param_count(model_id: str) -> Optional[int]:
+    """Exact parameter count from the hub's safetensors metadata, or None.
 
-    Fetches only the config JSON (~KB) and computes n_params from dimensions
-    using the standard TransformerLens parameter-count formula.
+    Metadata only -- no weights are fetched. Preferred over the config formula
+    below, which assumes every layer carries full attention and an MLP and so
+    over-counts a hybrid Mamba/attention stack roughly fourfold
+    (NVIDIA-Nemotron-Nano-9B-v2: 36.6B estimated against 8.89B published, enough
+    to skip the model as too large for memory it does not need).
+    """
+    from transformer_lens.utilities.hf_utils import get_hf_token
+
+    try:
+        from huggingface_hub import HfApi
+
+        info = HfApi().model_info(model_id, expand=["safetensors"], token=get_hf_token())
+    except Exception:
+        # Unpublished metadata, a gated repo or a network blip: fall back rather
+        # than fail, since the config formula needs no hub metadata.
+        return None
+    total = getattr(info.safetensors, "total", None) if info.safetensors else None
+    return int(total) if total else None
+
+
+def estimate_model_params(model_id: str) -> int:
+    """Parameter count for this model: published metadata first, else a config estimate.
+
+    Fetches only metadata and the config JSON (~KB), never weights.
 
     Args:
         model_id: HuggingFace model ID
 
     Returns:
-        Estimated number of parameters
+        Number of parameters — exact when the hub publishes it, else estimated
+        from config dimensions using the standard TransformerLens
+        parameter-count formula.
 
     Raises:
         Exception: If config cannot be fetched or parsed
     """
+    published = published_param_count(model_id)
+    if published:
+        return published
 
     trust_remote_code = any(model_id.startswith(prefix) for prefix in REMOTE_CODE_MODEL_PREFIXES)
     from transformer_lens.utilities.hf_utils import (
@@ -606,6 +633,18 @@ _MODALITY_NULL_MESSAGES: dict[int, str] = {
     8: "P8=NULL (audio tests skipped — no results)",
     9: "P9=NULL (vision tests skipped — no results)",
 }
+
+
+def _measured_nothing(phase_scores: dict) -> bool:
+    """True when no phase produced a score, so the run verified nothing.
+
+    An adapter's ``applicable_phases`` can prune the requested phases to empty.
+    That leaves ``required_phases`` empty as well, so no score check fires and a
+    run that measured nothing would otherwise be recorded as VERIFIED.
+
+    ``is not None`` rather than truthiness: 0.0 is a real score.
+    """
+    return not any(score is not None for score in phase_scores.values())
 
 
 def _check_phase_scores(
@@ -1273,6 +1312,13 @@ def verify_models(
                 if not quiet:
                     print(f"  No results for requested phases {eff_phases} — skipping update")
                 progress.skipped.append(model_id)
+        elif final_status == STATUS_VERIFIED and _measured_nothing(phase_scores):
+            if not quiet:
+                print(
+                    f"  No phase produced a score (requested {eff_phases}) — "
+                    f"status left unchanged"
+                )
+            progress.skipped.append(model_id)
         elif final_status == STATUS_VERIFIED:
             # A passing run is VERIFIED only if it was numerically compared to an
             # HF reference; a --no-hf-reference (structural-only) pass is PROVISIONAL.

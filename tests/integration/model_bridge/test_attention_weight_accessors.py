@@ -182,3 +182,30 @@ class TestWeightCircuitsGQA:
         assert torch.equal(QK.B, bridge.W_K.transpose(-2, -1))
         assert torch.equal(OV.A, bridge.W_V)
         assert torch.equal(OV.B, bridge.W_O)
+
+
+class TestProjectionKernelGQA:
+    """Head affinity keeps grouped K/V heads native rather than expanding them."""
+
+    @pytest.mark.parametrize("role", ["K", "V"])
+    def test_native_kv_axes_and_sample_parity(self, llama_bridge, role):
+        from transformer_lens.tools.analysis.projection_kernel import (
+            attention_head_subspace_affinity,
+            orthonormal_subspace,
+            projection_kernel,
+        )
+
+        bridge, _ = llama_bridge
+        result = attention_head_subspace_affinity(bridge, target_role=role)
+        target_weight = getattr(bridge.blocks[1].attn, f"W_{role}")[1]
+        expected = projection_kernel(
+            orthonormal_subspace(bridge.blocks[0].attn.W_O[0].T),
+            orthonormal_subspace(target_weight),
+        )
+
+        assert result.scores.shape == (2, 4, 2, 2)
+        assert int(result.valid_mask.sum()) == 8
+        assert result.target_head_kind == "kv"
+        assert result.scores[0, 0, 1, 1].item() == pytest.approx(
+            expected.score.item(), rel=1e-5, abs=1e-5
+        )

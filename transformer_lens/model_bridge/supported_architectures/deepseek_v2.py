@@ -31,10 +31,9 @@ class DeepSeekMLAFamilyArchitectureAdapter(ArchitectureAdapter):
     rearrangements, no LN folding), and a routed MoE whose router/shared experts are
     absent on dense layers. Divergence is declarative:
 
-    - ``q_lora_optional``: some checkpoint families (DeepSeek-V2-Lite) set
-      q_lora_rank=None — no compressed-Q pair, direct q_proj instead — so the whole
-      Q path is optional and q_a_layernorm is a plain GeneralizedComponent (its
-      forward is invoked directly by MLAAttentionBridge and must tolerate absence).
+    - ``q_lora_optional``: some checkpoints (DeepSeek-V2-Lite; GigaChat3 on the V3
+      class) set q_lora_rank=None — no compressed-Q pair, direct q_proj instead — so
+      the whole Q path is optional; ``_build_q_a_layernorm`` picks the norm's type.
       Families whose checkpoints always compress Q keep the projections REQUIRED so
       a genuinely missing weight fails loudly; never relax them family-wide.
     - ``attention_cls``: GLM-MoE-DSA swaps in its sparse-attention bridge.
@@ -93,18 +92,9 @@ class DeepSeekMLAFamilyArchitectureAdapter(ArchitectureAdapter):
     def _build_attention_submodules(self) -> Dict[str, GeneralizedComponent]:
         """MLA projection submodules; the Q path follows ``q_lora_optional``."""
         optional = self.q_lora_optional
-        if optional:
-            # May be absent (direct-Q checkpoints); its forward is called directly by
-            # MLAAttentionBridge, so a plain GeneralizedComponent with optional
-            # support suffices.
-            q_a_layernorm: GeneralizedComponent = GeneralizedComponent(
-                name="q_a_layernorm", optional=True
-            )
-        else:
-            q_a_layernorm = RMSNormalizationBridge(name="q_a_layernorm", config=self.cfg)
         submodules: Dict[str, GeneralizedComponent] = {
             "q_a_proj": LinearBridge(name="q_a_proj", optional=optional),
-            "q_a_layernorm": q_a_layernorm,
+            "q_a_layernorm": self._build_q_a_layernorm(optional),
             "q_b_proj": LinearBridge(name="q_b_proj", optional=optional),
         }
         if optional:
@@ -121,6 +111,14 @@ class DeepSeekMLAFamilyArchitectureAdapter(ArchitectureAdapter):
             }
         )
         return submodules
+
+    def _build_q_a_layernorm(self, optional: bool) -> GeneralizedComponent:
+        """Compressed-Q norm. Its forward is called directly by MLAAttentionBridge, so
+        on the optional (direct-Q) path a plain GeneralizedComponent suffices; V3
+        overrides to keep the full norm bridge."""
+        if optional:
+            return GeneralizedComponent(name="q_a_layernorm", optional=True)
+        return RMSNormalizationBridge(name="q_a_layernorm", config=self.cfg)
 
     def _build_router(self) -> GeneralizedComponent:
         """Router is a custom Module, not nn.Linear; absent on dense layers."""

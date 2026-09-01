@@ -626,6 +626,13 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         ):
             if hasattr(self, block_list_name):
                 blocks_to_process.extend(getattr(self, block_list_name))
+        # A vision tower's layers are not a top-level block list, so they were
+        # skipped here and their attention never had q/k/v/z reshaping set up --
+        # those hooks fired flat, ignoring the tower's head count.
+        vision_encoder = getattr(self, "vision_encoder", None)
+        vision_layers = getattr(vision_encoder, "encoder_layers", None)
+        if vision_layers is not None:
+            blocks_to_process.extend(vision_layers)
         for block in blocks_to_process:
             for attn_name in ["attn", "self_attn", "cross_attn"]:
                 if hasattr(block, attn_name):

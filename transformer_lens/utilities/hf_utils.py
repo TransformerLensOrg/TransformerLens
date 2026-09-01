@@ -286,9 +286,14 @@ def autoconfig_with_remote_post_init_compat(
 ) -> Any:
     """``AutoConfig.from_pretrained`` tolerating 4.x-era remote-code configs.
 
-    transformers>=5 delivers non-base fields via ``__post_init__(**extras)``;
-    a 4.x-era argless override (OpenELM) crashes on the first kwarg. On exactly
-    that TypeError, wrap the class's ``__post_init__`` and retry once.
+    Two upstream quirks, each retried once:
+
+    * transformers>=5 delivers non-base fields via ``__post_init__(**extras)``;
+      a 4.x-era argless override (OpenELM) crashes on the first kwarg. On exactly
+      that TypeError, wrap the class's ``__post_init__``.
+    * a repo that pins ``flash_attention_2`` in its config cannot be asked for
+      ``output_attentions``. The bridge needs attention outputs and loads the model
+      eager regardless, so retry asking for the implementation the loader will use.
     """
     if auto_config is None:
         # Callers with a patchable module-level AutoConfig (boot) pass it in so
@@ -305,6 +310,121 @@ def autoconfig_with_remote_post_init_compat(
             raise
         make_post_init_kwarg_tolerant(config_class)
         return auto_config.from_pretrained(model_id, **kwargs)
+    except _strict_dataclass_error() as err:
+        if "output_attentions" not in str(err) or "attn_implementation" in kwargs:
+            raise
+        return auto_config.from_pretrained(model_id, attn_implementation="eager", **kwargs)
+
+
+def _strict_dataclass_error() -> type[BaseException]:
+    """``StrictDataclassError``, or a placeholder that is never raised."""
+    try:
+        from huggingface_hub.errors import StrictDataclassError
+
+        return StrictDataclassError
+    except ImportError:  # pragma: no cover - depends on huggingface_hub version
+
+        class _Unraisable(Exception):
+            pass
+
+        return _Unraisable
+
+
+def autotokenizer_with_special_token_compat(
+    model_id: str, auto_tokenizer: Any = None, **kwargs: Any
+) -> Any:
+    """``AutoTokenizer.from_pretrained`` tolerating rejected special-token declarations.
+
+    Some repos declare extra special tokens that their ``tokenizer.json`` already
+    contains -- the catherinearnett/B-GPT family lists ~1200 ``[XXXXXn]`` tokens --
+    and re-adding them raises ``TypeError: argument 'special_tokens': Expected
+    Union[...]``. The serialized fast tokenizer is intact and encodes identically,
+    so build straight from it and carry the config's token roles across.
+    """
+    if auto_tokenizer is None:
+        from transformers import AutoTokenizer as auto_tokenizer  # noqa: N813
+
+    try:
+        return auto_tokenizer.from_pretrained(model_id, **kwargs)
+    except TypeError as err:
+        if "special_tokens" not in str(err):
+            raise
+        tokenizer = _fast_tokenizer_from_file(model_id, **kwargs)
+        if tokenizer is None:
+            raise
+        logger.warning(
+            "%s declares special tokens its backend rejects; built from tokenizer.json instead",
+            model_id,
+        )
+        return tokenizer
+
+
+def _fast_tokenizer_from_file(model_id: str, **kwargs: Any) -> Any:
+    """Build a fast tokenizer from the repo's ``tokenizer.json``, or None."""
+    from transformers import PreTrainedTokenizerFast
+
+    passthrough = {key: kwargs[key] for key in ("token", "revision") if key in kwargs}
+    try:
+        tokenizer_file = hf_hub_download(model_id, "tokenizer.json", **passthrough)
+        config_file = hf_hub_download(model_id, "tokenizer_config.json", **passthrough)
+    except Exception:
+        return None  # no serialized fast tokenizer: nothing to rebuild from
+
+    with open(config_file) as handle:
+        config = json.load(handle)
+
+    # A role may be a bare string or a full AddedToken dict.
+    roles = {}
+    for role in ("bos_token", "eos_token", "unk_token", "pad_token", "cls_token", "sep_token"):
+        value = config.get(role)
+        if isinstance(value, dict):
+            value = value.get("content")
+        if isinstance(value, str):
+            roles[role] = value
+    if config.get("model_max_length"):
+        roles["model_max_length"] = config["model_max_length"]
+    # AutoTokenizer sets this from the repo id; downstream code reads it.
+    roles["name_or_path"] = model_id
+    for key in ("add_bos_token", "add_eos_token"):
+        if key in kwargs:
+            roles[key] = kwargs[key]
+
+    return PreTrainedTokenizerFast(tokenizer_file=tokenizer_file, **roles)
+
+
+_TL_NUMERIC_TOWER_ATTR = "_tl_numeric_tower_tolerant"
+
+
+def enable_hf_numeric_tower() -> None:
+    """Let huggingface_hub's strict dataclasses accept an int in a float field.
+
+    The hub validates with a bare ``isinstance``, so a config that writes an
+    integral value for a float field -- ``"routed_scaling_factor": 1`` on the
+    DeepseekV3 family, and any ``rope_theta: 10000`` -- fails to load, though
+    PEP 484 and Python's numeric tower both accept int wherever float is asked
+    for. transformers calls ``AutoConfig`` from inside ``AutoTokenizer`` and the
+    model loaders, so nothing short of the validator itself covers every path.
+
+    Idempotent, and a no-op if the hub's internals move.
+    """
+    try:
+        from huggingface_hub import dataclasses as hub_dataclasses
+    except ImportError:  # pragma: no cover - huggingface_hub is a hard dependency
+        return
+
+    original = getattr(hub_dataclasses, "_validate_simple_type", None)
+    if original is None or getattr(original, _TL_NUMERIC_TOWER_ATTR, False):
+        return
+
+    def tolerant(name: str, value: Any, expected_type: type) -> None:
+        # `type(value) is int` on purpose: bool is an int subclass and stays wrong.
+        if expected_type is float and type(value) is int:
+            return
+        original(name, value, expected_type)
+
+    setattr(tolerant, _TL_NUMERIC_TOWER_ATTR, True)
+    tolerant.__wrapped__ = original  # type: ignore[attr-defined]
+    hub_dataclasses._validate_simple_type = tolerant
 
 
 def _resolve_remote_config_class(model_id: str, **kwargs: Any) -> Any:

@@ -5,7 +5,7 @@ import pytest
 import torch
 from torch import nn
 
-import transformer_lens.utils as utils
+from transformer_lens import utilities as utils
 from transformer_lens.model_bridge import TransformerBridge
 
 ref_tensor = torch.tensor([[1, 2, 3, 4, 5], [6, 7, 8, 9, 10]])
@@ -463,10 +463,8 @@ class TestTokenizeAndConcatenate:
             streaming=False,
             max_length=64,
             add_bos_token=False,
-            # Main-process: pytest's jaxtyping import hook instruments the closure,
-            # which datasets>=4.8 dill-ships to pool workers (even for num_proc=1) —
-            # instrumentation state is unpicklable. Plain-shell multiproc works; the
-            # chunking assertion below is what this test is for.
+            # Chunk boundaries are what's under test; any num_proc makes datasets
+            # fork a dill-pickling pool that chokes on pytest's captured stdout.
             num_proc=None,
         )
 

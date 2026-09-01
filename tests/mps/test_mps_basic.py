@@ -18,6 +18,11 @@ import warnings
 import pytest
 import torch
 
+from transformer_lens.tools.analysis.projection_kernel import (
+    SubspaceBasis,
+    projection_kernel,
+)
+
 # Skip the entire module on non-MPS runners (Linux CI, CPU-only Macs)
 pytestmark = pytest.mark.skipif(
     not torch.backends.mps.is_available(),
@@ -138,6 +143,31 @@ def test_mps_tensor_basic_operations():
     assert z_cpu.device.type == "cpu"
 
     _cleanup()
+
+
+def test_mps_projection_kernel_principal_angles():
+    """Projection Kernel computes principal angles and preserves the MPS device."""
+    try:
+        basis = torch.eye(4, device="mps", dtype=torch.float32)[:, :2]
+        subspace = SubspaceBasis(
+            basis=basis,
+            singular_values=torch.ones(2, device="mps"),
+            rank=2,
+            measured_rank=2,
+            rtol=4 * torch.finfo(torch.float32).eps,
+            threshold=4 * torch.finfo(torch.float32).eps,
+            input_shape=(4, 2),
+        )
+
+        result = projection_kernel(subspace, subspace)
+
+        assert result.score.device.type == "mps"
+        assert result.normalized.device.type == "mps"
+        assert result.cosines.device.type == "mps"
+        assert result.angles.device.type == "mps"
+        assert result.cosines.cpu().tolist() == pytest.approx([1.0, 1.0])
+    finally:
+        _cleanup()
 
 
 def test_mps_softmax_and_layernorm():

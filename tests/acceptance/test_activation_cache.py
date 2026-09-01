@@ -4,9 +4,9 @@ import pytest
 import torch
 from fancy_einsum import einsum
 
-from transformer_lens import utils
+from transformer_lens import utilities as utils
 from transformer_lens.model_bridge import TransformerBridge
-from transformer_lens.utils import Slice
+from transformer_lens.utilities import Slice
 
 # Create IOI prompts
 ioi_prompt_formats = [
