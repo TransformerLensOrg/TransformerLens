@@ -6,8 +6,8 @@ import numpy as np
 import pytest
 import torch
 
-import transformer_lens.utils as utils
 from transformer_lens import HookedAudioEncoder
+from transformer_lens import utilities as utils
 
 SAMPLE_RATE = 16000
 DURATION_S = 1.0

@@ -5,8 +5,8 @@ from types import SimpleNamespace
 
 import pytest
 import torch
-from beartype.roar import BeartypeCallHintParamViolation
 
+from tests.typecheck_errors import TYPECHECK_ERRORS
 from transformer_lens.tools.analysis.projection_kernel import (
     SubspaceBasis,
     _pairwise_projection_kernel,
@@ -140,7 +140,7 @@ class TestOrthonormalSubspace:
         ],
     )
     def test_runtime_typecheck_rejects_invalid_matrices(self, matrix):
-        with pytest.raises(BeartypeCallHintParamViolation):
+        with pytest.raises(TYPECHECK_ERRORS):
             orthonormal_subspace(matrix)
 
     @pytest.mark.parametrize(

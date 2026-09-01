@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 import torch
-from beartype.roar import BeartypeCallHintParamViolation
 
+from tests.typecheck_errors import TYPECHECK_ERRORS
 from transformer_lens.utilities.lm_utils import lm_accuracy, lm_cross_entropy_loss
 
 
@@ -15,7 +15,7 @@ def test_lm_cross_entropy_loss_rejects_mismatched_attention_mask() -> None:
     attention_mask = torch.ones(1, 5, dtype=torch.long)
 
     with pytest.raises(
-        (AssertionError, BeartypeCallHintParamViolation),
+        (AssertionError, *TYPECHECK_ERRORS),
         match="attention_mask|axis 'pos'",
     ):
         lm_cross_entropy_loss(logits, tokens, attention_mask)

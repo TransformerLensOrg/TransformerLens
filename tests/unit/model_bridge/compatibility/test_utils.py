@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from transformer_lens import utils
+from transformer_lens import utilities as utils
 from transformer_lens.model_bridge import TransformerBridge
 
 
