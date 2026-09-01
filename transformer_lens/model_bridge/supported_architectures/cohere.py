@@ -175,9 +175,8 @@ class CohereArchitectureAdapter(ArchitectureAdapter):
             return
 
         model = getattr(bridge, "original_model", None)
-        if model is None or not hasattr(model, "logit_scale"):
-            raise RuntimeError("Cohere weight processing requires a model-level logit_scale")
-        model.logit_scale = 1.0
+        if model is not None and hasattr(model, "logit_scale"):
+            model.logit_scale = 1.0
         self._logit_scale_fold_pending = False
 
     def apply_output_logits_transform(self, logits: torch.Tensor) -> torch.Tensor:

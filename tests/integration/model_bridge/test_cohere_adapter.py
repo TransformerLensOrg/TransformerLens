@@ -332,6 +332,18 @@ class TestCohereLogitScaleEndToEnd:
 
         torch.testing.assert_close(processed_logits, raw_logits)
 
+    def test_process_weights_succeeds_without_model_logit_scale(self) -> None:
+        bridge = _tiny_cohere_bridge()
+        raw_unembed = bridge.unembed.original_component.weight.detach().clone()
+        delattr(bridge.original_model, "logit_scale")
+
+        _process_only_logit_scale(bridge)
+
+        assert bridge._weights_processed
+        assert not hasattr(bridge.original_model, "logit_scale")
+        torch.testing.assert_close(bridge.unembed.original_component.weight, raw_unembed * 0.5)
+        assert bridge.cfg.logit_scale == 0.5
+
 
 # ---------------------------------------------------------------------------
 # 4. Tied embedding preserved — embed.W_E must NOT be scaled
