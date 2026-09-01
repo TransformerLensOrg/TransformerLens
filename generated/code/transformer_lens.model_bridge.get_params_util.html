@@ -188,6 +188,7 @@
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.main_benchmark.html">transformer_lens.benchmarks.main_benchmark module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.multimodal.html">transformer_lens.benchmarks.multimodal module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.text_quality.html">transformer_lens.benchmarks.text_quality module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.text_quality_profiles.html">transformer_lens.benchmarks.text_quality_profiles module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.utils.html">transformer_lens.benchmarks.utils module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.vision.html">transformer_lens.benchmarks.vision module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.weight_processing.html">transformer_lens.benchmarks.weight_processing module</a></li>
@@ -522,6 +523,7 @@
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.direct_path_patching.html">transformer_lens.tools.analysis.direct_path_patching module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens.html">transformer_lens.tools.analysis.jacobian_lens module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html">transformer_lens.tools.analysis.jacobian_lens_decomposition module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html">transformer_lens.tools.analysis.projection_kernel module</a></li>
 </ul>
 </li>
 <li class="toctree-l4 has-children"><a class="reference internal" href="transformer_lens.tools.model_registry.html">transformer_lens.tools.model_registry package</a><input class="toctree-checkbox" id="toctree-checkbox-21" name="toctree-checkbox-21" role="switch" type="checkbox"/><label for="toctree-checkbox-21"><div class="visually-hidden">Toggle navigation of transformer_lens.tools.model_registry package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
@@ -609,6 +611,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../content/hook_system.html">The Hook System</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/compatibility_mode.html">TransformerBridge Compatibility Mode</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/ssm_interpretability.html">SSM / Recurrent-Model Interpretability</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../content/projection_kernel.html">Projection Kernel</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/jacobian_lens_fitting.html">Fitting a Jacobian lens</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/debugging_numerical_divergence.html">Debugging Numerical Divergence</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html">Transformer Lens Main Demo Notebook</a></li>
@@ -670,7 +673,24 @@
 <dl class="py function">
 <dt class="sig sig-object py" id="transformer_lens.model_bridge.get_params_util.get_bridge_params">
 <span class="sig-prename descclassname"><span class="pre">transformer_lens.model_bridge.get_params_util.</span></span><span class="sig-name descname"><span class="pre">get_bridge_params</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">bridge</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.model_bridge.get_params_util.get_bridge_params" title="Link to this definition">¶</a></dt>
-<dd><p>Model parameters in SVDInterpreter format. Skips attn keys for non-attention layers.</p>
+<dd><p>Model parameters in SVDInterpreter format.</p>
+<p>Reads the bridge components’ TL-layout weight properties (<code class="docutils literal notranslate"><span class="pre">W_Q</span></code>,
+<code class="docutils literal notranslate"><span class="pre">W_in</span></code>, …), which already account for layout conversion and weight
+processing. For missing weights, returns zero tensors of appropriate shape
+instead of raising exceptions. Skips attn keys for non-attention layers.
+LayerNorm params (<code class="docutils literal notranslate"><span class="pre">blocks.{i}.ln1.w</span></code> etc.) are included when the modules
+still carry them (i.e. before folding) so consumers can detect fold state.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Dictionary of parameter tensors with TransformerLens naming convention</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>dict</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>ValueError</strong> – If configuration is inconsistent (e.g., cfg.n_layers != len(blocks))</p>
+</dd>
+</dl>
 </dd></dl>
 
 </section>

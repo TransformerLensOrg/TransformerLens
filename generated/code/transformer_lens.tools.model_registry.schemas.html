@@ -188,6 +188,7 @@
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.main_benchmark.html">transformer_lens.benchmarks.main_benchmark module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.multimodal.html">transformer_lens.benchmarks.multimodal module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.text_quality.html">transformer_lens.benchmarks.text_quality module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.text_quality_profiles.html">transformer_lens.benchmarks.text_quality_profiles module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.utils.html">transformer_lens.benchmarks.utils module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.vision.html">transformer_lens.benchmarks.vision module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.weight_processing.html">transformer_lens.benchmarks.weight_processing module</a></li>
@@ -522,6 +523,7 @@
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.direct_path_patching.html">transformer_lens.tools.analysis.direct_path_patching module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens.html">transformer_lens.tools.analysis.jacobian_lens module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html">transformer_lens.tools.analysis.jacobian_lens_decomposition module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html">transformer_lens.tools.analysis.projection_kernel module</a></li>
 </ul>
 </li>
 <li class="toctree-l4 current has-children"><a class="reference internal" href="transformer_lens.tools.model_registry.html">transformer_lens.tools.model_registry package</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-21" name="toctree-checkbox-21" role="switch" type="checkbox"/><label for="toctree-checkbox-21"><div class="visually-hidden">Toggle navigation of transformer_lens.tools.model_registry package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul class="current">
@@ -609,6 +611,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../content/hook_system.html">The Hook System</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/compatibility_mode.html">TransformerBridge Compatibility Mode</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/ssm_interpretability.html">SSM / Recurrent-Model Interpretability</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../content/projection_kernel.html">Projection Kernel</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/jacobian_lens_fitting.html">Fitting a Jacobian lens</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/debugging_numerical_divergence.html">Debugging Numerical Divergence</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html">Transformer Lens Main Demo Notebook</a></li>
@@ -1071,7 +1074,7 @@ representing supported models, architecture gaps, and related metadata.</p>
 
 <dl class="py class">
 <dt class="sig sig-object py" id="transformer_lens.tools.model_registry.schemas.ModelEntry">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">transformer_lens.tools.model_registry.schemas.</span></span><span class="sig-name descname"><span class="pre">ModelEntry</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">architecture_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">status</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">verified_date</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">date</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">metadata</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#transformer_lens.tools.model_registry.schemas.ModelMetadata" title="transformer_lens.tools.model_registry.schemas.ModelMetadata"><span class="pre">ModelMetadata</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">note</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">phase1_score</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">phase2_score</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">phase3_score</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">phase4_score</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">phase7_score</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">phase8_score</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">phase9_score</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.tools.model_registry.schemas.ModelEntry" title="Link to this definition">¶</a></dt>
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">transformer_lens.tools.model_registry.schemas.</span></span><span class="sig-name descname"><span class="pre">ModelEntry</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">architecture_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">status</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">verified_date</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">date</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">metadata</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#transformer_lens.tools.model_registry.schemas.ModelMetadata" title="transformer_lens.tools.model_registry.schemas.ModelMetadata"><span class="pre">ModelMetadata</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">note</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prompt_profile</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">p4_scoring_version</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">phase1_score</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">phase2_score</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">phase3_score</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">phase4_score</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">phase7_score</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">phase8_score</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">phase9_score</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.tools.model_registry.schemas.ModelEntry" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
 <p>A single model entry in the supported models list.</p>
 <dl class="py attribute">
@@ -1134,6 +1137,18 @@ representing supported models, architecture gaps, and related metadata.</p>
 <dt class="sig sig-object py" id="transformer_lens.tools.model_registry.schemas.ModelEntry.note">
 <span class="sig-name descname"><span class="pre">note</span></span><a class="headerlink" href="#transformer_lens.tools.model_registry.schemas.ModelEntry.note" title="Link to this definition">¶</a></dt>
 <dd><p>Optional note (skip/fail reason, e.g. “Estimated 48 GB exceeds 16 GB limit”)</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str | None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.model_registry.schemas.ModelEntry.prompt_profile">
+<span class="sig-name descname"><span class="pre">prompt_profile</span></span><a class="headerlink" href="#transformer_lens.tools.model_registry.schemas.ModelEntry.prompt_profile" title="Link to this definition">¶</a></dt>
+<dd><p>Phase-4 prompt profile used (e.g. “task:translation&#64;en-de”);
+omitted from JSON for the default continuation profile</p>
 <dl class="field-list simple">
 <dt class="field-odd">Type<span class="colon">:</span></dt>
 <dd class="field-odd"><p>str | None</p>
@@ -1245,6 +1260,11 @@ representing supported models, architecture gaps, and related metadata.</p>
 <dd></dd></dl>
 
 <dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.model_registry.schemas.ModelEntry.p4_scoring_version">
+<span class="sig-name descname"><span class="pre">p4_scoring_version</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#transformer_lens.tools.model_registry.schemas.ModelEntry.p4_scoring_version" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
 <dt class="sig sig-object py" id="id25">
 <span class="sig-name descname"><span class="pre">phase1_score</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id25" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
@@ -1281,18 +1301,24 @@ representing supported models, architecture gaps, and related metadata.</p>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="id32">
-<span class="sig-name descname"><span class="pre">status</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">0</span></em><a class="headerlink" href="#id32" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">prompt_profile</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id32" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id33">
+<span class="sig-name descname"><span class="pre">status</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">0</span></em><a class="headerlink" href="#id33" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="transformer_lens.tools.model_registry.schemas.ModelEntry.to_dict">
 <span class="sig-name descname"><span class="pre">to_dict</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span></span></span><a class="headerlink" href="#transformer_lens.tools.model_registry.schemas.ModelEntry.to_dict" title="Link to this definition">¶</a></dt>
-<dd><p>Convert to a JSON-serializable dictionary.</p>
+<dd><p>Convert to a JSON-serializable dictionary. prompt_profile is sparse:
+omitted when None so default-profile entries carry no key.</p>
 </dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="id33">
-<span class="sig-name descname"><span class="pre">verified_date</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">date</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id33" title="Link to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="id34">
+<span class="sig-name descname"><span class="pre">verified_date</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">date</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id34" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 </dd></dl>
@@ -1358,8 +1384,8 @@ representing supported models, architecture gaps, and related metadata.</p>
 </dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="id34">
-<span class="sig-name descname"><span class="pre">downloads</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">0</span></em><a class="headerlink" href="#id34" title="Link to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="id35">
+<span class="sig-name descname"><span class="pre">downloads</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">0</span></em><a class="headerlink" href="#id35" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py method">
@@ -1369,23 +1395,23 @@ representing supported models, architecture gaps, and related metadata.</p>
 </dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="id35">
-<span class="sig-name descname"><span class="pre">last_modified</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">datetime</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id35" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
 <dt class="sig sig-object py" id="id36">
-<span class="sig-name descname"><span class="pre">likes</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">0</span></em><a class="headerlink" href="#id36" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">last_modified</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">datetime</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id36" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="id37">
-<span class="sig-name descname"><span class="pre">parameter_count</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id37" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">likes</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">0</span></em><a class="headerlink" href="#id37" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="id38">
-<span class="sig-name descname"><span class="pre">tags</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#id38" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">parameter_count</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id38" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id39">
+<span class="sig-name descname"><span class="pre">tags</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#id39" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py method">
@@ -1441,13 +1467,13 @@ representing supported models, architecture gaps, and related metadata.</p>
 </dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="id39">
-<span class="sig-name descname"><span class="pre">scan_duration_seconds</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id39" title="Link to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="id40">
+<span class="sig-name descname"><span class="pre">scan_duration_seconds</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id40" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="id40">
-<span class="sig-name descname"><span class="pre">task_filter</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#id40" title="Link to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="id41">
+<span class="sig-name descname"><span class="pre">task_filter</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#id41" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py method">
@@ -1457,8 +1483,8 @@ representing supported models, architecture gaps, and related metadata.</p>
 </dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="id41">
-<span class="sig-name descname"><span class="pre">total_scanned</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><a class="headerlink" href="#id41" title="Link to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="id42">
+<span class="sig-name descname"><span class="pre">total_scanned</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><a class="headerlink" href="#id42" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 </dd></dl>
@@ -1541,18 +1567,18 @@ representing supported models, architecture gaps, and related metadata.</p>
 </dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="id42">
-<span class="sig-name descname"><span class="pre">generated_at</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">date</span></em><a class="headerlink" href="#id42" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
 <dt class="sig sig-object py" id="id43">
-<span class="sig-name descname"><span class="pre">models</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#transformer_lens.tools.model_registry.schemas.ModelEntry" title="transformer_lens.tools.model_registry.schemas.ModelEntry"><span class="pre">ModelEntry</span></a><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#id43" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">generated_at</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">date</span></em><a class="headerlink" href="#id43" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="id44">
-<span class="sig-name descname"><span class="pre">scan_info</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#transformer_lens.tools.model_registry.schemas.ScanInfo" title="transformer_lens.tools.model_registry.schemas.ScanInfo"><span class="pre">ScanInfo</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id44" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">models</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#transformer_lens.tools.model_registry.schemas.ModelEntry" title="transformer_lens.tools.model_registry.schemas.ModelEntry"><span class="pre">ModelEntry</span></a><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#id44" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id45">
+<span class="sig-name descname"><span class="pre">scan_info</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#transformer_lens.tools.model_registry.schemas.ScanInfo" title="transformer_lens.tools.model_registry.schemas.ScanInfo"><span class="pre">ScanInfo</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id45" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py method">
@@ -1562,13 +1588,13 @@ representing supported models, architecture gaps, and related metadata.</p>
 </dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="id45">
-<span class="sig-name descname"><span class="pre">total_architectures</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">0</span></em><a class="headerlink" href="#id45" title="Link to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="id46">
+<span class="sig-name descname"><span class="pre">total_architectures</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">0</span></em><a class="headerlink" href="#id46" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="id46">
-<span class="sig-name descname"><span class="pre">total_models</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><a class="headerlink" href="#id46" title="Link to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="id47">
+<span class="sig-name descname"><span class="pre">total_models</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><a class="headerlink" href="#id47" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
@@ -1577,8 +1603,8 @@ representing supported models, architecture gaps, and related metadata.</p>
 <dd></dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="id47">
-<span class="sig-name descname"><span class="pre">total_verified</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">0</span></em><a class="headerlink" href="#id47" title="Link to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="id48">
+<span class="sig-name descname"><span class="pre">total_verified</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">0</span></em><a class="headerlink" href="#id48" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 </dd></dl>
@@ -1708,6 +1734,7 @@ representing supported models, architecture gaps, and related metadata.</p>
 <li><a class="reference internal" href="#transformer_lens.tools.model_registry.schemas.ModelEntry.verified_date"><code class="docutils literal notranslate"><span class="pre">ModelEntry.verified_date</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.model_registry.schemas.ModelEntry.metadata"><code class="docutils literal notranslate"><span class="pre">ModelEntry.metadata</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.model_registry.schemas.ModelEntry.note"><code class="docutils literal notranslate"><span class="pre">ModelEntry.note</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.model_registry.schemas.ModelEntry.prompt_profile"><code class="docutils literal notranslate"><span class="pre">ModelEntry.prompt_profile</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.model_registry.schemas.ModelEntry.phase1_score"><code class="docutils literal notranslate"><span class="pre">ModelEntry.phase1_score</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.model_registry.schemas.ModelEntry.phase2_score"><code class="docutils literal notranslate"><span class="pre">ModelEntry.phase2_score</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.model_registry.schemas.ModelEntry.phase3_score"><code class="docutils literal notranslate"><span class="pre">ModelEntry.phase3_score</span></code></a></li>
@@ -1720,6 +1747,7 @@ representing supported models, architecture gaps, and related metadata.</p>
 <li><a class="reference internal" href="#id22"><code class="docutils literal notranslate"><span class="pre">ModelEntry.metadata</span></code></a></li>
 <li><a class="reference internal" href="#id23"><code class="docutils literal notranslate"><span class="pre">ModelEntry.model_id</span></code></a></li>
 <li><a class="reference internal" href="#id24"><code class="docutils literal notranslate"><span class="pre">ModelEntry.note</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.model_registry.schemas.ModelEntry.p4_scoring_version"><code class="docutils literal notranslate"><span class="pre">ModelEntry.p4_scoring_version</span></code></a></li>
 <li><a class="reference internal" href="#id25"><code class="docutils literal notranslate"><span class="pre">ModelEntry.phase1_score</span></code></a></li>
 <li><a class="reference internal" href="#id26"><code class="docutils literal notranslate"><span class="pre">ModelEntry.phase2_score</span></code></a></li>
 <li><a class="reference internal" href="#id27"><code class="docutils literal notranslate"><span class="pre">ModelEntry.phase3_score</span></code></a></li>
@@ -1727,9 +1755,10 @@ representing supported models, architecture gaps, and related metadata.</p>
 <li><a class="reference internal" href="#id29"><code class="docutils literal notranslate"><span class="pre">ModelEntry.phase7_score</span></code></a></li>
 <li><a class="reference internal" href="#id30"><code class="docutils literal notranslate"><span class="pre">ModelEntry.phase8_score</span></code></a></li>
 <li><a class="reference internal" href="#id31"><code class="docutils literal notranslate"><span class="pre">ModelEntry.phase9_score</span></code></a></li>
-<li><a class="reference internal" href="#id32"><code class="docutils literal notranslate"><span class="pre">ModelEntry.status</span></code></a></li>
+<li><a class="reference internal" href="#id32"><code class="docutils literal notranslate"><span class="pre">ModelEntry.prompt_profile</span></code></a></li>
+<li><a class="reference internal" href="#id33"><code class="docutils literal notranslate"><span class="pre">ModelEntry.status</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.model_registry.schemas.ModelEntry.to_dict"><code class="docutils literal notranslate"><span class="pre">ModelEntry.to_dict()</span></code></a></li>
-<li><a class="reference internal" href="#id33"><code class="docutils literal notranslate"><span class="pre">ModelEntry.verified_date</span></code></a></li>
+<li><a class="reference internal" href="#id34"><code class="docutils literal notranslate"><span class="pre">ModelEntry.verified_date</span></code></a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#transformer_lens.tools.model_registry.schemas.ModelMetadata"><code class="docutils literal notranslate"><span class="pre">ModelMetadata</span></code></a><ul>
@@ -1738,12 +1767,12 @@ representing supported models, architecture gaps, and related metadata.</p>
 <li><a class="reference internal" href="#transformer_lens.tools.model_registry.schemas.ModelMetadata.last_modified"><code class="docutils literal notranslate"><span class="pre">ModelMetadata.last_modified</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.model_registry.schemas.ModelMetadata.tags"><code class="docutils literal notranslate"><span class="pre">ModelMetadata.tags</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.model_registry.schemas.ModelMetadata.parameter_count"><code class="docutils literal notranslate"><span class="pre">ModelMetadata.parameter_count</span></code></a></li>
-<li><a class="reference internal" href="#id34"><code class="docutils literal notranslate"><span class="pre">ModelMetadata.downloads</span></code></a></li>
+<li><a class="reference internal" href="#id35"><code class="docutils literal notranslate"><span class="pre">ModelMetadata.downloads</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.model_registry.schemas.ModelMetadata.from_dict"><code class="docutils literal notranslate"><span class="pre">ModelMetadata.from_dict()</span></code></a></li>
-<li><a class="reference internal" href="#id35"><code class="docutils literal notranslate"><span class="pre">ModelMetadata.last_modified</span></code></a></li>
-<li><a class="reference internal" href="#id36"><code class="docutils literal notranslate"><span class="pre">ModelMetadata.likes</span></code></a></li>
-<li><a class="reference internal" href="#id37"><code class="docutils literal notranslate"><span class="pre">ModelMetadata.parameter_count</span></code></a></li>
-<li><a class="reference internal" href="#id38"><code class="docutils literal notranslate"><span class="pre">ModelMetadata.tags</span></code></a></li>
+<li><a class="reference internal" href="#id36"><code class="docutils literal notranslate"><span class="pre">ModelMetadata.last_modified</span></code></a></li>
+<li><a class="reference internal" href="#id37"><code class="docutils literal notranslate"><span class="pre">ModelMetadata.likes</span></code></a></li>
+<li><a class="reference internal" href="#id38"><code class="docutils literal notranslate"><span class="pre">ModelMetadata.parameter_count</span></code></a></li>
+<li><a class="reference internal" href="#id39"><code class="docutils literal notranslate"><span class="pre">ModelMetadata.tags</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.model_registry.schemas.ModelMetadata.to_dict"><code class="docutils literal notranslate"><span class="pre">ModelMetadata.to_dict()</span></code></a></li>
 </ul>
 </li>
@@ -1752,10 +1781,10 @@ representing supported models, architecture gaps, and related metadata.</p>
 <li><a class="reference internal" href="#transformer_lens.tools.model_registry.schemas.ScanInfo.task_filter"><code class="docutils literal notranslate"><span class="pre">ScanInfo.task_filter</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.model_registry.schemas.ScanInfo.scan_duration_seconds"><code class="docutils literal notranslate"><span class="pre">ScanInfo.scan_duration_seconds</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.model_registry.schemas.ScanInfo.from_dict"><code class="docutils literal notranslate"><span class="pre">ScanInfo.from_dict()</span></code></a></li>
-<li><a class="reference internal" href="#id39"><code class="docutils literal notranslate"><span class="pre">ScanInfo.scan_duration_seconds</span></code></a></li>
-<li><a class="reference internal" href="#id40"><code class="docutils literal notranslate"><span class="pre">ScanInfo.task_filter</span></code></a></li>
+<li><a class="reference internal" href="#id40"><code class="docutils literal notranslate"><span class="pre">ScanInfo.scan_duration_seconds</span></code></a></li>
+<li><a class="reference internal" href="#id41"><code class="docutils literal notranslate"><span class="pre">ScanInfo.task_filter</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.model_registry.schemas.ScanInfo.to_dict"><code class="docutils literal notranslate"><span class="pre">ScanInfo.to_dict()</span></code></a></li>
-<li><a class="reference internal" href="#id41"><code class="docutils literal notranslate"><span class="pre">ScanInfo.total_scanned</span></code></a></li>
+<li><a class="reference internal" href="#id42"><code class="docutils literal notranslate"><span class="pre">ScanInfo.total_scanned</span></code></a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#transformer_lens.tools.model_registry.schemas.SupportedModelsReport"><code class="docutils literal notranslate"><span class="pre">SupportedModelsReport</span></code></a><ul>
@@ -1766,14 +1795,14 @@ representing supported models, architecture gaps, and related metadata.</p>
 <li><a class="reference internal" href="#transformer_lens.tools.model_registry.schemas.SupportedModelsReport.total_verified"><code class="docutils literal notranslate"><span class="pre">SupportedModelsReport.total_verified</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.model_registry.schemas.SupportedModelsReport.models"><code class="docutils literal notranslate"><span class="pre">SupportedModelsReport.models</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.model_registry.schemas.SupportedModelsReport.from_dict"><code class="docutils literal notranslate"><span class="pre">SupportedModelsReport.from_dict()</span></code></a></li>
-<li><a class="reference internal" href="#id42"><code class="docutils literal notranslate"><span class="pre">SupportedModelsReport.generated_at</span></code></a></li>
-<li><a class="reference internal" href="#id43"><code class="docutils literal notranslate"><span class="pre">SupportedModelsReport.models</span></code></a></li>
-<li><a class="reference internal" href="#id44"><code class="docutils literal notranslate"><span class="pre">SupportedModelsReport.scan_info</span></code></a></li>
+<li><a class="reference internal" href="#id43"><code class="docutils literal notranslate"><span class="pre">SupportedModelsReport.generated_at</span></code></a></li>
+<li><a class="reference internal" href="#id44"><code class="docutils literal notranslate"><span class="pre">SupportedModelsReport.models</span></code></a></li>
+<li><a class="reference internal" href="#id45"><code class="docutils literal notranslate"><span class="pre">SupportedModelsReport.scan_info</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.model_registry.schemas.SupportedModelsReport.to_dict"><code class="docutils literal notranslate"><span class="pre">SupportedModelsReport.to_dict()</span></code></a></li>
-<li><a class="reference internal" href="#id45"><code class="docutils literal notranslate"><span class="pre">SupportedModelsReport.total_architectures</span></code></a></li>
-<li><a class="reference internal" href="#id46"><code class="docutils literal notranslate"><span class="pre">SupportedModelsReport.total_models</span></code></a></li>
+<li><a class="reference internal" href="#id46"><code class="docutils literal notranslate"><span class="pre">SupportedModelsReport.total_architectures</span></code></a></li>
+<li><a class="reference internal" href="#id47"><code class="docutils literal notranslate"><span class="pre">SupportedModelsReport.total_models</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.model_registry.schemas.SupportedModelsReport.total_provisional"><code class="docutils literal notranslate"><span class="pre">SupportedModelsReport.total_provisional</span></code></a></li>
-<li><a class="reference internal" href="#id47"><code class="docutils literal notranslate"><span class="pre">SupportedModelsReport.total_verified</span></code></a></li>
+<li><a class="reference internal" href="#id48"><code class="docutils literal notranslate"><span class="pre">SupportedModelsReport.total_verified</span></code></a></li>
 </ul>
 </li>
 </ul>

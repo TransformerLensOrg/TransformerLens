@@ -1,0 +1,7 @@
+transformer\_lens.tools.analysis.projection\_kernel module
+==========================================================
+
+.. automodule:: transformer_lens.tools.analysis.projection_kernel
+   :members:
+   :undoc-members:
+   :show-inheritance:

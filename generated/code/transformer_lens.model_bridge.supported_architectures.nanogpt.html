@@ -188,6 +188,7 @@
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.main_benchmark.html">transformer_lens.benchmarks.main_benchmark module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.multimodal.html">transformer_lens.benchmarks.multimodal module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.text_quality.html">transformer_lens.benchmarks.text_quality module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.text_quality_profiles.html">transformer_lens.benchmarks.text_quality_profiles module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.utils.html">transformer_lens.benchmarks.utils module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.vision.html">transformer_lens.benchmarks.vision module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.weight_processing.html">transformer_lens.benchmarks.weight_processing module</a></li>
@@ -522,6 +523,7 @@
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.direct_path_patching.html">transformer_lens.tools.analysis.direct_path_patching module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens.html">transformer_lens.tools.analysis.jacobian_lens module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html">transformer_lens.tools.analysis.jacobian_lens_decomposition module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html">transformer_lens.tools.analysis.projection_kernel module</a></li>
 </ul>
 </li>
 <li class="toctree-l4 has-children"><a class="reference internal" href="transformer_lens.tools.model_registry.html">transformer_lens.tools.model_registry package</a><input class="toctree-checkbox" id="toctree-checkbox-21" name="toctree-checkbox-21" role="switch" type="checkbox"/><label for="toctree-checkbox-21"><div class="visually-hidden">Toggle navigation of transformer_lens.tools.model_registry package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
@@ -609,6 +611,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../content/hook_system.html">The Hook System</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/compatibility_mode.html">TransformerBridge Compatibility Mode</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/ssm_interpretability.html">SSM / Recurrent-Model Interpretability</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../content/projection_kernel.html">Projection Kernel</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/jacobian_lens_fitting.html">Fitting a Jacobian lens</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/debugging_numerical_divergence.html">Debugging Numerical Divergence</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html">Transformer Lens Main Demo Notebook</a></li>
@@ -682,11 +685,6 @@
 </dl>
 </dd></dl>
 
-<dl class="py method">
-<dt class="sig sig-object py" id="transformer_lens.model_bridge.supported_architectures.nanogpt.NanogptArchitectureAdapter.convert_weights">
-<span class="sig-name descname"><span class="pre">convert_weights</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">remote_module</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.model_bridge.supported_architectures.nanogpt.NanogptArchitectureAdapter.convert_weights" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
 </dd></dl>
 
 </section>
@@ -749,7 +747,6 @@
 <li><a class="reference internal" href="#">transformer_lens.model_bridge.supported_architectures.nanogpt module</a><ul>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.nanogpt.NanogptArchitectureAdapter"><code class="docutils literal notranslate"><span class="pre">NanogptArchitectureAdapter</span></code></a><ul>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.nanogpt.NanogptArchitectureAdapter.__init__"><code class="docutils literal notranslate"><span class="pre">NanogptArchitectureAdapter.__init__()</span></code></a></li>
-<li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.nanogpt.NanogptArchitectureAdapter.convert_weights"><code class="docutils literal notranslate"><span class="pre">NanogptArchitectureAdapter.convert_weights()</span></code></a></li>
 </ul>
 </li>
 </ul>

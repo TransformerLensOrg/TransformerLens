@@ -3,7 +3,7 @@
   <head><meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width,initial-scale=1"/>
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="../../genindex.html" /><link rel="search" title="Search" href="../../search.html" /><link rel="next" title="transformer_lens.benchmarks.utils module" href="transformer_lens.benchmarks.utils.html" /><link rel="prev" title="transformer_lens.benchmarks.multimodal module" href="transformer_lens.benchmarks.multimodal.html" />
+<link rel="index" title="Index" href="../../genindex.html" /><link rel="search" title="Search" href="../../search.html" /><link rel="next" title="transformer_lens.benchmarks.text_quality_profiles module" href="transformer_lens.benchmarks.text_quality_profiles.html" /><link rel="prev" title="transformer_lens.benchmarks.multimodal module" href="transformer_lens.benchmarks.multimodal.html" />
 
     <link rel="shortcut icon" href="../../_static/favicon.ico"/><!-- Generated with Sphinx 7.4.7 and Furo 2023.09.10 -->
         <title>transformer_lens.benchmarks.text_quality module - TransformerLens Documentation</title>
@@ -188,6 +188,7 @@
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.main_benchmark.html">transformer_lens.benchmarks.main_benchmark module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.multimodal.html">transformer_lens.benchmarks.multimodal module</a></li>
 <li class="toctree-l4 current current-page"><a class="current reference internal" href="#">transformer_lens.benchmarks.text_quality module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.text_quality_profiles.html">transformer_lens.benchmarks.text_quality_profiles module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.utils.html">transformer_lens.benchmarks.utils module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.vision.html">transformer_lens.benchmarks.vision module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.weight_processing.html">transformer_lens.benchmarks.weight_processing module</a></li>
@@ -522,6 +523,7 @@
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.direct_path_patching.html">transformer_lens.tools.analysis.direct_path_patching module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens.html">transformer_lens.tools.analysis.jacobian_lens module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html">transformer_lens.tools.analysis.jacobian_lens_decomposition module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html">transformer_lens.tools.analysis.projection_kernel module</a></li>
 </ul>
 </li>
 <li class="toctree-l4 has-children"><a class="reference internal" href="transformer_lens.tools.model_registry.html">transformer_lens.tools.model_registry package</a><input class="toctree-checkbox" id="toctree-checkbox-21" name="toctree-checkbox-21" role="switch" type="checkbox"/><label for="toctree-checkbox-21"><div class="visually-hidden">Toggle navigation of transformer_lens.tools.model_registry package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
@@ -609,6 +611,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../content/hook_system.html">The Hook System</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/compatibility_mode.html">TransformerBridge Compatibility Mode</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/ssm_interpretability.html">SSM / Recurrent-Model Interpretability</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../content/projection_kernel.html">Projection Kernel</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/jacobian_lens_fitting.html">Fitting a Jacobian lens</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/debugging_numerical_divergence.html">Debugging Numerical Divergence</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html">Transformer Lens Main Demo Notebook</a></li>
@@ -667,37 +670,31 @@
           <section id="module-transformer_lens.benchmarks.text_quality">
 <span id="transformer-lens-benchmarks-text-quality-module"></span><h1>transformer_lens.benchmarks.text_quality module<a class="headerlink" href="#module-transformer_lens.benchmarks.text_quality" title="Link to this heading">¶</a></h1>
 <p>Text quality benchmark for TransformerBridge.</p>
-<p>Generates text with the bridge model from multiple diverse prompts and scores
-each continuation’s legibility using GPT-2 as a perplexity-based judge.
-Only the generated continuation tokens are scored (prompt tokens are masked),
-and a repetition penalty is applied to catch degenerate looping output.</p>
-<p>Generation is seeded for reproducibility, and the scoring model is loaded once
-and reused across all prompts.</p>
+<p>Generates text the way a real user of the model would (its prompt profile:
+chat template, translation source, code, own-language continuation — see
+<code class="docutils literal notranslate"><span class="pre">text_quality_profiles</span></code>) and scores each output against a known-good
+reference completion with one pinned multilingual judge. The score derives
+from the perplexity ratio PPL_judge(generated)/PPL_judge(reference), which
+cancels the judge’s per-language handicap; a repetition penalty catches
+degenerate loops (which the ratio alone rewards) and a length penalty
+catches truncated output.</p>
+<p>Generation is seeded per prompt for reproducibility, and the judge is loaded
+once (CPU/fp32 always, so scores do not depend on the verifying machine) and
+reused across all prompts.</p>
 <dl class="py function">
 <dt class="sig sig-object py" id="transformer_lens.benchmarks.text_quality.benchmark_text_quality">
-<span class="sig-prename descclassname"><span class="pre">transformer_lens.benchmarks.text_quality.</span></span><span class="sig-name descname"><span class="pre">benchmark_text_quality</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">bridge</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="transformer_lens.model_bridge.bridge.html#transformer_lens.model_bridge.bridge.TransformerBridge" title="transformer_lens.model_bridge.bridge.TransformerBridge"><span class="pre">TransformerBridge</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">test_text</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_new_tokens</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">50</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scoring_model_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'gpt2'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pass_threshold</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">85.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'cpu'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scoring_model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">PreTrainedModel</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scoring_tokenizer</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">PreTrainedTokenizerBase</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="transformer_lens.benchmarks.utils.html#transformer_lens.benchmarks.utils.BenchmarkResult" title="transformer_lens.benchmarks.utils.BenchmarkResult"><span class="pre">BenchmarkResult</span></a></span></span><a class="headerlink" href="#transformer_lens.benchmarks.text_quality.benchmark_text_quality" title="Link to this definition">¶</a></dt>
-<dd><p>Benchmark text generation quality using continuation-only perplexity scoring.</p>
-<p>Generates text from multiple diverse prompts, scores each continuation using
-GPT-2 perplexity (prompt tokens masked), applies a repetition penalty,
-and returns the averaged score.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>bridge</strong> – TransformerBridge model to test.</p></li>
-<li><p><strong>test_text</strong> – Primary input prompt (additional diverse prompts are also used).</p></li>
-<li><p><strong>max_new_tokens</strong> – Number of tokens to generate per prompt.</p></li>
-<li><p><strong>scoring_model_name</strong> – HuggingFace model to use as scorer.</p></li>
-<li><p><strong>pass_threshold</strong> – Minimum average score to pass (default 95.0).</p></li>
-<li><p><strong>device</strong> – Device for the scoring model.</p></li>
-<li><p><strong>scoring_model</strong> – Optional pre-loaded scoring model. When provided alongside
-scoring_tokenizer, skips loading and avoids cleanup (caller owns lifecycle).</p></li>
-<li><p><strong>scoring_tokenizer</strong> – Optional pre-loaded tokenizer for the scoring model.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>BenchmarkResult with quality score details.</p>
-</dd>
-</dl>
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.benchmarks.text_quality.</span></span><span class="sig-name descname"><span class="pre">benchmark_text_quality</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">bridge</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">profile</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference internal" href="transformer_lens.benchmarks.text_quality_profiles.html#transformer_lens.benchmarks.text_quality_profiles.ProfileSpec" title="transformer_lens.benchmarks.text_quality_profiles.ProfileSpec"><span class="pre">ProfileSpec</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'continuation'</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_new_tokens</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">judge_model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">judge_tokenizer</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="transformer_lens.benchmarks.utils.html#transformer_lens.benchmarks.utils.BenchmarkResult" title="transformer_lens.benchmarks.utils.BenchmarkResult"><span class="pre">BenchmarkResult</span></a></span></span><a class="headerlink" href="#transformer_lens.benchmarks.text_quality.benchmark_text_quality" title="Link to this definition">¶</a></dt>
+<dd><p>Benchmark text generation quality with profile prompts and reference-ratio scoring.</p>
+<p>Generates from the model’s prompt-profile prompts through the real user
+path (<code class="docutils literal notranslate"><span class="pre">bridge.generate</span></code>), then scores each output against the prompt’s
+reference completion via the pinned judge’s perplexity ratio, with
+repetition and length penalties.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.benchmarks.text_quality.load_judge">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.benchmarks.text_quality.</span></span><span class="sig-name descname"><span class="pre">load_judge</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">PreTrainedModel</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">PreTrainedTokenizerBase</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.benchmarks.text_quality.load_judge" title="Link to this definition">¶</a></dt>
+<dd><p>Load the pinned judge on CPU in fp32 (machine-independent scores).</p>
 </dd></dl>
 
 </section>
@@ -707,12 +704,12 @@ scoring_tokenizer, skips loading and avoids cleanup (caller owns lifecycle).</p>
       <footer>
         
         <div class="related-pages">
-          <a class="next-page" href="transformer_lens.benchmarks.utils.html">
+          <a class="next-page" href="transformer_lens.benchmarks.text_quality_profiles.html">
               <div class="page-info">
                 <div class="context">
                   <span>Next</span>
                 </div>
-                <div class="title">transformer_lens.benchmarks.utils module</div>
+                <div class="title">transformer_lens.benchmarks.text_quality_profiles module</div>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
@@ -759,6 +756,7 @@ scoring_tokenizer, skips loading and avoids cleanup (caller owns lifecycle).</p>
             <ul>
 <li><a class="reference internal" href="#">transformer_lens.benchmarks.text_quality module</a><ul>
 <li><a class="reference internal" href="#transformer_lens.benchmarks.text_quality.benchmark_text_quality"><code class="docutils literal notranslate"><span class="pre">benchmark_text_quality()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.benchmarks.text_quality.load_judge"><code class="docutils literal notranslate"><span class="pre">load_judge()</span></code></a></li>
 </ul>
 </li>
 </ul>

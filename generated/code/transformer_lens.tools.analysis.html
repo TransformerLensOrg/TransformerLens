@@ -188,6 +188,7 @@
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.main_benchmark.html">transformer_lens.benchmarks.main_benchmark module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.multimodal.html">transformer_lens.benchmarks.multimodal module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.text_quality.html">transformer_lens.benchmarks.text_quality module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.text_quality_profiles.html">transformer_lens.benchmarks.text_quality_profiles module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.utils.html">transformer_lens.benchmarks.utils module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.vision.html">transformer_lens.benchmarks.vision module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.weight_processing.html">transformer_lens.benchmarks.weight_processing module</a></li>
@@ -522,6 +523,7 @@
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.direct_path_patching.html">transformer_lens.tools.analysis.direct_path_patching module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens.html">transformer_lens.tools.analysis.jacobian_lens module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html">transformer_lens.tools.analysis.jacobian_lens_decomposition module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html">transformer_lens.tools.analysis.projection_kernel module</a></li>
 </ul>
 </li>
 <li class="toctree-l4 has-children"><a class="reference internal" href="transformer_lens.tools.model_registry.html">transformer_lens.tools.model_registry package</a><input class="toctree-checkbox" id="toctree-checkbox-21" name="toctree-checkbox-21" role="switch" type="checkbox"/><label for="toctree-checkbox-21"><div class="visually-hidden">Toggle navigation of transformer_lens.tools.model_registry package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
@@ -609,6 +611,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../content/hook_system.html">The Hook System</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/compatibility_mode.html">TransformerBridge Compatibility Mode</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/ssm_interpretability.html">SSM / Recurrent-Model Interpretability</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../content/projection_kernel.html">Projection Kernel</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/jacobian_lens_fitting.html">Fitting a Jacobian lens</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/debugging_numerical_divergence.html">Debugging Numerical Divergence</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html">Transformer Lens Main Demo Notebook</a></li>
@@ -701,11 +704,13 @@
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens.html#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.clear_device_cache"><code class="docutils literal notranslate"><span class="pre">JacobianLens.clear_device_cache()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens.html#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.decompose"><code class="docutils literal notranslate"><span class="pre">JacobianLens.decompose()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens.html#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.fit"><code class="docutils literal notranslate"><span class="pre">JacobianLens.fit()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens.html#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.fraction_of_variance"><code class="docutils literal notranslate"><span class="pre">JacobianLens.fraction_of_variance()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens.html#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.from_pretrained"><code class="docutils literal notranslate"><span class="pre">JacobianLens.from_pretrained()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens.html#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.lens_vector_dictionary"><code class="docutils literal notranslate"><span class="pre">JacobianLens.lens_vector_dictionary()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens.html#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.lens_vectors"><code class="docutils literal notranslate"><span class="pre">JacobianLens.lens_vectors()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens.html#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.load"><code class="docutils literal notranslate"><span class="pre">JacobianLens.load()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens.html#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.merge"><code class="docutils literal notranslate"><span class="pre">JacobianLens.merge()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens.html#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.occupancy"><code class="docutils literal notranslate"><span class="pre">JacobianLens.occupancy()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens.html#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.readout"><code class="docutils literal notranslate"><span class="pre">JacobianLens.readout()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens.html#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.save"><code class="docutils literal notranslate"><span class="pre">JacobianLens.save()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens.html#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.source_layers"><code class="docutils literal notranslate"><span class="pre">JacobianLens.source_layers</span></code></a></li>
@@ -756,7 +761,106 @@
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html#id5"><code class="docutils literal notranslate"><span class="pre">JSpaceDecomposition.support</span></code></a></li>
 </ul>
 </li>
+<li class="toctree-l2"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html#transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceOccupancy"><code class="docutils literal notranslate"><span class="pre">JSpaceOccupancy</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html#transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceOccupancy.occupancy"><code class="docutils literal notranslate"><span class="pre">JSpaceOccupancy.occupancy</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html#transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceOccupancy.marginal_captured_variance"><code class="docutils literal notranslate"><span class="pre">JSpaceOccupancy.marginal_captured_variance</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html#transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceOccupancy.control_captured_variance"><code class="docutils literal notranslate"><span class="pre">JSpaceOccupancy.control_captured_variance</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html#transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceOccupancy.support"><code class="docutils literal notranslate"><span class="pre">JSpaceOccupancy.support</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html#id6"><code class="docutils literal notranslate"><span class="pre">JSpaceOccupancy.control_captured_variance</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html#id7"><code class="docutils literal notranslate"><span class="pre">JSpaceOccupancy.marginal_captured_variance</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html#id8"><code class="docutils literal notranslate"><span class="pre">JSpaceOccupancy.occupancy</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html#id9"><code class="docutils literal notranslate"><span class="pre">JSpaceOccupancy.support</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html#transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceVarianceProfile"><code class="docutils literal notranslate"><span class="pre">JSpaceVarianceProfile</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html#transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceVarianceProfile.layers"><code class="docutils literal notranslate"><span class="pre">JSpaceVarianceProfile.layers</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html#transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceVarianceProfile.median"><code class="docutils literal notranslate"><span class="pre">JSpaceVarianceProfile.median</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html#transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceVarianceProfile.pooled"><code class="docutils literal notranslate"><span class="pre">JSpaceVarianceProfile.pooled</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html#transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceVarianceProfile.per_position"><code class="docutils literal notranslate"><span class="pre">JSpaceVarianceProfile.per_position</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html#id10"><code class="docutils literal notranslate"><span class="pre">JSpaceVarianceProfile.layers</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html#id11"><code class="docutils literal notranslate"><span class="pre">JSpaceVarianceProfile.median</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html#id12"><code class="docutils literal notranslate"><span class="pre">JSpaceVarianceProfile.per_position</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html#id13"><code class="docutils literal notranslate"><span class="pre">JSpaceVarianceProfile.pooled</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html#transformer_lens.tools.analysis.jacobian_lens_decomposition.estimate_occupancy"><code class="docutils literal notranslate"><span class="pre">estimate_occupancy()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html#transformer_lens.tools.analysis.jacobian_lens_decomposition.get_sparse_decomposition"><code class="docutils literal notranslate"><span class="pre">get_sparse_decomposition()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html">transformer_lens.tools.analysis.projection_kernel module</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.AttentionHeadRef"><code class="docutils literal notranslate"><span class="pre">AttentionHeadRef</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.AttentionHeadRef.head"><code class="docutils literal notranslate"><span class="pre">AttentionHeadRef.head</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.AttentionHeadRef.kind"><code class="docutils literal notranslate"><span class="pre">AttentionHeadRef.kind</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.AttentionHeadRef.label"><code class="docutils literal notranslate"><span class="pre">AttentionHeadRef.label</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.AttentionHeadRef.layer"><code class="docutils literal notranslate"><span class="pre">AttentionHeadRef.layer</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.AttentionHeadRef.role"><code class="docutils literal notranslate"><span class="pre">AttentionHeadRef.role</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.HeadAffinityPair"><code class="docutils literal notranslate"><span class="pre">HeadAffinityPair</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.HeadAffinityPair.normalized"><code class="docutils literal notranslate"><span class="pre">HeadAffinityPair.normalized</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.HeadAffinityPair.score"><code class="docutils literal notranslate"><span class="pre">HeadAffinityPair.score</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.HeadAffinityPair.source"><code class="docutils literal notranslate"><span class="pre">HeadAffinityPair.source</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.HeadAffinityPair.target"><code class="docutils literal notranslate"><span class="pre">HeadAffinityPair.target</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.HeadAffinityResult"><code class="docutils literal notranslate"><span class="pre">HeadAffinityResult</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.HeadAffinityResult.normalized"><code class="docutils literal notranslate"><span class="pre">HeadAffinityResult.normalized</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.HeadAffinityResult.rank"><code class="docutils literal notranslate"><span class="pre">HeadAffinityResult.rank</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.HeadAffinityResult.rtol"><code class="docutils literal notranslate"><span class="pre">HeadAffinityResult.rtol</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.HeadAffinityResult.scores"><code class="docutils literal notranslate"><span class="pre">HeadAffinityResult.scores</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.HeadAffinityResult.source_head_kind"><code class="docutils literal notranslate"><span class="pre">HeadAffinityResult.source_head_kind</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.HeadAffinityResult.source_layer_indices"><code class="docutils literal notranslate"><span class="pre">HeadAffinityResult.source_layer_indices</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.HeadAffinityResult.source_rank"><code class="docutils literal notranslate"><span class="pre">HeadAffinityResult.source_rank</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.HeadAffinityResult.source_ranks"><code class="docutils literal notranslate"><span class="pre">HeadAffinityResult.source_ranks</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.HeadAffinityResult.source_role"><code class="docutils literal notranslate"><span class="pre">HeadAffinityResult.source_role</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.HeadAffinityResult.target_head_kind"><code class="docutils literal notranslate"><span class="pre">HeadAffinityResult.target_head_kind</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.HeadAffinityResult.target_layer_indices"><code class="docutils literal notranslate"><span class="pre">HeadAffinityResult.target_layer_indices</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.HeadAffinityResult.target_rank"><code class="docutils literal notranslate"><span class="pre">HeadAffinityResult.target_rank</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.HeadAffinityResult.target_ranks"><code class="docutils literal notranslate"><span class="pre">HeadAffinityResult.target_ranks</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.HeadAffinityResult.target_role"><code class="docutils literal notranslate"><span class="pre">HeadAffinityResult.target_role</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.HeadAffinityResult.top_pairs"><code class="docutils literal notranslate"><span class="pre">HeadAffinityResult.top_pairs()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.HeadAffinityResult.valid_mask"><code class="docutils literal notranslate"><span class="pre">HeadAffinityResult.valid_mask</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.ProjectionKernelResult"><code class="docutils literal notranslate"><span class="pre">ProjectionKernelResult</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.ProjectionKernelResult.ambient_dim"><code class="docutils literal notranslate"><span class="pre">ProjectionKernelResult.ambient_dim</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.ProjectionKernelResult.angles"><code class="docutils literal notranslate"><span class="pre">ProjectionKernelResult.angles</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.ProjectionKernelResult.cosines"><code class="docutils literal notranslate"><span class="pre">ProjectionKernelResult.cosines</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.ProjectionKernelResult.normalized"><code class="docutils literal notranslate"><span class="pre">ProjectionKernelResult.normalized</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.ProjectionKernelResult.rank_a"><code class="docutils literal notranslate"><span class="pre">ProjectionKernelResult.rank_a</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.ProjectionKernelResult.rank_b"><code class="docutils literal notranslate"><span class="pre">ProjectionKernelResult.rank_b</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.ProjectionKernelResult.score"><code class="docutils literal notranslate"><span class="pre">ProjectionKernelResult.score</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.RandomSubspaceReference"><code class="docutils literal notranslate"><span class="pre">RandomSubspaceReference</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.RandomSubspaceReference.ambient_dim"><code class="docutils literal notranslate"><span class="pre">RandomSubspaceReference.ambient_dim</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.RandomSubspaceReference.mean"><code class="docutils literal notranslate"><span class="pre">RandomSubspaceReference.mean</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.RandomSubspaceReference.rank"><code class="docutils literal notranslate"><span class="pre">RandomSubspaceReference.rank</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.RandomSubspaceReference.variance"><code class="docutils literal notranslate"><span class="pre">RandomSubspaceReference.variance</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.SubspaceBasis"><code class="docutils literal notranslate"><span class="pre">SubspaceBasis</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.SubspaceBasis.basis"><code class="docutils literal notranslate"><span class="pre">SubspaceBasis.basis</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.SubspaceBasis.singular_values"><code class="docutils literal notranslate"><span class="pre">SubspaceBasis.singular_values</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.SubspaceBasis.rank"><code class="docutils literal notranslate"><span class="pre">SubspaceBasis.rank</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.SubspaceBasis.measured_rank"><code class="docutils literal notranslate"><span class="pre">SubspaceBasis.measured_rank</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.SubspaceBasis.rtol"><code class="docutils literal notranslate"><span class="pre">SubspaceBasis.rtol</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.SubspaceBasis.threshold"><code class="docutils literal notranslate"><span class="pre">SubspaceBasis.threshold</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.SubspaceBasis.input_shape"><code class="docutils literal notranslate"><span class="pre">SubspaceBasis.input_shape</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.SubspaceBasis.ambient_dim"><code class="docutils literal notranslate"><span class="pre">SubspaceBasis.ambient_dim</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#id0"><code class="docutils literal notranslate"><span class="pre">SubspaceBasis.basis</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#id1"><code class="docutils literal notranslate"><span class="pre">SubspaceBasis.input_shape</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#id2"><code class="docutils literal notranslate"><span class="pre">SubspaceBasis.measured_rank</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#id3"><code class="docutils literal notranslate"><span class="pre">SubspaceBasis.rank</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#id4"><code class="docutils literal notranslate"><span class="pre">SubspaceBasis.rtol</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#id5"><code class="docutils literal notranslate"><span class="pre">SubspaceBasis.singular_values</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#id6"><code class="docutils literal notranslate"><span class="pre">SubspaceBasis.threshold</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.attention_head_subspace_affinity"><code class="docutils literal notranslate"><span class="pre">attention_head_subspace_affinity()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.orthonormal_subspace"><code class="docutils literal notranslate"><span class="pre">orthonormal_subspace()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.projection_kernel"><code class="docutils literal notranslate"><span class="pre">projection_kernel()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.random_projection_kernel_moments"><code class="docutils literal notranslate"><span class="pre">random_projection_kernel_moments()</span></code></a></li>
 </ul>
 </li>
 </ul>
@@ -777,9 +881,44 @@ analysis.</p></li>
 <li><p>jacobian_lens: The Jacobian lens (J-lens) — per-layer causal transport to
 the output vocabulary basis, with loading of published lens artifacts,
 native fitting, readouts, interventions, and J-space sparse decomposition.</p></li>
+<li><p>projection_kernel: Basis-invariant subspace overlap and TransformerBridge
+attention-head OQ/OK/OV affinity.</p></li>
 </ul>
 </dd>
 </dl>
+<dl class="py class">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.AttentionHeadRef">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">transformer_lens.tools.analysis.</span></span><span class="sig-name descname"><span class="pre">AttentionHeadRef</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">layer</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">head</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">role</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'Q'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'K'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'V'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'O'</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">kind</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'query'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'kv'</span></span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.tools.analysis.AttentionHeadRef" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Structured identity for one attention-head weight subspace.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.AttentionHeadRef.head">
+<span class="sig-name descname"><span class="pre">head</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><a class="headerlink" href="#transformer_lens.tools.analysis.AttentionHeadRef.head" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.AttentionHeadRef.kind">
+<span class="sig-name descname"><span class="pre">kind</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'query'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'kv'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#transformer_lens.tools.analysis.AttentionHeadRef.kind" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.AttentionHeadRef.label">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">label</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#transformer_lens.tools.analysis.AttentionHeadRef.label" title="Link to this definition">¶</a></dt>
+<dd><p>Return the conventional TransformerLens layer/head label.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.AttentionHeadRef.layer">
+<span class="sig-name descname"><span class="pre">layer</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><a class="headerlink" href="#transformer_lens.tools.analysis.AttentionHeadRef.layer" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.AttentionHeadRef.role">
+<span class="sig-name descname"><span class="pre">role</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'Q'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'K'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'V'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'O'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#transformer_lens.tools.analysis.AttentionHeadRef.role" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
 <dl class="py class">
 <dt class="sig sig-object py" id="transformer_lens.tools.analysis.DirectLogitAttribution">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">transformer_lens.tools.analysis.</span></span><span class="sig-name descname"><span class="pre">DirectLogitAttribution</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">attribution</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'component</span> <span class="pre">*batch_and_pos'</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">labels</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">unit</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.tools.analysis.DirectLogitAttribution" title="Link to this definition">¶</a></dt>
@@ -846,6 +985,127 @@ single position was selected.</p>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="id4">
 <span class="sig-name descname"><span class="pre">unit</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#id4" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.HeadAffinityPair">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">transformer_lens.tools.analysis.</span></span><span class="sig-name descname"><span class="pre">HeadAffinityPair</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">source</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.AttentionHeadRef" title="transformer_lens.tools.analysis.projection_kernel.AttentionHeadRef"><span class="pre">AttentionHeadRef</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">target</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.AttentionHeadRef" title="transformer_lens.tools.analysis.projection_kernel.AttentionHeadRef"><span class="pre">AttentionHeadRef</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">score</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">normalized</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.tools.analysis.HeadAffinityPair" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>One ranked source-target head pair.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.HeadAffinityPair.normalized">
+<span class="sig-name descname"><span class="pre">normalized</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></em><a class="headerlink" href="#transformer_lens.tools.analysis.HeadAffinityPair.normalized" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.HeadAffinityPair.score">
+<span class="sig-name descname"><span class="pre">score</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></em><a class="headerlink" href="#transformer_lens.tools.analysis.HeadAffinityPair.score" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.HeadAffinityPair.source">
+<span class="sig-name descname"><span class="pre">source</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.AttentionHeadRef" title="transformer_lens.tools.analysis.projection_kernel.AttentionHeadRef"><span class="pre">AttentionHeadRef</span></a></em><a class="headerlink" href="#transformer_lens.tools.analysis.HeadAffinityPair.source" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.HeadAffinityPair.target">
+<span class="sig-name descname"><span class="pre">target</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.AttentionHeadRef" title="transformer_lens.tools.analysis.projection_kernel.AttentionHeadRef"><span class="pre">AttentionHeadRef</span></a></em><a class="headerlink" href="#transformer_lens.tools.analysis.HeadAffinityPair.target" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.HeadAffinityResult">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">transformer_lens.tools.analysis.</span></span><span class="sig-name descname"><span class="pre">HeadAffinityResult</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">scores</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'source_layer</span> <span class="pre">source_head</span> <span class="pre">target_layer</span> <span class="pre">target_head'</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">normalized</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'source_layer</span> <span class="pre">source_head</span> <span class="pre">target_layer</span> <span class="pre">target_head'</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">valid_mask</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Bool</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'source_layer</span> <span class="pre">source_head</span> <span class="pre">target_layer</span> <span class="pre">target_head'</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">source_role</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'Q'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'K'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'V'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'O'</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_role</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'Q'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'K'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'V'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'O'</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">source_layer_indices</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_layer_indices</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">source_head_kind</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'query'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'kv'</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_head_kind</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'query'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'kv'</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">source_ranks</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Int</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'source_layer</span> <span class="pre">source_head'</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_ranks</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Int</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'target_layer</span> <span class="pre">target_head'</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">source_rank</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_rank</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rank</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rtol</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.tools.analysis.HeadAffinityResult" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Projection Kernel affinities between two attention-head roles.</p>
+<p>Score tensors have shape
+<code class="docutils literal notranslate"><span class="pre">[source_layer,</span> <span class="pre">source_head,</span> <span class="pre">target_layer,</span> <span class="pre">target_head]</span></code>. Layer index
+tuples map tensor positions to original model block numbers.</p>
+<p><code class="docutils literal notranslate"><span class="pre">source_ranks</span></code> and <code class="docutils literal notranslate"><span class="pre">target_ranks</span></code> are measured numerical ranks for each
+head before optional truncation. Scalar <code class="docutils literal notranslate"><span class="pre">source_rank</span></code> and <code class="docutils literal notranslate"><span class="pre">target_rank</span></code>
+are the retained basis widths used for their respective roles.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.HeadAffinityResult.normalized">
+<span class="sig-name descname"><span class="pre">normalized</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'source_layer</span> <span class="pre">source_head</span> <span class="pre">target_layer</span> <span class="pre">target_head'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#transformer_lens.tools.analysis.HeadAffinityResult.normalized" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.HeadAffinityResult.rank">
+<span class="sig-name descname"><span class="pre">rank</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#transformer_lens.tools.analysis.HeadAffinityResult.rank" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.HeadAffinityResult.rtol">
+<span class="sig-name descname"><span class="pre">rtol</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></em><a class="headerlink" href="#transformer_lens.tools.analysis.HeadAffinityResult.rtol" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.HeadAffinityResult.scores">
+<span class="sig-name descname"><span class="pre">scores</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'source_layer</span> <span class="pre">source_head</span> <span class="pre">target_layer</span> <span class="pre">target_head'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#transformer_lens.tools.analysis.HeadAffinityResult.scores" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.HeadAffinityResult.source_head_kind">
+<span class="sig-name descname"><span class="pre">source_head_kind</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'query'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'kv'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#transformer_lens.tools.analysis.HeadAffinityResult.source_head_kind" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.HeadAffinityResult.source_layer_indices">
+<span class="sig-name descname"><span class="pre">source_layer_indices</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#transformer_lens.tools.analysis.HeadAffinityResult.source_layer_indices" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.HeadAffinityResult.source_rank">
+<span class="sig-name descname"><span class="pre">source_rank</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><a class="headerlink" href="#transformer_lens.tools.analysis.HeadAffinityResult.source_rank" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.HeadAffinityResult.source_ranks">
+<span class="sig-name descname"><span class="pre">source_ranks</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Int</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'source_layer</span> <span class="pre">source_head'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#transformer_lens.tools.analysis.HeadAffinityResult.source_ranks" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.HeadAffinityResult.source_role">
+<span class="sig-name descname"><span class="pre">source_role</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'Q'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'K'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'V'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'O'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#transformer_lens.tools.analysis.HeadAffinityResult.source_role" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.HeadAffinityResult.target_head_kind">
+<span class="sig-name descname"><span class="pre">target_head_kind</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'query'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'kv'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#transformer_lens.tools.analysis.HeadAffinityResult.target_head_kind" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.HeadAffinityResult.target_layer_indices">
+<span class="sig-name descname"><span class="pre">target_layer_indices</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#transformer_lens.tools.analysis.HeadAffinityResult.target_layer_indices" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.HeadAffinityResult.target_rank">
+<span class="sig-name descname"><span class="pre">target_rank</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><a class="headerlink" href="#transformer_lens.tools.analysis.HeadAffinityResult.target_rank" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.HeadAffinityResult.target_ranks">
+<span class="sig-name descname"><span class="pre">target_ranks</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Int</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'target_layer</span> <span class="pre">target_head'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#transformer_lens.tools.analysis.HeadAffinityResult.target_ranks" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.HeadAffinityResult.target_role">
+<span class="sig-name descname"><span class="pre">target_role</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'Q'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'K'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'V'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'O'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#transformer_lens.tools.analysis.HeadAffinityResult.target_role" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.HeadAffinityResult.top_pairs">
+<span class="sig-name descname"><span class="pre">top_pairs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">k</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">20</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">normalized</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.HeadAffinityPair" title="transformer_lens.tools.analysis.projection_kernel.HeadAffinityPair"><span class="pre">HeadAffinityPair</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.tools.analysis.HeadAffinityResult.top_pairs" title="Link to this definition">¶</a></dt>
+<dd><p>Return the highest-scoring valid pairs with deterministic tie order.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.HeadAffinityResult.valid_mask">
+<span class="sig-name descname"><span class="pre">valid_mask</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Bool</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'source_layer</span> <span class="pre">source_head</span> <span class="pre">target_layer</span> <span class="pre">target_head'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#transformer_lens.tools.analysis.HeadAffinityResult.valid_mask" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 </dd></dl>
@@ -960,6 +1220,155 @@ coordinate, in which case the projection uses a larger span.</p>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="id10">
 <span class="sig-name descname"><span class="pre">support</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Tensor</span></em><a class="headerlink" href="#id10" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.JSpaceOccupancy">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">transformer_lens.tools.analysis.</span></span><span class="sig-name descname"><span class="pre">JSpaceOccupancy</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">occupancy</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">marginal_captured_variance</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">control_captured_variance</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">support</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.tools.analysis.JSpaceOccupancy" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Result of a J-space occupancy estimate.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.JSpaceOccupancy.occupancy">
+<span class="sig-name descname"><span class="pre">occupancy</span></span><a class="headerlink" href="#transformer_lens.tools.analysis.JSpaceOccupancy.occupancy" title="Link to this definition">¶</a></dt>
+<dd><p>Estimated number of meaningfully-active atoms – the step of maximum
+separation between the real and random-control cumulative captured variance.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.JSpaceOccupancy.marginal_captured_variance">
+<span class="sig-name descname"><span class="pre">marginal_captured_variance</span></span><a class="headerlink" href="#transformer_lens.tools.analysis.JSpaceOccupancy.marginal_captured_variance" title="Link to this definition">¶</a></dt>
+<dd><p>Per-step captured-variance gain of the real greedy selection,
+shape <code class="docutils literal notranslate"><span class="pre">[max_atoms]</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>torch.Tensor</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.JSpaceOccupancy.control_captured_variance">
+<span class="sig-name descname"><span class="pre">control_captured_variance</span></span><a class="headerlink" href="#transformer_lens.tools.analysis.JSpaceOccupancy.control_captured_variance" title="Link to this definition">¶</a></dt>
+<dd><p>Per-step captured-variance gain averaged over the random
+control dictionaries, shape <code class="docutils literal notranslate"><span class="pre">[max_atoms]</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>torch.Tensor</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.JSpaceOccupancy.support">
+<span class="sig-name descname"><span class="pre">support</span></span><a class="headerlink" href="#transformer_lens.tools.analysis.JSpaceOccupancy.support" title="Link to this definition">¶</a></dt>
+<dd><p>Greedily selected atom indices, shape <code class="docutils literal notranslate"><span class="pre">[max_atoms]</span></code> (token ids when the
+dictionary is the vocabulary of J-lens vectors).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>torch.Tensor</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id11">
+<span class="sig-name descname"><span class="pre">control_captured_variance</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Tensor</span></em><a class="headerlink" href="#id11" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id12">
+<span class="sig-name descname"><span class="pre">marginal_captured_variance</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Tensor</span></em><a class="headerlink" href="#id12" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id13">
+<span class="sig-name descname"><span class="pre">occupancy</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><a class="headerlink" href="#id13" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id14">
+<span class="sig-name descname"><span class="pre">support</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Tensor</span></em><a class="headerlink" href="#id14" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.JSpaceVarianceProfile">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">transformer_lens.tools.analysis.</span></span><span class="sig-name descname"><span class="pre">JSpaceVarianceProfile</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">layers</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">median</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">float</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pooled</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">float</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">per_position</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.tools.analysis.JSpaceVarianceProfile" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Per-layer J-space variance profile over a prompt corpus.</p>
+<p>Produced by <a class="reference internal" href="#transformer_lens.tools.analysis.JacobianLens.fraction_of_variance" title="transformer_lens.tools.analysis.JacobianLens.fraction_of_variance"><code class="xref py py-meth docutils literal notranslate"><span class="pre">JacobianLens.fraction_of_variance()</span></code></a>.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.JSpaceVarianceProfile.layers">
+<span class="sig-name descname"><span class="pre">layers</span></span><a class="headerlink" href="#transformer_lens.tools.analysis.JSpaceVarianceProfile.layers" title="Link to this definition">¶</a></dt>
+<dd><p>The source layers profiled, in order.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>List[int]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.JSpaceVarianceProfile.median">
+<span class="sig-name descname"><span class="pre">median</span></span><a class="headerlink" href="#transformer_lens.tools.analysis.JSpaceVarianceProfile.median" title="Link to this definition">¶</a></dt>
+<dd><p>Per-layer median over positions of the J-space variance fraction
+<code class="docutils literal notranslate"><span class="pre">||j_space_component||^2</span> <span class="pre">/</span> <span class="pre">||activation||^2</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Dict[int, float]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.JSpaceVarianceProfile.pooled">
+<span class="sig-name descname"><span class="pre">pooled</span></span><a class="headerlink" href="#transformer_lens.tools.analysis.JSpaceVarianceProfile.pooled" title="Link to this definition">¶</a></dt>
+<dd><p>Per-layer pooled ratio <code class="docutils literal notranslate"><span class="pre">sum(||j_space_component||^2)</span> <span class="pre">/</span> <span class="pre">sum(||activation||^2)</span></code>
+across the corpus (the paper’s “fraction of total variance”).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Dict[int, float]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.JSpaceVarianceProfile.per_position">
+<span class="sig-name descname"><span class="pre">per_position</span></span><a class="headerlink" href="#transformer_lens.tools.analysis.JSpaceVarianceProfile.per_position" title="Link to this definition">¶</a></dt>
+<dd><p>Per-layer 1-D tensor of the raw per-position variance fractions.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Dict[int, torch.Tensor]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id15">
+<span class="sig-name descname"><span class="pre">layers</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#id15" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id16">
+<span class="sig-name descname"><span class="pre">median</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">float</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#id16" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id17">
+<span class="sig-name descname"><span class="pre">per_position</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#id17" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id18">
+<span class="sig-name descname"><span class="pre">pooled</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">float</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#id18" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 </dd></dl>
@@ -1127,6 +1536,46 @@ average.</p></li>
 <li><p><strong>ValueError</strong> – On compatibility mode, invalid provenance or layer
     indices, or if no prompt was long enough to fit on.</p></li>
 </ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.JacobianLens.fraction_of_variance">
+<span class="sig-name descname"><span class="pre">fraction_of_variance</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prompts</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">layers</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">k</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">25</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">skip_first</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">16</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">positions</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">show_progress</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html#transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceVarianceProfile" title="transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceVarianceProfile"><span class="pre">JSpaceVarianceProfile</span></a></span></span><a class="headerlink" href="#transformer_lens.tools.analysis.JacobianLens.fraction_of_variance" title="Link to this definition">¶</a></dt>
+<dd><p>Profile the J-space share of activation variance over a prompt corpus.</p>
+<p>Each prompt is run once (caching <code class="docutils literal notranslate"><span class="pre">blocks.{layer}.hook_out</span></code> for every requested layer).
+At each sampled position the activation is decomposed and its J-space variance fraction
+<code class="docutils literal notranslate"><span class="pre">||j_space_component||^2</span> <span class="pre">/</span> <span class="pre">||activation||^2</span></code> is recorded. The numerator is the
+<code class="docutils literal notranslate"><span class="pre">j_space_component</span></code> – the orthogonal projection of the activation onto the span of the
+selected support (the paper’s appendix “J-space component”), <em>not</em> the nonnegative
+<code class="docutils literal notranslate"><span class="pre">reconstruction</span></code>; the two coincide only when every selected atom stays active. Per layer
+the profile reports the median of those fractions and the pooled ratio
+<code class="docutils literal notranslate"><span class="pre">sum(||j_space_component||^2)</span> <span class="pre">/</span> <span class="pre">sum(||activation||^2)</span></code> (the paper’s “fraction of total
+variance”).</p>
+<p>A layer that samples no positions – every prompt shorter than <code class="docutils literal notranslate"><span class="pre">skip_first</span></code>, or only
+zero-norm activations – contributes no fractions: its <code class="docutils literal notranslate"><span class="pre">median</span></code> and <code class="docutils literal notranslate"><span class="pre">pooled</span></code> are
+<code class="docutils literal notranslate"><span class="pre">float(&quot;nan&quot;)</span></code> and its <code class="docutils literal notranslate"><span class="pre">per_position</span></code> tensor is empty.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> – A raw <code class="docutils literal notranslate"><span class="pre">TransformerBridge</span></code>.</p></li>
+<li><p><strong>prompts</strong> – A prompt, or a sequence of prompts. Each token tensor must represent exactly
+one prompt and have shape <code class="docutils literal notranslate"><span class="pre">[1,</span> <span class="pre">seq]</span></code>.</p></li>
+<li><p><strong>layers</strong> – Source layers to profile; defaults to all fitted <code class="docutils literal notranslate"><span class="pre">source_layers</span></code>.</p></li>
+<li><p><strong>k</strong> – Number of J-lens vectors per decomposition.</p></li>
+<li><p><strong>skip_first</strong> – Non-negative index before which positions are skipped (mirrors the fit’s
+early-position skip); not used for sampling when <code class="docutils literal notranslate"><span class="pre">positions</span></code> is given.</p></li>
+<li><p><strong>positions</strong> – Explicit positions to sample instead of <code class="docutils literal notranslate"><span class="pre">skip_first</span></code> onward.</p></li>
+<li><p><strong>show_progress</strong> – Show a tqdm progress bar over prompts.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A <a class="reference internal" href="#transformer_lens.tools.analysis.JSpaceVarianceProfile" title="transformer_lens.tools.analysis.JSpaceVarianceProfile"><code class="xref py py-class docutils literal notranslate"><span class="pre">JSpaceVarianceProfile</span></code></a>.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>ValueError</strong> – On an invalid model, an unfitted layer, an empty corpus, a negative
+    <code class="docutils literal notranslate"><span class="pre">skip_first</span></code>, or a token tensor that does not have shape <code class="docutils literal notranslate"><span class="pre">[1,</span> <span class="pre">seq]</span></code>.</p>
 </dd>
 </dl>
 </dd></dl>
@@ -1316,6 +1765,31 @@ per-shard count.</p>
 </dd>
 <dt class="field-even">Raises<span class="colon">:</span></dt>
 <dd class="field-even"><p><strong>ValueError</strong> – On an empty sequence or mismatched lenses.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.JacobianLens.occupancy">
+<span class="sig-name descname"><span class="pre">occupancy</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">activation_or_prompt</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">layer</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">position</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_atoms</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">25</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_control_dictionaries</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">32</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">seed</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html#transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceOccupancy" title="transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceOccupancy"><span class="pre">JSpaceOccupancy</span></a></span></span><a class="headerlink" href="#transformer_lens.tools.analysis.JacobianLens.occupancy" title="Link to this definition">¶</a></dt>
+<dd><p>Estimate how many J-lens vectors are meaningfully active in an activation at <code class="docutils literal notranslate"><span class="pre">layer</span></code>.</p>
+<p>Resolves <code class="docutils literal notranslate"><span class="pre">activation_or_prompt</span></code> (a raw <code class="docutils literal notranslate"><span class="pre">[d_model]</span></code> vector, or a prompt plus
+<code class="docutils literal notranslate"><span class="pre">position</span></code>) exactly as <a class="reference internal" href="#transformer_lens.tools.analysis.JacobianLens.decompose" title="transformer_lens.tools.analysis.JacobianLens.decompose"><code class="xref py py-meth docutils literal notranslate"><span class="pre">decompose()</span></code></a>, builds the cached full-vocabulary dictionary
+via <a class="reference internal" href="#transformer_lens.tools.analysis.JacobianLens.lens_vector_dictionary" title="transformer_lens.tools.analysis.JacobianLens.lens_vector_dictionary"><code class="xref py py-meth docutils literal notranslate"><span class="pre">lens_vector_dictionary()</span></code></a>, and calls <a class="reference internal" href="#transformer_lens.tools.analysis.estimate_occupancy" title="transformer_lens.tools.analysis.estimate_occupancy"><code class="xref py py-func docutils literal notranslate"><span class="pre">estimate_occupancy()</span></code></a>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> – A raw <code class="docutils literal notranslate"><span class="pre">TransformerBridge</span></code>.</p></li>
+<li><p><strong>activation_or_prompt</strong> – An activation vector, or a prompt (string / token tensor).</p></li>
+<li><p><strong>layer</strong> – Source layer (must be a fitted source layer).</p></li>
+<li><p><strong>position</strong> – Token position when a prompt is given; <code class="docutils literal notranslate"><span class="pre">None</span></code> for a raw activation.</p></li>
+<li><p><strong>max_atoms</strong> – Maximum number of J-lens vectors to consider.</p></li>
+<li><p><strong>num_control_dictionaries</strong> – Number of random control dictionaries to average over.</p></li>
+<li><p><strong>seed</strong> – Seed for the random control dictionaries (reproducibility).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A <a class="reference internal" href="#transformer_lens.tools.analysis.JSpaceOccupancy" title="transformer_lens.tools.analysis.JSpaceOccupancy"><code class="xref py py-class docutils literal notranslate"><span class="pre">JSpaceOccupancy</span></code></a>.</p>
 </dd>
 </dl>
 </dd></dl>
@@ -1598,43 +2072,43 @@ with the <code class="docutils literal notranslate"><span class="pre">pos</span>
 </dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="id11">
-<span class="sig-name descname"><span class="pre">lens_logits</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'pos</span> <span class="pre">d_vocab'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id11" title="Link to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="id19">
+<span class="sig-name descname"><span class="pre">lens_logits</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'pos</span> <span class="pre">d_vocab'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id19" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="id12">
-<span class="sig-name descname"><span class="pre">lens_topk_indices</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Int</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'pos</span> <span class="pre">k'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#id12" title="Link to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="id20">
+<span class="sig-name descname"><span class="pre">lens_topk_indices</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Int</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'pos</span> <span class="pre">k'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#id20" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="id13">
-<span class="sig-name descname"><span class="pre">lens_topk_values</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'pos</span> <span class="pre">k'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#id13" title="Link to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="id21">
+<span class="sig-name descname"><span class="pre">lens_topk_values</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'pos</span> <span class="pre">k'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#id21" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="id14">
-<span class="sig-name descname"><span class="pre">model_logits</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'pos</span> <span class="pre">d_vocab'</span></span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id14" title="Link to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="id22">
+<span class="sig-name descname"><span class="pre">model_logits</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'pos</span> <span class="pre">d_vocab'</span></span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id22" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="id15">
-<span class="sig-name descname"><span class="pre">model_topk_indices</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Int</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'pos</span> <span class="pre">k'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#id15" title="Link to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="id23">
+<span class="sig-name descname"><span class="pre">model_topk_indices</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Int</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'pos</span> <span class="pre">k'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#id23" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="id16">
-<span class="sig-name descname"><span class="pre">model_topk_values</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'pos</span> <span class="pre">k'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#id16" title="Link to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="id24">
+<span class="sig-name descname"><span class="pre">model_topk_values</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'pos</span> <span class="pre">k'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#id24" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="id17">
-<span class="sig-name descname"><span class="pre">positions</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#id17" title="Link to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="id25">
+<span class="sig-name descname"><span class="pre">positions</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#id25" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="id18">
-<span class="sig-name descname"><span class="pre">tokens</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Int</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'seq'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#id18" title="Link to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="id26">
+<span class="sig-name descname"><span class="pre">tokens</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Int</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'seq'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#id26" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py method">
@@ -1650,16 +2124,236 @@ with the <code class="docutils literal notranslate"><span class="pre">pos</span>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">{layer:</span> <span class="pre">[</span> <span class="pre">[top-k</span> <span class="pre">strings]</span> <span class="pre">per</span> <span class="pre">position</span> <span class="pre">]}</span></code>, positions aligned with
-<a class="reference internal" href="#id17" title="transformer_lens.tools.analysis.JacobianLensReadout.positions"><code class="xref py py-attr docutils literal notranslate"><span class="pre">positions</span></code></a>.</p>
+<a class="reference internal" href="#id25" title="transformer_lens.tools.analysis.JacobianLensReadout.positions"><code class="xref py py-attr docutils literal notranslate"><span class="pre">positions</span></code></a>.</p>
 </dd>
 </dl>
 </dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="id19">
-<span class="sig-name descname"><span class="pre">use_jacobian</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">True</span></em><a class="headerlink" href="#id19" title="Link to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="id27">
+<span class="sig-name descname"><span class="pre">use_jacobian</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">True</span></em><a class="headerlink" href="#id27" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.ProjectionKernelResult">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">transformer_lens.tools.analysis.</span></span><span class="sig-name descname"><span class="pre">ProjectionKernelResult</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">score</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">''</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">normalized</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">''</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cosines</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'principal_angle'</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">angles</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'principal_angle'</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rank_a</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rank_b</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ambient_dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.tools.analysis.ProjectionKernelResult" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Projection Kernel score and its principal-angle decomposition.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.ProjectionKernelResult.ambient_dim">
+<span class="sig-name descname"><span class="pre">ambient_dim</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><a class="headerlink" href="#transformer_lens.tools.analysis.ProjectionKernelResult.ambient_dim" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.ProjectionKernelResult.angles">
+<span class="sig-name descname"><span class="pre">angles</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'principal_angle'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#transformer_lens.tools.analysis.ProjectionKernelResult.angles" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.ProjectionKernelResult.cosines">
+<span class="sig-name descname"><span class="pre">cosines</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'principal_angle'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#transformer_lens.tools.analysis.ProjectionKernelResult.cosines" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.ProjectionKernelResult.normalized">
+<span class="sig-name descname"><span class="pre">normalized</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">''</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#transformer_lens.tools.analysis.ProjectionKernelResult.normalized" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.ProjectionKernelResult.rank_a">
+<span class="sig-name descname"><span class="pre">rank_a</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><a class="headerlink" href="#transformer_lens.tools.analysis.ProjectionKernelResult.rank_a" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.ProjectionKernelResult.rank_b">
+<span class="sig-name descname"><span class="pre">rank_b</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><a class="headerlink" href="#transformer_lens.tools.analysis.ProjectionKernelResult.rank_b" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.ProjectionKernelResult.score">
+<span class="sig-name descname"><span class="pre">score</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">''</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#transformer_lens.tools.analysis.ProjectionKernelResult.score" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.RandomSubspaceReference">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">transformer_lens.tools.analysis.</span></span><span class="sig-name descname"><span class="pre">RandomSubspaceReference</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ambient_dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rank</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mean</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">variance</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.tools.analysis.RandomSubspaceReference" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Analytic PK moments for independent random equal-rank subspaces.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.RandomSubspaceReference.ambient_dim">
+<span class="sig-name descname"><span class="pre">ambient_dim</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><a class="headerlink" href="#transformer_lens.tools.analysis.RandomSubspaceReference.ambient_dim" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.RandomSubspaceReference.mean">
+<span class="sig-name descname"><span class="pre">mean</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></em><a class="headerlink" href="#transformer_lens.tools.analysis.RandomSubspaceReference.mean" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.RandomSubspaceReference.rank">
+<span class="sig-name descname"><span class="pre">rank</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><a class="headerlink" href="#transformer_lens.tools.analysis.RandomSubspaceReference.rank" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.RandomSubspaceReference.variance">
+<span class="sig-name descname"><span class="pre">variance</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></em><a class="headerlink" href="#transformer_lens.tools.analysis.RandomSubspaceReference.variance" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.SubspaceBasis">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">transformer_lens.tools.analysis.</span></span><span class="sig-name descname"><span class="pre">SubspaceBasis</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">basis</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'ambient</span> <span class="pre">rank'</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">singular_values</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'spectrum'</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rank</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">measured_rank</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rtol</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">threshold</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">input_shape</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.tools.analysis.SubspaceBasis" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>An explicitly ranked orthonormal basis extracted from a matrix.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.SubspaceBasis.basis">
+<span class="sig-name descname"><span class="pre">basis</span></span><a class="headerlink" href="#transformer_lens.tools.analysis.SubspaceBasis.basis" title="Link to this definition">¶</a></dt>
+<dd><p>Orthonormal column-space basis, <code class="docutils literal notranslate"><span class="pre">[ambient_dim,</span> <span class="pre">rank]</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>jaxtyping.Float[Tensor, ‘ambient rank’]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.SubspaceBasis.singular_values">
+<span class="sig-name descname"><span class="pre">singular_values</span></span><a class="headerlink" href="#transformer_lens.tools.analysis.SubspaceBasis.singular_values" title="Link to this definition">¶</a></dt>
+<dd><p>All reduced-SVD singular values, in descending order.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>jaxtyping.Float[Tensor, ‘spectrum’]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.SubspaceBasis.rank">
+<span class="sig-name descname"><span class="pre">rank</span></span><a class="headerlink" href="#transformer_lens.tools.analysis.SubspaceBasis.rank" title="Link to this definition">¶</a></dt>
+<dd><p>Number of retained basis directions.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.SubspaceBasis.measured_rank">
+<span class="sig-name descname"><span class="pre">measured_rank</span></span><a class="headerlink" href="#transformer_lens.tools.analysis.SubspaceBasis.measured_rank" title="Link to this definition">¶</a></dt>
+<dd><p>Numerical rank before optional caller truncation.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.SubspaceBasis.rtol">
+<span class="sig-name descname"><span class="pre">rtol</span></span><a class="headerlink" href="#transformer_lens.tools.analysis.SubspaceBasis.rtol" title="Link to this definition">¶</a></dt>
+<dd><p>Effective relative rank tolerance.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.SubspaceBasis.threshold">
+<span class="sig-name descname"><span class="pre">threshold</span></span><a class="headerlink" href="#transformer_lens.tools.analysis.SubspaceBasis.threshold" title="Link to this definition">¶</a></dt>
+<dd><p>Absolute singular-value threshold used for rank measurement.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.SubspaceBasis.input_shape">
+<span class="sig-name descname"><span class="pre">input_shape</span></span><a class="headerlink" href="#transformer_lens.tools.analysis.SubspaceBasis.input_shape" title="Link to this definition">¶</a></dt>
+<dd><p>Shape of the matrix from which the basis was extracted.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Tuple[int, int]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.SubspaceBasis.ambient_dim">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">ambient_dim</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><a class="headerlink" href="#transformer_lens.tools.analysis.SubspaceBasis.ambient_dim" title="Link to this definition">¶</a></dt>
+<dd><p>Dimension of the space containing the subspace.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id28">
+<span class="sig-name descname"><span class="pre">basis</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'ambient</span> <span class="pre">rank'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#id28" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id29">
+<span class="sig-name descname"><span class="pre">input_shape</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#id29" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id30">
+<span class="sig-name descname"><span class="pre">measured_rank</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><a class="headerlink" href="#id30" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id31">
+<span class="sig-name descname"><span class="pre">rank</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><a class="headerlink" href="#id31" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id32">
+<span class="sig-name descname"><span class="pre">rtol</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></em><a class="headerlink" href="#id32" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id33">
+<span class="sig-name descname"><span class="pre">singular_values</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'spectrum'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#id33" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id34">
+<span class="sig-name descname"><span class="pre">threshold</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></em><a class="headerlink" href="#id34" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.attention_head_subspace_affinity">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.tools.analysis.</span></span><span class="sig-name descname"><span class="pre">attention_head_subspace_affinity</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">source_role</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'O'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_role</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">layer_order</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'forward'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rank</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rtol</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.HeadAffinityResult" title="transformer_lens.tools.analysis.projection_kernel.HeadAffinityResult"><span class="pre">HeadAffinityResult</span></a></span></span><a class="headerlink" href="#transformer_lens.tools.analysis.attention_head_subspace_affinity" title="Link to this definition">¶</a></dt>
+<dd><p>Compute OQ, OK, or OV Projection Kernel affinities for a TransformerBridge.</p>
+<p>K/V axes preserve native key-value heads on grouped-query attention models;
+they are never expanded to query-head count. Hybrid models include only
+attention blocks and report their original block indices.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> – A TransformerBridge exposing readable per-head attention weights.</p></li>
+<li><p><strong>source_role</strong> – Source role; v1 supports only <code class="docutils literal notranslate"><span class="pre">&quot;O&quot;</span></code>.</p></li>
+<li><p><strong>target_role</strong> – One of <code class="docutils literal notranslate"><span class="pre">&quot;Q&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;K&quot;</span></code>, or <code class="docutils literal notranslate"><span class="pre">&quot;V&quot;</span></code>.</p></li>
+<li><p><strong>layer_order</strong> – <code class="docutils literal notranslate"><span class="pre">&quot;forward&quot;</span></code> keeps strict earlier-to-later pairs; <code class="docutils literal notranslate"><span class="pre">&quot;all&quot;</span></code>
+keeps every pair.</p></li>
+<li><p><strong>rank</strong> – Optional common truncation rank. By default every head must be full
+column rank.</p></li>
+<li><p><strong>rtol</strong> – Optional relative numerical-rank tolerance.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Affinity tensors, validity mask, original layer indices, and rank metadata.</p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py function">
@@ -1724,6 +2418,42 @@ the model again.</p></li>
 <li><p><strong>NotImplementedError</strong> – If a <code class="docutils literal notranslate"><span class="pre">TransformerBridge</span></code> reports a hybrid block
     layout (Mamba/SSM/Mixer/LinearAttention).</p></li>
 </ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.estimate_occupancy">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.tools.analysis.</span></span><span class="sig-name descname"><span class="pre">estimate_occupancy</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dictionary</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_atoms</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">25</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_control_dictionaries</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">32</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">seed</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html#transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceOccupancy" title="transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceOccupancy"><span class="pre">JSpaceOccupancy</span></a></span></span><a class="headerlink" href="#transformer_lens.tools.analysis.estimate_occupancy" title="Link to this definition">¶</a></dt>
+<dd><p>Estimate how many dictionary atoms are meaningfully active in <code class="docutils literal notranslate"><span class="pre">x</span></code>.</p>
+<p>Runs the projection-residual recurrence described in
+<code class="xref py py-func docutils literal notranslate"><span class="pre">_greedy_captured_variance_gains()</span></code> for exactly <code class="docutils literal notranslate"><span class="pre">max_atoms</span></code> steps and compares the real
+per-step captured-variance curve against the same recurrence on <code class="docutils literal notranslate"><span class="pre">num_control_dictionaries</span></code>
+random unit-norm dictionaries of the same size. This shares sparse decomposition’s per-step
+correlation rule, but uses an unconstrained span-projection residual rather than a nonnegative
+coefficient-fit residual, so their supports need not match. The occupancy is the step of
+maximum separation between the real and (averaged) control <em>cumulative</em> captured variance –
+the point past which further atoms add no more than random directions would. Deterministic
+given <code class="docutils literal notranslate"><span class="pre">seed</span></code> and needs no threshold. (Captured variance is a projection, hence scale-free,
+so the random control atoms are simply unit-norm.)</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> – Target vector, shape <code class="docutils literal notranslate"><span class="pre">[d_model]</span></code>.</p></li>
+<li><p><strong>dictionary</strong> – Atom matrix, shape <code class="docutils literal notranslate"><span class="pre">[num_atoms,</span> <span class="pre">d_model]</span></code> (rows are atoms).</p></li>
+<li><p><strong>max_atoms</strong> – Number of atoms to select in the real and control recurrences.</p></li>
+<li><p><strong>num_control_dictionaries</strong> – Number of random control dictionaries to average over.</p></li>
+<li><p><strong>seed</strong> – Seed for the random control dictionaries (reproducibility).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>An <a class="reference internal" href="#transformer_lens.tools.analysis.JSpaceOccupancy" title="transformer_lens.tools.analysis.JSpaceOccupancy"><code class="xref py py-class docutils literal notranslate"><span class="pre">JSpaceOccupancy</span></code></a>.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>ValueError</strong> – On complex inputs, a non-2-D dictionary, a target whose length does not match
+    <code class="docutils literal notranslate"><span class="pre">d_model</span></code>, <code class="docutils literal notranslate"><span class="pre">max_atoms</span></code> outside <code class="docutils literal notranslate"><span class="pre">[1,</span> <span class="pre">num_atoms]</span></code>,
+    <code class="docutils literal notranslate"><span class="pre">num_control_dictionaries</span> <span class="pre">&lt;</span> <span class="pre">1</span></code>, a target with non-finite entries or a non-finite or
+    zero norm, or a dictionary with non-finite or zero-norm atoms.</p>
 </dd>
 </dl>
 </dd></dl>
@@ -1817,6 +2547,49 @@ atoms and <code class="docutils literal notranslate"><span class="pre">selected_
 </dl>
 </dd></dl>
 
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.orthonormal_subspace">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.tools.analysis.</span></span><span class="sig-name descname"><span class="pre">orthonormal_subspace</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">matrix</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'ambient</span> <span class="pre">width'</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rank</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rtol</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.SubspaceBasis" title="transformer_lens.tools.analysis.projection_kernel.SubspaceBasis"><span class="pre">SubspaceBasis</span></a></span></span><a class="headerlink" href="#transformer_lens.tools.analysis.orthonormal_subspace" title="Link to this definition">¶</a></dt>
+<dd><p>Extract an explicitly ranked orthonormal column-space basis.</p>
+<p>Low-precision inputs are promoted to float32 before the reduced SVD. With no
+explicit <code class="docutils literal notranslate"><span class="pre">rtol</span></code>, numerical rank uses the larger of the compute-SVD error
+scale and one input-storage epsilon, relative to the largest singular value.
+An explicit <code class="docutils literal notranslate"><span class="pre">rank</span></code> truncates the measured subspace but may not exceed its
+measured rank.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>matrix</strong> – Finite floating-point matrix with shape <code class="docutils literal notranslate"><span class="pre">[ambient_dim,</span> <span class="pre">width]</span></code>.</p></li>
+<li><p><strong>rank</strong> – Optional number of leading singular directions to retain.</p></li>
+<li><p><strong>rtol</strong> – Optional non-negative relative singular-value threshold.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Basis, complete singular spectrum, and rank metadata.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>ValueError</strong> – If the matrix or rank policy is invalid.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.projection_kernel">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.tools.analysis.</span></span><span class="sig-name descname"><span class="pre">projection_kernel</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">subspace_a</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.SubspaceBasis" title="transformer_lens.tools.analysis.projection_kernel.SubspaceBasis"><span class="pre">SubspaceBasis</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">subspace_b</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.SubspaceBasis" title="transformer_lens.tools.analysis.projection_kernel.SubspaceBasis"><span class="pre">SubspaceBasis</span></a></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">check_orthonormal</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.ProjectionKernelResult" title="transformer_lens.tools.analysis.projection_kernel.ProjectionKernelResult"><span class="pre">ProjectionKernelResult</span></a></span></span><a class="headerlink" href="#transformer_lens.tools.analysis.projection_kernel" title="Link to this definition">¶</a></dt>
+<dd><p>Measure overlap between two explicitly extracted subspaces.</p>
+<p>Raw PK lies in <code class="docutils literal notranslate"><span class="pre">[0,</span> <span class="pre">min(rank_a,</span> <span class="pre">rank_b)]</span></code>. The normalized value is
+<code class="docutils literal notranslate"><span class="pre">PK</span> <span class="pre">/</span> <span class="pre">sqrt(rank_a</span> <span class="pre">*</span> <span class="pre">rank_b)</span></code>, the cosine between the two projection
+matrices. Principal angles are returned in radians.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.random_projection_kernel_moments">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.tools.analysis.</span></span><span class="sig-name descname"><span class="pre">random_projection_kernel_moments</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ambient_dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rank</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.RandomSubspaceReference" title="transformer_lens.tools.analysis.projection_kernel.RandomSubspaceReference"><span class="pre">RandomSubspaceReference</span></a></span></span><a class="headerlink" href="#transformer_lens.tools.analysis.random_projection_kernel_moments" title="Link to this definition">¶</a></dt>
+<dd><p>Return PK moments for independent Haar-distributed rank-<code class="docutils literal notranslate"><span class="pre">rank</span></code> planes.</p>
+<p>These idealized descriptive moments are not calibrated p-values for trained
+model weights, whose head subspaces are dependent and anisotropic.</p>
+</dd></dl>
+
 </section>
 </section>
 
@@ -1878,6 +2651,14 @@ atoms and <code class="docutils literal notranslate"><span class="pre">selected_
 <li><a class="reference internal" href="#">transformer_lens.tools.analysis package</a><ul>
 <li><a class="reference internal" href="#submodules">Submodules</a></li>
 <li><a class="reference internal" href="#module-transformer_lens.tools.analysis">Module contents</a><ul>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.AttentionHeadRef"><code class="docutils literal notranslate"><span class="pre">AttentionHeadRef</span></code></a><ul>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.AttentionHeadRef.head"><code class="docutils literal notranslate"><span class="pre">AttentionHeadRef.head</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.AttentionHeadRef.kind"><code class="docutils literal notranslate"><span class="pre">AttentionHeadRef.kind</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.AttentionHeadRef.label"><code class="docutils literal notranslate"><span class="pre">AttentionHeadRef.label</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.AttentionHeadRef.layer"><code class="docutils literal notranslate"><span class="pre">AttentionHeadRef.layer</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.AttentionHeadRef.role"><code class="docutils literal notranslate"><span class="pre">AttentionHeadRef.role</span></code></a></li>
+</ul>
+</li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.DirectLogitAttribution"><code class="docutils literal notranslate"><span class="pre">DirectLogitAttribution</span></code></a><ul>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.DirectLogitAttribution.attribution"><code class="docutils literal notranslate"><span class="pre">DirectLogitAttribution.attribution</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.DirectLogitAttribution.labels"><code class="docutils literal notranslate"><span class="pre">DirectLogitAttribution.labels</span></code></a></li>
@@ -1886,6 +2667,32 @@ atoms and <code class="docutils literal notranslate"><span class="pre">selected_
 <li><a class="reference internal" href="#id3"><code class="docutils literal notranslate"><span class="pre">DirectLogitAttribution.labels</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.DirectLogitAttribution.top"><code class="docutils literal notranslate"><span class="pre">DirectLogitAttribution.top()</span></code></a></li>
 <li><a class="reference internal" href="#id4"><code class="docutils literal notranslate"><span class="pre">DirectLogitAttribution.unit</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.HeadAffinityPair"><code class="docutils literal notranslate"><span class="pre">HeadAffinityPair</span></code></a><ul>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.HeadAffinityPair.normalized"><code class="docutils literal notranslate"><span class="pre">HeadAffinityPair.normalized</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.HeadAffinityPair.score"><code class="docutils literal notranslate"><span class="pre">HeadAffinityPair.score</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.HeadAffinityPair.source"><code class="docutils literal notranslate"><span class="pre">HeadAffinityPair.source</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.HeadAffinityPair.target"><code class="docutils literal notranslate"><span class="pre">HeadAffinityPair.target</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.HeadAffinityResult"><code class="docutils literal notranslate"><span class="pre">HeadAffinityResult</span></code></a><ul>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.HeadAffinityResult.normalized"><code class="docutils literal notranslate"><span class="pre">HeadAffinityResult.normalized</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.HeadAffinityResult.rank"><code class="docutils literal notranslate"><span class="pre">HeadAffinityResult.rank</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.HeadAffinityResult.rtol"><code class="docutils literal notranslate"><span class="pre">HeadAffinityResult.rtol</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.HeadAffinityResult.scores"><code class="docutils literal notranslate"><span class="pre">HeadAffinityResult.scores</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.HeadAffinityResult.source_head_kind"><code class="docutils literal notranslate"><span class="pre">HeadAffinityResult.source_head_kind</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.HeadAffinityResult.source_layer_indices"><code class="docutils literal notranslate"><span class="pre">HeadAffinityResult.source_layer_indices</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.HeadAffinityResult.source_rank"><code class="docutils literal notranslate"><span class="pre">HeadAffinityResult.source_rank</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.HeadAffinityResult.source_ranks"><code class="docutils literal notranslate"><span class="pre">HeadAffinityResult.source_ranks</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.HeadAffinityResult.source_role"><code class="docutils literal notranslate"><span class="pre">HeadAffinityResult.source_role</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.HeadAffinityResult.target_head_kind"><code class="docutils literal notranslate"><span class="pre">HeadAffinityResult.target_head_kind</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.HeadAffinityResult.target_layer_indices"><code class="docutils literal notranslate"><span class="pre">HeadAffinityResult.target_layer_indices</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.HeadAffinityResult.target_rank"><code class="docutils literal notranslate"><span class="pre">HeadAffinityResult.target_rank</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.HeadAffinityResult.target_ranks"><code class="docutils literal notranslate"><span class="pre">HeadAffinityResult.target_ranks</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.HeadAffinityResult.target_role"><code class="docutils literal notranslate"><span class="pre">HeadAffinityResult.target_role</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.HeadAffinityResult.top_pairs"><code class="docutils literal notranslate"><span class="pre">HeadAffinityResult.top_pairs()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.HeadAffinityResult.valid_mask"><code class="docutils literal notranslate"><span class="pre">HeadAffinityResult.valid_mask</span></code></a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.JSpaceDecomposition"><code class="docutils literal notranslate"><span class="pre">JSpaceDecomposition</span></code></a><ul>
@@ -1903,6 +2710,28 @@ atoms and <code class="docutils literal notranslate"><span class="pre">selected_
 <li><a class="reference internal" href="#id10"><code class="docutils literal notranslate"><span class="pre">JSpaceDecomposition.support</span></code></a></li>
 </ul>
 </li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.JSpaceOccupancy"><code class="docutils literal notranslate"><span class="pre">JSpaceOccupancy</span></code></a><ul>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.JSpaceOccupancy.occupancy"><code class="docutils literal notranslate"><span class="pre">JSpaceOccupancy.occupancy</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.JSpaceOccupancy.marginal_captured_variance"><code class="docutils literal notranslate"><span class="pre">JSpaceOccupancy.marginal_captured_variance</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.JSpaceOccupancy.control_captured_variance"><code class="docutils literal notranslate"><span class="pre">JSpaceOccupancy.control_captured_variance</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.JSpaceOccupancy.support"><code class="docutils literal notranslate"><span class="pre">JSpaceOccupancy.support</span></code></a></li>
+<li><a class="reference internal" href="#id11"><code class="docutils literal notranslate"><span class="pre">JSpaceOccupancy.control_captured_variance</span></code></a></li>
+<li><a class="reference internal" href="#id12"><code class="docutils literal notranslate"><span class="pre">JSpaceOccupancy.marginal_captured_variance</span></code></a></li>
+<li><a class="reference internal" href="#id13"><code class="docutils literal notranslate"><span class="pre">JSpaceOccupancy.occupancy</span></code></a></li>
+<li><a class="reference internal" href="#id14"><code class="docutils literal notranslate"><span class="pre">JSpaceOccupancy.support</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.JSpaceVarianceProfile"><code class="docutils literal notranslate"><span class="pre">JSpaceVarianceProfile</span></code></a><ul>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.JSpaceVarianceProfile.layers"><code class="docutils literal notranslate"><span class="pre">JSpaceVarianceProfile.layers</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.JSpaceVarianceProfile.median"><code class="docutils literal notranslate"><span class="pre">JSpaceVarianceProfile.median</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.JSpaceVarianceProfile.pooled"><code class="docutils literal notranslate"><span class="pre">JSpaceVarianceProfile.pooled</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.JSpaceVarianceProfile.per_position"><code class="docutils literal notranslate"><span class="pre">JSpaceVarianceProfile.per_position</span></code></a></li>
+<li><a class="reference internal" href="#id15"><code class="docutils literal notranslate"><span class="pre">JSpaceVarianceProfile.layers</span></code></a></li>
+<li><a class="reference internal" href="#id16"><code class="docutils literal notranslate"><span class="pre">JSpaceVarianceProfile.median</span></code></a></li>
+<li><a class="reference internal" href="#id17"><code class="docutils literal notranslate"><span class="pre">JSpaceVarianceProfile.per_position</span></code></a></li>
+<li><a class="reference internal" href="#id18"><code class="docutils literal notranslate"><span class="pre">JSpaceVarianceProfile.pooled</span></code></a></li>
+</ul>
+</li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.JacobianLens"><code class="docutils literal notranslate"><span class="pre">JacobianLens</span></code></a><ul>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.JacobianLens.jacobians"><code class="docutils literal notranslate"><span class="pre">JacobianLens.jacobians</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.JacobianLens.n_prompts"><code class="docutils literal notranslate"><span class="pre">JacobianLens.n_prompts</span></code></a></li>
@@ -1912,11 +2741,13 @@ atoms and <code class="docutils literal notranslate"><span class="pre">selected_
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.JacobianLens.clear_device_cache"><code class="docutils literal notranslate"><span class="pre">JacobianLens.clear_device_cache()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.JacobianLens.decompose"><code class="docutils literal notranslate"><span class="pre">JacobianLens.decompose()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.JacobianLens.fit"><code class="docutils literal notranslate"><span class="pre">JacobianLens.fit()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.JacobianLens.fraction_of_variance"><code class="docutils literal notranslate"><span class="pre">JacobianLens.fraction_of_variance()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.JacobianLens.from_pretrained"><code class="docutils literal notranslate"><span class="pre">JacobianLens.from_pretrained()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.JacobianLens.lens_vector_dictionary"><code class="docutils literal notranslate"><span class="pre">JacobianLens.lens_vector_dictionary()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.JacobianLens.lens_vectors"><code class="docutils literal notranslate"><span class="pre">JacobianLens.lens_vectors()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.JacobianLens.load"><code class="docutils literal notranslate"><span class="pre">JacobianLens.load()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.JacobianLens.merge"><code class="docutils literal notranslate"><span class="pre">JacobianLens.merge()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.JacobianLens.occupancy"><code class="docutils literal notranslate"><span class="pre">JacobianLens.occupancy()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.JacobianLens.readout"><code class="docutils literal notranslate"><span class="pre">JacobianLens.readout()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.JacobianLens.save"><code class="docutils literal notranslate"><span class="pre">JacobianLens.save()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.JacobianLens.source_layers"><code class="docutils literal notranslate"><span class="pre">JacobianLens.source_layers</span></code></a></li>
@@ -1936,22 +2767,62 @@ atoms and <code class="docutils literal notranslate"><span class="pre">selected_
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.JacobianLensReadout.tokens"><code class="docutils literal notranslate"><span class="pre">JacobianLensReadout.tokens</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.JacobianLensReadout.positions"><code class="docutils literal notranslate"><span class="pre">JacobianLensReadout.positions</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.JacobianLensReadout.use_jacobian"><code class="docutils literal notranslate"><span class="pre">JacobianLensReadout.use_jacobian</span></code></a></li>
-<li><a class="reference internal" href="#id11"><code class="docutils literal notranslate"><span class="pre">JacobianLensReadout.lens_logits</span></code></a></li>
-<li><a class="reference internal" href="#id12"><code class="docutils literal notranslate"><span class="pre">JacobianLensReadout.lens_topk_indices</span></code></a></li>
-<li><a class="reference internal" href="#id13"><code class="docutils literal notranslate"><span class="pre">JacobianLensReadout.lens_topk_values</span></code></a></li>
-<li><a class="reference internal" href="#id14"><code class="docutils literal notranslate"><span class="pre">JacobianLensReadout.model_logits</span></code></a></li>
-<li><a class="reference internal" href="#id15"><code class="docutils literal notranslate"><span class="pre">JacobianLensReadout.model_topk_indices</span></code></a></li>
-<li><a class="reference internal" href="#id16"><code class="docutils literal notranslate"><span class="pre">JacobianLensReadout.model_topk_values</span></code></a></li>
-<li><a class="reference internal" href="#id17"><code class="docutils literal notranslate"><span class="pre">JacobianLensReadout.positions</span></code></a></li>
-<li><a class="reference internal" href="#id18"><code class="docutils literal notranslate"><span class="pre">JacobianLensReadout.tokens</span></code></a></li>
+<li><a class="reference internal" href="#id19"><code class="docutils literal notranslate"><span class="pre">JacobianLensReadout.lens_logits</span></code></a></li>
+<li><a class="reference internal" href="#id20"><code class="docutils literal notranslate"><span class="pre">JacobianLensReadout.lens_topk_indices</span></code></a></li>
+<li><a class="reference internal" href="#id21"><code class="docutils literal notranslate"><span class="pre">JacobianLensReadout.lens_topk_values</span></code></a></li>
+<li><a class="reference internal" href="#id22"><code class="docutils literal notranslate"><span class="pre">JacobianLensReadout.model_logits</span></code></a></li>
+<li><a class="reference internal" href="#id23"><code class="docutils literal notranslate"><span class="pre">JacobianLensReadout.model_topk_indices</span></code></a></li>
+<li><a class="reference internal" href="#id24"><code class="docutils literal notranslate"><span class="pre">JacobianLensReadout.model_topk_values</span></code></a></li>
+<li><a class="reference internal" href="#id25"><code class="docutils literal notranslate"><span class="pre">JacobianLensReadout.positions</span></code></a></li>
+<li><a class="reference internal" href="#id26"><code class="docutils literal notranslate"><span class="pre">JacobianLensReadout.tokens</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.JacobianLensReadout.top_tokens"><code class="docutils literal notranslate"><span class="pre">JacobianLensReadout.top_tokens()</span></code></a></li>
-<li><a class="reference internal" href="#id19"><code class="docutils literal notranslate"><span class="pre">JacobianLensReadout.use_jacobian</span></code></a></li>
+<li><a class="reference internal" href="#id27"><code class="docutils literal notranslate"><span class="pre">JacobianLensReadout.use_jacobian</span></code></a></li>
 </ul>
 </li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.ProjectionKernelResult"><code class="docutils literal notranslate"><span class="pre">ProjectionKernelResult</span></code></a><ul>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.ProjectionKernelResult.ambient_dim"><code class="docutils literal notranslate"><span class="pre">ProjectionKernelResult.ambient_dim</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.ProjectionKernelResult.angles"><code class="docutils literal notranslate"><span class="pre">ProjectionKernelResult.angles</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.ProjectionKernelResult.cosines"><code class="docutils literal notranslate"><span class="pre">ProjectionKernelResult.cosines</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.ProjectionKernelResult.normalized"><code class="docutils literal notranslate"><span class="pre">ProjectionKernelResult.normalized</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.ProjectionKernelResult.rank_a"><code class="docutils literal notranslate"><span class="pre">ProjectionKernelResult.rank_a</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.ProjectionKernelResult.rank_b"><code class="docutils literal notranslate"><span class="pre">ProjectionKernelResult.rank_b</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.ProjectionKernelResult.score"><code class="docutils literal notranslate"><span class="pre">ProjectionKernelResult.score</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.RandomSubspaceReference"><code class="docutils literal notranslate"><span class="pre">RandomSubspaceReference</span></code></a><ul>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.RandomSubspaceReference.ambient_dim"><code class="docutils literal notranslate"><span class="pre">RandomSubspaceReference.ambient_dim</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.RandomSubspaceReference.mean"><code class="docutils literal notranslate"><span class="pre">RandomSubspaceReference.mean</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.RandomSubspaceReference.rank"><code class="docutils literal notranslate"><span class="pre">RandomSubspaceReference.rank</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.RandomSubspaceReference.variance"><code class="docutils literal notranslate"><span class="pre">RandomSubspaceReference.variance</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.SubspaceBasis"><code class="docutils literal notranslate"><span class="pre">SubspaceBasis</span></code></a><ul>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.SubspaceBasis.basis"><code class="docutils literal notranslate"><span class="pre">SubspaceBasis.basis</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.SubspaceBasis.singular_values"><code class="docutils literal notranslate"><span class="pre">SubspaceBasis.singular_values</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.SubspaceBasis.rank"><code class="docutils literal notranslate"><span class="pre">SubspaceBasis.rank</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.SubspaceBasis.measured_rank"><code class="docutils literal notranslate"><span class="pre">SubspaceBasis.measured_rank</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.SubspaceBasis.rtol"><code class="docutils literal notranslate"><span class="pre">SubspaceBasis.rtol</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.SubspaceBasis.threshold"><code class="docutils literal notranslate"><span class="pre">SubspaceBasis.threshold</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.SubspaceBasis.input_shape"><code class="docutils literal notranslate"><span class="pre">SubspaceBasis.input_shape</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.SubspaceBasis.ambient_dim"><code class="docutils literal notranslate"><span class="pre">SubspaceBasis.ambient_dim</span></code></a></li>
+<li><a class="reference internal" href="#id28"><code class="docutils literal notranslate"><span class="pre">SubspaceBasis.basis</span></code></a></li>
+<li><a class="reference internal" href="#id29"><code class="docutils literal notranslate"><span class="pre">SubspaceBasis.input_shape</span></code></a></li>
+<li><a class="reference internal" href="#id30"><code class="docutils literal notranslate"><span class="pre">SubspaceBasis.measured_rank</span></code></a></li>
+<li><a class="reference internal" href="#id31"><code class="docutils literal notranslate"><span class="pre">SubspaceBasis.rank</span></code></a></li>
+<li><a class="reference internal" href="#id32"><code class="docutils literal notranslate"><span class="pre">SubspaceBasis.rtol</span></code></a></li>
+<li><a class="reference internal" href="#id33"><code class="docutils literal notranslate"><span class="pre">SubspaceBasis.singular_values</span></code></a></li>
+<li><a class="reference internal" href="#id34"><code class="docutils literal notranslate"><span class="pre">SubspaceBasis.threshold</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.attention_head_subspace_affinity"><code class="docutils literal notranslate"><span class="pre">attention_head_subspace_affinity()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.direct_logit_attribution"><code class="docutils literal notranslate"><span class="pre">direct_logit_attribution()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.estimate_occupancy"><code class="docutils literal notranslate"><span class="pre">estimate_occupancy()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.get_act_patch_direct_path"><code class="docutils literal notranslate"><span class="pre">get_act_patch_direct_path()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.get_act_patch_direct_path_all_sources"><code class="docutils literal notranslate"><span class="pre">get_act_patch_direct_path_all_sources()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.get_sparse_decomposition"><code class="docutils literal notranslate"><span class="pre">get_sparse_decomposition()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.orthonormal_subspace"><code class="docutils literal notranslate"><span class="pre">orthonormal_subspace()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.projection_kernel"><code class="docutils literal notranslate"><span class="pre">projection_kernel()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.random_projection_kernel_moments"><code class="docutils literal notranslate"><span class="pre">random_projection_kernel_moments()</span></code></a></li>
 </ul>
 </li>
 </ul>

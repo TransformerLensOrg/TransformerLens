@@ -188,6 +188,7 @@
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.main_benchmark.html">transformer_lens.benchmarks.main_benchmark module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.multimodal.html">transformer_lens.benchmarks.multimodal module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.text_quality.html">transformer_lens.benchmarks.text_quality module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.text_quality_profiles.html">transformer_lens.benchmarks.text_quality_profiles module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.utils.html">transformer_lens.benchmarks.utils module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.vision.html">transformer_lens.benchmarks.vision module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.weight_processing.html">transformer_lens.benchmarks.weight_processing module</a></li>
@@ -522,6 +523,7 @@
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.direct_path_patching.html">transformer_lens.tools.analysis.direct_path_patching module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens.html">transformer_lens.tools.analysis.jacobian_lens module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html">transformer_lens.tools.analysis.jacobian_lens_decomposition module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html">transformer_lens.tools.analysis.projection_kernel module</a></li>
 </ul>
 </li>
 <li class="toctree-l4 current has-children"><a class="reference internal" href="transformer_lens.tools.model_registry.html">transformer_lens.tools.model_registry package</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-21" name="toctree-checkbox-21" role="switch" type="checkbox"/><label for="toctree-checkbox-21"><div class="visually-hidden">Toggle navigation of transformer_lens.tools.model_registry package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul class="current">
@@ -609,6 +611,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../content/hook_system.html">The Hook System</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/compatibility_mode.html">TransformerBridge Compatibility Mode</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/ssm_interpretability.html">SSM / Recurrent-Model Interpretability</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../content/projection_kernel.html">Projection Kernel</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/jacobian_lens_fitting.html">Fitting a Jacobian lens</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/debugging_numerical_divergence.html">Debugging Numerical Divergence</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html">Transformer Lens Main Demo Notebook</a></li>
@@ -760,7 +763,7 @@ python -m transformer_lens.tools.model_registry.verify_models –reverify –arc
 
 <dl class="py function">
 <dt class="sig sig-object py" id="transformer_lens.tools.model_registry.verify_models.estimate_benchmark_memory_gb">
-<span class="sig-prename descclassname"><span class="pre">transformer_lens.tools.model_registry.verify_models.</span></span><span class="sig-name descname"><span class="pre">estimate_benchmark_memory_gb</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">n_params</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dtype</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'float32'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">phases</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_hf_reference</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">float</span></span></span><a class="headerlink" href="#transformer_lens.tools.model_registry.verify_models.estimate_benchmark_memory_gb" title="Link to this definition">¶</a></dt>
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.tools.model_registry.verify_models.</span></span><span class="sig-name descname"><span class="pre">estimate_benchmark_memory_gb</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">n_params</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dtype</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'float32'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">phases</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_hf_reference</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'cpu'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">float</span></span></span><a class="headerlink" href="#transformer_lens.tools.model_registry.verify_models.estimate_benchmark_memory_gb" title="Link to this definition">¶</a></dt>
 <dd><p>Estimate peak memory needed for benchmark suite.</p>
 <p>Phases run sequentially, so peak memory is the maximum of any single phase,
 not the sum. The multiplier represents how many model copies exist at peak:</p>
@@ -788,15 +791,16 @@ Bridge. Mirrors the <code class="docutils literal notranslate"><span class="pre"
 <dl class="py function">
 <dt class="sig sig-object py" id="transformer_lens.tools.model_registry.verify_models.estimate_model_params">
 <span class="sig-prename descclassname"><span class="pre">transformer_lens.tools.model_registry.verify_models.</span></span><span class="sig-name descname"><span class="pre">estimate_model_params</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">int</span></span></span><a class="headerlink" href="#transformer_lens.tools.model_registry.verify_models.estimate_model_params" title="Link to this definition">¶</a></dt>
-<dd><p>Estimate parameter count using AutoConfig (lightweight, no model download).</p>
-<p>Fetches only the config JSON (~KB) and computes n_params from dimensions
-using the same formula as HookedTransformerConfig.__post_init__.</p>
+<dd><p>Parameter count for this model: published metadata first, else a config estimate.</p>
+<p>Fetches only metadata and the config JSON (~KB), never weights.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><p><strong>model_id</strong> – HuggingFace model ID</p>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Estimated number of parameters</p>
+<dd class="field-even"><p>Number of parameters — exact when the hub publishes it, else estimated
+from config dimensions using the same formula as
+HookedTransformerConfig.__post_init__.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><p><strong>Exception</strong> – If config cannot be fetched or parsed</p>
@@ -822,6 +826,17 @@ using the same formula as HookedTransformerConfig.__post_init__.</p>
 <dt class="sig sig-object py" id="transformer_lens.tools.model_registry.verify_models.main">
 <span class="sig-prename descclassname"><span class="pre">transformer_lens.tools.model_registry.verify_models.</span></span><span class="sig-name descname"><span class="pre">main</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#transformer_lens.tools.model_registry.verify_models.main" title="Link to this definition">¶</a></dt>
 <dd><p>CLI entry point for batch model verification.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.tools.model_registry.verify_models.published_param_count">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.tools.model_registry.verify_models.</span></span><span class="sig-name descname"><span class="pre">published_param_count</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></span><a class="headerlink" href="#transformer_lens.tools.model_registry.verify_models.published_param_count" title="Link to this definition">¶</a></dt>
+<dd><p>Exact parameter count from the hub’s safetensors metadata, or None.</p>
+<p>Metadata only – no weights are fetched. Preferred over the config formula
+below, which assumes every layer carries full attention and an MLP and so
+over-counts a hybrid Mamba/attention stack roughly fourfold
+(NVIDIA-Nemotron-Nano-9B-v2: 36.6B estimated against 8.89B published, enough
+to skip the model as too large for memory it does not need).</p>
 </dd></dl>
 
 <dl class="py function">
@@ -951,6 +966,7 @@ Takes the top N unverified models per architecture.</p>
 <li><a class="reference internal" href="#transformer_lens.tools.model_registry.verify_models.estimate_model_params"><code class="docutils literal notranslate"><span class="pre">estimate_model_params()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.model_registry.verify_models.get_available_memory_gb"><code class="docutils literal notranslate"><span class="pre">get_available_memory_gb()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.model_registry.verify_models.main"><code class="docutils literal notranslate"><span class="pre">main()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.model_registry.verify_models.published_param_count"><code class="docutils literal notranslate"><span class="pre">published_param_count()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.model_registry.verify_models.select_models_for_verification"><code class="docutils literal notranslate"><span class="pre">select_models_for_verification()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.model_registry.verify_models.verify_models"><code class="docutils literal notranslate"><span class="pre">verify_models()</span></code></a></li>
 </ul>

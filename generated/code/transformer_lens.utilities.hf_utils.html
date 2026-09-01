@@ -188,6 +188,7 @@
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.main_benchmark.html">transformer_lens.benchmarks.main_benchmark module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.multimodal.html">transformer_lens.benchmarks.multimodal module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.text_quality.html">transformer_lens.benchmarks.text_quality module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.text_quality_profiles.html">transformer_lens.benchmarks.text_quality_profiles module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.utils.html">transformer_lens.benchmarks.utils module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.vision.html">transformer_lens.benchmarks.vision module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.weight_processing.html">transformer_lens.benchmarks.weight_processing module</a></li>
@@ -522,6 +523,7 @@
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.direct_path_patching.html">transformer_lens.tools.analysis.direct_path_patching module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens.html">transformer_lens.tools.analysis.jacobian_lens module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html">transformer_lens.tools.analysis.jacobian_lens_decomposition module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html">transformer_lens.tools.analysis.projection_kernel module</a></li>
 </ul>
 </li>
 <li class="toctree-l4 has-children"><a class="reference internal" href="transformer_lens.tools.model_registry.html">transformer_lens.tools.model_registry package</a><input class="toctree-checkbox" id="toctree-checkbox-21" name="toctree-checkbox-21" role="switch" type="checkbox"/><label for="toctree-checkbox-21"><div class="visually-hidden">Toggle navigation of transformer_lens.tools.model_registry package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
@@ -609,6 +611,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../content/hook_system.html">The Hook System</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/compatibility_mode.html">TransformerBridge Compatibility Mode</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/ssm_interpretability.html">SSM / Recurrent-Model Interpretability</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../content/projection_kernel.html">Projection Kernel</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/jacobian_lens_fitting.html">Fitting a Jacobian lens</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/debugging_numerical_divergence.html">Debugging Numerical Divergence</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html">Transformer Lens Main Demo Notebook</a></li>
@@ -672,9 +675,26 @@
 <dt class="sig sig-object py" id="transformer_lens.utilities.hf_utils.autoconfig_with_remote_post_init_compat">
 <span class="sig-prename descclassname"><span class="pre">transformer_lens.utilities.hf_utils.</span></span><span class="sig-name descname"><span class="pre">autoconfig_with_remote_post_init_compat</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">auto_config</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#transformer_lens.utilities.hf_utils.autoconfig_with_remote_post_init_compat" title="Link to this definition">¶</a></dt>
 <dd><p><code class="docutils literal notranslate"><span class="pre">AutoConfig.from_pretrained</span></code> tolerating 4.x-era remote-code configs.</p>
-<p>transformers&gt;=5 delivers non-base fields via <code class="docutils literal notranslate"><span class="pre">__post_init__(**extras)</span></code>;
+<p>Two upstream quirks, each retried once:</p>
+<ul class="simple">
+<li><p>transformers&gt;=5 delivers non-base fields via <code class="docutils literal notranslate"><span class="pre">__post_init__(**extras)</span></code>;
 a 4.x-era argless override (OpenELM) crashes on the first kwarg. On exactly
-that TypeError, wrap the class’s <code class="docutils literal notranslate"><span class="pre">__post_init__</span></code> and retry once.</p>
+that TypeError, wrap the class’s <code class="docutils literal notranslate"><span class="pre">__post_init__</span></code>.</p></li>
+<li><p>a repo that pins <code class="docutils literal notranslate"><span class="pre">flash_attention_2</span></code> in its config cannot be asked for
+<code class="docutils literal notranslate"><span class="pre">output_attentions</span></code>. The bridge needs attention outputs and loads the model
+eager regardless, so retry asking for the implementation the loader will use.</p></li>
+</ul>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.utilities.hf_utils.autotokenizer_with_special_token_compat">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utilities.hf_utils.</span></span><span class="sig-name descname"><span class="pre">autotokenizer_with_special_token_compat</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">auto_tokenizer</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#transformer_lens.utilities.hf_utils.autotokenizer_with_special_token_compat" title="Link to this definition">¶</a></dt>
+<dd><p><code class="docutils literal notranslate"><span class="pre">AutoTokenizer.from_pretrained</span></code> tolerating rejected special-token declarations.</p>
+<p>Some repos declare extra special tokens that their <code class="docutils literal notranslate"><span class="pre">tokenizer.json</span></code> already
+contains – the catherinearnett/B-GPT family lists ~1200 <code class="docutils literal notranslate"><span class="pre">[XXXXXn]</span></code> tokens –
+and re-adding them raises <code class="docutils literal notranslate"><span class="pre">TypeError:</span> <span class="pre">argument</span> <span class="pre">'special_tokens':</span> <span class="pre">Expected</span>
+<span class="pre">Union[...]</span></code>. The serialized fast tokenizer is intact and encodes identically,
+so build straight from it and carry the config’s token roles across.</p>
 </dd></dl>
 
 <dl class="py function">
@@ -690,6 +710,19 @@ Non-429 exceptions propagate immediately.</p>
 <span class="sig-prename descclassname"><span class="pre">transformer_lens.utilities.hf_utils.</span></span><span class="sig-name descname"><span class="pre">download_file_from_hf</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">repo_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">file_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">subfolder</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'.'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cache_dir</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'/home/runner/.cache/huggingface/hub'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">force_is_torch</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.utilities.hf_utils.download_file_from_hf" title="Link to this definition">¶</a></dt>
 <dd><p>Helper function to download files from the HuggingFace Hub, from subfolder/file_name in repo_name, saving locally to cache_dir and returning the loaded file (if a json or Torch object) and the file path otherwise.</p>
 <p>If it’s a Torch file without the “.pth” extension, set force_is_torch=True to load it as a Torch object.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.utilities.hf_utils.enable_hf_numeric_tower">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utilities.hf_utils.</span></span><span class="sig-name descname"><span class="pre">enable_hf_numeric_tower</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#transformer_lens.utilities.hf_utils.enable_hf_numeric_tower" title="Link to this definition">¶</a></dt>
+<dd><p>Let huggingface_hub’s strict dataclasses accept an int in a float field.</p>
+<p>The hub validates with a bare <code class="docutils literal notranslate"><span class="pre">isinstance</span></code>, so a config that writes an
+integral value for a float field – <code class="docutils literal notranslate"><span class="pre">&quot;routed_scaling_factor&quot;:</span> <span class="pre">1</span></code> on the
+DeepseekV3 family, and any <code class="docutils literal notranslate"><span class="pre">rope_theta:</span> <span class="pre">10000</span></code> – fails to load, though
+PEP 484 and Python’s numeric tower both accept int wherever float is asked
+for. transformers calls <code class="docutils literal notranslate"><span class="pre">AutoConfig</span></code> from inside <code class="docutils literal notranslate"><span class="pre">AutoTokenizer</span></code> and the
+model loaders, so nothing short of the validator itself covers every path.</p>
+<p>Idempotent, and a no-op if the hub’s internals move.</p>
 </dd></dl>
 
 <dl class="py function">
@@ -814,8 +847,10 @@ derives from them. Idempotent via marker.</p>
             <ul>
 <li><a class="reference internal" href="#">transformer_lens.utilities.hf_utils module</a><ul>
 <li><a class="reference internal" href="#transformer_lens.utilities.hf_utils.autoconfig_with_remote_post_init_compat"><code class="docutils literal notranslate"><span class="pre">autoconfig_with_remote_post_init_compat()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.utilities.hf_utils.autotokenizer_with_special_token_compat"><code class="docutils literal notranslate"><span class="pre">autotokenizer_with_special_token_compat()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utilities.hf_utils.call_hf_with_retry"><code class="docutils literal notranslate"><span class="pre">call_hf_with_retry()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utilities.hf_utils.download_file_from_hf"><code class="docutils literal notranslate"><span class="pre">download_file_from_hf()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.utilities.hf_utils.enable_hf_numeric_tower"><code class="docutils literal notranslate"><span class="pre">enable_hf_numeric_tower()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utilities.hf_utils.enable_hf_retry"><code class="docutils literal notranslate"><span class="pre">enable_hf_retry()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utilities.hf_utils.get_dataset"><code class="docutils literal notranslate"><span class="pre">get_dataset()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utilities.hf_utils.get_hf_token"><code class="docutils literal notranslate"><span class="pre">get_hf_token()</span></code></a></li>

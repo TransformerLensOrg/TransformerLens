@@ -3,7 +3,7 @@
   <head><meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width,initial-scale=1"/>
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="Debugging Numerical Divergence" href="debugging_numerical_divergence.html" /><link rel="prev" title="SSM / Recurrent-Model Interpretability" href="ssm_interpretability.html" />
+<link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="Debugging Numerical Divergence" href="debugging_numerical_divergence.html" /><link rel="prev" title="Projection Kernel" href="projection_kernel.html" />
 
     <link rel="shortcut icon" href="../_static/favicon.ico"/><!-- Generated with Sphinx 7.4.7 and Furo 2023.09.10 -->
         <title>Fitting a Jacobian lens - TransformerLens Documentation</title>
@@ -188,6 +188,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../generated/code/transformer_lens.benchmarks.main_benchmark.html">transformer_lens.benchmarks.main_benchmark module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../generated/code/transformer_lens.benchmarks.multimodal.html">transformer_lens.benchmarks.multimodal module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../generated/code/transformer_lens.benchmarks.text_quality.html">transformer_lens.benchmarks.text_quality module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../generated/code/transformer_lens.benchmarks.text_quality_profiles.html">transformer_lens.benchmarks.text_quality_profiles module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../generated/code/transformer_lens.benchmarks.utils.html">transformer_lens.benchmarks.utils module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../generated/code/transformer_lens.benchmarks.vision.html">transformer_lens.benchmarks.vision module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../generated/code/transformer_lens.benchmarks.weight_processing.html">transformer_lens.benchmarks.weight_processing module</a></li>
@@ -522,6 +523,7 @@
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.direct_path_patching.html">transformer_lens.tools.analysis.direct_path_patching module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.jacobian_lens.html">transformer_lens.tools.analysis.jacobian_lens module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.jacobian_lens_decomposition.html">transformer_lens.tools.analysis.jacobian_lens_decomposition module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.projection_kernel.html">transformer_lens.tools.analysis.projection_kernel module</a></li>
 </ul>
 </li>
 <li class="toctree-l4 has-children"><a class="reference internal" href="../generated/code/transformer_lens.tools.model_registry.html">transformer_lens.tools.model_registry package</a><input class="toctree-checkbox" id="toctree-checkbox-21" name="toctree-checkbox-21" role="switch" type="checkbox"/><label for="toctree-checkbox-21"><div class="visually-hidden">Toggle navigation of transformer_lens.tools.model_registry package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
@@ -609,6 +611,7 @@
 <li class="toctree-l1"><a class="reference internal" href="hook_system.html">The Hook System</a></li>
 <li class="toctree-l1"><a class="reference internal" href="compatibility_mode.html">TransformerBridge Compatibility Mode</a></li>
 <li class="toctree-l1"><a class="reference internal" href="ssm_interpretability.html">SSM / Recurrent-Model Interpretability</a></li>
+<li class="toctree-l1"><a class="reference internal" href="projection_kernel.html">Projection Kernel</a></li>
 <li class="toctree-l1 current current-page"><a class="current reference internal" href="#">Fitting a Jacobian lens</a></li>
 <li class="toctree-l1"><a class="reference internal" href="debugging_numerical_divergence.html">Debugging Numerical Divergence</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../generated/demos/Main_Demo.html">Transformer Lens Main Demo Notebook</a></li>
@@ -957,6 +960,44 @@ empirically observed to be the number of J-lens vectors that are meaningfully ac
 time.” Here <code class="docutils literal notranslate"><span class="pre">k</span></code> is an <strong>upper bound</strong>: <code class="docutils literal notranslate"><span class="pre">support</span></code> returns <em>at most</em> <code class="docutils literal notranslate"><span class="pre">k</span></code> active vectors (often
 fewer), never <code class="docutils literal notranslate"><span class="pre">k</span></code> padded with zero-coefficient slots.</p></li>
 </ul>
+</section>
+<section id="occupancy-and-fraction-of-variance">
+<h3>Occupancy and fraction of variance<a class="headerlink" href="#occupancy-and-fraction-of-variance" title="Link to this heading">¶</a></h3>
+<p>Two statistics turn the honesty bullets above into numbers you can measure. Both build on J-lens
+vector dictionaries and sparse supports, but occupancy uses its own projection-residual recurrence.</p>
+<p><code class="docutils literal notranslate"><span class="pre">occupancy</span></code> estimates <strong>how many J-lens vectors are meaningfully active</strong> in a single activation —
+the quantity behind the paper’s <code class="docutils literal notranslate"><span class="pre">k</span> <span class="pre">&lt;=</span> <span class="pre">25</span></code>. At each step it admits the unused atom with the greatest
+signed, norm-normalized correlation with the current residual, projects the activation onto the full
+selected span, and sets the next residual to <code class="docutils literal notranslate"><span class="pre">x</span> <span class="pre">-</span> <span class="pre">Pi_S</span> <span class="pre">x</span></code>. This is the same per-step correlation
+<em>rule</em> as <code class="docutils literal notranslate"><span class="pre">decompose</span></code>, but <code class="docutils literal notranslate"><span class="pre">decompose</span></code> recurses on a nonnegative coefficient-fit residual and may
+stop early, whereas occupancy selects exactly <code class="docutils literal notranslate"><span class="pre">max_atoms</span></code> atoms, so their supports need not match.
+Occupancy records the per-step captured variance <code class="docutils literal notranslate"><span class="pre">||Pi_S</span> <span class="pre">x||^2</span> <span class="pre">/</span> <span class="pre">||x||^2</span></code> and compares that curve
+against the same occupancy recurrence on <code class="docutils literal notranslate"><span class="pre">num_control_dictionaries</span></code> random unit-norm dictionaries.
+The occupancy is the step of <strong>maximum separation</strong> between the real and averaged-control
+<em>cumulative</em> captured variance — the point past which further vectors add no more than random
+directions would. It is deterministic given <code class="docutils literal notranslate"><span class="pre">seed</span></code> and needs no threshold.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">occ</span> <span class="o">=</span> <span class="n">lens</span><span class="o">.</span><span class="n">occupancy</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="s2">&quot;The Eiffel Tower is in the city of&quot;</span><span class="p">,</span> <span class="n">layer</span><span class="o">=</span><span class="mi">6</span><span class="p">,</span> <span class="n">position</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span>
+<span class="n">occ</span><span class="o">.</span><span class="n">occupancy</span>                    <span class="c1"># int: meaningfully-active vector count (a small positive integer)</span>
+<span class="n">occ</span><span class="o">.</span><span class="n">marginal_captured_variance</span>   <span class="c1"># [max_atoms] real per-step captured-variance gains (for plotting)</span>
+<span class="n">occ</span><span class="o">.</span><span class="n">control_captured_variance</span>    <span class="c1"># [max_atoms] averaged random-control gains</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">fraction_of_variance</span></code> profiles the <strong>J-space share of activation variance over a prompt corpus</strong>.
+For each <code class="docutils literal notranslate"><span class="pre">(layer,</span> <span class="pre">position)</span></code> at or past <code class="docutils literal notranslate"><span class="pre">skip_first</span></code> (mirroring the fit’s early-position skip) it
+records <code class="docutils literal notranslate"><span class="pre">||j_space_component||^2</span> <span class="pre">/</span> <span class="pre">||activation||^2</span></code> — the <code class="docutils literal notranslate"><span class="pre">selected_support</span></code> span projection,
+matching the paper’s appendix operationalization, <strong>not</strong> the nonnegative <code class="docutils literal notranslate"><span class="pre">reconstruction</span></code>. Per
+layer it reports the <code class="docutils literal notranslate"><span class="pre">median</span></code> of those fractions and the <code class="docutils literal notranslate"><span class="pre">pooled</span></code> ratio
+<code class="docutils literal notranslate"><span class="pre">sum(||j_space||^2)</span> <span class="pre">/</span> <span class="pre">sum(||activation||^2)</span></code>.
+Each token tensor must represent one prompt and have shape <code class="docutils literal notranslate"><span class="pre">[1,</span> <span class="pre">seq]</span></code>; <code class="docutils literal notranslate"><span class="pre">skip_first</span></code> must be
+non-negative even when explicit <code class="docutils literal notranslate"><span class="pre">positions</span></code> override its sampling behavior.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">profile</span> <span class="o">=</span> <span class="n">lens</span><span class="o">.</span><span class="n">fraction_of_variance</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">prompts</span><span class="p">,</span> <span class="n">layers</span><span class="o">=</span><span class="p">[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">6</span><span class="p">],</span> <span class="n">k</span><span class="o">=</span><span class="mi">8</span><span class="p">)</span>
+<span class="n">profile</span><span class="o">.</span><span class="n">median</span>   <span class="c1"># {layer: median fraction}   -- the paper&#39;s &quot;median 6-7%&quot; quantity</span>
+<span class="n">profile</span><span class="o">.</span><span class="n">pooled</span>   <span class="c1"># {layer: pooled ratio in [0, 1]}</span>
+</pre></div>
+</div>
+<p>Both are <strong>shape</strong> claims on open weights: expect a small occupancy and a small variance fraction,
+but do not expect the paper’s closed-model figures (see <em>Interpreting the numbers honestly</em> above)
+to transfer numerically.</p>
 <p>The full-vocabulary dictionary is cached on the model’s device and is vocabulary-sized
 (gigabytes for large models); release it with <code class="docutils literal notranslate"><span class="pre">lens.clear_device_cache()</span></code>.</p>
 </section>
@@ -1108,14 +1149,14 @@ follow-up once a lossless mapping is established.</p>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
-          <a class="prev-page" href="ssm_interpretability.html">
+          <a class="prev-page" href="projection_kernel.html">
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
               <div class="page-info">
                 <div class="context">
                   <span>Previous</span>
                 </div>
                 
-                <div class="title">SSM / Recurrent-Model Interpretability</div>
+                <div class="title">Projection Kernel</div>
                 
               </div>
             </a>
@@ -1157,6 +1198,7 @@ follow-up once a lossless mapping is established.</p>
 <li><a class="reference internal" href="#validate-and-publish">Validate and publish</a></li>
 <li><a class="reference internal" href="#sparse-decomposition-j-space-coordinates">Sparse decomposition (J-space coordinates)</a><ul>
 <li><a class="reference internal" href="#interpreting-the-numbers-honestly">Interpreting the numbers honestly</a></li>
+<li><a class="reference internal" href="#occupancy-and-fraction-of-variance">Occupancy and fraction of variance</a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#importing-an-existing-lens">Importing an existing lens</a><ul>

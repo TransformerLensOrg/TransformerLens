@@ -188,6 +188,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../generated/code/transformer_lens.benchmarks.main_benchmark.html">transformer_lens.benchmarks.main_benchmark module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../generated/code/transformer_lens.benchmarks.multimodal.html">transformer_lens.benchmarks.multimodal module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../generated/code/transformer_lens.benchmarks.text_quality.html">transformer_lens.benchmarks.text_quality module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../generated/code/transformer_lens.benchmarks.text_quality_profiles.html">transformer_lens.benchmarks.text_quality_profiles module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../generated/code/transformer_lens.benchmarks.utils.html">transformer_lens.benchmarks.utils module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../generated/code/transformer_lens.benchmarks.vision.html">transformer_lens.benchmarks.vision module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../generated/code/transformer_lens.benchmarks.weight_processing.html">transformer_lens.benchmarks.weight_processing module</a></li>
@@ -522,6 +523,7 @@
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.direct_path_patching.html">transformer_lens.tools.analysis.direct_path_patching module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.jacobian_lens.html">transformer_lens.tools.analysis.jacobian_lens module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.jacobian_lens_decomposition.html">transformer_lens.tools.analysis.jacobian_lens_decomposition module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.projection_kernel.html">transformer_lens.tools.analysis.projection_kernel module</a></li>
 </ul>
 </li>
 <li class="toctree-l4 has-children"><a class="reference internal" href="../generated/code/transformer_lens.tools.model_registry.html">transformer_lens.tools.model_registry package</a><input class="toctree-checkbox" id="toctree-checkbox-21" name="toctree-checkbox-21" role="switch" type="checkbox"/><label for="toctree-checkbox-21"><div class="visually-hidden">Toggle navigation of transformer_lens.tools.model_registry package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
@@ -609,6 +611,7 @@
 <li class="toctree-l1"><a class="reference internal" href="hook_system.html">The Hook System</a></li>
 <li class="toctree-l1"><a class="reference internal" href="compatibility_mode.html">TransformerBridge Compatibility Mode</a></li>
 <li class="toctree-l1"><a class="reference internal" href="ssm_interpretability.html">SSM / Recurrent-Model Interpretability</a></li>
+<li class="toctree-l1"><a class="reference internal" href="projection_kernel.html">Projection Kernel</a></li>
 <li class="toctree-l1"><a class="reference internal" href="jacobian_lens_fitting.html">Fitting a Jacobian lens</a></li>
 <li class="toctree-l1"><a class="reference internal" href="debugging_numerical_divergence.html">Debugging Numerical Divergence</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../generated/demos/Main_Demo.html">Transformer Lens Main Demo Notebook</a></li>
@@ -802,7 +805,7 @@
 <h3>Hook semantic notes<a class="headerlink" href="#hook-semantic-notes" title="Link to this heading">¶</a></h3>
 <p>Two semantic differences inside <code class="docutils literal notranslate"><span class="pre">enable_compatibility_mode()</span></code> worth knowing if you are porting activation-patching, DLA, or attribution-patching code:</p>
 <ul class="simple">
-<li><p><strong><code class="docutils literal notranslate"><span class="pre">blocks.{i}.hook_mlp_in</span></code> fires pre-ln2</strong> (matching legacy <code class="docutils literal notranslate"><span class="pre">HookedTransformer</span></code>). Use <code class="docutils literal notranslate"><span class="pre">bridge.set_use_hook_mlp_in(True)</span></code> to enable it — setting <code class="docutils literal notranslate"><span class="pre">cfg.use_hook_mlp_in</span> <span class="pre">=</span> <span class="pre">True</span></code> directly is honored when blocks share the bridge’s <code class="docutils literal notranslate"><span class="pre">cfg</span></code>, but the setter is the supported entry point. The pre-ln2 placement means cached values from one run can be patched into another and re-flow through <code class="docutils literal notranslate"><span class="pre">ln2</span> <span class="pre">→</span> <span class="pre">mlp</span></code> consistently across the bridge and <code class="docutils literal notranslate"><span class="pre">HookedTransformer</span></code>.</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">blocks.{i}.hook_mlp_in</span></code> fires pre-ln2</strong> (matching legacy <code class="docutils literal notranslate"><span class="pre">HookedTransformer</span></code>). Enable it with <code class="docutils literal notranslate"><span class="pre">bridge.set_use_hook_mlp_in(True)</span></code> or <code class="docutils literal notranslate"><span class="pre">bridge.cfg.use_hook_mlp_in</span> <span class="pre">=</span> <span class="pre">True</span></code>; direct config assignment routes through the same validation and propagation path as the setter. The pre-ln2 placement means cached values from one run can be patched into another and re-flow through <code class="docutils literal notranslate"><span class="pre">ln2</span> <span class="pre">→</span> <span class="pre">mlp</span></code> consistently across the bridge and <code class="docutils literal notranslate"><span class="pre">HookedTransformer</span></code>.</p></li>
 <li><p><strong><code class="docutils literal notranslate"><span class="pre">hook_q_input</span></code> / <code class="docutils literal notranslate"><span class="pre">hook_k_input</span></code> / <code class="docutils literal notranslate"><span class="pre">hook_v_input</span></code> / <code class="docutils literal notranslate"><span class="pre">hook_attn_in</span></code></strong> also fire pre-ln1 in compat mode. On the per-head LN application that follows, the bridge routes through the raw HF norm rather than the <code class="docutils literal notranslate"><span class="pre">NormalizationBridge</span></code> wrapper, so <code class="docutils literal notranslate"><span class="pre">ln1</span></code>’s sub-hooks (<code class="docutils literal notranslate"><span class="pre">hook_in</span></code>, <code class="docutils literal notranslate"><span class="pre">hook_normalized</span></code>, <code class="docutils literal notranslate"><span class="pre">hook_scale</span></code>) do <strong>not</strong> fire once per head the way legacy <code class="docutils literal notranslate"><span class="pre">LayerNormPre</span></code> would. Q/K/V projections downstream still match legacy numerically; only the intermediate LN sub-hook firing is suppressed.</p></li>
 </ul>
 <p>Post-norm architectures (OLMo 2, BERT-style encoders) and MLA blocks (DeepSeek V2/V3/R1) do not participate in the pre-ln1 capture — <code class="docutils literal notranslate"><span class="pre">MLABlockBridge</span></code> does not expose those aliases, and post-norm models would read the post-attention residual instead of the block input.</p>
@@ -823,7 +826,32 @@
 <p>If your code only touches these APIs, the migration is genuinely just the loading call and (optionally) <code class="docutils literal notranslate"><span class="pre">enable_compatibility_mode</span></code>.</p>
 <section id="bert-next-sentence-prediction">
 <h3>BERT Next Sentence Prediction<a class="headerlink" href="#bert-next-sentence-prediction" title="Link to this heading">¶</a></h3>
-<p><code class="docutils literal notranslate"><span class="pre">BertNextSentencePrediction</span></code> is not ported to <code class="docutils literal notranslate"><span class="pre">TransformerBridge</span></code>. Keep using <code class="docutils literal notranslate"><span class="pre">HookedEncoder</span></code> + <code class="docutils literal notranslate"><span class="pre">BertNextSentencePrediction</span></code> for NSP workflows. The bridge’s BERT adapter does load NSP HuggingFace checkpoints (it rewires the unembed to <code class="docutils literal notranslate"><span class="pre">cls.seq_relationship</span></code>), but the high-level NSP API – sentence-pair tokenization, <code class="docutils literal notranslate"><span class="pre">[CLS]</span></code> pooling, “sequential”/”not sequential” decoding — is not exposed. If this is feature is something you’d like added to TransformerBridge, please file an issue.</p>
+<p>NSP runs on the bridge today — load the NSP head via <code class="docutils literal notranslate"><span class="pre">model_class</span></code> and pass the
+sentence-pair tokenization through:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">transformers</span><span class="w"> </span><span class="kn">import</span> <span class="n">AutoTokenizer</span><span class="p">,</span> <span class="n">BertForNextSentencePrediction</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">transformer_lens.model_bridge</span><span class="w"> </span><span class="kn">import</span> <span class="n">TransformerBridge</span>
+
+<span class="n">tokenizer</span> <span class="o">=</span> <span class="n">AutoTokenizer</span><span class="o">.</span><span class="n">from_pretrained</span><span class="p">(</span><span class="s2">&quot;google-bert/bert-base-cased&quot;</span><span class="p">)</span>
+<span class="n">nsp</span> <span class="o">=</span> <span class="n">TransformerBridge</span><span class="o">.</span><span class="n">boot_transformers</span><span class="p">(</span>
+    <span class="s2">&quot;google-bert/bert-base-cased&quot;</span><span class="p">,</span>
+    <span class="n">model_class</span><span class="o">=</span><span class="n">BertForNextSentencePrediction</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">nsp</span><span class="o">.</span><span class="n">enable_compatibility_mode</span><span class="p">()</span>
+
+<span class="n">inputs</span> <span class="o">=</span> <span class="n">tokenizer</span><span class="p">(</span><span class="s2">&quot;A man walked into a grocery store.&quot;</span><span class="p">,</span> <span class="s2">&quot;He bought an apple.&quot;</span><span class="p">,</span> <span class="n">return_tensors</span><span class="o">=</span><span class="s2">&quot;pt&quot;</span><span class="p">)</span>
+<span class="n">nsp</span><span class="p">(</span><span class="n">inputs</span><span class="p">[</span><span class="s2">&quot;input_ids&quot;</span><span class="p">],</span> <span class="n">token_type_ids</span><span class="o">=</span><span class="n">inputs</span><span class="p">[</span><span class="s2">&quot;token_type_ids&quot;</span><span class="p">],</span> <span class="n">return_type</span><span class="o">=</span><span class="s2">&quot;predictions&quot;</span><span class="p">)</span>
+<span class="c1"># &#39;The sentences are sequential&#39;</span>
+</pre></div>
+</div>
+<p><strong>Pass <code class="docutils literal notranslate"><span class="pre">token_type_ids</span></code>.</strong> They are what tells BERT where the first sentence ends
+and the second begins; without them the NSP head scores a single undifferentiated
+span and can return the wrong verdict (on the pair above, dropping them collapses
+the logits from ±4.37 to ±0.58, and a genuinely non-sequential pair flips to
+“sequential”). With them, the bridge reproduces the raw HuggingFace NSP logits
+exactly.</p>
+<p>The legacy <code class="docutils literal notranslate"><span class="pre">BertNextSentencePrediction</span></code> wrapper is deprecated and cannot wrap a
+<code class="docutils literal notranslate"><span class="pre">TransformerBridge</span></code> — it reaches for <code class="docutils literal notranslate"><span class="pre">HookedEncoder</span></code>-only internals
+(<code class="docutils literal notranslate"><span class="pre">encoder_output</span></code>, <code class="docutils literal notranslate"><span class="pre">pooler</span></code>, <code class="docutils literal notranslate"><span class="pre">nsp_head</span></code>). Use the recipe above instead.</p>
 </section>
 <section id="new-in-3-x-streaming-generation">
 <h3>New in 3.x: streaming generation<a class="headerlink" href="#new-in-3-x-streaming-generation" title="Link to this heading">¶</a></h3>

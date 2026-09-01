@@ -3,7 +3,7 @@
   <head><meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width,initial-scale=1"/>
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="../../genindex.html" /><link rel="search" title="Search" href="../../search.html" /><link rel="next" title="transformer_lens.benchmarks.vision module" href="transformer_lens.benchmarks.vision.html" /><link rel="prev" title="transformer_lens.benchmarks.text_quality module" href="transformer_lens.benchmarks.text_quality.html" />
+<link rel="index" title="Index" href="../../genindex.html" /><link rel="search" title="Search" href="../../search.html" /><link rel="next" title="transformer_lens.benchmarks.vision module" href="transformer_lens.benchmarks.vision.html" /><link rel="prev" title="transformer_lens.benchmarks.text_quality_profiles module" href="transformer_lens.benchmarks.text_quality_profiles.html" />
 
     <link rel="shortcut icon" href="../../_static/favicon.ico"/><!-- Generated with Sphinx 7.4.7 and Furo 2023.09.10 -->
         <title>transformer_lens.benchmarks.utils module - TransformerLens Documentation</title>
@@ -188,6 +188,7 @@
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.main_benchmark.html">transformer_lens.benchmarks.main_benchmark module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.multimodal.html">transformer_lens.benchmarks.multimodal module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.text_quality.html">transformer_lens.benchmarks.text_quality module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.text_quality_profiles.html">transformer_lens.benchmarks.text_quality_profiles module</a></li>
 <li class="toctree-l4 current current-page"><a class="current reference internal" href="#">transformer_lens.benchmarks.utils module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.vision.html">transformer_lens.benchmarks.vision module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.weight_processing.html">transformer_lens.benchmarks.weight_processing module</a></li>
@@ -522,6 +523,7 @@
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.direct_path_patching.html">transformer_lens.tools.analysis.direct_path_patching module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens.html">transformer_lens.tools.analysis.jacobian_lens module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html">transformer_lens.tools.analysis.jacobian_lens_decomposition module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html">transformer_lens.tools.analysis.projection_kernel module</a></li>
 </ul>
 </li>
 <li class="toctree-l4 has-children"><a class="reference internal" href="transformer_lens.tools.model_registry.html">transformer_lens.tools.model_registry package</a><input class="toctree-checkbox" id="toctree-checkbox-21" name="toctree-checkbox-21" role="switch" type="checkbox"/><label for="toctree-checkbox-21"><div class="visually-hidden">Toggle navigation of transformer_lens.tools.model_registry package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
@@ -609,6 +611,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../content/hook_system.html">The Hook System</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/compatibility_mode.html">TransformerBridge Compatibility Mode</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/ssm_interpretability.html">SSM / Recurrent-Model Interpretability</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../content/projection_kernel.html">Projection Kernel</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/jacobian_lens_fitting.html">Fitting a Jacobian lens</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/debugging_numerical_divergence.html">Debugging Numerical Divergence</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html">Transformer Lens Main Demo Notebook</a></li>
@@ -765,6 +768,14 @@
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.benchmarks.utils.bridge_self_target_loss">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.benchmarks.utils.</span></span><span class="sig-name descname"><span class="pre">bridge_self_target_loss</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">bridge</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test_text</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.benchmarks.utils.bridge_self_target_loss" title="Link to this definition">¶</a></dt>
+<dd><p>Loss with the tokenized input as explicit labels.</p>
+<p>Seq2seq bridges refuse label-less return_type=”loss” (encoder input_ids are
+not decoder targets), so every benchmark loss call routes through here.</p>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="transformer_lens.benchmarks.utils.build_modality_input">
 <span class="sig-prename descclassname"><span class="pre">transformer_lens.benchmarks.utils.</span></span><span class="sig-name descname"><span class="pre">build_modality_input</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">bridge</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">batch_size</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">device</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dtype</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dtype</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tensor</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></span><a class="headerlink" href="#transformer_lens.benchmarks.utils.build_modality_input" title="Link to this definition">¶</a></dt>
 <dd><p>Build a synthetic model input for a non-text bridge, or None for text models.</p>
@@ -900,14 +911,14 @@ rewrites the process-global stream for every benchmark that follows.</p>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
-          <a class="prev-page" href="transformer_lens.benchmarks.text_quality.html">
+          <a class="prev-page" href="transformer_lens.benchmarks.text_quality_profiles.html">
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
               <div class="page-info">
                 <div class="context">
                   <span>Previous</span>
                 </div>
                 
-                <div class="title">transformer_lens.benchmarks.text_quality module</div>
+                <div class="title">transformer_lens.benchmarks.text_quality_profiles module</div>
                 
               </div>
             </a>
@@ -966,6 +977,7 @@ rewrites the process-global stream for every benchmark that follows.</p>
 <li><a class="reference internal" href="#transformer_lens.benchmarks.utils.PhaseReferenceData.test_text"><code class="docutils literal notranslate"><span class="pre">PhaseReferenceData.test_text</span></code></a></li>
 </ul>
 </li>
+<li><a class="reference internal" href="#transformer_lens.benchmarks.utils.bridge_self_target_loss"><code class="docutils literal notranslate"><span class="pre">bridge_self_target_loss()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.benchmarks.utils.build_modality_input"><code class="docutils literal notranslate"><span class="pre">build_modality_input()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.benchmarks.utils.compare_activation_dicts"><code class="docutils literal notranslate"><span class="pre">compare_activation_dicts()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.benchmarks.utils.compare_scalars"><code class="docutils literal notranslate"><span class="pre">compare_scalars()</span></code></a></li>

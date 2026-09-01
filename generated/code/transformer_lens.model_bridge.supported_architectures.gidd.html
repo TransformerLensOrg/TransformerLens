@@ -188,6 +188,7 @@
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.main_benchmark.html">transformer_lens.benchmarks.main_benchmark module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.multimodal.html">transformer_lens.benchmarks.multimodal module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.text_quality.html">transformer_lens.benchmarks.text_quality module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.text_quality_profiles.html">transformer_lens.benchmarks.text_quality_profiles module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.utils.html">transformer_lens.benchmarks.utils module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.vision.html">transformer_lens.benchmarks.vision module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.weight_processing.html">transformer_lens.benchmarks.weight_processing module</a></li>
@@ -522,6 +523,7 @@
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.direct_path_patching.html">transformer_lens.tools.analysis.direct_path_patching module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens.html">transformer_lens.tools.analysis.jacobian_lens module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html">transformer_lens.tools.analysis.jacobian_lens_decomposition module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html">transformer_lens.tools.analysis.projection_kernel module</a></li>
 </ul>
 </li>
 <li class="toctree-l4 has-children"><a class="reference internal" href="transformer_lens.tools.model_registry.html">transformer_lens.tools.model_registry package</a><input class="toctree-checkbox" id="toctree-checkbox-21" name="toctree-checkbox-21" role="switch" type="checkbox"/><label for="toctree-checkbox-21"><div class="visually-hidden">Toggle navigation of transformer_lens.tools.model_registry package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
@@ -609,6 +611,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../content/hook_system.html">The Hook System</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/compatibility_mode.html">TransformerBridge Compatibility Mode</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/ssm_interpretability.html">SSM / Recurrent-Model Interpretability</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../content/projection_kernel.html">Projection Kernel</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/jacobian_lens_fitting.html">Fitting a Jacobian lens</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/debugging_numerical_divergence.html">Debugging Numerical Divergence</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html">Transformer Lens Main Demo Notebook</a></li>
@@ -733,6 +736,11 @@ all_tied_weights_keys lookup (the checkpoint is untied anyway).</p>
 </dd></dl>
 
 <dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.model_bridge.supported_architectures.gidd.GiddArchitectureAdapter.supports_causal_loss">
+<span class="sig-name descname"><span class="pre">supports_causal_loss</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></em><a class="headerlink" href="#transformer_lens.model_bridge.supported_architectures.gidd.GiddArchitectureAdapter.supports_causal_loss" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
 <dt class="sig sig-object py" id="transformer_lens.model_bridge.supported_architectures.gidd.GiddArchitectureAdapter.supports_fold_ln">
 <span class="sig-name descname"><span class="pre">supports_fold_ln</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></em><a class="headerlink" href="#transformer_lens.model_bridge.supported_architectures.gidd.GiddArchitectureAdapter.supports_fold_ln" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
@@ -829,6 +837,7 @@ every forward (applied to both bridge and HF reference so they agree).</p>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.gidd.GiddArchitectureAdapter.prepare_loading"><code class="docutils literal notranslate"><span class="pre">GiddArchitectureAdapter.prepare_loading()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.gidd.GiddArchitectureAdapter.prepare_model"><code class="docutils literal notranslate"><span class="pre">GiddArchitectureAdapter.prepare_model()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.gidd.GiddArchitectureAdapter.setup_component_testing"><code class="docutils literal notranslate"><span class="pre">GiddArchitectureAdapter.setup_component_testing()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.gidd.GiddArchitectureAdapter.supports_causal_loss"><code class="docutils literal notranslate"><span class="pre">GiddArchitectureAdapter.supports_causal_loss</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.gidd.GiddArchitectureAdapter.supports_fold_ln"><code class="docutils literal notranslate"><span class="pre">GiddArchitectureAdapter.supports_fold_ln</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.gidd.GiddArchitectureAdapter.supports_generation"><code class="docutils literal notranslate"><span class="pre">GiddArchitectureAdapter.supports_generation</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.gidd.GiddArchitectureAdapter.uses_split_attention"><code class="docutils literal notranslate"><span class="pre">GiddArchitectureAdapter.uses_split_attention</span></code></a></li>

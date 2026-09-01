@@ -188,6 +188,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../generated/code/transformer_lens.benchmarks.main_benchmark.html">transformer_lens.benchmarks.main_benchmark module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../generated/code/transformer_lens.benchmarks.multimodal.html">transformer_lens.benchmarks.multimodal module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../generated/code/transformer_lens.benchmarks.text_quality.html">transformer_lens.benchmarks.text_quality module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../generated/code/transformer_lens.benchmarks.text_quality_profiles.html">transformer_lens.benchmarks.text_quality_profiles module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../generated/code/transformer_lens.benchmarks.utils.html">transformer_lens.benchmarks.utils module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../generated/code/transformer_lens.benchmarks.vision.html">transformer_lens.benchmarks.vision module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../generated/code/transformer_lens.benchmarks.weight_processing.html">transformer_lens.benchmarks.weight_processing module</a></li>
@@ -522,6 +523,7 @@
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.direct_path_patching.html">transformer_lens.tools.analysis.direct_path_patching module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.jacobian_lens.html">transformer_lens.tools.analysis.jacobian_lens module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.jacobian_lens_decomposition.html">transformer_lens.tools.analysis.jacobian_lens_decomposition module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.projection_kernel.html">transformer_lens.tools.analysis.projection_kernel module</a></li>
 </ul>
 </li>
 <li class="toctree-l4 has-children"><a class="reference internal" href="../generated/code/transformer_lens.tools.model_registry.html">transformer_lens.tools.model_registry package</a><input class="toctree-checkbox" id="toctree-checkbox-21" name="toctree-checkbox-21" role="switch" type="checkbox"/><label for="toctree-checkbox-21"><div class="visually-hidden">Toggle navigation of transformer_lens.tools.model_registry package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
@@ -609,6 +611,7 @@
 <li class="toctree-l1"><a class="reference internal" href="hook_system.html">The Hook System</a></li>
 <li class="toctree-l1"><a class="reference internal" href="compatibility_mode.html">TransformerBridge Compatibility Mode</a></li>
 <li class="toctree-l1"><a class="reference internal" href="ssm_interpretability.html">SSM / Recurrent-Model Interpretability</a></li>
+<li class="toctree-l1"><a class="reference internal" href="projection_kernel.html">Projection Kernel</a></li>
 <li class="toctree-l1"><a class="reference internal" href="jacobian_lens_fitting.html">Fitting a Jacobian lens</a></li>
 <li class="toctree-l1"><a class="reference internal" href="debugging_numerical_divergence.html">Debugging Numerical Divergence</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../generated/demos/Main_Demo.html">Transformer Lens Main Demo Notebook</a></li>
@@ -1061,7 +1064,7 @@ must be repeated (i.e. <code class="docutils literal notranslate"><span class="p
 uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>transformer_lens.tools.model_registry.verify_models<span class="w"> </span>--model<span class="w"> </span>&lt;hf_repo&gt;
 </pre></div>
 </div>
-<p><code class="docutils literal notranslate"><span class="pre">verify_models</span></code> runs phases 1–4 (forward correctness vs HF, hook firing + gradients, weight processing, generation quality) and updates <code class="docutils literal notranslate"><span class="pre">data/supported_models.json</span></code> with the resulting status and per-phase scores. We recommend running <code class="docutils literal notranslate"><span class="pre">--dry-run</span></code> first to project memory and parameter count without loading the model, and verifying one model at a time — concurrent loads tend to OOM a single device.</p>
+<p><code class="docutils literal notranslate"><span class="pre">verify_models</span></code> runs phases 1–4 (forward correctness vs HF, hook firing + gradients, weight processing, text-generation quality) and updates <code class="docutils literal notranslate"><span class="pre">data/supported_models.json</span></code> with the resulting status and per-phase scores. We recommend running <code class="docutils literal notranslate"><span class="pre">--dry-run</span></code> first to project memory and parameter count without loading the model, and verifying one model at a time — concurrent loads tend to OOM a single device.</p>
 <p>Running with <code class="docutils literal notranslate"><span class="pre">--no-hf-reference</span></code> skips the HuggingFace numerical comparison (Phase 1 becomes structural-only). A passing run is then recorded as <strong>provisional</strong> (status 4), which does <em>not</em> count as verified — re-run without the flag for a real HF-compared verification.</p>
 <p>A note on entry points: <code class="docutils literal notranslate"><span class="pre">verify_models</span></code> is the script that writes the registry. <code class="docutils literal notranslate"><span class="pre">main_benchmark</span></code> runs the same underlying benchmarks but defaults to <em>not</em> writing the registry (it requires <code class="docutils literal notranslate"><span class="pre">--update-registry</span></code>, and even then it doesn’t record Phase 7 / 8 scores or the resume checkpoint). If you want the registry updated after your run, use <code class="docutils literal notranslate"><span class="pre">verify_models</span></code>.</p>
 <p>It’s worth reading the per-phase scores in addition to the final status — the verifier enforces hard pass/fail thresholds, and a model that just clears the bar tells you something different than one that breezes through. The current thresholds:</p>
@@ -1091,9 +1094,9 @@ uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </sp
 <td><p>Verification fails</p></td>
 </tr>
 <tr class="row-odd"><td><p>4</p></td>
-<td><p>50%</p></td>
+<td><p>54.5% (measured pass line, <code class="docutils literal notranslate"><span class="pre">p4_pass_threshold()</span></code>)</p></td>
 <td><p>—</p></td>
-<td><p><strong>Non-gating</strong> — below 50% adds <code class="docutils literal notranslate"><span class="pre">&quot;low</span> <span class="pre">text</span> <span class="pre">quality&quot;</span></code> to the registry <code class="docutils literal notranslate"><span class="pre">note</span></code>; never fails verification.</p></td>
+<td><p><strong>Non-gating</strong> — below the line adds a <code class="docutils literal notranslate"><span class="pre">&quot;text</span> <span class="pre">quality</span> <span class="pre">poor</span> <span class="pre">(P4=…)&quot;</span></code> note; never fails verification.</p></td>
 </tr>
 <tr class="row-even"><td><p>7</p></td>
 <td><p>75%</p></td>
@@ -1108,7 +1111,7 @@ uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </sp
 </tbody>
 </table>
 </div>
-<p>Phase 4 is intentionally lenient — it’s a coherence metric, not a correctness check. A sub-100% Phase-4 score on a small parity-test model can still indicate a real adapter bug that the gates don’t catch (missing <code class="docutils literal notranslate"><span class="pre">preprocess_weights</span></code> fold, wrong <code class="docutils literal notranslate"><span class="pre">default_prepend_bos</span></code>, and so on); the model can pass verification overall and still be worth a manual look.</p>
+<p>Phase 4 prompts each model with its resolved prompt profile (chat template, translation, code, own-language continuation, …) and scores the generation against a known-good reference with one pinned multilingual judge, via the perplexity ratio <code class="docutils literal notranslate"><span class="pre">PPL(generated)/PPL(reference)</span></code>. It’s intentionally lenient — a coherence metric, not a correctness check. A sub-100% Phase-4 score on a small parity-test model can still indicate a real adapter bug that the gates don’t catch (missing <code class="docutils literal notranslate"><span class="pre">preprocess_weights</span></code> fold, wrong <code class="docutils literal notranslate"><span class="pre">default_prepend_bos</span></code>, and so on); the model can pass verification overall and still be worth a manual look.</p>
 <p>If verification fails by <code class="docutils literal notranslate"><span class="pre">~1e-3</span></code> or more against the HF reference, the bisection workflow lives at <a class="reference internal" href="debugging_numerical_divergence.html"><span class="std std-doc">Debugging Numerical Divergence</span></a>.</p>
 <div class="toctree-wrapper compound">
 </div>

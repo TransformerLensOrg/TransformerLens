@@ -188,6 +188,7 @@
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.main_benchmark.html">transformer_lens.benchmarks.main_benchmark module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.multimodal.html">transformer_lens.benchmarks.multimodal module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.text_quality.html">transformer_lens.benchmarks.text_quality module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.text_quality_profiles.html">transformer_lens.benchmarks.text_quality_profiles module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.utils.html">transformer_lens.benchmarks.utils module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.vision.html">transformer_lens.benchmarks.vision module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.weight_processing.html">transformer_lens.benchmarks.weight_processing module</a></li>
@@ -522,6 +523,7 @@
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.direct_path_patching.html">transformer_lens.tools.analysis.direct_path_patching module</a></li>
 <li class="toctree-l5 current current-page"><a class="current reference internal" href="#">transformer_lens.tools.analysis.jacobian_lens module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html">transformer_lens.tools.analysis.jacobian_lens_decomposition module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html">transformer_lens.tools.analysis.projection_kernel module</a></li>
 </ul>
 </li>
 <li class="toctree-l4 has-children"><a class="reference internal" href="transformer_lens.tools.model_registry.html">transformer_lens.tools.model_registry package</a><input class="toctree-checkbox" id="toctree-checkbox-21" name="toctree-checkbox-21" role="switch" type="checkbox"/><label for="toctree-checkbox-21"><div class="visually-hidden">Toggle navigation of transformer_lens.tools.model_registry package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
@@ -609,6 +611,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../content/hook_system.html">The Hook System</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/compatibility_mode.html">TransformerBridge Compatibility Mode</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/ssm_interpretability.html">SSM / Recurrent-Model Interpretability</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../content/projection_kernel.html">Projection Kernel</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/jacobian_lens_fitting.html">Fitting a Jacobian lens</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/debugging_numerical_divergence.html">Debugging Numerical Divergence</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html">Transformer Lens Main Demo Notebook</a></li>
@@ -890,6 +893,46 @@ average.</p></li>
 </dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.jacobian_lens.JacobianLens.fraction_of_variance">
+<span class="sig-name descname"><span class="pre">fraction_of_variance</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prompts</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">layers</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">k</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">25</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">skip_first</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">16</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">positions</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">show_progress</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html#transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceVarianceProfile" title="transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceVarianceProfile"><span class="pre">JSpaceVarianceProfile</span></a></span></span><a class="headerlink" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.fraction_of_variance" title="Link to this definition">¶</a></dt>
+<dd><p>Profile the J-space share of activation variance over a prompt corpus.</p>
+<p>Each prompt is run once (caching <code class="docutils literal notranslate"><span class="pre">blocks.{layer}.hook_out</span></code> for every requested layer).
+At each sampled position the activation is decomposed and its J-space variance fraction
+<code class="docutils literal notranslate"><span class="pre">||j_space_component||^2</span> <span class="pre">/</span> <span class="pre">||activation||^2</span></code> is recorded. The numerator is the
+<code class="docutils literal notranslate"><span class="pre">j_space_component</span></code> – the orthogonal projection of the activation onto the span of the
+selected support (the paper’s appendix “J-space component”), <em>not</em> the nonnegative
+<code class="docutils literal notranslate"><span class="pre">reconstruction</span></code>; the two coincide only when every selected atom stays active. Per layer
+the profile reports the median of those fractions and the pooled ratio
+<code class="docutils literal notranslate"><span class="pre">sum(||j_space_component||^2)</span> <span class="pre">/</span> <span class="pre">sum(||activation||^2)</span></code> (the paper’s “fraction of total
+variance”).</p>
+<p>A layer that samples no positions – every prompt shorter than <code class="docutils literal notranslate"><span class="pre">skip_first</span></code>, or only
+zero-norm activations – contributes no fractions: its <code class="docutils literal notranslate"><span class="pre">median</span></code> and <code class="docutils literal notranslate"><span class="pre">pooled</span></code> are
+<code class="docutils literal notranslate"><span class="pre">float(&quot;nan&quot;)</span></code> and its <code class="docutils literal notranslate"><span class="pre">per_position</span></code> tensor is empty.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> – A raw <code class="docutils literal notranslate"><span class="pre">TransformerBridge</span></code>.</p></li>
+<li><p><strong>prompts</strong> – A prompt, or a sequence of prompts. Each token tensor must represent exactly
+one prompt and have shape <code class="docutils literal notranslate"><span class="pre">[1,</span> <span class="pre">seq]</span></code>.</p></li>
+<li><p><strong>layers</strong> – Source layers to profile; defaults to all fitted <code class="docutils literal notranslate"><span class="pre">source_layers</span></code>.</p></li>
+<li><p><strong>k</strong> – Number of J-lens vectors per decomposition.</p></li>
+<li><p><strong>skip_first</strong> – Non-negative index before which positions are skipped (mirrors the fit’s
+early-position skip); not used for sampling when <code class="docutils literal notranslate"><span class="pre">positions</span></code> is given.</p></li>
+<li><p><strong>positions</strong> – Explicit positions to sample instead of <code class="docutils literal notranslate"><span class="pre">skip_first</span></code> onward.</p></li>
+<li><p><strong>show_progress</strong> – Show a tqdm progress bar over prompts.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A <code class="xref py py-class docutils literal notranslate"><span class="pre">JSpaceVarianceProfile</span></code>.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>ValueError</strong> – On an invalid model, an unfitted layer, an empty corpus, a negative
+    <code class="docutils literal notranslate"><span class="pre">skip_first</span></code>, or a token tensor that does not have shape <code class="docutils literal notranslate"><span class="pre">[1,</span> <span class="pre">seq]</span></code>.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="transformer_lens.tools.analysis.jacobian_lens.JacobianLens.from_pretrained">
 <em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_pretrained</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name_or_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filename</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'lens.pt'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">revision</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens" title="transformer_lens.tools.analysis.jacobian_lens.JacobianLens"><span class="pre">JacobianLens</span></a></span></span><a class="headerlink" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.from_pretrained" title="Link to this definition">¶</a></dt>
 <dd><p>Load a lens from a local path, a short model name, or a Hub repo.</p>
@@ -1074,6 +1117,31 @@ per-shard count.</p>
 </dd>
 <dt class="field-even">Raises<span class="colon">:</span></dt>
 <dd class="field-even"><p><strong>ValueError</strong> – On an empty sequence or mismatched lenses.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.jacobian_lens.JacobianLens.occupancy">
+<span class="sig-name descname"><span class="pre">occupancy</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">activation_or_prompt</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">layer</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">position</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_atoms</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">25</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_control_dictionaries</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">32</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">seed</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html#transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceOccupancy" title="transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceOccupancy"><span class="pre">JSpaceOccupancy</span></a></span></span><a class="headerlink" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.occupancy" title="Link to this definition">¶</a></dt>
+<dd><p>Estimate how many J-lens vectors are meaningfully active in an activation at <code class="docutils literal notranslate"><span class="pre">layer</span></code>.</p>
+<p>Resolves <code class="docutils literal notranslate"><span class="pre">activation_or_prompt</span></code> (a raw <code class="docutils literal notranslate"><span class="pre">[d_model]</span></code> vector, or a prompt plus
+<code class="docutils literal notranslate"><span class="pre">position</span></code>) exactly as <a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.decompose" title="transformer_lens.tools.analysis.jacobian_lens.JacobianLens.decompose"><code class="xref py py-meth docutils literal notranslate"><span class="pre">decompose()</span></code></a>, builds the cached full-vocabulary dictionary
+via <a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.lens_vector_dictionary" title="transformer_lens.tools.analysis.jacobian_lens.JacobianLens.lens_vector_dictionary"><code class="xref py py-meth docutils literal notranslate"><span class="pre">lens_vector_dictionary()</span></code></a>, and calls <code class="xref py py-func docutils literal notranslate"><span class="pre">estimate_occupancy()</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> – A raw <code class="docutils literal notranslate"><span class="pre">TransformerBridge</span></code>.</p></li>
+<li><p><strong>activation_or_prompt</strong> – An activation vector, or a prompt (string / token tensor).</p></li>
+<li><p><strong>layer</strong> – Source layer (must be a fitted source layer).</p></li>
+<li><p><strong>position</strong> – Token position when a prompt is given; <code class="docutils literal notranslate"><span class="pre">None</span></code> for a raw activation.</p></li>
+<li><p><strong>max_atoms</strong> – Maximum number of J-lens vectors to consider.</p></li>
+<li><p><strong>num_control_dictionaries</strong> – Number of random control dictionaries to average over.</p></li>
+<li><p><strong>seed</strong> – Seed for the random control dictionaries (reproducibility).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A <code class="xref py py-class docutils literal notranslate"><span class="pre">JSpaceOccupancy</span></code>.</p>
 </dd>
 </dl>
 </dd></dl>
@@ -1487,11 +1555,13 @@ with the <code class="docutils literal notranslate"><span class="pre">pos</span>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.clear_device_cache"><code class="docutils literal notranslate"><span class="pre">JacobianLens.clear_device_cache()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.decompose"><code class="docutils literal notranslate"><span class="pre">JacobianLens.decompose()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.fit"><code class="docutils literal notranslate"><span class="pre">JacobianLens.fit()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.fraction_of_variance"><code class="docutils literal notranslate"><span class="pre">JacobianLens.fraction_of_variance()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.from_pretrained"><code class="docutils literal notranslate"><span class="pre">JacobianLens.from_pretrained()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.lens_vector_dictionary"><code class="docutils literal notranslate"><span class="pre">JacobianLens.lens_vector_dictionary()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.lens_vectors"><code class="docutils literal notranslate"><span class="pre">JacobianLens.lens_vectors()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.load"><code class="docutils literal notranslate"><span class="pre">JacobianLens.load()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.merge"><code class="docutils literal notranslate"><span class="pre">JacobianLens.merge()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.occupancy"><code class="docutils literal notranslate"><span class="pre">JacobianLens.occupancy()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.readout"><code class="docutils literal notranslate"><span class="pre">JacobianLens.readout()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.save"><code class="docutils literal notranslate"><span class="pre">JacobianLens.save()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.source_layers"><code class="docutils literal notranslate"><span class="pre">JacobianLens.source_layers</span></code></a></li>

@@ -3,7 +3,7 @@
   <head><meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width,initial-scale=1"/>
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="../../genindex.html" /><link rel="search" title="Search" href="../../search.html" /><link rel="next" title="transformer_lens.tools.model_registry package" href="transformer_lens.tools.model_registry.html" /><link rel="prev" title="transformer_lens.tools.analysis.jacobian_lens module" href="transformer_lens.tools.analysis.jacobian_lens.html" />
+<link rel="index" title="Index" href="../../genindex.html" /><link rel="search" title="Search" href="../../search.html" /><link rel="next" title="transformer_lens.tools.analysis.projection_kernel module" href="transformer_lens.tools.analysis.projection_kernel.html" /><link rel="prev" title="transformer_lens.tools.analysis.jacobian_lens module" href="transformer_lens.tools.analysis.jacobian_lens.html" />
 
     <link rel="shortcut icon" href="../../_static/favicon.ico"/><!-- Generated with Sphinx 7.4.7 and Furo 2023.09.10 -->
         <title>transformer_lens.tools.analysis.jacobian_lens_decomposition module - TransformerLens Documentation</title>
@@ -188,6 +188,7 @@
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.main_benchmark.html">transformer_lens.benchmarks.main_benchmark module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.multimodal.html">transformer_lens.benchmarks.multimodal module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.text_quality.html">transformer_lens.benchmarks.text_quality module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.text_quality_profiles.html">transformer_lens.benchmarks.text_quality_profiles module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.utils.html">transformer_lens.benchmarks.utils module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.vision.html">transformer_lens.benchmarks.vision module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.weight_processing.html">transformer_lens.benchmarks.weight_processing module</a></li>
@@ -522,6 +523,7 @@
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.direct_path_patching.html">transformer_lens.tools.analysis.direct_path_patching module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens.html">transformer_lens.tools.analysis.jacobian_lens module</a></li>
 <li class="toctree-l5 current current-page"><a class="current reference internal" href="#">transformer_lens.tools.analysis.jacobian_lens_decomposition module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html">transformer_lens.tools.analysis.projection_kernel module</a></li>
 </ul>
 </li>
 <li class="toctree-l4 has-children"><a class="reference internal" href="transformer_lens.tools.model_registry.html">transformer_lens.tools.model_registry package</a><input class="toctree-checkbox" id="toctree-checkbox-21" name="toctree-checkbox-21" role="switch" type="checkbox"/><label for="toctree-checkbox-21"><div class="visually-hidden">Toggle navigation of transformer_lens.tools.model_registry package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
@@ -609,6 +611,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../content/hook_system.html">The Hook System</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/compatibility_mode.html">TransformerBridge Compatibility Mode</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/ssm_interpretability.html">SSM / Recurrent-Model Interpretability</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../content/projection_kernel.html">Projection Kernel</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/jacobian_lens_fitting.html">Fitting a Jacobian lens</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/debugging_numerical_divergence.html">Debugging Numerical Divergence</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html">Transformer Lens Main Demo Notebook</a></li>
@@ -842,6 +845,191 @@ coordinate, in which case the projection uses a larger span.</p>
 
 </dd></dl>
 
+<dl class="py class">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceOccupancy">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">transformer_lens.tools.analysis.jacobian_lens_decomposition.</span></span><span class="sig-name descname"><span class="pre">JSpaceOccupancy</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">occupancy</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">marginal_captured_variance</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">control_captured_variance</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">support</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceOccupancy" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Result of a J-space occupancy estimate.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceOccupancy.occupancy">
+<span class="sig-name descname"><span class="pre">occupancy</span></span><a class="headerlink" href="#transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceOccupancy.occupancy" title="Link to this definition">¶</a></dt>
+<dd><p>Estimated number of meaningfully-active atoms – the step of maximum
+separation between the real and random-control cumulative captured variance.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceOccupancy.marginal_captured_variance">
+<span class="sig-name descname"><span class="pre">marginal_captured_variance</span></span><a class="headerlink" href="#transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceOccupancy.marginal_captured_variance" title="Link to this definition">¶</a></dt>
+<dd><p>Per-step captured-variance gain of the real greedy selection,
+shape <code class="docutils literal notranslate"><span class="pre">[max_atoms]</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>torch.Tensor</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceOccupancy.control_captured_variance">
+<span class="sig-name descname"><span class="pre">control_captured_variance</span></span><a class="headerlink" href="#transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceOccupancy.control_captured_variance" title="Link to this definition">¶</a></dt>
+<dd><p>Per-step captured-variance gain averaged over the random
+control dictionaries, shape <code class="docutils literal notranslate"><span class="pre">[max_atoms]</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>torch.Tensor</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceOccupancy.support">
+<span class="sig-name descname"><span class="pre">support</span></span><a class="headerlink" href="#transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceOccupancy.support" title="Link to this definition">¶</a></dt>
+<dd><p>Greedily selected atom indices, shape <code class="docutils literal notranslate"><span class="pre">[max_atoms]</span></code> (token ids when the
+dictionary is the vocabulary of J-lens vectors).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>torch.Tensor</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id6">
+<span class="sig-name descname"><span class="pre">control_captured_variance</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Tensor</span></em><a class="headerlink" href="#id6" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id7">
+<span class="sig-name descname"><span class="pre">marginal_captured_variance</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Tensor</span></em><a class="headerlink" href="#id7" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id8">
+<span class="sig-name descname"><span class="pre">occupancy</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><a class="headerlink" href="#id8" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id9">
+<span class="sig-name descname"><span class="pre">support</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Tensor</span></em><a class="headerlink" href="#id9" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceVarianceProfile">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">transformer_lens.tools.analysis.jacobian_lens_decomposition.</span></span><span class="sig-name descname"><span class="pre">JSpaceVarianceProfile</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">layers</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">median</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">float</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pooled</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">float</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">per_position</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceVarianceProfile" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Per-layer J-space variance profile over a prompt corpus.</p>
+<p>Produced by <code class="xref py py-meth docutils literal notranslate"><span class="pre">JacobianLens.fraction_of_variance()</span></code>.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceVarianceProfile.layers">
+<span class="sig-name descname"><span class="pre">layers</span></span><a class="headerlink" href="#transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceVarianceProfile.layers" title="Link to this definition">¶</a></dt>
+<dd><p>The source layers profiled, in order.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>List[int]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceVarianceProfile.median">
+<span class="sig-name descname"><span class="pre">median</span></span><a class="headerlink" href="#transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceVarianceProfile.median" title="Link to this definition">¶</a></dt>
+<dd><p>Per-layer median over positions of the J-space variance fraction
+<code class="docutils literal notranslate"><span class="pre">||j_space_component||^2</span> <span class="pre">/</span> <span class="pre">||activation||^2</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Dict[int, float]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceVarianceProfile.pooled">
+<span class="sig-name descname"><span class="pre">pooled</span></span><a class="headerlink" href="#transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceVarianceProfile.pooled" title="Link to this definition">¶</a></dt>
+<dd><p>Per-layer pooled ratio <code class="docutils literal notranslate"><span class="pre">sum(||j_space_component||^2)</span> <span class="pre">/</span> <span class="pre">sum(||activation||^2)</span></code>
+across the corpus (the paper’s “fraction of total variance”).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Dict[int, float]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceVarianceProfile.per_position">
+<span class="sig-name descname"><span class="pre">per_position</span></span><a class="headerlink" href="#transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceVarianceProfile.per_position" title="Link to this definition">¶</a></dt>
+<dd><p>Per-layer 1-D tensor of the raw per-position variance fractions.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Dict[int, torch.Tensor]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id10">
+<span class="sig-name descname"><span class="pre">layers</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#id10" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id11">
+<span class="sig-name descname"><span class="pre">median</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">float</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#id11" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id12">
+<span class="sig-name descname"><span class="pre">per_position</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#id12" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id13">
+<span class="sig-name descname"><span class="pre">pooled</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">float</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#id13" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.jacobian_lens_decomposition.estimate_occupancy">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.tools.analysis.jacobian_lens_decomposition.</span></span><span class="sig-name descname"><span class="pre">estimate_occupancy</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dictionary</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_atoms</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">25</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_control_dictionaries</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">32</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">seed</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceOccupancy" title="transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceOccupancy"><span class="pre">JSpaceOccupancy</span></a></span></span><a class="headerlink" href="#transformer_lens.tools.analysis.jacobian_lens_decomposition.estimate_occupancy" title="Link to this definition">¶</a></dt>
+<dd><p>Estimate how many dictionary atoms are meaningfully active in <code class="docutils literal notranslate"><span class="pre">x</span></code>.</p>
+<p>Runs the projection-residual recurrence described in
+<code class="xref py py-func docutils literal notranslate"><span class="pre">_greedy_captured_variance_gains()</span></code> for exactly <code class="docutils literal notranslate"><span class="pre">max_atoms</span></code> steps and compares the real
+per-step captured-variance curve against the same recurrence on <code class="docutils literal notranslate"><span class="pre">num_control_dictionaries</span></code>
+random unit-norm dictionaries of the same size. This shares sparse decomposition’s per-step
+correlation rule, but uses an unconstrained span-projection residual rather than a nonnegative
+coefficient-fit residual, so their supports need not match. The occupancy is the step of
+maximum separation between the real and (averaged) control <em>cumulative</em> captured variance –
+the point past which further atoms add no more than random directions would. Deterministic
+given <code class="docutils literal notranslate"><span class="pre">seed</span></code> and needs no threshold. (Captured variance is a projection, hence scale-free,
+so the random control atoms are simply unit-norm.)</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> – Target vector, shape <code class="docutils literal notranslate"><span class="pre">[d_model]</span></code>.</p></li>
+<li><p><strong>dictionary</strong> – Atom matrix, shape <code class="docutils literal notranslate"><span class="pre">[num_atoms,</span> <span class="pre">d_model]</span></code> (rows are atoms).</p></li>
+<li><p><strong>max_atoms</strong> – Number of atoms to select in the real and control recurrences.</p></li>
+<li><p><strong>num_control_dictionaries</strong> – Number of random control dictionaries to average over.</p></li>
+<li><p><strong>seed</strong> – Seed for the random control dictionaries (reproducibility).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>An <a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceOccupancy" title="transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceOccupancy"><code class="xref py py-class docutils literal notranslate"><span class="pre">JSpaceOccupancy</span></code></a>.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>ValueError</strong> – On complex inputs, a non-2-D dictionary, a target whose length does not match
+    <code class="docutils literal notranslate"><span class="pre">d_model</span></code>, <code class="docutils literal notranslate"><span class="pre">max_atoms</span></code> outside <code class="docutils literal notranslate"><span class="pre">[1,</span> <span class="pre">num_atoms]</span></code>,
+    <code class="docutils literal notranslate"><span class="pre">num_control_dictionaries</span> <span class="pre">&lt;</span> <span class="pre">1</span></code>, a target with non-finite entries or a non-finite or
+    zero norm, or a dictionary with non-finite or zero-norm atoms.</p>
+</dd>
+</dl>
+</dd></dl>
+
 <dl class="py function">
 <dt class="sig sig-object py" id="transformer_lens.tools.analysis.jacobian_lens_decomposition.get_sparse_decomposition">
 <span class="sig-prename descclassname"><span class="pre">transformer_lens.tools.analysis.jacobian_lens_decomposition.</span></span><span class="sig-name descname"><span class="pre">get_sparse_decomposition</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dictionary</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">k</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">25</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">algorithm</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'nonnegative_orthogonal_matching_pursuit'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceDecomposition" title="transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceDecomposition"><span class="pre">JSpaceDecomposition</span></a></span></span><a class="headerlink" href="#transformer_lens.tools.analysis.jacobian_lens_decomposition.get_sparse_decomposition" title="Link to this definition">¶</a></dt>
@@ -887,12 +1075,12 @@ atoms and <code class="docutils literal notranslate"><span class="pre">selected_
       <footer>
         
         <div class="related-pages">
-          <a class="next-page" href="transformer_lens.tools.model_registry.html">
+          <a class="next-page" href="transformer_lens.tools.analysis.projection_kernel.html">
               <div class="page-info">
                 <div class="context">
                   <span>Next</span>
                 </div>
-                <div class="title">transformer_lens.tools.model_registry package</div>
+                <div class="title">transformer_lens.tools.analysis.projection_kernel module</div>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
@@ -954,6 +1142,29 @@ atoms and <code class="docutils literal notranslate"><span class="pre">selected_
 <li><a class="reference internal" href="#id5"><code class="docutils literal notranslate"><span class="pre">JSpaceDecomposition.support</span></code></a></li>
 </ul>
 </li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceOccupancy"><code class="docutils literal notranslate"><span class="pre">JSpaceOccupancy</span></code></a><ul>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceOccupancy.occupancy"><code class="docutils literal notranslate"><span class="pre">JSpaceOccupancy.occupancy</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceOccupancy.marginal_captured_variance"><code class="docutils literal notranslate"><span class="pre">JSpaceOccupancy.marginal_captured_variance</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceOccupancy.control_captured_variance"><code class="docutils literal notranslate"><span class="pre">JSpaceOccupancy.control_captured_variance</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceOccupancy.support"><code class="docutils literal notranslate"><span class="pre">JSpaceOccupancy.support</span></code></a></li>
+<li><a class="reference internal" href="#id6"><code class="docutils literal notranslate"><span class="pre">JSpaceOccupancy.control_captured_variance</span></code></a></li>
+<li><a class="reference internal" href="#id7"><code class="docutils literal notranslate"><span class="pre">JSpaceOccupancy.marginal_captured_variance</span></code></a></li>
+<li><a class="reference internal" href="#id8"><code class="docutils literal notranslate"><span class="pre">JSpaceOccupancy.occupancy</span></code></a></li>
+<li><a class="reference internal" href="#id9"><code class="docutils literal notranslate"><span class="pre">JSpaceOccupancy.support</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceVarianceProfile"><code class="docutils literal notranslate"><span class="pre">JSpaceVarianceProfile</span></code></a><ul>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceVarianceProfile.layers"><code class="docutils literal notranslate"><span class="pre">JSpaceVarianceProfile.layers</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceVarianceProfile.median"><code class="docutils literal notranslate"><span class="pre">JSpaceVarianceProfile.median</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceVarianceProfile.pooled"><code class="docutils literal notranslate"><span class="pre">JSpaceVarianceProfile.pooled</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceVarianceProfile.per_position"><code class="docutils literal notranslate"><span class="pre">JSpaceVarianceProfile.per_position</span></code></a></li>
+<li><a class="reference internal" href="#id10"><code class="docutils literal notranslate"><span class="pre">JSpaceVarianceProfile.layers</span></code></a></li>
+<li><a class="reference internal" href="#id11"><code class="docutils literal notranslate"><span class="pre">JSpaceVarianceProfile.median</span></code></a></li>
+<li><a class="reference internal" href="#id12"><code class="docutils literal notranslate"><span class="pre">JSpaceVarianceProfile.per_position</span></code></a></li>
+<li><a class="reference internal" href="#id13"><code class="docutils literal notranslate"><span class="pre">JSpaceVarianceProfile.pooled</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens_decomposition.estimate_occupancy"><code class="docutils literal notranslate"><span class="pre">estimate_occupancy()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens_decomposition.get_sparse_decomposition"><code class="docutils literal notranslate"><span class="pre">get_sparse_decomposition()</span></code></a></li>
 </ul>
 </li>

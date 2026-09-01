@@ -188,6 +188,7 @@
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.main_benchmark.html">transformer_lens.benchmarks.main_benchmark module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.multimodal.html">transformer_lens.benchmarks.multimodal module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.text_quality.html">transformer_lens.benchmarks.text_quality module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.text_quality_profiles.html">transformer_lens.benchmarks.text_quality_profiles module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.utils.html">transformer_lens.benchmarks.utils module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.vision.html">transformer_lens.benchmarks.vision module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.weight_processing.html">transformer_lens.benchmarks.weight_processing module</a></li>
@@ -522,6 +523,7 @@
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.direct_path_patching.html">transformer_lens.tools.analysis.direct_path_patching module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens.html">transformer_lens.tools.analysis.jacobian_lens module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html">transformer_lens.tools.analysis.jacobian_lens_decomposition module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html">transformer_lens.tools.analysis.projection_kernel module</a></li>
 </ul>
 </li>
 <li class="toctree-l4 has-children"><a class="reference internal" href="transformer_lens.tools.model_registry.html">transformer_lens.tools.model_registry package</a><input class="toctree-checkbox" id="toctree-checkbox-21" name="toctree-checkbox-21" role="switch" type="checkbox"/><label for="toctree-checkbox-21"><div class="visually-hidden">Toggle navigation of transformer_lens.tools.model_registry package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
@@ -609,6 +611,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../content/hook_system.html">The Hook System</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/compatibility_mode.html">TransformerBridge Compatibility Mode</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/ssm_interpretability.html">SSM / Recurrent-Model Interpretability</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../content/projection_kernel.html">Projection Kernel</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/jacobian_lens_fitting.html">Fitting a Jacobian lens</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/debugging_numerical_divergence.html">Debugging Numerical Divergence</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html">Transformer Lens Main Demo Notebook</a></li>
@@ -771,8 +774,10 @@
 </li>
 <li class="toctree-l1"><a class="reference internal" href="transformer_lens.utilities.hf_utils.html">transformer_lens.utilities.hf_utils module</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="transformer_lens.utilities.hf_utils.html#transformer_lens.utilities.hf_utils.autoconfig_with_remote_post_init_compat"><code class="docutils literal notranslate"><span class="pre">autoconfig_with_remote_post_init_compat()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="transformer_lens.utilities.hf_utils.html#transformer_lens.utilities.hf_utils.autotokenizer_with_special_token_compat"><code class="docutils literal notranslate"><span class="pre">autotokenizer_with_special_token_compat()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="transformer_lens.utilities.hf_utils.html#transformer_lens.utilities.hf_utils.call_hf_with_retry"><code class="docutils literal notranslate"><span class="pre">call_hf_with_retry()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="transformer_lens.utilities.hf_utils.html#transformer_lens.utilities.hf_utils.download_file_from_hf"><code class="docutils literal notranslate"><span class="pre">download_file_from_hf()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="transformer_lens.utilities.hf_utils.html#transformer_lens.utilities.hf_utils.enable_hf_numeric_tower"><code class="docutils literal notranslate"><span class="pre">enable_hf_numeric_tower()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="transformer_lens.utilities.hf_utils.html#transformer_lens.utilities.hf_utils.enable_hf_retry"><code class="docutils literal notranslate"><span class="pre">enable_hf_retry()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="transformer_lens.utilities.hf_utils.html#transformer_lens.utilities.hf_utils.get_dataset"><code class="docutils literal notranslate"><span class="pre">get_dataset()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="transformer_lens.utilities.hf_utils.html#transformer_lens.utilities.hf_utils.get_hf_token"><code class="docutils literal notranslate"><span class="pre">get_hf_token()</span></code></a></li>
@@ -820,6 +825,7 @@
 <li class="toctree-l2"><a class="reference internal" href="transformer_lens.utilities.multi_gpu.html#transformer_lens.utilities.multi_gpu.get_best_available_device"><code class="docutils literal notranslate"><span class="pre">get_best_available_device()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="transformer_lens.utilities.multi_gpu.html#transformer_lens.utilities.multi_gpu.get_device_for_block_index"><code class="docutils literal notranslate"><span class="pre">get_device_for_block_index()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="transformer_lens.utilities.multi_gpu.html#transformer_lens.utilities.multi_gpu.is_mixed_cpu_gpu"><code class="docutils literal notranslate"><span class="pre">is_mixed_cpu_gpu()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="transformer_lens.utilities.multi_gpu.html#transformer_lens.utilities.multi_gpu.maybe_cast_floating_params"><code class="docutils literal notranslate"><span class="pre">maybe_cast_floating_params()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="transformer_lens.utilities.multi_gpu.html#transformer_lens.utilities.multi_gpu.resolve_device_map"><code class="docutils literal notranslate"><span class="pre">resolve_device_map()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="transformer_lens.utilities.multi_gpu.html#transformer_lens.utilities.multi_gpu.sort_devices_based_on_available_memory"><code class="docutils literal notranslate"><span class="pre">sort_devices_based_on_available_memory()</span></code></a></li>
 </ul>

@@ -21,6 +21,7 @@ Submodules
    transformer_lens.benchmarks.main_benchmark
    transformer_lens.benchmarks.multimodal
    transformer_lens.benchmarks.text_quality
+   transformer_lens.benchmarks.text_quality_profiles
    transformer_lens.benchmarks.utils
    transformer_lens.benchmarks.vision
    transformer_lens.benchmarks.weight_processing

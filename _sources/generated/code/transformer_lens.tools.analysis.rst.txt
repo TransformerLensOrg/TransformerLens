@@ -11,6 +11,7 @@ Submodules
    transformer_lens.tools.analysis.direct_path_patching
    transformer_lens.tools.analysis.jacobian_lens
    transformer_lens.tools.analysis.jacobian_lens_decomposition
+   transformer_lens.tools.analysis.projection_kernel
 
 Module contents
 ---------------
