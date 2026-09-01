@@ -3,17 +3,38 @@
 This module contains the bridge component for SigLIP vision encoder layers
 used in multimodal models like Gemma 3 and MedGemma.
 """
+from types import SimpleNamespace
 from typing import Any, Dict, Optional
 
 import torch
 
 from transformer_lens.hook_points import HookPoint
+from transformer_lens.model_bridge.generalized_components.attention import (
+    AttentionBridge,
+)
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
+from transformer_lens.model_bridge.generalized_components.linear import LinearBridge
+from transformer_lens.model_bridge.generalized_components.mlp import MLPBridge
 from transformer_lens.model_bridge.generalized_components.normalization import (
     NormalizationBridge,
 )
+
+
+def _vision_attention_config(config: Any) -> Any:
+    """A config view carrying the vision tower's dims, not the language model's.
+
+    AttentionBridge reshapes its q/k/v/z hooks by ``config.n_heads`` at fire time,
+    so handing it the language config reshapes vision activations by the wrong head
+    count -- granite-docling runs 9 text heads over 576 dims against the tower's 12
+    over 768. Reads there are hasattr-guarded, so the dims are all this needs.
+    """
+    n_heads = getattr(config, "vision_num_heads", None)
+    d_model = getattr(config, "vision_hidden_size", None)
+    if not n_heads or not d_model:
+        return config
+    return SimpleNamespace(n_heads=n_heads, d_model=d_model, d_head=d_model // n_heads)
 
 
 class SiglipVisionEncoderLayerBridge(GeneralizedComponent):
@@ -49,7 +70,32 @@ class SiglipVisionEncoderLayerBridge(GeneralizedComponent):
             config: Optional configuration object
             submodules: Dictionary of submodules to register
         """
-        super().__init__(name, config, submodules=submodules or {})
+        default_submodules: Dict[str, GeneralizedComponent] = {
+            "ln1": NormalizationBridge(name="layer_norm1", config=config),
+            "attn": AttentionBridge(
+                name="self_attn",
+                config=_vision_attention_config(config),
+                submodules={
+                    "q": LinearBridge(name="q_proj"),
+                    "k": LinearBridge(name="k_proj"),
+                    "v": LinearBridge(name="v_proj"),
+                    # SigLIP names the output projection out_proj, not o_proj.
+                    "o": LinearBridge(name="out_proj"),
+                },
+            ),
+            "ln2": NormalizationBridge(name="layer_norm2", config=config),
+            "mlp": MLPBridge(
+                name="mlp",
+                config=config,
+                submodules={
+                    "in": LinearBridge(name="fc1"),
+                    "out": LinearBridge(name="fc2"),
+                },
+            ),
+        }
+        if submodules:
+            default_submodules.update(submodules)
+        super().__init__(name, config, submodules=default_submodules)
 
     def forward(
         self,
@@ -121,7 +167,12 @@ class SiglipVisionEncoderBridge(GeneralizedComponent):
         # wrapped module so the RMSNorm-LM config (Gemma 3, LLaVA) doesn't leak.
         default_submodules = {
             "embeddings": GeneralizedComponent(name="vision_model.embeddings"),
-            "encoder_layers": SiglipVisionEncoderLayerBridge(name="vision_model.encoder.layers"),
+            # Pass config down: without it the layer's attention bridge inherits the
+            # raw HF vision config, which spells its head count num_attention_heads
+            # and so reads as n_heads=1 when the q/k/v/z hooks reshape.
+            "encoder_layers": SiglipVisionEncoderLayerBridge(
+                name="vision_model.encoder.layers", config=config
+            ),
             "post_layernorm": NormalizationBridge(
                 name="vision_model.post_layernorm", config=config
             ),
@@ -140,7 +191,7 @@ class SiglipVisionEncoderBridge(GeneralizedComponent):
         self,
         pixel_values: torch.Tensor,
         **kwargs: Any,
-    ) -> torch.Tensor:
+    ) -> Any:
         """Forward pass through the vision encoder.
 
         Args:
@@ -148,7 +199,10 @@ class SiglipVisionEncoderBridge(GeneralizedComponent):
             **kwargs: Additional arguments
 
         Returns:
-            Vision embeddings [batch, num_patches, hidden_size]
+            Whatever the wrapped module returns, hooked in place: a
+            ``BaseModelOutput``, a tuple, or a bare tensor of vision embeddings
+            [batch, num_patches, hidden_size]. Callers see HF's own shape, so the
+            return is deliberately not narrowed to a tensor.
         """
         if self.original_component is None:
             raise RuntimeError(
