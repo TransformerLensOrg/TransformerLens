@@ -1540,6 +1540,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         On hybrid models, only attention layers are included; layer_indices
         maps tensor position i to original layer number.
         """
+        self._reject_encoder_decoder_composition()
         attn_blocks = self.blocks_with("attn")
         if not attn_blocks:
             raise ValueError("No attention layers found — cannot compute composition scores.")
@@ -1591,8 +1592,18 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         labels = [f"L{l}H{h}" for l in indices for h in range(self.cfg.n_heads)]
         return CompositionScores(scores=scores, layer_indices=indices, head_labels=labels)
 
+    def _reject_encoder_decoder_composition(self) -> None:
+        """Composition scores live in one residual stream; enc-dec models have two."""
+        if any(hasattr(self, a) for a in ("encoder_blocks", "decoder_blocks")):
+            raise NotImplementedError(
+                "Composition scores are not defined across an encoder-decoder "
+                "model's two residual streams (HookedTransformer never "
+                "supported them there either)."
+            )
+
     def composition_layer_indices(self) -> List[int]:
         """Original layer indices for attention layers (maps composition score positions)."""
+        self._reject_encoder_decoder_composition()
         return [idx for idx, _ in self.blocks_with("attn")]
 
     def block_hooks(self, layer_idx: int) -> List[str]:
@@ -1641,6 +1652,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
     @property
     def attn_head_labels(self) -> list[str]:
         """Head labels for attention layers only — matches all_composition_scores() dims."""
+        self._reject_encoder_decoder_composition()
         return [
             f"L{l}H{h}" for l in self.composition_layer_indices() for h in range(self.cfg.n_heads)
         ]

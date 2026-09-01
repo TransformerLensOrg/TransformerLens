@@ -92,9 +92,20 @@ def test_all_head_labels_uses_the_encoder_decoder_scheme(t5_bridge):
     assert sum(label.startswith("EL") for label in labels) == N_LAYERS * N_HEADS
 
 
-def test_attn_head_labels_cover_both_stacks(t5_bridge):
-    """Derives from composition_layer_indices, which routes through blocks_with."""
-    assert len(t5_bridge.attn_head_labels) == 2 * N_LAYERS * N_HEADS
+def test_composition_surfaces_refuse_encoder_decoder(t5_bridge):
+    """Composition scores live in one residual stream; enc-dec models have two.
+
+    The labels must refuse alongside the scores — advertising 2*L*H heads for
+    dims that all_composition_scores can never produce is worse than raising.
+    """
+    import pytest
+
+    with pytest.raises(NotImplementedError, match="residual streams"):
+        _ = t5_bridge.attn_head_labels
+    with pytest.raises(NotImplementedError, match="residual streams"):
+        t5_bridge.composition_layer_indices()
+    with pytest.raises(NotImplementedError, match="residual streams"):
+        t5_bridge.all_composition_scores("Q")
 
 
 def test_cross_attention_is_excluded_from_stacking(t5_bridge):
