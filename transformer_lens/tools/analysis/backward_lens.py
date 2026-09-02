@@ -10,10 +10,11 @@ from __future__ import annotations
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 import torch
 import torch.nn.functional as F
+from jaxtyping import Bool, Float, Int
 
 WeightLayout = Literal["in_out", "out_in"]
 ProjectedFactor = Literal["forward_inputs", "output_gradients"]
@@ -31,10 +32,10 @@ class LinearGradientFactors:
     CPU in float32 so the result owns no autograd graph.
     """
 
-    forward_inputs: torch.Tensor
-    output_gradients: torch.Tensor
-    weight_gradient: torch.Tensor
-    reconstructed_gradient: torch.Tensor
+    forward_inputs: Float[torch.Tensor, "position in_features"]
+    output_gradients: Float[torch.Tensor, "position out_features"]
+    weight_gradient: Float[torch.Tensor, "weight_dim_0 weight_dim_1"]
+    reconstructed_gradient: Float[torch.Tensor, "weight_dim_0 weight_dim_1"]
     absolute_reconstruction_error: float
     relative_reconstruction_error: float
     weight_layout: WeightLayout
@@ -48,8 +49,8 @@ class VocabularyRanking:
     has dtype ``torch.int64``. Both tensors are detached.
     """
 
-    values: torch.Tensor
-    indices: torch.Tensor
+    values: Float[torch.Tensor, "*leading k"]
+    indices: Int[torch.Tensor, "*leading k"]
 
 
 @dataclass(frozen=True)
@@ -68,22 +69,22 @@ class BackwardLensMatrixResult:
 
     factors: LinearGradientFactors
     projected_factor: ProjectedFactor
-    factor_norms: torch.Tensor
-    zero_norm_mask: torch.Tensor
+    factor_norms: Float[torch.Tensor, "position"]
+    zero_norm_mask: Bool[torch.Tensor, "position"]
     vocabulary_size: int
     target_token_id: int
     top_ranking: VocabularyRanking
     bottom_ranking: VocabularyRanking
-    target_largest_ranks: torch.Tensor
-    target_smallest_ranks: torch.Tensor
+    target_largest_ranks: Int[torch.Tensor, "position"]
+    target_smallest_ranks: Int[torch.Tensor, "position"]
     normalized_top_ranking: VocabularyRanking | None = None
     normalized_bottom_ranking: VocabularyRanking | None = None
-    normalized_target_largest_ranks: torch.Tensor | None = None
-    normalized_target_smallest_ranks: torch.Tensor | None = None
-    vocabulary_logits: torch.Tensor | None = None
-    normalized_vocabulary_logits: torch.Tensor | None = None
+    normalized_target_largest_ranks: Int[torch.Tensor, "position"] | None = None
+    normalized_target_smallest_ranks: Int[torch.Tensor, "position"] | None = None
+    vocabulary_logits: Float[torch.Tensor, "position d_vocab"] | None = None
+    normalized_vocabulary_logits: Float[torch.Tensor, "position d_vocab"] | None = None
 
-    def logits(self, *, normalized: bool = False) -> torch.Tensor:
+    def logits(self, *, normalized: bool = False) -> Float[torch.Tensor, "position d_vocab"]:
         """Return opted-in raw or Normalized Logit Lens full logits."""
         if not isinstance(normalized, bool):
             raise TypeError("normalized must be a bool")
@@ -134,7 +135,7 @@ class BackwardLensMatrixResult:
         *,
         largest: bool,
         normalized: bool = False,
-    ) -> torch.Tensor:
+    ) -> Int[torch.Tensor, "position"]:
         """Return zero-based target ranks per position in the requested ordering.
 
         ``largest=True`` gives rank zero to the largest logit. ``largest=False``
@@ -174,7 +175,7 @@ class BackwardLensMatrixResult:
 
     def gradient_descent_target_ranks(
         self, target_token_id: int, *, normalized: bool = False
-    ) -> torch.Tensor:
+    ) -> Int[torch.Tensor, "position"]:
         """Return ascending raw-gradient target ranks (rank zero is smallest)."""
         return self.target_ranks(target_token_id, largest=False, normalized=normalized)
 
@@ -207,7 +208,7 @@ class BackwardLensResult:
     """
 
     prompt: str
-    prompt_token_ids: torch.Tensor
+    prompt_token_ids: Int[torch.Tensor, "position"]
     target_token: str
     target_token_id: int
     loss: float
@@ -242,13 +243,13 @@ class _GPT2GradientCapture:
     contracts are introduced with the projection API.
     """
 
-    prompt_token_ids: torch.Tensor
+    prompt_token_ids: Int[torch.Tensor, "1 position"]
     target_token_id: int
     loss: float
     layers: tuple[_GPT2LayerGradientFactors, ...]
 
 
-def _validate_floating_matrix(name: str, tensor: torch.Tensor) -> None:
+def _validate_floating_matrix(name: str, tensor: Any) -> Float[torch.Tensor, "rows columns"]:
     if not isinstance(tensor, torch.Tensor):
         raise TypeError(f"{name} must be a torch.Tensor")
     if tensor.ndim != 2:
@@ -259,10 +260,12 @@ def _validate_floating_matrix(name: str, tensor: torch.Tensor) -> None:
         raise TypeError(f"{name} must have a floating dtype; got {tensor.dtype}")
     if not bool(torch.isfinite(tensor).all()):
         raise ValueError(f"{name} must contain only finite values")
+    return cast(Float[torch.Tensor, "rows columns"], tensor)
 
 
 def _reconstruction_errors(
-    reference: torch.Tensor, reconstruction: torch.Tensor
+    reference: Float[torch.Tensor, "rows columns"],
+    reconstruction: Float[torch.Tensor, "rows columns"],
 ) -> tuple[float, float]:
     """Return max absolute and symmetric scale-aware relative errors.
 
@@ -279,7 +282,9 @@ def _reconstruction_errors(
     return absolute, relative
 
 
-def _to_detached_float32(name: str, tensor: torch.Tensor) -> torch.Tensor:
+def _to_detached_float32(
+    name: str, tensor: Float[torch.Tensor, "rows columns"]
+) -> Float[torch.Tensor, "rows columns"]:
     """Detach and convert a validated tensor, rejecting float32 overflow."""
     converted = tensor.detach().float()
     if not bool(torch.isfinite(converted).all()):
@@ -288,11 +293,11 @@ def _to_detached_float32(name: str, tensor: torch.Tensor) -> torch.Tensor:
 
 
 def _build_linear_gradient_factors(
-    forward_inputs: torch.Tensor,
-    output_gradients: torch.Tensor,
-    weight_gradient: torch.Tensor,
+    forward_inputs: Any,
+    output_gradients: Any,
+    weight_gradient: Any,
     *,
-    weight_layout: WeightLayout,
+    weight_layout: Any,
 ) -> LinearGradientFactors:
     """Reconstruct a weight gradient from aligned token-position factors.
 
@@ -308,33 +313,34 @@ def _build_linear_gradient_factors(
         Detached factors, the independent gradient, its reconstruction, and
         reconstruction errors, all on CPU with float32 tensor values.
     """
-    _validate_floating_matrix("forward_inputs", forward_inputs)
-    _validate_floating_matrix("output_gradients", output_gradients)
-    _validate_floating_matrix("weight_gradient", weight_gradient)
+    validated_inputs = _validate_floating_matrix("forward_inputs", forward_inputs)
+    validated_gradients = _validate_floating_matrix("output_gradients", output_gradients)
+    validated_weight = _validate_floating_matrix("weight_gradient", weight_gradient)
     if weight_layout not in ("in_out", "out_in"):
         raise ValueError("weight_layout must be 'in_out' or 'out_in'")
-    if forward_inputs.shape[0] != output_gradients.shape[0]:
+    validated_layout = cast(WeightLayout, weight_layout)
+    if validated_inputs.shape[0] != validated_gradients.shape[0]:
         raise ValueError(
             "forward_inputs and output_gradients must have the same number of positions; "
-            f"got {forward_inputs.shape[0]} and {output_gradients.shape[0]}"
+            f"got {validated_inputs.shape[0]} and {validated_gradients.shape[0]}"
         )
-    devices = {forward_inputs.device, output_gradients.device, weight_gradient.device}
+    devices = {validated_inputs.device, validated_gradients.device, validated_weight.device}
     if len(devices) != 1:
         raise ValueError(
             "forward_inputs, output_gradients, and weight_gradient must share a device"
         )
 
-    inputs = _to_detached_float32("forward_inputs", forward_inputs)
-    gradients = _to_detached_float32("output_gradients", output_gradients)
+    inputs = _to_detached_float32("forward_inputs", validated_inputs)
+    gradients = _to_detached_float32("output_gradients", validated_gradients)
     canonical = inputs.T @ gradients
-    reconstruction = canonical if weight_layout == "in_out" else canonical.T
-    reference = _to_detached_float32("weight_gradient", weight_gradient)
+    reconstruction = canonical if validated_layout == "in_out" else canonical.T
+    reference = _to_detached_float32("weight_gradient", validated_weight)
     if not bool(torch.isfinite(reconstruction).all()):
         raise ValueError("the float32 outer-product reconstruction must contain only finite values")
     if reference.shape != reconstruction.shape:
         raise ValueError(
             f"weight_gradient shape {tuple(reference.shape)} does not match the "
-            f"{weight_layout} reconstruction shape {tuple(reconstruction.shape)}"
+            f"{validated_layout} reconstruction shape {tuple(reconstruction.shape)}"
         )
     absolute, relative = _reconstruction_errors(reference, reconstruction)
     return LinearGradientFactors(
@@ -344,11 +350,11 @@ def _build_linear_gradient_factors(
         reconstructed_gradient=reconstruction.cpu().clone(),
         absolute_reconstruction_error=absolute,
         relative_reconstruction_error=relative,
-        weight_layout=weight_layout,
+        weight_layout=validated_layout,
     )
 
 
-def _rank_vocabulary_logits(logits: torch.Tensor, *, k: int, largest: bool) -> VocabularyRanking:
+def _rank_vocabulary_logits(logits: Any, *, k: Any, largest: Any) -> VocabularyRanking:
     """Return largest or smallest vocabulary logits and token ids per row.
 
     Ordering among exactly tied logits is intentionally unspecified and follows
@@ -368,7 +374,8 @@ def _rank_vocabulary_logits(logits: torch.Tensor, *, k: int, largest: bool) -> V
         raise TypeError(f"largest must be a bool; got {type(largest).__name__}")
     if isinstance(k, bool) or not isinstance(k, int) or not 1 <= k <= logits.shape[-1]:
         raise ValueError(f"k must be in [1, {logits.shape[-1]}]; got {k!r}")
-    ranked = torch.topk(logits.detach(), k=k, dim=-1, largest=largest, sorted=True)
+    validated_logits = cast(Float[torch.Tensor, "*leading d_vocab"], logits)
+    ranked = torch.topk(validated_logits.detach(), k=k, dim=-1, largest=largest, sorted=True)
     return VocabularyRanking(
         values=ranked.values.cpu().clone(), indices=ranked.indices.cpu().clone()
     )
@@ -386,8 +393,8 @@ def _slice_vocabulary_ranking(ranking: VocabularyRanking, *, k: int) -> Vocabula
 
 
 def _target_vocabulary_ranks(
-    logits: torch.Tensor, *, target_token_id: int, largest: bool
-) -> torch.Tensor:
+    logits: Float[torch.Tensor, "position d_vocab"], *, target_token_id: int, largest: bool
+) -> Int[torch.Tensor, "position"]:
     """Return zero-based competition ranks for one vocabulary id per row."""
     target = logits[:, target_token_id].unsqueeze(-1)
     comparisons = logits > target if largest else logits < target
@@ -405,7 +412,9 @@ def _decode_vocabulary_ranking(ranking: VocabularyRanking, tokenizer: Any) -> li
 
 
 @torch.no_grad()
-def _project_residual_factors(model: Any, factors: torch.Tensor) -> torch.Tensor:
+def _project_residual_factors(
+    model: Any, factors: Float[torch.Tensor, "position d_model"]
+) -> Float[torch.Tensor, "position d_vocab"]:
     """Apply fresh final normalization and unembedding to residual-width rows."""
     _validate_floating_matrix("factors", factors)
     if factors.shape[-1] != int(model.cfg.d_model):
@@ -431,8 +440,12 @@ def _project_residual_factors(model: Any, factors: torch.Tensor) -> torch.Tensor
 
 
 def _factor_norms_and_normalized_rows(
-    factors: torch.Tensor,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    factors: Float[torch.Tensor, "position width"],
+) -> tuple[
+    Float[torch.Tensor, "position"],
+    Bool[torch.Tensor, "position"],
+    Float[torch.Tensor, "position width"],
+]:
     """Return original L2 norms, exact-zero mask, and safely unit-normalized rows."""
     _validate_floating_matrix("factors", factors)
     rows = _to_detached_float32("factors", factors).cpu().clone()
@@ -664,12 +677,17 @@ def _capture_projection_tensors(
             handle.remove()
 
 
-def _single_batch_matrix(name: str, tensor: torch.Tensor) -> torch.Tensor:
+def _single_batch_matrix(name: str, tensor: Any) -> Float[torch.Tensor, "position width"]:
+    if not isinstance(tensor, torch.Tensor):
+        raise RuntimeError(f"{name} must be a torch.Tensor")
     if tensor.ndim != 3 or tensor.shape[0] != 1:
         raise RuntimeError(
             f"{name} must have shape [1, position, width]; got {tuple(tensor.shape)}"
         )
-    return tensor[0]
+    matrix = tensor[0]
+    if not matrix.is_floating_point():
+        raise RuntimeError(f"{name} must have a floating dtype; got {matrix.dtype}")
+    return cast(Float[torch.Tensor, "position width"], matrix)
 
 
 @contextmanager

@@ -2,22 +2,20 @@
 
 from dataclasses import FrozenInstanceError
 from types import SimpleNamespace
-from typing import cast
 
 import pytest
 import torch
 import torch.nn.functional as F
-from beartype.roar import BeartypeCallHintParamViolation
 
 from transformer_lens.tools.analysis.backward_lens import (
     BackwardLensMatrixResult,
     LinearGradientFactors,
-    WeightLayout,
     _build_linear_gradient_factors,
     _build_matrix_result,
     _factor_norms_and_normalized_rows,
     _project_residual_factors,
     _rank_vocabulary_logits,
+    _single_batch_matrix,
 )
 
 
@@ -210,12 +208,12 @@ def test_factor_validation_errors(inputs, gradients, weight, message) -> None:
 
 
 def test_rejects_invalid_layout_and_integer_factors() -> None:
-    with pytest.raises((TypeError, BeartypeCallHintParamViolation), match="weight_layout"):
+    with pytest.raises(ValueError, match="weight_layout"):
         _build_linear_gradient_factors(
             torch.randn(3, 2),
             torch.randn(3, 4),
             torch.randn(2, 4),
-            weight_layout=cast(WeightLayout, "other"),
+            weight_layout="other",
         )
     with pytest.raises(TypeError, match="floating"):
         _build_linear_gradient_factors(
@@ -227,9 +225,9 @@ def test_rejects_invalid_layout_and_integer_factors() -> None:
 
 
 def test_rejects_non_tensor_factors() -> None:
-    with pytest.raises((TypeError, BeartypeCallHintParamViolation), match="torch.Tensor"):
+    with pytest.raises(TypeError, match="torch.Tensor"):
         _build_linear_gradient_factors(
-            cast(torch.Tensor, "not a tensor"),
+            "not a tensor",
             torch.randn(3, 4),
             torch.randn(2, 4),
             weight_layout="in_out",
@@ -291,15 +289,15 @@ def test_vocabulary_ranking_rejects_invalid_k(k) -> None:
         _rank_vocabulary_logits(torch.randn(2, 4), k=k, largest=True)
 
 
-def test_vocabulary_ranking_runtime_typechecking_rejects_non_integer_k() -> None:
-    with pytest.raises((TypeError, BeartypeCallHintParamViolation), match="parameter.*k"):
-        _rank_vocabulary_logits(torch.randn(2, 4), k=cast(int, 1.5), largest=True)
+def test_vocabulary_ranking_rejects_non_integer_k() -> None:
+    with pytest.raises(ValueError, match="k must"):
+        _rank_vocabulary_logits(torch.randn(2, 4), k=1.5, largest=True)
 
 
 @pytest.mark.parametrize("largest", [1, "yes", None])
 def test_vocabulary_ranking_rejects_non_boolean_largest(largest) -> None:
-    with pytest.raises((TypeError, BeartypeCallHintParamViolation), match="parameter.*largest"):
-        _rank_vocabulary_logits(torch.randn(2, 4), k=1, largest=cast(bool, largest))
+    with pytest.raises(TypeError, match="largest must be a bool"):
+        _rank_vocabulary_logits(torch.randn(2, 4), k=1, largest=largest)
 
 
 @pytest.mark.parametrize(
@@ -318,8 +316,8 @@ def test_vocabulary_ranking_rejects_invalid_logits(logits) -> None:
 
 
 def test_vocabulary_ranking_rejects_non_tensor_logits() -> None:
-    with pytest.raises((TypeError, BeartypeCallHintParamViolation), match="torch.Tensor"):
-        _rank_vocabulary_logits(cast(torch.Tensor, [1.0, 2.0]), k=1, largest=True)
+    with pytest.raises(TypeError, match="torch.Tensor"):
+        _rank_vocabulary_logits([1.0, 2.0], k=1, largest=True)
 
 
 def test_projection_matches_fresh_final_norm_and_unembedding() -> None:
@@ -376,6 +374,20 @@ def test_projection_sign_symmetry_depends_on_final_norm_bias() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    ("tensor", "message"),
+    [
+        ("not a tensor", "torch.Tensor"),
+        (torch.randn(2, 3), "shape"),
+        (torch.randn(2, 3, 4), "shape"),
+        (torch.ones(1, 3, 4, dtype=torch.long), "floating dtype"),
+    ],
+)
+def test_single_batch_matrix_rejects_invalid_internal_tensors(tensor, message) -> None:
+    with pytest.raises(RuntimeError, match=message):
+        _single_batch_matrix("captured tensor", tensor)
+
+
 def test_matrix_result_rankings_decoding_and_target_rank_conventions() -> None:
     logits = torch.tensor([[3.0, 1.0, -2.0, 0.0], [0.0, -1.0, 4.0, 2.0]])
     result = _matrix_result(logits)
@@ -410,7 +422,7 @@ def test_matrix_result_rejects_invalid_retained_ranking_k(k) -> None:
     result = _matrix_result(torch.randn(2, 4))
 
     with pytest.raises(ValueError, match="retained top_k=2"):
-        result.top(k=cast(int, k))
+        result.top(k=k)
 
 
 def test_matrix_result_keeps_rankings_and_analyzed_target_ranks_without_full_logits() -> None:
@@ -470,7 +482,12 @@ def test_build_matrix_result_bounds_storage_and_matches_projection(
 
 
 def test_ranking_accessors_return_owned_retained_prefixes() -> None:
-    result = _matrix_result(torch.tensor([[3.0, 1.0, -2.0, 0.0]]))
+    result = _matrix_result(torch.tensor([[3.0, 1.0, -2.0, 0.0], [0.0, -1.0, 4.0, 2.0]]))
+    saved_top_values = result.top_ranking.values.clone()
+    saved_top_indices = result.top_ranking.indices.clone()
+    assert result.normalized_bottom_ranking is not None
+    saved_bottom_values = result.normalized_bottom_ranking.values.clone()
+    saved_bottom_indices = result.normalized_bottom_ranking.indices.clone()
     top = result.top(k=1)
     bottom = result.bottom(k=1, normalized=True)
 
@@ -479,11 +496,10 @@ def test_ranking_accessors_return_owned_retained_prefixes() -> None:
     bottom.values.add_(100)
     bottom.indices.add_(100)
 
-    assert result.top_ranking.values.tolist() == [[3.0, 1.0]]
-    assert result.top_ranking.indices.tolist() == [[0, 1]]
-    assert result.normalized_bottom_ranking is not None
-    assert result.normalized_bottom_ranking.values.tolist() == [[-4.0, 0.0]]
-    assert result.normalized_bottom_ranking.indices.tolist() == [[2, 3]]
+    assert torch.equal(result.top_ranking.values, saved_top_values)
+    assert torch.equal(result.top_ranking.indices, saved_top_indices)
+    assert torch.equal(result.normalized_bottom_ranking.values, saved_bottom_values)
+    assert torch.equal(result.normalized_bottom_ranking.indices, saved_bottom_indices)
 
 
 def test_public_backward_lens_symbols_are_exported() -> None:
