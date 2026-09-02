@@ -29,7 +29,7 @@ import torch
 # Set once the dataset repo exists; pin to a specific commit revision so golden
 # updates are explicit, reviewed events (never a moving branch).
 GOLDENS_REPO_ID = "lars4776/TL-Goldens"
-GOLDENS_REVISION: str | None = "130db21b365cbe286a5473c3267725733eefd085"
+GOLDENS_REVISION: str | None = "e680e6756d2ae3faf322ecc12661dda904470719"
 
 _ENV_VAR = "TL_GOLDENS_DIR"
 
