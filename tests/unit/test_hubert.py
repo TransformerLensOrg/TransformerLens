@@ -115,3 +115,44 @@ class TestHubertHFComparison:
 
         cos = torch.nn.functional.cosine_similarity(hf_out, our_out, dim=1)
         assert cos.item() > 0.99, f"Cosine similarity too low: {cos.item()}"
+
+
+class TestEncoderOutputPaddingMask:
+    def test_masked_frame_entry_matches_hf_encoder(self, audio_model):
+        """encoder_output under a padding mask must match HF on the real frames.
+
+        HF zeroes pad frames before pos_conv_embed; without that, the kernel-128
+        conv smears pad content into real frames (~23% relative error on this
+        input). Frames come from an unmasked feature pass — HF mutates
+        hidden_states in place, so masked-run frames are already pre-zeroed and
+        would make this comparison self-fulfilling.
+        """
+        from transformers import HubertModel
+
+        hf = HubertModel.from_pretrained(HF_CHECKPOINT).to(DEVICE).eval()
+
+        wave = torch.from_numpy(make_sine()).unsqueeze(0)
+        padded = torch.cat([wave, torch.zeros(1, 4000)], dim=1).to(DEVICE)
+        sample_mask = (
+            torch.cat([torch.ones(1, wave.shape[1]), torch.zeros(1, 4000)], dim=1).long().to(DEVICE)
+        )
+
+        with torch.no_grad():
+            ref = hf(padded, attention_mask=sample_mask).last_hidden_state
+            feats = hf.feature_extractor(padded).transpose(1, 2)
+            frames = hf.feature_projection(feats)
+            frame_mask = hf._get_feature_vector_attention_mask(frames.shape[1], sample_mask)
+            out = audio_model.encoder_output(frames, one_zero_attention_mask=frame_mask.long())
+
+        real = frame_mask[0].bool()
+        assert not real.all(), "padding produced no masked frames; test setup is broken"
+        torch.testing.assert_close(out[:, real], ref[:, real], atol=1e-4, rtol=1e-4)
+
+    def test_caller_frames_survive(self, audio_model):
+        """masked_fill, not HF's in-place write: the caller's tensor is untouched."""
+        frames = torch.randn(1, 8, audio_model.cfg.d_model, device=DEVICE)
+        keep = frames.clone()
+        mask = torch.tensor([[1, 1, 1, 1, 0, 0, 0, 0]], device=DEVICE)
+        with torch.no_grad():
+            audio_model.encoder_output(frames, one_zero_attention_mask=mask)
+        assert torch.equal(frames, keep)
