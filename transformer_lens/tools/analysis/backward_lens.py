@@ -552,13 +552,19 @@ def _require_raw_gpt2_bridge(model: Any) -> None:
         raise ValueError(
             "Backward Lens requires original GPT-2 weights; this Bridge processed its weights"
         )
-    if not isinstance(model.adapter, GPT2ArchitectureAdapter):
+    if int(model.cfg.n_devices) > 1:
         raise ValueError(
+            "Backward Lens requires a single-device TransformerBridge because the MLP "
+            "projections, final normalization, and unembed must be co-located; "
+            f"device-map dispatch with cfg.n_devices={model.cfg.n_devices} is not supported"
+        )
+    if not isinstance(model.adapter, GPT2ArchitectureAdapter):
+        raise NotImplementedError(
             "Backward Lens currently supports the GPT2ArchitectureAdapter only; "
             f"got {type(model.adapter).__name__}"
         )
     if bool(getattr(model.cfg, "gated_mlp", False)):
-        raise ValueError("Backward Lens currently requires dense, non-gated GPT-2 MLPs")
+        raise NotImplementedError("Backward Lens currently requires dense, non-gated GPT-2 MLPs")
     if model.tokenizer is None:
         raise ValueError("Backward Lens requires a GPT-2 Bridge with a tokenizer")
     for component in ("blocks", "ln_final", "unembed"):
@@ -594,7 +600,7 @@ def _get_gpt2_mlp_projections(model: Any, layers: tuple[int, ...]) -> dict[int, 
             if not isinstance(projection.original_component, Conv1D):
                 raise ValueError(f"layer {layer} {name} projection must wrap GPT-2 Conv1D")
             weight = projection.original_component.weight
-            if not isinstance(weight, torch.nn.Parameter) or not weight.requires_grad:
+            if not isinstance(weight, torch.nn.Parameter):
                 raise ValueError(
                     f"layer {layer} {name} original weight must be a trainable Parameter"
                 )
@@ -602,6 +608,10 @@ def _get_gpt2_mlp_projections(model: Any, layers: tuple[int, ...]) -> dict[int, 
                 raise ValueError(
                     f"layer {layer} {name} weight must have shape {expected_shape} "
                     f"and floating dtype; got {tuple(weight.shape)} and {weight.dtype}"
+                )
+            if not weight.requires_grad:
+                raise ValueError(
+                    f"layer {layer} {name} original weight must be a trainable Parameter"
                 )
             if not isinstance(projection.hook_in, HookPoint) or not isinstance(
                 projection.hook_out, HookPoint
@@ -695,6 +705,11 @@ def _capture_gpt2_mlp_gradient_factors(
     :func:`torch.autograd.grad` call. It does not call ``backward``, touch
     parameter ``.grad`` buffers, change training state, or remove caller hooks.
     """
+    if torch.is_inference_mode_enabled():
+        raise ValueError(
+            "Backward Lens cannot capture gradients inside torch.inference_mode(); "
+            "exit inference_mode before running the analysis"
+        )
     _require_raw_gpt2_bridge(model)
     requested_layers = _validate_requested_layers(model, layers)
     projections = _get_gpt2_mlp_projections(model, requested_layers)
@@ -705,10 +720,17 @@ def _capture_gpt2_mlp_gradient_factors(
     if not isinstance(target_token, str):
         raise TypeError("target_token must be a string")
 
-    prompt_tokens = model.to_tokens(prompt)
-    target_tokens = model.to_tokens(target_token, prepend_bos=False)
+    prompt_tokens = model.to_tokens(prompt, truncate=False)
     if prompt_tokens.ndim != 2 or prompt_tokens.shape[0] != 1 or prompt_tokens.shape[1] == 0:
         raise ValueError("prompt must tokenize to one non-empty sequence")
+    prompt_token_count = int(prompt_tokens.shape[1])
+    context_size = int(model.cfg.n_ctx)
+    if prompt_token_count > context_size:
+        raise ValueError(
+            f"prompt token count {prompt_token_count} exceeds model context limit "
+            f"n_ctx={context_size}"
+        )
+    target_tokens = model.to_tokens(target_token, prepend_bos=False)
     if target_tokens.ndim != 2 or tuple(target_tokens.shape) != (1, 1):
         count = int(target_tokens.numel())
         raise ValueError(

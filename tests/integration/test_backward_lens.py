@@ -12,6 +12,7 @@ from beartype.roar import BeartypeCallHintParamViolation
 PROMPT = "The capital of France is"
 TARGET = " Paris"
 LAYERS = (0, 11)
+OVERLONG_PROMPT = " token" * 1024
 
 DEVICE_DTYPE_CASES = [pytest.param("cpu", torch.bfloat16, id="cpu-bfloat16")]
 if torch.cuda.is_available():
@@ -265,6 +266,14 @@ def test_public_api_validates_retention_options_before_capture(gpt2_bridge) -> N
         (PROMPT, TARGET, [-1], ValueError, "must be in"),
         (PROMPT, TARGET, [12], ValueError, "must be in"),
         (PROMPT, TARGET, [True], TypeError, "layer"),
+        pytest.param(
+            OVERLONG_PROMPT,
+            TARGET,
+            [0],
+            ValueError,
+            r"token count 1025.*n_ctx=1024",
+            id="over-n-ctx",
+        ),
     ],
 )
 def test_capture_rejects_invalid_analysis_inputs(
@@ -300,16 +309,90 @@ def test_capture_rejects_non_bridge_and_non_raw_states(gpt2_bridge, monkeypatch)
     monkeypatch.setattr(gpt2_bridge, "_weights_processed", False)
     adapter = gpt2_bridge.adapter
     monkeypatch.setattr(gpt2_bridge, "adapter", object())
-    with pytest.raises(ValueError, match="GPT2ArchitectureAdapter"):
+    with pytest.raises(NotImplementedError, match="GPT2ArchitectureAdapter"):
         _capture_gpt2_mlp_gradient_factors(gpt2_bridge, PROMPT, TARGET, [0])
     monkeypatch.setattr(gpt2_bridge, "adapter", adapter)
     monkeypatch.setattr(gpt2_bridge.cfg, "gated_mlp", True)
-    with pytest.raises(ValueError, match="non-gated"):
+    with pytest.raises(NotImplementedError, match="non-gated"):
         _capture_gpt2_mlp_gradient_factors(gpt2_bridge, PROMPT, TARGET, [0])
     monkeypatch.setattr(gpt2_bridge.cfg, "gated_mlp", False)
     monkeypatch.setattr(gpt2_bridge, "tokenizer", None)
     with pytest.raises(ValueError, match="tokenizer"):
         _capture_gpt2_mlp_gradient_factors(gpt2_bridge, PROMPT, TARGET, [0])
+
+
+def test_capture_rejects_inference_mode(gpt2_bridge) -> None:
+    from transformer_lens.tools.analysis.backward_lens import (
+        _capture_gpt2_mlp_gradient_factors,
+    )
+
+    with torch.inference_mode():
+        with pytest.raises(ValueError, match="inference_mode"):
+            _capture_gpt2_mlp_gradient_factors(gpt2_bridge, PROMPT, TARGET, [0])
+
+
+def test_capture_rejects_multi_device_before_projection_validation(
+    gpt2_bridge, monkeypatch
+) -> None:
+    from transformer_lens.tools.analysis import backward_lens
+
+    def projection_validation_must_not_run(*_args, **_kwargs) -> None:
+        raise AssertionError("projection validation ran for a multi-device Bridge")
+
+    monkeypatch.setattr(gpt2_bridge.cfg, "n_devices", 2)
+    monkeypatch.setattr(
+        backward_lens,
+        "_get_gpt2_mlp_projections",
+        projection_validation_must_not_run,
+    )
+    with pytest.raises(ValueError, match=r"single-device.*co-located.*n_devices=2"):
+        backward_lens._capture_gpt2_mlp_gradient_factors(gpt2_bridge, PROMPT, TARGET, [0])
+
+
+def test_capture_rejects_a_per_layer_gate(gpt2_bridge, monkeypatch) -> None:
+    from transformer_lens.tools.analysis.backward_lens import _get_gpt2_mlp_projections
+
+    mlp = gpt2_bridge.blocks[0].mlp
+    monkeypatch.setattr(mlp, "gate", torch.nn.Identity(), raising=False)
+    with pytest.raises(ValueError, match="dense, non-gated MLPBridge"):
+        _get_gpt2_mlp_projections(gpt2_bridge, (0,))
+
+
+def test_capture_rejects_a_non_conv1d_component(gpt2_bridge, monkeypatch) -> None:
+    from transformer_lens.tools.analysis.backward_lens import _get_gpt2_mlp_projections
+
+    projection = getattr(gpt2_bridge.blocks[0].mlp, "in")
+    monkeypatch.setitem(projection._modules, "_original_component", torch.nn.Linear(1, 1))
+    with pytest.raises(ValueError, match="input projection must wrap GPT-2 Conv1D"):
+        _get_gpt2_mlp_projections(gpt2_bridge, (0,))
+
+
+@pytest.mark.parametrize(
+    ("invalidity", "match"),
+    [
+        ("shape", r"weight must have shape \(768, 3072\)"),
+        ("dtype", r"floating dtype.*torch.int64"),
+    ],
+    ids=["wrong-shape", "non-floating-dtype"],
+)
+def test_capture_rejects_an_invalid_weight(
+    gpt2_bridge,
+    monkeypatch,
+    invalidity: str,
+    match: str,
+) -> None:
+    from transformer_lens.tools.analysis.backward_lens import _get_gpt2_mlp_projections
+
+    component = getattr(gpt2_bridge.blocks[0].mlp, "in").original_component
+    if invalidity == "shape":
+        replacement_weight = torch.nn.Parameter(torch.empty(1, 1))
+    else:
+        replacement_weight = torch.nn.Parameter(
+            torch.empty_like(component.weight, dtype=torch.int64), requires_grad=False
+        )
+    monkeypatch.setattr(component, "weight", replacement_weight)
+    with pytest.raises(ValueError, match=match):
+        _get_gpt2_mlp_projections(gpt2_bridge, (0,))
 
 
 def test_capture_rejects_a_frozen_original_weight(gpt2_bridge) -> None:
