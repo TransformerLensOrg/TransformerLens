@@ -30,15 +30,23 @@ def golden():
 
 def test_logits_match_the_frozen_hooked_transformer_golden(solu_bridge, golden):
     """The whole chain — TL config derivation, .pth fetch, weight conversion,
-    native solu_ln forward, tokenizer wiring — lands bit-exact on the golden."""
+    native solu_ln forward, tokenizer wiring — reproduces the golden logits.
+
+    Bit-exact on the hardware that captured the goldens; ~2.5e-5 absolute on
+    other platforms (fp32 accumulation). Same 1e-4 tolerance every golden
+    comparison in the suite uses — never assert exactness against tensors
+    captured on different hardware."""
     with torch.no_grad():
         logits = solu_bridge(golden.scalars["short_prompt"], return_type="logits")
-    torch.testing.assert_close(logits, golden.tensors("logits_short")["logits"], atol=0.0, rtol=0.0)
+    torch.testing.assert_close(
+        logits, golden.tensors("logits_short")["logits"], atol=1e-4, rtol=1e-4
+    )
 
 
 def test_long_text_loss_matches_the_golden_scalar(solu_bridge, golden):
+    """Cross-platform: observed 1.5e-5 delta on Linux CI vs the capture host."""
     loss = solu_bridge(golden.scalars["ablation"]["text"], return_type="loss")
-    assert abs(float(loss) - golden.scalars["ablation"]["orig_loss"]) < 1e-5
+    assert abs(float(loss) - golden.scalars["ablation"]["orig_loss"]) < 1e-4
 
 
 def test_mid_mlp_layernorm_is_load_bearing(solu_bridge, golden):
