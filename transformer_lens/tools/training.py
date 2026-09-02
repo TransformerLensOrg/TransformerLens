@@ -1,8 +1,9 @@
 """Train loop for TransformerLens models.
 
 Utilities for training models on autoregressive language modeling tasks.
-Typed against nn.Module so both HookedTransformer and TransformerBridge
-work through this loop.
+Typed against the ``model_protocol`` surface (``__call__`` with
+``return_type="loss"`` plus standard ``nn.Module`` parameter access), so any
+conforming model — ``TransformerBridge`` foremost — works through this loop.
 """
 
 import dataclasses
@@ -17,6 +18,7 @@ from torch.utils.data import DataLoader, Dataset
 from tqdm.auto import tqdm
 
 from transformer_lens import utilities as utils
+from transformer_lens.model_protocol import TrainableTransformerLensModel
 from transformer_lens.utilities.library_utils import is_library_available
 
 
@@ -62,14 +64,15 @@ class TrainConfig:
 
 
 def train(
-    model: nn.Module,
+    model: TrainableTransformerLensModel,
     config: TrainConfig,
     dataset: Dataset,
-) -> nn.Module:
+) -> TrainableTransformerLensModel:
     """Train a model on an autoregressive language modeling task.
 
     Args:
-        model: The model to train (nn.Module with __call__(tokens, return_type="loss"))
+        model: The model to train (TrainableTransformerLensModel: callable with
+            ``return_type="loss"`` and exposing torch parameters)
         config: The training configuration
         dataset: The dataset to train on - assumed set up for autoregressive language modeling.
 

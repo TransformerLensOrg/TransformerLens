@@ -11,13 +11,18 @@ import torch
 from typing_extensions import Literal
 
 from transformer_lens.FactoredMatrix import FactoredMatrix
+from transformer_lens.model_protocol import TransformerLensModel
 
 OUTPUT_EMBEDDING = "unembed.W_U"
 VECTOR_TYPES = ["OV", "w_in", "w_out"]
 
 
 class SVDInterpreter:
-    def __init__(self, model: Any):
+    # Base protocol at runtime: beartype validates via getattr_static, which
+    # cannot see nn.Module instance submodules, so the WithWeights surface
+    # would spuriously reject legacy models. Everything touched here (cfg,
+    # tl_parameters/named_parameters fallback) is on the base surface.
+    def __init__(self, model: TransformerLensModel):
         self.model = model
         self.cfg = model.cfg
         # Use tl_parameters() for TransformerBridge (returns TL-style dict)
@@ -25,6 +30,7 @@ class SVDInterpreter:
         if hasattr(model, "tl_parameters"):
             self.params = model.tl_parameters()
         else:
+            assert isinstance(model, torch.nn.Module)  # legacy fallback path
             self.params = {name: param for name, param in model.named_parameters()}
 
     def get_singular_vectors(

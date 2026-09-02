@@ -146,9 +146,11 @@
             "ignore:HookedTransformer.from_pretrained is deprecated:DeprecationWarning",
             "ignore:HookedEncoder is deprecated:DeprecationWarning",
             "ignore:HookedEncoder.from_pretrained is deprecated:DeprecationWarning",
+            "ignore:HookedEncoderDecoder is deprecated:DeprecationWarning",
             "ignore:HookedEncoderDecoder.from_pretrained is deprecated:DeprecationWarning",
+            "ignore:HookedAudioEncoder is deprecated:DeprecationWarning",
             "ignore:HookedAudioEncoder.from_pretrained is deprecated:DeprecationWarning",
-            "ignore:HookedRootModule is deprecated:DeprecationWarning",
+            "ignore:HookedTransformer.from_pretrained_no_processing is deprecated:DeprecationWarning",
             "ignore:BertNextSentencePrediction is deprecated:DeprecationWarning",
         ]
         markers=[
