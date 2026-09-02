@@ -129,6 +129,8 @@ Post-norm architectures (OLMo 2, BERT-style encoders) and MLA blocks (DeepSeek V
 
 Additionally, **HookedRootModule** has been moved to its own module. Prefer `from transformer_lens import HookedRootModule`. The legacy `from transformer_lens.hook_points import HookedRootModule` still works in 3.x, but emits a `DeprecationWarning`. This import path will be removed in 4.0.
 
+`HookedRootModule` itself (together with `HookPoint`) is **kept** — it is permanent infrastructure, not part of the 4.0 removal of the legacy model classes, and remains the supported way to add TransformerLens-style hooks to your own `nn.Module`s.
+
 ## APIs that are unchanged
 
 These work identically on `TransformerBridge` and need no migration:

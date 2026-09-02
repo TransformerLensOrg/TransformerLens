@@ -375,7 +375,7 @@ class HookPoint(nn.Module):
 
     def layer(self):
         # Returns the layer index if the name has the form 'blocks.{layer}.{...}'
-        # Helper function that's mainly useful on HookedTransformer
+        # Helper for models whose hook names follow the blocks.{layer}.* scheme
         # If it doesn't have this form, raises an error -
         if self.name is None:
             raise ValueError("Name cannot be None")

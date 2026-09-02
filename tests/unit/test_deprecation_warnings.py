@@ -105,10 +105,18 @@ def test_bert_next_sentence_prediction_constructor_warns_once():
     )
 
 
-def test_direct_hooked_root_module_construction_warns_once():
+def test_hooked_root_module_is_not_deprecated():
+    """HookedRootModule (with HookPoint) is KEPT infrastructure — the supported
+    way to hook arbitrary nn.Modules — and must construct without any
+    DeprecationWarning, unlike the legacy model classes."""
+    import warnings as w
+
     from transformer_lens import HookedRootModule
 
-    _assert_single_deprecation(HookedRootModule, "HookedRootModule")
+    with w.catch_warnings(record=True) as caught:
+        w.simplefilter("always")
+        HookedRootModule()
+    assert not [x for x in caught if issubclass(x.category, DeprecationWarning)]
 
 
 def test_hooked_encoder_decoder_constructor_warns_once():
