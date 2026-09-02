@@ -150,31 +150,39 @@ If your code only touches these APIs, the migration is genuinely just the loadin
 
 ### BERT Next Sentence Prediction
 
-NSP runs on the bridge today — load the NSP head via `model_class` and pass the
-sentence-pair tokenization through:
+NSP runs on the bridge today — load the NSP head via `model_class` and use the
+sentence-pair helpers, which own the `token_type_ids` plumbing:
 
 ```python
-from transformers import AutoTokenizer, BertForNextSentencePrediction
+from transformers import BertForNextSentencePrediction
 from transformer_lens.model_bridge import TransformerBridge
 
-tokenizer = AutoTokenizer.from_pretrained("google-bert/bert-base-cased")
 nsp = TransformerBridge.boot_transformers(
     "google-bert/bert-base-cased",
     model_class=BertForNextSentencePrediction,
 )
-nsp.enable_compatibility_mode()
 
-inputs = tokenizer("A man walked into a grocery store.", "He bought an apple.", return_tensors="pt")
-nsp(inputs["input_ids"], token_type_ids=inputs["token_type_ids"], return_type="predictions")
+nsp.predict_next_sentence("A man walked into a grocery store.", "He bought an apple.")
 # 'The sentences are sequential'
+
+# Lower level: pair tokenization alone (input_ids + token_type_ids + mask)
+tokens = nsp.to_sentence_pair_tokens("A man walked into a grocery store.", "He bought an apple.")
+nsp(tokens["input_ids"], token_type_ids=tokens["token_type_ids"], return_type="logits")
 ```
 
-**Pass `token_type_ids`.** They are what tells BERT where the first sentence ends
-and the second begins; without them the NSP head scores a single undifferentiated
-span and can return the wrong verdict (on the pair above, dropping them collapses
-the logits from ±4.37 to ±0.58, and a genuinely non-sequential pair flips to
-"sequential"). With them, the bridge reproduces the raw HuggingFace NSP logits
-exactly.
+**Pass `token_type_ids`** when tokenizing by hand. They are what tells BERT where
+the first sentence ends and the second begins; without them the NSP head scores a
+single undifferentiated span and can return the wrong verdict (on the pair above,
+dropping them collapses the logits from [4.36, -4.39] to [1.10, -0.06], and a
+genuinely non-sequential pair flips to "sequential").
+
+**Skip `enable_compatibility_mode()` for NSP.** NSP needs no weight processing:
+without it the bridge reproduces an independently loaded HuggingFace model's NSP
+logits exactly (bit-for-bit against an eager-attention load; ~2e-6 against HF's
+default sdpa kernel). Compatibility mode applies unembed centering, which
+subtracts the per-input mean of the two logits — ~1.15e-2 on this pair, varying
+by input. Both logits shift together, so verdicts are unchanged; exact logit
+values are not.
 
 The legacy `BertNextSentencePrediction` wrapper is deprecated and cannot wrap a
 `TransformerBridge` — it reaches for `HookedEncoder`-only internals

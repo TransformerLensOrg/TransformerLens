@@ -109,3 +109,46 @@ def test_direct_hooked_root_module_construction_warns_once():
     from transformer_lens import HookedRootModule
 
     _assert_single_deprecation(HookedRootModule, "HookedRootModule")
+
+
+def test_hooked_encoder_decoder_constructor_warns_once():
+    from transformer_lens import HookedEncoderDecoder, HookedTransformerConfig
+
+    cfg = HookedTransformerConfig(
+        n_layers=1,
+        d_model=16,
+        d_head=4,
+        n_heads=4,
+        n_ctx=8,
+        d_vocab=20,
+        d_mlp=32,
+        act_fn="relu",
+        attention_dir="bidirectional",
+        tie_word_embeddings=False,
+        positional_embedding_type="relative_positional_bias",
+        relative_attention_num_buckets=4,
+        relative_attention_max_distance=8,
+    )
+    _assert_single_deprecation(lambda: HookedEncoderDecoder(cfg), "HookedEncoderDecoder")
+
+
+def test_hooked_audio_encoder_constructor_warns_once():
+    from transformer_lens import HookedAudioEncoder
+
+    cfg = _small_config()
+    _assert_single_deprecation(lambda: HookedAudioEncoder(cfg), "HookedAudioEncoder")
+
+
+def test_from_pretrained_warns_exactly_once():
+    """__init__ is suppressed under from_pretrained — one warning per entry point,
+    attributed to the caller, not two."""
+    import warnings as w
+
+    from transformer_lens import HookedTransformer
+
+    with w.catch_warnings(record=True) as caught:
+        w.simplefilter("always")
+        HookedTransformer.from_pretrained("gpt2")
+    dep = [x for x in caught if issubclass(x.category, DeprecationWarning)]
+    assert len(dep) == 1, [str(d.message)[:60] for d in dep]
+    assert "from_pretrained" in str(dep[0].message)

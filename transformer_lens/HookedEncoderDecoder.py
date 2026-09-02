@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import os
+import warnings
 from itertools import chain
 from pathlib import Path
 from typing import (
@@ -55,6 +56,10 @@ class HookedEncoderDecoder(HookedRootModule):
         - The model only accepts tokens as inputs, and not strings, or lists of strings
     """
 
+    # Set by from_pretrained while constructing, so each public entry point
+    # emits exactly one DeprecationWarning.
+    _suppress_init_deprecation: bool = False
+
     tokenizer: Optional[PreTrainedTokenizerBase]
     encoder: TypedModuleList[T5Block]
     decoder: TypedModuleList[T5Block]
@@ -67,6 +72,18 @@ class HookedEncoderDecoder(HookedRootModule):
         **kwargs: Any,
     ):
         super().__init__()
+        # from_pretrained warns at its own level (so the warning attributes to
+        # the caller and survives the default DeprecationWarning filter) and
+        # suppresses this one — each entry point fires exactly once.
+        if not getattr(type(self), "_suppress_init_deprecation", False):
+            warnings.warn(
+                "HookedEncoderDecoder is deprecated and will be removed in 4.0. Use "
+                "TransformerBridge.boot_transformers(...) instead — "
+                "the bridge supports T5-style encoder-decoder models. "
+                "See docs/source/content/migrating_to_v3.md.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         if isinstance(cfg, Dict):
             cfg = HookedTransformerConfig(**cfg)
         elif isinstance(cfg, str):
@@ -600,7 +617,12 @@ class HookedEncoderDecoder(HookedRootModule):
             name_or_path, cfg, hf_model, dtype=dtype, **from_pretrained_kwargs
         )
 
-        model = cls(cfg, tokenizer, move_to_device=False)
+        _prev_suppress = cls._suppress_init_deprecation
+        cls._suppress_init_deprecation = True
+        try:
+            model = cls(cfg, tokenizer, move_to_device=False)
+        finally:
+            cls._suppress_init_deprecation = _prev_suppress
 
         model.load_state_dict(state_dict, strict=False)
 

@@ -884,7 +884,14 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             )
 
         resid = frames + self.conv_pos_embed(frames)
-        resid = self.embed_ln(resid)
+        # Post-LN encoders (do_stable_layer_norm=False: hubert-base,
+        # wav2vec2-base) normalize before the blocks; stable-LN encoders
+        # (wav2vec2-large and kin) apply this same module AFTER the blocks —
+        # HF's Wav2Vec2EncoderStableLayerNorm.forward. Mirror the real order or
+        # every stable-LN activation is silently wrong.
+        stable_ln = self._audio_encoder_is_stable_layer_norm()
+        if not stable_ln:
+            resid = self.embed_ln(resid)
 
         additive_attention_mask = None
         if one_zero_attention_mask is not None:
@@ -898,7 +905,26 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         for block in self.blocks:
             output = block(resid, attention_mask=additive_attention_mask)
             resid = output[0] if isinstance(output, tuple) else output
+        if stable_ln:
+            resid = self.embed_ln(resid)
         return resid
+
+    def _audio_encoder_is_stable_layer_norm(self) -> bool:
+        """Whether the wrapped audio encoder is the pre-LN ("stable") variant.
+
+        Structural, not config-driven: build_bridge_from_module never runs the
+        adapter's prepare_loading, so cfg.do_stable_layer_norm can be absent
+        on that path while the module class is authoritative on both.
+        """
+        model = self.original_model
+        for attr in ("encoder", "wav2vec2", "hubert", "model"):
+            candidate = getattr(model, attr, None)
+            if candidate is None:
+                continue
+            encoder = candidate if attr == "encoder" else getattr(candidate, "encoder", None)
+            if encoder is not None:
+                return type(encoder).__name__.endswith("StableLayerNorm")
+        return bool(getattr(self.cfg, "do_stable_layer_norm", False))
 
     def _require_frame_entry_support(self) -> None:
         """Reject models with no conv-frame stage to re-enter."""
@@ -1420,6 +1446,52 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
     def W_E(self) -> torch.Tensor:
         """Token embedding matrix (d_vocab, d_model)."""
         return self.embed.W_E
+
+    @property
+    def W_pos(self) -> torch.Tensor:
+        """Positional embedding matrix (n_ctx, d_model).
+
+        Only defined for models with learned absolute positional embeddings;
+        rotary/ALiBi models have no such matrix. Reflects the weights as
+        currently processed, like every other accessor — equal to
+        ``HookedTransformer.W_pos`` only under matching processing
+        (``from_pretrained_no_processing`` vs the bridge default, or
+        compatibility mode vs HT defaults).
+        """
+        pos_embed = getattr(self, "pos_embed", None)
+        pos_type = getattr(self.cfg, "positional_embedding_type", "unknown")
+        if pos_embed is None or not hasattr(pos_embed, "W_pos"):
+            raise AttributeError(
+                "W_pos is only defined for models with a learned absolute positional "
+                f"embedding component; this model exposes none "
+                f"(positional_embedding_type={pos_type!r})."
+            )
+        w = pos_embed.W_pos
+        # T5-family adapters map pos_embed to the relative attention bias — a
+        # [num_buckets, n_heads] table, not a positional matrix. The legacy
+        # accessor refused these models; keep refusing rather than hand back a
+        # wrong-shaped tensor.
+        if w.ndim != 2 or w.shape[-1] != self.cfg.d_model:
+            raise AttributeError(
+                "W_pos is only defined for learned absolute positional embeddings; "
+                f"this model's pos_embed holds a {tuple(w.shape)} table "
+                f"(positional_embedding_type={pos_type!r})."
+            )
+        # OPT/BART-family checkpoints allocate max_position_embeddings + 2 rows
+        # (positions are offset by 2 in HF's forward). HookedTransformer's
+        # converters slice those rows off; mirror that so shapes and values agree.
+        if w.shape[0] == self.cfg.n_ctx + 2:
+            return w[2:]
+        return w
+
+    @property
+    def W_E_pos(self) -> torch.Tensor:
+        """Concatenated ``[W_E; W_pos]`` (d_vocab + n_ctx, d_model).
+
+        A full (overcomplete) basis of the input space, used for full QK/OV
+        circuits. Mirrors ``HookedTransformer.W_E_pos``.
+        """
+        return torch.cat([self.W_E, self.W_pos], dim=0)
 
     @property
     def QK(self):

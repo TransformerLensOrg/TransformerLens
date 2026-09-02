@@ -139,6 +139,13 @@ class HookedTransformer(HookedRootModule):
     as the sum of parts — inspect with :meth:`to_str_tokens` when in doubt.
     """
 
+    # Set by from_pretrained while constructing, so each public entry point
+    # emits exactly one DeprecationWarning.
+    _suppress_init_deprecation: bool = False
+    # Same mechanism for from_pretrained_no_processing's delegation to
+    # from_pretrained.
+    _suppress_fp_deprecation: bool = False
+
     ln_final: nn.Module
     tokenizer: Optional[PreTrainedTokenizerBase]
     blocks: TypedModuleList[TransformerBlock]
@@ -166,13 +173,17 @@ class HookedTransformer(HookedRootModule):
             default_padding_side: Which side to pad on.
         """
         super().__init__()
-        warnings.warn(
-            "HookedTransformer is deprecated and will be removed in 4.0. Use "
-            "TransformerBridge.boot_transformers(...) instead, then call "
-            "enable_compatibility_mode() for HookedTransformer-equivalent numerics.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
+        # from_pretrained warns at its own level (so the warning attributes to
+        # the caller and survives the default DeprecationWarning filter) and
+        # suppresses this one — each entry point fires exactly once.
+        if not getattr(type(self), "_suppress_init_deprecation", False):
+            warnings.warn(
+                "HookedTransformer is deprecated and will be removed in 4.0. Use "
+                "TransformerBridge.boot_transformers(...) instead, then call "
+                "enable_compatibility_mode() for HookedTransformer-equivalent numerics.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         if isinstance(cfg, str):
             raise ValueError(
                 "Please pass in a config dictionary or HookedTransformerConfig object. If you want to load a "
@@ -1324,14 +1335,18 @@ class HookedTransformer(HookedRootModule):
         """
         import warnings
 
-        warnings.warn(
-            "HookedTransformer.from_pretrained is deprecated and will be removed in "
-            "4.0. Use TransformerBridge.boot_transformers(...) instead, "
-            "then call enable_compatibility_mode() for HookedTransformer-equivalent "
-            "numerics. See docs/source/content/migrating_to_v3.md.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
+        # Delegating wrappers (from_pretrained_no_processing) warn at their own
+        # stack level — a warning raised here would attribute to the wrapper's
+        # internal call and be dropped by the default DeprecationWarning filter.
+        if not getattr(cls, "_suppress_fp_deprecation", False):
+            warnings.warn(
+                "HookedTransformer.from_pretrained is deprecated and will be removed in "
+                "4.0. Use TransformerBridge.boot_transformers(...) instead, "
+                "then call enable_compatibility_mode() for HookedTransformer-equivalent "
+                "numerics. See docs/source/content/migrating_to_v3.md.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
 
         if checkpoint_value is not None and checkpoint_label is not None:
             raise ValueError(
@@ -1465,13 +1480,19 @@ class HookedTransformer(HookedRootModule):
             official_model_name, cfg, hf_model, dtype=dtype, **from_pretrained_kwargs
         )
 
-        # Create the HookedTransformer object
-        model = cls(
-            cfg,
-            tokenizer,
-            move_to_device=False,
-            default_padding_side=default_padding_side,
-        )
+        # Create the HookedTransformer object (suppressing the __init__ warning:
+        # this entry point already warned above, at the caller's stack level).
+        _prev_suppress = cls._suppress_init_deprecation
+        cls._suppress_init_deprecation = True
+        try:
+            model = cls(
+                cfg,
+                tokenizer,
+                move_to_device=False,
+                default_padding_side=default_padding_side,
+            )
+        finally:
+            cls._suppress_init_deprecation = _prev_suppress
 
         model.load_and_process_state_dict(
             state_dict,
@@ -1507,18 +1528,30 @@ class HookedTransformer(HookedRootModule):
         Wrapper for from_pretrained with all boolean flags related to simplifying the model set to
         False. Refer to from_pretrained for details.
         """
-        return cls.from_pretrained(
-            model_name,
-            fold_ln=fold_ln,
-            center_writing_weights=center_writing_weights,
-            center_unembed=center_unembed,
-            fold_value_biases=fold_value_biases,
-            refactor_factored_attn_matrices=refactor_factored_attn_matrices,
-            dtype=dtype,
-            default_prepend_bos=default_prepend_bos,
-            default_padding_side=default_padding_side,
-            **from_pretrained_kwargs,
+        warnings.warn(
+            "HookedTransformer.from_pretrained_no_processing is deprecated and will be "
+            "removed in 4.0. Use TransformerBridge.boot_transformers(...) instead. "
+            "See docs/source/content/migrating_to_v3.md.",
+            DeprecationWarning,
+            stacklevel=2,
         )
+        prev = getattr(cls, "_suppress_fp_deprecation", False)
+        cls._suppress_fp_deprecation = True
+        try:
+            return cls.from_pretrained(
+                model_name,
+                fold_ln=fold_ln,
+                center_writing_weights=center_writing_weights,
+                center_unembed=center_unembed,
+                fold_value_biases=fold_value_biases,
+                refactor_factored_attn_matrices=refactor_factored_attn_matrices,
+                dtype=dtype,
+                default_prepend_bos=default_prepend_bos,
+                default_padding_side=default_padding_side,
+                **from_pretrained_kwargs,
+            )
+        finally:
+            cls._suppress_fp_deprecation = prev
 
     def init_weights(self):
         """Initialize weights.
