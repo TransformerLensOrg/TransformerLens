@@ -875,6 +875,14 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             )
         frames = frames.to(self.cfg.device)
 
+        if one_zero_attention_mask is not None:
+            # HF zeroes pad frames before the positional conv (kernel 128 smears
+            # pad content into real frames otherwise); masked_fill, not HF's
+            # in-place write, so the caller's tensor survives.
+            frames = frames.masked_fill(
+                ~one_zero_attention_mask.to(frames.device).bool().unsqueeze(-1), 0.0
+            )
+
         resid = frames + self.conv_pos_embed(frames)
         resid = self.embed_ln(resid)
 

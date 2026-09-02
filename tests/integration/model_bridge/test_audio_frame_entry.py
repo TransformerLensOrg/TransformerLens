@@ -61,15 +61,40 @@ def test_hooks_fire_from_frame_entry(audio_bridge, full_run):
         torch.testing.assert_close(cached[name], cache[name], atol=0.0, rtol=0.0)
 
 
-def test_padding_mask_changes_the_encoding(audio_bridge, full_run):
-    """The mask is applied, not ignored."""
-    cache, last = full_run
-    frames = cache[FRAMES_HOOK]
-    mask = torch.ones(frames.shape[:2], dtype=torch.long)
-    mask[:, -10:] = 0
+def test_masked_frame_entry_matches_hf_encoder(audio_bridge, waveform):
+    """Under a padding mask, frame entry must match HF's encoder on real frames.
 
-    masked = audio_bridge.encoder_output(frames, one_zero_attention_mask=mask)
-    assert not torch.allclose(masked, cache[last])
+    HF zeroes pad frames before pos_conv_embed; without that, the kernel-128
+    conv smears pad content into real frames (~62% relative error here).
+    Frames come from an unmasked pass — HF mutates hidden_states in place, so
+    masked-run frames are already pre-zeroed and would make this comparison
+    self-fulfilling. "Changes the output" is not asserted anywhere: a wrong
+    mask also changes the output.
+    """
+    hf = audio_bridge.original_model
+    padded = torch.cat([waveform, torch.zeros(1, 4000)], dim=1)
+    sample_mask = torch.cat([torch.ones_like(waveform), torch.zeros(1, 4000)], dim=1).long()
+
+    with torch.no_grad():
+        ref = hf(padded, attention_mask=sample_mask).last_hidden_state
+        feats = hf.feature_extractor(padded).transpose(1, 2)
+        frames = hf.feature_projection(feats)
+        frame_mask = hf._get_feature_vector_attention_mask(frames.shape[1], sample_mask)
+        out = audio_bridge.encoder_output(frames, one_zero_attention_mask=frame_mask.long())
+
+    real = frame_mask[0].bool()
+    assert not real.all(), "padding produced no masked frames; test setup is broken"
+    torch.testing.assert_close(out[:, real], ref[:, real], atol=1e-4, rtol=1e-4)
+
+
+def test_masked_frame_entry_leaves_caller_frames_untouched(audio_bridge):
+    """masked_fill, not HF's in-place write: the caller's tensor survives."""
+    frames = torch.randn(1, 8, audio_bridge.cfg.d_model)
+    keep = frames.clone()
+    mask = torch.tensor([[1, 1, 1, 1, 0, 0, 0, 0]])
+    with torch.no_grad():
+        audio_bridge.encoder_output(frames, one_zero_attention_mask=mask)
+    assert torch.equal(frames, keep)
 
 
 def test_waveform_shaped_input_is_rejected(audio_bridge, waveform):
