@@ -110,6 +110,40 @@ def test_real_gpt2_factors_reconstruct_both_mlp_weight_gradients(
             assert factors.relative_reconstruction_error <= 2e-5
 
 
+def test_gradient_descent_weight_update_increases_target_logit(
+    gradient_capture, gpt2_bridge
+) -> None:
+    layer_result = gradient_capture.layers[-1]
+    weight = gpt2_bridge.blocks[layer_result.layer].mlp.out.original_component.weight
+    original_weight = weight.detach().clone()
+    weight_gradient = layer_result.output_projection.weight_gradient.to(
+        device=weight.device, dtype=weight.dtype
+    )
+    parameter_name = next(
+        name
+        for name, parameter in gpt2_bridge.original_model.named_parameters()
+        if parameter is weight
+    )
+    updated_weight = original_weight - 1e-4 * weight_gradient
+
+    with torch.no_grad():
+        baseline_output = torch.func.functional_call(
+            gpt2_bridge.original_model,
+            {parameter_name: original_weight},
+            (gradient_capture.prompt_token_ids.to(weight.device),),
+        )
+        updated_output = torch.func.functional_call(
+            gpt2_bridge.original_model,
+            {parameter_name: updated_weight},
+            (gradient_capture.prompt_token_ids.to(weight.device),),
+        )
+
+    baseline_target_logit = baseline_output.logits[0, -1, gradient_capture.target_token_id]
+    updated_target_logit = updated_output.logits[0, -1, gradient_capture.target_token_id]
+    assert float(updated_target_logit - baseline_target_logit) > 1e-4
+    torch.testing.assert_close(weight, original_weight, rtol=0, atol=0)
+
+
 @pytest.mark.parametrize("projection", ["input_projection", "output_projection"])
 def test_final_layer_has_the_expected_rank_one_position_structure(
     gradient_capture, projection: str
@@ -498,12 +532,12 @@ def test_capture_reconstructs_with_existing_activation_edits(gpt2_bridge) -> Non
     def scale_input(tensor, hook=None):
         return tensor * 0.5
 
-    def shift_output(tensor, hook=None):
-        return tensor + 0.01
+    def scale_output(tensor, hook=None):
+        return tensor * 3.0
 
     input_hook_point.add_hook(scale_input)
     input_handle = input_hook_point.fwd_hooks[-1]
-    output_hook_point.add_hook(shift_output)
+    output_hook_point.add_hook(scale_output)
     output_handle = output_hook_point.fwd_hooks[-1]
     try:
         result = _capture_gpt2_mlp_gradient_factors(gpt2_bridge, PROMPT, TARGET, [0])

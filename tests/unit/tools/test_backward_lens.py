@@ -510,7 +510,9 @@ def test_public_backward_lens_symbols_are_exported() -> None:
         BackwardLensResult,
     )
 
-    assert BackwardLens.__name__ == "BackwardLens"
-    assert BackwardLensLayerResult.__name__ == "BackwardLensLayerResult"
-    assert BackwardLensMatrixResult.__name__ == "BackwardLensMatrixResult"
-    assert BackwardLensResult.__name__ == "BackwardLensResult"
+    _ = (
+        BackwardLens,
+        BackwardLensLayerResult,
+        BackwardLensMatrixResult,
+        BackwardLensResult,
+    )
