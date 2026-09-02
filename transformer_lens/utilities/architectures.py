@@ -82,6 +82,11 @@ AUDIO_ARCHITECTURES: set[str] = {
     "HubertForCTC",
     "HubertModel",
     "HubertForSequenceClassification",
+    "Wav2Vec2ForCTC",
+    "Wav2Vec2Model",
+    # Pretraining checkpoints (facebook/wav2vec2-base/-large declare this class)
+    # load their encoder via AutoModel -> Wav2Vec2Model.
+    "Wav2Vec2ForPreTraining",
 } | AUDIO_CLASSIFICATION_ARCHITECTURES
 
 # Vision-only (non-multimodal, no text tower) encoder models. Split into the

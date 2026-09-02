@@ -29,6 +29,11 @@ _ACTIVATIONS: dict[str, _Activation] = {
     "relu": F.relu,
     "silu": F.silu,
     "swish": F.silu,
+    # SoLU (https://transformer-circuits.pub/2022/solu/index.html): x*softmax(x).
+    # "solu_ln" is the same activation; the mid-MLP LayerNorm that follows it is
+    # a NativeMLP submodule, not part of the pointwise function.
+    "solu": lambda x: x * F.softmax(x, dim=-1),
+    "solu_ln": lambda x: x * F.softmax(x, dim=-1),
 }
 
 
@@ -249,8 +254,15 @@ class NativeRotary(nn.Module):
 
 
 class NativeAttention(nn.Module):
-    """Split-QKV causal self-attention. Returns (out, pattern); AttentionBridge
-    fires ``hook_pattern`` off the second element."""
+    """Split-QKV causal self-attention. Returns (out, pattern).
+
+    ``accepts_pattern_fn``: AttentionBridge injects its ``hook_pattern`` as
+    ``pattern_fn``, applied BEFORE the value matmul — so hook edits genuinely
+    re-weight the attention output instead of only decorating the returned
+    tuple (which the wrapper cannot recompute from).
+    """
+
+    accepts_pattern_fn = True
 
     causal_mask: torch.Tensor
 
@@ -300,6 +312,7 @@ class NativeAttention(nn.Module):
         hidden_states: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.Tensor] = None,
+        pattern_fn: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
         **kwargs,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         batch, seq, _ = hidden_states.shape
@@ -332,6 +345,8 @@ class NativeAttention(nn.Module):
         # Fully masked padding queries softmax to NaN; overwrite masked entries
         # so those rows contribute a zero attention update instead of poisoning later layers.
         pattern = pattern.masked_fill(block_mask, 0.0)
+        if pattern_fn is not None:
+            pattern = pattern_fn(pattern)
 
         attn = torch.matmul(pattern, v).transpose(1, 2).contiguous().view(batch, seq, -1)
         out = self.o(attn)
@@ -377,9 +392,19 @@ class NativeMLP(nn.Module):
         if act_name not in _ACTIVATIONS:
             raise ValueError(f"Unsupported act_fn={act_name!r}. Supported: {sorted(_ACTIVATIONS)}")
         self.act = _ACTIVATIONS[act_name]
+        # SoLU-LN models (NeelNanda's SoLU family) apply a LayerNorm between the
+        # activation and the out-projection; without it their checkpoints load
+        # but compute the wrong function. Named ``ln`` to match the legacy
+        # property-format key blocks.{i}.mlp.ln.{w,b}.
+        self.ln: Optional[nn.LayerNorm] = (
+            nn.LayerNorm(d_mlp, eps=cfg.eps) if act_name == "solu_ln" else None
+        )
 
     def forward(self, hidden_states: torch.Tensor, **kwargs) -> torch.Tensor:
-        return self.fc_out(self.act(self.fc_in(hidden_states)))
+        mid = self.act(self.fc_in(hidden_states))
+        if self.ln is not None:
+            mid = self.ln(mid)
+        return self.fc_out(mid)
 
 
 class NativeGatedMLP(nn.Module):

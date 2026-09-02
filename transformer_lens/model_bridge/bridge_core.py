@@ -732,9 +732,23 @@ class BridgeCore:
     ) -> None:
         """Validate a hook before it is added; override to add checks.
 
-        No-op by default (mirrors ``HookedRootModule.check_hooks_to_add``).
+        Raises for a gated-off hook point — a targeted attach there would
+        silently never fire. Every explicit-name attach path routes through
+        here; filter sweeps pre-skip gated matches (with a warning) before
+        reaching it, since a filter was not necessarily targeting them.
+
+        Gating keys on the POINT's own canonical name, not the requested
+        spelling: on adapters with ``hook_alias_overrides`` a gated HT name
+        (e.g. ``blocks.0.hook_mlp_in`` on BERT) resolves to an always-firing
+        point, and refusing it would reject a hook that works.
         Driver-fireability is enforced separately in ``_check_hook_fireable``.
         """
+        reason = self._gated_hook_reason(hook_point.name or hook_point_name)
+        if reason is not None:
+            raise ValueError(
+                f"Cannot add hook {hook_point_name} because {reason} is False. "
+                f"Call set_{reason}(True) first."
+            )
 
     def _add_fn_to_hook_point(
         self,
@@ -762,6 +776,16 @@ class BridgeCore:
         if hook_point_name.endswith("attn_in") and not self.cfg.use_attn_in:
             return "use_attn_in"
         return None
+
+    def _warn_gated_skipped(self, api: str, names: List[str], stacklevel: int = 3) -> None:
+        """One warning per sweep for filter-matched gated-off names."""
+        if names:
+            warnings.warn(
+                f"{api}: skipped {len(names)} gated-off hook name(s) "
+                f"that would never fire: {names}. Call the relevant "
+                "set_use_*(True) setter first to enable them.",
+                stacklevel=stacklevel,
+            )
 
     def add_hook(
         self,
@@ -795,29 +819,16 @@ class BridgeCore:
                     # match is skipped rather than raised on — but silently
                     # attaching here would leave a dead hook that never fires,
                     # which is the failure this warns about.
-                    if self._gated_hook_reason(hook_name) is not None:
+                    if self._gated_hook_reason(hook_point.name or hook_name) is not None:
                         gated_names_skipped.append(hook_name)
                         continue
                     self._add_fn_to_hook_point(hook_point, hook_name, hook_fn, dir, is_permanent)
-            if gated_names_skipped:
-                warnings.warn(
-                    f"add_hook: skipped {len(gated_names_skipped)} gated-off hook name(s) "
-                    f"that would never fire: {gated_names_skipped}. Call the relevant "
-                    "set_use_*(True) setter first to enable them.",
-                    stacklevel=2,
-                )
+            self._warn_gated_skipped("add_hook", gated_names_skipped)
             return
 
-        # An explicitly named gated-off hook point is a caller error: the hook
-        # would silently never fire. Raise naming the setter to call (filters
-        # above skip with a warning — they were not necessarily targeting gated names).
-        reason = self._gated_hook_reason(name)
-        if reason is not None:
-            raise ValueError(
-                f"Cannot add hook {name} because {reason} is False. "
-                f"Call set_{reason}(True) first."
-            )
-
+        # Explicit-name attaches raise on gated-off points inside
+        # check_hooks_to_add (via _add_fn_to_hook_point) — every path below
+        # funnels through it.
         # Fast path: canonical registry names skip the alias-map build (hook_dict +
         # map construction cost ~ms on large models; add_hook is often called per layer).
         registry_hp = self._hook_registry.get(name)
@@ -967,6 +978,12 @@ class BridgeCore:
         for name, hook_point in self.hook_dict.items():
             if filter_fn(name) and id(hook_point) not in seen:
                 seen.add(id(hook_point))
+                # The default sweep must not emit gated-off points: they never
+                # fire (empty cache entries at best), and feeding them to
+                # hooks()/run_with_hooks — the advertised composition — would
+                # raise. An explicit filter keeps them so downstream can warn.
+                if names_filter is None and self._gated_hook_reason(hook_point.name or name):
+                    continue
                 fwd_hooks.append((name, partial(save_hook, is_backward=False)))
                 if incl_bwd:
                     bwd_hooks.append((name, partial(save_hook, is_backward=True)))
@@ -992,14 +1009,28 @@ class BridgeCore:
             remove_batch_dim=remove_batch_dim,
             cache=cache,
         )
+
         # Gated-off hook points never fire, so caching them is a no-op; skip
-        # them rather than trip add_hook's explicit-name guard when enumerating.
+        # them rather than trip add_hook's explicit-name guard. Warn only when
+        # the caller EXPLICITLY asked for them (run_with_cache's rule: the
+        # default filter matches everything and must not read as a request).
+        def _point_reason(name: str):
+            hp = self.hook_dict.get(name)
+            return self._gated_hook_reason(hp.name or name if hp is not None else name)
+
+        gated_skipped = []
         for name, hook_fn in fwd_hooks:
-            if self._gated_hook_reason(name) is None:
+            if _point_reason(name) is None:
                 self.add_hook(name, hook_fn, dir="fwd")
+            else:
+                gated_skipped.append(name)
         for name, hook_fn in bwd_hooks:
-            if self._gated_hook_reason(name) is None:
+            if _point_reason(name) is None:
                 self.add_hook(name, hook_fn, dir="bwd")
+            elif name not in gated_skipped:
+                gated_skipped.append(name)
+        if names_filter is not None:
+            self._warn_gated_skipped("add_caching_hooks", gated_skipped)
         return cache
 
     def cache_all(
@@ -1103,14 +1134,19 @@ class BridgeCore:
                         add_hook_to_point(hook_point, hook_fn, actual_hook_name, direction)
                     else:
                         seen_hooks = set()
+                        gated_skipped: List[str] = []
                         for n, hook_point in hook_dict.items():
                             if hook_name_or_filter(n):
                                 hook_id = id(hook_point)
                                 if hook_id in seen_hooks:
                                     continue
                                 seen_hooks.add(hook_id)
+                                if self._gated_hook_reason(hook_point.name or n) is not None:
+                                    gated_skipped.append(n)
+                                    continue
                                 hook_name_to_use = hook_point.name if hook_point.name else n
                                 add_hook_to_point(hook_point, hook_fn, hook_name_to_use, direction)
+                        self._warn_gated_skipped("hooks", gated_skipped, stacklevel=4)
 
             try:
                 apply_hooks(fwd_hooks, True)
@@ -1232,30 +1268,34 @@ class BridgeCore:
 
                     hook_fn = wrapped_hook_fn
                 if isinstance(hook_name_or_filter, str):
-                    # An explicitly named gated-off hook point is a caller error:
-                    # the hook would silently never fire. Raise naming the setter
-                    # (a filter matching a gated name is left alone — it was not
-                    # necessarily targeting that name on purpose).
-                    reason = self._gated_hook_reason(hook_name_or_filter)
+                    # Resolve BEFORE gating: an aliased HT name may point at an
+                    # always-firing override, which must not be refused. The
+                    # message still names the caller's spelling.
+                    actual_hook_name, hook_point = self._resolve_hook_point(
+                        hook_name_or_filter, aliases, hook_dict
+                    )
+                    reason = self._gated_hook_reason(hook_point.name or actual_hook_name)
                     if reason is not None:
                         raise ValueError(
                             f"Cannot add hook {hook_name_or_filter} because {reason} is False. "
                             f"Call set_{reason}(True) first."
                         )
-                    actual_hook_name, hook_point = self._resolve_hook_point(
-                        hook_name_or_filter, aliases, hook_dict
-                    )
                     add_hook_to_point(hook_point, hook_fn, actual_hook_name, direction)
                 else:
                     seen_hooks: set = set()
+                    gated_skipped: List[str] = []
                     for n, hook_point in hook_dict.items():
                         if hook_name_or_filter(n):
                             hook_id = id(hook_point)
                             if hook_id in seen_hooks:
                                 continue
                             seen_hooks.add(hook_id)
+                            if self._gated_hook_reason(hook_point.name or n) is not None:
+                                gated_skipped.append(n)
+                                continue
                             hook_name_to_use = hook_point.name if hook_point.name else n
                             add_hook_to_point(hook_point, hook_fn, hook_name_to_use, direction)
+                    self._warn_gated_skipped("run_with_hooks", gated_skipped, stacklevel=4)
 
         context_level = getattr(self, "context_level", 0) + 1
         self.context_level = context_level
@@ -1541,7 +1581,7 @@ class BridgeCore:
         if names_filter is not None:
             kept = []
             for hp, name in hooks:
-                if self._gated_hook_reason(name) is not None:
+                if self._gated_hook_reason(hp.name or name) is not None:
                     gated_names_skipped.append(name)
                 else:
                     kept.append((hp, name))

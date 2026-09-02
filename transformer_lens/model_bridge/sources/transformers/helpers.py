@@ -172,10 +172,11 @@ def _resolve_checkpoint_to_revision(
             )
     else:
         assert checkpoint_index is not None  # narrowed by initial guard
-        if not 0 <= checkpoint_index < len(labels):
+        # Negative indices count from the end, matching the legacy loader.
+        if not -len(labels) <= checkpoint_index < len(labels):
             raise ValueError(
-                f"checkpoint_index={checkpoint_index} out of range [0, {len(labels)}) "
-                f"for {model_name!r}."
+                f"checkpoint_index={checkpoint_index} out of range "
+                f"[-{len(labels)}, {len(labels)}) for {model_name!r}."
             )
         checkpoint_value = labels[checkpoint_index]
     return format_str.format(value=checkpoint_value)

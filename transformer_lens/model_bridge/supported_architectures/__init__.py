@@ -104,6 +104,9 @@ from transformer_lens.model_bridge.supported_architectures.hrm_text import (
     HrmTextArchitectureAdapter,
 )
 from transformer_lens.model_bridge.supported_architectures.hubert import HubertArchitectureAdapter
+from transformer_lens.model_bridge.supported_architectures.wav2vec2 import (
+    Wav2Vec2ArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.hunyuan_v1_dense import (
     HunYuanDenseV1ArchitectureAdapter,
 )
@@ -368,6 +371,7 @@ __all__ = [
     "Gpt2LmHeadCustomArchitectureAdapter",
     "GptjArchitectureAdapter",
     "HubertArchitectureAdapter",
+    "Wav2Vec2ArchitectureAdapter",
     "HyenaDNAArchitectureAdapter",
     "HunYuanDenseV1ArchitectureAdapter",
     "Idefics3ArchitectureAdapter",

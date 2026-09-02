@@ -197,19 +197,15 @@ def test_boot_native_accepts_dict_config():
 
 
 def test_boot_native_rejects_legacy_config_with_actionable_error():
+    """boot_native reads only type(config).__name__, so a stand-in with the
+    legacy class's name pins the exact error UX without importing the class —
+    this test must survive HookedTransformerConfig's 4.0 deletion."""
     import pytest
 
-    from transformer_lens import HookedTransformerConfig
+    class HookedTransformerConfig:
+        pass
 
-    legacy_config = HookedTransformerConfig(
-        n_layers=1,
-        d_model=32,
-        n_ctx=8,
-        d_head=16,
-        n_heads=2,
-        d_vocab=16,
-        act_fn="gelu",
-    )
+    legacy_config = HookedTransformerConfig()
 
     with pytest.raises(
         TypeError,
@@ -776,3 +772,64 @@ def test_boot_native_kaiming_gain_scales_weights():
 
     # Same seed, only gain differs -> std should scale ~proportionally.
     assert std_2 / std_1 == pytest.approx(2.0)
+
+
+class TestPatternHookWrites:
+    """hook_pattern must be write-capable on native bridges: the hook runs
+    inside NativeAttention (pattern_fn seam), before the value matmul —
+    post-hoc tuple firing silently discarded edits."""
+
+    def _bridge(self):
+        cfg = _cfg()
+        return TransformerBridge.boot_native(cfg)
+
+    def test_pattern_edits_reach_the_output(self):
+        bridge = self._bridge()
+        tokens = torch.tensor([[1, 2, 3]])
+        base = bridge(tokens, return_type="logits")
+        edited = bridge.run_with_hooks(
+            tokens,
+            fwd_hooks=[("blocks.0.attn.hook_pattern", lambda t, hook=None: torch.zeros_like(t))],
+        )
+        assert not torch.allclose(edited, base), "pattern zeroing must change logits"
+
+    def test_observe_only_stays_bit_exact(self):
+        bridge = self._bridge()
+        tokens = torch.tensor([[1, 2, 3]])
+        base = bridge(tokens, return_type="logits")
+        observed = bridge.run_with_hooks(
+            tokens, fwd_hooks=[("blocks.0.attn.hook_pattern", lambda t, hook=None: t)]
+        )
+        assert torch.equal(observed, base)
+
+    def test_cache_reflects_the_edited_pattern(self):
+        """The cached pattern is the value the model actually used."""
+        bridge = self._bridge()
+        tokens = torch.tensor([[1, 2, 3]])
+
+        def uniform(t, hook=None):
+            return (
+                torch.full_like(t, 1.0 / t.shape[-1]).tril() * 0
+                + t * 0
+                + torch.softmax(
+                    torch.zeros_like(t).masked_fill(torch.triu(torch.ones_like(t), 1).bool(), -1e9),
+                    dim=-1,
+                )
+            )
+
+        with bridge.hooks(fwd_hooks=[("blocks.0.attn.hook_pattern", uniform)]):
+            _, cache = bridge.run_with_cache(tokens, names_filter=["blocks.0.attn.hook_pattern"])
+        cached = cache["blocks.0.attn.hook_pattern"]
+        expected = uniform(torch.zeros_like(cached))
+        torch.testing.assert_close(cached, expected)
+
+    def test_hook_fires_exactly_once_per_forward(self):
+        """The inside-the-computation seam must not double-fire with the old
+        post-hoc tuple path."""
+        bridge = self._bridge()
+        fired = []
+        bridge.run_with_hooks(
+            torch.tensor([[1, 2, 3]]),
+            fwd_hooks=[("blocks.0.attn.hook_pattern", lambda t, hook=None: fired.append(1) or t)],
+        )
+        assert len(fired) == 1, f"hook fired {len(fired)} times"

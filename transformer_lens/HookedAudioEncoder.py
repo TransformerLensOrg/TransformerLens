@@ -7,6 +7,7 @@ because it has a significantly different architecture to e.g. GPT style transfor
 from __future__ import annotations
 
 import logging
+import warnings
 from typing import Any, Dict, List, Optional, Tuple, TypeVar, Union, cast, overload
 
 import numpy as np
@@ -38,6 +39,10 @@ class HookedAudioEncoder(HookedRootModule):
         - There is no preprocessing (e.g. LayerNorm folding) when loading a pretrained model
     """
 
+    # Set by from_pretrained while constructing, so each public entry point
+    # emits exactly one DeprecationWarning.
+    _suppress_init_deprecation: bool = False
+
     processor: Any  # AutoFeatureExtractor — HF auto class, not typed as callable in stubs
     hubert_model: Union[HubertModel, Wav2Vec2Model]
     blocks: TypedModuleList[BertBlock]
@@ -50,6 +55,18 @@ class HookedAudioEncoder(HookedRootModule):
         **kwargs: Any,
     ):
         super().__init__()
+        # from_pretrained warns at its own level (so the warning attributes to
+        # the caller and survives the default DeprecationWarning filter) and
+        # suppresses this one — each entry point fires exactly once.
+        if not getattr(type(self), "_suppress_init_deprecation", False):
+            warnings.warn(
+                "HookedAudioEncoder is deprecated and will be removed in 4.0. Use "
+                "TransformerBridge.boot_transformers(...) instead — "
+                "HuBERT/Wav2Vec2 are supported via the bridge's audio adapter. "
+                "See docs/source/content/migrating_to_v3.md.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         if isinstance(cfg, Dict):
             cfg = HookedTransformerConfig(**cfg)
         elif isinstance(cfg, str):
@@ -414,7 +431,12 @@ class HookedAudioEncoder(HookedRootModule):
             official_model_name, cfg, hf_model, dtype=dtype, **from_pretrained_kwargs
         )
 
-        model = cls(cfg, move_to_device=False, model_name=official_model_name)
+        _prev_suppress = cls._suppress_init_deprecation
+        cls._suppress_init_deprecation = True
+        try:
+            model = cls(cfg, move_to_device=False, model_name=official_model_name)
+        finally:
+            cls._suppress_init_deprecation = _prev_suppress
         model.load_state_dict(state_dict, strict=False)
 
         model.processor = AutoFeatureExtractor.from_pretrained(official_model_name)

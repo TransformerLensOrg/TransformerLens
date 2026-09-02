@@ -440,4 +440,19 @@ def boot(
     driver = TransformersDriver(hf_model, adapter, tokenizer)
     bridge = TransformerBridge(hf_model, adapter, tokenizer, driver=driver)
     load_modality_processor(bridge, adapter.cfg, model_name, trust_remote_code, _hf_token)
+    # Mirror the legacy loader: record which training checkpoint this is, so
+    # checkpoint sweeps (e.g. induction-head formation) can read it back.
+    if checkpoint_index is not None or checkpoint_value is not None:
+        from transformer_lens.tools.model_registry.checkpoints import (
+            get_checkpoint_labels,
+        )
+
+        labels, _label_kind = get_checkpoint_labels(model_name)
+        if checkpoint_value is not None:
+            resolved_value = checkpoint_value
+        else:
+            assert checkpoint_index is not None  # narrowed by the enclosing if
+            resolved_value = labels[checkpoint_index]
+        bridge.cfg.checkpoint_value = resolved_value  # type: ignore[attr-defined]
+        bridge.cfg.checkpoint_index = labels.index(resolved_value)  # type: ignore[attr-defined]
     return bridge

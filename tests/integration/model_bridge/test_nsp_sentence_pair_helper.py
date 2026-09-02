@@ -43,13 +43,41 @@ def test_pair_tokenization_matches_huggingface(nsp_bridge, hf_tokenizer):
     assert tokens["token_type_ids"].unique().tolist() == [0, 1]
 
 
-def test_logits_match_a_direct_huggingface_nsp_forward(nsp_bridge, hf_tokenizer):
+def test_logits_match_a_direct_huggingface_nsp_forward(hf_tokenizer):
+    """Reference is a FRESH HF load, not nsp_bridge.original_model — compat mode
+    mutates the wrapped model in place, which made the old exact-equality
+    assertion self-fulfilling. The reference must load eager attention like the
+    bridge does: the residual ~2.4e-6 against a default (sdpa) load is entirely
+    the attention kernel, and with matching kernels the match is bit-exact."""
+    hf = BertForNextSentencePrediction.from_pretrained(
+        MODEL, torch_dtype=torch.float32, attn_implementation="eager"
+    ).eval()
     encodings = hf_tokenizer(SENTENCE_A, SEQUENTIAL_B, return_tensors="pt")
     with torch.no_grad():
-        expected = nsp_bridge.original_model(**encodings).logits
+        expected = hf(**encodings).logits
 
-    actual = nsp_bridge.predict_next_sentence(SENTENCE_A, SEQUENTIAL_B, return_type="logits")
+    bridge = TransformerBridge.boot_transformers(
+        MODEL, device="cpu", model_class=BertForNextSentencePrediction
+    )
+    actual = bridge.predict_next_sentence(SENTENCE_A, SEQUENTIAL_B, return_type="logits")
     torch.testing.assert_close(actual, expected, atol=0.0, rtol=0.0)
+
+
+def test_compat_mode_shifts_logits_by_the_centering_amount(nsp_bridge, hf_tokenizer):
+    """Compatibility mode's unembed centering moves NSP logits ~1e-2 relative to
+    raw HF (uniformly across both classes, so verdicts hold). Pin the band so a
+    silent change in compat processing shows up here."""
+    hf = BertForNextSentencePrediction.from_pretrained(
+        MODEL, torch_dtype=torch.float32, attn_implementation="eager"
+    ).eval()
+    encodings = hf_tokenizer(SENTENCE_A, SEQUENTIAL_B, return_tensors="pt")
+    with torch.no_grad():
+        raw = hf(**encodings).logits
+    compat = nsp_bridge.predict_next_sentence(SENTENCE_A, SEQUENTIAL_B, return_type="logits")
+    shift = (compat - raw).abs()
+    # centering subtracts the mean of the two logits: both classes move together
+    assert torch.allclose(shift[0, 0], shift[0, 1], atol=1e-4)
+    assert 1e-3 < float(shift.max()) < 1e-1, float(shift.max())
 
 
 def test_predictions_distinguish_sequential_from_unrelated(nsp_bridge):

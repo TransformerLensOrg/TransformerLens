@@ -559,7 +559,10 @@ class TransformerLensLIT(_LITModelBase):  # type: ignore[valid-type,misc]
 
             # Add positional embeddings if applicable
             if self.model.cfg.positional_embedding_type == "standard":
-                pos_embed = self.model.pos_embed(input_tokens)
+                # W_pos indexed by POSITION. Calling pos_embed(input_tokens) on
+                # a bridge routes to HF's wpe, which embeds whatever ids it is
+                # given — token ids, here — silently producing wrong positions.
+                pos_embed = self.model.W_pos[: input_tokens.shape[1]].unsqueeze(0)
                 residual = embed + pos_embed
             else:
                 residual = embed

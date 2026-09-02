@@ -42,4 +42,19 @@ def get_checkpoint_labels(model_name: str) -> tuple[list[int], str]:
             "Pythia models on HF were updated on 4/3/23! add '-v0' to model name to access the old models."
         )
         return PYTHIA_CHECKPOINTS, "step"
+    if official_name.startswith(("NeelNanda/", "ArthurConmy/", "Baidicoot/")):
+        # Legacy TransformerLens repos store checkpoints as files, not
+        # revisions: checkpoints/<name>_<step-or-tokens>.pth.
+        import re
+
+        from huggingface_hub import HfApi
+
+        labels = sorted(
+            int(m.group(1))
+            for f in HfApi().list_repo_files(official_name)
+            if (m := re.match(r"checkpoints/.*_(\d+)\.pth", f))
+        )
+        if not labels:
+            raise ValueError(f"Model {official_name} is not checkpointed.")
+        return labels, ("token" if labels[-1] > 1e9 else "step")
     raise ValueError(f"Model {official_name} is not checkpointed.")

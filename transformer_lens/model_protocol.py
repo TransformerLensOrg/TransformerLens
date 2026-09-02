@@ -42,6 +42,31 @@ class TransformerLensModel(Protocol):
 
 
 @runtime_checkable
+class TrainableTransformerLensModel(Protocol):
+    """Exactly the surface the ``tools.training`` loop touches: callable with
+    ``return_type="loss"`` plus the standard torch parameter/mode/device
+    methods. Deliberately standalone (not extending TransformerLensModel):
+    beartype validates protocols via ``getattr_static``, and demanding the
+    full TL surface would spuriously reject plain ``nn.Module`` models that
+    train fine through this loop."""
+
+    def parameters(self, *args: Any, **kwargs: Any) -> Any:
+        ...
+
+    def train(self, *args: Any, **kwargs: Any) -> Any:
+        ...
+
+    def to(self, *args: Any, **kwargs: Any) -> Any:
+        ...
+
+    def state_dict(self, *args: Any, **kwargs: Any) -> Any:
+        ...
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        ...
+
+
+@runtime_checkable
 class TransformerLensModelWithWeights(TransformerLensModel, Protocol):
     """Adds the weight-processing surface that ``ActivationCache``'s advanced helpers
     (LayerNorm folding, residual-direction projection) reach for. Both concrete models

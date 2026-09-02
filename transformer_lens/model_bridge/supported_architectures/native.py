@@ -21,6 +21,9 @@ from transformer_lens.model_bridge.generalized_components import (
     RMSNormPreBridge,
     UnembeddingBridge,
 )
+from transformer_lens.model_bridge.generalized_components.base import (
+    GeneralizedComponent,
+)
 
 
 def _uses_rms(cfg: Any) -> bool:
@@ -71,12 +74,17 @@ def _make_mlp_bridge(cfg: Any):
                 "out": LinearBridge(name="out"),
             },
         )
+    submodules: dict[str, GeneralizedComponent] = {
+        "in": LinearBridge(name="fc_in"),
+        "out": LinearBridge(name="fc_out"),
+    }
+    if (cfg.act_fn or "").lower() == "solu_ln":
+        # SoLU-LN checkpoints carry a mid-MLP LayerNorm (NativeMLP.ln); expose
+        # it so its params load under blocks.{i}.mlp.ln.* and its hooks fire.
+        submodules["ln"] = NormalizationBridge(name="ln", config=cfg)
     return MLPBridge(
         name="mlp",
-        submodules={
-            "in": LinearBridge(name="fc_in"),
-            "out": LinearBridge(name="fc_out"),
-        },
+        submodules=submodules,
     )
 
 

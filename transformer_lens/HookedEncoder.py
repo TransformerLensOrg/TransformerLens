@@ -49,6 +49,10 @@ class HookedEncoder(HookedRootModule):
         - There is no preprocessing (e.g. LayerNorm folding) when loading a pretrained model
     """
 
+    # Set by from_pretrained while constructing, so each public entry point
+    # emits exactly one DeprecationWarning.
+    _suppress_init_deprecation: bool = False
+
     blocks: TypedModuleList[BertBlock]
 
     def __init__(
@@ -59,12 +63,16 @@ class HookedEncoder(HookedRootModule):
         **kwargs: Any,
     ):
         super().__init__()
-        warnings.warn(
-            "HookedEncoder is deprecated and will be removed in 4.0. Use "
-            "TransformerBridge.boot_transformers(...) instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
+        # from_pretrained warns at its own level (so the warning attributes to
+        # the caller and survives the default DeprecationWarning filter) and
+        # suppresses this one — each entry point fires exactly once.
+        if not getattr(type(self), "_suppress_init_deprecation", False):
+            warnings.warn(
+                "HookedEncoder is deprecated and will be removed in 4.0. Use "
+                "TransformerBridge.boot_transformers(...) instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         if isinstance(cfg, Dict):
             cfg = HookedTransformerConfig(**cfg)
         elif isinstance(cfg, str):
@@ -428,7 +436,12 @@ class HookedEncoder(HookedRootModule):
             official_model_name, cfg, hf_model, dtype=dtype, **from_pretrained_kwargs
         )
 
-        model = cls(cfg, tokenizer, move_to_device=False)
+        _prev_suppress = cls._suppress_init_deprecation
+        cls._suppress_init_deprecation = True
+        try:
+            model = cls(cfg, tokenizer, move_to_device=False)
+        finally:
+            cls._suppress_init_deprecation = _prev_suppress
 
         model.load_state_dict(state_dict, strict=False)
 
