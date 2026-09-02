@@ -18,6 +18,9 @@ import warnings
 import pytest
 import torch
 
+from transformer_lens.tools.analysis.jacobian_lens_coordinate_patch import (
+    solve_coordinate_patch,
+)
 from transformer_lens.tools.analysis.jacobian_lens_decomposition import (
     get_sparse_decomposition,
 )
@@ -109,6 +112,21 @@ def test_mps_jspace_decomposition_moves_before_float64_conversion():
 
     assert result.reconstruction.device.type == "mps"
     torch.testing.assert_close(result.reconstruction, activation)
+    _cleanup()
+
+
+def test_mps_jspace_coordinate_patch_stays_on_device():
+    """Coordinate patching keeps vector outputs on MPS while diagnostics run safely."""
+    dictionary = torch.eye(5, device="mps")[:4]
+    activation = 2.0 * dictionary[0] + 3.0 * dictionary[1]
+    decomposition = get_sparse_decomposition(activation, dictionary, k=2)
+
+    result = solve_coordinate_patch(activation, dictionary, 0, 2, decomposition=decomposition)
+
+    assert result.patched.device.type == "mps"
+    torch.testing.assert_close(
+        result.patched, torch.tensor([0.0, 3.0, 2.0, 0.0, 0.0], device="mps")
+    )
     _cleanup()
 
 

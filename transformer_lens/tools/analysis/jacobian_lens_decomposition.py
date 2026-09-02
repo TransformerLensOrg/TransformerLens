@@ -93,6 +93,12 @@ _GRADIENT_BACKTRACK_STEPS = 20
 #: selection is a float32 correlation decision, activity a check against the float64 solve.
 _CORRELATION_RELATIVE_TOLERANCE = math.sqrt(torch.finfo(torch.float32).eps)
 
+#: Shared near-parallel policy for lens-space interventions. Two atoms whose absolute cosine
+#: reaches this threshold span an ill-conditioned pair: a coordinate swap between them is
+#: approximately a no-op. Both the anchored coordinate patch and ``JacobianLens.swap_hooks``
+#: read this one definition so their near-parallel diagnostics never drift apart.
+_SWAP_WARN_COSINE = 0.99
+
 
 @dataclass
 class JSpaceDecomposition:
