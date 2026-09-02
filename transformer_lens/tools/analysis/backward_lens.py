@@ -17,6 +17,7 @@ import torch.nn.functional as F
 
 WeightLayout = Literal["in_out", "out_in"]
 ProjectedFactor = Literal["forward_inputs", "output_gradients"]
+DEFAULT_TOP_K = 10
 
 
 @dataclass(frozen=True)
@@ -58,36 +59,66 @@ class BackwardLensMatrixResult:
     ``factors`` contains the full linear factorization. ``projected_factor`` says
     whether its residual-width ``forward_inputs`` or raw-gradient
     ``output_gradients`` were decoded. ``factor_norms`` and ``zero_norm_mask``
-    have shape ``[position]`` with float32 and bool dtypes. ``vocabulary_logits``
-    has shape ``[position, d_vocab]`` and contains signed, pre-softmax raw logits.
-    ``normalized_vocabulary_logits`` has the same shape when requested. Every
-    tensor is a detached CPU-owned value; gradient descent subtracts raw gradients.
+    have shape ``[position]`` with float32 and bool dtypes. Largest and smallest
+    signed rankings are always retained. Full ``vocabulary_logits`` are present
+    only when explicitly requested. Normalized rankings and optional full logits
+    are present when the Normalized Logit Lens is requested. Every retained tensor
+    is a detached CPU-owned value; gradient descent subtracts raw gradients.
     """
 
     factors: LinearGradientFactors
     projected_factor: ProjectedFactor
     factor_norms: torch.Tensor
     zero_norm_mask: torch.Tensor
-    vocabulary_logits: torch.Tensor
+    vocabulary_size: int
+    target_token_id: int
+    top_ranking: VocabularyRanking
+    bottom_ranking: VocabularyRanking
+    target_largest_ranks: torch.Tensor
+    target_smallest_ranks: torch.Tensor
+    normalized_top_ranking: VocabularyRanking | None = None
+    normalized_bottom_ranking: VocabularyRanking | None = None
+    normalized_target_largest_ranks: torch.Tensor | None = None
+    normalized_target_smallest_ranks: torch.Tensor | None = None
+    vocabulary_logits: torch.Tensor | None = None
     normalized_vocabulary_logits: torch.Tensor | None = None
 
     def logits(self, *, normalized: bool = False) -> torch.Tensor:
-        """Return raw or requested Normalized Logit Lens logits."""
+        """Return opted-in raw or Normalized Logit Lens full logits."""
         if not isinstance(normalized, bool):
             raise TypeError("normalized must be a bool")
-        if not normalized:
-            return self.vocabulary_logits
-        if self.normalized_vocabulary_logits is None:
+        if normalized and self.normalized_top_ranking is None:
             raise ValueError("normalized logits were not requested during analysis")
-        return self.normalized_vocabulary_logits
+        logits = self.normalized_vocabulary_logits if normalized else self.vocabulary_logits
+        if logits is None:
+            kind = "normalized " if normalized else ""
+            raise ValueError(
+                f"full {kind}logits were not retained; call "
+                "BackwardLens.analyze(..., return_full_logits=True)"
+            )
+        return logits
+
+    def _retained_ranking(self, *, normalized: bool, largest: bool) -> VocabularyRanking:
+        if not isinstance(normalized, bool):
+            raise TypeError("normalized must be a bool")
+        if normalized:
+            ranking = self.normalized_top_ranking if largest else self.normalized_bottom_ranking
+            if ranking is None:
+                raise ValueError("normalized logits were not requested during analysis")
+            return ranking
+        return self.top_ranking if largest else self.bottom_ranking
 
     def top(self, *, k: int, normalized: bool = False) -> VocabularyRanking:
-        """Return the largest signed logits and token ids per position."""
-        return _rank_vocabulary_logits(self.logits(normalized=normalized), k=k, largest=True)
+        """Return up to the retained largest signed logits and token ids."""
+        return _slice_vocabulary_ranking(
+            self._retained_ranking(normalized=normalized, largest=True), k=k
+        )
 
     def bottom(self, *, k: int, normalized: bool = False) -> VocabularyRanking:
-        """Return the smallest signed logits and token ids per position."""
-        return _rank_vocabulary_logits(self.logits(normalized=normalized), k=k, largest=False)
+        """Return up to the retained smallest signed logits and token ids."""
+        return _slice_vocabulary_ranking(
+            self._retained_ranking(normalized=normalized, largest=False), k=k
+        )
 
     def top_tokens(self, tokenizer: Any, *, k: int, normalized: bool = False) -> list[list[str]]:
         """Decode the largest-``k`` vocabulary ids for every position."""
@@ -109,20 +140,37 @@ class BackwardLensMatrixResult:
         ``largest=True`` gives rank zero to the largest logit. ``largest=False``
         gives rank zero to the smallest, which is the useful raw-gradient
         convention for the second MLP matrix because gradient descent subtracts it.
-        Ties receive the same competition rank.
+        Ties receive the same competition rank. The analyzed target's ranks are
+        always retained; other token ids require opted-in full logits.
         """
-        logits = self.logits(normalized=normalized)
         if isinstance(target_token_id, bool) or not isinstance(target_token_id, int):
             raise TypeError("target_token_id must be an integer")
-        if not 0 <= target_token_id < logits.shape[-1]:
+        if not 0 <= target_token_id < self.vocabulary_size:
             raise ValueError(
-                f"target_token_id must be in [0, {logits.shape[-1] - 1}]; " f"got {target_token_id}"
+                f"target_token_id must be in [0, {self.vocabulary_size - 1}]; "
+                f"got {target_token_id}"
             )
         if not isinstance(largest, bool):
             raise TypeError("largest must be a bool")
-        target = logits[:, target_token_id].unsqueeze(-1)
-        comparisons = logits > target if largest else logits < target
-        return comparisons.sum(dim=-1, dtype=torch.int64).cpu().clone()
+        if not isinstance(normalized, bool):
+            raise TypeError("normalized must be a bool")
+        if normalized:
+            ranks = (
+                self.normalized_target_largest_ranks
+                if largest
+                else self.normalized_target_smallest_ranks
+            )
+            if ranks is None:
+                raise ValueError("normalized logits were not requested during analysis")
+        else:
+            ranks = self.target_largest_ranks if largest else self.target_smallest_ranks
+        if target_token_id == self.target_token_id:
+            return ranks.clone()
+        return _target_vocabulary_ranks(
+            self.logits(normalized=normalized),
+            target_token_id=target_token_id,
+            largest=largest,
+        )
 
     def gradient_descent_target_ranks(
         self, target_token_id: int, *, normalized: bool = False
@@ -153,7 +201,9 @@ class BackwardLensResult:
     ``layers`` is aligned to these same positions. ``layers`` preserves requested
     order. Maximum errors summarize both matrices over every requested layer.
     ``includes_normalized_logits`` records whether the Normalized Logit Lens was
-    computed. No model or tokenizer reference is retained.
+    computed. ``includes_full_logits`` records whether full vocabulary tensors
+    were retained in addition to bounded rankings. No model or tokenizer reference
+    is retained.
     """
 
     prompt: str
@@ -165,6 +215,7 @@ class BackwardLensResult:
     max_absolute_reconstruction_error: float
     max_relative_reconstruction_error: float
     includes_normalized_logits: bool
+    includes_full_logits: bool
 
     def layer(self, layer: int) -> BackwardLensLayerResult:
         """Return one requested layer result or raise ``KeyError``."""
@@ -323,6 +374,26 @@ def _rank_vocabulary_logits(logits: torch.Tensor, *, k: int, largest: bool) -> V
     )
 
 
+def _slice_vocabulary_ranking(ranking: VocabularyRanking, *, k: int) -> VocabularyRanking:
+    """Return an owned prefix of an already sorted vocabulary ranking."""
+    retained = ranking.indices.shape[-1]
+    if isinstance(k, bool) or not isinstance(k, int) or not 1 <= k <= retained:
+        raise ValueError(f"k must be in [1, retained top_k={retained}]; got {k!r}")
+    return VocabularyRanking(
+        values=ranking.values[..., :k].clone(),
+        indices=ranking.indices[..., :k].clone(),
+    )
+
+
+def _target_vocabulary_ranks(
+    logits: torch.Tensor, *, target_token_id: int, largest: bool
+) -> torch.Tensor:
+    """Return zero-based competition ranks for one vocabulary id per row."""
+    target = logits[:, target_token_id].unsqueeze(-1)
+    comparisons = logits > target if largest else logits < target
+    return comparisons.sum(dim=-1, dtype=torch.int64).cpu().clone()
+
+
 def _decode_vocabulary_ranking(ranking: VocabularyRanking, tokenizer: Any) -> list[list[str]]:
     """Decode a two-dimensional vocabulary ranking without retaining a tokenizer."""
     decode = getattr(tokenizer, "decode", None)
@@ -356,7 +427,7 @@ def _project_residual_factors(model: Any, factors: torch.Tensor) -> torch.Tensor
     projected = logits.detach().float()
     if not bool(torch.isfinite(projected).all()):
         raise ValueError("vocabulary projection must remain finite in float32")
-    return projected.cpu().clone()
+    return projected.clone()
 
 
 def _factor_norms_and_normalized_rows(
@@ -378,11 +449,16 @@ def _build_matrix_result(
     *,
     projected_factor: ProjectedFactor,
     include_normalized_logits: bool,
+    target_token_id: int,
+    top_k: int,
+    return_full_logits: bool,
 ) -> BackwardLensMatrixResult:
     if projected_factor not in ("forward_inputs", "output_gradients"):
         raise ValueError("projected_factor must be 'forward_inputs' or 'output_gradients'")
     if not isinstance(include_normalized_logits, bool):
         raise TypeError("include_normalized_logits must be a bool")
+    if not isinstance(return_full_logits, bool):
+        raise TypeError("return_full_logits must be a bool")
     rows = (
         factors.forward_inputs if projected_factor == "forward_inputs" else factors.output_gradients
     )
@@ -391,13 +467,50 @@ def _build_matrix_result(
     normalized_logits = (
         _project_residual_factors(model, normalized_rows) if include_normalized_logits else None
     )
+    top_ranking = _rank_vocabulary_logits(raw_logits, k=top_k, largest=True)
+    bottom_ranking = _rank_vocabulary_logits(raw_logits, k=top_k, largest=False)
+    target_largest_ranks = _target_vocabulary_ranks(
+        raw_logits, target_token_id=target_token_id, largest=True
+    )
+    target_smallest_ranks = _target_vocabulary_ranks(
+        raw_logits, target_token_id=target_token_id, largest=False
+    )
+    normalized_top_ranking = None
+    normalized_bottom_ranking = None
+    normalized_target_largest_ranks = None
+    normalized_target_smallest_ranks = None
+    if normalized_logits is not None:
+        normalized_top_ranking = _rank_vocabulary_logits(normalized_logits, k=top_k, largest=True)
+        normalized_bottom_ranking = _rank_vocabulary_logits(
+            normalized_logits, k=top_k, largest=False
+        )
+        normalized_target_largest_ranks = _target_vocabulary_ranks(
+            normalized_logits, target_token_id=target_token_id, largest=True
+        )
+        normalized_target_smallest_ranks = _target_vocabulary_ranks(
+            normalized_logits, target_token_id=target_token_id, largest=False
+        )
     return BackwardLensMatrixResult(
         factors=factors,
         projected_factor=projected_factor,
         factor_norms=norms,
         zero_norm_mask=zero_mask,
-        vocabulary_logits=raw_logits,
-        normalized_vocabulary_logits=normalized_logits,
+        vocabulary_size=raw_logits.shape[-1],
+        target_token_id=target_token_id,
+        top_ranking=top_ranking,
+        bottom_ranking=bottom_ranking,
+        target_largest_ranks=target_largest_ranks,
+        target_smallest_ranks=target_smallest_ranks,
+        normalized_top_ranking=normalized_top_ranking,
+        normalized_bottom_ranking=normalized_bottom_ranking,
+        normalized_target_largest_ranks=normalized_target_largest_ranks,
+        normalized_target_smallest_ranks=normalized_target_smallest_ranks,
+        vocabulary_logits=raw_logits.cpu().clone() if return_full_logits else None,
+        normalized_vocabulary_logits=(
+            normalized_logits.cpu().clone()
+            if return_full_logits and normalized_logits is not None
+            else None
+        ),
     )
 
 
@@ -690,6 +803,8 @@ class BackwardLens:
         layers: Sequence[int],
         *,
         normalized: bool = False,
+        top_k: int = DEFAULT_TOP_K,
+        return_full_logits: bool = False,
     ) -> BackwardLensResult:
         """Analyze one final-position, one-token target loss.
 
@@ -699,13 +814,24 @@ class BackwardLens:
             layers: Unique GPT-2 layer indices in desired result order.
             normalized: Also project unit-normalized nonzero factors using the
                 Normalized Logit Lens. Raw projections are always returned.
+            top_k: Number of largest and smallest values and token ids retained
+                per matrix and position. Defaults to 10.
+            return_full_logits: Also retain full vocabulary tensors on CPU.
+                Defaults to ``False`` to keep result size bounded.
 
         Returns:
-            Detached gradient factors, vocabulary logits, norms, reconstruction
-            errors, and target metadata.
+            Detached gradient factors, bounded vocabulary rankings, norms,
+            reconstruction errors, target metadata, and optional full logits.
         """
         if not isinstance(normalized, bool):
             raise TypeError("normalized must be a bool")
+        if isinstance(top_k, bool) or not isinstance(top_k, int):
+            raise TypeError("top_k must be an integer")
+        vocabulary_size = int(self._model.cfg.d_vocab)
+        if not 1 <= top_k <= vocabulary_size:
+            raise ValueError(f"top_k must be in [1, {vocabulary_size}]; got {top_k!r}")
+        if not isinstance(return_full_logits, bool):
+            raise TypeError("return_full_logits must be a bool")
         capture = _capture_gpt2_mlp_gradient_factors(self._model, prompt, target_token, layers)
         layer_results: list[BackwardLensLayerResult] = []
         absolute_errors: list[float] = []
@@ -716,12 +842,18 @@ class BackwardLens:
                 layer.input_projection,
                 projected_factor="forward_inputs",
                 include_normalized_logits=normalized,
+                target_token_id=capture.target_token_id,
+                top_k=top_k,
+                return_full_logits=return_full_logits,
             )
             output_result = _build_matrix_result(
                 self._model,
                 layer.output_projection,
                 projected_factor="output_gradients",
                 include_normalized_logits=normalized,
+                target_token_id=capture.target_token_id,
+                top_k=top_k,
+                return_full_logits=return_full_logits,
             )
             layer_results.append(
                 BackwardLensLayerResult(
@@ -752,4 +884,5 @@ class BackwardLens:
             max_absolute_reconstruction_error=max(absolute_errors),
             max_relative_reconstruction_error=max(relative_errors),
             includes_normalized_logits=normalized,
+            includes_full_logits=return_full_logits,
         )

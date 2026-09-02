@@ -2,6 +2,7 @@
 
 import warnings
 from collections.abc import Sequence
+from typing import Any, cast
 
 import pytest
 import torch
@@ -39,7 +40,14 @@ def gradient_capture(gpt2_bridge):
 def backward_result(gpt2_bridge):
     from transformer_lens.tools.analysis import BackwardLens
 
-    return BackwardLens(gpt2_bridge).analyze(PROMPT, TARGET, LAYERS, normalized=True)
+    return BackwardLens(gpt2_bridge).analyze(
+        PROMPT,
+        TARGET,
+        LAYERS,
+        normalized=True,
+        top_k=3,
+        return_full_logits=True,
+    )
 
 
 def _projection_hook_snapshots(model, layer: int) -> list[tuple[int, ...]]:
@@ -126,6 +134,7 @@ def test_public_result_metadata_and_error_summaries(backward_result) -> None:
     assert backward_result.prompt_token_ids.shape == (6,)
     assert [layer.layer for layer in backward_result.layers] == list(LAYERS)
     assert backward_result.includes_normalized_logits is True
+    assert backward_result.includes_full_logits is True
     assert backward_result.max_absolute_reconstruction_error <= 2e-6
     assert backward_result.max_relative_reconstruction_error <= 2e-5
     assert backward_result.layer(11) is backward_result.layers[-1]
@@ -147,6 +156,7 @@ def test_public_projections_match_fresh_model_readout(backward_result, gpt2_brid
             ).unsqueeze(0)
             with torch.no_grad():
                 direct = gpt2_bridge.unembed(gpt2_bridge.ln_final(rows_on_model)).squeeze(0)
+            assert matrix.vocabulary_logits is not None
             torch.testing.assert_close(matrix.vocabulary_logits, direct.float().cpu())
 
             norms = rows.norm(dim=-1)
@@ -180,6 +190,9 @@ def test_public_projections_match_fresh_model_readout(backward_result, gpt2_brid
 
 def test_public_rankings_decoding_and_target_ranks(backward_result, gpt2_bridge) -> None:
     output = backward_result.layer(11).output_projection
+    assert output.vocabulary_logits is not None
+    assert output.top_ranking.indices.shape == (6, 3)
+    assert output.bottom_ranking.indices.shape == (6, 3)
     direct_top = torch.topk(output.vocabulary_logits, k=3, dim=-1, largest=True)
     direct_bottom = torch.topk(output.vocabulary_logits, k=3, dim=-1, largest=False)
 
@@ -205,15 +218,40 @@ def test_public_api_defaults_to_raw_projection_only(gpt2_bridge) -> None:
 
     result = BackwardLens(gpt2_bridge).analyze(PROMPT, TARGET, [0])
     assert result.includes_normalized_logits is False
+    assert result.includes_full_logits is False
     for matrix in (
         result.layers[0].input_projection,
         result.layers[0].output_projection,
     ):
+        assert matrix.vocabulary_logits is None
         assert matrix.normalized_vocabulary_logits is None
+        assert matrix.top_ranking.indices.shape == (6, 10)
+        assert matrix.bottom_ranking.indices.shape == (6, 10)
+        assert matrix.normalized_top_ranking is None
+        assert matrix.normalized_bottom_ranking is None
+        assert matrix.gradient_descent_target_ranks(result.target_token_id).shape == (6,)
+        with pytest.raises(ValueError, match="return_full_logits=True"):
+            matrix.logits()
         with pytest.raises(ValueError, match="were not requested"):
             matrix.logits(normalized=True)
     with pytest.raises((TypeError, BeartypeCallHintParamViolation), match="normalized"):
-        BackwardLens(gpt2_bridge).analyze(PROMPT, TARGET, [0], normalized=1)
+        BackwardLens(gpt2_bridge).analyze(PROMPT, TARGET, [0], normalized=cast(bool, 1))
+
+
+def test_public_api_validates_retention_options_before_capture(gpt2_bridge) -> None:
+    from transformer_lens.tools.analysis import BackwardLens
+
+    lens = BackwardLens(gpt2_bridge)
+    with pytest.raises(ValueError, match="top_k must be in"):
+        lens.analyze(PROMPT, TARGET, [0], top_k=0)
+    with pytest.raises(ValueError, match="top_k must be in"):
+        lens.analyze(PROMPT, TARGET, [0], top_k=gpt2_bridge.cfg.d_vocab + 1)
+    with pytest.raises(TypeError, match="top_k must be an integer"):
+        lens.analyze(PROMPT, TARGET, [0], top_k=True)
+    with pytest.raises((TypeError, BeartypeCallHintParamViolation), match="top_k"):
+        lens.analyze(PROMPT, TARGET, [0], top_k=cast(int, 1.5))
+    with pytest.raises((TypeError, BeartypeCallHintParamViolation), match="return_full_logits"):
+        lens.analyze(PROMPT, TARGET, [0], return_full_logits=cast(bool, 1))
 
 
 @pytest.mark.parametrize(
@@ -502,7 +540,7 @@ def test_tiny_gpt2_capture_supports_available_devices_and_reduced_precision(
         embd_pdrop=0.1,
         attn_pdrop=0.1,
     )
-    hf_model = GPT2LMHeadModel(config).to(device=device, dtype=dtype).eval()
+    hf_model = cast(Any, GPT2LMHeadModel)(config).to(device=device, dtype=dtype).eval()
     bridge = TransformerBridge.boot_transformers(
         "gpt2",
         hf_model=hf_model,
@@ -531,6 +569,19 @@ def test_tiny_gpt2_capture_supports_available_devices_and_reduced_precision(
             factors = matrix.factors
             assert torch.isfinite(factors.weight_gradient).all()
             assert factors.relative_reconstruction_error <= 5e-2
-            assert torch.isfinite(matrix.vocabulary_logits).all()
-            assert matrix.normalized_vocabulary_logits is not None
-            assert torch.isfinite(matrix.normalized_vocabulary_logits).all()
+            assert matrix.vocabulary_logits is None
+            assert matrix.normalized_vocabulary_logits is None
+            assert torch.isfinite(matrix.top_ranking.values).all()
+            assert torch.isfinite(matrix.bottom_ranking.values).all()
+            assert matrix.normalized_top_ranking is not None
+            assert matrix.normalized_bottom_ranking is not None
+            assert torch.isfinite(matrix.normalized_top_ranking.values).all()
+            assert torch.isfinite(matrix.normalized_bottom_ranking.values).all()
+            for ranking in (
+                matrix.top_ranking,
+                matrix.bottom_ranking,
+                matrix.normalized_top_ranking,
+                matrix.normalized_bottom_ranking,
+            ):
+                assert ranking.values.device.type == "cpu"
+                assert ranking.indices.device.type == "cpu"

@@ -48,8 +48,10 @@ $$
 
 Final-normalization statistics are recomputed independently for every factor. The
 implementation does not reuse normalization scales cached during the model's forward
-pass. `vocabulary_logits` contains signed, pre-softmax logits; it does not contain
-probabilities.
+pass. The retained rankings contain signed, pre-softmax values; they do not contain
+probabilities. By default, each matrix keeps only the 10 largest and 10 smallest
+values and token ids per position. Set `top_k` to change that bound or
+`return_full_logits=True` to also retain the full vocabulary tensors.
 
 When `normalized=True`, the analysis also computes the Normalized Logit Lens:
 
@@ -97,6 +99,7 @@ result = BackwardLens(model).analyze(
     target_token=" Paris",
     layers=[0, 6, 11],
     normalized=True,
+  top_k=10,
 )
 
 last_layer = result.layer(11)
@@ -124,16 +127,26 @@ align with `result.prompt_token_ids`.
 - `loss` is final-position cross-entropy against the one-token target.
 - `layers` preserves the requested layer order; `result.layer(index)` retrieves one.
 - Each layer has `input_projection` and `output_projection` matrix results.
-- Each matrix exposes `factors`, `factor_norms`, `zero_norm_mask`, and raw vocabulary
-  logits. `normalized_vocabulary_logits` is present only when requested.
-- `top(...)` and `bottom(...)` return signed values and token ids.
+- Each matrix exposes `factors`, `factor_norms`, `zero_norm_mask`, `vocabulary_size`,
+  and retained raw `top_ranking` and `bottom_ranking` values and token ids.
+- `top(...)` and `bottom(...)` return prefixes of the retained signed rankings, so
+  their `k` cannot exceed the `top_k` passed to `analyze(...)`.
 - `top_tokens(...)` and `bottom_tokens(...)` decode ids with a caller-provided
   tokenizer. Results deliberately retain no model or tokenizer reference.
-- Target ranks are zero-based competition ranks, so tied logits receive the same rank.
+- The analyzed target's exact ranks are always retained as zero-based competition
+  ranks, so tied logits receive the same rank. Ranking another token requires full
+  logits.
+- `vocabulary_logits` is present only with `return_full_logits=True`.
+  `normalized_top_ranking`, `normalized_bottom_ranking`, and normalized target ranks
+  are present with `normalized=True`; full `normalized_vocabulary_logits` requires
+  both options.
+- `includes_normalized_logits` and `includes_full_logits` record the requested modes.
 - Maximum reconstruction errors summarize both MLP matrices over all requested layers.
 
 Returned tensors are detached, owned CPU copies. Factors, reconstructed gradients,
-norms, and vocabulary logits use float32; token ids and ranks use int64.
+norms, retained values, and optional vocabulary logits use float32; token ids and
+ranks use int64. The bounded default avoids retaining a
+`[layer, matrix, position, d_vocab]` collection of full tensors.
 
 ## Requirements and non-goals
 
@@ -164,6 +177,8 @@ activation-editing hooks still affect the analyzed computation.
 | Target encodes to zero or multiple tokens | Choose text that maps to one GPT-2 token without BOS; check leading whitespace. |
 | Duplicate or out-of-range layer error | Pass a non-empty sequence of unique indices in `[0, model.cfg.n_layers)`. |
 | Normalized logits were not requested | Call `analyze(..., normalized=True)` before using `logits(normalized=True)` or normalized ranks. |
+| Full logits were not retained | Call `analyze(..., return_full_logits=True)` before using `logits(...)` or ranking a token other than the analyzed target. |
+| Requested `k` exceeds retained `top_k` | Increase `top_k` in `analyze(...)`; accessor methods cannot recover discarded rankings. |
 | FF2 ranking appears sign-reversed | Remember that results are raw loss gradients and gradient descent subtracts them; inspect bottom tokens or ascending target ranks. |
 | Results change when custom hooks are installed | Existing hooks are intentionally respected; remove them to analyze the unmodified model computation. |
 

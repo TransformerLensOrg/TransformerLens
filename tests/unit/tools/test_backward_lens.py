@@ -14,6 +14,7 @@ from transformer_lens.tools.analysis.backward_lens import (
     LinearGradientFactors,
     WeightLayout,
     _build_linear_gradient_factors,
+    _build_matrix_result,
     _factor_norms_and_normalized_rows,
     _project_residual_factors,
     _rank_vocabulary_logits,
@@ -33,20 +34,66 @@ class _ReadoutModel:
         return self.unembed.weight.T
 
 
-def _matrix_result(logits: torch.Tensor) -> BackwardLensMatrixResult:
+def _matrix_result(
+    logits: torch.Tensor,
+    *,
+    normalized: bool = True,
+    return_full_logits: bool = True,
+    top_k: int = 2,
+) -> BackwardLensMatrixResult:
     factors = _build_linear_gradient_factors(
         torch.tensor([[1.0, 2.0], [3.0, 4.0]]),
         torch.tensor([[0.5, -1.0], [2.0, 1.5]]),
         torch.tensor([[6.5, 3.5], [9.0, 4.0]]),
         weight_layout="in_out",
     )
+    normalized_logits = logits * 2 if normalized else None
+    target_token_id = 2
     return BackwardLensMatrixResult(
         factors=factors,
         projected_factor="forward_inputs",
         factor_norms=torch.tensor([1.0, 2.0]),
         zero_norm_mask=torch.tensor([False, False]),
-        vocabulary_logits=logits.clone(),
-        normalized_vocabulary_logits=(logits * 2).clone(),
+        vocabulary_size=logits.shape[-1],
+        target_token_id=target_token_id,
+        top_ranking=_rank_vocabulary_logits(logits, k=top_k, largest=True),
+        bottom_ranking=_rank_vocabulary_logits(logits, k=top_k, largest=False),
+        target_largest_ranks=(logits > logits[:, target_token_id, None]).sum(
+            dim=-1, dtype=torch.int64
+        ),
+        target_smallest_ranks=(logits < logits[:, target_token_id, None]).sum(
+            dim=-1, dtype=torch.int64
+        ),
+        normalized_top_ranking=(
+            _rank_vocabulary_logits(normalized_logits, k=top_k, largest=True)
+            if normalized_logits is not None
+            else None
+        ),
+        normalized_bottom_ranking=(
+            _rank_vocabulary_logits(normalized_logits, k=top_k, largest=False)
+            if normalized_logits is not None
+            else None
+        ),
+        normalized_target_largest_ranks=(
+            (normalized_logits > normalized_logits[:, target_token_id, None]).sum(
+                dim=-1, dtype=torch.int64
+            )
+            if normalized_logits is not None
+            else None
+        ),
+        normalized_target_smallest_ranks=(
+            (normalized_logits < normalized_logits[:, target_token_id, None]).sum(
+                dim=-1, dtype=torch.int64
+            )
+            if normalized_logits is not None
+            else None
+        ),
+        vocabulary_logits=logits.clone() if return_full_logits else None,
+        normalized_vocabulary_logits=(
+            normalized_logits.clone()
+            if return_full_logits and normalized_logits is not None
+            else None
+        ),
     )
 
 
@@ -337,6 +384,7 @@ def test_matrix_result_rankings_decoding_and_target_rank_conventions() -> None:
     assert result.bottom(k=2).indices.tolist() == [[2, 3], [1, 0]]
     assert result.target_ranks(2, largest=True).tolist() == [3, 0]
     assert result.gradient_descent_target_ranks(2).tolist() == [0, 3]
+    assert result.target_ranks(1, largest=True).tolist() == [1, 3]
     assert torch.equal(result.logits(normalized=True), logits * 2)
 
     tokenizer = SimpleNamespace(decode=lambda ids: f"token-{ids[0]}")
@@ -347,13 +395,7 @@ def test_matrix_result_rankings_decoding_and_target_rank_conventions() -> None:
 def test_matrix_result_rejects_missing_normalized_logits_and_invalid_target() -> None:
     logits = torch.randn(2, 4)
     result = _matrix_result(logits)
-    result_without_normalized = BackwardLensMatrixResult(
-        factors=result.factors,
-        projected_factor=result.projected_factor,
-        factor_norms=result.factor_norms,
-        zero_norm_mask=result.zero_norm_mask,
-        vocabulary_logits=result.vocabulary_logits,
-    )
+    result_without_normalized = _matrix_result(logits, normalized=False)
 
     with pytest.raises(ValueError, match="were not requested"):
         result_without_normalized.logits(normalized=True)
@@ -361,6 +403,87 @@ def test_matrix_result_rejects_missing_normalized_logits_and_invalid_target() ->
         result.target_ranks(4, largest=True)
     with pytest.raises(TypeError, match="decode"):
         result.top_tokens(object(), k=1)
+
+
+@pytest.mark.parametrize("k", [0, 3, True])
+def test_matrix_result_rejects_invalid_retained_ranking_k(k) -> None:
+    result = _matrix_result(torch.randn(2, 4))
+
+    with pytest.raises(ValueError, match="retained top_k=2"):
+        result.top(k=cast(int, k))
+
+
+def test_matrix_result_keeps_rankings_and_analyzed_target_ranks_without_full_logits() -> None:
+    result = _matrix_result(
+        torch.tensor([[3.0, 1.0, -2.0, 0.0], [0.0, -1.0, 4.0, 2.0]]),
+        return_full_logits=False,
+    )
+
+    assert result.vocabulary_logits is None
+    assert result.normalized_vocabulary_logits is None
+    assert result.top(k=2).indices.tolist() == [[0, 1], [2, 3]]
+    assert result.bottom(k=2).indices.tolist() == [[2, 3], [1, 0]]
+    assert result.gradient_descent_target_ranks(2).tolist() == [0, 3]
+    assert result.gradient_descent_target_ranks(2, normalized=True).tolist() == [0, 3]
+    with pytest.raises(ValueError, match="return_full_logits=True"):
+        result.logits()
+    with pytest.raises(ValueError, match="return_full_logits=True"):
+        result.target_ranks(1, largest=True)
+
+
+@pytest.mark.parametrize("normalized", [False, True])
+@pytest.mark.parametrize("return_full_logits", [False, True])
+def test_build_matrix_result_bounds_storage_and_matches_projection(
+    normalized: bool, return_full_logits: bool
+) -> None:
+    model = _ReadoutModel()
+    inputs = torch.tensor([[1.0, -2.0, 4.0], [0.25, 0.5, -0.75]])
+    output_gradients = torch.tensor([[0.5, -1.0, 2.0], [1.5, 0.25, -0.5]])
+    factors = _build_linear_gradient_factors(
+        inputs,
+        output_gradients,
+        inputs.T @ output_gradients,
+        weight_layout="in_out",
+    )
+    direct = _project_residual_factors(model, inputs)
+
+    result = _build_matrix_result(
+        model,
+        factors,
+        projected_factor="forward_inputs",
+        include_normalized_logits=normalized,
+        target_token_id=2,
+        top_k=2,
+        return_full_logits=return_full_logits,
+    )
+
+    direct_top = torch.topk(direct, k=2, dim=-1, largest=True)
+    direct_bottom = torch.topk(direct, k=2, dim=-1, largest=False)
+    assert torch.equal(result.top_ranking.values, direct_top.values)
+    assert torch.equal(result.top_ranking.indices, direct_top.indices)
+    assert torch.equal(result.bottom_ranking.values, direct_bottom.values)
+    assert torch.equal(result.bottom_ranking.indices, direct_bottom.indices)
+    assert (result.vocabulary_logits is not None) is return_full_logits
+    assert (result.normalized_top_ranking is not None) is normalized
+    assert (result.normalized_bottom_ranking is not None) is normalized
+    assert (result.normalized_vocabulary_logits is not None) is (normalized and return_full_logits)
+
+
+def test_ranking_accessors_return_owned_retained_prefixes() -> None:
+    result = _matrix_result(torch.tensor([[3.0, 1.0, -2.0, 0.0]]))
+    top = result.top(k=1)
+    bottom = result.bottom(k=1, normalized=True)
+
+    top.values.add_(100)
+    top.indices.add_(100)
+    bottom.values.add_(100)
+    bottom.indices.add_(100)
+
+    assert result.top_ranking.values.tolist() == [[3.0, 1.0]]
+    assert result.top_ranking.indices.tolist() == [[0, 1]]
+    assert result.normalized_bottom_ranking is not None
+    assert result.normalized_bottom_ranking.values.tolist() == [[-4.0, 0.0]]
+    assert result.normalized_bottom_ranking.indices.tolist() == [[2, 3]]
 
 
 def test_public_backward_lens_symbols_are_exported() -> None:

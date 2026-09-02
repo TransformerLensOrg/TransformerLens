@@ -61,14 +61,11 @@ from transformer_lens.tools.analysis.projection_kernel import (
 )
 
 __all__ = [
-<<<<<<< HEAD
     "AttentionHeadRef",
-=======
     "BackwardLens",
     "BackwardLensLayerResult",
     "BackwardLensMatrixResult",
     "BackwardLensResult",
->>>>>>> c49c1cd1 (feat(backward_lens): project GPT-2 MLP gradient factors into vocabulary space)
     "DirectLogitAttribution",
     "HeadAffinityPair",
     "HeadAffinityResult",
@@ -77,17 +74,14 @@ __all__ = [
     "JSpaceVarianceProfile",
     "JacobianLens",
     "JacobianLensReadout",
-<<<<<<< HEAD
     "ProjectionKernelResult",
     "RandomSubspaceReference",
     "SubspaceBasis",
     "attention_head_subspace_affinity",
-=======
     "LinearGradientFactors",
     "ProjectedFactor",
     "VocabularyRanking",
     "WeightLayout",
->>>>>>> c49c1cd1 (feat(backward_lens): project GPT-2 MLP gradient factors into vocabulary space)
     "direct_logit_attribution",
     "estimate_occupancy",
     "get_act_patch_direct_path",
