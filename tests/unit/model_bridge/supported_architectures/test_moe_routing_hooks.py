@@ -157,3 +157,47 @@ def test_rerouting_picks_up_the_weight_at_the_newly_selected_expert():
         "weights must be gathered at the edited indices, so a re-route to an "
         f"unselected expert yields 0; got {out_weights.tolist()}"
     )
+
+
+def test_boosting_a_suppressed_expert_reroutes_the_selection():
+    """A weight edit outside the top-k re-derives the selection from the edited
+    tensor — HT's pre-top-k contract — instead of being discarded by the gather.
+    """
+    from transformer_lens.model_bridge.generalized_components.moe import MoERouterBridge
+
+    logits = torch.zeros(1, NUM_EXPERTS)
+    weights = torch.tensor([[0.7, 0.3]])
+    indices = torch.tensor([[1, 2]])
+
+    router = MoERouterBridge(name="router")
+    router.set_original_component(_StubRouter(logits, weights, indices))
+
+    def boost_expert_zero(t, hook=None):
+        t = t.clone()
+        t[:, 0] = 5.0  # expert 0 held no weight in the original top-k
+        return t
+
+    router.hook_expert_weights.add_hook(boost_expert_zero)
+    _, out_weights, out_indices = router(torch.zeros(1, 8))
+
+    assert out_indices[0].tolist() == [0, 1], out_indices
+    assert torch.allclose(out_weights, torch.tensor([[5.0, 0.7]])), out_weights
+
+
+def test_suppressed_expert_boost_reaches_the_model_output():
+    """End-to-end: the edit changes logits, where the pre-fix gather no-opped it."""
+    bridge = _tiny_bridge()
+    tokens = torch.tensor([[3, 17, 42, 9]])
+
+    with torch.no_grad():
+        base = bridge(tokens, return_type="logits")
+
+    def boost_all_nonselected(t, hook=None):
+        t = t.clone()
+        t[t == 0.0] = 100.0
+        return t
+
+    with torch.no_grad():
+        edited = bridge.run_with_hooks(tokens, fwd_hooks=[(WEIGHTS, boost_all_nonselected)])
+
+    assert not torch.allclose(edited, base), "off-top-k weight edit must reach the model"

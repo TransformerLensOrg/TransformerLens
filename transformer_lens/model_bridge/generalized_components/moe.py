@@ -356,7 +356,11 @@ class MoERouterBridge(LinearBridge):
     MoE routing hooks. HF routers hand back top-k-shaped weights
     ``[tokens, top_k]``, so the weights are scattered to HT's
     ``[tokens, num_experts]`` before firing and gathered back afterwards — an
-    unedited round trip returns the values bit-for-bit, and an edit reaches HF.
+    unedited round trip returns the values bit-for-bit. Any weight edit
+    re-derives the top-k selection from the edited tensor, so boosting a
+    suppressed expert re-routes the token (HT's pre-top-k contract); unlike
+    HT's mixtral component, edited weights are used as-is with no
+    renormalization after the hook.
     """
 
     def __init__(
@@ -401,8 +405,23 @@ class MoERouterBridge(LinearBridge):
         indices = None if indices_at is None else parts[indices_at]
         expanded = None
         if weights_at is not None:
-            expanded = self._expand_expert_weights(parts[weights_at], indices, parts[logits_at])
-            expanded = self.hook_expert_weights(expanded)
+            scattered = self._expand_expert_weights(parts[weights_at], indices, parts[logits_at])
+            expanded = self.hook_expert_weights(scattered)
+            if (
+                indices is not None
+                and expanded.shape != parts[weights_at].shape
+                and not torch.equal(expanded, scattered)
+            ):
+                # An edit outside the current top-k would otherwise be discarded
+                # by the gather below (those columns have no downstream reader in
+                # the [tokens, top_k] layout). Re-derive the selection from the
+                # edited tensor so boosting a suppressed expert re-routes, as it
+                # does on HookedTransformer's pre-top-k hook. The edited values
+                # are used as-is — no per-arch renormalization is re-applied.
+                _, new_indices = torch.topk(expanded, indices.shape[-1], dim=-1)
+                indices = new_indices.to(indices.dtype)
+                if indices_at is not None:
+                    parts[indices_at] = indices
         if indices_at is not None:
             indices = self.hook_expert_indices(indices)
             parts[indices_at] = indices
