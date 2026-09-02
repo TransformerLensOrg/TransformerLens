@@ -108,6 +108,11 @@ class GoldenCell:
         self.config = config
         self.path = golden_path(model, config)  # raises early if the cell is absent
 
+    def has(self, name: str) -> bool:
+        """Whether this cell carries the named safetensors group (older dataset
+        revisions may predate a group's introduction)."""
+        return (self.path / f"{name}.safetensors").is_file()
+
     def tensors(self, name: str) -> dict[str, torch.Tensor]:
         return load_golden_tensors(self.model, self.config, name)
 

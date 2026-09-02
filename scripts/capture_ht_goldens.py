@@ -252,6 +252,21 @@ def capture_one(model_name: str, config_name: str, out_root: Path, skip_existing
         }
         (out_dir / "hook_manifest.json").write_text(json.dumps(manifest, indent=1))
 
+        # --- short-prompt loss gradients (incl_bwd): the HT-free anchor for
+        # run_with_cache(incl_bwd=True) value parity after HT is deleted.
+        # enable_grad: the surrounding capture runs under no_grad.
+        with torch.enable_grad():
+            _, grad_cache = model.run_with_cache(SHORT_PROMPT, return_type="loss", incl_bwd=True)
+        model.zero_grad(set_to_none=True)
+        _save_safetensors(
+            out_dir / "gradients.safetensors",
+            {
+                k: v
+                for k, v in grad_cache.items()
+                if k.endswith("_grad") and isinstance(v, torch.Tensor)
+            },
+        )
+
         # --- long-text loss + final-position logits; Main-Demo ablation anchors
         long_tokens = model.to_tokens(MAIN_DEMO_TEXT)
         long_logits = model(long_tokens, return_type="logits")

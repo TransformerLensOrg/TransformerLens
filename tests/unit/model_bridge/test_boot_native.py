@@ -197,19 +197,15 @@ def test_boot_native_accepts_dict_config():
 
 
 def test_boot_native_rejects_legacy_config_with_actionable_error():
+    """boot_native reads only type(config).__name__, so a stand-in with the
+    legacy class's name pins the exact error UX without importing the class —
+    this test must survive HookedTransformerConfig's 4.0 deletion."""
     import pytest
 
-    from transformer_lens import HookedTransformerConfig
+    class HookedTransformerConfig:
+        pass
 
-    legacy_config = HookedTransformerConfig(
-        n_layers=1,
-        d_model=32,
-        n_ctx=8,
-        d_head=16,
-        n_heads=2,
-        d_vocab=16,
-        act_fn="gelu",
-    )
+    legacy_config = HookedTransformerConfig()
 
     with pytest.raises(
         TypeError,

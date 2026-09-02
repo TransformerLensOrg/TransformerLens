@@ -20,21 +20,6 @@ def bridge(distilgpt2_bridge):
     return distilgpt2_bridge
 
 
-# Lives here, not conftest: single consumer, and a second resident distilgpt2
-# is exactly what the golden fixtures exist to avoid.
-@pytest.fixture(scope="module")
-def distilgpt2_hooked_processed():
-    """HookedTransformer distilgpt2 with default weight processing."""
-    import gc
-
-    from transformer_lens import HookedTransformer
-
-    model = HookedTransformer.from_pretrained("distilgpt2", device="cpu")
-    yield model
-    del model
-    gc.collect()
-
-
 def test_incl_bwd_caches_gradients(bridge):
     """Every cached forward activation gets a matching `_grad` entry."""
     tokens = bridge.to_tokens(PROMPT)
@@ -149,27 +134,59 @@ def test_incl_bwd_gradients_reach_compatibility_aliases(distilgpt2_bridge_compat
         assert f"{name}_grad" in cache, f"missing {name}_grad; cached: {sorted(cache.keys())}"
 
 
-def test_incl_bwd_gradients_match_hooked_transformer(
-    distilgpt2_bridge_compat, distilgpt2_hooked_processed
+def test_incl_bwd_gradients_match_the_golden_snapshot(
+    distilgpt2_bridge_compat, distilgpt2_goldens_processed
 ):
-    """Cached gradients agree with HookedTransformer's, not just in shape."""
-    prompt_tokens = distilgpt2_hooked_processed.to_tokens(PROMPT)
+    """Cached gradients agree with the frozen HookedTransformer goldens.
+
+    Anchored on the captured `gradients` group rather than a live
+    HookedTransformer, like the rest of the compatibility suite (WS-9).
+    """
+    golden = distilgpt2_goldens_processed
+    if not golden.has("gradients"):
+        pytest.skip("golden dataset revision predates the gradients group")
+    golden_grads = golden.tensors("gradients")
 
     _, bridge_cache = distilgpt2_bridge_compat.run_with_cache(
-        prompt_tokens, return_type="loss", names_filter=NAMES, incl_bwd=True
-    )
-    _, hooked_cache = distilgpt2_hooked_processed.run_with_cache(
-        prompt_tokens, return_type="loss", names_filter=NAMES, incl_bwd=True
+        golden.scalars["short_prompt"], return_type="loss", names_filter=NAMES, incl_bwd=True
     )
 
     for name in NAMES:
         grad_name = f"{name}_grad"
         bridge_grad = bridge_cache[grad_name]
-        hooked_grad = hooked_cache[grad_name]
+        hooked_grad = golden_grads[grad_name]
         assert bridge_grad.shape == hooked_grad.shape
         scale = hooked_grad.abs().max()
         max_diff = (bridge_grad - hooked_grad).abs().max()
         assert max_diff < 1e-3 * max(scale, 1.0), (
-            f"{grad_name} diverges from HookedTransformer: max diff {max_diff:.3e} "
+            f"{grad_name} diverges from the golden gradients: max diff {max_diff:.3e} "
             f"against gradient scale {scale:.3e}"
         )
+
+
+def test_incl_bwd_gradients_are_the_true_autograd_gradients(bridge):
+    """Cached `_grad` entries equal torch.autograd.grad of the loss wrt the
+    cached activations — machine-independent, and exact by construction, so it
+    holds even where no golden gradients exist."""
+    tokens = bridge.to_tokens(PROMPT)
+    grabbed: dict = {}
+
+    def grab_as(requested):
+        # key by the requested name: hook.name is the point's canonical
+        # spelling, which need not match the compat alias asked for
+        def grab(t, hook=None, _key=requested):
+            t.retain_grad()
+            grabbed[_key] = t
+            return t
+
+        return grab
+
+    with bridge.hooks(fwd_hooks=[(n, grab_as(n)) for n in NAMES]):
+        loss = bridge(tokens, return_type="loss")
+    loss.backward()
+    reference = {n: grabbed[n].grad for n in NAMES}
+    bridge.zero_grad(set_to_none=True)
+
+    _, cache = bridge.run_with_cache(tokens, return_type="loss", names_filter=NAMES, incl_bwd=True)
+    for name in NAMES:
+        torch.testing.assert_close(cache[f"{name}_grad"], reference[name], atol=0.0, rtol=0.0)
