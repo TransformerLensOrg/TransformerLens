@@ -9,6 +9,7 @@ from transformer_lens.model_bridge.sources._bridge_builder import (
     detect_tokenizer_bos_eos,
 )
 from transformer_lens.model_bridge.sources.native import boot as boot_native
+from transformer_lens.model_bridge.sources.tl_legacy import boot as boot_tl_legacy
 from transformer_lens.model_bridge.sources.transformers import (
     boot,
     check_model_support,
@@ -19,6 +20,7 @@ from transformer_lens.model_bridge.sources.vllm import boot_vllm
 __all__ = [
     "boot",
     "boot_native",
+    "boot_tl_legacy",
     "boot_vllm",
     "build_bridge_config_from_hf",
     "build_bridge_from_module",

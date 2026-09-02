@@ -822,6 +822,12 @@ class AttentionBridge(GeneralizedComponent):
         elif len(args) > 0 and isinstance(args[0], torch.Tensor):
             hooked = self.hook_in(args[0])
             args = (hooked,) + args[1:]
+        # Modules exposing the pattern seam (NativeAttention) run the pattern
+        # through hook_pattern INSIDE the computation, so hook edits re-weight
+        # the output; post-hoc firing below would be a silent no-op for writes.
+        pattern_hooked_inside = bool(getattr(self.original_component, "accepts_pattern_fn", False))
+        if pattern_hooked_inside:
+            kwargs["pattern_fn"] = self.hook_pattern
         # try/finally so the captured tensor (and its autograd graph) is
         # released even if original_component raises.
         try:
@@ -839,7 +845,8 @@ class AttentionBridge(GeneralizedComponent):
             # For T5, second element is position_bias which should be passed through
             if isinstance(second_element, torch.Tensor) and second_element.dim() == 4:
                 # This looks like attention weights [batch, heads, seq, seq]
-                second_element = self.hook_pattern(second_element)
+                if not pattern_hooked_inside:
+                    second_element = self.hook_pattern(second_element)
                 # Also store for potential hook_attn_scores (before softmax)
                 # Note: Most HF implementations return post-softmax weights
                 self.hook_attn_scores(second_element)
