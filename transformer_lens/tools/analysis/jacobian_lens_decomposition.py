@@ -201,8 +201,8 @@ def _nonnegative_least_squares(active_atoms: torch.Tensor, target: torch.Tensor)
     result_dtype = target.dtype
     result_device = target.device
     work_device = torch.device("cpu") if target.device.type == "mps" else target.device
-    work_atoms = active_atoms.to(device=work_device, dtype=torch.float64)
-    work_target = target.to(device=work_device, dtype=torch.float64)
+    work_atoms = active_atoms.to(device=work_device).to(dtype=torch.float64)
+    work_target = target.to(device=work_device).to(dtype=torch.float64)
     if not bool(torch.isfinite(work_atoms).all()) or not bool(torch.isfinite(work_target).all()):
         raise ValueError("active_atoms and target must contain only finite values")
 
@@ -435,7 +435,14 @@ def get_sparse_decomposition(
     # swap_hooks. That span can be larger than the active support when a selected coordinate is
     # zero, so the projection differs from the nonnegative reconstruction in that case.
     if selected:
-        j_space_component = selected_atoms @ (torch.linalg.pinv(selected_atoms) @ target)
+        if target.device.type == "mps":
+            work_atoms = selected_atoms.cpu()
+            work_target = target.cpu()
+            j_space_component = (work_atoms @ (torch.linalg.pinv(work_atoms) @ work_target)).to(
+                target.device
+            )
+        else:
+            j_space_component = selected_atoms @ (torch.linalg.pinv(selected_atoms) @ target)
     else:
         j_space_component = target.new_zeros(d_model)
     non_j_space_component = target - j_space_component
