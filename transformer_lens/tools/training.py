@@ -11,7 +11,6 @@ from dataclasses import dataclass
 from typing import Optional, Union
 
 import torch
-import torch.nn as nn
 import torch.optim as optim
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader, Dataset

@@ -1,10 +1,10 @@
 """HookedRootModule.
 
 Base class extending :class:`torch.nn.Module` with hook-based introspection
-utilities: wrap any module's tensors in :class:`HookPoint`\ s, call ``setup()``,
+utilities: wrap any module's tensors in :class:`HookPoint` wrappers, call ``setup()``,
 and ``run_with_hooks`` / ``run_with_cache`` work on it. This is permanent
 infrastructure — it survives the 4.0 removal of the legacy model classes and is
-the supported way to add TransformerLens-style hooks to arbitrary ``nn.Module``\ s.
+the supported way to add TransformerLens-style hooks to arbitrary ``nn.Module`` objects.
 Lives in its own module so that downstream code (e.g. :class:`ActivationCache`)
 can type-hint against it without the broader ``hook_points`` import surface.
 """

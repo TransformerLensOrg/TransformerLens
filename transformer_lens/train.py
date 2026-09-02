@@ -5,7 +5,6 @@ Use transformer_lens.tools.training instead.
 
 import warnings
 
-import torch.nn as nn
 from torch.utils.data import Dataset
 
 from transformer_lens.model_protocol import TrainableTransformerLensModel

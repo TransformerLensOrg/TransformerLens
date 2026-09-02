@@ -5,7 +5,7 @@ Module for getting the singular vectors of the OV, w_in, and w_out matrices of a
 the TransformerLens weight surface).
 """
 
-from typing import Any, Optional, Union
+from typing import Optional, Union
 
 import torch
 from typing_extensions import Literal
