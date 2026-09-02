@@ -273,8 +273,7 @@ So two vector outputs also need not coincide:
 
 - `reconstruction` -- the nonnegative combination over the active `support`.
 - `j_space_component` (the *J-space component*) -- the orthogonal projection of the activation onto
-  the span of `selected_support` -- with `non_j_space_component = x - j_space_component`, the
-  residual the interventions leave unchanged.
+  the span of `selected_support` -- with `non_j_space_component = x - j_space_component`.
 
 For the default exact NNLS re-solve the `reconstruction` equals the projection onto the *active*
 support (KKT stationarity), so it differs from `j_space_component` exactly when a selected vector
@@ -298,6 +297,57 @@ the paper; its projected step is accepted only when it does not increase the res
 algorithms share the same greedy selection *rule* but, because their coefficient residuals
 differ, may select different vectors at later steps and so return a different `support` and
 `reconstruction`.
+
+### Coordinate patching
+
+`JacobianLens.coordinate_patch` turns a decomposition into an anchored causal edit. Given
+`x = residual + reconstruction`, it changes only named coordinates in the active sparse frame and
+keeps `residual = x - reconstruction` plus every other coordinate fixed. This residual differs from
+`non_j_space_component` when `selected_support` contains zero-coordinate atoms.
+
+```python
+prompt = "The Eiffel Tower is in the city of"
+decomposition = lens.decompose(model, prompt, layer=6, position=-1, k=8)
+source_id = int(decomposition.support[0])
+patch = lens.coordinate_patch(
+    model,
+    prompt,
+    layer=6,
+    source_token=source_id,
+    target_token=" Paris",
+    position=-1,
+    decomposition=decomposition,
+    mode="substitute",
+)
+patched_activation = patch.patched
+```
+
+`substitute` sets the source coordinate to zero and the target to the source value, overwriting an
+existing target coordinate (the discarded value is reported in `overwritten_target_coordinate`).
+`swap` exchanges the two values. An absent target is appended at zero, and `alpha` interpolates
+between the original and edited coordinates (`alpha=0` is an exact no-op). The source must be active
+and source and target must be distinct.
+
+Both diagnostics warn but never raise, because an anchored reconstruction needs no inverse:
+
+- **Poor conditioning.** When the column-normalized active-plus-target basis is rank deficient or its
+  `basis_condition_number` exceeds the threshold, coordinate patching emits a `UserWarning` that
+  names the measured condition number; coordinate attribution is then non-unique, but the edit still
+  completes.
+- **Near-parallel source/target.** When the absolute source–target cosine (reported signed in
+  `source_target_cosine`) exceeds the shared `_SWAP_WARN_COSINE` threshold, coordinate patching emits
+  a `UserWarning` that names the measured cosine, since a swap between near-parallel atoms is close to
+  a no-op. Unlike `swap_hooks`, which raises above `_SWAP_ERROR_COSINE`, the patch core only warns at
+  the parallel extreme.
+
+Read the measured condition number and cosine straight out of each warning message (and from the
+`basis_condition_number` and `source_target_cosine` fields on the returned `CoordinatePatch`) to
+judge how much to trust the edit.
+
+Without `decomposition=`, coordinate patching runs the vocabulary-scale sparse decomposition first.
+Reuse a compatible result for repeated edits to avoid that scan. The method returns an offline
+activation and diagnostics, not forward hooks; applying patches dynamically would otherwise perform
+a vocabulary-scale solve inside the model run.
 
 ### Interpreting the numbers honestly
 

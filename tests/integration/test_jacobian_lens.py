@@ -464,6 +464,60 @@ def test_decompose_gpt2_activation_reconstructs_and_is_orthogonal(published_gpt2
         assert cosine.abs().item() < 1e-3
 
 
+def test_coordinate_patch_gpt2_preserves_anchored_frame(published_gpt2_lens, gpt2_bridge):
+    """A published Bridge lens produces a finite edit while preserving its sparse frame."""
+    layer, k = 6, 8
+    tokens = gpt2_bridge.to_tokens(PROMPT)
+    hook = f"blocks.{layer}.hook_out"
+    _, cache = gpt2_bridge.run_with_cache(tokens, names_filter=lambda name: name == hook)
+    activation = cache[hook][0, -1, :].float()
+    dictionary = published_gpt2_lens.lens_vector_dictionary(gpt2_bridge, layer)
+    decomposition = published_gpt2_lens.decompose(gpt2_bridge, activation, layer=layer, k=k)
+    source_id = int(decomposition.support[0])
+    units = dictionary / dictionary.norm(dim=1, keepdim=True)
+    pair_cosines = (units @ units[source_id]).abs()
+    pair_cosines[source_id] = torch.inf
+    target_id = int(pair_cosines.argmin().item())
+
+    result = published_gpt2_lens.coordinate_patch(
+        gpt2_bridge,
+        PROMPT,
+        layer,
+        source_id,
+        target_id,
+        position=-1,
+        decomposition=decomposition,
+        alpha=0.5,
+    )
+    no_op = published_gpt2_lens.coordinate_patch(
+        gpt2_bridge,
+        activation,
+        layer,
+        source_id,
+        target_id,
+        decomposition=decomposition,
+        alpha=0.0,
+    )
+
+    assert torch.isfinite(result.patched).all()
+    torch.testing.assert_close(
+        result.patched - result.reconstruction_after,
+        result.residual,
+        atol=1e-5,
+        rtol=1e-5,
+    )
+    edited_positions = {
+        result.support_after.tolist().index(source_id),
+        result.support_after.tolist().index(target_id),
+    }
+    for position in range(result.coordinates_before.numel()):
+        if position not in edited_positions:
+            assert torch.equal(
+                result.coordinates_after[position], result.coordinates_before[position]
+            )
+    assert torch.equal(no_op.patched, activation)
+
+
 def test_occupancy_gpt2_activation_is_a_small_positive_integer(published_gpt2_lens, gpt2_bridge):
     """occupancy on a real GPT-2 activation returns a positive integer within ``[1, max_atoms]``,
     with per-step real and control captured-variance curves of the right shape. We assert shape and
