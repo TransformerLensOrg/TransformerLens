@@ -19,11 +19,13 @@ from transformer_lens.model_bridge.supported_architectures.deepseek_v4 import (
     DeepseekV4BlockBridge,
 )
 from transformer_lens.tools.analysis import (
+    CoordinatePatch,
     JacobianLens,
     JSpaceDecomposition,
     JSpaceOccupancy,
     JSpaceVarianceProfile,
     get_sparse_decomposition,
+    solve_coordinate_patch,
 )
 from transformer_lens.utilities.activation_functions import apply_softcap
 
@@ -1075,6 +1077,8 @@ def test_exports() -> None:
 
     assert analysis.JacobianLens is JacobianLens
     assert hasattr(analysis, "JacobianLensReadout")
+    assert analysis.CoordinatePatch is CoordinatePatch
+    assert analysis.solve_coordinate_patch is solve_coordinate_patch
 
 
 # ---------------------------------------------------------------------------
@@ -1393,6 +1397,169 @@ def test_decompose_rejects_unfitted_layer(toy_model: _ToyBridge, fitted_lens: Ja
         fitted_lens.decompose(
             toy_model, torch.randn(toy_model.cfg.d_model), layer=N_LAYERS - 1, k=3
         )
+
+
+def test_coordinate_patch_raw_activation_matches_model_free_core(
+    toy_model: _ToyBridge, fitted_lens: JacobianLens
+) -> None:
+    layer, source_id, target_id = 0, 3, 5
+    dictionary = fitted_lens.lens_vector_dictionary(toy_model, layer)
+    activation = 2.0 * dictionary[source_id]
+
+    result = fitted_lens.coordinate_patch(toy_model, activation, layer, source_id, target_id, k=1)
+    expected = solve_coordinate_patch(activation, dictionary, source_id, target_id, k=1)
+
+    assert isinstance(result, CoordinatePatch)
+    assert torch.equal(result.support_after, expected.support_after)
+    torch.testing.assert_close(result.coordinates_after, expected.coordinates_after)
+    torch.testing.assert_close(result.patched, expected.patched)
+
+
+def test_coordinate_patch_prompt_matches_manual_activation_and_reuses_decomposition(
+    toy_model: _ToyBridge, fitted_lens: JacobianLens
+) -> None:
+    layer, position, k = 0, -1, 3
+    tokens = toy_model.to_tokens("a toy prompt")
+    hook = f"blocks.{layer}.hook_out"
+    _, cache = toy_model.run_with_cache(tokens, names_filter=lambda name: name == hook)
+    activation = cache[hook][0, position, :]
+    dictionary = fitted_lens.lens_vector_dictionary(toy_model, layer)
+    decomposition = get_sparse_decomposition(activation.float(), dictionary, k)
+    source_id = int(decomposition.support[0])
+    target_id = next(token_id for token_id in range(D_VOCAB) if token_id != source_id)
+
+    prompt_result = fitted_lens.coordinate_patch(
+        toy_model,
+        "a toy prompt",
+        layer,
+        source_id,
+        target_id,
+        position=position,
+        decomposition=decomposition,
+    )
+    raw_result = fitted_lens.coordinate_patch(
+        toy_model,
+        activation,
+        layer,
+        source_id,
+        target_id,
+        decomposition=decomposition,
+    )
+
+    assert torch.equal(prompt_result.support_after, raw_result.support_after)
+    torch.testing.assert_close(prompt_result.coordinates_after, raw_result.coordinates_after)
+    torch.testing.assert_close(prompt_result.patched, raw_result.patched)
+
+
+def test_coordinate_patch_resolves_string_tokens(
+    toy_model: _ToyBridge, fitted_lens: JacobianLens
+) -> None:
+    layer = 0
+    source_token = "abc"
+    target_token = "abcde"
+    source_id = toy_model.to_single_token(source_token)
+    dictionary = fitted_lens.lens_vector_dictionary(toy_model, layer)
+    activation = dictionary[source_id].clone()
+
+    result = fitted_lens.coordinate_patch(
+        toy_model, activation, layer, source_token, target_token, k=1
+    )
+
+    assert int(result.support_after[result.source_slot]) == source_id
+    assert int(result.support_after[result.target_slot]) == toy_model.to_single_token(target_token)
+
+
+def test_coordinate_patch_reuses_activation_validation(
+    toy_model: _ToyBridge, fitted_lens: JacobianLens
+) -> None:
+    with pytest.raises(ValueError, match="raw activation"):
+        fitted_lens.coordinate_patch(toy_model, "a toy prompt", 0, 3, 5, k=1)
+    with pytest.raises(ValueError, match="position is only valid"):
+        fitted_lens.coordinate_patch(toy_model, torch.randn(D_MODEL), 0, 3, 5, position=0, k=1)
+
+
+def test_coordinate_patch_rejects_unfitted_layer(
+    toy_model: _ToyBridge, fitted_lens: JacobianLens
+) -> None:
+    """coordinate_patch shares decompose's resolution: the never-fitted final layer raises."""
+    with pytest.raises(ValueError):
+        fitted_lens.coordinate_patch(
+            toy_model, torch.randn(toy_model.cfg.d_model), N_LAYERS - 1, 3, 5, k=1
+        )
+
+
+def test_coordinate_patch_swap_matches_pseudoinverse_oracle() -> None:
+    """Restricted oracle: a planted two-atom positive swap matches the pseudoinverse intervention
+    swap_hooks performs, ``x + V(sigma(c) - c)`` with ``c = V^+ x``. The pseudoinverse appears only
+    in this test; the core never inverts a basis."""
+    dictionary = torch.tensor([[1.0, 0.0, 0.0], [0.6, 0.8, 0.0]])
+    activation = 2.0 * dictionary[0] + 3.0 * dictionary[1] + torch.tensor([0.0, 0.0, 4.0])
+
+    result = solve_coordinate_patch(
+        activation, dictionary, source_idx=0, target_idx=1, k=2, mode="swap"
+    )
+    basis = dictionary[[0, 1]].T
+    coordinates = torch.linalg.pinv(basis) @ activation
+    expected = activation + basis @ (coordinates[[1, 0]] - coordinates)
+
+    torch.testing.assert_close(result.patched, expected, atol=1e-5, rtol=1e-5)
+
+
+def _fit_lens_with_parallel_target(*, exact: bool) -> tuple["_ToyBridge", JacobianLens]:
+    """Fit a lens on a model whose token-5 unembedding is (near-)parallel to token 3's, so the
+    lens vectors for 3 and 5 collide."""
+    model = _ToyBridge()
+    with torch.no_grad():
+        source = model.unembed.weight[3]
+        if exact:
+            model.unembed.weight[5].copy_(2 * source)
+        else:
+            noise = torch.randn_like(source)
+            noise -= noise.dot(source) / source.square().sum() * source
+            noise *= 0.05 * source.norm() / noise.norm()  # cosine ~= 0.99875
+            model.unembed.weight[5].copy_(source + noise)
+    lens = JacobianLens.fit(
+        model,
+        ["a toy prompt"],
+        corpus=CORPUS,
+        dim_batch=4,
+        skip_first_positions=SKIP_FIRST,
+        show_progress=False,
+    )
+    return model, lens
+
+
+def _pin_source_atom(
+    model: "_ToyBridge", lens: JacobianLens
+) -> tuple[torch.Tensor, JSpaceDecomposition]:
+    """A supplied decomposition that pins atom 3 active, so the near-duplicate atom 5 cannot shadow
+    it during selection. ``activation = 2 * dictionary[3]`` lies exactly in that atom's span."""
+    activation = 2.0 * lens.lens_vector_dictionary(model, 0)[3]
+    decomposition = JSpaceDecomposition(
+        support=torch.tensor([3]),
+        coordinates=torch.tensor([2.0]),
+        selected_support=torch.tensor([3]),
+        reconstruction=activation.clone(),
+        j_space_component=activation.clone(),
+        non_j_space_component=torch.zeros_like(activation),
+    )
+    return activation, decomposition
+
+
+def test_coordinate_patch_propagates_core_near_parallel_warning() -> None:
+    """The wrapper adds no warning handling: the core's near-parallel warning surfaces unchanged."""
+    model, lens = _fit_lens_with_parallel_target(exact=False)
+    activation, decomposition = _pin_source_atom(model, lens)
+    with pytest.warns(UserWarning, match="near-parallel"):
+        lens.coordinate_patch(model, activation, 0, 3, 5, decomposition=decomposition)
+
+
+def test_coordinate_patch_propagates_core_conditioning_warning() -> None:
+    """A colinear target makes the edit basis rank deficient; that core warning must propagate."""
+    model, lens = _fit_lens_with_parallel_target(exact=True)
+    activation, decomposition = _pin_source_atom(model, lens)
+    with pytest.warns(UserWarning, match="rank deficient"):
+        lens.coordinate_patch(model, activation, 0, 3, 5, decomposition=decomposition)
 
 
 def test_occupancy_on_toy_model_raw_activation(

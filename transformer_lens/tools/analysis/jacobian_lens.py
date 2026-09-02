@@ -60,7 +60,6 @@ Example::
     print(result.top_tokens(model.tokenizer, k=5)[8][-1])  # layer 8, final position
 """
 
-import math
 import warnings
 from dataclasses import dataclass
 from importlib.metadata import version
@@ -70,11 +69,16 @@ import torch
 from jaxtyping import Float, Int
 from tqdm.auto import tqdm
 
+from transformer_lens.tools.analysis.jacobian_lens_coordinate_patch import (
+    CoordinatePatch,
+    solve_coordinate_patch,
+)
 from transformer_lens.tools.analysis.jacobian_lens_decomposition import (
     DEFAULT_K,
     JSpaceDecomposition,
     JSpaceOccupancy,
     JSpaceVarianceProfile,
+    _diagnose_intervention_pair,
     estimate_occupancy,
     get_sparse_decomposition,
 )
@@ -126,8 +130,6 @@ def _resolve_registry_entry(name_or_path: str) -> Optional[Tuple[str, str]]:
 # and the final position (no next-token target), matching the reference implementation.
 DEFAULT_SKIP_FIRST_POSITIONS = 16
 DEFAULT_TOP_K = 10
-_SWAP_WARN_COSINE = 0.99
-_SWAP_ERROR_COSINE = 0.999
 
 # Keys written by fit() that must not appear in converted-lens metadata so that
 # merge() can refuse to mix TL-fitted lenses with externally converted ones.
@@ -910,6 +912,65 @@ class JacobianLens:
             activation.float().to(dictionary.device), dictionary, k, algorithm=algorithm
         )
 
+    @torch.no_grad()
+    def coordinate_patch(
+        self,
+        model: Any,
+        activation_or_prompt: Union[torch.Tensor, str],
+        layer: int,
+        source_token: TokenInput,
+        target_token: TokenInput,
+        *,
+        position: Optional[int] = None,
+        decomposition: Optional[JSpaceDecomposition] = None,
+        k: int = DEFAULT_K,
+        mode: str = "substitute",
+        alpha: float = 1.0,
+        algorithm: str = "nonnegative_orthogonal_matching_pursuit",
+    ) -> CoordinatePatch:
+        """Patch sparse J-space coordinates for an activation at ``layer``.
+
+        The activation may be a raw ``[d_model]`` vector or a prompt paired with ``position``,
+        exactly as in :meth:`decompose`. ``source_token`` must occur in the active sparse support.
+        ``substitute`` replaces the target coordinate with the source coordinate and zeros the
+        source; ``swap`` exchanges them. Other coordinates and ``x - reconstruction`` are fixed.
+
+        A supplied ``decomposition`` avoids repeating the vocabulary-scale sparse solve after its
+        activation and dictionary compatibility have been validated.
+
+        Args:
+            model: A raw ``TransformerBridge``.
+            activation_or_prompt: An activation vector, or a prompt (string / token tensor).
+            layer: Source layer (must be a fitted source layer).
+            source_token: Active source concept, as a single-token string or token id.
+            target_token: Distinct target concept, as a single-token string or token id.
+            position: Token position when a prompt is given; ``None`` for a raw activation.
+            decomposition: Optional compatible decomposition of this activation and dictionary.
+            k: Sparse-solver upper bound when ``decomposition`` is not supplied.
+            mode: ``"substitute"`` or ``"swap"``.
+            alpha: Finite interpolation strength; zero is an exact no-op.
+            algorithm: Sparse coefficient-update rule when solving a fresh decomposition.
+
+        Returns:
+            A :class:`CoordinatePatch` containing the edited frame, diagnostics, and activation.
+        """
+        activation, resolved_layer = self._resolve_activation(
+            model, activation_or_prompt, layer, position
+        )
+        dictionary = self.lens_vector_dictionary(model, resolved_layer)
+        source_id, target_id = _to_token_ids(model, [source_token, target_token])
+        return solve_coordinate_patch(
+            activation.float().to(dictionary.device),
+            dictionary,
+            source_id,
+            target_id,
+            decomposition=decomposition,
+            k=k,
+            mode=mode,
+            alpha=alpha,
+            algorithm=algorithm,
+        )
+
     def _resolve_activation(
         self,
         model: Any,
@@ -920,8 +981,9 @@ class JacobianLens:
         """Validate the model and layer, then resolve either a raw ``[d_model]`` activation or a
         prompt plus ``position`` to the activation vector to analyse.
 
-        Returns ``(activation, resolved_layer)``. Shared by :meth:`decompose` and
-        :meth:`occupancy` so both accept the same input forms with identical validation.
+        Returns ``(activation, resolved_layer)``. Shared by :meth:`decompose`,
+        :meth:`coordinate_patch`, and :meth:`occupancy` so all accept the same input forms with
+        identical validation.
         """
         self.validate_model(model)
         resolved_layer = _normalize_layer(layer, model.cfg.n_layers)
@@ -934,8 +996,8 @@ class JacobianLens:
         if position is None:
             if not isinstance(activation_or_prompt, torch.Tensor):
                 raise ValueError(
-                    "decompose expects a raw activation tensor when position is None; pass a "
-                    "prompt together with a position to decompose a model activation"
+                    "analysis expects a raw activation tensor when position is None; pass a "
+                    "prompt together with a position to analyze a model activation"
                 )
             activation = activation_or_prompt
             if activation.ndim != 1 or activation.shape[0] != self.d_model:
@@ -956,7 +1018,7 @@ class JacobianLens:
             )
             if tokens.ndim != 2 or tokens.shape[0] != 1:
                 raise ValueError(
-                    f"decompose expects a single prompt; got shape {tuple(tokens.shape)}"
+                    f"analysis expects a single prompt; got shape {tuple(tokens.shape)}"
                 )
             hook_name = _resid_post_hook_name(resolved_layer)
             _, cache = model.run_with_cache(tokens, names_filter=lambda name: name == hook_name)
@@ -1284,19 +1346,9 @@ class JacobianLens:
         for layer in [_normalize_layer(layer, model.cfg.n_layers) for layer in layers]:
             vectors = self.lens_vectors(model, [source_id, target_id], layer)
             units = _unit_rows(vectors, layer=layer)
-            cosine = abs(float((units[0] @ units[1]).item()))
-            if not math.isfinite(cosine) or cosine >= _SWAP_ERROR_COSINE:
-                raise ValueError(
-                    f"swap vectors at layer {layer} are numerically near-parallel "
-                    f"(abs cosine={cosine:.6f}); choose better-separated concepts"
-                )
-            if cosine >= _SWAP_WARN_COSINE:
-                warnings.warn(
-                    f"swap vectors at layer {layer} are poorly conditioned "
-                    f"(abs cosine={cosine:.6f}); the intervention may be amplified",
-                    UserWarning,
-                    stacklevel=2,
-                )
+            _diagnose_intervention_pair(
+                units, description=f"swap vectors at layer {layer}", stacklevel=3
+            )
             basis = vectors.T  # [d, 2]
             pinv = torch.linalg.pinv(basis)  # [2, d]
             device_basis: Dict[torch.device, torch.Tensor] = {}

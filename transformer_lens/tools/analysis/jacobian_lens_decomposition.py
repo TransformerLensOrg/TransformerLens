@@ -60,6 +60,7 @@ References:
 from __future__ import annotations
 
 import math
+import warnings
 from dataclasses import dataclass
 from typing import Dict, List, Tuple
 
@@ -98,6 +99,37 @@ _CORRELATION_RELATIVE_TOLERANCE = math.sqrt(torch.finfo(torch.float32).eps)
 #: approximately a no-op. Both the anchored coordinate patch and ``JacobianLens.swap_hooks``
 #: read this one definition so their near-parallel diagnostics never drift apart.
 _SWAP_WARN_COSINE = 0.99
+#: Above this cosine ``swap_hooks`` refuses the intervention: inverting a two-atom basis whose
+#: columns are near-collinear is numerically hopeless. The anchored coordinate patch inverts
+#: nothing, so it only reads ``_SWAP_WARN_COSINE`` and never raises on this threshold.
+_SWAP_ERROR_COSINE = 0.999
+
+
+def _diagnose_intervention_pair(
+    unit_vectors: torch.Tensor, *, description: str, stacklevel: int
+) -> float:
+    """Apply the shared near-parallel warn/raise policy to two unit-normalized vectors.
+
+    Returns the signed cosine. Warns above :data:`_SWAP_WARN_COSINE` and raises above
+    :data:`_SWAP_ERROR_COSINE`. Used by interventions that invert a two-atom basis (e.g.
+    ``swap_hooks``); the anchored coordinate patch, which performs no inverse, warns without
+    raising and does not call this helper.
+    """
+    cosine = float((unit_vectors[0] @ unit_vectors[1]).item())
+    abs_cosine = abs(cosine)
+    if not math.isfinite(abs_cosine) or abs_cosine >= _SWAP_ERROR_COSINE:
+        raise ValueError(
+            f"{description} are numerically near-parallel "
+            f"(abs cosine={abs_cosine:.6f}); choose better-separated concepts"
+        )
+    if abs_cosine >= _SWAP_WARN_COSINE:
+        warnings.warn(
+            f"{description} are poorly conditioned "
+            f"(abs cosine={abs_cosine:.6f}); the intervention may be amplified",
+            UserWarning,
+            stacklevel=stacklevel,
+        )
+    return cosine
 
 
 @dataclass
