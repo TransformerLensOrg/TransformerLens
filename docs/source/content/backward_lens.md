@@ -34,7 +34,8 @@ The two projections expose different residual-width factors:
 | `input_projection` (FF1 / `c_fc`) | `[d_model, d_mlp]` | Forward input $x_i$ | `[position, d_model]` |
 | `output_projection` (FF2 / `c_proj`) | `[d_mlp, d_model]` | Backward signal $\delta_i$ | `[position, d_model]` |
 
-The FF1 readout therefore describes the residual-stream directions entering the MLP.
+The FF1 readout therefore describes the layer-normalized residual state entering the
+MLP (post-`ln_2`, including its gain and bias).
 The FF2 readout describes raw loss gradients at the MLP output. These are different
 quantities and should not be interpreted interchangeably.
 
@@ -116,8 +117,9 @@ target_ranks = ff2.gradient_descent_target_ranks(
 
 `target_token` must encode to exactly one token without a beginning-of-sequence token.
 For GPT-2 tokenization, a leading space is often significant. The prompt is tokenized
-normally, including its prepended BOS token; all position-indexed factors and readouts
-align with `result.prompt_token_ids`.
+according to the model and tokenizer configuration, so it includes a prepended BOS
+only when that configuration requests one. Treat `result.prompt_token_ids` as the
+source of truth for aligning all position-indexed factors and readouts.
 
 ## Result structure
 
@@ -184,6 +186,7 @@ activation-editing hooks still affect the analyzed computation.
 
 ## References
 
+- [TransformerLens Backward Lens demonstration](https://github.com/TransformerLensOrg/TransformerLens/blob/dev/demos/Backward_Lens_Demo.ipynb).
 - Shahar Katz, Yonatan Belinkov, Mor Geva, and Lior Wolf. 2024.
   [Backward Lens: Projecting Language Model Gradients into the Vocabulary Space](https://aclanthology.org/2024.emnlp-main.142/).
   *Proceedings of EMNLP 2024*, pages 2390–2422.

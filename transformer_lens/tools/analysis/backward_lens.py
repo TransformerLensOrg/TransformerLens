@@ -198,9 +198,10 @@ class BackwardLensResult:
     scalar cross-entropy of the final-position next-token prediction against the
     target; it preserves the ``d(loss)/d(...)`` sign convention and is not negated.
     ``prompt_token_ids`` is an owned CPU int64 tensor with shape ``[position]``;
-    position zero is the prepended BOS, and every residual-width factor in
-    ``layers`` is aligned to these same positions. ``layers`` preserves requested
-    order. Maximum errors summarize both matrices over every requested layer.
+    every residual-width factor in ``layers`` is aligned to these same positions.
+    Position zero is a prepended BOS only when the model and tokenizer configuration
+    requests one. ``layers`` preserves requested order. Maximum errors summarize
+    both matrices over every requested layer.
     ``includes_normalized_logits`` records whether the Normalized Logit Lens was
     computed. ``includes_full_logits`` records whether full vocabulary tensors
     were retained in addition to bounded rankings. No model or tokenizer reference

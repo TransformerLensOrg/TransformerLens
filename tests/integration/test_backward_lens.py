@@ -70,6 +70,8 @@ def test_real_gpt2_factors_reconstruct_both_mlp_weight_gradients(
     assert gradient_capture.prompt_token_ids.device.type == "cpu"
     expected_tokens = gpt2_bridge.to_tokens(PROMPT)
     assert torch.equal(gradient_capture.prompt_token_ids, expected_tokens)
+    assert gpt2_bridge.tokenizer is not None
+    assert gradient_capture.prompt_token_ids[0, 0].item() == gpt2_bridge.tokenizer.bos_token_id
     with torch.no_grad():
         logits = gpt2_bridge(expected_tokens)
         expected_loss = F.cross_entropy(
