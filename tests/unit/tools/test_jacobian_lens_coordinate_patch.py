@@ -212,6 +212,24 @@ def test_rejects_incompatible_precomputed_decomposition() -> None:
         solve_coordinate_patch(activation, changed_dictionary, 0, 2, decomposition=decomposition)
 
 
+def test_rejects_scaled_but_self_consistent_decomposition() -> None:
+    activation, dictionary = _problem()
+    decomposition = get_sparse_decomposition(activation, dictionary, k=2)
+
+    # Scale the (reconstruction, coordinates) pair together. The pair stays internally
+    # consistent with the dictionary and still agrees with the untouched j-space
+    # components, so every self-referential check passes -- but the coordinates are no
+    # longer the NNLS fit of the activation, which the x-coupled stationarity check must
+    # catch instead of silently anchoring the edit to a wrong residual.
+    scaled = replace(
+        decomposition,
+        coordinates=decomposition.coordinates * 2.0,
+        reconstruction=decomposition.reconstruction * 2.0,
+    )
+    with pytest.raises(ValueError, match="activation"):
+        solve_coordinate_patch(activation, dictionary, 0, 1, decomposition=scaled)
+
+
 def test_rejects_malformed_precomputed_decomposition() -> None:
     activation, dictionary = _problem()
     decomposition = get_sparse_decomposition(activation, dictionary, k=2)

@@ -15,6 +15,7 @@ from transformer_lens.tools.analysis.jacobian_lens_decomposition import (
     DEFAULT_K,
     JSpaceDecomposition,
     _linalg_on_cpu_if_mps,
+    _validate_nnls_kkt,
     get_sparse_decomposition,
 )
 
@@ -187,6 +188,27 @@ def _validate_decomposition(
     expected_reconstruction = support_atoms.T @ coordinates
     if not _close(local_vectors[0], expected_reconstruction):
         raise ValueError("precomputed decomposition reconstruction is incompatible with dictionary")
+    # Couple the coordinates to ``target`` (the activation), not just to the dictionary: the
+    # reconstruction/dictionary check above passes for any self-consistently scaled pair, so a
+    # wrongly-scaled decomposition would slip through and silently anchor the edit to a bogus
+    # residual. Reuse the solver's NNLS KKT stationarity test -- the active coordinates are all
+    # strictly positive (validated above), so stationarity ``A^T (target - A c) == 0`` is the
+    # exact condition for ``c`` being the nonnegative fit of ``target`` over the active support.
+    # Tolerances mirror the solver's result-dtype certification (sqrt(eps) of the float32
+    # coordinates) so genuine float32-rounded decompositions are not falsely rejected.
+    active_atoms = support_atoms.T
+    tiny = torch.finfo(target.dtype).tiny
+    relative_tolerance = math.sqrt(torch.finfo(target.dtype).eps)
+    atom_norms = active_atoms.norm(dim=0).clamp_min(tiny)
+    scale = (target.norm() + (active_atoms.abs() @ coordinates.abs()).norm()).clamp_min(tiny)
+    dual_tol = relative_tolerance * atom_norms * scale
+    coefficient_tol = relative_tolerance * scale / atom_norms
+    try:
+        _validate_nnls_kkt(active_atoms, target, coordinates, dual_tol, coefficient_tol)
+    except RuntimeError as error:
+        raise ValueError(
+            f"precomputed decomposition coordinates do not fit the activation ({error})"
+        ) from error
     if not _close(local_vectors[1] + local_vectors[2], target):
         raise ValueError("precomputed decomposition is incompatible with activation")
     if selected_cpu.numel():
