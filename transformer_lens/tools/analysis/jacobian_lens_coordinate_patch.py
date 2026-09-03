@@ -14,6 +14,7 @@ from transformer_lens.tools.analysis.jacobian_lens_decomposition import (
     _SWAP_WARN_COSINE,
     DEFAULT_K,
     JSpaceDecomposition,
+    _linalg_on_cpu_if_mps,
     get_sparse_decomposition,
 )
 
@@ -190,14 +191,11 @@ def _validate_decomposition(
         raise ValueError("precomputed decomposition is incompatible with activation")
     if selected_cpu.numel():
         selected_atoms = dictionary[selected_cpu].float().T
-        if target.device.type == "mps":
-            work_atoms = selected_atoms.cpu()
-            work_target = target.cpu()
-            expected_component = (work_atoms @ (torch.linalg.pinv(work_atoms) @ work_target)).to(
-                target.device
-            )
-        else:
-            expected_component = selected_atoms @ (torch.linalg.pinv(selected_atoms) @ target)
+        expected_component = _linalg_on_cpu_if_mps(
+            lambda atoms, vector: atoms @ (torch.linalg.pinv(atoms) @ vector),
+            selected_atoms,
+            target,
+        )
     else:
         expected_component = torch.zeros_like(target)
     if not _close(local_vectors[1], expected_component):

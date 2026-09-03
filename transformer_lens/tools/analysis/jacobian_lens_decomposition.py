@@ -62,7 +62,7 @@ from __future__ import annotations
 import math
 import warnings
 from dataclasses import dataclass
-from typing import Dict, List, Tuple
+from typing import Callable, Dict, List, Tuple
 
 import torch
 
@@ -103,6 +103,21 @@ _SWAP_WARN_COSINE = 0.99
 #: columns are near-collinear is numerically hopeless. The anchored coordinate patch inverts
 #: nothing, so it only reads ``_SWAP_WARN_COSINE`` and never raises on this threshold.
 _SWAP_ERROR_COSINE = 0.999
+
+
+def _linalg_on_cpu_if_mps(op: Callable[..., torch.Tensor], *tensors: torch.Tensor) -> torch.Tensor:
+    """Run a linear-algebra op that MPS lacks a kernel for, restoring the input device.
+
+    Several LAPACK-backed ``torch.linalg`` routines (``pinv``, ``svdvals``) are unimplemented on
+    the MPS backend, so callers must round-trip through CPU. This centralizes the shared
+    detect-device -> ``.cpu()`` -> op -> restore idiom: off MPS ``op`` is called on the input
+    tensors unchanged, and on MPS it is called on their CPU copies with the result moved back to
+    the input device. All inputs must share one device.
+    """
+    device = tensors[0].device
+    if device.type == "mps":
+        return op(*(tensor.cpu() for tensor in tensors)).to(device)
+    return op(*tensors)
 
 
 def _diagnose_intervention_pair(
@@ -473,14 +488,11 @@ def get_sparse_decomposition(
     # swap_hooks. That span can be larger than the active support when a selected coordinate is
     # zero, so the projection differs from the nonnegative reconstruction in that case.
     if selected:
-        if target.device.type == "mps":
-            work_atoms = selected_atoms.cpu()
-            work_target = target.cpu()
-            j_space_component = (work_atoms @ (torch.linalg.pinv(work_atoms) @ work_target)).to(
-                target.device
-            )
-        else:
-            j_space_component = selected_atoms @ (torch.linalg.pinv(selected_atoms) @ target)
+        j_space_component = _linalg_on_cpu_if_mps(
+            lambda atoms, vector: atoms @ (torch.linalg.pinv(atoms) @ vector),
+            selected_atoms,
+            target,
+        )
     else:
         j_space_component = target.new_zeros(d_model)
     non_j_space_component = target - j_space_component
