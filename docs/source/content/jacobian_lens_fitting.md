@@ -235,6 +235,11 @@ include the fitting provenance and validation results.
 
 ## Sparse decomposition (J-space coordinates)
 
+A detailed open-weight A–F replication is available in the
+[Jacobian Lens decomposition demo](../generated/demos/Jacobian_Lens_Decomposition_Demo).
+It profiles selected-span variance, random-control occupancy, ranked-readout overlap,
+solver trade-offs, and decomposition-guided causal ablations.
+
 A fitted lens also decomposes an activation into the concepts it is *disposed to say*.
 `JacobianLens.decompose` writes an activation `x` at layer ℓ as a sparse **nonnegative**
 combination of J-lens vectors `v_t = J_ℓ^T W_U[:, t]` (one direction per vocabulary token),

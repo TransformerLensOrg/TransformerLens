@@ -59,6 +59,7 @@ content/compatibility_mode
 content/ssm_interpretability
 content/projection_kernel
 content/jacobian_lens_fitting
+generated/demos/Jacobian_Lens_Decomposition_Demo
 content/debugging_numerical_divergence
 generated/demos/Main_Demo
 generated/demos/Exploratory_Analysis_Demo
