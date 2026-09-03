@@ -103,6 +103,19 @@ def test_alpha_interpolates_and_zero_is_bit_exact() -> None:
     assert zero.patched.data_ptr() != activation.data_ptr()
 
 
+def test_small_alpha_delta_is_proportional_not_floored() -> None:
+    activation, dictionary = _problem()
+    decomposition = get_sparse_decomposition(activation, dictionary, k=2)
+    full = solve_coordinate_patch(activation, dictionary, 0, 2, decomposition=decomposition)
+    tiny = solve_coordinate_patch(
+        activation, dictionary, 0, 2, decomposition=decomposition, alpha=1e-4
+    )
+
+    # delta scales strictly with alpha: no alpha-independent recompute floor survives at 1e-4.
+    torch.testing.assert_close(tiny.delta, 1e-4 * full.delta, rtol=1e-3, atol=1e-7)
+    assert float(tiny.delta.abs().max()) < 1e-3
+
+
 def test_preserves_reconstruction_residual_not_selected_span_residual() -> None:
     dictionary = torch.eye(3)
     activation = torch.tensor([2.0, -1.0, 3.0])

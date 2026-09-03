@@ -45,15 +45,21 @@ class CoordinatePatch:
             overwrites an already-active target; ``None`` when the target was absent or ``mode`` is
             ``"swap"`` (a swap relocates a coordinate and discards nothing).
         reconstruction_before: Sparse reconstruction from ``support_before``.
-        reconstruction_after: Reconstruction from ``support_after`` and ``coordinates_after``.
+        reconstruction_after: ``reconstruction_before + delta``, the anchored reconstruction after
+            the edit.
         residual: Anchored residual ``x - reconstruction_before``. This is not necessarily the
             decomposition's orthogonal ``non_j_space_component``.
-        delta: ``reconstruction_after - reconstruction_before``.
-        patched: ``x + delta``; an unchanged clone of the float32 input when ``alpha`` is zero.
+        delta: ``basis @ (coordinates_after - coordinates_before)``; equivalently
+            ``reconstruction_after - reconstruction_before``. Exactly zero and proportional to
+            ``alpha``, so it carries no recompute floor.
+        patched: ``x + delta``; equal to the float32 input when ``alpha`` is zero, where ``delta``
+            is then exactly zero.
         nonedited_coordinate_max_delta: Maximum absolute change across every coordinate that is
             neither source nor target. A postcondition witness: it must be numerically zero.
-        residual_max_delta: Maximum absolute difference between ``patched - reconstruction_after``
-            and ``residual``. A postcondition witness: the anchored residual must be preserved.
+        residual_max_delta: Maximum absolute difference between ``residual`` and
+            ``patched - dictionary[support_after].T @ coordinates_after``, the reconstruction
+            recomputed independently from the dictionary rows. A postcondition witness: the
+            anchored residual must be preserved.
         source_target_cosine: Signed cosine between the source and target atoms.
         basis_rank: Numerical rank of the column-normalized edit basis at float32 precision.
         basis_condition_number: Condition number of that basis, or infinity when rank deficient.
@@ -351,14 +357,13 @@ def solve_coordinate_patch(
 
     reconstruction_before = decomposition.reconstruction.float().to(dictionary.device).clone()
     residual = target - reconstruction_before
-    if float(alpha) == 0.0:
-        reconstruction_after = reconstruction_before.clone()
-        delta = torch.zeros_like(target)
-        patched = target.clone()
-    else:
-        reconstruction_after = basis @ coordinates_after
-        delta = reconstruction_after - reconstruction_before
-        patched = target + delta
+    # Move the reconstruction by the coordinate change alone. This is exactly zero at alpha=0
+    # (no special case) and strictly proportional to alpha, so ``patched`` has no recompute floor
+    # and is continuous through the origin. ``reconstruction_after`` stays anchored to the stored
+    # ``reconstruction_before`` so the residual ``x - reconstruction_before`` is preserved exactly.
+    delta = basis @ (coordinates_after - coordinates_before)
+    reconstruction_after = reconstruction_before + delta
+    patched = target + delta
 
     nonedited_max, residual_max = _postcondition_witnesses(
         coordinates_before,
@@ -366,7 +371,7 @@ def solve_coordinate_patch(
         source_slot,
         target_slot,
         patched,
-        reconstruction_after,
+        basis,
         residual,
     )
     return CoordinatePatch(
@@ -397,7 +402,7 @@ def _postcondition_witnesses(
     source_slot: int,
     target_slot: int,
     patched: torch.Tensor,
-    reconstruction_after: torch.Tensor,
+    basis: torch.Tensor,
     residual: torch.Tensor,
 ) -> tuple[float, float]:
     """Measure — and enforce — that the edit only moved the source/target coordinates.
@@ -405,6 +410,11 @@ def _postcondition_witnesses(
     Diagnostic reductions run in float64 on CPU (the decomposition module's convention). Returns
     ``(nonedited_coordinate_max_delta, residual_max_delta)``; raises if either exceeds a float32
     tolerance, since the anchored edit must leave every other coordinate and the residual intact.
+
+    The residual witness recomputes the reconstruction independently from the dictionary rows
+    (``basis @ coordinates_after``) rather than reusing the ``delta`` that built ``patched``, so a
+    basis/coordinate misalignment surfaces as ``patched - basis @ coordinates_after`` drifting from
+    ``residual`` instead of cancelling as an algebraic identity of the construction.
     """
     before = coordinates_before.detach().cpu().double()
     after = coordinates_after.detach().cpu().double()
@@ -416,9 +426,8 @@ def _postcondition_witnesses(
     )
 
     residual64 = residual.detach().cpu().double()
-    recovered_residual = (
-        patched.detach().cpu().double() - reconstruction_after.detach().cpu().double()
-    )
+    independent_reconstruction = (basis @ coordinates_after).detach().cpu().double()
+    recovered_residual = patched.detach().cpu().double() - independent_reconstruction
     residual_max = float((recovered_residual - residual64).abs().max().item())
 
     magnitude = max(1.0, float(residual64.abs().max().item()), float(before.abs().max().item()))
