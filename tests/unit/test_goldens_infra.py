@@ -7,16 +7,12 @@ and the deterministic checksum/sampling helpers on synthetic tensors.
 from __future__ import annotations
 
 import json
-import sys
-from pathlib import Path
 
 import pytest
 import torch
 
-sys.path.insert(0, str(Path(__file__).parents[2] / "scripts"))
-import capture_ht_goldens as capture  # noqa: E402
-
-from tests import goldens  # noqa: E402
+from tests import goldens
+from tests import goldens_capture_spec as capture  # noqa: E402
 
 
 @pytest.fixture()

@@ -14,7 +14,7 @@ import torch
 from jaxtyping import Float
 
 from tests import goldens
-from transformer_lens import utils
+from transformer_lens import utilities as utils
 from transformer_lens.model_bridge import TransformerBridge
 
 # ---------------------------------------------------------------------------

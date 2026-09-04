@@ -1,13 +1,9 @@
-"""Guard: surviving modules' doctests must not construct HookedTransformer.
+"""Guard: no module's doctests may construct HookedTransformer.
 
-The v4 removal deletes the Hooked* implementation files; any OTHER module whose
-docstring examples build a HookedTransformer would turn the docstring test tier
-red the moment those files go. This guard makes the removal safe by
-construction: it fails the instant such an example is (re)introduced.
-
-The Hooked* implementation files themselves (and the legacy train module) are
-exempt — their docstrings legitimately describe the class they implement, and
-they are deleted wholesale by the removal PR.
+HookedTransformer was removed in 4.0. No surviving module's docstring examples
+may build it — doing so would fail the docstring test tier — so this guard
+fails the instant such an example is (re)introduced. With the class gone there
+are no exempt files left; every ``.py`` under the package is checked.
 """
 
 import re
@@ -15,16 +11,9 @@ from pathlib import Path
 
 PACKAGE_ROOT = Path(__file__).parents[2] / "transformer_lens"
 
-# Deleted wholesale by the Hooked* removal — their own docstrings are exempt.
-EXEMPT = {
-    "HookedTransformer.py",
-    "HookedRootModule.py",
-    "HookedEncoder.py",
-    "HookedEncoderDecoder.py",
-    "HookedAudioEncoder.py",
-    "train.py",
-}
-EXEMPT_DIRS = {"components", "factories"}
+# The Hooked* implementation files are deleted, so nothing is exempt anymore.
+EXEMPT: set[str] = set()
+EXEMPT_DIRS: set[str] = set()
 
 # A doctest example line (>>> or ... continuation) that references the class at
 # all — construction, import, or isinstance: any of them turns the docstring

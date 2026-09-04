@@ -5,7 +5,7 @@ cache entries and attention masks.
 """
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, List, Union, cast
+from typing import List, Union
 
 import torch
 from jaxtyping import Int
@@ -14,11 +14,6 @@ from transformer_lens.config.transformer_lens_config import TransformerLensConfi
 from transformer_lens.utilities.multi_gpu import get_device_for_block_index
 
 from .key_value_cache_entry import TransformerLensKeyValueCacheEntry
-
-if TYPE_CHECKING:
-    from transformer_lens.config.hooked_transformer_config import (
-        HookedTransformerConfig,
-    )
 
 
 @dataclass
@@ -38,16 +33,14 @@ class TransformerLensKeyValueCache:
     @classmethod
     def init_cache(
         cls,
-        cfg: Union[TransformerLensConfig, "HookedTransformerConfig"],
+        cfg: TransformerLensConfig,
         device: Union[torch.device, str, None],
         batch_size: int = 1,
     ):
         # Determine device for each layer
         if hasattr(cfg, "n_devices"):
             # HookedTransformer case: use our multi-GPU logic
-            device_for_layer = lambda i: get_device_for_block_index(
-                i, cast("HookedTransformerConfig", cfg), device
-            )
+            device_for_layer = lambda i: get_device_for_block_index(i, cfg, device)
         else:
             # Fallback when no model is provided - use single device
             fallback_device = device if device is not None else cfg.device

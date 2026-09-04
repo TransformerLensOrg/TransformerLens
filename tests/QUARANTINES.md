@@ -56,14 +56,9 @@ A `[vllm]` extra exists (Linux-only marker; declared conflicting with `[lit]` in
 
 | Path | Marker | Required |
 |---|---|---|
-| [`unit/test_next_sentence_prediction.py`:131](unit/test_next_sentence_prediction.py) | `skipif(not cuda)` | Any CUDA |
-| [`unit/model_bridge/compatibility/test_next_sentence_prediction.py`:88](unit/model_bridge/compatibility/test_next_sentence_prediction.py) | `skipif(not cuda)` | Any CUDA |
 | [`unit/test_generate_no_tokenizer.py`:112](unit/test_generate_no_tokenizer.py) | `skipif(not cuda)` | Any CUDA |
 | [`unit/model_bridge/test_driver_protocol.py`:103](unit/model_bridge/test_driver_protocol.py) | `skipif(not cuda)` | Any CUDA |
 | [`unit/test_weight_processing.py`:475](unit/test_weight_processing.py) | `skipif(not cuda and not mps)` (cross-device fold) | Any non-CPU accelerator |
-| [`acceptance/test_hooked_encoder.py`:171](acceptance/test_hooked_encoder.py) | `skipif(mps or not cuda)` (bf16/fp16) | CUDA, non-MPS |
-| [`acceptance/test_hooked_encoder.py`:226](acceptance/test_hooked_encoder.py) | `skipif(not cuda)` | Any CUDA |
-| [`acceptance/test_hooked_encoder_decoder.py`:460](acceptance/test_hooked_encoder_decoder.py) | `skipif(not cuda)` | Any CUDA |
 | [`acceptance/model_bridge/test_bridge_multigpu.py`](acceptance/model_bridge/test_bridge_multigpu.py) module-level | `multigpu` marker + `skipif(device_count < 2)` | 2+ CUDA |
 | [`acceptance/model_bridge/test_bridge_multigpu_device_map.py`](acceptance/model_bridge/test_bridge_multigpu_device_map.py) module-level | `multigpu` marker + `skipif(device_count < 2)` | 2+ CUDA |
 | [`mps/test_mps_basic.py`](mps/test_mps_basic.py) module-level | `skipif(not mps)` | Apple Silicon |
@@ -165,7 +160,6 @@ the encoder modules enabled.
 | [`unit/model_bridge/supported_architectures/test_qwen3_5_adapter.py`:448,464,494,514,605,700,805,947,1133](unit/model_bridge/supported_architectures/test_qwen3_5_adapter.py) | `skipif` ×9 | Qwen3_5 classes absent from installed transformers |
 | [`unit/model_bridge/supported_architectures/test_qwen3_next_adapter.py`:397](unit/model_bridge/supported_architectures/test_qwen3_next_adapter.py) | `skipif` | Qwen3NextForCausalLM absent from installed transformers |
 | [`integration/test_weight_processing_integration.py`:279](integration/test_weight_processing_integration.py) | `skip` | Weight-processing edge case |
-| [`integration/test_hooked_encoder_properties.py`:71](integration/test_hooked_encoder_properties.py) | `xfail` | HookedEncoder properties |
 | [`acceptance/model_bridge/compatibility/test_backward_hooks.py`:11](acceptance/model_bridge/compatibility/test_backward_hooks.py) | `skip` | Backward-hook compatibility |
 
 **Un-skip:** debug the underlying issue and remove the marker. Each removal lands in a focused PR with a regression test.

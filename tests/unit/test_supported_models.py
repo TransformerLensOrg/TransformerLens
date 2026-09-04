@@ -1,5 +1,8 @@
-from transformer_lens.loading_from_pretrained import get_official_model_name
-from transformer_lens.supported_models import MODEL_ALIASES, OFFICIAL_MODEL_NAMES
+from transformer_lens.supported_models import (
+    MODEL_ALIASES,
+    OFFICIAL_MODEL_NAMES,
+    get_official_model_name,
+)
 
 OLMO3_BASE_MODELS = {
     "allenai/Olmo-3-1025-7B": "olmo-3-1025-7b",
@@ -19,6 +22,13 @@ def test_model_aliases_is_alphabetical():
     expected_keys = sorted(actual_keys, key=str.casefold)
 
     assert actual_keys == expected_keys, "MODEL_ALIASES keys are not in alphabetical order. "
+
+
+def test_get_official_model_name_raises_on_unknown():
+    import pytest
+
+    with pytest.raises(ValueError, match="not an official model name"):
+        get_official_model_name("definitely-not-a-real-model-xyz")
 
 
 def test_olmo3_base_models_have_supported_aliases():

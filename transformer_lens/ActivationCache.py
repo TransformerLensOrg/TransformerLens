@@ -203,7 +203,7 @@ class ActivationCache:
         shorthand naming conventions.
 
         It also supports tuples for advanced indexing, with the dimension order as (name, layer_index, layer_type).
-        See :func:`transformer_lens.utils.get_act_name` for how shorthand is converted to a full name.
+        See :func:`transformer_lens.utilities.get_act_name` for how shorthand is converted to a full name.
 
 
         Args:

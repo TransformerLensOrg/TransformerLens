@@ -268,3 +268,18 @@ MODEL_ALIASES: dict[str, list[str]] = load_model_aliases()
 DEFAULT_MODEL_ALIASES: list[str] = [
     MODEL_ALIASES[name][0] if name in MODEL_ALIASES else name for name in OFFICIAL_MODEL_NAMES
 ]
+
+
+def get_official_model_name(model_name: str) -> str:
+    """Resolve a HookedTransformer-era alias to its official HF name.
+
+    Identity for an already-official name; raises for an unknown one. Rehomed
+    from the deleted ``loading_from_pretrained`` so the legacy-compatibility
+    ledger and alias-drift tooling keep a canonical resolver.
+    """
+    if model_name in OFFICIAL_MODEL_NAMES:
+        return model_name
+    for official_name, aliases in MODEL_ALIASES.items():
+        if model_name in aliases:
+            return official_name
+    raise ValueError(f"{model_name!r} is not an official model name or a known alias.")

@@ -54,17 +54,3 @@ def model_info_cfg(cfg):
     # TODO: WeightConversionFactory import needs to be updated or removed
     print(f"Hook conversion details for architecture {cfg.original_architecture}:")
     print("Hook conversion factory not yet implemented")
-
-
-def model_info(model_name):
-    """
-    Displays the weight conversion from HuggingFace to TransformerLens for a given model name.
-
-    Args:
-        model_name (str): Name of the pretrained model to analyze
-                            (e.g., 'gpt2', 'bert-base-uncased', etc.)
-    """
-    from transformer_lens.loading_from_pretrained import get_pretrained_model_config
-
-    cfg = get_pretrained_model_config(model_name)
-    model_info_cfg(cfg)
