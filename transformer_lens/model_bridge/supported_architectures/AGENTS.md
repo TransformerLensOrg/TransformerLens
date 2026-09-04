@@ -117,16 +117,20 @@ Rule of thumb: if the model card or HF source mentions a numerical knob, assume 
 
 Default is a no-op pass-through. Override when a numerical op HF applies natively in forward must also be baked into raw weights — otherwise `bridge.enable_compatibility_mode()` (which calls `process_weights` expecting the math to already be in the weights) diverges.
 
+If HF applies the same factor outside the module whose weight is being folded, `preprocess_weights()` is only half the change: the wrapped HF forward would otherwise apply the factor again. Track whether the fold occurred, then override `postprocess_weights()` to neutralize the outer runtime factor after the processed weights have been installed. If the wrapped model does not expose that runtime attribute, there is no outer factor to neutralize and the fold is already complete.
+
 > **Trigger:** if a config attr changes the forward-pass math AND isn't re-applied by compat-mode weight processing, fold it into the relevant weight in `preprocess_weights()`.
 
 Examples:
 
-- **Cohere** — `cfg.logit_scale` (default `0.0625`) folds into `unembed.weight`. HF forward multiplies logits by `logit_scale`; compat-mode doesn't.
+- **Cohere** — `cfg.logit_scale` (default `0.0625`) folds into `unembed.weight`, then `postprocess_weights()` neutralizes the model-level `logit_scale` that HF forward would otherwise apply again.
 - **Gemma1/2/3** — embedding scale (`√d_model`) folds into `embed.weight`. HF's `GemmaTextScaledWordEmbedding` scales on forward; compat-mode reads raw.
 
 Skeleton:
 
 ```python
+from typing import Any
+
 import torch
 
 def preprocess_weights(self, state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
@@ -135,13 +139,25 @@ def preprocess_weights(self, state_dict: dict[str, torch.Tensor]) -> dict[str, t
     bridge.py clones unembed.weight before calling this, so the scale does not
     leak into the tied embed.weight.
     """
+    self._scale_fold_pending = False
     scale: float = getattr(self.cfg, "<attr>")  # set in __init__
     if scale != 1.0:  # no-op when scale is identity
         key = "unembed.weight"
         if key in state_dict:
             orig_dtype = state_dict[key].dtype
             state_dict[key] = (state_dict[key].float() * scale).to(orig_dtype)
+            self._scale_fold_pending = True
     return state_dict
+
+def postprocess_weights(self, bridge: Any) -> None:
+    """Neutralize the outer runtime factor after installing folded weights."""
+    if not self._scale_fold_pending:
+        return
+
+    model = getattr(bridge, "original_model", None)
+    if model is not None and hasattr(model, "<attr>"):
+        setattr(model, "<attr>", 1.0)
+    self._scale_fold_pending = False
 ```
 
 **Skip the override when:** the op lives inside an HF submodule the bridge delegates to (e.g. RoPE inside `CohereRotaryEmbedding`) — HF forward applies it on both paths, parity is free.

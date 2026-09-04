@@ -15,6 +15,10 @@ from typing import Any, List, Literal, Optional, Sequence, Tuple, cast
 import torch
 from jaxtyping import Bool, Float, Int
 
+from transformer_lens.tools.analysis.jacobian_lens_decomposition import (
+    _linalg_on_cpu_if_mps,
+)
+
 AttentionRole = Literal["Q", "K", "V", "O"]
 LayerOrder = Literal["forward", "all"]
 HeadKind = Literal["query", "kv"]
@@ -365,9 +369,7 @@ def _clamp_principal_cosines(cosines: torch.Tensor) -> torch.Tensor:
 
 def _singular_values(matrix: torch.Tensor) -> torch.Tensor:
     """Compute singular values with an explicit MPS CPU fallback."""
-    if matrix.device.type == "mps":
-        return torch.linalg.svdvals(matrix.cpu()).to(device=matrix.device)
-    return torch.linalg.svdvals(matrix)
+    return _linalg_on_cpu_if_mps(torch.linalg.svdvals, matrix)
 
 
 def projection_kernel(

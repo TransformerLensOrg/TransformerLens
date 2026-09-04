@@ -347,6 +347,13 @@ class ArchitectureAdapter:
         """
         return state_dict
 
+    def postprocess_weights(self, bridge: Any) -> None:
+        """Apply architecture-specific updates after processed weights are installed.
+
+        Args:
+            bridge: The TransformerBridge whose live source components received the weights.
+        """
+
     def get_component_mapping(self) -> ComponentMapping:
         """Get the full component mapping.
 

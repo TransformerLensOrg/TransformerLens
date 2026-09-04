@@ -114,6 +114,16 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
     model, regardless of the underlying architecture. It uses an architecture adapter
     to map between the TransformerLens and HuggingFace model structures.
 
+    Stateless reparametrization is unsupported
+    ------------------------------------------
+
+    ``torch.func.functional_call`` (and ``torch.nn.utils.stateless``) fails to
+    restore parameters through this tree: each replaced component is registered
+    both inside the wrapped HF model and as a bridge submodule, and torch's
+    tied-weight handling double-swaps the shared slot, leaving the override
+    installed. For temporary weight edits use
+    :func:`transformer_lens.utilities.temporarily_swap_parameter`.
+
     Tokenization notes
     ------------------
 
@@ -767,6 +777,8 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             state_dict=state_dict,
             component_mapping=self.real_components,
         )
+        if adapter is not None:
+            adapter.postprocess_weights(self)
 
     def to_tokens(
         self,

@@ -752,6 +752,7 @@ def copy_demos(_app: Optional[Any] = None):
     copy_to_dir = GENERATED_DIR / "demos"
     notebooks_to_copy = [
         "Exploratory_Analysis_Demo.ipynb",
+        "Jacobian_Lens_Decomposition_Demo.ipynb",
         "Main_Demo.ipynb",
     ]
 
