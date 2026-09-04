@@ -129,14 +129,28 @@ def _validate_index(name: str, value: int, num_atoms: int) -> int:
     return index
 
 
-def _close(actual: torch.Tensor, expected: torch.Tensor) -> bool:
+def _close(actual: torch.Tensor, expected: torch.Tensor, condition_number: float = 1.0) -> bool:
+    # The base tolerance certifies a well-conditioned comparison. When ``expected`` is recomputed
+    # through an ill-conditioned span (a pinv projection), the float32 recompute error grows with
+    # the span's condition number, so scale the tolerance by it: a fixed 32-eps floor otherwise
+    # rejects an exactly-valid hand-built decomposition whose activation lies near the span's
+    # null direction. ``condition_number`` clamps to one so well-conditioned checks stay strict.
     if actual.shape != expected.shape:
         return False
     magnitude = torch.stack([actual.abs().max(), expected.abs().max()]).max()
-    tolerance = 32 * torch.finfo(torch.float32).eps
+    tolerance = 32 * torch.finfo(torch.float32).eps * max(condition_number, 1.0)
     return bool(
         torch.allclose(actual, expected, rtol=tolerance, atol=tolerance * float(magnitude.item()))
     )
+
+
+def _condition_number(atoms: torch.Tensor) -> float:
+    """Condition number of a column matrix, on CPU when the device lacks an ``svdvals`` kernel."""
+    singular_values = _linalg_on_cpu_if_mps(torch.linalg.svdvals, atoms)
+    smallest = float(singular_values.min().item())
+    if smallest <= 0.0:
+        return math.inf
+    return float(singular_values.max().item()) / smallest
 
 
 def _validate_decomposition(
@@ -185,8 +199,18 @@ def _validate_decomposition(
     if not all(bool(torch.isfinite(vector).all()) for vector in local_vectors):
         raise ValueError("precomputed decomposition contains non-finite vector outputs")
     support_atoms = dictionary[support_cpu].float()
+    # Measure the selected span's conditioning once and relax the compatibility checks by it: the
+    # pinv projection recompute below (and the dictionary reconstruction) inherit float32 error
+    # that grows with this condition number, so a fixed tolerance would reject a genuinely valid
+    # decomposition on an ill-conditioned span (see ``_close``).
+    if selected_cpu.numel():
+        selected_atoms = dictionary[selected_cpu].float().T
+        span_condition = _condition_number(selected_atoms)
+    else:
+        selected_atoms = None
+        span_condition = 1.0
     expected_reconstruction = support_atoms.T @ coordinates
-    if not _close(local_vectors[0], expected_reconstruction):
+    if not _close(local_vectors[0], expected_reconstruction, span_condition):
         raise ValueError("precomputed decomposition reconstruction is incompatible with dictionary")
     # Couple the coordinates to ``target`` (the activation), not just to the dictionary: the
     # reconstruction/dictionary check above passes for any self-consistently scaled pair, so a
@@ -209,10 +233,9 @@ def _validate_decomposition(
         raise ValueError(
             f"precomputed decomposition coordinates do not fit the activation ({error})"
         ) from error
-    if not _close(local_vectors[1] + local_vectors[2], target):
+    if not _close(local_vectors[1] + local_vectors[2], target, span_condition):
         raise ValueError("precomputed decomposition is incompatible with activation")
-    if selected_cpu.numel():
-        selected_atoms = dictionary[selected_cpu].float().T
+    if selected_atoms is not None:
         expected_component = _linalg_on_cpu_if_mps(
             lambda atoms, vector: atoms @ (torch.linalg.pinv(atoms) @ vector),
             selected_atoms,
@@ -220,7 +243,7 @@ def _validate_decomposition(
         )
     else:
         expected_component = torch.zeros_like(target)
-    if not _close(local_vectors[1], expected_component):
+    if not _close(local_vectors[1], expected_component, span_condition):
         raise ValueError("precomputed decomposition selected span is incompatible with dictionary")
 
 
@@ -232,7 +255,12 @@ def _basis_diagnostics(basis: torch.Tensor) -> tuple[int, float]:
     """
     normalized = basis / torch.linalg.vector_norm(basis, dim=0, keepdim=True)
     diagnostic_basis = normalized.detach().cpu().double()
-    rank_rtol = torch.finfo(torch.float32).eps * max(diagnostic_basis.shape)
+    # Scale the rank tolerance by the column count (the number of edit atoms), not ``max(shape)``.
+    # ``basis`` is ``[d_model, num_atoms]`` with ``d_model >> num_atoms``, so ``max(shape)`` is the
+    # d_model row count; for ``d_model >= ~2896`` its ``eps * d_model`` tolerance exceeds the
+    # smallest singular value of a genuinely full-rank basis, mislabelling it rank deficient
+    # (condition number=inf) at model scale. Column count is the dimension that bounds the rank.
+    rank_rtol = torch.finfo(torch.float32).eps * diagnostic_basis.shape[1]
     rank = int(torch.linalg.matrix_rank(diagnostic_basis, rtol=rank_rtol).item())
     if rank < diagnostic_basis.shape[1]:
         condition = math.inf

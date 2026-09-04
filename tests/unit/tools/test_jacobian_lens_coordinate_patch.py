@@ -416,3 +416,74 @@ def test_well_conditioned_control_emits_no_warning() -> None:
         result = solve_coordinate_patch(activation, dictionary, 0, 2, k=2)
 
     assert torch.isfinite(result.patched).all()
+
+
+def test_large_d_model_full_rank_basis_reports_finite_condition() -> None:
+    """C2: the rank tolerance must scale by the column count, not the d_model row count.
+
+    A full-rank but poorly conditioned edit basis stays finite at model scale. Scaling the
+    rank tolerance by ``max(shape)`` (the d_model row count) instead crosses the smallest
+    singular value once ``d_model >= ~2896``, reporting the basis as rank deficient with an
+    infinite condition number on Llama/Mistral/Gemma-scale dictionaries.
+    """
+    d_model = 3000
+
+    def _atom(*entries: tuple[int, float]) -> torch.Tensor:
+        atom = torch.zeros(d_model)
+        for index, value in entries:
+            atom[index] = value
+        return atom
+
+    dictionary = torch.stack(
+        [_atom((0, 1.0)), _atom((1, 1.0)), _atom((0, 1.0), (1, 1.0), (2, 1e-4)), _atom((3, 1.0))]
+    )
+    activation = dictionary[0] + dictionary[1] + dictionary[2]
+    selected_atoms = dictionary[[0, 1, 2]].T
+    component = selected_atoms @ torch.linalg.pinv(selected_atoms) @ activation
+    decomposition = JSpaceDecomposition(
+        support=torch.tensor([0, 1, 2]),
+        coordinates=torch.ones(3),
+        selected_support=torch.tensor([0, 1, 2]),
+        reconstruction=activation.clone(),
+        j_space_component=component,
+        non_j_space_component=activation - component,
+    )
+
+    with pytest.warns(UserWarning, match="condition number="):
+        result = solve_coordinate_patch(activation, dictionary, 0, 3, decomposition=decomposition)
+
+    assert result.basis_rank == 4
+    assert math.isfinite(result.basis_condition_number)
+
+
+def test_high_condition_decomposition_is_accepted() -> None:
+    """C8: the compatibility tolerance must scale with the selected span's condition number.
+
+    An exactly valid, hand-built decomposition is rejected by a fixed 32-eps tolerance when the
+    activation lies along the near-null direction of an ill-conditioned selected span: the
+    float32 pinv recompute of the projection then diverges by ~cond*eps. Scaling the tolerance
+    with the measured condition number keeps the genuine decomposition valid.
+    """
+    separation = 1e-3  # atom1/atom2 near-parallel; their difference direction is e2
+    atom0 = torch.tensor([1.0, 0.0, 0.0, 0.0])  # active support and edit source
+    atom1 = torch.tensor([0.0, 1.0, 0.0, 0.0])
+    atom2 = torch.tensor([0.0, 1.0, separation, 0.0])
+    atom2 = atom2 / atom2.norm()
+    target_atom = torch.tensor([0.0, 0.0, 0.0, 1.0])  # appended by the edit
+    dictionary = torch.stack([atom0, atom1, atom2, target_atom])
+
+    # The activation sits in the selected span but concentrates on e2, the ill-conditioned
+    # (near-null) direction of the atom1/atom2 pair, so recovering it needs the amplifying inverse.
+    activation = atom0 + torch.tensor([0.0, 0.0, 1.0, 0.0])
+    decomposition = JSpaceDecomposition(
+        support=torch.tensor([0]),
+        coordinates=torch.tensor([1.0]),  # NNLS fit of the activation over the active atom e0
+        selected_support=torch.tensor([0, 1, 2]),
+        reconstruction=atom0.clone(),
+        j_space_component=activation.clone(),  # activation lies entirely in the selected span
+        non_j_space_component=torch.zeros(4),
+    )
+
+    result = solve_coordinate_patch(activation, dictionary, 0, 3, decomposition=decomposition)
+
+    assert torch.isfinite(result.patched).all()
