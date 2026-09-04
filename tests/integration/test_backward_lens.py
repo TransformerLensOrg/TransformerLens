@@ -121,24 +121,16 @@ def test_gradient_descent_weight_update_increases_target_logit(
     weight_gradient = layer_result.output_projection.weight_gradient.to(
         device=weight.device, dtype=weight.dtype
     )
-    parameter_name = next(
-        name
-        for name, parameter in gpt2_bridge.original_model.named_parameters()
-        if parameter is weight
-    )
     updated_weight = original_weight - 1e-4 * weight_gradient
+    prompt_token_ids = gradient_capture.prompt_token_ids.to(weight.device)
 
     with torch.no_grad():
-        baseline_output = torch.func.functional_call(
-            gpt2_bridge.original_model,
-            {parameter_name: original_weight},
-            (gradient_capture.prompt_token_ids.to(weight.device),),
-        )
-        updated_output = torch.func.functional_call(
-            gpt2_bridge.original_model,
-            {parameter_name: updated_weight},
-            (gradient_capture.prompt_token_ids.to(weight.device),),
-        )
+        baseline_output = gpt2_bridge.original_model(prompt_token_ids)
+        weight.copy_(updated_weight)
+        try:
+            updated_output = gpt2_bridge.original_model(prompt_token_ids)
+        finally:
+            weight.copy_(original_weight)
 
     baseline_target_logit = baseline_output.logits[0, -1, gradient_capture.target_token_id]
     updated_target_logit = updated_output.logits[0, -1, gradient_capture.target_token_id]
