@@ -331,14 +331,14 @@ and source and target must be distinct.
 Both diagnostics warn but never raise, because an anchored reconstruction needs no inverse:
 
 - **Poor conditioning.** When the column-normalized active-plus-target basis is rank deficient or its
-  `basis_condition_number` exceeds the threshold, coordinate patching emits a `UserWarning` that
-  names the measured condition number; coordinate attribution is then non-unique, but the edit still
-  completes.
+  `basis_condition_number` exceeds `1 / sqrt(float32 eps)` (≈ 2896), coordinate patching emits a
+  `UserWarning` that names the measured condition number; coordinate attribution is then non-unique,
+  but the edit still completes.
 - **Near-parallel source/target.** When the absolute source–target cosine (reported signed in
-  `source_target_cosine`) exceeds the shared `_SWAP_WARN_COSINE` threshold, coordinate patching emits
-  a `UserWarning` that names the measured cosine, since a swap between near-parallel atoms is close to
-  a no-op. Unlike `swap_hooks`, which raises above `_SWAP_ERROR_COSINE`, the patch core only warns at
-  the parallel extreme.
+  `source_target_cosine`) exceeds `_SWAP_WARN_COSINE` (0.99), coordinate patching emits a
+  `UserWarning` that names the measured cosine, since a swap between near-parallel atoms is close to
+  a no-op. Unlike `swap_hooks`, which raises above `_SWAP_ERROR_COSINE` (0.999), the patch core only
+  warns at the parallel extreme.
 
 Read the measured condition number and cosine straight out of each warning message (and from the
 `basis_condition_number` and `source_target_cosine` fields on the returned `CoordinatePatch`) to
