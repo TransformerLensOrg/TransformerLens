@@ -42,10 +42,22 @@ class CoordinatePatch:
         coordinates_after: Coordinates after applying ``mode`` and ``alpha``.
         source_slot: Position of the source atom within ``support_after``.
         target_slot: Position of the target atom within ``support_after``.
-        target_was_appended: Whether the target was absent and appended to ``support_after``.
-        overwritten_target_coordinate: The discarded old target coordinate when a ``substitute``
-            overwrites an already-active target; ``None`` when the target was absent or ``mode`` is
-            ``"swap"`` (a swap relocates a coordinate and discards nothing).
+        target_was_appended: Whether the target was absent from the active support and appended
+            to ``support_after``. ``target_was_selected`` disambiguates why: pursuit may never
+            have considered the target at all, or may have selected it and then assigned it a
+            zero coordinate.
+        target_was_selected: Whether the target atom was selected by pursuit
+            (``decomposition.selected_support``), whether or not it ended up numerically active.
+            ``target_was_appended and not target_was_selected`` means pursuit never considered the
+            target; ``target_was_appended and target_was_selected`` means pursuit selected it but
+            assigned it a zero coordinate. Always ``True`` when ``target_was_appended`` is
+            ``False``, since the active support is a subset of the selected support.
+        overwritten_target_coordinate: The old target coordinate that a ``substitute`` discards
+            when it overwrites an already-active target; ``None`` when the target was absent or
+            ``mode`` is ``"swap"`` (a swap relocates a coordinate and discards nothing).
+            Alpha-independent by design, like ``target_was_appended`` and the support fields: it
+            reports the coordinate the requested edit targets for replacement, not the blended
+            outcome, so it is non-``None`` even at ``alpha=0`` where nothing is actually discarded.
         reconstruction_before: Sparse reconstruction from ``support_before``.
         reconstruction_after: ``reconstruction_before + delta``, the anchored reconstruction after
             the edit.
@@ -65,6 +77,11 @@ class CoordinatePatch:
         source_target_cosine: Signed cosine between the source and target atoms.
         basis_rank: Numerical rank of the column-normalized edit basis at float32 precision.
         basis_condition_number: Condition number of that basis, or infinity when rank deficient.
+        coordinates_after_nonnegative: Whether every entry of ``coordinates_after`` is ``>= 0``.
+            ``alpha`` in ``[0, 1]`` interpolates within the nonnegative pursuit frame and always
+            leaves this ``True``; an ``alpha`` outside that range (e.g. ``2.0`` or ``-1.0``)
+            extrapolates and can drive a coordinate negative, in which case this is ``False`` and
+            a warning is raised.
     """
 
     support_before: torch.Tensor
@@ -74,6 +91,7 @@ class CoordinatePatch:
     source_slot: int
     target_slot: int
     target_was_appended: bool
+    target_was_selected: bool
     overwritten_target_coordinate: Optional[float]
     reconstruction_before: torch.Tensor
     reconstruction_after: torch.Tensor
@@ -85,6 +103,7 @@ class CoordinatePatch:
     source_target_cosine: float
     basis_rank: int
     basis_condition_number: float
+    coordinates_after_nonnegative: bool
 
 
 def _validate_inputs(
@@ -302,6 +321,27 @@ def _warn_if_near_parallel(pair_units: torch.Tensor) -> float:
     return cosine
 
 
+def _warn_if_alpha_extrapolates(coordinates_after: torch.Tensor, alpha: float) -> bool:
+    """Warn (never raise) when ``alpha`` pushes ``coordinates_after`` outside ``c >= 0``.
+
+    ``alpha`` in ``[0, 1]`` interpolates within the nonnegative pursuit frame, but a caller passing
+    ``alpha`` outside that range (e.g. ``2.0`` or ``-1.0``) extrapolates past it and can leave a
+    coordinate negative -- meaningful only as an explicit extrapolation, not a fitted
+    decomposition. Non-fatal, matching ``_warn_if_near_parallel`` and ``_basis_diagnostics``: the
+    edit still completes and the caller can inspect the returned flag.
+    """
+    nonnegative = bool((coordinates_after >= 0).all().item())
+    if not nonnegative:
+        warnings.warn(
+            f"coordinate-patch alpha={alpha:g} extrapolates coordinates_after outside the "
+            "nonnegative pursuit frame (a coordinate is negative); treat the patch as an "
+            "extrapolation, not a fitted decomposition",
+            UserWarning,
+            stacklevel=3,
+        )
+    return nonnegative
+
+
 def solve_coordinate_patch(
     x: torch.Tensor,
     dictionary: torch.Tensor,
@@ -342,8 +382,9 @@ def solve_coordinate_patch(
             edit postcondition is violated.
 
     Warns:
-        UserWarning: If the source/target pair is near-parallel, or the normalized edit basis is
-            rank deficient or poorly conditioned. Both are non-fatal.
+        UserWarning: If the source/target pair is near-parallel, the normalized edit basis is
+            rank deficient or poorly conditioned, or ``alpha`` extrapolates ``coordinates_after``
+            outside the nonnegative pursuit frame. All three are non-fatal.
     """
     target, dictionary = _validate_inputs(x, dictionary)
     source_idx = _validate_index("source_idx", source_idx, dictionary.shape[0])
@@ -367,6 +408,9 @@ def solve_coordinate_patch(
     if source_idx not in support_ids:
         raise ValueError(f"source_idx={source_idx} is not in the decomposition's active support")
     target_was_active = target_idx in support_ids
+    target_was_selected = target_was_active or (
+        target_idx in decomposition.selected_support.detach().cpu().tolist()
+    )
     if target_was_active:
         support_after = support_before.clone()
         coordinates_before = decomposition.coordinates.float().to(dictionary.device).clone()
@@ -392,6 +436,7 @@ def solve_coordinate_patch(
         )
     edit_coordinates[target_slot] = source_coordinate
     coordinates_after = coordinates_before + float(alpha) * (edit_coordinates - coordinates_before)
+    coordinates_after_nonnegative = _warn_if_alpha_extrapolates(coordinates_after, float(alpha))
 
     pair = _validate_atom_rows(
         dictionary,
@@ -430,6 +475,7 @@ def solve_coordinate_patch(
         source_slot=source_slot,
         target_slot=target_slot,
         target_was_appended=not target_was_active,
+        target_was_selected=target_was_selected,
         overwritten_target_coordinate=overwritten_target_coordinate,
         reconstruction_before=reconstruction_before.detach(),
         reconstruction_after=reconstruction_after.detach(),
@@ -441,6 +487,7 @@ def solve_coordinate_patch(
         source_target_cosine=cosine,
         basis_rank=rank,
         basis_condition_number=condition,
+        coordinates_after_nonnegative=coordinates_after_nonnegative,
     )
 
 

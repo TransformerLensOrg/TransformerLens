@@ -41,9 +41,36 @@ def test_substitute_appends_absent_target_and_preserves_frame() -> None:
     torch.testing.assert_close(result.patched, result.residual + result.reconstruction_after)
     torch.testing.assert_close(result.delta, torch.tensor([-2.0, 0.0, 2.0, 0.0, 0.0]))
     assert result.target_was_appended is True
+    assert result.target_was_selected is False
     assert result.overwritten_target_coordinate is None
     assert result.nonedited_coordinate_max_delta == pytest.approx(0.0, abs=1e-6)
     assert result.residual_max_delta == pytest.approx(0.0, abs=1e-6)
+
+
+def test_target_was_selected_true_when_pursuit_drops_it_to_zero() -> None:
+    """Q6: a target selected by pursuit but assigned a zero coordinate is distinguishable from a
+    target pursuit never considered -- both leave ``target_was_appended`` True, but only the
+    former leaves ``target_was_selected`` True."""
+    activation, dictionary = _problem()
+    decomposition = get_sparse_decomposition(activation, dictionary, k=2)
+    # Atom 2 is orthogonal to both selected atoms and to the activation, so folding it into
+    # ``selected_support`` (as if pursuit had picked it and the NNLS re-solve zeroed it) doesn't
+    # perturb ``j_space_component`` or any other validated quantity.
+    selected_with_dropped_target = replace(
+        decomposition,
+        selected_support=torch.cat([decomposition.selected_support, torch.tensor([2])]),
+    )
+
+    result = solve_coordinate_patch(
+        activation,
+        dictionary,
+        source_idx=0,
+        target_idx=2,
+        decomposition=selected_with_dropped_target,
+    )
+
+    assert result.target_was_appended is True
+    assert result.target_was_selected is True
 
 
 def test_active_target_substitute_overwrites_while_swap_exchanges() -> None:
@@ -62,6 +89,8 @@ def test_active_target_substitute_overwrites_while_swap_exchanges() -> None:
     torch.testing.assert_close(swap.patched, torch.tensor([5.0, 2.0, 0.0]))
     assert substitute.target_was_appended is False
     assert swap.target_was_appended is False
+    assert substitute.target_was_selected is True
+    assert swap.target_was_selected is True
 
 
 def test_overwritten_target_coordinate_reports_exact_discarded_value() -> None:
@@ -83,6 +112,23 @@ def test_overwritten_target_coordinate_reports_exact_discarded_value() -> None:
     assert substitute.overwritten_target_coordinate == pytest.approx(7.25)
     assert swap.overwritten_target_coordinate is None
     assert absent.overwritten_target_coordinate is None
+
+
+def test_overwritten_target_coordinate_is_alpha_independent_hypothetical_value() -> None:
+    """Q10: overwritten_target_coordinate reports the coordinate the requested substitute would
+    discard at full strength, independent of alpha -- so at alpha=0, where patched equals the
+    input and nothing is actually discarded, the field is still the hypothetical value rather
+    than None."""
+    dictionary = torch.eye(3)
+    activation = torch.tensor([2.0, 7.25, 0.0])
+    decomposition = get_sparse_decomposition(activation, dictionary, k=2)
+
+    result = solve_coordinate_patch(
+        activation, dictionary, 0, 1, decomposition=decomposition, mode="substitute", alpha=0.0
+    )
+
+    assert torch.equal(result.patched, activation)
+    assert result.overwritten_target_coordinate == pytest.approx(7.25)
 
 
 def test_alpha_interpolates_and_zero_is_bit_exact() -> None:
@@ -114,6 +160,31 @@ def test_small_alpha_delta_is_proportional_not_floored() -> None:
     # delta scales strictly with alpha: no alpha-independent recompute floor survives at 1e-4.
     torch.testing.assert_close(tiny.delta, 1e-4 * full.delta, rtol=1e-3, atol=1e-7)
     assert float(tiny.delta.abs().max()) < 1e-3
+
+
+def test_alpha_within_unit_interval_stays_in_nonnegative_orthant() -> None:
+    """Q5: alpha in [0, 1] never leaves the nonnegative pursuit frame."""
+    activation, dictionary = _problem()
+
+    result = solve_coordinate_patch(activation, dictionary, 0, 2, k=2, alpha=0.5)
+
+    assert result.coordinates_after_nonnegative is True
+    assert bool((result.coordinates_after >= 0).all())
+
+
+def test_alpha_extrapolation_beyond_orthant_warns_and_flags() -> None:
+    """Q5: alpha outside [0, 1] (e.g. 2.0) can drive coordinates_after negative; this must warn
+    and be visible on the result rather than pass silently."""
+    activation, dictionary = _problem()
+    decomposition = get_sparse_decomposition(activation, dictionary, k=2)
+
+    with pytest.warns(UserWarning, match="extrapolat"):
+        result = solve_coordinate_patch(
+            activation, dictionary, 0, 2, decomposition=decomposition, alpha=2.0
+        )
+
+    assert result.coordinates_after_nonnegative is False
+    assert bool((result.coordinates_after < 0).any())
 
 
 def test_preserves_reconstruction_residual_not_selected_span_residual() -> None:
