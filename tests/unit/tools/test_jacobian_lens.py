@@ -930,6 +930,14 @@ def test_lens_vectors_rejects_empty_or_out_of_range_tokens(tokens: list[int]) ->
         _lens().lens_vectors(model, tokens, 0)
 
 
+@pytest.mark.parametrize("token", [True, False])
+def test_to_token_ids_rejects_bool(token: bool) -> None:
+    """A bool token must not silently coerce to id 1/0 via int(token)."""
+    model = _ToyBridge()
+    with pytest.raises(ValueError, match="bool"):
+        jacobian_lens_module._to_token_ids(model, [token])
+
+
 def _intervention_hooks(
     name: str,
     lens: JacobianLens,

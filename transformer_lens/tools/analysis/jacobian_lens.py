@@ -1748,6 +1748,8 @@ def _to_token_ids(model: Any, tokens: Union[TokenInput, Sequence[TokenInput]]) -
     for token in tokens:
         if isinstance(token, str):
             ids.append(model.to_single_token(token))
+        elif isinstance(token, bool):
+            raise ValueError(f"token {token!r} must be a string or integer token id, not bool")
         else:
             ids.append(int(token))
     if not ids:
