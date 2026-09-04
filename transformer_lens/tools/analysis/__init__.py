@@ -13,7 +13,8 @@ Tools:
       analysis.
     - jacobian_lens: The Jacobian lens (J-lens) — per-layer causal transport to
       the output vocabulary basis, with loading of published lens artifacts,
-      native fitting, readouts, interventions, and J-space sparse decomposition.
+      native fitting, readouts, interventions, J-space sparse decomposition, and
+      anchored coordinate patching.
     - projection_kernel: Basis-invariant subspace overlap and TransformerBridge
       attention-head OQ/OK/OV affinity.
 """
@@ -39,6 +40,10 @@ from transformer_lens.tools.analysis.direct_path_patching import (
 from transformer_lens.tools.analysis.jacobian_lens import (
     JacobianLens,
     JacobianLensReadout,
+)
+from transformer_lens.tools.analysis.jacobian_lens_coordinate_patch import (
+    CoordinatePatch,
+    solve_coordinate_patch,
 )
 from transformer_lens.tools.analysis.jacobian_lens_decomposition import (
     JSpaceDecomposition,
@@ -66,6 +71,7 @@ __all__ = [
     "BackwardLensLayerResult",
     "BackwardLensMatrixResult",
     "BackwardLensResult",
+    "CoordinatePatch",
     "DirectLogitAttribution",
     "HeadAffinityPair",
     "HeadAffinityResult",
@@ -90,4 +96,5 @@ __all__ = [
     "orthonormal_subspace",
     "projection_kernel",
     "random_projection_kernel_moments",
+    "solve_coordinate_patch",
 ]
