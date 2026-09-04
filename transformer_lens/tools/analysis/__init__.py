@@ -5,6 +5,8 @@ sit on top of the hook/cache system. Model support is documented per tool;
 new analyses may target the ``TransformerBridge`` API exclusively.
 
 Tools:
+    - backward_lens: GPT-2 MLP weight-gradient factors projected into vocabulary
+      space with explicit raw-gradient sign semantics.
     - direct_logit_attribution: Direct Logit Attribution (DLA) over components,
       layers, or attention heads.
     - direct_path_patching: Direct path patching for head-to-head circuit
@@ -17,6 +19,16 @@ Tools:
       attention-head OQ/OK/OV affinity.
 """
 
+from transformer_lens.tools.analysis.backward_lens import (
+    BackwardLens,
+    BackwardLensLayerResult,
+    BackwardLensMatrixResult,
+    BackwardLensResult,
+    LinearGradientFactors,
+    ProjectedFactor,
+    VocabularyRanking,
+    WeightLayout,
+)
 from transformer_lens.tools.analysis.direct_logit_attribution import (
     DirectLogitAttribution,
     direct_logit_attribution,
@@ -55,6 +67,10 @@ from transformer_lens.tools.analysis.projection_kernel import (
 
 __all__ = [
     "AttentionHeadRef",
+    "BackwardLens",
+    "BackwardLensLayerResult",
+    "BackwardLensMatrixResult",
+    "BackwardLensResult",
     "CoordinatePatch",
     "DirectLogitAttribution",
     "HeadAffinityPair",
@@ -64,9 +80,13 @@ __all__ = [
     "JSpaceVarianceProfile",
     "JacobianLens",
     "JacobianLensReadout",
+    "LinearGradientFactors",
+    "ProjectedFactor",
     "ProjectionKernelResult",
     "RandomSubspaceReference",
     "SubspaceBasis",
+    "VocabularyRanking",
+    "WeightLayout",
     "attention_head_subspace_affinity",
     "direct_logit_attribution",
     "estimate_occupancy",
