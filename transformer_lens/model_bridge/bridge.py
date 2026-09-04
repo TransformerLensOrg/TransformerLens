@@ -1268,6 +1268,8 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             state_dict=state_dict,
             component_mapping=self.real_components,
         )
+        if adapter is not None:
+            adapter.postprocess_weights(self)
 
     def _calculate_loss(self, logits, tokens, loss_per_token=False):
         """Calculate cross-entropy loss."""
