@@ -113,7 +113,18 @@ def detect_head(
     if isinstance(detection_pattern, str):
         assert detection_pattern in HEAD_NAMES, INVALID_HEAD_NAME_ERR % detection_pattern
         if isinstance(seq, list):
-            batch_scores = [detect_head(model, seq, detection_pattern) for seq in seq]
+            batch_scores = [
+                detect_head(
+                    model,
+                    batch_seq,
+                    detection_pattern,
+                    heads=heads,
+                    exclude_bos=exclude_bos,
+                    exclude_current_token=exclude_current_token,
+                    error_measure=error_measure,
+                )
+                for batch_seq in seq
+            ]
             return torch.stack(batch_scores).mean(0)
         detection_pattern = cast(
             torch.Tensor,
@@ -248,6 +259,12 @@ def compute_head_attention_similarity_score(
     # mul
 
     if error_measure == "mul":
+        # Clone before masking. attention_pattern is a view into the caller's
+        # ActivationCache, so masking in place permanently corrupts the cached
+        # pattern: its rows stop summing to 1 and every later use of that cache
+        # silently reads modified activations.
+        if exclude_bos or exclude_current_token:
+            attention_pattern = attention_pattern.clone()
         if exclude_bos:
             attention_pattern[:, 0] = 0
         if exclude_current_token:
