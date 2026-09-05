@@ -63,7 +63,17 @@ Example::
 import warnings
 from dataclasses import dataclass
 from importlib.metadata import version
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    MutableMapping,
+    Optional,
+    Sequence,
+    Tuple,
+    Union,
+)
 
 import torch
 from jaxtyping import Float, Int
@@ -72,6 +82,7 @@ from tqdm.auto import tqdm
 from transformer_lens.tools.analysis.jacobian_lens_coordinate_patch import (
     CoordinatePatch,
     solve_coordinate_patch,
+    solve_coordinate_patch_positions,
 )
 from transformer_lens.tools.analysis.jacobian_lens_decomposition import (
     DEFAULT_K,
@@ -1373,6 +1384,119 @@ class JacobianLens:
                     _make_intervention_hook(transform, positions, model.cfg.d_model),
                 )
             )
+        return hooks
+
+    def coordinate_patch_hooks(
+        self,
+        model: Any,
+        source_token: TokenInput,
+        target_token: TokenInput,
+        layers: Sequence[int],
+        *,
+        positions: Sequence[int],
+        decomposition_cache: Optional[
+            MutableMapping[Tuple[int, int, int], JSpaceDecomposition]
+        ] = None,
+        k: int = DEFAULT_K,
+        mode: str = "substitute",
+        alpha: float = 1.0,
+        algorithm: str = "nonnegative_orthogonal_matching_pursuit",
+    ) -> List[Tuple[str, Any]]:
+        """Hooks that anchor-patch one J-space coordinate live, per forward-pass position.
+
+        Unlike :meth:`coordinate_patch`, which edits one already-captured activation offline,
+        this installs a forward hook that solves :func:`solve_coordinate_patch` independently for
+        every ``(batch_idx, position)`` pair at each requested layer -- a vocabulary-scale sparse
+        decomposition per pair, per hook firing, unless ``decomposition_cache`` supplies one
+        already validated for that ``(layer, batch_idx, position)`` key.
+
+        Args:
+            model: The model the hooks will run on.
+            source_token: Active source concept, as a single-token string or token id.
+            target_token: Distinct target concept, as a single-token string or token id.
+            layers: Layers to intervene at.
+            positions: Chunk-local positions to patch (negative indices allowed and normalized on
+                every hook invocation). Required -- there is no full-sequence default, because a
+                silent default would trigger a vocabulary-scale solve at every position.
+            decomposition_cache: Optional caller-owned mapping from ``(layer, batch_idx,
+                position)`` to a previously validated
+                :class:`~transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceDecomposition`.
+                A hit skips the vocabulary-scale scan; a miss solves and populates the cache.
+                Purely a performance path -- correctness does not depend on it.
+            k: Sparse-solver upper bound on a cache miss.
+            mode: ``"substitute"`` or ``"swap"``.
+            alpha: Finite interpolation strength; zero is an exact no-op.
+            algorithm: Sparse coefficient-update rule on a cache miss.
+
+        Returns:
+            ``[(hook_name, fn), ...]`` for ``model.hooks(fwd_hooks=...)``.
+
+        Raises:
+            ValueError: If ``positions`` is empty, if ``source_token`` and ``target_token``
+                resolve to the same id, or if ``source_token`` is inactive at any ``(batch_idx,
+                position)`` pair touched by a hook firing (the whole forward pass fails rather
+                than silently patching a subset).
+
+        Warns:
+            UserWarning: Once per call, naming the number of layers and positions that will
+                perform a live vocabulary-scale solve on every cache miss.
+        """
+        self.validate_model(model)
+        if not positions:
+            raise ValueError("positions must contain at least one index")
+        resolved_layers = [_normalize_layer(layer, model.cfg.n_layers) for layer in layers]
+        source_id, target_id = _to_token_ids(model, [source_token, target_token])
+        if source_id == target_id:
+            raise ValueError(
+                "source_token and target_token resolve to the same token id; "
+                "a coordinate patch would be a silent no-op"
+            )
+        warnings.warn(
+            f"coordinate_patch_hooks installs {len(resolved_layers)} layer(s) x "
+            f"{len(positions)} position(s) of coordinate-patch hooks; every (batch, position) "
+            "pair not already present in decomposition_cache performs a vocabulary-scale sparse "
+            "decomposition on every forward pass",
+            UserWarning,
+            stacklevel=2,
+        )
+
+        requested = tuple(positions)
+        hooks = []
+        for layer in resolved_layers:
+            dictionary = self.lens_vector_dictionary(model, layer)
+
+            def hook_fn(
+                activation: Float[torch.Tensor, "batch pos d_model"],
+                hook: Any,
+                layer: int = layer,
+                dictionary: torch.Tensor = dictionary,
+            ) -> Float[torch.Tensor, "batch pos d_model"]:
+                hook_name = getattr(hook, "name", "intervention hook")
+                _validate_residual_activation(
+                    activation, d_model=model.cfg.d_model, hook_name=hook_name
+                )
+                normalized = _normalize_positions(requested, activation.shape[1])
+                selected = activation[:, normalized, :].float().to(dictionary.device)
+                patched, _ = solve_coordinate_patch_positions(
+                    selected,
+                    dictionary,
+                    normalized,
+                    source_id,
+                    target_id,
+                    layer=layer,
+                    decomposition_cache=decomposition_cache,
+                    k=k,
+                    mode=mode,
+                    alpha=alpha,
+                    algorithm=algorithm,
+                )
+                output = activation.clone()
+                output[:, normalized, :] = patched.to(
+                    device=activation.device, dtype=activation.dtype
+                )
+                return output
+
+            hooks.append((_resid_post_hook_name(layer), hook_fn))
         return hooks
 
     # ------------------------------------------------------------------ #
