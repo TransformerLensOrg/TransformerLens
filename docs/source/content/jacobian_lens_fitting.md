@@ -350,9 +350,53 @@ Read the measured condition number and cosine straight out of each warning messa
 judge how much to trust the edit.
 
 Without `decomposition=`, coordinate patching runs the vocabulary-scale sparse decomposition first.
-Reuse a compatible result for repeated edits to avoid that scan. The method returns an offline
-activation and diagnostics, not forward hooks; applying patches dynamically would otherwise perform
-a vocabulary-scale solve inside the model run.
+Reuse a compatible result for repeated edits to avoid that scan. `coordinate_patch` returns an
+offline activation and diagnostics, not forward hooks; see "Dynamic coordinate-patch hooks" below
+for the live variant, which performs the same scan per `(batch, position)` pair on every forward
+pass unless a cache hit avoids it.
+
+### Dynamic coordinate-patch hooks
+
+`JacobianLens.coordinate_patch_hooks` installs the same anchored edit as a forward hook, so it can
+run inside `model.run_with_hooks(...)` or `model.generate(...)` instead of on one pre-captured
+activation:
+
+```python
+hooks = lens.coordinate_patch_hooks(
+    model,
+    source_token=source_id,
+    target_token=" Paris",
+    layers=[6],
+    positions=[-1],
+    mode="substitute",
+)
+with model.hooks(fwd_hooks=hooks):
+    patched_logits = model(tokens)
+```
+
+Two departures from `coordinate_patch`, both deliberate:
+
+- **`positions` is required.** There is no full-sequence default: each hooked position performs
+  its own vocabulary-scale sparse decomposition (unless a cache hit avoids it), and a silent
+  full-sequence default would trigger that scan at every position without the caller asking for
+  it.
+- **`decomposition_cache` (optional, caller-owned).** A plain `dict` (or any `MutableMapping`)
+  keyed `(layer, batch_idx, position)`. Pass the same dict across repeated `model.hooks(...)` calls
+  on the same prompt (e.g. holding the prompt fixed while varying `alpha` or `mode` in an
+  interactive loop) to skip the vocabulary-scale scan on every hit; a miss solves once and
+  populates the cache. This is purely a performance path — a cache hit and a fresh solve produce
+  an identical patch.
+
+Every `(batch_idx, position)` pair gets its own independent decomposition and edit: a source
+concept inactive at one pair never affects another pair in the same batch or call. If the source
+is inactive at **any** pair touched by a hook firing, the whole forward pass raises — there is no
+silent partial application across a batch.
+
+Calling `coordinate_patch_hooks(...)` emits one `UserWarning` naming the number of layers and
+positions it installs, since every one of those `(layer, position)` combinations performs a live,
+vocabulary-scale solve on every forward pass unless `decomposition_cache` already has an entry for
+it. The conditioning and near-parallel warnings described above still fire from inside the hook,
+per pair, exactly as they would from an offline `coordinate_patch` call on that pair's activation.
 
 ### Interpreting the numbers honestly
 
