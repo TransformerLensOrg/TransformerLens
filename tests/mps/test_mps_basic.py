@@ -28,6 +28,7 @@ from transformer_lens.tools.analysis.projection_kernel import (
     SubspaceBasis,
     projection_kernel,
 )
+from transformer_lens.tools.analysis.sparse_probing import fit_sparse_probe
 
 # Skip the entire module on non-MPS runners (Linux CI, CPU-only Macs)
 pytestmark = pytest.mark.skipif(
@@ -197,6 +198,24 @@ def test_mps_projection_kernel_principal_angles():
         assert result.cosines.device.type == "mps"
         assert result.angles.device.type == "mps"
         assert result.cosines.cpu().tolist() == pytest.approx([1.0, 1.0])
+    finally:
+        _cleanup()
+
+
+def test_mps_sparse_probe_moves_selected_data_before_float64_conversion():
+    """Sparse probing reduces scores on MPS and fits selected columns on CPU."""
+    try:
+        generator = torch.Generator().manual_seed(0)
+        labels = torch.arange(80) % 2
+        features = torch.randn(80, 8, generator=generator)
+        features[:, 2] += 2 * (2 * labels - 1)
+
+        result = fit_sparse_probe(features.to("mps"), labels, k=2, seed=3)
+
+        assert result.selected_features[0].item() == 2
+        assert result.coefficients.device.type == "cpu"
+        assert result.coefficients.dtype == torch.float64
+        assert result.metrics.f1 > 0.9
     finally:
         _cleanup()
 

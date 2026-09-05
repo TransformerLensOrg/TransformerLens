@@ -6,7 +6,7 @@ import math
 import warnings
 from dataclasses import dataclass
 from numbers import Integral, Real
-from typing import Optional
+from typing import Dict, MutableMapping, Optional, Sequence, Tuple
 
 import torch
 
@@ -489,6 +489,99 @@ def solve_coordinate_patch(
         basis_condition_number=condition,
         coordinates_after_nonnegative=coordinates_after_nonnegative,
     )
+
+
+def solve_coordinate_patch_positions(
+    activations: torch.Tensor,
+    dictionary: torch.Tensor,
+    position_labels: Sequence[int],
+    source_idx: int,
+    target_idx: int,
+    *,
+    layer: int,
+    decomposition_cache: Optional[MutableMapping[Tuple[int, int, int], JSpaceDecomposition]] = None,
+    k: int = DEFAULT_K,
+    mode: str = "substitute",
+    alpha: float = 1.0,
+    algorithm: str = "nonnegative_orthogonal_matching_pursuit",
+) -> Tuple[torch.Tensor, Dict[Tuple[int, int, int], CoordinatePatch]]:
+    """Apply :func:`solve_coordinate_patch` independently to every ``(batch, position)`` pair.
+
+    ``activations`` holds one already-sliced forward-pass chunk, shape ``[batch, num_positions,
+    d_model]``; ``position_labels`` names the real sequence position of each of its
+    ``num_positions`` columns (their order, not their value, need not match column index -- the
+    labels only key ``decomposition_cache`` and the returned patch dict). Each ``(batch_idx,
+    position)`` pair gets its own sparse decomposition and its own :class:`CoordinatePatch`: a
+    source active in one pair never affects another, matching the anchored, per-pair contract of
+    the underlying primitive.
+
+    Args:
+        activations: Chunk of activations, shape ``[batch, num_positions, d_model]``.
+        dictionary: Atom matrix for this layer, shape ``[num_atoms, d_model]``.
+        position_labels: Real sequence position for each column of ``activations``; must have
+            length ``activations.shape[1]``.
+        source_idx: Atom index that must occur in the active support of every pair.
+        target_idx: Distinct atom index to receive or exchange the source coordinate.
+        layer: Layer identifier folded into every ``decomposition_cache`` key.
+        decomposition_cache: Optional caller-owned mapping from ``(layer, batch_idx, position)``
+            to a previously computed :class:`JSpaceDecomposition`. A hit skips
+            :func:`get_sparse_decomposition` and reuses the strict-compatibility validation
+            already performed inside :func:`solve_coordinate_patch`; a miss solves once and
+            stores the result before use.
+        k: Sparse-solver upper bound on a cache miss.
+        mode: ``"substitute"`` or ``"swap"``, forwarded to :func:`solve_coordinate_patch`.
+        alpha: Finite interpolation strength, forwarded to :func:`solve_coordinate_patch`.
+        algorithm: Sparse coefficient-update rule on a cache miss.
+
+    Returns:
+        A tuple ``(patched, patches)``: ``patched`` has the same shape as ``activations``, with
+        every ``(batch_idx, position)`` entry replaced by that pair's
+        :attr:`CoordinatePatch.patched`; ``patches`` maps ``(layer, batch_idx, position)`` to the
+        full :class:`CoordinatePatch` for that pair.
+
+    Raises:
+        ValueError: If ``activations`` is not 3-D, if ``position_labels`` length does not match
+            ``activations.shape[1]``, or if ``source_idx`` is not in the active support for any
+            ``(batch_idx, position)`` pair -- the whole call fails rather than silently skipping
+            that pair.
+    """
+    if activations.ndim != 3:
+        raise ValueError(
+            "activations must be 3-D [batch, num_positions, d_model], got shape "
+            f"{tuple(activations.shape)}"
+        )
+    batch_size, num_positions, _ = activations.shape
+    if len(position_labels) != num_positions:
+        raise ValueError(
+            f"position_labels has {len(position_labels)} entries, expected {num_positions} "
+            "to match activations.shape[1]"
+        )
+    patched = activations.new_empty(activations.shape)
+    patches: Dict[Tuple[int, int, int], CoordinatePatch] = {}
+    for batch_idx in range(batch_size):
+        for column, position in enumerate(position_labels):
+            key = (layer, batch_idx, position)
+            x = activations[batch_idx, column]
+            if decomposition_cache is not None and key in decomposition_cache:
+                decomposition = decomposition_cache[key]
+            else:
+                decomposition = get_sparse_decomposition(x, dictionary, k, algorithm=algorithm)
+                if decomposition_cache is not None:
+                    decomposition_cache[key] = decomposition
+            patch = solve_coordinate_patch(
+                x,
+                dictionary,
+                source_idx,
+                target_idx,
+                decomposition=decomposition,
+                k=k,
+                mode=mode,
+                alpha=alpha,
+                algorithm=algorithm,
+            )
+            patched[batch_idx, column] = patch.patched
+            patches[key] = patch
+    return patched, patches
 
 
 def _postcondition_witnesses(
