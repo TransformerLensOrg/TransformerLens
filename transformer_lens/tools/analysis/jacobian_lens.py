@@ -63,7 +63,7 @@ Example::
 import warnings
 from dataclasses import dataclass
 from importlib.metadata import version
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple, Union
 
 import torch
 from jaxtyping import Float, Int
@@ -1312,7 +1312,7 @@ class JacobianLens:
         alpha: float = 1.0,
         positions: Optional[Sequence[int]] = None,
     ) -> List[Tuple[str, Any]]:
-        """Hooks that swap two concepts' coordinates in lens space.
+        """Hooks that swap two concepts' *live* coordinates in lens space.
 
         The paper's patching-in-lens-coordinates intervention: with
         ``V = [v_s, v_t]`` and lens coordinates ``c = V⁺ h`` (pseudoinverse),
@@ -1320,6 +1320,12 @@ class JacobianLens:
         exchanges the two coordinates. The component of ``h`` orthogonal to
         ``span{v_s, v_t}`` is untouched. ``alpha=2`` is the paper's
         "double-strength" swap.
+
+        This transform re-reads ``c`` from the activation seen by every hook.
+        It is therefore an involution when applied repeatedly in a subspace
+        whose coordinates are preserved between layers: a second application
+        can undo the first. For the paper's multi-layer clamp protocol, use
+        :meth:`swap_clamp_hooks` with activations cached from the clean run.
 
         Args:
             model: The model the hooks will run on.
@@ -1370,6 +1376,102 @@ class JacobianLens:
             hooks.append(
                 (
                     _resid_post_hook_name(layer),
+                    _make_intervention_hook(transform, positions, model.cfg.d_model),
+                )
+            )
+        return hooks
+
+    def swap_clamp_hooks(
+        self,
+        model: Any,
+        source_token: TokenInput,
+        target_token: TokenInput,
+        layers: Sequence[int],
+        clean_cache: Mapping[str, torch.Tensor],
+        *,
+        positions: Optional[Sequence[int]] = None,
+    ) -> List[Tuple[str, Any]]:
+        """Hooks that clamp lens coordinates to their clean-run exchange.
+
+        For each layer, this projects the corresponding activation from
+        ``clean_cache`` into that layer's lens basis, exchanges its source and
+        target coordinates once, and holds the live activation at that fixed
+        target. Unlike :meth:`swap_hooks`, the update is idempotent at each
+        layer: ``h <- h + V (c_target - V⁺h)``.
+
+        Args:
+            model: The model the hooks will run on.
+            source_token: The concept to remove (e.g. ``" France"``).
+            target_token: The concept to install (e.g. ``" China"``).
+            layers: Layers to intervene at.
+            clean_cache: Activations from an unmodified ``run_with_cache`` at
+                each requested layer's ``blocks.{layer}.hook_out`` name.
+            positions: Chunk-local positions to clamp (negative indices allowed
+                and normalized against the clean activations). Defaults to all.
+
+        Returns:
+            ``[(hook_name, fn), ...]`` for ``model.hooks(fwd_hooks=...)``.
+        """
+        self.validate_model(model)
+        source_id, target_id = _to_token_ids(model, [source_token, target_token])
+        if source_id == target_id:
+            raise ValueError(
+                "source_token and target_token resolve to the same token id; "
+                "a coordinate clamp would be a silent no-op"
+            )
+
+        hooks = []
+        for layer in [_normalize_layer(layer, model.cfg.n_layers) for layer in layers]:
+            hook_name = _resid_post_hook_name(layer)
+            if hook_name not in clean_cache:
+                raise ValueError(f"clean_cache is missing activation {hook_name!r}")
+            clean = clean_cache[hook_name]
+            _validate_residual_activation(
+                clean, d_model=model.cfg.d_model, hook_name=f"clean_cache[{hook_name!r}]"
+            )
+            normalized = _normalize_positions(positions, clean.shape[1])
+            clean_selected = clean if positions is None else clean[:, normalized, :]
+
+            vectors = self.lens_vectors(model, [source_id, target_id], layer)
+            units = _unit_rows(vectors, layer=layer)
+            _diagnose_intervention_pair(
+                units, description=f"swap vectors at layer {layer}", stacklevel=3
+            )
+            basis = vectors.T  # [d, 2]
+            pinv = torch.linalg.pinv(basis)  # [2, d]
+            target_coords = (clean_selected.float() @ pinv.T)[..., [1, 0]]
+            device_basis: Dict[torch.device, torch.Tensor] = {}
+            device_pinv: Dict[torch.device, torch.Tensor] = {}
+            device_targets: Dict[torch.device, torch.Tensor] = {}
+
+            def transform(
+                selected: Float[torch.Tensor, "batch pos d_model"],
+                basis: torch.Tensor = basis,
+                pinv: torch.Tensor = pinv,
+                target_coords: torch.Tensor = target_coords,
+                device_basis: Dict[torch.device, torch.Tensor] = device_basis,
+                device_pinv: Dict[torch.device, torch.Tensor] = device_pinv,
+                device_targets: Dict[torch.device, torch.Tensor] = device_targets,
+            ) -> Float[torch.Tensor, "batch pos d_model"]:
+                local_basis = _cached_on_device(basis, device_basis, selected.device)
+                local_pinv = _cached_on_device(pinv, device_pinv, selected.device)
+                local_targets = _cached_on_device(target_coords, device_targets, selected.device)
+                if local_targets.shape[1] != selected.shape[1] or local_targets.shape[0] not in (
+                    1,
+                    selected.shape[0],
+                ):
+                    raise ValueError(
+                        "clean_cache activation shape is incompatible with the live activation: "
+                        f"target coordinates have shape {tuple(local_targets.shape)}, "
+                        f"live activation has shape {tuple(selected.shape)}"
+                    )
+                coords = selected.float() @ local_pinv.T
+                delta = (local_targets - coords) @ local_basis.T
+                return selected.float() + delta
+
+            hooks.append(
+                (
+                    hook_name,
                     _make_intervention_hook(transform, positions, model.cfg.d_model),
                 )
             )
