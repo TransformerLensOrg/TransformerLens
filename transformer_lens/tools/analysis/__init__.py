@@ -17,7 +17,6 @@ Tools:
       anchored coordinate patching (offline and dynamic/hooked).
     - projection_kernel: Basis-invariant subspace overlap and TransformerBridge
       attention-head OQ/OK/OV affinity.
-    - sparse_probing: Leakage-safe k-sparse binary probes over activation tensors.
 """
 
 from transformer_lens.tools.analysis.backward_lens import (
@@ -66,14 +65,6 @@ from transformer_lens.tools.analysis.projection_kernel import (
     projection_kernel,
     random_projection_kernel_moments,
 )
-from transformer_lens.tools.analysis.sparse_probing import (
-    SparseProbeControl,
-    SparseProbeMetrics,
-    SparseProbeResult,
-    SparseProbeSweep,
-    fit_sparse_probe,
-    sweep_sparse_probe,
-)
 
 __all__ = [
     "AttentionHeadRef",
@@ -94,17 +85,12 @@ __all__ = [
     "ProjectedFactor",
     "ProjectionKernelResult",
     "RandomSubspaceReference",
-    "SparseProbeControl",
-    "SparseProbeMetrics",
-    "SparseProbeResult",
-    "SparseProbeSweep",
     "SubspaceBasis",
     "VocabularyRanking",
     "WeightLayout",
     "attention_head_subspace_affinity",
     "direct_logit_attribution",
     "estimate_occupancy",
-    "fit_sparse_probe",
     "get_act_patch_direct_path",
     "get_act_patch_direct_path_all_sources",
     "get_sparse_decomposition",
@@ -113,5 +99,4 @@ __all__ = [
     "random_projection_kernel_moments",
     "solve_coordinate_patch",
     "solve_coordinate_patch_positions",
-    "sweep_sparse_probe",
 ]
