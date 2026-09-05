@@ -58,6 +58,7 @@ content/hook_system
 content/compatibility_mode
 content/ssm_interpretability
 content/projection_kernel
+content/sparse_probing
 content/jacobian_lens_fitting
 generated/demos/Jacobian_Lens_Decomposition_Demo
 content/backward_lens
