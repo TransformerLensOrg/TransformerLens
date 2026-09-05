@@ -1080,6 +1080,31 @@ def test_swap_leaves_orthogonal_complement_unchanged(
     assert orthogonal_part.abs().max().item() < 1e-4
 
 
+def test_swap_clamp_holds_each_layer_at_exchanged_clean_coordinates(
+    toy_model: _ToyBridge, fitted_lens: JacobianLens
+) -> None:
+    layers = [1, 2]
+    tokens = toy_model.to_tokens("a toy prompt")
+    _, clean_cache = toy_model.run_with_cache(tokens)
+    hooks = fitted_lens.swap_clamp_hooks(toy_model, 3, 5, layers, clean_cache)
+
+    with toy_model.hooks(fwd_hooks=hooks):
+        _, clamped_cache = toy_model.run_with_cache(tokens)
+
+    for layer in layers:
+        name = f"blocks.{layer}.hook_out"
+        vectors = fitted_lens.lens_vectors(toy_model, [3, 5], layer)
+        pinv = torch.linalg.pinv(vectors.T)
+        clean_coords = clean_cache[name].float() @ pinv.T
+        clamped_coords = clamped_cache[name].float() @ pinv.T
+        torch.testing.assert_close(clamped_coords, clean_coords[..., [1, 0]], atol=1e-5, rtol=1e-5)
+
+
+def test_swap_clamp_requires_each_clean_activation(toy_model: _ToyBridge) -> None:
+    with pytest.raises(ValueError, match="clean_cache is missing"):
+        _lens().swap_clamp_hooks(toy_model, 3, 5, layers=[0], clean_cache={})
+
+
 def test_exports() -> None:
     from transformer_lens.tools import analysis
 
