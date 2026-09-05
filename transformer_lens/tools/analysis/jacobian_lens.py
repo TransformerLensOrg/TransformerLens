@@ -1434,19 +1434,9 @@ class JacobianLens:
 
             vectors = self.lens_vectors(model, [source_id, target_id], layer)
             units = _unit_rows(vectors, layer=layer)
-            cosine = abs(float((units[0] @ units[1]).item()))
-            if not math.isfinite(cosine) or cosine >= _SWAP_ERROR_COSINE:
-                raise ValueError(
-                    f"swap vectors at layer {layer} are numerically near-parallel "
-                    f"(abs cosine={cosine:.6f}); choose better-separated concepts"
-                )
-            if cosine >= _SWAP_WARN_COSINE:
-                warnings.warn(
-                    f"swap vectors at layer {layer} are poorly conditioned "
-                    f"(abs cosine={cosine:.6f}); the intervention may be amplified",
-                    UserWarning,
-                    stacklevel=2,
-                )
+            _diagnose_intervention_pair(
+                units, description=f"swap vectors at layer {layer}", stacklevel=3
+            )
             basis = vectors.T  # [d, 2]
             pinv = torch.linalg.pinv(basis)  # [2, d]
             target_coords = (clean_selected.float() @ pinv.T)[..., [1, 0]]
