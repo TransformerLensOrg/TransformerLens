@@ -469,3 +469,108 @@ def test_attribution_patch_raises_on_batch_size_mismatch() -> None:
 
     with pytest.raises(ValueError, match="same number of prompt pairs"):
         attribution_patch(model, clean, corrupt, _metric_fn(answer=1, wrong=2))
+
+
+# ---------------------------------------------------------------------------
+# Commit 5 — linear-model reconstruction identity
+# ---------------------------------------------------------------------------
+#
+# ``_NodeGraphToyBridge`` is fully linear by construction — the plan's
+# "neutralize the remaining nonlinearities on the residual->metric path"
+# conditions hold without extra freezing: ``ln_final`` is ``nn.Identity``, the
+# attention projection is a plain linear map with no softmax pattern, the MLP has
+# no activation, and ``_metric_fn`` is linear in the logits. The first-order
+# Taylor estimate each node score uses is therefore *exact*, so the reconstruction
+# and single-node identities below hold under equality (tight ``atol``) rather than
+# the ``atol``-slack approximation a stock nonlinear model would require.
+
+
+def _metric_delta(
+    model: _NodeGraphToyBridge,
+    clean: torch.Tensor,
+    corrupt: torch.Tensor,
+    metric_fn: Callable[[torch.Tensor], torch.Tensor],
+) -> float:
+    with torch.no_grad():
+        return float(metric_fn(model(clean)) - metric_fn(model(corrupt)))
+
+
+def _patch_node_toward_clean(
+    model: _NodeGraphToyBridge,
+    corrupt: torch.Tensor,
+    node: Node,
+    clean_activations: dict[str, torch.Tensor],
+    metric_fn: Callable[[torch.Tensor], torch.Tensor],
+) -> float:
+    """Run the corrupt forward with ``node``'s activation replaced by its clean value."""
+    clean_value = clean_activations[node.hook_name]
+
+    def hook(tensor: torch.Tensor, *, hook: Any) -> torch.Tensor:
+        del hook
+        if node.kind == "attn_head_out":
+            tensor[0, node.position, node.head] = clean_value[0, node.position, node.head]
+        else:
+            tensor[0, node.position] = clean_value[0, node.position]
+        return tensor
+
+    with torch.no_grad(), model.hooks(fwd_hooks=[(node.hook_name, hook)]):
+        return float(metric_fn(model(corrupt)))
+
+
+def test_linear_reconstruction_identity_holds_on_a_complete_cut() -> None:
+    """Node attribution reconstructs ``m(clean) - m(corrupt)`` exactly on a complete cut.
+
+    The identity holds over a **complete cut** of the graph, not the full node set.
+    Each residual write flows through the writes downstream of it (the MLP reads the
+    post-attention residual, which already contains the embed and attention writes),
+    so a node's full-model gradient re-counts the paths of every node upstream of
+    it: summing embed + attention + MLP scores overcounts. The embed layer is the
+    input-side complete cut — every path to the metric passes through exactly one
+    embed position — so its scores alone reconstruct the exact metric delta for a
+    linear model.
+    """
+    model = _NodeGraphToyBridge()
+    clean = torch.tensor([[1, 2, 3]])
+    corrupt = torch.tensor([[3, 2, 1]])
+    metric = _metric_fn(answer=1, wrong=2)
+
+    result = attribution_patch(model, clean, corrupt, metric)
+    embed_reconstruction = sum(
+        score for node, score in result.node_scores.items() if node.kind == "embed"
+    )
+
+    assert embed_reconstruction == pytest.approx(
+        _metric_delta(model, clean, corrupt, metric), abs=1e-6
+    )
+
+
+def test_linear_single_node_patch_matches_score_and_sign() -> None:
+    """Patching one node corrupt->clean moves the metric by exactly its score.
+
+    For a linear model the first-order attribution of a single node equals the exact
+    effect of patching only that node from its corrupt value to its clean value
+    (everything upstream held at corrupt). This pins the sign/direction convention
+    end to end across all three node families: a positive score corresponds to the
+    metric moving in the positive direction under the denoising patch.
+    """
+    model = _NodeGraphToyBridge()
+    clean = torch.tensor([[1, 2, 3]])
+    corrupt = torch.tensor([[3, 2, 1]])
+    metric = _metric_fn(answer=1, wrong=2)
+
+    # names_filter=None caches every hook, which for this toy is exactly the node graph.
+    clean_cache = cache_activation_and_gradient(model, clean, metric)
+    result = attribution_patch(model, clean, corrupt, metric)
+    with torch.no_grad():
+        m_corrupt = float(metric(model(corrupt)))
+
+    covered: set[str] = set()
+    for node, score in result.top_nodes(k=len(result.node_scores)):
+        delta_m = _patch_node_toward_clean(model, corrupt, node, clean_cache.activations, metric)
+        delta_m -= m_corrupt
+        assert delta_m == pytest.approx(score, abs=1e-6)
+        if abs(score) > 1e-6:
+            assert (delta_m > 0) == (score > 0)  # denoising sign convention
+        covered.add(node.kind)
+
+    assert covered == {"embed", "attn_head_out", "mlp_out"}
