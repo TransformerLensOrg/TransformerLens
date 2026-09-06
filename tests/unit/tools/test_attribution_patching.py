@@ -19,6 +19,8 @@ import torch.nn as nn
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge import TransformerBridge
 from transformer_lens.tools.analysis.attribution_patching import (
+    AttributionResult,
+    EdgeAttributionConfig,
     GradientCache,
     Node,
     cache_activation_and_gradient,
@@ -275,3 +277,48 @@ def test_enumerate_nodes_raises_on_missing_hook() -> None:
 
     with pytest.raises(ValueError, match="blocks.1.hook_mlp_out"):
         enumerate_nodes(_cfg_stub(), cache)
+
+
+# ---------------------------------------------------------------------------
+# Commit 3 — config + result API
+# ---------------------------------------------------------------------------
+
+
+def test_config_defaults_are_the_supported_node_sweep() -> None:
+    config = EdgeAttributionConfig()
+    assert config.granularity == "node"
+    assert config.ig_steps == 1
+
+
+def test_config_rejects_invalid_values() -> None:
+    with pytest.raises(ValueError, match="ig_steps"):
+        EdgeAttributionConfig(ig_steps=0)
+
+
+def test_config_unsupported_paths_raise_not_implemented() -> None:
+    with pytest.raises(NotImplementedError, match="PR2"):
+        EdgeAttributionConfig(granularity="edge")
+    with pytest.raises(NotImplementedError, match="PR3"):
+        EdgeAttributionConfig(ig_steps=5)
+
+
+def test_top_nodes_ranks_by_effect_magnitude() -> None:
+    small = Node(kind="embed", position=0)
+    big_negative = Node(kind="mlp_out", layer=0, position=1)
+    medium = Node(kind="attn_head_out", layer=1, head=0, position=2)
+    result = AttributionResult(
+        node_scores={small: 0.1, big_negative: -5.0, medium: 2.0},
+    )
+
+    ranked = result.top_nodes(k=2)
+    assert [node for node, _ in ranked] == [big_negative, medium]
+
+    # k beyond the node count returns every node, still magnitude-ordered.
+    assert [node for node, _ in result.top_nodes(k=10)] == [big_negative, medium, small]
+
+
+def test_top_edges_not_implemented_until_pr2() -> None:
+    result = AttributionResult(node_scores={})
+    assert result.edge_scores == {}
+    with pytest.raises(NotImplementedError, match="PR2"):
+        result.top_edges()

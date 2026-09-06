@@ -20,7 +20,7 @@ should filter to the hook families their analysis actually reads.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Callable, Literal, Optional, Sequence, Union
 
 import torch
@@ -29,6 +29,7 @@ MetricFn = Callable[[torch.Tensor], torch.Tensor]
 NamesFilter = Union[str, Sequence[str], Callable[[str], bool], None]
 
 NodeKind = Literal["embed", "attn_head_out", "mlp_out"]
+Granularity = Literal["node", "edge"]
 
 
 @dataclass
@@ -97,6 +98,94 @@ class Node:
         if self.kind == "attn_head_out":
             return f"blocks.{self.layer}.attn.hook_z"
         return f"blocks.{self.layer}.hook_mlp_out"
+
+
+@dataclass(frozen=True)
+class EdgeAttributionConfig:
+    """Configuration for an attribution-patching sweep.
+
+    The two axes are deliberately orthogonal:
+
+    - ``granularity`` selects what is scored: ``"node"`` scores each residual-stream
+      write, ``"edge"`` scores each ``(source, destination)`` write->read pair.
+    - ``ig_steps`` selects gradient fidelity. ``ig_steps=1`` is plain attribution
+      patching / EAP: a single first-order Taylor gradient taken at the corrupt
+      point. ``ig_steps>1`` is EAP-IG: the integrated gradient averaged over that
+      many points along the corrupt->clean path, which corrects the gradient
+      saturation that makes plain attribution unfaithful.
+
+    There is intentionally **no** ``method`` field. An earlier design had both a
+    ``method`` enum (``"attribution"``/``"EAP"``/``"EAP-IG"``) and ``ig_steps``,
+    which overlap: the method is fully determined by ``granularity`` and whether
+    ``ig_steps`` exceeds 1. Collapsing them removes the invalid states (e.g.
+    ``method="attribution", ig_steps=5``).
+
+    This substrate PR implements node granularity with plain attribution only.
+    ``granularity="edge"`` and ``ig_steps>1`` are accepted by the type but raise
+    :class:`NotImplementedError` at construction, so downstream code can import and
+    reference this API now while the edge sweep (PR2) and the integrated-gradient
+    path (PR3) land later. When PR3 ships EAP-IG, the default flips to the
+    proposal's ``ig_steps=5`` (EAP-IG is the faithful default); until then the
+    default is the only executable value, ``ig_steps=1``.
+
+    Attributes:
+        granularity: ``"node"`` or ``"edge"``. Defaults to ``"node"``.
+        ig_steps: Integrated-gradient path steps (``>=1``). Defaults to ``1``.
+    """
+
+    granularity: Granularity = "node"
+    ig_steps: int = 1
+
+    def __post_init__(self) -> None:
+        if self.ig_steps < 1:
+            raise ValueError(f"ig_steps must be >= 1, got {self.ig_steps}")
+        if self.granularity == "edge":
+            raise NotImplementedError(
+                "granularity='edge' (EAP edge scoring) lands in PR2; this substrate "
+                "PR implements granularity='node' only."
+            )
+        if self.ig_steps > 1:
+            raise NotImplementedError(
+                "ig_steps>1 (EAP-IG integrated gradients) lands in PR3; this substrate "
+                "PR implements ig_steps=1 (plain attribution) only."
+            )
+
+
+@dataclass
+class AttributionResult:
+    """Scored output of an attribution-patching sweep.
+
+    Attributes:
+        node_scores: Signed first-order effect estimate per node,
+            ``(a_clean - a_corrupt) . d(metric)/d(a)``. A positive score means
+            patching that node from corrupt toward clean moves the metric in the
+            positive direction (the denoising convention pinned in the module
+            docstring).
+        edge_scores: Per-edge effect estimate keyed by ``(source, destination)``.
+            Declared here so the result API is stable across the PR series; it is
+            populated only from PR2 (edge sweep) and is empty for a node sweep.
+    """
+
+    node_scores: dict[Node, float]
+    edge_scores: dict[tuple[Node, Node], float] = field(default_factory=dict)
+
+    def top_nodes(self, k: int = 10) -> list[tuple[Node, float]]:
+        """The ``k`` nodes with the largest effect magnitude, strongest first.
+
+        Ranking is by absolute score: a node with a large negative effect is as
+        causally important as one with a large positive effect, so magnitude — not
+        signed value — orders the circuit. Ties keep enumeration order (stable
+        sort). Requesting more than the available nodes returns all of them.
+        """
+        ranked = sorted(self.node_scores.items(), key=lambda item: abs(item[1]), reverse=True)
+        return ranked[:k]
+
+    def top_edges(self, k: int = 10) -> list[tuple[Node, Node, float]]:
+        """The ``k`` highest-magnitude edges — populated from PR2's edge sweep."""
+        raise NotImplementedError(
+            "edge scoring lands in PR2; run a node-granularity sweep and use "
+            "top_nodes() in this PR."
+        )
 
 
 def _required_hook_names(n_layers: int) -> list[str]:
