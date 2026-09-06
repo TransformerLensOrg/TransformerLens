@@ -313,3 +313,115 @@ def cache_activation_and_gradient(
         name: live[name].grad for name in names if name in live
     }
     return GradientCache(activations=activations, gradients=gradients, metric=metric.detach())
+
+
+def _node_effects(
+    clean_cache: GradientCache,
+    corrupt_cache: GradientCache,
+    nodes: Sequence[Node],
+) -> dict[Node, float]:
+    """Score every node with the first-order attribution ``(a_clean - a_corrupt) . g``.
+
+    The gradient ``g`` is taken from the corrupt cache (denoising convention). For
+    each node the feature dimension (``d_model``, or ``d_head`` for an attention
+    head) is contracted at the node's position/head, giving one signed scalar.
+    """
+    scores: dict[Node, float] = {}
+    for node in nodes:
+        name = node.hook_name
+        grad = corrupt_cache.gradients.get(name)
+        if grad is None:
+            raise ValueError(
+                f"node {node} reads {name!r}, but the corrupt cache holds no gradient "
+                "there; cache with a names_filter that retains this hook point."
+            )
+        delta = clean_cache.activations[name] - corrupt_cache.activations[name]
+        contribution = delta * grad
+        if node.kind == "attn_head_out":
+            value = contribution[0, node.position, node.head].sum()
+        else:
+            value = contribution[0, node.position].sum()
+        scores[node] = float(value)
+    return scores
+
+
+def attribution_patch(
+    model: Any,
+    clean: torch.Tensor,
+    corrupt: torch.Tensor,
+    metric_fn: MetricFn,
+    config: EdgeAttributionConfig = EdgeAttributionConfig(),
+) -> AttributionResult:
+    """Estimate every node's causal effect on ``metric_fn`` in two forwards + one backward.
+
+    For each clean/corrupt pair this runs a clean forward (for ``a_clean``) and a
+    corrupt forward with retained gradients plus a manual ``metric.backward()`` (for
+    ``a_corrupt`` and ``g = d(metric)/d(a)``), then scores each node with the
+    first-order Taylor estimate ``effect(node) = (a_clean - a_corrupt) . g``.
+
+    Sign/direction convention (denoising form): gradients are taken on the *corrupt*
+    run and the estimate points *toward* the clean activation, so a positive score
+    means patching that node from corrupt toward clean moves the metric in the
+    positive direction. PR5's oracle-parity test maps this convention onto the
+    pinned reference rather than assuming the two agree.
+
+    Dataset averaging: ``clean``/``corrupt`` may hold a batch of prompt pairs. Each
+    pair is scored independently (per-example forward/backward, so its own
+    reconstruction identity holds) and per-node scores are averaged across the batch
+    before ranking (proposal step 6).
+
+    Args:
+        model: A ``TransformerBridge`` (or compatible) exposing ``cfg.n_layers``,
+            ``hook_dict``, and ``hooks()``.
+        clean: Clean token ids, shape ``[batch, seq]``.
+        corrupt: Corrupt token ids, shape ``[batch, seq]``, paired row-by-row with
+            ``clean``.
+        metric_fn: Maps single-example logits to a scalar to differentiate.
+        config: Sweep configuration. This PR supports node granularity with plain
+            attribution (``ig_steps=1``) only; other values raise at construction.
+
+    Returns:
+        An :class:`AttributionResult` whose ``node_scores`` are averaged over the
+        batch. ``edge_scores`` stays empty until PR2.
+
+    Raises:
+        ValueError: if ``clean``/``corrupt`` are not 2D, hold a different number of
+            pairs, or a pair tokenizes to different lengths (activations must align
+            position-by-position).
+    """
+    del config  # node granularity + ig_steps=1 only this PR; enforced at construction.
+
+    if clean.ndim != 2 or corrupt.ndim != 2:
+        raise ValueError(
+            "attribution_patch expects 2D [batch, seq] token tensors, got clean "
+            f"{tuple(clean.shape)} and corrupt {tuple(corrupt.shape)}"
+        )
+    if clean.shape[0] != corrupt.shape[0]:
+        raise ValueError(
+            "clean and corrupt must hold the same number of prompt pairs, got "
+            f"{clean.shape[0]} and {corrupt.shape[0]}"
+        )
+    if clean.shape[1] != corrupt.shape[1]:
+        raise ValueError(
+            "each clean/corrupt pair must tokenize to the same length; got clean "
+            f"length {clean.shape[1]} and corrupt length {corrupt.shape[1]}. "
+            "Attribution patching aligns activations position-by-position."
+        )
+
+    node_hook_names = _required_hook_names(int(model.cfg.n_layers))
+    batch = int(clean.shape[0])
+    totals: dict[Node, float] = {}
+
+    for index in range(batch):
+        clean_cache = cache_activation_and_gradient(
+            model, clean[index : index + 1], metric_fn, names_filter=node_hook_names
+        )
+        corrupt_cache = cache_activation_and_gradient(
+            model, corrupt[index : index + 1], metric_fn, names_filter=node_hook_names
+        )
+        nodes = enumerate_nodes(model, corrupt_cache)
+        for node, score in _node_effects(clean_cache, corrupt_cache, nodes).items():
+            totals[node] = totals.get(node, 0.0) + score
+
+    node_scores = {node: total / batch for node, total in totals.items()}
+    return AttributionResult(node_scores=node_scores)

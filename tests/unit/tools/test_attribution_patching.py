@@ -8,6 +8,7 @@ first-order attribution identity holds exactly.
 
 from __future__ import annotations
 
+import math
 from contextlib import contextmanager
 from types import SimpleNamespace
 from typing import Any, Callable, Iterator
@@ -23,6 +24,7 @@ from transformer_lens.tools.analysis.attribution_patching import (
     EdgeAttributionConfig,
     GradientCache,
     Node,
+    attribution_patch,
     cache_activation_and_gradient,
     enumerate_nodes,
 )
@@ -322,3 +324,148 @@ def test_top_edges_not_implemented_until_pr2() -> None:
     assert result.edge_scores == {}
     with pytest.raises(NotImplementedError, match="PR2"):
         result.top_edges()
+
+
+# ---------------------------------------------------------------------------
+# Commit 4 — node attribution_patch entry point
+# ---------------------------------------------------------------------------
+
+
+class _AttnMlpBlock(nn.Module):
+    """A block exposing the standard node-granularity hook points.
+
+    ``hook_z`` carries the per-head output ``[batch, seq, n_heads, d_head]`` and
+    ``hook_mlp_out`` the MLP write ``[batch, seq, d_model]`` — the two per-layer
+    hook families ``enumerate_nodes`` reads. The block is linear; the test only
+    needs a real hook graph with gradients flowing to those points, not attention.
+    """
+
+    def __init__(self, d_model: int, n_heads: int, d_head: int, layer: int, dtype: torch.dtype):
+        super().__init__()
+        self.n_heads = n_heads
+        self.d_head = d_head
+        self.w_z = nn.Linear(d_model, n_heads * d_head, bias=False, dtype=dtype)
+        self.w_o = nn.Linear(n_heads * d_head, d_model, bias=False, dtype=dtype)
+        self.w_mlp = nn.Linear(d_model, d_model, bias=False, dtype=dtype)
+        for linear in (self.w_z, self.w_o, self.w_mlp):
+            nn.init.normal_(linear.weight, std=0.2)
+        self.hook_z = HookPoint()
+        self.hook_z.name = f"blocks.{layer}.attn.hook_z"
+        self.hook_mlp_out = HookPoint()
+        self.hook_mlp_out.name = f"blocks.{layer}.hook_mlp_out"
+
+    def forward(self, residual: torch.Tensor) -> torch.Tensor:
+        batch, seq, _ = residual.shape
+        z = self.hook_z(self.w_z(residual).reshape(batch, seq, self.n_heads, self.d_head))
+        residual = residual + self.w_o(z.reshape(batch, seq, self.n_heads * self.d_head))
+        mlp_out = self.hook_mlp_out(self.w_mlp(residual))
+        return residual + mlp_out
+
+
+class _NodeGraphToyBridge(_LinearToyBridge):
+    """A tiny ``TransformerBridge`` carrying the full node-granularity hook graph.
+
+    Inherits ``_LinearToyBridge``'s ``hooks()`` / parameter plumbing but swaps in
+    blocks with ``attn.hook_z`` + ``hook_mlp_out`` so ``attribution_patch`` can
+    enumerate and score every node.
+    """
+
+    def __init__(self, *, dtype: torch.dtype = torch.float32) -> None:
+        nn.Module.__init__(self)
+        self._hook_registry: dict[str, HookPoint] = {}
+        self.context_level = 0
+        torch.manual_seed(0)
+        self.cfg = SimpleNamespace(
+            n_layers=N_LAYERS,
+            d_model=D_MODEL,
+            d_vocab=D_VOCAB,
+            d_vocab_out=D_VOCAB,
+            model_name="node-graph-toy-bridge",
+            dtype=dtype,
+            device="cpu",
+        )
+        self.compatibility_mode = False
+        self._weights_processed = False
+        self.embed = nn.Embedding(D_VOCAB, D_MODEL, dtype=dtype)
+        nn.init.normal_(self.embed.weight, std=0.2)
+        self.hook_embed = HookPoint()
+        self.hook_embed.name = "hook_embed"
+        self.blocks = nn.ModuleList(
+            [_AttnMlpBlock(D_MODEL, N_HEADS, D_HEAD, layer, dtype) for layer in range(N_LAYERS)]
+        )
+        self.ln_final = nn.Identity()
+        self.unembed = nn.Linear(D_MODEL, D_VOCAB, bias=False, dtype=dtype)
+        nn.init.normal_(self.unembed.weight, std=0.2)
+
+    @property
+    def hook_dict(self) -> dict[str, HookPoint]:
+        hooks: dict[str, HookPoint] = {"hook_embed": self.hook_embed}
+        for layer, block in enumerate(self.blocks):
+            hooks[f"blocks.{layer}.attn.hook_z"] = block.hook_z
+            hooks[f"blocks.{layer}.hook_mlp_out"] = block.hook_mlp_out
+        return hooks
+
+    def forward(
+        self, tokens: torch.Tensor, return_type: str | None = "logits"
+    ) -> torch.Tensor | None:
+        residual = self.hook_embed(self.embed(tokens))
+        for block in self.blocks:
+            residual = block(residual)
+        if return_type is None:
+            return None
+        return self.unembed(self.ln_final(residual))
+
+
+def _expected_node_count() -> int:
+    return SEQ_LEN + N_LAYERS * (N_HEADS * SEQ_LEN + SEQ_LEN)
+
+
+def test_attribution_patch_scores_every_node_with_finite_values() -> None:
+    model = _NodeGraphToyBridge()
+    clean = torch.tensor([[1, 2, 3]])
+    corrupt = torch.tensor([[3, 2, 1]])
+
+    result = attribution_patch(model, clean, corrupt, _metric_fn(answer=1, wrong=2))
+
+    assert isinstance(result, AttributionResult)
+    assert len(result.node_scores) == _expected_node_count()
+    assert all(isinstance(score, float) for score in result.node_scores.values())
+    assert all(math.isfinite(score) for score in result.node_scores.values())
+    assert result.edge_scores == {}
+    # top_nodes ranks the scored graph by magnitude.
+    assert len(result.top_nodes(k=3)) == 3
+
+
+def test_attribution_patch_averages_scores_across_the_batch() -> None:
+    model = _NodeGraphToyBridge()
+    clean = torch.tensor([[1, 2, 3], [0, 4, 5]])
+    corrupt = torch.tensor([[3, 2, 1], [5, 4, 0]])
+    metric = _metric_fn(answer=1, wrong=2)
+
+    batched = attribution_patch(model, clean, corrupt, metric)
+    per_example = [
+        attribution_patch(model, clean[i : i + 1], corrupt[i : i + 1], metric) for i in range(2)
+    ]
+
+    assert set(batched.node_scores) == set(per_example[0].node_scores)
+    for node in batched.node_scores:
+        expected = (per_example[0].node_scores[node] + per_example[1].node_scores[node]) / 2
+        assert batched.node_scores[node] == pytest.approx(expected)
+
+
+def test_attribution_patch_raises_on_token_length_mismatch() -> None:
+    model = _NodeGraphToyBridge()
+    clean = torch.tensor([[1, 2, 3]])
+    corrupt = torch.tensor([[1, 2]])
+
+    with pytest.raises(ValueError, match="same length"):
+        attribution_patch(model, clean, corrupt, _metric_fn(answer=1, wrong=2))
+
+
+def test_attribution_patch_raises_on_batch_size_mismatch() -> None:
+    model = _NodeGraphToyBridge()
+    clean = torch.tensor([[1, 2, 3], [3, 2, 1]])
+    corrupt = torch.tensor([[3, 2, 1]])
+
+    with pytest.raises(ValueError, match="same number of prompt pairs"):
+        attribution_patch(model, clean, corrupt, _metric_fn(answer=1, wrong=2))
