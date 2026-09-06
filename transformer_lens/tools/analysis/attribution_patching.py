@@ -1,21 +1,32 @@
 """Attribution patching — linearized activation patching on ``TransformerBridge``.
 
-This module estimates the causal effect of model components on a task metric with
-a *gradient-based linearization* of activation patching: instead of one forward
-pass per intervention, it reads a single gradient cache. This first commit ships
-only the substrate — a names-filtered forward pass that caches activations
-together with the gradient of a custom metric with respect to each of them.
+Attribution patching estimates the causal effect of every model component on a
+task metric with a *gradient-based linearization* of activation patching: rather
+than one forward pass per intervention, it reads a single gradient cache. For a
+clean/corrupt prompt pair it runs a clean forward (for ``a_clean``), a corrupt
+forward with retained gradients plus a manual ``metric.backward()`` (for
+``a_corrupt`` and ``g = d(metric)/d(a)``), and scores each node with the
+first-order Taylor estimate ``effect(node) = (a_clean - a_corrupt) . g``. Scores
+over a batch of clean/corrupt pairs are averaged before ranking.
 
 Only the ``TransformerBridge`` API is targeted; TransformerLens v4 deprecates
 ``HookedTransformer``.
 
 Sign/direction convention (denoising form): the gradient is taken on the
-*corrupt* run and the estimate points *toward* the clean activation. Node/edge
-scoring built on top of this substrate lands in follow-on commits.
+*corrupt* run and the estimate points *toward* the clean activation, so a
+positive score means patching that node from corrupt toward clean moves the
+metric in the positive direction. The oracle-parity test (PR5) maps this
+convention onto the pinned reference rather than assuming the two agree.
 
 Memory note: gradients are retained only for hook points passing ``names_filter``.
 Retaining gradients at every hook point roughly doubles cache memory, so callers
 should filter to the hook families their analysis actually reads.
+
+Scope: this PR ships node granularity with plain attribution (``ig_steps=1``).
+Edge scoring (EAP), the integrated-gradient path (EAP-IG, ``ig_steps>1``), and
+ablate-outside faithfulness land in follow-on PRs; their API is declared here —
+``granularity="edge"`` and ``ig_steps>1`` raise :class:`NotImplementedError` — so
+downstream code can pin against a stable surface now.
 """
 
 from __future__ import annotations

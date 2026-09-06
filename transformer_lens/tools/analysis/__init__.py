@@ -5,6 +5,11 @@ sit on top of the hook/cache system. Model support is documented per tool;
 new analyses may target the ``TransformerBridge`` API exclusively.
 
 Tools:
+    - attribution_patching: Attribution patching (gradient-linearized activation
+      patching) over residual-stream nodes — typed computational graph, a
+      names-filtered manual-backward gradient cache, and signed node scores. Edge
+      scoring (EAP), integrated gradients (EAP-IG), and faithfulness land in
+      follow-on PRs.
     - backward_lens: GPT-2 MLP weight-gradient factors projected into vocabulary
       space with explicit raw-gradient sign semantics.
     - direct_logit_attribution: Direct Logit Attribution (DLA) over components,
@@ -19,6 +24,12 @@ Tools:
       attention-head OQ/OK/OV affinity.
 """
 
+from transformer_lens.tools.analysis.attribution_patching import (
+    AttributionResult,
+    EdgeAttributionConfig,
+    Node,
+    attribution_patch,
+)
 from transformer_lens.tools.analysis.backward_lens import (
     BackwardLens,
     BackwardLensLayerResult,
@@ -67,12 +78,14 @@ from transformer_lens.tools.analysis.projection_kernel import (
 
 __all__ = [
     "AttentionHeadRef",
+    "AttributionResult",
     "BackwardLens",
     "BackwardLensLayerResult",
     "BackwardLensMatrixResult",
     "BackwardLensResult",
     "CoordinatePatch",
     "DirectLogitAttribution",
+    "EdgeAttributionConfig",
     "HeadAffinityPair",
     "HeadAffinityResult",
     "JSpaceDecomposition",
@@ -81,6 +94,7 @@ __all__ = [
     "JacobianLens",
     "JacobianLensReadout",
     "LinearGradientFactors",
+    "Node",
     "ProjectedFactor",
     "ProjectionKernelResult",
     "RandomSubspaceReference",
@@ -88,6 +102,7 @@ __all__ = [
     "VocabularyRanking",
     "WeightLayout",
     "attention_head_subspace_affinity",
+    "attribution_patch",
     "direct_logit_attribution",
     "estimate_occupancy",
     "get_act_patch_direct_path",
