@@ -704,6 +704,36 @@ class Test_batched_kwargs_are_forwarded:
         assert (result[mask] == -1).all()
 
 
+class Test_cache_is_rejected_for_multiple_prompts:
+    """A single cache holds one prompt's activations and cannot serve a list.
+
+    Forwarding it would be wrong and silently ignoring it is the same failure
+    mode as the dropped keyword arguments, so the list path rejects it.
+    """
+
+    seqs = [test_duplicated_sequence, test_duplicated_sequence2]
+
+    def test_cache_with_a_list_raises(self):
+        tokens = model.to_tokens(test_duplicated_sequence)
+        _, cache = model.run_with_cache(tokens, remove_batch_dim=True)
+        with pytest.raises(ValueError, match="cannot be reused across multiple prompts"):
+            detect_head(model, self.seqs, "induction_head", cache=cache)
+
+    def test_cache_with_a_single_prompt_still_works(self):
+        tokens = model.to_tokens(test_duplicated_sequence)
+        _, cache = model.run_with_cache(tokens, remove_batch_dim=True)
+        with_cache = detect_head(model, test_duplicated_sequence, "induction_head", cache=cache)
+        without_cache = detect_head(model, test_duplicated_sequence, "induction_head")
+        assert torch.allclose(with_cache, without_cache)
+
+    def test_list_without_a_cache_is_unaffected(self):
+        result = detect_head(model, self.seqs, "induction_head")
+        reference = torch.stack(
+            [detect_head(model, s, "induction_head") for s in self.seqs]
+        ).mean(0)
+        assert torch.allclose(result, reference)
+
+
 class Test_cache_is_not_mutated:
     """compute_head_attention_similarity_score masked in place on a view into
     the caller's ActivationCache, so the cached attention pattern stopped

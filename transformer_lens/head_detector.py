@@ -26,6 +26,12 @@ INVALID_HEAD_NAME_ERR = (
     f"detection_pattern must be a Tensor or one of head names: {HEAD_NAMES}; got %s"
 )
 
+CACHE_WITH_SEQ_LIST_ERR = (
+    "A single cache cannot be reused across multiple prompts, so `cache` is not\n"
+    "supported when `seq` is a list. Pass one prompt at a time, or omit `cache`\n"
+    "and let each prompt be run separately."
+)
+
 SEQ_LEN_ERR = "The sequence must be non-empty and must fit within the model's context window."
 
 DET_PAT_NOT_SQUARE_ERR = "The detection pattern must be a lower triangular matrix of shape (sequence_length, sequence_length); sequence_length=%d; got detection pattern of shape %s"
@@ -113,6 +119,11 @@ def detect_head(
     if isinstance(detection_pattern, str):
         assert detection_pattern in HEAD_NAMES, INVALID_HEAD_NAME_ERR % detection_pattern
         if isinstance(seq, list):
+            # Every other argument is forwarded below. `cache` deliberately is
+            # not, because one cache holds the activations of one prompt and
+            # cannot serve the rest. Say so rather than dropping it quietly.
+            if cache is not None:
+                raise ValueError(CACHE_WITH_SEQ_LIST_ERR)
             batch_scores = [
                 detect_head(
                     model,
