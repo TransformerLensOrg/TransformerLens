@@ -187,7 +187,7 @@ class NeoxArchitectureAdapter(ArchitectureAdapter):
                 config=self.cfg,
                 use_native_layernorm_autograd=True,
             ),
-            "unembed": UnembeddingBridge(name="embed_out"),
+            "unembed": UnembeddingBridge(name="lm_head"),
         }
 
     def split_qkv_matrix(

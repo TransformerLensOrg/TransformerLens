@@ -54,6 +54,6 @@ def convert_neox_weights(neox, cfg: HookedTransformerConfig):
     state_dict["ln_final.w"] = neox.gpt_neox.final_layer_norm.weight
     state_dict["ln_final.b"] = neox.gpt_neox.final_layer_norm.bias
 
-    state_dict["unembed.W_U"] = neox.embed_out.weight.T
+    state_dict["unembed.W_U"] = neox.lm_head.weight.T
     state_dict["unembed.b_U"] = torch.zeros(cfg.d_vocab, dtype=cfg.dtype)
     return state_dict
