@@ -21,12 +21,14 @@ should filter to the hook families their analysis actually reads.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Optional, Sequence, Union
+from typing import Any, Callable, Literal, Optional, Sequence, Union
 
 import torch
 
 MetricFn = Callable[[torch.Tensor], torch.Tensor]
 NamesFilter = Union[str, Sequence[str], Callable[[str], bool], None]
+
+NodeKind = Literal["embed", "attn_head_out", "mlp_out"]
 
 
 @dataclass
@@ -42,6 +44,109 @@ class GradientCache:
     activations: dict[str, torch.Tensor]
     gradients: dict[str, Optional[torch.Tensor]]
     metric: torch.Tensor
+
+
+@dataclass(frozen=True)
+class Node:
+    """A node in the residual-stream computational graph at node granularity.
+
+    Nodes are the typed, hashable keys the attribution sweep scores. Each node
+    is identified by ``(kind, layer, position, head)``; ``kind`` selects the node
+    family and constrains which of ``layer``/``head`` apply:
+
+    - ``"embed"``: the token embedding write. ``layer`` and ``head`` are ``None``.
+    - ``"attn_head_out"``: one attention head's output. ``layer`` and ``head`` set.
+    - ``"mlp_out"``: one layer's MLP output. ``layer`` set, ``head`` is ``None``.
+
+    ``position`` is the sequence index the node is read at. The invariants above
+    are enforced in ``__post_init__`` so a malformed key raises rather than
+    silently producing a wrong graph (Risk 1: the explicit-graph guard).
+    """
+
+    kind: NodeKind
+    position: int
+    layer: Optional[int] = None
+    head: Optional[int] = None
+
+    def __post_init__(self) -> None:
+        if self.kind == "embed":
+            if self.layer is not None or self.head is not None:
+                raise ValueError("embed nodes take neither layer nor head")
+        elif self.kind == "attn_head_out":
+            if self.layer is None or self.head is None:
+                raise ValueError("attn_head_out nodes need both layer and head")
+        elif self.kind == "mlp_out":
+            if self.layer is None:
+                raise ValueError("mlp_out nodes need a layer")
+            if self.head is not None:
+                raise ValueError("mlp_out nodes take no head")
+        else:
+            raise ValueError(f"unknown node kind {self.kind!r}")
+
+    @property
+    def hook_name(self) -> str:
+        """The cache hook point this node reads from.
+
+        Uses the standard ``TransformerBridge`` alias names (``hook_embed``,
+        ``blocks.{l}.attn.hook_z``, ``blocks.{l}.hook_mlp_out``); the per-head
+        ``attn_head_out`` node slices head ``self.head`` out of the shared
+        ``hook_z`` tensor.
+        """
+        if self.kind == "embed":
+            return "hook_embed"
+        if self.kind == "attn_head_out":
+            return f"blocks.{self.layer}.attn.hook_z"
+        return f"blocks.{self.layer}.hook_mlp_out"
+
+
+def _required_hook_names(n_layers: int) -> list[str]:
+    """Hook points the node graph reads: embed plus per-layer attn-z and mlp-out."""
+    names = ["hook_embed"]
+    for layer in range(n_layers):
+        names.append(f"blocks.{layer}.attn.hook_z")
+        names.append(f"blocks.{layer}.hook_mlp_out")
+    return names
+
+
+def enumerate_nodes(model: Any, cache: GradientCache) -> list[Node]:
+    """Enumerate the full node-granularity graph from the Bridge hook graph.
+
+    The graph is *explicit*: for ``n_layers`` layers it always contains the embed
+    write, every attention head's output, and every layer's MLP output, at every
+    sequence position. Sequence length and head count are read from the cached
+    tensor shapes; ``n_layers`` from ``model.cfg``.
+
+    Args:
+        model: A ``TransformerBridge`` (or compatible) exposing ``cfg.n_layers``.
+        cache: A :class:`GradientCache` holding at least the required hook points.
+
+    Returns:
+        The node list, ordered embed-then-layerwise for deterministic ranking.
+
+    Raises:
+        ValueError: if any required hook point is absent from ``cache`` — the
+            graph is never silently truncated (Risk 1).
+    """
+    n_layers = int(model.cfg.n_layers)
+    missing = [name for name in _required_hook_names(n_layers) if name not in cache.activations]
+    if missing:
+        raise ValueError(
+            "node graph requires hook points missing from the cache: "
+            + ", ".join(missing)
+            + ". Cache with a names_filter that keeps hook_embed, "
+            "blocks.*.attn.hook_z, and blocks.*.hook_mlp_out."
+        )
+
+    seq_len = cache.activations["hook_embed"].shape[1]
+
+    nodes: list[Node] = [Node(kind="embed", position=position) for position in range(seq_len)]
+    for layer in range(n_layers):
+        n_heads = cache.activations[f"blocks.{layer}.attn.hook_z"].shape[2]
+        for position in range(seq_len):
+            for head in range(n_heads):
+                nodes.append(Node(kind="attn_head_out", layer=layer, head=head, position=position))
+            nodes.append(Node(kind="mlp_out", layer=layer, position=position))
+    return nodes
 
 
 def _as_predicate(names_filter: NamesFilter) -> Callable[[str], bool]:

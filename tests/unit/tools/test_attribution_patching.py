@@ -12,13 +12,17 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 from typing import Any, Callable, Iterator
 
+import pytest
 import torch
 import torch.nn as nn
 
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge import TransformerBridge
 from transformer_lens.tools.analysis.attribution_patching import (
+    GradientCache,
+    Node,
     cache_activation_and_gradient,
+    enumerate_nodes,
 )
 
 D_MODEL = 4
@@ -187,3 +191,87 @@ def test_gradient_cache_matches_closed_form_linear_gradient() -> None:
     expected[0, -1] = expected_last
 
     torch.testing.assert_close(grad, expected)
+
+
+# ---------------------------------------------------------------------------
+# Commit 2 — typed computational-graph node model
+# ---------------------------------------------------------------------------
+
+N_HEADS = 2
+D_HEAD = 2
+
+
+def _synthetic_node_cache(
+    n_layers: int = N_LAYERS,
+    seq_len: int = SEQ_LEN,
+    n_heads: int = N_HEADS,
+    d_head: int = D_HEAD,
+    d_model: int = D_MODEL,
+) -> GradientCache:
+    """A cache whose keys/shapes carry the standard node-granularity hook points.
+
+    Node enumeration only reads hook names and tensor shapes, so the contents can
+    be zeros; this keeps the graph test model-free and independent of any forward
+    pass.
+    """
+    activations: dict[str, torch.Tensor] = {"hook_embed": torch.zeros(1, seq_len, d_model)}
+    for layer in range(n_layers):
+        activations[f"blocks.{layer}.attn.hook_z"] = torch.zeros(1, seq_len, n_heads, d_head)
+        activations[f"blocks.{layer}.hook_mlp_out"] = torch.zeros(1, seq_len, d_model)
+    return GradientCache(
+        activations=activations,
+        gradients={name: None for name in activations},
+        metric=torch.tensor(0.0),
+    )
+
+
+def _cfg_stub(n_layers: int = N_LAYERS) -> SimpleNamespace:
+    return SimpleNamespace(cfg=SimpleNamespace(n_layers=n_layers))
+
+
+def test_node_hook_name_and_key_validation() -> None:
+    assert Node(kind="embed", position=0).hook_name == "hook_embed"
+    assert (
+        Node(kind="attn_head_out", layer=1, head=0, position=2).hook_name == "blocks.1.attn.hook_z"
+    )
+    assert Node(kind="mlp_out", layer=0, position=1).hook_name == "blocks.0.hook_mlp_out"
+
+    # The typed key rejects malformed nodes (Risk 1: explicit graph).
+    with pytest.raises(ValueError):
+        Node(kind="embed", position=0, layer=0)
+    with pytest.raises(ValueError):
+        Node(kind="attn_head_out", layer=0, position=0)  # head missing
+    with pytest.raises(ValueError):
+        Node(kind="mlp_out", layer=0, head=0, position=0)  # head not allowed
+
+
+def test_enumerate_nodes_returns_expected_keys() -> None:
+    nodes = enumerate_nodes(_cfg_stub(), _synthetic_node_cache())
+
+    # embed(pos) + per layer [head*pos attn-head-out + pos mlp-out]
+    expected = SEQ_LEN + N_LAYERS * (N_HEADS * SEQ_LEN + SEQ_LEN)
+    assert len(nodes) == expected
+    assert len(set(nodes)) == expected  # nodes are unique + hashable
+
+    embed_nodes = [n for n in nodes if n.kind == "embed"]
+    assert {n.position for n in embed_nodes} == set(range(SEQ_LEN))
+    assert all(n.layer is None and n.head is None for n in embed_nodes)
+
+    attn_nodes = [n for n in nodes if n.kind == "attn_head_out"]
+    assert {(n.layer, n.head) for n in attn_nodes} == {
+        (layer, head) for layer in range(N_LAYERS) for head in range(N_HEADS)
+    }
+
+    mlp_nodes = [n for n in nodes if n.kind == "mlp_out"]
+    assert {(n.layer, n.position) for n in mlp_nodes} == {
+        (layer, pos) for layer in range(N_LAYERS) for pos in range(SEQ_LEN)
+    }
+    assert all(n.head is None for n in mlp_nodes)
+
+
+def test_enumerate_nodes_raises_on_missing_hook() -> None:
+    cache = _synthetic_node_cache()
+    del cache.activations["blocks.1.hook_mlp_out"]
+
+    with pytest.raises(ValueError, match="blocks.1.hook_mlp_out"):
+        enumerate_nodes(_cfg_stub(), cache)
