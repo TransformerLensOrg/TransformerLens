@@ -200,6 +200,7 @@ class NeoxArchitectureAdapter(ArchitectureAdapter):
         """
         super().prepare_model(hf_model)
         if not hasattr(hf_model, "lm_head") and hasattr(hf_model, "embed_out"):
+            assert self.component_mapping is not None
             unembed = self.component_mapping["unembed"]
             assert isinstance(unembed, UnembeddingBridge)
             unembed.name = "embed_out"
