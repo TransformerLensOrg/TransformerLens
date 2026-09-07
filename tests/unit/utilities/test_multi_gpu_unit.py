@@ -135,6 +135,31 @@ class TestGetDeviceForBlockIndex:
         assert result.type == "cpu"
 
 
+def _fp8_linear(scale_fmt: str) -> nn.Module:
+    """A real transformers finegrained-FP8 ``Linear``, or skip if the integration moved."""
+    integration = pytest.importorskip(
+        "transformers.integrations.finegrained_fp8",
+        reason="requires transformers' finegrained-FP8 integration",
+    )
+    fp8_linear = getattr(integration, "FP8Linear", None)
+    if fp8_linear is None:
+        pytest.skip("transformers.integrations.finegrained_fp8.FP8Linear is unavailable")
+    return fp8_linear(
+        in_features=128,
+        out_features=128,
+        block_size=(128, 128),
+        activation_scheme="static",
+        scale_fmt=scale_fmt,
+        has_bias=True,
+    )
+
+
+# Quantizer-owned storage on FP8Linear: the packed weight and its scales. ``bias`` is
+# excluded on purpose -- HF keeps biases in the model's compute dtype, so a bias is an
+# ordinary parameter that the quantizer does not own.
+_FP8_OWNED_PARAMS = ("weight", "weight_scale_inv", "activation_scale")
+
+
 class TestCastFloatingParamsToDtype:
     """Regression tests for cast_floating_params_to_dtype.
 
@@ -211,6 +236,46 @@ class TestCastFloatingParamsToDtype:
         assert model.standard_weight.dtype == torch.bfloat16
         assert model.fp8_scale.dtype == torch.float8_e4m3fn
         assert model.packed_weight.dtype == torch.int8
+
+    @pytest.mark.parametrize("scale_fmt", ["ue8m0", "float"])
+    def test_itemsize_guard_does_not_identify_quantizer_owned_scales(self, scale_fmt):
+        """``itemsize < 2`` is a narrow-float guard, not an ownership test.
+
+        Transformers picks ``weight_scale_inv``'s storage dtype from the checkpoint's
+        ``scale_fmt``: a one-byte UE8M0 float for "ue8m0", float32 for "float" (the
+        default). Both spell the same quantizer-owned scale, and ``activation_scale``
+        is float32 under either format. So a one-byte test protects some quantizer-owned
+        scales and silently rewrites others, which is why the cast has to be gated on
+        the model having no active quantizer rather than on per-parameter dtype.
+
+        See: https://github.com/TransformerLensOrg/TransformerLens/issues/1743
+        """
+        target = torch.bfloat16
+        module = _fp8_linear(scale_fmt)
+        before = {name: param.dtype for name, param in module.named_parameters()}
+        cast_floating_params_to_dtype(module, target)
+        after = {name: param.dtype for name, param in module.named_parameters()}
+
+        owned = {name: before[name] for name in _FP8_OWNED_PARAMS if name in before}
+        assert owned, "FP8Linear exposed none of its quantizer-owned parameters"
+        # Mirror the cast's whole predicate, not dtype width alone: it rewrites a
+        # parameter only when that parameter is floating, wider than one byte and not
+        # already at the target. (Its fourth condition, meta, cannot apply to this
+        # materialized fixture.) Deriving the set this way stays correct if
+        # transformers moves `weight` to a wide packed-integer storage like GPTQ's
+        # int32, which the cast is right to skip.
+        eligible = {
+            name
+            for name, dtype in owned.items()
+            if dtype.is_floating_point and dtype.itemsize >= 2 and dtype != target
+        }
+        assert eligible, "expected a quantizer-owned float wider than one byte"
+        rewritten = {name for name, dtype in owned.items() if after[name] != dtype}
+        assert rewritten == eligible, (
+            "the cast should rewrite exactly those quantizer-owned parameters eligible "
+            f"under its dtype-only predicate: rewritten={sorted(rewritten)} "
+            f"eligible={sorted(eligible)}"
+        )
 
 
 class TestMaybeCastFloatingParams:
