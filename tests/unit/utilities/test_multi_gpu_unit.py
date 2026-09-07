@@ -300,9 +300,20 @@ class TestMaybeCastFloatingParams:
         assert model.weight.dtype == torch.bfloat16
 
     def test_skips_quantized_model(self):
-        """Quantized models should NOT have their params cast."""
-        from types import SimpleNamespace
+        """An active quantizer means HF owns the storage dtypes, so nothing is cast.
 
+        The skip is whole-model deliberately. ``from_pretrained`` is responsible for
+        applying the requested dtype to ordinary floating parameters before this helper
+        runs, and TransformerLens must not second-guess quantizer-owned storage
+        afterward. Any parameter still off the requested dtype here may be
+        quantizer-owned, and dtype alone cannot distinguish ownership safely (see
+        ``test_itemsize_guard_does_not_identify_quantizer_owned_scales``). transformers
+        draws the same line itself: ``.to(dtype=...)`` raises for bitsandbytes and
+        GPTQ models, ``.half()`` / ``.float()`` for any quantized model.
+
+        See: https://github.com/TransformerLensOrg/TransformerLens/issues/1713
+        See: https://github.com/TransformerLensOrg/TransformerLens/issues/1743
+        """
         from transformer_lens.utilities.multi_gpu import maybe_cast_floating_params
 
         model = nn.Linear(4, 4)
@@ -311,6 +322,28 @@ class TestMaybeCastFloatingParams:
 
         maybe_cast_floating_params(model, torch.bfloat16)
         assert model.weight.dtype == torch.float32  # NOT cast
+
+    @pytest.mark.parametrize("scale_fmt", ["ue8m0", "float"])
+    def test_preserves_quantizer_owned_scales_of_any_width(self, scale_fmt):
+        """Both widths of ``weight_scale_inv`` survive, which the dtype guard cannot do.
+
+        The ordinary parameter is set up as the loader would have delivered it, at the
+        requested dtype, so the correct outcome for the whole model is that nothing
+        moves. Under ``scale_fmt="float"`` the scale is float32, so this fails outright
+        if the cast is ever re-enabled behind only the one-byte-float guard.
+        """
+        from transformer_lens.utilities.multi_gpu import maybe_cast_floating_params
+
+        model = nn.Module()
+        model.quantized = _fp8_linear(scale_fmt)
+        model.ln_weight = nn.Parameter(torch.ones(4, dtype=torch.bfloat16))
+        model.config = SimpleNamespace(quantization_config=SimpleNamespace(quant_method="fp8"))
+
+        before = {name: param.dtype for name, param in model.named_parameters()}
+        maybe_cast_floating_params(model, torch.bfloat16)
+
+        assert {name: param.dtype for name, param in model.named_parameters()} == before
+        assert model.quantized.weight_scale_inv.dtype == before["quantized.weight_scale_inv"]
 
     def test_skips_model_without_config(self):
         """Models without a config attribute should be cast (no quantization)."""
