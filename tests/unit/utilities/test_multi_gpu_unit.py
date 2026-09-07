@@ -345,6 +345,48 @@ class TestMaybeCastFloatingParams:
         assert {name: param.dtype for name, param in model.named_parameters()} == before
         assert model.quantized.weight_scale_inv.dtype == before["quantized.weight_scale_inv"]
 
+    def test_casts_once_hf_releases_quantizer_ownership(self):
+        """The guard is a hand-off, not a permanent opt-out.
+
+        ``HfQuantizer.postprocess_model`` calls ``remove_quantization_config`` when a
+        checkpoint is loaded with ``dequantize=True``, which deletes
+        ``config.quantization_config``. ``quantization_method`` then returns None and
+        normalization resumes. That is what stops the whole-model guard from stranding a
+        genuinely dequantized checkpoint in its load dtype.
+        """
+        from transformer_lens.utilities.multi_gpu import maybe_cast_floating_params
+
+        model = nn.Linear(4, 4)
+        model.weight = nn.Parameter(torch.zeros(4, 4, dtype=torch.float32))
+        model.config = SimpleNamespace(quantization_config=SimpleNamespace(quant_method="mxfp4"))
+
+        maybe_cast_floating_params(model, torch.bfloat16)
+        assert model.weight.dtype == torch.float32
+
+        del model.config.quantization_config  # what remove_quantization_config does
+        maybe_cast_floating_params(model, torch.bfloat16)
+        assert model.weight.dtype == torch.bfloat16
+
+    def test_hf_still_clears_quantization_config_when_dequantizing(self):
+        """Pins the upstream behaviour the whole-model guard is calibrated against.
+
+        If transformers ever stops deleting ``quantization_config`` on a dequantized
+        load, ``quantization_method`` would keep reporting a method for a model whose
+        storage the quantizer no longer owns, and the guard really would be too broad.
+        Fail here rather than silently stranding those checkpoints.
+        """
+        base = pytest.importorskip("transformers.quantizers.base")
+
+        model = nn.Linear(4, 4)
+        model.config = SimpleNamespace(quantization_config=SimpleNamespace(quant_method="mxfp4"))
+        model.is_quantized = True
+        # Called unbound: remove_quantization_config only touches `model`, and building
+        # a real quantizer would need a live quantization config per method.
+        base.HfQuantizer.remove_quantization_config(None, model)
+
+        assert not hasattr(model.config, "quantization_config")
+        assert model.is_quantized is False
+
     def test_skips_model_without_config(self):
         """Models without a config attribute should be cast (no quantization)."""
         from transformer_lens.utilities.multi_gpu import maybe_cast_floating_params
