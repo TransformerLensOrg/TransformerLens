@@ -70,7 +70,6 @@ from jaxtyping import Float, Int
 from tqdm.auto import tqdm
 
 from transformer_lens.ActivationCache import ActivationCache
-
 from transformer_lens.tools.analysis.jacobian_lens_coordinate_patch import (
     CoordinatePatch,
     solve_coordinate_patch,
