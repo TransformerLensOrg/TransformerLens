@@ -615,3 +615,125 @@ def test_decompose_gemma_activation_is_valid():
     assert torch.allclose(
         result.j_space_component + result.non_j_space_component, activation, atol=1e-2
     )
+
+
+# --------------------------------------------------------------------------- #
+# Ordinary-estimator fit regression fixture                                   #
+# --------------------------------------------------------------------------- #
+#
+# This pins the exact numerics of the current ``JacobianLens.fit`` drive loop
+# before the estimator-independent driver is extracted. The
+# refactor must reproduce these golden transport matrices, so a change to
+# cotangent batching, valid-position selection, source-position averaging,
+# prompt accumulation, or the graph root would surface here as a failure.
+#
+# The fixture avoids brittleness two ways: it builds a tiny GPT-2 locally (no
+# model download) and overwrites every parameter with an RNG-version-independent
+# arithmetic ramp, so the fitted matrices are byte-identical across machines and
+# torch versions. In-run determinism is asserted with ``torch.equal`` (a repeat
+# fit) and the golden comparison uses a tight tolerance that only absorbs
+# cross-BLAS float rounding on the 4-wide matmuls.
+
+REGRESSION_CORPUS = "jlens-drive-loop-regression-v1"
+REGRESSION_PROMPTS = [
+    "the quick brown fox jumps over the lazy dog again",
+    "colorless green ideas sleep furiously beneath the ancient stone bridge",
+]
+REGRESSION_FIT_KWARGS = dict(
+    source_layers=[0, 1],
+    dim_batch=3,  # < d_model=4 so the ragged final chunk is exercised
+    max_seq_len=16,
+    skip_first_positions=1,
+    show_progress=False,
+)
+# Golden transport matrices captured from the pre-refactor JacobianLens.fit.
+REGRESSION_GOLDEN_JACOBIANS = {
+    0: [
+        [1.0194597244262695, -0.10382787883281708, 0.01114815566688776, 0.07321998476982117],
+        [0.017510414123535156, 0.7570222020149231, 0.17482545971870422, 0.05064191669225693],
+        [-0.06917503476142883, -0.09777483344078064, 1.198944091796875, -0.03199436515569687],
+        [0.05239897966384888, 0.06332147866487503, -0.1471048891544342, 1.0313844680786133],
+    ],
+    1: [
+        [1.022949457168579, -0.05948571860790253, -0.08073973655700684, 0.11727607250213623],
+        [-0.011972094886004925, 0.8772072792053223, 0.12830956280231476, 0.006455251481384039],
+        [-0.04260174185037613, 0.0968940407037735, 1.0271172523498535, -0.08140958845615387],
+        [0.01806488260626793, -0.12579867243766785, -0.007413430605083704, 1.1151472330093384],
+    ],
+}
+
+
+def _build_tiny_deterministic_gpt2():
+    """A 4-wide, 3-layer GPT-2 bridge with fixed arithmetic weights and a real tokenizer.
+
+    Weights are RNG-independent so the fit is reproducible across environments; the
+    GPT-2 tokenizer (small, cached) lets ``JacobianLens.fit`` take string prompts.
+    """
+    from transformers import AutoTokenizer, GPT2Config, GPT2LMHeadModel
+
+    from transformer_lens.model_bridge.sources import build_bridge_from_module
+
+    tokenizer = AutoTokenizer.from_pretrained("gpt2")
+    config = GPT2Config(
+        vocab_size=tokenizer.vocab_size,
+        n_positions=64,
+        n_embd=4,
+        n_layer=3,
+        n_head=2,
+        resid_pdrop=0.0,
+        embd_pdrop=0.0,
+        attn_pdrop=0.0,
+    )
+    hf_model = GPT2LMHeadModel(config).eval()
+    for salt, (_, param) in enumerate(sorted(hf_model.named_parameters())):
+        ramp = torch.arange(param.numel(), dtype=torch.float64)
+        vals = ((ramp * 0.6180339887498949 + (salt + 1) * 0.31830988618) % 1.0) - 0.5
+        param.data.copy_(vals.reshape(param.shape).to(param.dtype))
+    return build_bridge_from_module(
+        hf_model,
+        "GPT2LMHeadModel",
+        hf_config=config,
+        tokenizer=tokenizer,
+        dtype=torch.float32,
+        device="cpu",
+        model_name="tiny-deterministic-gpt2-jacobian-lens",
+    )
+
+
+def test_fit_ordinary_estimator_regression_fixture():
+    """JacobianLens.fit reproduces frozen golden matrices, guarding the driver-extraction refactor."""
+    from transformer_lens.tools.analysis import JacobianLens
+
+    model = _build_tiny_deterministic_gpt2()
+    lens = JacobianLens.fit(model, REGRESSION_PROMPTS, corpus=REGRESSION_CORPUS, **REGRESSION_FIT_KWARGS)
+
+    assert lens.n_prompts == len(REGRESSION_PROMPTS)
+    assert lens.d_model == 4
+    assert lens.source_layers == [0, 1]
+    assert lens.metadata["corpus"] == REGRESSION_CORPUS
+    assert lens.metadata["target_layer"] == 2
+
+    for layer, golden in REGRESSION_GOLDEN_JACOBIANS.items():
+        matrix = lens.jacobians[layer]
+        assert matrix.shape == (4, 4)
+        assert torch.isfinite(matrix).all()
+        torch.testing.assert_close(
+            matrix, torch.tensor(golden, dtype=torch.float32), atol=1e-5, rtol=1e-4
+        )
+
+    # The estimator is deterministic: a repeat fit is bit-identical in this environment.
+    repeat = JacobianLens.fit(model, REGRESSION_PROMPTS, corpus=REGRESSION_CORPUS, **REGRESSION_FIT_KWARGS)
+    for layer in lens.source_layers:
+        assert torch.equal(lens.jacobians[layer], repeat.jacobians[layer])
+
+    # Joint fitting equals merging per-prompt fits, exactly, on this fixture.
+    merged = JacobianLens.merge(
+        [
+            JacobianLens.fit(model, [prompt], corpus=REGRESSION_CORPUS, **REGRESSION_FIT_KWARGS)
+            for prompt in REGRESSION_PROMPTS
+        ]
+    )
+    for layer in lens.source_layers:
+        torch.testing.assert_close(
+            lens.jacobians[layer], merged.jacobians[layer], atol=1e-6, rtol=1e-5
+        )
