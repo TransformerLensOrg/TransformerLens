@@ -86,6 +86,18 @@ from transformer_lens.utilities.hf_utils import call_hf_with_retry
 
 TokenInput = Union[str, int]
 
+# Backward-provider seam for the fit drive loop. A provider takes the target
+# residual, the source residuals it differentiates against, one batched one-hot
+# cotangent, and the ``retain_graph`` flag, and returns one gradient per source
+# (the same tuple ``torch.autograd.grad`` returns). Keeping the backward step
+# behind this narrow callable lets the estimator-independent driver run an
+# alternate estimator without touching its capture / cotangent-batching /
+# averaging machinery; the ordinary J-lens path passes :func:`_ordinary_vjp`.
+BackwardProvider = Callable[
+    [torch.Tensor, List[torch.Tensor], torch.Tensor, bool],
+    Tuple[torch.Tensor, ...],
+]
+
 # ---------------------------------------------------------------------------
 # Registry helpers
 # ---------------------------------------------------------------------------
@@ -1497,6 +1509,7 @@ class JacobianLens:
                     source_layers=resolved_sources,
                     dim_batch=dim_batch,
                     skip_first_positions=skip_first_positions,
+                    backward_provider=_ordinary_vjp,
                 )
                 for layer in resolved_sources:
                     jacobian_sum[layer] += per_prompt[layer]
@@ -1833,6 +1846,27 @@ class _frozen_parameters:
             param.requires_grad_(flag)
 
 
+def _ordinary_vjp(
+    target: torch.Tensor,
+    sources: List[torch.Tensor],
+    cotangent: torch.Tensor,
+    retain_graph: bool,
+) -> Tuple[torch.Tensor, ...]:
+    """Ordinary vector-Jacobian product backing the J-lens estimator.
+
+    Thin wrapper over ``torch.autograd.grad`` so the drive loop takes its
+    backward step through the :data:`BackwardProvider` seam. This is the
+    identity-preserving provider: routing the ordinary fit through it changes no
+    numerics.
+    """
+    return torch.autograd.grad(
+        outputs=target,
+        inputs=sources,
+        grad_outputs=cotangent,
+        retain_graph=retain_graph,
+    )
+
+
 def _jacobian_for_prompt(
     model: Any,
     tokens: Int[torch.Tensor, "one seq"],
@@ -1840,12 +1874,18 @@ def _jacobian_for_prompt(
     source_layers: List[int],
     dim_batch: int,
     skip_first_positions: int,
+    backward_provider: BackwardProvider,
 ) -> Dict[int, Float[torch.Tensor, "d_model d_model"]]:
     """Exact per-prompt Jacobian rows via batched one-hot cotangents.
 
     Assumes parameters are already frozen (see :class:`_frozen_parameters`) so
     that marking the earliest source activation ``requires_grad`` roots the
     graph there.
+
+    The backward pass is taken through ``backward_provider`` rather than calling
+    ``torch.autograd.grad`` directly, so the capture / cotangent-batching /
+    averaging mechanics are shared by any estimator. The ordinary J-lens path
+    passes :func:`_ordinary_vjp`, which reproduces the original numerics exactly.
     """
     d_model = model.cfg.d_model
     target_layer = model.cfg.n_layers - 1
@@ -1890,11 +1930,11 @@ def _jacobian_for_prompt(
             positions_index[None, :],
             dim_start + batch_index[:n_dims, None],
         ] = 1.0
-        grads = torch.autograd.grad(
-            outputs=target,
-            inputs=sources,
-            grad_outputs=cotangent,
-            retain_graph=pass_index < n_passes - 1,
+        grads = backward_provider(
+            target,
+            sources,
+            cotangent,
+            pass_index < n_passes - 1,
         )
         for layer, grad in zip(source_layers, grads):
             # each gradient lives on its layer's device under sharded/device_map setups
@@ -1902,3 +1942,84 @@ def _jacobian_for_prompt(
             jacobians[layer][dim_start : dim_start + n_dims, :] = rows.cpu()
         del grads
     return jacobians
+
+
+def _fit_transport_matrices(
+    model: Any,
+    prompts: Sequence[str],
+    *,
+    source_layers: List[int],
+    dim_batch: int,
+    max_seq_len: int,
+    skip_first_positions: int,
+    show_progress: bool,
+    backward_provider: BackwardProvider,
+) -> Tuple[Dict[int, Float[torch.Tensor, "d_model d_model"]], int]:
+    """Estimator-independent J-lens drive loop.
+
+    Owns the mechanics shared by every estimator: the frozen-parameter
+    lifecycle, the per-prompt forward/backward accumulation (source/target
+    residual capture, one-hot cotangent batching, ``dim_batch`` chunking,
+    valid-position selection, and source-position averaging all live in
+    :func:`_jacobian_for_prompt`), the prompt-accumulation running sum, and the
+    final division into per-prompt means. Only the backward step varies: it is
+    taken through ``backward_provider``, so an alternate estimator reuses this
+    loop unchanged. Callers own input validation, provenance, and lens
+    construction.
+
+    Args:
+        model: A raw ``TransformerBridge`` whose parameters are frozen for the
+            duration of the loop.
+        prompts: Prompt strings; prompts too short to contain a valid position
+            (``seq_len <= skip_first_positions + 1``) are skipped with a warning
+            and do not count toward the returned prompt total.
+        source_layers: Resolved, in-range source layers to fit.
+        dim_batch: Output dimensions per backward pass.
+        max_seq_len: Prompts are truncated to this many tokens.
+        skip_first_positions: Leading positions excluded from the source average.
+        show_progress: Show a tqdm progress bar over prompts.
+        backward_provider: Backward-step seam; pass :func:`_ordinary_vjp` for the
+            ordinary J-lens numerics.
+
+    Returns:
+        ``(transport_matrices, n_prompts)`` where ``transport_matrices`` maps each
+        source layer to its prompt-averaged ``[d_model, d_model]`` matrix and
+        ``n_prompts`` is the number of prompts that contributed.
+
+    Raises:
+        ValueError: If no prompt was long enough to contribute valid positions.
+    """
+    d_model = model.cfg.d_model
+    jacobian_sum = {
+        layer: torch.zeros(d_model, d_model, dtype=torch.float32) for layer in source_layers
+    }
+    n_done = 0
+    iterator = tqdm(prompts, desc="fitting J-lens", disable=not show_progress)
+    with _frozen_parameters(model):
+        for prompt in iterator:
+            tokens = model.to_tokens(prompt)[:, :max_seq_len]
+            seq_len = tokens.shape[1]
+            if seq_len <= skip_first_positions + 1:
+                warnings.warn(
+                    f"skipping prompt with only {seq_len} tokens "
+                    f"(need > {skip_first_positions + 1})",
+                    stacklevel=2,
+                )
+                continue
+            per_prompt = _jacobian_for_prompt(
+                model,
+                tokens,
+                source_layers=source_layers,
+                dim_batch=dim_batch,
+                skip_first_positions=skip_first_positions,
+                backward_provider=backward_provider,
+            )
+            for layer in source_layers:
+                jacobian_sum[layer] += per_prompt[layer]
+            n_done += 1
+    if n_done == 0:
+        raise ValueError(
+            "every prompt was too short to contribute valid positions; nothing was fitted"
+        )
+    means = {layer: jacobian_sum[layer] / n_done for layer in source_layers}
+    return means, n_done
