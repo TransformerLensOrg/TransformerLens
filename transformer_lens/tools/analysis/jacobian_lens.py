@@ -1487,37 +1487,16 @@ class JacobianLens:
                 stacklevel=2,
             )
 
-        jacobian_sum = {
-            layer: torch.zeros(d_model, d_model, dtype=torch.float32) for layer in resolved_sources
-        }
-        n_done = 0
-        iterator = tqdm(prompts, desc="fitting J-lens", disable=not show_progress)
-        with _frozen_parameters(model):
-            for prompt in iterator:
-                tokens = model.to_tokens(prompt)[:, :max_seq_len]
-                seq_len = tokens.shape[1]
-                if seq_len <= skip_first_positions + 1:
-                    warnings.warn(
-                        f"skipping prompt with only {seq_len} tokens "
-                        f"(need > {skip_first_positions + 1})",
-                        stacklevel=2,
-                    )
-                    continue
-                per_prompt = _jacobian_for_prompt(
-                    model,
-                    tokens,
-                    source_layers=resolved_sources,
-                    dim_batch=dim_batch,
-                    skip_first_positions=skip_first_positions,
-                    backward_provider=_ordinary_vjp,
-                )
-                for layer in resolved_sources:
-                    jacobian_sum[layer] += per_prompt[layer]
-                n_done += 1
-        if n_done == 0:
-            raise ValueError(
-                "every prompt was too short to contribute valid positions; nothing was fitted"
-            )
+        transport_matrices, n_done = _fit_transport_matrices(
+            model,
+            prompts,
+            source_layers=resolved_sources,
+            dim_batch=dim_batch,
+            max_seq_len=max_seq_len,
+            skip_first_positions=skip_first_positions,
+            show_progress=show_progress,
+            backward_provider=_ordinary_vjp,
+        )
 
         fit_metadata: Dict[str, Any] = {
             "model_name": getattr(model.cfg, "model_name", None),
@@ -1545,7 +1524,7 @@ class JacobianLens:
         full_metadata.update(fit_metadata)
         _validate_metadata(full_metadata)
         return cls(
-            {layer: jacobian_sum[layer] / n_done for layer in resolved_sources},
+            transport_matrices,
             n_prompts=n_done,
             d_model=d_model,
             metadata=full_metadata,
