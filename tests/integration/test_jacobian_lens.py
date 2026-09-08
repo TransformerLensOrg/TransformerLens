@@ -705,7 +705,9 @@ def test_fit_ordinary_estimator_regression_fixture():
     from transformer_lens.tools.analysis import JacobianLens
 
     model = _build_tiny_deterministic_gpt2()
-    lens = JacobianLens.fit(model, REGRESSION_PROMPTS, corpus=REGRESSION_CORPUS, **REGRESSION_FIT_KWARGS)
+    lens = JacobianLens.fit(
+        model, REGRESSION_PROMPTS, corpus=REGRESSION_CORPUS, **REGRESSION_FIT_KWARGS
+    )
 
     assert lens.n_prompts == len(REGRESSION_PROMPTS)
     assert lens.d_model == 4
@@ -722,7 +724,9 @@ def test_fit_ordinary_estimator_regression_fixture():
         )
 
     # The estimator is deterministic: a repeat fit is bit-identical in this environment.
-    repeat = JacobianLens.fit(model, REGRESSION_PROMPTS, corpus=REGRESSION_CORPUS, **REGRESSION_FIT_KWARGS)
+    repeat = JacobianLens.fit(
+        model, REGRESSION_PROMPTS, corpus=REGRESSION_CORPUS, **REGRESSION_FIT_KWARGS
+    )
     for layer in lens.source_layers:
         assert torch.equal(lens.jacobians[layer], repeat.jacobians[layer])
 
@@ -736,4 +740,71 @@ def test_fit_ordinary_estimator_regression_fixture():
     for layer in lens.source_layers:
         torch.testing.assert_close(
             lens.jacobians[layer], merged.jacobians[layer], atol=1e-6, rtol=1e-5
+        )
+
+
+# --------------------------------------------------------------------------- #
+# Backward-provider seam                                                      #
+# --------------------------------------------------------------------------- #
+#
+# The estimator-independent driver (``_fit_transport_matrices``) takes its
+# backward step through a ``backward_provider`` callable so a future estimator
+# can reuse the capture / cotangent-batching / averaging machinery
+# unchanged. This test proves the seam works before anything depends on it: an
+# alternate provider that scales the ordinary VJP by an exact power of two flows
+# linearly through the driver, so every transport matrix must come out scaled by
+# exactly that constant, while the public ``JacobianLens.fit`` path -- which
+# passes ``_ordinary_vjp`` -- stays pinned to the golden regression matrices.
+
+
+def test_fit_driver_honors_alternate_backward_provider():
+    """The driver routes its backward step through the provider seam without
+    disturbing the ordinary ``JacobianLens.fit`` numerics."""
+    from transformer_lens.tools.analysis import JacobianLens
+    from transformer_lens.tools.analysis.jacobian_lens import (
+        _fit_transport_matrices,
+        _ordinary_vjp,
+    )
+
+    model = _build_tiny_deterministic_gpt2()
+
+    # The ordinary provider through the driver reproduces the pinned golden
+    # matrices, anchoring the alternate-provider comparison to the fit fixture.
+    baseline, n_ordinary = _fit_transport_matrices(
+        model, REGRESSION_PROMPTS, backward_provider=_ordinary_vjp, **REGRESSION_FIT_KWARGS
+    )
+    assert n_ordinary == len(REGRESSION_PROMPTS)
+    for layer, golden in REGRESSION_GOLDEN_JACOBIANS.items():
+        torch.testing.assert_close(
+            baseline[layer], torch.tensor(golden, dtype=torch.float32), atol=1e-5, rtol=1e-4
+        )
+
+    # An alternate provider that scales the ordinary VJP by an exact power of two.
+    # Power-of-two scaling commutes bit-exactly with the driver's mean / sum /
+    # divide reductions, so the honored result is byte-identical to SCALE*baseline.
+    SCALE = 2.0
+    calls = 0
+
+    def scaled_provider(target, sources, cotangent, retain_graph):
+        nonlocal calls
+        calls += 1
+        grads = _ordinary_vjp(target, sources, cotangent, retain_graph)
+        return tuple(SCALE * grad for grad in grads)
+
+    scaled, n_scaled = _fit_transport_matrices(
+        model, REGRESSION_PROMPTS, backward_provider=scaled_provider, **REGRESSION_FIT_KWARGS
+    )
+    assert calls > 0  # the driver actually took its backward step through the seam
+    assert n_scaled == n_ordinary
+    for layer in baseline:
+        assert torch.equal(scaled[layer], SCALE * baseline[layer])
+
+    # Exercising the seam leaves the public fit path untouched: it still routes
+    # through the ordinary VJP and reproduces the golden regression matrices.
+    lens = JacobianLens.fit(
+        model, REGRESSION_PROMPTS, corpus=REGRESSION_CORPUS, **REGRESSION_FIT_KWARGS
+    )
+    for layer, golden in REGRESSION_GOLDEN_JACOBIANS.items():
+        torch.testing.assert_close(
+            lens.jacobians[layer], torch.tensor(golden, dtype=torch.float32), atol=1e-5, rtol=1e-4
         )
