@@ -4374,7 +4374,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         verbose: bool = True,
         stop_strings: Optional[Union[str, List[str]]] = None,
         stopping_criteria: Optional[Any] = None,
-    ) -> Generator[Union[torch.Tensor, str], None, None]:
+    ) -> Generator[Union[torch.Tensor, str, List[str]], None, None]:
         """Stream tokens from the model as they are generated.
 
         Yields batches of tokens progressively during generation rather than
@@ -4410,9 +4410,11 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                 (scores is the step's logits). See generate() for the full contract.
 
         Yields:
-            Token tensors [batch, seq_len] or strings, accumulated up to
-            max_tokens_per_yield tokens between yields. First yield includes
-            the input tokens; subsequent yields contain only new tokens.
+            Token tensors [batch, seq_len], or decoded text when return_type='str' -
+            a bare string for a single sequence and one string per batch row for a
+            larger batch, matching generate(). Chunks accumulate up to
+            max_tokens_per_yield tokens between yields; the first yield includes the
+            input tokens and subsequent yields contain only new tokens.
         """
         self._ensure_generation_supported("generate_stream")
         # --- Input parsing (mirrors generate()) ---
@@ -4529,10 +4531,13 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
 
         def _maybe_decode(
             tokens: torch.Tensor,
-        ) -> Union[torch.Tensor, str]:
+        ) -> Union[torch.Tensor, str, List[str]]:
             if return_type == "str":
                 assert self.tokenizer is not None
-                return self.tokenizer.decode(tokens[0], skip_special_tokens=True)
+                decoded_texts = [
+                    self.tokenizer.decode(row, skip_special_tokens=True) for row in tokens
+                ]
+                return decoded_texts[0] if len(decoded_texts) == 1 else decoded_texts
             return tokens
 
         try:
