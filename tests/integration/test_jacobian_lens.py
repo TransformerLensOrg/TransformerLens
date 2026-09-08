@@ -6,6 +6,8 @@ RMSNorm and logit-softcap coverage in the regular CI suite, while a slow
 Gemma-2-2b-it test checks the published artifact on the real architecture.
 """
 
+from typing import Any
+
 import pytest
 import torch
 
@@ -129,7 +131,7 @@ def test_bridge_fit_merge_consistency_and_finiteness(gpt2_bridge):
     """Joint fitting equals merging per-prompt fits for a real Bridge."""
     from transformer_lens.tools.analysis import JacobianLens
 
-    fit_kwargs = dict(
+    fit_kwargs: dict[str, Any] = dict(
         source_layers=[0, 5, 10],
         dim_batch=96,
         max_seq_len=32,
@@ -639,7 +641,7 @@ REGRESSION_PROMPTS = [
     "the quick brown fox jumps over the lazy dog again",
     "colorless green ideas sleep furiously beneath the ancient stone bridge",
 ]
-REGRESSION_FIT_KWARGS = dict(
+REGRESSION_FIT_KWARGS: dict[str, Any] = dict(
     source_layers=[0, 1],
     dim_batch=3,  # < d_model=4 so the ragged final chunk is exercised
     max_seq_len=16,
