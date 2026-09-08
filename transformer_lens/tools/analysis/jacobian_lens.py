@@ -63,11 +63,13 @@ Example::
 import warnings
 from dataclasses import dataclass
 from importlib.metadata import version
-from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 import torch
 from jaxtyping import Float, Int
 from tqdm.auto import tqdm
+
+from transformer_lens.ActivationCache import ActivationCache
 
 from transformer_lens.tools.analysis.jacobian_lens_coordinate_patch import (
     CoordinatePatch,
@@ -1331,8 +1333,7 @@ class JacobianLens:
             model: The model the hooks will run on.
             source_token: The concept to remove (e.g. ``" France"``).
             target_token: The concept to install (e.g. ``" China"``).
-            layers: Layers to intervene at (the paper clamps the swap across an
-                intermediate-layer band).
+            layers: Layers to intervene at.
             alpha: Swap strength.
             positions: Chunk-local positions to swap (negative indices allowed
                 and normalized on every hook invocation). Defaults to all.
@@ -1387,7 +1388,7 @@ class JacobianLens:
         source_token: TokenInput,
         target_token: TokenInput,
         layers: Sequence[int],
-        clean_cache: Mapping[str, torch.Tensor],
+        clean_cache: ActivationCache,
         *,
         positions: Optional[Sequence[int]] = None,
     ) -> List[Tuple[str, Any]]:
