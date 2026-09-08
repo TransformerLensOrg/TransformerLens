@@ -3,7 +3,6 @@
     dependencies=[
         "accelerate>=1.1.0",                                                 # align_module_device (device_map disk offload)
         "beartype>=0.14.1",
-        "better-abc>=0.0.3",
         "datasets>=2.7.1",
         "einops>=0.6.0",
         "fancy-einsum>=0.0.3",
@@ -87,7 +86,6 @@
     ]
     docs=[
         "furo>=2023.3.27,<2024.0.0",
-        "muutils>=0.6.13",
         "myst-parser>=2.0.0,<3.0.0",
         "nbconvert>=7.9.2",
         "nbsphinx>=0.9.3",

@@ -1,6 +1,6 @@
 # Config — AGENTS.md
 
-The config dataclasses that drive both `HookedTransformer` and `TransformerBridge`. Read [the root AGENTS.md](../../AGENTS.md) for project-wide rules.
+The config dataclasses that drive `TransformerBridge`. Read [the root AGENTS.md](../../AGENTS.md) for project-wide rules.
 
 ## File map
 
@@ -8,7 +8,6 @@ The config dataclasses that drive both `HookedTransformer` and `TransformerBridg
 |---|---|---|
 | [`transformer_lens_config.py`](transformer_lens_config.py) | `TransformerLensConfig` | Minimal base — only fields actually used by the system |
 | [`transformer_bridge_config.py`](transformer_bridge_config.py) | `TransformerBridgeConfig(TransformerLensConfig)` | The Bridge config; what every Bridge adapter receives as `cfg` |
-| [`hooked_transformer_config.py`](hooked_transformer_config.py) | `HookedTransformerConfig` | Legacy HT-only config (deprecated; see [AGENTS.md §2](../../AGENTS.md#2-two-systems-live-in-this-repo)) |
 
 ## Adding a new HF-config attr to `TransformerBridgeConfig` — decision tree
 

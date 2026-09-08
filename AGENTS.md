@@ -11,7 +11,7 @@ This file is the single source of truth. Vendor-specific files ([CLAUDE.md](CLAU
 1. **Use `uv`**, not `pip` or `poetry` (`uv sync`).
 2. **Source `.env`** (`set -a; source .env; set +a`) before any HF-Hub command.
 3. **Base PRs on `dev`**, not `main`. Never name a branch `main` or `dev`.
-4. **Mirror HookedTransformer → TransformerBridge** when behaviour exists in both ([§2](#2-two-systems-live-in-this-repo)).
+4. **The `Hooked*` model classes were removed in 4.0**; `HookedRootModule` / `HookPoint` are kept ([§2](#2-two-systems-live-in-this-repo)).
 5. **`make format` + `uv run mypy .` before push** — no pre-commit hook.
 6. **Never add `# type: ignore`** ([§10](#10-hard-rules)).
 7. **Never dismiss a failing test as "pre-existing"** ([§10](#10-hard-rules)).
@@ -29,13 +29,13 @@ Sub-folder rules: [tests/AGENTS.md](tests/AGENTS.md) · [supported_architectures
 | System | Status | Lives in | Numerics | Registry |
 |---|---|---|---|---|
 | **`TransformerBridge`** | v3 — default for new work | [transformer_lens/model_bridge/](transformer_lens/model_bridge/) | Raw HF weights by default; `bridge.enable_compatibility_mode()` for HT-equivalent | [transformer_lens/tools/model_registry/data/supported_models.json](transformer_lens/tools/model_registry/data/supported_models.json) |
-| **`HookedTransformer`** | Legacy, maintenance mode, deprecated in 3.0 | [transformer_lens/HookedTransformer.py](transformer_lens/HookedTransformer.py) + [transformer_lens/components/](transformer_lens/components/) | Folds LayerNorm + centres weights → does NOT match HF | [transformer_lens/supported_models.py](transformer_lens/supported_models.py) (**HT-only**) |
+| **`HookedTransformer`** | **Removed in 4.0** — use `TransformerBridge` + `enable_compatibility_mode()` | *(deleted; see [migrating_to_v4.md](docs/source/content/migrating_to_v4.md))* | — | — |
 
-> ⚠ `HookedTransformer` has no acceptance suite of its own — `test_hooked_transformer.py` was removed by the reanchoring in #1603, which moved Bridge tests onto frozen goldens. Changes to `HookedTransformer` itself land untested at the acceptance level; extra manual care required. The `HookedEncoder` (BERT) and `HookedEncoderDecoder` (T5) acceptance suites do cover those two classes. See [QUARANTINES.md](tests/QUARANTINES.md) for the remaining skips.
+> ⚠ `HookedRootModule` + `HookPoint` survive 4.0 as the supported way to hook an arbitrary `nn.Module`. `supported_models.py` is kept as the frozen legacy name/alias ledger (hosts the case-insensitive `get_official_model_name`). See [QUARANTINES.md](tests/QUARANTINES.md) for test skips.
 
 Bridge architecture-adapter pattern: each HF architecture has one file in [supported_architectures/](transformer_lens/model_bridge/supported_architectures/) mapping HF module paths to canonical names. Bridge hooks are architecture-native (e.g. `blocks.{i}.hook_out`); HT-style aliases live in [bridge_core.py](transformer_lens/model_bridge/bridge_core.py).
 
-**Mirroring rule:** if you change `HookedTransformer` behaviour that has a `TransformerBridge` counterpart, update both in the same PR. [supported_models.py](transformer_lens/supported_models.py) is HT-only — Bridge-only models go in the Bridge registry data file.
+There is now one model system: `TransformerBridge`. [supported_models.py](transformer_lens/supported_models.py) holds the frozen legacy name/alias ledger; Bridge models live in the Bridge registry data file.
 
 ## 3. Quickstart
 
@@ -81,14 +81,12 @@ Python: **>=3.10, <4.0**. CI tests 3.10, 3.11, 3.12. Format/type/docstring check
 | Path | What's there |
 |---|---|
 | [transformer_lens/](transformer_lens/) | Core package |
-| [transformer_lens/HookedTransformer.py](transformer_lens/HookedTransformer.py) | Legacy `HookedTransformer` API |
 | [transformer_lens/HookedEncoder.py](transformer_lens/HookedEncoder.py), [HookedEncoderDecoder.py](transformer_lens/HookedEncoderDecoder.py), [HookedAudioEncoder.py](transformer_lens/HookedAudioEncoder.py) | Encoder-only / seq2seq / audio variants |
 | [transformer_lens/model_bridge/](transformer_lens/model_bridge/) | `TransformerBridge` system |
 | [transformer_lens/model_bridge/supported_architectures/](transformer_lens/model_bridge/supported_architectures/) | One adapter file per HF architecture |
 | [transformer_lens/model_bridge/generalized_components/](transformer_lens/model_bridge/generalized_components/) | Bridge-side reusable components |
-| [transformer_lens/components/](transformer_lens/components/) | HT-side components (attention, MLP, LN, embed) |
 | [transformer_lens/factories/](transformer_lens/factories/) | `architecture_adapter_factory.py`, `mlp_factory.py`, `activation_function_factory.py` |
-| [transformer_lens/config/](transformer_lens/config/) | `HookedTransformerConfig` and `TransformerBridgeConfig` |
+| [transformer_lens/config/](transformer_lens/config/) | `TransformerBridgeConfig` / `TransformerLensConfig` |
 | [transformer_lens/utilities/](transformer_lens/utilities/) | Device management, weight processing, HF utilities |
 | [transformer_lens/hook_points.py](transformer_lens/hook_points.py) | `HookPoint` class and `LensHandle` |
 | [transformer_lens/supported_models.py](transformer_lens/supported_models.py) | **HT-only** registry (`OFFICIAL_MODEL_NAMES`, `MODEL_ALIASES`) |
@@ -197,7 +195,7 @@ Claude Code: `/task-complete` automates the last row. See [§15 Workflow shortcu
 
 ## 12. Pointers for further reading
 
-- [docs/source/content/migrating_to_v3.md](docs/source/content/migrating_to_v3.md) — HT → Bridge migration recipes
+- [docs/source/content/migrating_to_v4.md](docs/source/content/migrating_to_v4.md) — 4.0 removed-name → Bridge mapping ([v3 guide](docs/source/content/migrating_to_v3.md) for deeper API recipes)
 - [docs/source/content/adapter_development/](docs/source/content/adapter_development/) — adapter authoring deep dive
 - [docs/source/content/compatibility_mode.md](docs/source/content/compatibility_mode.md) — when to call `bridge.enable_compatibility_mode()`, what each flag does, four-quadrant test matrix
 - [docs/source/content/debugging_numerical_divergence.md](docs/source/content/debugging_numerical_divergence.md) — bisection workflow for HT-vs-Bridge / Bridge-vs-HF logit drift

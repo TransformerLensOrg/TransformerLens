@@ -24,6 +24,13 @@ def test_model_aliases_is_alphabetical():
     assert actual_keys == expected_keys, "MODEL_ALIASES keys are not in alphabetical order. "
 
 
+def test_get_official_model_name_is_case_insensitive():
+    """The deleted loading_from_pretrained resolver lowercased both sides; the
+    rehomed one must too, or ~900 previously-accepted case variants regress."""
+    assert get_official_model_name("GPT2") == "gpt2"
+    assert get_official_model_name("gpt2-small") == get_official_model_name("GPT2-Small")
+
+
 def test_get_official_model_name_raises_on_unknown():
     import pytest
 

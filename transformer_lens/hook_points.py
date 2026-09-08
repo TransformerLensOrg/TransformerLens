@@ -432,20 +432,15 @@ class HookIntrospectionMixin:
         return out
 
 
-# HookedRootModule moved to transformer_lens.HookedRootModule (3.0). Import it from
-# its dedicated module. Importing from here is deprecated and will trigger a warning.
+# HookedRootModule moved to transformer_lens.HookedRootModule in 3.0; the
+# deprecated re-export from here was removed in 4.0 as promised. The class itself
+# is kept — import it from transformer_lens or transformer_lens.HookedRootModule.
 def __getattr__(name: str):
     if name == "HookedRootModule":
-        import warnings
-
-        from transformer_lens.HookedRootModule import HookedRootModule
-
-        warnings.warn(
-            "Importing HookedRootModule from transformer_lens.hook_points is "
-            "deprecated and will be removed in TransformerLens 4.0. Import it from "
-            "transformer_lens (preferred) or transformer_lens.HookedRootModule instead.",
-            DeprecationWarning,
-            stacklevel=2,
+        raise AttributeError(
+            "Importing HookedRootModule from transformer_lens.hook_points was "
+            "removed in TransformerLens 4.0. Import it from transformer_lens "
+            "(preferred) or transformer_lens.HookedRootModule instead — the class "
+            "itself is kept."
         )
-        return HookedRootModule
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

@@ -19,7 +19,7 @@ pytestmark = pytest.mark.slow
 
 # Diverse architectures for hook completeness testing.
 # Constraint: the reference-anchored tests need a golden cell for the model
-# (see scripts/capture_ht_goldens.py). Tiny Llama/Qwen/Gemma families have no
+# (see tests/goldens_capture_spec.py). Tiny Llama/Qwen/Gemma families have no
 # goldens; for those, tests/unit/model_bridge/test_component_hooks_fire.py
 # (Tier 2) provides direct per-adapter hook-firing coverage.
 MODELS_TO_TEST = [

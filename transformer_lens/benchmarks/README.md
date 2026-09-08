@@ -1,6 +1,6 @@
 # TransformerBridge Benchmarks
 
-This directory contains a comprehensive benchmark suite for testing TransformerBridge compatibility with HuggingFace models and HookedTransformer.
+This directory contains a comprehensive benchmark suite for testing TransformerBridge compatibility with HuggingFace models.
 
 ## Overview
 
@@ -25,7 +25,7 @@ results = run_benchmark_suite(
     model_name="gpt2",
     device="cpu",
     use_hf_reference=True,      # Compare against HuggingFace model
-    use_ht_reference=True,      # Compare against HookedTransformer
+    use_hf_reference=True,      # Compare against the raw HuggingFace model
     enable_compatibility_mode=True,
     verbose=True
 )
@@ -43,14 +43,11 @@ from transformer_lens.benchmarks import (
     benchmark_hook_functionality,
     benchmark_generation,
 )
-from transformer_lens import HookedTransformer
 from transformer_lens.model_bridge import TransformerBridge
 
 # Load models
 bridge = TransformerBridge.boot_transformers("gpt2", device="cpu")
 bridge.enable_compatibility_mode()
-
-ht = HookedTransformer.from_pretrained("gpt2")
 
 # Run individual benchmarks
 test_text = "The quick brown fox"
@@ -71,7 +68,6 @@ The benchmarks are designed to be used in pytest test suites. Here's how to inte
 
 ```python
 import pytest
-from transformer_lens import HookedTransformer
 from transformer_lens.model_bridge import TransformerBridge
 from transformer_lens.benchmarks import (
     benchmark_loss_equivalence,
@@ -84,10 +80,12 @@ class TestTransformerBridgeCompatibility:
     @pytest.fixture
     def models(self):
         """Create models for testing."""
-        ht = HookedTransformer.from_pretrained("gpt2")
+        from transformers import AutoModelForCausalLM
+
+        hf = AutoModelForCausalLM.from_pretrained("gpt2")
         bridge = TransformerBridge.boot_transformers("gpt2")
         bridge.enable_compatibility_mode()
-        return {"ht": ht, "bridge": bridge}
+        return {"hf": hf, "bridge": bridge}
 
     def test_loss_equivalence(self, models):
         """Test loss computation matches."""
@@ -95,7 +93,7 @@ class TestTransformerBridgeCompatibility:
         result = benchmark_loss_equivalence(
             models["bridge"],
             test_text,
-            reference_model=models["ht"],
+            reference_model=models["hf"],
             atol=1e-3
         )
         assert result.passed, result.message
@@ -106,7 +104,7 @@ class TestTransformerBridgeCompatibility:
         result = benchmark_logits_equivalence(
             models["bridge"],
             test_text,
-            reference_model=models["ht"],
+            reference_model=models["hf"],
             atol=3e-2,
             rtol=3e-2
         )
@@ -118,7 +116,7 @@ class TestTransformerBridgeCompatibility:
         result = benchmark_hook_functionality(
             models["bridge"],
             test_text,
-            reference_model=models["ht"],
+            reference_model=models["hf"],
             atol=2e-3
         )
         assert result.passed, result.message
@@ -181,7 +179,7 @@ The benchmarks use a tiered approach for comparison:
    - Direct comparison with original HF implementation
    - Ensures bridge maintains model fidelity
 
-2. **Second Priority**: Compare TransformerBridge → HookedTransformer
+2. **Second Priority**: Compare TransformerBridge → the raw HuggingFace model
    - If HT version exists, compare processed outputs
    - Ensures compatibility with TransformerLens ecosystem
 
@@ -288,7 +286,7 @@ Failed: 1 (6.2%)
   - LayerNorm bridging numerical differences
   - Attention pattern computation differences
 
-- **Performance**: Full hook comparison tests are computationally expensive and only run when a HookedTransformer reference is available.
+- **Performance**: Full hook comparison tests are computationally expensive.
 
 ## Contributing
 
@@ -303,5 +301,4 @@ When adding new test patterns:
 ## See Also
 
 - [TransformerBridge Documentation](../model_bridge/README.md)
-- [HookedTransformer API](../HookedTransformer.py)
 - [Test Suite](../../tests/)

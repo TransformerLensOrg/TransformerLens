@@ -141,11 +141,10 @@ and the acceptance tier is green. What the skips were hiding was four genuine fa
 
 Two silent TransformerLens bugs also lived in this blind spot the whole time: T5's decoder
 self-attention was never causally masked, and its relative-position bias used the encoder's
-bucketing. Both are fixed, and bound by
-[`acceptance/test_hooked_encoder_decoder.py`](acceptance/test_hooked_encoder_decoder.py)'s
-`test_full_model_multi_token_decoder` plus
-[`unit/model_bridge/test_t5_block_parity.py`](unit/model_bridge/test_t5_block_parity.py). Keep
-the encoder modules enabled.
+bucketing. Both are fixed. **Update (4.0):** the acceptance suites named above were deleted
+with the `Hooked*` classes in the 4.0 removal (the bugs lived in deleted code); the T5 fix is
+now bound solely by the surviving
+[`unit/model_bridge/test_t5_block_parity.py`](unit/model_bridge/test_t5_block_parity.py).
 
 ---
 
