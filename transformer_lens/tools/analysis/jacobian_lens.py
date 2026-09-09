@@ -1433,9 +1433,15 @@ class JacobianLens:
 
         Raises:
             ValueError: If ``positions`` is empty, if ``source_token`` and ``target_token``
-                resolve to the same id, or if ``source_token`` is inactive at any ``(batch_idx,
-                position)`` pair touched by a hook firing (the whole forward pass fails rather
-                than silently patching a subset).
+                resolve to the same id, or if ``source_token`` is not in the top-``k`` active
+                support of every patched ``(batch_idx, position)`` pair *at the moment its hook
+                fires* -- the whole forward pass fails rather than silently patching a subset.
+                This precondition is stronger and more order-dependent than "active on a clean
+                forward pass": in a band of layers an earlier hook's patch edits the residual
+                that a later layer re-decomposes, and ``substitute``/``swap`` zero or move the
+                source coordinate, so the source can be removed from a later layer's active
+                support even though it was active on an unhooked pass. Stacking layers or
+                positions therefore makes this progressively harder to satisfy.
 
         Warns:
             UserWarning: Once per call, naming the number of layers and positions that will
