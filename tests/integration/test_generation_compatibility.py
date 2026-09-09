@@ -376,7 +376,10 @@ class TestTransformerBridgeHFGenerate:
 
     def test_hf_generate_variable_length_batch_matches_solo_generation(self, gpt2_bridge):
         """Test padded batch rows retain the same context as solo generation."""
-        prompts = ["Hi", "The capital of France is"]
+        prompts = [
+            "A",
+            "Mechanistic interpretability studies how neural networks represent and transform information internally.",
+        ]
 
         batched = gpt2_bridge.hf_generate(
             prompts,

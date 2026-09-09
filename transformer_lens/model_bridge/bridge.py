@@ -4678,16 +4678,19 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             input_ids = inputs["input_ids"]
             input_type = "str"
         elif isinstance(input, list):
-            original_padding_side = self.tokenizer.padding_side
-            self.tokenizer.padding_side = "left"
-            try:
-                inputs = self.tokenizer(
-                    input, return_tensors="pt", padding=True, truncation=False
-                ).to(self.cfg.device)
-            finally:
-                self.tokenizer.padding_side = original_padding_side
+            is_encoder_decoder = getattr(
+                getattr(self.original_model, "config", None), "is_encoder_decoder", False
+            )
+            tokenizer_kwargs = {} if is_encoder_decoder else {"padding_side": "left"}
+            inputs = self.tokenizer(
+                input,
+                return_tensors="pt",
+                padding=True,
+                truncation=False,
+                **tokenizer_kwargs,
+            ).to(self.cfg.device)
             input_ids = inputs["input_ids"]
-            input_attention_mask = inputs.get("attention_mask")
+            input_attention_mask = inputs["attention_mask"]
             input_type = "list"
         else:
             input_ids = input
@@ -4698,7 +4701,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         # Build generation_kwargs from explicit args and kwargs
         generation_kwargs = dict(generation_kwargs) if generation_kwargs is not None else {}
         if input_attention_mask is not None:
-            generation_kwargs.setdefault("attention_mask", input_attention_mask)
+            generation_kwargs["attention_mask"] = input_attention_mask
         generation_kwargs.update(
             {
                 "max_new_tokens": max_new_tokens,
