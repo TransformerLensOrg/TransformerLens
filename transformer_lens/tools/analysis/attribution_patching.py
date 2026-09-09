@@ -3,9 +3,9 @@
 Attribution patching estimates the causal effect of every model component on a
 task metric with a *gradient-based linearization* of activation patching: rather
 than one forward pass per intervention, it reads a single gradient cache. For a
-clean/corrupt prompt pair it runs a clean forward (for ``a_clean``), a corrupt
-forward with retained gradients plus a manual ``metric.backward()`` (for
-``a_corrupt`` and ``g = d(metric)/d(a)``), and scores each node with the
+clean/corrupt prompt pair it runs a clean forward (for ``a_clean``) and a corrupt
+forward whose backward hooks capture ``g = d(metric)/d(a)`` (for ``a_corrupt`` and
+its gradient), and scores each node with the
 first-order Taylor estimate ``effect(node) = (a_clean - a_corrupt) . g``. Scores
 over a batch of clean/corrupt pairs are averaged before ranking.
 
@@ -267,11 +267,24 @@ def cache_activation_and_gradient(
     metric_fn: MetricFn,
     names_filter: NamesFilter = None,
 ) -> GradientCache:
-    """Run one forward + one manual backward, caching activations and gradients.
+    """Run one forward and capture activations plus their metric-gradients.
 
+    Registers a forward hook and a backward hook at each cached point, runs one
+    grad-enabled forward, then drives a single backward with
+    :func:`torch.autograd.grad` to fire the backward hooks.
     ``run_with_cache(..., incl_bwd=True)`` only backpropagates the model's own
     scalar output, so a custom (non-scalar-output) metric such as a logit-diff
-    needs the backward call done by hand — that is what this helper does.
+    needs the backward driven here.
+
+    Gradients come from the backward hooks, not from ``.grad`` on the cached
+    tensors. ``TransformerBridge`` reshapes the tensor handed to a forward hook at
+    a converted point (``attn.hook_z``, ``hook_q/k/v``, ``hook_attn_out``), so that
+    tensor is a view the model's forward never consumes: ``retain_grad()`` on it is
+    inert and its ``.grad`` stays ``None``. A backward hook goes through the same
+    conversion and delivers the real gradient in canonical shape. Driving the
+    backward with :func:`torch.autograd.grad` instead of ``metric.backward()``
+    keeps it off every parameter's ``.grad`` buffer — no caller grads clobbered, no
+    model-sized buffer allocated.
 
     Args:
         model: A ``TransformerBridge`` (or compatible) exposing ``hook_dict`` and
@@ -297,32 +310,60 @@ def cache_activation_and_gradient(
 
     live: dict[str, torch.Tensor] = {}
     activations: dict[str, torch.Tensor] = {}
+    gradients: dict[str, Optional[torch.Tensor]] = {}
 
-    def make_hook(name: str) -> Callable[..., None]:
+    def make_fwd_hook(name: str) -> Callable[..., None]:
         def hook(tensor: torch.Tensor, *, hook: Any) -> None:
             del hook
             if isinstance(tensor, torch.Tensor):
-                tensor.retain_grad()
                 live[name] = tensor
                 activations[name] = tensor.detach().clone()
             return None
 
         return hook
 
-    fwd_hooks = [(name, make_hook(name)) for name in names]
+    def make_bwd_hook(name: str) -> Callable[..., None]:
+        def hook(grad: torch.Tensor, *, hook: Any) -> None:
+            del hook
+            if isinstance(grad, torch.Tensor):
+                gradients[name] = grad.detach().clone()
+            return None
 
-    model.zero_grad(set_to_none=True)
-    with model.hooks(fwd_hooks=fwd_hooks):
+        return hook
+
+    fwd_hooks = [(name, make_fwd_hook(name)) for name in names]
+    bwd_hooks = [(name, make_bwd_hook(name)) for name in names]
+
+    with model.hooks(fwd_hooks=fwd_hooks, bwd_hooks=bwd_hooks):
         logits = model(tokens)
+        metric = metric_fn(logits)
+        if metric.dim() != 0:
+            raise ValueError(
+                f"metric_fn must return a scalar tensor, got shape {tuple(metric.shape)}"
+            )
+        captured_names = [name for name in names if name in live]
+        # torch.autograd.grad only *drives* the backward; the gradients we keep are
+        # the converted-shape ones the backward hooks write into `gradients`. Unlike
+        # metric.backward() it touches no parameter `.grad` buffer.
+        returned = (
+            torch.autograd.grad(
+                metric,
+                inputs=[live[name] for name in captured_names],
+                allow_unused=True,
+                retain_graph=False,
+            )
+            if captured_names
+            else ()
+        )
 
-    metric = metric_fn(logits)
-    if metric.dim() != 0:
-        raise ValueError(f"metric_fn must return a scalar tensor, got shape {tuple(metric.shape)}")
-    metric.backward()
+    # The most-upstream cached point's own backward hook never fires — nothing
+    # requested is upstream of it, so the backward stops at it — but its cached
+    # tensor is on-path and unconverted, so torch.autograd.grad returns that
+    # gradient directly. Backfill any point the hooks missed from that return.
+    for name, grad in zip(captured_names, returned):
+        if gradients.get(name) is None:
+            gradients[name] = None if grad is None else grad.detach().clone()
 
-    gradients: dict[str, Optional[torch.Tensor]] = {
-        name: live[name].grad for name in names if name in live
-    }
     return GradientCache(activations=activations, gradients=gradients, metric=metric.detach())
 
 
@@ -366,8 +407,8 @@ def attribution_patch(
     """Estimate every node's causal effect on ``metric_fn`` in two forwards + one backward.
 
     For each clean/corrupt pair this runs a clean forward (for ``a_clean``) and a
-    corrupt forward with retained gradients plus a manual ``metric.backward()`` (for
-    ``a_corrupt`` and ``g = d(metric)/d(a)``), then scores each node with the
+    corrupt forward whose backward hooks capture ``g = d(metric)/d(a)`` (for
+    ``a_corrupt`` and its gradient), then scores each node with the
     first-order Taylor estimate ``effect(node) = (a_clean - a_corrupt) . g``.
 
     Sign/direction convention (denoising form): gradients are taken on the *corrupt*
