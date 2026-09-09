@@ -672,6 +672,28 @@ def test_solve_coordinate_patch_positions_cache_hit_and_miss_produce_identical_p
     torch.testing.assert_close(fresh_patches[(0, 0, 0)].patched, cached_patches[(0, 0, 0)].patched)
 
 
+def test_solve_coordinate_patch_positions_preserves_gradient_to_patched_position() -> None:
+    dictionary = torch.eye(3)
+    activation = torch.tensor([2.0, 5.0, 0.0])
+    activations = activation.view(1, 1, 3).clone().requires_grad_(True)
+
+    patched, _ = solve_coordinate_patch_positions(
+        activations, dictionary, position_labels=[4], source_idx=0, target_idx=1, layer=3, k=2
+    )
+
+    # Forward output is unchanged: the straight-through edit is bitwise identical to ``patch.patched``.
+    expected = solve_coordinate_patch(activation, dictionary, 0, 1, k=2)
+    assert torch.equal(patched[0, 0].detach(), expected.patched)
+
+    patched.sum().backward()
+    assert activations.grad is not None
+    grad_at_patch = activations.grad[0, 0]
+    # Straight-through gives an identity gradient at the patched position; the severed
+    # ``patch.patched`` path left this exactly zero.
+    assert torch.isfinite(grad_at_patch).all()
+    assert float(grad_at_patch.abs().sum()) > 0.0
+
+
 def test_solve_coordinate_patch_positions_rejects_mismatched_position_labels() -> None:
     dictionary = torch.eye(3)
     activations = torch.tensor([2.0, 5.0, 0.0]).view(1, 1, 3)

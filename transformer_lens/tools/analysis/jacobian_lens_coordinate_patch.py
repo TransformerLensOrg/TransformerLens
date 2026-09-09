@@ -579,7 +579,11 @@ def solve_coordinate_patch_positions(
                 alpha=alpha,
                 algorithm=algorithm,
             )
-            patched[batch_idx, column] = patch.patched
+            # Straight-through edit: ``patch.patched`` is a detached ``x.float() + delta`` and would
+            # sever the gradient path at every patched position. ``patch.delta`` is a detached
+            # constant w.r.t. ``x``, so ``x + patch.delta`` is bitwise identical for the float32
+            # activations while keeping ``x``'s graph -- an identity gradient at the patch.
+            patched[batch_idx, column] = x + patch.delta
             patches[key] = patch
     return patched, patches
 
