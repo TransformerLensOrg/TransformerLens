@@ -358,8 +358,7 @@ pass unless a cache hit avoids it.
 ### Dynamic coordinate-patch hooks
 
 `JacobianLens.coordinate_patch_hooks` installs the same anchored edit as a forward hook, so it can
-run inside `model.run_with_hooks(...)` or `model.generate(...)` instead of on one pre-captured
-activation:
+run inside `model.run_with_hooks(...)` instead of on one pre-captured activation:
 
 ```python
 hooks = lens.coordinate_patch_hooks(
@@ -385,7 +384,14 @@ Two departures from `coordinate_patch`, both deliberate:
   on the same prompt (e.g. holding the prompt fixed while varying `alpha` or `mode` in an
   interactive loop) to skip the vocabulary-scale scan on every hit; a miss solves once and
   populates the cache. This is purely a performance path — a cache hit and a fresh solve produce
-  an identical patch.
+  an identical patch. The `position` in the `(layer, batch_idx, position)` key is the
+  **chunk-local** index into the activation the hook sees, not an absolute sequence position, so the
+  cache is valid **only across passes with identical chunking** — the same prompt sliced the same
+  way. Do not reuse one cache across decode steps (with `use_past_kv_cache=True` the prefill sees
+  `[1, seq, d]` while each decode step sees `[1, 1, d]`, so step 2's position `0` collides with the
+  prefill's position `0` and the mismatched precomputed coordinates raise an NNLS stationarity error
+  that does not point back here) or across prompts of different lengths. For those, use a fresh cache
+  per shape.
 
 Every `(batch_idx, position)` pair gets its own independent decomposition and edit: a source
 concept inactive at one pair never affects another pair in the same batch or call. If the source
