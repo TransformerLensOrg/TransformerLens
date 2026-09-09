@@ -436,6 +436,31 @@ def _expected_node_count() -> int:
     return SEQ_LEN + N_LAYERS * (N_HEADS * SEQ_LEN + SEQ_LEN)
 
 
+def test_gradient_cache_defaults_to_the_node_hook_set() -> None:
+    """``names_filter=None`` caches the node hook set, not every hook point.
+
+    On a real Bridge, "every hook point" raises: ``hook_dict`` exposes gated points
+    (``hook_mlp_in``, ``attn.hook_result``, split-QKV inputs) that ``add_hook``
+    rejects unless the matching ``set_use_*`` flag is on. The default filter falls
+    back to the node graph's hook set so it works out of the box.
+    """
+    model = _NodeGraphToyBridge()
+    tokens = torch.tensor([[1, 2, 3]])
+    metric = _metric_fn(answer=1, wrong=2)
+
+    result = cache_activation_and_gradient(model, tokens, metric)
+
+    expected = {
+        "hook_embed",
+        "blocks.0.attn.hook_z",
+        "blocks.0.hook_mlp_out",
+        "blocks.1.attn.hook_z",
+        "blocks.1.hook_mlp_out",
+    }
+    assert set(result.activations) == expected
+    assert set(result.gradients) == expected
+
+
 def test_attribution_patch_scores_every_node_with_finite_values() -> None:
     model = _NodeGraphToyBridge()
     clean = torch.tensor([[1, 2, 3]])
@@ -574,7 +599,7 @@ def test_linear_single_node_patch_matches_score_and_sign() -> None:
     corrupt = torch.tensor([[3, 2, 1]])
     metric = _metric_fn(answer=1, wrong=2)
 
-    # names_filter=None caches every hook, which for this toy is exactly the node graph.
+    # names_filter=None defaults to the node hook set, which for this toy is every hook.
     clean_cache = cache_activation_and_gradient(model, clean, metric)
     result = attribution_patch(model, clean, corrupt, metric)
     with torch.no_grad():

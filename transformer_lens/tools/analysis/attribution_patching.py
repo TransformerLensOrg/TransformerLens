@@ -294,12 +294,18 @@ def cache_activation_and_gradient(
     use this to run a plain forward instead of a needless forward + backward.
 
     Args:
-        model: A ``TransformerBridge`` (or compatible) exposing ``hook_dict`` and
-            the ``hooks()`` context manager.
+        model: A ``TransformerBridge`` (or compatible) exposing ``cfg.n_layers``,
+            ``hook_dict``, and the ``hooks()`` context manager.
         tokens: Input token ids for a single forward pass.
         metric_fn: Maps the model logits to a scalar to differentiate.
         names_filter: Restricts which hook points are cached (and have gradients
-            retained). ``None`` caches every hook point.
+            retained). ``None`` (the default) caches the node-granularity hook set —
+            ``hook_embed`` plus each layer's ``attn.hook_z`` and ``hook_mlp_out``;
+            pass an explicit filter to cache any hook point outside that set. On a
+            real Bridge, ``None`` cannot mean "every hook point": the gated points
+            (``hook_mlp_in``, ``attn.hook_result``, the split-QKV inputs) that
+            ``hook_dict`` exposes raise in ``add_hook`` unless their ``set_use_*``
+            flag is on.
         compute_gradient: When ``True`` (default) capture gradients via backward
             hooks. When ``False`` run an activation-only forward and leave every
             gradient ``None``.
@@ -314,6 +320,12 @@ def cache_activation_and_gradient(
             "is off (torch.no_grad(), set_grad_enabled(False), or inference mode)."
         )
 
+    if names_filter is None:
+        # Default to the node-granularity hook set rather than every hook point: a
+        # real Bridge's hook_dict holds gated points (hook_mlp_in, attn.hook_result,
+        # the split-QKV inputs) that add_hook rejects unless their set_use_* flag is
+        # on, so caching "everything" raises. Pass an explicit filter to reach them.
+        names_filter = _required_hook_names(int(model.cfg.n_layers))
     predicate = _as_predicate(names_filter)
     names = [name for name in model.hook_dict if predicate(name)]
     if not names:
