@@ -124,6 +124,7 @@ class _ToyBridge(TransformerBridge):
         self.blocks = nn.ModuleList(blocks)
         self.ln_final = nn.Identity()
         self.unembed = nn.Linear(D_MODEL, D_VOCAB, bias=False, dtype=dtype)
+        self.eval()
 
     @property
     def W_U(self) -> torch.Tensor:
@@ -281,6 +282,57 @@ def test_toy_model_satisfies_raw_bridge_contract(toy_model: _ToyBridge) -> None:
     assert toy_model.compatibility_mode is False
     assert toy_model._weights_processed is False
     assert set(toy_model.hook_dict) == {f"blocks.{layer}.hook_out" for layer in range(N_LAYERS)}
+
+
+def test_fit_rejects_model_in_training_mode() -> None:
+    model = _ToyBridge()
+    model.train()
+
+    with pytest.raises(ValueError, match=r"model\.eval\(\)"):
+        JacobianLens.fit(
+            model,
+            ["a toy prompt"],
+            corpus=CORPUS,
+            skip_first_positions=SKIP_FIRST,
+            show_progress=False,
+        )
+    assert model.training is True
+
+
+def test_fit_rejects_nested_submodule_in_training_mode() -> None:
+    model = _ToyBridge()
+    model.blocks[1].train()
+    assert model.training is False
+
+    with pytest.raises(ValueError, match=r"model\.eval\(\)"):
+        JacobianLens.fit(
+            model,
+            ["a toy prompt"],
+            corpus=CORPUS,
+            skip_first_positions=SKIP_FIRST,
+            show_progress=False,
+        )
+    assert model.training is False
+    assert model.blocks[1].training is True
+
+
+def test_fit_rejects_hidden_original_model_submodule_in_training_mode() -> None:
+    model = _ToyBridge()
+    original_model = nn.Sequential(nn.Linear(D_MODEL, D_MODEL))
+    original_model.eval()
+    original_model[0].train()
+    model.original_model = original_model
+
+    with pytest.raises(ValueError, match="original_model"):
+        JacobianLens.fit(
+            model,
+            ["a toy prompt"],
+            corpus=CORPUS,
+            skip_first_positions=SKIP_FIRST,
+            show_progress=False,
+        )
+    assert original_model.training is False
+    assert original_model[0].training is True
 
 
 def test_fit_recovers_closed_form_jacobians(
