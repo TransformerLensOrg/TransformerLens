@@ -150,13 +150,13 @@ class TestNeoxAdapterComponentMapping:
         assert mapping["rotary_emb"].name == "gpt_neox.rotary_emb"
         assert mapping["blocks"].name == "gpt_neox.layers"
         assert mapping["ln_final"].name == "gpt_neox.final_layer_norm"
-        # transformers >= 5.13 renamed GPTNeoXForCausalLM.embed_out to lm_head.
+        # transformers >= 5.14 renamed GPTNeoXForCausalLM.embed_out to lm_head.
         assert mapping["unembed"].name == "lm_head"
 
-    def test_unembed_resolves_against_transformers_5_13_lm_head_layout(
+    def test_unembed_resolves_against_transformers_5_14_lm_head_layout(
         self, adapter: NeoxArchitectureAdapter
     ) -> None:
-        """The unembed must resolve on the >= 5.13 layout, which exposes lm_head, not embed_out."""
+        """The unembed must resolve on the >= 5.14 layout, which exposes lm_head, not embed_out."""
         unembed = adapter.component_mapping["unembed"]
         assert unembed.name == "lm_head"
 
@@ -172,7 +172,7 @@ class TestNeoxAdapterComponentMapping:
     def test_prepare_model_keeps_lm_head_when_present(
         self, adapter: NeoxArchitectureAdapter
     ) -> None:
-        """The >= ~5.14 layout exposes lm_head; prepare_model must leave the default alone."""
+        """The >= 5.14 layout exposes lm_head; prepare_model must leave the default alone."""
 
         class _LmHeadOnlyModel(torch.nn.Module):
             def __init__(self) -> None:
