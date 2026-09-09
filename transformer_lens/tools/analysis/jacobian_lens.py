@@ -63,7 +63,7 @@ Example::
 import warnings
 from dataclasses import dataclass
 from importlib.metadata import version
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple, Union
 
 import torch
 from jaxtyping import Float, Int
@@ -1387,7 +1387,7 @@ class JacobianLens:
         source_token: TokenInput,
         target_token: TokenInput,
         layers: Sequence[int],
-        clean_cache: ActivationCache,
+        clean_cache: Union[ActivationCache, Mapping[str, torch.Tensor]],
         *,
         positions: Optional[Sequence[int]] = None,
     ) -> List[Tuple[str, Any]]:
@@ -1405,7 +1405,9 @@ class JacobianLens:
             target_token: The concept to install (e.g. ``" China"``).
             layers: Layers to intervene at.
             clean_cache: Activations from an unmodified ``run_with_cache`` at
-                each requested layer's ``blocks.{layer}.hook_out`` name.
+                each requested layer's ``blocks.{layer}.hook_out`` name. Either
+                the ``ActivationCache`` it returns by default or the plain dict
+                from ``return_cache_object=False`` is accepted.
             positions: Chunk-local positions to clamp (negative indices allowed
                 and normalized against the clean activations). Defaults to all.
 
