@@ -256,7 +256,7 @@ def test_node_hook_name_and_key_validation() -> None:
     )
     assert Node(kind="mlp_out", layer=0, position=1).hook_name == "blocks.0.hook_mlp_out"
 
-    # The typed key rejects malformed nodes (Risk 1: explicit graph).
+    # The typed key rejects malformed nodes rather than building a wrong graph.
     with pytest.raises(ValueError):
         Node(kind="embed", position=0, layer=0)
     with pytest.raises(ValueError):
@@ -314,9 +314,9 @@ def test_config_rejects_invalid_values() -> None:
 
 
 def test_config_unsupported_paths_raise_not_implemented() -> None:
-    with pytest.raises(NotImplementedError, match="PR2"):
+    with pytest.raises(NotImplementedError, match="edge"):
         EdgeAttributionConfig(granularity="edge")
-    with pytest.raises(NotImplementedError, match="PR3"):
+    with pytest.raises(NotImplementedError, match="integrated gradient"):
         EdgeAttributionConfig(ig_steps=5)
 
 
@@ -335,10 +335,10 @@ def test_top_nodes_ranks_by_effect_magnitude() -> None:
     assert [node for node, _ in result.top_nodes(k=10)] == [big_negative, medium, small]
 
 
-def test_top_edges_not_implemented_until_pr2() -> None:
+def test_top_edges_not_implemented() -> None:
     result = AttributionResult(node_scores={})
     assert result.edge_scores == {}
-    with pytest.raises(NotImplementedError, match="PR2"):
+    with pytest.raises(NotImplementedError, match="edge"):
         result.top_edges()
 
 
@@ -516,9 +516,9 @@ def test_attribution_patch_raises_on_batch_size_mismatch() -> None:
 # Commit 5 — linear-model reconstruction identity
 # ---------------------------------------------------------------------------
 #
-# ``_NodeGraphToyBridge`` is fully linear by construction — the plan's
-# "neutralize the remaining nonlinearities on the residual->metric path"
-# conditions hold without extra freezing: ``ln_final`` is ``nn.Identity``, the
+# ``_NodeGraphToyBridge`` is fully linear by construction — the remaining
+# nonlinearities on the residual->metric path are neutralized without extra
+# freezing: ``ln_final`` is ``nn.Identity``, the
 # attention projection is a plain linear map with no softmax pattern, the MLP has
 # no activation, and ``_metric_fn`` is linear in the logits. The first-order
 # Taylor estimate each node score uses is therefore *exact*, so the reconstruction

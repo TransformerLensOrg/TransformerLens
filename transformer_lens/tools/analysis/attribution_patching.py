@@ -15,16 +15,16 @@ Only the ``TransformerBridge`` API is targeted; TransformerLens v4 deprecates
 Sign/direction convention (denoising form): the gradient is taken on the
 *corrupt* run and the estimate points *toward* the clean activation, so a
 positive score means patching that node from corrupt toward clean moves the
-metric in the positive direction. The oracle-parity test (PR5) maps this
-convention onto the pinned reference rather than assuming the two agree.
+metric in the positive direction. An oracle-parity test maps this convention
+onto a pinned reference rather than assuming the two agree.
 
 Memory note: gradients are retained only for hook points passing ``names_filter``.
 Retaining gradients at every hook point roughly doubles cache memory, so callers
 should filter to the hook families their analysis actually reads.
 
-Scope: this PR ships node granularity with plain attribution (``ig_steps=1``).
+Scope: this build ships node granularity with plain attribution (``ig_steps=1``).
 Edge scoring (EAP), the integrated-gradient path (EAP-IG, ``ig_steps>1``), and
-ablate-outside faithfulness land in follow-on PRs; their API is declared here —
+ablate-outside faithfulness are not implemented yet; their API is declared here —
 ``granularity="edge"`` and ``ig_steps>1`` raise :class:`NotImplementedError` — so
 downstream code can pin against a stable surface now.
 """
@@ -72,7 +72,7 @@ class Node:
 
     ``position`` is the sequence index the node is read at. The invariants above
     are enforced in ``__post_init__`` so a malformed key raises rather than
-    silently producing a wrong graph (Risk 1: the explicit-graph guard).
+    silently producing a wrong graph.
     """
 
     kind: NodeKind
@@ -131,13 +131,13 @@ class EdgeAttributionConfig:
     ``ig_steps`` exceeds 1. Collapsing them removes the invalid states (e.g.
     ``method="attribution", ig_steps=5``).
 
-    This substrate PR implements node granularity with plain attribution only.
+    This build implements node granularity with plain attribution only.
     ``granularity="edge"`` and ``ig_steps>1`` are accepted by the type but raise
     :class:`NotImplementedError` at construction, so downstream code can import and
-    reference this API now while the edge sweep (PR2) and the integrated-gradient
-    path (PR3) land later. When PR3 ships EAP-IG, the default flips to the
-    proposal's ``ig_steps=5`` (EAP-IG is the faithful default); until then the
-    default is the only executable value, ``ig_steps=1``.
+    reference this API now while edge scoring and the integrated-gradient path are
+    not implemented yet. Once EAP-IG lands, the default flips to ``ig_steps=5``
+    (EAP-IG is the faithful default); until then the default is the only executable
+    value, ``ig_steps=1``.
 
     Attributes:
         granularity: ``"node"`` or ``"edge"``. Defaults to ``"node"``.
@@ -152,13 +152,13 @@ class EdgeAttributionConfig:
             raise ValueError(f"ig_steps must be >= 1, got {self.ig_steps}")
         if self.granularity == "edge":
             raise NotImplementedError(
-                "granularity='edge' (EAP edge scoring) lands in PR2; this substrate "
-                "PR implements granularity='node' only."
+                "granularity='edge' (EAP edge scoring) is not implemented yet; this "
+                "build supports granularity='node' only."
             )
         if self.ig_steps > 1:
             raise NotImplementedError(
-                "ig_steps>1 (EAP-IG integrated gradients) lands in PR3; this substrate "
-                "PR implements ig_steps=1 (plain attribution) only."
+                "ig_steps>1 (EAP-IG integrated gradients) is not implemented yet; this "
+                "build supports ig_steps=1 (plain attribution) only."
             )
 
 
@@ -174,7 +174,7 @@ class AttributionResult:
             docstring).
         edge_scores: Per-edge effect estimate keyed by ``(source, destination)``.
             Declared here so the result API is stable across the PR series; it is
-            populated only from PR2 (edge sweep) and is empty for a node sweep.
+            populated only once edge scoring lands and is empty for a node sweep.
     """
 
     node_scores: dict[Node, float]
@@ -192,10 +192,10 @@ class AttributionResult:
         return ranked[:k]
 
     def top_edges(self, k: int = 10) -> list[tuple[Node, Node, float]]:
-        """The ``k`` highest-magnitude edges — populated from PR2's edge sweep."""
+        """The ``k`` highest-magnitude edges — populated once edge scoring lands."""
         raise NotImplementedError(
-            "edge scoring lands in PR2; run a node-granularity sweep and use "
-            "top_nodes() in this PR."
+            "edge scoring is not implemented yet; run a node-granularity sweep and "
+            "use top_nodes()."
         )
 
 
@@ -225,7 +225,7 @@ def enumerate_nodes(model: Any, cache: GradientCache) -> list[Node]:
 
     Raises:
         ValueError: if any required hook point is absent from ``cache`` — the
-            graph is never silently truncated (Risk 1).
+            graph is never silently truncated.
     """
     n_layers = int(model.cfg.n_layers)
     missing = [name for name in _required_hook_names(n_layers) if name not in cache.activations]
@@ -452,13 +452,13 @@ def attribution_patch(
     Sign/direction convention (denoising form): gradients are taken on the *corrupt*
     run and the estimate points *toward* the clean activation, so a positive score
     means patching that node from corrupt toward clean moves the metric in the
-    positive direction. PR5's oracle-parity test maps this convention onto the
-    pinned reference rather than assuming the two agree.
+    positive direction. An oracle-parity test maps this convention onto a pinned
+    reference rather than assuming the two agree.
 
     Dataset averaging: ``clean``/``corrupt`` may hold a batch of prompt pairs. Each
     pair is scored independently (per-example forward/backward, so its own
     reconstruction identity holds) and per-node scores are averaged across the batch
-    before ranking (proposal step 6).
+    before ranking.
 
     Args:
         model: A ``TransformerBridge`` (or compatible) exposing ``cfg.n_layers``,
@@ -472,14 +472,14 @@ def attribution_patch(
 
     Returns:
         An :class:`AttributionResult` whose ``node_scores`` are averaged over the
-        batch. ``edge_scores`` stays empty until PR2.
+        batch. ``edge_scores`` stays empty until edge scoring lands.
 
     Raises:
         ValueError: if ``clean``/``corrupt`` are not 2D, hold a different number of
             pairs, or a pair tokenizes to different lengths (activations must align
             position-by-position).
     """
-    del config  # node granularity + ig_steps=1 only this PR; enforced at construction.
+    del config  # node granularity + ig_steps=1 only; enforced at construction.
 
     if clean.ndim != 2 or corrupt.ndim != 2:
         raise ValueError(
