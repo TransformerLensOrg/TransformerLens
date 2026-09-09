@@ -672,6 +672,41 @@ def test_solve_coordinate_patch_positions_cache_hit_and_miss_produce_identical_p
     torch.testing.assert_close(fresh_patches[(0, 0, 0)].patched, cached_patches[(0, 0, 0)].patched)
 
 
+def test_solve_coordinate_patch_positions_populates_batch_component_of_cache_key() -> None:
+    """The batch component of the ``(layer, batch_idx, position)`` cache key is load-bearing.
+
+    Every other cache test uses a ``[1, 1, d_model]`` activation, so collapsing the key to
+    ``(layer, 0, position)`` would pass the whole tier. Here two distinct batch rows share one
+    caller-owned cache at the same ``(layer, position)``: each must occupy its own slot and get its
+    own solve, so a collapsed key -- which would collide row 1 onto row 0's entry -- is caught.
+    """
+    dictionary = torch.eye(3)
+    row0 = torch.tensor([2.0, 5.0, 0.0])  # active support {0, 1}
+    row1 = torch.tensor([3.0, 0.0, 4.0])  # active support {0, 2} -- differs from row0
+    activations = torch.stack([row0, row1]).unsqueeze(1)  # [2, 1, 3]
+    cache: dict = {}
+
+    solve_coordinate_patch_positions(
+        activations,
+        dictionary,
+        position_labels=[7],
+        source_idx=0,
+        target_idx=1,
+        layer=0,
+        decomposition_cache=cache,
+        k=2,
+    )
+
+    # Both batch rows are keyed separately at the shared (layer, position); neither collided.
+    assert (0, 0, 7) in cache
+    assert (0, 1, 7) in cache
+    # Each row solved independently: the two decompositions have different active supports, so
+    # row 1 did not reuse row 0's cache entry.
+    row0_support = cache[(0, 0, 7)].support.sort().values
+    row1_support = cache[(0, 1, 7)].support.sort().values
+    assert not torch.equal(row0_support, row1_support)
+
+
 def test_solve_coordinate_patch_positions_preserves_gradient_to_patched_position() -> None:
     dictionary = torch.eye(3)
     activation = torch.tensor([2.0, 5.0, 0.0])
