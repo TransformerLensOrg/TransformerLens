@@ -1,7 +1,8 @@
 """Loader for the HookedTransformer golden fixtures (the post-deletion oracle).
 
-Goldens are captured by ``scripts/capture_ht_goldens.py`` while HookedTransformer
-still exists, and hosted on a HF Hub dataset repo pinned by revision. Tests that
+Goldens were captured from HookedTransformer before its 4.0 removal and are
+hosted on a HF Hub dataset repo pinned by revision; the capture script was
+removed with HookedTransformer, so the fixtures are now frozen. Tests that
 certify the compatibility-mode contract load their reference tensors from here
 instead of constructing a live HookedTransformer.
 

@@ -120,7 +120,7 @@ def boot(
     official_name = resolve_model_alias(model_name)
     if official_name is not None:
         logging.warning(
-            f"DEPRECATED: You are using a deprecated, model_name alias '{model_name}'. TransformerLens will now load the official transformers model name, '{official_name}' instead.\n Please update your code to use the official name by changing model_name from '{model_name}' to '{official_name}'.\nSince TransformerLens v3, all model names should be the official transformers model names.\nThe aliases will be removed in the next version of TransformerLens, so please do the update now."
+            f"DEPRECATED: You are using a deprecated, model_name alias '{model_name}'. TransformerLens will now load the official transformers model name, '{official_name}' instead.\n Please update your code to use the official name by changing model_name from '{model_name}' to '{official_name}'.\nSince TransformerLens v3, all model names should be the official transformers model names.\nThe aliases may be removed in a future version of TransformerLens, so please do the update now."
         )
         model_name = official_name
     if checkpoint_index is not None or checkpoint_value is not None:

@@ -5,7 +5,7 @@
 ## Top rules to remember
 
 1. **Use `uv`, not `pip` or `poetry`.** `uv sync` to install; `uv run <cmd>` or a `make` target to run anything.
-2. **Mirror `HookedTransformer` → `TransformerBridge`** in the same PR when behaviour exists in both. The HT registry [`transformer_lens/supported_models.py`](../transformer_lens/supported_models.py) is HT-only — Bridge-only models go in the Bridge registry under [`transformer_lens/tools/model_registry/`](../transformer_lens/tools/model_registry/).
+2. **The `Hooked*` model classes were removed in 4.0**; `TransformerBridge` is the one model system. [`transformer_lens/supported_models.py`](../transformer_lens/supported_models.py) is the frozen legacy name/alias ledger; Bridge models live under [`transformer_lens/tools/model_registry/`](../transformer_lens/tools/model_registry/).
 3. **Base PRs against `dev`**, not `main`. PRs to `main` are maintainer-only.
 
 ## Common commands

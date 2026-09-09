@@ -33,6 +33,7 @@ content/gallery
 :hidden:
 :caption: News
 
+content/news/release-4.0
 content/news/release-3.0
 content/news/release-2.0
 ```
@@ -50,6 +51,7 @@ content/model_structure
 :hidden:
 :caption: Resources
 
+content/migrating_to_v4
 content/migrating_to_v3
 content/tutorials
 content/citation

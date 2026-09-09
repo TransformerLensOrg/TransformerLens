@@ -1088,15 +1088,6 @@ class TestModelAliases:
                 ), f"alias {alias!r} under both {seen[alias]!r} and {official!r}"
                 seen[alias] = official
 
-    def test_legacy_loader_agrees_with_registry(self):
-        """The legacy loader and the registry must resolve aliases identically until 4.0."""
-        from transformer_lens.loading_from_pretrained import get_official_model_name
-        from transformer_lens.tools.model_registry.registry_io import (
-            resolve_model_alias,
-        )
-
-        assert get_official_model_name("gpt2-small") == resolve_model_alias("gpt2-small")
-
 
 class TestCheckpointLabels:
     """Registry-canonical checkpoint schedules (checkpoints.py)."""
@@ -1144,25 +1135,3 @@ class TestCheckpointLabels:
 
         with pytest.raises(ValueError, match="not checkpointed"):
             get_checkpoint_labels("gpt2")
-
-    def test_matches_legacy_loader(self):
-        """Bridge checkpoint resolution must not drift from the legacy HT path until 4.0."""
-        from transformer_lens.loading_from_pretrained import (
-            get_checkpoint_labels as legacy_labels,
-        )
-        from transformer_lens.tools.model_registry.checkpoints import (
-            get_checkpoint_labels,
-        )
-
-        for name in ("EleutherAI/pythia-70m", "stanford-crfm/alias-gpt2-small-x21"):
-            assert get_checkpoint_labels(name) == legacy_labels(name)
-
-
-class TestRemoteCodePrefixes:
-    def test_covers_legacy_remote_code_models(self):
-        """Registry tooling loads legacy-listed models too; prefixes must stay a superset until 4.0."""
-        from transformer_lens.loading_from_pretrained import NEED_REMOTE_CODE_MODELS
-        from transformer_lens.tools.model_registry import REMOTE_CODE_MODEL_PREFIXES
-
-        missing = set(NEED_REMOTE_CODE_MODELS) - set(REMOTE_CODE_MODEL_PREFIXES)
-        assert not missing, f"legacy remote-code prefixes not in registry list: {missing}"

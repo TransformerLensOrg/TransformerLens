@@ -14,7 +14,7 @@ import torch
 from jaxtyping import Float
 
 from tests import goldens
-from transformer_lens import utils
+from transformer_lens import utilities as utils
 from transformer_lens.model_bridge import TransformerBridge
 
 # ---------------------------------------------------------------------------
@@ -22,7 +22,7 @@ from transformer_lens.model_bridge import TransformerBridge
 # ---------------------------------------------------------------------------
 
 
-# The four golden processing configs (see scripts/capture_ht_goldens.py). The
+# The four golden processing configs (see tests/goldens_capture_spec.py, CONFIGS). The
 # former @slow flag combinations are covered by the per-function math invariant
 # tests instead — they had no independent reference once HT is frozen.
 GOLDEN_FLAG_CONFIGS = {

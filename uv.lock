@@ -593,15 +593,6 @@ wheels = [
 ]
 
 [[package]]
-name = "better-abc"
-version = "0.0.3"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/8b/72/3d630f781659015357cc08cad32aa636b252e007df0bae31184a3d872427/better-abc-0.0.3.tar.gz", hash = "sha256:a880fd6bc9675da2ec991e8712a555bffa0f12722efed78c739f78343cf989f6", size = 2852, upload-time = "2020-11-10T22:47:31.303Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/d9/e8/7d00a23039ab74c5741736ce05d7700eb6237e83747aac4df07a5bf2d074/better_abc-0.0.3-py3-none-any.whl", hash = "sha256:3ae73b473fbeb536a548f542984976e80b821676ae6e18f14e24d8e180647187", size = 3475, upload-time = "2020-11-10T22:47:30.354Z" },
-]
-
-[[package]]
 name = "bitsandbytes"
 version = "0.49.2"
 source = { registry = "https://pypi.org/simple" }
@@ -5008,15 +4999,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/0a/7d/a988f258104dcd2ccf1ed40fdc97e26c4ac351eeaf81d76e266c52d84e2f/multiprocess-0.70.16-py312-none-any.whl", hash = "sha256:fc0544c531920dde3b00c29863377f87e1632601092ea2daca74e4beb40faa2e", size = 146741, upload-time = "2024-01-28T18:52:29.395Z" },
     { url = "https://files.pythonhosted.org/packages/ea/89/38df130f2c799090c978b366cfdf5b96d08de5b29a4a293df7f7429fa50b/multiprocess-0.70.16-py38-none-any.whl", hash = "sha256:a71d82033454891091a226dfc319d0cfa8019a4e888ef9ca910372a446de4435", size = 132628, upload-time = "2024-01-28T18:52:30.853Z" },
     { url = "https://files.pythonhosted.org/packages/da/d9/f7f9379981e39b8c2511c9e0326d212accacb82f12fbfdc1aa2ce2a7b2b6/multiprocess-0.70.16-py39-none-any.whl", hash = "sha256:a0bafd3ae1b732eac64be2e72038231c1ba97724b60b09400d68f229fcc2fbf3", size = 133351, upload-time = "2024-01-28T18:52:31.981Z" },
-]
-
-[[package]]
-name = "muutils"
-version = "0.8.11"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/ae/80/38cfd93c6e17356cb5be1d31d06e835b1a9f603f7fe35acce98d009db744/muutils-0.8.11.tar.gz", hash = "sha256:391abd59c57c81df5a2eef2a12217d4797b735256c6b01e20ed27b49bc475505", size = 3094363, upload-time = "2025-07-08T03:20:07.511Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/5e/00/e4872f5da08e12ee3130889a96a2074c783b35e3cd096004203e62d3d659/muutils-0.8.11-py3-none-any.whl", hash = "sha256:a98718c4b216f37637bd6c2480494a330de758dfd5f334c2c28bbd18799ee767", size = 126722, upload-time = "2025-07-08T03:20:04.876Z" },
 ]
 
 [[package]]
@@ -9523,7 +9505,6 @@ source = { editable = "." }
 dependencies = [
     { name = "accelerate" },
     { name = "beartype" },
-    { name = "better-abc" },
     { name = "datasets" },
     { name = "einops" },
     { name = "fancy-einsum" },
@@ -9584,7 +9565,6 @@ dev = [
 ]
 docs = [
     { name = "furo" },
-    { name = "muutils" },
     { name = "myst-parser" },
     { name = "nbconvert" },
     { name = "nbsphinx" },
@@ -9621,7 +9601,6 @@ tokenizers = [
 requires-dist = [
     { name = "accelerate", specifier = ">=1.1.0" },
     { name = "beartype", specifier = ">=0.14.1" },
-    { name = "better-abc", specifier = ">=0.0.3" },
     { name = "chardet", marker = "extra == 'evals'", specifier = "<6" },
     { name = "datasets", specifier = ">=2.7.1" },
     { name = "einops", specifier = ">=0.6.0" },
@@ -9671,7 +9650,6 @@ dev = [
 ]
 docs = [
     { name = "furo", specifier = ">=2023.3.27,<2024.0.0" },
-    { name = "muutils", specifier = ">=0.6.13" },
     { name = "myst-parser", specifier = ">=2.0.0,<3.0.0" },
     { name = "nbconvert", specifier = ">=7.9.2" },
     { name = "nbsphinx", specifier = ">=0.9.3" },

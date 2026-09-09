@@ -1,9 +1,7 @@
 # Contributing
 
 ```{warning}
-`HookedTransformer` is deprecated as of TransformerLens 3.0 and will be removed in the next major version. New code should use [`TransformerBridge`](migrating_to_v3.md) instead. Existing `HookedTransformer` code continues to work through the 3.x branch via a compatibility layer. See the [migration guide](migrating_to_v3.md) for conversion recipes.
-
-`HookedTransformer` **has no acceptance suite of its own** — `tests/acceptance/test_hooked_transformer.py` was removed when the Bridge tests were reanchored onto frozen golden datasets. Changes that touch HookedTransformer internals therefore land essentially untested at the acceptance level — extra manual care is required. The `HookedEncoder` (BERT) and `HookedEncoderDecoder` (T5) acceptance suites are unaffected and run normally.
+`HookedTransformer` and the other `Hooked*` classes were **removed in TransformerLens 4.0**. Use [`TransformerBridge`](migrating_to_v4.md) instead — call `enable_compatibility_mode()` after booting for HookedTransformer-equivalent numerics. See the [4.0 migration guide](migrating_to_v4.md).
 ```
 
 ## Contributing with AI coding agents

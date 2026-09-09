@@ -56,14 +56,9 @@ A `[vllm]` extra exists (Linux-only marker; declared conflicting with `[lit]` in
 
 | Path | Marker | Required |
 |---|---|---|
-| [`unit/test_next_sentence_prediction.py`:131](unit/test_next_sentence_prediction.py) | `skipif(not cuda)` | Any CUDA |
-| [`unit/model_bridge/compatibility/test_next_sentence_prediction.py`:88](unit/model_bridge/compatibility/test_next_sentence_prediction.py) | `skipif(not cuda)` | Any CUDA |
 | [`unit/test_generate_no_tokenizer.py`:112](unit/test_generate_no_tokenizer.py) | `skipif(not cuda)` | Any CUDA |
 | [`unit/model_bridge/test_driver_protocol.py`:103](unit/model_bridge/test_driver_protocol.py) | `skipif(not cuda)` | Any CUDA |
 | [`unit/test_weight_processing.py`:475](unit/test_weight_processing.py) | `skipif(not cuda and not mps)` (cross-device fold) | Any non-CPU accelerator |
-| [`acceptance/test_hooked_encoder.py`:171](acceptance/test_hooked_encoder.py) | `skipif(mps or not cuda)` (bf16/fp16) | CUDA, non-MPS |
-| [`acceptance/test_hooked_encoder.py`:226](acceptance/test_hooked_encoder.py) | `skipif(not cuda)` | Any CUDA |
-| [`acceptance/test_hooked_encoder_decoder.py`:460](acceptance/test_hooked_encoder_decoder.py) | `skipif(not cuda)` | Any CUDA |
 | [`acceptance/model_bridge/test_bridge_multigpu.py`](acceptance/model_bridge/test_bridge_multigpu.py) module-level | `multigpu` marker + `skipif(device_count < 2)` | 2+ CUDA |
 | [`acceptance/model_bridge/test_bridge_multigpu_device_map.py`](acceptance/model_bridge/test_bridge_multigpu_device_map.py) module-level | `multigpu` marker + `skipif(device_count < 2)` | 2+ CUDA |
 | [`mps/test_mps_basic.py`](mps/test_mps_basic.py) module-level | `skipif(not mps)` | Apple Silicon |
@@ -146,11 +141,10 @@ and the acceptance tier is green. What the skips were hiding was four genuine fa
 
 Two silent TransformerLens bugs also lived in this blind spot the whole time: T5's decoder
 self-attention was never causally masked, and its relative-position bias used the encoder's
-bucketing. Both are fixed, and bound by
-[`acceptance/test_hooked_encoder_decoder.py`](acceptance/test_hooked_encoder_decoder.py)'s
-`test_full_model_multi_token_decoder` plus
-[`unit/model_bridge/test_t5_block_parity.py`](unit/model_bridge/test_t5_block_parity.py). Keep
-the encoder modules enabled.
+bucketing. Both are fixed. **Update (4.0):** the acceptance suites named above were deleted
+with the `Hooked*` classes in the 4.0 removal (the bugs lived in deleted code); the T5 fix is
+now bound solely by the surviving
+[`unit/model_bridge/test_t5_block_parity.py`](unit/model_bridge/test_t5_block_parity.py).
 
 ---
 
@@ -165,7 +159,6 @@ the encoder modules enabled.
 | [`unit/model_bridge/supported_architectures/test_qwen3_5_adapter.py`:448,464,494,514,605,700,805,947,1133](unit/model_bridge/supported_architectures/test_qwen3_5_adapter.py) | `skipif` ×9 | Qwen3_5 classes absent from installed transformers |
 | [`unit/model_bridge/supported_architectures/test_qwen3_next_adapter.py`:397](unit/model_bridge/supported_architectures/test_qwen3_next_adapter.py) | `skipif` | Qwen3NextForCausalLM absent from installed transformers |
 | [`integration/test_weight_processing_integration.py`:279](integration/test_weight_processing_integration.py) | `skip` | Weight-processing edge case |
-| [`integration/test_hooked_encoder_properties.py`:71](integration/test_hooked_encoder_properties.py) | `xfail` | HookedEncoder properties |
 | [`acceptance/model_bridge/compatibility/test_backward_hooks.py`:11](acceptance/model_bridge/compatibility/test_backward_hooks.py) | `skip` | Backward-hook compatibility |
 
 **Un-skip:** debug the underlying issue and remove the marker. Each removal lands in a focused PR with a regression test.

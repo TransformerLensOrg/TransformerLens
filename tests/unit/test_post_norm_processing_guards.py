@@ -1,27 +1,31 @@
-"""LN folding and writing-weight centering must stay off for post-norm decoders.
+"""Post-norm decoders must not have their embedding writing-weights centered.
 
-Both transforms assume the norm gain sits on a sublayer's INPUT. OLMo 2/3 apply
-ln1/ln2 to the sublayer OUTPUT, so folding is the wrong algebra: on the real
-allenai/Olmo-3-1025-7B it moved log-softmax by 19.73 and dropped argmax agreement
-with HF to 0%. The guard existed but named only OLMo 2, so OLMo 3 folded silently.
+Centering assumes the first attention's input is normalized; OLMo 2/3 apply
+ln1/ln2 to the sublayer OUTPUT, leaving the residual stream un-normed there, so
+centering shifts a stream nothing re-normalizes. On the real allenai/Olmo-3-1025-7B
+this moved log-softmax by 19.73 and dropped argmax agreement with HF to 0%. The
+guard once named only OLMo 2, so OLMo 3 was silently mis-centered.
+
+Re-anchored on ``ProcessWeights`` directly (the surviving weight-processing path)
+after the legacy ``get_pretrained_model_config`` wrapper was removed at 4.0; the
+``POST_NORM_ARCHITECTURES`` membership it keys on is unchanged.
 """
 
-from types import SimpleNamespace
-from unittest import mock
-
 import pytest
-import torch
 
-from transformer_lens.loading_from_pretrained import get_pretrained_model_config
+from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.utilities.architectures import POST_NORM_ARCHITECTURES
 from transformer_lens.weight_processing import ProcessWeights
 
+POST_NORM_MODELS = [
+    "Olmo3ForCausalLM",
+    "Olmo2ForCausalLM",
+]
 
-def _tl_config(architecture: str):
-    from transformer_lens import HookedTransformerConfig
 
-    return HookedTransformerConfig(
-        n_layers=0,
+def _cfg(architecture: str) -> TransformerBridgeConfig:
+    cfg = TransformerBridgeConfig(
+        n_layers=2,
         d_model=8,
         n_ctx=16,
         d_head=4,
@@ -29,91 +33,43 @@ def _tl_config(architecture: str):
         d_vocab=10,
         act_fn="silu",
         normalization_type="RMS",
-        original_architecture=architecture,
         positional_embedding_type="rotary",
     )
+    cfg.original_architecture = architecture
+    return cfg
 
 
-POST_NORM_MODELS = [
-    ("allenai/Olmo-3-1025-7B", "Olmo3ForCausalLM"),
-    ("allenai/OLMo-2-0425-1B", "Olmo2ForCausalLM"),
-]
+@pytest.mark.parametrize("architecture", POST_NORM_MODELS)
+def test_post_norm_architectures_are_registered(architecture):
+    """Both OLMo generations are in the guard set — OLMo 3 being absent is the
+    exact regression this file guards against."""
+    assert architecture in POST_NORM_ARCHITECTURES
 
 
-def _olmo_hf_config(architecture: str) -> SimpleNamespace:
-    return SimpleNamespace(
-        architectures=[architecture],
-        hidden_size=64,
-        num_attention_heads=4,
-        num_key_value_heads=4,
-        intermediate_size=128,
-        num_hidden_layers=4,
-        max_position_embeddings=512,
-        rms_norm_eps=1e-6,
-        vocab_size=100,
-        hidden_act="silu",
-        rope_theta=500000.0,
-        layer_types=["sliding_attention"] * 3 + ["full_attention"],
-        sliding_window=4096,
-        initializer_range=0.02,
-        tie_word_embeddings=False,
-        rope_parameters={
-            "sliding_attention": {"rope_type": "default", "rope_theta": 500000.0},
-            "full_attention": {"rope_type": "default", "rope_theta": 500000.0},
-        },
-    )
+@pytest.mark.parametrize("architecture", POST_NORM_MODELS)
+def test_center_writing_weights_skips_post_norm(architecture, capsys):
+    """center_writing_weights leaves a post-norm model's embedding untouched."""
+    import torch
+
+    cfg = _cfg(architecture)
+    W_E = torch.randn(cfg.d_vocab, cfg.d_model)
+    state_dict = {"embed.W_E": W_E.clone()}
+
+    result = ProcessWeights.center_writing_weights(state_dict, cfg, adapter=None)
+
+    assert torch.equal(result["embed.W_E"], W_E), "post-norm embedding was centered"
+    assert f"Not centering embedding weights for {architecture}" in capsys.readouterr().out
 
 
-@pytest.mark.parametrize("model_name,architecture", POST_NORM_MODELS)
-@mock.patch("transformer_lens.loading_from_pretrained.AutoConfig")
-def test_fold_ln_is_refused(mock_auto_config, caplog, model_name, architecture) -> None:
-    mock_auto_config.from_pretrained.return_value = _olmo_hf_config(architecture)
-    with caplog.at_level("WARNING"):
-        get_pretrained_model_config(model_name, fold_ln=True)
-    assert any(
-        "fold_ln=True is incompatible" in record.getMessage() for record in caplog.records
-    ), [r.getMessage() for r in caplog.records]
+def test_pre_norm_architecture_is_still_centered(capsys):
+    """Negative control: the guard must not disable centering for everyone."""
+    import torch
 
+    cfg = _cfg("LlamaForCausalLM")
+    assert "LlamaForCausalLM" not in POST_NORM_ARCHITECTURES
+    W_E = torch.randn(cfg.d_vocab, cfg.d_model)
+    state_dict = {"embed.W_E": W_E.clone()}
 
-@mock.patch("transformer_lens.loading_from_pretrained.AutoConfig")
-def test_pre_norm_architecture_still_folds(mock_auto_config, caplog) -> None:
-    """Negative control: the guard must not disable folding for everyone."""
-    mock_auto_config.from_pretrained.return_value = SimpleNamespace(
-        architectures=["LlamaForCausalLM"],
-        hidden_size=64,
-        num_attention_heads=4,
-        num_key_value_heads=4,
-        intermediate_size=128,
-        num_hidden_layers=2,
-        max_position_embeddings=512,
-        rms_norm_eps=1e-6,
-        vocab_size=100,
-        hidden_act="silu",
-        rope_theta=10000.0,
-    )
-    with caplog.at_level("WARNING"):
-        get_pretrained_model_config("01-ai/Yi-6B", fold_ln=True)
-    assert not any("fold_ln=True is incompatible" in r.getMessage() for r in caplog.records)
+    result = ProcessWeights.center_writing_weights(state_dict, cfg, adapter=None)
 
-
-@pytest.mark.parametrize("architecture", sorted(POST_NORM_ARCHITECTURES))
-def test_embeddings_are_not_centered(architecture) -> None:
-    """The first attention's input is un-normed, so centering W_E shifts a residual
-    stream nothing re-normalizes."""
-    torch.manual_seed(0)
-    embedding = torch.randn(10, 8)
-    state = {"embed.W_E": embedding.clone()}
-    cfg = _tl_config(architecture)
-    out = ProcessWeights.center_writing_weights(state, cfg)
-    torch.testing.assert_close(out["embed.W_E"], embedding)
-
-
-def test_embeddings_are_centered_for_pre_norm() -> None:
-    """Engagement check: centering is a no-op above only because of the guard."""
-    torch.manual_seed(0)
-    embedding = torch.randn(10, 8)
-    state = {"embed.W_E": embedding.clone()}
-    cfg = _tl_config("LlamaForCausalLM")
-    out = ProcessWeights.center_writing_weights(state, cfg)
-    assert not torch.allclose(out["embed.W_E"], embedding)
-    torch.testing.assert_close(out["embed.W_E"].mean(-1), torch.zeros(10), atol=1e-6, rtol=0)
+    assert not torch.equal(result["embed.W_E"], W_E), "pre-norm embedding was not centered"

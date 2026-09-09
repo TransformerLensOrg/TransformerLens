@@ -63,7 +63,6 @@ from .utils import check_lit_installed
 __all__ = [
     # Model wrappers
     "HookedTransformerLIT",
-    "HookedTransformerLITBatched",
     "HookedTransformerLITConfig",
     "TransformerLensLIT",
     "TransformerLensLITBatched",
