@@ -24,6 +24,7 @@ from transformer_lens.tools.analysis.attribution_patching import (
     EdgeAttributionConfig,
     GradientCache,
     Node,
+    _node_effects,
     attribution_patch,
     cache_activation_and_gradient,
     enumerate_nodes,
@@ -615,3 +616,123 @@ def test_linear_single_node_patch_matches_score_and_sign() -> None:
         covered.add(node.kind)
 
     assert covered == {"embed", "attn_head_out", "mlp_out"}
+
+
+# ---------------------------------------------------------------------------
+# The denoising convention on a nonlinear model
+# ---------------------------------------------------------------------------
+#
+# Every toy bridge above is linear, so its Jacobian is input-independent and the
+# clean and corrupt runs share a gradient. That hides the "gradient is taken from
+# the corrupt run" half of the denoising convention: repointing ``_node_effects``
+# at ``clean_cache.gradients`` would leave every linear test green.
+# ``_NonlinearNodeGraphToyBridge`` adds a GELU MLP so the two runs' gradients
+# diverge, which makes the corrupt-vs-clean choice observable.
+
+
+class _NonlinearAttnMlpBlock(_AttnMlpBlock):
+    """``_AttnMlpBlock`` with a GELU MLP so the residual->metric map is nonlinear.
+
+    The extra ``w_mlp_in`` + GELU make ``d(metric)/d(activation)`` input-dependent,
+    so the clean and corrupt runs no longer share a Jacobian. Without a
+    nonlinearity the two caches hold identical gradients and which run the score
+    reads from cannot be told apart.
+    """
+
+    def __init__(self, d_model: int, n_heads: int, d_head: int, layer: int, dtype: torch.dtype):
+        super().__init__(d_model, n_heads, d_head, layer, dtype)
+        self.w_mlp_in = nn.Linear(d_model, d_model, bias=False, dtype=dtype)
+        nn.init.normal_(self.w_mlp_in.weight, std=0.6)
+
+    def forward(self, residual: torch.Tensor) -> torch.Tensor:
+        batch, seq, _ = residual.shape
+        z = self.hook_z(self.w_z(residual).reshape(batch, seq, self.n_heads, self.d_head))
+        residual = residual + self.w_o(z.reshape(batch, seq, self.n_heads * self.d_head))
+        hidden = torch.nn.functional.gelu(self.w_mlp_in(residual))
+        mlp_out = self.hook_mlp_out(self.w_mlp(hidden))
+        return residual + mlp_out
+
+
+class _NonlinearNodeGraphToyBridge(_NodeGraphToyBridge):
+    """``_NodeGraphToyBridge`` whose MLPs carry a GELU, so gradients are input-dependent.
+
+    Reuses the parent's hook graph and ``hooks()`` plumbing but swaps the linear
+    blocks for :class:`_NonlinearAttnMlpBlock`, giving the clean and corrupt runs
+    genuinely different gradients.
+    """
+
+    def __init__(self, *, dtype: torch.dtype = torch.float32) -> None:
+        super().__init__(dtype=dtype)
+        torch.manual_seed(1)
+        self.blocks = nn.ModuleList(
+            [
+                _NonlinearAttnMlpBlock(D_MODEL, N_HEADS, D_HEAD, layer, dtype)
+                for layer in range(N_LAYERS)
+            ]
+        )
+
+
+def test_nonlinear_node_scores_read_the_corrupt_run_gradient() -> None:
+    """On a nonlinear model the score reads the corrupt run's gradient, not the clean one.
+
+    With an input-dependent Jacobian the clean and corrupt caches hold *different*
+    gradients, so pairing the clean-activation delta with the clean gradient (the
+    reversed convention) yields different scores from the corrupt-gradient one the
+    docstring promises. This pins ``attribution_patch`` to the corrupt gradient — a
+    guard the linear tests structurally cannot provide.
+    """
+    model = _NonlinearNodeGraphToyBridge()
+    clean = torch.tensor([[1, 2, 3]])
+    corrupt = torch.tensor([[3, 2, 1]])
+    metric = _metric_fn(answer=1, wrong=2)
+
+    # Both caches carry gradients so the two conventions can be contrasted directly.
+    clean_cache = cache_activation_and_gradient(model, clean, metric)
+    corrupt_cache = cache_activation_and_gradient(model, corrupt, metric)
+    nodes = enumerate_nodes(model, corrupt_cache)
+
+    # Fixture guard: the nonlinearity must actually make the runs' gradients differ,
+    # otherwise this test would silently pass on a still-linear model.
+    assert any(
+        not torch.allclose(clean_cache.gradients[name], corrupt_cache.gradients[name])
+        for name in corrupt_cache.gradients
+    )
+
+    result = attribution_patch(model, clean, corrupt, metric)
+
+    # attribution_patch scores the corrupt-gradient convention...
+    corrupt_grad_scores = _node_effects(clean_cache, corrupt_cache, nodes)
+    for node in nodes:
+        assert result.node_scores[node] == pytest.approx(corrupt_grad_scores[node])
+
+    # ...which genuinely diverges from the clean-gradient convention (same delta,
+    # clean run's gradient). If _node_effects read the clean gradient instead, the
+    # two would coincide and this assertion would fail.
+    clean_grad_scores = _node_effects(
+        clean_cache,
+        GradientCache(
+            activations=corrupt_cache.activations,
+            gradients=clean_cache.gradients,
+            metric=corrupt_cache.metric,
+        ),
+        nodes,
+    )
+    assert any(
+        corrupt_grad_scores[node] != pytest.approx(clean_grad_scores[node]) for node in nodes
+    )
+
+    # Behavioural pin, independent of _node_effects: a single-node corrupt->clean
+    # patch moves the metric in the score's direction. The estimate is first-order
+    # on a nonlinear model, so assert the sign (not the exact value) across every
+    # non-negligible node and confirm at least one was actually checked.
+    with torch.no_grad():
+        m_corrupt = float(metric(model(corrupt)))
+    checked = 0
+    for node, score in result.top_nodes(k=len(result.node_scores)):
+        if abs(score) < 1e-3:
+            continue
+        delta_m = _patch_node_toward_clean(model, corrupt, node, clean_cache.activations, metric)
+        delta_m -= m_corrupt
+        assert (delta_m > 0) == (score > 0)  # denoising sign convention
+        checked += 1
+    assert checked > 0
