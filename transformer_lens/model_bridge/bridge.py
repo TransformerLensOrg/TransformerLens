@@ -4669,6 +4669,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             print(result.attentions)  # Attention weights
         """
         self._ensure_generation_supported("hf_generate")
+        input_attention_mask: torch.Tensor | None = None
         # Handle string input by tokenizing it
         if isinstance(input, str):
             inputs = self.tokenizer(input, return_tensors="pt", padding=False, truncation=False).to(
@@ -4677,10 +4678,19 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             input_ids = inputs["input_ids"]
             input_type = "str"
         elif isinstance(input, list):
-            inputs = self.tokenizer(input, return_tensors="pt", padding=True, truncation=False).to(
-                self.cfg.device
+            is_encoder_decoder = getattr(
+                getattr(self.original_model, "config", None), "is_encoder_decoder", False
             )
+            tokenizer_kwargs = {} if is_encoder_decoder else {"padding_side": "left"}
+            inputs = self.tokenizer(
+                input,
+                return_tensors="pt",
+                padding=True,
+                truncation=False,
+                **tokenizer_kwargs,
+            ).to(self.cfg.device)
             input_ids = inputs["input_ids"]
+            input_attention_mask = inputs["attention_mask"]
             input_type = "list"
         else:
             input_ids = input
@@ -4690,6 +4700,8 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
 
         # Build generation_kwargs from explicit args and kwargs
         generation_kwargs = dict(generation_kwargs) if generation_kwargs is not None else {}
+        if input_attention_mask is not None:
+            generation_kwargs["attention_mask"] = input_attention_mask
         generation_kwargs.update(
             {
                 "max_new_tokens": max_new_tokens,
