@@ -1416,7 +1416,8 @@ class JacobianLens:
             model: A raw ``TransformerBridge``. Model parameters are temporarily
                 frozen (``requires_grad=False``) during fitting and restored
                 after. Cotangents and activation gradients use the model dtype;
-                fit with a float32 model for the highest-fidelity estimator.
+                fit with a float32 model for the highest-fidelity estimator. The
+                model and all of its submodules must be in evaluation mode.
             prompts: Prompt strings. Prompts too short to contain a valid
                 position (``seq_len <= skip_first_positions + 1``) are skipped
                 with a warning and do not count toward ``n_prompts``.
@@ -1438,10 +1439,11 @@ class JacobianLens:
 
         Raises:
             TypeError: If model is not a ``TransformerBridge``.
-            ValueError: On compatibility mode, invalid provenance or layer
-                indices, or if no prompt was long enough to fit on.
+            ValueError: On compatibility mode, training mode, invalid provenance
+                or layer indices, or if no prompt was long enough to fit on.
         """
         _require_raw_bridge(model)
+        _require_eval_mode_for_fit(model)
         if not isinstance(corpus, str) or not corpus.strip():
             raise ValueError("corpus must be a non-empty provenance identifier")
         n_layers = model.cfg.n_layers
@@ -1627,6 +1629,32 @@ def _require_raw_bridge(model: Any) -> None:
             f"got W_U input width {unembed_width} for d_model={model.cfg.d_model}. "
             "Architectures with a final output projection are not yet supported."
         )
+
+
+def _require_eval_mode_for_fit(model: Any) -> None:
+    """Reject stochastic training state without mutating the caller's model."""
+    training_modules: Dict[int, str] = {}
+    roots = (("", model), ("original_model", getattr(model, "original_model", None)))
+    for prefix, root in roots:
+        if not isinstance(root, torch.nn.Module):
+            continue
+        for name, module in root.named_modules():
+            if not module.training:
+                continue
+            qualified_name = ".".join(part for part in (prefix, name) if part)
+            training_modules.setdefault(id(module), qualified_name or "<root>")
+    if not training_modules:
+        return
+
+    names = list(training_modules.values())
+    preview = ", ".join(names[:3])
+    if len(names) > 3:
+        preview += f", and {len(names) - 3} more"
+    raise ValueError(
+        "JacobianLens.fit() requires the model and all submodules to be in "
+        f"evaluation mode; found training mode at {preview}. Call model.eval() "
+        "before fitting."
+    )
 
 
 def _validate_metadata(metadata: Dict[str, Any]) -> None:
