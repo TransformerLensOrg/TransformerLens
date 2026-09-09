@@ -197,6 +197,22 @@ def test_gradient_cache_matches_closed_form_linear_gradient() -> None:
     torch.testing.assert_close(grad, expected)
 
 
+def test_gradient_cache_activation_only_skips_gradients() -> None:
+    model = _LinearToyBridge()
+    tokens = model.to_tokens("prompt")
+    metric = _metric_fn(answer=1, wrong=2)
+
+    result = cache_activation_and_gradient(
+        model, tokens, metric, names_filter=["blocks.0.hook_out"], compute_gradient=False
+    )
+
+    # Activation-only pass: activations populated, every gradient left None.
+    assert set(result.activations) == {"blocks.0.hook_out"}
+    assert torch.isfinite(result.activations["blocks.0.hook_out"]).all()
+    assert set(result.gradients) == {"blocks.0.hook_out"}
+    assert result.gradients["blocks.0.hook_out"] is None
+
+
 # ---------------------------------------------------------------------------
 # Commit 2 — typed computational-graph node model
 # ---------------------------------------------------------------------------

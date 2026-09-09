@@ -266,8 +266,9 @@ def cache_activation_and_gradient(
     tokens: torch.Tensor,
     metric_fn: MetricFn,
     names_filter: NamesFilter = None,
+    compute_gradient: bool = True,
 ) -> GradientCache:
-    """Run one forward and capture activations plus their metric-gradients.
+    """Run one forward and capture activations plus (optionally) their metric-gradients.
 
     Registers a forward hook and a backward hook at each cached point, runs one
     grad-enabled forward, then drives a single backward with
@@ -286,6 +287,12 @@ def cache_activation_and_gradient(
     keeps it off every parameter's ``.grad`` buffer — no caller grads clobbered, no
     model-sized buffer allocated.
 
+    With ``compute_gradient=False`` the backward is skipped entirely: only forward
+    hooks are registered, no backward is driven, and every cached point's gradient
+    is ``None``. Callers that read activations only (the clean pass of
+    :func:`attribution_patch`, which pairs these with the *corrupt* run's gradients)
+    use this to run a plain forward instead of a needless forward + backward.
+
     Args:
         model: A ``TransformerBridge`` (or compatible) exposing ``hook_dict`` and
             the ``hooks()`` context manager.
@@ -293,11 +300,15 @@ def cache_activation_and_gradient(
         metric_fn: Maps the model logits to a scalar to differentiate.
         names_filter: Restricts which hook points are cached (and have gradients
             retained). ``None`` caches every hook point.
+        compute_gradient: When ``True`` (default) capture gradients via backward
+            hooks. When ``False`` run an activation-only forward and leave every
+            gradient ``None``.
 
     Returns:
-        A :class:`GradientCache` with per-hook activations and gradients.
+        A :class:`GradientCache` with per-hook activations, and gradients when
+        ``compute_gradient`` is ``True`` (all ``None`` otherwise).
     """
-    if not torch.is_grad_enabled():
+    if compute_gradient and not torch.is_grad_enabled():
         raise ValueError(
             "cache_activation_and_gradient needs autograd, but gradient tracking "
             "is off (torch.no_grad(), set_grad_enabled(False), or inference mode)."
@@ -332,6 +343,21 @@ def cache_activation_and_gradient(
         return hook
 
     fwd_hooks = [(name, make_fwd_hook(name)) for name in names]
+
+    if not compute_gradient:
+        with model.hooks(fwd_hooks=fwd_hooks):
+            logits = model(tokens)
+            metric = metric_fn(logits)
+            if metric.dim() != 0:
+                raise ValueError(
+                    f"metric_fn must return a scalar tensor, got shape {tuple(metric.shape)}"
+                )
+        return GradientCache(
+            activations=activations,
+            gradients={name: None for name in activations},
+            metric=metric.detach(),
+        )
+
     bwd_hooks = [(name, make_bwd_hook(name)) for name in names]
 
     with model.hooks(fwd_hooks=fwd_hooks, bwd_hooks=bwd_hooks):
@@ -466,7 +492,11 @@ def attribution_patch(
 
     for index in range(batch):
         clean_cache = cache_activation_and_gradient(
-            model, clean[index : index + 1], metric_fn, names_filter=node_hook_names
+            model,
+            clean[index : index + 1],
+            metric_fn,
+            names_filter=node_hook_names,
+            compute_gradient=False,
         )
         corrupt_cache = cache_activation_and_gradient(
             model, corrupt[index : index + 1], metric_fn, names_filter=node_hook_names
