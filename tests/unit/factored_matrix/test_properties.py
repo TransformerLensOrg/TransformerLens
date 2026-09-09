@@ -2,7 +2,8 @@ import pytest
 import torch
 from torch import randn
 
-from transformer_lens import FactoredMatrix, utils
+from transformer_lens import FactoredMatrix
+from transformer_lens import utilities as utils
 
 
 @pytest.fixture(scope="module")

@@ -11,11 +11,15 @@ import torch
 from torch import nn
 
 if TYPE_CHECKING:
-    from transformer_lens.config.hooked_transformer_config import (
-        HookedTransformerConfig as ConfigType,
+    from transformer_lens.config.transformer_bridge_config import (
+        TransformerBridgeConfig as ConfigType,
+    )
+    from transformer_lens.config.transformer_lens_config import (
+        TransformerLensConfig as BaseConfigType,
     )
 else:
     ConfigType = Any
+    BaseConfigType = Any
 
 AvailableDeviceMemory = list[tuple[int, int]]
 """
@@ -104,7 +108,7 @@ def get_best_available_device(
     """Gets the best available device to be used based on the passed in arguments
 
     Args:
-        cfg: The HookedTransformerConfig object containing device configuration
+        cfg: The bridge config object containing device configuration
 
     Returns:
         torch.device: The best available device
@@ -120,7 +124,7 @@ def get_best_available_device(
 
 def get_device_for_block_index(
     index: int,
-    cfg: ConfigType,
+    cfg: "BaseConfigType",
     device: Optional[Union[torch.device, str]] = None,
 ):
     """
@@ -154,7 +158,8 @@ def get_device_for_block_index(
     # the divide-by-zero when n_layers < n_devices. The naive form
     # `index // (n_layers // n_devices)` floors the divisor and overshoots when
     # n_layers is not a multiple of n_devices (e.g. 62 layers / 8 devices → 8).
-    device_index = (device.index or 0) + (index * cfg.n_devices) // cfg.n_layers
+    n_devices = getattr(cfg, "n_devices", 1)
+    device_index = (device.index or 0) + (index * n_devices) // cfg.n_layers
     return torch.device(device.type, device_index)
 
 

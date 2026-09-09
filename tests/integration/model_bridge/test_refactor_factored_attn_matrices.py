@@ -2,7 +2,7 @@
 
 Verifies that the refactored attention matrices produce correct results when
 used via TransformerBridge, matching the frozen HookedTransformer goldens
-(gpt2 is the golden refactor model — see scripts/capture_ht_goldens.py).
+(gpt2 is the golden refactor model — see tests/goldens_capture_spec.py).
 """
 
 import pytest

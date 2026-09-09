@@ -213,7 +213,7 @@ class RemoteBridge(BridgeCore, HookIntrospectionMixin):
         ``boot_inspect(m).run_with_cache("text")`` matches ``boot_transformers(m)``
         on the same string — a bare ``encode`` (no BOS) would silently diverge.
         """
-        from transformer_lens import utils
+        from transformer_lens import utilities as utils
 
         assert self.tokenizer is not None, "Tokenizer must be set."
         if prepend_bos is None:

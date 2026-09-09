@@ -268,3 +268,29 @@ MODEL_ALIASES: dict[str, list[str]] = load_model_aliases()
 DEFAULT_MODEL_ALIASES: list[str] = [
     MODEL_ALIASES[name][0] if name in MODEL_ALIASES else name for name in OFFICIAL_MODEL_NAMES
 ]
+
+
+def _model_alias_map() -> dict[str, str]:
+    """Lowercased-key map from every alias (and official name) to its official
+    name — mirrors the deleted loading_from_pretrained.make_model_alias_map so
+    resolution stays case-insensitive."""
+    alias_map: dict[str, str] = {}
+    for official_name in OFFICIAL_MODEL_NAMES:
+        for alias in MODEL_ALIASES.get(official_name, []):
+            alias_map[alias.lower()] = official_name
+        alias_map[official_name.lower()] = official_name
+    return alias_map
+
+
+def get_official_model_name(model_name: str) -> str:
+    """Resolve a HookedTransformer-era alias to its official HF name.
+
+    Case-insensitive (as the deleted ``loading_from_pretrained`` resolver was);
+    identity for an already-official name; raises for an unknown one. Rehomed so
+    the legacy-compatibility ledger and alias-drift tooling keep a canonical
+    resolver.
+    """
+    official_name = _model_alias_map().get(model_name.lower())
+    if official_name is None:
+        raise ValueError(f"{model_name!r} is not an official model name or a known alias.")
+    return official_name
