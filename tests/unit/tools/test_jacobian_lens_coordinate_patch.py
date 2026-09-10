@@ -10,6 +10,7 @@ import torch
 from transformer_lens.tools.analysis.jacobian_lens_coordinate_patch import (
     CoordinatePatch,
     solve_coordinate_patch,
+    solve_coordinate_patch_positions,
 )
 from transformer_lens.tools.analysis.jacobian_lens_decomposition import (
     JSpaceDecomposition,
@@ -558,3 +559,179 @@ def test_high_condition_decomposition_is_accepted() -> None:
     result = solve_coordinate_patch(activation, dictionary, 0, 3, decomposition=decomposition)
 
     assert torch.isfinite(result.patched).all()
+
+
+def test_solve_coordinate_patch_positions_matches_offline_solve_coordinate_patch() -> None:
+    dictionary = torch.eye(3)
+    activation = torch.tensor([2.0, 5.0, 0.0])
+    batched = activation.view(1, 1, 3)
+
+    patched, patches = solve_coordinate_patch_positions(
+        batched, dictionary, position_labels=[4], source_idx=0, target_idx=1, layer=3, k=2
+    )
+    expected = solve_coordinate_patch(activation, dictionary, 0, 1, k=2)
+
+    torch.testing.assert_close(patched[0, 0], expected.patched)
+    torch.testing.assert_close(patches[(3, 0, 4)].coordinates_after, expected.coordinates_after)
+
+
+def test_solve_coordinate_patch_positions_batch_independence() -> None:
+    dictionary = torch.eye(3)
+    row0 = torch.tensor([2.0, 5.0, 0.0])
+    row1 = torch.tensor([3.0, 1.0, 0.0])
+    batched = torch.stack([row0, row1]).unsqueeze(1)
+
+    batched_patched, _ = solve_coordinate_patch_positions(
+        batched, dictionary, [0], 0, 1, layer=0, k=2
+    )
+    solo_patched, _ = solve_coordinate_patch_positions(
+        row0.view(1, 1, 3), dictionary, [0], 0, 1, layer=0, k=2
+    )
+
+    torch.testing.assert_close(batched_patched[0, 0], solo_patched[0, 0])
+
+
+def test_solve_coordinate_patch_positions_fails_fast_when_any_pair_source_inactive() -> None:
+    dictionary = torch.eye(3)
+    activations = torch.stack(
+        [
+            torch.tensor([2.0, 5.0, 0.0]),  # source atom 0 active
+            torch.tensor([0.0, 0.0, 4.0]),  # source atom 0 inactive
+        ]
+    ).unsqueeze(1)
+
+    with pytest.raises(ValueError, match="active support"):
+        solve_coordinate_patch_positions(activations, dictionary, [0], 0, 1, layer=0, k=2)
+
+
+def test_solve_coordinate_patch_positions_cache_miss_solves_and_populates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import transformer_lens.tools.analysis.jacobian_lens_coordinate_patch as core_module
+
+    dictionary = torch.eye(3)
+    activations = torch.tensor([2.0, 5.0, 0.0]).view(1, 1, 3)
+    cache: dict = {}
+    calls = []
+    original = core_module.get_sparse_decomposition
+
+    def spy(*args, **kwargs):
+        calls.append(1)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(core_module, "get_sparse_decomposition", spy)
+    solve_coordinate_patch_positions(
+        activations, dictionary, [0], 0, 1, layer=0, decomposition_cache=cache, k=2
+    )
+    assert len(calls) == 1
+    assert (0, 0, 0) in cache
+
+
+def test_solve_coordinate_patch_positions_cache_hit_skips_resolve(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import transformer_lens.tools.analysis.jacobian_lens_coordinate_patch as core_module
+
+    dictionary = torch.eye(3)
+    activations = torch.tensor([2.0, 5.0, 0.0]).view(1, 1, 3)
+    cache: dict = {}
+    calls = []
+    original = core_module.get_sparse_decomposition
+
+    def spy(*args, **kwargs):
+        calls.append(1)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(core_module, "get_sparse_decomposition", spy)
+    solve_coordinate_patch_positions(
+        activations, dictionary, [0], 0, 1, layer=0, decomposition_cache=cache, k=2
+    )
+    assert len(calls) == 1
+    solve_coordinate_patch_positions(
+        activations, dictionary, [0], 0, 1, layer=0, decomposition_cache=cache, k=2
+    )
+    assert len(calls) == 1  # second call is a pure cache hit
+
+
+def test_solve_coordinate_patch_positions_cache_hit_and_miss_produce_identical_patch() -> None:
+    dictionary = torch.eye(3)
+    activations = torch.tensor([2.0, 5.0, 0.0]).view(1, 1, 3)
+
+    fresh_patched, fresh_patches = solve_coordinate_patch_positions(
+        activations, dictionary, [0], 0, 1, layer=0, k=2
+    )
+    cache: dict = {}
+    solve_coordinate_patch_positions(
+        activations, dictionary, [0], 0, 1, layer=0, decomposition_cache=cache, k=2
+    )
+    cached_patched, cached_patches = solve_coordinate_patch_positions(
+        activations, dictionary, [0], 0, 1, layer=0, decomposition_cache=cache, k=2
+    )
+
+    torch.testing.assert_close(fresh_patched, cached_patched)
+    torch.testing.assert_close(fresh_patches[(0, 0, 0)].patched, cached_patches[(0, 0, 0)].patched)
+
+
+def test_solve_coordinate_patch_positions_populates_batch_component_of_cache_key() -> None:
+    """The batch component of the ``(layer, batch_idx, position)`` cache key is load-bearing.
+
+    Every other cache test uses a ``[1, 1, d_model]`` activation, so collapsing the key to
+    ``(layer, 0, position)`` would pass the whole tier. Here two distinct batch rows share one
+    caller-owned cache at the same ``(layer, position)``: each must occupy its own slot and get its
+    own solve, so a collapsed key -- which would collide row 1 onto row 0's entry -- is caught.
+    """
+    dictionary = torch.eye(3)
+    row0 = torch.tensor([2.0, 5.0, 0.0])  # active support {0, 1}
+    row1 = torch.tensor([3.0, 0.0, 4.0])  # active support {0, 2} -- differs from row0
+    activations = torch.stack([row0, row1]).unsqueeze(1)  # [2, 1, 3]
+    cache: dict = {}
+
+    solve_coordinate_patch_positions(
+        activations,
+        dictionary,
+        position_labels=[7],
+        source_idx=0,
+        target_idx=1,
+        layer=0,
+        decomposition_cache=cache,
+        k=2,
+    )
+
+    # Both batch rows are keyed separately at the shared (layer, position); neither collided.
+    assert (0, 0, 7) in cache
+    assert (0, 1, 7) in cache
+    # Each row solved independently: the two decompositions have different active supports, so
+    # row 1 did not reuse row 0's cache entry.
+    row0_support = cache[(0, 0, 7)].support.sort().values
+    row1_support = cache[(0, 1, 7)].support.sort().values
+    assert not torch.equal(row0_support, row1_support)
+
+
+def test_solve_coordinate_patch_positions_preserves_gradient_to_patched_position() -> None:
+    dictionary = torch.eye(3)
+    activation = torch.tensor([2.0, 5.0, 0.0])
+    activations = activation.view(1, 1, 3).clone().requires_grad_(True)
+
+    patched, _ = solve_coordinate_patch_positions(
+        activations, dictionary, position_labels=[4], source_idx=0, target_idx=1, layer=3, k=2
+    )
+
+    # Forward output is unchanged: the straight-through edit is bitwise identical to ``patch.patched``.
+    expected = solve_coordinate_patch(activation, dictionary, 0, 1, k=2)
+    assert torch.equal(patched[0, 0].detach(), expected.patched)
+
+    patched.sum().backward()
+    assert activations.grad is not None
+    grad_at_patch = activations.grad[0, 0]
+    # Straight-through gives an identity gradient at the patched position; the severed
+    # ``patch.patched`` path left this exactly zero.
+    assert torch.isfinite(grad_at_patch).all()
+    assert float(grad_at_patch.abs().sum()) > 0.0
+
+
+def test_solve_coordinate_patch_positions_rejects_mismatched_position_labels() -> None:
+    dictionary = torch.eye(3)
+    activations = torch.tensor([2.0, 5.0, 0.0]).view(1, 1, 3)
+
+    with pytest.raises(ValueError, match="position_labels"):
+        solve_coordinate_patch_positions(activations, dictionary, [0, 1], 0, 1, layer=0, k=2)

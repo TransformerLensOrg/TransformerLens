@@ -1,10 +1,11 @@
 """Unit tests for the TransformerBridge-only Jacobian lens implementation."""
 
-from contextlib import contextmanager
+import gc
 from enum import IntEnum
 from inspect import Parameter, signature
 from types import SimpleNamespace
 from typing import Any, Optional, Sequence
+from weakref import ref
 
 import numpy as np
 import pytest
@@ -12,7 +13,18 @@ import torch
 import torch.nn as nn
 
 import transformer_lens.tools.analysis.jacobian_lens as jacobian_lens_module
-from transformer_lens.hook_points import HookPoint
+from tests.unit.tools.conftest import (
+    CORPUS,
+    D_MODEL,
+    D_VOCAB,
+    N_LAYERS,
+    SEQ_LEN,
+    SKIP_FIRST,
+    _lens,
+    _NotABridge,
+    _ToyBlock,
+    _ToyBridge,
+)
 from transformer_lens.model_bridge import TransformerBridge
 from transformer_lens.model_bridge.generalized_components import AltUpBlockBridge
 from transformer_lens.model_bridge.supported_architectures.deepseek_v4 import (
@@ -30,13 +42,6 @@ from transformer_lens.tools.analysis import (
 from transformer_lens.utilities.activation_functions import apply_softcap
 from transformer_lens.utilities.parameter_swap import temporarily_swap_parameter
 
-D_MODEL = 6
-N_LAYERS = 4
-D_VOCAB = 11
-SEQ_LEN = 9
-SKIP_FIRST = 2
-CORPUS = "unit-test-corpus"
-
 
 class _UnsafeMetadataEnum(IntEnum):
     VALUE = 7
@@ -44,197 +49,6 @@ class _UnsafeMetadataEnum(IntEnum):
 
 class _UnsafeMetadataKey(str):
     pass
-
-
-class _ToyBlock(nn.Module):
-    def __init__(self, d_model: int, layer: int, dtype: torch.dtype):
-        super().__init__()
-        self.linear = nn.Linear(d_model, d_model, bias=False, dtype=dtype)
-        nn.init.normal_(self.linear.weight, std=0.2)
-        self.hook_out = HookPoint()
-        self.hook_out.name = f"blocks.{layer}.hook_out"
-
-    def forward(self, residual: torch.Tensor) -> torch.Tensor:
-        return self.hook_out(residual + self.linear(residual))
-
-
-class _CausalSumBlock(nn.Module):
-    """Causal cross-position mixing with an exact triangular Jacobian."""
-
-    def __init__(self, layer: int):
-        super().__init__()
-        self.hook_out = HookPoint()
-        self.hook_out.name = f"blocks.{layer}.hook_out"
-
-    def forward(self, residual: torch.Tensor) -> torch.Tensor:
-        return self.hook_out(residual.cumsum(dim=1))
-
-
-class _ToyTokenizer:
-    def decode(self, token_ids: list[int]) -> str:
-        return f"token-{token_ids[0]}"
-
-
-class _ToyBridge(TransformerBridge):
-    """Small real ``TransformerBridge`` subclass with Bridge-native hooks.
-
-    The production constructor needs a Hugging Face model and architecture
-    adapter. Unit tests only need its public analysis surface, so this subclass
-    initializes ``nn.Module`` directly while retaining the concrete
-    ``TransformerBridge`` isinstance contract.
-    """
-
-    def __init__(
-        self,
-        *,
-        dtype: torch.dtype = torch.float32,
-        causal_final_block: bool = False,
-    ) -> None:
-        nn.Module.__init__(self)
-        torch.manual_seed(0)
-        self.cfg = SimpleNamespace(
-            n_layers=N_LAYERS,
-            d_model=D_MODEL,
-            d_vocab=D_VOCAB,
-            d_vocab_out=D_VOCAB,
-            normalization_type="LN",
-            output_logits_soft_cap=None,
-            model_name="toy-bridge",
-            dtype=dtype,
-            device="cpu",
-        )
-        self.adapter = SimpleNamespace(
-            supports_generation=True,
-            get_component_mapping=lambda: {
-                "blocks": SimpleNamespace(hook_out_is_single_residual_stream=True),
-                "ln_final": object(),
-                "unembed": object(),
-            },
-            validate_output_logits_transform=lambda: None,
-            apply_output_logits_transform=lambda logits: apply_softcap(
-                logits, self.cfg.output_logits_soft_cap
-            ),
-        )
-        self.compatibility_mode = False
-        self._weights_processed = False
-        self.tokenizer = _ToyTokenizer()
-        self.embed = nn.Embedding(D_VOCAB, D_MODEL, dtype=dtype)
-        blocks: list[nn.Module] = [_ToyBlock(D_MODEL, layer, dtype) for layer in range(N_LAYERS)]
-        if causal_final_block:
-            blocks[-1] = _CausalSumBlock(N_LAYERS - 1)
-        self.blocks = nn.ModuleList(blocks)
-        self.ln_final = nn.Identity()
-        self.unembed = nn.Linear(D_MODEL, D_VOCAB, bias=False, dtype=dtype)
-        self.eval()
-
-    @property
-    def W_U(self) -> torch.Tensor:
-        return self.unembed.weight.T
-
-    @property
-    def hook_dict(self) -> dict[str, HookPoint]:
-        return {
-            f"blocks.{layer}.hook_out": block.hook_out for layer, block in enumerate(self.blocks)
-        }
-
-    def parameters(self, recurse: bool = True):
-        # A production bridge delegates this to its wrapped HF model. This toy
-        # owns its small modules directly, so enumerate the nn.Module tree.
-        return nn.Module.parameters(self, recurse=recurse)
-
-    def named_parameters(
-        self,
-        prefix: str = "",
-        recurse: bool = True,
-        remove_duplicate: bool = True,
-    ):
-        return nn.Module.named_parameters(
-            self,
-            prefix=prefix,
-            recurse=recurse,
-            remove_duplicate=remove_duplicate,
-        )
-
-    def to_tokens(self, prompt: str) -> torch.Tensor:
-        ids = [(3 * index + len(prompt)) % D_VOCAB for index in range(SEQ_LEN)]
-        return torch.tensor([ids], dtype=torch.long)
-
-    def to_single_token(self, string: str) -> int:
-        return len(string) % D_VOCAB
-
-    def forward(
-        self, tokens: torch.Tensor, return_type: str | None = "logits"
-    ) -> torch.Tensor | None:
-        residual = self.embed(tokens)
-        for block in self.blocks:
-            residual = block(residual)
-        if return_type is None:
-            return None
-        return self.unembed(self.ln_final(residual))
-
-    @contextmanager
-    def hooks(
-        self,
-        fwd_hooks: list[tuple[str, Any]] = [],
-        bwd_hooks: list[tuple[str, Any]] = [],
-        reset_hooks_end: bool = True,
-        clear_contexts: bool = False,
-    ):
-        del clear_contexts
-        added: list[tuple[HookPoint, str, Any]] = []
-        for direction, hook_specs in (("fwd", fwd_hooks), ("bwd", bwd_hooks)):
-            for name, hook_fn in hook_specs:
-                hook_point = self.hook_dict[name]
-                hook_point.add_hook(hook_fn, dir=direction)
-                handles = hook_point.fwd_hooks if direction == "fwd" else hook_point.bwd_hooks
-                added.append((hook_point, direction, handles[-1]))
-        try:
-            yield self
-        finally:
-            if reset_hooks_end:
-                for hook_point, direction, handle in added:
-                    handle.hook.remove()
-                    handles = hook_point.fwd_hooks if direction == "fwd" else hook_point.bwd_hooks
-                    if handle in handles:
-                        handles.remove(handle)
-
-    def run_with_cache(
-        self,
-        input: torch.Tensor,
-        return_cache_object: bool = False,
-        remove_batch_dim: bool = False,
-        names_filter: Any = None,
-        **kwargs: Any,
-    ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
-        del return_cache_object, remove_batch_dim, kwargs
-
-        def wanted(name: str) -> bool:
-            if names_filter is None:
-                return True
-            if isinstance(names_filter, str):
-                return name == names_filter
-            if callable(names_filter):
-                return bool(names_filter(name))
-            return name in names_filter
-
-        cache: dict[str, torch.Tensor] = {}
-
-        def cache_hook(activation: torch.Tensor, hook: HookPoint) -> torch.Tensor:
-            assert hook.name is not None
-            cache[hook.name] = activation.detach()
-            return activation
-
-        cache_hooks = [(name, cache_hook) for name in self.hook_dict if wanted(name)]
-        with self.hooks(fwd_hooks=cache_hooks):
-            logits = self(input)
-        assert logits is not None
-        return logits, cache
-
-
-class _NotABridge(nn.Module):
-    def __init__(self) -> None:
-        super().__init__()
-        self.cfg = SimpleNamespace(n_layers=N_LAYERS, d_model=D_MODEL)
 
 
 def _closed_form_jacobian(model: _ToyBridge, layer: int) -> torch.Tensor:
@@ -245,24 +59,6 @@ def _closed_form_jacobian(model: _ToyBridge, layer: int) -> torch.Tensor:
         assert isinstance(block, _ToyBlock)
         jacobian = (torch.eye(D_MODEL) + block.linear.weight) @ jacobian
     return jacobian
-
-
-def _lens(
-    *,
-    n_prompts: int = 1,
-    metadata: dict[str, Any] | None = None,
-) -> JacobianLens:
-    return JacobianLens(
-        {0: torch.eye(D_MODEL)},
-        n_prompts=n_prompts,
-        d_model=D_MODEL,
-        metadata=metadata,
-    )
-
-
-@pytest.fixture(scope="module")
-def toy_model() -> _ToyBridge:
-    return _ToyBridge()
 
 
 @pytest.fixture(scope="module")
@@ -1371,9 +1167,8 @@ def test_lens_vector_dictionary_matches_lens_vectors_and_caches(toy_model: _ToyB
     assert lens.lens_vector_dictionary(toy_model, layer) is not dictionary
 
 
-def test_lens_vector_dictionary_invalidates_after_in_place_weight_update(
-    toy_model: _ToyBridge,
-) -> None:
+def test_lens_vector_dictionary_invalidates_after_in_place_weight_update() -> None:
+    toy_model = _ToyBridge()
     lens = JacobianLens({1: torch.eye(D_MODEL)}, n_prompts=1, d_model=D_MODEL)
     original = lens.lens_vector_dictionary(toy_model, 1)
 
@@ -1388,7 +1183,8 @@ def test_lens_vector_dictionary_invalidates_after_in_place_weight_update(
     )
 
 
-def test_lens_vector_dictionary_invalidates_after_optimizer_step(toy_model: _ToyBridge) -> None:
+def test_lens_vector_dictionary_invalidates_after_optimizer_step() -> None:
+    toy_model = _ToyBridge()
     lens = JacobianLens({1: torch.eye(D_MODEL)}, n_prompts=1, d_model=D_MODEL)
     original = lens.lens_vector_dictionary(toy_model, 1)
     optimizer = torch.optim.SGD([toy_model.unembed.weight], lr=0.1)
@@ -1404,7 +1200,8 @@ def test_lens_vector_dictionary_invalidates_after_optimizer_step(toy_model: _Toy
     )
 
 
-def test_lens_vector_dictionary_does_not_cross_model_instances(toy_model: _ToyBridge) -> None:
+def test_lens_vector_dictionary_does_not_cross_model_instances() -> None:
+    toy_model = _ToyBridge()
     lens = JacobianLens({1: torch.eye(D_MODEL)}, n_prompts=1, d_model=D_MODEL)
     first = lens.lens_vector_dictionary(toy_model, 1)
     other_model = _ToyBridge()
@@ -1420,12 +1217,18 @@ def test_lens_vector_dictionary_does_not_cross_model_instances(toy_model: _ToyBr
     )
 
 
-def test_lens_vector_dictionary_invalidates_after_parameter_replacement(
-    toy_model: _ToyBridge,
-) -> None:
+def test_lens_vector_dictionary_invalidates_after_parameter_replacement() -> None:
+    toy_model = _ToyBridge()
     lens = JacobianLens({1: torch.eye(D_MODEL)}, n_prompts=1, d_model=D_MODEL)
     original = lens.lens_vector_dictionary(toy_model, 1)
-    toy_model.unembed.weight = nn.Parameter(2 * toy_model.unembed.weight.detach())
+    old_weight_ref = ref(toy_model.unembed.weight)
+    shape = toy_model.unembed.weight.shape
+    dtype = toy_model.unembed.weight.dtype
+    device = toy_model.unembed.weight.device
+    toy_model.unembed.register_parameter("weight", None)
+    gc.collect()
+    assert old_weight_ref() is None
+    toy_model.unembed.weight = nn.Parameter(torch.empty(shape, dtype=dtype, device=device).fill_(2))
 
     updated = lens.lens_vector_dictionary(toy_model, 1)
 
@@ -1436,7 +1239,8 @@ def test_lens_vector_dictionary_invalidates_after_parameter_replacement(
     )
 
 
-def test_lens_vector_dictionary_tracks_temporary_parameter_swap(toy_model: _ToyBridge) -> None:
+def test_lens_vector_dictionary_tracks_temporary_parameter_swap() -> None:
+    toy_model = _ToyBridge()
     lens = JacobianLens({1: torch.eye(D_MODEL)}, n_prompts=1, d_model=D_MODEL)
     baseline = lens.lens_vector_dictionary(toy_model, 1)
     replacement = 2 * toy_model.unembed.weight.detach()
@@ -1454,17 +1258,20 @@ def test_lens_vector_dictionary_tracks_temporary_parameter_swap(toy_model: _ToyB
     torch.testing.assert_close(restored, baseline)
 
 
-def test_decompose_uses_current_token_labels_after_unembedding_row_swap(
-    toy_model: _ToyBridge,
-) -> None:
+def test_decompose_detects_data_row_swap_without_a_version_change() -> None:
+    toy_model = _ToyBridge()
     lens = JacobianLens({1: torch.eye(D_MODEL)}, n_prompts=1, d_model=D_MODEL)
     lens.lens_vector_dictionary(toy_model, 1)
-    replacement = toy_model.unembed.weight.detach().clone()
-    replacement[[0, 1]] = replacement[[1, 0]]
+    original = toy_model.unembed.weight.detach().clone()
+    version = toy_model.unembed.weight._version
 
-    with temporarily_swap_parameter(toy_model.unembed.weight, replacement):
+    try:
+        toy_model.unembed.weight.data[[0, 1]] = toy_model.unembed.weight.data[[1, 0]].clone()
+        assert toy_model.unembed.weight._version == version
         current_token_zero = toy_model.W_U[:, 0].detach().clone()
         result = lens.decompose(toy_model, current_token_zero, layer=1, k=1)
+    finally:
+        toy_model.unembed.weight.data.copy_(original)
 
     assert result.support.tolist() == [0]
     torch.testing.assert_close(

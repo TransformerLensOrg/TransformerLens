@@ -54,6 +54,9 @@ def convert_neox_weights(neox, cfg: HookedTransformerConfig):
     state_dict["ln_final.w"] = neox.gpt_neox.final_layer_norm.weight
     state_dict["ln_final.b"] = neox.gpt_neox.final_layer_norm.bias
 
-    state_dict["unembed.W_U"] = neox.embed_out.weight.T
+    # transformers >= 5.14 renamed GPTNeoXForCausalLM.embed_out to lm_head;
+    # the repo's locked 5.13.0 still exposes embed_out, so support both.
+    unembed = neox.lm_head if hasattr(neox, "lm_head") else neox.embed_out
+    state_dict["unembed.W_U"] = unembed.weight.T
     state_dict["unembed.b_U"] = torch.zeros(cfg.d_vocab, dtype=cfg.dtype)
     return state_dict

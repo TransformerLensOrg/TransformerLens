@@ -518,6 +518,50 @@ def test_coordinate_patch_gpt2_preserves_anchored_frame(published_gpt2_lens, gpt
     assert torch.equal(no_op.patched, activation)
 
 
+def test_coordinate_patch_hooks_gpt2_no_op_and_leaves_other_positions_unchanged(
+    published_gpt2_lens, gpt2_bridge
+):
+    """coordinate_patch_hooks through a real run_with_hooks pass: alpha=0 is an exact no-op and
+    untouched positions are bit-identical -- algebraic invariants only, no token-flip claim (see
+    build-plan.md §9's policy against behavior-dependent assertions)."""
+    layer = 6
+    tokens = gpt2_bridge.to_tokens(PROMPT)
+    hook = f"blocks.{layer}.hook_out"
+    _, baseline_cache = gpt2_bridge.run_with_cache(tokens, names_filter=lambda name: name == hook)
+    baseline_activation = baseline_cache[hook][0, -1, :].float()
+    decomposition = published_gpt2_lens.decompose(
+        gpt2_bridge, baseline_activation, layer=layer, k=8
+    )
+    source_id = int(decomposition.support[0])
+    dictionary = published_gpt2_lens.lens_vector_dictionary(gpt2_bridge, layer)
+    units = dictionary / dictionary.norm(dim=1, keepdim=True)
+    pair_cosines = (units @ units[source_id]).abs()
+    pair_cosines[source_id] = torch.inf
+    target_id = int(pair_cosines.argmin().item())
+
+    with pytest.warns(UserWarning, match="coordinate_patch_hooks"):
+        no_op_hooks = published_gpt2_lens.coordinate_patch_hooks(
+            gpt2_bridge, source_id, target_id, layers=[layer], positions=[-1], alpha=0.0
+        )
+    with gpt2_bridge.hooks(fwd_hooks=no_op_hooks):
+        _, no_op_cache = gpt2_bridge.run_with_cache(tokens, names_filter=lambda name: name == hook)
+    torch.testing.assert_close(
+        no_op_cache[hook][0, -1, :].float(), baseline_activation, atol=1e-5, rtol=1e-5
+    )
+
+    with pytest.warns(UserWarning, match="coordinate_patch_hooks"):
+        edit_hooks = published_gpt2_lens.coordinate_patch_hooks(
+            gpt2_bridge, source_id, target_id, layers=[layer], positions=[-1], alpha=0.5
+        )
+    with gpt2_bridge.hooks(fwd_hooks=edit_hooks):
+        _, edited_cache = gpt2_bridge.run_with_cache(tokens, names_filter=lambda name: name == hook)
+    edited = edited_cache[hook].float()
+    baseline_full = baseline_cache[hook].float()
+    torch.testing.assert_close(edited[:, :-1, :], baseline_full[:, :-1, :], atol=1e-5, rtol=1e-5)
+    assert torch.isfinite(edited).all()
+    assert not torch.allclose(edited[0, -1, :], baseline_full[0, -1, :])
+
+
 def test_occupancy_gpt2_activation_is_a_small_positive_integer(published_gpt2_lens, gpt2_bridge):
     """occupancy on a real GPT-2 activation returns a positive integer within ``[1, max_atoms]``,
     with per-step real and control captured-variance curves of the right shape. We assert shape and
