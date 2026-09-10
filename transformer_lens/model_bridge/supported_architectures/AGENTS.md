@@ -127,7 +127,7 @@ If HF applies the same factor outside the module whose weight is being folded, `
 
 Examples:
 
-- **Cohere** — `cfg.logit_scale` (default `0.0625`) folds into `unembed.weight`, then `postprocess_weights()` neutralizes both the model-level `logit_scale` that HF forward would otherwise apply again *and* `cfg.logit_scale` itself. Neutralize every copy of a fold factor you read: leaving the one `preprocess_weights()` reads at its original value makes a repeat call fold an already-folded weight.
+- **Cohere** — `cfg.logit_scale` (default `0.0625`) folds into `unembed.weight`, then `postprocess_weights()` neutralizes the model-level `logit_scale` that HF forward would otherwise apply again. Guard re-entry with a private instance flag (`_logit_scale_already_folded`), not by mutating `cfg.logit_scale` itself — that value is a declared model constant other code reads (`apply_output_logits_transform`, integration tests asserting the original scale), and a stale *live* attribute is one thing, a corrupted *config* is another.
 - **Gemma1/2/3** — embedding scale (`√d_model`) folds into `embed.weight`. HF's `GemmaTextScaledWordEmbedding` scales on forward; compat-mode reads raw.
 
 Skeleton:

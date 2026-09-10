@@ -443,9 +443,9 @@ class TestCohereArchitectureGuards:
 class TestLogitScaleFoldIsIdempotent:
     """A second process_weights must not fold logit_scale into an already-folded unembed.
 
-    postprocess_weights used to neutralize only the live model attribute, leaving
-    cfg.logit_scale — the value preprocess_weights actually reads — at its original
-    setting, so a repeat call scaled the unembed again and flattened logits 16x.
+    cfg.logit_scale is Cohere's declared constant — apply_output_logits_transform and
+    integration tests read it and must always see the model's true scale, never a
+    post-fold sentinel. Re-entry is guarded by a private instance flag instead.
     """
 
     @staticmethod
@@ -472,7 +472,7 @@ class TestLogitScaleFoldIsIdempotent:
 
         torch.testing.assert_close(twice, once)
 
-    def test_live_model_scale_is_neutralized_once(self) -> None:
+    def test_live_model_scale_is_neutralized_but_cfg_keeps_the_true_scale(self) -> None:
         adapter = CohereArchitectureAdapter(_make_cfg(logit_scale=0.0625))
         bridge = self._stub_bridge()
 
@@ -480,4 +480,4 @@ class TestLogitScaleFoldIsIdempotent:
         adapter.postprocess_weights(bridge)
 
         assert bridge.original_model.logit_scale == 1.0
-        assert getattr(adapter.cfg, "logit_scale") == pytest.approx(1.0)
+        assert getattr(adapter.cfg, "logit_scale") == pytest.approx(0.0625)

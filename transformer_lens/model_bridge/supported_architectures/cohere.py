@@ -95,6 +95,9 @@ class CohereArchitectureAdapter(ArchitectureAdapter):
         _ls = getattr(cfg, "logit_scale", None)
         self.cfg.logit_scale = float(_ls) if _ls is not None else 0.0625  # type: ignore[attr-defined]
         self._logit_scale_fold_pending = False
+        # Separate from cfg.logit_scale, which callers (apply_output_logits_transform,
+        # tests) read as Cohere's declared constant and must never see mutated.
+        self._logit_scale_already_folded = False
 
         # --- RoPE theta (informational metadata) ---
         # CohereRotaryEmbedding reads config.rope_parameters["rope_theta"] directly;
@@ -160,6 +163,8 @@ class CohereArchitectureAdapter(ArchitectureAdapter):
         logit_scale=1.0 is a no-op (skipped for efficiency).
         """
         self._logit_scale_fold_pending = False
+        if self._logit_scale_already_folded:
+            return state_dict
         scale: float = getattr(self.cfg, "logit_scale")  # always set by __init__
         if scale != 1.0:
             for key in ("unembed.weight", "unembed.bias"):
@@ -177,10 +182,11 @@ class CohereArchitectureAdapter(ArchitectureAdapter):
         model = getattr(bridge, "original_model", None)
         if model is not None and hasattr(model, "logit_scale"):
             model.logit_scale = 1.0
-        # Neutralize the config too, not just the live attribute: preprocess_weights reads
-        # cfg.logit_scale, so leaving it stale folds the already-folded unembed a second
-        # time — logits come back 1/16th the size, silently.
-        setattr(self.cfg, "logit_scale", 1.0)
+        # Remember the fold happened without touching cfg.logit_scale itself: a repeat
+        # preprocess_weights() call (direct, or via a second process_weights()) must not
+        # re-fold the already-scaled unembed, but cfg.logit_scale is the model's declared
+        # constant and other readers (apply_output_logits_transform, tests) need it intact.
+        self._logit_scale_already_folded = True
         self._logit_scale_fold_pending = False
 
     def apply_output_logits_transform(self, logits: torch.Tensor) -> torch.Tensor:
