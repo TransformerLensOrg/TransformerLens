@@ -23,5 +23,12 @@ def test_n_params_total_matches_uninstrumented_model(model_name: str) -> None:
             weight = tl_parameters[f"blocks.0.attn.{name}"]
             assert weight.shape[0] == bridge.cfg.n_heads
             assert torch.count_nonzero(weight)
-        assert not torch.count_nonzero(tl_parameters["pos_embed.W_pos"])
+        # Rotary model: no learned position table, so no pos_embed key at all
+        # (HookedTransformer does not register one either).
+        assert "pos_embed.W_pos" not in tl_parameters
+        # GQA expansion duplicates K/V, so the TL view still over-counts.
         assert bridge.n_params_total < sum(p.numel() for p in tl_parameters.values())
+    else:
+        pos = bridge.tl_parameters()["pos_embed.W_pos"]
+        assert pos.shape == (bridge.cfg.n_ctx, bridge.cfg.d_model)
+        assert torch.count_nonzero(pos)

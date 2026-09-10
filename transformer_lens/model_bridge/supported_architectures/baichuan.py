@@ -176,6 +176,9 @@ class BaichuanArchitectureAdapter(ArchitectureAdapter):
     Baichuan uses combined QKV via W_pack (nn.Linear(h, 3*h)) with RoPE,
     RMSNorm, and gated MLP (SwiGLU). Per-layer rotary embeddings.
 
+    The attention bridge splits W_pack at load and drops the fused key from the
+    state dict, so fold_ln sees ordinary q/k/v keys and needs no help here.
+
     Optional Parameters (may not exist in state_dict):
     -------------------------------------------------
     Baichuan models do NOT have biases on any projection:
@@ -189,10 +192,6 @@ class BaichuanArchitectureAdapter(ArchitectureAdapter):
         super().__init__(cfg)
 
         self._set_rms_rotary_defaults()
-
-        # Fused W_pack prevents standard fold_ln from reaching Q/K/V separately.
-        # preprocess_weights() handles it instead.
-        self.supports_fold_ln = False
 
         self.weight_processing_conversions = {
             "blocks.{i}.attn.q.weight": ParamProcessingConversion(
@@ -369,73 +368,3 @@ class BaichuanArchitectureAdapter(ArchitectureAdapter):
         if lm_head is not None and hasattr(lm_head, "first_flag"):
             w = lm_head.weight.data
             lm_head.weight.data = torch.nn.functional.normalize(w, dim=-1)
-
-    def preprocess_weights(self, state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
-        """Split fused W_pack QKV and optionally fold layer norms."""
-        fold_ln = getattr(self, "_fold_ln_requested", True)
-        if not fold_ln:
-            # Still need to split W_pack into Q/K/V for weight conversions
-            for i in range(self.cfg.n_layers):
-                qkv_key = f"blocks.{i}.attn.qkv.weight"
-                if qkv_key not in state_dict:
-                    continue
-                w = state_dict[qkv_key]
-                hidden_size = w.shape[1]
-                q_w = w[:hidden_size, :]
-                k_w = w[hidden_size : 2 * hidden_size, :]
-                v_w = w[2 * hidden_size :, :]
-                state_dict[f"blocks.{i}.attn.q.weight"] = q_w
-                state_dict[f"blocks.{i}.attn.k.weight"] = k_w
-                state_dict[f"blocks.{i}.attn.v.weight"] = v_w
-                del state_dict[qkv_key]
-            return state_dict
-
-        for i in range(self.cfg.n_layers):
-            # --- Fold ln1 into Q/K/V (split from W_pack) ---
-            qkv_key = f"blocks.{i}.attn.qkv.weight"
-            ln1_key = f"blocks.{i}.ln1.weight"
-            if qkv_key in state_dict and ln1_key in state_dict:
-                ln1_w = state_dict[ln1_key].float()
-                w = state_dict[qkv_key].float()
-                orig_dtype = state_dict[qkv_key].dtype
-                hidden_size = w.shape[1]
-
-                q_w = w[:hidden_size, :]
-                k_w = w[hidden_size : 2 * hidden_size, :]
-                v_w = w[2 * hidden_size :, :]
-
-                state_dict[f"blocks.{i}.attn.q.weight"] = (q_w * ln1_w[None, :]).to(orig_dtype)
-                state_dict[f"blocks.{i}.attn.k.weight"] = (k_w * ln1_w[None, :]).to(orig_dtype)
-                state_dict[f"blocks.{i}.attn.v.weight"] = (v_w * ln1_w[None, :]).to(orig_dtype)
-                del state_dict[qkv_key]
-                state_dict[ln1_key] = torch.ones_like(state_dict[ln1_key])
-
-            # --- Fold ln2 into MLP gate and up projections ---
-            ln2_key = f"blocks.{i}.ln2.weight"
-            if ln2_key in state_dict:
-                ln2_w = state_dict[ln2_key].float()
-                for mlp_key in [
-                    f"blocks.{i}.mlp.gate.weight",
-                    f"blocks.{i}.mlp.in.weight",
-                ]:
-                    if mlp_key in state_dict:
-                        orig_dtype = state_dict[mlp_key].dtype
-                        state_dict[mlp_key] = (state_dict[mlp_key].float() * ln2_w[None, :]).to(
-                            orig_dtype
-                        )
-                state_dict[ln2_key] = torch.ones_like(state_dict[ln2_key])
-
-        # --- Fold ln_final into unembed ---
-        ln_final_key = "ln_final.weight"
-        unembed_key = "unembed.weight"
-        if ln_final_key in state_dict and unembed_key in state_dict:
-            ln_w = state_dict[ln_final_key].float()
-            u_w = state_dict[unembed_key].float()
-            orig_dtype = state_dict[unembed_key].dtype
-            if u_w.shape[-1] == ln_w.shape[0]:
-                state_dict[unembed_key] = (u_w * ln_w[None, :]).to(orig_dtype)
-            elif u_w.shape[0] == ln_w.shape[0]:
-                state_dict[unembed_key] = (u_w * ln_w[:, None]).to(orig_dtype)
-            state_dict[ln_final_key] = torch.ones_like(state_dict[ln_final_key])
-
-        return state_dict

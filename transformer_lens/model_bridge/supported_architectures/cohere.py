@@ -177,6 +177,10 @@ class CohereArchitectureAdapter(ArchitectureAdapter):
         model = getattr(bridge, "original_model", None)
         if model is not None and hasattr(model, "logit_scale"):
             model.logit_scale = 1.0
+        # Neutralize the config too, not just the live attribute: preprocess_weights reads
+        # cfg.logit_scale, so leaving it stale folds the already-folded unembed a second
+        # time — logits come back 1/16th the size, silently.
+        setattr(self.cfg, "logit_scale", 1.0)
         self._logit_scale_fold_pending = False
 
     def apply_output_logits_transform(self, logits: torch.Tensor) -> torch.Tensor:

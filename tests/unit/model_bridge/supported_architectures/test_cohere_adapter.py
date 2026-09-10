@@ -438,3 +438,46 @@ class TestCohereArchitectureGuards:
         assert adapter.cfg.uses_rms_norm is False
         assert adapter.cfg.normalization_type == "LN"
         assert adapter.cfg.final_rms is False
+
+
+class TestLogitScaleFoldIsIdempotent:
+    """A second process_weights must not fold logit_scale into an already-folded unembed.
+
+    postprocess_weights used to neutralize only the live model attribute, leaving
+    cfg.logit_scale — the value preprocess_weights actually reads — at its original
+    setting, so a repeat call scaled the unembed again and flattened logits 16x.
+    """
+
+    @staticmethod
+    def _stub_bridge(scale: float = 0.0625):
+        from types import SimpleNamespace
+
+        return SimpleNamespace(original_model=SimpleNamespace(logit_scale=scale))
+
+    def test_first_preprocess_folds_the_scale(self) -> None:
+        adapter = CohereArchitectureAdapter(_make_cfg(logit_scale=0.0625))
+        weight = torch.randn(32, 8)
+
+        folded = adapter.preprocess_weights({"unembed.weight": weight.clone()})
+
+        torch.testing.assert_close(folded["unembed.weight"], weight * 0.0625)
+
+    def test_second_preprocess_is_a_no_op(self) -> None:
+        adapter = CohereArchitectureAdapter(_make_cfg(logit_scale=0.0625))
+        weight = torch.randn(32, 8)
+
+        once = adapter.preprocess_weights({"unembed.weight": weight.clone()})["unembed.weight"]
+        adapter.postprocess_weights(self._stub_bridge())
+        twice = adapter.preprocess_weights({"unembed.weight": once.clone()})["unembed.weight"]
+
+        torch.testing.assert_close(twice, once)
+
+    def test_live_model_scale_is_neutralized_once(self) -> None:
+        adapter = CohereArchitectureAdapter(_make_cfg(logit_scale=0.0625))
+        bridge = self._stub_bridge()
+
+        adapter.preprocess_weights({"unembed.weight": torch.randn(32, 8)})
+        adapter.postprocess_weights(bridge)
+
+        assert bridge.original_model.logit_scale == 1.0
+        assert getattr(adapter.cfg, "logit_scale") == pytest.approx(1.0)

@@ -355,7 +355,12 @@ def test_get_params(model_name):
 
     # Check for expected embedding parameters
     assert "embed.W_E" in params_dict, "Should contain embedding weights"
-    assert "pos_embed.W_pos" in params_dict, "Should contain positional embedding weights"
+    if bridge.cfg.positional_embedding_type == "rotary":
+        # Rotary models have no learned position table, and HookedTransformer never
+        # registers pos_embed for them.
+        assert "pos_embed.W_pos" not in params_dict
+    else:
+        assert "pos_embed.W_pos" in params_dict, "Should contain positional embedding weights"
 
     # Check for expected layer parameters (at least layer 0)
     assert "blocks.0.attn.W_Q" in params_dict, "Should contain query weights for layer 0"
