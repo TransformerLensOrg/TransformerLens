@@ -1325,6 +1325,12 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         cannot carry: batched experts, and the shared-expert MLPs that Qwen2-MoE and
         GLM4-MoE hang off the same norm.
         """
+        # An adapter that declares fold_ln unsupported cannot have its norms folded
+        # weight-preservingly. ProcessWeights already warns and skips for these; folding
+        # the expert stack anyway leaves the model diverging from the reference.
+        if not getattr(self.adapter, "supports_fold_ln", True):
+            return
+
         uses_offset = bool(getattr(self.cfg, "rmsnorm_uses_offset", False))
         skipped: list[str] = []
         for list_name in ("blocks", "encoder_blocks", "decoder_blocks"):

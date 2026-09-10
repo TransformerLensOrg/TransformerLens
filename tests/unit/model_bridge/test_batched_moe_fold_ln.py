@@ -278,6 +278,27 @@ def test_fold_ln_false_leaves_the_norms_alone(bridge: TransformerBridge) -> None
         torch.testing.assert_close(_norms(bridge)[key], weight, atol=0.0, rtol=0.0, msg=key)
 
 
+def test_adapter_declining_fold_ln_is_not_folded(bridge: TransformerBridge) -> None:
+    """An adapter that declares fold_ln unsupported must be left alone.
+
+    Its norms cannot be folded weight-preservingly, so folding the expert stack anyway
+    moves the model off the reference — Qwen3.5-MoE drifted 1.3e-2 in log-softmax.
+    """
+    bridge.adapter.supports_fold_ln = False
+    before = _norms(bridge)
+    tokens = torch.randint(0, 16, (1, 8))
+    with torch.no_grad():
+        expected = bridge(tokens, return_type="logits").float()
+
+    _fold(bridge)
+
+    for key, weight in before.items():
+        torch.testing.assert_close(_norms(bridge)[key], weight, atol=0.0, rtol=0.0, msg=key)
+    with torch.no_grad():
+        actual = bridge(tokens, return_type="logits").float()
+    torch.testing.assert_close(actual, expected, atol=1e-4, rtol=1e-4)
+
+
 class _UnrecognizedExperts(nn.Module):
     """A batched-expert block whose input projection this code has never seen."""
 
