@@ -28,6 +28,7 @@ from transformer_lens.tools.analysis import (
     solve_coordinate_patch,
 )
 from transformer_lens.utilities.activation_functions import apply_softcap
+from transformer_lens.utilities.parameter_swap import temporarily_swap_parameter
 
 D_MODEL = 6
 N_LAYERS = 4
@@ -1351,8 +1352,7 @@ class TestRegistry:
 
 
 def test_lens_vector_dictionary_matches_lens_vectors_and_caches(toy_model: _ToyBridge) -> None:
-    """The full-vocabulary dictionary equals lens_vectors over every token, is cached per
-    (layer, device), and is released by clear_device_cache."""
+    """The dictionary matches lens_vectors, caches unchanged weights, and can be cleared."""
     torch.manual_seed(0)
     d_model = toy_model.cfg.d_model
     layer = 1
@@ -1369,6 +1369,107 @@ def test_lens_vector_dictionary_matches_lens_vectors_and_caches(toy_model: _ToyB
     assert lens.lens_vector_dictionary(toy_model, layer) is dictionary
     lens.clear_device_cache()
     assert lens.lens_vector_dictionary(toy_model, layer) is not dictionary
+
+
+def test_lens_vector_dictionary_invalidates_after_in_place_weight_update(
+    toy_model: _ToyBridge,
+) -> None:
+    lens = JacobianLens({1: torch.eye(D_MODEL)}, n_prompts=1, d_model=D_MODEL)
+    original = lens.lens_vector_dictionary(toy_model, 1)
+
+    with torch.no_grad():
+        toy_model.unembed.weight.copy_(2 * toy_model.unembed.weight)
+
+    updated = lens.lens_vector_dictionary(toy_model, 1)
+    assert updated is not original
+    torch.testing.assert_close(
+        updated,
+        lens.lens_vectors(toy_model, list(range(D_VOCAB)), 1),
+    )
+
+
+def test_lens_vector_dictionary_invalidates_after_optimizer_step(toy_model: _ToyBridge) -> None:
+    lens = JacobianLens({1: torch.eye(D_MODEL)}, n_prompts=1, d_model=D_MODEL)
+    original = lens.lens_vector_dictionary(toy_model, 1)
+    optimizer = torch.optim.SGD([toy_model.unembed.weight], lr=0.1)
+    toy_model.unembed.weight.grad = torch.ones_like(toy_model.unembed.weight)
+
+    optimizer.step()
+
+    updated = lens.lens_vector_dictionary(toy_model, 1)
+    assert updated is not original
+    torch.testing.assert_close(
+        updated,
+        lens.lens_vectors(toy_model, list(range(D_VOCAB)), 1),
+    )
+
+
+def test_lens_vector_dictionary_does_not_cross_model_instances(toy_model: _ToyBridge) -> None:
+    lens = JacobianLens({1: torch.eye(D_MODEL)}, n_prompts=1, d_model=D_MODEL)
+    first = lens.lens_vector_dictionary(toy_model, 1)
+    other_model = _ToyBridge()
+    with torch.no_grad():
+        other_model.unembed.weight.add_(1)
+
+    second = lens.lens_vector_dictionary(other_model, 1)
+
+    assert second is not first
+    torch.testing.assert_close(
+        second,
+        lens.lens_vectors(other_model, list(range(D_VOCAB)), 1),
+    )
+
+
+def test_lens_vector_dictionary_invalidates_after_parameter_replacement(
+    toy_model: _ToyBridge,
+) -> None:
+    lens = JacobianLens({1: torch.eye(D_MODEL)}, n_prompts=1, d_model=D_MODEL)
+    original = lens.lens_vector_dictionary(toy_model, 1)
+    toy_model.unembed.weight = nn.Parameter(2 * toy_model.unembed.weight.detach())
+
+    updated = lens.lens_vector_dictionary(toy_model, 1)
+
+    assert updated is not original
+    torch.testing.assert_close(
+        updated,
+        lens.lens_vectors(toy_model, list(range(D_VOCAB)), 1),
+    )
+
+
+def test_lens_vector_dictionary_tracks_temporary_parameter_swap(toy_model: _ToyBridge) -> None:
+    lens = JacobianLens({1: torch.eye(D_MODEL)}, n_prompts=1, d_model=D_MODEL)
+    baseline = lens.lens_vector_dictionary(toy_model, 1)
+    replacement = 2 * toy_model.unembed.weight.detach()
+
+    with temporarily_swap_parameter(toy_model.unembed.weight, replacement):
+        swapped = lens.lens_vector_dictionary(toy_model, 1)
+        assert swapped is not baseline
+        torch.testing.assert_close(
+            swapped,
+            lens.lens_vectors(toy_model, list(range(D_VOCAB)), 1),
+        )
+
+    restored = lens.lens_vector_dictionary(toy_model, 1)
+    assert restored is not swapped
+    torch.testing.assert_close(restored, baseline)
+
+
+def test_decompose_uses_current_token_labels_after_unembedding_row_swap(
+    toy_model: _ToyBridge,
+) -> None:
+    lens = JacobianLens({1: torch.eye(D_MODEL)}, n_prompts=1, d_model=D_MODEL)
+    lens.lens_vector_dictionary(toy_model, 1)
+    replacement = toy_model.unembed.weight.detach().clone()
+    replacement[[0, 1]] = replacement[[1, 0]]
+
+    with temporarily_swap_parameter(toy_model.unembed.weight, replacement):
+        current_token_zero = toy_model.W_U[:, 0].detach().clone()
+        result = lens.decompose(toy_model, current_token_zero, layer=1, k=1)
+
+    assert result.support.tolist() == [0]
+    torch.testing.assert_close(
+        result.non_j_space_component, torch.zeros(D_MODEL), atol=1e-6, rtol=0
+    )
 
 
 def test_lens_vector_dictionary_rejects_unfitted_layer(toy_model: _ToyBridge) -> None:

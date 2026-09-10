@@ -64,6 +64,7 @@ import warnings
 from dataclasses import dataclass
 from importlib.metadata import version
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
+from weakref import ref
 
 import torch
 from jaxtyping import Float, Int
@@ -213,6 +214,29 @@ class JacobianLensReadout:
         return out
 
 
+@dataclass(frozen=True)
+class _UnembeddingFingerprint:
+    model_ref: Any
+    data_ptr: int
+    version: int
+    shape: Tuple[int, ...]
+    stride: Tuple[int, ...]
+    dtype: torch.dtype
+    device: torch.device
+
+
+def _unembedding_fingerprint(model: Any, unembed: torch.Tensor) -> _UnembeddingFingerprint:
+    return _UnembeddingFingerprint(
+        model_ref=ref(model),
+        data_ptr=unembed.data_ptr(),
+        version=unembed._version,
+        shape=tuple(unembed.shape),
+        stride=tuple(unembed.stride()),
+        dtype=unembed.dtype,
+        device=unembed.device,
+    )
+
+
 class JacobianLens:
     """A fitted Jacobian lens: one transport matrix per source layer.
 
@@ -255,7 +279,9 @@ class JacobianLens:
         self.d_model = int(d_model)
         self.metadata: Dict[str, Any] = dict(metadata or {})
         self._device_jacobians: Dict[Tuple[int, torch.device], torch.Tensor] = {}
-        self._dictionary_cache: Dict[Tuple[int, torch.device], torch.Tensor] = {}
+        self._dictionary_cache: Dict[
+            Tuple[int, torch.device], Tuple[_UnembeddingFingerprint, torch.Tensor]
+        ] = {}
 
     @property
     def source_layers(self) -> List[int]:
@@ -832,9 +858,9 @@ class JacobianLens:
         """Full-vocabulary J-lens dictionary at ``layer``: ``[d_vocab, d_model]``.
 
         Row ``t`` is the J-lens vector ``v_t = J[layer]^T W_U[:, t]`` -- this is
-        :meth:`lens_vectors` over the entire vocabulary. The result is cached per
-        (layer, device) so a sparse decomposition can reuse it; :meth:`clear_device_cache`
-        releases it.
+        :meth:`lens_vectors` over the entire vocabulary. The result is cached while the
+        model's unembedding is unchanged so a sparse decomposition can reuse it;
+        :meth:`clear_device_cache` releases it.
 
         The dictionary is vocabulary-sized and cached on the model's device
         (``d_vocab * d_model`` fp32 values, on the order of gigabytes for a large
@@ -849,13 +875,16 @@ class JacobianLens:
         """
         self.validate_model(model)
         layer = _normalize_layer(layer, model.cfg.n_layers)
-        device = torch.device(model.W_U.device)
-        cached = self._dictionary_cache.get((layer, device))
-        if cached is None:
+        unembed = model.W_U
+        device = torch.device(unembed.device)
+        fingerprint = _unembedding_fingerprint(model, unembed)
+        entry = self._dictionary_cache.get((layer, device))
+        if entry is None or entry[0] != fingerprint:
             matrix = self._matrix_on(layer, device)  # [d_model, d_model]
-            cached = (matrix.T @ model.W_U.float()).T  # [d_vocab, d_model]
-            self._dictionary_cache[(layer, device)] = cached
-        return cached
+            dictionary = (matrix.T @ unembed.float()).T  # [d_vocab, d_model]
+            entry = (fingerprint, dictionary)
+            self._dictionary_cache[(layer, device)] = entry
+        return entry[1]
 
     @torch.no_grad()
     def decompose(
