@@ -111,6 +111,60 @@ class HeadSVD:
     rank_report: List[RankReportRow]
     eps: float
 
+    def is_degenerate(self, i: int) -> bool:
+        """Return whether direction ``i`` shares its block with another direction.
+
+        A degenerate direction is defined only up to a rotation within its block,
+        so per-direction attribution against it is not meaningful.
+        """
+        return self.rank_report[i].is_degenerate
+
+    def block_of(self, i: int) -> List[int]:
+        """Return every direction index sharing direction ``i``'s degeneracy block.
+
+        The result is a singleton ``[i]`` for an isolated direction and the full
+        run for a degenerate one.
+        """
+        block_id = self.rank_report[i].block_id
+        return [row.idx for row in self.rank_report if row.block_id == block_id]
+
+    def degenerate_blocks(self) -> List[List[int]]:
+        """Return the index groups for blocks holding more than one direction.
+
+        Rows carry contiguous, ascending ``block_id`` values, so consecutive rows
+        with a shared id form one block. Isolated directions are omitted, leaving
+        only the rotation-ambiguous subspaces a caller must attribute as a whole.
+        """
+        blocks: List[List[int]] = []
+        current: List[int] = []
+        current_block_id: Optional[int] = None
+        for row in self.rank_report:
+            if row.block_id != current_block_id:
+                if len(current) > 1:
+                    blocks.append(current)
+                current = []
+                current_block_id = row.block_id
+            current.append(row.idx)
+        if len(current) > 1:
+            blocks.append(current)
+        return blocks
+
+    def require_isolated(self, i: int) -> None:
+        """Raise :class:`DegenerateDirectionError` if direction ``i`` is not isolated.
+
+        Callers project or attribute a single singular direction only after this
+        passes; inside a degenerate block the direction is rotation-ambiguous and
+        the block must be attributed as a subspace instead.
+        """
+        if self.is_degenerate(i):
+            block = self.block_of(i)
+            raise DegenerateDirectionError(
+                f"Direction {i} of the {self.which} SVD of head L{self.layer}H{self.head} "
+                f"lies in a degenerate block {block} (near-equal singular values, "
+                f"rotation-ambiguous). Attribute the block as a subspace instead of the "
+                f"single direction."
+            )
+
 
 @dataclass
 class HeadDecomposition:
