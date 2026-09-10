@@ -144,6 +144,10 @@ def _fp8_linear(scale_fmt: str) -> nn.Module:
     fp8_linear = getattr(integration, "FP8Linear", None)
     if fp8_linear is None:
         pytest.skip("transformers.integrations.finegrained_fp8.FP8Linear is unavailable")
+    # ue8m0 scales go through _get_ue8m0_dtype, which raises rather than falling back
+    # when torch has no float8_e8m0fnu. pyproject allows torch>=2.6; this needs 2.7.
+    if scale_fmt == "ue8m0" and not hasattr(torch, "float8_e8m0fnu"):
+        pytest.skip("torch < 2.7")
     return fp8_linear(
         in_features=128,
         out_features=128,
@@ -155,8 +159,11 @@ def _fp8_linear(scale_fmt: str) -> nn.Module:
 
 
 # Quantizer-owned storage on FP8Linear: the packed weight and its scales. ``bias`` is
-# excluded on purpose -- HF keeps biases in the model's compute dtype, so a bias is an
-# ordinary parameter that the quantizer does not own.
+# excluded because the FP8 quantizers do not claim it: ``param_needs_quantization``
+# returns False for ``tensor_name == "bias"`` in both quantizer_finegrained_fp8.py and
+# quantizer_fbgemm_fp8.py. (Its storage dtype is not uniform either; fbgemm-FP8 hardcodes
+# a float32 bias while forcing the model to bfloat16, so "biases follow the compute
+# dtype" would be the wrong reason to exclude it.)
 _FP8_OWNED_PARAMS = ("weight", "weight_scale_inv", "activation_scale")
 
 
@@ -243,10 +250,11 @@ class TestCastFloatingParamsToDtype:
 
         Transformers picks ``weight_scale_inv``'s storage dtype from the checkpoint's
         ``scale_fmt``: a one-byte UE8M0 float for "ue8m0", float32 for "float" (the
-        default). Both spell the same quantizer-owned scale, and ``activation_scale``
-        is float32 under either format. So a one-byte test protects some quantizer-owned
-        scales and silently rewrites others, which is why the cast has to be gated on
-        the model having no active quantizer rather than on per-parameter dtype.
+        default). Both spell the same quantizer-owned scale. ``activation_scale``, which
+        this fixture requests via ``activation_scheme="static"``, is float32 under
+        either format. So a one-byte test protects some quantizer-owned scales and
+        silently rewrites others, which is why the cast has to be gated on the model
+        having no active quantizer rather than on per-parameter dtype.
 
         See: https://github.com/TransformerLensOrg/TransformerLens/issues/1743
         """
@@ -327,15 +335,20 @@ class TestMaybeCastFloatingParams:
     def test_preserves_quantizer_owned_scales_of_any_width(self, scale_fmt):
         """Both widths of ``weight_scale_inv`` survive, which the dtype guard cannot do.
 
-        The ordinary parameter is set up as the loader would have delivered it, at the
-        requested dtype, so the correct outcome for the whole model is that nothing
-        moves. Under ``scale_fmt="float"`` the scale is float32, so this fails outright
-        if the cast is ever re-enabled behind only the one-byte-float guard.
+        Every ordinary parameter is normalised to the target dtype in the fixture, so
+        the only thing this test can fail on is quantizer-owned storage. Under
+        ``scale_fmt="float"`` the scale is float32, so it fails outright if the cast is
+        ever re-enabled behind only the one-byte-float guard.
         """
         from transformer_lens.utilities.multi_gpu import maybe_cast_floating_params
 
         model = nn.Module()
         model.quantized = _fp8_linear(scale_fmt)
+        # FP8Linear allocates its bias at float32, but the quantizer does not claim it
+        # (see _FP8_OWNED_PARAMS), so it is not what this test is about. Normalise it to
+        # the target, or the assertion below also fires on a narrowing that correctly
+        # casts ordinary parameters, which this test's name disclaims.
+        model.quantized.bias = nn.Parameter(model.quantized.bias.to(torch.bfloat16))
         model.ln_weight = nn.Parameter(torch.ones(4, dtype=torch.bfloat16))
         model.config = SimpleNamespace(quantization_config=SimpleNamespace(quant_method="fp8"))
 
@@ -374,15 +387,40 @@ class TestMaybeCastFloatingParams:
         load, ``quantization_method`` would keep reporting a method for a model whose
         storage the quantizer no longer owns, and the guard really would be too broad.
         Fail here rather than silently stranding those checkpoints.
+
+        Drives ``postprocess_model`` rather than ``remove_quantization_config``: it is
+        the dequantize branch in the former that this design relies on, and calling the
+        latter directly would still pass if that branch were dropped.
         """
         base = pytest.importorskip("transformers.quantizers.base")
 
+        class _DequantizingQuantizer(base.HfQuantizer):
+            """Minimal quantizer standing in for any ``dequantize=True`` load."""
+
+            requires_calibration = False
+
+            def __init__(self):
+                self.quantization_config = SimpleNamespace(quant_method="mxfp4", dequantize=True)
+                self.pre_quantized = True
+
+            def _process_model_before_weight_loading(self, model, **kwargs):
+                return model
+
+            def _process_model_after_weight_loading(self, model, **kwargs):
+                return model
+
+            def is_serializable(self, safe_serialization=None):
+                return True
+
+            @property
+            def is_trainable(self):
+                return False
+
         model = nn.Linear(4, 4)
-        model.config = SimpleNamespace(quantization_config=SimpleNamespace(quant_method="mxfp4"))
+        model.config = SimpleNamespace()
         model.is_quantized = True
-        # Called unbound: remove_quantization_config only touches `model`, and building
-        # a real quantizer would need a live quantization config per method.
-        base.HfQuantizer.remove_quantization_config(None, model)
+
+        _DequantizingQuantizer().postprocess_model(model)
 
         assert not hasattr(model.config, "quantization_config")
         assert model.is_quantized is False

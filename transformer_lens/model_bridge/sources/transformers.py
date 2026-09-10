@@ -848,10 +848,12 @@ def boot(
         # Use module-level alignment so Accelerate can temporarily materialize offloaded
         # parameters before we touch them.
         # Skip dtype normalization entirely when the model has an active quantizer.
-        # `dtype` already went into from_pretrained above, which is the component
-        # responsible for applying it to ordinary floating parameters; anything still
-        # off the requested dtype here may be quantizer-owned storage, whose width is
-        # the quantizer's to choose (FP8 *or* float32 scales).
+        # from_pretrained settled the load dtype above, and on a quantized checkpoint
+        # that is the quantizer's effective dtype rather than necessarily the requested
+        # one (HfQuantizer.update_dtype lets AWQ, fbgemm-FP8 and FP-Quant override it;
+        # AWQ keys off CUDA/XPU being available at all, not off placement).
+        # Re-casting would overwrite those choices along with quantizer-owned storage,
+        # whose width is the quantizer's to choose (FP8 *or* float32 scales).
         from transformer_lens.utilities.multi_gpu import maybe_cast_floating_params
 
         maybe_cast_floating_params(hf_model, dtype)

@@ -256,8 +256,9 @@ def cast_floating_params_to_dtype(model: nn.Module, dtype: torch.dtype) -> None:
 
     The one-byte-float skip below is a backstop against the worst corruption, not an
     ownership test. Quantizer-owned scales are float32 as often as FP8: transformers'
-    finegrained-FP8 integration picks between the two by ``scale_fmt``, and its
-    ``activation_scale`` is float32 either way. A dtype cannot say who owns a tensor.
+    finegrained-FP8 stores ``weight_scale_inv`` as float32 unless the checkpoint asks
+    for ue8m0 scales, and fbgemm-FP8 stores its scales as float32 outright. A dtype
+    cannot say who owns a tensor.
     See: https://github.com/TransformerLensOrg/TransformerLens/issues/1743
     """
     from accelerate.utils import align_module_device
@@ -281,24 +282,18 @@ def cast_floating_params_to_dtype(model: nn.Module, dtype: torch.dtype) -> None:
 def maybe_cast_floating_params(model: nn.Module, dtype: torch.dtype) -> None:
     """Cast floating params to dtype, skipping models with active quantization.
 
-    The skip is whole-model on purpose, and it is a division of responsibility rather
-    than a loss. ``from_pretrained`` is the component that applies the requested dtype
-    to ordinary floating parameters, and it has already run by this point; whatever is
-    still not at the requested dtype afterward may be quantizer-owned storage, and
-    dtype alone cannot distinguish ownership safely. (bitsandbytes 4-bit and 8-bit
-    checkpoints were checked and matched that division: every ordinary floating
-    parameter, embeddings and layernorms and quantized-layer biases alike, arrived
-    already converted. Not every quantization backend was reachable to test, which is
-    a further reason to leave the loader's result alone rather than re-derive it.)
+    The skip is whole-model on purpose. ``from_pretrained`` has already settled the
+    load dtype by this point, and on a quantized checkpoint that is the quantizer's
+    *effective* dtype, not necessarily the requested one: quantizers may override it
+    in ``HfQuantizer.update_dtype`` (AWQ downgrades bfloat16 to float16 whenever CUDA
+    or XPU is available, whatever the placement; fbgemm-FP8 and FP-Quant force
+    bfloat16). Re-casting here would overwrite those
+    deliberate choices along with genuinely quantizer-owned storage, and dtype alone
+    cannot tell the two apart.
 
-    transformers draws the same line itself:
-    ``PreTrainedModel.to(dtype=...)`` raises for bitsandbytes and GPTQ models, and
-    ``.half()`` / ``.float()`` raise for any quantized model ("the model has already
-    been casted to the correct dtype"), all gated on the same whole-model
-    ``is_quantized`` flag. The gate also releases in step with HF: a dequantized load
-    has its ``quantization_config`` deleted by
-    ``HfQuantizer.remove_quantization_config``, so ``quantization_method`` returns None
-    and normalization resumes.
+    The gate releases in step with HF: a dequantized load has its
+    ``quantization_config`` deleted by ``HfQuantizer.remove_quantization_config``, so
+    ``quantization_method`` returns None and normalization resumes.
 
     See: https://github.com/TransformerLensOrg/TransformerLens/issues/1713
     See: https://github.com/TransformerLensOrg/TransformerLens/issues/1743
