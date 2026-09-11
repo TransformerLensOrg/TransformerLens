@@ -728,9 +728,9 @@ class Test_cache_is_rejected_for_multiple_prompts:
 
     def test_list_without_a_cache_is_unaffected(self):
         result = detect_head(model, self.seqs, "induction_head")
-        reference = torch.stack(
-            [detect_head(model, s, "induction_head") for s in self.seqs]
-        ).mean(0)
+        reference = torch.stack([detect_head(model, s, "induction_head") for s in self.seqs]).mean(
+            0
+        )
         assert torch.allclose(result, reference)
 
 
