@@ -797,10 +797,29 @@ def test_fit_driver_honors_alternate_backward_provider():
         grads = _ordinary_vjp(target, sources, cotangent, retain_graph)
         return tuple(SCALE * grad for grad in grads)
 
-    scaled, n_scaled = _fit_transport_matrices(
-        model, REGRESSION_PROMPTS, backward_provider=scaled_provider, **REGRESSION_FIT_KWARGS
-    )
+    # Count top-level bridge forwards independently of the backward seam. The
+    # driver replicates each prompt once and runs a single forward per prompt,
+    # batching every one-hot cotangent through that one captured graph; the
+    # backward-provider call count above cannot witness this because it rises
+    # with dim_batch chunking, not with forwards. A forward pre-hook on the
+    # bridge fires once per model(...) call, so it pins the invariant directly:
+    # exactly one bridge forward per contributing prompt.
+    forward_calls = 0
+
+    def _count_forward(_module, _args):
+        nonlocal forward_calls
+        forward_calls += 1
+
+    handle = model.register_forward_pre_hook(_count_forward)
+    try:
+        scaled, n_scaled = _fit_transport_matrices(
+            model, REGRESSION_PROMPTS, backward_provider=scaled_provider, **REGRESSION_FIT_KWARGS
+        )
+    finally:
+        handle.remove()
     assert calls > 0  # the driver actually took its backward step through the seam
+    # One forward per prompt: no short prompt is skipped here, so every prompt contributes.
+    assert forward_calls == len(REGRESSION_PROMPTS)
     assert n_scaled == n_ordinary
     for layer in baseline:
         assert torch.equal(scaled[layer], SCALE * baseline[layer])
