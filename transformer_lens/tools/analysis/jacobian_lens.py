@@ -279,6 +279,7 @@ class JacobianLens:
         self.metadata: Dict[str, Any] = dict(metadata or {})
         self._device_jacobians: Dict[Tuple[int, torch.device], torch.Tensor] = {}
         self._dictionary_cache: Dict[Tuple[int, torch.device], torch.Tensor] = {}
+        self._unembedding_snapshots: Dict[torch.device, torch.Tensor] = {}
 
     @property
     def source_layers(self) -> List[int]:
@@ -667,10 +668,10 @@ class JacobianLens:
     # ------------------------------------------------------------------ #
 
     def clear_device_cache(self) -> None:
-        """Release lazily cached Jacobian copies and full-vocabulary dictionaries on
-        accelerator devices."""
+        """Release cached Jacobians, dictionaries, and unembedding snapshots on devices."""
         self._device_jacobians.clear()
         self._dictionary_cache.clear()
+        self._unembedding_snapshots.clear()
 
     def _matrix_on(self, layer: int, device: Union[str, torch.device]) -> torch.Tensor:
         """Return one cached fp32 Jacobian copy for a layer/device pair."""
@@ -855,13 +856,14 @@ class JacobianLens:
         """Full-vocabulary J-lens dictionary at ``layer``: ``[d_vocab, d_model]``.
 
         Row ``t`` is the J-lens vector ``v_t = J[layer]^T W_U[:, t]`` -- this is
-        :meth:`lens_vectors` over the entire vocabulary. The result is cached per
-        (layer, device) so a sparse decomposition can reuse it; :meth:`clear_device_cache`
-        releases it.
+        :meth:`lens_vectors` over the entire vocabulary. The result is cached while the
+        model's unembedding is unchanged so a sparse decomposition can reuse it;
+        :meth:`clear_device_cache` releases it.
 
         The dictionary is vocabulary-sized and cached on the model's device
         (``d_vocab * d_model`` fp32 values, on the order of gigabytes for a large
-        vocabulary), one entry per requested layer.
+        vocabulary), one entry per requested layer. One detached copy of ``W_U`` is
+        retained per device to detect changes without transferring weights to the host.
 
         Args:
             model: The model supplying ``W_U``.
@@ -872,13 +874,22 @@ class JacobianLens:
         """
         self.validate_model(model)
         layer = _normalize_layer(layer, model.cfg.n_layers)
-        device = torch.device(model.W_U.device)
-        cached = self._dictionary_cache.get((layer, device))
-        if cached is None:
+        unembed = model.W_U
+        device = torch.device(unembed.device)
+        snapshot = self._unembedding_snapshots.get(device)
+        if snapshot is None or not torch.equal(snapshot, unembed):
+            self._unembedding_snapshots[device] = unembed.detach().clone()
+            stale_keys = [key for key in self._dictionary_cache if key[1] == device]
+            for key in stale_keys:
+                del self._dictionary_cache[key]
+
+        key = (layer, device)
+        dictionary = self._dictionary_cache.get(key)
+        if dictionary is None:
             matrix = self._matrix_on(layer, device)  # [d_model, d_model]
-            cached = (matrix.T @ model.W_U.float()).T  # [d_vocab, d_model]
-            self._dictionary_cache[(layer, device)] = cached
-        return cached
+            dictionary = (matrix.T @ unembed.float()).T  # [d_vocab, d_model]
+            self._dictionary_cache[key] = dictionary
+        return dictionary
 
     @torch.no_grad()
     def decompose(
