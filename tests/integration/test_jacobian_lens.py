@@ -6,6 +6,10 @@ RMSNorm and logit-softcap coverage in the regular CI suite, while a slow
 Gemma-2-2b-it test checks the published artifact on the real architecture.
 """
 
+import subprocess
+import sys
+import textwrap
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -810,3 +814,50 @@ def test_fit_driver_honors_alternate_backward_provider():
         torch.testing.assert_close(
             lens.jacobians[layer], torch.tensor(golden, dtype=torch.float32), atol=1e-5, rtol=1e-4
         )
+
+
+def test_fit_attributes_short_prompt_warning_to_caller_frame():
+    """The short-prompt skip warning must point at the ``JacobianLens.fit`` call site, one
+    frame up from ``_fit_transport_matrices`` where the warning is actually raised.
+
+    This runs in a bare subprocess rather than in-process: this suite's pytest config wraps
+    every ``transformer_lens`` call for runtime type-checking (``--jaxtyping-packages`` in
+    pyproject.toml), and each wrapper layer adds its own interpreter frame, which would
+    otherwise swallow the one-frame difference this test exists to catch.
+    """
+    script = textwrap.dedent(
+        """
+        import warnings
+
+        from tests.integration.test_jacobian_lens import (
+            REGRESSION_CORPUS,
+            REGRESSION_FIT_KWARGS,
+            REGRESSION_PROMPTS,
+            _build_tiny_deterministic_gpt2,
+        )
+        from transformer_lens.tools.analysis import JacobianLens
+
+        model = _build_tiny_deterministic_gpt2()
+        prompts = ["hi", *REGRESSION_PROMPTS]  # "hi" tokenizes to 2 tokens, at the skip threshold
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            call_line = __import__("inspect").currentframe().f_lineno + 1
+            JacobianLens.fit(model, prompts, corpus=REGRESSION_CORPUS, **REGRESSION_FIT_KWARGS)
+
+        skip_warnings = [w for w in caught if "skipping prompt" in str(w.message)]
+        assert len(skip_warnings) == 1, caught
+        assert skip_warnings[0].filename == "<string>", skip_warnings[0].filename
+        assert skip_warnings[0].lineno == call_line, (skip_warnings[0].lineno, call_line)
+        print("PROBE_OK")
+        """
+    )
+    repo_root = Path(__file__).resolve().parents[2]
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "PROBE_OK" in result.stdout, result.stdout + result.stderr

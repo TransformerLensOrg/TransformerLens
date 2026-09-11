@@ -1982,7 +1982,7 @@ def _fit_transport_matrices(
                 warnings.warn(
                     f"skipping prompt with only {seq_len} tokens "
                     f"(need > {skip_first_positions + 1})",
-                    stacklevel=2,
+                    stacklevel=3,
                 )
                 continue
             per_prompt = _jacobian_for_prompt(
