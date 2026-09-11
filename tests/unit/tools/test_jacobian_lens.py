@@ -1164,6 +1164,7 @@ def test_lens_vector_dictionary_matches_lens_vectors_and_caches(toy_model: _ToyB
     # cached: the same object is returned on a repeat call, and clearing releases it
     assert lens.lens_vector_dictionary(toy_model, layer) is dictionary
     lens.clear_device_cache()
+    assert lens._unembedding_snapshots == {}
     assert lens.lens_vector_dictionary(toy_model, layer) is not dictionary
 
 
@@ -1256,6 +1257,32 @@ def test_lens_vector_dictionary_tracks_temporary_parameter_swap() -> None:
     restored = lens.lens_vector_dictionary(toy_model, 1)
     assert restored is not swapped
     torch.testing.assert_close(restored, baseline)
+
+
+def test_unembedding_snapshot_is_shared_across_layers_and_invalidates_all() -> None:
+    toy_model = _ToyBridge()
+    lens = JacobianLens(
+        {0: torch.eye(D_MODEL), 1: torch.eye(D_MODEL)}, n_prompts=1, d_model=D_MODEL
+    )
+    device = torch.device("cpu")
+    first_layer_zero = lens.lens_vector_dictionary(toy_model, 0)
+    first_layer_one = lens.lens_vector_dictionary(toy_model, 1)
+    snapshot = lens._unembedding_snapshots[device]
+
+    assert len(lens._unembedding_snapshots) == 1
+    assert lens.lens_vector_dictionary(toy_model, 0) is first_layer_zero
+    assert lens._unembedding_snapshots[device] is snapshot
+
+    with torch.no_grad():
+        toy_model.unembed.weight.data.add_(1)
+
+    updated_layer_zero = lens.lens_vector_dictionary(toy_model, 0)
+
+    assert updated_layer_zero is not first_layer_zero
+    assert lens._unembedding_snapshots[device] is not snapshot
+    assert (1, device) not in lens._dictionary_cache
+    updated_layer_one = lens.lens_vector_dictionary(toy_model, 1)
+    assert updated_layer_one is not first_layer_one
 
 
 def test_decompose_detects_data_row_swap_without_a_version_change() -> None:

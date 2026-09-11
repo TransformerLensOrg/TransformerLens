@@ -60,7 +60,6 @@ Example::
     print(result.top_tokens(model.tokenizer, k=5)[8][-1])  # layer 8, final position
 """
 
-import hashlib
 import warnings
 from dataclasses import dataclass
 from importlib.metadata import version
@@ -225,25 +224,6 @@ class JacobianLensReadout:
         return out
 
 
-@dataclass(frozen=True)
-class _UnembeddingFingerprint:
-    digest: bytes
-    shape: Tuple[int, ...]
-    dtype: torch.dtype
-    device: torch.device
-
-
-def _unembedding_fingerprint(unembed: torch.Tensor) -> _UnembeddingFingerprint:
-    """Hash contents because ``.data`` writes bypass PyTorch's version counter."""
-    raw_bytes = unembed.detach().contiguous().cpu().view(torch.uint8).numpy()
-    return _UnembeddingFingerprint(
-        digest=hashlib.blake2b(memoryview(raw_bytes), digest_size=16).digest(),
-        shape=tuple(unembed.shape),
-        dtype=unembed.dtype,
-        device=unembed.device,
-    )
-
-
 class JacobianLens:
     """A fitted Jacobian lens: one transport matrix per source layer.
 
@@ -286,9 +266,8 @@ class JacobianLens:
         self.d_model = int(d_model)
         self.metadata: Dict[str, Any] = dict(metadata or {})
         self._device_jacobians: Dict[Tuple[int, torch.device], torch.Tensor] = {}
-        self._dictionary_cache: Dict[
-            Tuple[int, torch.device], Tuple[_UnembeddingFingerprint, torch.Tensor]
-        ] = {}
+        self._dictionary_cache: Dict[Tuple[int, torch.device], torch.Tensor] = {}
+        self._unembedding_snapshots: Dict[torch.device, torch.Tensor] = {}
 
     @property
     def source_layers(self) -> List[int]:
@@ -677,10 +656,10 @@ class JacobianLens:
     # ------------------------------------------------------------------ #
 
     def clear_device_cache(self) -> None:
-        """Release lazily cached Jacobian copies and full-vocabulary dictionaries on
-        accelerator devices."""
+        """Release cached Jacobians, dictionaries, and unembedding snapshots on devices."""
         self._device_jacobians.clear()
         self._dictionary_cache.clear()
+        self._unembedding_snapshots.clear()
 
     def _matrix_on(self, layer: int, device: Union[str, torch.device]) -> torch.Tensor:
         """Return one cached fp32 Jacobian copy for a layer/device pair."""
@@ -871,7 +850,8 @@ class JacobianLens:
 
         The dictionary is vocabulary-sized and cached on the model's device
         (``d_vocab * d_model`` fp32 values, on the order of gigabytes for a large
-        vocabulary), one entry per requested layer.
+        vocabulary), one entry per requested layer. One detached copy of ``W_U`` is
+        retained per device to detect changes without transferring weights to the host.
 
         Args:
             model: The model supplying ``W_U``.
@@ -884,14 +864,20 @@ class JacobianLens:
         layer = _normalize_layer(layer, model.cfg.n_layers)
         unembed = model.W_U
         device = torch.device(unembed.device)
-        fingerprint = _unembedding_fingerprint(unembed)
-        entry = self._dictionary_cache.get((layer, device))
-        if entry is None or entry[0] != fingerprint:
+        snapshot = self._unembedding_snapshots.get(device)
+        if snapshot is None or not torch.equal(snapshot, unembed):
+            self._unembedding_snapshots[device] = unembed.detach().clone()
+            stale_keys = [key for key in self._dictionary_cache if key[1] == device]
+            for key in stale_keys:
+                del self._dictionary_cache[key]
+
+        key = (layer, device)
+        dictionary = self._dictionary_cache.get(key)
+        if dictionary is None:
             matrix = self._matrix_on(layer, device)  # [d_model, d_model]
             dictionary = (matrix.T @ unembed.float()).T  # [d_vocab, d_model]
-            entry = (fingerprint, dictionary)
-            self._dictionary_cache[(layer, device)] = entry
-        return entry[1]
+            self._dictionary_cache[key] = dictionary
+        return dictionary
 
     @torch.no_grad()
     def decompose(
