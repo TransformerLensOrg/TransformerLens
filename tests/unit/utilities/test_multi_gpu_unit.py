@@ -135,6 +135,38 @@ class TestGetDeviceForBlockIndex:
         assert result.type == "cpu"
 
 
+def _fp8_linear(scale_fmt: str) -> nn.Module:
+    """A real transformers finegrained-FP8 ``Linear``, or skip if the integration moved."""
+    integration = pytest.importorskip(
+        "transformers.integrations.finegrained_fp8",
+        reason="requires transformers' finegrained-FP8 integration",
+    )
+    fp8_linear = getattr(integration, "FP8Linear", None)
+    if fp8_linear is None:
+        pytest.skip("transformers.integrations.finegrained_fp8.FP8Linear is unavailable")
+    # ue8m0 scales go through _get_ue8m0_dtype, which raises rather than falling back
+    # when torch has no float8_e8m0fnu. pyproject allows torch>=2.6; this needs 2.7.
+    if scale_fmt == "ue8m0" and not hasattr(torch, "float8_e8m0fnu"):
+        pytest.skip("torch < 2.7")
+    return fp8_linear(
+        in_features=128,
+        out_features=128,
+        block_size=(128, 128),
+        activation_scheme="static",
+        scale_fmt=scale_fmt,
+        has_bias=True,
+    )
+
+
+# Quantizer-owned storage on FP8Linear: the packed weight and its scales. ``bias`` is
+# excluded because the FP8 quantizers do not claim it: ``param_needs_quantization``
+# returns False for ``tensor_name == "bias"`` in both quantizer_finegrained_fp8.py and
+# quantizer_fbgemm_fp8.py. (Its storage dtype is not uniform either; fbgemm-FP8 hardcodes
+# a float32 bias while forcing the model to bfloat16, so "biases follow the compute
+# dtype" would be the wrong reason to exclude it.)
+_FP8_OWNED_PARAMS = ("weight", "weight_scale_inv", "activation_scale")
+
+
 class TestCastFloatingParamsToDtype:
     """Regression tests for cast_floating_params_to_dtype.
 
@@ -212,6 +244,47 @@ class TestCastFloatingParamsToDtype:
         assert model.fp8_scale.dtype == torch.float8_e4m3fn
         assert model.packed_weight.dtype == torch.int8
 
+    @pytest.mark.parametrize("scale_fmt", ["ue8m0", "float"])
+    def test_itemsize_guard_does_not_identify_quantizer_owned_scales(self, scale_fmt):
+        """``itemsize < 2`` is a narrow-float guard, not an ownership test.
+
+        Transformers picks ``weight_scale_inv``'s storage dtype from the checkpoint's
+        ``scale_fmt``: a one-byte UE8M0 float for "ue8m0", float32 for "float" (the
+        default). Both spell the same quantizer-owned scale. ``activation_scale``, which
+        this fixture requests via ``activation_scheme="static"``, is float32 under
+        either format. So a one-byte test protects some quantizer-owned scales and
+        silently rewrites others, which is why the cast has to be gated on the model
+        having no active quantizer rather than on per-parameter dtype.
+
+        See: https://github.com/TransformerLensOrg/TransformerLens/issues/1743
+        """
+        target = torch.bfloat16
+        module = _fp8_linear(scale_fmt)
+        before = {name: param.dtype for name, param in module.named_parameters()}
+        cast_floating_params_to_dtype(module, target)
+        after = {name: param.dtype for name, param in module.named_parameters()}
+
+        owned = {name: before[name] for name in _FP8_OWNED_PARAMS if name in before}
+        assert owned, "FP8Linear exposed none of its quantizer-owned parameters"
+        # Mirror the cast's whole predicate, not dtype width alone: it rewrites a
+        # parameter only when that parameter is floating, wider than one byte and not
+        # already at the target. (Its fourth condition, meta, cannot apply to this
+        # materialized fixture.) Deriving the set this way stays correct if
+        # transformers moves `weight` to a wide packed-integer storage like GPTQ's
+        # int32, which the cast is right to skip.
+        eligible = {
+            name
+            for name, dtype in owned.items()
+            if dtype.is_floating_point and dtype.itemsize >= 2 and dtype != target
+        }
+        assert eligible, "expected a quantizer-owned float wider than one byte"
+        rewritten = {name for name, dtype in owned.items() if after[name] != dtype}
+        assert rewritten == eligible, (
+            "the cast should rewrite exactly those quantizer-owned parameters eligible "
+            f"under its dtype-only predicate: rewritten={sorted(rewritten)} "
+            f"eligible={sorted(eligible)}"
+        )
+
 
 class TestMaybeCastFloatingParams:
     """Tests for maybe_cast_floating_params helper.
@@ -235,9 +308,20 @@ class TestMaybeCastFloatingParams:
         assert model.weight.dtype == torch.bfloat16
 
     def test_skips_quantized_model(self):
-        """Quantized models should NOT have their params cast."""
-        from types import SimpleNamespace
+        """An active quantizer means HF owns the storage dtypes, so nothing is cast.
 
+        The skip is whole-model deliberately. ``from_pretrained`` is responsible for
+        applying the requested dtype to ordinary floating parameters before this helper
+        runs, and TransformerLens must not second-guess quantizer-owned storage
+        afterward. Any parameter still off the requested dtype here may be
+        quantizer-owned, and dtype alone cannot distinguish ownership safely (see
+        ``test_itemsize_guard_does_not_identify_quantizer_owned_scales``). transformers
+        draws the same line itself: ``.to(dtype=...)`` raises for bitsandbytes and
+        GPTQ models, ``.half()`` / ``.float()`` for any quantized model.
+
+        See: https://github.com/TransformerLensOrg/TransformerLens/issues/1713
+        See: https://github.com/TransformerLensOrg/TransformerLens/issues/1743
+        """
         from transformer_lens.utilities.multi_gpu import maybe_cast_floating_params
 
         model = nn.Linear(4, 4)
@@ -246,6 +330,100 @@ class TestMaybeCastFloatingParams:
 
         maybe_cast_floating_params(model, torch.bfloat16)
         assert model.weight.dtype == torch.float32  # NOT cast
+
+    @pytest.mark.parametrize("scale_fmt", ["ue8m0", "float"])
+    def test_preserves_quantizer_owned_scales_of_any_width(self, scale_fmt):
+        """Both widths of ``weight_scale_inv`` survive, which the dtype guard cannot do.
+
+        Every ordinary parameter is normalised to the target dtype in the fixture, so
+        the only thing this test can fail on is quantizer-owned storage. Under
+        ``scale_fmt="float"`` the scale is float32, so it fails outright if the cast is
+        ever re-enabled behind only the one-byte-float guard.
+        """
+        from transformer_lens.utilities.multi_gpu import maybe_cast_floating_params
+
+        model = nn.Module()
+        model.quantized = _fp8_linear(scale_fmt)
+        # FP8Linear allocates its bias at float32, but the quantizer does not claim it
+        # (see _FP8_OWNED_PARAMS), so it is not what this test is about. Normalise it to
+        # the target, or the assertion below also fires on a narrowing that correctly
+        # casts ordinary parameters, which this test's name disclaims.
+        model.quantized.bias = nn.Parameter(model.quantized.bias.to(torch.bfloat16))
+        model.ln_weight = nn.Parameter(torch.ones(4, dtype=torch.bfloat16))
+        model.config = SimpleNamespace(quantization_config=SimpleNamespace(quant_method="fp8"))
+
+        before = {name: param.dtype for name, param in model.named_parameters()}
+        maybe_cast_floating_params(model, torch.bfloat16)
+
+        assert {name: param.dtype for name, param in model.named_parameters()} == before
+        assert model.quantized.weight_scale_inv.dtype == before["quantized.weight_scale_inv"]
+
+    def test_casts_once_hf_releases_quantizer_ownership(self):
+        """The guard is a hand-off, not a permanent opt-out.
+
+        ``HfQuantizer.postprocess_model`` calls ``remove_quantization_config`` when a
+        checkpoint is loaded with ``dequantize=True``, which deletes
+        ``config.quantization_config``. ``quantization_method`` then returns None and
+        normalization resumes. That is what stops the whole-model guard from stranding a
+        genuinely dequantized checkpoint in its load dtype.
+        """
+        from transformer_lens.utilities.multi_gpu import maybe_cast_floating_params
+
+        model = nn.Linear(4, 4)
+        model.weight = nn.Parameter(torch.zeros(4, 4, dtype=torch.float32))
+        model.config = SimpleNamespace(quantization_config=SimpleNamespace(quant_method="mxfp4"))
+
+        maybe_cast_floating_params(model, torch.bfloat16)
+        assert model.weight.dtype == torch.float32
+
+        del model.config.quantization_config  # what remove_quantization_config does
+        maybe_cast_floating_params(model, torch.bfloat16)
+        assert model.weight.dtype == torch.bfloat16
+
+    def test_hf_still_clears_quantization_config_when_dequantizing(self):
+        """Pins the upstream behaviour the whole-model guard is calibrated against.
+
+        If transformers ever stops deleting ``quantization_config`` on a dequantized
+        load, ``quantization_method`` would keep reporting a method for a model whose
+        storage the quantizer no longer owns, and the guard really would be too broad.
+        Fail here rather than silently stranding those checkpoints.
+
+        Drives ``postprocess_model`` rather than ``remove_quantization_config``: it is
+        the dequantize branch in the former that this design relies on, and calling the
+        latter directly would still pass if that branch were dropped.
+        """
+        base = pytest.importorskip("transformers.quantizers.base")
+
+        class _DequantizingQuantizer(base.HfQuantizer):
+            """Minimal quantizer standing in for any ``dequantize=True`` load."""
+
+            requires_calibration = False
+
+            def __init__(self):
+                self.quantization_config = SimpleNamespace(quant_method="mxfp4", dequantize=True)
+                self.pre_quantized = True
+
+            def _process_model_before_weight_loading(self, model, **kwargs):
+                return model
+
+            def _process_model_after_weight_loading(self, model, **kwargs):
+                return model
+
+            def is_serializable(self, safe_serialization=None):
+                return True
+
+            @property
+            def is_trainable(self):
+                return False
+
+        model = nn.Linear(4, 4)
+        model.config = SimpleNamespace()
+        model.is_quantized = True
+
+        _DequantizingQuantizer().postprocess_model(model)
+
+        assert not hasattr(model.config, "quantization_config")
+        assert model.is_quantized is False
 
     def test_skips_model_without_config(self):
         """Models without a config attribute should be cast (no quantization)."""
