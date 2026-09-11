@@ -18,17 +18,17 @@ Right singular vectors are read from :attr:`~transformer_lens.FactoredMatrix.Fac
 (its columns are the right singular vectors). The historical ``.Vh`` alias is
 deprecated and returns the same tensor, so it is never used here.
 
-Near-equal singular values leave their singular directions defined only up to a
-rotation, so the result carries a per-direction degeneracy report. Callers can
-use it to attribute an ambiguous block as a subspace instead of trusting a
-single, rotation-dependent direction.
+Adjacent singular values closer than a relative gap ``eps`` leave their singular
+directions defined only up to a rotation, so the result carries a per-direction
+degeneracy report. Directions are grouped into contiguous blocks that end only
+at a gap of at least ``eps``; callers attribute such a block as a subspace
+instead of trusting a single, rotation-dependent direction inside it.
 
 A singular value near zero relative to the top of the spectrum is null rather
-than near-equal: it reflects the map's numerical rank, not a rotation ambiguity
-between comparable directions. The degeneracy report groups a null run under
-its own tolerance, ``null_rtol``, keyed to the spectrum's top value the way
-:func:`torch.linalg.matrix_rank` keys its default tolerance, rather than the
-near-equal gap threshold ``eps``.
+than near-equal: its singular vector is an arbitrary null-space direction, not a
+rotation of a comparable neighbour. Null directions are flagged under their own
+tolerance, ``null_rtol``, keyed to the spectrum's top value the way
+:func:`torch.linalg.matrix_rank` keys its default tolerance.
 
 Example::
 
@@ -64,7 +64,7 @@ _SIGMA_FLOOR = 1e-12
 
 
 class DegenerateDirectionError(ValueError):
-    """Raised when per-direction attribution is requested inside a degenerate block.
+    """Raised when per-direction attribution is requested for a degenerate direction.
 
     Subclasses ``ValueError`` so callers that already ``except ValueError`` keep
     working, mirroring how the other analysis tools raise ``ValueError`` for
@@ -80,8 +80,11 @@ class RankReportRow:
         idx: Position of the direction, matching the column index in ``U`` and ``V``.
         sigma: The singular value for this direction.
         sigma_ratio: ``sigma`` normalized by the largest singular value, in ``[0, 1]``.
-        is_degenerate: True when this direction shares its block with a neighbour,
-            so it is defined only up to a rotation within that block.
+        is_degenerate: True when this direction is not attributable on its own: it
+            shares a block with a neighbour (defined only up to a rotation within
+            that block) or it is numerically null.
+        is_null: True when ``sigma_ratio`` falls below ``null_rtol``, so the singular
+            vector is an arbitrary direction from the map's null space.
         block_id: Index of the contiguous block this direction belongs to.
     """
 
@@ -89,6 +92,7 @@ class RankReportRow:
     sigma: float
     sigma_ratio: float
     is_degenerate: bool
+    is_null: bool
     block_id: int
 
 
@@ -106,10 +110,10 @@ class HeadSVD:
             The reconstruction is ``U @ S.diag() @ V.transpose(-2, -1)``.
         rank_report: Per-direction :class:`RankReportRow` list, aligned with the
             columns of ``U``/``V``.
-        eps: Relative-gap threshold used to group near-equal degeneracy blocks.
+        eps: Relative gap below which adjacent directions share a block; every block
+            boundary sits at a gap of at least ``eps``.
         null_rtol: Relative-to-top-singular-value tolerance below which a direction
-            is treated as numerically null, distinct from the near-equal gap
-            threshold ``eps``.
+            is numerically null.
     """
 
     which: Which
@@ -123,11 +127,7 @@ class HeadSVD:
     null_rtol: float
 
     def is_degenerate(self, i: int) -> bool:
-        """Return whether direction ``i`` shares its block with another direction.
-
-        A degenerate direction is defined only up to a rotation within its block,
-        so per-direction attribution against it is not meaningful.
-        """
+        """Whether direction ``i`` is refused: rotation-ambiguous inside a block, or null."""
         return self.rank_report[i].is_degenerate
 
     def block_of(self, i: int) -> List[int]:
@@ -140,41 +140,48 @@ class HeadSVD:
         return [row.idx for row in self.rank_report if row.block_id == block_id]
 
     def degenerate_blocks(self) -> List[List[int]]:
-        """Return the index groups for blocks holding more than one direction.
-
-        Rows carry contiguous, ascending ``block_id`` values, so consecutive rows
-        with a shared id form one block. Isolated directions are omitted, leaving
-        only the rotation-ambiguous subspaces a caller must attribute as a whole.
-        """
+        """Return every degenerate block's indices: the subspaces to attribute whole or skip."""
         blocks: List[List[int]] = []
         current: List[int] = []
         current_block_id: Optional[int] = None
+        degenerate = False
+        # block_ids are contiguous and ascending, so one scan recovers the blocks.
         for row in self.rank_report:
             if row.block_id != current_block_id:
-                if len(current) > 1:
+                if degenerate:
                     blocks.append(current)
                 current = []
+                degenerate = False
                 current_block_id = row.block_id
             current.append(row.idx)
-        if len(current) > 1:
+            degenerate = degenerate or row.is_degenerate
+        if degenerate:
             blocks.append(current)
         return blocks
 
     def require_isolated(self, i: int) -> None:
-        """Raise :class:`DegenerateDirectionError` if direction ``i`` is not isolated.
+        """Raise :class:`DegenerateDirectionError` unless direction ``i`` is attributable alone.
 
-        Callers project or attribute a single singular direction only after this
-        passes; inside a degenerate block the direction is rotation-ambiguous and
-        the block must be attributed as a subspace instead.
+        The message names the cause, since a rotation-ambiguous block is still a
+        subspace worth attributing while a null block carries no signal.
         """
-        if self.is_degenerate(i):
-            block = self.block_of(i)
+        row = self.rank_report[i]
+        if not row.is_degenerate:
+            return
+        where = f"Direction {i} of the {self.which} SVD of head L{self.layer}H{self.head}"
+        block = self.block_of(i)
+        if row.is_null:
             raise DegenerateDirectionError(
-                f"Direction {i} of the {self.which} SVD of head L{self.layer}H{self.head} "
-                f"lies in a degenerate block {block} (near-equal singular values, "
-                f"rotation-ambiguous). Attribute the block as a subspace instead of the "
-                f"single direction."
+                f"{where} is numerically null (sigma_ratio {row.sigma_ratio:.2e} < "
+                f"null_rtol {self.null_rtol:.2e}), so its singular vector is an arbitrary "
+                f"null-space direction. Attribute the null block {block} as a subspace, "
+                f"or skip it."
             )
+        raise DegenerateDirectionError(
+            f"{where} lies in block {block}, whose members are not separated by a "
+            f"relative gap of eps={self.eps:g} and so are defined only up to a rotation. "
+            f"Attribute the block as a subspace instead of the single direction."
+        )
 
 
 @dataclass
@@ -191,6 +198,17 @@ class HeadDecomposition:
     OV: Optional[HeadSVD] = None
 
 
+def _read_weight(weight: torch.Tensor) -> torch.Tensor:
+    """Detach one per-head weight and put it in SVD precision.
+
+    Detached so the returned factors carry no autograd graph into the model. fp16/bf16
+    are promoted because reduced-precision SVD is unstable; float64 is kept so the
+    default ``null_rtol`` matches the precision actually decomposed.
+    """
+    weight = weight.detach()
+    return weight if weight.dtype == torch.float64 else weight.float()
+
+
 def _head_weights(
     model, layer: int, head: int
 ) -> Tuple[
@@ -199,43 +217,37 @@ def _head_weights(
     Float[torch.Tensor, "d_model d_head"],
     Float[torch.Tensor, "d_head d_model"],
 ]:
-    """Return ``(W_Q_h, W_K_h, W_V_h, W_O_h)`` for one head as float tensors.
+    """Return ``(W_Q_h, W_K_h, W_V_h, W_O_h)`` for one head, detached, in SVD precision.
 
     Reads the single block's per-head weights rather than the full-model
     ``W_Q``/``W_K``/``W_V``/``W_O`` stacks, so only one layer is materialized. On
     grouped-query attention ``W_K``/``W_V`` carry one row per key-value head, so the
     query head is mapped to its key-value head (query head ``h`` reads kv head
     ``h // (n_heads // n_kv_heads)``); a no-op for multi-head attention, where the
-    head counts already match. The upcast to ``float`` promotes fp16/bf16 weights
-    before the SVD, where reduced precision is a known source of instability.
+    head counts already match.
     """
     attn = model.blocks[layer].attn
-    W_Q_h = attn.W_Q[head].float()  # [d_model, d_head]
-    W_O_h = attn.W_O[head].float()  # [d_head, d_model]
     n_kv_heads = attn.W_K.shape[0]
     kv_head = head // (model.cfg.n_heads // n_kv_heads)
-    W_K_h = attn.W_K[kv_head].float()  # [d_model, d_head]
-    W_V_h = attn.W_V[kv_head].float()  # [d_model, d_head]
+    W_Q_h = _read_weight(attn.W_Q[head])  # [d_model, d_head]
+    W_K_h = _read_weight(attn.W_K[kv_head])  # [d_model, d_head]
+    W_V_h = _read_weight(attn.W_V[kv_head])  # [d_model, d_head]
+    W_O_h = _read_weight(attn.W_O[head])  # [d_head, d_model]
     return W_Q_h, W_K_h, W_V_h, W_O_h
 
 
 def _degeneracy_blocks(
     S: Float[torch.Tensor, "rank"], eps: float, null_rtol: float
 ) -> List[List[int]]:
-    """Group singular directions into contiguous blocks by their relative gap.
+    """Group singular directions into contiguous blocks separated by relative gaps of ``eps``.
 
-    ``S`` holds singular values sorted in descending order. Direction ``i`` joins the
-    open block when it is within relative gap ``eps`` of both the previous direction
-    and the block's anchor (its first, largest member), or when both directions sit in
-    a null run: numerically zero relative to the top singular value, within ``null_rtol``.
-    The anchor constraint bounds how far a near-equal block can spread: without it, a
-    spectrum decaying by just under ``eps`` at every step would chain every direction
-    into one block whose extremes differ by far more than ``eps``, purely because each
-    gap-to-previous is individually small. The null run uses its own tolerance,
-    ``null_rtol``, rather than ``eps``, because it groups directions for being
-    numerically absent, not for being near-equal to each other. A block of more than one
-    direction is degenerate: its directions are defined only up to a rotation within the
-    block. ``_SIGMA_FLOOR`` keeps the ratios finite when a divisor is ~0.
+    ``S`` is sorted descending. Direction ``i`` joins the open block when
+    ``1 - S[i]/S[i-1] < eps``, or when it and its predecessor are both null relative to
+    the top value. Only the gap to the previous direction counts: a block may span far
+    more than ``eps`` end to end, but every boundary is an ``eps`` gap, and that
+    separation from the rest of the spectrum is what makes a block stable under
+    perturbation; no smaller contiguous group inside it is. ``_SIGMA_FLOOR`` keeps the
+    ratios finite when a divisor is ~0.
     """
     n = int(S.shape[0])
     if n == 0:
@@ -246,8 +258,7 @@ def _degeneracy_blocks(
     current = [0]
     for i in range(1, n):
         prev = max(values[i - 1], _SIGMA_FLOOR)
-        anchor = max(values[current[0]], _SIGMA_FLOOR)
-        near_equal = (1.0 - values[i] / prev) < eps and (1.0 - values[i] / anchor) < eps
+        near_equal = (1.0 - values[i] / prev) < eps
         null_run = (values[i] / top) < null_rtol and (values[i - 1] / top) < null_rtol
         if near_equal or null_run:
             current.append(i)
@@ -259,26 +270,28 @@ def _degeneracy_blocks(
 
 
 def _build_rank_report(
-    S: Float[torch.Tensor, "rank"], blocks: List[List[int]]
+    S: Float[torch.Tensor, "rank"], blocks: List[List[int]], null_rtol: float
 ) -> List[RankReportRow]:
-    """Summarize each singular direction and tag the degeneracy block it belongs to.
+    """Summarize each singular direction and tag its degeneracy block.
 
-    ``sigma_ratio`` normalizes each singular value by the largest one, so the top
-    direction has ratio 1.0. ``blocks`` must partition ``range(len(S))``; each
-    direction is degenerate when its block holds more than one direction.
+    ``blocks`` must partition ``range(len(S))``. Nullness flags a direction on its own:
+    a lone null singular vector is arbitrary even though nothing groups with it.
     """
     values = [float(x) for x in S.tolist()]
     top = max(values) if values else 0.0
     denominator = top if top > _SIGMA_FLOOR else _SIGMA_FLOOR
     rows: List[Optional[RankReportRow]] = [None] * len(values)
     for block_id, block in enumerate(blocks):
-        degenerate = len(block) > 1
+        shared = len(block) > 1
         for idx in block:
+            sigma_ratio = values[idx] / denominator
+            is_null = sigma_ratio < null_rtol
             rows[idx] = RankReportRow(
                 idx=idx,
                 sigma=values[idx],
-                sigma_ratio=values[idx] / denominator,
-                is_degenerate=degenerate,
+                sigma_ratio=sigma_ratio,
+                is_degenerate=shared or is_null,
+                is_null=is_null,
                 block_id=block_id,
             )
     return [row for row in rows if row is not None]
@@ -310,7 +323,7 @@ def _factored_head_svd(
     d_model = U.shape[0]
     resolved_null_rtol = null_rtol if null_rtol is not None else d_model * torch.finfo(S.dtype).eps
     blocks = _degeneracy_blocks(S, eps, null_rtol=resolved_null_rtol)
-    rank_report = _build_rank_report(S, blocks)
+    rank_report = _build_rank_report(S, blocks, null_rtol=resolved_null_rtol)
     return HeadSVD(
         which=which,
         layer=layer,
@@ -329,7 +342,7 @@ def decompose_head(
     layer: int,
     head: int,
     *,
-    which: Sequence[Which] = ("QK", "OV"),
+    which: Sequence[str] = ("QK", "OV"),
     eps: float = _DEFAULT_EPS,
     null_rtol: Optional[float] = None,
 ) -> HeadDecomposition:
@@ -337,14 +350,16 @@ def decompose_head(
 
     Weight-space only: this reads the head's per-block weights via the bridge's
     ``model.blocks[layer].attn`` accessors and needs no forward pass and no
-    compatibility mode.
+    compatibility mode. The returned factors are detached from the model.
 
     Args:
         model: A ``TransformerBridge``.
         layer: Layer of the head to decompose.
         head: Head index within the layer.
-        which: Which maps to decompose, any subset of ``("QK", "OV")``.
-        eps: Relative-gap threshold for grouping near-equal degenerate directions.
+        which: Which maps to decompose, a non-empty sequence drawn from
+            ``("QK", "OV")``. A bare string is rejected rather than iterated.
+        eps: Relative gap at which a block of adjacent directions ends; directions
+            closer than this share a block.
         null_rtol: Relative-to-top-singular-value tolerance below which a direction
             counts as numerically null. Defaults to ``None``, which resolves to
             ``d_model * torch.finfo(S.dtype).eps`` per map, matching
@@ -356,7 +371,7 @@ def decompose_head(
 
     Raises:
         ValueError: If ``layer`` or ``head`` is out of range, or ``which`` is
-            empty or contains an unknown entry.
+            empty, a bare string, or contains an unknown entry.
     """
     n_layers = model.cfg.n_layers
     n_heads = model.cfg.n_heads
@@ -364,6 +379,8 @@ def decompose_head(
         raise ValueError(f"layer must be in [0, {n_layers}), got {layer!r}")
     if not 0 <= head < n_heads:
         raise ValueError(f"head must be in [0, {n_heads}), got {head!r}")
+    if isinstance(which, str):
+        raise ValueError(f"which must be a sequence of map names such as ('QK',), got {which!r}")
     requested = tuple(which)
     if not requested:
         raise ValueError("which must request at least one of 'QK' or 'OV'")
