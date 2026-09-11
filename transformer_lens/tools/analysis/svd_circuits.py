@@ -23,6 +23,13 @@ rotation, so the result carries a per-direction degeneracy report. Callers can
 use it to attribute an ambiguous block as a subspace instead of trusting a
 single, rotation-dependent direction.
 
+A singular value near zero relative to the top of the spectrum is null rather
+than near-equal: it reflects the map's numerical rank, not a rotation ambiguity
+between comparable directions. The degeneracy report groups a null run under
+its own tolerance, ``null_rtol``, keyed to the spectrum's top value the way
+:func:`torch.linalg.matrix_rank` keys its default tolerance, rather than the
+near-equal gap threshold ``eps``.
+
 Example::
 
     from transformer_lens import HookedTransformer
@@ -99,7 +106,10 @@ class HeadSVD:
             The reconstruction is ``U @ S.diag() @ V.transpose(-2, -1)``.
         rank_report: Per-direction :class:`RankReportRow` list, aligned with the
             columns of ``U``/``V``.
-        eps: Relative-gap threshold used to group the degeneracy blocks.
+        eps: Relative-gap threshold used to group near-equal degeneracy blocks.
+        null_rtol: Relative-to-top-singular-value tolerance below which a direction
+            is treated as numerically null, distinct from the near-equal gap
+            threshold ``eps``.
     """
 
     which: Which
@@ -110,6 +120,7 @@ class HeadSVD:
     V: Float[torch.Tensor, "d_model rank"]
     rank_report: List[RankReportRow]
     eps: float
+    null_rtol: float
 
     def is_degenerate(self, i: int) -> bool:
         """Return whether direction ``i`` shares its block with another direction.
@@ -208,19 +219,23 @@ def _head_weights(
     return W_Q_h, W_K_h, W_V_h, W_O_h
 
 
-def _degeneracy_blocks(S: Float[torch.Tensor, "rank"], eps: float) -> List[List[int]]:
+def _degeneracy_blocks(
+    S: Float[torch.Tensor, "rank"], eps: float, null_rtol: float
+) -> List[List[int]]:
     """Group singular directions into contiguous blocks by their relative gap.
 
     ``S`` holds singular values sorted in descending order. Direction ``i`` joins the
     open block when it is within relative gap ``eps`` of both the previous direction
     and the block's anchor (its first, largest member), or when both directions sit in
-    a near-zero (null) run relative to the top singular value. The anchor constraint
-    bounds how far a block can spread: without it, a spectrum decaying by just under
-    ``eps`` at every step would chain every direction into one block whose extremes
-    differ by far more than ``eps``, purely because each gap-to-previous is individually
-    small. A block of more than one direction is degenerate: its directions are defined
-    only up to a rotation within the block. ``_SIGMA_FLOOR`` keeps the ratios finite when
-    a divisor is ~0.
+    a null run: numerically zero relative to the top singular value, within ``null_rtol``.
+    The anchor constraint bounds how far a near-equal block can spread: without it, a
+    spectrum decaying by just under ``eps`` at every step would chain every direction
+    into one block whose extremes differ by far more than ``eps``, purely because each
+    gap-to-previous is individually small. The null run uses its own tolerance,
+    ``null_rtol``, rather than ``eps``, because it groups directions for being
+    numerically absent, not for being near-equal to each other. A block of more than one
+    direction is degenerate: its directions are defined only up to a rotation within the
+    block. ``_SIGMA_FLOOR`` keeps the ratios finite when a divisor is ~0.
     """
     n = int(S.shape[0])
     if n == 0:
@@ -233,7 +248,7 @@ def _degeneracy_blocks(S: Float[torch.Tensor, "rank"], eps: float) -> List[List[
         prev = max(values[i - 1], _SIGMA_FLOOR)
         anchor = max(values[current[0]], _SIGMA_FLOOR)
         near_equal = (1.0 - values[i] / prev) < eps and (1.0 - values[i] / anchor) < eps
-        null_run = (values[i] / top) < eps and (values[i - 1] / top) < eps
+        null_run = (values[i] / top) < null_rtol and (values[i - 1] / top) < null_rtol
         if near_equal or null_run:
             current.append(i)
         else:
@@ -277,6 +292,7 @@ def _factored_head_svd(
     layer: int,
     head: int,
     eps: float,
+    null_rtol: Optional[float] = None,
 ) -> HeadSVD:
     """Decompose the factored map ``A @ B`` for one head into a :class:`HeadSVD`.
 
@@ -284,9 +300,16 @@ def _factored_head_svd(
     ``B = W_K_h.transpose(-1, -2)``. The map stays factored through
     :class:`FactoredMatrix`, so the ``d_model x d_model`` product is never
     materialized and the rank is bounded by ``d_head``.
+
+    ``null_rtol`` of ``None`` resolves to ``d_model * torch.finfo(S.dtype).eps``,
+    the same relative tolerance :func:`torch.linalg.matrix_rank` uses by default
+    for a square ``d_model x d_model`` map, so the null cutoff tracks the
+    decomposition's own numerical rank rather than a hand-tuned constant.
     """
     U, S, V = FactoredMatrix(A, B).svd()
-    blocks = _degeneracy_blocks(S, eps)
+    d_model = U.shape[0]
+    resolved_null_rtol = null_rtol if null_rtol is not None else d_model * torch.finfo(S.dtype).eps
+    blocks = _degeneracy_blocks(S, eps, null_rtol=resolved_null_rtol)
     rank_report = _build_rank_report(S, blocks)
     return HeadSVD(
         which=which,
@@ -297,6 +320,7 @@ def _factored_head_svd(
         V=V,
         rank_report=rank_report,
         eps=eps,
+        null_rtol=resolved_null_rtol,
     )
 
 
@@ -307,6 +331,7 @@ def decompose_head(
     *,
     which: Sequence[Which] = ("QK", "OV"),
     eps: float = _DEFAULT_EPS,
+    null_rtol: Optional[float] = None,
 ) -> HeadDecomposition:
     """Decompose a head's QK (``W_Q W_K^T``) and/or OV (``W_V W_O``) maps via SVD.
 
@@ -320,7 +345,11 @@ def decompose_head(
         layer: Layer of the head to decompose.
         head: Head index within the layer.
         which: Which maps to decompose, any subset of ``("QK", "OV")``.
-        eps: Relative-gap threshold for grouping degenerate singular directions.
+        eps: Relative-gap threshold for grouping near-equal degenerate directions.
+        null_rtol: Relative-to-top-singular-value tolerance below which a direction
+            counts as numerically null. Defaults to ``None``, which resolves to
+            ``d_model * torch.finfo(S.dtype).eps`` per map, matching
+            :func:`torch.linalg.matrix_rank`'s default tolerance.
 
     Returns:
         A :class:`HeadDecomposition` whose ``QK``/``OV`` fields hold a
@@ -348,8 +377,16 @@ def decompose_head(
     ov = None
     if "QK" in requested:
         qk = _factored_head_svd(
-            W_Q_h, W_K_h.transpose(-1, -2), which="QK", layer=layer, head=head, eps=eps
+            W_Q_h,
+            W_K_h.transpose(-1, -2),
+            which="QK",
+            layer=layer,
+            head=head,
+            eps=eps,
+            null_rtol=null_rtol,
         )
     if "OV" in requested:
-        ov = _factored_head_svd(W_V_h, W_O_h, which="OV", layer=layer, head=head, eps=eps)
+        ov = _factored_head_svd(
+            W_V_h, W_O_h, which="OV", layer=layer, head=head, eps=eps, null_rtol=null_rtol
+        )
     return HeadDecomposition(layer=layer, head=head, QK=qk, OV=ov)

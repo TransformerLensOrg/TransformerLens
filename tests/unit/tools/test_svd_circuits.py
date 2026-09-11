@@ -214,11 +214,39 @@ def test_near_but_not_equal_respects_eps():
 
 
 def test_null_run_grouped():
-    """A run of near-zero singular values forms one degenerate null block."""
+    """A spectrum the relative-gap rule cannot group (8e-3 is 40x above 2e-4) is grouped by
+    an explicit null_rtol wide enough to catch both as numerically null."""
+    res = _factored_head_svd(
+        *_factored_with_spectrum([1.0, 8e-3, 2e-4]),
+        which="OV",
+        layer=0,
+        head=0,
+        eps=1e-2,
+        null_rtol=1e-2,
+    )
+    assert res.degenerate_blocks() == [[1, 2]]
+    with pytest.raises(DegenerateDirectionError):
+        res.require_isolated(1)
+    with pytest.raises(DegenerateDirectionError):
+        res.require_isolated(2)
+
+
+def test_null_default_does_not_overgroup():
+    """With the default null_rtol, 8e-3 is not treated as null, so it is not over-grouped
+    with the tail direction the way the eps=1e-2 near-equal threshold used to."""
+    res = _factored_head_svd(
+        *_factored_with_spectrum([1.0, 8e-3, 2e-4]), which="OV", layer=0, head=0, eps=1e-2
+    )
+    assert not res.is_degenerate(1)
+    assert not res.is_degenerate(2)
+
+
+def test_null_run_groups_true_null_tail():
+    """The default null_rtol still catches a genuinely near-zero tail as a null block."""
     res = _factored_head_svd(
         *_factored_with_spectrum([5.0, 1.0, 1e-9, 1e-9]), which="OV", layer=0, head=0, eps=1e-2
     )
-    assert res.is_degenerate(2) and res.is_degenerate(3)
+    assert res.degenerate_blocks() == [[2, 3]]
     with pytest.raises(DegenerateDirectionError):
         res.require_isolated(2)
     with pytest.raises(DegenerateDirectionError):
@@ -265,12 +293,12 @@ def test_degeneracy_blocks_partition_all_indices():
 # --------------------------------------------------------------------------- #
 def test_degeneracy_blocks_groups_equal_run_directly():
     """_degeneracy_blocks groups a repeated value and isolates the well-separated neighbours."""
-    blocks = _degeneracy_blocks(torch.tensor([5.0, 3.0, 3.0, 1.0]), eps=1e-2)
+    blocks = _degeneracy_blocks(torch.tensor([5.0, 3.0, 3.0, 1.0]), eps=1e-2, null_rtol=1e-2)
     assert blocks == [[0], [1, 2], [3]]
 
 
 def test_degeneracy_blocks_on_well_separated_are_all_singletons():
-    blocks = _degeneracy_blocks(torch.tensor([8.0, 4.0, 2.0, 1.0]), eps=1e-2)
+    blocks = _degeneracy_blocks(torch.tensor([8.0, 4.0, 2.0, 1.0]), eps=1e-2, null_rtol=1e-2)
     assert blocks == [[0], [1], [2], [3]]
 
 
